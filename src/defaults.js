@@ -5,6 +5,7 @@
     language: 'auto', // auto (según el navegador) | es | en
     theme: 'auto', // auto | light | dark
     accent: '', // vacío = color del tema; si no, un hex (#rrggbb)
+    supporter: false, // la persona dijo que aportó; no se verifica
     centered: true,
     contentWidth: 1040, // px
     fontSize: 16, // px
@@ -195,6 +196,10 @@
       "CSS propio": "Custom CSS",
       "Se aplica encima del tema. El documento vive dentro de .markdown-body.": "Applied on top of the theme. The document lives inside .markdown-body.",
       "Restablecer todo": "Reset everything",
+      "Gracias por apoyar el proyecto.": "Thanks for supporting the project.",
+      "Los colores son un extra para quienes apoyan el proyecto. No se verifica: queda en tu palabra.": "Colors are an extra for people who support the project. Nothing is verified: it is on your word.",
+      "Ya aporté": "I already supported",
+      "Gracias por apoyar": "Thanks for supporting",
       "Permiso para guardar": "Permission to save",
       "Chrome pide que elijas dónde puede escribir MD Tools. Elegí la carpeta de este archivo una sola vez y vas a poder guardar todo lo que haya adentro, sin que vuelva a preguntar.": "Chrome asks you to choose where MD Tools may write. Pick this file's folder once and you can save everything inside it, without being asked again.",
       "Elegir la carpeta": "Choose the folder",

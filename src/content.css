@@ -349,6 +349,11 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-seg button:hover { color: var(--fg); }
 .lmd-seg button.lmd-on { background: var(--accent-fill); color: var(--accent-fg); font-weight: 600; }
 .lmd-swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.lmd-swatches.lmd-locked { opacity: 0.38; pointer-events: none; filter: grayscale(0.6); }
+.lmd-extra { margin-top: 10px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 10px; background: var(--bg-soft); }
+.lmd-extra p { margin: 0 0 10px; color: var(--fg-muted); font-size: 13px; }
+.lmd-extra-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.lmd-extra-actions .lmd-btn { text-decoration: none; display: inline-flex; align-items: center; }
 .lmd-swatch { width: 28px; height: 28px; padding: 0; border: 2px solid transparent; border-radius: 50%; background: var(--sw, transparent); cursor: pointer; position: relative; outline: 1px solid var(--line); outline-offset: -1px; }
 .lmd-swatch.lmd-on { border-color: var(--bg); outline: 2px solid var(--fg); outline-offset: 0; }
 .lmd-swatch-auto { background: linear-gradient(135deg, #bef264 50%, #4d7c0f 50%); }

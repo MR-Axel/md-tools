@@ -13,7 +13,7 @@ A Chrome extension to read and edit Markdown files in the browser, local (`file:
 - **Folder tree**: the Markdown files next to the open document, with subfolders and a button to go up a level.
 - **Auto-reload** when the file changes on disk, keeping your scroll position.
 - **Search with two scopes**: on the Outline tab it searches the open document; on the Folder tab it searches the text of every Markdown file in the folder and its subfolders.
-- **Themes**: light, dark or automatic, plus an accent color of your choice.
+- **Themes**: light, dark or automatic. Accent colors are a thank-you extra for people who support the project, unlocked on the honor system: there is no check.
 - **Layout to taste**: centered content, content width, font size, line height and font family.
 - **Custom CSS** on top of the theme.
 - **Markdown plugins**, each with its own switch: code highlighting, emoji, subscript and superscript, inserted and highlighted text, abbreviations, definition lists, footnotes, task lists, GitHub-style alerts, inline table of contents (`[[toc]]`), math with KaTeX, diagrams with Mermaid and Graphviz, tables with merged cells, `::: tip` blocks, and YAML front matter shown as a card.

@@ -12,7 +12,7 @@ Extensión de Chrome para leer y editar archivos Markdown en el navegador, local
 - **Índice automático** del documento, con la sección actual resaltada mientras se hace scroll.
 - **Árbol de carpetas**: los archivos Markdown de la carpeta del documento, con subcarpetas que se abren y botón para subir de nivel.
 - **Recarga automática** cuando el archivo cambia en disco, sin perder la posición.
-- **Tema** claro, oscuro o automático, y **color de acento** a elección.
+- **Tema** claro, oscuro o automático. Los colores de acento son un extra de agradecimiento para quienes apoyan el proyecto, y se liberan a palabra: no hay verificación.
 - **Contenido centrado**, con **ancho**, **tamaño de letra**, **interlineado** y **tipografía** a medida.
 - **CSS propio** encima del tema.
 - **Plugins de Markdown**, cada uno con su interruptor: resaltado de código, emoji, subíndice y superíndice, insertado, marcado, abreviaturas, listas de definición, notas al pie, listas de tareas, alertas estilo GitHub, índice en el texto (`[[toc]]`), matemática con KaTeX, diagramas con Mermaid y Graphviz, tablas con celdas combinadas, bloques `::: tip` y la cabecera YAML mostrada como ficha.

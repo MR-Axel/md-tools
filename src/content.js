@@ -680,7 +680,8 @@
     else if (act === 'reload') checkForChanges(true);
     else if (act === 'print') window.print();
     else if (act === 'close-panel') ui.panel.hidden = true;
-    else if (act === 'reset') { panelStale = true; LMD.save(LMD.merge({})); }
+    else if (act === 'reset') { panelStale = true; LMD.save(LMD.merge({ supporter: settings.supporter })); }
+    else if (act === 'supporter') { panelStale = true; LMD.patch({ supporter: true }); flash(T('Gracias por apoyar el proyecto.')); }
   }
 
   function applyRawMode() {
@@ -711,7 +712,7 @@
   }
 
   function applyAccent(root, dark) {
-    const hex = /^#[0-9a-f]{6}$/i.test(settings.accent || '') ? settings.accent : '';
+    const hex = settings.supporter && /^#[0-9a-f]{6}$/i.test(settings.accent || '') ? settings.accent : '';
     const props = ['--accent', '--accent-soft', '--accent-fg', '--accent-fill'];
     if (!hex) { props.forEach((p) => root.style.removeProperty(p)); return; }
     const lum = luminance(hex);
@@ -741,6 +742,8 @@
     else root.style.removeProperty('--lmd-font');
     applyAccent(root, dark);
     ui.customStyle.textContent = settings.customCSS || '';
+    const foot = ui.sidebar.querySelector('.lmd-side-foot');
+    if (foot) foot.lastChild.nodeValue = T(settings.supporter ? 'Gracias por apoyar' : 'Apoyar el proyecto');
 
     ui.sidebar.querySelectorAll('.lmd-tab').forEach((t) => t.classList.toggle('lmd-active', t.dataset.tab === settings.sidebarTab));
     ui.paneFiles.hidden = settings.sidebarTab !== 'files';
@@ -1193,10 +1196,15 @@
             '<div class="lmd-row"><span>' + T('Tema') + '</span><div class="lmd-seg" data-seg="theme" role="radiogroup">' +
               ['auto', 'light', 'dark'].map((t) => '<button type="button" role="radio" data-val="' + t + '" aria-checked="' + (s.theme === t) + '"' + (s.theme === t ? ' class="lmd-on"' : '') + '>' + T({ auto: 'Automático', light: 'Claro', dark: 'Oscuro' }[t]) + '</button>').join('') +
             '</div></div>' +
-            '<div class="lmd-row"><span>' + T('Color de acento') + '</span><div class="lmd-swatches">' +
+            '<div class="lmd-row"><span>' + T('Color de acento') + '</span><div class="lmd-swatches' + (s.supporter ? '' : ' lmd-locked') + '">' +
               LMD.ACCENTS.map((a) => '<button type="button" class="lmd-swatch' + ((s.accent || '') === a.value ? ' lmd-on' : '') + (a.value ? '' : ' lmd-swatch-auto') + '" data-accent="' + a.value + '" title="' + esc(T(a.name)) + '" aria-label="' + esc(T(a.name)) + '"' + (a.value ? ' style="--sw:' + a.value + '"' : '') + '></button>').join('') +
               '<label class="lmd-swatch lmd-swatch-custom' + (s.accent && !LMD.ACCENTS.some((a) => a.value === s.accent) ? ' lmd-on' : '') + '" title="' + T('Otro color') + '"><input type="color" data-accent-custom value="' + (/^#[0-9a-f]{6}$/i.test(s.accent || '') ? s.accent : '#6c7ee1') + '"></label>' +
-            '</div></div>' +
+            '</div>' + (s.supporter
+              ? '<p class="lmd-hint">' + T('Gracias por apoyar el proyecto.') + '</p>'
+              : '<div class="lmd-extra"><p>' + T('Los colores son un extra para quienes apoyan el proyecto. No se verifica: queda en tu palabra.') + '</p>' +
+                '<div class="lmd-extra-actions"><a class="lmd-btn lmd-btn-fill" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">♥ ' + T('Apoyar el proyecto') + '</a>' +
+                '<button type="button" class="lmd-btn" data-act="supporter">' + T('Ya aporté') + '</button></div></div>') +
+            '</div>' +
             '<label class="lmd-check"><input type="checkbox" data-key="centered"' + (s.centered ? ' checked' : '') + '><span>' + T('Centrar el contenido') + '</span></label>' +
             '<label class="lmd-row"><span>' + T('Ancho del contenido') + ' <output>' + s.contentWidth + ' px</output></span><input type="range" min="560" max="1800" step="20" data-key="contentWidth" data-unit=" px" value="' + s.contentWidth + '"></label>' +
             '<label class="lmd-row"><span>' + T('Tamaño de letra') + ' <output>' + s.fontSize + ' px</output></span><input type="range" min="12" max="24" step="1" data-key="fontSize" data-unit=" px" value="' + s.fontSize + '"></label>' +
@@ -1239,9 +1247,10 @@
     });
     const markSwatch = (node) => ui.panel.querySelectorAll('.lmd-swatch').forEach((x) => x.classList.toggle('lmd-on', x === node));
     ui.panel.querySelectorAll('[data-accent]').forEach((b) => {
-      b.addEventListener('click', () => { markSwatch(b); LMD.patch({ accent: b.dataset.accent }); });
+      b.addEventListener('click', () => { if (!settings.supporter) return; markSwatch(b); LMD.patch({ accent: b.dataset.accent }); });
     });
     const custom = ui.panel.querySelector('[data-accent-custom]');
+    if (!settings.supporter) custom.disabled = true;
     custom.addEventListener('input', () => {
       markSwatch(custom.parentNode);
       settings.accent = custom.value; applySettings();
