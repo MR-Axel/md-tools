@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Lector MD</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fbfaf7; --fg: #1d2026; --muted: #5c6370; --line: #dedbd2; --soft: #f1efe9; --accent: #4d7c0f; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121418; --fg: #e6e8ec; --muted: #a0a7b4; --line: #2a2e37; --soft: #1a1d23; --accent: #bef264; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; width: 300px; padding: 14px 16px 16px; background: var(--bg); color: var(--fg); font: 14px/1.45 -apple-system, "Segoe UI", sans-serif; }
+  h1 { margin: 0 0 12px; font-size: 16px; }
+  label { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; cursor: pointer; }
+  input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; }
+  .seg { display: flex; padding: 3px; gap: 3px; background: var(--soft); border: 1px solid var(--line); border-radius: 9px; }
+  .seg button { height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: inherit; cursor: pointer; }
+  .seg button.on { background: var(--accent); color: var(--bg); font-weight: 600; }
+  .note { margin: 12px 0 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); color: var(--muted); font-size: 12.5px; }
+  .note b { color: var(--fg); }
+  .note button { margin-top: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); font: inherit; cursor: pointer; }
+  .hint a { color: var(--accent); }
+  .hint { margin: 10px 0 0; color: var(--muted); font-size: 12.5px; }
+</style>
+</head>
+<body>
+  <h1>Lector MD</h1>
+  <label><span data-t>Activado</span><input type="checkbox" data-key="enabled"></label>
+  <div class="row"><span data-t>Tema</span>
+    <div class="seg" data-seg="theme">
+      <button type="button" data-val="auto" data-t>Auto</button>
+      <button type="button" data-val="light" data-t>Claro</button>
+      <button type="button" data-val="dark" data-t>Oscuro</button>
+    </div>
+  </div>
+  <label><span data-t>Centrar el contenido</span><input type="checkbox" data-key="centered"></label>
+  <label><span data-t>Recarga automática</span><input type="checkbox" data-key="autoRefresh"></label>
+  <label><span data-t>Ocultar barra lateral</span><input type="checkbox" data-key="sidebarHidden"></label>
+  <div class="note" id="file-note" hidden>
+    <b data-t>Falta un permiso para abrir archivos locales.</b><br>
+    <span data-t>En los detalles de la extensión, activá "Permitir acceso a URL de archivo".</span>
+    <br><button id="open-details" type="button" data-t>Abrir los detalles</button>
+  </div>
+  <p class="hint" data-t>El resto de los ajustes (ancho, letra, plugins, CSS propio) está en el ícono de controles, arriba a la derecha del documento.</p>
+  <p class="hint"><a id="sponsor" target="_blank" rel="noopener noreferrer" data-t>Apoyar el proyecto</a></p>
+  <script src="defaults.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

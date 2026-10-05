@@ -1,0 +1,17 @@
+{
+  "ext_desc": {
+    "message": "Read Markdown files in the browser: outline, folder tree, auto-reload, themes and custom CSS."
+  },
+  "cmd_sidebar": {
+    "message": "Show or hide the sidebar"
+  },
+  "cmd_centered": {
+    "message": "Toggle centered content"
+  },
+  "cmd_refresh": {
+    "message": "Toggle auto-reload"
+  },
+  "cmd_theme": {
+    "message": "Switch theme (light, dark, auto)"
+  }
+}

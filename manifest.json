@@ -1,0 +1,115 @@
+{
+  "manifest_version": 3,
+  "name": "Lector MD",
+  "version": "1.5.1",
+  "description": "__MSG_ext_desc__",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Lector MD",
+    "default_popup": "src/popup.html"
+  },
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "permissions": [
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "file:///*",
+    "*://*/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "vendor/katex/fonts/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+  "content_scripts": [
+    {
+      "run_at": "document_end",
+      "css": [
+        "vendor/hljs-themes.css",
+        "src/content.css"
+      ],
+      "js": [
+        "src/defaults.js",
+        "vendor/markdown-it.min.js",
+        "vendor/markdown-it-emoji.min.js",
+        "vendor/markdown-it-sub.min.js",
+        "vendor/markdown-it-sup.min.js",
+        "vendor/markdown-it-ins.min.js",
+        "vendor/markdown-it-mark.min.js",
+        "vendor/markdown-it-abbr.min.js",
+        "vendor/markdown-it-deflist.min.js",
+        "vendor/markdown-it-footnote.min.js",
+        "vendor/markdown-it-multimd-table.min.js",
+        "vendor/markdown-it-container.min.js",
+        "vendor/purify.min.js",
+        "vendor/highlight.min.js",
+        "src/content.js"
+      ],
+      "matches": [
+        "file:///*.md",
+        "file:///*.mdx",
+        "file:///*.mkd",
+        "file:///*.mdown",
+        "file:///*.markdown",
+        "file:///*.MD",
+        "file:///*.MDX",
+        "file:///*.MKD",
+        "file:///*.MARKDOWN",
+        "file:///*.md?*",
+        "file:///*.markdown?*",
+        "*://*/*.md",
+        "*://*/*.mdx",
+        "*://*/*.mkd",
+        "*://*/*.mdown",
+        "*://*/*.markdown",
+        "*://*/*.MD",
+        "*://*/*.MDX",
+        "*://*/*.MKD",
+        "*://*/*.MARKDOWN",
+        "*://*/*.md?*",
+        "*://*/*.mdx?*",
+        "*://*/*.markdown?*"
+      ]
+    }
+  ],
+  "commands": {
+    "toggleSidebar": {
+      "description": "__MSG_cmd_sidebar__",
+      "suggested_key": {
+        "default": "Alt+Shift+B"
+      }
+    },
+    "toggleCentered": {
+      "description": "__MSG_cmd_centered__",
+      "suggested_key": {
+        "default": "Alt+Shift+C"
+      }
+    },
+    "toggleRefresh": {
+      "description": "__MSG_cmd_refresh__",
+      "suggested_key": {
+        "default": "Alt+Shift+R"
+      }
+    },
+    "toggleTheme": {
+      "description": "__MSG_cmd_theme__",
+      "suggested_key": {
+        "default": "Alt+Shift+T"
+      }
+    }
+  },
+  "default_locale": "en"
+}

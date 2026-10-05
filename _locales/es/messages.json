@@ -1,0 +1,17 @@
+{
+  "ext_desc": {
+    "message": "Lee archivos Markdown en el navegador: índice, árbol de carpetas, recarga automática, temas y CSS propio."
+  },
+  "cmd_sidebar": {
+    "message": "Mostrar u ocultar la barra lateral"
+  },
+  "cmd_centered": {
+    "message": "Centrar o no el contenido"
+  },
+  "cmd_refresh": {
+    "message": "Activar o desactivar la recarga automática"
+  },
+  "cmd_theme": {
+    "message": "Cambiar el tema (claro, oscuro, automático)"
+  }
+}
