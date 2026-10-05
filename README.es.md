@@ -1,13 +1,14 @@
-# Lector MD
+# MD Tools
 
 [English](README.md) · Español
 
-![Lector MD](docs/reader.png)
+![MD Tools](docs/reader.png)
 
-Extensión de Chrome para leer archivos Markdown en el navegador, locales (`file://`) o servidos por web. Sin cuentas, sin planes pagos y sin llamadas a servidores: todo corre en la máquina.
+Extensión de Chrome para leer y editar archivos Markdown en el navegador, locales (`file://`) o servidos por web. Sin cuentas, sin planes pagos y sin llamadas a servidores: todo corre en la máquina.
 
 ## Qué hace
 
+- **Edición en el lugar**: pasás a modo Edición y hacés clic en cualquier párrafo, título, ítem o celda para cambiarlo. Negrita, cursiva, tachado, código y enlaces desde una barrita o con los atajos de siempre; agregar y quitar filas y columnas; tildar tareas. El Markdown se reescribe por detrás, sin que veas la sintaxis. Se guarda con Ctrl+S, o con guardado automático.
 - **Índice automático** del documento, con la sección actual resaltada mientras se hace scroll.
 - **Árbol de carpetas**: los archivos Markdown de la carpeta del documento, con subcarpetas que se abren y botón para subir de nivel.
 - **Recarga automática** cuando el archivo cambia en disco, sin perder la posición.
@@ -27,8 +28,8 @@ Extensión de Chrome para leer archivos Markdown en el navegador, locales (`file
 
 1. Abrir `chrome://extensions`.
 2. Activar **Modo de desarrollador** (arriba a la derecha).
-3. **Cargar descomprimida** y elegir esta carpeta (`lector-md`).
-4. En la tarjeta de Lector MD, entrar a **Detalles** y activar **Permitir acceso a URL de archivo**. Sin eso no abre archivos locales.
+3. **Cargar descomprimida** y elegir esta carpeta .
+4. En la tarjeta de MD Tools, entrar a **Detalles** y activar **Permitir acceso a URL de archivo**. Sin eso no abre archivos locales.
 5. Si hay otra extensión de Markdown instalada, desactivarla para que no actúen las dos sobre el mismo archivo.
 
 Después alcanza con arrastrar un `.md` al navegador.

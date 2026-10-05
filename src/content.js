@@ -1,4 +1,4 @@
-// Lector MD: reemplaza la vista de texto plano de un archivo Markdown por un lector completo.
+// MD Tools: reemplaza la vista de texto plano de un archivo Markdown por un lector completo.
 (function () {
   'use strict';
 
@@ -36,6 +36,10 @@
     reload: '<svg viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg>',
     print: '<svg viewBox="0 0 24 24"><path d="M7.5 8.5v-5h9v5"/><rect x="3.5" y="8.5" width="17" height="8" rx="1.5"/><path d="M7.5 14h9v6.5h-9z"/></svg>',
     rich: '<svg viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/><path d="m11.6 17 2.4-6 2.4 6M12.4 15.2h3.2"/></svg>',
+    eye: '<svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></svg>',
+    pencil: '<svg viewBox="0 0 24 24"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17z"/><path d="m14 8 3 3"/></svg>',
+    save: '<svg viewBox="0 0 24 24"><path d="M5 4.5h11l3.5 3.5v11.5h-14.5z"/><path d="M8 4.5v5h7v-5M8 19.5v-6h8v6"/></svg>',
+    link: '<svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>',
     check: '<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
   };
 
@@ -175,6 +179,22 @@
       if (p.graphviz && (info === 'dot' || info === 'graphviz')) return '<pre class="lmd-graphviz">' + esc(tokens[idx].content) + '</pre>\n';
       return fence(tokens, idx, options, env, self);
     };
+    // Cada bloque guarda de qué líneas del fuente salió (data-l). En las listas compactas el
+    // párrafo no se dibuja, así que su rango va al <li> como data-p.
+    md.core.ruler.push('lmd_lines', (state) => {
+      const tokens = state.tokens;
+      tokens.forEach((t, i) => {
+        if (!t.map || !t.block) return;
+        if (t.type === 'paragraph_open' && t.hidden) {
+          for (let j = i - 1; j >= 0; j--) {
+            if (tokens[j].type === 'list_item_open') { tokens[j].attrSet('data-p', t.map[0] + '-' + t.map[1]); break; }
+            if (tokens[j].nesting !== 0) break;
+          }
+          return;
+        }
+        if (t.nesting === 1 || t.type === 'fence' || t.type === 'code_block') t.attrSet('data-l', t.map[0] + '-' + t.map[1]);
+      });
+    });
     return md;
   }
 
@@ -198,7 +218,7 @@
     const headings = Array.from(article.querySelectorAll('h1,h2,h3,h4,h5,h6'));
     headings.forEach((h) => {
       h.id = slugify(h.textContent, used);
-      if (p.anchors) {
+      if (p.anchors && !editMode) {
         const a = el('a', { class: 'lmd-anchor', href: '#' + h.id, 'aria-label': 'Enlace a esta sección', text: '#' });
         h.appendChild(a);
       }
@@ -517,6 +537,11 @@
         '<span class="lmd-status"></span>' +
         '<span class="lmd-count" title="' + T('Palabras y caracteres') + '"></span>' +
         '<div class="lmd-tools">' +
+          '<div class="lmd-view lmd-mode" role="radiogroup" aria-label="' + T('Modo') + '">' +
+            '<button type="button" role="radio" data-act="mode-read" class="lmd-on" aria-checked="true" title="' + T('Solo lectura') + '">' + ICON.eye + '</button>' +
+            '<button type="button" role="radio" data-act="mode-edit" aria-checked="false" title="' + T('Editar') + '">' + ICON.pencil + '</button>' +
+          '</div>' +
+          '<button class="lmd-icon-btn lmd-save" data-act="save" title="' + T('Guardar (Ctrl+S)') + '" hidden>' + ICON.save + '</button>' +
           '<div class="lmd-view" role="radiogroup" aria-label="' + T('Vista') + '">' +
             '<button type="button" role="radio" data-act="view-doc" class="lmd-on" aria-checked="true" title="' + T('Ver documento') + '">' + ICON.doc + '</button>' +
             '<button type="button" role="radio" data-act="view-raw" aria-checked="false" title="' + T('Ver código fuente') + '">' + ICON.code + '</button>' +
@@ -529,16 +554,30 @@
         '</div>' +
       '</div>' +
       '<article class="lmd-article markdown-body"></article>' +
-      '<pre class="lmd-raw" hidden></pre>';
+      '<pre class="lmd-raw" hidden></pre>' +
+      '<textarea class="lmd-raw lmd-raw-edit" spellcheck="false" hidden></textarea>';
 
     ui.toTop = el('button', { class: 'lmd-to-top', title: T('Volver arriba'), hidden: '' }, ICON.up);
     ui.panel = el('div', { class: 'lmd-panel', hidden: '' });
     ui.viewer = el('div', { class: 'lmd-viewer', hidden: '' });
+    ui.format = el('div', { class: 'lmd-format', hidden: '' },
+      '<button type="button" data-fmt="bold" title="' + T('Negrita (Ctrl+B)') + '"><b>B</b></button>' +
+      '<button type="button" data-fmt="italic" title="' + T('Cursiva (Ctrl+I)') + '"><i>I</i></button>' +
+      '<button type="button" data-fmt="strike" title="' + T('Tachado') + '"><s>S</s></button>' +
+      '<button type="button" data-fmt="code" title="' + T('Código') + '">' + ICON.code + '</button>' +
+      '<button type="button" data-fmt="link" title="' + T('Enlace') + '">' + ICON.link + '</button>' +
+      '<button type="button" data-fmt="clear" title="' + T('Quitar formato') + '">' + ICON.close + '</button>');
+    ui.tableBar = el('div', { class: 'lmd-tablebar', hidden: '' },
+      '<button type="button" data-top="row+">+ ' + T('Fila') + '</button>' +
+      '<button type="button" data-top="col+">+ ' + T('Columna') + '</button>' +
+      '<button type="button" data-top="row-">− ' + T('Fila') + '</button>' +
+      '<button type="button" data-top="col-">− ' + T('Columna') + '</button>');
 
-    document.body.append(ui.sidebar, ui.main, ui.toTop, ui.panel, ui.viewer);
+    document.body.append(ui.sidebar, ui.main, ui.toTop, ui.panel, ui.viewer, ui.format, ui.tableBar);
 
     ui.article = ui.main.querySelector('.lmd-article');
-    ui.rawPre = ui.main.querySelector('.lmd-raw');
+    ui.rawPre = ui.main.querySelector('pre.lmd-raw');
+    ui.rawEdit = ui.main.querySelector('.lmd-raw-edit');
     ui.status = ui.main.querySelector('.lmd-status');
     ui.count = ui.main.querySelector('.lmd-count');
     ui.treeBox = ui.sidebar.querySelector('.lmd-tree-box');
@@ -551,6 +590,8 @@
 
     document.title = decodeURIComponent(location.pathname.split('/').pop() || 'Markdown');
     bindEvents();
+    bindEditing();
+    document.documentElement.dataset.lmdFs = String(!!window.showOpenFilePicker && window.isSecureContext);
   }
 
   function bindEvents() {
@@ -582,6 +623,7 @@
         else if (!ui.panel.hidden) ui.panel.hidden = true;
         else if (ui.searchInput.value || document.activeElement === ui.searchInput) toggleSearch(false);
       }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 's' && (editMode || dirty)) { e.preventDefault(); save(true); }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); toggleSearch(true); }
     });
 
@@ -617,6 +659,9 @@
 
   function onAction(act, source) {
     if (act === 'sidebar') LMD.patch({ sidebarHidden: !settings.sidebarHidden });
+    else if (act === 'mode-read') setEditMode(false);
+    else if (act === 'mode-edit') setEditMode(true);
+    else if (act === 'save') save(true);
     else if (act === 'view-doc') { rawMode = false; applyRawMode(); }
     else if (act === 'view-raw') { rawMode = true; applyRawMode(); }
     else if (act === 'settings') openPanel();
@@ -629,9 +674,12 @@
   }
 
   function applyRawMode() {
+    const editingSource = rawMode && editMode;
+    if (!rawMode && needsRender) render();
     ui.article.hidden = rawMode;
-    ui.rawPre.hidden = !rawMode;
-    if (rawMode) ui.rawPre.textContent = raw;
+    ui.rawPre.hidden = !rawMode || editingSource;
+    ui.rawEdit.hidden = !editingSource;
+    if (rawMode) { ui.rawPre.textContent = raw; ui.rawEdit.value = raw; }
     ui.main.querySelectorAll('.lmd-view button').forEach((b) => {
       const on = (b.dataset.act === 'view-raw') === rawMode;
       b.classList.toggle('lmd-on', on); b.setAttribute('aria-checked', String(on));
@@ -703,14 +751,18 @@
   function render() {
     const md = buildParser();
     const fm = settings.plugins.frontmatter ? splitFrontmatter(raw) : { body: raw, rows: null };
+    syncSource();
+    fmOffset = raw.slice(0, raw.length - fm.body.length).split('\n').length - 1;
+    needsRender = false;
     let html = md.render(fm.body);
     html = DOMPurify.sanitize(html, { ADD_ATTR: ['target', 'data-tex'], FORBID_TAGS: ['style', 'form'] });
     const y = window.scrollY;
     ui.article.innerHTML = html;
     spyHeadings = postProcess(ui.article);
+    if (editMode) enableEditing(ui.article);
     if (fm.rows && fm.rows.length) ui.article.insertBefore(frontmatterNode(fm.rows), ui.article.firstChild);
     buildOutline(spyHeadings);
-    if (rawMode) ui.rawPre.textContent = raw;
+    if (rawMode) { ui.rawPre.textContent = raw; if (document.activeElement !== ui.rawEdit) ui.rawEdit.value = raw; }
     window.scrollTo(0, y);
     onScroll();
     updateCount();
@@ -831,8 +883,10 @@
       const text = await readCurrent();
       if (text == null) {
         if (manual) flash(T('No se pudo releer el archivo'));
-      } else if (text !== raw) {
-        raw = text; render(); flash(T('Documento actualizado'));
+      } else if (text !== diskText) {
+        diskText = text;
+        if (dirty) flash(T('El archivo cambió en el disco. Tus cambios sin guardar se mantienen'));
+        else { raw = text; render(); flash(T('Documento actualizado')); }
       } else if (manual) flash(T('Sin cambios'));
     } finally { checking = false; }
   }
@@ -1143,6 +1197,8 @@
             '<label class="lmd-check"><input type="checkbox" data-key="autoRefresh"' + (s.autoRefresh ? ' checked' : '') + '><span>' + T('Recargar solo cuando el archivo cambia') + '</span></label>' +
             '<label class="lmd-row"><span>' + T('Revisar cada') + ' <output>' + s.refreshInterval + ' ms</output></span><input type="range" min="300" max="5000" step="100" data-key="refreshInterval" data-unit=" ms" value="' + s.refreshInterval + '"></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="rememberPosition"' + (s.rememberPosition ? ' checked' : '') + '><span>' + T('Recordar por dónde iba en cada archivo') + '</span></label>' +
+            '<label class="lmd-check"><input type="checkbox" data-key="autosave"' + (s.autosave ? ' checked' : '') + '><span>' + T('Guardar solo mientras edito') + '</span></label>' +
+            '<label class="lmd-row"><span>' + T('Guardar a los') + ' <output>' + s.autosaveDelay + ' ms</output></span><input type="range" min="1000" max="30000" step="500" data-key="autosaveDelay" data-unit=" ms" value="' + s.autosaveDelay + '"></label>' +
           '</section>' +
           '<section><h3>' + T('Carpeta') + '</h3>' +
             '<label class="lmd-check"><input type="checkbox" data-key="filesOnlyMarkdown"' + (s.filesOnlyMarkdown ? ' checked' : '') + '><span>' + T('Mostrar solo archivos Markdown') + '</span></label>' +
@@ -1154,7 +1210,7 @@
             '<p class="lmd-hint">' + T('Se aplica encima del tema. El documento vive dentro de .markdown-body.') + '</p>' +
           '</section>' +
           '<section class="lmd-panel-foot"><button type="button" class="lmd-btn" data-act="reset">' + T('Restablecer todo') + '</button></section>' +
-          '<section class="lmd-support"><p class="lmd-hint">' + T('Lector MD es gratis y no junta datos. Si te sirve, podés apoyarlo.') + '</p>' +
+          '<section class="lmd-support"><p class="lmd-hint">' + T('MD Tools es gratis y no junta datos. Si te sirve, podés apoyarlo.') + '</p>' +
             '<a class="lmd-btn lmd-btn-accent" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">♥ ' + T('Apoyar el proyecto') + '</a></section>' +
         '</div>' +
       '</div>';
@@ -1200,6 +1256,396 @@
     ui.panel.onclick = (e) => { if (e.target === ui.panel) ui.panel.hidden = true; };
   }
 
+  // ---------- Modo edición ----------
+  // Se edita sobre el texto ya formateado: cada bloque (párrafo, título, ítem, celda) es editable
+  // en el lugar y, al salir, se reescribe solo el Markdown de ese bloque. La sintaxis nunca se ve.
+  let editMode = false;
+  let dirty = false;
+  let diskText = raw;
+  let fileHandle = null;
+  let srcLines = [];
+  let fmOffset = 0;
+  let eol = '\n';
+  let needsRender = false;
+  let autosaveTimer = null;
+  let softTimer = null;
+  let pendingCell = null;
+
+  const BLOCKS_INSIDE = 'UL,OL,P,PRE,BLOCKQUOTE,DIV,TABLE,DL,H1,H2,H3,H4,H5,H6';
+  const INLINE_OK = new Set(['STRONG', 'B', 'EM', 'I', 'DEL', 'S', 'STRIKE', 'MARK', 'INS', 'SUB', 'SUP', 'CODE', 'BR', 'A', 'IMG', 'ABBR', 'INPUT', 'SPAN', 'U', 'FONT']);
+
+  function syncSource() {
+    eol = raw.indexOf('\r\n') !== -1 ? '\r\n' : '\n';
+    srcLines = raw.split(/\r?\n/);
+  }
+
+  const rangeOf = (node, attr) => {
+    const m = /^(\d+)-(\d+)$/.exec(node.getAttribute(attr || 'data-l') || '');
+    return m ? [+m[1], +m[2]] : null;
+  };
+
+  const escText = (t) => t.replace(/\u00a0/g, ' ').replace(/([\\`*])/g, '\\$1').replace(/</g, '\\<');
+
+  // HTML de un bloque editado -> Markdown en línea.
+  function inlineMd(rootNode) {
+    let out = '';
+    rootNode.childNodes.forEach((n) => {
+      if (n.nodeType === 3) { out += escText(n.nodeValue); return; }
+      if (n.nodeType !== 1) return;
+      const tag = n.tagName;
+      if (tag === 'INPUT' || n.classList.contains('lmd-anchor')) return;
+      if (n.classList.contains('lmd-math')) { out += '$' + n.getAttribute('data-tex') + '$'; return; }
+      if (n.classList.contains('lmd-wiki')) {
+        const target = n.getAttribute('data-wiki'); const label = n.textContent;
+        out += '[[' + (label && label !== target ? target + '|' + label : target) + ']]'; return;
+      }
+      if (tag === 'BR') { out += '\n'; return; }
+      if (tag === 'CODE') { out += '`' + n.textContent + '`'; return; }
+      if (tag === 'IMG') { out += '![' + (n.getAttribute('alt') || '') + '](' + (n.getAttribute('src') || '') + ')'; return; }
+      const inner = inlineMd(n);
+      const wrap = (mark) => { const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(inner); return m[2] ? m[1] + mark + m[2] + mark + m[3] : inner; };
+      if (tag === 'STRONG' || tag === 'B') out += wrap('**');
+      else if (tag === 'EM' || tag === 'I') out += wrap('*');
+      else if (tag === 'DEL' || tag === 'S' || tag === 'STRIKE') out += wrap('~~');
+      else if (tag === 'MARK') out += wrap('==');
+      else if (tag === 'INS' || tag === 'U') out += wrap('++');
+      else if (tag === 'SUB') out += wrap('~');
+      else if (tag === 'SUP') out += wrap('^');
+      else if (tag === 'A') {
+        const href = n.getAttribute('href') || ''; const text = n.textContent;
+        out += (!href || href === text || href === 'mailto:' + text || href === 'http://' + text) ? escText(text) : '[' + inner + '](' + href + ')';
+      } else out += inner;
+    });
+    return out;
+  }
+
+  // Un bloque se edita en el lugar solo si todo lo que tiene adentro se puede volver a escribir igual.
+  function roundTrips(node) {
+    for (const child of node.querySelectorAll('*')) {
+      if (child.closest('.lmd-math') && !child.classList.contains('lmd-math')) continue;
+      if (!INLINE_OK.has(child.tagName)) return false;
+      if (child.classList.contains('footnote-ref') || child.closest('.footnote-ref')) return false;
+      if (child.tagName === 'SPAN' && !child.classList.contains('lmd-math') && child.attributes.length) return false;
+    }
+    return true;
+  }
+
+  const PREFIX_RE = /^((?:\s{0,3}>\s?)*\s*(?:(?:[-*+]|\d{1,9}[.)])\s+)?(?:\[[ xX]\]\s+)?)/;
+
+  function blockSource(elm) {
+    const r = rangeOf(elm); if (!r) return null;
+    const s = r[0] + fmOffset; const e = r[1] + fmOffset;
+    const md = inlineMd(elm).replace(/\n+$/, '');
+    const first = srcLines[s] || '';
+    if (/^H[1-6]$/.test(elm.tagName)) {
+      const quote = /^((?:\s{0,3}>\s?)*)/.exec(first)[1];
+      return { s, e, lines: [quote + '#'.repeat(+elm.tagName[1]) + ' ' + md.replace(/\n/g, ' ').trim()] };
+    }
+    const prefix = PREFIX_RE.exec(first)[1];
+    const cont = prefix.replace(/[-*+]|\d{1,9}[.)]|\[[ xX]\]/g, (m) => ' '.repeat(m.length));
+    const parts = md.split('\n');
+    return { s, e, lines: parts.map((part, i) => (i === 0 ? prefix : cont) + part.trim() + (i < parts.length - 1 ? '\\' : '')) };
+  }
+
+  // Reemplaza líneas del fuente y corre los rangos de los bloques que vienen después, sin redibujar:
+  // así el foco puede pasar a otro bloque sin perder el cursor.
+  function replaceLines(s, e, newLines, owner, attr) {
+    srcLines.splice(s, e - s, ...newLines);
+    raw = srcLines.join(eol);
+    const delta = newLines.length - (e - s);
+    const rs = s - fmOffset; const re = e - fmOffset;
+    if (delta) {
+      ui.article.querySelectorAll('[data-l], [data-p]').forEach((n) => {
+        ['data-l', 'data-p'].forEach((a) => {
+          const r = rangeOf(n, a); if (!r || (n === owner && a === attr)) return;
+          if (r[0] >= re) n.setAttribute(a, (r[0] + delta) + '-' + (r[1] + delta));
+          else if (r[0] <= rs && r[1] >= re) n.setAttribute(a, r[0] + '-' + (r[1] + delta));
+        });
+      });
+    }
+    if (owner) owner.setAttribute(attr || 'data-l', rs + '-' + (rs + newLines.length));
+    markDirty();
+  }
+
+  function markDirty() {
+    dirty = raw !== diskText;
+    needsRender = true;
+    updateSaveState();
+    clearTimeout(autosaveTimer);
+    if (dirty && settings.autosave) {
+      if (fileHandle) autosaveTimer = setTimeout(() => save(false), Math.max(500, settings.autosaveDelay | 0));
+      else flash(T('Guardá una vez con Ctrl+S para activar el guardado automático'));
+    }
+  }
+
+  function updateSaveState() {
+    const root = document.documentElement;
+    root.classList.toggle('lmd-dirty', dirty);
+    root.classList.toggle('lmd-editing', editMode);
+    ui.main.querySelectorAll('.lmd-mode button').forEach((b) => {
+      const on = (b.dataset.act === 'mode-edit') === editMode;
+      b.classList.toggle('lmd-on', on); b.setAttribute('aria-checked', String(on));
+    });
+    const save = ui.main.querySelector('[data-act=save]');
+    save.hidden = !editMode && !dirty;
+    save.title = dirty ? T('Guardar (Ctrl+S). Hay cambios sin guardar') : T('Guardar (Ctrl+S)');
+  }
+
+  function softRender() {
+    clearTimeout(softTimer);
+    softTimer = setTimeout(() => {
+      const a = document.activeElement;
+      if (!needsRender || (a && (a.isContentEditable || a.classList.contains('lmd-src')))) return;
+      render();
+    }, 350);
+  }
+
+  function setEditMode(on) {
+    editMode = on;
+    updateSaveState();
+    render();
+    applyRawMode();
+    if (on) flash(T('Modo edición: hacé clic en un texto o una celda para cambiarlo'));
+  }
+
+  // Marca qué se puede editar después de cada render.
+  function enableEditing(article) {
+    const make = (node, attr) => {
+      if (!roundTrips(node)) { node.classList.add('lmd-noedit'); node.title = T('Este bloque se edita desde la vista de código'); return; }
+      node.contentEditable = 'true'; node.spellcheck = true; node.classList.add('lmd-editable');
+      if (attr) node.dataset.attr = attr;
+    };
+    article.querySelectorAll('p[data-l], h1[data-l], h2[data-l], h3[data-l], h4[data-l], h5[data-l], h6[data-l]').forEach((n) => {
+      if (n.closest('.lmd-alert-title, .lmd-box-title, .lmd-front, .footnotes')) return;
+      make(n);
+    });
+    // Ítems de lista compactos: el texto vive directo en el <li>, a veces seguido de una sublista.
+    article.querySelectorAll('li[data-p]').forEach((li) => {
+      if (li.closest('.footnotes')) return;
+      const span = el('span', { class: 'lmd-li-text' });
+      span.setAttribute('data-l', li.getAttribute('data-p'));
+      const nodes = [];
+      for (const n of Array.from(li.childNodes)) {
+        if (n.nodeType === 1 && n.matches(BLOCKS_INSIDE)) break;
+        if (n.nodeType === 1 && n.tagName === 'INPUT') continue;
+        nodes.push(n);
+      }
+      if (!nodes.length) return;
+      li.insertBefore(span, nodes[0]);
+      nodes.forEach((n) => span.appendChild(n));
+      make(span);
+    });
+    article.querySelectorAll('.lmd-math, .lmd-wiki').forEach((n) => { n.contentEditable = 'false'; });
+    article.querySelectorAll('input.lmd-task').forEach((box) => { box.disabled = false; box.contentEditable = 'false'; });
+
+    article.querySelectorAll('table[data-l]').forEach((table) => {
+      const r = rangeOf(table); if (!r) return;
+      const src = srcLines.slice(r[0] + fmOffset, r[1] + fmOffset);
+      const rows = Array.from(table.rows);
+      const simple = table.tHead && table.tHead.rows.length === 1 && src.length === rows.length + 1 && /^[\s|:>-]+$/.test(src[1] || '') &&
+        !table.querySelector('[rowspan], [colspan]') && rows.every((tr) => tr.cells.length === rows[0].cells.length);
+      if (!simple) { table.classList.add('lmd-noedit'); table.title = T('Esta tabla se edita desde la vista de código'); return; }
+      rows.forEach((tr, ri) => Array.from(tr.cells).forEach((cell, ci) => {
+        if (!roundTrips(cell)) return;
+        cell.contentEditable = 'true'; cell.classList.add('lmd-editable', 'lmd-cell');
+        cell.dataset.r = ri; cell.dataset.c = ci;
+      }));
+    });
+
+    if (pendingCell) {
+      const want = pendingCell; pendingCell = null;
+      const table = Array.from(article.querySelectorAll('table[data-l]')).find((t) => rangeOf(t)[0] === want.line);
+      const cell = table && table.rows[Math.min(want.r, table.rows.length - 1)] && table.rows[Math.min(want.r, table.rows.length - 1)].cells[Math.min(want.c, table.rows[0].cells.length - 1)];
+      if (cell) { cell.focus(); const sel = getSelection(); sel.selectAllChildren(cell); sel.collapseToEnd(); }
+    }
+  }
+
+  const splitRow = (line) => line.replace(/^\s*(?:>\s?)*/, '').trim().replace(/^\|/, '').replace(/(^|[^\\])\|\s*$/, '$1').split(/(?<!\\)\|/).map((c) => c.trim());
+  const cellMd = (cell) => inlineMd(cell).replace(/\n+$/, '').replace(/\n/g, ' ').replace(/(?<!\\)\|/g, '\\|').trim();
+
+  function tableContext(table) {
+    const r = rangeOf(table);
+    const s = r[0] + fmOffset; const e = r[1] + fmOffset;
+    const indent = /^\s*(?:>\s?)*/.exec(srcLines[s] || '')[0];
+    return { s, e, indent, row: (cells) => indent + '| ' + cells.join(' | ') + ' |' };
+  }
+
+  function commitCell(cell) {
+    const table = cell.closest('table'); const ctx = tableContext(table);
+    const ri = +cell.dataset.r;
+    const line = ctx.s + (ri === 0 ? 0 : ri + 1);
+    replaceLines(line, line + 1, [ctx.row(Array.from(cell.parentNode.cells).map(cellMd))], null);
+  }
+
+  function tableOp(op) {
+    const cell = document.activeElement && document.activeElement.closest && document.activeElement.closest('td.lmd-cell, th.lmd-cell');
+    if (!cell) return;
+    const table = cell.closest('table'); const ctx = tableContext(table);
+    const ri = +cell.dataset.r; const ci = +cell.dataset.c;
+    const grid = Array.from(table.rows).map((tr) => Array.from(tr.cells).map(cellMd));
+    const sep = splitRow(srcLines[ctx.s + 1]);
+    let nr = ri; let nc = ci;
+    if (op === 'row+') { grid.splice(Math.max(ri, 0) + 1, 0, grid[0].map(() => '')); nr = ri + 1; }
+    if (op === 'row-') { if (ri === 0 || grid.length <= 2) return; grid.splice(ri, 1); nr = Math.min(ri, grid.length - 1); }
+    if (op === 'col+') { grid.forEach((row) => row.splice(ci + 1, 0, '')); sep.splice(ci + 1, 0, '---'); nc = ci + 1; }
+    if (op === 'col-') { if (grid[0].length <= 1) return; grid.forEach((row) => row.splice(ci, 1)); sep.splice(ci, 1); nc = Math.min(ci, grid[0].length - 1); }
+    while (sep.length < grid[0].length) sep.push('---');
+    sep.length = grid[0].length;
+    const out = [ctx.row(grid[0]), ctx.row(sep)].concat(grid.slice(1).map(ctx.row));
+    cell.blur();
+    pendingCell = { line: rangeOf(table)[0], r: nr, c: nc };
+    replaceLines(ctx.s, ctx.e, out, null);
+    render();
+  }
+
+  function toggleTask(box) {
+    const li = box.closest('li'); if (!li) return;
+    const r = rangeOf(li, li.hasAttribute('data-p') ? 'data-p' : 'data-l') || rangeOf(li);
+    if (!r) return;
+    const i = r[0] + fmOffset;
+    const next = (srcLines[i] || '').replace(/\[( |x|X)\]/, box.checked ? '[x]' : '[ ]');
+    if (next !== srcLines[i]) replaceLines(i, i + 1, [next], null);
+  }
+
+  // Bloques de código: se edita el contenido, sin las cercas.
+  function editCode(codeBox) {
+    const code = codeBox.querySelector('code'); const r = code && rangeOf(code);
+    if (!r || codeBox.querySelector('.lmd-src')) return;
+    const s = r[0] + fmOffset; const e = r[1] + fmOffset;
+    const fenced = /^\s*(`{3,}|~{3,})/.test(srcLines[s] || '');
+    const from = fenced ? s + 1 : s; const to = fenced ? e - 1 : e;
+    const ta = el('textarea', { class: 'lmd-src', spellcheck: 'false' });
+    ta.value = srcLines.slice(from, to).join('\n');
+    ta.rows = Math.max(3, to - from + 1);
+    codeBox.querySelector('pre').hidden = true;
+    codeBox.appendChild(ta); ta.focus();
+    let done = false;
+    const finish = (apply) => {
+      if (done) return; done = true;
+      if (apply && ta.value !== srcLines.slice(from, to).join('\n')) replaceLines(from, to, ta.value.split('\n'), null);
+      needsRender = true; ta.remove(); codeBox.querySelector('pre').hidden = false; render();
+    };
+    ta.addEventListener('blur', () => finish(true));
+    ta.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
+      if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); finish(true); }
+    });
+  }
+
+  // Barra de formato sobre la selección.
+  function formatBar() {
+    const sel = getSelection();
+    const host = sel.rangeCount && !sel.isCollapsed && sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentNode).closest('.lmd-editable');
+    if (!editMode || !host) { ui.format.hidden = true; return; }
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    ui.format.hidden = false;
+    ui.format.style.top = Math.max(8, rect.top - 42) + 'px';
+    ui.format.style.left = Math.max(8, Math.min(window.innerWidth - 230, rect.left + rect.width / 2 - 105)) + 'px';
+  }
+
+  function applyFormat(kind) {
+    const sel = getSelection(); if (!sel.rangeCount) return;
+    if (kind === 'bold') document.execCommand('bold');
+    else if (kind === 'italic') document.execCommand('italic');
+    else if (kind === 'strike') document.execCommand('strikeThrough');
+    else if (kind === 'code') {
+      const text = sel.toString(); if (!text) return;
+      const code = document.createElement('code'); code.textContent = text;
+      const range = sel.getRangeAt(0); range.deleteContents(); range.insertNode(code);
+      sel.selectAllChildren(code);
+    } else if (kind === 'link') {
+      const url = window.prompt(T('Dirección del enlace'), 'https://');
+      if (url) document.execCommand('createLink', false, url);
+    } else if (kind === 'clear') { document.execCommand('removeFormat'); document.execCommand('unlink'); }
+  }
+
+  function bindEditing() {
+    ui.article.addEventListener('focusin', (e) => {
+      const node = e.target.closest && e.target.closest('.lmd-editable');
+      if (node) node._md = inlineMd(node);
+      ui.tableBar.hidden = !(node && node.classList.contains('lmd-cell'));
+      if (!ui.tableBar.hidden) {
+        const box = node.closest('table').getBoundingClientRect();
+        ui.tableBar.style.top = Math.max(8, box.top - 40) + 'px';
+        ui.tableBar.style.left = Math.max(8, box.left) + 'px';
+      }
+    });
+    ui.article.addEventListener('focusout', (e) => {
+      const node = e.target.closest && e.target.closest('.lmd-editable');
+      if (!node || !editMode) return;
+      setTimeout(() => { const a = document.activeElement; if (!(a && a.classList && a.classList.contains('lmd-cell'))) ui.tableBar.hidden = true; }, 0);
+      if (node._md == null || inlineMd(node) === node._md) return;
+      if (node.classList.contains('lmd-cell')) commitCell(node);
+      else { const b = blockSource(node); if (b) replaceLines(b.s, b.e, b.lines, node, 'data-l'); }
+      node._md = null;
+      softRender();
+    });
+    ui.article.addEventListener('keydown', (e) => {
+      const node = e.target.closest && e.target.closest('.lmd-editable');
+      if (!node) return;
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); node.blur(); }
+      else if (e.key === 'Enter') { e.preventDefault(); document.execCommand('insertLineBreak'); }
+      else if (e.key === 'Escape') { e.preventDefault(); node._md = null; needsRender = true; node.blur(); render(); }
+    });
+    ui.article.addEventListener('paste', (e) => {
+      if (!(e.target.closest && e.target.closest('.lmd-editable'))) return;
+      e.preventDefault();
+      document.execCommand('insertText', false, (e.clipboardData.getData('text/plain') || '').replace(/\r?\n/g, ' '));
+    });
+    ui.article.addEventListener('change', (e) => { if (editMode && e.target.matches && e.target.matches('input.lmd-task')) toggleTask(e.target); });
+    ui.article.addEventListener('dblclick', (e) => {
+      if (!editMode) return;
+      const box = e.target.closest('.lmd-code');
+      if (box) editCode(box);
+    });
+    ui.article.addEventListener('click', (e) => {
+      if (editMode && e.target.closest('.lmd-editable a') && !(e.ctrlKey || e.metaKey)) e.preventDefault();
+    }, true);
+    document.addEventListener('selectionchange', debounce(formatBar, 60));
+    ui.format.addEventListener('mousedown', (e) => { e.preventDefault(); const b = e.target.closest('[data-fmt]'); if (b) applyFormat(b.dataset.fmt); });
+    ui.tableBar.addEventListener('mousedown', (e) => { e.preventDefault(); const b = e.target.closest('[data-top]'); if (b) tableOp(b.dataset.top); });
+    ui.rawEdit.addEventListener('input', debounce(() => { raw = ui.rawEdit.value.replace(/\r?\n/g, eol); syncSource(); markDirty(); }, 200));
+    window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+  }
+
+  async function save(interactive) {
+    const focused = document.activeElement;
+    if (focused && focused.blur && (focused.isContentEditable || focused.classList.contains('lmd-src'))) focused.blur();
+    if (ui.rawEdit && !ui.rawEdit.hidden) { raw = ui.rawEdit.value.replace(/\r?\n/g, eol); syncSource(); dirty = raw !== diskText; }
+    if (!dirty && fileHandle) { if (interactive) flash(T('Sin cambios para guardar')); return true; }
+    try {
+      if (!fileHandle) {
+        if (!interactive) return false;
+        const name = decodeURIComponent(location.pathname.split('/').pop() || 'documento.md');
+        if (!window.showOpenFilePicker) {
+          const a = el('a', { download: name });
+          a.href = URL.createObjectURL(new Blob([raw], { type: 'text/markdown' }));
+          a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+          flash(T('Este navegador no deja escribir el archivo: se descargó una copia'));
+          return false;
+        }
+        const picked = await window.showOpenFilePicker({
+          id: 'lmd-guardar', multiple: false,
+          types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.mkd', '.mdown'] } }],
+        });
+        const handle = picked[0];
+        if (handle.name !== name && !window.confirm(T('Elegiste "{a}" y el documento abierto es "{b}". ¿Guardar igual sobre el archivo elegido?', { a: handle.name, b: name }))) return false;
+        fileHandle = handle;
+      }
+      const writable = await fileHandle.createWritable();
+      await writable.write(raw);
+      await writable.close();
+      diskText = raw; dirty = false; updateSaveState();
+      flash(T('Guardado'));
+      return true;
+    } catch (e) {
+      if (e && e.name === 'AbortError') return false;
+      if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) fileHandle = null;
+      flash(T('No se pudo guardar'));
+      return false;
+    }
+  }
+
   // ---------- Arranque ----------
   const RENDER_KEYS = ['plugins', 'theme'];
   const TREE_KEYS = ['filesOnlyMarkdown', 'filesShowHidden'];
@@ -1211,6 +1657,7 @@
     buildUI();
     applySettings();
     render();
+    updateSaveState();
     const fromSearch = /^#lmd-q=([^&]+)(?:&r=(.+))?$/.exec(location.hash);
     if (fromSearch) {
       // Se llegó desde un resultado de búsqueda en la carpeta: se repite la búsqueda acá.

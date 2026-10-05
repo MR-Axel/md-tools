@@ -1,6 +1,6 @@
 {
   "ext_desc": {
-    "message": "Lee archivos Markdown en el navegador: índice, árbol de carpetas, recarga automática, temas y CSS propio."
+    "message": "Lee y edita Markdown en el navegador: índice, carpetas, búsqueda, edición en el lugar, temas y CSS propio."
   },
   "cmd_sidebar": {
     "message": "Mostrar u ocultar la barra lateral"

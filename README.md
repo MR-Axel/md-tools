@@ -1,13 +1,14 @@
-# Lector MD
+# MD Tools
 
 English · [Español](README.es.md)
 
-A Chrome extension to read Markdown files in the browser, local (`file://`) or served over the web. No accounts, no paid plan, no network calls: everything runs on your machine.
+A Chrome extension to read and edit Markdown files in the browser, local (`file://`) or served over the web. No accounts, no paid plan, no network calls: everything runs on your machine.
 
-![Lector MD](docs/reader.png)
+![MD Tools](docs/reader.png)
 
 ## What it does
 
+- **Edit in place**: switch to Edit mode and click any paragraph, heading, list item or table cell to change it. Bold, italic, strikethrough, code and links from a small toolbar or the usual shortcuts; add and remove table rows and columns; tick task boxes. The Markdown is rewritten behind the scenes, so you never see the syntax. Save with Ctrl+S, or turn on auto-save.
 - **Outline** built from the document headings: collapsible tree, current section highlighted, reading progress.
 - **Folder tree**: the Markdown files next to the open document, with subfolders and a button to go up a level.
 - **Auto-reload** when the file changes on disk, keeping your scroll position.
@@ -34,7 +35,7 @@ It is not on the Chrome Web Store yet. To load it from source:
 2. Open `chrome://extensions`.
 3. Turn on **Developer mode** (top right).
 4. Click **Load unpacked** and pick the folder.
-5. On the Lector MD card, open **Details** and turn on **Allow access to file URLs**. Without it, local files will not open.
+5. On the MD Tools card, open **Details** and turn on **Allow access to file URLs**. Without it, local files will not open.
 6. If you have another Markdown extension installed, disable it so they do not both act on the same file.
 
 Then drag any `.md` file into the browser. `ejemplo/ejemplo.md` exercises every feature.
@@ -53,9 +54,13 @@ It also works in other Chromium browsers (Edge, Brave, Arc) through the same ste
 
 Change them at `chrome://extensions/shortcuts`.
 
+## Saving
+
+Chrome does not let an extension write to disk on its own. The first time you save a file, the browser opens a file picker so you choose it; after that it saves directly while the tab stays open. Auto-save starts working after that first save.
+
 ## Privacy
 
-Lector MD collects nothing and sends nothing. Settings and reading positions are stored locally in the browser. The broad permissions exist for one reason each: `file:///*` and `*://*/*` so it can render Markdown wherever the file lives, and `scripting` to load KaTeX, Mermaid and Graphviz only when a document uses them.
+MD Tools collects nothing and sends nothing. Settings and reading positions are stored locally in the browser. The broad permissions exist for one reason each: `file:///*` and `*://*/*` so it can render Markdown wherever the file lives, and `scripting` to load KaTeX, Mermaid and Graphviz only when a document uses them.
 
 HTML produced from the Markdown goes through DOMPurify before it reaches the page.
 

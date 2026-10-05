@@ -1,6 +1,6 @@
 {
   "ext_desc": {
-    "message": "Read Markdown files in the browser: outline, folder tree, auto-reload, themes and custom CSS."
+    "message": "Read and edit Markdown in the browser: outline, folders, search, in-place editing, themes and custom CSS."
   },
   "cmd_sidebar": {
     "message": "Show or hide the sidebar"

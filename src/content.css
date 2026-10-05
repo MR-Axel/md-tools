@@ -160,6 +160,25 @@
 .lmd-status { flex: 1; color: var(--fg-faint); font-size: 12.5px; opacity: 0; transition: opacity 0.2s; }
 .lmd-topbar:hover .lmd-status, .lmd-status.lmd-flash { opacity: 1; }
 .lmd-status.lmd-flash { color: var(--accent); }
+.lmd-mode { margin-right: 2px; }
+.lmd-save { position: relative; }
+.lmd-dirty .lmd-save { color: var(--accent); }
+.lmd-dirty .lmd-save::after { content: ""; position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent-fill); }
+.lmd-editing .lmd-editable { border-radius: 4px; outline: 1px dashed transparent; outline-offset: 3px; cursor: text; transition: outline-color 0.12s; }
+.lmd-editing .lmd-editable:hover { outline-color: var(--line); }
+.lmd-editing .lmd-editable:focus { outline: 2px solid var(--accent-fill); background: var(--accent-soft); }
+.lmd-editing td.lmd-editable, .lmd-editing th.lmd-editable { outline-offset: -2px; border-radius: 0; }
+.lmd-editing .lmd-li-text { display: inline-block; min-width: 2em; }
+.lmd-editing .lmd-noedit { cursor: not-allowed; }
+.lmd-editing .lmd-code { cursor: pointer; }
+.lmd-src, .lmd-raw-edit { display: block; width: 100%; font-family: var(--lmd-mono); font-size: 0.86em; line-height: 1.5; color: var(--fg); background: var(--bg-code); border: 2px solid var(--accent-fill); border-radius: 9px; padding: 14px 16px; resize: vertical; }
+.lmd-raw-edit { min-height: 75vh; border-width: 1px; border-color: var(--line); margin-bottom: 60px; }
+.lmd-raw-edit:focus, .lmd-src:focus { outline: none; border-color: var(--accent-fill); }
+.lmd-format, .lmd-tablebar { position: fixed; z-index: 40; display: flex; gap: 2px; padding: 4px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 9px; box-shadow: var(--shadow); }
+.lmd-format button, .lmd-tablebar button { min-width: 30px; height: 30px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--fg); font: inherit; font-size: 13.5px; cursor: pointer; display: grid; place-items: center; }
+.lmd-format button:hover, .lmd-tablebar button:hover { background: var(--accent-soft); color: var(--accent); }
+.lmd-format svg { width: 15px; height: 15px; }
+.lmd-tablebar button { font-size: 12.5px; white-space: nowrap; }
 .lmd-count { color: var(--fg-faint); font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; margin-right: 6px; }
 .lmd-count.lmd-count-sel { color: var(--accent); font-weight: 600; }
 .markdown-body a.lmd-wiki { text-decoration: none; border-bottom: 1px dashed currentColor; }
@@ -347,7 +366,7 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
   .lmd-sidebar, .lmd-main, .lmd-node-chev svg { transition: none; }
 }
 @media print {
-  .lmd-sidebar, .lmd-topbar, .lmd-to-top, .lmd-panel, .lmd-viewer, .lmd-code-copy, .lmd-code-lang, .lmd-anchor { display: none !important; }
+  .lmd-sidebar, .lmd-topbar, .lmd-to-top, .lmd-panel, .lmd-viewer, .lmd-format, .lmd-tablebar, .lmd-code-copy, .lmd-code-lang, .lmd-anchor { display: none !important; }
   .lmd-main { margin: 0 !important; }
   .lmd-article { padding: 0 !important; max-width: none !important; }
   .lmd-root, .lmd-body { background: #fff !important; }
