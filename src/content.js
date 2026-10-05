@@ -513,10 +513,9 @@
     ui.customStyle = el('style', { id: 'lmd-custom-css' });
     // Ícono de la pestaña: el de MD Tools, para que no quede el genérico ni el de otra extensión.
     document.querySelectorAll('link[rel~="icon"]').forEach((n) => n.remove());
-    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3.5" fill="#1a1d23"/>' +
-      '<g fill="none" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round">' +
-      '<path stroke="#bef264" d="M1.6 12V4L4 8.6 6.4 4v8M8.2 4v8M8.2 4h1.4l1.6 1.6v4.8L9.6 12H8.2"/>' +
-      '<path stroke="#e8eaee" d="M12.4 4h2.8M13.8 4v8"/></g></svg>';
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#1a1d23"/>' +
+      '<g stroke="#bef264" stroke-width="5.5" stroke-linecap="round"><path d="M27 16 22 48M41 16 36 48M13 27h30M11 38h30"/></g>' +
+      '<rect x="48" y="15" width="6" height="34" rx="3" fill="#e8eaee"/></svg>';
     document.head.appendChild(el('link', { rel: 'icon', type: 'image/svg+xml', href: 'data:image/svg+xml,' + encodeURIComponent(svg) }));
     document.head.appendChild(ui.customStyle);
 
