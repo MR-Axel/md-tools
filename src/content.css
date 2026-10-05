@@ -154,13 +154,12 @@
 .lmd-main { margin-left: var(--lmd-side-w); min-height: 100vh; transition: margin-left 0.18s ease; }
 .lmd-side-hidden .lmd-main { margin-left: 0; }
 .lmd-topbar {
-  position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 10px;
-  padding: 8px 14px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px);
+  position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 12px;
+  padding: 10px 18px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px);
 }
 .lmd-status { flex: 1; color: var(--fg-faint); font-size: 12.5px; opacity: 0; transition: opacity 0.2s; }
 .lmd-topbar:hover .lmd-status, .lmd-status.lmd-flash { opacity: 1; }
 .lmd-status.lmd-flash { color: var(--accent); }
-.lmd-mode { margin-right: 2px; }
 .lmd-save { position: relative; }
 .lmd-dirty .lmd-save { color: var(--accent); }
 .lmd-dirty .lmd-save::after { content: ""; position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent-fill); }
@@ -183,9 +182,15 @@
 .lmd-count.lmd-count-sel { color: var(--accent); font-weight: 600; }
 .markdown-body a.lmd-wiki { text-decoration: none; border-bottom: 1px dashed currentColor; }
 .markdown-body a.lmd-wiki-missing { color: var(--fg-faint); cursor: help; }
-@media (max-width: 1100px) { .lmd-count:not(.lmd-count-sel) { display: none; } }
-.lmd-tools { display: flex; align-items: center; gap: 4px; }
-.lmd-view { display: flex; padding: 3px; gap: 2px; margin-right: 6px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 9px; }
+@media (max-width: 1100px) { .lmd-count:not(.lmd-count-sel) { display: none; } .lmd-sep { margin: 0 2px; } }
+@media (max-width: 900px) { .lmd-modebtn span { display: none; } .lmd-modebtn { padding: 0 9px; } .lmd-status { display: none; } }
+.lmd-tools { display: flex; align-items: center; gap: 6px; }
+.lmd-sep { width: 1px; height: 22px; margin: 0 6px; background: var(--line); flex: none; }
+.lmd-modebtn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px 0 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-soft); color: var(--fg-muted); font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.lmd-modebtn:hover { color: var(--fg); border-color: var(--fg-faint); }
+.lmd-modebtn.lmd-on { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--accent-fg); }
+.lmd-modebtn svg { width: 15px; height: 15px; }
+.lmd-view { display: flex; padding: 3px; gap: 2px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 9px; }
 .lmd-view button { width: 34px; height: 26px; border: 0; border-radius: 6px; background: transparent; color: var(--fg-muted); display: grid; place-items: center; cursor: pointer; }
 .lmd-view button:hover { color: var(--fg); }
 .lmd-view button.lmd-on { background: var(--accent-fill); color: var(--accent-fg); }

@@ -537,19 +537,19 @@
         '<span class="lmd-status"></span>' +
         '<span class="lmd-count" title="' + T('Palabras y caracteres') + '"></span>' +
         '<div class="lmd-tools">' +
-          '<div class="lmd-view lmd-mode" role="radiogroup" aria-label="' + T('Modo') + '">' +
-            '<button type="button" role="radio" data-act="mode-read" class="lmd-on" aria-checked="true" title="' + T('Solo lectura') + '">' + ICON.eye + '</button>' +
-            '<button type="button" role="radio" data-act="mode-edit" aria-checked="false" title="' + T('Editar') + '">' + ICON.pencil + '</button>' +
-          '</div>' +
+          '<button type="button" class="lmd-modebtn" data-act="mode-toggle" aria-pressed="false"></button>' +
           '<button class="lmd-icon-btn lmd-save" data-act="save" title="' + T('Guardar (Ctrl+S)') + '" hidden>' + ICON.save + '</button>' +
+          '<span class="lmd-sep"></span>' +
           '<div class="lmd-view" role="radiogroup" aria-label="' + T('Vista') + '">' +
             '<button type="button" role="radio" data-act="view-doc" class="lmd-on" aria-checked="true" title="' + T('Ver documento') + '">' + ICON.doc + '</button>' +
             '<button type="button" role="radio" data-act="view-raw" aria-checked="false" title="' + T('Ver código fuente') + '">' + ICON.code + '</button>' +
           '</div>' +
+          '<span class="lmd-sep"></span>' +
           '<button class="lmd-icon-btn" data-act="copy-md" title="' + T('Copiar Markdown') + '">' + ICON.copy + '</button>' +
           '<button class="lmd-icon-btn" data-act="copy-rich" title="' + T('Copiar con formato (la selección, o todo el documento)') + '">' + ICON.rich + '</button>' +
           '<button class="lmd-icon-btn" data-act="reload" title="' + T('Recargar ahora') + '">' + ICON.reload + '</button>' +
           '<button class="lmd-icon-btn" data-act="print" title="' + T('Imprimir o guardar PDF') + '">' + ICON.print + '</button>' +
+          '<span class="lmd-sep"></span>' +
           '<button class="lmd-icon-btn" data-act="settings" title="' + T('Ajustes') + '">' + ICON.sliders + '</button>' +
         '</div>' +
       '</div>' +
@@ -659,8 +659,7 @@
 
   function onAction(act, source) {
     if (act === 'sidebar') LMD.patch({ sidebarHidden: !settings.sidebarHidden });
-    else if (act === 'mode-read') setEditMode(false);
-    else if (act === 'mode-edit') setEditMode(true);
+    else if (act === 'mode-toggle') setEditMode(!editMode);
     else if (act === 'save') save(true);
     else if (act === 'view-doc') { rawMode = false; applyRawMode(); }
     else if (act === 'view-raw') { rawMode = true; applyRawMode(); }
@@ -680,7 +679,7 @@
     ui.rawPre.hidden = !rawMode || editingSource;
     ui.rawEdit.hidden = !editingSource;
     if (rawMode) { ui.rawPre.textContent = raw; ui.rawEdit.value = raw; }
-    ui.main.querySelectorAll('.lmd-view button').forEach((b) => {
+    ui.main.querySelectorAll('.lmd-view [data-act^="view-"]').forEach((b) => {
       const on = (b.dataset.act === 'view-raw') === rawMode;
       b.classList.toggle('lmd-on', on); b.setAttribute('aria-checked', String(on));
     });
@@ -1382,10 +1381,11 @@
     const root = document.documentElement;
     root.classList.toggle('lmd-dirty', dirty);
     root.classList.toggle('lmd-editing', editMode);
-    ui.main.querySelectorAll('.lmd-mode button').forEach((b) => {
-      const on = (b.dataset.act === 'mode-edit') === editMode;
-      b.classList.toggle('lmd-on', on); b.setAttribute('aria-checked', String(on));
-    });
+    const mode = ui.main.querySelector('.lmd-modebtn');
+    mode.classList.toggle('lmd-on', editMode);
+    mode.setAttribute('aria-pressed', String(editMode));
+    mode.innerHTML = (editMode ? ICON.pencil : ICON.eye) + '<span>' + T(editMode ? 'Editando' : 'Solo lectura') + '</span>';
+    mode.title = T(editMode ? 'Estás editando. Clic para guardar y volver a solo lectura' : 'Solo lectura. Clic para editar');
     const save = ui.main.querySelector('[data-act=save]');
     save.hidden = !editMode && !dirty;
     save.title = dirty ? T('Guardar (Ctrl+S). Hay cambios sin guardar') : T('Guardar (Ctrl+S)');
@@ -1400,7 +1400,14 @@
     }, 350);
   }
 
-  function setEditMode(on) {
+  async function setEditMode(on) {
+    // Salir de edición guarda lo pendiente. Si se cancela el guardado, los cambios quedan sin guardar.
+    if (!on && editMode) {
+      const a = document.activeElement;
+      if (a && a.blur && (a.isContentEditable || a.classList.contains('lmd-src'))) a.blur();
+      if (ui.rawEdit && !ui.rawEdit.hidden) { raw = ui.rawEdit.value.split('\r\n').join('\n').split('\n').join(eol); syncSource(); dirty = raw !== diskText; }
+      if (dirty) await save(true);
+    }
     editMode = on;
     updateSaveState();
     render();
