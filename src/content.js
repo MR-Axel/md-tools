@@ -534,6 +534,7 @@
       '</div>' +
       '<div class="lmd-pane lmd-pane-files" data-pane="files"><div class="lmd-tree-box"></div><div class="lmd-results" hidden></div></div>' +
       '<div class="lmd-pane lmd-pane-outline" data-pane="outline"></div>' +
+      '<a class="lmd-side-foot" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer"><span class="lmd-heart">♥</span>' + T('Apoyar el proyecto') + '</a>' +
       '<div class="lmd-resizer" title="' + T('Arrastrar para cambiar el ancho') + '"></div>';
 
     ui.main = el('main', { class: 'lmd-main' });

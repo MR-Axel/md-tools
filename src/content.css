@@ -145,6 +145,10 @@
 .lmd-node-name { overflow-wrap: anywhere; }
 .lmd-node-dir { color: var(--fg); }
 
+.lmd-side-foot { flex: none; display: flex; align-items: center; gap: 8px; margin: 0; padding: 11px 16px; border-top: 1px solid var(--line); color: var(--fg-muted); font-size: 13px; text-decoration: none; }
+.lmd-side-foot:hover { color: var(--accent); background: var(--bg-soft); }
+.lmd-heart { color: var(--accent); font-size: 14px; line-height: 1; }
+.lmd-pane { padding-bottom: 12px; }
 .lmd-resizer { position: absolute; top: 0; right: -3px; width: 6px; height: 100%; cursor: col-resize; }
 .lmd-resizer:hover, .lmd-resizing .lmd-resizer { background: var(--accent-soft); }
 .lmd-resizing { user-select: none; cursor: col-resize; }
