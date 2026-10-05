@@ -543,7 +543,10 @@
         '<span class="lmd-status"></span>' +
         '<span class="lmd-count" title="' + T('Palabras y caracteres') + '"></span>' +
         '<div class="lmd-tools">' +
-          '<button type="button" class="lmd-modebtn" data-act="mode-toggle" aria-pressed="false"></button>' +
+          '<div class="lmd-modeseg" role="radiogroup" aria-label="' + T('Modo') + '">' +
+            '<button type="button" role="radio" data-act="mode-read" aria-checked="true" class="lmd-on">' + ICON.eye + '<span>' + T('Ver') + '</span></button>' +
+            '<button type="button" role="radio" data-act="mode-edit" aria-checked="false">' + ICON.pencil + '<span>' + T('Editar') + '</span></button>' +
+          '</div>' +
           '<button class="lmd-icon-btn lmd-save" data-act="save" title="' + T('Guardar (Ctrl+S)') + '" hidden>' + ICON.save + '</button>' +
           '<span class="lmd-sep"></span>' +
           '<div class="lmd-view" role="radiogroup" aria-label="' + T('Vista') + '">' +
@@ -665,7 +668,8 @@
 
   function onAction(act, source) {
     if (act === 'sidebar') LMD.patch({ sidebarHidden: !settings.sidebarHidden });
-    else if (act === 'mode-toggle') setEditMode(!editMode);
+    else if (act === 'mode-read') { if (editMode) setEditMode(false); }
+    else if (act === 'mode-edit') { if (!editMode) setEditMode(true); }
     else if (act === 'save') save(true);
     else if (act === 'view-doc') { rawMode = false; applyRawMode(); }
     else if (act === 'view-raw') { rawMode = true; applyRawMode(); }
@@ -1387,11 +1391,12 @@
     const root = document.documentElement;
     root.classList.toggle('lmd-dirty', dirty);
     root.classList.toggle('lmd-editing', editMode);
-    const mode = ui.main.querySelector('.lmd-modebtn');
-    mode.classList.toggle('lmd-on', editMode);
-    mode.setAttribute('aria-pressed', String(editMode));
-    mode.innerHTML = (editMode ? ICON.pencil : ICON.eye) + '<span>' + T(editMode ? 'Editando' : 'Solo lectura') + '</span>';
-    mode.title = T(editMode ? 'Estás editando. Clic para guardar y volver a solo lectura' : 'Solo lectura. Clic para editar');
+    ui.main.querySelectorAll('.lmd-modeseg button').forEach((b) => {
+      const on = (b.dataset.act === 'mode-edit') === editMode;
+      b.classList.toggle('lmd-on', on); b.setAttribute('aria-checked', String(on));
+    });
+    ui.main.querySelector('[data-act=mode-read]').title = T(editMode ? 'Guardar y volver a solo lectura' : 'Estás viendo el documento');
+    ui.main.querySelector('[data-act=mode-edit]').title = T(editMode ? 'Estás editando el documento' : 'Editar el documento');
     const save = ui.main.querySelector('[data-act=save]');
     save.hidden = !editMode && !dirty;
     save.title = dirty ? T('Guardar (Ctrl+S). Hay cambios sin guardar') : T('Guardar (Ctrl+S)');
