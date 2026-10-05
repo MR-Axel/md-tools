@@ -534,7 +534,7 @@
       '</div>' +
       '<div class="lmd-pane lmd-pane-files" data-pane="files"><div class="lmd-tree-box"></div><div class="lmd-results" hidden></div></div>' +
       '<div class="lmd-pane lmd-pane-outline" data-pane="outline"></div>' +
-      '<a class="lmd-side-foot" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer"><span class="lmd-heart">♥</span>' + T('Apoyar el proyecto') + '</a>' +
+      '<a class="lmd-side-foot" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer"><span class="lmd-heart">♥</span>' + T('Invitame un café') + '</a>' +
       '<div class="lmd-resizer" title="' + T('Arrastrar para cambiar el ancho') + '"></div>';
 
     ui.main = el('main', { class: 'lmd-main' });
@@ -743,7 +743,7 @@
     applyAccent(root, dark);
     ui.customStyle.textContent = settings.supporter ? (settings.customCSS || '') : '';
     const foot = ui.sidebar.querySelector('.lmd-side-foot');
-    if (foot) foot.lastChild.nodeValue = T(settings.supporter ? 'Gracias por apoyar' : 'Apoyar el proyecto');
+    if (foot) foot.lastChild.nodeValue = T(settings.supporter ? 'Gracias por apoyar' : 'Invitame un café');
 
     ui.sidebar.querySelectorAll('.lmd-tab').forEach((t) => t.classList.toggle('lmd-active', t.dataset.tab === settings.sidebarTab));
     ui.paneFiles.hidden = settings.sidebarTab !== 'files';

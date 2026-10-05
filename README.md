@@ -96,6 +96,8 @@ All of them are vendored in `vendor/`, because Manifest V3 does not allow remote
 
 ## Support
 
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/mraxel)
+
 MD Tools is free and collects no data. If it saves you time, you can [support the next tool on Ko-fi](https://ko-fi.com/mraxel).
 
 ## License

@@ -79,4 +79,6 @@ El HTML que sale del Markdown pasa por DOMPurify antes de entrar a la página.
 
 ## Apoyar
 
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/mraxel)
+
 MD Tools es gratis y no junta datos. Si te ahorra tiempo, podés [bancar la próxima herramienta en Ko-fi](https://ko-fi.com/mraxel).
