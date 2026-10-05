@@ -6,6 +6,8 @@ A Chrome extension to read and edit Markdown files in the browser, local (`file:
 
 ![MD Tools](docs/reader.png)
 
+![Editing a table cell in place](docs/editing.png)
+
 ## What it does
 
 - **Edit in place**: switch to Edit mode and click any paragraph, heading, list item or table cell to change it. Bold, italic, strikethrough, code and links from a small toolbar or the usual shortcuts; add and remove table rows and columns; tick task boxes. The Markdown is rewritten behind the scenes, so you never see the syntax. Save with Ctrl+S, or turn on auto-save.

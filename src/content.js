@@ -1625,8 +1625,15 @@
       ui.tableBar.hidden = !(node && node.classList.contains('lmd-cell'));
       if (!ui.tableBar.hidden) {
         const box = node.closest('table').getBoundingClientRect();
-        ui.tableBar.style.top = Math.max(8, box.top - 40) + 'px';
-        ui.tableBar.style.left = Math.max(8, box.left) + 'px';
+        // Al costado de la tabla si hay lugar; si no, debajo. Arriba taparía el título de la sección.
+        const ancho = ui.tableBar.offsetWidth || 300;
+        if (box.right + 12 + ancho < window.innerWidth - 8) {
+          ui.tableBar.style.left = (box.right + 12) + 'px';
+          ui.tableBar.style.top = Math.max(64, box.top) + 'px';
+        } else {
+          ui.tableBar.style.left = Math.max(8, box.left) + 'px';
+          ui.tableBar.style.top = Math.min(window.innerHeight - 52, box.bottom + 8) + 'px';
+        }
       }
     });
     ui.article.addEventListener('focusout', (e) => {

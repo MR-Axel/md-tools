@@ -2,7 +2,9 @@
 
 [English](README.md) · Español
 
-![MD Tools](docs/reader.png)
+![MD Tools](docs/reader-es.png)
+
+![Editando una celda de la tabla en el lugar](docs/editing-es.png)
 
 Extensión de Chrome para leer y editar archivos Markdown en el navegador, locales (`file://`) o servidos por web. Sin cuentas, sin planes pagos y sin llamadas a servidores: todo corre en la máquina.
 
