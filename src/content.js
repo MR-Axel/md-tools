@@ -738,10 +738,10 @@
     root.style.setProperty('--lmd-font-size', settings.fontSize + 'px');
     root.style.setProperty('--lmd-line-height', String(settings.lineHeight));
     root.style.setProperty('--lmd-side-w', settings.sidebarWidth + 'px');
-    if (settings.fontFamily && settings.fontFamily.trim()) root.style.setProperty('--lmd-font', settings.fontFamily);
+    if (settings.supporter && settings.fontFamily && settings.fontFamily.trim()) root.style.setProperty('--lmd-font', settings.fontFamily);
     else root.style.removeProperty('--lmd-font');
     applyAccent(root, dark);
-    ui.customStyle.textContent = settings.customCSS || '';
+    ui.customStyle.textContent = settings.supporter ? (settings.customCSS || '') : '';
     const foot = ui.sidebar.querySelector('.lmd-side-foot');
     if (foot) foot.lastChild.nodeValue = T(settings.supporter ? 'Gracias por apoyar' : 'Apoyar el proyecto');
 
@@ -1183,6 +1183,7 @@
   let panelStale = false;
   function openPanel() {
     const s = settings;
+    const EXTRA = ' <em class="lmd-tag">' + T('Extra') + '</em>';
     const plugins = Object.keys(LMD.PLUGIN_LABELS).map((k) =>
       '<label class="lmd-check"><input type="checkbox" data-plugin="' + k + '"' + (s.plugins[k] ? ' checked' : '') + '><span>' + esc(T(LMD.PLUGIN_LABELS[k])) + '</span></label>').join('');
     ui.panel.innerHTML =
@@ -1196,12 +1197,12 @@
             '<div class="lmd-row"><span>' + T('Tema') + '</span><div class="lmd-seg" data-seg="theme" role="radiogroup">' +
               ['auto', 'light', 'dark'].map((t) => '<button type="button" role="radio" data-val="' + t + '" aria-checked="' + (s.theme === t) + '"' + (s.theme === t ? ' class="lmd-on"' : '') + '>' + T({ auto: 'Automático', light: 'Claro', dark: 'Oscuro' }[t]) + '</button>').join('') +
             '</div></div>' +
-            '<div class="lmd-row"><span>' + T('Color de acento') + '</span><div class="lmd-swatches' + (s.supporter ? '' : ' lmd-locked') + '">' +
+            '<div class="lmd-row"><span>' + T('Color de acento') + (s.supporter ? '' : EXTRA) + '</span><div class="lmd-swatches' + (s.supporter ? '' : ' lmd-locked') + '">' +
               LMD.ACCENTS.map((a) => '<button type="button" class="lmd-swatch' + ((s.accent || '') === a.value ? ' lmd-on' : '') + (a.value ? '' : ' lmd-swatch-auto') + '" data-accent="' + a.value + '" title="' + esc(T(a.name)) + '" aria-label="' + esc(T(a.name)) + '"' + (a.value ? ' style="--sw:' + a.value + '"' : '') + '></button>').join('') +
               '<label class="lmd-swatch lmd-swatch-custom' + (s.accent && !LMD.ACCENTS.some((a) => a.value === s.accent) ? ' lmd-on' : '') + '" title="' + T('Otro color') + '"><input type="color" data-accent-custom value="' + (/^#[0-9a-f]{6}$/i.test(s.accent || '') ? s.accent : '#6c7ee1') + '"></label>' +
             '</div>' + (s.supporter
               ? '<p class="lmd-hint">' + T('Gracias por apoyar el proyecto.') + '</p>'
-              : '<div class="lmd-extra"><p>' + T('Los colores son un extra para quienes apoyan el proyecto. No se verifica: queda en tu palabra.') + '</p>' +
+              : '<div class="lmd-extra"><p>' + T('Los colores, la tipografía y el CSS propio son extras para quienes apoyan el proyecto. No se verifica: queda en tu palabra.') + '</p>' +
                 '<div class="lmd-extra-actions"><a class="lmd-btn lmd-btn-fill" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">♥ ' + T('Apoyar el proyecto') + '</a>' +
                 '<button type="button" class="lmd-btn" data-act="supporter">' + T('Ya aporté') + '</button></div></div>') +
             '</div>' +
@@ -1209,7 +1210,7 @@
             '<label class="lmd-row"><span>' + T('Ancho del contenido') + ' <output>' + s.contentWidth + ' px</output></span><input type="range" min="560" max="1800" step="20" data-key="contentWidth" data-unit=" px" value="' + s.contentWidth + '"></label>' +
             '<label class="lmd-row"><span>' + T('Tamaño de letra') + ' <output>' + s.fontSize + ' px</output></span><input type="range" min="12" max="24" step="1" data-key="fontSize" data-unit=" px" value="' + s.fontSize + '"></label>' +
             '<label class="lmd-row"><span>' + T('Interlineado') + ' <output>' + s.lineHeight + '</output></span><input type="range" min="1.2" max="2.2" step="0.05" data-key="lineHeight" data-unit="" value="' + s.lineHeight + '"></label>' +
-            '<label class="lmd-row"><span>' + T('Tipografía') + '</span><input type="text" data-key="fontFamily" placeholder="' + T('Del sistema. Ej.: Georgia, serif') + '" value="' + esc(s.fontFamily) + '"></label>' +
+            '<label class="lmd-row"><span>' + T('Tipografía') + (s.supporter ? '' : EXTRA) + '</span><input type="text" data-key="fontFamily"' + (s.supporter ? '' : ' disabled') + ' placeholder="' + T('Del sistema. Ej.: Georgia, serif') + '" value="' + esc(s.fontFamily) + '"></label>' +
           '</section>' +
           '<section><h3>' + T('Documento') + '</h3>' +
             '<label class="lmd-check"><input type="checkbox" data-key="autoRefresh"' + (s.autoRefresh ? ' checked' : '') + '><span>' + T('Recargar solo cuando el archivo cambia') + '</span></label>' +
@@ -1223,8 +1224,8 @@
             '<label class="lmd-check"><input type="checkbox" data-key="filesShowHidden"' + (s.filesShowHidden ? ' checked' : '') + '><span>' + T('Mostrar archivos y carpetas ocultos') + '</span></label>' +
           '</section>' +
           '<section><h3>' + T('Plugins de Markdown') + '</h3><div class="lmd-grid">' + plugins + '</div></section>' +
-          '<section><h3>' + T('CSS propio') + '</h3>' +
-            '<textarea data-key="customCSS" spellcheck="false" placeholder=".markdown-body h1 { color: tomato; }">' + esc(s.customCSS) + '</textarea>' +
+          '<section><h3>' + T('CSS propio') + (s.supporter ? '' : EXTRA) + '</h3>' +
+            '<textarea data-key="customCSS"' + (s.supporter ? '' : ' disabled') + ' spellcheck="false" placeholder=".markdown-body h1 { color: tomato; }">' + esc(s.customCSS) + '</textarea>' +
             '<p class="lmd-hint">' + T('Se aplica encima del tema. El documento vive dentro de .markdown-body.') + '</p>' +
           '</section>' +
           '<section class="lmd-panel-foot"><button type="button" class="lmd-btn" data-act="reset">' + T('Restablecer todo') + '</button></section>' +

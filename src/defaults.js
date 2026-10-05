@@ -196,6 +196,8 @@
       "CSS propio": "Custom CSS",
       "Se aplica encima del tema. El documento vive dentro de .markdown-body.": "Applied on top of the theme. The document lives inside .markdown-body.",
       "Restablecer todo": "Reset everything",
+      "Los colores, la tipografía y el CSS propio son extras para quienes apoyan el proyecto. No se verifica: queda en tu palabra.": "Colors, the font and custom CSS are extras for people who support the project. Nothing is verified: it is on your word.",
+      "Extra": "Extra",
       "Gracias por apoyar el proyecto.": "Thanks for supporting the project.",
       "Los colores son un extra para quienes apoyan el proyecto. No se verifica: queda en tu palabra.": "Colors are an extra for people who support the project. Nothing is verified: it is on your word.",
       "Ya aporté": "I already supported",
