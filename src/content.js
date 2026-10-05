@@ -1626,29 +1626,149 @@
     window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
   }
 
+  // ---------- Permiso para escribir ----------
+  // Chrome no deja que una página escriba en el disco sin que la persona elija dónde. Para no
+  // pedirlo en cada archivo, se pide una vez la CARPETA: con eso se guarda cualquier archivo de
+  // adentro, y el permiso queda recordado para las próximas veces.
+  const hereUrl = () => location.href.split('#')[0].split('?')[0];
+
+  function handlesDb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('lmd-permisos', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('h', { keyPath: 'key' });
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function handlesAll() {
+    try {
+      const db = await handlesDb();
+      return await new Promise((resolve, reject) => {
+        const q = db.transaction('h').objectStore('h').getAll();
+        q.onsuccess = () => resolve(q.result || []); q.onerror = () => reject(q.error);
+      });
+    } catch (e) { return []; }
+  }
+  async function handlesPut(rec) {
+    try {
+      const db = await handlesDb();
+      await new Promise((resolve, reject) => {
+        const t = db.transaction('h', 'readwrite'); t.objectStore('h').put(rec);
+        t.oncomplete = resolve; t.onerror = () => reject(t.error);
+      });
+      return true;
+    } catch (e) { return false; }
+  }
+
+  async function canWrite(handle, ask) {
+    try {
+      if ((await handle.queryPermission({ mode: 'readwrite' })) === 'granted') return true;
+      if (!ask) return false;
+      return (await handle.requestPermission({ mode: 'readwrite' })) === 'granted';
+    } catch (e) { return false; }
+  }
+
+  async function walk(dir, parts) {
+    let cur = dir;
+    for (let k = 0; k < parts.length - 1; k++) cur = await cur.getDirectoryHandle(parts[k]);
+    return cur.getFileHandle(parts[parts.length - 1]);
+  }
+
+  // Busca un permiso ya dado que sirva para este archivo: el del archivo mismo o el de una carpeta que lo contenga.
+  async function storedHandle(ask) {
+    const url = hereUrl();
+    const recs = await handlesAll();
+    const exact = recs.find((r) => r.kind === 'file' && r.key === url);
+    if (exact && await canWrite(exact.handle, ask)) return exact.handle;
+    const dirs = recs.filter((r) => r.kind === 'dir' && url.startsWith(r.key)).sort((a, b) => b.key.length - a.key.length);
+    for (const r of dirs) {
+      if (!(await canWrite(r.handle, ask))) continue;
+      try { return await walk(r.handle, url.slice(r.key.length).split('/').map(decodeURIComponent)); } catch (e) { /* ya no está ahí */ }
+    }
+    return null;
+  }
+
+  // Dada una carpeta elegida, encuentra en ella el archivo abierto probando cuántos niveles hay entre las dos.
+  async function findInFolder(dir) {
+    const url = hereUrl();
+    const segs = url.split('/');
+    let weak = null;
+    for (let k = 1; k <= Math.min(14, segs.length - 3); k++) {
+      const parts = segs.slice(-k).map(decodeURIComponent);
+      try {
+        const fh = await walk(dir, parts);
+        const text = await (await fh.getFile()).text();
+        const found = { handle: fh, base: segs.slice(0, -k).join('/') + '/' };
+        if (text === diskText || text === raw) return found;
+        if (!weak) weak = found;
+      } catch (e) { /* no está a esa profundidad */ }
+    }
+    if (weak && window.confirm(T('En esa carpeta hay un archivo con el mismo nombre, pero su contenido no coincide con el que tenés abierto. ¿Guardar igual sobre ese archivo?'))) return weak;
+    return null;
+  }
+
+  function askForAccess() {
+    return new Promise((resolve) => {
+      const name = decodeURIComponent(location.pathname.split('/').pop() || '');
+      const box = el('div', { class: 'lmd-ask' });
+      box.innerHTML =
+        '<div class="lmd-ask-card" role="dialog" aria-label="' + T('Permiso para guardar') + '">' +
+          '<h3>' + T('Permiso para guardar') + '</h3>' +
+          '<p>' + T('Chrome pide que elijas dónde puede escribir MD Tools. Elegí la carpeta de este archivo una sola vez y vas a poder guardar todo lo que haya adentro, sin que vuelva a preguntar.') + '</p>' +
+          '<div class="lmd-ask-actions">' +
+            '<button type="button" class="lmd-btn lmd-btn-fill" data-ask="dir">' + T('Elegir la carpeta') + '</button>' +
+            '<button type="button" class="lmd-btn" data-ask="file">' + T('Solo este archivo') + '</button>' +
+            '<button type="button" class="lmd-btn" data-ask="no">' + T('Cancelar') + '</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(box);
+      const close = (value) => { box.remove(); resolve(value); };
+      box.addEventListener('click', async (e) => {
+        if (e.target === box) return close(null);
+        const b = e.target.closest('[data-ask]'); if (!b) return;
+        try {
+          if (b.dataset.ask === 'no') return close(null);
+          if (b.dataset.ask === 'dir') {
+            const dir = await window.showDirectoryPicker({ id: 'lmd-carpeta', mode: 'readwrite' });
+            const found = await findInFolder(dir);
+            if (!found) { box.querySelector('p').textContent = T('Esa carpeta no contiene "{a}". Elegí la carpeta donde está el archivo, o una que la contenga.', { a: name }); return; }
+            await handlesPut({ key: found.base, kind: 'dir', handle: dir });
+            return close(found.handle);
+          }
+          const picked = await window.showOpenFilePicker({
+            id: 'lmd-guardar', multiple: false,
+            types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.mkd', '.mdown'] } }],
+          });
+          const handle = picked[0];
+          if (handle.name !== name && !window.confirm(T('Elegiste "{a}" y el documento abierto es "{b}". ¿Guardar igual sobre el archivo elegido?', { a: handle.name, b: name }))) return;
+          await handlesPut({ key: hereUrl(), kind: 'file', handle });
+          return close(handle);
+        } catch (err) {
+          if (!(err && err.name === 'AbortError')) box.querySelector('p').textContent = T('No se pudo obtener el permiso. Probá de nuevo.');
+        }
+      });
+    });
+  }
+
   async function save(interactive) {
     const focused = document.activeElement;
     if (focused && focused.blur && (focused.isContentEditable || focused.classList.contains('lmd-src'))) focused.blur();
     if (ui.rawEdit && !ui.rawEdit.hidden) { raw = ui.rawEdit.value.replace(/\r?\n/g, eol); syncSource(); dirty = raw !== diskText; }
     if (!dirty && fileHandle) { if (interactive) flash(T('Sin cambios para guardar')); return true; }
     try {
+      if (!fileHandle) fileHandle = await storedHandle(interactive);
       if (!fileHandle) {
         if (!interactive) return false;
-        const name = decodeURIComponent(location.pathname.split('/').pop() || 'documento.md');
         if (!window.showOpenFilePicker) {
+          const name = decodeURIComponent(location.pathname.split('/').pop() || 'documento.md');
           const a = el('a', { download: name });
           a.href = URL.createObjectURL(new Blob([raw], { type: 'text/markdown' }));
           a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
           flash(T('Este navegador no deja escribir el archivo: se descargó una copia'));
           return false;
         }
-        const picked = await window.showOpenFilePicker({
-          id: 'lmd-guardar', multiple: false,
-          types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.mkd', '.mdown'] } }],
-        });
-        const handle = picked[0];
-        if (handle.name !== name && !window.confirm(T('Elegiste "{a}" y el documento abierto es "{b}". ¿Guardar igual sobre el archivo elegido?', { a: handle.name, b: name }))) return false;
-        fileHandle = handle;
+        fileHandle = await askForAccess();
+        if (!fileHandle) return false;
       }
       const writable = await fileHandle.createWritable();
       await writable.write(raw);

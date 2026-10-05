@@ -56,7 +56,7 @@ Change them at `chrome://extensions/shortcuts`.
 
 ## Saving
 
-Chrome does not let an extension write to disk on its own. The first time you save a file, the browser opens a file picker so you choose it; after that it saves directly while the tab stays open. Auto-save starts working after that first save.
+Chrome does not let an extension write to disk on its own, so the first time you save, MD Tools asks for permission. Pick the folder the file lives in, or one that contains it: from then on every Markdown file inside saves straight to itself, and the choice is remembered across sessions. Chrome may still show a one-click confirmation the first time in each session. You can also grant a single file instead of a folder.
 
 ## Privacy
 
