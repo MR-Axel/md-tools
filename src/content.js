@@ -511,6 +511,12 @@
       document.head.appendChild(el('meta', { name: 'viewport', content: 'width=device-width, initial-scale=1' }));
     }
     ui.customStyle = el('style', { id: 'lmd-custom-css' });
+    // Ícono de la pestaña: el de MD Tools, para que no quede el genérico ni el de otra extensión.
+    document.querySelectorAll('link[rel~="icon"]').forEach((n) => n.remove());
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#1a1d23"/>' +
+      '<g stroke="#bef264" stroke-width="5.5" stroke-linecap="round"><path d="M27 16 22 48M41 16 36 48M13 27h30M11 38h30"/></g>' +
+      '<rect x="48" y="15" width="6" height="34" rx="3" fill="#e8eaee"/></svg>';
+    document.head.appendChild(el('link', { rel: 'icon', type: 'image/svg+xml', href: 'data:image/svg+xml,' + encodeURIComponent(svg) }));
     document.head.appendChild(ui.customStyle);
 
     ui.sidebar = el('aside', { class: 'lmd-sidebar' });
