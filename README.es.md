@@ -76,3 +76,7 @@ Todas van copiadas en `vendor/`, porque Manifest V3 no permite cargar código re
 | DOMPurify | MPL-2.0 o Apache-2.0 |
 
 El HTML que sale del Markdown pasa por DOMPurify antes de entrar a la página.
+
+## Apoyar
+
+MD Tools es gratis y no junta datos. Si te ahorra tiempo, podés [bancar la próxima herramienta en Ko-fi](https://ko-fi.com/mraxel).

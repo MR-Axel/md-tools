@@ -94,6 +94,10 @@ All of them are vendored in `vendor/`, because Manifest V3 does not allow remote
 | Viz.js (Graphviz) | MIT |
 | DOMPurify | MPL-2.0 or Apache-2.0 |
 
+## Support
+
+MD Tools is free and collects no data. If it saves you time, you can [support the next tool on Ko-fi](https://ko-fi.com/mraxel).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
