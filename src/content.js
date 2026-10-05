@@ -55,9 +55,30 @@
   };
   const T = (text, vars) => LMD.t(text, vars);
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // Si la extensión se recargó o se actualizó, esta pestaña queda desconectada de ella: no puede
+  // releer el archivo ni la carpeta. Se detecta y se avisa, en vez de fallar en silencio.
+  let orphan = false;
+  const alive = () => { try { return !!(chrome.runtime && chrome.runtime.id); } catch (e) { return false; } };
+  function markOrphan() {
+    if (orphan) return;
+    orphan = true;
+    clearInterval(refreshTimer);
+    const bar = el('div', { class: 'lmd-orphan', role: 'alert' });
+    bar.appendChild(el('span', { text: 'MD Tools se actualizó. Recargá esta pestaña para seguir. · MD Tools was updated. Reload this tab to continue.' }));
+    const b = el('button', { type: 'button', text: 'Recargar · Reload' });
+    b.addEventListener('click', () => location.reload());
+    bar.appendChild(b);
+    document.body.appendChild(bar);
+  }
   const bg = (msg) => new Promise((resolve) => {
-    try { chrome.runtime.sendMessage(msg, (r) => resolve(chrome.runtime.lastError ? { ok: false, error: chrome.runtime.lastError.message } : r)); }
-    catch (e) { resolve({ ok: false, error: String(e) }); }
+    if (!alive()) { markOrphan(); resolve({ ok: false, error: 'orphan' }); return; }
+    try {
+      chrome.runtime.sendMessage(msg, (r) => {
+        const err = chrome.runtime.lastError;
+        if (err && /context invalidated|receiving end does not exist/i.test(err.message || '') && !alive()) markOrphan();
+        resolve(err ? { ok: false, error: err.message } : r);
+      });
+    } catch (e) { if (!alive()) markOrphan(); resolve({ ok: false, error: String(e) }); }
   });
   const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
@@ -677,7 +698,7 @@
     else if (act === 'settings') openPanel();
     else if (act === 'copy-md') copyText(raw, source);
     else if (act === 'copy-rich') copyRich(source);
-    else if (act === 'reload') checkForChanges(true);
+    else if (act === 'reload') { if (orphan || !alive()) location.reload(); else checkForChanges(true); }
     else if (act === 'print') window.print();
     else if (act === 'close-panel') ui.panel.hidden = true;
     else if (act === 'reset') { panelStale = true; LMD.save(LMD.merge({ supporter: settings.supporter })); }
@@ -851,9 +872,15 @@
       ui.progressLabel.textContent = pct + ' %';
     }
     if (!spyHeadings.length) return;
+    // La sección activa es la última cuyo título ya pasó la línea de lectura. Esa línea está arriba
+    // mientras se lee y baja hacia el final del documento: las últimas secciones nunca llegan al
+    // tope de la pantalla, y sin eso quedaría marcada una anterior.
+    const total = document.documentElement.scrollHeight - window.innerHeight;
+    const avance = total > 0 ? Math.min(1, Math.max(0, window.scrollY / total)) : 1;
+    const linea = Math.max(96, window.innerHeight * (0.28 + 0.72 * Math.pow(avance, 6)));
     let current = spyHeadings[0];
     for (const h of spyHeadings) {
-      if (h.getBoundingClientRect().top <= 90) current = h; else break;
+      if (h.getBoundingClientRect().top <= linea) current = h; else break;
     }
     const rows = ui.paneOutline.querySelectorAll('.lmd-o-row');
     let activeRow = null;
@@ -895,24 +922,27 @@
     try {
       const text = await readCurrent();
       if (text == null) {
-        if (manual) flash(T('No se pudo releer el archivo'));
+        if (manual) flash(T('No se pudo releer el archivo. Recargá la pestaña con F5'), 'error');
       } else if (text !== diskText) {
         diskText = text;
-        if (dirty) flash(T('El archivo cambió en el disco. Tus cambios sin guardar se mantienen'));
+        if (dirty) flash(T('El archivo cambió en el disco. Tus cambios sin guardar se mantienen'), 'warn');
         else { raw = text; render(); flash(T('Documento actualizado')); }
       } else if (manual) flash(T('Sin cambios'));
     } finally { checking = false; }
   }
 
   let flashTimer = null;
-  function flash(msg) {
+  // Aviso corto en la barra. Los errores van en rojo y duran más.
+  function flash(msg, kind) {
     ui.status.textContent = msg;
     ui.status.classList.add('lmd-flash');
+    ui.status.classList.toggle('lmd-error', kind === 'error');
+    ui.status.classList.toggle('lmd-warn', kind === 'warn');
     clearTimeout(flashTimer);
     flashTimer = setTimeout(() => {
-      ui.status.classList.remove('lmd-flash');
+      ui.status.classList.remove('lmd-flash', 'lmd-error', 'lmd-warn');
       ui.status.textContent = settings.autoRefresh ? T('Recarga automática activa') : '';
-    }, 1800);
+    }, kind ? 5000 : 1800);
   }
 
   // ---------- Árbol de carpetas ----------
@@ -1394,7 +1424,7 @@
     clearTimeout(autosaveTimer);
     if (dirty && settings.autosave) {
       if (fileHandle) autosaveTimer = setTimeout(() => save(false), Math.max(500, settings.autosaveDelay | 0));
-      else flash(T('Guardá una vez con Ctrl+S para activar el guardado automático'));
+      else flash(T('Guardá una vez con Ctrl+S para activar el guardado automático'), 'warn');
     }
   }
 
@@ -1775,7 +1805,7 @@
           const a = el('a', { download: name });
           a.href = URL.createObjectURL(new Blob([raw], { type: 'text/markdown' }));
           a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-          flash(T('Este navegador no deja escribir el archivo: se descargó una copia'));
+          flash(T('Este navegador no deja escribir el archivo: se descargó una copia'), 'warn');
           return false;
         }
         fileHandle = await askForAccess();
@@ -1790,7 +1820,7 @@
     } catch (e) {
       if (e && e.name === 'AbortError') return false;
       if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) fileHandle = null;
-      flash(T('No se pudo guardar'));
+      flash(T('No se pudo guardar'), 'error');
       return false;
     }
   }
