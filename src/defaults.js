@@ -293,7 +293,7 @@
   }
   const lang = () => current;
 
-  const SPONSOR_URL = 'https://github.com/sponsors/MR-Axel';
+  const SPONSOR_URL = 'https://ko-fi.com/mraxel';
 
   root.LMD = { SPONSOR_URL, DEFAULTS, PLUGIN_LABELS, ACCENTS, merge, load, save, patch, setLang, t, lang };
 })(typeof self !== 'undefined' ? self : this);
