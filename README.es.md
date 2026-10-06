@@ -6,11 +6,21 @@
 
 ![Editando una celda de la tabla en el lugar](docs/editing-es.png)
 
+**Probala sin instalar nada: [mr-axel.github.io/md-tools](https://mr-axel.github.io/md-tools/)**
+
 Extensión de Chrome para leer y editar archivos Markdown en el navegador, locales (`file://`) o servidos por web. Sin cuentas, sin planes pagos y sin mandar datos a ningún lado: todo corre en la máquina.
 
 ## Qué hace
 
 - **Edición en el lugar**: pasás a modo Edición y hacés clic en cualquier párrafo, título, ítem o celda para cambiarlo. Negrita, cursiva, tachado, código y enlaces desde una barrita o con los atajos de siempre; agregar y quitar filas y columnas; tildar tareas. El Markdown se reescribe por detrás, sin que veas la sintaxis. Se guarda con Ctrl+S, o con guardado automático.
+- **Escribir contenido nuevo**: Enter cierra un bloque y abre el siguiente, o agrega un ítem a la lista. Una línea que empieza con `#`, `-`, `1.`, `>` o `[]` se convierte en título, lista, cita o tarea mientras escribís. El clic derecho (o el botón +, o `/` en una línea vacía) inserta párrafo, título, lista, tabla, bloque de código, diagrama, fórmula, aviso, imagen o separador, y convierte, mueve, duplica o elimina el bloque donde hiciste clic. Ctrl+Z deshace las operaciones de bloques. Shift + clic derecho deja el menú del navegador, para la ortografía.
+- **Editor de diagramas**: en modo Editar, un clic sobre un diagrama Mermaid o Graphviz lo abre con el código a un lado y la vista previa en vivo al otro. Nueve plantillas de Mermaid para arrancar (flujo, secuencia, estados, clases, datos, Gantt, torta, mapa mental, línea de tiempo); un error de sintaxis se muestra debajo del último dibujo que salió bien. Al pasar el mouse por un diagrama: copiar el código, bajar el SVG y ampliarlo.
+- **Buscar y reemplazar** en el documento mientras editás, de a una coincidencia o todas.
+- **Modo foco y máquina de escribir** (Ajustes → Edición): atenúa todo menos el bloque que estás escribiendo, y mantiene el renglón actual a media altura.
+- **Exportar a HTML**: un solo archivo, con la matemática en MathML.
+- **Archivos desde el árbol** (página de MD Tools): archivo nuevo, renombrar y eliminar con clic derecho.
+- **Pegar imágenes** (página de MD Tools): una imagen del portapapeles se guarda en `assets/`, al lado del documento, y queda insertada.
+- **No solo Markdown** (página de MD Tools): los archivos de código y configuración se ven resaltados y se editan como texto, los CSV y TSV se ven como tabla, y las imágenes como imágenes.
 - **Índice automático** del documento, con la sección actual resaltada mientras se hace scroll.
 - **Árbol de carpetas**: los archivos Markdown de la carpeta del documento, con subcarpetas que se abren y botón para subir de nivel.
 - **Recarga automática** cuando el archivo cambia en disco, sin perder la posición.
@@ -46,7 +56,7 @@ Abrir un `.md` directo en el navegador sigue funcionando igual que antes. La pes
 
 La página de MD Tools es HTML y JavaScript, así que también funciona servida desde cualquier hosting estático, sin la extensión. En Chrome, Edge, Brave y otros navegadores Chromium abre archivos y carpetas y guarda en el lugar. En Firefox y Safari, que no dejan que una página escriba en el disco, abre de a un archivo y al guardar descarga una copia. En los dos casos no se sube nada: los archivos se leen en tu navegador.
 
-Para probarla en tu máquina, serví esta carpeta (`npx serve .`) y abrí la dirección que te muestra.
+Está publicada en [mr-axel.github.io/md-tools](https://mr-axel.github.io/md-tools/). Para correr tu propia copia, serví esta carpeta (`npx serve .`) y abrí la dirección que te muestra.
 
 ## Actualizar
 
@@ -79,6 +89,9 @@ src/
   serialize.js    del bloque editado al Markdown
   store.js        permisos de archivos y carpetas, guardados en IndexedDB
   home.js         pantalla de inicio de la página propia
+  write.js        bloques nuevos, atajos de Markdown y menú de clic derecho
+  diagram.js      editor de diagramas con vista previa en vivo
+  extras.js       archivos desde el árbol, imágenes pegadas, reemplazar, máquina de escribir, exportar a HTML
   content.js      el lector: interfaz, índice, árbol, búsqueda, edición, guardado, ajustes
   content.css     estilos y temas
   background.js   lectura de archivos y carpetas, carga diferida de las librerías pesadas, atajos, aviso de versión

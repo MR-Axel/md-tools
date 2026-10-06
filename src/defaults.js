@@ -17,6 +17,8 @@
     wrapCode: true, // las líneas largas de los bloques de código bajan de renglón
     autosave: false,
     autosaveDelay: 2000, // ms después del último cambio
+    focusMode: false, // al editar, atenúa todo menos el bloque en el que se escribe
+    typewriter: false, // al editar, mantiene el renglón actual a media altura
     refreshInterval: 1000, // ms
     sidebarHidden: false,
     sidebarTab: 'outline', // outline | files
@@ -224,6 +226,26 @@
       "Ya aporté": "I already supported",
       "Gracias por apoyar": "Thanks for supporting",
       "Actualizaciones": "Updates",
+      "Nombre del archivo nuevo": "Name for the new file", "nota": "note", "Nombre nuevo": "New name",
+      "Ese nombre tiene caracteres que no se pueden usar": "That name has characters that cannot be used",
+      "Ya hay un archivo con ese nombre": "A file with that name already exists",
+      "No se pudo crear el archivo": "Could not create the file", "No se pudo renombrar": "Could not rename", "No se pudo eliminar": "Could not delete",
+      "¿Eliminar \"{a}\"? No se puede deshacer.": "Delete \"{a}\"? This cannot be undone.",
+      "Nuevo archivo acá": "New file here", "Nuevo archivo": "New file", "Renombrar": "Rename",
+      "Archivo nuevo en esta carpeta": "New file in this folder",
+      "Para pegar imágenes abrí la carpeta desde la página de MD Tools": "To paste images, open the folder from the MD Tools page",
+      "imagen": "image", "Imagen guardada en {a}": "Image saved to {a}", "No se pudo guardar la imagen": "Could not save the image",
+      "Sin coincidencias": "No matches", "Reemplazado. Quedan {n}": "Replaced. {n} left",
+      "{n} reemplazo. Ctrl+Z lo deshace": "{n} replacement. Ctrl+Z undoes it", "{n} reemplazos. Ctrl+Z los deshace": "{n} replacements. Ctrl+Z undoes them",
+      "Reemplazar con": "Replace with", "Uno": "One", "Todos": "All",
+      "Reemplazar la primera coincidencia": "Replace the first match", "Reemplazar todas": "Replace all",
+      "HTML descargado": "HTML downloaded", "Exportar a HTML": "Export to HTML",
+      "Modo foco: atenuar lo que no estoy escribiendo": "Focus mode: dim what I am not writing",
+      "Máquina de escribir: mantener el renglón a media altura": "Typewriter: keep the current line at mid height",
+      "Este tipo de archivo no se puede mostrar.": "This kind of file cannot be shown.",
+      "Se muestran las primeras {n} filas.": "Showing the first {n} rows.",
+      "Este archivo se edita desde la vista de código": "This file is edited from the source view",
+      "Las imágenes no se editan acá": "Images are not edited here",
       "Editar diagrama": "Edit diagram", "Plantillas": "Templates", "Ver la sintaxis": "Syntax reference",
       "Flujo": "Flowchart", "Secuencia": "Sequence", "Estados": "States", "Clases": "Classes", "Datos": "Data", "Torta": "Pie",
       "Mapa mental": "Mind map", "Línea de tiempo": "Timeline", "¿Sirve?": "Works?", "Sí": "Yes", "Seguir": "Continue", "Corregir": "Fix",

@@ -2,6 +2,8 @@
 
 English · [Español](README.es.md)
 
+**Try it without installing: [mr-axel.github.io/md-tools](https://mr-axel.github.io/md-tools/)**
+
 A Chrome extension to read and edit Markdown files in the browser, local (`file://`) or served over the web. No accounts, no paid plan, no data sent anywhere: everything runs on your machine.
 
 ![MD Tools](docs/reader.png)
@@ -11,6 +13,14 @@ A Chrome extension to read and edit Markdown files in the browser, local (`file:
 ## What it does
 
 - **Edit in place**: switch to Edit mode and click any paragraph, heading, list item or table cell to change it. Bold, italic, strikethrough, code and links from a small toolbar or the usual shortcuts; add and remove table rows and columns; tick task boxes. The Markdown is rewritten behind the scenes, so you never see the syntax. Save with Ctrl+S, or turn on auto-save.
+- **Write new content**: Enter closes a block and opens the next one, or adds a list item. A line that starts with `#`, `-`, `1.`, `>` or `[]` turns into a heading, a list, a quote or a task as you type. Right-click (or the + button, or `/` on an empty line) inserts a paragraph, heading, list, table, code block, diagram, formula, callout, image or divider, and turns, moves, duplicates or deletes the block you clicked. Ctrl+Z undoes block operations. Shift+right-click keeps the browser menu, for spelling.
+- **Diagram editor**: in Edit mode, click a Mermaid or Graphviz diagram to open it side by side with a live preview. Nine Mermaid templates to start from (flowchart, sequence, states, classes, data, Gantt, pie, mind map, timeline); a syntax error shows under the last drawing that worked. Hovering a diagram offers copy code, download SVG and enlarge.
+- **Find and replace** in the document while editing, one match or all.
+- **Focus mode and typewriter mode** (Settings → Editing): dim everything but the block you are writing, and keep the current line at mid height.
+- **Export to HTML**: one standalone file, with math as MathML.
+- **Files from the tree** (MD Tools page): new file, rename and delete with a right-click.
+- **Paste images** (MD Tools page): an image from the clipboard is saved to `assets/` next to the document and inserted.
+- **More than Markdown** (MD Tools page): code and config files open highlighted and are edited as text, CSV and TSV open as a table, and images open as images.
 - **Outline** built from the document headings: collapsible tree, current section highlighted, reading progress.
 - **Folder tree**: the Markdown files next to the open document, with subfolders and a button to go up a level.
 - **Auto-reload** when the file changes on disk, keeping your scroll position.
@@ -54,7 +64,7 @@ Opening a `.md` directly in the browser keeps working as before. The folder tab 
 
 The MD Tools page is plain HTML and JavaScript, so it also runs served from any static host, with no extension. In Chrome, Edge, Brave and other Chromium browsers it opens files and folders and saves in place. In Firefox and Safari, which do not let a page write to disk, it opens one file at a time and saving downloads a copy. Either way nothing is uploaded: the files are read in your browser.
 
-To try it locally, serve this folder (`npx serve .`) and open the address it prints.
+It is published at [mr-axel.github.io/md-tools](https://mr-axel.github.io/md-tools/). To run your own copy, serve this folder (`npx serve .`) and open the address it prints.
 
 ## Updating
 
@@ -95,6 +105,9 @@ src/
   serialize.js    from an edited block back to Markdown
   store.js        file and folder permissions, kept in IndexedDB
   home.js         start screen of the MD Tools page
+  write.js        new blocks, Markdown shortcuts and the right-click menu
+  diagram.js      diagram editor with live preview
+  extras.js       files from the tree, pasted images, replace, typewriter mode, HTML export
   content.js      the reader: interface, outline, tree, search, editing, saving, settings
   content.css     styles and themes
   background.js   reads files and folders, lazy-loads the heavy libraries, shortcuts, update check

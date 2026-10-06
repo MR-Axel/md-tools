@@ -40,7 +40,7 @@
     if (rec.kind === 'dir') {
       path = await firstMarkdown(handle);
       if (!path) { say(T('Esa carpeta no tiene archivos Markdown.')); return; }
-    } else if (!MD_RE.test(handle.name) && !/\.txt$/i.test(handle.name)) { say(T('Ese archivo no es Markdown.')); return; }
+    }
     rec.last = rec.id + '/' + path;
     await handlesPut(rec);
     location.href = ctx.APP_URL + '?f=' + encodeURIComponent(rec.last);
@@ -50,7 +50,6 @@
   const canPick = () => !!window.showOpenFilePicker;
   async function openInMemory(file, say) {
     if (!file) return;
-    if (!MD_RE.test(file.name) && !/\.txt$/i.test(file.name)) { say(T('Ese archivo no es Markdown.')); return; }
     try { sessionStorage.setItem('mdt-mem', JSON.stringify({ name: file.name, text: await file.text() })); }
     catch (e) { say(T('No se pudo abrir. Probá de nuevo.')); return; }
     location.href = ctx.APP_URL + '?f=' + encodeURIComponent('mem/' + encodeURIComponent(file.name));

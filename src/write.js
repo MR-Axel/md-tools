@@ -319,7 +319,7 @@
     const article = core.ui.article;
     article.addEventListener('contextmenu', (e) => {
       // Con Shift queda el menú del navegador, que es el que corrige la ortografía.
-      if (!core.editMode || e.shiftKey || e.target.closest('.lmd-src')) return;
+      if (!core.editMode || !core.blocks || e.shiftKey || e.target.closest('.lmd-src')) return;
       e.preventDefault();
       const active = document.activeElement;
       if (active && active.blur && active.isContentEditable) active.blur();
@@ -343,13 +343,19 @@
     window.addEventListener('scroll', closeMenu, { passive: true });
     // En edición siempre queda un lugar al final para seguir escribiendo, también con el documento vacío.
     core.hooks.render.push(() => {
-      if (!core.editMode) return;
+      if (!core.editMode || !core.blocks) return;
       article.appendChild(el('div', { class: 'lmd-add', role: 'button', tabindex: '0', 'data-label': T('Seguir escribiendo') }));
     });
   }
 
+  // Agrega un bloque después del último que se tocó, o al final del documento.
+  function append(body) {
+    const all = Array.from(core.ui.article.children).filter((n) => !n.classList.contains('lmd-add'));
+    insertTemplate(core.lastBlock && core.lastBlock.isConnected ? topBlock(core.lastBlock) : all[all.length - 1] || null, body);
+  }
+
   LMD.write = {
-    init, enter, onKey,
+    init, enter, onKey, append,
     blur: (d) => commitDraft(d, false),
     menuAt: (x, y) => openMenu(x, y, core.lastBlock && core.lastBlock.isConnected ? topBlock(core.lastBlock) : blockNear(window.innerHeight)),
   };

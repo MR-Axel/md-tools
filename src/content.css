@@ -503,3 +503,18 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-dgm-card kbd { margin-left: 6px; font: 11px var(--lmd-mono); opacity: 0.75; }
 @media (max-width: 760px) { .lmd-dgm-body { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } .lmd-dgm-body textarea { border-right: 0; border-bottom: 1px solid var(--line); } }
 @media print { .lmd-dgm-tools, .lmd-dgm { display: none !important; } }
+
+/* ---------- Reemplazar, árbol, foco ---------- */
+.lmd-replace { display: none; gap: 5px; margin: -2px 10px 8px; }
+.lmd-editing.lmd-tab-outline .lmd-replace { display: flex; }
+.lmd-replace input { flex: 1; min-width: 0; height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); font: inherit; font-size: 13px; outline: none; }
+.lmd-replace input:focus { border-color: var(--accent-fill); }
+.lmd-replace button { height: 30px; padding: 0 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg-soft); color: var(--fg-muted); font: inherit; font-size: 12.5px; cursor: pointer; }
+.lmd-replace button:hover { border-color: var(--accent-fill); color: var(--accent); }
+.lmd-menu-narrow { width: 200px; }
+.lmd-menu-list { display: grid; gap: 2px; }
+.lmd-tree-new svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.lmd-editing.lmd-focus .lmd-article:focus-within > *:not(:focus-within) { opacity: 0.3; transition: opacity .18s; }
+.lmd-editing.lmd-focus .lmd-article:focus-within > *:not(:focus-within):hover { opacity: 0.75; }
+.lmd-editing.lmd-typewriter .lmd-article { padding-bottom: 50vh; }
+@media print { .lmd-replace { display: none !important; } }

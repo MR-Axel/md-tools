@@ -480,6 +480,7 @@
           '<button class="lmd-icon-btn" data-act="copy-rich" title="' + T('Copiar con formato (la selección, o todo el documento)') + '">' + ICON.rich + '</button>' +
           '<button class="lmd-icon-btn" data-act="reload" title="' + T('Recargar ahora') + '">' + ICON.reload + '</button>' +
           '<button class="lmd-icon-btn" data-act="print" title="' + T('Imprimir o guardar PDF') + '">' + ICON.print + '</button>' +
+          '<button class="lmd-icon-btn" data-act="export-html" title="' + T('Exportar a HTML') + '">' + ICON.download + '</button>' +
           '<span class="lmd-sep"></span>' +
           '<button class="lmd-icon-btn" data-act="settings" title="' + T('Ajustes') + '">' + ICON.sliders + '</button>' +
         '</div>' +
@@ -525,6 +526,7 @@
     bindEditing();
     LMD.write.init(core);
     LMD.diagram.init(core);
+    LMD.extras.init(core);
     document.documentElement.dataset.lmdFs = String(!!window.showOpenFilePicker && window.isSecureContext);
   }
 
@@ -610,6 +612,7 @@
     else if (act === 'copy-rich') copyRich(source);
     else if (act === 'reload') { if (orphan || !alive()) location.reload(); else checkForChanges(true); }
     else if (act === 'print') window.print();
+    else if (act === 'export-html') LMD.extras.exportHtml();
     else if (act === 'close-panel') ui.panel.hidden = true;
     else if (act === 'reset') { panelStale = true; LMD.save(LMD.merge({ supporter: settings.supporter })); }
     else if (act === 'check-update') checkUpdate(true);
@@ -672,6 +675,9 @@
     root.classList.toggle('lmd-light', !dark);
     root.classList.toggle('lmd-centered', !!settings.centered);
     root.classList.toggle('lmd-wrap', !!settings.wrapCode);
+    root.classList.toggle('lmd-focus', !!settings.focusMode);
+    root.classList.toggle('lmd-typewriter', !!settings.typewriter);
+    root.classList.toggle('lmd-tab-outline', settings.sidebarTab === 'outline');
     root.classList.toggle('lmd-side-hidden', !!settings.sidebarHidden);
     root.style.setProperty('--lmd-content-w', settings.contentWidth + 'px');
     root.style.setProperty('--lmd-font-size', settings.fontSize + 'px');
@@ -700,18 +706,58 @@
   }
 
   // ---------- Render ----------
+  // La página propia también abre lo que no es Markdown: código resaltado, CSV como tabla e imágenes.
+  const IMG_RE = /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i;
+  const LANGS = { yml: 'yaml', mjs: 'javascript', cjs: 'javascript', js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript', py: 'python', rb: 'ruby', rs: 'rust', sh: 'bash', ps1: 'powershell', htm: 'html', kt: 'kotlin', cs: 'csharp', h: 'c' };
+  function docKind() {
+    if (!APP || MD_RE.test(DOC_NAME) || /\.txt$/i.test(DOC_NAME) || DOC_NAME.indexOf('.') === -1) return 'md';
+    if (IMG_RE.test(DOC_NAME)) return 'image';
+    return /\.(csv|tsv)$/i.test(DOC_NAME) ? 'table' : 'code';
+  }
+  function csvRows(text) {
+    const first = text.split(/\r?\n/, 1)[0] || '';
+    const sep = /\.tsv$/i.test(DOC_NAME) || first.split('\t').length > first.split(',').length ? '\t' : (first.split(';').length > first.split(',').length ? ';' : ',');
+    const rows = []; let row = []; let cell = ''; let quoted = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (quoted) { if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else quoted = false; } else cell += ch; }
+      else if (ch === '"') quoted = true;
+      else if (ch === sep) { row.push(cell); cell = ''; }
+      else if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+      else if (ch !== '\r') cell += ch;
+    }
+    if (cell || row.length) { row.push(cell); rows.push(row); }
+    return rows.filter((r) => r.some((c) => c.trim()));
+  }
+  function asMarkdown(kind) {
+    if (kind === 'image') return '![' + DOC_NAME + '](' + encodeURIComponent(DOC_NAME) + ')';
+    if (raw.indexOf('\u0000') !== -1) return '> ' + T('Este tipo de archivo no se puede mostrar.');
+    if (kind === 'table') {
+      const MAX = 1000;
+      const rows = csvRows(raw); if (!rows.length) return '';
+      const width = Math.max.apply(null, rows.map((r) => r.length));
+      const line = (r) => '| ' + Array.from({ length: width }, (_, i) => String(r[i] == null ? '' : r[i]).replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ').trim()).join(' | ') + ' |';
+      return [line(rows[0]), '|' + ' --- |'.repeat(width)].concat(rows.slice(1, MAX + 1).map(line)).join('\n') +
+        (rows.length > MAX + 1 ? '\n\n' + T('Se muestran las primeras {n} filas.', { n: MAX }) : '');
+    }
+    const ext = (/\.([A-Za-z0-9]+)$/.exec(DOC_NAME) || [0, ''])[1].toLowerCase();
+    const fence = '`'.repeat(Math.max(3, ((raw.match(/`+/g) || []).reduce((m, r) => Math.max(m, r.length), 0)) + 1));
+    return fence + (LANGS[ext] || ext) + '\n' + raw.replace(/\s+$/, '') + '\n' + fence;
+  }
+
   function render() {
     const md = buildParser();
-    const fm = settings.plugins.frontmatter ? splitFrontmatter(raw) : { body: raw, rows: null };
+    const kind = docKind();
+    const fm = kind !== 'md' ? { body: asMarkdown(kind), rows: null } : (settings.plugins.frontmatter ? splitFrontmatter(raw) : { body: raw, rows: null });
     syncSource();
-    fmOffset = raw.slice(0, raw.length - fm.body.length).split('\n').length - 1;
+    fmOffset = kind !== 'md' ? 0 : raw.slice(0, raw.length - fm.body.length).split('\n').length - 1;
     needsRender = false;
     let html = md.render(fm.body);
     html = DOMPurify.sanitize(html, { ADD_ATTR: ['target', 'data-tex'], FORBID_TAGS: ['style', 'form'] });
     const y = window.scrollY;
     ui.article.innerHTML = html;
     spyHeadings = postProcess(ui.article);
-    if (editMode) enableEditing(ui.article);
+    if (editMode && kind === 'md') enableEditing(ui.article);
     if (fm.rows && fm.rows.length) ui.article.insertBefore(frontmatterNode(fm.rows), ui.article.firstChild);
     buildOutline(spyHeadings);
     if (rawMode) { ui.rawPre.textContent = raw; if (document.activeElement !== ui.rawEdit) ui.rawEdit.value = raw; }
@@ -920,6 +966,7 @@
     const openBtn = el('button', { class: 'lmd-tree-up lmd-tree-open', title: T('Abrir otro archivo o carpeta'), type: 'button' }, ICON.open);
     openBtn.addEventListener('click', () => { if (APP) location.href = APP_URL; else bg({ type: 'openApp' }); });
     head.append(upBtn, label, openBtn);
+    core.hooks.tree.forEach((fn) => fn(head));
     if (atTop) upBtn.style.display = 'none';
     upBtn.addEventListener('click', () => {
       if (atTop) return;
@@ -948,6 +995,7 @@
     rows.forEach((row) => {
       const item = el(row.dir ? 'button' : 'a', { class: 'lmd-node' + (row.dir ? ' lmd-node-dir' : ''), title: row.name });
       item.style.paddingLeft = (10 + depth * 14) + 'px';
+      item.dataset.url = row.url;
       const md = MD_RE.test(row.name);
       item.innerHTML = (row.dir ? '<span class="lmd-node-chev">' + ICON.chevron + '</span>' : '<span class="lmd-node-ico">' + (md ? ICON.md : ICON.file) + '</span>') +
         '<span class="lmd-node-name"></span>';
@@ -1190,6 +1238,8 @@
           '</section>' +
           '<section><h3>' + T('Edición') + '</h3>' +
             '<label class="lmd-check"><input type="checkbox" data-key="autosave"' + (s.autosave ? ' checked' : '') + '><span>' + T('Guardar solo mientras edito') + '</span></label>' +
+            '<label class="lmd-check"><input type="checkbox" data-key="focusMode"' + (s.focusMode ? ' checked' : '') + '><span>' + T('Modo foco: atenuar lo que no estoy escribiendo') + '</span></label>' +
+            '<label class="lmd-check"><input type="checkbox" data-key="typewriter"' + (s.typewriter ? ' checked' : '') + '><span>' + T('Máquina de escribir: mantener el renglón a media altura') + '</span></label>' +
             '<label class="lmd-row"><span>' + T('Guardar a los') + ' <output>' + s.autosaveDelay + ' ms</output></span><input type="range" min="1000" max="30000" step="500" data-key="autosaveDelay" data-unit=" ms" value="' + s.autosaveDelay + '"></label>' +
           '</section>' +
           '<section><h3>' + T('Carpeta') + '</h3>' +
@@ -1412,6 +1462,9 @@
       if (ui.rawEdit && !ui.rawEdit.hidden) { raw = ui.rawEdit.value.split('\r\n').join('\n').split('\n').join(eol); syncSource(); dirty = raw !== diskText; }
       if (dirty) await save(true);
     }
+    // Lo que no es Markdown se edita como texto, desde la vista de código.
+    if (on && docKind() === 'image') { flash(T('Las imágenes no se editan acá'), 'warn'); return; }
+    if (on && docKind() !== 'md') rawMode = true;
     editMode = on;
     updateSaveState();
     render();
@@ -1607,8 +1660,10 @@
       else if (e.key === 'Escape') { e.preventDefault(); node._md = null; if (draft) node._done = true; needsRender = true; node.blur(); render(); }
       else if (draft) LMD.write.onKey(e, node);
     });
-    ui.article.addEventListener('paste', (e) => {
-      if (!(e.target.closest && e.target.closest('.lmd-editable'))) return;
+    document.addEventListener('paste', (e) => {
+      if (!editMode || !e.target.closest || e.target.closest('input, textarea')) return;
+      if (docKind() === 'md' && LMD.extras.pasteImage(e)) return;
+      if (!e.target.closest('.lmd-editable')) return;
       e.preventDefault();
       document.execCommand('insertText', false, (e.clipboardData.getData('text/plain') || '').replace(/\r?\n/g, ' '));
     });
@@ -1630,7 +1685,11 @@
 
   // Lo que los módulos de edición (write.js y los que siguen) necesitan del lector.
   const core = {
-    ui, hooks: { render: [] }, lastBlock: null, APP, HERE, docName: DOC_NAME, ensure, isDark,
+    ui, hooks: { render: [], tree: [] }, lastBlock: null, appUrl: APP_URL,
+    get blocks() { return docKind() === 'md'; },
+    treeRoot: () => treeRoot,
+    reloadTree: () => { fileCache.clear(); folderIndex = null; wikiIndex = null; return loadTree(); },
+    dirHandle: async (dirUrl) => { let dir = appRoot.handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, HERE, docName: DOC_NAME, ensure, isDark,
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
     rangeOf, render, softRender, flash, insertLines, spliceLines, commitBlock, undo, editCode, vFile, toHref,
