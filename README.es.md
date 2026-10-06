@@ -64,18 +64,36 @@ Se cambian en `chrome://extensions/shortcuts`.
 
 ```
 manifest.json
+_locales/         nombre, descripción y atajos de la extensión (en, es)
 src/
-  defaults.js     ajustes por defecto y acceso al storage
-  background.js   lectura de archivos y carpetas, carga diferida de KaTeX y Mermaid, atajos
-  content.js      el lector: render, índice, árbol, búsqueda, panel de ajustes
+  defaults.js     ajustes por defecto, acceso al storage y el diccionario español/inglés
+  kit.js          íconos y utilidades compartidas
+  markdown.js     el parser con sus plugins: links [[wiki]], matemática, cabecera YAML
+  theme.js        tema claro u oscuro y color de acento
+  serialize.js    del bloque editado al Markdown
+  store.js        permisos de archivos y carpetas, guardados en IndexedDB
+  home.js         pantalla de inicio de la página propia
+  content.js      el lector: interfaz, índice, árbol, búsqueda, edición, guardado, ajustes
   content.css     estilos y temas
+  background.js   lectura de archivos y carpetas, carga diferida de las librerías pesadas, atajos, aviso de versión
   app.html        la página de MD Tools: abrir un archivo o una carpeta y editar ahí
   popup.html/js   el encendido y el botón que abre la página de MD Tools
 vendor/           librerías de terceros, sin modificar
-ejemplo/          documento de prueba con todas las funciones
+ejemplo/          documentos de prueba con todas las funciones
+tests/            prueba de punta a punta
 ```
 
 No hay paso de build: se edita y se recarga la extensión.
+
+## Pruebas
+
+```
+cd tests
+npm install
+npm test
+```
+
+Carga la extensión en un Chromium y recorre los dos modos: el `.md` abierto directo en el navegador y la página propia con una carpeta. Necesita un Chromium de Playwright (`npx playwright install chromium`) o la variable `CHROME_BIN` apuntando a otro.
 
 ## Librerías de terceros
 

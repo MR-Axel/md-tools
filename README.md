@@ -83,16 +83,33 @@ manifest.json
 _locales/         extension name, description and shortcut labels (en, es)
 src/
   defaults.js     default settings, storage access and the Spanish/English dictionary
-  background.js   reads files and folders, lazy-loads the heavy libraries, handles shortcuts
-  content.js      the reader: rendering, outline, tree, search, settings panel
+  kit.js          icons and shared helpers
+  markdown.js     the parser and its plugins: [[wiki]] links, math, YAML front matter
+  theme.js        light or dark theme and accent color
+  serialize.js    from an edited block back to Markdown
+  store.js        file and folder permissions, kept in IndexedDB
+  home.js         start screen of the MD Tools page
+  content.js      the reader: interface, outline, tree, search, editing, saving, settings
   content.css     styles and themes
+  background.js   reads files and folders, lazy-loads the heavy libraries, shortcuts, update check
   app.html        the MD Tools page: open a file or a folder and edit it there
   popup.html/js   on/off switch and the button that opens the MD Tools page
 vendor/           third-party libraries, unmodified
-ejemplo/          test document covering every feature
+ejemplo/          sample documents covering every feature
+tests/            end-to-end smoke test
 ```
 
 There is no build step: edit and reload the extension.
+
+## Tests
+
+```
+cd tests
+npm install
+npm test
+```
+
+It loads the extension in a Chromium and walks through both modes: a `.md` opened directly in the browser, and the MD Tools page with a folder. It needs a Playwright Chromium (`npx playwright install chromium`) or `CHROME_BIN` pointing at another one.
 
 ## Third-party libraries
 

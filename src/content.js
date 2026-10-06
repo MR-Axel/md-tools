@@ -35,44 +35,21 @@
   const lazyLoaded = {};
   const isFile = location.protocol === 'file:';
 
-  const ICON = {
-    folder: '<svg viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.6l2 2.2h8.4A1.5 1.5 0 0 1 21 8.7v8.8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></svg>',
-    outline: '<svg viewBox="0 0 24 24"><path d="M5 7h14M8 12h11M11 17h8"/></svg>',
-    search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>',
-    sliders: '<svg viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/></svg>',
-    side: '<svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15"/></svg>',
-    chevron: '<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>',
-    file: '<svg viewBox="0 0 24 24"><path d="M6.5 3.5h7l4 4v13h-11z"/><path d="M13.5 3.5v4h4"/></svg>',
-    md: '<svg viewBox="0 0 24 24"><path d="M4 17V7l4 5 4-5v10M16 7v9m-3-3 3 3 3-3"/></svg>',
-    up: '<svg viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>',
-    close: '<svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>',
-    copy: '<svg viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/></svg>',
-    doc: '<svg viewBox="0 0 24 24"><path d="M6.5 3.5h11v17h-11z"/><path d="M9.5 8h5M9.5 12h5M9.5 16h3"/></svg>',
-    code: '<svg viewBox="0 0 24 24"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5.5l-3 13"/></svg>',
-    reload: '<svg viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg>',
-    print: '<svg viewBox="0 0 24 24"><path d="M7.5 8.5v-5h9v5"/><rect x="3.5" y="8.5" width="17" height="8" rx="1.5"/><path d="M7.5 14h9v6.5h-9z"/></svg>',
-    rich: '<svg viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/><path d="m11.6 17 2.4-6 2.4 6M12.4 15.2h3.2"/></svg>',
-    eye: '<svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></svg>',
-    pencil: '<svg viewBox="0 0 24 24"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17z"/><path d="m14 8 3 3"/></svg>',
-    save: '<svg viewBox="0 0 24 24"><path d="M5 4.5h11l3.5 3.5v11.5h-14.5z"/><path d="M8 4.5v5h7v-5M8 19.5v-6h8v6"/></svg>',
-    link: '<svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>',
-    check: '<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
-    open: '<svg viewBox="0 0 24 24"><path d="M3 18.5V6.5A1.5 1.5 0 0 1 4.5 5h4.6l2 2.2h7.4A1.5 1.5 0 0 1 20 8.7V10"/><path d="M3 18.5 5.6 11a1.5 1.5 0 0 1 1.4-1h13.2a1 1 0 0 1 .9 1.4L18.6 18a1.5 1.5 0 0 1-1.4 1H3.6"/></svg>',
-    coffee: '<svg viewBox="0 0 24 24"><path d="M5 9h11v5.5a4.5 4.5 0 0 1-4.5 4.5h-2A4.5 4.5 0 0 1 5 14.5z"/><path d="M16 10.5h1.5a2.5 2.5 0 0 1 0 5H16M8 3.5v2.5M11.5 3.5v2.5"/></svg>',
-  };
-
-  const el = (tag, attrs, html) => {
-    const n = document.createElement(tag);
-    if (attrs) for (const k in attrs) {
-      if (k === 'class') n.className = attrs[k];
-      else if (k === 'text') n.textContent = attrs[k];
-      else n.setAttribute(k, attrs[k]);
-    }
-    if (html != null) n.innerHTML = html;
-    return n;
-  };
   const T = (text, vars) => LMD.t(text, vars);
-  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const { ICON, el, esc, debounce, MD_RE, SKIP_DIRS } = LMD.kit;
+  const { slugify, splitFrontmatter, ALERTS } = LMD.md;
+  const { inlineMd, roundTrips } = LMD.serialize;
+  const { handlesAll, handlesPut, canWrite, walk } = LMD.store;
+  // El parser se arma una vez y se reutiliza mientras no cambien los plugins ni el idioma.
+  let parser = null; let parserKey = '';
+  const buildParser = () => {
+    const key = JSON.stringify(settings.plugins) + LMD.lang();
+    if (key !== parserKey) { parserKey = key; parser = LMD.md.buildParser(settings.plugins); }
+    return parser;
+  };
+  const isDark = () => LMD.theme.isDark(settings);
+  const applyAccent = (root, dark) => LMD.theme.applyAccent(root, dark, settings);
+  const homeCtx = () => ({ settings, APP_URL });
   // Si la extensión se recargó o se actualizó, esta pestaña queda desconectada de ella: no puede
   // releer el archivo ni la carpeta. Se detecta y se avisa, en vez de fallar en silencio.
   let orphan = false;
@@ -145,156 +122,7 @@
     } catch (e) { return false; }
   }
 
-  const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
-
   // ---------- Markdown ----------
-  function wikiPlugin(md) {
-    md.inline.ruler.before('link', 'lmd_wiki', (state, silent) => {
-      const src = state.src; const pos = state.pos;
-      if (src.charCodeAt(pos) !== 0x5B || src.charCodeAt(pos + 1) !== 0x5B) return false;
-      const end = src.indexOf(']]', pos + 2);
-      if (end === -1) return false;
-      const inner = src.slice(pos + 2, end);
-      if (!inner.trim() || /[\[\]\n]/.test(inner) || /^toc$/i.test(inner.trim())) return false;
-      if (!silent) {
-        const parts = inner.split('|');
-        const t = state.push('lmd_wiki', 'a', 0);
-        t.meta = { target: parts[0].trim(), label: (parts[1] || parts[0]).trim() };
-      }
-      state.pos = end + 2;
-      return true;
-    });
-    md.renderer.rules.lmd_wiki = (tokens, i) =>
-      '<a class="lmd-wiki" data-wiki="' + esc(tokens[i].meta.target) + '">' + esc(tokens[i].meta.label) + '</a>';
-  }
-
-  function mathPlugin(md) {
-    md.inline.ruler.after('escape', 'lmd_math_inline', (state, silent) => {
-      const src = state.src; const start = state.pos;
-      if (src.charCodeAt(start) !== 0x24) return false;
-      if (src.charCodeAt(start + 1) === 0x24) return false;
-      const next = src[start + 1];
-      if (!next || /\s/.test(next)) return false;
-      let end = start + 1;
-      while ((end = src.indexOf('$', end)) !== -1) {
-        if (src[end - 1] === '\\') { end++; continue; }
-        break;
-      }
-      if (end === -1) return false;
-      if (/\s/.test(src[end - 1]) || /\d/.test(src[end + 1] || '')) return false;
-      if (!silent) {
-        const t = state.push('lmd_math_inline', 'span', 0);
-        t.content = src.slice(start + 1, end);
-      }
-      state.pos = end + 1;
-      return true;
-    });
-    md.block.ruler.before('fence', 'lmd_math_block', (state, startLine, endLine, silent) => {
-      let pos = state.bMarks[startLine] + state.tShift[startLine];
-      const max = state.eMarks[startLine];
-      if (state.src.slice(pos, pos + 2) !== '$$') return false;
-      if (silent) return true;
-      let first = state.src.slice(pos + 2, max);
-      let line = startLine; let found = false; const parts = [];
-      if (first.trim().endsWith('$$')) {
-        parts.push(first.trim().slice(0, -2)); found = true;
-      } else {
-        if (first.trim()) parts.push(first);
-        for (line = startLine + 1; line < endLine; line++) {
-          const l = state.src.slice(state.bMarks[line] + state.tShift[line], state.eMarks[line]);
-          if (l.trim().endsWith('$$')) { const rest = l.trim().slice(0, -2); if (rest) parts.push(rest); found = true; break; }
-          parts.push(l);
-        }
-      }
-      if (!found) return false;
-      state.line = line + 1;
-      const t = state.push('lmd_math_block', 'div', 0);
-      t.block = true; t.content = parts.join('\n'); t.map = [startLine, state.line];
-      return true;
-    }, { alt: ['paragraph', 'reference', 'blockquote', 'list'] });
-    md.renderer.rules.lmd_math_inline = (tokens, i) => '<span class="lmd-math" data-tex="' + esc(tokens[i].content) + '"></span>';
-    md.renderer.rules.lmd_math_block = (tokens, i) => '<div class="lmd-math lmd-math-block" data-tex="' + esc(tokens[i].content) + '"></div>\n';
-  }
-
-  function buildParser() {
-    const p = settings.plugins;
-    const md = window.markdownit({
-      html: !!p.html,
-      linkify: !!p.linkify,
-      typographer: !!p.typographer,
-      breaks: !!p.breaks,
-      highlight: (str, lang) => {
-        if (p.highlight && lang && window.hljs && hljs.getLanguage(lang)) {
-          try { return hljs.highlight(str, { language: lang, ignoreIllegals: true }).value; } catch (e) { /* cae al escape */ }
-        }
-        return '';
-      },
-    });
-    const use = (flag, plugin) => { if (flag && plugin) md.use(plugin); };
-    const emoji = window.markdownitEmoji;
-    use(p.emoji, emoji && (emoji.full || emoji));
-    use(p.sub, window.markdownitSub);
-    use(p.sup, window.markdownitSup);
-    use(p.ins, window.markdownitIns);
-    use(p.mark, window.markdownitMark);
-    use(p.abbr, window.markdownitAbbr);
-    use(p.deflist, window.markdownitDeflist);
-    use(p.footnote, window.markdownitFootnote);
-    if (p.tables && window.markdownitMultimdTable) {
-      md.use(window.markdownitMultimdTable, { multiline: true, rowspan: true, headerless: true });
-    }
-    if (p.containers && window.markdownitContainer) {
-      Object.keys(CONTAINERS).forEach((name) => {
-        md.use(window.markdownitContainer, name, {
-          render: (tokens, idx) => {
-            const t = tokens[idx];
-            const title = md.utils.escapeHtml(t.info.trim().slice(name.length).trim() || T(CONTAINERS[name]));
-            if (name === 'details') return t.nesting === 1 ? '<details class="lmd-box"><summary>' + title + '</summary>\n' : '</details>\n';
-            return t.nesting === 1 ? '<div class="lmd-box lmd-box-' + name + '"><p class="lmd-box-title">' + title + '</p>\n' : '</div>\n';
-          },
-        });
-      });
-    }
-    if (p.wikilinks) md.use(wikiPlugin);
-    if (p.katex) md.use(mathPlugin);
-
-    const fence = md.renderer.rules.fence;
-    md.renderer.rules.fence = (tokens, idx, options, env, self) => {
-      const info = (tokens[idx].info || '').trim().split(/\s+/)[0].toLowerCase();
-      if (p.mermaid && info === 'mermaid') return '<pre class="lmd-mermaid">' + esc(tokens[idx].content) + '</pre>\n';
-      if (p.graphviz && (info === 'dot' || info === 'graphviz')) return '<pre class="lmd-graphviz">' + esc(tokens[idx].content) + '</pre>\n';
-      return fence(tokens, idx, options, env, self);
-    };
-    // Cada bloque guarda de qué líneas del fuente salió (data-l). En las listas compactas el
-    // párrafo no se dibuja, así que su rango va al <li> como data-p.
-    md.core.ruler.push('lmd_lines', (state) => {
-      const tokens = state.tokens;
-      tokens.forEach((t, i) => {
-        if (!t.map || !t.block) return;
-        if (t.type === 'paragraph_open' && t.hidden) {
-          for (let j = i - 1; j >= 0; j--) {
-            if (tokens[j].type === 'list_item_open') { tokens[j].attrSet('data-p', t.map[0] + '-' + t.map[1]); break; }
-            if (tokens[j].nesting !== 0) break;
-          }
-          return;
-        }
-        if (t.nesting === 1 || t.type === 'fence' || t.type === 'code_block') t.attrSet('data-l', t.map[0] + '-' + t.map[1]);
-      });
-    });
-    return md;
-  }
-
-  function slugify(text, used) {
-    let base = text.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .replace(/[^\p{L}\p{N}\s-]/gu, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'seccion';
-    let slug = base; let n = 1;
-    while (used.has(slug)) slug = base + '-' + n++;
-    used.add(slug);
-    return slug;
-  }
-
-  const CONTAINERS = { tip: 'Consejo', info: 'Información', note: 'Nota', warning: 'Advertencia', danger: 'Peligro', details: 'Detalles' };
-  const ALERTS = { NOTE: 'Nota', TIP: 'Consejo', IMPORTANT: 'Importante', WARNING: 'Advertencia', CAUTION: 'Precaución' };
 
   function postProcess(article) {
     const p = settings.plugins;
@@ -492,21 +320,6 @@
         n.title = String(e && e.message || e);
       }
     }
-  }
-
-  // Cabecera YAML (--- ... ---) al inicio del archivo: se saca del cuerpo y se muestra como ficha.
-  function splitFrontmatter(text) {
-    const m = /^\uFEFF?---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(\r?\n|$)/.exec(text);
-    if (!m) return { body: text, rows: null };
-    const rows = [];
-    m[1].split(/\r?\n/).forEach((line) => {
-      if (!line.trim()) return;
-      const kv = /^([A-Za-z0-9_.-]+):\s*(.*)$/.exec(line);
-      if (kv && !/^\s/.test(line)) rows.push([kv[1], kv[2]]);
-      else if (rows.length) rows[rows.length - 1][1] += (rows[rows.length - 1][1] ? '\n' : '') + line.trim();
-      else rows.push(['', line.trim()]);
-    });
-    return { body: text.slice(m[0].length), rows };
   }
 
   function frontmatterNode(rows) {
@@ -728,7 +541,13 @@
     ui.toTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     ui.viewer.addEventListener('click', () => { ui.viewer.hidden = true; ui.viewer.textContent = ''; });
 
-    window.addEventListener('scroll', onScroll, { passive: true });
+    // El índice se recalcula a lo sumo una vez por cuadro, no en cada evento de scroll.
+    let scrollQueued = false;
+    window.addEventListener('scroll', () => {
+      if (scrollQueued) return;
+      scrollQueued = true;
+      requestAnimationFrame(() => { scrollQueued = false; onScroll(); });
+    }, { passive: true });
     window.addEventListener('scroll', savePosition, { passive: true });
     document.addEventListener('selectionchange', debounce(updateCount, 80));
     window.addEventListener('keydown', (e) => {
@@ -835,33 +654,6 @@
     });
     if (!ui.searchBox.hidden && ui.searchInput.value) runSearch(ui.searchInput.value);
     updateCount();
-  }
-
-  function isDark() {
-    if (settings.theme === 'dark') return true;
-    if (settings.theme === 'light') return false;
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  }
-
-  function luminance(hex) {
-    const n = parseInt(hex.slice(1), 16);
-    const ch = [n >> 16 & 255, n >> 8 & 255, n & 255].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
-    return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
-  }
-
-  function applyAccent(root, dark) {
-    const hex = settings.supporter && /^#[0-9a-f]{6}$/i.test(settings.accent || '') ? settings.accent : '';
-    const props = ['--accent', '--accent-soft', '--accent-fg', '--accent-fill'];
-    if (!hex) { props.forEach((p) => root.style.removeProperty(p)); return; }
-    const lum = luminance(hex);
-    // El relleno usa el color tal cual; el texto se corrige si no contrasta con el fondo del tema.
-    let text = hex;
-    if (dark && lum < 0.18) text = 'color-mix(in srgb, ' + hex + ' 62%, #fff)';
-    if (!dark && lum > 0.32) text = 'color-mix(in srgb, ' + hex + ' 68%, #000)';
-    root.style.setProperty('--accent', text);
-    root.style.setProperty('--accent-fill', hex);
-    root.style.setProperty('--accent-soft', 'color-mix(in srgb, ' + hex + ' 17%, transparent)');
-    root.style.setProperty('--accent-fg', lum > 0.36 ? '#14161a' : '#ffffff');
   }
 
   let lastTab = null;
@@ -1022,8 +814,19 @@
     refreshTimer = setInterval(() => { if (!document.hidden) checkForChanges(false); }, Math.max(300, settings.refreshInterval | 0));
   }
 
+  let diskStamp = '';
   async function readCurrent() {
-    if (APP) return vText(HERE);
+    if (APP) {
+      // Con el permiso de la carpeta alcanza con mirar fecha y tamaño: el archivo se lee solo si cambió.
+      try {
+        const file = await (await vFile(HERE)).getFile();
+        const stamp = file.lastModified + ':' + file.size;
+        if (stamp === diskStamp) return diskText;
+        const text = await file.text();
+        diskStamp = stamp;
+        return text;
+      } catch (e) { return null; }
+    }
     const url = location.href.split('#')[0];
     const r = await bg({ type: 'fetchText', url });
     if (r && r.ok) return r.text;
@@ -1065,7 +868,6 @@
   }
 
   // ---------- Árbol de carpetas ----------
-  const MD_RE = /\.(md|mdx|mkd|mdown|markdown)$/i;
 
   const visibleRows = (rows) => rows
     .filter((x) => settings.filesShowHidden || !x.name.startsWith('.'))
@@ -1164,7 +966,6 @@
   // Con la pestaña Índice busca en este documento; con la pestaña Carpeta, en todos los Markdown de la carpeta.
   const FOLDER_MAX_FILES = 600;
   const FOLDER_MAX_DEPTH = 6;
-  const SKIP_DIRS = /^(node_modules|\.git|dist|build|__pycache__)$/i;
   const fileCache = new Map();
   let folderIndex = null;
   let folderToken = 0;
@@ -1464,7 +1265,6 @@
   let pendingCell = null;
 
   const BLOCKS_INSIDE = 'UL,OL,P,PRE,BLOCKQUOTE,DIV,TABLE,DL,H1,H2,H3,H4,H5,H6';
-  const INLINE_OK = new Set(['STRONG', 'B', 'EM', 'I', 'DEL', 'S', 'STRIKE', 'MARK', 'INS', 'SUB', 'SUP', 'CODE', 'BR', 'A', 'IMG', 'ABBR', 'INPUT', 'SPAN', 'U', 'FONT']);
 
   function syncSource() {
     eol = raw.indexOf('\r\n') !== -1 ? '\r\n' : '\n';
@@ -1475,52 +1275,6 @@
     const m = /^(\d+)-(\d+)$/.exec(node.getAttribute(attr || 'data-l') || '');
     return m ? [+m[1], +m[2]] : null;
   };
-
-  const escText = (t) => t.replace(/\u00a0/g, ' ').replace(/([\\`*])/g, '\\$1').replace(/</g, '\\<');
-
-  // HTML de un bloque editado -> Markdown en línea.
-  function inlineMd(rootNode) {
-    let out = '';
-    rootNode.childNodes.forEach((n) => {
-      if (n.nodeType === 3) { out += escText(n.nodeValue); return; }
-      if (n.nodeType !== 1) return;
-      const tag = n.tagName;
-      if (tag === 'INPUT' || n.classList.contains('lmd-anchor')) return;
-      if (n.classList.contains('lmd-math')) { out += '$' + n.getAttribute('data-tex') + '$'; return; }
-      if (n.classList.contains('lmd-wiki')) {
-        const target = n.getAttribute('data-wiki'); const label = n.textContent;
-        out += '[[' + (label && label !== target ? target + '|' + label : target) + ']]'; return;
-      }
-      if (tag === 'BR') { out += '\n'; return; }
-      if (tag === 'CODE') { out += '`' + n.textContent + '`'; return; }
-      if (tag === 'IMG') { out += '![' + (n.getAttribute('alt') || '') + '](' + (n.getAttribute('data-lmd-src') || n.getAttribute('src') || '') + ')'; return; }
-      const inner = inlineMd(n);
-      const wrap = (mark) => { const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(inner); return m[2] ? m[1] + mark + m[2] + mark + m[3] : inner; };
-      if (tag === 'STRONG' || tag === 'B') out += wrap('**');
-      else if (tag === 'EM' || tag === 'I') out += wrap('*');
-      else if (tag === 'DEL' || tag === 'S' || tag === 'STRIKE') out += wrap('~~');
-      else if (tag === 'MARK') out += wrap('==');
-      else if (tag === 'INS' || tag === 'U') out += wrap('++');
-      else if (tag === 'SUB') out += wrap('~');
-      else if (tag === 'SUP') out += wrap('^');
-      else if (tag === 'A') {
-        const href = n.getAttribute('data-lmd-href') || n.getAttribute('href') || ''; const text = n.textContent;
-        out += (!href || href === text || href === 'mailto:' + text || href === 'http://' + text) ? escText(text) : '[' + inner + '](' + href + ')';
-      } else out += inner;
-    });
-    return out;
-  }
-
-  // Un bloque se edita en el lugar solo si todo lo que tiene adentro se puede volver a escribir igual.
-  function roundTrips(node) {
-    for (const child of node.querySelectorAll('*')) {
-      if (child.closest('.lmd-math') && !child.classList.contains('lmd-math')) continue;
-      if (!INLINE_OK.has(child.tagName)) return false;
-      if (child.classList.contains('footnote-ref') || child.closest('.footnote-ref')) return false;
-      if (child.tagName === 'SPAN' && !child.classList.contains('lmd-math') && child.attributes.length) return false;
-    }
-    return true;
-  }
 
   const PREFIX_RE = /^((?:\s{0,3}>\s?)*\s*(?:(?:[-*+]|\d{1,9}[.)])\s+)?(?:\[[ xX]\]\s+)?)/;
 
@@ -1822,48 +1576,6 @@
   // adentro, y el permiso queda recordado para las próximas veces.
   const hereUrl = () => HERE;
 
-  function handlesDb() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open('lmd-permisos', 1);
-      req.onupgradeneeded = () => req.result.createObjectStore('h', { keyPath: 'key' });
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  }
-  async function handlesAll() {
-    try {
-      const db = await handlesDb();
-      return await new Promise((resolve, reject) => {
-        const q = db.transaction('h').objectStore('h').getAll();
-        q.onsuccess = () => resolve(q.result || []); q.onerror = () => reject(q.error);
-      });
-    } catch (e) { return []; }
-  }
-  async function handlesPut(rec) {
-    try {
-      const db = await handlesDb();
-      await new Promise((resolve, reject) => {
-        const t = db.transaction('h', 'readwrite'); t.objectStore('h').put(rec);
-        t.oncomplete = resolve; t.onerror = () => reject(t.error);
-      });
-      return true;
-    } catch (e) { return false; }
-  }
-
-  async function canWrite(handle, ask) {
-    try {
-      if ((await handle.queryPermission({ mode: 'readwrite' })) === 'granted') return true;
-      if (!ask) return false;
-      return (await handle.requestPermission({ mode: 'readwrite' })) === 'granted';
-    } catch (e) { return false; }
-  }
-
-  async function walk(dir, parts) {
-    let cur = dir;
-    for (let k = 0; k < parts.length - 1; k++) cur = await cur.getDirectoryHandle(parts[k]);
-    return cur.getFileHandle(parts[parts.length - 1]);
-  }
-
   // Busca un permiso ya dado que sirva para este archivo: el del archivo mismo o el de una carpeta que lo contenga.
   async function storedHandle(ask) {
     if (APP) {
@@ -1980,171 +1692,20 @@
     }
   }
 
-  // ---------- Pantalla de inicio de la app ----------
-  const rootsAll = async () => (await handlesAll()).filter((r) => r.root).sort((a, b) => (b.at || 0) - (a.at || 0));
-
-  function themeOnly() {
-    const root = document.documentElement;
-    const dark = isDark();
-    root.classList.add('lmd-root');
-    root.classList.toggle('lmd-dark', dark);
-    root.classList.toggle('lmd-light', !dark);
-    applyAccent(root, dark);
-  }
-
-  // Primer Markdown de una carpeta: el README o el índice si hay, si no el primero por nombre.
-  async function firstMarkdown(root) {
-    const queue = [{ h: root, path: '', depth: 0 }];
-    const byName = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-    while (queue.length) {
-      const d = queue.shift();
-      const files = []; const dirs = [];
-      for await (const [name, h] of d.h.entries()) {
-        if (name.startsWith('.')) continue;
-        if (h.kind === 'file') { if (MD_RE.test(name)) files.push(name); }
-        else if (d.depth < 3 && !SKIP_DIRS.test(name)) dirs.push({ name, h });
-      }
-      if (files.length) {
-        files.sort(byName);
-        return d.path + encodeURIComponent(files.find((n) => /^(readme|index|leeme)\./i.test(n)) || files[0]);
-      }
-      dirs.sort((a, b) => byName(a.name, b.name)).forEach((x) => queue.push({ h: x.h, path: d.path + encodeURIComponent(x.name) + '/', depth: d.depth + 1 }));
-    }
-    return null;
-  }
-
-  async function openPicked(handle, say) {
-    let rec = null;
-    for (const r of await rootsAll()) {
-      try { if (await r.handle.isSameEntry(handle)) { rec = r; break; } } catch (e) { /* permiso vencido */ }
-    }
-    if (!rec) { const id = Math.random().toString(36).slice(2, 10); rec = { key: 'root:' + id, root: true, id }; }
-    rec.kind = handle.kind === 'directory' ? 'dir' : 'file';
-    rec.name = handle.name; rec.handle = handle; rec.at = Date.now();
-    let path = encodeURIComponent(handle.name);
-    if (rec.kind === 'dir') {
-      path = await firstMarkdown(handle);
-      if (!path) { say(T('Esa carpeta no tiene archivos Markdown.')); return; }
-    } else if (!MD_RE.test(handle.name) && !/\.txt$/i.test(handle.name)) { say(T('Ese archivo no es Markdown.')); return; }
-    rec.last = rec.id + '/' + path;
-    await handlesPut(rec);
-    location.href = APP_URL + '?f=' + encodeURIComponent(rec.last);
-  }
-
-  async function home(note) {
-    themeOnly();
-    document.title = 'MD Tools';
-    document.body.textContent = '';
-    const box = el('main', { class: 'lmd-home' });
-    box.innerHTML =
-      '<div class="lmd-home-card">' +
-        '<img class="lmd-home-logo" src="' + chrome.runtime.getURL('icons/icon128.png') + '" alt="">' +
-        '<h1>MD Tools</h1>' +
-        '<p class="lmd-home-sub">' + T('Abrí un archivo Markdown o una carpeta para leerlo y editarlo acá mismo.') + '</p>' +
-        '<div class="lmd-home-actions">' +
-          '<button type="button" class="lmd-btn lmd-btn-fill" data-home="file">' + ICON.file + '<span>' + T('Abrir archivo') + '</span></button>' +
-          '<button type="button" class="lmd-btn" data-home="dir">' + ICON.folder + '<span>' + T('Abrir carpeta') + '</span></button>' +
-        '</div>' +
-        '<p class="lmd-home-hint">' + T('También podés arrastrar un archivo o una carpeta a esta ventana.') + '</p>' +
-        '<p class="lmd-home-msg" role="status" hidden></p>' +
-        '<div class="lmd-home-recent" hidden><h2>' + T('Recientes') + '</h2><ul></ul></div>' +
-      '</div>' +
-      '<a class="lmd-home-coffee" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">' + ICON.coffee + '<span>' + T(settings.supporter ? 'Gracias por apoyar' : 'Invitame un café') + '</span></a>';
-    document.body.appendChild(box);
-    const msg = box.querySelector('.lmd-home-msg');
-    const say = (text) => { msg.hidden = !text; msg.textContent = text || ''; };
-    if (note) say(note);
-
-    const recent = box.querySelector('.lmd-home-recent');
-    const paint = async () => {
-      const recs = (await rootsAll()).slice(0, 8);
-      recent.hidden = !recs.length;
-      const ul = recent.querySelector('ul'); ul.textContent = '';
-      recs.forEach((r) => {
-        const li = el('li');
-        const go = el('a', { class: 'lmd-home-item', href: APP_URL + '?f=' + encodeURIComponent(r.last || r.id + '/') });
-        const lastName = decodeURIComponent((r.last || '').split('/').slice(1).join('/'));
-        go.innerHTML = '<span class="lmd-node-ico">' + (r.kind === 'dir' ? ICON.folder : ICON.md) + '</span><span class="lmd-home-name"></span><span class="lmd-home-path"></span>';
-        go.querySelector('.lmd-home-name').textContent = r.name;
-        go.querySelector('.lmd-home-path').textContent = r.kind === 'dir' ? lastName : '';
-        const del = el('button', { type: 'button', class: 'lmd-home-del', title: T('Quitar de la lista') }, ICON.close);
-        del.addEventListener('click', async () => {
-          try {
-            const db = await handlesDb();
-            await new Promise((resolve) => { const t = db.transaction('h', 'readwrite'); t.objectStore('h').delete(r.key); t.oncomplete = resolve; t.onerror = resolve; });
-          } catch (e) { /* queda en la lista */ }
-          paint();
-        });
-        li.append(go, del); ul.appendChild(li);
-      });
-    };
-    paint();
-
-    box.addEventListener('click', async (e) => {
-      const b = e.target.closest('[data-home]'); if (!b) return;
-      say('');
-      try {
-        if (b.dataset.home === 'dir') await openPicked(await window.showDirectoryPicker({ id: 'lmd-abrir-carpeta', mode: 'readwrite' }), say);
-        else {
-          const picked = await window.showOpenFilePicker({ id: 'lmd-abrir', multiple: false,
-            types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.mkd', '.mdown'] } }] });
-          await openPicked(picked[0], say);
-        }
-      } catch (err) {
-        if (!(err && err.name === 'AbortError')) say(T('No se pudo abrir. Probá de nuevo.'));
-      }
-    });
-    // Soltar un archivo o una carpeta: se toma su permiso en vez de dejar que Chrome navegue.
-    window.addEventListener('dragover', (e) => { e.preventDefault(); box.classList.add('lmd-drop'); });
-    window.addEventListener('dragleave', (e) => { if (!e.relatedTarget) box.classList.remove('lmd-drop'); });
-    window.addEventListener('drop', async (e) => {
-      e.preventDefault(); box.classList.remove('lmd-drop');
-      const item = Array.from(e.dataTransfer.items || []).find((i) => i.kind === 'file');
-      if (!item || !item.getAsFileSystemHandle) return;
-      try { await openPicked(await item.getAsFileSystemHandle(), say); } catch (err) { say(T('No se pudo abrir. Probá de nuevo.')); }
-    });
-  }
-
-  // Al volver otro día Chrome pide confirmar el acceso, y eso necesita un clic.
-  function gate(rec, mode) {
-    return new Promise((resolve) => {
-      themeOnly();
-      document.title = 'MD Tools';
-      document.body.textContent = '';
-      const box = el('main', { class: 'lmd-home' });
-      box.innerHTML =
-        '<div class="lmd-home-card">' +
-          '<img class="lmd-home-logo" src="' + chrome.runtime.getURL('icons/icon128.png') + '" alt="">' +
-          '<h1></h1>' +
-          '<p class="lmd-home-sub">' + T('Chrome pide que confirmes el acceso antes de seguir.') + '</p>' +
-          '<div class="lmd-home-actions">' +
-            '<button type="button" class="lmd-btn lmd-btn-fill" data-gate="ok"><span>' + T('Continuar') + '</span></button>' +
-            '<button type="button" class="lmd-btn" data-gate="no"><span>' + T('Volver al inicio') + '</span></button>' +
-          '</div>' +
-        '</div>';
-      box.querySelector('h1').textContent = rec.name;
-      document.body.appendChild(box);
-      box.addEventListener('click', async (e) => {
-        const b = e.target.closest('[data-gate]'); if (!b) return;
-        if (b.dataset.gate === 'no') return resolve(false);
-        try { if ((await rec.handle.requestPermission({ mode })) === 'granted') resolve(true); } catch (err) { resolve(false); }
-      });
-    });
-  }
-
+  // ---------- Arranque de la página propia ----------
   async function appBoot() {
     const f = new URLSearchParams(location.search).get('f');
-    if (!f) { home(); return false; }
+    if (!f) { LMD.home.show(homeCtx()); return false; }
     const id = f.split('/')[0];
     const rec = (await handlesAll()).find((r) => r.root && r.id === id);
-    if (!rec) { home(T('Ese acceso ya no está guardado. Abrí el archivo o la carpeta de nuevo.')); return false; }
+    if (!rec) { LMD.home.show(homeCtx(), T('Ese acceso ya no está guardado. Abrí el archivo o la carpeta de nuevo.')); return false; }
     const mode = rec.kind === 'dir' ? 'readwrite' : 'read';
     let ok = false;
     try { ok = (await rec.handle.queryPermission({ mode })) === 'granted'; } catch (e) { /* se pide abajo */ }
-    if (!ok && !(await gate(rec, mode))) { home(); return false; }
+    if (!ok && !(await LMD.home.gate(homeCtx(), rec, mode))) { LMD.home.show(homeCtx()); return false; }
     appRoot = rec;
     const text = await vText(HERE);
-    if (text == null) { home(T('No se encontró "{a}".', { a: DOC_NAME })); return false; }
+    if (text == null) { LMD.home.show(homeCtx(), T('No se encontró "{a}".', { a: DOC_NAME })); return false; }
     raw = text; diskText = text;
     rec.last = f; rec.at = Date.now(); handlesPut(rec);
     return true;
