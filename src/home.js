@@ -64,9 +64,10 @@
       '<div class="lmd-home-card">' +
         '<img class="lmd-home-logo" src="' + chrome.runtime.getURL('icons/icon128.png') + '" alt="">' +
         '<h1>MD Tools</h1>' +
-        '<p class="lmd-home-sub">' + T('Abrí un archivo Markdown o una carpeta para leerlo y editarlo acá mismo.') + '</p>' +
+        '<p class="lmd-home-sub">' + T('Empezá una nota nueva, o abrí un archivo o una carpeta para leerlo y editarlo acá mismo.') + '</p>' +
         '<div class="lmd-home-actions">' +
-          '<button type="button" class="lmd-btn lmd-btn-fill" data-home="file">' + ICON.file + '<span>' + T('Abrir archivo') + '</span></button>' +
+          '<button type="button" class="lmd-btn lmd-btn-fill" data-home="new">' + ICON.plus + '<span>' + T('Nuevo archivo') + '</span></button>' +
+          '<button type="button" class="lmd-btn" data-home="file">' + ICON.file + '<span>' + T('Abrir archivo') + '</span></button>' +
           (window.showDirectoryPicker ? '<button type="button" class="lmd-btn" data-home="dir">' + ICON.folder + '<span>' + T('Abrir carpeta') + '</span></button>' : '') +
         '</div>' +
         '<p class="lmd-home-hint">' + (canPick()
@@ -106,6 +107,7 @@
     box.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-home]'); if (!b) return;
       say('');
+      if (b.dataset.home === 'new') { create(); return; }
       try {
         if (!canPick()) {
           const input = el('input', { type: 'file', accept: '.md,.markdown,.mdx,.mkd,.mdown,.txt' });
@@ -162,7 +164,17 @@
     });
   }
 
+  // Archivo nuevo: nace en memoria, listo para escribir, y se elige dónde guardarlo al primer Ctrl+S.
+  function create() {
+    const d = new Date(); const p = (n) => String(n).padStart(2, '0');
+    const name = T('nota') + '-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + '.md';
+    try { sessionStorage.setItem('mdt-mem', JSON.stringify({ name, text: '', disk: '' })); } catch (e) { /* sin sesión no hay dónde guardarlo */ }
+    location.replace(ctx.APP_URL + '?f=' + encodeURIComponent('mem/' + encodeURIComponent(name)) + '&edit=1');
+  }
+
   LMD.home = {
+    create: (c) => { ctx = c; create(); },
+    adopt: (c, handle) => { ctx = c; return openPicked(handle, () => {}); },
     show: (c, note) => { ctx = c; return home(note); },
     gate: (c, rec, mode) => { ctx = c; return gate(rec, mode); },
   };

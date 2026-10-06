@@ -13,7 +13,7 @@ A Chrome extension to read and edit Markdown files in the browser, local (`file:
 ## What it does
 
 - **Edit in place**: switch to Edit mode and click any paragraph, heading, list item or table cell to change it. Bold, italic, strikethrough, code and links from a small toolbar or the usual shortcuts; add and remove table rows and columns; tick task boxes. The Markdown is rewritten behind the scenes, so you never see the syntax. Save with Ctrl+S, or turn on auto-save.
-- **Write new content**: Enter closes a block and opens the next one, or adds a list item. A line that starts with `#`, `-`, `1.`, `>` or `[]` turns into a heading, a list, a quote or a task as you type. Right-click (or the + button, or `/` on an empty line) inserts a paragraph, heading, list, table, code block, diagram, formula, callout, image or divider, and turns, moves, duplicates or deletes the block you clicked. Ctrl+Z undoes block operations. Shift+right-click keeps the browser menu, for spelling.
+- **Write new content**: Enter closes a block and opens the next one, or adds a list item. A line that starts with `#`, `-`, `1.`, `>` or `[]` turns into a heading, a list, a quote or a task as you type. Right-click (or the + button, or `/` on an empty line) inserts a paragraph, heading, list, table, code block, diagram, formula, callout, image or divider, and turns, moves, duplicates or deletes the block you clicked. Ctrl+Z undoes block operations and Ctrl+Y redoes them. Shift+right-click keeps the browser menu, for spelling.
 - **Diagram editor**: in Edit mode, click a Mermaid or Graphviz diagram to open it side by side with a live preview. Nine Mermaid templates to start from (flowchart, sequence, states, classes, data, Gantt, pie, mind map, timeline); a syntax error shows under the last drawing that worked. Hovering a diagram offers copy code, download SVG and enlarge.
 - **Find and replace** in the document while editing, one match or all.
 - **Focus mode and typewriter mode** (Settings → Editing): dim everything but the block you are writing, and keep the current line at mid height.
@@ -56,7 +56,7 @@ It also works in other Chromium browsers (Edge, Brave, Arc) through the same ste
 
 ## Opening files from MD Tools itself
 
-Click the extension icon and choose **Open a file or a folder**. That opens the MD Tools page, where you pick a file or a folder (or drag one in) and read and edit it right there. Because you already chose the folder, saving needs no extra permission step, and the page remembers what you opened recently.
+Click the extension icon and choose **New** or **Open**. **New** starts an empty note ready to type; the first Ctrl+S asks where to save it. **Open** takes you to the MD Tools page, where you pick a file or a folder (or drag one in) and read and edit it right there. Because you already chose the folder, saving needs no extra permission step, and the page remembers what you opened recently.
 
 Opening a `.md` directly in the browser keeps working as before. The folder tab of the sidebar has a button that takes you to this page.
 
@@ -68,7 +68,7 @@ It is published at [mr-axel.github.io/md-tools](https://mr-axel.github.io/md-too
 
 ## Updating
 
-Chrome cannot update an extension loaded from a folder, so MD Tools checks this repository once a day (or once a week, or never: Settings → Updates) and shows a notice in the sidebar when there is a newer version. From there: download the ZIP, replace the extension folder with its contents and click **Apply**, which reloads the extension. If you cloned the repository, `git pull` and **Apply** is enough.
+Chrome cannot update an extension loaded from a folder, so MD Tools checks this repository once a day (or once a week, or never: Settings → Updates) and shows a notice in the sidebar, and in the popup of the extension icon, when there is a newer version. From there: download the ZIP, replace the extension folder with its contents and click **Apply**, which reloads the extension. If you cloned the repository, `git pull` and **Apply** is enough.
 
 ## Shortcuts
 

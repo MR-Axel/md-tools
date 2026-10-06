@@ -68,7 +68,7 @@ try {
   console.log('Página propia de MD Tools');
   const app = await ctx.newPage(); watch(app);
   await app.goto(`chrome-extension://${id}/src/app.html`); await app.waitForSelector('.lmd-home');
-  check('pantalla de inicio', (await app.locator('[data-home]').count()) === 2);
+  check('pantalla de inicio: nuevo, abrir archivo y abrir carpeta', (await app.locator('[data-home]').count()) === 3);
   // Carpeta de prueba en el almacenamiento privado del origen; el selector de Windows no se puede automatizar.
   await app.evaluate(async () => {
     const base = await navigator.storage.getDirectory();
@@ -111,7 +111,26 @@ try {
 
   const popup = await ctx.newPage(); watch(popup);
   await popup.goto(`chrome-extension://${id}/src/popup.html`); await popup.waitForTimeout(600);
-  check('popup', (await popup.locator('#open-app').count()) === 1 && (await popup.locator('[data-key]').count()) === 1);
+  check('popup: nuevo, abrir y sin interruptor', (await popup.locator('#new-file').count()) === 1 && (await popup.locator('#open-app').count()) === 1 && (await popup.locator('input').count()) === 0);
+  await popup.waitForSelector('#ver:not([hidden])', { timeout: 15000 }).catch(() => {});
+  check('popup: muestra la versión instalada', /\d+\.\d+\.\d+/.test(await popup.textContent('#ver-num')), await popup.textContent('#ver-num'));
+  await popup.close();
+
+  console.log('Archivo nuevo');
+  const fresh = await ctx.newPage(); watch(fresh);
+  await fresh.goto(`chrome-extension://${id}/src/app.html?new=1`); await fresh.waitForSelector('.lmd-draft');
+  check('arranca en edición con el cursor listo', /^nota-\d{8}-\d{4}\.md$/.test(await fresh.title()) && await fresh.evaluate(() => document.activeElement.classList.contains('lmd-draft')), await fresh.title());
+  await fresh.keyboard.type('# Idea'); await fresh.keyboard.press('Enter'); await fresh.keyboard.type('Primera línea.'); await fresh.click('.lmd-topbar .lmd-status', { force: true }); await fresh.waitForTimeout(600);
+  await fresh.reload(); await fresh.waitForSelector('.markdown-body h1');
+  check('recargar la pestaña no pierde la nota', (await fresh.textContent('.markdown-body h1')).startsWith('Idea'));
+  await fresh.evaluate(async () => {
+    const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('nuevas', { create: true });
+    window.showSaveFilePicker = async (o) => dir.getFileHandle(o.suggestedName, { create: true });
+  });
+  await Promise.all([fresh.waitForNavigation(), fresh.keyboard.press('Control+s')]); await fresh.waitForSelector('.markdown-body h1');
+  const kept = await fresh.evaluate(async () => { const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('nuevas'); for await (const [, h] of dir.entries()) return (await h.getFile()).text(); });
+  check('guardar elige dónde y lo deja como archivo común', kept.trim() === '# Idea\n\nPrimera línea.' && !/f=mem/.test(fresh.url()), [kept, fresh.url().split('?')[1]]);
+  await fresh.close();
 
   console.log('Versión web, sin la extensión');
   const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json', '.md': 'text/markdown', '.woff2': 'font/woff2' };
@@ -125,7 +144,7 @@ try {
   const origin = 'http://127.0.0.1:' + server.address().port;
   const web = await ctx.newPage(); watch(web);
   await web.goto(origin + '/'); await web.waitForSelector('.lmd-home');
-  check('la raíz lleva a la pantalla de inicio', web.url().endsWith('/src/app.html') && (await web.locator('[data-home]').count()) === 2, web.url());
+  check('la raíz lleva a la pantalla de inicio', web.url().endsWith('/src/app.html') && (await web.locator('[data-home]').count()) === 3, web.url());
   await web.evaluate(async () => {
     const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('web', { create: true });
     const h = await dir.getFileHandle('nota.md', { create: true }); const w = await h.createWritable();
@@ -148,9 +167,9 @@ try {
 
   // Navegador sin acceso a archivos (Firefox, Safari): se abre por selector común y se guarda descargando.
   const plain = await ctx.newPage(); watch(plain);
-  await plain.addInitScript(() => { delete window.showOpenFilePicker; delete window.showDirectoryPicker; Object.defineProperty(window, 'showOpenFilePicker', { value: undefined }); Object.defineProperty(window, 'showDirectoryPicker', { value: undefined }); });
+  await plain.addInitScript(() => { delete window.showOpenFilePicker; delete window.showDirectoryPicker; Object.defineProperty(window, 'showOpenFilePicker', { value: undefined }); Object.defineProperty(window, 'showDirectoryPicker', { value: undefined }); Object.defineProperty(window, 'showSaveFilePicker', { value: undefined }); });
   await plain.goto(origin + '/src/app.html'); await plain.waitForSelector('.lmd-home');
-  check('sin acceso a archivos solo ofrece abrir un archivo', (await plain.locator('[data-home]').count()) === 1);
+  check('sin acceso a archivos no ofrece abrir carpeta', (await plain.locator('[data-home]').count()) === 2 && (await plain.locator('[data-home=dir]').count()) === 0);
   const [chooser] = await Promise.all([plain.waitForEvent('filechooser'), plain.click('[data-home=file]')]);
   await Promise.all([plain.waitForNavigation(), chooser.setFiles(path.join(root, 'ejemplo', 'demo.md'))]);
   await plain.waitForSelector('.markdown-body h1');

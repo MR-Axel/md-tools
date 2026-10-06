@@ -13,7 +13,7 @@ Extensión de Chrome para leer y editar archivos Markdown en el navegador, local
 ## Qué hace
 
 - **Edición en el lugar**: pasás a modo Edición y hacés clic en cualquier párrafo, título, ítem o celda para cambiarlo. Negrita, cursiva, tachado, código y enlaces desde una barrita o con los atajos de siempre; agregar y quitar filas y columnas; tildar tareas. El Markdown se reescribe por detrás, sin que veas la sintaxis. Se guarda con Ctrl+S, o con guardado automático.
-- **Escribir contenido nuevo**: Enter cierra un bloque y abre el siguiente, o agrega un ítem a la lista. Una línea que empieza con `#`, `-`, `1.`, `>` o `[]` se convierte en título, lista, cita o tarea mientras escribís. El clic derecho (o el botón +, o `/` en una línea vacía) inserta párrafo, título, lista, tabla, bloque de código, diagrama, fórmula, aviso, imagen o separador, y convierte, mueve, duplica o elimina el bloque donde hiciste clic. Ctrl+Z deshace las operaciones de bloques. Shift + clic derecho deja el menú del navegador, para la ortografía.
+- **Escribir contenido nuevo**: Enter cierra un bloque y abre el siguiente, o agrega un ítem a la lista. Una línea que empieza con `#`, `-`, `1.`, `>` o `[]` se convierte en título, lista, cita o tarea mientras escribís. El clic derecho (o el botón +, o `/` en una línea vacía) inserta párrafo, título, lista, tabla, bloque de código, diagrama, fórmula, aviso, imagen o separador, y convierte, mueve, duplica o elimina el bloque donde hiciste clic. Ctrl+Z deshace las operaciones de bloques y Ctrl+Y las rehace. Shift + clic derecho deja el menú del navegador, para la ortografía.
 - **Editor de diagramas**: en modo Editar, un clic sobre un diagrama Mermaid o Graphviz lo abre con el código a un lado y la vista previa en vivo al otro. Nueve plantillas de Mermaid para arrancar (flujo, secuencia, estados, clases, datos, Gantt, torta, mapa mental, línea de tiempo); un error de sintaxis se muestra debajo del último dibujo que salió bien. Al pasar el mouse por un diagrama: copiar el código, bajar el SVG y ampliarlo.
 - **Buscar y reemplazar** en el documento mientras editás, de a una coincidencia o todas.
 - **Modo foco y máquina de escribir** (Ajustes → Edición): atenúa todo menos el bloque que estás escribiendo, y mantiene el renglón actual a media altura.
@@ -48,7 +48,7 @@ Después alcanza con arrastrar un `.md` al navegador.
 
 ## Abrir archivos desde MD Tools
 
-Hacé clic en el ícono de la extensión y elegí **Abrir un archivo o una carpeta**. Se abre la página de MD Tools, donde elegís un archivo o una carpeta (o los arrastrás) y los leés y editás ahí mismo. Como la carpeta ya la elegiste vos, guardar no pide ningún permiso más, y la página recuerda lo último que abriste.
+Hacé clic en el ícono de la extensión y elegí **Nuevo** o **Abrir**. **Nuevo** arranca una nota vacía lista para escribir; el primer Ctrl+S pregunta dónde guardarla. **Abrir** lleva a la página de MD Tools, donde elegís un archivo o una carpeta (o los arrastrás) y los leés y editás ahí mismo. Como la carpeta ya la elegiste vos, guardar no pide ningún permiso más, y la página recuerda lo último que abriste.
 
 Abrir un `.md` directo en el navegador sigue funcionando igual que antes. La pestaña Carpeta de la barra lateral tiene un botón que lleva a esta página.
 
@@ -60,7 +60,7 @@ Está publicada en [mr-axel.github.io/md-tools](https://mr-axel.github.io/md-too
 
 ## Actualizar
 
-Chrome no puede actualizar una extensión cargada desde una carpeta, así que MD Tools mira este repositorio una vez por día (o por semana, o nunca: Ajustes → Actualizaciones) y avisa en la barra lateral cuando hay una versión más nueva. Desde ahí: descargás el ZIP, reemplazás la carpeta de la extensión con su contenido y tocás **Aplicar**, que recarga la extensión. Si clonaste el repositorio, alcanza con `git pull` y **Aplicar**.
+Chrome no puede actualizar una extensión cargada desde una carpeta, así que MD Tools mira este repositorio una vez por día (o por semana, o nunca: Ajustes → Actualizaciones) y avisa en la barra lateral, y en el popup del ícono de la extensión, cuando hay una versión más nueva. Desde ahí: descargás el ZIP, reemplazás la carpeta de la extensión con su contenido y tocás **Aplicar**, que recarga la extensión. Si clonaste el repositorio, alcanza con `git pull` y **Aplicar**.
 
 Es el único pedido de red que hace la extensión: lee el número de versión publicado y no manda ningún dato.
 

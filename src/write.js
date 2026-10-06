@@ -335,9 +335,14 @@
       if (e.key === 'Escape') closeMenu();
       const t = e.target;
       const typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
-      if (core.editMode && !typing && (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+      const mod = e.ctrlKey || e.metaKey; const key = e.key.toLowerCase();
+      if (!core.editMode || typing || !mod) return;
+      if (key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        core.flash(core.undo() ? T('Cambio deshecho') : T('No hay más cambios para deshacer'));
+        core.flash(core.undo() ? T('Cambio deshecho. Ctrl+Y lo rehace') : T('No hay más cambios para deshacer'));
+      } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
+        e.preventDefault();
+        core.flash(core.redo() ? T('Cambio rehecho') : T('No hay cambios para rehacer'));
       }
     });
     window.addEventListener('scroll', closeMenu, { passive: true });

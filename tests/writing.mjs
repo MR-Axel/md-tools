@@ -44,6 +44,9 @@ await app.locator('.lmd-article h3').click({ button: 'right' }); await app.click
 o.borrado = !/### Sub/.test(await src());
 await app.keyboard.press('Control+z'); await app.waitForTimeout(400);
 o.deshecho = (await src()) === before;
+await app.keyboard.press('Control+y'); await app.waitForTimeout(400);
+o.rehecho = !/### Sub/.test(await src());
+await app.keyboard.press('Control+z'); await app.waitForTimeout(400);
 await app.locator('.lmd-add').click(); await app.keyboard.type('/'); await app.waitForSelector('.lmd-menu'); await app.click('.lmd-menu [data-ins=hr]'); await app.waitForTimeout(400);
 o.final = (await src()).split('\n').slice(-4);
 await app.keyboard.press('Control+s'); await app.waitForTimeout(900);
@@ -55,7 +58,7 @@ const checks = [
   ['menú de clic derecho', J(o.menu) === J(['Insertar debajo', 'Convertir en', 'Este bloque'])],
   ['insertar una tabla y escribir en ella', J(o.tabla) === J(['# Doc', '', '| Nombre | Columna 2 |', '| --- | --- |', '|  |  |', '', 'Primer párrafo.']), o.tabla],
   ['convertir y mover un bloque', J(o.mover) === J(['### Sub', 'Segundo párrafo']), o.mover],
-  ['eliminar un bloque y deshacer', o.borrado && o.deshecho],
+  ['eliminar un bloque, deshacer y rehacer', o.borrado && o.deshecho && o.rehecho],
   ['la barra / inserta al final', J(o.final) === J(['párrafo.', '', '---', '']), o.final],
   ['lo escrito se guarda igual que se ve', o.guardado],
   ['sin errores de JavaScript', errors.length === 0, errors],

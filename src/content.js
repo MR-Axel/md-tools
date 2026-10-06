@@ -1356,14 +1356,23 @@
   // así el foco puede pasar a otro bloque sin perder el cursor.
   // Deshacer trabaja sobre el fuente completo: alcanza para volver atrás cualquier operación de bloques.
   const undoStack = [];
+  const redoStack = [];
   function pushUndo() {
     if (undoStack[undoStack.length - 1] === raw) return;
     undoStack.push(raw);
     if (undoStack.length > 100) undoStack.shift();
+    redoStack.length = 0; // un cambio nuevo descarta lo que se podía rehacer
   }
   function undo() {
     if (!undoStack.length) return false;
+    redoStack.push(raw);
     raw = undoStack.pop(); syncSource(); markDirty(); render();
+    return true;
+  }
+  function redo() {
+    if (!redoStack.length) return false;
+    undoStack.push(raw);
+    raw = redoStack.pop(); syncSource(); markDirty(); render();
     return true;
   }
 
@@ -1421,6 +1430,8 @@
 
   function markDirty() {
     dirty = raw !== diskText;
+    // Un documento en memoria se va guardando en la sesión, para que recargar la pestaña no lo pierda.
+    if (appRoot && appRoot.id === 'mem') { try { sessionStorage.setItem('mdt-mem', JSON.stringify({ name: DOC_NAME, text: raw, disk: diskText })); } catch (e) { /* demasiado grande */ } }
     needsRender = true;
     updateSaveState();
     clearTimeout(autosaveTimer);
@@ -1692,7 +1703,7 @@
     dirHandle: async (dirUrl) => { let dir = appRoot.handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, HERE, docName: DOC_NAME, ensure, isDark,
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
-    rangeOf, render, softRender, flash, insertLines, spliceLines, commitBlock, undo, editCode, vFile, toHref,
+    rangeOf, render, softRender, flash, insertLines, spliceLines, commitBlock, undo, redo, editCode, vFile, toHref,
     setRaw(text) { pushUndo(); raw = text; syncSource(); markDirty(); render(); },
   };
 
@@ -1793,6 +1804,16 @@
       if (!fileHandle) fileHandle = await storedHandle(interactive);
       if (!fileHandle) {
         if (!interactive) return false;
+        if (appRoot && appRoot.id === 'mem' && window.showSaveFilePicker) {
+          // Archivo nuevo: se elige dónde guardarlo y desde ahí pasa a ser un archivo común.
+          const target = await window.showSaveFilePicker({ id: 'lmd-nuevo', suggestedName: DOC_NAME,
+            types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md'] } }] });
+          const w = await target.createWritable(); await w.write(raw); await w.close();
+          diskText = raw; dirty = false; updateSaveState();
+          try { sessionStorage.removeItem('mdt-mem'); } catch (e) { /* sin sesión */ }
+          await LMD.home.adopt(homeCtx(), target);
+          return true;
+        }
         if (!window.showOpenFilePicker) {
           const name = DOC_NAME || 'documento.md';
           const a = el('a', { download: name });
@@ -1824,7 +1845,9 @@
 
   // ---------- Arranque de la página propia ----------
   async function appBoot() {
-    const f = new URLSearchParams(location.search).get('f');
+    const params = new URLSearchParams(location.search);
+    if (params.has('new')) { LMD.home.create(homeCtx()); return false; }
+    const f = params.get('f');
     if (!f) { LMD.home.show(homeCtx()); return false; }
     const id = f.split('/')[0];
     if (id === 'mem') {
@@ -1833,7 +1856,9 @@
       try { mem = JSON.parse(sessionStorage.getItem('mdt-mem') || 'null'); } catch (e) { /* sesión vacía */ }
       if (!mem || mem.name !== DOC_NAME) { LMD.home.show(homeCtx()); return false; }
       appRoot = { id, kind: 'file', name: mem.name, handle: { kind: 'file', name: mem.name, getFile: async () => ({ text: async () => mem.text, lastModified: 0, size: mem.text.length }) } };
-      raw = mem.text; diskText = mem.text;
+      // disk es lo último que quedó guardado; un archivo nuevo todavía no tiene nada en el disco.
+      raw = mem.text; diskText = mem.disk != null ? mem.disk : mem.text;
+      dirty = raw !== diskText;
       return true;
     }
     const rec = (await handlesAll()).find((r) => r.root && r.id === id);
@@ -1858,12 +1883,16 @@
     settings = s;
     LMD.setLang(settings.language);
     if (APP) { if (!(await appBoot())) return; }
-    else if (!settings.enabled) return;
     buildUI();
     applySettings();
     render();
     updateSaveState();
     checkUpdate(false);
+    // Un archivo recién creado arranca listo para escribir.
+    if (APP && new URLSearchParams(location.search).has('edit')) {
+      history.replaceState(null, '', location.href.replace(/[?&]edit=1/, ''));
+      setEditMode(true).then(() => { const add = ui.article.querySelector('.lmd-add'); if (add) add.click(); });
+    }
     const fromSearch = /^#lmd-q=([^&]+)(?:&r=(.+))?$/.exec(location.hash);
     if (fromSearch) {
       // Se llegó desde un resultado de búsqueda en la carpeta: se repite la búsqueda acá.
@@ -1886,7 +1915,7 @@
       if (area !== 'local' || !changes.settings) return;
       const prev = settings;
       settings = LMD.merge(changes.settings.newValue);
-      if (settings.enabled !== prev.enabled || settings.language !== prev.language) { location.reload(); return; }
+      if (settings.language !== prev.language) { location.reload(); return; }
       applySettings();
       if (panelStale && !ui.panel.hidden) { panelStale = false; openPanel(); }
       if (RENDER_KEYS.some((k) => JSON.stringify(prev[k]) !== JSON.stringify(settings[k]))) render();
