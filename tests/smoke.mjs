@@ -155,8 +155,11 @@ try {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const origin = 'http://127.0.0.1:' + server.address().port;
   const web = await ctx.newPage(); watch(web);
-  await web.goto(origin + '/'); await web.waitForSelector('.lmd-home');
-  check('la raíz lleva a la pantalla de inicio', web.url().endsWith('/src/app.html') && (await web.locator('.lmd-home-actions [data-home]').count()) === 3, web.url());
+  await web.goto(origin + '/'); await web.waitForSelector('h1');
+  check('la raíz es la página de presentación y lleva a la app', (await web.locator('a.btn.fill[href="src/app.html"]').count()) >= 1 && (await web.locator('img.shot').count()) >= 4);
+  await web.goto(origin + '/privacy.html'); check('página de privacidad', /Privac/.test(await web.textContent('h1:visible')));
+  await web.goto(origin + '/src/app.html'); await web.waitForSelector('.lmd-home');
+  check('la app web muestra la pantalla de inicio', (await web.locator('.lmd-home-actions [data-home]').count()) === 3);
   await web.evaluate(async () => {
     const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('web', { create: true });
     const h = await dir.getFileHandle('nota.md', { create: true }); const w = await h.createWritable();

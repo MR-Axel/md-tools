@@ -173,6 +173,36 @@
     if (tail) { d.appendChild(tail); caretTo(d, false); }
   }
 
+  // Formato al escribir: al cerrar **negrita**, *cursiva*, `código`, ~~tachado~~ o ==marcado== la sintaxis
+  // desaparece y queda el formato. El guion bajo solo cuenta al principio de una palabra.
+  const INLINE = [
+    [/(\*\*|__)([^*_\s](?:[^*_]*[^*_\s])?)\1$/, 'strong'],
+    [/(?<![\w*_])(\*|_)([^*_\s](?:[^*_]*[^*_\s])?)\1$/, 'em'],
+    [/(`)([^`]+)`$/, 'code'],
+    [/(~~)([^~]+)~~$/, 'del'],
+    [/(==)([^=]+)==$/, 'mark'],
+  ];
+  function inlineShortcut() {
+    const sel = getSelection();
+    if (!sel.rangeCount || !sel.isCollapsed) return;
+    const node = sel.anchorNode;
+    if (!node || node.nodeType !== 3 || (node.parentNode.closest && node.parentNode.closest('code'))) return;
+    const before = node.nodeValue.slice(0, sel.anchorOffset);
+    for (const [re, tag] of INLINE) {
+      const m = re.exec(before);
+      if (!m) continue;
+      const range = document.createRange();
+      range.setStart(node, m.index); range.setEnd(node, sel.anchorOffset);
+      range.deleteContents();
+      const made = document.createElement(tag); made.textContent = m[2];
+      // Un carácter invisible después del formato deja el cursor afuera; no se guarda en el archivo.
+      const after = document.createTextNode('\u200b');
+      range.insertNode(after); range.insertNode(made);
+      sel.collapse(after, 1);
+      return;
+    }
+  }
+
   function onInput(d) {
     if (menu && d.textContent !== '/') closeMenu();
     if (d._li || d.dataset.kind !== 'p') return;
@@ -329,7 +359,10 @@
       const block = e.target === article ? blockNear(e.clientY) : topBlock(e.target);
       openMenu(e.clientX, e.clientY, block && block.isConnected ? block : blockNear(e.clientY));
     });
-    article.addEventListener('input', (e) => { const d = e.target.closest && e.target.closest('.lmd-draft'); if (d) onInput(d); });
+    article.addEventListener('input', (e) => {
+      if (e.inputType === 'insertText' && e.target.closest && e.target.closest('.lmd-editable')) inlineShortcut();
+      const d = e.target.closest && e.target.closest('.lmd-draft'); if (d) onInput(d);
+    });
     article.addEventListener('click', (e) => {
       if (e.target.closest('.lmd-add')) { const all = Array.from(article.children).filter((n) => !n.classList.contains('lmd-add')); openDraft(all[all.length - 1] || null, 'p', true); }
     });

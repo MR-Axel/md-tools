@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MD Tools: privacy</title>
+<meta name="description" content="MD Tools collects no data. Files are read in your browser and never uploaded.">
+<link rel="icon" href="icons/icon32.png">
+<style>
+  @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
+  :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --line: #dedbd2; --accent: #4d7c0f; --on: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121418; --soft: #1a1d23; --fg: #e6e8ec; --muted: #a0a7b4; --line: #2a2e37; --accent: #bef264; --on: #14161a; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.65 "MDT Inter", -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  html[data-lang="en"] [lang="es"], html[data-lang="es"] [lang="en"] { display: none !important; }
+  main { width: min(720px, 100% - 40px); margin: 0 auto; padding: 46px 0 80px; }
+  .top { display: flex; align-items: center; gap: 14px; margin-bottom: 40px; }
+  .top a { margin-right: auto; color: var(--muted); text-decoration: none; font-weight: 600; }
+  .lang { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); }
+  .lang button { height: 26px; padding: 0 11px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  html[data-lang="en"] .lang [data-set="en"], html[data-lang="es"] .lang [data-set="es"] { background: var(--accent); color: var(--on); }
+  h1 { margin: 0 0 6px; font-size: 38px; letter-spacing: -0.03em; }
+  h2 { margin: 34px 0 8px; font-size: 21px; letter-spacing: -0.015em; }
+  p, li { color: var(--muted); }
+  .date { margin: 0 0 26px; font-size: 14px; }
+  a { color: var(--accent); }
+  code { padding: 1px 6px; border-radius: 5px; background: var(--soft); font: 0.88em ui-monospace, Consolas, monospace; color: var(--fg); }
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><a href="./">← MD Tools</a><div class="lang"><button type="button" data-set="en">EN</button><button type="button" data-set="es">ES</button></div></div>
+
+  <div lang="en">
+    <h1>Privacy</h1>
+    <p class="date">Last updated: October 6, 2026</p>
+    <p>MD Tools collects no data. It has no account, no analytics and no server of its own.</p>
+    <h2>Your files</h2>
+    <p>The files you open are read by your browser, on your machine. They are never uploaded. When you save, the browser writes to the file or folder you picked.</p>
+    <h2>What is stored, and where</h2>
+    <p>Settings, reading positions and the list of recently opened folders are stored in your browser, on your device. Clearing the site or extension data removes them.</p>
+    <h2>Network requests</h2>
+    <ul>
+      <li>The extension installed from its ZIP checks once a day the version number published on GitHub, to tell you when there is an update. It sends no data, and you can make it weekly or turn it off in Settings. The Chrome Web Store version does not make this request.</li>
+      <li>Images that a document links from the web are loaded from where the document points.</li>
+      <li>The web version is a static page hosted on GitHub Pages. GitHub, as the host, may log the address of the visitor like any web server.</li>
+    </ul>
+    <h2>Permissions of the extension</h2>
+    <ul>
+      <li><code>file:///*</code> and all sites: to render a Markdown file wherever it lives, local or served by a website. The extension only acts on addresses that end in a Markdown extension.</li>
+      <li><code>storage</code>: to keep your settings in the browser.</li>
+      <li><code>scripting</code>: to load the math and diagram libraries only when a document uses them.</li>
+    </ul>
+    <h2>Questions</h2>
+    <p>Open an issue on <a href="https://github.com/MR-Axel/md-tools/issues">GitHub</a>.</p>
+  </div>
+
+  <div lang="es">
+    <h1>Privacidad</h1>
+    <p class="date">Última actualización: 6 de octubre de 2026</p>
+    <p>MD Tools no junta datos. No tiene cuenta, analítica ni servidor propio.</p>
+    <h2>Tus archivos</h2>
+    <p>Los archivos que abrís los lee tu navegador, en tu máquina. Nunca se suben. Al guardar, el navegador escribe en el archivo o la carpeta que elegiste.</p>
+    <h2>Qué se guarda y dónde</h2>
+    <p>Los ajustes, la posición de lectura y la lista de carpetas recientes se guardan en tu navegador, en tu dispositivo. Si borrás los datos del sitio o de la extensión, se van.</p>
+    <h2>Pedidos de red</h2>
+    <ul>
+      <li>La extensión instalada desde el ZIP mira una vez por día el número de versión publicado en GitHub, para avisarte cuando hay una actualización. No manda ningún dato, y desde Ajustes lo podés pasar a semanal o apagar. La versión de la tienda de Chrome no hace este pedido.</li>
+      <li>Las imágenes que un documento enlaza desde la web se cargan desde donde apunta el documento.</li>
+      <li>La versión web es una página estática alojada en GitHub Pages. GitHub, como alojamiento, puede registrar la dirección de quien la visita, como cualquier servidor web.</li>
+    </ul>
+    <h2>Permisos de la extensión</h2>
+    <ul>
+      <li><code>file:///*</code> y todos los sitios: para mostrar un archivo Markdown esté donde esté, local o servido por un sitio web. La extensión solo actúa sobre direcciones que terminan en una extensión de Markdown.</li>
+      <li><code>storage</code>: para guardar tus ajustes en el navegador.</li>
+      <li><code>scripting</code>: para cargar las librerías de matemática y diagramas solo cuando un documento las usa.</li>
+    </ul>
+    <h2>Consultas</h2>
+    <p>Abrí un issue en <a href="https://github.com/MR-Axel/md-tools/issues">GitHub</a>.</p>
+  </div>
+</main>
+<script src="site.js"></script>
+</body>
+</html>

@@ -30,6 +30,11 @@ await app.locator('.lmd-li-text', { hasText: 'alfa' }).click(); await app.keyboa
 const last = app.locator('.lmd-article p.lmd-editable', { hasText: 'Último párrafo' }); await last.click(); await app.keyboard.press('Home'); for (let i = 0; i < 6; i++) await app.keyboard.press('ArrowRight');
 await app.keyboard.press('Enter'); await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(700);
 o.lista = (await src()).split('\n');
+// formato al escribir
+await app.locator('.lmd-article p.lmd-editable', { hasText: 'Primer' }).click(); await app.keyboard.press('End');
+await app.keyboard.type(' Con **negrita**, *cursiva*, `código` y snake_case_name.'); await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(700);
+o.formato = (await src()).split('\n')[2];
+await app.keyboard.press('Control+z'); await app.waitForTimeout(400);
 // menú: tabla, eliminar, deshacer
 await app.locator('.lmd-article h1').click({ button: 'right' }); await app.waitForSelector('.lmd-menu');
 o.menu = await app.evaluate(() => [...document.querySelectorAll('.lmd-menu-label')].map((n) => n.textContent));
@@ -55,6 +60,7 @@ const J = (v) => JSON.stringify(v);
 const checks = [
   ['Enter crea párrafos, títulos y listas', J(o.escribir) === J(['# Doc', '', 'Primer párrafo.', '', 'Segundo párrafo', '', '## Sub', '', '- uno', '- dos', '', 'fin', '', '- alfa', '- beta', '', 'Último párrafo.', '']), o.escribir],
   ['Enter en un ítem agrega otro y en un párrafo lo parte', J(o.lista.slice(13)) === J(['- alfa', '- alfa bis', '- beta', '', 'Último', '', 'párrafo.', '']), o.lista],
+  ['formato al escribir: negrita, cursiva y código', o.formato === 'Primer párrafo. Con **negrita**, *cursiva*, `código` y snake_case_name.', o.formato],
   ['menú de clic derecho', J(o.menu) === J(['Insertar debajo', 'Convertir en', 'Este bloque'])],
   ['insertar una tabla y escribir en ella', J(o.tabla) === J(['# Doc', '', '| Nombre | Columna 2 |', '| --- | --- |', '|  |  |', '', 'Primer párrafo.']), o.tabla],
   ['convertir y mover un bloque', J(o.mover) === J(['### Sub', 'Segundo párrafo']), o.mover],

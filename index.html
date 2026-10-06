@@ -1,13 +1,174 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-lang="en">
 <head>
 <meta charset="utf-8">
-<title>MD Tools</title>
-<meta name="description" content="Read and edit Markdown files in the browser. Nothing is uploaded: files stay on your machine.">
-<meta http-equiv="refresh" content="0; url=src/app.html">
-<link rel="canonical" href="src/app.html">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MD Tools: read and edit Markdown in the browser</title>
+<meta name="description" content="Open a Markdown file or a whole folder in the browser, with outline, search and editing on the formatted text. Free, open source, nothing is uploaded.">
+<meta property="og:title" content="MD Tools">
+<meta property="og:description" content="Read and edit Markdown in the browser. Free, open source, nothing is uploaded.">
+<meta property="og:image" content="https://mr-axel.github.io/md-tools/docs/store/1-reader.png">
+<meta property="og:type" content="website">
+<link rel="icon" href="icons/icon32.png">
+<style>
+  @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
+  :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --faint: #8a909c; --line: #dedbd2; --accent: #4d7c0f; --fill: #4d7c0f; --on: #fff; --shadow: 0 24px 60px rgba(30, 32, 38, .16); }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121418; --soft: #1a1d23; --fg: #e6e8ec; --muted: #a0a7b4; --faint: #737b89; --line: #2a2e37; --accent: #bef264; --fill: #bef264; --on: #14161a; --shadow: 0 24px 70px rgba(0, 0, 0, .55); } }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.6 "MDT Inter", -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  html[data-lang="en"] [lang="es"], html[data-lang="es"] [lang="en"] { display: none !important; }
+  a { color: inherit; }
+  .wrap { width: min(1120px, 100% - 40px); margin: 0 auto; }
+  nav { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  nav .wrap { display: flex; align-items: center; gap: 22px; height: 58px; }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; text-decoration: none; margin-right: auto; }
+  .brand img { width: 26px; height: 26px; border-radius: 7px; }
+  nav a.link { color: var(--muted); text-decoration: none; font-size: 14.5px; }
+  nav a.link:hover { color: var(--fg); }
+  .lang { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); }
+  .lang button { height: 26px; padding: 0 11px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  html[data-lang="en"] .lang [data-set="en"], html[data-lang="es"] .lang [data-set="es"] { background: var(--fill); color: var(--on); }
+  header.hero { padding: 84px 0 34px; text-align: center; }
+  h1 { margin: 0 auto 18px; max-width: 15em; font-size: clamp(38px, 6vw, 66px); line-height: 1.05; letter-spacing: -0.035em; font-weight: 720; }
+  .lede { margin: 0 auto 30px; max-width: 34em; color: var(--muted); font-size: clamp(17px, 2vw, 20px); }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+  .btn { display: inline-flex; align-items: center; gap: 9px; padding: 13px 22px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); color: var(--fg); font-weight: 650; text-decoration: none; }
+  .btn:hover { border-color: var(--muted); }
+  .btn.fill { background: var(--fill); border-color: var(--fill); color: var(--on); }
+  .btn.fill:hover { filter: brightness(1.06); }
+  .under { margin: 18px 0 0; color: var(--faint); font-size: 14px; }
+  .shot { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+  .hero .shot { margin-top: 54px; }
+  section { padding: 76px 0; }
+  .feature { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 8fr); gap: 54px; align-items: center; }
+  .feature.flip { grid-template-columns: minmax(0, 8fr) minmax(0, 5fr); }
+  .feature.flip > div { order: 2; }
+  h2 { margin: 0 0 14px; font-size: clamp(27px, 3.4vw, 38px); line-height: 1.14; letter-spacing: -0.028em; font-weight: 700; }
+  .feature p, .ways p, .plain p { margin: 0 0 12px; color: var(--muted); }
+  kbd { padding: 1px 7px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; background: var(--soft); font: 0.85em ui-monospace, Consolas, monospace; color: var(--fg); }
+  code { padding: 1px 6px; border-radius: 5px; background: var(--soft); font: 0.88em ui-monospace, Consolas, monospace; color: var(--fg); }
+  .band { background: var(--soft); border-block: 1px solid var(--line); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 30px; }
+  .card { padding: 18px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+  .card b { display: block; margin-bottom: 4px; }
+  .card span { color: var(--muted); font-size: 15px; }
+  .ways { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; margin-top: 30px; }
+  .ways .card { padding: 26px 26px 24px; }
+  .ways h3 { margin: 0 0 8px; font-size: 20px; letter-spacing: -0.015em; }
+  .ways .btn { margin-top: 10px; padding: 10px 18px; font-size: 15px; }
+  .plain { text-align: center; }
+  .plain p { max-width: 36em; margin-inline: auto; }
+  footer { padding: 30px 0 46px; border-top: 1px solid var(--line); color: var(--faint); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+  footer a { color: var(--muted); }
+  @media (max-width: 860px) { .feature { grid-template-columns: 1fr; gap: 26px; } .feature.flip > div { order: 0; } nav a.link { display: none; } section { padding: 54px 0; } header.hero { padding-top: 56px; } }
+</style>
 </head>
 <body>
-  <p><a href="src/app.html">MD Tools</a></p>
+<nav><div class="wrap">
+  <a class="brand" href="#top"><img src="icons/icon48.png" alt=""><span>MD Tools</span></a>
+  <a class="link" href="#features"><span lang="en">Features</span><span lang="es">Funciones</span></a>
+  <a class="link" href="#use"><span lang="en">Web or extension</span><span lang="es">Web o extensión</span></a>
+  <a class="link" href="privacy.html"><span lang="en">Privacy</span><span lang="es">Privacidad</span></a>
+  <a class="link" href="https://github.com/MR-Axel/md-tools">GitHub</a>
+  <div class="lang"><button type="button" data-set="en">EN</button><button type="button" data-set="es">ES</button></div>
+</div></nav>
+
+<header class="hero" id="top"><div class="wrap">
+  <h1><span lang="en">Read and edit Markdown in the browser.</span><span lang="es">Leé y editá Markdown en el navegador.</span></h1>
+  <p class="lede">
+    <span lang="en">Open a file or a whole folder. Click a paragraph or a table cell and type on the formatted text.</span>
+    <span lang="es">Abrís un archivo o una carpeta entera. Hacés clic en un párrafo o en una celda y escribís sobre el texto ya formateado.</span>
+  </p>
+  <div class="cta">
+    <a class="btn fill" href="src/app.html"><span lang="en">Open in the browser</span><span lang="es">Abrir en el navegador</span></a>
+    <a class="btn" href="https://github.com/MR-Axel/md-tools#install"><span lang="en">Get the extension</span><span lang="es">Instalar la extensión</span></a>
+  </div>
+  <p class="under"><span lang="en">Free and open source. No account. Your files stay on your machine.</span><span lang="es">Gratis y de código abierto. Sin cuenta. Tus archivos quedan en tu máquina.</span></p>
+  <img class="shot" src="docs/store/1-reader.png" width="1280" height="800" alt="MD Tools showing a Markdown document with its outline">
+</div></header>
+
+<main id="features">
+<section><div class="wrap feature">
+  <div>
+    <h2><span lang="en">Edit the document you are reading.</span><span lang="es">Editás el documento que estás leyendo.</span></h2>
+    <p><span lang="en">Click a paragraph, a heading, a list item or a table cell and type. The Markdown is rewritten behind it, block by block.</span><span lang="es">Hacés clic en un párrafo, un título, un ítem o una celda y escribís. El Markdown se reescribe por detrás, bloque por bloque.</span></p>
+    <p><span lang="en">Type <code>**bold**</code> or <code>`code`</code> and the marks turn into formatting. Start a line with <code>#</code>, <code>-</code> or <code>&gt;</code> and it becomes a heading, a list or a quote.</span><span lang="es">Escribís <code>**negrita**</code> o <code>`código`</code> y los signos se vuelven formato. Si la línea empieza con <code>#</code>, <code>-</code> o <code>&gt;</code>, pasa a ser título, lista o cita.</span></p>
+  </div>
+  <img class="shot" src="docs/store/2-editing.png" width="1280" height="800" loading="lazy" alt="Editing a table cell in place">
+</div></section>
+
+<section class="band"><div class="wrap feature flip">
+  <div>
+    <h2><span lang="en">Right-click a block.</span><span lang="es">Clic derecho sobre un bloque.</span></h2>
+    <p><span lang="en">Insert a table, a code block, a diagram, a formula or a callout below it. Turn it into a heading, move it, duplicate it or delete it.</span><span lang="es">Insertás debajo una tabla, un bloque de código, un diagrama, una fórmula o un aviso. Lo convertís en título, lo movés, lo duplicás o lo eliminás.</span></p>
+    <p><span lang="en"><kbd>Ctrl</kbd> <kbd>Z</kbd> undoes it and <kbd>Ctrl</kbd> <kbd>Y</kbd> brings it back.</span><span lang="es"><kbd>Ctrl</kbd> <kbd>Z</kbd> lo deshace y <kbd>Ctrl</kbd> <kbd>Y</kbd> lo rehace.</span></p>
+  </div>
+  <img class="shot" src="docs/store/3-blocks.png" width="1280" height="800" loading="lazy" alt="The block menu">
+</div></section>
+
+<section><div class="wrap feature">
+  <div>
+    <h2><span lang="en">Diagrams with the drawing next to the code.</span><span lang="es">Diagramas con el dibujo al lado del código.</span></h2>
+    <p><span lang="en">Click a Mermaid or Graphviz diagram and it opens with a live preview. Nine templates to start from. A syntax error shows under the last drawing that worked.</span><span lang="es">Hacés clic en un diagrama Mermaid o Graphviz y se abre con la vista previa en vivo. Hay nueve plantillas para arrancar. Un error de sintaxis aparece debajo del último dibujo que salió bien.</span></p>
+  </div>
+  <img class="shot" src="docs/store/4-diagram.png" width="1280" height="800" loading="lazy" alt="The diagram editor with live preview">
+</div></section>
+
+<section class="band"><div class="wrap feature flip">
+  <div>
+    <h2><span lang="en">The whole folder, searchable.</span><span lang="es">La carpeta entera, con búsqueda.</span></h2>
+    <p><span lang="en">The sidebar lists the files next to the one you opened and searches the text of all of them at once. Create, rename and delete files from there.</span><span lang="es">La barra lateral muestra los archivos que están al lado del que abriste y busca en el texto de todos a la vez. Desde ahí creás, renombrás y eliminás archivos.</span></p>
+    <p><span lang="en"><code>[[name]]</code> links open the file with that name.</span><span lang="es">Los links <code>[[nombre]]</code> abren el archivo con ese nombre.</span></p>
+  </div>
+  <img class="shot" src="docs/store/6-search.png" width="1280" height="800" loading="lazy" alt="Searching every file in a folder">
+</div></section>
+
+<section><div class="wrap">
+  <h2><span lang="en">Also in there</span><span lang="es">También trae</span></h2>
+  <div class="grid">
+    <div class="card"><b><span lang="en">Math</span><span lang="es">Matemática</span></b><span><span lang="en">KaTeX, inline and in blocks.</span><span lang="es">KaTeX, en línea y en bloque.</span></span></div>
+    <div class="card"><b><span lang="en">Tables</span><span lang="es">Tablas</span></b><span><span lang="en">Add and remove rows and columns with a button.</span><span lang="es">Agregás y quitás filas y columnas con un botón.</span></span></div>
+    <div class="card"><b><span lang="en">Pasted images</span><span lang="es">Imágenes pegadas</span></b><span><span lang="en">Saved to <code>assets/</code> next to the document.</span><span lang="es">Se guardan en <code>assets/</code>, al lado del documento.</span></span></div>
+    <div class="card"><b><span lang="en">Find and replace</span><span lang="es">Buscar y reemplazar</span></b><span><span lang="en">One match or all of them.</span><span lang="es">De a una coincidencia o todas.</span></span></div>
+    <div class="card"><b><span lang="en">Focus and typewriter modes</span><span lang="es">Modo foco y máquina de escribir</span></b><span><span lang="en">Dim the rest and keep the line at mid height.</span><span lang="es">Atenúa el resto y deja el renglón a media altura.</span></span></div>
+    <div class="card"><b><span lang="en">Export</span><span lang="es">Exportar</span></b><span><span lang="en">One HTML file, or PDF through print.</span><span lang="es">Un solo archivo HTML, o PDF desde imprimir.</span></span></div>
+    <div class="card"><b><span lang="en">More than Markdown</span><span lang="es">No solo Markdown</span></b><span><span lang="en">Code highlighted, CSV as a table, images as images.</span><span lang="es">Código resaltado, CSV como tabla, imágenes como imágenes.</span></span></div>
+    <div class="card"><b><span lang="en">Quick notes</span><span lang="es">Notas rápidas</span></b><span><span lang="en">New opens an empty note, saved to the folder you chose.</span><span lang="es">Nuevo abre una nota vacía, guardada en la carpeta que elegiste.</span></span></div>
+    <div class="card"><b><span lang="en">English and Spanish</span><span lang="es">Inglés y español</span></b><span><span lang="en">Follows the browser language.</span><span lang="es">Sigue el idioma del navegador.</span></span></div>
+  </div>
+</div></section>
+
+<section class="band" id="use"><div class="wrap">
+  <h2><span lang="en">Two ways to use it</span><span lang="es">Dos formas de usarla</span></h2>
+  <div class="ways">
+    <div class="card">
+      <h3><span lang="en">On the web</span><span lang="es">En la web</span></h3>
+      <p><span lang="en">Nothing to install. Chrome, Edge and Brave open folders and save in place. Firefox and Safari open one file at a time and saving downloads a copy.</span><span lang="es">Nada que instalar. Chrome, Edge y Brave abren carpetas y guardan en el lugar. Firefox y Safari abren de a un archivo y al guardar descargan una copia.</span></p>
+      <a class="btn fill" href="src/app.html"><span lang="en">Open in the browser</span><span lang="es">Abrir en el navegador</span></a>
+    </div>
+    <div class="card">
+      <h3><span lang="en">As an extension</span><span lang="es">Como extensión</span></h3>
+      <p><span lang="en">Set Chrome as the default app for <code>.md</code> files and a double-click opens them rendered. It also renders Markdown served by a website.</span><span lang="es">Ponés Chrome como programa por defecto para los <code>.md</code> y con doble clic se abren ya formateados. También formatea el Markdown que sirve un sitio web.</span></p>
+      <a class="btn" href="https://github.com/MR-Axel/md-tools#install"><span lang="en">Get the extension</span><span lang="es">Instalar la extensión</span></a>
+    </div>
+  </div>
+</div></section>
+
+<section class="plain"><div class="wrap">
+  <h2><span lang="en">Your files are read in your browser.</span><span lang="es">Tus archivos se leen en tu navegador.</span></h2>
+  <p><span lang="en">There is no server behind this page, no account and no analytics. <a href="privacy.html">Privacy</a> has the detail, and the code is on <a href="https://github.com/MR-Axel/md-tools">GitHub</a> under the MIT license.</span><span lang="es">Detrás de esta página no hay servidor, cuenta ni analítica. El detalle está en <a href="privacy.html">Privacidad</a>, y el código en <a href="https://github.com/MR-Axel/md-tools">GitHub</a> con licencia MIT.</span></p>
+  <div class="cta" style="margin-top:26px"><a class="btn" href="https://ko-fi.com/surlabs" target="_blank" rel="noopener noreferrer"><span lang="en">Buy me a coffee</span><span lang="es">Invitame un café</span></a></div>
+</div></section>
+</main>
+
+<footer><div class="wrap">
+  <span>MD Tools · MIT</span>
+  <a href="https://github.com/MR-Axel/md-tools">GitHub</a>
+  <a href="privacy.html"><span lang="en">Privacy</span><span lang="es">Privacidad</span></a>
+  <a href="https://mr-axel.github.io"><span lang="en">More tools</span><span lang="es">Más herramientas</span></a>
+</div></footer>
+<script src="site.js"></script>
 </body>
 </html>

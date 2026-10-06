@@ -3,7 +3,7 @@
   'use strict';
 
   const INLINE_OK = new Set(['STRONG', 'B', 'EM', 'I', 'DEL', 'S', 'STRIKE', 'MARK', 'INS', 'SUB', 'SUP', 'CODE', 'BR', 'A', 'IMG', 'ABBR', 'INPUT', 'SPAN', 'U', 'FONT']);
-  const escText = (t) => t.replace(/\u00a0/g, ' ').replace(/([\\`*])/g, '\\$1').replace(/</g, '\\<');
+  const escText = (t) => t.replace(/\u200b/g, '').replace(/\u00a0/g, ' ').replace(/([\\`*])/g, '\\$1').replace(/</g, '\\<');
 
   // HTML de un bloque editado -> Markdown en línea.
   function inlineMd(rootNode) {
