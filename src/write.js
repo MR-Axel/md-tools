@@ -65,7 +65,8 @@
     d.dataset.ph = kind === 'p' ? T('Escribí acá, o / para insertar') : T({ h1: 'Título 1', h2: 'Título 2', h3: 'Título 3', h4: 'Título 4', ul: 'Lista', ol: 'Lista numerada', task: 'Tarea', quote: 'Cita' }[kind]);
   }
 
-  function openDraft(after, kind) {
+  // Con offer, la línea nueva muestra enseguida qué se puede insertar; si se escribe, queda como texto.
+  function openDraft(after, kind, offer) {
     const d = el('p', { contenteditable: 'true', spellcheck: 'true' });
     setKind(d, kind || 'p');
     d._anchor = after || null;
@@ -75,6 +76,7 @@
       if (front) front.after(d); else core.ui.article.prepend(d);
     }
     caretTo(d, true);
+    if (offer) { const box = d.getBoundingClientRect(); openMenu(box.left, box.bottom + 8, d._anchor, d); }
     return d;
   }
 
@@ -172,6 +174,7 @@
   }
 
   function onInput(d) {
+    if (menu && d.textContent !== '/') closeMenu();
     if (d._li || d.dataset.kind !== 'p') return;
     const text = d.textContent;
     if (text === '/') { d.textContent = ''; const box = d.getBoundingClientRect(); openMenu(box.left, box.bottom + 6, d._anchor, d); return; }
@@ -328,7 +331,7 @@
     });
     article.addEventListener('input', (e) => { const d = e.target.closest && e.target.closest('.lmd-draft'); if (d) onInput(d); });
     article.addEventListener('click', (e) => {
-      if (e.target.closest('.lmd-add')) { const all = Array.from(article.children).filter((n) => !n.classList.contains('lmd-add')); openDraft(all[all.length - 1] || null, 'p'); }
+      if (e.target.closest('.lmd-add')) { const all = Array.from(article.children).filter((n) => !n.classList.contains('lmd-add')); openDraft(all[all.length - 1] || null, 'p', true); }
     });
     document.addEventListener('mousedown', (e) => { if (menu && !menu.contains(e.target)) closeMenu(); });
     window.addEventListener('keydown', (e) => {

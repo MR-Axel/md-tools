@@ -128,7 +128,8 @@
 
   // Tipografías que ya vienen con el sistema, cada una con su respaldo.
   const FONTS = [
-    { name: 'Del sistema', value: '' },
+    { name: 'MD Tools (Inter)', value: '' },
+    { name: 'Del sistema', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif' },
     { name: 'Arial', value: 'Arial, Helvetica, sans-serif' },
     { name: 'Calibri', value: 'Calibri, Candara, "Segoe UI", sans-serif' },
     { name: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
@@ -226,6 +227,7 @@
       "Ya aporté": "I already supported",
       "Gracias por apoyar": "Thanks for supporting",
       "Actualizaciones": "Updates",
+      "Ver": "View", "Editar": "Edit", "MD Tools (Inter)": "MD Tools (Inter)",
       "Archivos": "Files", "Cambios sin guardar": "Unsaved changes", "Todo guardado": "All saved",
       "Guardado · autoguardado activo": "Saved · auto-save on",
       "Las notas nuevas se guardan en": "New notes are saved to", "Cambiar": "Change",
@@ -319,13 +321,13 @@
       "Esa carpeta no contiene \"{a}\". Elegí la carpeta donde está el archivo, o una que la contenga.": "That folder does not contain \"{a}\". Choose the folder where the file is, or one that contains it.",
       "No se pudo obtener el permiso. Probá de nuevo.": "Could not get the permission. Try again.",
       "En esa carpeta hay un archivo con el mismo nombre, pero su contenido no coincide con el que tenés abierto. ¿Guardar igual sobre ese archivo?": "That folder has a file with the same name, but its content does not match the one you have open. Save over that file anyway?",
-      "Ver": "View",
+      
       "Guardar y volver a solo lectura": "Save and go back to read only",
       "Estás viendo el documento": "You are viewing the document",
       "Estás editando el documento": "You are editing the document",
       "Editar el documento": "Edit the document",
       "Modo": "Mode",
-      "Editar": "Edit",
+      
       "Guardar (Ctrl+S)": "Save (Ctrl+S)",
       "Guardar (Ctrl+S). Hay cambios sin guardar": "Save (Ctrl+S). There are unsaved changes",
       "Negrita (Ctrl+B)": "Bold (Ctrl+B)",
@@ -418,7 +420,7 @@
   }
   const lang = () => current;
 
-  const SPONSOR_URL = 'https://ko-fi.com/mraxel';
+  const SPONSOR_URL = 'https://ko-fi.com/surlabs';
 
   root.LMD = { SPONSOR_URL, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
 })(typeof self !== 'undefined' ? self : this);

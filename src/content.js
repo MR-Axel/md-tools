@@ -460,16 +460,20 @@
     ui.main = el('main', { class: 'lmd-main' });
     ui.main.innerHTML =
       '<div class="lmd-topbar">' +
-        '<button class="lmd-icon-btn" data-act="sidebar" title="Barra lateral (Alt+Shift+B)">' + ICON.side + '</button>' +
-        '<span class="lmd-docname"></span>' +
-        '<div class="lmd-tools">' +
+        '<div class="lmd-top-left">' +
+          '<button class="lmd-icon-btn" data-act="sidebar" title="' + T('Barra lateral (Alt+Shift+B)') + '">' + ICON.side + '</button>' +
+          '<span class="lmd-docname"></span>' +
+        '</div>' +
+        // Al centro, lo que cambia el modo de trabajo: ver o editar, insertar y guardar.
+        '<div class="lmd-top-mid">' +
           '<div class="lmd-modeseg" role="radiogroup" aria-label="' + T('Modo') + '">' +
-            '<button type="button" role="radio" data-act="mode-read" aria-checked="true" class="lmd-on">' + ICON.eye + '<span>' + T('Ver') + '</span></button>' +
-            '<button type="button" role="radio" data-act="mode-edit" aria-checked="false">' + ICON.pencil + '<span>' + T('Editar') + '</span></button>' +
+            '<button type="button" role="radio" data-act="mode-read" aria-checked="true" class="lmd-on" aria-label="' + T('Ver') + '">' + ICON.eye + '</button>' +
+            '<button type="button" role="radio" data-act="mode-edit" aria-checked="false" aria-label="' + T('Editar') + '">' + ICON.pencil + '</button>' +
           '</div>' +
           '<button class="lmd-icon-btn lmd-insert" data-act="insert" title="' + T('Insertar un bloque (también con clic derecho)') + '">' + ICON.plus + '</button>' +
           '<button class="lmd-icon-btn lmd-save" data-act="save" title="' + T('Guardar (Ctrl+S)') + '" hidden>' + ICON.save + '</button>' +
-          '<span class="lmd-sep"></span>' +
+        '</div>' +
+        '<div class="lmd-tools">' +
           '<div class="lmd-view" role="radiogroup" aria-label="' + T('Vista') + '">' +
             '<button type="button" role="radio" data-act="view-doc" class="lmd-on" aria-checked="true" title="' + T('Ver documento') + '">' + ICON.doc + '</button>' +
             '<button type="button" role="radio" data-act="view-raw" aria-checked="false" title="' + T('Ver código fuente') + '">' + ICON.code + '</button>' +
@@ -1451,8 +1455,8 @@
       const on = (b.dataset.act === 'mode-edit') === editMode;
       b.classList.toggle('lmd-on', on); b.setAttribute('aria-checked', String(on));
     });
-    ui.main.querySelector('[data-act=mode-read]').title = T(editMode ? 'Guardar y volver a solo lectura' : 'Estás viendo el documento');
-    ui.main.querySelector('[data-act=mode-edit]').title = T(editMode ? 'Estás editando el documento' : 'Editar el documento');
+    ui.main.querySelector('[data-act=mode-read]').title = T('Ver') + ' · ' + T(editMode ? 'Guardar y volver a solo lectura' : 'Estás viendo el documento');
+    ui.main.querySelector('[data-act=mode-edit]').title = T('Editar') + ' · ' + T(editMode ? 'Estás editando el documento' : 'Editar el documento');
     const state = ui.main.querySelector('.lmd-savestate');
     state.textContent = dirty ? T('Cambios sin guardar') : (editMode ? T(settings.autosave ? 'Guardado · autoguardado activo' : 'Todo guardado') : '');
     const save = ui.main.querySelector('[data-act=save]');

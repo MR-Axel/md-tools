@@ -143,12 +143,13 @@ All of them are vendored in `vendor/`, because Manifest V3 does not allow remote
 | Mermaid | MIT |
 | Viz.js (Graphviz) | MIT |
 | DOMPurify | MPL-2.0 or Apache-2.0 |
+| Inter (typeface) | OFL-1.1 |
 
 ## Support
 
-[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/mraxel)
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/surlabs)
 
-MD Tools is free and collects no data. If it saves you time, you can [support the next tool on Ko-fi](https://ko-fi.com/mraxel).
+MD Tools is free and collects no data. If it saves you time, you can [support the next tool on Ko-fi](https://ko-fi.com/surlabs).
 
 ## License
 
