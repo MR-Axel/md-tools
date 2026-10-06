@@ -44,6 +44,12 @@ Then drag any `.md` file into the browser. `ejemplo/ejemplo.md` exercises every 
 
 It also works in other Chromium browsers (Edge, Brave, Arc) through the same steps.
 
+## Opening files from MD Tools itself
+
+Click the extension icon and choose **Open a file or a folder**. That opens the MD Tools page, where you pick a file or a folder (or drag one in) and read and edit it right there. Because you already chose the folder, saving needs no extra permission step, and the page remembers what you opened recently.
+
+Opening a `.md` directly in the browser keeps working as before. The folder tab of the sidebar has a button that takes you to this page.
+
 ## Updating
 
 Chrome cannot update an extension loaded from a folder, so MD Tools checks this repository once a day (or once a week, or never: Settings → Updates) and shows a notice in the sidebar when there is a newer version. From there: download the ZIP, replace the extension folder with its contents and click **Apply**, which reloads the extension. If you cloned the repository, `git pull` and **Apply** is enough.
@@ -80,7 +86,8 @@ src/
   background.js   reads files and folders, lazy-loads the heavy libraries, handles shortcuts
   content.js      the reader: rendering, outline, tree, search, settings panel
   content.css     styles and themes
-  popup.html/js   quick switches
+  app.html        the MD Tools page: open a file or a folder and edit it there
+  popup.html/js   on/off switch and the button that opens the MD Tools page
 vendor/           third-party libraries, unmodified
 ejemplo/          test document covering every feature
 ```

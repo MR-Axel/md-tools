@@ -36,6 +36,12 @@ Extensión de Chrome para leer y editar archivos Markdown en el navegador, local
 
 Después alcanza con arrastrar un `.md` al navegador.
 
+## Abrir archivos desde MD Tools
+
+Hacé clic en el ícono de la extensión y elegí **Abrir un archivo o una carpeta**. Se abre la página de MD Tools, donde elegís un archivo o una carpeta (o los arrastrás) y los leés y editás ahí mismo. Como la carpeta ya la elegiste vos, guardar no pide ningún permiso más, y la página recuerda lo último que abriste.
+
+Abrir un `.md` directo en el navegador sigue funcionando igual que antes. La pestaña Carpeta de la barra lateral tiene un botón que lleva a esta página.
+
 ## Actualizar
 
 Chrome no puede actualizar una extensión cargada desde una carpeta, así que MD Tools mira este repositorio una vez por día (o por semana, o nunca: Ajustes → Actualizaciones) y avisa en la barra lateral cuando hay una versión más nueva. Desde ahí: descargás el ZIP, reemplazás la carpeta de la extensión con su contenido y tocás **Aplicar**, que recarga la extensión. Si clonaste el repositorio, alcanza con `git pull` y **Aplicar**.
@@ -63,7 +69,8 @@ src/
   background.js   lectura de archivos y carpetas, carga diferida de KaTeX y Mermaid, atajos
   content.js      el lector: render, índice, árbol, búsqueda, panel de ajustes
   content.css     estilos y temas
-  popup.html/js   interruptores rápidos
+  app.html        la página de MD Tools: abrir un archivo o una carpeta y editar ahí
+  popup.html/js   el encendido y el botón que abre la página de MD Tools
 vendor/           librerías de terceros, sin modificar
 ejemplo/          documento de prueba con todas las funciones
 ```

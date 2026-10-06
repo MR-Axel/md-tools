@@ -3,12 +3,29 @@
   'use strict';
 
   // ---------- ¿Es un documento de texto plano? ----------
-  const type = (document.contentType || '').toLowerCase();
-  if (type && !/^text\/(plain|markdown|x-markdown)/.test(type)) return;
-  const pre = document.body && document.body.querySelector('pre');
-  if (!pre || document.body.children.length > 2) return;
+  // El lector corre en dos lugares: como script de contenido sobre un .md abierto en el navegador,
+  // y en la página propia de la extensión (app.html), donde el archivo llega por un permiso de carpeta.
+  const APP = location.protocol === 'chrome-extension:' && /\/app\.html$/.test(location.pathname);
+  let pre = null;
+  if (!APP) {
+    const type = (document.contentType || '').toLowerCase();
+    if (type && !/^text\/(plain|markdown|x-markdown)/.test(type)) return;
+    pre = document.body && document.body.querySelector('pre');
+    if (!pre || document.body.children.length > 2) return;
+  }
+  // En la app los archivos no tienen URL real: se les da una virtual para poder resolver rutas relativas.
+  const VBASE = 'https://lmd.local/';
+  const APP_URL = APP ? location.origin + location.pathname : '';
+  const HERE = APP ? VBASE + (new URLSearchParams(location.search).get('f') || '') : location.href.split('#')[0].split('?')[0];
+  const DOC_NAME = decodeURIComponent(HERE.split('/').pop() || '');
+  const toHref = (url) => {
+    if (!APP || !url.startsWith(VBASE)) return url;
+    const i = url.indexOf('#');
+    return APP_URL + '?f=' + encodeURIComponent((i < 0 ? url : url.slice(0, i)).slice(VBASE.length)) + (i < 0 ? '' : url.slice(i));
+  };
+  let appRoot = null; // lo abierto en la app: { id, kind: 'dir' | 'file', name, handle }
 
-  let raw = pre.textContent;
+  let raw = APP ? '' : pre.textContent;
   let settings = null;
   let rawMode = false;
   let refreshTimer = null;
@@ -41,6 +58,8 @@
     save: '<svg viewBox="0 0 24 24"><path d="M5 4.5h11l3.5 3.5v11.5h-14.5z"/><path d="M8 4.5v5h7v-5M8 19.5v-6h8v6"/></svg>',
     link: '<svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>',
     check: '<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
+    open: '<svg viewBox="0 0 24 24"><path d="M3 18.5V6.5A1.5 1.5 0 0 1 4.5 5h4.6l2 2.2h7.4A1.5 1.5 0 0 1 20 8.7V10"/><path d="M3 18.5 5.6 11a1.5 1.5 0 0 1 1.4-1h13.2a1 1 0 0 1 .9 1.4L18.6 18a1.5 1.5 0 0 1-1.4 1H3.6"/></svg>',
+    coffee: '<svg viewBox="0 0 24 24"><path d="M5 9h11v5.5a4.5 4.5 0 0 1-4.5 4.5h-2A4.5 4.5 0 0 1 5 14.5z"/><path d="M16 10.5h1.5a2.5 2.5 0 0 1 0 5H16M8 3.5v2.5M11.5 3.5v2.5"/></svg>',
   };
 
   const el = (tag, attrs, html) => {
@@ -80,6 +99,53 @@
       });
     } catch (e) { if (!alive()) markOrphan(); resolve({ ok: false, error: String(e) }); }
   });
+  // ---------- Archivos de la app ----------
+  const vParts = (url) => url.slice(VBASE.length).split('#')[0].split('/').filter(Boolean).map(decodeURIComponent).slice(1);
+  async function vFile(url) {
+    const parts = vParts(url);
+    if (!appRoot || !parts.length) return null;
+    if (appRoot.kind === 'file') return parts.length === 1 && parts[0] === appRoot.handle.name ? appRoot.handle : null;
+    let cur = appRoot.handle;
+    for (let k = 0; k < parts.length - 1; k++) cur = await cur.getDirectoryHandle(parts[k]);
+    return cur.getFileHandle(parts[parts.length - 1]);
+  }
+  async function vText(url) {
+    try { const h = await vFile(url); return h ? await (await h.getFile()).text() : null; } catch (e) { return null; }
+  }
+  async function vList(dirUrl) {
+    try {
+      if (appRoot.kind === 'file') return [{ name: appRoot.handle.name, url: dirUrl + encodeURIComponent(appRoot.handle.name), dir: false }];
+      let dir = appRoot.handle;
+      for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p);
+      const rows = [];
+      for await (const [name, h] of dir.entries()) rows.push({ name, url: dirUrl + encodeURIComponent(name) + (h.kind === 'directory' ? '/' : ''), dir: h.kind === 'directory' });
+      return rows;
+    } catch (e) { return null; }
+  }
+  // En la página de la extensión no se puede inyectar con chrome.scripting: las librerías pesadas se cargan con <script>.
+  const LAZY_APP = {
+    katex: { js: ['vendor/katex/katex.min.js'], css: 'vendor/katex/katex.min.css' },
+    mermaid: { js: ['vendor/mermaid.min.js'] },
+    graphviz: { js: ['vendor/viz-global.js'] },
+  };
+  async function appLazy(what) {
+    const spec = LAZY_APP[what];
+    try {
+      if (spec.css) {
+        const css = await (await fetch(chrome.runtime.getURL(spec.css))).text();
+        document.head.appendChild(el('style', { text: css.split('__LMD_BASE__').join(chrome.runtime.getURL('')) }));
+      }
+      for (const src of spec.js) {
+        await new Promise((resolve, reject) => {
+          const s = el('script', { src: chrome.runtime.getURL(src) });
+          s.onload = resolve; s.onerror = reject;
+          document.head.appendChild(s);
+        });
+      }
+      return true;
+    } catch (e) { return false; }
+  }
+
   const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
   // ---------- Markdown ----------
@@ -319,6 +385,22 @@
       if (/^https?:/i.test(href) && a.host !== location.host) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
     });
 
+    if (APP) {
+      // Rutas relativas: los links pasan por la app y las imágenes se leen de la carpeta abierta.
+      const relative = (v) => v && !/^(#|[a-z][a-z0-9+.-]*:|\/\/)/i.test(v);
+      article.querySelectorAll('a[href]').forEach((a) => {
+        const href = a.getAttribute('href');
+        if (!relative(href) || a.classList.contains('lmd-wiki')) return;
+        try { a.setAttribute('data-lmd-href', href); a.href = toHref(new URL(href, HERE).href); } catch (e) { /* queda como está */ }
+      });
+      article.querySelectorAll('img[src]').forEach(async (img) => {
+        const src = img.getAttribute('src');
+        if (!relative(src)) return;
+        img.setAttribute('data-lmd-src', src);
+        try { const h = await vFile(new URL(src, HERE).href); if (h) img.src = URL.createObjectURL(await h.getFile()); } catch (e) { /* no está en la carpeta */ }
+      });
+    }
+
     if (p.imageViewer) article.querySelectorAll('img').forEach((img) => img.classList.add('lmd-zoomable'));
 
     renderMath(article);
@@ -336,7 +418,7 @@
 
   async function ensure(what) {
     if (lazyLoaded[what]) return lazyLoaded[what];
-    lazyLoaded[what] = bg({ type: 'lazyLoad', what }).then((r) => !!(r && r.ok));
+    lazyLoaded[what] = APP ? appLazy(what) : bg({ type: 'lazyLoad', what }).then((r) => !!(r && r.ok));
     return lazyLoaded[what];
   }
 
@@ -379,7 +461,7 @@
   async function resolveWiki(article) {
     const links = Array.from(article.querySelectorAll('a.lmd-wiki'));
     if (!links.length) return;
-    const dir = new URL('.', location.href.split('#')[0].split('?')[0]).href;
+    const dir = new URL('.', HERE).href;
     if (!wikiIndex || wikiIndex.dir !== dir) {
       const files = await collectFiles(dir);
       const map = new Map();
@@ -389,7 +471,7 @@
     links.forEach((a) => {
       const parts = a.getAttribute('data-wiki').split('#');
       const url = wikiIndex.map.get(wikiKey(parts[0].split('/').pop()));
-      if (url) { a.href = url + (parts[1] ? '#' + slugify(parts[1], new Set()) : ''); a.title = decodeURIComponent(url.split('/').pop()); }
+      if (url) { a.href = toHref(url + (parts[1] ? '#' + slugify(parts[1], new Set()) : '')); a.title = decodeURIComponent(url.split('/').pop()); }
       else { a.classList.add('lmd-wiki-missing'); a.title = T('No hay un archivo con ese nombre en la carpeta'); }
     });
   }
@@ -485,7 +567,7 @@
   }
 
   // Posición de lectura por archivo
-  const posKey = () => location.href.split('#')[0];
+  const posKey = () => (APP ? HERE : location.href.split('#')[0]);
   const savePosition = debounce(() => {
     if (!settings.rememberPosition) return;
     chrome.storage.local.get('positions', (r) => {
@@ -556,7 +638,7 @@
       '<div class="lmd-pane lmd-pane-files" data-pane="files"><div class="lmd-tree-box"></div><div class="lmd-results" hidden></div></div>' +
       '<div class="lmd-pane lmd-pane-outline" data-pane="outline"></div>' +
       '<div class="lmd-update" hidden></div>' +
-      '<a class="lmd-side-foot" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer"><span class="lmd-heart">♥</span>' + T('Invitame un café') + '</a>' +
+      '<a class="lmd-side-foot" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer"><span class="lmd-heart">' + ICON.coffee + '</span>' + T('Invitame un café') + '</a>' +
       '<div class="lmd-resizer" title="' + T('Arrastrar para cambiar el ancho') + '"></div>';
 
     ui.main = el('main', { class: 'lmd-main' });
@@ -621,7 +703,7 @@
     ui.searchInput = ui.searchBox.querySelector('input');
     ui.searchCount = ui.searchBox.querySelector('.lmd-search-count');
 
-    document.title = decodeURIComponent(location.pathname.split('/').pop() || 'Markdown');
+    document.title = DOC_NAME || 'Markdown';
     bindEvents();
     bindEditing();
     document.documentElement.dataset.lmdFs = String(!!window.showOpenFilePicker && window.isSecureContext);
@@ -942,6 +1024,7 @@
   }
 
   async function readCurrent() {
+    if (APP) return vText(HERE);
     const url = location.href.split('#')[0];
     const r = await bg({ type: 'fetchText', url });
     if (r && r.ok) return r.text;
@@ -985,7 +1068,13 @@
   // ---------- Árbol de carpetas ----------
   const MD_RE = /\.(md|mdx|mkd|mdown|markdown)$/i;
 
+  const visibleRows = (rows) => rows
+    .filter((x) => settings.filesShowHidden || !x.name.startsWith('.'))
+    .filter((x) => x.dir || !settings.filesOnlyMarkdown || MD_RE.test(x.name))
+    .sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
   async function listDir(dirUrl, all) {
+    if (APP) { const found = await vList(dirUrl); return found && (all ? found : visibleRows(found)); }
     const r = await bg({ type: 'fetchText', url: dirUrl });
     if (!r || !r.ok) return null;
     const rows = [];
@@ -1006,23 +1095,24 @@
         rows.push({ name: decodeURIComponent(href.replace(/\/$/, '')), url: new URL(href, dirUrl).href, dir: /\/$/.test(href) });
       });
     }
-    if (all) return rows;
-    return rows
-      .filter((x) => settings.filesShowHidden || !x.name.startsWith('.'))
-      .filter((x) => x.dir || !settings.filesOnlyMarkdown || MD_RE.test(x.name))
-      .sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+    return all ? rows : visibleRows(rows);
   }
 
-  let treeRoot = new URL('.', location.href.split('#')[0].split('?')[0]).href;
+  let treeRoot = new URL('.', HERE).href;
 
   async function loadTree() {
     ui.paneFiles.dataset.loaded = '1';
     ui.treeBox.textContent = '';
     const head = el('div', { class: 'lmd-tree-head' });
     const upBtn = el('button', { class: 'lmd-tree-up', title: T('Subir a la carpeta superior'), type: 'button' }, ICON.up);
-    const label = el('span', { class: 'lmd-tree-path', text: decodeURIComponent(treeRoot.replace(/\/$/, '').split('/').pop() || treeRoot), title: decodeURIComponent(treeRoot) });
-    head.append(upBtn, label);
+    const atTop = APP && appRoot && treeRoot === VBASE + appRoot.id + '/';
+    const label = el('span', { class: 'lmd-tree-path', text: atTop ? appRoot.name : decodeURIComponent(treeRoot.replace(/\/$/, '').split('/').pop() || treeRoot), title: APP ? (appRoot ? appRoot.name : '') : decodeURIComponent(treeRoot) });
+    const openBtn = el('button', { class: 'lmd-tree-up lmd-tree-open', title: T('Abrir otro archivo o carpeta'), type: 'button' }, ICON.open);
+    openBtn.addEventListener('click', () => { if (APP) location.href = APP_URL; else bg({ type: 'openApp' }); });
+    head.append(upBtn, label, openBtn);
+    if (atTop) upBtn.style.display = 'none';
     upBtn.addEventListener('click', () => {
+      if (atTop) return;
       const parent = new URL('..', treeRoot).href;
       if (parent !== treeRoot) { treeRoot = parent; loadTree(); if (!ui.searchBox.hidden && ui.searchInput.value) runSearch(ui.searchInput.value); }
     });
@@ -1044,7 +1134,7 @@
       return;
     }
     if (!rows.length) { container.appendChild(el('p', { class: 'lmd-empty', text: T('Carpeta sin archivos Markdown.') })); return; }
-    const here = location.href.split('#')[0].split('?')[0];
+    const here = HERE;
     rows.forEach((row) => {
       const item = el(row.dir ? 'button' : 'a', { class: 'lmd-node' + (row.dir ? ' lmd-node-dir' : ''), title: row.name });
       item.style.paddingLeft = (10 + depth * 14) + 'px';
@@ -1065,7 +1155,7 @@
         item.addEventListener('click', open);
         if (here.startsWith(row.url)) open();
       } else {
-        item.href = row.url;
+        item.href = toHref(row.url);
         if (row.url === here) { item.classList.add('lmd-active'); setTimeout(() => item.scrollIntoView({ block: 'nearest' }), 0); }
       }
     });
@@ -1160,8 +1250,9 @@
 
   async function readFile(url) {
     if (fileCache.has(url)) return fileCache.get(url);
-    const r = await bg({ type: 'fetchText', url });
-    const text = r && r.ok ? r.text : '';
+    let text = '';
+    if (APP) text = (await vText(url)) || '';
+    else { const r = await bg({ type: 'fetchText', url }); text = r && r.ok ? r.text : ''; }
     fileCache.set(url, text);
     return text;
   }
@@ -1212,7 +1303,7 @@
 
     found.sort((x, y) => x.file.rel.localeCompare(y.file.rel, undefined, { numeric: true, sensitivity: 'base' }));
     ui.results.textContent = '';
-    const here = location.href.split('#')[0].split('?')[0];
+    const here = HERE;
     const summary = found.length
       ? T((total === 1 ? '{t} coincidencia' : '{t} coincidencias') + (found.length === 1 ? ' en {f} archivo (de {n})' : ' en {f} archivos (de {n})'), { t: total, f: found.length, n: files.length })
       : T(files.length === 1 ? 'Sin coincidencias en {n} archivo' : 'Sin coincidencias en {n} archivos', { n: files.length });
@@ -1221,7 +1312,7 @@
     const frag = '#lmd-q=' + encodeURIComponent(q) + '&r=' + encodeURIComponent(treeRoot);
     found.forEach((r) => {
       const group = el('div', { class: 'lmd-res' + (r.file.url === here ? ' lmd-res-here' : '') });
-      const head = el('a', { class: 'lmd-res-file', href: r.file.url + frag, title: r.file.rel });
+      const head = el('a', { class: 'lmd-res-file', href: toHref(r.file.url + frag), title: r.file.rel });
       head.innerHTML = '<span class="lmd-node-ico">' + ICON.md + '</span><span class="lmd-res-name"></span><span class="lmd-res-count"></span>';
       head.querySelector('.lmd-res-name').textContent = r.file.rel;
       head.querySelector('.lmd-res-count').textContent = r.count;
@@ -1230,7 +1321,7 @@
         const start = Math.max(0, h.pos - 34);
         const cut = h.text.slice(start, h.pos + needle.length + 70);
         const rel = h.pos - start;
-        const a = el('a', { class: 'lmd-res-hit', href: r.file.url + frag, title: T('Línea {n}', { n: h.line }) });
+        const a = el('a', { class: 'lmd-res-hit', href: toHref(r.file.url + frag), title: T('Línea {n}', { n: h.line }) });
         a.append((start > 0 ? '…' : '') + cut.slice(0, rel), el('mark', { text: cut.slice(rel, rel + needle.length) }), cut.slice(rel + needle.length));
         group.appendChild(a);
       });
@@ -1403,7 +1494,7 @@
       }
       if (tag === 'BR') { out += '\n'; return; }
       if (tag === 'CODE') { out += '`' + n.textContent + '`'; return; }
-      if (tag === 'IMG') { out += '![' + (n.getAttribute('alt') || '') + '](' + (n.getAttribute('src') || '') + ')'; return; }
+      if (tag === 'IMG') { out += '![' + (n.getAttribute('alt') || '') + '](' + (n.getAttribute('data-lmd-src') || n.getAttribute('src') || '') + ')'; return; }
       const inner = inlineMd(n);
       const wrap = (mark) => { const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(inner); return m[2] ? m[1] + mark + m[2] + mark + m[3] : inner; };
       if (tag === 'STRONG' || tag === 'B') out += wrap('**');
@@ -1414,7 +1505,7 @@
       else if (tag === 'SUB') out += wrap('~');
       else if (tag === 'SUP') out += wrap('^');
       else if (tag === 'A') {
-        const href = n.getAttribute('href') || ''; const text = n.textContent;
+        const href = n.getAttribute('data-lmd-href') || n.getAttribute('href') || ''; const text = n.textContent;
         out += (!href || href === text || href === 'mailto:' + text || href === 'http://' + text) ? escText(text) : '[' + inner + '](' + href + ')';
       } else out += inner;
     });
@@ -1730,7 +1821,7 @@
   // Chrome no deja que una página escriba en el disco sin que la persona elija dónde. Para no
   // pedirlo en cada archivo, se pide una vez la CARPETA: con eso se guarda cualquier archivo de
   // adentro, y el permiso queda recordado para las próximas veces.
-  const hereUrl = () => location.href.split('#')[0].split('?')[0];
+  const hereUrl = () => HERE;
 
   function handlesDb() {
     return new Promise((resolve, reject) => {
@@ -1776,6 +1867,12 @@
 
   // Busca un permiso ya dado que sirva para este archivo: el del archivo mismo o el de una carpeta que lo contenga.
   async function storedHandle(ask) {
+    if (APP) {
+      // En la app el archivo ya viene con su permiso: a lo sumo Chrome pide confirmar la escritura.
+      let h = null;
+      try { h = await vFile(HERE); } catch (e) { /* ya no está */ }
+      return h && await canWrite(h, ask) ? h : null;
+    }
     const url = hereUrl();
     const recs = await handlesAll();
     const exact = recs.find((r) => r.kind === 'file' && r.key === url);
@@ -1809,7 +1906,7 @@
 
   function askForAccess() {
     return new Promise((resolve) => {
-      const name = decodeURIComponent(location.pathname.split('/').pop() || '');
+      const name = DOC_NAME;
       const box = el('div', { class: 'lmd-ask' });
       box.innerHTML =
         '<div class="lmd-ask-card" role="dialog" aria-label="' + T('Permiso para guardar') + '">' +
@@ -1860,7 +1957,7 @@
       if (!fileHandle) {
         if (!interactive) return false;
         if (!window.showOpenFilePicker) {
-          const name = decodeURIComponent(location.pathname.split('/').pop() || 'documento.md');
+          const name = DOC_NAME || 'documento.md';
           const a = el('a', { download: name });
           a.href = URL.createObjectURL(new Blob([raw], { type: 'text/markdown' }));
           a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
@@ -1884,14 +1981,185 @@
     }
   }
 
+  // ---------- Pantalla de inicio de la app ----------
+  const rootsAll = async () => (await handlesAll()).filter((r) => r.root).sort((a, b) => (b.at || 0) - (a.at || 0));
+
+  function themeOnly() {
+    const root = document.documentElement;
+    const dark = isDark();
+    root.classList.add('lmd-root');
+    root.classList.toggle('lmd-dark', dark);
+    root.classList.toggle('lmd-light', !dark);
+    applyAccent(root, dark);
+  }
+
+  // Primer Markdown de una carpeta: el README o el índice si hay, si no el primero por nombre.
+  async function firstMarkdown(root) {
+    const queue = [{ h: root, path: '', depth: 0 }];
+    const byName = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+    while (queue.length) {
+      const d = queue.shift();
+      const files = []; const dirs = [];
+      for await (const [name, h] of d.h.entries()) {
+        if (name.startsWith('.')) continue;
+        if (h.kind === 'file') { if (MD_RE.test(name)) files.push(name); }
+        else if (d.depth < 3 && !SKIP_DIRS.test(name)) dirs.push({ name, h });
+      }
+      if (files.length) {
+        files.sort(byName);
+        return d.path + encodeURIComponent(files.find((n) => /^(readme|index|leeme)\./i.test(n)) || files[0]);
+      }
+      dirs.sort((a, b) => byName(a.name, b.name)).forEach((x) => queue.push({ h: x.h, path: d.path + encodeURIComponent(x.name) + '/', depth: d.depth + 1 }));
+    }
+    return null;
+  }
+
+  async function openPicked(handle, say) {
+    let rec = null;
+    for (const r of await rootsAll()) {
+      try { if (await r.handle.isSameEntry(handle)) { rec = r; break; } } catch (e) { /* permiso vencido */ }
+    }
+    if (!rec) { const id = Math.random().toString(36).slice(2, 10); rec = { key: 'root:' + id, root: true, id }; }
+    rec.kind = handle.kind === 'directory' ? 'dir' : 'file';
+    rec.name = handle.name; rec.handle = handle; rec.at = Date.now();
+    let path = encodeURIComponent(handle.name);
+    if (rec.kind === 'dir') {
+      path = await firstMarkdown(handle);
+      if (!path) { say(T('Esa carpeta no tiene archivos Markdown.')); return; }
+    } else if (!MD_RE.test(handle.name) && !/\.txt$/i.test(handle.name)) { say(T('Ese archivo no es Markdown.')); return; }
+    rec.last = rec.id + '/' + path;
+    await handlesPut(rec);
+    location.href = APP_URL + '?f=' + encodeURIComponent(rec.last);
+  }
+
+  async function home(note) {
+    themeOnly();
+    document.title = 'MD Tools';
+    document.body.textContent = '';
+    const box = el('main', { class: 'lmd-home' });
+    box.innerHTML =
+      '<div class="lmd-home-card">' +
+        '<img class="lmd-home-logo" src="' + chrome.runtime.getURL('icons/icon128.png') + '" alt="">' +
+        '<h1>MD Tools</h1>' +
+        '<p class="lmd-home-sub">' + T('Abrí un archivo Markdown o una carpeta para leerlo y editarlo acá mismo.') + '</p>' +
+        '<div class="lmd-home-actions">' +
+          '<button type="button" class="lmd-btn lmd-btn-fill" data-home="file">' + ICON.file + '<span>' + T('Abrir archivo') + '</span></button>' +
+          '<button type="button" class="lmd-btn" data-home="dir">' + ICON.folder + '<span>' + T('Abrir carpeta') + '</span></button>' +
+        '</div>' +
+        '<p class="lmd-home-hint">' + T('También podés arrastrar un archivo o una carpeta a esta ventana.') + '</p>' +
+        '<p class="lmd-home-msg" role="status" hidden></p>' +
+        '<div class="lmd-home-recent" hidden><h2>' + T('Recientes') + '</h2><ul></ul></div>' +
+      '</div>' +
+      '<a class="lmd-home-coffee" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">' + ICON.coffee + '<span>' + T(settings.supporter ? 'Gracias por apoyar' : 'Invitame un café') + '</span></a>';
+    document.body.appendChild(box);
+    const msg = box.querySelector('.lmd-home-msg');
+    const say = (text) => { msg.hidden = !text; msg.textContent = text || ''; };
+    if (note) say(note);
+
+    const recent = box.querySelector('.lmd-home-recent');
+    const paint = async () => {
+      const recs = (await rootsAll()).slice(0, 8);
+      recent.hidden = !recs.length;
+      const ul = recent.querySelector('ul'); ul.textContent = '';
+      recs.forEach((r) => {
+        const li = el('li');
+        const go = el('a', { class: 'lmd-home-item', href: APP_URL + '?f=' + encodeURIComponent(r.last || r.id + '/') });
+        const lastName = decodeURIComponent((r.last || '').split('/').slice(1).join('/'));
+        go.innerHTML = '<span class="lmd-node-ico">' + (r.kind === 'dir' ? ICON.folder : ICON.md) + '</span><span class="lmd-home-name"></span><span class="lmd-home-path"></span>';
+        go.querySelector('.lmd-home-name').textContent = r.name;
+        go.querySelector('.lmd-home-path').textContent = r.kind === 'dir' ? lastName : '';
+        const del = el('button', { type: 'button', class: 'lmd-home-del', title: T('Quitar de la lista') }, ICON.close);
+        del.addEventListener('click', async () => {
+          try {
+            const db = await handlesDb();
+            await new Promise((resolve) => { const t = db.transaction('h', 'readwrite'); t.objectStore('h').delete(r.key); t.oncomplete = resolve; t.onerror = resolve; });
+          } catch (e) { /* queda en la lista */ }
+          paint();
+        });
+        li.append(go, del); ul.appendChild(li);
+      });
+    };
+    paint();
+
+    box.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-home]'); if (!b) return;
+      say('');
+      try {
+        if (b.dataset.home === 'dir') await openPicked(await window.showDirectoryPicker({ id: 'lmd-abrir-carpeta', mode: 'readwrite' }), say);
+        else {
+          const picked = await window.showOpenFilePicker({ id: 'lmd-abrir', multiple: false,
+            types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.mkd', '.mdown'] } }] });
+          await openPicked(picked[0], say);
+        }
+      } catch (err) {
+        if (!(err && err.name === 'AbortError')) say(T('No se pudo abrir. Probá de nuevo.'));
+      }
+    });
+    // Soltar un archivo o una carpeta: se toma su permiso en vez de dejar que Chrome navegue.
+    window.addEventListener('dragover', (e) => { e.preventDefault(); box.classList.add('lmd-drop'); });
+    window.addEventListener('dragleave', (e) => { if (!e.relatedTarget) box.classList.remove('lmd-drop'); });
+    window.addEventListener('drop', async (e) => {
+      e.preventDefault(); box.classList.remove('lmd-drop');
+      const item = Array.from(e.dataTransfer.items || []).find((i) => i.kind === 'file');
+      if (!item || !item.getAsFileSystemHandle) return;
+      try { await openPicked(await item.getAsFileSystemHandle(), say); } catch (err) { say(T('No se pudo abrir. Probá de nuevo.')); }
+    });
+  }
+
+  // Al volver otro día Chrome pide confirmar el acceso, y eso necesita un clic.
+  function gate(rec, mode) {
+    return new Promise((resolve) => {
+      themeOnly();
+      document.title = 'MD Tools';
+      document.body.textContent = '';
+      const box = el('main', { class: 'lmd-home' });
+      box.innerHTML =
+        '<div class="lmd-home-card">' +
+          '<img class="lmd-home-logo" src="' + chrome.runtime.getURL('icons/icon128.png') + '" alt="">' +
+          '<h1></h1>' +
+          '<p class="lmd-home-sub">' + T('Chrome pide que confirmes el acceso antes de seguir.') + '</p>' +
+          '<div class="lmd-home-actions">' +
+            '<button type="button" class="lmd-btn lmd-btn-fill" data-gate="ok"><span>' + T('Continuar') + '</span></button>' +
+            '<button type="button" class="lmd-btn" data-gate="no"><span>' + T('Volver al inicio') + '</span></button>' +
+          '</div>' +
+        '</div>';
+      box.querySelector('h1').textContent = rec.name;
+      document.body.appendChild(box);
+      box.addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-gate]'); if (!b) return;
+        if (b.dataset.gate === 'no') return resolve(false);
+        try { if ((await rec.handle.requestPermission({ mode })) === 'granted') resolve(true); } catch (err) { resolve(false); }
+      });
+    });
+  }
+
+  async function appBoot() {
+    const f = new URLSearchParams(location.search).get('f');
+    if (!f) { home(); return false; }
+    const id = f.split('/')[0];
+    const rec = (await handlesAll()).find((r) => r.root && r.id === id);
+    if (!rec) { home(T('Ese acceso ya no está guardado. Abrí el archivo o la carpeta de nuevo.')); return false; }
+    const mode = rec.kind === 'dir' ? 'readwrite' : 'read';
+    let ok = false;
+    try { ok = (await rec.handle.queryPermission({ mode })) === 'granted'; } catch (e) { /* se pide abajo */ }
+    if (!ok && !(await gate(rec, mode))) { home(); return false; }
+    appRoot = rec;
+    const text = await vText(HERE);
+    if (text == null) { home(T('No se encontró "{a}".', { a: DOC_NAME })); return false; }
+    raw = text; diskText = text;
+    rec.last = f; rec.at = Date.now(); handlesPut(rec);
+    return true;
+  }
+
   // ---------- Arranque ----------
   const RENDER_KEYS = ['plugins', 'theme'];
   const TREE_KEYS = ['filesOnlyMarkdown', 'filesShowHidden'];
 
-  LMD.load().then((s) => {
+  LMD.load().then(async (s) => {
     settings = s;
     LMD.setLang(settings.language);
-    if (!settings.enabled) return;
+    if (APP) { if (!(await appBoot())) return; }
+    else if (!settings.enabled) return;
     buildUI();
     applySettings();
     render();
@@ -1903,7 +2171,7 @@
       history.replaceState(null, '', location.href.split('#')[0]);
       if (fromSearch[2]) {
         const root = decodeURIComponent(fromSearch[2]);
-        if (location.href.startsWith(root) && root !== treeRoot) {
+        if (HERE.startsWith(root) && root !== treeRoot) {
           treeRoot = root; // se conserva la carpeta donde se buscó
           if (ui.paneFiles.dataset.loaded) loadTree();
         }

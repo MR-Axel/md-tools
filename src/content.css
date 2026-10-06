@@ -419,3 +419,33 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
   .lmd-code pre { white-space: pre-wrap; }
   .lmd-code pre code { white-space: pre-wrap !important; }
 }
+
+/* ---------- Pantalla de inicio de la app ---------- */
+.lmd-tree-path { flex: 1; min-width: 0; }
+.lmd-tree-open { flex: none; }
+.lmd-heart svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; display: block; }
+.lmd-home { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 40px 20px; background: var(--bg); color: var(--fg); font: 15px/1.5 var(--lmd-ui, -apple-system, "Segoe UI", sans-serif); box-sizing: border-box; }
+.lmd-home * { box-sizing: border-box; }
+.lmd-home-card { width: min(520px, 100%); padding: 34px 32px 28px; border: 1px solid var(--line); border-radius: 16px; background: var(--bg-soft); text-align: center; transition: border-color .15s; }
+.lmd-home.lmd-drop .lmd-home-card { border-color: var(--accent-fill); border-style: dashed; }
+.lmd-home-logo { width: 64px; height: 64px; border-radius: 14px; }
+.lmd-home h1 { margin: 14px 0 6px; font-size: 24px; border: 0; padding: 0; overflow-wrap: anywhere; }
+.lmd-home-sub { margin: 0 0 22px; color: var(--fg-muted); }
+.lmd-home-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.lmd-home-actions .lmd-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; font-size: 15px; }
+.lmd-home svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.lmd-home-hint { margin: 16px 0 0; color: var(--fg-faint); font-size: 13px; }
+.lmd-home-msg { margin: 14px 0 0; padding: 9px 12px; border-radius: 8px; border: 1px solid #dc2626; color: #dc2626; font-size: 13.5px; }
+.lmd-home-msg[hidden], .lmd-home-recent[hidden] { display: none; }
+.lmd-home-recent { margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--line); text-align: left; }
+.lmd-home-recent h2 { margin: 0 0 8px; padding: 0; border: 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-faint); }
+.lmd-home-recent ul { list-style: none; margin: 0; padding: 0; }
+.lmd-home-recent li { display: flex; align-items: center; gap: 4px; }
+.lmd-home-item { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 8px; color: var(--fg); text-decoration: none; }
+.lmd-home-item:hover { background: var(--bg); color: var(--accent); }
+.lmd-home-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lmd-home-path { flex: 1; min-width: 0; color: var(--fg-faint); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+.lmd-home-del { width: 28px; height: 28px; border: 0; border-radius: 7px; background: transparent; color: var(--fg-faint); display: grid; place-items: center; cursor: pointer; }
+.lmd-home-del:hover { background: var(--bg); color: var(--fg); }
+.lmd-home-coffee { display: inline-flex; align-items: center; gap: 8px; color: var(--fg-muted); font-size: 13.5px; text-decoration: none; }
+.lmd-home-coffee:hover { color: var(--accent); }
