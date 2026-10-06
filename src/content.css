@@ -445,3 +445,28 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-home-del:hover { background: var(--bg); color: var(--fg); }
 .lmd-home-coffee { display: inline-flex; align-items: center; gap: 8px; color: var(--fg-muted); font-size: 13.5px; text-decoration: none; }
 .lmd-home-coffee:hover { color: var(--accent); }
+
+/* ---------- Escribir contenido nuevo ---------- */
+.lmd-insert { display: none; }
+.lmd-editing .lmd-insert { display: grid; }
+.lmd-editing .lmd-draft { min-height: 1.6em; outline: 1px dashed var(--line); outline-offset: 3px; border-radius: 4px; }
+.lmd-editing .lmd-draft:empty::before { content: attr(data-ph); color: var(--fg-faint); pointer-events: none; }
+.lmd-editing p.lmd-draft-h1 { font-size: 2em; font-weight: 700; }
+.lmd-editing p.lmd-draft-h2 { font-size: 1.5em; font-weight: 700; }
+.lmd-editing p.lmd-draft-h3 { font-size: 1.25em; font-weight: 700; }
+.lmd-editing p.lmd-draft-h4 { font-size: 1.05em; font-weight: 700; }
+.lmd-editing p.lmd-draft-ul, .lmd-editing p.lmd-draft-ol, .lmd-editing p.lmd-draft-task { display: list-item; margin-left: 1.6em; }
+.lmd-editing p.lmd-draft-ol { list-style: decimal; }
+.lmd-editing p.lmd-draft-task { list-style: square; }
+.lmd-editing p.lmd-draft-quote { padding-left: 1em; border-left: 3px solid var(--line); color: var(--fg-muted); }
+.lmd-editing .lmd-pending { opacity: 0.75; }
+.lmd-add { margin: 22px 0 60px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 8px; color: var(--fg-faint); font-size: 14px; cursor: text; }
+.lmd-add::before { content: '+  ' attr(data-label); }
+.lmd-add:hover { border-color: var(--accent-fill); color: var(--accent); }
+.lmd-menu { position: fixed; z-index: 60; width: 300px; padding: 8px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 11px; box-shadow: var(--shadow); font: 13.5px/1.3 var(--lmd-ui, -apple-system, "Segoe UI", sans-serif); color: var(--fg); }
+.lmd-menu-label { margin: 6px 6px 4px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-faint); }
+.lmd-menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.lmd-menu button { padding: 7px 9px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.lmd-menu button:hover { background: var(--accent-soft); color: var(--accent); }
+.lmd-menu button.lmd-menu-danger:hover { background: color-mix(in srgb, #dc2626 16%, transparent); color: #dc2626; }
+@media print { .lmd-add, .lmd-menu, .lmd-draft:empty { display: none !important; } }

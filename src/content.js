@@ -273,7 +273,8 @@
         const out = await mermaid.render('lmd-mermaid-' + (++mermaidSeq), code);
         const box = el('div', { class: 'lmd-diagram' });
         box.innerHTML = out.svg;
-        box.dataset.code = code;
+        box.dataset.code = code; box.dataset.kind = 'mermaid';
+        if (n.hasAttribute('data-l')) box.setAttribute('data-l', n.getAttribute('data-l'));
         n.replaceWith(box);
       } catch (e) {
         n.classList.add('lmd-mermaid-error');
@@ -314,6 +315,8 @@
       try {
         const svg = vizInstance.renderSVGElement(n.textContent);
         const box = el('div', { class: 'lmd-diagram lmd-diagram-dot' });
+        box.dataset.code = n.textContent; box.dataset.kind = 'dot';
+        if (n.hasAttribute('data-l')) box.setAttribute('data-l', n.getAttribute('data-l'));
         box.appendChild(svg);
         n.replaceWith(box);
       } catch (e) {
@@ -465,6 +468,7 @@
             '<button type="button" role="radio" data-act="mode-read" aria-checked="true" class="lmd-on">' + ICON.eye + '<span>' + T('Ver') + '</span></button>' +
             '<button type="button" role="radio" data-act="mode-edit" aria-checked="false">' + ICON.pencil + '<span>' + T('Editar') + '</span></button>' +
           '</div>' +
+          '<button class="lmd-icon-btn lmd-insert" data-act="insert" title="' + T('Insertar un bloque (también con clic derecho)') + '">' + ICON.plus + '</button>' +
           '<button class="lmd-icon-btn lmd-save" data-act="save" title="' + T('Guardar (Ctrl+S)') + '" hidden>' + ICON.save + '</button>' +
           '<span class="lmd-sep"></span>' +
           '<div class="lmd-view" role="radiogroup" aria-label="' + T('Vista') + '">' +
@@ -519,6 +523,7 @@
     document.title = DOC_NAME || 'Markdown';
     bindEvents();
     bindEditing();
+    LMD.write.init(core);
     document.documentElement.dataset.lmdFs = String(!!window.showOpenFilePicker && window.isSecureContext);
   }
 
@@ -596,6 +601,7 @@
     else if (act === 'mode-read') { if (editMode) setEditMode(false); }
     else if (act === 'mode-edit') { if (!editMode) setEditMode(true); }
     else if (act === 'save') save(true);
+    else if (act === 'insert') { const box = source.getBoundingClientRect(); LMD.write.menuAt(box.left - 120, box.bottom + 8); }
     else if (act === 'view-doc') { rawMode = false; applyRawMode(); }
     else if (act === 'view-raw') { rawMode = true; applyRawMode(); }
     else if (act === 'settings') openPanel();
@@ -712,6 +718,7 @@
     onScroll();
     updateCount();
     if (!ui.searchBox.hidden && ui.searchInput.value) runSearch(ui.searchInput.value);
+    core.hooks.render.forEach((fn) => fn());
   }
 
   // Índice: el título del documento va arriba como cabecera, con datos de lectura y avance;
@@ -1296,7 +1303,54 @@
 
   // Reemplaza líneas del fuente y corre los rangos de los bloques que vienen después, sin redibujar:
   // así el foco puede pasar a otro bloque sin perder el cursor.
+  // Deshacer trabaja sobre el fuente completo: alcanza para volver atrás cualquier operación de bloques.
+  const undoStack = [];
+  function pushUndo() {
+    if (undoStack[undoStack.length - 1] === raw) return;
+    undoStack.push(raw);
+    if (undoStack.length > 100) undoStack.shift();
+  }
+  function undo() {
+    if (!undoStack.length) return false;
+    raw = undoStack.pop(); syncSource(); markDirty(); render();
+    return true;
+  }
+
+  // Inserta líneas sin redibujar: corre los bloques que vienen después y agranda los contenedores indicados.
+  function insertLines(at, newLines, owners) {
+    pushUndo();
+    srcLines.splice(at, 0, ...newLines);
+    raw = srcLines.join(eol);
+    const rel = at - fmOffset; const n = newLines.length;
+    ui.article.querySelectorAll('[data-l], [data-p]').forEach((node) => {
+      ['data-l', 'data-p'].forEach((a) => {
+        const r = rangeOf(node, a); if (!r) return;
+        if (r[0] >= rel) node.setAttribute(a, (r[0] + n) + '-' + (r[1] + n));
+        else if (r[1] > rel || (r[1] === rel && owners && owners.indexOf(node) !== -1)) node.setAttribute(a, r[0] + '-' + (r[1] + n));
+      });
+    });
+    markDirty();
+  }
+
+  // Cambia líneas del fuente. Quien lo llama redibuja.
+  function spliceLines(s, count, newLines) {
+    pushUndo();
+    srcLines.splice(s, count, ...newLines);
+    raw = srcLines.join(eol);
+    markDirty();
+  }
+
+  // Pasa al fuente lo editado en un bloque, si cambió.
+  function commitBlock(node) {
+    if (node._md == null || inlineMd(node) === node._md) return false;
+    if (node.classList.contains('lmd-cell')) commitCell(node);
+    else { const b = blockSource(node); if (b) replaceLines(b.s, b.e, b.lines, node, 'data-l'); }
+    node._md = inlineMd(node);
+    return true;
+  }
+
   function replaceLines(s, e, newLines, owner, attr) {
+    pushUndo();
     srcLines.splice(s, e - s, ...newLines);
     raw = srcLines.join(eol);
     const delta = newLines.length - (e - s);
@@ -1518,7 +1572,7 @@
   function bindEditing() {
     ui.article.addEventListener('focusin', (e) => {
       const node = e.target.closest && e.target.closest('.lmd-editable');
-      if (node) node._md = inlineMd(node);
+      if (node) { node._md = inlineMd(node); core.lastBlock = node; }
       ui.tableBar.hidden = !(node && node.classList.contains('lmd-cell'));
       if (!ui.tableBar.hidden) {
         const box = node.closest('table').getBoundingClientRect();
@@ -1537,18 +1591,20 @@
       const node = e.target.closest && e.target.closest('.lmd-editable');
       if (!node || !editMode) return;
       setTimeout(() => { const a = document.activeElement; if (!(a && a.classList && a.classList.contains('lmd-cell'))) ui.tableBar.hidden = true; }, 0);
-      if (node._md == null || inlineMd(node) === node._md) return;
-      if (node.classList.contains('lmd-cell')) commitCell(node);
-      else { const b = blockSource(node); if (b) replaceLines(b.s, b.e, b.lines, node, 'data-l'); }
+      if (node.classList.contains('lmd-draft')) { LMD.write.blur(node); return; }
+      if (!commitBlock(node)) return;
       node._md = null;
       softRender();
     });
     ui.article.addEventListener('keydown', (e) => {
       const node = e.target.closest && e.target.closest('.lmd-editable');
       if (!node) return;
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); node.blur(); }
+      const draft = node.classList.contains('lmd-draft');
+      // Enter cierra el bloque y abre uno nuevo debajo; en una celda solo la confirma.
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (node.classList.contains('lmd-cell')) node.blur(); else LMD.write.enter(node); }
       else if (e.key === 'Enter') { e.preventDefault(); document.execCommand('insertLineBreak'); }
-      else if (e.key === 'Escape') { e.preventDefault(); node._md = null; needsRender = true; node.blur(); render(); }
+      else if (e.key === 'Escape') { e.preventDefault(); node._md = null; if (draft) node._done = true; needsRender = true; node.blur(); render(); }
+      else if (draft) LMD.write.onKey(e, node);
     });
     ui.article.addEventListener('paste', (e) => {
       if (!(e.target.closest && e.target.closest('.lmd-editable'))) return;
@@ -1570,6 +1626,15 @@
     ui.rawEdit.addEventListener('input', debounce(() => { raw = ui.rawEdit.value.replace(/\r?\n/g, eol); syncSource(); markDirty(); }, 200));
     window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
   }
+
+  // Lo que los módulos de edición (write.js y los que siguen) necesitan del lector.
+  const core = {
+    ui, hooks: { render: [] }, lastBlock: null, APP, HERE,
+    get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
+    get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
+    rangeOf, render, softRender, flash, insertLines, spliceLines, commitBlock, undo, editCode, vFile, toHref,
+    setRaw(text) { pushUndo(); raw = text; syncSource(); markDirty(); render(); },
+  };
 
   // ---------- Permiso para escribir ----------
   // Chrome no deja que una página escriba en el disco sin que la persona elija dónde. Para no

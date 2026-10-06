@@ -70,7 +70,7 @@
       return true;
     }, { alt: ['paragraph', 'reference', 'blockquote', 'list'] });
     md.renderer.rules.lmd_math_inline = (tokens, i) => '<span class="lmd-math" data-tex="' + esc(tokens[i].content) + '"></span>';
-    md.renderer.rules.lmd_math_block = (tokens, i) => '<div class="lmd-math lmd-math-block" data-tex="' + esc(tokens[i].content) + '"></div>\n';
+    md.renderer.rules.lmd_math_block = (tokens, i) => '<div class="lmd-math lmd-math-block"' + (tokens[i].attrGet('data-l') ? ' data-l="' + tokens[i].attrGet('data-l') + '"' : '') + ' data-tex="' + esc(tokens[i].content) + '"></div>\n';
   }
 
   const CONTAINERS = { tip: 'Consejo', info: 'Información', note: 'Nota', warning: 'Advertencia', danger: 'Peligro', details: 'Detalles' };
@@ -108,8 +108,9 @@
           render: (tokens, idx) => {
             const t = tokens[idx];
             const title = md.utils.escapeHtml(t.info.trim().slice(name.length).trim() || T(CONTAINERS[name]));
-            if (name === 'details') return t.nesting === 1 ? '<details class="lmd-box"><summary>' + title + '</summary>\n' : '</details>\n';
-            return t.nesting === 1 ? '<div class="lmd-box lmd-box-' + name + '"><p class="lmd-box-title">' + title + '</p>\n' : '</div>\n';
+            const at = t.nesting === 1 && t.attrGet('data-l') ? ' data-l="' + t.attrGet('data-l') + '"' : '';
+            if (name === 'details') return t.nesting === 1 ? '<details class="lmd-box"' + at + '><summary>' + title + '</summary>\n' : '</details>\n';
+            return t.nesting === 1 ? '<div class="lmd-box lmd-box-' + name + '"' + at + '><p class="lmd-box-title">' + title + '</p>\n' : '</div>\n';
           },
         });
       });
@@ -120,8 +121,9 @@
     const fence = md.renderer.rules.fence;
     md.renderer.rules.fence = (tokens, idx, options, env, self) => {
       const info = (tokens[idx].info || '').trim().split(/\s+/)[0].toLowerCase();
-      if (p.mermaid && info === 'mermaid') return '<pre class="lmd-mermaid">' + esc(tokens[idx].content) + '</pre>\n';
-      if (p.graphviz && (info === 'dot' || info === 'graphviz')) return '<pre class="lmd-graphviz">' + esc(tokens[idx].content) + '</pre>\n';
+      const at = tokens[idx].attrGet('data-l') ? ' data-l="' + tokens[idx].attrGet('data-l') + '"' : '';
+      if (p.mermaid && info === 'mermaid') return '<pre class="lmd-mermaid"' + at + '>' + esc(tokens[idx].content) + '</pre>\n';
+      if (p.graphviz && (info === 'dot' || info === 'graphviz')) return '<pre class="lmd-graphviz"' + at + '>' + esc(tokens[idx].content) + '</pre>\n';
       return fence(tokens, idx, options, env, self);
     };
     // Cada bloque guarda de qué líneas del fuente salió (data-l). En las listas compactas el
@@ -137,7 +139,7 @@
           }
           return;
         }
-        if (t.nesting === 1 || t.type === 'fence' || t.type === 'code_block') t.attrSet('data-l', t.map[0] + '-' + t.map[1]);
+        if (t.nesting === 1 || t.type === 'fence' || t.type === 'code_block' || t.type === 'hr' || t.type === 'lmd_math_block') t.attrSet('data-l', t.map[0] + '-' + t.map[1]);
       });
     });
     return md;
