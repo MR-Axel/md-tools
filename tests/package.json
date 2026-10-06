@@ -1,0 +1,7 @@
+{
+  "name": "md-tools-tests",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node smoke.mjs" },
+  "devDependencies": { "playwright-core": "^1.50.0" }
+}
