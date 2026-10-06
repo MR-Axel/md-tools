@@ -524,6 +524,7 @@
     bindEvents();
     bindEditing();
     LMD.write.init(core);
+    LMD.diagram.init(core);
     document.documentElement.dataset.lmdFs = String(!!window.showOpenFilePicker && window.isSecureContext);
   }
 
@@ -1629,7 +1630,7 @@
 
   // Lo que los módulos de edición (write.js y los que siguen) necesitan del lector.
   const core = {
-    ui, hooks: { render: [] }, lastBlock: null, APP, HERE,
+    ui, hooks: { render: [] }, lastBlock: null, APP, HERE, docName: DOC_NAME, ensure, isDark,
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
     rangeOf, render, softRender, flash, insertLines, spliceLines, commitBlock, undo, editCode, vFile, toHref,
