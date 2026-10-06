@@ -42,6 +42,12 @@ Hacé clic en el ícono de la extensión y elegí **Abrir un archivo o una carpe
 
 Abrir un `.md` directo en el navegador sigue funcionando igual que antes. La pestaña Carpeta de la barra lateral tiene un botón que lleva a esta página.
 
+## Sin instalar nada
+
+La página de MD Tools es HTML y JavaScript, así que también funciona servida desde cualquier hosting estático, sin la extensión. En Chrome, Edge, Brave y otros navegadores Chromium abre archivos y carpetas y guarda en el lugar. En Firefox y Safari, que no dejan que una página escriba en el disco, abre de a un archivo y al guardar descarga una copia. En los dos casos no se sube nada: los archivos se leen en tu navegador.
+
+Para probarla en tu máquina, serví esta carpeta (`npx serve .`) y abrí la dirección que te muestra.
+
 ## Actualizar
 
 Chrome no puede actualizar una extensión cargada desde una carpeta, así que MD Tools mira este repositorio una vez por día (o por semana, o nunca: Ajustes → Actualizaciones) y avisa en la barra lateral cuando hay una versión más nueva. Desde ahí: descargás el ZIP, reemplazás la carpeta de la extensión con su contenido y tocás **Aplicar**, que recarga la extensión. Si clonaste el repositorio, alcanza con `git pull` y **Aplicar**.
@@ -76,6 +82,7 @@ src/
   content.js      el lector: interfaz, índice, árbol, búsqueda, edición, guardado, ajustes
   content.css     estilos y temas
   background.js   lectura de archivos y carpetas, carga diferida de las librerías pesadas, atajos, aviso de versión
+  web.js          reemplaza las APIs de la extensión cuando la página se sirve desde un sitio
   app.html        la página de MD Tools: abrir un archivo o una carpeta y editar ahí
   popup.html/js   el encendido y el botón que abre la página de MD Tools
 vendor/           librerías de terceros, sin modificar

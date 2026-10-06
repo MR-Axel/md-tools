@@ -46,6 +46,16 @@
     location.href = ctx.APP_URL + '?f=' + encodeURIComponent(rec.last);
   }
 
+  // Sin File System Access (Firefox, Safari) el archivo se lee una vez y se guarda en la sesión.
+  const canPick = () => !!window.showOpenFilePicker;
+  async function openInMemory(file, say) {
+    if (!file) return;
+    if (!MD_RE.test(file.name) && !/\.txt$/i.test(file.name)) { say(T('Ese archivo no es Markdown.')); return; }
+    try { sessionStorage.setItem('mdt-mem', JSON.stringify({ name: file.name, text: await file.text() })); }
+    catch (e) { say(T('No se pudo abrir. Probá de nuevo.')); return; }
+    location.href = ctx.APP_URL + '?f=' + encodeURIComponent('mem/' + encodeURIComponent(file.name));
+  }
+
   async function home(note) {
     LMD.theme.themeOnly(ctx.settings);
     document.title = 'MD Tools';
@@ -58,9 +68,11 @@
         '<p class="lmd-home-sub">' + T('Abrí un archivo Markdown o una carpeta para leerlo y editarlo acá mismo.') + '</p>' +
         '<div class="lmd-home-actions">' +
           '<button type="button" class="lmd-btn lmd-btn-fill" data-home="file">' + ICON.file + '<span>' + T('Abrir archivo') + '</span></button>' +
-          '<button type="button" class="lmd-btn" data-home="dir">' + ICON.folder + '<span>' + T('Abrir carpeta') + '</span></button>' +
+          (window.showDirectoryPicker ? '<button type="button" class="lmd-btn" data-home="dir">' + ICON.folder + '<span>' + T('Abrir carpeta') + '</span></button>' : '') +
         '</div>' +
-        '<p class="lmd-home-hint">' + T('También podés arrastrar un archivo o una carpeta a esta ventana.') + '</p>' +
+        '<p class="lmd-home-hint">' + (canPick()
+          ? T('También podés arrastrar un archivo o una carpeta a esta ventana.')
+          : T('También podés arrastrar un archivo a esta ventana. Este navegador no deja escribir sobre el archivo: al guardar se descarga una copia.')) + '</p>' +
         '<p class="lmd-home-msg" role="status" hidden></p>' +
         '<div class="lmd-home-recent" hidden><h2>' + T('Recientes') + '</h2><ul></ul></div>' +
       '</div>' +
@@ -96,6 +108,12 @@
       const b = e.target.closest('[data-home]'); if (!b) return;
       say('');
       try {
+        if (!canPick()) {
+          const input = el('input', { type: 'file', accept: '.md,.markdown,.mdx,.mkd,.mdown,.txt' });
+          input.addEventListener('change', () => openInMemory(input.files[0], say));
+          input.click();
+          return;
+        }
         if (b.dataset.home === 'dir') await openPicked(await window.showDirectoryPicker({ id: 'lmd-abrir-carpeta', mode: 'readwrite' }), say);
         else {
           const picked = await window.showOpenFilePicker({ id: 'lmd-abrir', multiple: false,
@@ -112,7 +130,8 @@
     window.addEventListener('drop', async (e) => {
       e.preventDefault(); box.classList.remove('lmd-drop');
       const item = Array.from(e.dataTransfer.items || []).find((i) => i.kind === 'file');
-      if (!item || !item.getAsFileSystemHandle) return;
+      if (!item) return;
+      if (!canPick() || !item.getAsFileSystemHandle) { openInMemory(item.getAsFile(), say); return; }
       try { await openPicked(await item.getAsFileSystemHandle(), say); } catch (err) { say(T('No se pudo abrir. Probá de nuevo.')); }
     });
   }

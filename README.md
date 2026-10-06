@@ -50,6 +50,12 @@ Click the extension icon and choose **Open a file or a folder**. That opens the 
 
 Opening a `.md` directly in the browser keeps working as before. The folder tab of the sidebar has a button that takes you to this page.
 
+## Without installing anything
+
+The MD Tools page is plain HTML and JavaScript, so it also runs served from any static host, with no extension. In Chrome, Edge, Brave and other Chromium browsers it opens files and folders and saves in place. In Firefox and Safari, which do not let a page write to disk, it opens one file at a time and saving downloads a copy. Either way nothing is uploaded: the files are read in your browser.
+
+To try it locally, serve this folder (`npx serve .`) and open the address it prints.
+
 ## Updating
 
 Chrome cannot update an extension loaded from a folder, so MD Tools checks this repository once a day (or once a week, or never: Settings → Updates) and shows a notice in the sidebar when there is a newer version. From there: download the ZIP, replace the extension folder with its contents and click **Apply**, which reloads the extension. If you cloned the repository, `git pull` and **Apply** is enough.
@@ -92,6 +98,7 @@ src/
   content.js      the reader: interface, outline, tree, search, editing, saving, settings
   content.css     styles and themes
   background.js   reads files and folders, lazy-loads the heavy libraries, shortcuts, update check
+  web.js          stands in for the extension APIs when the page is served from a site
   app.html        the MD Tools page: open a file or a folder and edit it there
   popup.html/js   on/off switch and the button that opens the MD Tools page
 vendor/           third-party libraries, unmodified

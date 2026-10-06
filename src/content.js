@@ -5,7 +5,8 @@
   // ---------- ¿Es un documento de texto plano? ----------
   // El lector corre en dos lugares: como script de contenido sobre un .md abierto en el navegador,
   // y en la página propia de la extensión (app.html), donde el archivo llega por un permiso de carpeta.
-  const APP = location.protocol === 'chrome-extension:' && /\/app\.html$/.test(location.pathname);
+  // La página propia también se puede servir desde un sitio, sin la extensión (ver web.js).
+  const APP = /\/app\.html$/.test(location.pathname) && (location.protocol === 'chrome-extension:' || !!window.__MDT_WEB);
   let pre = null;
   if (!APP) {
     const type = (document.contentType || '').toLowerCase();
@@ -1673,6 +1674,10 @@
           a.href = URL.createObjectURL(new Blob([raw], { type: 'text/markdown' }));
           a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
           flash(T('Este navegador no deja escribir el archivo: se descargó una copia'), 'warn');
+          if (appRoot && appRoot.id === 'mem') {
+            diskText = raw; dirty = false; updateSaveState();
+            try { sessionStorage.setItem('mdt-mem', JSON.stringify({ name, text: raw })); } catch (e) { /* demasiado grande para la sesión */ }
+          }
           return false;
         }
         fileHandle = await askForAccess();
@@ -1697,6 +1702,15 @@
     const f = new URLSearchParams(location.search).get('f');
     if (!f) { LMD.home.show(homeCtx()); return false; }
     const id = f.split('/')[0];
+    if (id === 'mem') {
+      // Navegador sin acceso a archivos: el documento viaja en la sesión y se guarda descargando una copia.
+      let mem = null;
+      try { mem = JSON.parse(sessionStorage.getItem('mdt-mem') || 'null'); } catch (e) { /* sesión vacía */ }
+      if (!mem || mem.name !== DOC_NAME) { LMD.home.show(homeCtx()); return false; }
+      appRoot = { id, kind: 'file', name: mem.name, handle: { kind: 'file', name: mem.name, getFile: async () => ({ text: async () => mem.text, lastModified: 0, size: mem.text.length }) } };
+      raw = mem.text; diskText = mem.text;
+      return true;
+    }
     const rec = (await handlesAll()).find((r) => r.root && r.id === id);
     if (!rec) { LMD.home.show(homeCtx(), T('Ese acceso ya no está guardado. Abrí el archivo o la carpeta de nuevo.')); return false; }
     const mode = rec.kind === 'dir' ? 'readwrite' : 'read';

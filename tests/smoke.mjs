@@ -2,7 +2,7 @@
 // el .md abierto directo en el navegador y la página propia con una carpeta elegida.
 // Uso: npm install && npm test   (CHROME_BIN apunta a otro Chromium si hace falta)
 import { chromium } from 'playwright-core';
-import fs from 'fs'; import os from 'os'; import path from 'path'; import { fileURLToPath, pathToFileURL } from 'url';
+import http from 'http'; import fs from 'fs'; import os from 'os'; import path from 'path'; import { fileURLToPath, pathToFileURL } from 'url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sample = pathToFileURL(path.join(root, 'ejemplo', 'ejemplo.md')).href;
@@ -112,6 +112,55 @@ try {
   const popup = await ctx.newPage(); watch(popup);
   await popup.goto(`chrome-extension://${id}/src/popup.html`); await popup.waitForTimeout(600);
   check('popup', (await popup.locator('#open-app').count()) === 1 && (await popup.locator('[data-key]').count()) === 1);
+
+  console.log('Versión web, sin la extensión');
+  const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json', '.md': 'text/markdown', '.woff2': 'font/woff2' };
+  const server = http.createServer((req, res) => {
+    const rel = decodeURIComponent(req.url.split('?')[0]);
+    const file = path.join(root, rel.endsWith('/') ? rel + 'index.html' : rel);
+    if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end(); return; }
+    res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' }); fs.createReadStream(file).pipe(res);
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const origin = 'http://127.0.0.1:' + server.address().port;
+  const web = await ctx.newPage(); watch(web);
+  await web.goto(origin + '/'); await web.waitForSelector('.lmd-home');
+  check('la raíz lleva a la pantalla de inicio', web.url().endsWith('/src/app.html') && (await web.locator('[data-home]').count()) === 2, web.url());
+  await web.evaluate(async () => {
+    const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('web', { create: true });
+    const h = await dir.getFileHandle('nota.md', { create: true }); const w = await h.createWritable();
+    await w.write('# Nota web\n\nTexto de prueba con $a^2$.\n\n```mermaid\ngraph LR\n  A --> B\n```\n'); await w.close();
+    window.showDirectoryPicker = async () => dir;
+  });
+  await Promise.all([web.waitForNavigation(), web.click('[data-home=dir]')]);
+  await web.waitForSelector('.markdown-body h1'); await web.waitForTimeout(3500);
+  const w1 = await web.evaluate(() => ({ title: document.title, katex: !!document.querySelector('.katex'), diagrams: document.querySelectorAll('.lmd-diagram svg').length, updates: [...document.querySelectorAll('.lmd-update')].every((n) => n.hidden) }));
+  check('lee una carpeta desde la web', w1.title === 'nota.md' && w1.katex && w1.diagrams === 1, w1);
+  await web.click('[data-act=mode-edit]'); await web.waitForTimeout(300);
+  await web.locator('.lmd-article p.lmd-editable').first().click(); await web.keyboard.press('End'); await web.keyboard.type(' Editado.'); await web.keyboard.press('Enter'); await web.waitForTimeout(300);
+  await web.keyboard.press('Control+s'); await web.waitForTimeout(1000);
+  const w2 = await web.evaluate(async () => { const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('web'); return (await (await (await dir.getFileHandle('nota.md')).getFile()).text()).split('\n')[2]; });
+  check('guarda desde la web', w2 === 'Texto de prueba con $a^2$. Editado.', w2);
+  await web.click('[data-act=settings]'); await web.waitForSelector('.lmd-panel-card');
+  await web.click('.lmd-seg[data-seg=theme] button[data-val=light]'); await web.waitForTimeout(500);
+  check('los ajustes se guardan en la web', await web.evaluate(() => document.documentElement.classList.contains('lmd-light') && /"theme":"light"/.test(localStorage.getItem('mdtools:settings') || '')));
+  await web.close();
+
+  // Navegador sin acceso a archivos (Firefox, Safari): se abre por selector común y se guarda descargando.
+  const plain = await ctx.newPage(); watch(plain);
+  await plain.addInitScript(() => { delete window.showOpenFilePicker; delete window.showDirectoryPicker; Object.defineProperty(window, 'showOpenFilePicker', { value: undefined }); Object.defineProperty(window, 'showDirectoryPicker', { value: undefined }); });
+  await plain.goto(origin + '/src/app.html'); await plain.waitForSelector('.lmd-home');
+  check('sin acceso a archivos solo ofrece abrir un archivo', (await plain.locator('[data-home]').count()) === 1);
+  const [chooser] = await Promise.all([plain.waitForEvent('filechooser'), plain.click('[data-home=file]')]);
+  await Promise.all([plain.waitForNavigation(), chooser.setFiles(path.join(root, 'ejemplo', 'demo.md'))]);
+  await plain.waitForSelector('.markdown-body h1');
+  check('abre el archivo en memoria', (await plain.title()) === 'demo.md');
+  await plain.click('[data-act=mode-edit]'); await plain.waitForTimeout(300);
+  await plain.locator('.lmd-article p.lmd-editable').first().click(); await plain.keyboard.press('End'); await plain.keyboard.type(' Copia.'); await plain.keyboard.press('Enter'); await plain.waitForTimeout(300);
+  const [download] = await Promise.all([plain.waitForEvent('download'), plain.keyboard.press('Control+s')]);
+  const copy = fs.readFileSync(await download.path(), 'utf8');
+  check('guardar descarga una copia con el cambio', download.suggestedFilename() === 'demo.md' && / Copia\.\r?\n/.test(copy), download.suggestedFilename());
+  await plain.close(); server.close();
   check('sin errores de JavaScript', errors.length === 0, errors);
 } finally {
   await ctx.close();

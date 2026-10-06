@@ -230,6 +230,7 @@
       "Abrir carpeta": "Open folder",
       "También podés arrastrar un archivo o una carpeta a esta ventana.": "You can also drag a file or a folder onto this window.",
       "Recientes": "Recent",
+      "También podés arrastrar un archivo a esta ventana. Este navegador no deja escribir sobre el archivo: al guardar se descarga una copia.": "You can also drag a file onto this window. This browser cannot write to the file: saving downloads a copy.",
       "Quitar de la lista": "Remove from the list",
       "Esa carpeta no tiene archivos Markdown.": "That folder has no Markdown files.",
       "Ese archivo no es Markdown.": "That file is not Markdown.",
