@@ -38,6 +38,8 @@ try {
   check('renderiza el documento', doc.title === 'ejemplo.md' && doc.h2 >= 8, doc);
   check('matemática y diagramas', doc.katex && doc.diagrams === 2, doc);
   check('índice lateral', doc.outline >= 8, doc.outline);
+  const pad = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.lmd-article')).paddingTop));
+  check('el documento tiene aire arriba (la hoja de estilos se lee entera)', pad >= 20, pad);
   check('links [[wiki]] resueltos', doc.wiki[0] === 'notas.md' && doc.wiki[2] === '', doc.wiki);
   check('el HTML del documento no ejecuta scripts', !doc.xss);
 
@@ -68,7 +70,7 @@ try {
   console.log('Página propia de MD Tools');
   const app = await ctx.newPage(); watch(app);
   await app.goto(`chrome-extension://${id}/src/app.html`); await app.waitForSelector('.lmd-home');
-  check('pantalla de inicio: nuevo, abrir archivo y abrir carpeta', (await app.locator('[data-home]').count()) === 3);
+  check('pantalla de inicio: nuevo, abrir archivo y abrir carpeta', (await app.locator('.lmd-home-actions [data-home]').count()) === 3);
   // Carpeta de prueba en el almacenamiento privado del origen; el selector de Windows no se puede automatizar.
   await app.evaluate(async () => {
     const base = await navigator.storage.getDirectory();
@@ -120,7 +122,7 @@ try {
   const fresh = await ctx.newPage(); watch(fresh);
   await fresh.goto(`chrome-extension://${id}/src/app.html?new=1`); await fresh.waitForSelector('.lmd-draft');
   check('arranca en edición con el cursor listo', /^nota-\d{8}-\d{4}\.md$/.test(await fresh.title()) && await fresh.evaluate(() => document.activeElement.classList.contains('lmd-draft')), await fresh.title());
-  await fresh.keyboard.type('# Idea'); await fresh.keyboard.press('Enter'); await fresh.keyboard.type('Primera línea.'); await fresh.click('.lmd-topbar .lmd-status', { force: true }); await fresh.waitForTimeout(600);
+  await fresh.keyboard.type('# Idea'); await fresh.keyboard.press('Enter'); await fresh.keyboard.type('Primera línea.'); await fresh.click('.lmd-foot .lmd-status', { force: true }); await fresh.waitForTimeout(600);
   await fresh.reload(); await fresh.waitForSelector('.markdown-body h1');
   check('recargar la pestaña no pierde la nota', (await fresh.textContent('.markdown-body h1')).startsWith('Idea'));
   await fresh.evaluate(async () => {
@@ -130,6 +132,16 @@ try {
   await Promise.all([fresh.waitForNavigation(), fresh.keyboard.press('Control+s')]); await fresh.waitForSelector('.markdown-body h1');
   const kept = await fresh.evaluate(async () => { const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('nuevas'); for await (const [, h] of dir.entries()) return (await h.getFile()).text(); });
   check('guardar elige dónde y lo deja como archivo común', kept.trim() === '# Idea\n\nPrimera línea.' && !/f=mem/.test(fresh.url()), [kept, fresh.url().split('?')[1]]);
+  await fresh.goto(`chrome-extension://${id}/src/app.html`); await fresh.waitForSelector('.lmd-home-notes button');
+  await fresh.evaluate(async () => { const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('rapidas', { create: true }); window.showDirectoryPicker = async () => dir; });
+  await fresh.click('[data-home=notes]'); await fresh.waitForSelector('.lmd-home-notes b');
+  await Promise.all([fresh.waitForNavigation(), fresh.click('[data-home=new]')]); await fresh.waitForSelector('.lmd-draft');
+  const inFolder = await fresh.evaluate(async () => { const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('rapidas'); const out = []; for await (const [n] of dir.entries()) out.push(n); return out; });
+  check('con carpeta de notas, la nota nueva nace como archivo ahí', inFolder.length === 1 && /^nota-.*\.md$/.test(inFolder[0]) && !/f=mem/.test(fresh.url()), inFolder);
+  await fresh.keyboard.type('Nota rápida'); await fresh.click('.lmd-foot .lmd-status', { force: true }); await fresh.waitForTimeout(500);
+  check('el pie muestra el estado del guardado y el contador', /sin guardar/i.test(await fresh.textContent('.lmd-savestate')) && /2 palabras/.test(await fresh.textContent('.lmd-count')), [await fresh.textContent('.lmd-savestate'), await fresh.textContent('.lmd-count')]);
+  await fresh.screenshot({ path: process.env.SHOT || path.join(os.tmpdir(), 'mdtools-nota.png') });
+  await fresh.keyboard.press('Control+s'); await fresh.waitForTimeout(700);
   await fresh.close();
 
   console.log('Versión web, sin la extensión');
@@ -144,7 +156,7 @@ try {
   const origin = 'http://127.0.0.1:' + server.address().port;
   const web = await ctx.newPage(); watch(web);
   await web.goto(origin + '/'); await web.waitForSelector('.lmd-home');
-  check('la raíz lleva a la pantalla de inicio', web.url().endsWith('/src/app.html') && (await web.locator('[data-home]').count()) === 3, web.url());
+  check('la raíz lleva a la pantalla de inicio', web.url().endsWith('/src/app.html') && (await web.locator('.lmd-home-actions [data-home]').count()) === 3, web.url());
   await web.evaluate(async () => {
     const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('web', { create: true });
     const h = await dir.getFileHandle('nota.md', { create: true }); const w = await h.createWritable();

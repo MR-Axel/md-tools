@@ -442,8 +442,8 @@
     ui.sidebar.innerHTML =
       '<div class="lmd-side-head">' +
         '<div class="lmd-tabs" role="tablist">' +
-          '<button class="lmd-tab" data-tab="files" title="' + T('Carpeta') + '" role="tab">' + ICON.folder + '</button>' +
-          '<button class="lmd-tab" data-tab="outline" title="' + T('Índice') + '" role="tab">' + ICON.outline + '</button>' +
+          '<button class="lmd-tab" data-tab="files" role="tab">' + ICON.folder + '<span>' + T('Archivos') + '</span></button>' +
+          '<button class="lmd-tab" data-tab="outline" role="tab">' + ICON.outline + '<span>' + T('Índice') + '</span></button>' +
         '</div>' +
       '</div>' +
       '<div class="lmd-search">' +
@@ -461,8 +461,7 @@
     ui.main.innerHTML =
       '<div class="lmd-topbar">' +
         '<button class="lmd-icon-btn" data-act="sidebar" title="Barra lateral (Alt+Shift+B)">' + ICON.side + '</button>' +
-        '<span class="lmd-status"></span>' +
-        '<span class="lmd-count" title="' + T('Palabras y caracteres') + '"></span>' +
+        '<span class="lmd-docname"></span>' +
         '<div class="lmd-tools">' +
           '<div class="lmd-modeseg" role="radiogroup" aria-label="' + T('Modo') + '">' +
             '<button type="button" role="radio" data-act="mode-read" aria-checked="true" class="lmd-on">' + ICON.eye + '<span>' + T('Ver') + '</span></button>' +
@@ -487,7 +486,9 @@
       '</div>' +
       '<article class="lmd-article markdown-body"></article>' +
       '<pre class="lmd-raw" hidden></pre>' +
-      '<textarea class="lmd-raw lmd-raw-edit" spellcheck="false" hidden></textarea>';
+      '<textarea class="lmd-raw lmd-raw-edit" spellcheck="false" hidden></textarea>' +
+      // Pie: avisos a la izquierda; estado del guardado y contador a la derecha.
+      '<footer class="lmd-foot"><span class="lmd-status"></span><span class="lmd-savestate"></span><span class="lmd-count" title="' + T('Palabras y caracteres') + '"></span></footer>';
 
     ui.toTop = el('button', { class: 'lmd-to-top', title: T('Volver arriba'), hidden: '' }, ICON.up);
     ui.panel = el('div', { class: 'lmd-panel', hidden: '' });
@@ -522,6 +523,7 @@
     ui.searchCount = ui.searchBox.querySelector('.lmd-search-count');
 
     document.title = DOC_NAME || 'Markdown';
+    ui.main.querySelector('.lmd-docname').textContent = DOC_NAME;
     bindEvents();
     bindEditing();
     LMD.write.init(core);
@@ -1451,6 +1453,8 @@
     });
     ui.main.querySelector('[data-act=mode-read]').title = T(editMode ? 'Guardar y volver a solo lectura' : 'Estás viendo el documento');
     ui.main.querySelector('[data-act=mode-edit]').title = T(editMode ? 'Estás editando el documento' : 'Editar el documento');
+    const state = ui.main.querySelector('.lmd-savestate');
+    state.textContent = dirty ? T('Cambios sin guardar') : (editMode ? T(settings.autosave ? 'Guardado · autoguardado activo' : 'Todo guardado') : '');
     const save = ui.main.querySelector('[data-act=save]');
     save.hidden = !editMode && !dirty;
     save.title = dirty ? T('Guardar (Ctrl+S). Hay cambios sin guardar') : T('Guardar (Ctrl+S)');

@@ -73,6 +73,7 @@
         '<p class="lmd-home-hint">' + (canPick()
           ? T('También podés arrastrar un archivo o una carpeta a esta ventana.')
           : T('También podés arrastrar un archivo a esta ventana. Este navegador no deja escribir sobre el archivo: al guardar se descarga una copia.')) + '</p>' +
+        (window.showDirectoryPicker ? '<p class="lmd-home-notes"></p>' : '') +
         '<p class="lmd-home-msg" role="status" hidden></p>' +
         '<div class="lmd-home-recent" hidden><h2>' + T('Recientes') + '</h2><ul></ul></div>' +
       '</div>' +
@@ -81,6 +82,18 @@
     const msg = box.querySelector('.lmd-home-msg');
     const say = (text) => { msg.hidden = !text; msg.textContent = text || ''; };
     if (note) say(note);
+
+    const notesLine = box.querySelector('.lmd-home-notes');
+    const paintNotes = async () => {
+      if (!notesLine) return;
+      const folder = await notesFolder();
+      notesLine.textContent = '';
+      if (folder) {
+        notesLine.append(T('Las notas nuevas se guardan en') + ' ', el('b', { text: folder.name }), ' · ');
+        notesLine.appendChild(el('button', { type: 'button', class: 'lmd-link', 'data-home': 'notes', text: T('Cambiar') }));
+      } else notesLine.appendChild(el('button', { type: 'button', class: 'lmd-link', 'data-home': 'notes', text: T('Elegir una carpeta para las notas nuevas') }));
+    };
+    paintNotes();
 
     const recent = box.querySelector('.lmd-home-recent');
     const paint = async () => {
@@ -108,6 +121,10 @@
       const b = e.target.closest('[data-home]'); if (!b) return;
       say('');
       if (b.dataset.home === 'new') { create(); return; }
+      if (b.dataset.home === 'notes') {
+        try { await chooseNotesFolder(); paintNotes(); paint(); } catch (err) { if (!(err && err.name === 'AbortError')) say(T('No se pudo abrir. Probá de nuevo.')); }
+        return;
+      }
       try {
         if (!canPick()) {
           const input = el('input', { type: 'file', accept: '.md,.markdown,.mdx,.mkd,.mdown,.txt' });
@@ -164,10 +181,51 @@
     });
   }
 
-  // Archivo nuevo: nace en memoria, listo para escribir, y se elige dónde guardarlo al primer Ctrl+S.
-  function create() {
+  // Carpeta elegida para las notas nuevas, si hay una.
+  const notesFolder = async () => (await rootsAll()).find((r) => r.notes && r.kind === 'dir') || null;
+
+  async function chooseNotesFolder() {
+    const handle = await window.showDirectoryPicker({ id: 'lmd-notas', mode: 'readwrite' });
+    let mine = null;
+    for (const r of await rootsAll()) {
+      let same = false;
+      try { same = await r.handle.isSameEntry(handle); } catch (e) { /* permiso vencido */ }
+      if (same) mine = r;
+      else if (r.notes) { r.notes = false; await handlesPut(r); }
+    }
+    if (!mine) { const id = Math.random().toString(36).slice(2, 10); mine = { key: 'root:' + id, root: true, id, kind: 'dir' }; }
+    mine.kind = 'dir'; mine.name = handle.name; mine.handle = handle; mine.notes = true; mine.at = mine.at || Date.now();
+    await handlesPut(mine);
+    return mine;
+  }
+
+  // Archivo nuevo. Con carpeta de notas se crea ahí y queda guardado desde el arranque; sin ella
+  // nace en memoria y se elige dónde guardarlo al primer Ctrl+S.
+  async function create() {
     const d = new Date(); const p = (n) => String(n).padStart(2, '0');
-    const name = T('nota') + '-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + '.md';
+    const base = T('nota') + '-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes());
+    const folder = window.showDirectoryPicker ? await notesFolder() : null;
+    if (folder) {
+      let ok = false;
+      try { ok = (await folder.handle.queryPermission({ mode: 'readwrite' })) === 'granted'; } catch (e) { /* se pide abajo */ }
+      if (!ok) { try { ok = (await folder.handle.requestPermission({ mode: 'readwrite' })) === 'granted'; } catch (e) { /* hace falta un clic */ } }
+      if (!ok) ok = await gate(folder, 'readwrite');
+      if (ok) {
+        try {
+          let file = base + '.md';
+          for (let n = 2; n < 50; n++) {
+            try { await folder.handle.getFileHandle(file); file = base + '-' + n + '.md'; } catch (e) { break; }
+          }
+          const h = await folder.handle.getFileHandle(file, { create: true });
+          const w = await h.createWritable(); await w.write(''); await w.close();
+          folder.last = folder.id + '/' + encodeURIComponent(file); folder.at = Date.now();
+          await handlesPut(folder);
+          location.replace(ctx.APP_URL + '?f=' + encodeURIComponent(folder.last) + '&edit=1');
+          return;
+        } catch (e) { /* la carpeta ya no está: sigue en memoria */ }
+      }
+    }
+    const name = base + '.md';
     try { sessionStorage.setItem('mdt-mem', JSON.stringify({ name, text: '', disk: '' })); } catch (e) { /* sin sesión no hay dónde guardarlo */ }
     location.replace(ctx.APP_URL + '?f=' + encodeURIComponent('mem/' + encodeURIComponent(name)) + '&edit=1');
   }

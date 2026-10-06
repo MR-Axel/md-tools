@@ -43,7 +43,7 @@ await app.goto(base + 'README.md'); await app.waitForSelector('.markdown-body h1
 await app.click('.lmd-tab[data-tab=outline]'); await app.click('[data-act=mode-edit]'); await app.waitForTimeout(300);
 await app.fill('.lmd-search input', 'zanahoria'); await app.fill('.lmd-replace input', 'papa'); await app.click('[data-rep=all]'); await app.waitForTimeout(500);
 o.reemplazo = (await src()).split('\n')[2];
-await app.fill('.lmd-search input', ''); await app.click('.lmd-topbar .lmd-status', { force: true }); await app.keyboard.press('Control+z'); await app.waitForTimeout(400);
+await app.fill('.lmd-search input', ''); await app.click('.lmd-foot .lmd-status', { force: true }); await app.keyboard.press('Control+z'); await app.waitForTimeout(400);
 o.deshecho = (await src()).split('\n')[2];
 
 await app.locator('.lmd-article p.lmd-editable').first().click(); await app.keyboard.press('End');
@@ -51,7 +51,7 @@ await app.evaluate(() => {
   const dt = new DataTransfer(); dt.items.add(new File([new Uint8Array([137, 80, 78, 71])], 'captura.png', { type: 'image/png' }));
   document.activeElement.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
 });
-await app.waitForSelector('.lmd-article img[data-lmd-src]', { state: 'attached' }); await app.click('.lmd-topbar .lmd-status', { force: true }); await app.waitForTimeout(600);
+await app.waitForSelector('.lmd-article img[data-lmd-src]', { state: 'attached' }); await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(600);
 o.imagen = (await src()).split('\n')[2];
 o.assets = await app.evaluate(async () => { const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('x')).getDirectoryHandle('assets'); const out = []; for await (const [n] of dir.entries()) out.push(n); return out.length; });
 

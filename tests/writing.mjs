@@ -23,18 +23,18 @@ await app.locator('.lmd-article p.lmd-editable', { hasText: 'Primer' }).click();
 await app.keyboard.type('Segundo párrafo'); await app.keyboard.press('Enter');
 await app.keyboard.type('## Sub'); await app.keyboard.press('Enter');
 await app.keyboard.type('- uno'); await app.keyboard.press('Enter'); await app.keyboard.type('dos'); await app.keyboard.press('Enter'); await app.keyboard.press('Enter');
-await app.keyboard.type('fin'); await app.click('.lmd-topbar .lmd-status', { force: true }); await app.waitForTimeout(700);
+await app.keyboard.type('fin'); await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(700);
 o.escribir = (await src()).split('\n');
 
-await app.locator('.lmd-li-text', { hasText: 'alfa' }).click(); await app.keyboard.press('End'); await app.keyboard.press('Enter'); await app.keyboard.type('alfa bis'); await app.click('.lmd-topbar .lmd-status', { force: true }); await app.waitForTimeout(700);
+await app.locator('.lmd-li-text', { hasText: 'alfa' }).click(); await app.keyboard.press('End'); await app.keyboard.press('Enter'); await app.keyboard.type('alfa bis'); await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(700);
 const last = app.locator('.lmd-article p.lmd-editable', { hasText: 'Último párrafo' }); await last.click(); await app.keyboard.press('Home'); for (let i = 0; i < 6; i++) await app.keyboard.press('ArrowRight');
-await app.keyboard.press('Enter'); await app.click('.lmd-topbar .lmd-status', { force: true }); await app.waitForTimeout(700);
+await app.keyboard.press('Enter'); await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(700);
 o.lista = (await src()).split('\n');
 // menú: tabla, eliminar, deshacer
 await app.locator('.lmd-article h1').click({ button: 'right' }); await app.waitForSelector('.lmd-menu');
 o.menu = await app.evaluate(() => [...document.querySelectorAll('.lmd-menu-label')].map((n) => n.textContent));
 await app.click('.lmd-menu [data-ins=table]'); await app.waitForTimeout(500);
-await app.keyboard.type('Nombre'); await app.click('.lmd-topbar .lmd-status', { force: true }); await app.waitForTimeout(600);
+await app.keyboard.type('Nombre'); await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(600);
 o.tabla = (await src()).split('\n').slice(0, 7);
 await app.locator('.lmd-article h2').click({ button: 'right' }); await app.click('.lmd-menu [data-conv=h3]'); await app.waitForTimeout(300);
 await app.locator('.lmd-article h3').click({ button: 'right' }); await app.click('.lmd-menu [data-op=up]'); await app.waitForTimeout(300);
