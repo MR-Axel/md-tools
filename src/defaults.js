@@ -227,6 +227,7 @@
       "Ya aporté": "I already supported",
       "Gracias por apoyar": "Thanks for supporting",
       "Actualizaciones": "Updates",
+      "Opciones del bloque: mover, duplicar, eliminar": "Block options: move, duplicate, delete", "Eliminar el diagrama": "Delete the diagram",
       "Ver": "View", "Editar": "Edit", "MD Tools (Inter)": "MD Tools (Inter)",
       "Archivos": "Files", "Cambios sin guardar": "Unsaved changes", "Todo guardado": "All saved",
       "Guardado · autoguardado activo": "Saved · auto-save on",

@@ -349,6 +349,36 @@
       }
     });
     window.addEventListener('scroll', closeMenu, { passive: true });
+    // Manija: al pasar el mouse por un bloque aparece a su izquierda y abre el mismo menú que el clic derecho.
+    const handle = el('button', { class: 'lmd-handle', type: 'button', title: T('Opciones del bloque: mover, duplicar, eliminar'), hidden: '' }, ICON.dots);
+    document.body.appendChild(handle);
+    let held = null; let hideTimer = null;
+    const hideHandle = () => { handle.hidden = true; held = null; };
+    article.addEventListener('mousemove', (e) => {
+      if (!core.editMode || !core.blocks || menu) return;
+      const block = e.target === article ? null : topBlock(e.target);
+      if (!block || block === held || block.classList.contains('lmd-add') || block.classList.contains('lmd-draft') || !span(block)) return;
+      clearTimeout(hideTimer);
+      held = block;
+      const box = block.getBoundingClientRect();
+      handle.style.top = Math.max(58, box.top + 1) + 'px';
+      handle.style.left = Math.max(4, box.left - 34) + 'px';
+      handle.hidden = false;
+    });
+    article.addEventListener('mouseleave', () => { hideTimer = setTimeout(() => { if (!handle.matches(':hover')) hideHandle(); }, 250); });
+    handle.addEventListener('mouseleave', () => { hideTimer = setTimeout(() => { if (!article.matches(':hover')) hideHandle(); }, 250); });
+    handle.addEventListener('mousedown', (e) => e.preventDefault());
+    handle.addEventListener('click', () => {
+      if (!held || !held.isConnected) return;
+      const active = document.activeElement;
+      if (active && active.blur && active.isContentEditable) active.blur();
+      const box = handle.getBoundingClientRect(); const block = held;
+      hideHandle();
+      openMenu(box.right + 6, box.top, block);
+    });
+    window.addEventListener('scroll', hideHandle, { passive: true });
+    core.hooks.render.push(hideHandle);
+
     // En edición siempre queda un lugar al final para seguir escribiendo, también con el documento vacío.
     core.hooks.render.push(() => {
       if (!core.editMode || !core.blocks) return;
@@ -364,6 +394,7 @@
 
   LMD.write = {
     init, enter, onKey, append,
+    remove: (node) => { const b = topBlock(node); if (b) removeBlock(b); },
     blur: (d) => commitDraft(d, false),
     menuAt: (x, y) => openMenu(x, y, core.lastBlock && core.lastBlock.isConnected ? topBlock(core.lastBlock) : blockNear(window.innerHeight)),
   };

@@ -546,3 +546,14 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .markdown-body h1 { font-size: 2.1em; }
 .markdown-body strong { font-weight: 650; }
 .markdown-body code, .markdown-body pre, .lmd-raw, .lmd-src { font-feature-settings: normal; letter-spacing: 0; }
+
+/* ---------- Manija de bloque ---------- */
+.lmd-handle { position: fixed; z-index: 30; width: 26px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--fg-faint); display: grid; place-items: center; cursor: pointer; }
+.lmd-handle[hidden] { display: none; }
+.lmd-handle:hover { background: var(--bg-soft); color: var(--fg); }
+.lmd-handle svg { width: 17px; height: 17px; fill: currentColor; stroke: none; }
+.lmd-dgm-del { display: none !important; }
+.lmd-editing .lmd-dgm-del { display: grid !important; }
+.lmd-dgm-del:hover, .lmd-dgm-remove:hover { color: #dc2626 !important; }
+.lmd-dgm-remove:hover { border-color: #dc2626; }
+@media print { .lmd-handle { display: none !important; } }

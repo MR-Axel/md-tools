@@ -58,6 +58,7 @@
         '</header>' +
         '<div class="lmd-dgm-body"><textarea spellcheck="false"></textarea><div class="lmd-dgm-view"><div class="lmd-dgm-svg lmd-diagram' + (kind === 'dot' ? ' lmd-diagram-dot' : '') + '"></div><p class="lmd-dgm-err" hidden></p></div></div>' +
         '<footer><a href="' + (kind === 'dot' ? 'https://graphviz.org/doc/info/lang.html' : 'https://mermaid.js.org/intro/') + '" target="_blank" rel="noopener noreferrer">' + T('Ver la sintaxis') + '</a><span></span>' +
+          '<button type="button" class="lmd-btn lmd-dgm-remove" data-dgm="del">' + T('Eliminar el diagrama') + '</button>' +
           '<button type="button" class="lmd-btn" data-dgm="no">' + T('Cancelar') + '</button>' +
           '<button type="button" class="lmd-btn lmd-btn-fill" data-dgm="ok">' + T('Aplicar') + ' <kbd>Ctrl+Enter</kbd></button></footer>' +
       '</div>';
@@ -95,6 +96,7 @@
       const tpl = ev.target.closest('[data-tpl]');
       if (tpl) { ta.value = templates()[+tpl.dataset.tpl][1]; refresh(); ta.focus(); return; }
       const b = ev.target.closest('[data-dgm]');
+      if (b && b.dataset.dgm === 'del') { modal.remove(); LMD.write.remove(box.isConnected ? box : core.ui.article.querySelector('[data-l^="' + r[0] + '-"]')); return; }
       if (b) close(b.dataset.dgm === 'ok');
     });
     modal.addEventListener('keydown', (ev) => {
@@ -109,12 +111,14 @@
     const bar = el('div', { class: 'lmd-dgm-tools' },
       '<button type="button" data-dt="copy" title="' + T('Copiar el código del diagrama') + '">' + ICON.copy + '</button>' +
       '<button type="button" data-dt="svg" title="' + T('Descargar como SVG') + '">' + ICON.save + '</button>' +
-      '<button type="button" data-dt="zoom" title="' + T('Ampliar') + '">' + ICON.eye + '</button>');
+      '<button type="button" data-dt="zoom" title="' + T('Ampliar') + '">' + ICON.eye + '</button>' +
+      '<button type="button" data-dt="del" class="lmd-dgm-del" title="' + T('Eliminar el diagrama') + '">' + ICON.trash + '</button>');
     bar.contentEditable = 'false';
     box.appendChild(bar);
   }
 
   function act(what, box) {
+    if (what === 'del') { LMD.write.remove(box); return; }
     const svg = box.querySelector('svg'); if (!svg) return;
     if (what === 'copy') { navigator.clipboard.writeText(codeOf(box)).then(() => core.flash(T('Código del diagrama copiado'))); return; }
     const copy = svg.cloneNode(true);

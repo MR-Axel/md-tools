@@ -34,6 +34,11 @@ await app.locator('.lmd-article h1').click({ button: 'right' }); await app.click
 o.nuevo = await app.evaluate(() => document.querySelector('.lmd-dgm textarea').value.split('\n')[0]);
 await app.keyboard.press('Escape'); await app.waitForTimeout(300);
 o.cerrado = await app.evaluate(() => !document.querySelector('.lmd-dgm'));
+await app.hover('.lmd-diagram'); await app.waitForSelector('.lmd-handle:not([hidden])');
+await app.click('.lmd-handle'); await app.waitForSelector('.lmd-menu [data-op=del]'); o.manija = true; await app.keyboard.press('Escape');
+const antes = await app.locator('.lmd-diagram').count();
+await app.hover('.lmd-diagram >> nth=0'); await app.click('.lmd-diagram >> nth=0 >> [data-dt=del]'); await app.waitForTimeout(500);
+o.borrado = [antes, await app.locator('.lmd-diagram').count(), /mermaid/.test(await src())];
 const J = (v) => JSON.stringify(v);
 const checks = [
   ['ampliar y descargar el SVG', o.zoom && o.svg === 'doc-diagrama.svg', o.svg],
@@ -41,6 +46,8 @@ const checks = [
   ['un error de sintaxis se muestra sin perder el último dibujo', o.error.visible && o.error.stale, o.error],
   ['aplicar reescribe solo el bloque del diagrama', J(o.aplicado) === J(['```mermaid', 'graph TD', '  X[Uno] --> Y[Dos]', '```']) && o.dibujado, o.aplicado],
   ['insertar un diagrama abre el editor', o.nuevo === 'graph LR' && o.cerrado, o.nuevo],
+  ['la manija del bloque abre el menú con Eliminar', o.manija],
+  ['el botón de papelera borra el diagrama', o.borrado[1] === o.borrado[0] - 1, o.borrado],
   ['sin errores de JavaScript', errors.length === 0, errors],
 ];
 console.log('Diagramas');
