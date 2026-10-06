@@ -25,8 +25,55 @@ async function lazyLoad(tabId, what) {
   await chrome.scripting.executeScript({ target: { tabId }, files: spec.js });
 }
 
+// Versión nueva: se compara la del manifest instalado con la del manifest publicado en GitHub.
+// Si la extensión viene de la tienda (tiene update_url) no hace falta: Chrome la actualiza solo.
+const REPO_MANIFEST = 'https://raw.githubusercontent.com/MR-Axel/md-tools/main/manifest.json';
+const EVERY = { daily: 864e5, weekly: 6048e5 };
+
+function isNewer(a, b) {
+  const pa = String(a || '').split('.').map(Number); const pb = String(b || '').split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0;
+  }
+  return false;
+}
+
+async function checkUpdate(force) {
+  const manifest = chrome.runtime.getManifest();
+  const current = manifest.version;
+  if (manifest.update_url) return { current, store: true };
+  const s = await LMD.load();
+  const st = (await chrome.storage.local.get('update')).update || {};
+  const every = EVERY[s.updateCheck];
+  let error = '';
+  if (force || (every && Date.now() - (st.checkedAt || 0) > every)) {
+    try {
+      st.latest = JSON.parse(await fetchText(REPO_MANIFEST)).version;
+      st.checkedAt = Date.now();
+    } catch (e) {
+      error = String(e && e.message || e);
+      if (every) st.checkedAt = Date.now() - every + 36e5; // sin red: se reintenta en una hora
+    }
+    await chrome.storage.local.set({ update: st });
+  }
+  const newer = isNewer(st.latest, current);
+  return { current, latest: st.latest || '', newer, dismissed: newer && st.dismissed === st.latest, error };
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || !msg.type) return;
+  if (msg.type === 'checkUpdate') {
+    checkUpdate(!!msg.force)
+      .then((r) => sendResponse(Object.assign({ ok: true }, r)))
+      .catch((e) => sendResponse({ ok: false, error: String(e && e.message || e) }));
+    return true;
+  }
+  if (msg.type === 'dismissUpdate') {
+    chrome.storage.local.get('update').then((r) => chrome.storage.local.set({ update: Object.assign({}, r.update, { dismissed: msg.version }) })).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+  if (msg.type === 'reloadExtension') { sendResponse({ ok: true }); setTimeout(() => chrome.runtime.reload(), 150); return; }
   if (msg.type === 'fetchText') {
     fetchText(msg.url)
       .then((text) => sendResponse({ ok: true, text }))

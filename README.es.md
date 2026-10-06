@@ -6,7 +6,7 @@
 
 ![Editando una celda de la tabla en el lugar](docs/editing-es.png)
 
-Extensión de Chrome para leer y editar archivos Markdown en el navegador, locales (`file://`) o servidos por web. Sin cuentas, sin planes pagos y sin llamadas a servidores: todo corre en la máquina.
+Extensión de Chrome para leer y editar archivos Markdown en el navegador, locales (`file://`) o servidos por web. Sin cuentas, sin planes pagos y sin mandar datos a ningún lado: todo corre en la máquina.
 
 ## Qué hace
 
@@ -35,6 +35,12 @@ Extensión de Chrome para leer y editar archivos Markdown en el navegador, local
 5. Si hay otra extensión de Markdown instalada, desactivarla para que no actúen las dos sobre el mismo archivo.
 
 Después alcanza con arrastrar un `.md` al navegador.
+
+## Actualizar
+
+Chrome no puede actualizar una extensión cargada desde una carpeta, así que MD Tools mira este repositorio una vez por día (o por semana, o nunca: Ajustes → Actualizaciones) y avisa en la barra lateral cuando hay una versión más nueva. Desde ahí: descargás el ZIP, reemplazás la carpeta de la extensión con su contenido y tocás **Aplicar**, que recarga la extensión. Si clonaste el repositorio, alcanza con `git pull` y **Aplicar**.
+
+Es el único pedido de red que hace la extensión: lee el número de versión publicado y no manda ningún dato.
 
 ## Atajos
 

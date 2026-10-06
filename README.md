@@ -2,7 +2,7 @@
 
 English · [Español](README.es.md)
 
-A Chrome extension to read and edit Markdown files in the browser, local (`file://`) or served over the web. No accounts, no paid plan, no network calls: everything runs on your machine.
+A Chrome extension to read and edit Markdown files in the browser, local (`file://`) or served over the web. No accounts, no paid plan, no data sent anywhere: everything runs on your machine.
 
 ![MD Tools](docs/reader.png)
 
@@ -44,6 +44,10 @@ Then drag any `.md` file into the browser. `ejemplo/ejemplo.md` exercises every 
 
 It also works in other Chromium browsers (Edge, Brave, Arc) through the same steps.
 
+## Updating
+
+Chrome cannot update an extension loaded from a folder, so MD Tools checks this repository once a day (or once a week, or never: Settings → Updates) and shows a notice in the sidebar when there is a newer version. From there: download the ZIP, replace the extension folder with its contents and click **Apply**, which reloads the extension. If you cloned the repository, `git pull` and **Apply** is enough.
+
 ## Shortcuts
 
 | Shortcut | Action |
@@ -62,7 +66,7 @@ Chrome does not let an extension write to disk on its own, so the first time you
 
 ## Privacy
 
-MD Tools collects nothing and sends nothing. Settings and reading positions are stored locally in the browser. The broad permissions exist for one reason each: `file:///*` and `*://*/*` so it can render Markdown wherever the file lives, and `scripting` to load KaTeX, Mermaid and Graphviz only when a document uses them.
+MD Tools collects nothing and sends nothing. The single network request it makes is a daily check of the version number published in this repository, so it can tell you when there is an update. You can make it weekly or turn it off in Settings. Settings and reading positions are stored locally in the browser. The broad permissions exist for one reason each: `file:///*` and `*://*/*` so it can render Markdown wherever the file lives, and `scripting` to load KaTeX, Mermaid and Graphviz only when a document uses them.
 
 HTML produced from the Markdown goes through DOMPurify before it reaches the page.
 

@@ -555,6 +555,7 @@
       '</div>' +
       '<div class="lmd-pane lmd-pane-files" data-pane="files"><div class="lmd-tree-box"></div><div class="lmd-results" hidden></div></div>' +
       '<div class="lmd-pane lmd-pane-outline" data-pane="outline"></div>' +
+      '<div class="lmd-update" hidden></div>' +
       '<a class="lmd-side-foot" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer"><span class="lmd-heart">♥</span>' + T('Invitame un café') + '</a>' +
       '<div class="lmd-resizer" title="' + T('Arrastrar para cambiar el ancho') + '"></div>';
 
@@ -616,6 +617,7 @@
     ui.paneFiles = ui.sidebar.querySelector('.lmd-pane-files');
     ui.paneOutline = ui.sidebar.querySelector('.lmd-pane-outline');
     ui.searchBox = ui.sidebar.querySelector('.lmd-search');
+    ui.update = ui.sidebar.querySelector('.lmd-update');
     ui.searchInput = ui.searchBox.querySelector('input');
     ui.searchCount = ui.searchBox.querySelector('.lmd-search-count');
 
@@ -702,7 +704,36 @@
     else if (act === 'print') window.print();
     else if (act === 'close-panel') ui.panel.hidden = true;
     else if (act === 'reset') { panelStale = true; LMD.save(LMD.merge({ supporter: settings.supporter })); }
+    else if (act === 'check-update') checkUpdate(true);
+    else if (act === 'update-apply') { bg({ type: 'reloadExtension' }); setTimeout(() => location.reload(), 1500); }
+    else if (act === 'update-later') { ui.update.hidden = true; if (ui.update.dataset.v) bg({ type: 'dismissUpdate', version: ui.update.dataset.v }); }
     else if (act === 'supporter') { panelStale = true; LMD.patch({ supporter: true }); flash(T('Gracias por apoyar el proyecto.')); }
+  }
+
+  // Aviso de versión nueva. El service worker decide si toca consultar GitHub según el ajuste.
+  const ZIP_URL = 'https://github.com/MR-Axel/md-tools/archive/refs/heads/main.zip';
+  async function checkUpdate(force) {
+    if (force) flash(T('Buscando…'));
+    const r = await bg({ type: 'checkUpdate', force: !!force });
+    if (!r || !r.ok || r.store) return;
+    const show = r.newer && (force || !r.dismissed);
+    ui.update.hidden = !show;
+    if (show) {
+      ui.update.dataset.v = r.latest;
+      ui.update.innerHTML =
+        '<strong>' + T('Hay una versión nueva: {v}', { v: esc(r.latest) }) + '</strong>' +
+        '<p>' + T('Tenés la {v}.', { v: esc(r.current) }) + ' ' + T('Descargá el ZIP, reemplazá con su contenido la carpeta de la extensión y tocá Aplicar. Si la clonaste con git, alcanza con git pull y Aplicar.') + '</p>' +
+        '<div class="lmd-update-actions">' +
+          '<a class="lmd-btn lmd-btn-fill" href="' + ZIP_URL + '" target="_blank" rel="noopener noreferrer">' + T('Descargar') + '</a>' +
+          '<button type="button" class="lmd-btn" data-act="update-apply">' + T('Aplicar') + '</button>' +
+          '<button type="button" class="lmd-link" data-act="update-later">' + T('Ahora no') + '</button>' +
+        '</div>';
+    }
+    if (force) {
+      if (r.error) flash(T('No se pudo consultar GitHub'), 'error');
+      else if (r.newer) flash(T('Hay una versión nueva: {v}', { v: r.latest }));
+      else flash(T('Ya tenés la última versión ({v})', { v: r.current }));
+    }
   }
 
   function applyRawMode() {
@@ -1255,6 +1286,14 @@
             '<label class="lmd-check"><input type="checkbox" data-key="filesOnlyMarkdown"' + (s.filesOnlyMarkdown ? ' checked' : '') + '><span>' + T('Mostrar solo archivos Markdown') + '</span></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="filesShowHidden"' + (s.filesShowHidden ? ' checked' : '') + '><span>' + T('Mostrar archivos y carpetas ocultos') + '</span></label>' +
           '</section>' +
+          (chrome.runtime.getManifest().update_url ? '' :
+          '<section><h3>' + T('Actualizaciones') + '</h3>' +
+            '<div class="lmd-row"><span>' + T('Buscar versiones nuevas') + '</span><div class="lmd-seg" data-seg="updateCheck" role="radiogroup">' +
+              [['daily', 'Por día'], ['weekly', 'Por semana'], ['off', 'Nunca']].map((o) => '<button type="button" role="radio" data-val="' + o[0] + '" aria-checked="' + (s.updateCheck === o[0]) + '"' + (s.updateCheck === o[0] ? ' class="lmd-on"' : '') + '>' + T(o[1]) + '</button>').join('') +
+            '</div></div>' +
+            '<div class="lmd-row"><span>' + T('Versión instalada: {v}', { v: chrome.runtime.getManifest().version }) + '</span><button type="button" class="lmd-btn" data-act="check-update">' + T('Buscar ahora') + '</button></div>' +
+            '<p class="lmd-hint">' + T('Lo único que se consulta es el número de versión publicado en GitHub. No se manda ningún dato.') + '</p>' +
+          '</section>') +
           '<section><h3>' + T('Plugins de Markdown') + '</h3><div class="lmd-grid">' + plugins + '</div></section>' +
           '<section><h3>' + T('CSS propio') + (s.supporter ? '' : EXTRA) + '</h3>' +
             '<textarea data-key="customCSS"' + (s.supporter ? '' : ' disabled') + ' spellcheck="false" placeholder=".markdown-body h1 { color: tomato; }">' + esc(s.customCSS) + '</textarea>' +
@@ -1846,6 +1885,7 @@
     applySettings();
     render();
     updateSaveState();
+    checkUpdate(false);
     const fromSearch = /^#lmd-q=([^&]+)(?:&r=(.+))?$/.exec(location.hash);
     if (fromSearch) {
       // Se llegó desde un resultado de búsqueda en la carpeta: se repite la búsqueda acá.
