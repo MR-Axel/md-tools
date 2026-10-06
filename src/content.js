@@ -754,6 +754,7 @@
     root.classList.toggle('lmd-dark', dark);
     root.classList.toggle('lmd-light', !dark);
     root.classList.toggle('lmd-centered', !!settings.centered);
+    root.classList.toggle('lmd-wrap', !!settings.wrapCode);
     root.classList.toggle('lmd-side-hidden', !!settings.sidebarHidden);
     root.style.setProperty('--lmd-content-w', settings.contentWidth + 'px');
     root.style.setProperty('--lmd-font-size', settings.fontSize + 'px');
@@ -1237,6 +1238,7 @@
                 '<button type="button" class="lmd-btn" data-act="supporter">' + T('Ya aporté') + '</button></div></div>') +
             '</div>' +
             '<label class="lmd-check"><input type="checkbox" data-key="centered"' + (s.centered ? ' checked' : '') + '><span>' + T('Centrar el contenido') + '</span></label>' +
+            '<label class="lmd-check"><input type="checkbox" data-key="wrapCode"' + (s.wrapCode ? ' checked' : '') + '><span>' + T('Ajustar las líneas largas del código') + '</span></label>' +
             '<label class="lmd-row"><span>' + T('Ancho del contenido') + ' <output>' + s.contentWidth + ' px</output></span><input type="range" min="560" max="1800" step="20" data-key="contentWidth" data-unit=" px" value="' + s.contentWidth + '"></label>' +
             '<label class="lmd-row"><span>' + T('Tamaño de letra') + ' <output>' + s.fontSize + ' px</output></span><input type="range" min="12" max="24" step="1" data-key="fontSize" data-unit=" px" value="' + s.fontSize + '"></label>' +
             '<label class="lmd-row"><span>' + T('Interlineado') + ' <output>' + s.lineHeight + '</output></span><input type="range" min="1.2" max="2.2" step="0.05" data-key="lineHeight" data-unit="" value="' + s.lineHeight + '"></label>' +

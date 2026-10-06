@@ -13,6 +13,7 @@
     lineHeight: 1.65,
     autoRefresh: true,
     rememberPosition: true,
+    wrapCode: true, // las líneas largas de los bloques de código bajan de renglón
     autosave: false,
     autosaveDelay: 2000, // ms después del último cambio
     refreshInterval: 1000, // ms
@@ -181,6 +182,7 @@
       "Color de acento": "Accent color",
       "Otro color": "Custom color",
       "Centrar el contenido": "Center the content",
+      "Ajustar las líneas largas del código": "Wrap long lines in code blocks",
       "Ancho del contenido": "Content width",
       "Tamaño de letra": "Font size",
       "Interlineado": "Line height",
