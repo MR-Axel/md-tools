@@ -124,6 +124,21 @@
     { name: 'Turquesa', value: '#14b8a6' },
   ];
 
+  // Tipografías que ya vienen con el sistema, cada una con su respaldo.
+  const FONTS = [
+    { name: 'Del sistema', value: '' },
+    { name: 'Arial', value: 'Arial, Helvetica, sans-serif' },
+    { name: 'Calibri', value: 'Calibri, Candara, "Segoe UI", sans-serif' },
+    { name: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
+    { name: 'Trebuchet MS', value: '"Trebuchet MS", "Lucida Grande", sans-serif' },
+    { name: 'Georgia', value: 'Georgia, "Times New Roman", serif' },
+    { name: 'Cambria', value: 'Cambria, Georgia, serif' },
+    { name: 'Palatino', value: '"Palatino Linotype", Palatino, "Book Antiqua", serif' },
+    { name: 'Times New Roman', value: '"Times New Roman", Times, serif' },
+    { name: 'Consolas', value: 'Consolas, "Cascadia Mono", Menlo, monospace' },
+    { name: 'Courier New', value: '"Courier New", Courier, monospace' },
+  ];
+
   // Idioma. Las claves son el texto en español; EN tiene la traducción. Sin traducción, queda el español.
   const EN = {
       "Carpeta": "Folder",
@@ -188,6 +203,9 @@
       "Tamaño de letra": "Font size",
       "Interlineado": "Line height",
       "Tipografía": "Font",
+      "Del sistema": "System default",
+      "Lectura": "Reading",
+      "Edición": "Editing",
       "Del sistema. Ej.: Georgia, serif": "System font. E.g.: Georgia, serif",
       "Documento": "Document",
       "Recargar solo cuando el archivo cambia": "Reload automatically when the file changes",
@@ -340,5 +358,5 @@
 
   const SPONSOR_URL = 'https://ko-fi.com/mraxel';
 
-  root.LMD = { SPONSOR_URL, DEFAULTS, PLUGIN_LABELS, ACCENTS, merge, load, save, patch, setLang, t, lang };
+  root.LMD = { SPONSOR_URL, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
 })(typeof self !== 'undefined' ? self : this);

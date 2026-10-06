@@ -713,7 +713,12 @@
   // Aviso de versión nueva. El service worker decide si toca consultar GitHub según el ajuste.
   const ZIP_URL = 'https://github.com/MR-Axel/md-tools/archive/refs/heads/main.zip';
   async function checkUpdate(force) {
-    if (force) flash(T('Buscando…'));
+    const say = (html, kind) => {
+      const box = ui.panel.hidden ? null : ui.panel.querySelector('.lmd-update-msg');
+      if (!box) { flash(html.replace(/<[^>]+>/g, ''), kind); return; }
+      box.hidden = false; box.className = 'lmd-update-msg' + (kind ? ' lmd-' + kind : ''); box.innerHTML = html;
+    };
+    if (force) say(esc(T('Buscando…')));
     const r = await bg({ type: 'checkUpdate', force: !!force });
     if (!r || !r.ok || r.store) return;
     const show = r.newer && (force || !r.dismissed);
@@ -730,9 +735,9 @@
         '</div>';
     }
     if (force) {
-      if (r.error) flash(T('No se pudo consultar GitHub'), 'error');
-      else if (r.newer) flash(T('Hay una versión nueva: {v}', { v: r.latest }));
-      else flash(T('Ya tenés la última versión ({v})', { v: r.current }));
+      if (r.error) say(esc(T('No se pudo consultar GitHub')), 'error');
+      else if (r.newer) say('<strong>' + T('Hay una versión nueva: {v}', { v: esc(r.latest) }) + '</strong> <a href="' + ZIP_URL + '" target="_blank" rel="noopener noreferrer">' + T('Descargar') + '</a> · <button type="button" class="lmd-link" data-act="update-apply">' + T('Aplicar') + '</button>', 'new');
+      else say('✓ ' + esc(T('Ya tenés la última versión ({v})', { v: r.current })), 'ok');
     }
   }
 
@@ -1248,6 +1253,9 @@
     const EXTRA = ' <em class="lmd-tag">' + T('Extra') + '</em>';
     const plugins = Object.keys(LMD.PLUGIN_LABELS).map((k) =>
       '<label class="lmd-check"><input type="checkbox" data-plugin="' + k + '"' + (s.plugins[k] ? ' checked' : '') + '><span>' + esc(T(LMD.PLUGIN_LABELS[k])) + '</span></label>').join('');
+    const fonts = LMD.FONTS.slice();
+    if (s.fontFamily && !fonts.some((f) => f.value === s.fontFamily)) fonts.push({ name: s.fontFamily, value: s.fontFamily });
+    const fontOptions = fonts.map((f) => '<option value="' + esc(f.value) + '"' + (f.value === (s.fontFamily || '') ? ' selected' : '') + '>' + esc(f.value ? f.name : T(f.name)) + '</option>').join('');
     ui.panel.innerHTML =
       '<div class="lmd-panel-card" role="dialog" aria-label="' + T('Ajustes') + '">' +
         '<header><h2>' + T('Ajustes') + '</h2><button class="lmd-icon-btn" data-act="close-panel" title="' + T('Cerrar') + '">' + ICON.close + '</button></header>' +
@@ -1268,17 +1276,19 @@
                 '<div class="lmd-extra-actions"><a class="lmd-btn lmd-btn-fill" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">♥ ' + T('Apoyar el proyecto') + '</a>' +
                 '<button type="button" class="lmd-btn" data-act="supporter">' + T('Ya aporté') + '</button></div></div>') +
             '</div>' +
-            '<label class="lmd-check"><input type="checkbox" data-key="centered"' + (s.centered ? ' checked' : '') + '><span>' + T('Centrar el contenido') + '</span></label>' +
-            '<label class="lmd-check"><input type="checkbox" data-key="wrapCode"' + (s.wrapCode ? ' checked' : '') + '><span>' + T('Ajustar las líneas largas del código') + '</span></label>' +
-            '<label class="lmd-row"><span>' + T('Ancho del contenido') + ' <output>' + s.contentWidth + ' px</output></span><input type="range" min="560" max="1800" step="20" data-key="contentWidth" data-unit=" px" value="' + s.contentWidth + '"></label>' +
+            '<label class="lmd-row"><span>' + T('Tipografía') + (s.supporter ? '' : EXTRA) + '</span><select data-key="fontFamily"' + (s.supporter ? '' : ' disabled') + '>' + fontOptions + '</select></label>' +
             '<label class="lmd-row"><span>' + T('Tamaño de letra') + ' <output>' + s.fontSize + ' px</output></span><input type="range" min="12" max="24" step="1" data-key="fontSize" data-unit=" px" value="' + s.fontSize + '"></label>' +
             '<label class="lmd-row"><span>' + T('Interlineado') + ' <output>' + s.lineHeight + '</output></span><input type="range" min="1.2" max="2.2" step="0.05" data-key="lineHeight" data-unit="" value="' + s.lineHeight + '"></label>' +
-            '<label class="lmd-row"><span>' + T('Tipografía') + (s.supporter ? '' : EXTRA) + '</span><input type="text" data-key="fontFamily"' + (s.supporter ? '' : ' disabled') + ' placeholder="' + T('Del sistema. Ej.: Georgia, serif') + '" value="' + esc(s.fontFamily) + '"></label>' +
           '</section>' +
-          '<section><h3>' + T('Documento') + '</h3>' +
+          '<section><h3>' + T('Lectura') + '</h3>' +
+            '<label class="lmd-check"><input type="checkbox" data-key="centered"' + (s.centered ? ' checked' : '') + '><span>' + T('Centrar el contenido') + '</span></label>' +
+            '<label class="lmd-row"><span>' + T('Ancho del contenido') + ' <output>' + s.contentWidth + ' px</output></span><input type="range" min="560" max="1800" step="20" data-key="contentWidth" data-unit=" px" value="' + s.contentWidth + '"></label>' +
+            '<label class="lmd-check"><input type="checkbox" data-key="wrapCode"' + (s.wrapCode ? ' checked' : '') + '><span>' + T('Ajustar las líneas largas del código') + '</span></label>' +
+            '<label class="lmd-check"><input type="checkbox" data-key="rememberPosition"' + (s.rememberPosition ? ' checked' : '') + '><span>' + T('Recordar por dónde iba en cada archivo') + '</span></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="autoRefresh"' + (s.autoRefresh ? ' checked' : '') + '><span>' + T('Recargar solo cuando el archivo cambia') + '</span></label>' +
             '<label class="lmd-row"><span>' + T('Revisar cada') + ' <output>' + s.refreshInterval + ' ms</output></span><input type="range" min="300" max="5000" step="100" data-key="refreshInterval" data-unit=" ms" value="' + s.refreshInterval + '"></label>' +
-            '<label class="lmd-check"><input type="checkbox" data-key="rememberPosition"' + (s.rememberPosition ? ' checked' : '') + '><span>' + T('Recordar por dónde iba en cada archivo') + '</span></label>' +
+          '</section>' +
+          '<section><h3>' + T('Edición') + '</h3>' +
             '<label class="lmd-check"><input type="checkbox" data-key="autosave"' + (s.autosave ? ' checked' : '') + '><span>' + T('Guardar solo mientras edito') + '</span></label>' +
             '<label class="lmd-row"><span>' + T('Guardar a los') + ' <output>' + s.autosaveDelay + ' ms</output></span><input type="range" min="1000" max="30000" step="500" data-key="autosaveDelay" data-unit=" ms" value="' + s.autosaveDelay + '"></label>' +
           '</section>' +
@@ -1286,19 +1296,20 @@
             '<label class="lmd-check"><input type="checkbox" data-key="filesOnlyMarkdown"' + (s.filesOnlyMarkdown ? ' checked' : '') + '><span>' + T('Mostrar solo archivos Markdown') + '</span></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="filesShowHidden"' + (s.filesShowHidden ? ' checked' : '') + '><span>' + T('Mostrar archivos y carpetas ocultos') + '</span></label>' +
           '</section>' +
+          '<section><h3>' + T('Plugins de Markdown') + '</h3><div class="lmd-grid">' + plugins + '</div></section>' +
+          '<section><h3>' + T('CSS propio') + (s.supporter ? '' : EXTRA) + '</h3>' +
+            '<textarea data-key="customCSS"' + (s.supporter ? '' : ' disabled') + ' spellcheck="false" placeholder=".markdown-body h1 { color: tomato; }">' + esc(s.customCSS) + '</textarea>' +
+            '<p class="lmd-hint">' + T('Se aplica encima del tema. El documento vive dentro de .markdown-body.') + '</p>' +
+          '</section>' +
           (chrome.runtime.getManifest().update_url ? '' :
           '<section><h3>' + T('Actualizaciones') + '</h3>' +
             '<div class="lmd-row"><span>' + T('Buscar versiones nuevas') + '</span><div class="lmd-seg" data-seg="updateCheck" role="radiogroup">' +
               [['daily', 'Por día'], ['weekly', 'Por semana'], ['off', 'Nunca']].map((o) => '<button type="button" role="radio" data-val="' + o[0] + '" aria-checked="' + (s.updateCheck === o[0]) + '"' + (s.updateCheck === o[0] ? ' class="lmd-on"' : '') + '>' + T(o[1]) + '</button>').join('') +
             '</div></div>' +
             '<div class="lmd-row"><span>' + T('Versión instalada: {v}', { v: chrome.runtime.getManifest().version }) + '</span><button type="button" class="lmd-btn" data-act="check-update">' + T('Buscar ahora') + '</button></div>' +
+            '<p class="lmd-update-msg" role="status" hidden></p>' +
             '<p class="lmd-hint">' + T('Lo único que se consulta es el número de versión publicado en GitHub. No se manda ningún dato.') + '</p>' +
           '</section>') +
-          '<section><h3>' + T('Plugins de Markdown') + '</h3><div class="lmd-grid">' + plugins + '</div></section>' +
-          '<section><h3>' + T('CSS propio') + (s.supporter ? '' : EXTRA) + '</h3>' +
-            '<textarea data-key="customCSS"' + (s.supporter ? '' : ' disabled') + ' spellcheck="false" placeholder=".markdown-body h1 { color: tomato; }">' + esc(s.customCSS) + '</textarea>' +
-            '<p class="lmd-hint">' + T('Se aplica encima del tema. El documento vive dentro de .markdown-body.') + '</p>' +
-          '</section>' +
           '<section class="lmd-panel-foot"><button type="button" class="lmd-btn" data-act="reset">' + T('Restablecer todo') + '</button></section>' +
           '<section class="lmd-support"><p class="lmd-hint">' + T('MD Tools es gratis y no junta datos. Si te sirve, podés apoyarlo.') + '</p>' +
             '<a class="lmd-btn lmd-btn-accent" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">♥ ' + T('Apoyar el proyecto') + '</a></section>' +
