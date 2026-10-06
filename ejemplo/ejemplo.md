@@ -1,11 +1,11 @@
 ---
 name: ejemplo
-description: Documento de prueba de Lector MD
+description: Documento de prueba de MD Tools
 metadata:
   type: reference
 ---
 
-# Lector MD: documento de prueba
+# MD Tools: documento de prueba
 
 [[toc]]
 
@@ -58,7 +58,7 @@ Código `en línea`.
 
 | Campo | Valor |
 |---|---|
-| Nombre | Lector MD |
+| Nombre | MD Tools |
 | Precio | $0 |
 
 ## Matemática
@@ -75,7 +75,7 @@ Un precio como $5 y otro de $10 no deberían romperse.
 
 ```mermaid
 graph LR
-  A[Archivo .md] --> B{Lector MD}
+  A[Archivo .md] --> B{MD Tools}
   B --> C[Índice]
   B --> D[Carpeta]
 ```

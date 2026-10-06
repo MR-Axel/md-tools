@@ -1,4 +1,4 @@
-/* Lector MD. Todo cuelga de .lmd-root para no tocar páginas donde la extensión no actúa. */
+/* MD Tools. Todo cuelga de .lmd-root para no tocar páginas donde la extensión no actúa. */
 .lmd-root {
   --lmd-side-w: 300px;
   --lmd-content-w: 1040px;
@@ -232,14 +232,10 @@
 .lmd-res-hit:hover { background: var(--bg-soft); color: var(--fg); }
 .lmd-res-hit mark { background: var(--hit); color: var(--fg); border-radius: 2px; }
 .lmd-res-more { display: block; margin-left: 28px; color: var(--fg-faint); font-size: 12px; }
-.lmd-menu-wrap { position: relative; }
-.lmd-menu {
   position: absolute; right: 0; top: 38px; min-width: 220px; padding: 6px;
   background: var(--bg-soft); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow);
   display: flex; flex-direction: column;
 }
-.lmd-menu button { border: 0; background: transparent; color: var(--fg); font: inherit; font-size: 14px; text-align: left; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
-.lmd-menu button:hover { background: var(--accent-soft); }
 
 .lmd-article, .lmd-raw { padding: 8px 48px 120px; max-width: none; }
 .lmd-centered .lmd-article, .lmd-centered .lmd-raw { max-width: calc(var(--lmd-content-w) + 96px); margin: 0 auto; }
