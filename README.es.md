@@ -70,6 +70,8 @@ La página de SharpMD es HTML y JavaScript, así que también funciona servida d
 
 Está publicada en [sharpmd.app](https://sharpmd.app/). Para correr tu propia copia, serví esta carpeta (`npx serve .`) y abrí la dirección que te muestra.
 
+La app de Android es esta misma web empaquetada (Trusted Web Activity): abre `sharpmd.app` a pantalla completa, con las mismas notas y la misma cuenta. `.well-known/assetlinks.json` lleva la huella de la llave que firma la app.
+
 ## Actualizar
 
 Chrome no puede actualizar una extensión cargada desde una carpeta, así que SharpMD mira este repositorio una vez por día (o por semana, o nunca: Ajustes → Actualizaciones) y avisa en la barra lateral, y en el popup del ícono de la extensión, cuando hay una versión más nueva. Desde ahí: descargás el ZIP, reemplazás la carpeta de la extensión con su contenido y tocás **Aplicar**, que recarga la extensión. Si clonaste el repositorio, alcanza con `git pull` y **Aplicar**.
@@ -109,6 +111,7 @@ src/
   content.css     estilos y temas
   background.js   lectura de archivos y carpetas, carga diferida de las librerías pesadas, atajos, aviso de versión
   web.js          reemplaza las APIs de la extensión cuando la página se sirve desde un sitio
+  storeapp.js     avisa si la página corre dentro de la app de Android
   app.html        la página de SharpMD: abrir un archivo o una carpeta y editar ahí
   popup.html/js   el encendido y el botón que abre la página de SharpMD
 vendor/           librerías de terceros, sin modificar

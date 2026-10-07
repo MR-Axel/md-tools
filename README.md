@@ -57,6 +57,12 @@ Free and open source. No account, no tracking: files are read in your browser an
 
 **As an extension.** Set Chrome as the default app for `.md` files and a double-click opens them rendered. It also renders Markdown served by any website, and it works offline.
 
+## Android app
+
+The Android app is the web app in a package (a Trusted Web Activity): it opens `sharpmd.app` full screen, with the same notes, the same account and the same offline cache. Nothing else is bundled, so it is always the current version of the site.
+
+`.well-known/assetlinks.json` lists the fingerprint of the key that signs the app, and that is what lets it open the site without the browser bar. `src/storeapp.js` sets `LMD.storeApp` when the page runs inside the app.
+
 ## Install
 
 The extension is not on the Chrome Web Store yet. To load it from source:
@@ -141,6 +147,7 @@ src/
   editors.css     styles of the diagram and formula editors
   background.js   reads files and folders, lazy-loads the heavy libraries, shortcuts, update check
   web.js          stands in for the extension APIs when the page is served from a site
+  storeapp.js     tells whether the page runs inside the Android app
   boot.js         paints the theme background before anything else loads
   app.html        the app: sidebar with the outline and the files, and the note in the center
   popup.html/js   the popup of the extension icon
