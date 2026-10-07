@@ -1,5 +1,4 @@
 const $ = (id) => document.getElementById(id);
-$('sponsor').href = LMD.SPONSOR_URL;
 
 // Estado de la versión: al abrir usa lo último que se consultó; el botón consulta GitHub en el momento.
 function checkUpdate(force) {
@@ -22,7 +21,6 @@ LMD.load().then((s) => {
   document.documentElement.lang = LMD.lang();
   document.querySelectorAll('[data-t]').forEach((n) => { n.textContent = LMD.t(n.textContent.trim()); });
   $('ver-check').title = LMD.t('Buscar actualizaciones');
-  if (s.supporter) document.querySelector('#sponsor span').textContent = LMD.t('Gracias por apoyar');
   if (/^#[0-9a-f]{6}$/i.test(s.accent || '')) document.documentElement.style.setProperty('--accent', s.accent);
   checkUpdate(false);
 });

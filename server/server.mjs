@@ -9,7 +9,7 @@
 //   RESEND_API_KEY  manda el código de acceso por Resend (con MAIL_FROM)
 //   MAIL_WEBHOOK    o lo manda a un webhook propio: POST { to, subject, text }
 //   DEV_CODES=1     sin correo: el código vuelve en la respuesta (solo para pruebas)
-//   FREE_NOTES      notas del plan gratis (20)
+//   FREE_NOTES      notas del plan gratis (10)
 //   MCP_FREE=1      habilita el MCP también en el plan gratis
 //   SHARE_FREE=1    habilita compartir también en el plan gratis
 //   CHECKOUT_MONTHLY, CHECKOUT_YEARLY   enlaces de pago que la app muestra en Ajustes → Cuenta
@@ -25,7 +25,7 @@ const PORT = +(env.PORT || 8787);
 const DATA_DIR = env.DATA_DIR || path.join(process.cwd(), 'data');
 const PUBLIC_URL = (env.PUBLIC_URL || 'http://localhost:' + PORT).replace(/\/$/, '');
 const ORIGINS = (env.ALLOW_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
-const FREE_NOTES = +(env.FREE_NOTES || 20);
+const FREE_NOTES = +(env.FREE_NOTES || 10);
 const MAX_NOTE = 1024 * 1024; // 1 MB por nota
 const HISTORY_DAYS = 30;
 
@@ -390,7 +390,7 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify(out));
   } catch (e) {
     const status = e.status || 500;
-    if (status === 500) console.error(e);
+    if (status >= 500) console.error(status === 500 ? e : 'error ' + status + ' ' + (e.code || '') + ' en ' + req.method + ' ' + url.pathname);
     res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ error: e.code || 'server_error', message: e.message || '' }));
   }

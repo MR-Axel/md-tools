@@ -481,7 +481,6 @@
       '<div class="lmd-pane lmd-pane-files" data-pane="files"><div class="lmd-tree-box"></div><div class="lmd-results" hidden></div></div>' +
       '<div class="lmd-pane lmd-pane-outline" data-pane="outline"></div>' +
       '<div class="lmd-update" hidden></div>' +
-      '<a class="lmd-side-foot" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer"><span class="lmd-heart">' + ICON.coffee + '</span>' + T('Invitame un café') + '</a>' +
       '<div class="lmd-resizer" title="' + T('Arrastrar para cambiar el ancho') + '"></div>';
 
     ui.main = el('main', { class: 'lmd-main' });
@@ -664,7 +663,7 @@
     else if (act === 'update-later') { ui.update.hidden = true; if (ui.update.dataset.v) bg({ type: 'dismissUpdate', version: ui.update.dataset.v }); }
     else if (act === 'go-home') { if (APP) location.href = APP_URL; else bg({ type: 'openApp' }); }
     else if (act === 'cloud-logout') LMD.cloud.logout().then(() => { panelStale = false; openPanel(); LMD.sync.paint(); });
-    else if (act === 'supporter') { panelStale = true; LMD.patch({ supporter: true }); flash(T('Gracias por apoyar el proyecto.')); }
+    else if (act === 'see-plans') { panelTab = 'acct'; openPanel(); }
   }
 
   // Aviso de versión nueva. El service worker decide si toca consultar GitHub según el ajuste.
@@ -735,8 +734,6 @@
     root.classList.toggle('lmd-dgm-round', settings.diagramShape !== 'square');
     if (/^#[0-9a-f]{6}$/i.test(settings.codeColor || '')) root.style.setProperty('--code-tint', settings.codeColor); else root.style.removeProperty('--code-tint');
     ui.customStyle.textContent = settings.supporter ? (settings.customCSS || '') : '';
-    const foot = ui.sidebar.querySelector('.lmd-side-foot');
-    if (foot) foot.lastChild.nodeValue = T(settings.supporter ? 'Gracias por apoyar' : 'Invitame un café');
 
     ui.sidebar.querySelectorAll('.lmd-tab').forEach((t) => t.classList.toggle('lmd-active', t.dataset.tab === settings.sidebarTab));
     ui.paneFiles.hidden = settings.sidebarTab !== 'files';
@@ -1270,7 +1267,7 @@
   let panelTab = 'look';
   function openPanel() {
     const s = settings;
-    const EXTRA = ' <em class="lmd-tag">' + T('Extra') + '</em>';
+    const EXTRA = ' <em class="lmd-tag">' + T('Plan pago') + '</em>';
     const plugins = Object.keys(LMD.PLUGIN_LABELS).map((k) =>
       '<label class="lmd-switch" data-tip="' + esc(T(LMD.PLUGIN_HELP[k] || '')) + '"><input type="checkbox" data-plugin="' + k + '"' + (s.plugins[k] ? ' checked' : '') + '><i></i><span>' + esc(T(LMD.PLUGIN_LABELS[k])) + '</span></label>').join('');
     const fonts = LMD.FONTS.slice();
@@ -1298,7 +1295,7 @@
             '<div class="lmd-pcol"><div class="lmd-row"><span>' + T('Color de acento') + (s.supporter ? '' : EXTRA) + '</span><div class="lmd-swatches' + (s.supporter ? '' : ' lmd-locked') + '">' +
               LMD.ACCENTS.map((a) => '<button type="button" class="lmd-swatch' + ((s.accent || '') === a.value ? ' lmd-on' : '') + (a.value ? '' : ' lmd-swatch-auto') + '" data-accent="' + a.value + '" title="' + esc(T(a.name)) + '" aria-label="' + esc(T(a.name)) + '"' + (a.value ? ' style="--sw:' + a.value + '"' : '') + '></button>').join('') +
               '<label class="lmd-swatch lmd-swatch-custom' + (s.accent && !LMD.ACCENTS.some((a) => a.value === s.accent) ? ' lmd-on' : '') + '" title="' + T('Otro color') + '"><input type="color" data-accent-custom value="' + (/^#[0-9a-f]{6}$/i.test(s.accent || '') ? s.accent : '#6c7ee1') + '"></label>' +
-            '</div>' + (s.supporter ? '<p class="lmd-hint">' + T('Gracias por apoyar el proyecto.') + '</p>' : '') +
+            '</div>' +
             '</div>' +
             '<label class="lmd-row"><span>' + T('Tipografía') + (s.supporter ? '' : EXTRA) + '</span><select data-key="fontFamily"' + (s.supporter ? '' : ' disabled') + '>' + fontOptions + '</select></label>' +
             '<label class="lmd-row"><span>' + T('Tamaño de letra') + ' <output>' + s.fontSize + ' px</output></span><input type="range" min="12" max="24" step="1" data-key="fontSize" data-unit=" px" value="' + s.fontSize + '"></label>' +
@@ -1310,9 +1307,8 @@
               [['round', 'Redondeados'], ['square', 'Rectos']].map((o) => '<button type="button" role="radio" data-val="' + o[0] + '" aria-checked="' + ((s.diagramShape || 'round') === o[0]) + '"' + ((s.diagramShape || 'round') === o[0] ? ' class="lmd-on"' : '') + '>' + T(o[1]) + '</button>').join('') +
             '</div></div>' +
             '</div>' + PREVIEW +
-            (s.supporter ? '' : '<div class="lmd-extra"><p>' + T('Los colores, la tipografía y el CSS propio son extras para quienes apoyan el proyecto. No se verifica: queda en tu palabra.') + '</p>' +
-                '<div class="lmd-extra-actions"><a class="lmd-btn lmd-btn-fill" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">♥ ' + T('Apoyar el proyecto') + '</a>' +
-                '<button type="button" class="lmd-btn" data-act="supporter">' + T('Ya aporté') + '</button></div></div>') +
+            (s.supporter ? '' : '<div class="lmd-extra"><p>' + T('Los colores, la tipografía y el CSS propio vienen con el plan pago.') + '</p>' +
+                '<div class="lmd-extra-actions"><button type="button" class="lmd-btn lmd-btn-fill" data-act="see-plans">' + T('Ver planes') + '</button></div></div>') +
           '</section>' +
           '<section class="lmd-two"><h3>' + T('Lectura') + '</h3>' +
             '<label class="lmd-check"><input type="checkbox" data-key="centered"' + (s.centered ? ' checked' : '') + '><span>' + T('Centrar el contenido') + '</span></label>' +
@@ -1351,9 +1347,7 @@
             '<label class="lmd-row"><span>' + T('Servidor de sincronización') + '</span><input type="text" data-key="cloudUrl" spellcheck="false" placeholder="https://" value="' + esc(s.cloudUrl || '') + '"></label>' +
             '<p class="lmd-hint">' + T('Dejalo vacío salvo que alojes tu propio servidor.') + '</p>' +
           '</section>' +
-          '<section class="lmd-panel-foot"><p class="lmd-hint">' + T('Sharpmd es gratis y no junta datos. Si te sirve, podés apoyarlo.') + '</p>' +
-            '<a class="lmd-btn lmd-btn-accent" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">♥ ' + T('Apoyar el proyecto') + '</a>' +
-            '<button type="button" class="lmd-btn" data-act="reset">' + T('Restablecer todo') + '</button></section>' +
+          '<section class="lmd-panel-foot"><button type="button" class="lmd-btn" data-act="reset">' + T('Restablecer todo') + '</button></section>' +
         '</div>' +
       '</div>';
     ui.panel.hidden = false;
@@ -1379,7 +1373,7 @@
         const pro = a && a.plan === 'pro'; const pay = (a && a.checkout) || {};
         const btn = (url, label) => (url ? '<a class="lmd-btn lmd-btn-fill" target="_blank" rel="noopener noreferrer" href="' + esc(url) + '">' + label + '</a>' : '<button type="button" class="lmd-btn" disabled>' + label + ' · ' + T('pronto') + '</button>');
         return '<div class="lmd-plans">' +
-          '<div class="lmd-plan' + (pro ? '' : ' lmd-plan-on') + '"><h4>' + T('Gratis') + '</h4><ul><li>' + T('Todo el editor') + '</li><li>' + T('Hasta 20 notas en la nube') + '</li><li>' + T('Notas en el navegador y en tu disco, sin límite') + '</li></ul></div>' +
+          '<div class="lmd-plan' + (pro ? '' : ' lmd-plan-on') + '"><h4>' + T('Gratis') + '</h4><ul><li>' + T('Todo el editor') + '</li><li>' + T('Hasta 10 notas en la nube') + '</li><li>' + T('Notas en el navegador y en tu disco, sin límite') + '</li></ul></div>' +
           '<div class="lmd-plan' + (pro ? ' lmd-plan-on' : '') + '"><h4>' + T('Pago') + ' <small>USD 3.99 / ' + T('mes') + '</small></h4><ul><li>' + T('Notas en la nube sin límite') + '</li><li>' + T('Compartir y editar entre varios') + '</li><li>' + T('Conectar una IA por MCP') + '</li><li>' + T('Historial de versiones de 30 días') + '</li><li>' + T('Colores, tipografía y CSS propio') + '</li></ul>' +
             (pro ? '<p class="lmd-hint">' + T('Es tu plan actual.') + '</p>' : '<div class="lmd-plan-buy">' + btn(pay.monthly, 'USD 3.99 / ' + T('mes')) + btn(pay.yearly, 'USD 39 / ' + T('año')) + '</div>') + '</div></div>';
       };
@@ -1390,6 +1384,7 @@
       }
       try {
         const a = await LMD.cloud.account();
+        if (a.plan === 'pro' && !settings.supporter) { panelStale = true; LMD.patch({ supporter: true }); } // las personalizaciones vienen con el plan y se conservan
         acct.innerHTML = row(T('Cuenta'), esc(a.email)) + row(T('Plan'), T(a.plan === 'pro' ? 'Pago' : 'Gratis')) + row(T('Notas en la nube'), a.limit ? T('{n} de {m}', { n: a.notes, m: a.limit }) : String(a.notes)) + plans(a) +
           '<button type="button" class="lmd-btn" data-act="cloud-logout">' + T('Salir') + '</button>';
       } catch (e) { acct.innerHTML = '<p class="lmd-hint">' + T('No hay conexión con el servidor.') + '</p>'; }

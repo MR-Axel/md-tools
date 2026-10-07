@@ -88,7 +88,7 @@ const J = (v) => JSON.stringify(v);
 const checks = [
   ['sin servidor configurado la nube no aparece', o.sinServidor === true],
   ['un código equivocado avisa', /no coincide/.test(o.codigoMalo || ''), o.codigoMalo],
-  ['entrar muestra la cuenta y el cupo', /ana@ejemplo\.test · 0 de 20 notas/.test(o.cuenta || ''), o.cuenta],
+  ['entrar muestra la cuenta y el cupo', /ana@ejemplo\.test · 0 de 10 notas/.test(o.cuenta || ''), o.cuenta],
   ['con la cuenta abierta, la nota nueva va a la nube', o.url === true],
   ['se guarda sola en la nube', /Guardado en la nube/.test(o.estado || ''), o.estado],
   ['el ícono de la nube marca la nota como sincronizada', /lmd-sync-ok/.test(o.icono || ''), o.icono],

@@ -77,8 +77,7 @@
         '<div class="lmd-home-cloud" hidden></div>' +
         '<p class="lmd-home-msg" role="status" hidden></p>' +
         '<div class="lmd-home-recent" hidden><h2>' + T('Recientes') + '</h2><ul></ul></div>' +
-      '</div>' +
-      '<a class="lmd-home-coffee" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">' + ICON.coffee + '<span>' + T(ctx.settings.supporter ? 'Gracias por apoyar' : 'Invitame un café') + '</span></a>';
+      '</div>';
     document.body.appendChild(box);
     const msg = box.querySelector('.lmd-home-msg');
     const say = (text) => { msg.hidden = !text; msg.textContent = text || ''; };
