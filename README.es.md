@@ -149,7 +149,7 @@ El HTML que sale del Markdown pasa por DOMPurify antes de entrar a la página.
 
 ## Notas en la nube y servidor de sincronización
 
-En `server/` está SharpMD Sync: cuentas, notas en la nube y un servidor MCP para que una IA las lea y las escriba. Entrás desde la pantalla de inicio con un código que llega a tu correo. El plan gratis guarda 10 notas en la nube; el pago (USD 3,99 por mes o USD 39 por año) no tiene límite y suma compartir, la conexión MCP, 30 días de historial y las opciones de apariencia.
+En `server/` está SharpMD Sync: cuentas, notas en la nube y un servidor MCP para que una IA las lea y las escriba. Entrás desde la pantalla de inicio con un código que llega a tu correo. El plan gratis guarda 10 notas en la nube; el pago (USD 3,99 por mes o USD 39 por año) no tiene límite y suma compartir, la conexión MCP, 30 días de historial y las opciones de apariencia. El plan de equipo (USD 7,98 por mes para 2 personas, USD 3 por mes por cada una más) le da a cada miembro el plan pago y un espacio compartido para las notas del equipo: quien paga invita por correo y administra los lugares.
 
 El servidor es un solo archivo, sin dependencias, y lo podés alojar vos: cargás su dirección en Ajustes → Cuenta, o escribís `off` ahí para usar SharpMD sin nada de nube. El detalle está en [server/README.md](server/README.md).
 

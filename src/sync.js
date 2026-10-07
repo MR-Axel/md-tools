@@ -1,6 +1,7 @@
 // Ícono de la nube en la barra: dice si la nota está sincronizada, guardando, sin conexión o fuera de la nube.
 // Desde ahí se sube una nota a la nube y se abre el historial de versiones (plan pago).
 // También viven acá los paneles de la cuenta (Nube, IA y Plan), la espera del pago y el envío de comentarios.
+// Lo del plan de equipo (su columna en Plan, la gestión y el aviso de una invitación) está en team.js.
 (function () {
   'use strict';
 
@@ -8,13 +9,20 @@
   const T = LMD.t;
   let core = null; let account = null; let asked = false;
 
+  // Con cada lectura de la cuenta: su equipo (que es una raíz del explorador) y, salvo que se esté en Plan, donde
+  // ya figura, el aviso de una invitación que espera.
+  function adopt(a, quiet) {
+    if (!a) return;
+    if (LMD.cloud.setTeam(a.team && a.team.mine) && core && core.APP) core.reloadTree();
+    if (!quiet) LMD.team.notice(a);
+  }
   let loading = null;
   function loadAccount() {
     // Sobre un archivo abierto directo en el navegador no se consulta: ahí el servidor no responde (CORS).
     if (asked || !LMD.cloud.signedIn() || !core.APP || LMD.cloud.guest()) return loading || Promise.resolve();
     asked = true;
     // Si falla no se repinta: repintar volvería a consultar y quedaría pidiendo en bucle mientras no haya conexión.
-    loading = (async () => { try { account = await LMD.cloud.account(); } catch (e) { account = null; asked = false; return; } paint(); })();
+    loading = (async () => { try { account = await LMD.cloud.account(); } catch (e) { account = null; asked = false; return; } adopt(account); paint(); })();
     return loading;
   }
   // La cuenta, esperando la consulta si todavía está en camino. null sin sesión o sin conexión.
@@ -68,11 +76,13 @@
     const notes = LMD.comments.mode(); // '' no se ofrece, 'plan' hace falta el plan pago, 'on' disponible, 'vault' carpeta protegida
     // En una carpeta protegida no hay compartir ni comentarios para la IA: se dice por qué, con el camino a seguir.
     const vaulted = !mine().owner && !!LMD.vault.of(core.cloudPath);
+    // Una nota del equipo ya es de todos sus miembros: compartir y la sesión en vivo no se ofrecen ahí.
+    const team = LMD.cloud.isTeam(core.cloudPath);
     menu = el('div', { class: 'lmd-menu lmd-menu-narrow', role: 'menu' });
     menu.innerHTML = '<div class="lmd-menu-list">' +
-      (core.readOnly ? '' : '<button type="button" role="menuitem" data-s="share"' + (account && account.share && !mine().owner && !vaulted ? '' : ' class="lmd-locked"') + '>' + ICON.link + '<span>' + T('Compartir') + '</span></button>') +
+      (core.readOnly || team ? '' : '<button type="button" role="menuitem" data-s="share"' + (account && account.share && !mine().owner && !vaulted ? '' : ' class="lmd-locked"') + '>' + ICON.link + '<span>' + T('Compartir') + '</span></button>') +
       // Sesión en vivo: quien tiene el enlace entra a editar sin cuenta. La abre quien creó la nota, con el plan pago.
-      (core.readOnly ? '' : '<button type="button" role="menuitem" data-s="live"' + (account && account.live && !mine().owner && !vaulted ? '' : ' class="lmd-locked"') + '>' + ICON.people + '<span>' + T('Colaborar en vivo') + '</span>' + (LMD.live.active() ? '<b class="lmd-menu-n">' + LMD.live.count() + '</b>' : '') + '</button>') +
+      (core.readOnly || team ? '' : '<button type="button" role="menuitem" data-s="live"' + (account && account.live && !mine().owner && !vaulted ? '' : ' class="lmd-locked"') + '>' + ICON.people + '<span>' + T('Colaborar en vivo') + '</span>' + (LMD.live.active() ? '<b class="lmd-menu-n">' + LMD.live.count() + '</b>' : '') + '</button>') +
       '<button type="button" role="menuitem" data-s="history"' + (pro ? '' : ' class="lmd-locked"') + '>' + ICON.reload + '<span>' + T('Historial de versiones') + '</span></button>' +
       '<button type="button" role="menuitem" data-s="ai"' + (account && account.mcp ? '' : ' class="lmd-locked"') + '>' + ICON.link + '<span>' + T('Conectar una IA') + '</span></button>' +
       (notes ? '<button type="button" role="menuitem" data-s="comments"' + (notes === 'on' ? '' : ' class="lmd-locked"') + '>' + ICON.comment + '<span>' + T('Comentarios para la IA') + '</span>' + (LMD.comments.count() ? '<b class="lmd-menu-n">' + LMD.comments.count() + '</b>' : '') + '</button>' : '') +
@@ -111,7 +121,7 @@
   let wantLogin = false;
   const goLogin = (host) => { if (host.direct || !host.tab) host.login(); else { wantLogin = true; host.tab('cloud'); } };
   const quota = (a) => (a.limit ? T('{n} de {m}', { n: a.notes, m: a.limit }) : T('{n}, sin límite', { n: a.notes }));
-  const fetchAccount = async (host) => { account = await LMD.cloud.account(); asked = true; if (host && host.unlocked) host.unlocked(account); return account; };
+  const fetchAccount = async (host) => { account = await LMD.cloud.account(); asked = true; adopt(account, true); if (host && host.unlocked) host.unlocked(account); return account; };
   const offline = () => hint(T('No hay conexión con el servidor.'));
   // Un .md abierto directo en el navegador no puede hablar con el servidor: la cuenta está en la app.
   const direct = (host) => (host.direct ? hint(T('La cuenta se maneja desde la app de SharpMD.')) + actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="login">' + T('Abrir SharpMD') + '</button>') : '');
@@ -243,7 +253,10 @@
   let planWhy = ''; // por qué se abrió Plan (por ejemplo, al querer comentar en el plan gratis); lo pone openPanel
   function awaitPaid() {
     if (wait) clearTimeout(wait.timer);
-    const mine = wait = { state: 'wait', until: Date.now() + PAY.max, timer: null };
+    // Qué se salió a pagar lo anota el enlace de pago en la pestaña: el plan individual, o el de equipo.
+    let team = false; try { team = sessionStorage.getItem('lmd-pay') === 'team'; } catch (e) { /* sin sesión: se espera el plan pago */ }
+    const mine = wait = { state: 'wait', until: Date.now() + PAY.max, timer: null, team };
+    const paid = (a) => (team ? !!(a.team && a.team.mine && a.team.mine.active && a.team.mine.role === 'admin') : a.plan === 'pro');
     const redraw = () => { if (planBox && planBox.isConnected) planPane(planBox, planHost); };
     const clean = () => { if (location.hash === '#lmd-paid') window.history.replaceState(null, '', location.href.split('#')[0]); };
     const tick = async () => {
@@ -252,7 +265,7 @@
       let a = null;
       try { a = await LMD.cloud.account(); } catch (e) { /* se reintenta */ }
       if (wait !== mine) return;
-      if (a && a.plan === 'pro') { account = a; asked = true; mine.state = 'done'; mine.at = Date.now(); clean(); paint(); redraw(); return; }
+      if (a && paid(a)) { account = a; asked = true; adopt(a, true); try { sessionStorage.removeItem('lmd-pay'); } catch (e) { /* sin sesión */ } mine.state = 'done'; mine.at = Date.now(); clean(); paint(); redraw(); return; }
       if (Date.now() >= mine.until) { mine.state = 'late'; mine.at = Date.now(); clean(); redraw(); return; }
       mine.timer = setTimeout(tick, PAY.every);
     };
@@ -272,26 +285,32 @@
     else { try { a = await fetchAccount(host); } catch (e) { note = offline(); } }
     if (turn !== planTurn) return;
     const pro = !!a && a.plan === 'pro'; const pay = (a && a.checkout) || {};
+    // own: el plan pago lo paga esta cuenta. Un miembro de un equipo lo tiene por el equipo, sin pagarlo.
+    const own = !!a && (a.own_plan || a.plan) === 'pro';
     if (planWhy && !pro) note = '<p class="lmd-plan-why" role="status">' + esc(planWhy) + '</p>' + note;
     // El pago se hace en esta misma pestaña: el enlace lleva en back la dirección a la que volver.
     const payUrl = (url) => url + (url.includes('?') ? '&' : '?') + 'back=' + encodeURIComponent(host.back);
-    const btn = (url, label) => (url ? '<a class="lmd-btn lmd-btn-fill" data-pay href="' + esc(payUrl(url)) + '">' + label + '</a>' : '<button type="button" class="lmd-btn" disabled>' + label + ' · ' + T('pronto') + '</button>');
+    const btn = (url, label, kind) => (url ? '<a class="lmd-btn lmd-btn-fill" data-pay="' + (kind || '') + '" href="' + esc(payUrl(url)) + '">' + label + '</a>' : '<button type="button" class="lmd-btn" disabled>' + label + ' · ' + T('pronto') + '</button>');
+    const teamCol = LMD.team.column(a, btn);
     const state = wait && (wait.state !== 'done' || pro) ? wait.state : '';
     box.innerHTML =
-      (state ? '<p class="lmd-paywait lmd-paywait-' + state + '" role="status"><span>' + T({ wait: 'Esperando la confirmación del pago…', late: 'La confirmación del pago todavía no llegó. Volvé a revisar en unos minutos.', done: 'Pago confirmado. Ya tenés el plan pago.' }[state]) + '</span>' +
+      (state ? '<p class="lmd-paywait lmd-paywait-' + state + '" role="status"><span>' + T({ wait: 'Esperando la confirmación del pago…', late: 'La confirmación del pago todavía no llegó. Volvé a revisar en unos minutos.', done: wait.team ? 'Pago confirmado. Tu equipo está listo.' : 'Pago confirmado. Ya tenés el plan pago.' }[state]) + '</span>' +
         (state === 'late' ? '<button type="button" class="lmd-link" data-c="recheck">' + T('Revisar ahora') + '</button>' : '') + '</p>' : '') + note +
-      '<div class="lmd-plans">' +
+      '<div class="lmd-plans' + (teamCol ? ' lmd-plans-3' : '') + '">' +
         '<div class="lmd-plan' + (a && !pro ? ' lmd-plan-on' : '') + '"><h4>' + T('Gratis') + '</h4><ul><li>' + T('Todo el editor') + '</li><li>' + T('Hasta 10 notas en la nube') + '</li><li>' + T('Notas en el navegador y en tu disco, sin límite') + '</li></ul>' +
           (a && !pro ? '<p class="lmd-hint">' + T('Es tu plan actual.') + '</p>' : '') + '</div>' +
-        '<div class="lmd-plan' + (pro ? ' lmd-plan-on' : '') + '"><h4>' + T('Pago') + ' <small>USD 3.99 / ' + T('mes') + '</small></h4><ul><li>' + T('Notas en la nube sin límite') + '</li><li>' + T('Compartir y editar entre varios') + '</li><li>' + T('Sesiones en vivo: quien invitás entra sin cuenta') + '</li><li>' + T('Conectar una IA por MCP') + '</li><li>' + T('Historial de versiones de 30 días') + '</li><li>' + T('Colores, tipografía y CSS propio') + '</li></ul>' +
-          (pro ? '<p class="lmd-hint">' + T('Es tu plan actual.') + (a.manage ? ' <a href="' + esc(a.manage) + '" target="_blank" rel="noopener noreferrer">' + T('Administrar la suscripción') + '</a>' : '') + '</p>'
-            : a ? '<div class="lmd-plan-buy">' + btn(pay.monthly, 'USD 3.99 / ' + T('mes')) + btn(pay.yearly, 'USD 39 / ' + T('año')) + '</div>' : '') + '</div></div>';
+        '<div class="lmd-plan' + (own ? ' lmd-plan-on' : '') + '"><h4>' + T('Pago') + ' <small>USD 3.99 / ' + T('mes') + '</small></h4><ul><li>' + T('Notas en la nube sin límite') + '</li><li>' + T('Compartir y editar entre varios') + '</li><li>' + T('Sesiones en vivo: quien invitás entra sin cuenta') + '</li><li>' + T('Conectar una IA por MCP') + '</li><li>' + T('Historial de versiones de 30 días') + '</li><li>' + T('Colores, tipografía y CSS propio') + '</li></ul>' +
+          (own ? '<p class="lmd-hint">' + T('Es tu plan actual.') + (a.manage ? ' <a href="' + esc(a.manage) + '" target="_blank" rel="noopener noreferrer">' + T('Administrar la suscripción') + '</a>' : '') + '</p>'
+            : pro ? '<p class="lmd-hint">' + T('Lo tenés con el equipo.') + '</p>'
+            : a ? '<div class="lmd-plan-buy">' + btn(pay.monthly, 'USD 3.99 / ' + T('mes')) + btn(pay.yearly, 'USD 39 / ' + T('año')) + '</div>' : '') + '</div>' + teamCol + '</div>' + LMD.team.section(a);
     box.onclick = async (e) => {
+      // Lo del equipo se atiende aparte. Se decide sin esperar nada: el enlace de pago, más abajo, frena su navegación en este mismo turno.
+      if (LMD.team.owns(e, box)) { LMD.team.click(e, box, a, () => planPane(box, host)); return; }
       const b = e.target.closest('[data-c]'); const link = e.target.closest('[data-pay]');
       if (b && b.dataset.c === 'login') goLogin(host);
       else if (b && b.dataset.c === 'recheck') awaitPaid();
       // Antes de salir a pagar se guarda lo pendiente.
-      else if (link) { e.preventDefault(); await host.leave(); location.href = link.href; }
+      else if (link) { e.preventDefault(); try { if (link.dataset.pay === 'team') sessionStorage.setItem('lmd-pay', 'team'); else sessionStorage.removeItem('lmd-pay'); } catch (err) { /* sin sesión */ } await host.leave(); location.href = link.href; }
     };
   }
   const panes = { cloud: cloudPane, ai: aiPane, plan: planPane };
@@ -414,7 +433,7 @@
 
   async function history() {
     let list = [];
-    try { list = await LMD.cloud.api('GET', '/versions/' + encodeURIComponent(core.cloudPath)); } catch (e) { core.flash(T('No hay conexión con el servidor.'), 'error'); return; }
+    try { list = await LMD.cloud.versions(core.cloudPath); } catch (e) { core.flash(T('No hay conexión con el servidor.'), 'error'); return; }
     const box = el('div', { class: 'lmd-ask' });
     const fmt = (ms) => new Date(ms).toLocaleString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { dateStyle: 'medium', timeStyle: 'short' });
     const weight = (n) => (n < 1024 ? n + ' B' : (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB');
@@ -444,12 +463,17 @@
   function init(c) {
     core = c;
     document.addEventListener('mousedown', (e) => { if (menu && !menu.contains(e.target)) closeMenu(); });
+    // El servidor dejó de mostrar el espacio del equipo: la cuenta se vuelve a leer y el explorador se redibuja sin él.
+    LMD.cloud.onTeamLost(() => { account = null; asked = false; if (core.APP) core.reloadTree(); loadAccount(); });
     LMD.cloud.ready().then(paint);
   }
 
   // Entrar a la cuenta desde cualquier lado: Ajustes en Nube, con el correo ya pedido.
   const login = () => { wantLogin = true; core.openPanel('cloud'); };
 
-  LMD.sync = { init, paint, click, panes, dialog, feedback, awaitPaid, openCloud, quota, PAY, login, me, foldersOf, signOut, account: () => account, why: (text) => { planWhy = text || ''; },
+  // Vuelve a leer la cuenta después de un cambio en el equipo.
+  const reload = async () => { account = await LMD.cloud.account(); asked = true; adopt(account, true); paint(); return account; };
+
+  LMD.sync = { init, paint, click, panes, reload, dialog, feedback, awaitPaid, openCloud, quota, PAY, login, me, foldersOf, signOut, account: () => account, why: (text) => { planWhy = text || ''; },
     repaintAi: () => { if (aiRedraw) aiRedraw(); } };
 })();

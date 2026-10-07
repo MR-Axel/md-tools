@@ -31,11 +31,12 @@ Then, in SharpMD: Settings → Cloud → Sync server, and type the address (`htt
 | `MAIL_WEBHOOK` | Or post `{ to, subject, text, html }` to your own mailer | |
 | `FREE_NOTES` | Notes on the free plan | `10` |
 | `MCP_FREE` | `1` gives MCP access to the free plan too | off |
-| `ADMIN_KEY` | Key for `POST /admin/plan` | off |
+| `ADMIN_KEY` | Key for `POST /admin/plan` and `POST /admin/team` | off |
 | `TEST_LOGIN` | `email:123456`. That one account signs in with the fixed code and gets no email. For store reviewers | off |
 | `CHECKOUT_MONTHLY`, `CHECKOUT_YEARLY` | Payment links the app shows in Settings → Plan. The account email is appended as `email=`, and the app adds `back=` with the address to return to | |
 | `PADDLE_WEBHOOK_SECRET` | Turns on `POST /paddle/webhook`: Paddle subscription events switch the plan | off |
 | `PORTAL_URL` | Where a subscriber manages the subscription | |
+| `PADDLE_TEAM_BASE`, `PADDLE_TEAM_SEAT`, `PADDLE_API_KEY`, `CHECKOUT_TEAM` | The team plan: see "Teams" below | off |
 | `FEEDBACK_TO` | Address that receives what people send from "Send feedback" (`POST /feedback`). It goes out through the same mailer as the sign-in code. Without it the endpoint answers 404 and the app offers a `mailto:` link instead | off |
 | `AUTH_PER_IP` | Sign-in codes one IP address may request per hour. Each email is also limited to 5 codes an hour and 15 a day, and wrong codes to 10 an hour per email and 30 per IP. Behind a proxy the IP is the last entry of `x-forwarded-for`: check that your proxy sets it, or every visitor shares one allowance | `20` |
 | `DATA_KEY` | 32 bytes in base64. Turns on encryption at rest: see below | off |
@@ -58,7 +59,7 @@ curl -X POST https://sync.example.com/admin/plan -H "x-admin-key: $ADMIN_KEY" \
 
 ## What it stores
 
-Email, notes and their previous versions (paid plan, 30 days), and hashes of sign-in codes, sessions and tokens. Sessions and tokens are stored hashed: the server cannot show a token again after creating it. Of a live session it stores the note, the name its owner chose and the hash of the link's secret; the guests live in memory only (see "Live sessions").
+Email, notes and their previous versions (paid plan, 30 days), and hashes of sign-in codes, sessions and tokens. Sessions and tokens are stored hashed: the server cannot show a token again after creating it. Of a live session it stores the note, the name its owner chose and the hash of the link's secret; the guests live in memory only (see "Live sessions"). Of a team it stores its name, the accounts that belong to it, the invitations that are waiting (the invited email address, until it is accepted, declined or removed) and the id of the subscription that pays for it (see "Teams").
 
 Notes are not end-to-end encrypted by default: the MCP endpoint has to read them to serve an AI, and sharing has to hand them to another account. There are two layers on top of that, and they are independent:
 
@@ -131,7 +132,7 @@ Sign-in is a six-digit code sent by mail, no passwords.
 |---|---|
 | `POST /auth/start` `{ email, lang }` | Sends the code, in English or with `lang: "es"` in Spanish. A limit answers `429` with its own code (`code_gap`, `code_mail_hour`, `code_mail_day`, `code_ip_hour`), `retry_after` in the body and a `Retry-After` header, both in seconds |
 | `POST /auth/verify` `{ email, code }` | Returns `{ session, account }`. Limits: `tries_mail_hour`, `tries_mail_day`, `tries_ip_hour`, with the wait, and `tries_code` when that code is used up and a new one is needed |
-| `GET /account` | Plan, note count and limit |
+| `GET /account` | Plan, note count and limit. `plan` is what the account has now; `own_plan` what it pays for by itself (a member of a team can have `plan: "pro"` and `own_plan: "free"`); `team` is described in "Teams" |
 | `GET /notes` | List |
 | `GET` / `PUT` / `DELETE /notes/{path}` | Read (`{ text, rev, updated, role }`), write `{ text, rev? }`, delete. See "Revisions" below |
 | `GET /events?path=` | Server-sent events for an open note: `presence` (who else has it open), `saved` (`{ by, updated, rev }`), `comments`, `vault`, and `live` while a live session is open |
@@ -196,6 +197,51 @@ A session ends when the owner ends it, after 12 hours with nobody connected, whe
 
 The connection limits of `/events` apply to `/live/events` too: 60 open connections per IP, and 4 per guest. Behind a proxy, make sure it does not buffer event streams (the server sends `x-accel-buffering: no`) and that it lets them stay open.
 
+### Teams
+
+One account pays for a team and manages it. It is the only one that invites, removes people and changes the number of seats, and it takes one of the seats. Everyone else joins with their usual account by accepting an invitation sent to the email they sign in with. Nobody is added without accepting. While the team is paid, every member has the paid plan. A person is in one team at a time.
+
+| Call | What it does |
+|---|---|
+| `GET /team` | The same `team` object that `GET /account` carries: `{ enabled, checkout, included, max, mine, invites }`. `mine` is `null` or `{ id, name, role, active, space, seats, used, members, solo }`, plus `pending` and `billing` for the administrator. `invites` are the invitations waiting for this account: `{ id, name, by }` |
+| `PUT /team` `{ name }` | Administrator: the name of the team, up to 40 characters |
+| `POST /team/invite` `{ email, lang }` | Administrator: invites that address and mails it, in English or with `lang: "es"` in Spanish. `409 team_full` when members plus pending invitations fill the seats, `409 already_member`, `400 own_email`. Limits: `429 invite_day` (per team and day, `TEAM_INVITES_DAY`) and `429 invite_mail_day` (three a day per address, across all teams). The answer and the email are the same whether or not that address has an account |
+| `DELETE /team/invites/{id}` | Administrator: removes a pending invitation |
+| `POST /team/accept` `{ id }`, `POST /team/decline` `{ id }` | The invited account answers. Only the account whose email was invited can accept. `409 in_team` if it already belongs to a team |
+| `POST /team/remove` `{ id }` | Administrator: removes a member (`id` as in `members`) |
+| `POST /team/leave` | A member leaves. The administrator cannot: `409 owner_stays` |
+| `POST /team/seats` `{ seats }` | Administrator: changes the subscription in Paddle and then the seats. `409 seats_in_use` below the seats in use, `400 bad_seats`, `502 billing_failed` if Paddle refuses, `409 no_billing` for a team made by hand |
+
+The team space. The notes of a team belong to the team, not to a person: they stay when someone leaves. They are stored under an internal account of the team (its email is `team:...`, which is not an address: nobody can sign in as it or share with it), so they get revisions, history, events and encryption at rest exactly like any other note. `mine.space` is the number of that account, and a member reaches the team notes with `o=`: `GET /notes?o=`, `GET` / `PUT` / `DELETE /notes/{path}?o=`, `GET /events?path=&o=`, `GET /search?q=&o=`, `GET /versions/{path}?o=`, `GET /version/{id}?o=`, and `POST /rename` with `o` in the body. Every member reads, edits, moves and deletes. Anyone else gets `403 no_access`. A member cannot read anything personal of another member.
+
+What the team space does not have in this version: folders protected with a password (text that starts with `vault1:` is refused there with `409 vault_text`), sharing with accounts outside the team, public links, comments for the AI and live sessions. Those routes work on the caller's own notes.
+
+MCP. The token of a member reaches the team notes under the prefix `@team/`: `list_notes` and `list_folders` show them with `team: true`, and `read_note`, `write_note`, `append_note` and `search_notes` work on them. The folder limit of a token is checked on the whole path, prefix included: a token limited to one of the person's own folders does not see the team, and a token limited to `@team` or `@team/some/folder` sees only that. While someone belongs to a team, a personal folder literally named `@team` is hidden from their MCP tools.
+
+Leaving and cancelling. A member who leaves or is removed goes back to their own plan and keeps their notes; their open connections to team notes are closed at once. When the subscription of the team ends, the team stays with its people and its notes but no longer gives the paid plan: the team notes can still be read and edited, new ones are refused past the free limit (`402 team_ended`) and no history is kept. Nothing is deleted. A new payment by the same account brings the team back. Someone who already pays an individual subscription and joins a team keeps that subscription: the server never cancels it, `mine.solo` is `true` and the app tells them it is still active and links to `PORTAL_URL`.
+
+Billing. A team is one Paddle subscription with two items: the base price, quantity 1, which covers 2 people, and the price per extra seat with quantity seats minus 2 (left out when it is 0). `POST /paddle/webhook` recognises it by the id of the base price and reads the seats from it. Like an individual subscription, it is tied to the account it was first seen with. Changing the seats from the app calls `PATCH /subscriptions/{id}` on the Paddle API with `proration_billing_mode: "prorated_immediately"`. If seats are lowered from the Paddle dashboard below the people in the team, nobody is removed: no new invitations go out until there is room. A payment in the name of an account that already belongs to another team does not move it: its own team starts when it leaves the other one.
+
+| Variable | What it does | Default |
+|---|---|---|
+| `PADDLE_TEAM_BASE` | Id of the base price of the team plan (covers 2 people) | off |
+| `PADDLE_TEAM_SEAT` | Id of the price of each extra seat | off |
+| `PADDLE_API_KEY` | Paddle API key, used only to change the seats of a subscription | off |
+| `PADDLE_API_URL` | Paddle API address. The sandbox is `https://sandbox-api.paddle.com` | `https://api.paddle.com` |
+| `CHECKOUT_TEAM` | Payment link for the team plan that the app shows in Settings → Plan. The account email is appended as `email=` | |
+| `TEAM_MAX_SEATS` | Most seats a team can have | `50` |
+| `TEAM_INVITES_DAY` | Invitations one team may send per day | `20` |
+| `APP_URL` | Address of the app that the invitation email links to | `https://sharpmd.app/src/app.html` |
+
+The team plan is offered only when `PADDLE_WEBHOOK_SECRET`, `PADDLE_TEAM_BASE`, `PADDLE_TEAM_SEAT` and `PADDLE_API_KEY` are all set. Without them `team.enabled` is `false` and the app does not show it.
+
+On your own server, without Paddle, make a team by hand. It gives the paid plan to its members and the shared space; the seats are changed with the same call, and `seats: 0` ends it:
+
+```
+curl -X POST https://sync.example.com/admin/team -H "x-admin-key: $ADMIN_KEY" \
+  -H "content-type: application/json" -d '{"email":"someone@example.com","seats":5}'
+```
+
 A comment is how the user points the AI at a passage: it stays open until the AI reads it with `list_comments`, makes the change and calls `resolve_comment`. The server cannot wake an AI client up; the client reads the open comments when it is asked to, or on its own schedule.
 
 Connecting Claude Code:
@@ -211,6 +257,7 @@ cd ../tests
 node server.mjs
 node revision.mjs
 node live.mjs
+node team.mjs
 node cloud.mjs
 node vault.mjs
 node vaultapp.mjs

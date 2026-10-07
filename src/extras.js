@@ -34,12 +34,15 @@
     const parts = String(v || '').replace(/\\/g, '/').split('/').map((s) => s.trim()).filter(Boolean);
     return parts.length && !parts.some((s) => /[:*?"<>|\x00-\x1f]/.test(s) || /^\.\.?$/.test(s) || s[0] === '~') ? parts.join('/') : '';
   };
-  const cloudWhy = (e, fallback) => T({ offline: 'No hay conexión con el servidor.', note_limit: 'Llegaste al límite de notas del plan gratis. El plan pago no tiene límite.',
+  const cloudWhy = (e, fallback) => T({ offline: 'No hay conexión con el servidor.', note_limit: 'Llegaste al límite de notas del plan gratis. El plan pago no tiene límite.', team_ended: 'El plan del equipo venció. No se pueden sumar notas nuevas.',
     no_access: 'Esta carpeta es de solo lectura', exists: 'Ya hay un archivo con ese nombre', bad_path: 'Ese nombre tiene caracteres que no se pueden usar' }[e && e.code] || fallback);
   // Al querer crear una nota de más en el plan gratis se abre Plan con el motivo, como con todo lo que es del plan pago.
   const cloudFail = (e, fallback) => { if (e && e.code === 'note_limit') core.openPanel('plan', cloudWhy(e)); else core.flash(cloudWhy(e, fallback), 'error'); };
   // Renombrar y eliminar son de quien creó la nota: lo compartido se puede leer o editar, no mover.
-  const notMine = (path) => { if (!LMD.cloud.split(path).owner) return false; core.flash(T('Solo quien creó la nota puede hacer eso.'), 'warn'); return true; };
+  // Las del equipo son de todos sus miembros: cualquiera las mueve y las elimina.
+  const notMine = (path) => { if (!LMD.cloud.split(path).owner || LMD.cloud.isTeam(path)) return false; core.flash(T('Solo quien creó la nota puede hacer eso.'), 'warn'); return true; };
+  // Una nota del equipo lleva adelante de su ruta de qué espacio es (~12/): eso no se muestra ni se escribe.
+  const ownerPre = (path) => { const o = LMD.cloud.split(path).owner; return o ? '~' + o + '/' : ''; };
 
   // Los nombres se piden en un diálogo propio, que avisa ahí mismo si el nombre no sirve.
   const BAD_NAME = 'Ese nombre tiene caracteres que no se pueden usar';
@@ -71,10 +74,12 @@
   async function cloudRename(url, isDir, given) {
     const old = core.pathOf(url);
     if (notMine(old)) return;
-    const typed = given != null ? old.slice(0, old.lastIndexOf('/') + 1) + given : await askName('Renombrar', old, badPath, 'Renombrar', 'Con "/" se mueve a una carpeta');
+    const pre = ownerPre(old); const inner = old.slice(pre.length);
+    const typed = given != null ? inner.slice(0, inner.lastIndexOf('/') + 1) + given : await askName('Renombrar', inner, badPath, 'Renombrar', 'Con "/" se mueve a una carpeta');
     if (!typed || !typed.trim()) return;
     let to = cloudName(typed);
     if (!to) { core.flash(T('Ese nombre tiene caracteres que no se pueden usar'), 'error'); return; }
+    to = pre + to;
     if (!isDir && !/\.[A-Za-z0-9]+$/.test(to)) to += (/\.[^./]+$/.exec(old) || ['.md'])[0];
     if (to === old) return;
     return cloudMove(old, to, isDir, 'No se pudo renombrar');
@@ -82,7 +87,9 @@
 
   async function cloudMove(old, to, isDir, fallback) {
     try {
-      const all = (await LMD.cloud.list(true)).map((n) => n.path);
+      // Lo que hay en cada lado del movimiento: lo propio, el espacio del equipo, o los dos.
+      let all = [];
+      for (const o of new Set([LMD.cloud.split(old).owner, LMD.cloud.split(to).owner])) all = all.concat((await LMD.cloud.list(true, o)).map((n) => (o ? '~' + o + '/' : '') + n.path));
       const moves = isDir ? all.filter((p) => p.startsWith(old + '/')).map((p) => [p, to + p.slice(old.length)]) : [[old, to]];
       if (moves.some((m) => all.includes(m[1]) && !moves.some((x) => x[0] === m[1]))) { core.flash(T('Ya hay un archivo con ese nombre'), 'error'); return; }
       // Una carpeta protegida no cambia de nombre ni de lugar: sus notas están cifradas con la ruta que tienen.
@@ -101,7 +108,7 @@
   async function cloudRemove(url) {
     const path = core.pathOf(url);
     if (notMine(path)) return;
-    if (!(await askDelete(path))) return;
+    if (!(await askDelete(path.slice(ownerPre(path).length)))) return;
     try {
       await LMD.cloud.remove(path);
       if (url === core.HERE) closeGone();

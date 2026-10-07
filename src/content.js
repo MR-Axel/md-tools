@@ -678,6 +678,7 @@
     LMD.comments.init(core);
     LMD.vault.init(core);
     LMD.live.init(core);
+    LMD.team.init(core);
     document.documentElement.dataset.lmdFs = String(!!window.showOpenFilePicker && window.isSecureContext);
   }
 
@@ -1579,8 +1580,10 @@
     ui.sidebar.querySelectorAll('[data-zone-tog]').forEach((b) => b.setAttribute('aria-expanded', String(!side[b.dataset.zoneTog + 'Shut'])));
   }
   // Dónde está guardado cada archivo: el ícono chico al lado del nombre.
-  const WHERE = { disk: ['disk', 'En el disco'], local: ['browser', 'En este navegador'], cloud: ['cloud', 'En la nube'] };
-  const sectionOf = (url) => { if (!APP) return isFile ? 'disk' : ''; const r = rootOf(url); return !r ? '' : r.kind === 'local' || r.kind === 'cloud' ? r.kind : 'disk'; };
+  const WHERE = { disk: ['disk', 'En el disco'], local: ['browser', 'En este navegador'], cloud: ['cloud', 'En la nube'], team: ['people', 'En el equipo'] };
+  // Las notas del equipo viven en la nube, bajo el espacio del equipo: en el explorador son una raíz aparte.
+  const teamUrl = () => { const t = APP ? LMD.cloud.teamNow() : null; return t ? VBASE + 'cloud/~' + t.space + '/' : ''; };
+  const sectionOf = (url) => { if (!APP) return isFile ? 'disk' : ''; const r = rootOf(url); if (!r) return ''; if (r.kind === 'cloud') return teamUrl() && url.startsWith(teamUrl()) ? 'team' : 'cloud'; return r.kind === 'local' ? 'local' : 'disk'; };
   // Las notas que nacen con la fecha por nombre se listan por su primer renglón.
   const STAMP_RE = /^(nota|note)-\d{8}-\d{4}(-\d+)?\.md$/i;
 
@@ -1668,6 +1671,8 @@
         if (LMD.cloud.signedIn()) add('cloud', { name: T('Nube'), icon: ICON.cloud, url: VBASE + 'cloud/', add: true });
         // Sin sesión, un renglón que invita a entrar.
         else add('cloud', { name: T('Nube'), icon: ICON.cloud }).appendChild(el('button', { type: 'button', class: 'lmd-link lmd-root-hint', text: T('Entrar para ver tus notas') }));
+        // El espacio del equipo: lo que hay ahí lo leen y lo editan todos sus miembros.
+        if (LMD.cloud.signedIn() && teamUrl()) add('team', { name: LMD.cloud.teamNow().name || T('Equipo'), title: T('Notas del equipo'), icon: ICON.people, url: teamUrl(), add: true });
       }
       // Las otras carpetas y archivos del disco que se abrieron antes: un clic los trae de vuelta.
       if (others.length) {
@@ -1918,6 +1923,7 @@
     if (diskRoot && treeRoot && !side.shut.disk) out.push({ key: 'disk', name: treeRoot === VBASE + diskRoot.id + '/' ? diskRoot.name : leaf(treeRoot), icon: ICON.folder, url: treeRoot });
     if (!side.shut.local) out.push({ key: 'local', name: T('En este navegador'), icon: ICON.browser, url: VBASE + 'local/' });
     if (LMD.cloud.enabled() && LMD.cloud.signedIn() && !side.shut.cloud) out.push({ key: 'cloud', name: T('Nube'), icon: ICON.cloud, url: VBASE + 'cloud/' });
+    if (LMD.cloud.enabled() && LMD.cloud.signedIn() && teamUrl() && !side.shut.team) out.push({ key: 'team', name: LMD.cloud.teamNow().name || T('Equipo'), icon: ICON.people, url: teamUrl() });
     return out;
   }
 
@@ -3291,7 +3297,8 @@
     pendingCell = null; fileHandle = null; stashed = null; opened = null; diskStamp = ''; cloudPoll = 0; cloudState = 'ok'; diskRev = null;
     needsRender = false; core.lastBlock = null; core.hold = false;
     LMD.write.closeMenu(); closeMore(); setDrawer(false);
-    document.querySelectorAll('.lmd-menu, .lmd-ask').forEach((n) => n.remove());
+    // El aviso de una invitación a un equipo es de la cuenta, no de la nota: sigue al cambiar de nota.
+    document.querySelectorAll('.lmd-menu, .lmd-ask:not(.lmd-team-ask)').forEach((n) => n.remove());
     ui.viewer.hidden = true; ui.viewer.textContent = ''; ui.format.hidden = true; ui.tableBar.hidden = true;
     clearSearch();
   }

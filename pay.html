@@ -25,6 +25,11 @@
   .btn { display: inline-flex; align-items: center; justify-content: center; width: 100%; padding: 13px 20px; border: 1px solid var(--fill); border-radius: 999px; background: var(--fill); color: var(--on); font: inherit; font-weight: 650; text-decoration: none; cursor: pointer; }
   .btn:hover { filter: brightness(1.06); }
   .btn.ghost { margin-top: 10px; background: transparent; border-color: var(--line); color: var(--fg); }
+  .seats { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; color: var(--muted); font-size: 14.5px; }
+  .seats span { flex: 1; }
+  .seats b { min-width: 2ch; text-align: center; color: var(--fg); font-size: 17px; }
+  .seats button { width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--fg); font: inherit; font-size: 20px; line-height: 1; cursor: pointer; }
+  .seats button:disabled { opacity: 0.4; cursor: default; }
   .fine { margin: 16px 0 0; font-size: 13px; color: var(--faint); }
   .back { display: block; margin-top: 14px; text-align: center; font-size: 14px; color: var(--muted); }
   .back:hover { color: var(--accent); }
@@ -36,14 +41,24 @@
   <a class="brand" href="./?site"><img src="icons/icon48.png" alt=""><span>SharpMD</span></a>
 
   <section id="buy" hidden>
-    <h1><span lang="en">Paid plan</span><span lang="es">Plan pago</span></h1>
+    <h1><span data-for="solo"><span lang="en">Paid plan</span><span lang="es">Plan pago</span></span><span data-for="team" hidden><span lang="en">Team plan</span><span lang="es">Plan de equipo</span></span></h1>
     <p class="price"><span id="amount"></span> <small id="cycle"></small></p>
-    <p><span lang="en">Unlimited cloud notes, sharing, the MCP connection, 30 days of version history, and colors, fonts and your own CSS.</span><span lang="es">Notas en la nube sin límite, compartir, la conexión MCP, 30 días de historial, y colores, tipografías y tu propio CSS.</span></p>
+    <p data-for="solo"><span lang="en">Unlimited cloud notes, sharing, the MCP connection, 30 days of version history, and colors, fonts and your own CSS.</span><span lang="es">Notas en la nube sin límite, compartir, la conexión MCP, 30 días de historial, y colores, tipografías y tu propio CSS.</span></p>
+    <p data-for="team" hidden><span lang="en">Everything in the paid plan for each person, and a shared space for the team notes. 2 people included, USD 3 a month for each extra one.</span><span lang="es">Todo lo del plan pago para cada persona y un espacio compartido para las notas del equipo. 2 personas incluidas, USD 3 por mes por cada una más.</span></p>
+    <div class="seats" data-for="team" hidden><span><span lang="en">People</span><span lang="es">Personas</span></span><button type="button" id="less" aria-label="-">-</button><b id="seats" aria-live="polite">2</b><button type="button" id="more" aria-label="+">+</button></div>
     <div class="who"><small><span lang="en">For the account</span><span lang="es">Para la cuenta</span></small><span id="email"></span></div>
     <button type="button" class="btn" id="go"><span lang="en">Pay with card</span><span lang="es">Pagar con tarjeta</span></button>
     <a class="btn ghost" id="other" href="#"></a>
+    <a class="btn ghost" id="team" href="#" hidden><span lang="en">Team plan: USD 7.98 a month for 2 people</span><span lang="es">Plan de equipo: USD 7.98 por mes para 2 personas</span></a>
+    <p class="fine" data-for="team" hidden><span lang="en">You invite people and change the number of seats from Settings, Plan.</span><span lang="es">Invitás a la gente y cambiás la cantidad de lugares desde Ajustes, Plan.</span></p>
     <p class="fine"><span lang="en">Paddle handles the payment and the receipt. Cancel whenever you want from the link in that receipt.</span><span lang="es">El pago y el recibo los maneja Paddle. Te das de baja cuando quieras desde el enlace de ese recibo.</span></p>
     <a class="back" data-back href="src/app.html"><span lang="en">Back to SharpMD without paying</span><span lang="es">Volver a SharpMD sin pagar</span></a>
+  </section>
+
+  <section id="noteam" hidden>
+    <h1><span lang="en">Team plan</span><span lang="es">Plan de equipo</span></h1>
+    <p><span lang="en">The team plan is not open yet.</span><span lang="es">El plan de equipo todavía no está abierto.</span></p>
+    <a class="btn" data-back href="src/app.html"><span lang="en">Back to SharpMD</span><span lang="es">Volver a SharpMD</span></a>
   </section>
 
   <section id="noemail" hidden>
@@ -72,6 +87,9 @@
     monthly: { price: 'pri_01m4a2ykw09jk7m71dr2a0gpng', amount: 'USD 3.99', en: 'a month', es: 'por mes' },
     yearly: { price: 'pri_01m4a2ym1r61j0xkcvbh9xp84y', amount: 'USD 39', en: 'a year', es: 'por año' },
   };
+  // El plan de equipo: los ids de sus dos precios en Paddle (el base, que cubre a las personas incluidas, y el de
+  // cada lugar adicional). Mientras estén vacíos, esta página no ofrece el plan de equipo.
+  var TEAM = { base: '', seat: '', included: 2, max: 50, cents: 798, extra: 300, en: 'a month', es: 'por mes' };
   var q = new URLSearchParams(location.search);
   var show = function (id) { document.getElementById(id).hidden = false; };
   // Adónde volver: la app manda su propia dirección en back. Solo vale si es de este mismo sitio o de la
@@ -96,17 +114,29 @@
   }
   var email = (q.get('email') || '').trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { show('noemail'); return; }
-  var key = q.get('plan') === 'yearly' ? 'yearly' : 'monthly'; var plan = PLANS[key];
+  var isTeam = q.get('plan') === 'team'; var teamOpen = !!(TEAM.base && TEAM.seat);
+  if (isTeam && !teamOpen) { show('noteam'); return; }
+  var seats = TEAM.included;
+  var teamAmount = function () { var c = TEAM.cents + TEAM.extra * (seats - TEAM.included); return 'USD ' + (c / 100).toFixed(2); };
+  var key = q.get('plan') === 'yearly' ? 'yearly' : 'monthly'; var plan = isTeam ? TEAM : PLANS[key];
+  document.querySelectorAll('[data-for]').forEach(function (n) { n.hidden = (n.getAttribute('data-for') === 'team') !== isTeam; });
   var lang = function () { return document.documentElement.getAttribute('data-lang') === 'es' ? 'es' : 'en'; };
-  document.getElementById('amount').textContent = plan.amount;
+  var amount = document.getElementById('amount'); amount.textContent = isTeam ? teamAmount() : plan.amount;
   document.getElementById('email').textContent = email;
   var cycle = document.getElementById('cycle'); var other = document.getElementById('other');
-  var otherKey = key === 'yearly' ? 'monthly' : 'yearly';
+  var otherKey = isTeam ? 'monthly' : key === 'yearly' ? 'monthly' : 'yearly';
   var paint = function () {
     cycle.textContent = plan[lang()];
-    other.textContent = (lang() === 'es' ? 'Prefiero ' : 'I prefer ') + PLANS[otherKey].amount + ' ' + PLANS[otherKey][lang()];
+    other.textContent = (isTeam ? (lang() === 'es' ? 'Plan individual: ' : 'Individual plan: ') : (lang() === 'es' ? 'Prefiero ' : 'I prefer ')) + PLANS[otherKey].amount + ' ' + PLANS[otherKey][lang()];
   };
   other.href = 'pay.html?plan=' + otherKey + '&email=' + encodeURIComponent(email) + tail;
+  var teamLink = document.getElementById('team'); teamLink.href = 'pay.html?plan=team&email=' + encodeURIComponent(email) + tail; teamLink.hidden = isTeam || !teamOpen;
+  if (isTeam) {
+    // Cuántas personas: el precio se actualiza en el lugar. Después se cambia desde la app.
+    var less = document.getElementById('less'); var more = document.getElementById('more');
+    var step = function (d) { seats = Math.max(TEAM.included, Math.min(TEAM.max, seats + d)); document.getElementById('seats').textContent = seats; amount.textContent = teamAmount(); less.disabled = seats <= TEAM.included; more.disabled = seats >= TEAM.max; };
+    less.addEventListener('click', function () { step(-1); }); more.addEventListener('click', function () { step(1); }); step(0);
+  }
   paint(); document.addEventListener('click', function (e) { if (e.target.closest && e.target.closest('[data-set]')) setTimeout(paint, 0); });
   show('buy');
   var ready = false;
@@ -114,7 +144,7 @@
     if (!window.Paddle) return;
     if (!ready) { Paddle.Initialize({ token: TOKEN }); ready = true; }
     Paddle.Checkout.open({
-      items: [{ priceId: plan.price, quantity: 1 }],
+      items: isTeam ? [{ priceId: TEAM.base, quantity: 1 }].concat(seats > TEAM.included ? [{ priceId: TEAM.seat, quantity: seats - TEAM.included }] : []) : [{ priceId: plan.price, quantity: 1 }],
       customer: { email: email },
       customData: { sharpmd_email: email },
       settings: { displayMode: 'overlay', theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', locale: lang(), successUrl: location.origin + location.pathname + '?done=1' + tail },

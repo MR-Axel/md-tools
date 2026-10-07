@@ -5,7 +5,11 @@
 import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SITE = 'https://sharpmd.app';
-const src = fs.readFileSync(path.join(root, 'tools', 'landing.src.html'), 'utf8').replace(/\r\n/g, '\n');
+// The team plan shows on the landing page once its checkout is open (the two price ids in pay.html).
+const TEAM_OPEN = /var TEAM = \{ base: '[^']+', seat: '[^']+'/.test(fs.readFileSync(path.join(root, 'pay.html'), 'utf8'));
+const src = fs.readFileSync(path.join(root, 'tools', 'landing.src.html'), 'utf8').replace(/\r\n/g, '\n')
+  .replace(/ *<!--TEAM-->\n([\s\S]*?)\n *<!--\/TEAM-->\n?/, (all, inner) => (TEAM_OPEN ? inner + '\n' : ''))
+  .replace('<div class="plans">', TEAM_OPEN ? '<div class="plans">' : '<div class="plans" style="max-width:860px">');
 
 const META = {
   en: { title: 'SharpMD: Markdown editor and reader in the browser',
@@ -31,7 +35,7 @@ function build(lang) {
   if (faq.length < 3) throw new Error('no se encontraron las preguntas frecuentes');
   const app = { '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'SharpMD', url: m.url, applicationCategory: 'ProductivityApplication', operatingSystem: 'Web, Chrome, Edge, Brave',
     description: m.desc, inLanguage: lang, image: SITE + '/docs/store/1-reader.png', screenshot: SITE + '/docs/store/2-editing.png', isAccessibleForFree: true,
-    offers: [{ '@type': 'Offer', name: 'Free', price: '0', priceCurrency: 'USD' }, { '@type': 'Offer', name: 'Paid', price: '3.99', priceCurrency: 'USD' }],
+    offers: [{ '@type': 'Offer', name: 'Free', price: '0', priceCurrency: 'USD' }, { '@type': 'Offer', name: 'Paid', price: '3.99', priceCurrency: 'USD' }].concat(TEAM_OPEN ? [{ '@type': 'Offer', name: 'Team', price: '7.98', priceCurrency: 'USD' }] : []),
     license: 'https://opensource.org/licenses/MIT', codeRepository: 'https://github.com/MR-Axel/sharpmd' };
   const head = [
     '<title>' + esc(m.title) + '</title>',

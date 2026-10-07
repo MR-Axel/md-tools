@@ -95,7 +95,7 @@
   .note { margin: 18px 0 0; color: var(--faint); font-size: 14.5px; }
   .soon { display: none; margin-left: 10px; padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--fill) 16%, var(--soft)); color: var(--accent); font-size: 12px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; vertical-align: 6px; }
   html[data-cloud="soon"] .soon { display: inline-block; }
-  .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; margin-top: 30px; max-width: 860px; }
+  .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 18px; margin-top: 30px; }
   .plan { padding: 26px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); }
   .plan.paid { border-color: var(--fill); box-shadow: 0 0 0 3px color-mix(in srgb, var(--fill) 14%, transparent); }
   .plan h3 { margin: 0; font-size: 17px; color: var(--muted); font-weight: 600; }
@@ -217,7 +217,7 @@
 
 <section id="plans"><div class="wrap">
   <h2>Planes</h2>
-  <div class="plans">
+  <div class="plans" style="max-width:860px">
     <div class="plan"><h3>Gratis</h3><p class="price">USD 0</p><p class="alt"></p><ul>
       <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Todo el editor</span></li>
       <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Archivos y notas del navegador, sin límite</span></li>

@@ -1,7 +1,7 @@
 // Seguridad: un caso por cada control del servidor, de la página de pago y de la app.
 // Todo corre contra un servidor local con claves inventadas y contra la extensión cargada en un Chromium:
 // ningún pedido sale a sync.sharpmd.app ni a sharpmd.app (lo que apunte ahí se corta y se anota como falla).
-// SHARPMD_SERVER apunta a otro server.mjs, para comparar contra una versión anterior. SEC_ONLY=server|app corre una mitad.
+// SHARPMD_SERVER apunta a otro server.mjs, para comparar contra una versión anterior. SEC_ONLY=server|app|live|team corre una parte.
 import { spawn } from 'child_process'; import { createHmac, createHash } from 'crypto'; import { DatabaseSync } from 'node:sqlite';
 import fs from 'fs'; import os from 'os'; import path from 'path'; import http from 'http'; import net from 'net'; import { fileURLToPath, pathToFileURL } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -353,7 +353,7 @@ async function serverSuite() {
   await N.stop();
 }
 
-if (ONLY !== 'app' && ONLY !== 'live') await serverSuite();
+if (ONLY !== 'app' && ONLY !== 'live' && ONLY !== 'team') await serverSuite();
 
 // ---------- App, extensión y página de pago ----------
 async function appSuite() {
@@ -501,7 +501,7 @@ async function appSuite() {
   await ctx.close(); other.close(); far.close(); site.close(); await S.stop();
   try { fs.rmSync(profile, { recursive: true, force: true }); } catch (e) { /* el navegador suelta el perfil un rato después */ }
 }
-if (ONLY !== 'server' && ONLY !== 'live') await appSuite();
+if (ONLY !== 'server' && ONLY !== 'live' && ONLY !== 'team') await appSuite();
 
 // ---------- Sesión en vivo ----------
 // Quien entra por el enlace no tiene cuenta: recibe un pase que sirve solo para la nota de esa sesión y solo
@@ -752,7 +752,179 @@ async function liveSuite() {
   } catch (e) { check('vencimiento: sin excepciones en la prueba', false, String(e && e.stack || e)); console.log(V.log().slice(-2000)); }
   await V.stop();
 }
-if (ONLY !== 'server' && ONLY !== 'app') await liveSuite();
+if (ONLY !== 'server' && ONLY !== 'app' && ONLY !== 'team') await liveSuite();
+
+// ---------- Equipos ----------
+// Quién entra al espacio de un equipo y quién no, quién puede administrarlo, que invitar no sirva para mandar correo
+// a mansalva ni para saber quién tiene cuenta, y que el cobro de un equipo no se pueda atribuir ni falsificar.
+// Paddle y el correo son servidores falsos locales.
+async function teamSuite() {
+  console.log('Seguridad de los equipos');
+  const BASE = 'pri_prueba_base'; const SEAT = 'pri_prueba_lugar'; const APIKEY = 'clave-api-de-prueba-9911-zzz';
+  const paddleCalls = []; const mails = [];
+  const collect = (into) => http.createServer((req, res) => { let raw = ''; req.on('data', (c) => { raw += c; }); req.on('end', () => { let body = null; try { body = JSON.parse(raw); } catch (e) { body = raw; } into.push({ method: req.method, url: req.url, auth: req.headers.authorization, body }); res.writeHead(200, { 'content-type': 'application/json' }); res.end('{}'); }); });
+  const fakePaddle = collect(paddleCalls); const fakeMail = collect(mails);
+  await new Promise((r) => fakePaddle.listen(0, '127.0.0.1', r)); await new Promise((r) => fakeMail.listen(0, '127.0.0.1', r));
+  const S = await boot({ ADMIN_KEY: ADMIN, PADDLE_WEBHOOK_SECRET: PADDLE, PADDLE_TEAM_BASE: BASE, PADDLE_TEAM_SEAT: SEAT, PADDLE_API_KEY: APIKEY, PADDLE_API_URL: 'http://127.0.0.1:' + fakePaddle.address().port,
+    MAIL_WEBHOOK: 'http://127.0.0.1:' + fakeMail.address().port, TEAM_INVITES_DAY: '6', FREE_NOTES: '3', AUTH_PER_IP: '100' });
+  secrets.push(APIKEY);
+  const { call } = S;
+  try {
+    let clock = Date.now() - 900000;
+    const hook = async (ev, o2) => { o2 = o2 || {}; const raw = JSON.stringify(ev); const ts = Math.floor(Date.now() / 1000); const h1 = createHmac('sha256', o2.secret || PADDLE).update(ts + ':' + raw).digest('hex'); const r = await fetch(S.base + '/paddle/webhook', { method: 'POST', headers: o2.unsigned ? {} : { 'paddle-signature': 'ts=' + ts + ';h1=' + h1 }, body: raw }); return { status: r.status, json: await r.json().catch(() => null) }; };
+    const teamEv = (id, status, email, extra, at) => ({ event_type: 'subscription.updated', occurred_at: new Date(at || (clock += 1000)).toISOString(), data: Object.assign({ id, status, items: [{ price: { id: BASE }, quantity: 1 }].concat(extra ? [{ price: { id: SEAT }, quantity: extra }] : []) }, email ? { custom_data: { sharpmd_email: email } } : {}) });
+    const acct = async (who) => (await call('GET', '/account', undefined, who.s)).json;
+    const invite = (who, email) => call('POST', '/team/invite', { email }, who.s);
+    const join = async (owner, who) => { await invite(owner, who.email); const inv = (await acct(who)).team.invites.find((i) => i.by === owner.email); return call('POST', '/team/accept', { id: inv.id }, who.s); };
+    const mailsTo = (email) => mails.filter((m) => m.body && m.body.to === email && /invited you|te invitó/.test(m.body.subject));
+    const stream = async (url, auth) => {
+      const ctrl = new AbortController(); const st = { text: '', status: 0, done: false, stop: () => ctrl.abort() };
+      const res = await fetch(S.base + url, { headers: { authorization: 'Bearer ' + auth }, signal: ctrl.signal }); st.status = res.status;
+      if (res.ok) (async () => { const rd = res.body.getReader(); const d = new TextDecoder(); try { for (;;) { const x = await rd.read(); if (x.done) break; st.text += d.decode(x.value); } } catch (e) { /* se cortó */ } st.done = true; })();
+      return st;
+    };
+
+    const A = await signup(S, 'ana@ejemplo.test'); const B = await signup(S, 'beto@ejemplo.test'); const X = await signup(S, 'equis@ejemplo.test'); const P = await signup(S, 'pendiente@ejemplo.test');
+    const E = await signup(S, 'ex@ejemplo.test'); const D = await signup(S, 'dora@ejemplo.test'); const M = await signup(S, 'miembro2@ejemplo.test');
+    await makePro(S, X.email);
+
+    // ---------- El cobro ----------
+    console.log(' El cobro del equipo');
+    const forged = await hook(teamEv('sub_t1', 'active', A.email, 2), { secret: 'otra-firma' });
+    const bare = await hook(teamEv('sub_t1', 'active', A.email, 2), { unsigned: true });
+    check('equipo: un aviso sin firma o con otra firma no crea un equipo', forged.status === 401 && bare.status === 401 && (await acct(A)).team.mine === null && (await acct(A)).plan === 'free', [forged.status, bare.status]);
+    const made = await hook(teamEv('sub_t1', 'active', A.email, 2));
+    const SPACE = (await acct(A)).team.mine.space;
+    check('equipo: el aviso firmado lo crea, con los lugares que trae', made.status === 200 && made.json.seats === 4 && (await acct(A)).team.mine.role === 'admin', made.json);
+    await hook(teamEv('sub_t1', 'active', X.email, 2));
+    check('equipo: la suscripción no se puede atribuir después a otra cuenta', (await acct(X)).team.mine === null && (await acct(A)).team.mine.role === 'admin' && (await acct(A)).team.mine.seats === 4);
+    // Una suscripción individual ya vista no se convierte en la de un equipo por traer después el precio del equipo.
+    await hook({ event_type: 'subscription.created', occurred_at: new Date(clock += 1000).toISOString(), data: { id: 'sub_solo_x', status: 'active', custom_data: { sharpmd_email: X.email }, items: [{ price: { id: 'pri_otro', custom_data: { app: 'sharpmd' } }, quantity: 1 }] } });
+    await hook(teamEv('sub_solo_x', 'active', X.email, 9));
+    check('equipo: una suscripción individual no pasa a ser de equipo', (await acct(X)).team.mine === null && (await acct(X)).plan === 'pro');
+    await hook(teamEv('sub_t2', 'active', D.email, 3));
+    const SPACE2 = (await acct(D)).team.mine.space;
+
+    // ---------- Quién entra al espacio del equipo ----------
+    console.log(' El espacio del equipo');
+    const TSECRET = 'REMOLACHA-DEL-EQUIPO-4471'; secrets.push(TSECRET);
+    await join(A, B); await join(A, E); await invite(A, P.email); await join(D, M);
+    const t = (p) => '/notes/' + enc(p) + '?o=' + SPACE;
+    await call('PUT', t('secreta.md'), { text: 'uno ' + TSECRET }, A.s); await call('PUT', t('secreta.md'), { text: 'dos ' + TSECRET, rev: 1 }, B.s);
+    const vid = (await call('GET', '/versions/' + enc('secreta.md') + '?o=' + SPACE, undefined, A.s)).json[0].id;
+    const earE = await stream('/events?path=' + enc('secreta.md') + '&o=' + SPACE, E.s); await sleep(150);
+    const gone = await call('POST', '/team/remove', { id: E.id }, A.s);
+    await makePro(S, E.email); // paga por su lado: lo que pierde es el equipo, no el plan
+    await call('PUT', t('secreta.md'), { text: 'tres ' + TSECRET, rev: 2 }, A.s); await sleep(250);
+    check('equipo: a quien sacan se le corta la escucha y no recibe lo que se guarda después', gone.status === 200 && earE.done && !/"rev":3/.test(earE.text), earE.text.slice(-200));
+    const leaks = (r) => JSON.stringify(r.json || '').includes(TSECRET);
+    const outsiders = [['ajena', X], ['invitada sin aceptar', P], ['ex miembro', E], ['quien administra otro equipo', D], ['miembro de otro equipo', M]];
+    const tries = [
+      ['leer', (w) => call('GET', t('secreta.md'), undefined, w.s)], ['guardar', (w) => call('PUT', t('secreta.md'), { text: 'pisada' }, w.s)], ['crear', (w) => call('PUT', t('colada.md'), { text: 'x' }, w.s)],
+      ['eliminar', (w) => call('DELETE', t('secreta.md'), undefined, w.s)], ['buscar', (w) => call('GET', '/search?q=' + enc(TSECRET) + '&o=' + SPACE, undefined, w.s)],
+      ['historial', (w) => call('GET', '/versions/' + enc('secreta.md') + '?o=' + SPACE, undefined, w.s)], ['versión', (w) => call('GET', '/version/' + vid + '?o=' + SPACE, undefined, w.s)],
+      ['mover', (w) => call('POST', '/rename', { from: 'secreta.md', to: 'robada.md', o: SPACE }, w.s)], ['escuchar', (w) => stream('/events?path=' + enc('secreta.md') + '&o=' + SPACE, w.s)],
+    ];
+    const holes = [];
+    for (const [who, w] of outsiders) {
+      for (const [what, fn] of tries) { const r = await fn(w); if (r.status !== 403 || leaks(r)) holes.push(who + ': ' + what + ' ' + r.status); if (r.stop) r.stop(); }
+      const list = await call('GET', '/notes?o=' + SPACE, undefined, w.s); if (list.status !== 200 || list.json.length) holes.push(who + ': listar');
+      const version = await call('GET', '/version/' + vid, undefined, w.s); if (version.status !== 404 || leaks(version)) holes.push(who + ': versión sin o');
+    }
+    check('equipo: quien no es miembro (ajena, invitada sin aceptar, ex miembro, de otro equipo) no lee, guarda, crea, elimina, busca, mueve ni escucha nada del espacio', holes.length === 0, holes);
+    check('equipo: y la nota quedó como estaba', (await call('GET', t('secreta.md'), undefined, B.s)).json.text === 'tres ' + TSECRET && (await call('GET', t('colada.md'), undefined, A.s)).status === 404);
+    const wild = []; for (const o of ['abc', '-1', '0', SPACE + 'x', SPACE2, A.id, '1e0', '%00', '']) { const r = await call('GET', '/notes/' + enc('secreta.md') + '?o=' + o, undefined, B.s); if (r.status === 200 || leaks(r)) wild.push(o + ' ' + r.status); }
+    check('equipo: un miembro no llega a otro espacio ni a lo de otra cuenta cambiando el número de la dirección', wild.length === 0 && (await call('POST', '/rename', { from: 'secreta.md', to: 'x.md', o: [SPACE2] }, B.s)).status === 403 && (await call('POST', '/rename', { from: 'secreta.md', to: 'x.md', o: { id: SPACE } }, X.s)).status === 403, wild);
+    // Lo personal de cada miembro no pasa al equipo.
+    const PSECRET = 'ACELGA-PERSONAL-9902'; secrets.push(PSECRET);
+    await call('PUT', '/notes/' + enc('mia.md'), { text: PSECRET }, B.s);
+    const peek = []; for (const u of ['/notes/mia.md?o=' + B.id, '/notes/mia.md?o=' + SPACE, '/notes?o=' + B.id, '/search?q=' + PSECRET + '&o=' + B.id, '/search?q=' + PSECRET + '&o=' + SPACE, '/search?q=' + PSECRET, '/versions/mia.md?o=' + B.id]) { const r = await call('GET', u, undefined, A.s); if (leaks(r) || JSON.stringify(r.json || '').includes(PSECRET) || JSON.stringify(r.json || '').includes('mia.md')) peek.push(u + ' ' + r.status); }
+    check('equipo: quien administra no lee nada personal de un miembro', peek.length === 0, peek);
+    const view = JSON.stringify(await acct(B));
+    check('equipo: lo que un miembro ve del equipo son los correos de los miembros: ni invitaciones pendientes, ni la suscripción, ni la cuenta interna', view.includes(A.email) && !view.includes(P.email) && !view.includes('sub_t1') && !view.includes('team:') && !view.includes('"pending"'), view.slice(0, 600));
+    check('equipo: con la cuenta interna no se entra, ni se le comparte, ni se le cambia el plan', (await call('POST', '/auth/start', { email: 'team:abc' }, undefined, from(nextIp()))).status === 400 && (await call('POST', '/shares', { path: 'mia.md', email: 'team:abc', role: 'edit' }, X.s)).status === 400 && (await S.call('POST', '/admin/plan', { email: 'team:abc', plan: 'free' }, undefined, { 'x-admin-key': ADMIN })).status === 400);
+
+    // ---------- Papeles e invitaciones ajenas ----------
+    console.log(' Papeles e invitaciones');
+    const pInv = (await acct(P)).team.invites[0].id;
+    const steal = [(await call('POST', '/team/accept', { id: pInv }, X.s)).status, (await call('POST', '/team/accept', { id: pInv }, M.s)).status, (await call('POST', '/team/accept', { id: String(pInv) + ' OR 1=1' }, X.s)).status];
+    await call('POST', '/team/decline', { id: pInv }, X.s); await call('DELETE', '/team/invites/' + pInv, undefined, D.s);
+    check('equipo: nadie acepta, rechaza ni quita la invitación de otra persona o de otro equipo', steal.every((s) => s === 404) && (await acct(P)).team.invites.length === 1 && (await acct(X)).team.mine === null, steal);
+    const roles = [];
+    for (const [who, w] of [['miembro', B], ['de otro equipo', M]]) for (const r of [await invite(w, 'nuevo@ejemplo.test'), await call('POST', '/team/remove', { id: A.id }, w.s), await call('POST', '/team/seats', { seats: 9 }, w.s), await call('PUT', '/team', { name: 'tomado' }, w.s), await call('DELETE', '/team/invites/' + pInv, undefined, w.s)]) if (r.status !== 403) roles.push(who + ' ' + r.status);
+    const cross = [(await call('POST', '/team/remove', { id: B.id }, D.s)).status, (await call('POST', '/team/remove', { id: A.id }, D.s)).status];
+    check('equipo: un miembro no administra, y quien administra un equipo no toca a la gente de otro', roles.length === 0 && cross.every((s) => s === 404) && (await acct(B)).team.mine.space === SPACE && (await acct(A)).team.mine.name === '' && (await acct(A)).team.mine.seats === 4 && paddleCalls.length === 0, [roles, cross]);
+    const twice = [(await call('POST', '/team/accept', { id: pInv }, P.s)).status, (await call('POST', '/team/accept', { id: pInv }, P.s)).status];
+    check('equipo: una invitación sirve una sola vez', twice.join() === '200,404' && (await acct(A)).team.mine.members.length === 3, twice);
+    // Una cuenta que ya es miembro no sale de su equipo porque alguien pague una suscripción de equipo a su nombre.
+    const pull = await hook(teamEv('sub_t9', 'active', B.email, 0));
+    check('equipo: un pago a nombre de quien ya está en un equipo no lo saca de ahí', pull.json.ignored === 'in_team' && (await acct(B)).team.mine.space === SPACE && (await acct(B)).team.mine.role === 'member', pull.json);
+    // Avisos desordenados: uno viejo no revive un equipo dado de baja.
+    const late = clock + 50000;
+    await hook(teamEv('sub_t2', 'canceled', null, 3, late)); const old = await hook(teamEv('sub_t2', 'active', null, 3, late - 20000));
+    check('equipo: un aviso anterior al último no revive un equipo dado de baja', old.json.ignored === 'stale' && (await acct(D)).team.mine.active === false && (await acct(M)).plan === 'free', old.json);
+
+    // ---------- Lugares ----------
+    console.log(' Lugares');
+    // Cuatro lugares y tres ocupados (Ana, Beto y Pendiente): queda uno. Cinco invitaciones a la vez por ese lugar.
+    const racers = await Promise.all(Array.from({ length: 5 }, (_, i) => invite(A, 'carrera' + i + '@ejemplo.test')));
+    const a1 = await acct(A);
+    check('equipo: varias invitaciones a la vez por el último lugar: entra una sola', racers.filter((r) => r.status === 200).length === 1 && racers.filter((r) => r.status === 409 && r.json.error === 'team_full').length === 4 && a1.team.mine.used === 4 && a1.team.mine.used <= a1.team.mine.seats, racers.map((r) => r.status));
+    paddleCalls.length = 0;
+    const lowered = await call('POST', '/team/seats', { seats: 3 }, A.s);
+    const odd = []; for (const v of [3.5, '5', -1, 1, 1e9, null, [5], { n: 5 }, true]) { const r = await call('POST', '/team/seats', { seats: v }, A.s); if (r.status !== 400) odd.push(JSON.stringify(v) + ' ' + r.status); }
+    check('equipo: los lugares no bajan de los ocupados ni toman valores raros, y Paddle no recibe nada', lowered.status === 409 && lowered.json.error === 'seats_in_use' && odd.length === 0 && paddleCalls.length === 0, [lowered.json, odd]);
+    const raised = await call('POST', '/team/seats', { seats: 8 }, A.s);
+    const pc = paddleCalls[0] || {};
+    check('equipo: el cambio de lugares va a la suscripción del equipo, con la clave y solo con los precios configurados', raised.status === 200 && paddleCalls.length === 1 && pc.url === '/subscriptions/sub_t1' && pc.auth === 'Bearer ' + APIKEY && pc.body.items.every((i) => i.price_id === BASE || i.price_id === SEAT) && pc.body.items.find((i) => i.price_id === SEAT).quantity === 6, pc);
+    check('equipo: la clave de la API de Paddle no viaja en ninguna respuesta', !JSON.stringify([raised.json, await acct(A), (await call('GET', '/team', undefined, A.s)).json]).includes(APIKEY));
+
+    // ---------- Invitar no es mandar correo a mansalva ----------
+    console.log(' Topes de invitaciones');
+    // Hasta acá el equipo de Ana mandó cuatro invitaciones (Beto, Ex, Pendiente y la que ganó la carrera). El tope de la prueba es seis por día.
+    const before = mails.length;
+    const burst = []; for (let i = 0; i < 6; i++) burst.push(await invite(A, 'rafaga' + i + '@ejemplo.test'));
+    const okN = burst.filter((r) => r.status === 200).length; const stopped = burst.find((r) => r.status === 429);
+    check('equipo: pasado el tope diario del equipo no sale ni un correo más, y se dice cuánto falta', okN === 2 && !!stopped && stopped.json.error === 'invite_day' && stopped.json.retry_after > 0 && mails.length - before === okN, [okN, stopped && stopped.json]);
+    const pend = (await acct(A)).team.mine.pending;
+    await call('DELETE', '/team/invites/' + pend[pend.length - 1].id, undefined, A.s);
+    check('equipo: quitar una invitación no devuelve el cupo', (await invite(A, 'otra-mas@ejemplo.test')).status === 429);
+    // Por destinatario: tres por día entre todos los equipos. Otro equipo, con cupo propio, tampoco puede insistirle.
+    const F = await signup(S, 'fede@ejemplo.test'); await hook(teamEv('sub_t3', 'active', F.email, 8));
+    const G = await signup(S, 'gabi@ejemplo.test'); await hook(teamEv('sub_t4', 'active', G.email, 8));
+    const hammer = [(await invite(F, 'victima@ejemplo.test')).status, (await invite(F, 'victima@ejemplo.test')).status, (await invite(G, 'victima@ejemplo.test')).status, (await invite(G, 'victima@ejemplo.test')).status, (await invite(F, 'victima@ejemplo.test')).status];
+    check('equipo: una misma dirección recibe a lo sumo tres invitaciones por día, vengan del equipo que vengan', hammer.join() === '200,200,200,429,429' && mailsTo('victima@ejemplo.test').length === 3, hammer);
+    // Lo que responde y lo que manda no dicen si la dirección tiene cuenta, ni si está en otro equipo.
+    const r1 = await invite(F, X.email); const r2 = await invite(F, 'nadie-con-ese-correo@ejemplo.test'); const r3 = await invite(F, B.email);
+    const shape = (r) => r.status + JSON.stringify(Object.keys(r.json).sort()) + JSON.stringify(Object.keys(r.json.team.mine).sort());
+    const m1 = mailsTo(X.email).pop(); const m2 = mailsTo('nadie-con-ese-correo@ejemplo.test').pop(); const m3 = mailsTo(B.email).pop();
+    check('equipo: invitar responde y manda lo mismo a una cuenta, a una dirección sin cuenta y a quien ya está en otro equipo', shape(r1) === shape(r2) && shape(r2) === shape(r3) && !!m1 && !!m2 && !!m3 && m1.body.text === m2.body.text && m2.body.text === m3.body.text && m1.body.html === m2.body.html && m1.body.subject === m3.body.subject, [shape(r1), shape(r2), shape(r3)]);
+    const stuck = await call('POST', '/team/accept', { id: (await acct(B)).team.invites.find((i) => i.by === F.email).id }, B.s);
+    check('equipo: quien ya está en un equipo no entra a otro, y eso lo sabe solo ella', stuck.status === 409 && stuck.json.error === 'in_team' && !(await acct(F)).team.mine.members.some((m) => m.email === B.email), stuck.json);
+    // El nombre del equipo lo escribe una persona: no parte el correo ni mete HTML.
+    const named = await call('PUT', '/team', { name: 'Equipo\r\nBcc: robo@ejemplo.test <img src=x onerror=alert(1)>' }, G.s);
+    await invite(G, 'con-nombre@ejemplo.test'); const mn = mailsTo('con-nombre@ejemplo.test').pop();
+    check('equipo: el nombre del equipo no parte el correo ni mete HTML', named.status === 200 && !/[\r\n]/.test(named.json.team.mine.name) && named.json.team.mine.name.length <= 40 && !!mn && !/[\r\n]/.test(mn.body.subject) && !/<img/i.test(mn.body.html) && !/Bcc:/i.test(mn.body.subject), [named.json.team.mine.name, mn && mn.body.subject]);
+    const badTo = []; for (const v of ['a@b.test\r\nBcc: x@y.test', 'a@b.test, c@d.test', '<a@b.test>', 'team:abc', '', null, ['a@b.test'], { email: 'a@b.test' }]) { const r = await invite(G, v); if (r.status !== 400) badTo.push(JSON.stringify(v) + ' ' + r.status); }
+    check('equipo: una dirección mal formada no se invita', badTo.length === 0, badTo);
+
+    // ---------- La IA de un miembro ----------
+    console.log(' MCP');
+    const tokB = (await call('POST', '/tokens', { name: 'IA' }, B.s)).json.token; const tokScoped = (await call('POST', '/tokens', { name: 'IA', folder: 'propias' }, B.s)).json.token; const tokE = (await call('POST', '/tokens', { name: 'IA', folder: '@team' }, E.s)).json.token; const tokX = (await call('POST', '/tokens', { name: 'IA' }, X.s)).json.token;
+    secrets.push(tokB, tokScoped, tokE, tokX);
+    const reads = [await tool(S, tokB, 'read_note', { path: '@team/secreta.md' }), await tool(S, tokScoped, 'read_note', { path: '@team/secreta.md' }), await tool(S, tokE, 'read_note', { path: '@team/secreta.md' }), await tool(S, tokX, 'read_note', { path: '@team/secreta.md' })];
+    const sees = (r) => JSON.stringify(r.v).includes(TSECRET);
+    check('equipo: por MCP lee el equipo el token de un miembro; no el limitado a una carpeta propia, ni el de un ex miembro, ni el de una cuenta ajena', sees(reads[0]) && !sees(reads[1]) && !sees(reads[2]) && !sees(reads[3]), reads.map((r) => JSON.stringify(r).slice(0, 80)));
+    const sweep = []; for (const tok of [tokScoped, tokE, tokX]) for (const [n, a] of [['list_notes', {}], ['list_folders', {}], ['search_notes', { query: TSECRET }], ['read_note', { path: '@team/../secreta.md' }], ['append_note', { path: '@team/secreta.md', text: 'colado' }]]) { const r = await tool(S, tok, n, a); if (sees(r) || (n !== 'append_note' && n !== 'read_note' && /@team\/secreta/.test(JSON.stringify(r.v)))) sweep.push(n); }
+    check('equipo: esos tokens tampoco lo listan, lo buscan ni escriben en él', sweep.length === 0 && (await call('GET', t('secreta.md'), undefined, A.s)).json.text === 'tres ' + TSECRET, sweep);
+
+    const logged = secrets.filter((x) => x && S.log().includes(x));
+    check('equipo: la salida del servidor no trae texto de notas, tokens ni la clave de Paddle', logged.length === 0, logged.map((x) => String(x).slice(0, 8)));
+    check('equipo: nada de esto se anotó como error del servidor, y sigue arriba', !/error 500|error no capturado|promesa sin atender/.test(S.log()) && S.alive() && (await call('GET', '/health')).status === 200, (S.log().match(/error[^\n]*/g) || []).slice(0, 4));
+  } catch (e) { check('equipos: sin excepciones en la prueba', false, String(e && e.stack || e)); console.log(S.log().slice(-2000)); }
+  await S.stop(); fakePaddle.close(); fakeMail.close();
+}
+if (!ONLY || ONLY === 'team') await teamSuite();
 
 const failed = results.filter((r) => !r.ok);
 console.log('\n' + (results.length - failed.length) + ' de ' + results.length + ' pruebas pasaron');
