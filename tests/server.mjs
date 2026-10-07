@@ -316,6 +316,122 @@ try {
   check('cifrado: con la clave original vuelve a andar', srv.up() && (await srv.ask('GET', '/notes/nueva.md', undefined, es)).json.text === 'remolacha-nueva, segunda versión.');
   await srv.stop(); wipe(encDir);
 
+  // ---------- Papelera ----------
+  {
+  const trDir = tmp();
+  let tr = await boot(trDir, { DATA_KEY: K1, FREE_NOTES: '3', SHARE_FREE: '1' });
+  const ts = await tr.enter('papelera@ejemplo.test'); const tp = await tr.enter('paga@ejemplo.test', true); const tx = await tr.enter('ajena@ejemplo.test');
+  const bin = async (who) => (await tr.ask('GET', '/trash', undefined, who)).json;
+  for (const n of ['uno', 'dos', 'tres']) await tr.ask('PUT', '/notes/' + n + '.md', { text: 'rabanito-' + n }, ts);
+  await tr.ask('PUT', '/notes/uno.md', { text: 'rabanito-uno, segunda' }, ts);
+  const tlink = (await tr.ask('POST', '/links', { path: 'uno.md' }, ts)).json.token;
+  await tr.ask('POST', '/shares', { path: 'uno.md', email: 'ajena@ejemplo.test', role: 'view' }, ts);
+  const del1 = await tr.ask('DELETE', '/notes/uno.md', undefined, ts);
+  const b1 = await bin(ts);
+  check('papelera: eliminar una nota la manda a la papelera, con su vencimiento a 30 días', del1.status === 200 && del1.json.trash === true && b1.length === 1 && b1[0].path === 'uno.md' && Math.abs(b1[0].expires - b1[0].deleted - 30 * 86400000) < 1000 && b1[0].text === undefined, [del1.json, b1]);
+  check('papelera: lo eliminado no se lista, no se lee, no se busca, no queda compartido ni publicado', !(await tr.ask('GET', '/notes', undefined, ts)).json.some((n) => n.path === 'uno.md') && (await tr.ask('GET', '/notes/uno.md', undefined, ts)).status === 404 &&
+    (await tr.ask('GET', '/search?q=rabanito-uno', undefined, ts)).json.length === 0 && (await tr.ask('GET', '/public/' + tlink)).status === 404 && (await tr.ask('GET', '/shared', undefined, tx)).json.length === 0 && (await tr.ask('GET', '/account', undefined, ts)).json.notes === 2);
+  check('papelera: lo eliminado no cuenta para el tope del plan gratis', (await tr.ask('PUT', '/notes/cuatro.md', { text: 'x' }, ts)).status === 200);
+  const full = await tr.ask('POST', '/trash/' + b1[0].id + '/restore', {}, ts);
+  check('papelera: restaurar respeta el tope del plan gratis', full.status === 402 && full.json.error === 'note_limit' && (await bin(ts)).length === 1, full.json);
+  await tr.ask('DELETE', '/notes/cuatro.md', undefined, ts);
+  const back = await tr.ask('POST', '/trash/' + b1[0].id + '/restore', {}, ts);
+  const again = (await tr.ask('GET', '/notes/uno.md', undefined, ts)).json;
+  check('papelera: restaurar devuelve la nota a su ruta con su texto, y sale de la papelera', back.status === 200 && back.json.path === 'uno.md' && again.text === 'rabanito-uno, segunda' && again.rev === 3 && !(await bin(ts)).some((x) => x.path === 'uno.md'), [back.json, again]);
+  check('papelera: lo restaurado no vuelve publicado ni compartido', (await tr.ask('GET', '/public/' + tlink)).status === 404 && (await tr.ask('GET', '/shared', undefined, tx)).json.length === 0);
+  // Choque de nombres: se elimina, se crea otra en la misma ruta y se restaura la primera.
+  await tr.ask('DELETE', '/notes/dos.md', undefined, ts);
+  await tr.ask('PUT', '/notes/dos.md', { text: 'la nueva' }, ts);
+  const twin = await tr.ask('POST', '/trash/' + (await bin(ts)).find((x) => x.path === 'dos.md').id + '/restore', {}, ts);
+  check('papelera: si la ruta ya está ocupada, se restaura con otro nombre', twin.status === 402 || (twin.status === 200 && twin.json.path === 'dos (2).md'), twin.json);
+  // Con plan pago: historial, MCP y el choque de nombres sin tope de notas.
+  await tr.ask('PUT', '/notes/' + encodeURIComponent('proy/plan.md'), { text: 'apio-plan' }, tp);
+  await tr.ask('DELETE', '/notes/' + encodeURIComponent('proy/plan.md'), undefined, tp);
+  await tr.ask('PUT', '/notes/' + encodeURIComponent('proy/plan.md'), { text: 'el plan nuevo' }, tp);
+  const ptok = (await tr.ask('POST', '/tokens', { name: 'IA' }, tp)).json.token;
+  const ptool = async (name, args) => (await tr.ask('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, ptok)).json.result.content[0].text;
+  check('papelera: la IA no ve lo que está en la papelera', !/apio-plan/.test(await ptool('search_notes', { query: 'apio' })) && !/apio-plan/.test(await ptool('read_note', { path: 'proy/plan.md' })) && JSON.parse(await ptool('list_notes', {})).length === 1);
+  const pid = (await bin(tp))[0].id;
+  check('papelera: la de otra cuenta no se ve, no se restaura ni se borra', (await bin(tx)).length === 0 && (await tr.ask('POST', '/trash/' + pid + '/restore', {}, tx)).status === 404 && (await tr.ask('DELETE', '/trash/' + pid, undefined, tx)).status === 404 &&
+    (await tr.ask('GET', '/trash?o=2', undefined, tx)).status === 403 && (await tr.ask('DELETE', '/trash', undefined, tx)).json.removed === 0 && (await bin(tp)).length === 1);
+  const twin2 = await tr.ask('POST', '/trash/' + pid + '/restore', {}, tp);
+  check('papelera: el nombre nuevo conserva la carpeta y la extensión', twin2.status === 200 && twin2.json.path === 'proy/plan (2).md' && twin2.json.from === 'proy/plan.md' && (await tr.ask('GET', '/notes/' + encodeURIComponent('proy/plan (2).md'), undefined, tp)).json.text === 'apio-plan' && (await tr.ask('GET', '/notes/' + encodeURIComponent('proy/plan.md'), undefined, tp)).json.text === 'el plan nuevo', twin2.json);
+  // Carpeta con contraseña: lo eliminado sigue cifrado, y con el nombre ocupado hay que volver a cifrarlo.
+  const vb = (n, fill) => Buffer.alloc(n, fill).toString('base64'); const sealedText = (fill) => 'vault1:' + Buffer.alloc(60, fill).toString('base64');
+  const vault = (await tr.ask('POST', '/vaults', { folder: 'cofre', salt: vb(16, 1), iters: 200000, wrapped: vb(60, 2), check: vb(32, 3) }, tp)).json;
+  const cofre = '/notes/' + encodeURIComponent('cofre/a.md');
+  await tr.ask('PUT', cofre, { text: sealedText(5) }, tp);
+  await tr.ask('DELETE', cofre, undefined, tp);
+  const vrow = (await bin(tp)).find((x) => x.path === 'cofre/a.md');
+  const vback = await tr.ask('POST', '/trash/' + vrow.id + '/restore', {}, tp);
+  check('papelera: una nota de una carpeta protegida va y vuelve cifrada, tal como estaba', vrow.protected === true && vback.status === 200 && (await tr.ask('GET', cofre, undefined, tp)).json.text === sealedText(5), [vrow, vback.json]);
+  await tr.ask('DELETE', cofre, undefined, tp);
+  await tr.ask('PUT', cofre, { text: sealedText(6) }, tp);
+  const vid2 = (await bin(tp)).find((x) => x.path === 'cofre/a.md').id;
+  const rekey = await tr.ask('POST', '/trash/' + vid2 + '/restore', {}, tp);
+  const plainIn = await tr.ask('POST', '/trash/' + vid2 + '/restore', { to: 'cofre/a (2).md', text: 'en claro' }, tp);
+  const elsewhere = await tr.ask('POST', '/trash/' + vid2 + '/restore', { to: 'afuera.md', text: sealedText(7) }, tp);
+  const rekeyed = await tr.ask('POST', '/trash/' + vid2 + '/restore', { to: rekey.json.to, text: sealedText(7) }, tp);
+  check('papelera: con el nombre ocupado, una nota protegida pide que el navegador la vuelva a cifrar para el nombre nuevo', rekey.status === 409 && rekey.json.error === 'trash_rekey' && rekey.json.to === 'cofre/a (2).md' && rekey.json.text === sealedText(5) && plainIn.status === 409 && elsewhere.status === 409 &&
+    rekeyed.status === 200 && rekeyed.json.path === 'cofre/a (2).md' && (await tr.ask('GET', '/notes/' + encodeURIComponent('cofre/a (2).md'), undefined, tp)).json.text === sealedText(7), [rekey.json, plainIn.json, elsewhere.json, rekeyed.json]);
+  // Eliminar la carpeta protegida sin su contraseña.
+  await tr.ask('PUT', '/notes/' + encodeURIComponent('cofre/b.md'), { text: sealedText(8) }, tp);
+  await tr.ask('DELETE', '/notes/' + encodeURIComponent('cofre/b.md'), undefined, tp);
+  const wrongName = await tr.ask('POST', '/vaults/' + vault.id + '/destroy', { folder: 'Cofre' }, tp);
+  const notMine = await tr.ask('POST', '/vaults/' + vault.id + '/destroy', { folder: 'cofre' }, tx);
+  const gone = await tr.ask('POST', '/vaults/' + vault.id + '/destroy', { folder: 'cofre' }, tp);
+  const left = (await tr.ask('GET', '/notes', undefined, tp)).json.map((n) => n.path).sort();
+  check('carpeta protegida: eliminarla sin la contraseña pide su nombre exacto y es solo de su dueño', wrongName.status === 400 && wrongName.json.error === 'bad_confirm' && notMine.status === 404, [wrongName.json, notMine.status]);
+  check('carpeta protegida: se van la carpeta, sus notas y lo suyo de la papelera, y nada más', gone.status === 200 && gone.json.notes === 2 && (await tr.ask('GET', '/vaults', undefined, tp)).json.length === 0 && left.join() === 'proy/plan (2).md,proy/plan.md' && !(await bin(tp)).some((x) => x.path.startsWith('cofre/')), [gone.json, left, await bin(tp)]);
+  check('carpeta protegida: después la carpeta vuelve a aceptar notas comunes', (await tr.ask('PUT', cofre, { text: 'en claro' }, tp)).status === 200);
+  // Borrar del todo y vaciar.
+  await tr.ask('DELETE', '/notes/' + encodeURIComponent('proy/plan.md'), undefined, tp); await tr.ask('DELETE', cofre, undefined, tp);
+  const two = await bin(tp);
+  const one = await tr.ask('DELETE', '/trash/' + two[0].id, undefined, tp);
+  check('papelera: eliminar del todo saca solo esa', one.status === 200 && (await bin(tp)).length === two.length - 1 && (await tr.ask('POST', '/trash/' + two[0].id + '/restore', {}, tp)).status === 404);
+  const forever = await tr.ask('DELETE', '/notes/' + encodeURIComponent('proy/plan (2).md') + '?forever=1', undefined, tp);
+  check('papelera: lo que se mudó se borra sin pasar por la papelera', forever.json.trash === false && !(await bin(tp)).some((x) => x.path === 'proy/plan (2).md'));
+  const empty = await tr.ask('DELETE', '/trash', undefined, tp);
+  check('papelera: vaciar la deja sin nada', empty.status === 200 && empty.json.removed === two.length - 1 && (await bin(tp)).length === 0, empty.json);
+  await tr.ask('PUT', '/notes/vence.md', { text: 'rabanito-vence' }, tp); await tr.ask('DELETE', '/notes/vence.md', undefined, tp);
+  await tr.stop();
+  check('papelera: con DATA_KEY, lo eliminado queda cifrado en el disco', !onDisk(trDir, 'rabanito-') && !onDisk(trDir, 'apio-plan') && onDisk(trDir, 'enc1:'));
+  // Vencimiento: con un plazo de un segundo, lo de la papelera se purga solo.
+  tr = await boot(trDir, { DATA_KEY: K1, TRASH_DAYS: String(1 / 86400) });
+  await new Promise((r) => setTimeout(r, 1100));
+  const kept = (await tr.ask('GET', '/trash', undefined, tp)).json.length;
+  await tr.ask('PUT', '/notes/corta.md', { text: 'x' }, tp); await tr.ask('DELETE', '/notes/corta.md', undefined, tp);
+  const fresh = (await tr.ask('GET', '/trash', undefined, tp)).json;
+  await new Promise((r) => setTimeout(r, 1300));
+  check('papelera: al vencer el plazo se purga sola', kept === 0 && fresh.length === 1 && (await tr.ask('GET', '/trash', undefined, tp)).json.length === 0 && (await tr.ask('POST', '/trash/' + fresh[0].id + '/restore', {}, tp)).status === 404, [kept, fresh]);
+  await tr.stop(); wipe(trDir);
+
+  // ---------- Eliminar la cuenta ----------
+  const bye = (who, mail, ip) => call('DELETE', '/account', mail === undefined ? {} : { email: mail }, who, { 'x-forwarded-for': ip || '10.9.0.1' });
+  await call('PUT', '/notes/mia.md', { text: 'de la cuenta que se va' }, ps);
+  await call('DELETE', '/notes/mia.md', undefined, ps);
+  await call('PUT', '/notes/queda.md', { text: 'de la cuenta que se va' }, ps);
+  await paddle(sub('active'));
+  const paying = await bye(ps, 'pago@ejemplo.test');
+  check('eliminar la cuenta: con una suscripción activa no se borra, y dice dónde cancelarla', paying.status === 409 && paying.json.error === 'subscription_active' && paying.json.manage === 'https://portal.ejemplo.test' && (await call('GET', '/account', undefined, ps)).status === 200, paying.json);
+  const tokP = (await call('POST', '/tokens', { name: 'IA' }, ps)).json.token;
+  await call('POST', '/shares', { path: 'queda.md', email: 'ana@ejemplo.test', role: 'view' }, ps);
+  const linkP = (await call('POST', '/links', { path: 'queda.md' }, ps)).json.token;
+  await paddle(sub('canceled'));
+  const noMail = await bye(ps); const wrongMail = await bye(ps, 'ana@ejemplo.test');
+  check('eliminar la cuenta: hay que escribir el correo de la cuenta', noMail.status === 400 && wrongMail.status === 400 && wrongMail.json.error === 'bad_confirm' && (await call('GET', '/account', undefined, ps)).status === 200, [noMail.json, wrongMail.json]);
+  check('eliminar la cuenta: sin sesión no hay ruta', (await call('DELETE', '/account', { email: 'pago@ejemplo.test' })).status === 401);
+  const byeOk = await bye(ps, ' Pago@Ejemplo.test ');
+  check('eliminar la cuenta: se borra, y la sesión, el token y el enlace dejan de servir', byeOk.status === 200 && (await call('GET', '/account', undefined, ps)).status === 401 && (await call('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/list' }, tokP)).status === 401 && (await call('GET', '/public/' + linkP)).status === 404, byeOk.json);
+  check('eliminar la cuenta: lo que había compartido ya no le llega a nadie', !(await call('GET', '/shared', undefined, s)).json.some((n) => n.by === 'pago@ejemplo.test'));
+  const pc2 = await call('POST', '/auth/start', { email: 'pago@ejemplo.test' }, undefined, { 'x-forwarded-for': '10.9.0.2' }); const ps2 = (await call('POST', '/auth/verify', { email: 'pago@ejemplo.test', code: pc2.json.dev_code })).json.session;
+  check('eliminar la cuenta: entrar de nuevo con ese correo es una cuenta nueva, vacía', (await call('GET', '/notes', undefined, ps2)).json.length === 0 && (await call('GET', '/trash', undefined, ps2)).json.length === 0 && (await call('GET', '/account', undefined, ps2)).json.plan === 'free');
+  await paddle(sub('past_due'));
+  check('eliminar la cuenta: un aviso viejo de su suscripción no le da el plan a la cuenta nueva', (await call('GET', '/account', undefined, ps2)).json.plan === 'free');
+  let capped = null; for (let i = 0; i < 6; i++) capped = await bye(ps2, 'otro@ejemplo.test', '10.9.0.3');
+  check('eliminar la cuenta: tiene tope de pedidos', capped.status === 429 && capped.json.error === 'too_many' && capped.json.retry_after > 0, capped.json);
+  }
+
   check('cerrar sesión la invalida', (await call('POST', '/auth/logout', {}, s)).status === 200 && (await call('GET', '/notes', undefined, s)).status === 401);
 } catch (e) { check('sin excepciones', false, String(e && e.stack || e)); console.log(log); }
 child.kill();

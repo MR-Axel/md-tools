@@ -35,6 +35,7 @@
 //   TEAM_MAX_SEATS  lugares que puede tener un equipo como máximo (50)
 //   TEAM_INVITES_DAY  invitaciones que un equipo puede mandar por día (20)
 //   APP_URL         dirección de la app a la que lleva el correo de invitación (https://sharpmd.app/src/app.html)
+//   TRASH_DAYS      días que una nota eliminada queda en la papelera antes de borrarse del todo (30)
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -50,6 +51,8 @@ const FREE_NOTES = +(env.FREE_NOTES || 10);
 const TEST_LOGIN = /^[^\s:]+@[^\s:]+:\d{6}$/.test(env.TEST_LOGIN || '') ? [env.TEST_LOGIN.split(':')[0].toLowerCase(), env.TEST_LOGIN.split(':')[1]] : null;
 const MAX_NOTE = 1024 * 1024; // 1 MB por nota
 const HISTORY_DAYS = 30;
+const TRASH_MS = Math.max(0, +(env.TRASH_DAYS || 30)) * 86400000; // cuánto queda en la papelera una nota eliminada
+const MAX_TRASH = 300; // notas en la papelera por cuenta: pasado eso se van las más viejas
 const SESSION_DAYS = 180; // una sesión sin uso en ese tiempo deja de servir
 const AUTH_PER_IP = +(env.AUTH_PER_IP || 20);
 // Topes por cuenta de lo que no tiene otro límite: nadie llega a estos números usando la app.
@@ -91,6 +94,9 @@ try { db.exec('ALTER TABLE versions ADD COLUMN aad TEXT'); } catch (e) { /* ya e
 // rev: el número de revisión de la nota. Sube de a uno con cada guardado; quien guarda dice sobre cuál escribió.
 try { db.exec('ALTER TABLE notes ADD COLUMN rev INTEGER NOT NULL DEFAULT 1'); } catch (e) { /* ya estaba */ }
 db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+// Papelera: la nota eliminada, como estaba (v: cifrada desde el navegador; rev: su revisión), y cuándo se eliminó.
+db.exec('CREATE TABLE IF NOT EXISTS trash (id INTEGER PRIMARY KEY, user INTEGER NOT NULL, path TEXT NOT NULL, text TEXT NOT NULL, size INTEGER, e INTEGER NOT NULL DEFAULT 0, v INTEGER NOT NULL DEFAULT 0, rev INTEGER NOT NULL DEFAULT 1, deleted INTEGER NOT NULL)');
+db.exec('CREATE INDEX IF NOT EXISTS trash_user ON trash (user, deleted)');
 // Carpetas con contraseña. De cada una se guarda con qué se envolvió su llave (sal, vueltas y la llave envuelta) y un
 // valor para comprobar la llave. Nunca la contraseña ni la llave. state: 'on', o 'opening' mientras se le quita la protección.
 db.exec("CREATE TABLE IF NOT EXISTS vaults (id INTEGER PRIMARY KEY, user INTEGER NOT NULL, folder TEXT NOT NULL, salt TEXT NOT NULL, iters INTEGER NOT NULL, wrapped TEXT NOT NULL, verify TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'on', created INTEGER NOT NULL, UNIQUE (user, folder))");
@@ -144,6 +150,7 @@ function unseal(stored, e, column) {
 const SEAL_JOBS = [
   { name: 'notes', cols: ['text'], any: 'SELECT 1 FROM notes WHERE e = 1 LIMIT 1', pick: 'SELECT rowid AS rid, text FROM notes WHERE e = 0 LIMIT 50', put: 'UPDATE notes SET text = ?, e = 1 WHERE rowid = ? AND e = 0' },
   { name: 'versions', cols: ['text'], any: 'SELECT 1 FROM versions WHERE e = 1 LIMIT 1', pick: 'SELECT rowid AS rid, text FROM versions WHERE e = 0 LIMIT 50', put: 'UPDATE versions SET text = ?, e = 1 WHERE rowid = ? AND e = 0' },
+  { name: 'trash', cols: ['text'], any: 'SELECT 1 FROM trash WHERE e = 1 LIMIT 1', pick: 'SELECT rowid AS rid, text FROM trash WHERE e = 0 LIMIT 50', put: 'UPDATE trash SET text = ?, e = 1 WHERE rowid = ? AND e = 0' },
   { name: 'comments', cols: ['quote', 'text', 'reply'], any: 'SELECT 1 FROM comments WHERE e = 1 LIMIT 1', pick: 'SELECT rowid AS rid, quote, text, reply FROM comments WHERE e = 0 LIMIT 50', put: 'UPDATE comments SET quote = ?, text = ?, reply = ?, e = 1 WHERE rowid = ? AND e = 0' },
 ];
 (() => {
@@ -397,6 +404,8 @@ function vaultPurge(userId, folder) {
   q('DELETE FROM comments WHERE user = ? AND substr(path, 1, length(?)) = ?').run(userId, pre, pre);
   q('DELETE FROM links WHERE owner = ? AND substr(path, 1, length(?)) = ?').run(userId, pre, pre);
   q('DELETE FROM shares WHERE owner = ? AND (path = ? OR substr(path, 1, length(?)) = ?)').run(userId, folder, pre, pre);
+  // Lo que había de esa carpeta en la papelera estaba en claro.
+  q('DELETE FROM trash WHERE user = ? AND substr(path, 1, length(?)) = ?').run(userId, pre, pre);
   // Y las sesiones en vivo de sus notas: desde ahora viajan cifradas y el servidor no las puede repartir.
   for (const row of q('SELECT * FROM lives WHERE owner = ? AND substr(path, 1, length(?)) = ?').all(userId, pre, pre)) liveEnd(row, 'closed');
 }
@@ -435,9 +444,32 @@ function vaultRemove(user, v) {
   if (q('SELECT 1 FROM notes WHERE user = ? AND v = 1 AND substr(path, 1, length(?)) = ? LIMIT 1').get(user.id, pre, pre)) throw new Fail(409, 'vault_not_empty', 'There are still encrypted notes in this folder');
   aiForget(v, false);
   q('DELETE FROM versions WHERE user = ? AND substr(path, 1, length(?)) = ?').run(user.id, pre, pre); // el historial cifrado ya no tendría llave
+  q('DELETE FROM trash WHERE user = ? AND v = 1 AND substr(path, 1, length(?)) = ?').run(user.id, pre, pre); // ni lo cifrado de la papelera
   q('DELETE FROM vaults WHERE id = ?').run(v.id);
   announceUser(user.id, { type: 'vault' });
   return { ok: true };
+}
+// Eliminar la carpeta entera sin su llave: para quien perdió la contraseña y la clave de respaldo. Se van la
+// bóveda, sus notas, su historial y lo que tuviera en la papelera. Nada de eso pasa por la papelera: sin la llave
+// no se podría leer nunca. Quien lo pide escribe el nombre de la carpeta, y acá se vuelve a comparar.
+function vaultDestroy(user, v, body) {
+  if (String(body.folder == null ? '' : body.folder) !== v.folder) throw new Fail(400, 'bad_confirm');
+  const pre = v.folder + '/';
+  aiForget(v, false);
+  for (const row of q('SELECT * FROM lives WHERE owner = ? AND substr(path, 1, length(?)) = ?').all(user.id, pre, pre)) liveEnd(row, 'closed');
+  let notes = 0;
+  db.exec('BEGIN');
+  try {
+    notes = q('DELETE FROM notes WHERE user = ? AND substr(path, 1, length(?)) = ?').run(user.id, pre, pre).changes;
+    for (const t of ['versions', 'comments', 'trash']) q('DELETE FROM ' + t + ' WHERE user = ? AND substr(path, 1, length(?)) = ?').run(user.id, pre, pre);
+    q('DELETE FROM links WHERE owner = ? AND substr(path, 1, length(?)) = ?').run(user.id, pre, pre);
+    q('DELETE FROM shares WHERE owner = ? AND (path = ? OR substr(path, 1, length(?)) = ?)').run(user.id, v.folder, pre, pre);
+    q('DELETE FROM vaults WHERE id = ?').run(v.id);
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  scrub();
+  announceUser(user.id, { type: 'vault' });
+  return { ok: true, notes: Number(notes) };
 }
 // Desbloquear para la IA: llega la llave de datos, se comprueba contra el valor guardado y queda en memoria.
 // Es parte del MCP: plan pago. Diez llaves equivocadas por hora por cuenta.
@@ -478,16 +510,19 @@ const cleanRev = (v) => { if (v == null) return null; if (!Number.isInteger(v) |
 // la revisión de ahora (409 rev_conflict): quien guardaba junta lo suyo y reintenta. Sin base se guarda como
 // siempre, pisando. Leer, comparar y escribir pasan sin soltar el hilo: entre dos guardados no se cuela otro.
 // Devuelve también prev, el texto que había, para quien quiera avisar solo lo que cambió.
+// Una nota más: en el plan gratis hay tope. Lo que está en la papelera no cuenta.
+function roomFor(user) {
+  if (user.plan === 'pro' || countNotes(user) < FREE_NOTES) return;
+  if (user.email.startsWith('team:')) throw new Fail(402, 'team_ended', 'This team is no longer on the paid plan: its notes can still be read and edited, but no new ones can be added');
+  throw new Fail(402, 'note_limit', 'The free plan holds ' + FREE_NOTES + ' notes');
+}
 function writeNote(user, p, text, base) {
   p = cleanPath(p); text = String(text == null ? '' : text);
   const kind = checkText(user.id, p, text);
   const row = q('SELECT text, e, v, size, rev, updated FROM notes WHERE user = ? AND path = ?').get(user.id, p);
   const prev = row ? { text: unseal(row.text, row.e, 'notes.text') } : null;
   if (row && base != null && base !== row.rev) throw new Fail(409, 'rev_conflict', '', { text: prev.text, rev: row.rev, updated: row.updated });
-  if (!prev && user.plan !== 'pro' && countNotes(user) >= FREE_NOTES) {
-    if (user.email.startsWith('team:')) throw new Fail(402, 'team_ended', 'This team is no longer on the paid plan: its notes can still be read and edited, but no new ones can be added');
-    throw new Fail(402, 'note_limit', 'The free plan holds ' + FREE_NOTES + ' notes');
-  }
+  if (!prev) roomFor(user);
   // El historial es del plan pago: se guarda la versión anterior si cambió y pasó más de un minuto. Al cifrar una
   // nota (o al descifrarla) la versión anterior no se guarda: sería dejar el texto en claro, o uno que ya nadie abre.
   if (prev && user.plan === 'pro' && prev.text !== text && row.v === kind.v) {
@@ -502,15 +537,82 @@ function writeNote(user, p, text, base) {
   Object.defineProperty(saved, 'prev', { value: prev ? prev.text : null, enumerable: false });
   return saved;
 }
-function deleteNote(user, p) {
-  const r = q('DELETE FROM notes WHERE user = ? AND path = ?').run(user.id, cleanPath(p));
-  if (!r.changes) throw new Fail(404, 'not_found');
+// Eliminar manda la nota a la papelera, donde queda TRASH_DAYS días: se guarda como estaba (una nota de una
+// carpeta con contraseña sigue cifrada con su llave y su ruta) y, con DATA_KEY, cifrada en reposo. forever la
+// borra sin pasar por ahí: lo usa la app cuando la nota en realidad se mudó (de lo propio al equipo, o al revés).
+// Una nota que estaba en claro dentro de una carpeta con contraseña (el navegador todavía no la cifró) tampoco
+// pasa por la papelera: quedaría en claro.
+function deleteNote(user, p, forever) {
+  p = cleanPath(p);
+  const row = q('SELECT text, e, v, size, rev FROM notes WHERE user = ? AND path = ?').get(user.id, p);
+  if (!row) throw new Fail(404, 'not_found');
+  const vault = vaultOf(user.id, p);
+  const keep = !forever && TRASH_MS > 0 && (row.v ? !!vault : !vault);
+  db.exec('BEGIN');
+  try {
+    if (keep) {
+      q('INSERT INTO trash (user, path, text, size, e, v, rev, deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(user.id, p, seal(unseal(row.text, row.e, 'notes.text'), 'trash.text'), row.size, SEALED, row.v, row.rev, now());
+      q('DELETE FROM trash WHERE user = ? AND id NOT IN (SELECT id FROM trash WHERE user = ? ORDER BY deleted DESC, id DESC LIMIT ?)').run(user.id, user.id, MAX_TRASH);
+    }
+    q('DELETE FROM notes WHERE user = ? AND path = ?').run(user.id, p);
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
   liveDrop(user.id, cleanPath(p));
   q('DELETE FROM comments WHERE user = ? AND path = ?').run(user.id, cleanPath(p));
   // Los enlaces públicos y lo compartido de esa nota se van con ella: una nota nueva con el mismo nombre no nace publicada.
   q('DELETE FROM links WHERE owner = ? AND path = ?').run(user.id, cleanPath(p));
   q("DELETE FROM shares WHERE owner = ? AND path = ? AND kind != 'folder'").run(user.id, cleanPath(p));
-  return { ok: true };
+  return { ok: true, trash: keep };
+}
+
+// ---------- Papelera ----------
+// Lo que está acá no es una nota: no cuenta para el tope del plan gratis y no lo alcanzan la búsqueda, compartir,
+// los enlaces públicos, las sesiones en vivo ni el MCP (todo eso trabaja sobre la tabla de notas). Solo se lista,
+// se restaura o se borra del todo, con la sesión de la cuenta; la del equipo, cualquiera de sus miembros.
+const trashSweep = () => q('DELETE FROM trash WHERE deleted < ?').run(now() - TRASH_MS);
+const trashList = (owner) => { trashSweep(); return q('SELECT id, path, size, v, deleted FROM trash WHERE user = ? ORDER BY deleted DESC, id DESC').all(owner.id).map((r) => ({ id: r.id, path: r.path, size: r.size, deleted: r.deleted, expires: r.deleted + TRASH_MS, protected: !!r.v })); };
+// Una ruta libre a partir de otra: "plan.md" pasa a "plan (2).md", "plan (3).md"...
+function freePath(userId, p) {
+  const dot = p.lastIndexOf('.'); const cut = dot > p.lastIndexOf('/') + 1 ? dot : p.length;
+  for (let i = 2; i < 1000; i++) { const x = p.slice(0, cut) + ' (' + i + ')' + p.slice(cut); if (!q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(userId, x)) return cleanPath(x); }
+  throw new Fail(409, 'exists');
+}
+// Restaurar devuelve la nota a su ruta. Si ahí ya hay otra, vuelve con otro nombre. Una nota cifrada desde el
+// navegador está atada a su ruta: para cambiarle el nombre hay que volver a cifrarla, y eso lo hace el navegador.
+// El servidor le contesta 409 trash_rekey con el texto cifrado y la ruta libre (to); el navegador repite el pedido
+// con esa ruta y el texto cifrado para ella.
+function trashRestore(owner, id, body) {
+  trashSweep();
+  const row = q('SELECT * FROM trash WHERE id = ? AND user = ?').get(+id, owner.id);
+  if (!row) throw new Fail(404, 'not_found');
+  roomFor(owner);
+  let text = unseal(row.text, row.e, 'trash.text'); let to = row.path;
+  if (q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(owner.id, to)) {
+    to = freePath(owner.id, row.path);
+    if (row.v) {
+      if (body.to !== to || typeof body.text !== 'string') throw new Fail(409, 'trash_rekey', 'A note with that name already exists: this one has to be encrypted again for its new name', { path: row.path, to, text });
+      text = body.text;
+    }
+  }
+  const kind = checkText(owner.id, to, text);
+  if (kind.v !== row.v) throw new Fail(409, row.v ? 'vault_text' : 'vault');
+  const at = now(); const rev = row.rev + 1;
+  db.exec('BEGIN');
+  try {
+    q('INSERT INTO notes (user, path, text, updated, size, e, v, rev) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(owner.id, to, seal(text, 'notes.text'), at, kind.size, SEALED, kind.v, rev);
+    q('DELETE FROM trash WHERE id = ?').run(row.id);
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  return { path: to, from: row.path, updated: at, size: kind.size, rev };
+}
+function trashRoute(user, p, m, url, body) {
+  const owner = spaceOf(user, url.searchParams.get('o'));
+  if (p === '/trash' && m === 'GET') return trashList(owner);
+  if (p === '/trash' && m === 'DELETE') return { ok: true, removed: Number(q('DELETE FROM trash WHERE user = ?').run(owner.id).changes) };
+  const tm = /^\/trash\/(\d+)(\/restore)?$/.exec(p);
+  if (tm && tm[2] && m === 'POST') return trashRestore(owner, tm[1], body);
+  if (tm && !tm[2] && m === 'DELETE') { if (!q('DELETE FROM trash WHERE id = ? AND user = ?').run(+tm[1], owner.id).changes) throw new Fail(404, 'not_found'); return { ok: true }; }
+  throw new Fail(404, 'no_route');
 }
 function renameNote(user, from, to, body) {
   from = cleanPath(from); to = cleanPath(to);
@@ -1377,6 +1479,54 @@ function spaceOf(user, o) {
   throw new Fail(403, 'no_access');
 }
 
+// ---------- Eliminar la cuenta ----------
+// La pide la propia cuenta, con su sesión, y escribiendo su correo. Se borra todo lo suyo: notas, historial,
+// papelera, comentarios, tokens, sesiones, lo que compartió y lo que le compartieron, enlaces públicos, carpetas
+// con contraseña, sesiones en vivo, invitaciones a su correo y el registro de sus suscripciones terminadas.
+// No se borra con un cobro en marcha: seguiría cobrándose sin cuenta. Primero se cancela la suscripción
+// (subscription_active, o team_billing_active si es la del equipo que administra). Quien administra un equipo con
+// más gente saca primero a los demás (team_has_members): las notas del equipo se van con el equipo.
+// Un miembro sale de su equipo y las notas del equipo quedan en el equipo.
+const ACCOUNT_DELETES = 5; // pedidos por hora, por IP y por cuenta
+function accountDelete(req, user, body) {
+  const keys = ['accdel:ip:' + clientIp(req), 'accdel:user:' + user.id];
+  keys.forEach((k) => limit(k, ACCOUNT_DELETES, HOUR, 'too_many'));
+  keys.forEach((k) => mark(k));
+  if (String(body.email == null ? '' : body.email).trim().toLowerCase() !== user.email) throw new Fail(400, 'bad_confirm');
+  const manage = env.PORTAL_URL || '';
+  if (q("SELECT 1 FROM paddle_subs WHERE user = ? AND status = 'active' AND kind != 'team' LIMIT 1").get(user.id)) throw new Fail(409, 'subscription_active', 'Cancel the subscription before deleting the account', { manage });
+  const own = q('SELECT * FROM teams WHERE owner = ?').get(user.id);
+  if (own) {
+    if (q("SELECT 1 FROM paddle_subs WHERE user = ? AND status = 'active' AND kind = 'team' LIMIT 1").get(user.id)) throw new Fail(409, 'team_billing_active', 'Cancel the team subscription before deleting the account', { manage });
+    if (q('SELECT COUNT(*) AS n FROM team_members WHERE team = ?').get(own.id).n > 1) throw new Fail(409, 'team_has_members', 'Remove the other members of the team before deleting the account');
+  }
+  // Lo que vive en memoria o tiene conexiones abiertas se corta antes de tocar la base.
+  const ids = own ? [user.id, own.space] : [user.id];
+  for (const id of ids) {
+    for (const row of q('SELECT * FROM lives WHERE owner = ?').all(id)) liveEnd(row, 'closed');
+    for (const v of vaultsOf(id)) aiForget(v, false);
+  }
+  db.exec('BEGIN');
+  try {
+    if (!own && user.team) q('DELETE FROM team_members WHERE team = ? AND user = ?').run(user.team.id, user.id);
+    if (own) { q('DELETE FROM team_members WHERE team = ?').run(own.id); q('DELETE FROM team_invites WHERE team = ?').run(own.id); q('DELETE FROM teams WHERE id = ?').run(own.id); }
+    for (const id of ids) {
+      for (const t of ['notes', 'versions', 'trash', 'comments', 'tokens', 'sessions', 'vaults', 'paddle_subs']) q('DELETE FROM ' + t + ' WHERE user = ?').run(id);
+      for (const t of ['shares', 'links', 'lives']) q('DELETE FROM ' + t + ' WHERE owner = ?').run(id);
+      q('DELETE FROM users WHERE id = ?').run(id);
+    }
+    q('DELETE FROM shares WHERE email = ?').run(user.email);
+    q('DELETE FROM team_invites WHERE email = ?').run(user.email);
+    q('DELETE FROM codes WHERE email = ?').run(user.email);
+    q('DELETE FROM live_tickets WHERE live NOT IN (SELECT id FROM lives)').run();
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  scrub();
+  // Las pestañas que seguían escuchando notas de la cuenta (o del equipo que se fue con ella) se cortan.
+  for (const [key, room] of rooms) for (const c of Array.from(room)) if (c.uid === user.id || ids.some((id) => key.startsWith(id + ':'))) c.res.end();
+  return { ok: true };
+}
+
 // ---------- Paddle ----------
 // Lo único que activa o da de baja el plan pago. La firma va sobre el cuerpo tal como llegó.
 // De quién es el aviso sale de custom_data.sharpmd_email, que escribe la página de pago, o de la
@@ -1494,9 +1644,11 @@ async function route(req, url) {
   if (p === '/links' && m === 'POST') return addLink(user, await readBody(req));
   if (p.startsWith('/links/') && m === 'DELETE') { q('DELETE FROM links WHERE id = ? AND owner = ?').run(+p.slice(7), user.id); return { ok: true }; }
   if (p === '/account' && m === 'GET') return account(user);
+  if (p === '/account' && m === 'DELETE') return accountDelete(req, user, await readBody(req));
+  if (p === '/trash' || p.startsWith('/trash/')) return trashRoute(user, p, m, url, m === 'POST' ? await readBody(req) : {});
   if (p === '/vaults' && m === 'GET') return vaultsOf(user.id).map(vaultView);
   if (p === '/vaults' && m === 'POST') return vaultCreate(user, await readBody(req));
-  const vm = /^\/vaults\/(\d+)(?:\/(unlock|lock|open))?$/.exec(p);
+  const vm = /^\/vaults\/(\d+)(?:\/(unlock|lock|open|destroy))?$/.exec(p);
   if (vm) {
     const v = q('SELECT * FROM vaults WHERE id = ? AND user = ?').get(+vm[1], user.id);
     if (!v) throw new Fail(404, 'not_found');
@@ -1505,6 +1657,7 @@ async function route(req, url) {
     if (vm[2] === 'unlock' && m === 'POST') return vaultUnlock(user, v, await readBody(req));
     if (vm[2] === 'lock' && m === 'POST') { aiForget(v, true); return vaultView(v); }
     if (vm[2] === 'open' && m === 'POST') return vaultOpening(user, v);
+    if (vm[2] === 'destroy' && m === 'POST') return vaultDestroy(user, v, await readBody(req));
   }
   if (p === '/auth/logout' && m === 'POST') { q('DELETE FROM sessions WHERE hash = ?').run(sha(req.headers.authorization.split(/\s+/)[1])); return { ok: true }; }
   if (p === '/tokens' && m === 'GET') return q('SELECT id, name, scope, created, used FROM tokens WHERE user = ? ORDER BY created DESC').all(user.id);
@@ -1540,7 +1693,7 @@ async function route(req, url) {
       tellSaved(t.owner.id, clean, saved, { by: user.email, pid: t.role === 'owner' ? 'o' : 'x' }, String(body.text == null ? '' : body.text));
       return saved;
     }
-    if (m === 'DELETE') return deleteNote(target(user, url, clean, 'owner').owner, clean);
+    if (m === 'DELETE') return deleteNote(target(user, url, clean, 'owner').owner, clean, url.searchParams.get('forever') === '1');
   }
   if (p.startsWith('/versions/') && m === 'GET') return q('SELECT id, saved, size FROM versions WHERE user = ? AND path = ? ORDER BY saved DESC LIMIT 100').all(spaceOf(user, url.searchParams.get('o')).id, cleanPath(dec(p.slice(10))));
   if (p.startsWith('/version/') && m === 'GET') {
@@ -1587,10 +1740,11 @@ server.headersTimeout = 15000; server.requestTimeout = 60000;
 process.on('uncaughtException', (e) => console.error('error no capturado · ' + String(e && e.stack || e).slice(0, 1500)));
 process.on('unhandledRejection', (e) => console.error('promesa sin atender · ' + String(e && e.stack || e).slice(0, 1500)));
 
-// Limpieza: códigos vencidos, historial viejo y sesiones sin uso, cada seis horas; los topes en memoria, cada diez minutos.
+// Limpieza: códigos vencidos, historial viejo, lo que venció en la papelera y sesiones sin uso, cada seis horas; los topes en memoria, cada diez minutos.
 setInterval(() => {
   q('DELETE FROM codes WHERE expires < ?').run(now());
   q('DELETE FROM versions WHERE saved < ?').run(now() - HISTORY_DAYS * DAY);
+  trashSweep();
   q('DELETE FROM sessions WHERE seen < ?').run(now() - SESSION_DAYS * DAY);
 }, 6 * HOUR).unref();
 setInterval(() => { for (const k of marks.keys()) if (!recent(k, DAY).length) marks.delete(k); for (const [k, w] of windows) if (now() - w.t > HOUR) windows.delete(k); }, 600000).unref();
