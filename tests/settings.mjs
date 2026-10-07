@@ -372,6 +372,10 @@ try {
   await app.click('[data-acct=cloud] [data-c=login]'); await app.waitForSelector('[data-acct=cloud] [data-field=email]');
   check('el botón de Nube pide el correo en el lugar', (await app.evaluate(() => document.activeElement.dataset.field)) === 'email' && app.url() === notaAbierta);
   await tab('plan'); await tab('cloud'); await app.waitForSelector('[data-acct=cloud] [data-c=login]');
+  // Desde la portada, el botón del plan pago abre la app con Ajustes en Plan.
+  const dePortada = await ctx.newPage(); await dePortada.goto(home + '#lmd-plans'); await dePortada.waitForSelector('.lmd-panel .lmd-plans');
+  check('app.html#lmd-plans abre Ajustes en Plan y limpia la dirección', (await dePortada.evaluate(() => document.querySelector('[data-ptab].lmd-on').dataset.ptab)) === 'plan' && !/#/.test(dePortada.url()) && !(await dePortada.evaluate(() => document.querySelector('.lmd-home').hidden)), dePortada.url());
+  await dePortada.close();
   const conLogin = await ctx.newPage(); await conLogin.goto(home + '?login=1'); await conLogin.waitForSelector('.lmd-sidebar .lmd-home-cloud [data-field=email]');
   check('el inicio abierto con ?login=1 ya pide el correo, al pie de la barra lateral', (await conLogin.evaluate(() => document.activeElement.dataset.field)) === 'email' && (await conLogin.locator('.lmd-home [data-field]').count()) === 0);
   await conLogin.close();

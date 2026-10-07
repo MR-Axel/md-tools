@@ -8,8 +8,13 @@ const SITE = 'https://sharpmd.app';
 // The team plan shows on the landing page once its checkout is open (the two price ids in pay.html).
 const TEAM_OPEN = /var TEAM = \{ base: '[^']+', seat: '[^']+'/.test(fs.readFileSync(path.join(root, 'pay.html'), 'utf8'));
 const src = fs.readFileSync(path.join(root, 'tools', 'landing.src.html'), 'utf8').replace(/\r\n/g, '\n')
-  .replace(/ *<!--TEAM-->\n([\s\S]*?)\n *<!--\/TEAM-->\n?/, (all, inner) => (TEAM_OPEN ? inner + '\n' : ''))
-  .replace('<div class="plans">', TEAM_OPEN ? '<div class="plans">' : '<div class="plans" style="max-width:860px">');
+  // Lo del plan de equipo (su columna y sus filas en las otras dos) va entre marcas, y sale solo con el cobro abierto.
+  .replace(/ *<!--TEAM-->\n([\s\S]*?)\n *<!--\/TEAM-->\n?/g, (all, inner) => (TEAM_OPEN ? inner + '\n' : ''))
+  .replace('<div class="plans">', TEAM_OPEN ? '<div class="plans three">' : '<div class="plans">');
+if (/<!--\/?TEAM-->/.test(src)) throw new Error('quedó una marca del plan de equipo sin resolver');
+// La imagen que se ve al compartir el enlace: la arma tests/social.mjs. Si cambia, cambia de nombre, para que las redes no usen la anterior.
+const CARD = SITE + '/docs/social-card-2.png';
+const CARD_ALT = { en: 'SharpMD, a Markdown editor for your files, your cloud and your AI', es: 'SharpMD, un editor de Markdown para tus archivos, tu nube y tu IA' };
 
 const META = {
   en: { title: 'SharpMD: Markdown editor and reader in the browser',
@@ -34,7 +39,7 @@ function build(lang) {
   const faq = [...html.matchAll(/<details class="faq"><summary>([\s\S]*?)<\/summary><p>([\s\S]*?)<\/p><\/details>/g)].map((x) => ({ '@type': 'Question', name: plain(x[1]), acceptedAnswer: { '@type': 'Answer', text: plain(x[2]) } }));
   if (faq.length < 3) throw new Error('no se encontraron las preguntas frecuentes');
   const app = { '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'SharpMD', url: m.url, applicationCategory: 'ProductivityApplication', operatingSystem: 'Web, Chrome, Edge, Brave',
-    description: m.desc, inLanguage: lang, image: SITE + '/docs/store/1-reader.png', screenshot: SITE + '/docs/store/2-editing.png', isAccessibleForFree: true,
+    description: m.desc, inLanguage: lang, image: CARD, screenshot: SITE + '/docs/store/2-editing.png', isAccessibleForFree: true,
     offers: [{ '@type': 'Offer', name: 'Free', price: '0', priceCurrency: 'USD' }, { '@type': 'Offer', name: 'Paid', price: '3.99', priceCurrency: 'USD' }].concat(TEAM_OPEN ? [{ '@type': 'Offer', name: 'Team', price: '7.98', priceCurrency: 'USD' }] : []),
     license: 'https://opensource.org/licenses/MIT', codeRepository: 'https://github.com/MR-Axel/sharpmd' };
   const head = [
@@ -46,21 +51,23 @@ function build(lang) {
     '<link rel="alternate" hreflang="x-default" href="' + META.en.url + '">',
     '<meta property="og:type" content="website">', '<meta property="og:site_name" content="SharpMD">', '<meta property="og:title" content="' + esc(m.title) + '">',
     '<meta property="og:description" content="' + esc(m.og) + '">', '<meta property="og:url" content="' + m.url + '">', '<meta property="og:locale" content="' + m.locale + '">',
-    '<meta property="og:image" content="' + SITE + '/docs/store/1-reader.png">', '<meta property="og:image:width" content="1280">', '<meta property="og:image:height" content="800">',
-    '<meta name="twitter:card" content="summary_large_image">',
+    '<meta property="og:image" content="' + CARD + '">', '<meta property="og:image:type" content="image/png">', '<meta property="og:image:width" content="1200">', '<meta property="og:image:height" content="630">', '<meta property="og:image:alt" content="' + esc(CARD_ALT[lang]) + '">',
+    '<meta name="twitter:card" content="summary_large_image">', '<meta name="twitter:title" content="' + esc(m.title) + '">', '<meta name="twitter:description" content="' + esc(m.og) + '">', '<meta name="twitter:image" content="' + CARD + '">', '<meta name="twitter:image:alt" content="' + esc(CARD_ALT[lang]) + '">',
     '<meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">', '<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">',
     '<link rel="preload" href="' + up + 'vendor/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>',
+    '<link rel="preload" href="' + up + 'docs/clips/edit.jpg" as="image">',
     '<link rel="icon" href="' + up + 'icons/icon32.png">',
     '<script type="application/ld+json">' + JSON.stringify(app) + '</script>',
     '<script type="application/ld+json">' + JSON.stringify({ '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: faq }) + '</script>',
-    // quien ya usó la app entra directo; y la app, en "automático", sigue el idioma de la portada que se vio
-    '<script>try{localStorage.setItem("mdtools:site-lang","' + lang + '");if(localStorage.getItem("sharpmd:app")&&location.search.indexOf("site")<0&&!location.hash&&document.referrer.indexOf(location.origin)!==0)location.replace("' + up + 'src/app.html")}catch(e){}</script>',
+    // Quien ya usó la app entra directo; y la app, en "automático", sigue el idioma de la portada que se vio. Mientras se va,
+    // la portada no se pinta: queda el logo con el cursor sobre el fondo de la app (la clase go), con el tema que la app tenía.
+    '<script>try{localStorage.setItem("mdtools:site-lang","' + lang + '");if(localStorage.getItem("sharpmd:app")&&location.search.indexOf("site")<0&&!location.hash&&document.referrer.indexOf(location.origin)!==0){var d=localStorage.getItem("lmd:dark"),c=document.documentElement.classList;c.add("go");if(d==="0"||(d!=="1"&&window.matchMedia&&!matchMedia("(prefers-color-scheme: dark)").matches))c.add("go-light");location.replace("' + up + 'src/app.html")}}catch(e){}</script>',
   ].join('\n');
   html = html.replace(/<!--HEAD-->/, head).replace(/<html[^>]*>/, '<html lang="' + lang + '">');
   html = html.replace(/<!--LANG-->/, '<div class="lang"><a href="' + (lang === 'en' ? './' : '../') + '?site"' + (lang === 'en' ? ' class="on" aria-current="true"' : '') + ' hreflang="en">EN</a><a href="' + (lang === 'en' ? 'es/' : './') + '?site"' + (lang === 'es' ? ' class="on" aria-current="true"' : '') + ' hreflang="es">ES</a></div>');
   if (/<!--(HEAD|LANG)-->/.test(html)) throw new Error('faltó reemplazar una marca');
   // en /es/ las rutas relativas suben un nivel
-  if (up) html = html.replace(/\b(href|src)="(?!https?:|mailto:|#|\/|\.\.?\/)([^"]+)"/g, '$1="' + up + '$2"').replace(/url\("(?!https?:|\/|\.\.\/)([^"]+)"\)/g, 'url("' + up + '$1")');
+  if (up) html = html.replace(/\b(href|src|poster)="(?!https?:|mailto:|#|\/|\.\.?\/)([^"]+)"/g, '$1="' + up + '$2"').replace(/url\("(?!https?:|data:|\/|\.\.\/)([^"]+)"\)/g, 'url("' + up + '$1")');
   if (new RegExp('<span lang="' + other + '"').test(html)) throw new Error('quedó texto en ' + other);
   return html;
 }

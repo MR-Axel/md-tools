@@ -540,6 +540,13 @@ try {
   const landDesk = await plansOf(desk.page);
   if (teamOpen) check('portada en escritorio: las tres columnas en una fila', landDesk.plans.length === 3 && new Set(landDesk.plans.map((p) => p.top)).size === 1 && landDesk.over <= 0, landDesk.plans);
   else check('portada en escritorio sin el plan abierto: dos columnas en una fila', landDesk.plans.length === 2 && new Set(landDesk.plans.map((p) => p.top)).size === 1 && landDesk.over <= 0, landDesk.plans);
+  // La comparación fila por fila: cada plan trae las mismas filas en el mismo orden, y lo que no incluye queda apagado, sin frase.
+  const rowsOf = (page) => page.evaluate(() => [...document.querySelectorAll('#plans .plan')].map((p) => ({ rows: [...p.querySelectorAll('.rows li')].map((li) => li.querySelector('span').textContent.trim()), off: [...p.querySelectorAll('.rows li.no')].map((li) => li.querySelector('span').textContent.trim()), tops: [...p.querySelectorAll('.rows li')].map((li) => Math.round(li.getBoundingClientRect().top)),
+    cta: p.querySelector('a.btn').getAttribute('href'), label: p.querySelector('a.btn').textContent.trim(), text: p.innerText })));
+  const cmp = await rowsOf(desk.page); const [freeP, paidP] = cmp;
+  check('portada: los planes se comparan fila por fila, con las mismas filas en el mismo orden y a la misma altura', cmp.every((p) => p.rows.length >= 10 && p.rows.join('|') === freeP.rows.join('|') && p.tops.join() === freeP.tops.join()), cmp.map((p) => [p.rows.length, p.tops.slice(0, 3)]));
+  check('portada: lo que el plan gratis no incluye figura como ausente, y el pago lo trae', ['Sharing and public links', 'Live sessions by link', 'The MCP connection for your AI', 'Version history', 'Colors, fonts and your own CSS'].every((r) => freeP.off.includes(r) && !paidP.off.includes(r)) && !freeP.off.includes('Notes in the cloud') && /Notes in the cloud\s*10/.test(freeP.text) && /Notes in the cloud\s*No limit/.test(paidP.text) && !/[!¡—–]/.test(cmp.map((p) => p.text).join('')), [freeP.off, paidP.off]);
+  check('portada: cada plan tiene su botón, el gratis abre la app y el pago la abre en los planes', freeP.cta === 'src/app.html' && paidP.cta === 'src/app.html#lmd-plans' && cmp.every((p) => p.label.length > 3) && (teamOpen ? cmp[2].cta === 'src/app.html#lmd-plans' : cmp.length === 2) && /USD 3\.99 a month/.test(paidP.text) && /or USD 39 a year/.test(paidP.text) && /USD 0/.test(freeP.text), cmp.map((p) => [p.cta, p.label]));
   await desk.ctx.close();
 
   check('nunca se usó alert, confirm ni prompt del navegador', !natives.length, natives);

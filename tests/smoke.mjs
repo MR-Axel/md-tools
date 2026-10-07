@@ -180,7 +180,25 @@ try {
   const origin = 'http://127.0.0.1:' + server.address().port;
   const web = await ctx.newPage(); watch(web);
   await web.goto(origin + '/'); await web.waitForSelector('h1');
-  check('la raíz es la página de presentación y lleva a la app', (await web.locator('a.btn.fill[href="src/app.html"]').count()) >= 1 && (await web.locator('img.shot').count()) >= 4);
+  check('la raíz es la página de presentación y lleva a la app', (await web.locator('a.btn.fill[href="src/app.html"]').count()) >= 1 && (await web.locator('video.clip').count()) >= 4);
+  // Los clips: sin sonido, en bucle, con póster y sin cargar nada hasta entrar en pantalla; cada uno con WebM y MP4 que existen.
+  const clips = await web.evaluate(() => [...document.querySelectorAll('video.clip')].map((v) => ({ ok: v.muted && v.loop && v.playsInline && !v.controls && v.preload === 'none' && !!v.getAttribute('poster') && !!v.getAttribute('aria-label'), files: [v.getAttribute('poster'), ...[...v.querySelectorAll('source')].map((s) => s.getAttribute('src'))], types: [...v.querySelectorAll('source')].map((s) => s.type).join() })));
+  const clipFiles = clips.flatMap((c) => c.files); const clipKb = clipFiles.filter((f) => /\.(webm|mp4)$/.test(f)).map((f) => (fs.existsSync(path.join(root, f)) ? fs.statSync(path.join(root, f)).size / 1024 : Infinity));
+  check('portada: los clips van sin sonido, en bucle, con póster y sin precarga, en WebM y MP4', clips.length >= 4 && clips.every((c) => c.ok && c.types === 'video/webm,video/mp4') && clipFiles.every((f) => fs.existsSync(path.join(root, f))), clips);
+  check('portada: cada clip pesa menos de 500 KB y entre todos menos de 4 MB', clipKb.every((k) => k < 500) && clipKb.reduce((a, b) => a + b, 0) < 4096, clipKb.map(Math.round));
+  const hero = web.locator('video.clip').first(); await web.waitForFunction(() => !document.querySelector('video.clip').paused, null, { timeout: 8000 }).catch(() => {});
+  check('portada: el clip que está a la vista se reproduce solo, y los de más abajo esperan', (await hero.evaluate((v) => !v.paused)) && (await web.evaluate(() => [...document.querySelectorAll('video.clip')].slice(1).every((v) => v.paused && v.readyState === 0))));
+  const calm = await ctx.newPage(); await calm.emulateMedia({ reducedMotion: 'reduce' }); await calm.goto(origin + '/?site'); await calm.waitForSelector('video.clip'); await calm.waitForTimeout(700);
+  check('portada con movimiento reducido: queda el póster y no se reproduce nada', await calm.evaluate(() => [...document.querySelectorAll('video.clip')].every((v) => v.paused && v.readyState === 0)));
+  await calm.close();
+  // "También trae": al pasar el cursor por una función con vista previa, la caja aparece al lado del cursor con su escena.
+  const row = web.locator('.more li[data-peek=table]'); await row.scrollIntoViewIfNeeded(); await row.hover(); await web.waitForTimeout(500);
+  const peek = await web.evaluate(() => { const p = document.querySelector('.peek'); const r = p.getBoundingClientRect(); const li = document.querySelector('.more li[data-peek=table]').getBoundingClientRect(); return { shown: getComputedStyle(p).opacity > 0.9, scene: [...p.querySelectorAll('.pk.on')].map((k) => k.dataset.k).join(), near: Math.abs(r.left - (li.left + li.width / 2)) < 80 && r.right <= innerWidth && r.bottom <= innerHeight, n: document.querySelectorAll('.more li').length, groups: document.querySelectorAll('.more h3').length }; });
+  await web.mouse.move(5, 300); await web.waitForTimeout(300);
+  check('portada: la vista previa sigue al cursor con la escena de esa función, y se va al salir', peek.shown && peek.scene === 'table' && peek.near && peek.groups === 3 && (await web.evaluate(() => getComputedStyle(document.querySelector('.peek')).opacity < 0.1)), peek);
+  const social = await web.evaluate(() => ({ og: (document.querySelector('meta[property="og:image"]') || {}).content, tw: (document.querySelector('meta[name="twitter:image"]') || {}).content, card: (document.querySelector('meta[name="twitter:card"]') || {}).content, w: (document.querySelector('meta[property="og:image:width"]') || {}).content, h: (document.querySelector('meta[property="og:image:height"]') || {}).content, alt: (document.querySelector('meta[property="og:image:alt"]') || {}).content }));
+  const cardFile = path.join(root, new URL(social.og || 'https://sharpmd.app/nada').pathname);
+  check('portada: la imagen para compartir es de 1200x630, con dirección absoluta, y el archivo existe y pesa menos de 300 KB', /^https:\/\/sharpmd\.app\/docs\/social-card/.test(social.og || '') && social.tw === social.og && social.card === 'summary_large_image' && social.w === '1200' && social.h === '630' && !!social.alt && fs.existsSync(cardFile) && fs.statSync(cardFile).size < 300 * 1024, social);
   await web.goto(origin + '/privacy.html'); check('página de privacidad', /Privac/.test(await web.textContent('h1:visible')));
   // El enlace a cómo eliminar la cuenta (lo pide la tienda) lleva a esa sección, en el idioma que se esté viendo.
   const inView = () => web.evaluate(() => { const h = [...document.querySelectorAll('h3')].find((x) => x.offsetParent); const r = h ? h.getBoundingClientRect() : null; return h ? [h.textContent, r.top >= 0 && r.top < window.innerHeight, /hello@sharpmd\.app/.test(h.nextElementSibling.innerHTML)] : null; });
@@ -190,8 +208,23 @@ try {
   const delEs = await inView();
   await web.click('.lang [data-set=en]');
   check('privacy.html#delete-account lleva a cómo eliminar la cuenta, en inglés y en castellano', JSON.stringify([delEn, delEs]) === JSON.stringify([['Deleting your account', true, true], ['Eliminar tu cuenta', true, true]]) && (await web.locator('#delete-account').count()) === 1, [delEn, delEs]);
+  // La pantalla de carga: viene en el HTML (se ve desde el primer pintado) y se va cuando la app está lista.
+  const rawApp = fs.readFileSync(path.join(root, 'src', 'app.html'), 'utf8');
   await web.goto(origin + '/src/app.html'); await web.waitForSelector('.lmd-home');
   check('la app web muestra el centro con sus cuatro acciones', (await web.locator('.lmd-home-actions [data-home]').count()) === 4);
+  await web.waitForSelector('#lmd-splash', { state: 'detached' });
+  check('app.html trae la pantalla de carga con el logo, respeta el movimiento reducido y se va al estar lista', /<body>\s*<div class="lmd-splash" id="lmd-splash"/.test(rawApp) && /prefers-reduced-motion: reduce\) \{ \.lmd-splash/.test(rawApp) && (await web.locator('#lmd-splash').count()) === 0);
+  // Quien ya usó la app y entra a la portada va directo a la app, y mientras tanto la portada no se pinta.
+  const ret = await ctx.newPage();
+  await ret.goto(origin + '/').catch(() => {}); await ret.waitForURL(/src\/app\.html/, { timeout: 10000 }); await ret.waitForSelector('.lmd-home');
+  const head = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  check('la portada manda a la app a quien ya la usó, y antes de irse se marca para no pintarse', /src\/app\.html/.test(ret.url()) && /c\.add\("go"\);[^<]*location\.replace\("src\/app\.html"\)/.test(head));
+  await ret.goto(origin + '/?site'); await ret.waitForSelector('h1');
+  check('con ?site la portada se ve entera', await ret.evaluate(() => !document.documentElement.classList.contains('go') && document.querySelector('h1').offsetWidth > 0));
+  // Lo que esa marca deja a la vista: nada de la portada, y el logo con el cursor que parpadea sobre el fondo de la app.
+  const landed = await ret.evaluate(() => { document.documentElement.classList.add('go'); return { seen: [...document.body.children].filter((n) => n.offsetParent || n.offsetWidth).length, bg: getComputedStyle(document.body).backgroundColor, logo: getComputedStyle(document.body, '::before').backgroundImage.slice(0, 20), blink: getComputedStyle(document.body, '::after').animationName }; });
+  check('mientras redirige se ve solo el logo con el cursor, sobre el fondo de la app', landed.seen === 0 && landed.bg === 'rgb(18, 20, 24)' && /^url\("data:image\/svg/.test(landed.logo) && landed.blink === 'go-blink', landed);
+  await ret.close();
   await web.evaluate(async () => {
     const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('web', { create: true });
     const h = await dir.getFileHandle('nota.md', { create: true }); const w = await h.createWritable();

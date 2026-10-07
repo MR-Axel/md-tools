@@ -434,7 +434,7 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 /* El inicio: el logo, una línea y las acciones, al centro de lo que queda al lado de la barra lateral. Arriba y
    abajo quedan dos franjas iguales, y en la de abajo van los enlaces del pie: así el bloque no se corre del centro. */
 .lmd-home { min-height: calc(100vh - 49px); display: grid; grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr); justify-items: center; padding: 28px 20px 22px; background: var(--bg); color: var(--fg); font: 15px/1.5 var(--lmd-font); box-sizing: border-box; }
-.lmd-home-card { grid-row: 2; width: min(452px, 100%); padding: 26px 26px 22px; border: 1px dashed transparent; border-radius: 18px; text-align: center; transition: border-color .15s, background-color .15s; }
+.lmd-home-card { grid-row: 2; width: min(508px, 100%); padding: 26px 26px 22px; border: 1px dashed transparent; border-radius: 18px; text-align: center; transition: border-color .15s, background-color .15s; }
 .lmd-home.lmd-drop .lmd-home-card { background: var(--accent-soft); }
 .lmd-home-logo { display: block; width: 72px; height: 72px; margin: 0 auto; border-radius: 16px; }
 .lmd-home-sub { margin: 18px 0 24px; color: var(--fg); font-size: 17px; line-height: 1.4; letter-spacing: -0.01em; text-wrap: balance; }
@@ -477,7 +477,7 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-side-acct .lmd-signin p { margin: 0 0 8px; overflow-wrap: anywhere; }
 .lmd-side-acct .lmd-home-cloud-row { flex-direction: column; align-items: stretch; gap: 6px; }
 .lmd-side-acct .lmd-home-cloud-row .lmd-btn { border-radius: 8px; padding: 7px 12px; }
-.lmd-side-acct input { width: 100%; height: 34px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); font: inherit; outline: none; }
+.lmd-side-acct input { flex: none; width: 100%; height: 34px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); font: inherit; outline: none; }
 .lmd-side-acct input:focus, .lmd-body .lmd-side-acct input:focus-visible { border-color: var(--accent-fill); outline: none; }
 .lmd-side-acct .lmd-home-cloud-err { margin: 6px 4px 2px; font-size: 12.5px; line-height: 1.4; }
 .lmd-side-acct .lmd-signin .lmd-home-cloud-err { margin: 6px 0 0; }
@@ -624,8 +624,6 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-home-cloud[hidden] { display: none; }
 .lmd-home-cloud-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .lmd-home-cloud-row .lmd-btn { padding: 6px 13px; font-size: 13px; border-radius: 999px; }
-.lmd-home-cloud input { flex: 1; min-width: 0; height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--fg); font: inherit; outline: none; }
-.lmd-home-cloud input:focus { border-color: var(--accent-fill); }
 .lmd-home-cloud-err { color: #dc2626; }
 
 /* ---------- Íconos del menú, imágenes, color del código, forma de los diagramas ---------- */

@@ -65,7 +65,7 @@
   // Lo que el estado vacío (home.js) necesita del lector: dónde dibujarse y cómo abrir una nota sin recargar.
   const homeCtx = () => ({ settings, APP_URL, box: ui.home, open: (f, opt) => go(f, opt), refresh: () => core.reloadTree(), say: (text) => flash(text, 'error'), warn: (text) => flash(text, 'warn'), plan: (why) => openPanel('plan', why),
     // El pie de la barra lateral, donde vive la cuenta: dónde dibujarse, cómo quedar a la vista y cómo guardar antes de salir.
-    acct: ui.acct, showSide: () => { if (LMD.touch.small()) setDrawer(true); else if (settings.sidebarHidden) LMD.patch({ sidebarHidden: false }); },
+    acct: ui.acct, showSide: () => { if (LMD.touch.small()) setDrawer(true); else if (settings.sidebarHidden) LMD.patch({ sidebarHidden: false }); }, hideSide: () => setDrawer(false),
     leave: () => (dirty ? save(false) : Promise.resolve(true)), ready: unsplash, panel: (tab) => openPanel(tab),
     // Las personalizaciones vienen con el plan pago: si Ajustes está abierto, se redibuja con ellas ya habilitadas.
     unlocked: (a) => { if (a.plan === 'pro' && !settings.supporter) { panelStale = true; LMD.patch({ supporter: true }); } },
@@ -3482,6 +3482,8 @@
     try { const t = sessionStorage.getItem('lmd-panel'); if (t) { sessionStorage.removeItem('lmd-panel'); openPanel(t); } } catch (e) {}
     // Vuelta de la página de pago: Ajustes en Plan, esperando que el servidor confirme.
     if (APP && withDoc && location.hash === '#lmd-paid') { openPanel('plan'); LMD.sync.awaitPaid(); }
+    // Desde la portada, el botón del plan pago llega acá: Ajustes en Plan, donde se entra a la cuenta y se paga.
+    if (APP && location.hash === '#lmd-plans') { history.replaceState(history.state, '', location.href.split('#')[0]); openPanel('plan'); }
     updateSaveState();
     checkUpdate(false);
     if (APP) appBoot().finally(unsplash);

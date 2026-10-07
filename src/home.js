@@ -254,7 +254,7 @@
         if (act === 'ask') await paintAcct('email');
         else if (act === 'logout') { await LMD.sync.signOut(acctHost()); await paintAcct(); ctx.refresh(); }
         else if (act === 'open') LMD.sync.openCloud(acctHost());
-        else if (act === 'ai' || act === 'plan') { if (home) LMD.sync.dialog(act, acctHost()); else ctx.panel(act); }
+        else if (act === 'ai' || act === 'plan') { ctx.hideSide(); if (home) LMD.sync.dialog(act, acctHost()); else ctx.panel(act); } // en pantalla chica el panel lateral no queda abierto detrás
       } catch (err) { acctFail(authWhy(err, ''), box.querySelector('[data-field]')); }
     });
     box.addEventListener('keydown', (e) => { if (e.key === 'Escape' && acctMenu) { e.stopPropagation(); closeAcctMenu(true); } });
