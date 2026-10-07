@@ -1347,3 +1347,7 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
   .lmd-live-card .lmd-dlg-field input, .lmd-live-link input { height: 40px; font-size: 16px; }
 }
 @media print { .lmd-live-layer, .lmd-live-bar, .lmd-live-note, .lmd-live-chip { display: none !important; } .lmd-live-held { outline: 0; } }
+
+/* Dentro de la app de la tienda (Android) no se ofrece comprar, cambiar el cobro ni donar: el plan se ve, no se vende. */
+.lmd-store-app .lmd-plan-buy, .lmd-store-app [data-pay], .lmd-store-app .lmd-ptabs-link, .lmd-store-app .lmd-plan h4 small, .lmd-store-app .lmd-team-seats, .lmd-store-app .lmd-team-cost,
+.lmd-store-app .lmd-plan a[target="_blank"], .lmd-store-app .lmd-team a[target="_blank"], .lmd-store-app .lmd-team-solo a, .lmd-store-app .lmd-paywait { display: none !important; }

@@ -112,6 +112,8 @@
     if (back) setTimeout(function () { location.replace(back + '#lmd-paid'); }, 1200);
     return;
   }
+  // Dentro de la app de la tienda no se cobra: de vuelta a la app.
+  try { if (sessionStorage.getItem('sharpmd:store') === '1') { location.replace(home); return; } } catch (e) { /* sin almacenamiento */ }
   var email = (q.get('email') || '').trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { show('noemail'); return; }
   var isTeam = q.get('plan') === 'team'; var teamOpen = !!(TEAM.base && TEAM.seat);
