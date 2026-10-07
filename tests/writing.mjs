@@ -57,6 +57,17 @@ o.final = (await src()).split('\n').slice(-4);
 await app.keyboard.press('Control+s'); await app.waitForTimeout(900);
 o.guardado = (await disk()) === (await src());
 const J = (v) => JSON.stringify(v);
+// emojis: ":" despliega la lista y Enter inserta el carácter sin abrir un bloque nuevo
+await app.locator('.lmd-article p.lmd-editable').first().click(); await app.keyboard.press('End'); await app.keyboard.type(' :rocke'); await app.waitForTimeout(250);
+o.emojiLista = await app.evaluate(() => { const b = document.querySelector('.lmd-emoji'); return !!b && !b.hidden && b.querySelector('button.lmd-on small').textContent; });
+const parrafos = await app.locator('.lmd-article p').count();
+await app.keyboard.press('Enter'); await app.waitForTimeout(200);
+o.emoji = await app.evaluate(() => { const b = document.querySelector('.lmd-emoji'); const t = (document.activeElement || document.body).textContent; return [t.codePointAt(t.length - 2), !b || b.hidden]; });
+o.emojiSinBloque = (await app.locator('.lmd-article p').count()) === parrafos;
+await app.keyboard.type(' 10:30'); await app.waitForTimeout(200);
+o.emojiHora = await app.evaluate(() => { const b = document.querySelector('.lmd-emoji'); return !b || b.hidden; });
+await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(500);
+
 const checks = [
   ['Enter crea párrafos, títulos y listas', J(o.escribir) === J(['# Doc', '', 'Primer párrafo.', '', 'Segundo párrafo', '', '## Sub', '', '- uno', '- dos', '', 'fin', '', '- alfa', '- beta', '', 'Último párrafo.', '']), o.escribir],
   ['Enter en un ítem agrega otro y en un párrafo lo parte', J(o.lista.slice(13)) === J(['- alfa', '- alfa bis', '- beta', '', 'Último', '', 'párrafo.', '']), o.lista],
@@ -67,6 +78,7 @@ const checks = [
   ['eliminar un bloque, deshacer y rehacer', o.borrado && o.deshecho && o.rehecho],
   ['la barra / inserta al final', J(o.final) === J(['párrafo.', '', '---', '']), o.final],
   ['lo escrito se guarda igual que se ve', o.guardado],
+  ['":" despliega emojis y Enter inserta el elegido', o.emojiLista === ':rocket:' && o.emoji[0] === 0x1F680 && o.emoji[1] && o.emojiSinBloque && o.emojiHora, [o.emojiLista, o.emoji, o.emojiSinBloque, o.emojiHora]],
   ['sin errores de JavaScript', errors.length === 0, errors],
 ];
 console.log('Escritura');

@@ -740,3 +740,13 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-preview .lmd-prev-dgm { flex: none; align-self: center; width: 132px; height: 116px; margin: 0; }
 .lmd-preview .lmd-prev-dgm .node { fill: var(--bg); }
 .lmd-pcol .lmd-swatches { gap: 6px; }
+
+/* ---------- Emojis al escribir ":" ---------- */
+.lmd-emoji { position: fixed; z-index: 70; min-width: 220px; max-width: 300px; padding: 5px; border: 1px solid var(--line); border-radius: 11px; background: var(--bg-soft); box-shadow: var(--shadow); font: 13.5px/1.3 var(--lmd-font); color: var(--fg); }
+.lmd-emoji[hidden] { display: none; }
+.lmd-emoji button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 9px; border: 0; border-radius: 7px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.lmd-emoji button span { flex: none; width: 22px; font-size: 17px; text-align: center; }
+.lmd-emoji button small { color: var(--fg-muted); font: 12.5px var(--lmd-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lmd-emoji button.lmd-on, .lmd-emoji button:hover { background: var(--accent-soft); }
+.lmd-emoji button.lmd-on small { color: var(--accent); }
+@media print { .lmd-emoji { display: none !important; } }
