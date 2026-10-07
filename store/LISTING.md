@@ -8,11 +8,34 @@ git archive --format=zip -o dist/sharpmd.zip HEAD
 
 Ese ZIP deja afuera las pruebas, las capturas, la página de presentación y este archivo (ver `.gitattributes`).
 
+## Lo que falta completar
+
+En el orden del menú de la izquierda del panel. Lo que ya está cargado no figura.
+
+| Dónde | Qué falta |
+|---|---|
+| **Paquete** | Subir `dist/sharpmd.zip`, que es la versión 2.35.0. Con eso el título pasa a decir "SharpMD" |
+| **Ficha de Play Store** | Volver a pegar la descripción (la cargada dice "Sharpmd"). Subir las cinco capturas también en "Capturas de pantalla localizadas": el panel pide al menos una ahí |
+| **Privacidad** | Toda la pestaña. Los textos y qué tildar están en "Pestaña de privacidad", más abajo |
+| **Distribución** | En Pagos, cambiar a "Contiene compras en la aplicación" |
+| **Instrucciones de la prueba** | Pegar el texto de "Instrucciones de la prueba", más abajo |
+| **Configuración del editor** | El correo de contacto. Ver el paso a paso de abajo |
+
+### El correo de contacto, paso a paso
+
+No va en la ficha ni en "Perfil". Va en la configuración del editor:
+
+1. Arriba a la derecha, el selector tiene que decir "Editor: SharpMD".
+2. En el menú de la izquierda, sección EDITOR, entrar a **Configuración** (está debajo de "Elementos").
+3. Debajo de "Nombre visible del editor" e "ID de editor" está "Añadir dirección de correo electrónico de contacto". Tocar **Añadir correo**.
+4. Escribir `hello@sharpmd.app` y confirmar el correo de verificación, que llega al Gmail por el reenvío.
+
+Sin ese correo verificado el botón "Enviar a revisión" queda gris. "¿Por qué no puedo enviar?", al lado de ese botón, lista lo que todavía falta.
+
 ## Antes de enviar
 
-- El paquete se sube recién cuando esté la versión que reordena Ajustes (2.35.0). Hasta entonces `dist/sharpmd.zip` es una versión intermedia.
 - El paquete se regenera después de cada cambio: `git archive --format=zip -o dist/sharpmd.zip HEAD`.
-- El enlace al código que aparece en la descripción apunta al repo de GitHub, que hoy vive en una cuenta personal. Si eso no tiene que verse, primero se transfiere el repo a una organización y se cambia el enlace.
+- El enlace al código que aparece en la descripción apunta al repo de GitHub.
 - Los recibos de Paddle salen a nombre de Sur Labs, con SharpMD como producto. Está explicado en la página de ayuda.
 
 ## Qué va en cada campo del panel
@@ -55,14 +78,13 @@ Las capturas se regeneran con `node tests/shots.mjs` y los mosaicos con `node te
 | URL de asistencia | `https://sharpmd.app/support.html` |
 | Contenido para adultos | apagado |
 
-### Las otras dos pestañas
+### Las otras pestañas
 
 | Pestaña | Qué cargar |
 |---|---|
-| Privacidad | Propósito único, justificación de cada permiso, código remoto y uso de datos: todo está en "Pestaña de privacidad", más abajo. URL de la política: `https://sharpmd.app/privacy.html` |
-| Distribución | Gratis, todas las regiones, visibilidad pública |
-
-En la cuenta del editor (no en la ficha) va el correo de contacto, `hello@sharpmd.app`, y la declaración de operador.
+| Privacidad | Ver "Pestaña de privacidad", más abajo |
+| Distribución | Pagos: "Contiene compras en la aplicación". Visibilidad: Público. Regiones: todas |
+| Instrucciones de la prueba | Ver "Instrucciones de la prueba", más abajo |
 
 ## Descripción corta (máximo 132 caracteres)
 
@@ -167,23 +189,69 @@ Después de instalarla, abrí los detalles de la extensión y activá "Permitir 
 
 ## Pestaña de privacidad
 
-**Propósito único**
+Cada bloque es un campo del formulario, en el orden en que aparecen.
+
+**Descripción de la finalidad única**
 
 ```
-SharpMD renders Markdown files in the browser and lets the user edit and save them.
+SharpMD renders Markdown files in the browser and lets the user edit and save them. Notes can optionally be synced to the user's own SharpMD account.
 ```
 
-**Justificación de permisos**
+**Justificación de storage**
 
-| Permiso | Texto |
-|---|---|
-| storage | Stores the user's settings (theme, layout, language) and reading positions locally in the browser. |
-| scripting | Injects the bundled KaTeX, Mermaid and Graphviz libraries into the Markdown page only when the document contains math or diagrams, so they are not loaded on every file. No remote code is used. |
-| Host permission (file:///* and all sites) | The extension renders Markdown files wherever they live: local files and .md files served by any website. Its content script only matches URLs that end in a Markdown extension (.md, .markdown, .mdx, .mkd, .mdown). It also reads sibling files of the open document to show the folder tree and to search across them. |
+```
+Stores the user's settings (theme, layout, language), reading positions, notes kept in the browser and the sign-in session, locally in the browser.
+```
 
-**¿Usa código remoto?** No. Todas las librerías van dentro del paquete.
+**Justificación de scripting**
 
-**Uso de datos:** con la nube prendida hay que marcar dos categorías, porque quien entra con su cuenta deja su correo y las notas que manda: "Información de identificación personal" (el correo) y "Contenido del sitio web" (el texto de las notas en la nube). Sin cuenta no sale nada. Tildar las tres declaraciones: no se venden datos, no se usan para fines ajenos al propósito, no se usan para determinar solvencia.
+```
+Injects the bundled KaTeX, Mermaid and Graphviz libraries into the Markdown page only when the document contains math or diagrams, so they are not loaded on every file. No remote code is used.
+```
+
+**Justificación de Permiso de host**
+
+```
+The extension renders Markdown files wherever they live: local files and .md files served by any website. Its content script only matches URLs that end in a Markdown extension (.md, .markdown, .mdx, .mkd, .mdown). It also reads sibling files of the open document to show the folder tree and to search across them. When the user signs in, it talks to the SharpMD sync server (sync.sharpmd.app, or a server the user configures) to store the notes the user chooses to send to the cloud.
+```
+
+**¿Utilizas código remoto?**
+
+Elegir **"No, no estoy usando código remoto"**. Todas las librerías van dentro del paquete. En el borrador quedó marcado "Sí": hay que cambiarlo, y con "No" el campo de justificación desaparece.
+
+**Uso de datos: qué tildar**
+
+| Casilla | ¿Se tilda? | Por qué |
+|---|---|---|
+| Información de identificación personal | Sí | el correo de quien crea una cuenta |
+| Información sanitaria | No | |
+| Datos financieros y de pagos | No | el pago se hace en la web con Paddle; la extensión no ve la tarjeta |
+| Información de autenticación | Sí | el código de acceso y la sesión de la cuenta |
+| Comunicaciones personales | No | |
+| Ubicación | No | |
+| Historial web | No | |
+| Actividad del usuario | No | no hay analítica |
+| Contenido del sitio web | Sí | el texto de las notas que la persona manda a la nube |
+
+Las tres afirmaciones de abajo se tildan todas: no se venden datos, no se usan para fines ajenos a la finalidad única, no se usan para determinar solvencia.
+
+**URL de la Política de Privacidad**
+
+```
+https://sharpmd.app/privacy.html
+```
+
+## Instrucciones de la prueba
+
+Usuario y contraseña quedan vacíos: no hay contraseña. En las instrucciones adicionales:
+
+```
+The extension works without an account. To test it: open the extension details and turn on "Allow access to file URLs", then open any local .md file in Chrome, or click the extension icon and choose "New file".
+
+Cloud notes are optional. Sign-in has no password: the user types an email address on the start screen and receives a six-digit code by email. Any email address you control works, and no payment is needed: the free plan includes 10 cloud notes.
+
+The paid plan is bought on https://sharpmd.app through Paddle and is not required to use the extension.
+```
 
 ## Lo que hay que saber antes de enviar
 
