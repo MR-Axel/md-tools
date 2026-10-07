@@ -43,6 +43,10 @@ function build(lang) {
     offers: [{ '@type': 'Offer', name: 'Free', price: '0', priceCurrency: 'USD' }, { '@type': 'Offer', name: 'Paid', price: '3.99', priceCurrency: 'USD' }].concat(TEAM_OPEN ? [{ '@type': 'Offer', name: 'Team', price: '7.98', priceCurrency: 'USD' }] : []),
     license: 'https://opensource.org/licenses/MIT', codeRepository: 'https://github.com/MR-Axel/sharpmd' };
   const head = [
+    // Quien ya usó la app entra directo; y la app, en "automático", sigue el idioma de la portada que se vio. Mientras se va,
+    // la portada no se pinta: queda el logo con el cursor sobre el fondo de la app (la clase go), con el tema que la app tenía.
+    // Va primero en el <head>: a quien se va a la app no se le empiezan a bajar la tipografía ni la imagen de la portada.
+    '<script>try{localStorage.setItem("mdtools:site-lang","' + lang + '");if(localStorage.getItem("sharpmd:app")&&location.search.indexOf("site")<0&&!location.hash&&document.referrer.indexOf(location.origin)!==0){var d=localStorage.getItem("lmd:dark"),c=document.documentElement.classList;c.add("go");if(d==="0"||(d!=="1"&&window.matchMedia&&!matchMedia("(prefers-color-scheme: dark)").matches))c.add("go-light");location.replace("' + up + 'src/app.html")}}catch(e){}</script>',
     '<title>' + esc(m.title) + '</title>',
     '<meta name="description" content="' + esc(m.desc) + '">',
     '<link rel="canonical" href="' + m.url + '">',
@@ -55,13 +59,10 @@ function build(lang) {
     '<meta name="twitter:card" content="summary_large_image">', '<meta name="twitter:title" content="' + esc(m.title) + '">', '<meta name="twitter:description" content="' + esc(m.og) + '">', '<meta name="twitter:image" content="' + CARD + '">', '<meta name="twitter:image:alt" content="' + esc(CARD_ALT[lang]) + '">',
     '<meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">', '<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">',
     '<link rel="preload" href="' + up + 'vendor/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>',
-    '<link rel="preload" href="' + up + 'docs/clips/edit.jpg" as="image">',
+    '<link rel="preload" href="' + up + 'docs/clips/edit.jpg" as="image" fetchpriority="high">',
     '<link rel="icon" href="' + up + 'icons/icon32.png">',
     '<script type="application/ld+json">' + JSON.stringify(app) + '</script>',
     '<script type="application/ld+json">' + JSON.stringify({ '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: faq }) + '</script>',
-    // Quien ya usó la app entra directo; y la app, en "automático", sigue el idioma de la portada que se vio. Mientras se va,
-    // la portada no se pinta: queda el logo con el cursor sobre el fondo de la app (la clase go), con el tema que la app tenía.
-    '<script>try{localStorage.setItem("mdtools:site-lang","' + lang + '");if(localStorage.getItem("sharpmd:app")&&location.search.indexOf("site")<0&&!location.hash&&document.referrer.indexOf(location.origin)!==0){var d=localStorage.getItem("lmd:dark"),c=document.documentElement.classList;c.add("go");if(d==="0"||(d!=="1"&&window.matchMedia&&!matchMedia("(prefers-color-scheme: dark)").matches))c.add("go-light");location.replace("' + up + 'src/app.html")}}catch(e){}</script>',
   ].join('\n');
   html = html.replace(/<!--HEAD-->/, head).replace(/<html[^>]*>/, '<html lang="' + lang + '">');
   html = html.replace(/<!--LANG-->/, '<div class="lang"><a href="' + (lang === 'en' ? './' : '../') + '?site"' + (lang === 'en' ? ' class="on" aria-current="true"' : '') + ' hreflang="en">EN</a><a href="' + (lang === 'en' ? 'es/' : './') + '?site"' + (lang === 'es' ? ' class="on" aria-current="true"' : '') + ' hreflang="es">ES</a></div>');
