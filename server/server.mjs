@@ -105,6 +105,10 @@ db.exec('CREATE INDEX IF NOT EXISTS trash_user ON trash (user, deleted)');
 // Carpetas con contraseña. De cada una se guarda con qué se envolvió su llave (sal, vueltas y la llave envuelta) y un
 // valor para comprobar la llave. Nunca la contraseña ni la llave. state: 'on', o 'opening' mientras se le quita la protección.
 db.exec("CREATE TABLE IF NOT EXISTS vaults (id INTEGER PRIMARY KEY, user INTEGER NOT NULL, folder TEXT NOT NULL, salt TEXT NOT NULL, iters INTEGER NOT NULL, wrapped TEXT NOT NULL, verify TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'on', created INTEGER NOT NULL, UNIQUE (user, folder))");
+// Para el espacio de un equipo (la fila con folder vacío, a nombre de la cuenta interna del equipo): gone es cuándo
+// salió alguien que conocía la contraseña, ai_members si los miembros pueden desbloquear para su IA, y next lo que
+// envuelve a la llave nueva mientras se rota.
+for (const col of ['gone INTEGER NOT NULL DEFAULT 0', 'ai_members INTEGER NOT NULL DEFAULT 0', 'next TEXT']) { try { db.exec('ALTER TABLE vaults ADD COLUMN ' + col); } catch (e) { /* ya estaba */ } }
 // Las filas sin tamaño son anteriores a esta columna y están en claro: se mide de una vez, sin traerlas a memoria.
 db.exec('UPDATE notes SET size = LENGTH(text) WHERE size IS NULL AND e = 0');
 db.exec('UPDATE versions SET size = LENGTH(text) WHERE size IS NULL AND e = 0');
@@ -372,7 +376,13 @@ async function feedback(req, body) {
 const VAULT = 'vault1:';
 const VAULT_ENC = 'sharpmd vault enc v1'; const VAULT_CHECK = 'sharpmd vault check v1';
 const MAX_VAULTS = 50; const VAULT_MINUTES = [15, 60, 480, 0]; // 0: hasta que se bloquee o se reinicie el servidor
-const inside = (p, folder) => p.startsWith(folder + '/');
+// Una bóveda con folder vacío cubre todo: es la del espacio de un equipo. Las de una persona siempre tienen carpeta.
+const inside = (p, folder) => !folder || p.startsWith(folder + '/');
+const preOf = (folder) => (folder ? folder + '/' : '');
+// En el espacio de un equipo el dato asociado lleva además de qué espacio es: ~espacio/ruta, que es como el
+// navegador nombra a esa nota. El formato es el mismo de siempre.
+const teamAad = (spaceId, p) => '~' + spaceId + '/' + p;
+const sealing = (vault) => !!vault && (vault.state === 'on' || vault.state === 'rotating');
 const vaultsOf = (userId) => q('SELECT * FROM vaults WHERE user = ?').all(userId);
 const vaultOf = (userId, p) => vaultsOf(userId).find((v) => inside(p, v.folder)) || null;
 // "Todo lo que está dentro de una carpeta" se pregunta con substr(path, 1, length(?)) = ?, pasando dos veces la
@@ -400,9 +410,9 @@ const scrub = () => { try { db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch 
 // cifrado y cuánto pesa en claro (del cifrado se sabe por su largo: sobran el nonce y la etiqueta, 28 bytes).
 function checkText(userId, p, text) {
   const sealedIn = text.startsWith(VAULT); const vault = vaultOf(userId, p);
-  if (vault && vault.state === 'on' && !sealedIn) throw new Fail(409, 'vault', 'This folder is protected with a password: its notes must arrive encrypted');
+  if (sealing(vault) && !sealedIn) throw new Fail(409, 'vault', 'This folder is protected with a password: its notes must arrive encrypted');
   if (!sealedIn) { if (Buffer.byteLength(text) > MAX_NOTE) throw new Fail(413, 'too_large'); return { v: 0, size: text.length }; }
-  if (!vault || vault.state !== 'on') throw new Fail(409, 'vault_text', 'Encrypted text only goes inside a folder protected with a password');
+  if (!sealing(vault)) throw new Fail(409, 'vault_text', 'Encrypted text only goes inside a folder protected with a password');
   const body = text.slice(VAULT.length); const size = /^[A-Za-z0-9+/]+=*$/.test(body) ? Buffer.from(body, 'base64').length - 28 : -1;
   if (size < 0) throw new Fail(400, 'bad_vault_text');
   if (size > MAX_NOTE) throw new Fail(413, 'too_large');
@@ -411,18 +421,28 @@ function checkText(userId, p, text) {
 
 // Desbloqueada para la IA: la llave de cifrado de la carpeta, solo en memoria y con vencimiento. Bloquear a mano,
 // vencer el plazo o reiniciar el servidor la olvidan. No se guarda K, sino la llave que sale de ella.
-const aiKeys = new Map(); // id de la bóveda → { key, until, timer }
-function aiForget(vault, tell) {
-  const k = aiKeys.get(vault.id); if (!k) return;
-  clearTimeout(k.timer); k.key.fill(0); aiKeys.delete(vault.id);
+// En el espacio de un equipo la llave abierta es de quien la abrió: cada miembro desbloquea para su propia IA.
+const aiKeys = new Map(); // id de la bóveda (o id:cuenta en la de un equipo) → { key, until, timer }
+const aiSlot = (vault, uid) => (vault.folder ? String(vault.id) : vault.id + ':' + uid);
+function aiForget(vault, tell, uid) {
+  const slot = aiSlot(vault, uid); const k = aiKeys.get(slot); if (!k) return;
+  clearTimeout(k.timer); k.key.fill(0); aiKeys.delete(slot);
   if (tell) announceUser(vault.user, { type: 'vault' });
 }
-const aiKey = (vault) => { const k = aiKeys.get(vault.id); if (!k) return null; if (k.until && k.until <= now()) { aiForget(vault, true); return null; } return k; };
+// Todas las llaves abiertas de una bóveda. Con keep, la de esa cuenta queda.
+function aiForgetAll(vault, keep) {
+  for (const [slot, k] of Array.from(aiKeys)) {
+    if (slot !== String(vault.id) && !slot.startsWith(vault.id + ':')) continue;
+    if (keep != null && slot === vault.id + ':' + keep) continue;
+    clearTimeout(k.timer); k.key.fill(0); aiKeys.delete(slot);
+  }
+}
+const aiKey = (vault, uid) => { const k = aiKeys.get(aiSlot(vault, uid)); if (!k) return null; if (k.until && k.until <= now()) { aiForget(vault, true, uid); return null; } return k; };
 const vaultView = (v) => { const k = aiKey(v); return { id: v.id, folder: v.folder, salt: v.salt, iters: v.iters, wrapped: v.wrapped, check: v.verify, state: v.state, created: v.created, ai: k ? { until: k.until } : null }; };
 // Al proteger una carpeta se va lo que quedaba en claro o abierto hacia afuera: el historial, los comentarios para
 // la IA (citan el texto), los enlaces públicos y lo compartido.
 function vaultPurge(userId, folder) {
-  const pre = folder + '/';
+  const pre = preOf(folder);
   q('DELETE FROM versions WHERE user = ? AND substr(path, 1, length(?)) = ?').run(userId, pre, pre);
   q('DELETE FROM comments WHERE user = ? AND substr(path, 1, length(?)) = ?').run(userId, pre, pre);
   q('DELETE FROM links WHERE owner = ? AND substr(path, 1, length(?)) = ?').run(userId, pre, pre);
@@ -457,19 +477,19 @@ function vaultRewrap(user, v, body) {
 // Quitar la protección: primero pasa a 'opening' (la carpeta vuelve a aceptar texto en claro y el navegador
 // descifra y vuelve a guardar cada nota) y recién sin notas cifradas adentro se borra.
 function vaultOpening(user, v) {
-  aiForget(v, false);
+  aiForgetAll(v);
   q("UPDATE vaults SET state = 'opening' WHERE id = ?").run(v.id);
-  announceUser(user.id, { type: 'vault' });
+  announceUser(v.user, { type: 'vault' });
   return vaultView(q('SELECT * FROM vaults WHERE id = ?').get(v.id));
 }
 function vaultRemove(user, v) {
-  const pre = v.folder + '/';
-  if (q('SELECT 1 FROM notes WHERE user = ? AND v = 1 AND substr(path, 1, length(?)) = ? LIMIT 1').get(user.id, pre, pre)) throw new Fail(409, 'vault_not_empty', 'There are still encrypted notes in this folder');
-  aiForget(v, false);
-  q('DELETE FROM versions WHERE user = ? AND substr(path, 1, length(?)) = ?').run(user.id, pre, pre); // el historial cifrado ya no tendría llave
-  q('DELETE FROM trash WHERE user = ? AND v = 1 AND substr(path, 1, length(?)) = ?').run(user.id, pre, pre); // ni lo cifrado de la papelera
+  const pre = preOf(v.folder);
+  if (q('SELECT 1 FROM notes WHERE user = ? AND v = 1 AND substr(path, 1, length(?)) = ? LIMIT 1').get(v.user, pre, pre)) throw new Fail(409, 'vault_not_empty', 'There are still encrypted notes in this folder');
+  aiForgetAll(v);
+  q('DELETE FROM versions WHERE user = ? AND substr(path, 1, length(?)) = ?').run(v.user, pre, pre); // el historial cifrado ya no tendría llave
+  q('DELETE FROM trash WHERE user = ? AND v = 1 AND substr(path, 1, length(?)) = ?').run(v.user, pre, pre); // ni lo cifrado de la papelera
   q('DELETE FROM vaults WHERE id = ?').run(v.id);
-  announceUser(user.id, { type: 'vault' });
+  announceUser(v.user, { type: 'vault' });
   return { ok: true };
 }
 // Eliminar la carpeta entera sin su llave: para quien perdió la contraseña y la clave de respaldo. Se van la
@@ -477,8 +497,11 @@ function vaultRemove(user, v) {
 // no se podría leer nunca. Quien lo pide escribe el nombre de la carpeta, y acá se vuelve a comparar.
 function vaultDestroy(user, v, body) {
   if (typeof body.folder !== 'string' || body.folder !== v.folder) throw new Fail(400, 'bad_confirm');
-  const pre = v.folder + '/';
-  aiForget(v, false);
+  return vaultWipe({ id: v.user }, v);
+}
+function vaultWipe(user, v) {
+  const pre = preOf(v.folder);
+  aiForgetAll(v);
   for (const row of q('SELECT * FROM lives WHERE owner = ? AND substr(path, 1, length(?)) = ?').all(user.id, pre, pre)) liveEnd(row, 'closed');
   let notes = 0;
   db.exec('BEGIN');
@@ -498,7 +521,8 @@ function vaultDestroy(user, v, body) {
 }
 // Desbloquear para la IA: llega la llave de datos, se comprueba contra el valor guardado y queda en memoria.
 // Es parte del MCP: plan pago. Diez llaves equivocadas por hora por cuenta.
-function vaultUnlock(user, v, body) {
+function vaultUnlock(user, v, body) { aiOpen(user, v, body); return vaultView(v); }
+function aiOpen(user, v, body, uid) {
   if (!mcpAllowed(user)) throw new Fail(402, 'mcp_needs_plan');
   if (v.state !== 'on') throw new Fail(409, 'vault', 'This folder is having its protection removed');
   const minutes = +body.minutes;
@@ -506,13 +530,12 @@ function vaultUnlock(user, v, body) {
   limit('vkey:' + user.id, 10, HOUR, 'too_many');
   const K = b64(body.key, 32);
   if (!K || !crypto.timingSafeEqual(hk(K, VAULT_CHECK), Buffer.from(v.verify, 'base64'))) { if (K) K.fill(0); mark('vkey:' + user.id); throw new Fail(403, 'bad_key'); }
-  aiForget(v, false);
+  aiForget(v, false, uid);
   const rec = { key: hk(K, VAULT_ENC), until: minutes ? now() + minutes * VAULT_MINUTE_MS : 0, timer: null };
   K.fill(0);
-  if (minutes) { rec.timer = setTimeout(() => aiForget(v, true), minutes * VAULT_MINUTE_MS); rec.timer.unref(); }
-  aiKeys.set(v.id, rec);
-  announceUser(user.id, { type: 'vault' });
-  return vaultView(v);
+  if (minutes) { rec.timer = setTimeout(() => aiForget(v, true, uid), minutes * VAULT_MINUTE_MS); rec.timer.unref(); }
+  aiKeys.set(aiSlot(v, uid), rec);
+  announceUser(v.user, { type: 'vault' });
 }
 
 // ---------- Notas ----------
@@ -635,7 +658,7 @@ function trashRoute(user, p, m, url, body) {
   if (p === '/trash' && m === 'GET') return trashList(owner);
   if (p === '/trash' && m === 'DELETE') return { ok: true, removed: Number(q('DELETE FROM trash WHERE user = ?').run(owner.id).changes) };
   const tm = /^\/trash\/(\d+)(\/restore)?$/.exec(p);
-  if (tm && tm[2] && m === 'POST') return trashRestore(owner, tm[1], body);
+  if (tm && tm[2] && m === 'POST') { teamHold(user, owner); return trashRestore(owner, tm[1], body); }
   if (tm && !tm[2] && m === 'DELETE') { if (!q('DELETE FROM trash WHERE id = ? AND user = ?').run(+tm[1], owner.id).changes) throw new Fail(404, 'not_found'); return { ok: true }; }
   throw new Fail(404, 'no_route');
 }
@@ -679,7 +702,7 @@ function renameNote(user, from, to, body) {
 // reach(bóveda) da la llave con la que se puede leer esa carpeta, o nada. Sin reach (la búsqueda de la app) las
 // notas de las carpetas con contraseña quedan afuera. Con reach (la IA), las de una carpeta bloqueada aparecen
 // solo si coincide el nombre, marcadas como bloqueadas y sin texto.
-function searchNotes(user, text, reach) {
+function searchNotes(user, text, reach, aadPre) {
   const needle = String(text || '').toLowerCase(); if (!needle) return [];
   const out = []; const vaults = vaultsOf(user.id);
   // De a una nota: traerlas todas juntas ocuparía en memoria la nube entera de la cuenta.
@@ -689,7 +712,7 @@ function searchNotes(user, text, reach) {
     else {
       if (!reach) continue;
       const key = vault && n.v ? reach(vault) : null;
-      if (key) { try { body = vaultOpen(key, n.path, unseal(n.text, n.e, 'notes.text')); } catch (e) { body = null; } }
+      if (key) { try { body = vaultOpen(key, (aadPre || '') + n.path, unseal(n.text, n.e, 'notes.text')); } catch (e) { body = null; } }
     }
     const hits = [];
     if (body != null) { const lines = body.split(/\r?\n/); for (let i = 0; i < lines.length && hits.length < 5; i++) if (lines[i].toLowerCase().includes(needle)) hits.push({ line: i + 1, text: lines[i].trim().slice(0, 240) }); }
@@ -1168,6 +1191,7 @@ const LOCKED = (folder) => 'The folder "' + folder + '" is protected with a pass
 // desbloqueado para la IA y que la carpeta entera esté dentro del alcance del token.
 const aiReach = (user, vault) => { const k = vault.state === 'on' && within(user, vault.folder) ? aiKey(vault) : null; return k ? k.key : null; };
 // Para una ruta: null si no está en una carpeta con contraseña, la llave si está desbloqueada, o el aviso para la IA.
+const TEAM_LOCKED = 'The team space is protected with a password and is locked for the AI, so its notes cannot be read, searched or changed right now. The person can unlock it for the AI from SharpMD: in the file explorer, the menu next to the team, then "Unlock for the AI". A member who is not the administrator can only do that if the administrator of the team allowed it. Ask them to do that, then try again.';
 function vaultGate(user, p) {
   const vault = vaultOf(user.id, p); if (!vault) return null;
   const key = aiReach(user, vault);
@@ -1185,7 +1209,11 @@ function callTool(user, name, args) {
   const teamPath = (p) => !!space && (p === TEAM_PRE.slice(0, -1) || p.startsWith(TEAM_PRE));
   // at: de quién es la nota de esa ruta y cómo se llama ahí. full es la ruta como la ve la IA.
   const at = (raw) => { const full = scoped(user, raw); return teamPath(full) && full.length > TEAM_PRE.length ? { who: space, p: cleanPath(full.slice(TEAM_PRE.length)), full } : { who: user, p: full, full }; };
-  const tag = (p) => { if (teamPath(p)) return { team: true }; const v = vaults.find((x) => p === x.folder || inside(p, x.folder)); return v ? { protected: true, locked: !aiReach(user, v) } : {}; };
+  // El espacio del equipo protegido: su llave, si quien llama lo desbloqueó para su IA y el token alcanza todo @team.
+  const tv = space ? teamVault(user.team) : null;
+  const teamKey = () => { const k = tv && tv.state === 'on' && within(user, TEAM_PRE.slice(0, -1)) ? aiKey(tv, user.id) : null; return k ? k.key : null; };
+  const aadOf = (a) => (a.who === user ? a.p : teamAad(space.id, a.p));
+  const tag = (p) => { if (teamPath(p)) return tv ? { team: true, protected: true, locked: !teamKey() } : { team: true }; const v = vaults.find((x) => p === x.folder || inside(p, x.folder)); return v ? { protected: true, locked: !aiReach(user, v) } : {}; };
   const mine = () => listNotes(user).filter((n) => !teamPath(n.path)).concat(space ? listNotes(space).map((n) => ({ path: TEAM_PRE + n.path, updated: n.updated, size: n.size })) : [])
     .filter((n) => within(user, n.path)).sort((a, b) => b.updated - a.updated);
   if (name === 'list_notes') return mine().filter((n) => inFolder(n.path, args.folder && cleanPath(args.folder))).map((n) => Object.assign({ path: n.path, updated: new Date(n.updated).toISOString(), size: n.size }, tag(n.path)));
@@ -1204,17 +1232,18 @@ function callTool(user, name, args) {
     const n = readNote(a.who, a.p);
     if (!key) return n.text;
     if (!n.text.startsWith(VAULT)) throw new Fail(423, 'vault_locked', 'This note is still being encrypted by SharpMD. Try again in a moment.');
-    return vaultOpen(key, a.p, n.text);
+    return vaultOpen(key, aadOf(a), n.text);
   };
-  // En el espacio del equipo no hay carpetas con contraseña.
-  const gate = (a) => (a.who === user ? vaultGate(user, a.p) : null);
+  // El espacio del equipo se protege entero, con una sola contraseña.
+  const teamGate = () => { if (!tv) return null; const key = teamKey(); if (!key) throw new Fail(423, 'vault_locked', TEAM_LOCKED); return key; };
+  const gate = (a) => (a.who === user ? vaultGate(user, a.p) : teamGate());
   // La IA guarda sobre la revisión que hay en ese momento: lee y escribe sin soltar el hilo, así que no pisa un
   // guardado que entró en el medio ni se cruza con otro. Quien tiene la nota abierta se entera al instante.
   const revOf = (a) => { const now_ = q('SELECT rev FROM notes WHERE user = ? AND path = ?').get(a.who.id, a.p); return now_ ? now_.rev : null; };
   const write = (a, key, text, base) => {
     text = String(text == null ? '' : text);
     if (key && Buffer.byteLength(text) > MAX_NOTE) throw new Fail(413, 'too_large');
-    const saved = writeNote(a.who, a.p, key ? vaultSeal(key, a.p, text) : text, base === undefined ? revOf(a) : base);
+    const saved = writeNote(a.who, a.p, key ? vaultSeal(key, aadOf(a), text) : text, base === undefined ? revOf(a) : base);
     tellSaved(a.who.id, a.p, saved, { by: 'mcp' }, text);
     return saved;
   };
@@ -1232,10 +1261,12 @@ function callTool(user, name, args) {
   }
   if (name === 'search_notes') {
     const results = searchNotes(user, args.query, (v) => aiReach(user, v)).filter((r) => !teamPath(r.path))
-      .concat(space ? searchNotes(space, args.query).map((r) => Object.assign(r, { path: TEAM_PRE + r.path })) : []).filter((r) => within(user, r.path)).slice(0, 30);
+      .concat(space ? searchNotes(space, args.query, tv ? teamKey : undefined, tv ? teamAad(space.id, '') : '').map((r) => Object.assign(r, { path: TEAM_PRE + r.path })) : []).filter((r) => within(user, r.path)).slice(0, 30);
     // Si quedó alguna carpeta bloqueada al alcance del token, se dice: lo que hay adentro no se buscó.
     const shut = vaults.filter((v) => !aiReach(user, v) && (within(user, v.folder) || inside(user.scope, v.folder) || user.scope === v.folder)).map((v) => v.folder);
-    return shut.length ? { results, locked_folders: shut, note: 'The notes inside locked folders were not searched. ' + LOCKED(shut[0]) } : results;
+    const teamShut = !!tv && !teamKey() && (within(user, TEAM_PRE.slice(0, -1)) || (user.scope || '').startsWith(TEAM_PRE));
+    if (teamShut) shut.push(TEAM_PRE.slice(0, -1));
+    return shut.length ? { results, locked_folders: shut, note: 'The notes inside locked folders were not searched. ' + (teamShut && shut.length === 1 ? TEAM_LOCKED : LOCKED(shut[0])) } : results;
   }
   if (name === 'list_comments') return listComments(user, args.path ? scoped(user, args.path) : '', false).filter((c) => within(user, c.path)).map((c) => ({ id: c.id, path: c.path, quote: c.quote, comment: c.text, created: new Date(c.created).toISOString() }));
   if (name === 'resolve_comment') {
@@ -1252,6 +1283,7 @@ function callTool(user, name, args) {
     if (a.who !== b.who) throw new Fail(409, 'other_space', 'A note cannot be moved between your own notes and the team space. Write it in the new place instead.');
     // Mover hacia, desde o dentro de una carpeta con contraseña pide volver a cifrar el texto: eso lo hace la app.
     if (a.who === user && (vaultOf(user.id, a.p) || vaultOf(user.id, b.p))) throw new Fail(409, 'vault', 'Notes in a folder protected with a password can only be moved from the SharpMD app.');
+    if (a.who !== user && tv) throw new Fail(409, 'vault', 'Notes in a team space protected with a password can only be moved from the SharpMD app.');
     try { renameNote(a.who, a.p, b.p); } catch (e) { if (e.code === 'exists') throw new Fail(409, 'exists', 'There is already a note at ' + b.full + '.'); throw e; }
     return 'Moved ' + a.full + ' to ' + b.full + '. Open it: ' + openUrl(b);
   }
@@ -1259,6 +1291,7 @@ function callTool(user, name, args) {
     const a = at(args.path);
     // El historial de una carpeta con contraseña está cifrado desde el navegador: no se entrega.
     if (a.who === user && vaultOf(user.id, a.p)) throw new Fail(409, 'vault', 'The history of a note in a folder protected with a password can only be read from the SharpMD app.');
+    if (a.who !== user && tv) throw new Fail(409, 'vault', 'The history of a note in a team space protected with a password can only be read from the SharpMD app.');
     if (args.version == null) return q('SELECT id, saved, size FROM versions WHERE user = ? AND path = ? AND aad IS NULL ORDER BY saved DESC LIMIT 100').all(a.who.id, a.p).map((v) => ({ version: v.id, saved: new Date(v.saved).toISOString(), size: v.size }));
     // La versión tiene que ser de esa nota: el alcance del token se miró sobre la ruta.
     const v = q('SELECT text, e FROM versions WHERE id = ? AND user = ? AND path = ? AND aad IS NULL').get(+args.version, a.who.id, a.p);
@@ -1400,6 +1433,7 @@ function teamView(user) {
   const members = q('SELECT u.id, u.email FROM team_members m JOIN users u ON u.id = m.user WHERE m.team = ? ORDER BY m.joined, u.id').all(t.id).map((x) => ({ id: x.id, email: x.email, admin: x.id === t.owner }));
   // solo: además paga un plan individual por su lado. La app le avisa que sigue activo y cómo darlo de baja.
   out.mine = { id: t.id, name: t.name, role: admin ? 'admin' : 'member', active: t.status === 'active', space: t.space, seats: t.seats, used: teamUsed(t), members, solo: user.own === 'pro' };
+  out.mine.vault = teamVaultView(user, t);
   if (admin) { out.mine.pending = q('SELECT id, email, created FROM team_invites WHERE team = ? ORDER BY created').all(t.id); out.mine.billing = TEAM_BILLING && !!t.sub; }
   return out;
 }
@@ -1522,6 +1556,7 @@ function teamDrop(t, userId) {
   const r = q('DELETE FROM team_members WHERE team = ? AND user = ?').run(t.id, userId);
   if (!r.changes) throw new Fail(404, 'not_found');
   teamCut(t.space, userId);
+  teamVaultLeft(t, userId);
   // Si tenía paga una suscripción de equipo que esperaba a que saliera de este, su equipo nace ahora, con los lugares
   // que cubre el precio base. El próximo aviso de Paddle trae la cantidad real.
   const paid = q("SELECT id FROM paddle_subs WHERE user = ? AND kind = 'team' AND status = 'active' ORDER BY at DESC LIMIT 1").get(userId);
@@ -1567,6 +1602,116 @@ async function teamRoute(user, p, m, req) {
   if (p === '/team/remove' && m === 'POST') { const t = adminTeam(user); return after(teamDrop(t, +(await readBody(req)).id)); }
   if (p === '/team/leave' && m === 'POST') { if (!user.team) throw new Fail(404, 'no_team'); return after(teamDrop(user.team, user.id)); }
   if (p === '/team/seats' && m === 'POST') return after(await teamSeats(user, await readBody(req)));
+  if (p === '/team/vault' || p.startsWith('/team/vault/')) return teamVaultRoute(user, p, m, m === 'GET' ? {} : await readBody(req));
+  throw new Fail(404, 'no_route');
+}
+// ---------- Espacio del equipo protegido ----------
+// El espacio entero de un equipo se protege con una sola contraseña, que pone quien administra y que los miembros
+// reciben por fuera de la app. Es una bóveda más (misma tabla, mismo formato, mismo cifrado en el navegador), a
+// nombre de la cuenta interna del equipo y con folder vacío: cubre todas sus notas. Lo que cambia es quién puede qué:
+//   - Proteger, cambiar la contraseña, quitar la protección, eliminar el contenido, rotar la llave y decidir si los
+//     miembros pueden desbloquear para su IA: solo quien administra. Se mira acá, en cada pedido.
+//   - Leer lo que envuelve a la llave (para desbloquear con la contraseña): cualquier miembro. Nadie más.
+//   - Un miembro no crea carpetas con contraseña dentro del equipo: /vaults trabaja solo sobre lo propio.
+// Rotar la llave: quien administra manda la llave nueva ya envuelta (next) y el espacio pasa a 'rotating'. Su
+// navegador vuelve a cifrar cada nota, y mientras tanto los demás miembros no guardan (423 vault_rotating), para
+// que nada quede escrito con la llave vieja. Al terminar, lo nuevo reemplaza a lo anterior, y el historial y la
+// papelera cifrados con la llave vieja se eliminan.
+const TEAM_VAULT_HOUR = 40; // cambios por hora sobre la protección de un equipo
+const teamVault = (t) => (t ? q("SELECT * FROM vaults WHERE user = ? AND folder = ''").get(t.space) || null : null);
+function teamVaultView(user, t) {
+  const v = teamVault(t); if (!v) return null;
+  const admin = t.owner === user.id; const k = aiKey(v, user.id);
+  const out = { id: v.id, team: true, admin, salt: v.salt, iters: v.iters, wrapped: v.wrapped, check: v.verify, state: v.state, created: v.created, ai: k ? { until: k.until } : null, ai_members: !!v.ai_members };
+  // La llave nueva envuelta y el aviso de que alguien salió son de quien administra.
+  if (admin) { out.gone = v.gone; if (v.state === 'rotating' && v.next) out.next = JSON.parse(v.next); }
+  return out;
+}
+// Alguien dejó de ser miembro: lo que tenía abierto para su IA se olvida y queda anotado para quien administra.
+function teamVaultLeft(t, userId) {
+  const v = teamVault(t); if (!v) return;
+  aiForget(v, false, userId);
+  q('UPDATE vaults SET gone = ? WHERE id = ?').run(now(), v.id);
+}
+// Mientras se rota la llave, solo guarda quien administra.
+function teamHold(user, owner) {
+  if (owner.id === user.id || !user.team || user.team.space !== owner.id || user.team.owner === user.id) return;
+  const v = teamVault(user.team);
+  if (v && v.state === 'rotating') throw new Fail(423, 'vault_rotating', 'The key of this team space is being changed. Try again in a moment.');
+}
+const wrapOk = (body) => { const iters = +body.iters; return !!b64(body.salt, 16) && !!b64(body.wrapped, 60) && Number.isInteger(iters) && iters >= 100000 && iters <= 10000000; };
+function teamVaultRoute(user, p, m, body) {
+  const t = user.team;
+  if (!t) throw new Fail(404, 'no_team');
+  const view = () => teamVaultView(userById(user.id), t);
+  if (p === '/team/vault' && m === 'GET') return { vault: teamVaultView(user, t) };
+  const v = teamVault(t);
+  const tell = () => announceUser(t.space, { type: 'vault' });
+  // Desbloquear y bloquear para la IA: quien administra, o un miembro si quien administra lo permitió.
+  if (p === '/team/vault/unlock' && m === 'POST') {
+    if (!v) throw new Fail(404, 'not_found');
+    if (t.owner !== user.id && !v.ai_members) throw new Fail(403, 'ai_not_allowed', 'The administrator of the team has not allowed members to unlock the team space for their AI');
+    if (v.state !== 'on') throw new Fail(409, 'vault', 'The protection of this team space is being changed');
+    aiOpen(user, v, body, user.id);
+    return { vault: view() };
+  }
+  if (p === '/team/vault/lock' && m === 'POST') { if (!v) throw new Fail(404, 'not_found'); aiForget(v, true, user.id); return { vault: view() }; }
+  // Todo lo demás es de quien administra.
+  adminTeam(user);
+  limit('tvault:' + t.id, TEAM_VAULT_HOUR, HOUR, 'too_many'); mark('tvault:' + t.id);
+  if (p === '/team/vault' && m === 'POST') {
+    if (v) throw new Fail(409, 'vault_exists');
+    if (!wrapOk(body) || !b64(body.check, 32)) throw new Fail(400, 'bad_vault');
+    q("INSERT INTO vaults (user, folder, salt, iters, wrapped, verify, created) VALUES (?, '', ?, ?, ?, ?, ?)").run(t.space, body.salt, +body.iters, body.wrapped, body.check, now());
+    vaultPurge(t.space, '');
+    tell();
+    return { vault: view() };
+  }
+  if (!v) throw new Fail(404, 'not_found');
+  if (p === '/team/vault' && m === 'PUT') {
+    // Cambiar la contraseña: la misma llave, envuelta de nuevo. Quien salió con la contraseña vieja ya no entra con ella.
+    if (v.state === 'rotating') throw new Fail(409, 'vault_rotating');
+    if (!wrapOk(body)) throw new Fail(400, 'bad_vault');
+    q('UPDATE vaults SET salt = ?, iters = ?, wrapped = ?, gone = 0 WHERE id = ?').run(body.salt, +body.iters, body.wrapped, v.id);
+    tell();
+    return { vault: view() };
+  }
+  if (p === '/team/vault/ai' && m === 'PUT') {
+    q('UPDATE vaults SET ai_members = ? WHERE id = ?').run(body.members === true ? 1 : 0, v.id);
+    if (body.members !== true) aiForgetAll(v, t.owner);
+    tell();
+    return { vault: view() };
+  }
+  if (p === '/team/vault/gone' && m === 'DELETE') { q('UPDATE vaults SET gone = 0 WHERE id = ?').run(v.id); return { vault: view() }; }
+  if (p === '/team/vault/rotate' && m === 'POST') {
+    if (v.state !== 'on') throw new Fail(409, v.state === 'rotating' ? 'vault_rotating' : 'vault');
+    if (!wrapOk(body) || !b64(body.check, 32) || body.check === v.verify) throw new Fail(400, 'bad_vault');
+    aiForgetAll(v);
+    q("UPDATE vaults SET state = 'rotating', next = ? WHERE id = ?").run(JSON.stringify({ salt: body.salt, iters: +body.iters, wrapped: body.wrapped, check: body.check }), v.id);
+    tell();
+    return { vault: view() };
+  }
+  if (p === '/team/vault/rotate/done' && m === 'POST') {
+    if (v.state !== 'rotating' || !v.next) throw new Fail(409, 'vault');
+    const n = JSON.parse(v.next);
+    db.exec('BEGIN');
+    try {
+      q("UPDATE vaults SET salt = ?, iters = ?, wrapped = ?, verify = ?, state = 'on', next = NULL, gone = 0 WHERE id = ?").run(n.salt, n.iters, n.wrapped, n.check, v.id);
+      // Lo que quedó cifrado con la llave vieja no se puede leer con la nueva.
+      q('DELETE FROM versions WHERE user = ?').run(t.space);
+      q('DELETE FROM trash WHERE user = ? AND v = 1').run(t.space);
+      db.exec('COMMIT');
+    } catch (e) { db.exec('ROLLBACK'); throw e; }
+    scrub(); tell();
+    return { vault: view() };
+  }
+  if (p === '/team/vault/open' && m === 'POST') { if (v.state === 'rotating') throw new Fail(409, 'vault_rotating'); vaultOpening(user, v); return { vault: view() }; }
+  if (p === '/team/vault' && m === 'DELETE') { vaultRemove(user, v); return { ok: true, vault: null }; }
+  if (p === '/team/vault/destroy' && m === 'POST') {
+    // Se confirma con el nombre del equipo o, si no tiene, con el correo de quien administra.
+    if (typeof body.name !== 'string' || body.name !== (t.name || user.email)) throw new Fail(400, 'bad_confirm');
+    return vaultWipe({ id: t.space }, v);
+  }
   throw new Fail(404, 'no_route');
 }
 // De quién son las notas de un pedido que trae o: propias, o del espacio del equipo de quien llama.
@@ -1605,8 +1750,10 @@ function accountDelete(req, user, body) {
   const ids = own ? [user.id, own.space] : [user.id];
   for (const id of ids) {
     for (const row of q('SELECT * FROM lives WHERE owner = ?').all(id)) liveEnd(row, 'closed');
-    for (const v of vaultsOf(id)) aiForget(v, false);
+    for (const v of vaultsOf(id)) aiForgetAll(v);
   }
+  // Quien era miembro de un equipo con el espacio protegido: su llave abierta para la IA se olvida, y queda anotado que salió.
+  if (!own && user.team) teamVaultLeft(user.team, user.id);
   db.exec('BEGIN');
   try {
     if (!own && user.team) q('DELETE FROM team_members WHERE team = ? AND user = ?').run(user.team.id, user.id);
@@ -1971,18 +2118,19 @@ async function route(req, url) {
   if (p === '/notes' && m === 'GET') {
     const oid = +(url.searchParams.get('o') || user.id);
     if (oid === user.id) return listNotes(user).map((n) => (n.v ? n : { path: n.path, updated: n.updated, size: n.size }));
-    if (user.team && oid === user.team.space) return listNotes({ id: oid }).map((n) => ({ path: n.path, updated: n.updated, size: n.size }));
+    if (user.team && oid === user.team.space) return listNotes({ id: oid }).map((n) => (n.v ? { path: n.path, updated: n.updated, size: n.size, v: 1 } : { path: n.path, updated: n.updated, size: n.size }));
     return sharedWith(user).filter((n) => n.owner === oid).map((n) => ({ path: n.path, updated: n.updated, size: n.size }));
   }
   // Con o, estas cuatro trabajan sobre el espacio del equipo de quien llama. Cualquier otro o se rechaza.
   if (p === '/search' && m === 'GET') return searchNotes(spaceOf(user, url.searchParams.get('o')), url.searchParams.get('q'));
-  if (p === '/rename' && m === 'POST') { const b = await readBody(req); return renameNote(spaceOf(user, b.o), b.from, b.to, b); }
+  if (p === '/rename' && m === 'POST') { const b = await readBody(req); const owner = spaceOf(user, b.o); teamHold(user, owner); return renameNote(owner, b.from, b.to, b); }
   if (p.startsWith('/notes/')) {
     const note = dec(p.slice(7));
     const clean = cleanPath(note);
     if (m === 'GET') { const t = target(user, url, clean, 'view'); return Object.assign(readNote(t.owner, clean), { role: t.role }); }
     if (m === 'PUT') {
       const t = target(user, url, clean, 'edit');
+      teamHold(user, t.owner);
       const body = await readBody(req);
       const saved = t.role === 'owner' ? liveWrite(t.owner, clean, body.text, cleanRev(body.rev)) : writeNote(t.owner, clean, body.text, cleanRev(body.rev));
       tellSaved(t.owner.id, clean, saved, { by: user.email, pid: t.role === 'owner' ? 'o' : 'x' }, String(body.text == null ? '' : body.text));
