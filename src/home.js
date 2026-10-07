@@ -125,6 +125,7 @@
       try {
         const a = await LMD.cloud.account();
         cloudNotes = await LMD.cloud.list(true);
+        try { cloudNotes = cloudNotes.concat((await LMD.cloud.shared()).map((n) => ({ path: '~' + n.owner + '/' + n.path, by: n.by, shown: n.path }))); } catch (e) { /* sin compartidas */ }
         const r = row();
         r.append(el('span', { text: a.email + ' · ' + (a.limit ? T('{n} de {m} notas', { n: a.notes, m: a.limit }) : T('{n} notas', { n: a.notes })) }), button(T('Conectar una IA'), 'token'), button(T('Salir'), 'logout'));
         if (step === 'token') {
@@ -165,9 +166,10 @@
         const li = el('li');
         const go = el('a', { class: 'lmd-home-item', href: ctx.APP_URL + '?f=' + encodeURIComponent('cloud/' + n.path.split('/').map(encodeURIComponent).join('/')) });
         go.innerHTML = '<span class="lmd-node-ico">' + ICON.md + '</span><span class="lmd-home-name"></span><span class="lmd-home-path"></span>';
-        go.querySelector('.lmd-home-name').textContent = n.path;
-        go.querySelector('.lmd-home-path').textContent = T('en la nube');
+        go.querySelector('.lmd-home-name').textContent = n.shown || n.path;
+        go.querySelector('.lmd-home-path').textContent = n.by ? T('de {a}', { a: n.by }) : T('en la nube');
         const del = el('button', { type: 'button', class: 'lmd-home-del', title: T('Eliminar la nota') }, ICON.close);
+        if (n.by) del.hidden = true;
         del.addEventListener('click', async () => {
           if (!window.confirm(T('¿Eliminar "{a}"? No se puede deshacer.', { a: n.path }))) return;
           try { await LMD.cloud.remove(n.path); } catch (e) { /* queda en la lista */ }

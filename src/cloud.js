@@ -35,12 +35,50 @@
     return json;
   }
 
-  const notePath = (p) => '/notes/' + p.split('/').map(encodeURIComponent).join('%2F');
+  // Una ruta que empieza con ~12/ es una nota de otra cuenta (la 12) que nos compartieron.
+  const split = (p) => { const m = /^~(\d+)\/(.*)$/.exec(p); return m ? { owner: m[1], path: m[2] } : { owner: '', path: p }; };
+  const notePath = (p) => { const s = split(p); return '/notes/' + s.path.split('/').map(encodeURIComponent).join('%2F') + (s.owner ? '?o=' + s.owner : ''); };
 
-  async function list(fresh) {
+  const otherLists = {};
+  async function list(fresh, owner) {
+    if (owner) {
+      const c = otherLists[owner];
+      if (!fresh && c && Date.now() - c.at < 5000) return c.rows;
+      const rows = await api('GET', '/notes?o=' + owner); otherLists[owner] = { rows, at: Date.now() };
+      return rows;
+    }
     if (!fresh && listCache && Date.now() - listAt < 5000) return listCache;
     listCache = await api('GET', '/notes'); listAt = Date.now();
     return listCache;
+  }
+
+  // Escucha una nota: avisa cuando otro la guarda y quién más la tiene abierta. Se reconecta sola.
+  function events(p, onEvent) {
+    let stop = false; let ctrl = null;
+    const run = async () => {
+      while (!stop) {
+        try {
+          await ready();
+          const s = split(p); ctrl = new AbortController();
+          const res = await fetch(base + '/events?path=' + encodeURIComponent(s.path) + (s.owner ? '&o=' + s.owner : ''), { headers: { authorization: 'Bearer ' + session }, signal: ctrl.signal });
+          if (!res.ok || !res.body) throw new Error('events');
+          const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
+          for (;;) {
+            const r = await reader.read(); if (r.done) break;
+            buf += dec.decode(r.value, { stream: true });
+            let cut;
+            while ((cut = buf.indexOf('\n\n')) !== -1) {
+              const chunk = buf.slice(0, cut); buf = buf.slice(cut + 2);
+              const line = chunk.split('\n').find((l) => l.startsWith('data: '));
+              if (line) { try { onEvent(JSON.parse(line.slice(6))); } catch (e) { /* evento ilegible */ } }
+            }
+          }
+        } catch (e) { /* sin conexión: se reintenta */ }
+        if (!stop) await new Promise((r) => setTimeout(r, 5000));
+      }
+    };
+    run();
+    return () => { stop = true; if (ctrl) ctrl.abort(); };
   }
 
   // Se comporta como un archivo del disco, igual que las notas del navegador.
@@ -48,13 +86,31 @@
     return {
       kind: 'file', name: path.split('/').pop(),
       queryPermission: async () => 'granted',
-      getFile: async () => { const n = await api('GET', notePath(path)); return { text: async () => n.text, lastModified: n.updated, size: n.text.length }; },
+      getFile: async () => { const n = await api('GET', notePath(path)); roles[path] = n.role || 'owner'; return { text: async () => n.text, lastModified: n.updated, size: n.text.length }; },
       createWritable: async () => { let data = ''; return { write: async (t) => { data = String(t); }, close: async () => { await api('PUT', notePath(path), { text: data }); listCache = null; } }; },
     };
   }
 
+  const roles = {};
+
   LMD.cloud = {
-    ready, api, list, handle,
+    ready, api, list, handle, events, split,
+    roleOf: (p) => roles[p] || 'owner',
+    shared: () => api('GET', '/shared'),
+    shares: (p) => api('GET', '/shares?path=' + encodeURIComponent(p)),
+    share: (p, mail, role, kind) => api('POST', '/shares', { path: p, email: mail, role, kind }),
+    unshare: (id) => api('DELETE', '/shares/' + id),
+    link: (p, password) => api('POST', '/links', { path: p, password }),
+    unlink: (id) => api('DELETE', '/links/' + id),
+    publicNote: async (token, password) => {
+      await ready();
+      let res;
+      try { res = await fetch(base + '/public/' + encodeURIComponent(token), { headers: password ? { 'x-password': password } : {} }); }
+      catch (e) { throw Object.assign(new Error('offline'), { code: 'offline' }); }
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw Object.assign(new Error((json && json.error) || 'failed'), { code: (json && json.error) || 'failed' });
+      return json;
+    },
     enabled: () => !!base,
     signedIn: () => !!session,
     email: () => email,

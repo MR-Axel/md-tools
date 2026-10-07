@@ -28,7 +28,9 @@
       else { icon = ICON.cloudOk; cls = 'lmd-sync-ok'; title = T('Sincronizado con la nube'); }
     } else title = LMD.cloud.signedIn() ? T('Esta nota no está en la nube. Clic para subirla') : T('Sincronización apagada. Clic para entrar a tu cuenta');
     btn.className = 'lmd-icon-btn lmd-sync ' + cls;
-    btn.innerHTML = icon; btn.title = title;
+    const others = isCloud() ? core.present.filter((m) => m !== LMD.cloud.email()) : [];
+    btn.innerHTML = icon + (others.length ? '<b class="lmd-sync-n">' + (others.length + 1) + '</b>' : '');
+    btn.title = title + (others.length ? ' · ' + T('También acá: {a}', { a: others.join(', ') }) : '');
     loadAccount();
   }
 
@@ -56,6 +58,7 @@
     const pro = !!account && account.plan === 'pro';
     menu = el('div', { class: 'lmd-menu lmd-menu-narrow', role: 'menu' });
     menu.innerHTML = '<div class="lmd-menu-list">' +
+      (core.readOnly ? '' : '<button type="button" role="menuitem" data-s="share"' + (account && account.share && !mine().owner ? '' : ' class="lmd-locked"') + '>' + ICON.link + '<span>' + T('Compartir') + '</span></button>') +
       '<button type="button" role="menuitem" data-s="history"' + (pro ? '' : ' class="lmd-locked"') + '>' + ICON.reload + '<span>' + T('Historial de versiones') + '</span></button>' +
       '<button type="button" role="menuitem" data-s="ai"' + (account && account.mcp ? '' : ' class="lmd-locked"') + '>' + ICON.link + '<span>' + T('Conectar una IA') + '</span></button>' +
       (account ? '<p class="lmd-menu-label">' + esc(account.email) + ' · ' + T(pro ? 'Plan pago' : 'Plan gratis') + '</p>' : '') + '</div>';
@@ -66,9 +69,66 @@
     menu.addEventListener('click', (e) => {
       const b = e.target.closest('[data-s]'); if (!b) return;
       closeMenu();
-      if (b.classList.contains('lmd-locked')) { core.flash(T(b.dataset.s === 'history' ? 'El historial de versiones es parte del plan pago.' : 'Conectar una IA es parte del plan pago.'), 'warn'); return; }
-      if (b.dataset.s === 'history') history(); else goApp('');
+      if (b.classList.contains('lmd-locked')) {
+        core.flash(T(mine().owner && b.dataset.s !== 'ai' ? 'Solo quien creó la nota puede hacer eso.' : b.dataset.s === 'history' ? 'El historial de versiones es parte del plan pago.' : b.dataset.s === 'share' ? 'Compartir es parte del plan pago.' : 'Conectar una IA es parte del plan pago.'), 'warn');
+        return;
+      }
+      if (b.dataset.s === 'history') history(); else if (b.dataset.s === 'share') share(); else goApp('');
     });
+  }
+
+  const mine = () => LMD.cloud.split(core.cloudPath);
+
+  // Compartir: con otra cuenta (ver o editar), o con un enlace público de solo lectura, con contraseña opcional.
+  async function share() {
+    const path = core.cloudPath; const folder = path.indexOf('/') > 0 ? path.slice(0, path.lastIndexOf('/')) : '';
+    const box = el('div', { class: 'lmd-ask' });
+    box.innerHTML = '<div class="lmd-ask-card lmd-share" role="dialog" aria-label="' + T('Compartir') + '"><h3>' + T('Compartir') + '</h3>' +
+      '<h4>' + T('Con otra cuenta') + '</h4>' +
+      '<div class="lmd-share-row"><input type="email" data-sh="email" placeholder="' + T('correo de la otra persona') + '">' +
+        '<select data-sh="role"><option value="edit">' + T('Puede editar') + '</option><option value="view">' + T('Solo ver') + '</option></select>' +
+        '<button type="button" class="lmd-btn lmd-btn-fill" data-sh="invite">' + T('Compartir') + '</button></div>' +
+      (folder ? '<label class="lmd-check"><input type="checkbox" data-sh="folder"><span>' + T('Compartir toda la carpeta "{a}"', { a: esc(folder) }) + '</span></label>' : '') +
+      '<ul data-sh="people"></ul>' +
+      '<h4>' + T('Con un enlace de solo lectura') + '</h4>' +
+      '<div class="lmd-share-row"><input type="text" data-sh="pass" placeholder="' + T('contraseña (opcional)') + '"><button type="button" class="lmd-btn" data-sh="link">' + T('Crear enlace') + '</button></div>' +
+      '<ul data-sh="links"></ul>' +
+      '<p class="lmd-img-err" hidden></p>' +
+      '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-sh="close">' + T('Cerrar') + '</button></div></div>';
+    document.body.appendChild(box);
+    const q = (n) => box.querySelector('[data-sh=' + n + ']'); const err = box.querySelector('.lmd-img-err');
+    const fail = (e) => { err.hidden = false; err.textContent = T({ bad_email: 'Ese correo no parece válido.', own_email: 'Ese es tu propio correo.', offline: 'No hay conexión con el servidor.', share_needs_plan: 'Compartir es parte del plan pago.' }[e && e.code] || 'No se pudo completar. Probá de nuevo.'); };
+    const made = {}; // enlaces creados en esta ventana: el token solo se conoce al crearlo
+    const draw = async () => {
+      try {
+        const all = await LMD.cloud.api('GET', '/shares');
+        const people = all.people.filter((s) => s.path === path || (s.kind === 'folder' && path.startsWith(s.path + '/')));
+        q('people').innerHTML = people.map((s) => '<li><span>' + esc(s.email) + ' · ' + T(s.role === 'edit' ? 'Puede editar' : 'Solo ver') + (s.kind === 'folder' ? ' · ' + esc(s.path) + '/' : '') + '</span><button type="button" data-rm="s' + s.id + '">' + T('Quitar') + '</button></li>').join('');
+        q('links').innerHTML = all.links.filter((l) => l.path === path).map((l) => '<li>' + (made[l.id] ? '<input type="text" readonly value="' + esc(made[l.id]) + '">' : '<span>' + T(l.protected ? 'Enlace con contraseña' : 'Enlace abierto') + '</span>') + '<button type="button" data-rm="l' + l.id + '">' + T('Quitar') + '</button></li>').join('');
+      } catch (e) { fail(e); }
+    };
+    draw();
+    box.addEventListener('click', async (e) => {
+      if (e.target === box || e.target.closest('[data-sh=close]')) { box.remove(); return; }
+      err.hidden = true;
+      try {
+        const rm = e.target.closest('[data-rm]');
+        if (rm) { if (rm.dataset.rm[0] === 's') await LMD.cloud.unshare(rm.dataset.rm.slice(1)); else await LMD.cloud.unlink(rm.dataset.rm.slice(1)); return draw(); }
+        if (e.target.closest('[data-sh=invite]')) {
+          const whole = q('folder') && q('folder').checked;
+          await LMD.cloud.share(whole ? folder : path, q('email').value.trim(), q('role').value, whole ? 'folder' : 'note');
+          q('email').value = ''; return draw();
+        }
+        if (e.target.closest('[data-sh=link]')) {
+          const r = await LMD.cloud.link(path, q('pass').value);
+          const all = await LMD.cloud.api('GET', '/shares?path=' + encodeURIComponent(path));
+          const newest = all.links.sort((a, b) => b.id - a.id)[0];
+          if (newest) made[newest.id] = LMD.WEB_APP_URL + '?f=' + encodeURIComponent('pub/' + r.token);
+          q('pass').value = ''; return draw();
+        }
+      } catch (ex) { fail(ex); }
+    });
+    box.addEventListener('focusin', (e) => { if (e.target.matches('input[readonly]')) e.target.select(); });
   }
 
   async function history() {

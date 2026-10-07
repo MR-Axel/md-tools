@@ -235,6 +235,16 @@
       "Ya aporté": "I already supported",
       "Gracias por apoyar": "Thanks for supporting",
       "Actualizaciones": "Updates",
+      "Compartido": "Shared", "Esta nota está protegida. Contraseña:": "This note is protected. Password:",
+      "Esa contraseña no coincide. Probá de nuevo:": "That password does not match. Try again:",
+      "Demasiados intentos. Probá de nuevo en unos minutos.": "Too many tries. Try again in a few minutes.", "Ese enlace ya no existe.": "That link no longer exists.",
+      "Esta nota es de solo lectura": "This note is read-only", "Se sumaron los cambios de otra persona": "Someone else's changes were merged in",
+      "También acá: {a}": "Also here: {a}", "Compartir": "Share", "Solo quien creó la nota puede hacer eso.": "Only the person who created the note can do that.",
+      "Compartir es parte del plan pago.": "Sharing is part of the paid plan.", "Con otra cuenta": "With another account",
+      "correo de la otra persona": "the other person's email", "Puede editar": "Can edit", "Solo ver": "View only",
+      "Compartir toda la carpeta \"{a}\"": "Share the whole \"{a}\" folder", "Con un enlace de solo lectura": "With a read-only link",
+      "contraseña (opcional)": "password (optional)", "Crear enlace": "Create link", "Ese es tu propio correo.": "That is your own email.",
+      "Quitar": "Remove", "Enlace con contraseña": "Link with a password", "Enlace abierto": "Open link", "de {a}": "from {a}",
       "Lectura y edición": "Reading and editing", "Plugins": "Plugins", "Cuenta": "Account",
       "La sincronización se activa cuando hay un servidor configurado.": "Sync turns on when a server is configured.",
       "Entrá a tu cuenta desde la pantalla de inicio de Sharpmd.": "Sign in from the Sharpmd start screen.",
@@ -478,7 +488,9 @@
 
   // Servidor de sincronización de esta versión. Vacío: la nube no aparece.
   const CLOUD_URL = '';
+  // Dirección pública de la app web: es la que llevan los enlaces para compartir.
+  const WEB_APP_URL = 'https://mr-axel.github.io/sharpmd/src/app.html';
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
 
-  root.LMD = { SPONSOR_URL, CLOUD_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
+  root.LMD = { SPONSOR_URL, CLOUD_URL, WEB_APP_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
 })(typeof self !== 'undefined' ? self : this);

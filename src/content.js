@@ -83,6 +83,7 @@
     if (!appRoot || !parts.length) return null;
     if (appRoot.kind === 'local') return parts.length === 1 ? LMD.store.noteHandle(parts[0]) : null;
     if (appRoot.kind === 'cloud') return LMD.cloud.handle(parts.join('/'));
+    if (appRoot.kind === 'pub') return { kind: 'file', name: appRoot.title, getFile: async () => ({ text: async () => appRoot.text, lastModified: 0, size: appRoot.text.length }) };
     if (appRoot.kind === 'file') return parts.length === 1 && parts[0] === appRoot.handle.name ? appRoot.handle : null;
     let cur = appRoot.handle;
     for (let k = 0; k < parts.length - 1; k++) cur = await cur.getDirectoryHandle(parts[k]);
@@ -93,10 +94,12 @@
   }
   async function vList(dirUrl) {
     try {
+      if (appRoot.kind === 'pub') return [];
       if (appRoot.kind === 'cloud') {
         // La nube guarda rutas completas: las carpetas se deducen de ellas.
-        const prefix = vParts(dirUrl).map((p) => p + '/').join(''); const rows = []; const seen = new Set();
-        (await LMD.cloud.list()).forEach((n) => {
+        const parts = vParts(dirUrl); const other = parts.length && parts[0][0] === '~' ? parts.shift().slice(1) : '';
+        const prefix = parts.map((p) => p + '/').join(''); const rows = []; const seen = new Set();
+        (await LMD.cloud.list(false, other)).forEach((n) => {
           if (!n.path.startsWith(prefix)) return;
           const rest = n.path.slice(prefix.length); const cut = rest.indexOf('/');
           const name = cut < 0 ? rest : rest.slice(0, cut);
@@ -553,7 +556,9 @@
     ui.searchCount = ui.searchBox.querySelector('.lmd-search-count');
 
     document.title = DOC_NAME || 'Markdown';
-    ui.main.querySelector('.lmd-docname').textContent = DOC_NAME;
+    ui.main.querySelector('.lmd-docname').textContent = (appRoot && appRoot.title) || DOC_NAME;
+    if (appRoot && appRoot.title) document.title = appRoot.title;
+    document.documentElement.classList.toggle('lmd-readonly', readOnly);
     bindEvents();
     bindEditing();
     LMD.write.init(core);
@@ -907,7 +912,21 @@
     refreshTimer = setInterval(() => { if (!document.hidden) checkForChanges(false); }, Math.max(300, settings.refreshInterval | 0));
   }
 
-  let diskStamp = ''; let cloudPoll = 0; let cloudState = 'ok';
+  let diskStamp = ''; let cloudPoll = 0; let cloudState = 'ok'; let readOnly = false; let present = [];
+
+  // Junta dos ediciones de la misma nota si tocaron partes distintas. Devuelve null si se pisan.
+  function merge3(base, mine, theirs) {
+    const b = base.split('\n'); const m = mine.split('\n'); const t = theirs.split('\n');
+    const span = (x) => {
+      let s = 0; while (s < b.length && s < x.length && b[s] === x[s]) s++;
+      let e = 0; while (e < b.length - s && e < x.length - s && b[b.length - 1 - e] === x[x.length - 1 - e]) e++;
+      return { s, end: b.length - e, lines: x.slice(s, x.length - e) };
+    };
+    const a = span(m); const c = span(t);
+    if (a.end <= c.s) return b.slice(0, a.s).concat(a.lines, b.slice(a.end, c.s), c.lines, b.slice(c.end)).join('\n');
+    if (c.end <= a.s) return b.slice(0, c.s).concat(c.lines, b.slice(c.end, a.s), a.lines, b.slice(a.end)).join('\n');
+    return null;
+  }
   async function readCurrent() {
     // La nube se consulta cada diez segundos: alcanza para ver lo que escribió una IA sin martillar el servidor.
     if (APP && appRoot && appRoot.kind === 'cloud') { if (Date.now() - cloudPoll < 10000) return diskText; cloudPoll = Date.now(); }
@@ -943,8 +962,13 @@
       if (text == null) {
         if (manual) flash(T('No se pudo releer el archivo. Recargá la pestaña con F5'), 'error');
       } else if (text !== diskText) {
+        const typing = document.activeElement && document.activeElement.isContentEditable;
+        const merged = dirty && appRoot && appRoot.kind === 'cloud' && !typing ? merge3(diskText, raw, text) : null;
+        // Con el cursor en un bloque no se redibuja: se reintenta apenas se suelta.
+        if (dirty && appRoot && appRoot.kind === 'cloud' && typing) { cloudPoll = 0; return; }
         diskText = text;
-        if (dirty) flash(T('El archivo cambió en el disco. Tus cambios sin guardar se mantienen'), 'warn');
+        if (merged != null) { raw = merged; syncSource(); markDirty(); render(); flash(T('Se sumaron los cambios de otra persona')); }
+        else if (dirty) flash(T('El archivo cambió en el disco. Tus cambios sin guardar se mantienen'), 'warn');
         else { raw = text; render(); flash(T('Documento actualizado')); }
       } else if (manual) flash(T('Sin cambios'));
     } finally { checking = false; }
@@ -1560,6 +1584,7 @@
   }
 
   async function setEditMode(on) {
+    if (on && readOnly) { flash(T('Esta nota es de solo lectura'), 'warn'); return; }
     // Salir de edición guarda lo pendiente. Si se cancela el guardado, los cambios quedan sin guardar.
     if (!on && editMode) {
       const a = document.activeElement;
@@ -1803,6 +1828,8 @@
   const core = {
     get shape() { return settings.diagramShape; },
     get cloudState() { return cloudState; },
+    get readOnly() { return readOnly; },
+    get present() { return present; },
     get cloudPath() { return vParts(HERE).join('/'); },
     openApp: (query) => bg({ type: 'openApp', query }),
     ui, hooks: { render: [], tree: [] }, lastBlock: null, appUrl: APP_URL,
@@ -1993,7 +2020,28 @@
       const text = LMD.cloud.signedIn() ? await vText(HERE) : null;
       if (text == null) { appRoot = null; LMD.home.show(homeCtx(), T(LMD.cloud.signedIn() ? 'No se encontró "{a}".' : 'Entrá a tu cuenta para abrir las notas de la nube.', { a: DOC_NAME })); return false; }
       raw = text; diskText = text;
+      readOnly = LMD.cloud.roleOf(vParts(HERE).join('/')) === 'view';
       return true;
+    }
+    if (id === 'pub') {
+      // Enlace público de solo lectura; si tiene contraseña, se pide.
+      await LMD.cloud.ready();
+      const token = vParts(HERE).join('/'); let password = '';
+      for (let tries = 0; tries < 6; tries++) {
+        try {
+          const n = await LMD.cloud.publicNote(token, password);
+          appRoot = { id, kind: 'pub', name: T('Compartido'), title: n.path.split('/').pop(), text: n.text };
+          raw = n.text; diskText = n.text; readOnly = true;
+          return true;
+        } catch (e) {
+          if (e.code === 'need_password' || e.code === 'bad_password') {
+            password = window.prompt(T(e.code === 'bad_password' ? 'Esa contraseña no coincide. Probá de nuevo:' : 'Esta nota está protegida. Contraseña:')) || '';
+            if (!password) break;
+          } else { LMD.home.show(homeCtx(), T(e.code === 'locked' ? 'Demasiados intentos. Probá de nuevo en unos minutos.' : 'Ese enlace ya no existe.')); return false; }
+        }
+      }
+      LMD.home.show(homeCtx());
+      return false;
     }
     if (id === 'local') {
       // Nota guardada en el navegador.
@@ -2041,6 +2089,14 @@
     render();
     updateSaveState();
     checkUpdate(false);
+    // Nota de la nube: se escucha en vivo quién más está y cuándo alguien guarda.
+    if (appRoot && appRoot.kind === 'cloud') {
+      LMD.cloud.events(vParts(HERE).join('/'), (ev) => {
+        present = ev.who || [];
+        if (ev.type === 'saved' && ev.by !== LMD.cloud.email()) { cloudPoll = 0; checkForChanges(false); }
+        LMD.sync.paint();
+      });
+    }
     // Un archivo recién creado arranca listo para escribir.
     if (APP && new URLSearchParams(location.search).has('edit')) {
       history.replaceState(null, '', location.href.replace(/[?&]edit=1/, ''));

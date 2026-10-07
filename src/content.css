@@ -646,3 +646,19 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-hist-body li button:hover, .lmd-hist-body li button.lmd-on { background: var(--accent-soft); color: var(--accent); }
 .lmd-hist-body small { color: var(--fg-faint); }
 .lmd-hist-body pre { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-code); font: 12.5px/1.5 var(--lmd-mono); white-space: pre-wrap; overflow: auto; }
+
+/* ---------- Compartir y presencia ---------- */
+.lmd-sync { position: relative; }
+.lmd-sync-n { position: absolute; right: -4px; top: -3px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; background: var(--accent-fill); color: var(--accent-fg); font: 700 10px/15px var(--lmd-font); text-align: center; }
+.lmd-readonly .lmd-modeseg [data-act=mode-edit], .lmd-readonly .lmd-insert, .lmd-readonly .lmd-save { opacity: 0.35; }
+.lmd-share { width: min(560px, 100%); }
+.lmd-share h4 { margin: 16px 0 8px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-faint); }
+.lmd-share-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.lmd-share input[type=email], .lmd-share input[type=text], .lmd-share select { flex: 1; min-width: 0; height: 36px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--fg); font: inherit; font-size: 14px; outline: none; }
+.lmd-share select { flex: 0 0 auto; }
+.lmd-share input:focus { border-color: var(--accent-fill); }
+.lmd-share ul { margin: 0 0 4px; padding: 0; list-style: none; }
+.lmd-share li { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13.5px; color: var(--fg-muted); }
+.lmd-share li span, .lmd-share li input { flex: 1; min-width: 0; }
+.lmd-share li button { border: 0; background: none; color: var(--fg-faint); font: inherit; font-size: 12.5px; cursor: pointer; }
+.lmd-share li button:hover { color: #dc2626; }

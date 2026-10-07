@@ -6,7 +6,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'mdsync-'));
 const PORT = 19000 + Math.floor(Math.random() * 900);
 const base = 'http://127.0.0.1:' + PORT;
-const server = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(PORT), DATA_DIR: data, DEV_CODES: '1', MCP_FREE: '1', PUBLIC_URL: base }, stdio: ['ignore', 'pipe', 'pipe'] });
+const server = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(PORT), DATA_DIR: data, DEV_CODES: '1', MCP_FREE: '1', SHARE_FREE: '1', PUBLIC_URL: base }, stdio: ['ignore', 'pipe', 'pipe'] });
 let log = ''; server.stdout.on('data', (d) => { log += d; }); server.stderr.on('data', (d) => { log += d; });
 for (let i = 0; i < 50 && !/puerto/.test(log); i++) await new Promise((r) => setTimeout(r, 100));
 
@@ -64,6 +64,20 @@ try {
   await app.click('.lmd-sync'); await app.waitForSelector('.lmd-menu [data-s=history]');
   o.historialBloqueado = await app.evaluate(() => document.querySelector('.lmd-menu [data-s=history]').classList.contains('lmd-locked'));
   await app.keyboard.press('Escape'); await app.mouse.click(700, 500);
+  await app.click('.lmd-sync'); await app.click('.lmd-menu [data-s=share]'); await app.waitForSelector('.lmd-share');
+  await app.fill('[data-sh=email]', 'beto@ejemplo.test'); await app.click('[data-sh=invite]'); await app.waitForSelector('[data-sh=people] li');
+  o.invitado = await app.textContent('[data-sh=people] li span');
+  await app.fill('[data-sh=pass]', 'manzana-42'); await app.click('[data-sh=link]'); await app.waitForSelector('[data-sh=links] li input');
+  const shareUrl = await app.inputValue('[data-sh=links] li input');
+  o.enlace = /app\.html\?f=pub%2F/.test(shareUrl);
+  await app.click('[data-sh=close]');
+  const visitor = await ctx.newPage();
+  await visitor.addInitScript(() => { let n = 0; window.prompt = () => (n++ ? 'manzana-42' : 'equivocada'); });
+  await visitor.goto(home + '?' + shareUrl.split('?')[1]); await visitor.waitForSelector('.markdown-body h1');
+  o.publico = [await visitor.textContent('.markdown-body h1'), await visitor.title(), await visitor.evaluate(() => document.documentElement.classList.contains('lmd-readonly'))];
+  await visitor.click('[data-act=mode-edit]'); await visitor.waitForTimeout(300);
+  o.publicoNoEdita = await visitor.evaluate(() => !document.documentElement.classList.contains('lmd-editing'));
+  await visitor.close();
   await app.goto(home); await app.waitForSelector('[data-cloud=logout]'); await app.click('[data-cloud=logout]'); await app.waitForSelector('[data-cloud=ask]');
   o.salio = (await app.locator('.lmd-home-item', { hasText: 'en la nube' }).count()) === 0;
   await app.goto(noteUrl.replace('&edit=1', '')); await app.waitForSelector('.lmd-home-msg:not([hidden])');
@@ -81,6 +95,9 @@ const checks = [
   ['en una nota del navegador el ícono aparece apagado', /lmd-sync-off/.test(o.iconoFuera || ''), o.iconoFuera],
   ['un clic la sube a la nube', o.subida && o.subida[0] && /Suelta/.test(o.subida[1]), o.subida],
   ['el historial figura bloqueado en el plan gratis', o.historialBloqueado === true],
+  ['compartir con otra cuenta la deja en la lista', /beto@ejemplo\.test/.test(o.invitado || ''), o.invitado],
+  ['crea un enlace público para la app web', o.enlace === true],
+  ['el enlace con contraseña abre de solo lectura', o.publico && /Suelta/.test(o.publico[0]) && o.publico[1] === 'suelta.md' && o.publico[2] === true && o.publicoNoEdita === true, o.publico],
   ['aparece en el inicio como nota de la nube', /en la nube/.test(o.enInicio || ''), o.enInicio],
   ['el panel para conectar una IA da URL, token y comando', o.campos && o.campos[0] === base + '/mcp' && o.campos[1] === 'mdt_' && o.campos[2].startsWith('claude mcp add --transport http sharpmd'), o.campos],
   ['la IA lee por MCP lo escrito en la app', (o.leeLaIA || '').trim() === '# Plan\n\nEscrito en la app.', o.leeLaIA],
