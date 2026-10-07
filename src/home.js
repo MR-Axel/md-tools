@@ -137,7 +137,12 @@
             cloudBox.appendChild(f);
           });
         }
-      } catch (e) { if (!LMD.cloud.signedIn()) return paintCloud(); line(why(e)); }
+      } catch (e) {
+        if (!LMD.cloud.signedIn()) return paintCloud();
+        line(why(e));
+        // Sin conexión se listan las notas que tienen copia en este navegador: son las que se pueden abrir.
+        if (e.code === 'offline') cloudNotes = (await LMD.cloud.kept()).sort((a, b) => b.updated - a.updated).map((n) => ({ path: n.path, shown: LMD.cloud.split(n.path).path, off: true }));
+      }
     };
     cloudBox.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-cloud]'); if (!b) return;
@@ -157,6 +162,8 @@
 
     const recent = box.querySelector('.lmd-home-recent');
     const paint = async () => {
+      // Lo escrito sin conexión en notas que ya no están abiertas se sube antes de listar.
+      try { await LMD.cloud.flush(); } catch (e) { /* queda en la cola */ }
       const recs = (await rootsAll()).slice(0, 8);
       const notes = (await notesAll()).slice(0, 12);
       await paintCloud();
@@ -167,9 +174,9 @@
         const go = el('a', { class: 'lmd-home-item', href: ctx.APP_URL + '?f=' + encodeURIComponent('cloud/' + n.path.split('/').map(encodeURIComponent).join('/')) });
         go.innerHTML = '<span class="lmd-node-ico">' + ICON.md + '</span><span class="lmd-home-name"></span><span class="lmd-home-path"></span>';
         go.querySelector('.lmd-home-name').textContent = n.shown || n.path;
-        go.querySelector('.lmd-home-path').textContent = n.by ? T('de {a}', { a: n.by }) : T('en la nube');
+        go.querySelector('.lmd-home-path').textContent = n.by ? T('de {a}', { a: n.by }) : T(n.off ? 'copia sin conexión' : 'en la nube');
         const del = el('button', { type: 'button', class: 'lmd-home-del', title: T('Eliminar la nota') }, ICON.close);
-        if (n.by) del.hidden = true;
+        if (n.by || n.off) del.hidden = true;
         del.addEventListener('click', async () => {
           if (!window.confirm(T('¿Eliminar "{a}"? No se puede deshacer.', { a: n.path }))) return;
           try { await LMD.cloud.remove(n.path); } catch (e) { /* queda en la lista */ }

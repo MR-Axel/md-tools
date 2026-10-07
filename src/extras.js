@@ -17,7 +17,73 @@
     try { await dir.getDirectoryHandle(name); return true; } catch (e) { return false; }
   }
 
+  // ---------- Archivos de la nube ----------
+  // En la nube una carpeta es solo el comienzo de la ruta: "proyecto/plan.md" la crea al crear la nota,
+  // y renombrar con otra ruta es mover.
+  const inCloud = () => core.APP && !!core.appRoot && core.appRoot.kind === 'cloud';
+  const canTree = () => canManage() || inCloud();
+  const cloudName = (v) => {
+    const parts = String(v || '').replace(/\\/g, '/').split('/').map((s) => s.trim()).filter(Boolean);
+    return parts.length && !parts.some((s) => /[:*?"<>|\x00-\x1f]/.test(s) || /^\.\.?$/.test(s) || s[0] === '~') ? parts.join('/') : '';
+  };
+  const cloudWhy = (e, fallback) => T({ offline: 'No hay conexión con el servidor.', note_limit: 'Llegaste al límite de notas del plan gratis. El plan pago no tiene límite.',
+    no_access: 'Esta carpeta es de solo lectura', exists: 'Ya hay un archivo con ese nombre', bad_path: 'Ese nombre tiene caracteres que no se pueden usar' }[e && e.code] || fallback);
+  // Renombrar y eliminar son de quien creó la nota: lo compartido se puede leer o editar, no mover.
+  const notMine = (path) => { if (!LMD.cloud.split(path).owner) return false; core.flash(T('Solo quien creó la nota puede hacer eso.'), 'warn'); return true; };
+
+  async function cloudNew(dirUrl, folder) {
+    const typed = window.prompt(T(folder ? 'Nombre de la carpeta nueva' : 'Nombre del archivo nuevo'), folder ? T('carpeta') : T('nota') + '.md');
+    if (!typed || !typed.trim()) return;
+    let name = cloudName(typed);
+    if (!name) { core.flash(T('Ese nombre tiene caracteres que no se pueden usar'), 'error'); return; }
+    // Una carpeta existe mientras tenga algo adentro: nace con su primera nota.
+    if (folder) name += '/' + T('nota') + '.md'; else if (!/\.[A-Za-z0-9]+$/.test(name)) name += '.md';
+    const dir = core.pathOf(dirUrl); const path = (dir ? dir + '/' : '') + name; const s = LMD.cloud.split(path);
+    try {
+      const all = await LMD.cloud.list(true, s.owner);
+      if (folder && all.some((n) => n.path.startsWith(s.path.slice(0, s.path.lastIndexOf('/') + 1)))) { core.flash(T('Ya hay una carpeta con ese nombre'), 'error'); return; }
+      if (all.some((n) => n.path === s.path || n.path.startsWith(s.path + '/'))) { core.flash(T('Ya hay un archivo con ese nombre'), 'error'); return; }
+      const file = name.split('/').pop();
+      await LMD.cloud.write(path, MD_RE.test(file) ? '# ' + file.replace(/\.[^.]+$/, '') + '\n' : '');
+      location.href = core.toHref(core.urlOf(path));
+    } catch (e) { core.flash(cloudWhy(e, 'No se pudo crear el archivo'), 'error'); }
+  }
+
+  async function cloudRename(url, isDir) {
+    const old = core.pathOf(url);
+    if (notMine(old)) return;
+    const typed = window.prompt(T('Nombre nuevo. Con "/" se mueve a una carpeta'), old);
+    if (!typed || !typed.trim()) return;
+    let to = cloudName(typed);
+    if (!to) { core.flash(T('Ese nombre tiene caracteres que no se pueden usar'), 'error'); return; }
+    if (!isDir && !/\.[A-Za-z0-9]+$/.test(to)) to += (/\.[^./]+$/.exec(old) || ['.md'])[0];
+    if (to === old) return;
+    try {
+      const all = (await LMD.cloud.list(true)).map((n) => n.path);
+      const moves = isDir ? all.filter((p) => p.startsWith(old + '/')).map((p) => [p, to + p.slice(old.length)]) : [[old, to]];
+      if (moves.some((m) => all.includes(m[1]) && !moves.some((x) => x[0] === m[1]))) { core.flash(T('Ya hay un archivo con ese nombre'), 'error'); return; }
+      // La nota abierta se guarda antes de moverla, y después se reabre en su ruta nueva.
+      const here = moves.find((m) => m[0] === core.cloudPath);
+      if (here && core.dirty && !(await core.save(false))) return;
+      for (const m of moves) await LMD.cloud.rename(m[0], m[1]);
+      if (here) location.href = core.toHref(core.urlOf(here[1]));
+      else core.reloadTree();
+    } catch (e) { core.flash(cloudWhy(e, 'No se pudo renombrar'), 'error'); if (isDir) core.reloadTree(); }
+  }
+
+  async function cloudRemove(url) {
+    const path = core.pathOf(url);
+    if (notMine(path)) return;
+    if (!window.confirm(T('¿Eliminar "{a}"? No se puede deshacer.', { a: path }))) return;
+    try {
+      await LMD.cloud.remove(path);
+      if (url === core.HERE) location.href = core.appUrl;
+      else core.reloadTree();
+    } catch (e) { core.flash(cloudWhy(e, 'No se pudo eliminar'), 'error'); }
+  }
+
   async function newFile(dirUrl) {
+    if (inCloud()) return cloudNew(dirUrl, false);
     let name = (window.prompt(T('Nombre del archivo nuevo'), T('nota') + '.md') || '').trim();
     if (!name) return;
     if (/[\\/:*?"<>|]/.test(name)) { core.flash(T('Ese nombre tiene caracteres que no se pueden usar'), 'error'); return; }
@@ -33,7 +99,8 @@
     } catch (e) { core.flash(T('No se pudo crear el archivo'), 'error'); }
   }
 
-  async function rename(url) {
+  async function rename(url, isDir) {
+    if (inCloud()) return cloudRename(url, isDir);
     const old = nameOf(url);
     let name = (window.prompt(T('Nombre nuevo'), old) || '').trim();
     if (!name || name === old) return;
@@ -57,6 +124,7 @@
   }
 
   async function remove(url) {
+    if (inCloud()) return cloudRemove(url);
     const name = nameOf(url);
     if (!window.confirm(T('¿Eliminar "{a}"? No se puede deshacer.', { a: name }))) return;
     try {
@@ -71,12 +139,13 @@
   const closeMenu = () => { if (menu) { menu.remove(); menu = null; } };
   function treeMenu(x, y, node) {
     closeMenu();
-    const url = node.dataset.url; const isDir = node.classList.contains('lmd-node-dir');
+    const url = node.dataset.url; const isDir = node.classList.contains('lmd-node-dir'); const cloud = inCloud();
     menu = el('div', { class: 'lmd-menu lmd-menu-narrow', role: 'menu' });
     menu.innerHTML = '<div class="lmd-menu-list">' +
       '<button type="button" role="menuitem" data-f="new">' + T(isDir ? 'Nuevo archivo acá' : 'Nuevo archivo') + '</button>' +
-      (isDir ? '' : '<button type="button" role="menuitem" data-f="ren">' + T('Renombrar') + '</button>' +
-        '<button type="button" role="menuitem" data-f="del" class="lmd-menu-danger">' + T('Eliminar') + '</button>') + '</div>';
+      (cloud ? '<button type="button" role="menuitem" data-f="dir">' + T('Nueva carpeta') + '</button>' : '') +
+      (isDir && !cloud ? '' : '<button type="button" role="menuitem" data-f="ren">' + T('Renombrar') + '</button>') +
+      (isDir ? '' : '<button type="button" role="menuitem" data-f="del" class="lmd-menu-danger">' + T('Eliminar') + '</button>') + '</div>';
     document.body.appendChild(menu);
     menu.style.left = Math.min(window.innerWidth - menu.offsetWidth - 8, x) + 'px';
     menu.style.top = Math.min(window.innerHeight - menu.offsetHeight - 8, y) + 'px';
@@ -84,7 +153,8 @@
       const b = e.target.closest('button'); if (!b) return;
       closeMenu();
       if (b.dataset.f === 'new') newFile(isDir ? url : parentOf(url));
-      else if (b.dataset.f === 'ren') rename(url);
+      else if (b.dataset.f === 'dir') cloudNew(isDir ? url : parentOf(url), true);
+      else if (b.dataset.f === 'ren') rename(url, isDir);
       else remove(url);
     });
   }
@@ -270,12 +340,12 @@
     // Árbol: clic derecho sobre un archivo o carpeta, y botón de archivo nuevo en la cabecera.
     core.ui.treeBox.addEventListener('contextmenu', (e) => {
       const node = e.target.closest('.lmd-node');
-      if (!node || !canManage() || !node.dataset.url) return;
+      if (!node || !canTree() || !node.dataset.url) return;
       e.preventDefault(); treeMenu(e.clientX, e.clientY, node);
     });
     core.ui.treeBox.addEventListener('click', (e) => { if (e.target.closest('.lmd-tree-new')) newFile(core.treeRoot()); });
     core.hooks.tree.push((head) => {
-      if (!canManage()) return;
+      if (!canTree()) return;
       head.insertBefore(el('button', { class: 'lmd-tree-up lmd-tree-new', type: 'button', title: T('Archivo nuevo en esta carpeta') }, ICON.plus), head.lastChild);
     });
     document.addEventListener('mousedown', (e) => { if (menu && !menu.contains(e.target)) closeMenu(); });

@@ -19,6 +19,15 @@
       });
     } catch (e) { return []; }
   }
+  async function handlesGet(key) {
+    try {
+      const db = await handlesDb();
+      return await new Promise((resolve, reject) => {
+        const q = db.transaction('h').objectStore('h').get(key);
+        q.onsuccess = () => resolve(q.result || null); q.onerror = () => reject(q.error);
+      });
+    } catch (e) { return null; }
+  }
   async function handlesPut(rec) {
     try {
       const db = await handlesDb();
@@ -70,5 +79,13 @@
     };
   }
 
-  LMD.store = { handlesAll, handlesPut, handlesDelete, canWrite, walk, rootsAll, notesAll, noteGet, notePut, noteDelete, noteHandle };
+  // Copia de cada nota de la nube que se abrió o se guardó, por cuenta, para abrirla sin conexión.
+  // text es lo último escrito acá, base lo último que se supo del servidor, y pending marca lo que falta subir.
+  const cloudKey = (who, path) => 'cloud:' + who + ':' + path;
+  const cloudAll = async (who) => (await handlesAll()).filter((r) => r.cloud && r.who === who);
+  const cloudGet = (who, path) => handlesGet(cloudKey(who, path));
+  const cloudPut = (who, path, rec) => handlesPut(Object.assign({}, rec, { key: cloudKey(who, path), cloud: true, who, path, at: Date.now() }));
+  const cloudDelete = (who, path) => handlesDelete(cloudKey(who, path));
+
+  LMD.store = { handlesAll, handlesPut, handlesDelete, canWrite, walk, rootsAll, notesAll, noteGet, notePut, noteDelete, noteHandle, cloudAll, cloudGet, cloudPut, cloudDelete };
 })();
