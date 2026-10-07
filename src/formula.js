@@ -221,23 +221,25 @@
   }
 
   // ---------- Una fórmula en línea: un cuadro chico anclado a ella ----------
-  async function editInline(span) {
+  // fresh: { host, range, text } cuando la fórmula se está creando sobre un texto elegido. El párrafo no se toca
+  // hasta aplicar: cancelar no tiene nada que deshacer.
+  async function editInline(span, fresh) {
     if (document.querySelector('.lmd-dgm, .lmd-fxi')) return;
-    const host = span.closest('.lmd-editable');
+    const host = fresh ? fresh.host : span.closest('.lmd-editable');
     if (!host || host.classList.contains('lmd-draft')) { core.flash(T('Este bloque se edita desde la vista de código'), 'warn'); return; }
     await core.ensure('katex');
-    const original = span.getAttribute('data-tex') || ''; const before = inlineMd(host);
-    const box = el('div', { class: 'lmd-fxi', role: 'dialog', 'aria-label': T('Editar fórmula') });
+    const original = fresh ? fresh.text : span.getAttribute('data-tex') || ''; const before = inlineMd(host);
+    const box = el('div', { class: 'lmd-fxi', role: 'dialog', 'aria-label': T(fresh ? 'Fórmula en línea' : 'Editar fórmula') });
     box.innerHTML = '<input type="text" spellcheck="false" autocomplete="off" aria-label="LaTeX"><div class="lmd-fxi-view"></div><div class="lmd-fxi-err" role="alert" hidden></div>' + keysHtml() +
-      '<div class="lmd-fxi-actions"><button type="button" class="lmd-btn lmd-dgm-remove" data-fx-act="del">' + T('Eliminar la fórmula') + '</button><span></span>' +
+      '<div class="lmd-fxi-actions">' + (fresh ? '' : '<button type="button" class="lmd-btn lmd-dgm-remove" data-fx-act="del">' + T('Eliminar la fórmula') + '</button>') + '<span></span>' +
       '<button type="button" class="lmd-btn" data-fx-act="no">' + T('Cancelar') + '</button><button type="button" class="lmd-btn lmd-btn-fill" data-fx-act="ok">' + T('Aplicar') + ' <kbd>Enter</kbd></button></div>';
     document.body.appendChild(box);
     const input = box.querySelector('input'); const view = box.querySelector('.lmd-fxi-view'); const err = box.querySelector('.lmd-fxi-err');
     input.value = original;
     drawKeys(box); bindKeys(box, input);
-    // Debajo de la fórmula si entra; si no, arriba. Nunca fuera de la pantalla.
+    // Debajo de la fórmula (o del texto elegido) si entra; si no, arriba. Nunca fuera de la pantalla.
     const place = () => {
-      const r = span.getBoundingClientRect(); const w = box.offsetWidth; const h = box.offsetHeight;
+      const r = (fresh ? fresh.range : span).getBoundingClientRect(); const w = box.offsetWidth; const h = box.offsetHeight;
       box.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left)) + 'px';
       box.style.top = Math.max(8, r.bottom + 8 + h > window.innerHeight ? Math.max(8, r.top - h - 8) : r.bottom + 8) + 'px';
     };
@@ -253,8 +255,8 @@
     };
     refresh(); place();
     input.addEventListener('input', debounce(refresh, 150));
-    input.focus(); input.select();
     core.hold = true; // mientras el cuadro está abierto, el párrafo no se redibuja debajo
+    input.focus(); input.select();
 
     let done = false;
     const close = (how) => {
@@ -262,10 +264,18 @@
       box.remove(); document.removeEventListener('mousedown', outside, true); window.removeEventListener('scroll', place, true);
       core.hold = false;
       const tex = input.value.replace(/\s+/g, ' ').replace(/\$/g, '').trim();
-      if (!host.isConnected || !span.isConnected || how === 'no' || (how === 'ok' && tex === original)) { core.softRender(); return; }
-      // Solo cambia la fórmula: el resto del párrafo queda como estaba, y se reescribe ese bloque.
-      if (host._md == null) host._md = before;
-      if (how === 'del' || !tex) span.remove();
+      if (fresh) {
+        if (how !== 'ok' || !tex || !host.isConnected || !host.contains(fresh.range.startContainer)) { core.softRender(); return; }
+        if (host._md == null) host._md = before;
+        fresh.range.deleteContents();
+        span = el('span', { class: 'lmd-math', 'data-tex': tex, contenteditable: 'false' });
+        fresh.range.insertNode(span);
+      } else {
+        if (!host.isConnected || !span.isConnected || how === 'no' || (how === 'ok' && tex === original)) { core.softRender(); return; }
+        // Solo cambia la fórmula: el resto del párrafo queda como estaba, y se reescribe ese bloque.
+        if (host._md == null) host._md = before;
+      }
+      if (!fresh && (how === 'del' || !tex)) span.remove();
       else {
         span.setAttribute('data-tex', tex); span.classList.remove('lmd-math-bad'); span.removeAttribute('title');
         try { window.katex.render(tex, span, { displayMode: false, throwOnError: true }); } catch (ex) { fail(span, ex); }
@@ -286,6 +296,38 @@
     });
   }
 
+  // Fórmula en línea nueva, desde la barra de formato: el texto elegido pasa a ser la fórmula y se abre el mismo
+  // cuadro chico que al editar una. Sin aplicar, el texto queda como estaba.
+  function createInline() {
+    if (document.querySelector('.lmd-dgm, .lmd-fxi')) return;
+    const sel = getSelection(); if (!sel.rangeCount || sel.isCollapsed) return;
+    const elementOf = (n) => (n && n.nodeType === 1 ? n : n && n.parentNode);
+    let range = sel.getRangeAt(0);
+    let host = elementOf(sel.anchorNode) && elementOf(sel.anchorNode).closest('.lmd-editable');
+    if (!host || !host.contains(range.startContainer) || !host.contains(range.endContainer)) return;
+    // Dentro de código, de un enlace o de otra fórmula no va.
+    if (elementOf(range.commonAncestorContainer).closest('code, a, .lmd-math') || range.cloneContents().querySelector('code, a, .lmd-math, img')) { core.flash(T('Elegí solo texto para hacer una fórmula.'), 'warn'); return; }
+    if (host.classList.contains('lmd-draft')) {
+      // Un bloque recién escrito todavía no está en el archivo: se lo pasa antes, y se vuelve a ubicar lo elegido.
+      const plain = (s) => s.replace(/\u200b/g, '');
+      const pre = document.createRange(); pre.selectNodeContents(host); pre.setEnd(range.startContainer, range.startOffset);
+      const start = plain(pre.toString()).length; const end = start + plain(range.toString()).length;
+      const made = LMD.write.settle(host); if (!made) return;
+      host = made; range = document.createRange();
+      const walker = document.createTreeWalker(made, NodeFilter.SHOW_TEXT); let n; let seen = 0; let open = false;
+      while ((n = walker.nextNode())) {
+        const len = n.nodeValue.length;
+        if (!open && start <= seen + len) { range.setStart(n, start - seen); open = true; }
+        if (open && end <= seen + len) { range.setEnd(n, end - seen); break; }
+        seen += len;
+      }
+      if (!open || range.collapsed) return;
+      host.focus();
+    }
+    const text = range.toString().replace(/\s+/g, ' ').trim(); if (!text) return;
+    editInline(null, { host, range: range.cloneRange(), text });
+  }
+
   function init(c) {
     core = c;
     core.ui.article.addEventListener('click', (e) => {
@@ -297,5 +339,5 @@
     });
   }
 
-  LMD.formula = { init, edit, editInline, create: (after) => edit(null, after), fail, explain, pieceText, GROUPS };
+  LMD.formula = { init, edit, editInline, createInline, create: (after) => edit(null, after), fail, explain, pieceText, GROUPS };
 })();

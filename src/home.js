@@ -15,29 +15,62 @@
     '<dt>' + T('Con cuenta') + '</dt><dd>' + T('Notas en la nube (10 gratis). Compartir, historial y conexión con una IA en el plan pago.') + '</dd></dl>';
 
   // Entrar a la cuenta: primero el correo, después el código que llega. Es el mismo formulario en el inicio y en Ajustes → Nube.
-  const AUTH_ERRORS = { bad_email: 'Ese correo no parece válido.', too_soon: 'Esperá unos segundos antes de pedir otro código.', bad_code: 'Ese código no coincide.', code_expired: 'El código venció. Pedí otro.', too_many_tries: 'Demasiados intentos. Pedí un código nuevo.', offline: 'No hay conexión con el servidor.', mcp_needs_plan: 'Conectar una IA es parte del plan pago.' };
+  // Lo que contesta el servidor al pedir o probar un código. Los topes (429) llegan con dos códigos nada más:
+  // too_soon al pedir (uno cada 30 segundos, 5 por hora y 15 por día por correo, 20 por hora por red) y
+  // too_many_tries al probar (6 intentos por código, 10 por hora y 30 por día por correo, 30 por hora por red).
+  // Ninguno cierra las sesiones que ya están abiertas, y se dice.
+  const KEEPS = 'Donde ya entraste, la sesión sigue abierta.';
+  const AUTH_ERRORS = { bad_email: 'Ese correo no parece válido.', bad_code: 'Ese código no coincide.', code_expired: 'El código venció. Pedí otro.', offline: 'No hay conexión con el servidor.',
+    mail_failed: 'No se pudo enviar el correo. Probá de nuevo en unos minutos.', mcp_needs_plan: 'Conectar una IA es parte del plan pago.' };
+  // Cuándo se pidió el último código para cada correo desde esta pestaña: con eso se sabe si el tope es el de 30 segundos.
+  const asked = {};
+  const CODE_GAP = 30000;
+  function authWhy(e, mail) {
+    const code = e && e.code;
+    if (code === 'too_soon') {
+      const left = Math.ceil((CODE_GAP - (Date.now() - (asked[mail] || 0))) / 1000);
+      if (left > 0) return T('Recién pediste un código. Esperá {n} segundos para pedir otro.', { n: left });
+      return T('Se pidieron demasiados códigos. Si recién pediste uno, esperá 30 segundos; si no, probá de nuevo en una hora.') + ' ' + T(KEEPS);
+    }
+    if (code === 'too_many_tries') return T('Demasiados códigos equivocados. Pedí un código nuevo; si tampoco entra, probá de nuevo en una hora.') + ' ' + T(KEEPS);
+    return T(AUTH_ERRORS[code] || 'No se pudo completar. Probá de nuevo.');
+  }
   // Antes de pedir nada al servidor: el correo bien formado y el código de seis dígitos.
   const badMail = (v) => (!v ? 'Escribí tu correo.' : /\s/.test(v) ? 'El correo no lleva espacios.' : !validEmail(v) ? 'Ese correo no parece válido. Tiene que ser como nombre@dominio.com.' : '');
   const badCode = (v) => (/^\d{6}$/.test(v) ? '' : 'El código son seis dígitos.');
-  function signIn(box, done, email) {
+  // was: el correo que ya se había escrito, al volver del paso del código.
+  function signIn(box, done, email, was) {
     box.textContent = '';
     const code = !!email;
     if (code) box.appendChild(el('p', { text: T('Te mandamos un código a {a}.', { a: email }) }));
-    const input = code ? el('input', { type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '6', placeholder: '000000', 'data-field': 'code' })
-      : el('input', { type: 'email', autocomplete: 'email', spellcheck: 'false', placeholder: T('tu correo'), 'data-field': 'email' });
+    const input = code ? el('input', { type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '6', placeholder: '000000', 'data-field': 'code', 'aria-label': T('Código de seis dígitos') })
+      : el('input', { type: 'email', autocomplete: 'email', spellcheck: 'false', placeholder: T('tu correo'), 'data-field': 'email', 'aria-label': T('tu correo') });
+    if (was) input.value = was;
     const go = el('button', { type: 'button', class: 'lmd-btn lmd-btn-fill', 'data-cloud': code ? 'verify' : 'start', text: T(code ? 'Entrar' : 'Enviar código') });
     const row = el('div', { class: 'lmd-home-cloud-row' }); row.append(input, go);
     // El aviso va pegado al campo y no borra lo escrito.
     const err = el('p', { class: 'lmd-home-cloud-err', role: 'alert', hidden: '' });
-    box.append(row, err); input.focus();
-    const fail = (text) => { err.hidden = false; err.textContent = T(text); input.setAttribute('aria-invalid', 'true'); input.focus(); };
+    box.append(row, err);
+    // Si el código no llega (un correo mal escrito, o el tope de intentos), se vuelve al paso anterior sin recargar.
+    if (code) {
+      const back = el('button', { type: 'button', class: 'lmd-link lmd-signin-back', 'data-cloud': 'back', text: T('Cambiar el correo o pedir otro código') });
+      back.addEventListener('click', () => signIn(box, done, '', email));
+      box.appendChild(back);
+    }
+    input.focus();
+    const fail = (text) => { err.hidden = false; err.textContent = text; input.setAttribute('aria-invalid', 'true'); input.focus(); };
+    let busy = false;
     const send = async () => {
+      if (busy) return;
       const v = input.value.trim(); const bad = code ? badCode(v) : badMail(v);
-      if (bad) { fail(bad); return; }
+      if (bad) { fail(T(bad)); return; }
+      const mail = code ? email : v.toLowerCase();
+      busy = true; go.disabled = true;
       try {
         if (code) { await LMD.cloud.verify(email, v); await done(); }
-        else { await LMD.cloud.start(v.toLowerCase()); signIn(box, done, v.toLowerCase()); }
-      } catch (e) { fail(AUTH_ERRORS[e && e.code] || 'No se pudo completar. Probá de nuevo.'); }
+        else { await LMD.cloud.start(mail); asked[mail] = Date.now(); signIn(box, done, mail); }
+      } catch (e) { fail(authWhy(e, mail)); }
+      busy = false; go.disabled = false;
     };
     go.addEventListener('click', send);
     input.addEventListener('input', () => { input.removeAttribute('aria-invalid'); err.hidden = true; });
@@ -118,16 +151,20 @@
     box.innerHTML =
       '<div class="lmd-home-card">' +
         '<img class="lmd-home-logo" src="' + chrome.runtime.getURL('icons/icon128.png') + '" alt="">' +
-        '<p class="lmd-home-sub">' + T('Elegí una nota de la izquierda o empezá una nueva.') + '</p>' +
+        // En pantalla chica no hay nada "a la izquierda": la lista de notas está detrás del botón de la barra.
+        '<p class="lmd-home-sub">' + T(LMD.touch.small() ? 'Empezá una nota nueva o abrí una que ya tengas.' : 'Elegí una nota de la izquierda o empezá una nueva.') + '</p>' +
         '<div class="lmd-home-actions">' +
           '<button type="button" class="lmd-btn lmd-btn-fill" data-home="new">' + ICON.plus + '<span>' + T('Nueva nota') + '</span></button>' +
           '<button type="button" class="lmd-btn" data-home="tpl">' + ICON.doc + '<span>' + T('Desde una plantilla') + '</span></button>' +
           '<button type="button" class="lmd-btn" data-home="file">' + ICON.file + '<span>' + T('Abrir archivo') + '</span></button>' +
           (window.showDirectoryPicker ? '<button type="button" class="lmd-btn" data-home="dir">' + ICON.folder + '<span>' + T('Abrir carpeta') + '</span></button>' : '') +
         '</div>' +
-        '<p class="lmd-home-hint">' + (canPick()
-          ? T('También podés arrastrar un archivo o una carpeta a esta ventana.')
-          : T('También podés arrastrar un archivo a esta ventana. Este navegador no deja escribir sobre el archivo: al guardar se descarga una copia.')) + '</p>' +
+        // Con el dedo no hay nada que arrastrar a la ventana: ese renglón solo dice lo que hace falta saber.
+        (LMD.touch.coarse()
+          ? (canPick() ? '' : '<p class="lmd-home-hint">' + T('Este navegador no deja escribir sobre el archivo: al guardar se descarga una copia.') + '</p>')
+          : '<p class="lmd-home-hint">' + (canPick()
+            ? T('También podés arrastrar un archivo o una carpeta a esta ventana.')
+            : T('También podés arrastrar un archivo a esta ventana. Este navegador no deja escribir sobre el archivo: al guardar se descarga una copia.')) + '</p>') +
         (window.showDirectoryPicker ? '<p class="lmd-home-notes"></p>' : '') +
         '<div class="lmd-home-cloud" hidden></div>' +
         '<p class="lmd-home-msg" role="status" hidden></p>' +
@@ -158,8 +195,7 @@
 
     // Cuenta: entrar con un código al mail, ver cuántas notas hay y conectar una IA.
     const cloudBox = box.querySelector('.lmd-home-cloud');
-    const errors = AUTH_ERRORS;
-    const why = (e) => T(errors[e && e.code] || 'No se pudo completar. Probá de nuevo.');
+    const why = (e) => authWhy(e, '');
     const paintCloud = async (step, data) => {
       await LMD.cloud.ready();
       cloudBox.hidden = !LMD.cloud.enabled();
@@ -202,17 +238,17 @@
       const field = (name) => cloudBox.querySelector('[data-field=' + name + ']');
       const fail = (text, input) => {
         const p = cloudBox.querySelector('.lmd-home-cloud-err');
-        if (p) { p.hidden = false; p.textContent = T(text); }
+        if (p) { p.hidden = false; p.textContent = text; }
         if (input) { input.setAttribute('aria-invalid', 'true'); input.focus(); }
       };
       const act = b.dataset.cloud;
       try {
         if (act === 'ask') await paintCloud('email');
         else if (act === 'start' || act === 'verify') return; // los atiende el formulario
-        else if (act === 'logout') { await LMD.cloud.logout(); await paintCloud(); ctx.refresh(); }
+        else if (act === 'logout') { await LMD.sync.signOut(host); await paintCloud(); ctx.refresh(); }
         else if (act === 'open') LMD.sync.openCloud(Object.assign({}, host, { say: (t) => fail(t) }));
         else if (act === 'ai' || act === 'plan') LMD.sync.dialog(act, host);
-      } catch (err) { fail(errors[err && err.code] || 'No se pudo completar. Probá de nuevo.', field('code') || field('email')); }
+      } catch (err) { fail(authWhy(err, ''), field('code') || field('email')); }
     });
     cloudBox.addEventListener('input', (e) => {
       if (!e.target.matches('[data-field]')) return;
@@ -316,7 +352,7 @@
     opt = opt || {};
     // Una nota que nace con contenido abre en edición, sin el bloque nuevo que se le ofrece a una vacía.
     const how = { edit: opt.text ? 'doc' : true, replace: !!opt.replace, tree: true };
-    const base = opt.name || stamp(); const text = opt.text || '';
+    const base = opt.name || stamp(); const text = opt.text || ''; let full = false;
     const folder = opt.target !== 'local' && window.showDirectoryPicker ? await notesFolder() : null;
     if (folder) {
       let ok = false;
@@ -345,7 +381,9 @@
         return ctx.open('cloud/' + encodeURIComponent(file), how);
       } catch (e) {
         // Desde una plantilla se eligió crearla ahí: en el límite del plan gratis se dice, en vez de mandarla a otro lado.
-        if (opt.strict && e && e.code === 'note_limit') { ctx.say(T('Llegaste al límite de notas del plan gratis. El plan pago no tiene límite.')); return false; }
+        if (opt.strict && e && e.code === 'note_limit') { ctx.plan(T('Llegaste al límite de notas del plan gratis. El plan pago no tiene límite.')); return false; }
+        // En el límite del plan gratis la nota nace igual, en el navegador, y se dice dónde quedó.
+        if (e && e.code === 'note_limit') full = true;
         /* sin conexión: sigue en el navegador */
       }
     }
@@ -354,7 +392,9 @@
     for (let n = 2; n < 50 && await noteGet(name); n++) name = base + '-' + n + '.md';
     await notePut(name, text);
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* el navegador decide */ }
-    return ctx.open('local/' + encodeURIComponent(name), how);
+    const done = await ctx.open('local/' + encodeURIComponent(name), how);
+    if (full) ctx.warn(T('El plan gratis llega a 10 notas en la nube. Esta quedó guardada en este navegador.'));
+    return done;
   }
 
   // ---------- Desde una plantilla ----------

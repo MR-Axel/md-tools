@@ -183,10 +183,18 @@ try {
   check('el selector lista las carpetas de la nube, con todas las notas por defecto', pick.label === 'Carpeta' && J(pick.options) === J([['', 'Todas las notas'], ['proyecto', 'proyecto/'], ['proyecto/docs', 'proyecto/docs/']]) && pick.chosen === '', pick);
   check('un token sin carpeta figura con todas las notas', pick.list.length === 1 && /^IA · Todas las notas · creado el /.test(pick.list[0]), pick.list);
   await app.selectOption('[data-c=folder]', 'proyecto/docs'); await app.click('[data-acct=ai] [data-c=token]'); await app.waitForSelector('.lmd-ai-new');
-  const made = await app.evaluate(() => ({ fields: [...document.querySelectorAll('[data-acct=ai] .lmd-field')].map((f) => [f.querySelector('span').textContent, f.querySelector('input').value]), list: [...document.querySelectorAll('.lmd-tokens li span')].map((s) => s.textContent) }));
+  const made = await app.evaluate(() => ({ fields: [...document.querySelectorAll('[data-acct=ai] .lmd-field')].map((f) => [f.querySelector('span').textContent, f.querySelector('input, textarea').value]), list: [...document.querySelectorAll('.lmd-tokens li span')].map((s) => s.textContent) }));
   const scoped = made.fields[1][1];
   check('la lista dice a qué carpeta alcanza cada token', made.list.length === 2 && /^IA · Carpeta proyecto\/docs\/ · creado el /.test(made.list[0]) && /^IA · Todas las notas · /.test(made.list[1]), made.list);
   check('el comando para copiar es el de siempre', made.fields[2][0] === 'Claude Code' && made.fields[2][1] === 'claude mcp add --transport http sharpmd ' + base + '/mcp --header "Authorization: Bearer ' + scoped + '"', made.fields[2]);
+  const cmd = await app.evaluate(() => { const t = document.querySelector('[data-acct=ai] .lmd-field-long textarea'); return t && { tag: t.tagName, cut: t.scrollWidth > t.clientWidth + 1 || t.scrollHeight > t.clientHeight + 2, lines: Math.round(t.clientHeight / parseFloat(getComputedStyle(t).lineHeight)), copy: !!t.parentNode.querySelector('[data-c=copy]') }; });
+  check('el comando se ve entero, en varios renglones, con su botón de copiar', !!cmd && cmd.tag === 'TEXTAREA' && !cmd.cut && cmd.lines >= 2 && cmd.copy, cmd);
+  // Un token con el nombre de siempre en el otro idioma ("AI") se lista en el idioma de la app.
+  const sess = await app.evaluate(() => new Promise((r) => chrome.storage.local.get('cloud', (x) => r(x.cloud.session))));
+  await fetch(base + '/tokens', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + sess }, body: JSON.stringify({ name: 'AI' }) });
+  await app.click('[data-ptab=cloud]'); await app.click('[data-ptab=ai]'); await app.waitForFunction(() => document.querySelectorAll('.lmd-tokens li').length === 3);
+  const names = await app.evaluate(() => [...document.querySelectorAll('.lmd-tokens li span')].map((s) => s.textContent.split(' · ')[0]));
+  check('el nombre por defecto de un token sale en el idioma de la app', J(names) === J(['IA', 'IA', 'IA']), names);
   const inside = JSON.parse((await mcp(scoped, 'list_notes')).content[0].text).map((n) => n.path);
   const out = await mcp(scoped, 'read_note', { path: 'proyecto/plan.md' });
   check('ese token solo ve su carpeta', J(inside) === J(['proyecto/docs/notas.md']) && out.isError === true && /only reaches the folder proyecto\/docs\//.test(out.content[0].text), [inside, out]);

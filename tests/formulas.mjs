@@ -160,9 +160,46 @@ try {
   add('español: la pieza de texto sale en español', s.code === B + 'text{texto}' && s.sel === 'texto', s);
   await app.keyboard.press('Escape');
 
+  // ---------- Fórmula en línea nueva, desde la barra de formato ----------
+  const pick = async (word) => {
+    const ok = await app.evaluate((w) => {
+      const p = [...document.querySelectorAll('.lmd-article p.lmd-editable')].find((x) => x.textContent.includes(w)); if (!p) return false;
+      p.focus(); const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT); let n;
+      while ((n = walker.nextNode())) { const i = n.nodeValue.indexOf(w); if (i >= 0) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + w.length); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); return true; } }
+      return false;
+    }, word);
+    await app.waitForTimeout(350); return ok;
+  };
+  await boot({ language: 'en' }, 'fx4');
+  await app.click('[data-act=mode-edit]'); await app.waitForTimeout(400);
+  await pick('body');
+  const bar = await app.evaluate(() => { const b = document.querySelector('.lmd-format'); const m = b.querySelector('[data-fmt=math]'); const r = b.getBoundingClientRect(); return { shown: !b.hidden && !m.hidden, title: m.title, inside: r.left >= 0 && r.right <= innerWidth, order: [...b.querySelectorAll('button')].map((x) => x.dataset.fmt) }; });
+  add('la barra de formato ofrece "Fórmula en línea"', bar.shown && bar.title === 'Inline formula' && bar.inside && bar.order.indexOf('math') === bar.order.indexOf('link') - 1, bar);
+  await app.dispatchEvent('.lmd-format [data-fmt=math]', 'mousedown'); await app.waitForSelector('.lmd-fxi');
+  const fresh = await app.evaluate(() => { const b = document.querySelector('.lmd-fxi'); return { label: b.getAttribute('aria-label'), value: b.querySelector('input').value, del: !!b.querySelector('[data-fx-act=del]'), focus: document.activeElement === b.querySelector('input'), text: document.querySelector('.lmd-article p').textContent.includes('a body at rest') }; });
+  add('abre el cuadro chico con lo elegido, sin tocar el párrafo', fresh.label === 'Inline formula' && fresh.value === 'body' && !fresh.del && fresh.focus && fresh.text, fresh);
+  await app.keyboard.press('Escape'); await app.waitForTimeout(600);
+  const kept = await src();
+  add('cancelar deja el texto como estaba', kept === DOC, kept.slice(0, 120));
+  await pick('body');
+  await app.dispatchEvent('.lmd-format [data-fmt=math]', 'mousedown'); await app.waitForSelector('.lmd-fxi');
+  await app.fill('.lmd-fxi input', 'x_1'); await app.waitForTimeout(300);
+  const drawn = await app.evaluate(() => !!document.querySelector('.lmd-fxi-view .katex'));
+  await app.keyboard.press('Enter'); await app.waitForTimeout(900);
+  const made = await src();
+  add('aplicar cambia lo elegido por la fórmula, y nada más', drawn && made === DOC.replace('a body at rest', 'a $x_1$ at rest'), made.slice(0, 140));
+  const shown = await app.evaluate(() => { const m = [...document.querySelectorAll('.lmd-article p .lmd-math')].find((x) => x.getAttribute('data-tex') === 'x_1'); return !!(m && m.querySelector('.katex')); });
+  add('y queda dibujada en el párrafo', shown);
+  await pick('energy'); // adentro de una negrita se puede; adentro de un enlace o de otra fórmula, no
+  await app.keyboard.press('Escape'); await app.waitForTimeout(300);
+
   // ---------- Con el plugin de matemática apagado ----------
   await boot({ language: 'en', plugins: { katex: false } }, 'fx3');
   await app.click('[data-act=mode-edit]'); await app.waitForTimeout(400);
+  await pick('body');
+  const noMath = await app.evaluate(() => { const b = document.querySelector('.lmd-format'); return !b.hidden && b.querySelector('[data-fmt=math]').hidden; });
+  add('con la matemática apagada, la barra de formato no ofrece la fórmula en línea', noMath);
+  await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(300);
   await app.locator('.lmd-article h1').click({ button: 'right' }); await app.waitForSelector('.lmd-menu');
   const off = await app.evaluate(() => ({ math: !!document.querySelector('.lmd-menu [data-ins=math]'), table: !!document.querySelector('.lmd-menu [data-ins=table]'), nodes: document.querySelectorAll('.lmd-math').length, text: document.querySelector('.lmd-article p').textContent }));
   add('con la matemática apagada, "Fórmula" no se ofrece y el resto del menú sigue', !off.math && off.table && off.nodes === 0 && off.text.includes('$E = mc^2$'), off);

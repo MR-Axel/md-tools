@@ -15,7 +15,7 @@
     [/^#{1,4}$/, (m) => 'h' + m[0].length], [/^[-*+]$/, () => 'ul'], [/^1[.)]$/, () => 'ol'],
     [/^>$/, () => 'quote'], [/^(\[\s?\]|[-*+]\s\[\s?\])$/, () => 'task'],
   ];
-  const ITEM_RE = /^((?:\s{0,3}>\s?)*\s*)([-*+]|\d{1,9}[.)])(\s+)(\[[ xX]\]\s+)?/;
+  const ITEM_RE = /^((?:\s{0,3}>\s?)*\s*)([-*+]|\d{1,9}[.)])(\s+|$)(\[[ xX]\](?:\s+|$))?/;
 
   const fm = () => core.fmOffset;
   const lines = () => core.srcLines;
@@ -97,7 +97,7 @@
   function listPrefix(kind, at) {
     const near = (dir) => { for (let i = dir < 0 ? at - 1 : at; i >= 0 && i < lines().length; i += dir) if (!blank(i)) return lines()[i]; return ''; };
     const taken = new Set();
-    [near(-1), near(1)].forEach((line) => { const m = /^\s{0,3}([-*+])\s+(\[[ xX]\]\s+)?/.exec(line); if (m && !!m[2] !== (kind === 'task')) taken.add(m[1]); });
+    [near(-1), near(1)].forEach((line) => { const m = /^\s{0,3}([-*+])\s+(\[[ xX]\](?:\s+|$))?/.exec(line); if (m && !!m[2] !== (kind === 'task')) taken.add(m[1]); });
     return ['-', '*', '+'].find((c) => !taken.has(c)) + ' ' + (kind === 'task' ? '[ ] ' : '');
   }
 
@@ -114,7 +114,7 @@
       const m = ITEM_RE.exec(lines()[s] || '') || ['', '', '-', ' ', ''];
       const marker = /\d/.test(m[2]) ? (parseInt(m[2], 10) + 1) + m[2].slice(-1) : m[2];
       for (let n = d._li.parentNode; n && n !== core.ui.article; n = n.parentNode) owners.push(n);
-      body = [m[1] + marker + m[3] + (m[4] ? '[ ] ' : '') + text.replace(/\n/g, ' ')];
+      body = [m[1] + marker + (m[3] || ' ') + (m[4] ? '[ ] ' : '') + text.replace(/\n/g, ' ')];
       kind = 'item';
     } else {
       at = lineAfter(d._anchor);
@@ -168,7 +168,8 @@
       discard(d);
       // Enter en un ítem vacío sale de la lista.
       // El párrafo va justo después de ese ítem, aunque la lista siga más abajo.
-      if (follow && li) openDraft(li, 'p');
+      // Si era el último de una lista suelta en el documento, el párrafo se abre ya afuera, donde va a quedar.
+      if (follow && li) { const list = li.parentNode; openDraft(list && list.parentNode === core.ui.article && !li.nextElementSibling ? list : li, 'p'); }
       else if (follow) openDraft(anchor, 'p');
       return;
     }

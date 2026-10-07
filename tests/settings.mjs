@@ -290,7 +290,7 @@ try {
   await tab('ai'); await app.waitForSelector('[data-acct=ai] [data-c=token]');
   const aiBefore = await app.evaluate(() => ({ url: document.querySelector('[data-acct=ai] .lmd-field input').value, fields: document.querySelectorAll('[data-acct=ai] .lmd-field').length, none: /Todavía no hay tokens/.test(document.querySelector('[data-acct=ai]').textContent) }));
   await app.click('[data-acct=ai] [data-c=token]'); await app.waitForSelector('.lmd-ai-new');
-  const ai = await app.evaluate(() => ({ fields: [...document.querySelectorAll('[data-acct=ai] .lmd-field')].map((f) => [f.querySelector('span').textContent, f.querySelector('input').value]), list: [...document.querySelectorAll('.lmd-tokens li span')].map((s) => s.textContent), body: (() => { const b = document.querySelector('.lmd-panel-body'); return b.scrollHeight - b.clientHeight; })() }));
+  const ai = await app.evaluate(() => ({ fields: [...document.querySelectorAll('[data-acct=ai] .lmd-field')].map((f) => [f.querySelector('span').textContent, f.querySelector('input, textarea').value]), list: [...document.querySelectorAll('.lmd-tokens li span')].map((s) => s.textContent), body: (() => { const b = document.querySelector('.lmd-panel-body'); return b.scrollHeight - b.clientHeight; })() }));
   const token = ai.fields[1][1];
   const mcp = (t) => fetch(base + '/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + t }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) }).then((r) => r.status);
   check('IA: la dirección del MCP, y al crear un token, el token y el comando listo', aiBefore.url === base + '/mcp' && aiBefore.fields === 1 && aiBefore.none && ai.fields.map((f) => f[0]).join() === 'URL,Token,Claude Code' && token.startsWith('mdt_') && ai.fields[2][1] === 'claude mcp add --transport http sharpmd ' + base + '/mcp --header "Authorization: Bearer ' + token + '"' && ai.body <= 0, [aiBefore, ai]);
@@ -328,10 +328,17 @@ try {
   await app.click('[data-fb=close]');
 
   console.log('Servidor propio y nube apagada');
+  // Apagar la nube con una nota de la nube abierta: la nota se cierra, en vez de quedar diciendo "guardado en la nube".
+  await app.goto(cloudUrl('proyectos/plan.md')); await app.waitForSelector('.markdown-body h1');
+  const setCloud = (v) => app.evaluate((u) => new Promise((r) => chrome.storage.local.get('settings', (x) => chrome.storage.local.set({ settings: Object.assign({}, x.settings, { cloudUrl: u }) }, r))), v);
+  await setCloud('off'); await app.waitForFunction(() => document.title === 'SharpMD', null, { timeout: 5000 }).catch(() => {});
+  check('apagar la nube con una nota de la nube abierta la cierra', (await app.title()) === 'SharpMD' && !/[?&]f=/.test(app.url()), [await app.title(), app.url()]);
+  await setCloud(base); await app.waitForTimeout(600);
   await app.goto(cloudUrl('proyectos/plan.md')); await app.waitForSelector('.markdown-body h1'); await openSettings('cloud');
   await app.waitForSelector('[data-acct=cloud] [data-c=out]'); await app.click('[data-acct=cloud] [data-c=out]'); await app.waitForSelector('[data-acct=cloud] [data-c=login]');
   check('Nube: salir deja la invitación a entrar', /Crear cuenta o entrar/.test(await text('[data-acct=cloud]')) && !(await stored('cloud')).session);
-  const perksNube = await perks();
+  check('salir con la nota de la nube abierta la cierra: detrás queda el inicio', (await app.title()) === 'SharpMD' && !/[?&]f=/.test(app.url()) && !(await app.evaluate(() => document.querySelector('.lmd-home').hidden)), [await app.title(), app.url()]);
+  const perksNube = await app.evaluate(() => [...document.querySelectorAll('[data-acct=cloud] .lmd-perks dt, [data-acct=cloud] .lmd-perks dd')].map((n) => n.textContent));
   check('Nube sin sesión: dos renglones dicen qué anda sin cuenta y qué suma tenerla', claro(perksNube) && (await app.locator('[data-acct=cloud] p').count()) === 0, perksNube);
   await tab('plan');
   check('Plan sin sesión: las tarjetas, sin botones de pago', (await app.locator('[data-acct=plan] .lmd-plan').count()) === 2 && (await app.locator('[data-acct=plan] [data-pay]').count()) === 0 && /Entrá a tu cuenta/.test(await text('[data-acct=plan]')));

@@ -63,7 +63,7 @@
   const isDark = () => LMD.theme.isDark(settings);
   const applyAccent = (root, dark) => LMD.theme.applyAccent(root, dark, settings);
   // Lo que el estado vacío (home.js) necesita del lector: dónde dibujarse y cómo abrir una nota sin recargar.
-  const homeCtx = () => ({ settings, APP_URL, box: ui.home, open: (f, opt) => go(f, opt), refresh: () => core.reloadTree(), say: (text) => flash(text, 'error'),
+  const homeCtx = () => ({ settings, APP_URL, box: ui.home, open: (f, opt) => go(f, opt), refresh: () => core.reloadTree(), say: (text) => flash(text, 'error'), warn: (text) => flash(text, 'warn'), plan: (why) => openPanel('plan', why),
     template: () => LMD.extras.fromTemplate(''), preview: (text) => DOMPurify.sanitize(buildParser().render(settings.plugins.frontmatter ? splitFrontmatter(text).body : text), { FORBID_TAGS: ['style', 'form'] }) });
   // Si la extensión se recargó o se actualizó, esta pestaña queda desconectada de ella: no puede
   // releer el archivo ni la carpeta. Se detecta y se avisa, en vez de fallar en silencio.
@@ -174,7 +174,7 @@
     headings.forEach((h) => {
       h.id = slugify(h.textContent, used);
       if (p.anchors && !editMode) {
-        const a = el('a', { class: 'lmd-anchor', href: '#' + h.id, 'aria-label': 'Enlace a esta sección', text: '#' });
+        const a = el('a', { class: 'lmd-anchor', href: '#' + h.id, 'aria-label': T('Enlace a esta sección'), text: '#' });
         h.appendChild(a);
       }
     });
@@ -199,12 +199,13 @@
         let target = li.firstChild;
         if (target && target.nodeType === 1 && target.tagName === 'P') target = target.firstChild;
         if (!target || target.nodeType !== 3) return;
-        const m = /^\[([ xX])\]\s+/.exec(target.nodeValue);
+        const m = /^\[([ xX])\](\s+|$)/.exec(target.nodeValue);
         if (!m) return;
         target.nodeValue = target.nodeValue.slice(m[0].length);
         const box = el('input', { type: 'checkbox', class: 'lmd-task' });
         if (m[1] !== ' ') box.setAttribute('checked', '');
         target.parentNode.insertBefore(box, target);
+        if (!target.nodeValue) target.remove(); // una tarea sin texto: queda la casilla sola
         li.classList.add('lmd-task-item');
         if (li.parentNode) li.parentNode.classList.add('lmd-task-list');
       });
@@ -562,7 +563,7 @@
           '<div class="lmd-pane lmd-pane-files" data-pane="files"><div class="lmd-tree-box"></div><div class="lmd-results" hidden></div></div>' +
         '</section>' +
       '</div>' +
-      '<div class="lmd-update" hidden></div>' +
+      '<div class="lmd-update" role="status" hidden></div>' +
       '<div class="lmd-resizer" title="' + T('Arrastrar para cambiar el ancho') + '"></div>';
 
     ui.main = el('main', { class: 'lmd-main' });
@@ -582,7 +583,7 @@
           '<button class="lmd-icon-btn lmd-insert" data-act="insert" title="' + T('Insertar un bloque (también con clic derecho)') + '">' + ICON.plus + '</button>' +
           '<button class="lmd-icon-btn lmd-save" data-act="save" title="' + T('Guardar (Ctrl+S)') + '" hidden>' + ICON.save + '</button>' +
         '</div>' +
-        '<div class="lsharpmd">' +
+        '<div class="lmd-top-right">' +
           '<div class="lmd-view lmd-doc-only" role="radiogroup" aria-label="' + T('Vista') + '">' +
             '<button type="button" role="radio" data-act="view-doc" class="lmd-on" aria-checked="true" title="' + T('Ver documento') + '">' + ICON.doc + '</button>' +
             '<button type="button" role="radio" data-act="view-raw" aria-checked="false" title="' + T('Ver código fuente') + '">' + ICON.code + '</button>' +
@@ -615,6 +616,7 @@
       '<button type="button" data-fmt="italic" title="' + T('Cursiva (Ctrl+I)') + '"><i>I</i></button>' +
       '<button type="button" data-fmt="strike" title="' + T('Tachado') + '"><s>S</s></button>' +
       '<button type="button" data-fmt="code" title="' + T('Código') + '">' + ICON.code + '</button>' +
+      '<button type="button" data-fmt="math" title="' + T('Fórmula en línea') + '">' + ICON.b_math + '</button>' +
       '<button type="button" data-fmt="link" title="' + T('Enlace (Ctrl+K)') + '">' + ICON.link + '<span class="lmd-format-label">' + T('Editar el enlace') + '</span></button>' +
       '<button type="button" data-fmt="clear" title="' + T('Quitar formato') + '">' + ICON.close + '</button>');
     ui.tableBar = el('div', { class: 'lmd-tablebar', hidden: '' },
@@ -649,6 +651,7 @@
     bindEvents();
     bindEditing();
     LMD.touch.init();
+    LMD.dialog.init();
     // Mantener apretado: leyendo abre el menú de lectura; editando, el dedo quieto elige texto, como en cualquier editor.
     LMD.touch.longPress(ui.article, () => !editMode);
     LMD.touch.longPress(ui.treeBox);
@@ -722,7 +725,7 @@
       if (e.key === 'Escape') {
         if (moreMenu) closeMore();
         else if (!ui.viewer.hidden) ui.viewer.click();
-        else if (!ui.panel.hidden) ui.panel.hidden = true;
+        else if (!ui.panel.hidden) closePanel();
         else if (drawerOpen()) setDrawer(false);
         else if (ui.searchInput.value || document.activeElement === ui.searchInput) toggleSearch(false);
       }
@@ -837,7 +840,7 @@
     else if (act === 'reload') { if (orphan || !alive()) location.reload(); else checkForChanges(true); }
     else if (act === 'print') window.print();
     else if (act === 'export-html') LMD.extras.exportHtml();
-    else if (act === 'close-panel') ui.panel.hidden = true;
+    else if (act === 'close-panel') closePanel();
     else if (act === 'reset') { panelStale = true; LMD.save(LMD.merge({ supporter: settings.supporter })); }
     else if (act === 'check-update') checkUpdate(true);
     else if (act === 'update-apply') {
@@ -859,20 +862,22 @@
       box.hidden = false; box.className = 'lmd-update-msg' + (kind ? ' lmd-' + kind : ''); box.innerHTML = html;
     };
     if (force) say(esc(T('Buscando…')));
+    // En la web y en la versión de la tienda no hay nada que avisar: se actualizan solas.
+    if (window.__MDT_WEB || chrome.runtime.getManifest().update_url) { ui.update.hidden = true; return; }
     const r = await bg({ type: 'checkUpdate', force: !!force });
-    if (!r || !r.ok || r.store) return;
+    if (!r || !r.ok || r.store) { ui.update.hidden = true; return; }
     const show = r.newer && (force || !r.dismissed);
     ui.update.hidden = !show;
     if (show) {
       ui.update.dataset.v = r.latest;
+      // Un renglón: qué hay, y las dos cosas que se pueden hacer. El cómo queda al pasar el mouse.
+      const how = T('Tenés la {v}.', { v: r.current }) + ' ' + T('Descargá el ZIP, reemplazá con su contenido la carpeta de la extensión y tocá Aplicar. Si la clonaste con git, alcanza con git pull y Aplicar.');
+      ui.update.title = how;
       ui.update.innerHTML =
-        '<strong>' + T('Hay una versión nueva: {v}', { v: esc(r.latest) }) + '</strong>' +
-        '<p>' + T('Tenés la {v}.', { v: esc(r.current) }) + ' ' + T('Descargá el ZIP, reemplazá con su contenido la carpeta de la extensión y tocá Aplicar. Si la clonaste con git, alcanza con git pull y Aplicar.') + '</p>' +
-        '<div class="lmd-update-actions">' +
-          '<a class="lmd-btn lmd-btn-fill" href="' + ZIP_URL + '" target="_blank" rel="noopener noreferrer">' + T('Descargar') + '</a>' +
-          '<button type="button" class="lmd-btn" data-act="update-apply">' + T('Aplicar') + '</button>' +
-          '<button type="button" class="lmd-link" data-act="update-later">' + T('Ahora no') + '</button>' +
-        '</div>';
+        '<span class="lmd-update-text">' + T('Versión nueva: {v}', { v: esc(r.latest) }) + '</span>' +
+        '<a class="lmd-link" href="' + ZIP_URL + '" target="_blank" rel="noopener noreferrer">' + T('Descargar') + '</a>' +
+        '<button type="button" class="lmd-link" data-act="update-apply">' + T('Aplicar') + '</button>' +
+        '<button type="button" class="lmd-update-x" data-act="update-later" title="' + T('Ahora no') + '" aria-label="' + T('Ahora no') + '">' + ICON.close + '</button>';
     }
     if (force) {
       if (r.error) say(esc(T('No se pudo consultar GitHub')), 'error');
@@ -921,7 +926,7 @@
     ui.searchInput.placeholder = T('Buscar en la nota y en los archivos');
     applySide();
 
-    ui.status.textContent = settings.autoRefresh ? T('Recarga automática activa') : '';
+    ui.status.textContent = idleStatus();
     setupRefresh();
   }
 
@@ -1030,7 +1035,7 @@
       const line = el('div', { class: 'lmd-o-row lmd-o-l' + Math.min(stack.length, 4) });
       line.dataset.id = h.id;
       if (hasKids) {
-        const tog = el('button', { class: 'lmd-o-tog', type: 'button', 'aria-label': 'Plegar o desplegar' }, ICON.chevron);
+        const tog = el('button', { class: 'lmd-o-tog', type: 'button', 'aria-label': T('Plegar o desplegar') }, ICON.chevron);
         tog.addEventListener('click', (e) => {
           e.stopPropagation();
           const shut = item.classList.toggle('lmd-o-shut');
@@ -1151,11 +1156,16 @@
     } finally { checking = false; }
   }
 
+  // Lo que dice el pie cuando no hay nada que avisar. La recarga automática se nombra solo donde hay un archivo
+  // que otro programa puede cambiar: en una nota del navegador o de la nube no le dice nada a nadie.
+  const idleStatus = () => (settings.autoRefresh && !noDoc && (!APP || (appRoot && appRoot.root)) ? T('Recarga automática activa') : '');
   let flashTimer = null;
   // Aviso corto en la barra. Los errores van en rojo y duran más.
   function flash(msg, kind) {
     // Sin nota abierta no hay pie donde mostrarlo: los avisos que importan van al estado vacío.
     if (noDoc) { if (kind && !ui.home.hidden) LMD.home.say(msg); return; }
+    // Un aviso común no pisa una advertencia o un error que todavía están a la vista.
+    if (!kind && (ui.status.classList.contains('lmd-error') || ui.status.classList.contains('lmd-warn'))) return;
     ui.status.textContent = msg;
     ui.status.classList.add('lmd-flash');
     ui.status.classList.toggle('lmd-error', kind === 'error');
@@ -1163,7 +1173,7 @@
     clearTimeout(flashTimer);
     flashTimer = setTimeout(() => {
       ui.status.classList.remove('lmd-flash', 'lmd-error', 'lmd-warn');
-      ui.status.textContent = settings.autoRefresh ? T('Recarga automática activa') : '';
+      ui.status.textContent = idleStatus();
     }, kind ? 5000 : 1800);
   }
 
@@ -1684,6 +1694,13 @@
   let panelTab = 'look';
   let serverDraft = false; // "Uso mi propio servidor" prendido y la dirección todavía sin escribir
   const PANEL_TABS = [['look', 'Apariencia', ICON.eye], ['read', 'Lectura y edición', ICON.pencil], ['plug', 'Plugins', ICON.b_code], ['cloud', 'Nube', ICON.cloud], ['ai', 'IA', ICON.spark], ['plan', 'Plan', ICON.card], ['adv', 'Avanzado', ICON.gear]];
+  // Al cerrar Ajustes el foco vuelve a donde estaba al abrirlos.
+  let panelBack = null;
+  function closePanel() {
+    ui.panel.hidden = true;
+    const back = panelBack; panelBack = null;
+    if (back && back.isConnected && back !== document.body) { try { back.focus({ preventScroll: true }); } catch (e) { /* ya no recibe foco */ } }
+  }
   // Con tab abre directo en esa pestaña: openPanel('plan'). why es una línea que dice por qué se llegó a Plan.
   function openPanel(tab, why) {
     if (tab) panelTab = tab;
@@ -1691,6 +1708,8 @@
     if (!PANEL_TABS.some((t) => t[0] === panelTab)) panelTab = 'look';
     LMD.write.closeMenu(); // un menú de bloques abierto quedaría encima de los ajustes
     const s = settings;
+    const wasHidden = ui.panel.hidden; const hadFocus = !wasHidden && ui.panel.contains(document.activeElement);
+    if (wasHidden) panelBack = document.activeElement;
     if (ui.panel.hidden) serverDraft = false;
     const noCloud = /^off$/i.test(s.cloudUrl || ''); const own = serverDraft || (!!s.cloudUrl && !noCloud);
     const EXTRA = ' <em class="lmd-tag">' + T('Plan pago') + '</em>';
@@ -1705,8 +1724,8 @@
       '<svg class="lmd-prev-dgm" viewBox="0 0 150 132"><rect class="node" x="6" y="4" width="84" height="36"/><rect class="node" x="60" y="92" width="84" height="36"/><path class="curve" d="M48 40 C 48 70, 102 58, 102 85"/><path class="line" d="M48 40 V 64 H 102 V 85"/><path class="tip" d="M97 84 h10 l-5 8z"/><text x="48" y="27">A</text><text x="102" y="115">B</text></svg>' +
     '</div>';
     ui.panel.innerHTML =
-      '<div class="lmd-panel-card" role="dialog" aria-label="' + T('Ajustes') + '">' +
-        '<header><h2>' + T('Ajustes') + '</h2><button class="lmd-icon-btn" data-act="close-panel" title="' + T('Cerrar') + '">' + ICON.close + '</button></header>' +
+      '<div class="lmd-panel-card" role="dialog" aria-modal="true" aria-label="' + T('Ajustes') + '">' +
+        '<header><h2>' + T('Ajustes') + '</h2><button class="lmd-icon-btn" data-act="close-panel" title="' + T('Cerrar') + '" aria-label="' + T('Cerrar') + '">' + ICON.close + '</button></header>' +
         '<nav class="lmd-ptabs" role="tablist">' +
           PANEL_TABS.map((t) => '<button type="button" role="tab" data-ptab="' + t[0] + '">' + t[2] + '<span>' + T(t[1]) + '</span></button>').join('') +
           '<button type="button" class="lmd-ptabs-foot" data-act="feedback">' + ICON.mail + '<span>' + T('Enviar comentarios') + '</span></button>' +
@@ -1787,7 +1806,7 @@
     ui.panel.hidden = false;
     // Desde los paneles de la cuenta: cómo cambiar de pestaña, ir a entrar, y salir a pagar sin perder lo escrito.
     const host = {
-      tab: (t) => showTab(t), close: () => { ui.panel.hidden = true; },
+      tab: (t) => showTab(t), close: () => closePanel(),
       // En la app se entra en Ajustes → Nube. Sobre un archivo abierto directo, se abre la app con el correo ya pedido.
       login: () => { if (APP) location.href = APP_URL + '?login=1'; else bg({ type: 'openApp', query: '?login=1' }); },
       leave: () => (dirty ? save(false) : Promise.resolve(true)),
@@ -1867,7 +1886,9 @@
     });
     server('url').addEventListener('change', () => { if (server('own').checked) LMD.patch({ cloudUrl: server('url').value.trim() }); });
     if (serverDraft && panelTab === 'adv' && !server('url').value) server('url').focus();
-    ui.panel.onclick = (e) => { if (e.target === ui.panel) ui.panel.hidden = true; };
+    ui.panel.onclick = (e) => { if (e.target === ui.panel) closePanel(); };
+    // El teclado arranca adentro: al abrir (o al redibujar con el foco adentro) queda en la pestaña elegida.
+    if (wasHidden || hadFocus) { const on = ui.panel.querySelector('[data-ptab].lmd-on'); if (on) on.focus({ preventScroll: true }); }
   }
 
   // ---------- Modo edición ----------
@@ -1917,7 +1938,16 @@
     return m ? [+m[1], +m[2]] : null;
   };
 
-  const PREFIX_RE = /^((?:\s{0,3}>\s?)*\s*(?:(?:[-*+]|\d{1,9}[.)])\s+)?(?:\[[ xX]\]\s+)?)/;
+  // Lo que va antes del texto de un bloque: las citas, la sangría, la marca de lista y la casilla de una tarea.
+  // Un ítem que estaba vacío ("-", "1." o "- [ ]") no trae el espacio que separa la marca del texto: se lo pone.
+  // La casilla cuenta solo si el ítem se dibujó como tarea; si no, "[ ]" es parte del texto.
+  const PREFIX_RE = /^((?:\s{0,3}>\s?)*\s*)(?:([-*+]|\d{1,9}[.)])(\s+|$)(?:(\[[ xX]\])(\s+|$))?)?/;
+  function prefixOf(line, task) {
+    const m = PREFIX_RE.exec(line);
+    let out = m[1];
+    if (m[2]) { out += m[2] + (m[3] || ' '); if (m[4] && task) out += m[4] + (m[5] || ' '); }
+    return out;
+  }
 
   function blockSource(elm) {
     const r = rangeOf(elm); if (!r) return null;
@@ -1928,7 +1958,7 @@
       const quote = /^((?:\s{0,3}>\s?)*)/.exec(first)[1];
       return { s, e, lines: [quote + '#'.repeat(+elm.tagName[1]) + ' ' + md.replace(/\n/g, ' ').trim()] };
     }
-    const prefix = PREFIX_RE.exec(first)[1];
+    const prefix = prefixOf(first, !!elm.closest('li.lmd-task-item'));
     const cont = prefix.replace(/[-*+]|\d{1,9}[.)]|\[[ xX]\]/g, (m) => ' '.repeat(m.length));
     const parts = md.split('\n');
     return { s, e, lines: parts.map((part, i) => (i === 0 ? prefix : cont) + part.trim() + (i < parts.length - 1 ? '\\' : '')) };
@@ -2084,7 +2114,7 @@
     updateSaveState();
     render();
     applyRawMode();
-    if (on) flash(T('Modo edición: hacé clic en un texto o una celda para cambiarlo'));
+    if (on) flash(T(LMD.touch.coarse() ? 'Modo edición: tocá un texto para cambiarlo' : 'Modo edición: hacé clic en un texto o una celda para cambiarlo'));
   }
 
   // Marca qué se puede editar después de cada render.
@@ -2109,10 +2139,19 @@
         if (n.nodeType === 1 && n.tagName === 'INPUT') continue;
         nodes.push(n);
       }
-      if (!nodes.length) return;
+      // Una tarea sin texto ("- [ ]", como las de las plantillas) queda con su casilla y un lugar donde escribir.
+      if (!nodes.length) { const box = li.querySelector(':scope > input.lmd-task'); if (!box) return; box.after(span); span.dataset.ph = T('Tarea'); make(span); return; }
       li.insertBefore(span, nodes[0]);
       nodes.forEach((n) => span.appendChild(n));
       make(span);
+    });
+    // Un ítem vacío ("-" o "1." sin nada más) no trae párrafo adentro: se le da un lugar donde escribir.
+    article.querySelectorAll('li[data-l]:not([data-p])').forEach((li) => {
+      if (li.closest('.footnotes') || li.childNodes.length) return;
+      const r = rangeOf(li); if (!r) return;
+      const span = el('span', { class: 'lmd-li-text', 'data-l': r[0] + '-' + (r[0] + 1) });
+      span.dataset.ph = T('Ítem nuevo');
+      li.appendChild(span); make(span);
     });
     article.querySelectorAll('.lmd-math, .lmd-wiki').forEach((n) => { n.contentEditable = 'false'; });
     article.querySelectorAll('input.lmd-task').forEach((box) => { box.contentEditable = 'false'; });
@@ -2226,6 +2265,43 @@
     });
   }
 
+  // Las líneas del archivo que ocupa un bloque o la fila de una celda, ahora.
+  function sourceOf(node) {
+    if (node.classList.contains('lmd-draft')) return null;
+    if (node.classList.contains('lmd-cell')) {
+      const table = node.closest('table'); if (!table || !rangeOf(table)) return null;
+      const ri = +node.dataset.r; return { s: tableContext(table).s + (ri === 0 ? 0 : ri + 1), n: 1 };
+    }
+    const r = rangeOf(node); return r ? { s: r[0] + fmOffset, n: r[1] - r[0] } : null;
+  }
+  // Escape en un bloque: si lo escrito ya pasó al Markdown (tras una pausa), se vuelve a poner lo que había al entrar.
+  function revertBlock(node) {
+    const at = node._was && sourceOf(node); if (!at) return;
+    if (srcLines.slice(at.s, at.s + at.n).join('\n') === node._was.join('\n')) return;
+    if (node.classList.contains('lmd-cell')) replaceLines(at.s, at.s + at.n, node._was, null);
+    else replaceLines(at.s, at.s + at.n, node._was, node, 'data-l');
+  }
+
+  // La barra de la tabla va al costado de la tabla si hay lugar; si no, debajo. Arriba taparía el título de la
+  // sección. Nunca se monta sobre el pie ni sobre la barra de arriba: si debajo no entra, queda sobre el borde
+  // de abajo de la zona de lectura, y si ahí taparía la celda que se escribe, pasa arriba de esa fila.
+  function placeTableBar() {
+    if (ui.tableBar.hidden || LMD.touch.dock()) return;
+    const cell = document.activeElement && document.activeElement.closest && document.activeElement.closest('.lmd-cell');
+    const table = cell && cell.closest('table'); if (!table) return;
+    const box = table.getBoundingClientRect(); const row = cell.getBoundingClientRect();
+    const w = ui.tableBar.offsetWidth || 300; const h = ui.tableBar.offsetHeight || 40;
+    const foot = ui.main.querySelector('.lmd-foot').getBoundingClientRect(); const footTop = foot.height ? foot.top : window.innerHeight; // el pie es fijo: no tiene offsetParent
+    const min = 64; const max = Math.max(min, footTop - h - 8);
+    let left; let top;
+    if (box.right + 12 + w < window.innerWidth - 8) { left = box.right + 12; top = Math.min(max, Math.max(min, box.top)); }
+    else {
+      left = Math.max(8, Math.min(window.innerWidth - w - 8, box.left)); top = Math.min(max, box.bottom + 8);
+      if (top < row.bottom + 4 && top + h > row.top - 4) top = Math.max(min, row.top - h - 8);
+    }
+    ui.tableBar.style.left = left + 'px'; ui.tableBar.style.top = top + 'px';
+  }
+
   // Barra de formato sobre la selección.
   function formatBar() {
     const sel = getSelection();
@@ -2236,11 +2312,12 @@
     if (!editMode || !host || core.hold || (sel.isCollapsed && !(link && host.contains(link)))) { ui.format.hidden = true; LMD.touch.dock(); return; }
     const rect = (link || sel.getRangeAt(0)).getBoundingClientRect();
     ui.format.classList.toggle('lmd-format-link', !!link);
+    ui.format.querySelector('[data-fmt=math]').hidden = !settings.plugins.katex;
     ui.format.hidden = false;
     // Con el dedo va pegada al borde de abajo de lo que se ve: arriba quedaría tapada por el menú de selección del sistema.
     if (LMD.touch.dock()) return;
     ui.format.style.top = Math.max(8, rect.top - 42) + 'px';
-    ui.format.style.left = Math.max(8, link ? Math.min(window.innerWidth - ui.format.offsetWidth - 8, rect.left) : Math.min(window.innerWidth - 230, rect.left + rect.width / 2 - 105)) + 'px';
+    ui.format.style.left = Math.max(8, Math.min(window.innerWidth - ui.format.offsetWidth - 8, link ? rect.left : rect.left + rect.width / 2 - ui.format.offsetWidth / 2)) + 'px';
   }
 
   function applyFormat(kind) {
@@ -2255,6 +2332,8 @@
       sel.selectAllChildren(code);
     } else if (kind === 'link') {
       LMD.links.open();
+    } else if (kind === 'math') {
+      LMD.formula.createInline();
     } else if (kind === 'clear') { document.execCommand('removeFormat'); document.execCommand('unlink'); }
   }
 
@@ -2299,21 +2378,22 @@
     ui.article.addEventListener('focusin', (e) => {
       const node = e.target.closest && e.target.closest('.lmd-editable');
       if (node && node.dataset.formula) node.textContent = node.dataset.formula;
-      if (node) { node._md = inlineMd(node); core.lastBlock = node; }
-      ui.tableBar.hidden = !(node && node.classList.contains('lmd-cell'));
-      if (!ui.tableBar.hidden && !LMD.touch.dock()) {
-        const box = node.closest('table').getBoundingClientRect();
-        // Al costado de la tabla si hay lugar; si no, debajo. Arriba taparía el título de la sección.
-        const ancho = ui.tableBar.offsetWidth || 300;
-        if (box.right + 12 + ancho < window.innerWidth - 8) {
-          ui.tableBar.style.left = (box.right + 12) + 'px';
-          ui.tableBar.style.top = Math.max(64, box.top) + 'px';
-        } else {
-          ui.tableBar.style.left = Math.max(8, box.left) + 'px';
-          ui.tableBar.style.top = Math.min(window.innerHeight - 52, box.bottom + 8) + 'px';
-        }
+      if (node) {
+        node._md = inlineMd(node); core.lastBlock = node;
+        // Lo que el bloque tenía en el archivo al entrar: a eso vuelve Escape, aunque lo escrito ya haya pasado al Markdown.
+        const at = sourceOf(node); node._was = at ? srcLines.slice(at.s, at.s + at.n) : null;
       }
+      ui.tableBar.hidden = !(node && node.classList.contains('lmd-cell'));
+      placeTableBar();
     });
+    // La barra de la tabla acompaña a la tabla al mover la página.
+    let barQueued = false;
+    window.addEventListener('scroll', () => {
+      if (ui.tableBar.hidden || barQueued) return;
+      barQueued = true;
+      requestAnimationFrame(() => { barQueued = false; placeTableBar(); });
+    }, { passive: true });
+    window.addEventListener('resize', placeTableBar);
     // Lo escrito pasa al Markdown tras una pausa, sin esperar a salir del bloque: si no, el guardado automático
     // no ve nada hasta que la persona hace clic en otro lado, y cerrar la pestaña a mitad de un párrafo lo pierde.
     let typeTimer = null;
@@ -2352,7 +2432,12 @@
       // Enter cierra el bloque y abre uno nuevo debajo; en una celda solo la confirma.
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (node.classList.contains('lmd-cell')) node.blur(); else LMD.write.enter(node); }
       else if (e.key === 'Enter') { e.preventDefault(); document.execCommand('insertLineBreak'); }
-      else if (e.key === 'Escape') { e.preventDefault(); node._md = null; if (draft) LMD.write.drop(node); needsRender = true; node.blur(); render(); }
+      else if (e.key === 'Tab' && node.classList.contains('lmd-cell') && !(e.ctrlKey || e.metaKey || e.altKey)) {
+        // Tab pasa a la celda de al lado con su contenido elegido, como en una planilla: lo que se escribe la reemplaza.
+        const cells = Array.from(node.closest('table').querySelectorAll('.lmd-cell')); const next = cells[cells.indexOf(node) + (e.shiftKey ? -1 : 1)];
+        if (next) { e.preventDefault(); next.focus(); getSelection().selectAllChildren(next); }
+      }
+      else if (e.key === 'Escape') { e.preventDefault(); node._md = null; if (draft) LMD.write.drop(node); else revertBlock(node); node._typed = false; needsRender = true; node.blur(); render(); }
       else if (draft) LMD.write.onKey(e, node);
     });
     document.addEventListener('paste', (e) => {
@@ -2377,7 +2462,16 @@
     ui.tableBar.addEventListener('mousedown', (e) => { e.preventDefault(); const b = e.target.closest('[data-top]'); if (b) tableOp(b.dataset.top); });
     ui.rawEdit.addEventListener('input', debounce(() => { raw = ui.rawEdit.value.replace(/\r?\n/g, eol); syncSource(); markDirty(); }, 200));
     // Lo que ya quedó en la cola de la nube no se pierde al cerrar: no hace falta frenar la salida.
-    window.addEventListener('beforeunload', (e) => { if (dirty && stashed !== raw) { e.preventDefault(); e.returnValue = ''; } });
+    // Lo que se venía escribiendo y todavía no pasó al Markdown (la pausa no llegó) pasa ahora: así cuenta como
+    // cambio sin guardar y el navegador avisa antes de cerrar, en vez de perderlo sin decir nada.
+    window.addEventListener('beforeunload', (e) => { flushTyping(); if (dirty && stashed !== raw) { e.preventDefault(); e.returnValue = ''; } });
+    // Al pasar a otra pestaña o a otra app (en un teléfono no hay aviso de cierre) lo escrito se guarda en el momento,
+    // en las notas que se guardan solas.
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden || !editMode || noDoc) return;
+      flushTyping();
+      if (dirty && appRoot && (appRoot.kind === 'local' || appRoot.kind === 'cloud')) { clearTimeout(autosaveTimer); save(false); }
+    });
     window.addEventListener('online', () => {
       if (!appRoot || appRoot.kind !== 'cloud') return;
       if (dirty && cloudState === 'error') { clearTimeout(autosaveTimer); save(false); } else { cloudPoll = 0; checkForChanges(false); }
@@ -2478,7 +2572,7 @@
           '<div class="lmd-ask-actions">' +
             '<button type="button" class="lmd-btn lmd-btn-fill" data-ask="dir">' + T('Elegir la carpeta') + '</button>' +
             '<button type="button" class="lmd-btn" data-ask="file">' + T('Solo este archivo') + '</button>' +
-            '<button type="button" class="lmd-btn" data-ask="no">' + T('Cancelar') + '</button>' +
+            '<button type="button" class="lmd-btn" data-ask="no" data-esc>' + T('Cancelar') + '</button>' +
           '</div>' +
         '</div>';
       document.body.appendChild(box);
@@ -2656,7 +2750,7 @@
       // Enlace público de solo lectura; si tiene contraseña, se pide.
       await LMD.cloud.ready();
       const token = vParts(url).join('/');
-      const why = (e) => T(e.code === 'locked' ? 'Demasiados intentos. Probá de nuevo en unos minutos.' : e.code === 'offline' ? 'No hay conexión con el servidor.' : 'Ese enlace ya no existe.');
+      const why = (e) => T(e.code === 'locked' ? 'Demasiadas contraseñas equivocadas. Probá de nuevo en 10 minutos.' : e.code === 'offline' ? 'No hay conexión con el servidor.' : 'Ese enlace ya no existe.');
       let n = null; let stop = '';
       try { n = await LMD.cloud.publicNote(token, ''); }
       catch (e) {
@@ -2771,7 +2865,7 @@
     if (!opt.pop) {
       // La marca de la vuelta del pago se queda hasta que el servidor confirma: la limpia quien espera.
       const href = hrefOf(f, opt.hash) + (opt.boot && location.hash === '#lmd-paid' ? '#lmd-paid' : '');
-      if (opt.replace || opt.boot) history.replaceState(null, '', href); else if (href !== location.href) history.pushState(null, '', href);
+      if (opt.replace || opt.boot || LMD.touch.backMark()) history.replaceState(null, '', href); else if (href !== location.href) history.pushState(null, '', href);
     }
     if (doc && appRoot.root) { appRoot.last = f; appRoot.at = Date.now(); handlesPut(appRoot); }
     paintDoc();
@@ -2807,6 +2901,7 @@
     ui.main.querySelector('.lmd-docname').textContent = title;
     document.documentElement.classList.toggle('lmd-readonly', readOnly);
     document.documentElement.classList.toggle('lmd-nodoc', noDoc);
+    if (settings && !ui.status.classList.contains('lmd-flash')) ui.status.textContent = idleStatus();
   }
   function showEmpty(note) { ui.home.hidden = false; LMD.home.show(homeCtx(), note); }
 
@@ -2878,6 +2973,11 @@
       if (settings.language !== prev.language) { if (!ui.panel.hidden) { try { sessionStorage.setItem('lmd-panel', panelTab); } catch (e) {} } location.reload(); return; }
       applySettings();
       // Cambió el servidor, o se prendió o apagó la nube: la cuenta y el ícono se vuelven a leer.
+      // Una nota de la nube que estaba abierta era del servidor anterior: lo sin subir queda en la cola y la nota se cierra.
+      if ((settings.cloudUrl || '') !== (prev.cloudUrl || '') && APP && appRoot && appRoot.kind === 'cloud') {
+        if (dirty) LMD.cloud.stash(vParts(HERE).join('/'), raw, diskText).catch(() => {});
+        go('', { discard: true, tree: true });
+      }
       if ((settings.cloudUrl || '') !== (prev.cloudUrl || '')) { LMD.cloud.reset(); LMD.cloud.ready().then(() => { LMD.sync.paint(); if (APP) core.reloadTree(); }); panelStale = true; }
       if (panelStale && !ui.panel.hidden) { panelStale = false; openPanel(); }
       if (RENDER_KEYS.some((k) => JSON.stringify(prev[k]) !== JSON.stringify(settings[k]))) render();

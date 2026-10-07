@@ -85,9 +85,50 @@
     }, true);
   }
 
+  // ---------- Atrás del sistema ----------
+  // En pantalla chica, atrás cierra lo que está abierto encima de la nota (la barra lateral, Ajustes, un diálogo,
+  // una imagen ampliada) en vez de irse de la nota. Al abrirse algo se suma al historial una entrada con la misma
+  // dirección; atrás la consume y acá se cierra lo de arriba, con el mismo Escape que usa el teclado. Si lo abierto
+  // se cerró de otra forma, la entrada queda: la próxima nota que se abre la reemplaza (backMark) y, si antes llega
+  // un atrás, se lo deja seguir de largo. Nunca se retrocede el historial por cuenta propia mientras hay algo abierto.
+  const LAYERS = ':scope > .lmd-ask, :scope > .lmd-dgm, :scope > .lmd-viewer:not([hidden]), :scope > .lmd-panel:not([hidden])';
+  const layers = () => Array.from(document.body.querySelectorAll(LAYERS));
+  const drawer = () => document.documentElement.classList.contains('lmd-side-open');
+  const marked = () => { try { return !!(history.state && history.state.lmdLayer); } catch (e) { return false; } };
+  let armed = false; // hay una entrada de más en el historial, arriba de todo
+  function track() {
+    if (!small() || marked() || !(layers().length || drawer())) return;
+    try { history.pushState({ lmdLayer: 1 }, ''); armed = true; } catch (e) { /* sin historial, atrás hace lo de siempre */ }
+  }
+  function closeTop() {
+    const all = layers();
+    // Lo que se arma al abrirse (un diálogo) está encima de lo que ya estaba en la página (Ajustes, la imagen).
+    const top = all.filter((n) => n.matches('.lmd-ask, .lmd-dgm')).pop() || all.pop();
+    const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    if (top) (top.contains(document.activeElement) ? document.activeElement : top).dispatchEvent(esc); else window.dispatchEvent(esc);
+  }
+  function watchBack() {
+    const mo = new MutationObserver(track);
+    mo.observe(document.body, { childList: true });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    document.body.querySelectorAll(':scope > .lmd-panel, :scope > .lmd-viewer').forEach((n) => mo.observe(n, { attributes: true, attributeFilter: ['hidden'] }));
+    window.addEventListener('popstate', (e) => {
+      // Adelante hasta la entrada de más: queda anotada, y no hay nada que abrir.
+      if (e.state && e.state.lmdLayer) { armed = true; e.stopImmediatePropagation(); return; }
+      if (!armed) return;
+      armed = false;
+      e.stopImmediatePropagation(); // la dirección no cambió: el lector no tiene nada que traer
+      if (layers().length || drawer()) { closeTop(); setTimeout(track, 0); }
+      else history.back(); // lo abierto ya se había cerrado: este atrás era para irse de la nota
+    }, true);
+  }
+  // Se va a abrir otra nota. Si arriba del historial está la entrada de más, la nota la reemplaza en vez de sumarse.
+  const backMark = () => { if (!marked()) return false; armed = false; return true; };
+
   function init() {
     const v = vv();
     measure();
+    watchBack();
     if (!v) return;
     const follow = () => { measure(); dock(); if (kb) caretIntoView(); };
     v.addEventListener('resize', follow);
@@ -96,5 +137,5 @@
     document.addEventListener('input', () => { if (kb) caretIntoView(); });
   }
 
-  LMD.touch = { small, coarse, touched, dock, longPress, init, caretIntoView, visible };
+  LMD.touch = { small, coarse, touched, dock, longPress, init, caretIntoView, visible, backMark };
 })();

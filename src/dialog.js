@@ -78,5 +78,54 @@
     });
   }
 
-  LMD.dialog = { prompt, confirm };
+  // ---------- Lo que vale para todas las ventanas ----------
+  // Las ventanas que otros archivos arman a mano (compartir, historial, la cuenta, comentarios, plantillas, los
+  // editores de diagramas y fórmulas) comparten tres cosas: Tab no se sale de la ventana de arriba, Escape la
+  // cierra aunque ella no lo atienda (con su botón marcado con data-esc), y al cerrarse el foco vuelve a donde estaba.
+  const MODALS = ':scope > .lmd-panel:not([hidden]), :scope > .lmd-ask, :scope > .lmd-dgm';
+  const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
+  const topModal = () => { const all = document.body.querySelectorAll(MODALS); return all[all.length - 1] || null; };
+  const focusables = (box) => Array.from(box.querySelectorAll(FOCUSABLE)).filter((n) => n.offsetParent !== null || n === document.activeElement);
+  function trap(e, box) {
+    const list = focusables(box); if (!list.length) { e.preventDefault(); return; }
+    const first = list[0]; const last = list[list.length - 1]; const a = document.activeElement;
+    if (!box.contains(a)) { e.preventDefault(); first.focus(); }
+    else if (e.shiftKey && a === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && a === last) { e.preventDefault(); first.focus(); }
+  }
+  // Lo prende el lector al armar la interfaz: sobre una página que no es Markdown no se engancha nada.
+  let watching = false;
+  function init() {
+  if (watching) return; watching = true;
+  // En la fase de captura: varias ventanas frenan sus teclas antes de que lleguen al documento.
+  window.addEventListener('keydown', (e) => {
+    const top = topModal(); if (!top) return;
+    if (e.key === 'Tab') { trap(e, top); return; }
+    if (e.key !== 'Escape') return;
+    // Primero atiende la ventana, si sabe; lo que siga abierto después se cierra con su botón de salida.
+    setTimeout(() => { if (!top.isConnected) return; const b = top.querySelector('[data-esc]'); if (b) b.click(); }, 0);
+  }, true);
+  new MutationObserver((records) => {
+    records.forEach((r) => {
+      r.addedNodes.forEach((box) => {
+        if (box.nodeType !== 1 || !box.matches('.lmd-ask, .lmd-dgm')) return;
+        const a = document.activeElement; box._back = a && a !== document.body ? a : null;
+        box.querySelectorAll('[role=dialog]:not([aria-modal])').forEach((n) => n.setAttribute('aria-modal', 'true'));
+        // Si la ventana no puso el foco en nada suyo, queda en su primer control: el teclado arranca adentro.
+        setTimeout(() => {
+          if (!box.isConnected || box.contains(document.activeElement) || topModal() !== box) return;
+          const list = focusables(box); const pick = list.find((n) => !LMD.touch.coarse() && n.matches('input:not([readonly]), textarea')) || list.find((n) => n.matches('button, a[href]'));
+          if (pick) pick.focus({ preventScroll: true });
+        }, 60);
+      });
+      r.removedNodes.forEach((box) => {
+        if (box.nodeType !== 1 || !box._back) return;
+        const back = box._back; box._back = null;
+        setTimeout(() => { const a = document.activeElement; if ((!a || a === document.body) && back.isConnected && !topModal()) { try { back.focus({ preventScroll: true }); } catch (e) { /* ya no recibe foco */ } } }, 0);
+      });
+    });
+  }).observe(document.body, { childList: true });
+  }
+
+  LMD.dialog = { prompt, confirm, init };
 })();
