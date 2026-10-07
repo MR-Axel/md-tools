@@ -2,13 +2,22 @@
 
 [English](README.md) · Español
 
+Editá Markdown sin escribir Markdown. Tus archivos quedan en tu disco, y tu IA puede trabajar sobre las mismas notas.
+
+- **Sin escribir sintaxis.** Hacés clic en un título, una tabla, una lista de tareas, un diagrama o una fórmula y lo cambiás ahí mismo, con botones. El código está a un clic.
+- **Tus archivos, en tu disco.** Abrís un `.md` o una carpeta entera. No se sube nada ni hay que crear una cuenta.
+- **Nube cuando la quieras.** Las mismas notas en cada dispositivo, compartir, y editar entre varios en vivo con un enlace.
+- **Tu IA sobre las mismas notas.** Por MCP lee, escribe, documenta lo que hace y responde los comentarios que le dejás.
+- **Privado.** Carpetas con contraseña que el servidor no puede leer, código abierto y servidor propio si querés.
+- **Web, Chrome y celular.** App web, extensión de Chrome y app en el celular. También anda sin conexión.
+
 ![SharpMD](docs/store/1-reader.png)
 
 ![Editando una celda de la tabla en el lugar](docs/store/2-editing.png)
 
 **Probala sin instalar nada: [sharpmd.app](https://sharpmd.app/)**
 
-Extensión de Chrome para leer y editar archivos Markdown en el navegador, locales (`file://`) o servidos por web. Sin cuentas, sin planes pagos y sin mandar datos a ningún lado: todo corre en la máquina.
+Gratis y de código abierto. Sin seguimiento: los archivos se leen en tu navegador y no se suben.
 
 ## Qué hace
 

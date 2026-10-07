@@ -12,11 +12,25 @@
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="apple-touch-icon" href="../icons/icon192.png">
 <script src="boot.js"></script>
+<link rel="preload" href="../vendor/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+  /* Pantalla de carga: el logo con el cursor sobre el fondo del tema (los colores los deja boot.js), hasta que la app está lista. */
+  .lmd-splash { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: var(--lmd-boot-bg, #121418); }
+  .lmd-splash svg { width: 72px; height: 72px; opacity: 0; animation: lmd-splash-in .18s ease-out .12s forwards; }
+  .lmd-splash path { fill: none; stroke: var(--lmd-boot-hash, #bef264); stroke-width: 5.5; stroke-linecap: round; }
+  .lmd-splash rect { fill: var(--lmd-boot-bar, #e8eaee); animation: lmd-splash-blink 1.06s steps(1, end) .3s infinite; }
+  .lmd-splash.lmd-splash-out { opacity: 0; pointer-events: none; transition: opacity .16s ease-out; }
+  @keyframes lmd-splash-in { to { opacity: 1; } }
+  @keyframes lmd-splash-blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .lmd-splash svg { opacity: 1; animation: none; } .lmd-splash rect { animation: none; } .lmd-splash.lmd-splash-out { transition: none; } }
+  @media print { .lmd-splash { display: none; } }
+</style>
 <link rel="stylesheet" href="../vendor/hljs-themes.css">
 <link rel="stylesheet" href="content.css">
 <link rel="stylesheet" href="editors.css">
 </head>
 <body>
+  <div class="lmd-splash" id="lmd-splash" aria-hidden="true"><svg viewBox="6 8 52 48"><path d="M27 16 22 48M41 16 36 48M13 27h30M11 38h30"/><rect x="48" y="15" width="6" height="34" rx="3"/></svg></div>
   <script src="web.js"></script>
   <script src="defaults.js"></script>
   <script src="storeapp.js"></script>

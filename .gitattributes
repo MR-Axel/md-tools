@@ -1,5 +1,6 @@
 /tests/ export-ignore
 /docs/ export-ignore
+/docs/clips/ export-ignore
 /examples/ export-ignore
 /.github/ export-ignore
 /index.html export-ignore

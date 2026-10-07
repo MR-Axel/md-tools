@@ -181,7 +181,7 @@
     const askLogin = () => {
       const acts = box.querySelector('.lmd-acct-actions'); if (!acts || LMD.cloud.signedIn()) return;
       const form = el('div', { class: 'lmd-signin' }); acts.replaceWith(form);
-      LMD.home.signIn(form, async () => { account = null; asked = false; paint(); if (core.APP) core.reloadTree(); await cloudPane(box, host); });
+      LMD.home.signIn(form, async () => { account = null; asked = false; paint(); LMD.home.account(); if (core.APP) core.reloadTree(); await cloudPane(box, host); });
     };
     if (wantLogin) { wantLogin = false; if (LMD.cloud.enabled() && !host.direct) askLogin(); }
     box.onclick = async (e) => {
@@ -223,7 +223,7 @@
     }
     // Ya no hay cuenta: una nota de la nube que estuviera abierta se cierra, y el explorador queda sin la nube.
     const open = core && core.APP && isCloud();
-    account = null; asked = false; paint();
+    account = null; asked = false; paint(); LMD.home.account();
     if (open) await core.close({ discard: true, tree: true }); else if (core && core.APP) core.reloadTree();
     if (core) core.flash(T('Cuenta eliminada'));
     return true;
@@ -234,7 +234,7 @@
   async function signOut(host) {
     const open = core && core.APP && isCloud();
     if (open && host && host.leave) { try { await host.leave(); } catch (e) { /* lo que no subió queda en la cola */ } }
-    await LMD.cloud.logout(); account = null; asked = false; paint();
+    await LMD.cloud.logout(); account = null; asked = false; paint(); LMD.home.account();
     if (open) await core.close({ discard: true, tree: true }); else if (core && core.APP) core.reloadTree();
   }
 
@@ -425,7 +425,7 @@
       let a = null;
       try { a = await LMD.cloud.account(); } catch (e) { /* se reintenta */ }
       if (wait !== mine) return;
-      if (a && paid(a)) { account = a; asked = true; adopt(a, true); try { sessionStorage.removeItem('lmd-pay'); } catch (e) { /* sin sesión */ } mine.state = 'done'; mine.at = Date.now(); clean(); paint(); redraw(); return; }
+      if (a && paid(a)) { account = a; asked = true; adopt(a, true); try { sessionStorage.removeItem('lmd-pay'); } catch (e) { /* sin sesión */ } mine.state = 'done'; mine.at = Date.now(); clean(); paint(); LMD.home.account(); redraw(); return; }
       if (Date.now() >= mine.until) { mine.state = 'late'; mine.at = Date.now(); clean(); redraw(); return; }
       mine.timer = setTimeout(tick, PAY.every);
     };

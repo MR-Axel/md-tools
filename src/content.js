@@ -64,7 +64,17 @@
   const applyAccent = (root, dark) => LMD.theme.applyAccent(root, dark, settings);
   // Lo que el estado vacío (home.js) necesita del lector: dónde dibujarse y cómo abrir una nota sin recargar.
   const homeCtx = () => ({ settings, APP_URL, box: ui.home, open: (f, opt) => go(f, opt), refresh: () => core.reloadTree(), say: (text) => flash(text, 'error'), warn: (text) => flash(text, 'warn'), plan: (why) => openPanel('plan', why),
+    // El pie de la barra lateral, donde vive la cuenta: dónde dibujarse, cómo quedar a la vista y cómo guardar antes de salir.
+    acct: ui.acct, showSide: () => { if (LMD.touch.small()) setDrawer(true); else if (settings.sidebarHidden) LMD.patch({ sidebarHidden: false }); }, hideSide: () => setDrawer(false),
+    leave: () => (dirty ? save(false) : Promise.resolve(true)), ready: unsplash, panel: (tab) => openPanel(tab),
+    // Las personalizaciones vienen con el plan pago: si Ajustes está abierto, se redibuja con ellas ya habilitadas.
+    unlocked: (a) => { if (a.plan === 'pro' && !settings.supporter) { panelStale = true; LMD.patch({ supporter: true }); } },
     template: () => LMD.extras.fromTemplate(''), preview: (text) => DOMPurify.sanitize(buildParser().render(settings.plugins.frontmatter ? splitFrontmatter(text).body : text), { FORBID_TAGS: ['style', 'form'] }) });
+  // La pantalla de carga de app.html se va cuando hay algo que mostrar: el inicio, la nota o un pedido de permiso.
+  function unsplash() {
+    const s = document.getElementById('lmd-splash'); if (!s || s.classList.contains('lmd-splash-out')) return;
+    s.classList.add('lmd-splash-out'); setTimeout(() => s.remove(), 200);
+  }
   // Si la extensión se recargó o se actualizó, esta pestaña queda desconectada de ella: no puede
   // releer el archivo ni la carpeta. Se detecta y se avisa, en vez de fallar en silencio.
   let orphan = false;
@@ -576,6 +586,8 @@
         '</section>' +
       '</div>' +
       '<div class="lmd-update" role="status" hidden></div>' +
+      // La cuenta, fija al pie: quién entró y su plan, o la invitación a entrar. La dibuja home.js.
+      (APP ? '<div class="lmd-home-cloud lmd-side-acct" hidden></div>' : '') +
       '<div class="lmd-resizer" title="' + T('Arrastrar para cambiar el ancho') + '"></div>';
 
     ui.main = el('main', { class: 'lmd-main' });
@@ -654,6 +666,7 @@
     ui.zones = ui.sidebar.querySelector('.lmd-zones');
     ui.searchBox = ui.sidebar.querySelector('.lmd-search');
     ui.update = ui.sidebar.querySelector('.lmd-update');
+    ui.acct = ui.sidebar.querySelector('.lmd-side-acct');
     ui.searchInput = ui.searchBox.querySelector('input');
     ui.searchCount = ui.searchBox.querySelector('.lmd-search-count');
 
@@ -3409,7 +3422,7 @@
     document.documentElement.classList.toggle('lmd-nodoc', noDoc);
     if (settings && !ui.status.classList.contains('lmd-flash')) ui.status.textContent = idleStatus();
   }
-  function showEmpty(note) { ui.home.hidden = false; LMD.home.show(homeCtx(), note); }
+  function showEmpty(note) { ui.home.hidden = false; LMD.home.show(homeCtx(), note); unsplash(); }
 
   // Dibuja la nota recién abierta y la deja donde corresponde: en edición si toca, y en la sección o búsqueda pedida.
   function afterOpen(opt) {
@@ -3442,19 +3455,21 @@
   async function appBoot() {
     const params = new URLSearchParams(location.search);
     // Desde el popup: una nota nueva, sin pasar por el estado vacío.
-    if (params.has('new')) { LMD.home.create(homeCtx(), { replace: true }); return; }
+    if (params.has('new')) { LMD.home.account(homeCtx()); LMD.home.create(homeCtx(), { replace: true }); return; }
     // El enlace de una sesión en vivo: se pide un nombre y se abre la nota de esa sesión, sin cuenta.
     // El secreto viaja tras el # (no llega al alojamiento de la web); los enlaces viejos con ?live= siguen sirviendo.
     let liveKey = decodeURIComponent((/^#live=([^&]+)/.exec(location.hash) || [])[1] || '') || params.get('live'); let kept = false;
     // Un invitado que recarga después de ir a una sección ya no tiene el secreto en la dirección: vale el de la pestaña.
     if (!liveKey && !params.get('f')) { try { liveKey = (JSON.parse(sessionStorage.getItem('lmd-live') || 'null') || {}).secret; kept = !!liveKey; } catch (e) { /* sin sesión */ } }
     if (liveKey) {
+      unsplash(); // el nombre se pide en una ventana
       await LMD.live.enter(liveKey);
       if (kept && !LMD.cloud.guest()) { try { sessionStorage.removeItem('lmd-live'); } catch (e) { /* sin sesión */ } }
       return;
     }
     const f = params.get('f');
     if (!f) { showEmpty(); loadTree(); return; }
+    LMD.home.account(homeCtx()); // con una nota abierta el inicio no se dibuja: la cuenta del pie se pinta acá
     await go(f, { boot: true, edit: params.has('edit'), hash: location.hash });
   }
 
@@ -3473,9 +3488,11 @@
     try { const t = sessionStorage.getItem('lmd-panel'); if (t) { sessionStorage.removeItem('lmd-panel'); openPanel(t); } } catch (e) {}
     // Vuelta de la página de pago: Ajustes en Plan, esperando que el servidor confirme.
     if (APP && withDoc && location.hash === '#lmd-paid') { openPanel('plan'); LMD.sync.awaitPaid(); }
+    // Desde la portada, el botón del plan pago llega acá: Ajustes en Plan, donde se entra a la cuenta y se paga.
+    if (APP && location.hash === '#lmd-plans') { history.replaceState(history.state, '', location.href.split('#')[0]); openPanel('plan'); }
     updateSaveState();
     checkUpdate(false);
-    if (APP) appBoot();
+    if (APP) appBoot().finally(unsplash);
     else {
       afterOpen({ hash: location.hash });
       // El árbol arranca donde lo dejó la persona, o en la raíz del repositorio si el archivo está dentro de uno.

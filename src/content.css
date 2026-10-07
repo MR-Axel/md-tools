@@ -430,17 +430,61 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 /* ---------- Pantalla de inicio de la app ---------- */
 .lmd-tree-path { flex: 1; min-width: 0; }
 .lmd-tree-open { flex: none; }
-.lmd-home { min-height: calc(100vh - 49px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 40px 20px; background: var(--bg); color: var(--fg); font: 15px/1.5 var(--lmd-font); box-sizing: border-box; }
 .lmd-home * { box-sizing: border-box; }
-.lmd-home-card { width: min(520px, 100%); padding: 34px 32px 28px; border: 1px solid var(--line); border-radius: 16px; background: var(--bg-soft); text-align: center; transition: border-color .15s; }
+/* El inicio: el logo, una línea y las acciones, al centro de lo que queda al lado de la barra lateral. Arriba y
+   abajo quedan dos franjas iguales, y en la de abajo van los enlaces del pie: así el bloque no se corre del centro. */
+.lmd-home { min-height: calc(100vh - 49px); display: grid; grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr); justify-items: center; padding: 28px 20px 22px; background: var(--bg); color: var(--fg); font: 15px/1.5 var(--lmd-font); box-sizing: border-box; }
+.lmd-home-card { grid-row: 2; width: min(508px, 100%); padding: 26px 26px 22px; border: 1px dashed transparent; border-radius: 18px; text-align: center; transition: border-color .15s, background-color .15s; }
+.lmd-home.lmd-drop .lmd-home-card { background: var(--accent-soft); }
+.lmd-home-logo { display: block; width: 72px; height: 72px; margin: 0 auto; border-radius: 16px; }
+.lmd-home-sub { margin: 18px 0 24px; color: var(--fg); font-size: 17px; line-height: 1.4; letter-spacing: -0.01em; text-wrap: balance; }
+.lmd-home-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.lmd-home-actions .lmd-btn { flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; padding: 9px 12px; border-radius: 10px; background: transparent; color: var(--fg-muted); font-size: 13.5px; white-space: nowrap; transition: border-color .12s, color .12s, background-color .12s; }
+.lmd-home-actions .lmd-btn:hover { color: var(--fg); background: var(--bg-soft); }
+.lmd-home-actions .lmd-btn-fill, .lmd-home-actions .lmd-btn-fill:hover { flex: 1 0 100%; padding: 13px 16px; border-radius: 12px; background: var(--accent-fill); color: var(--accent-fg); font-size: 15.5px; }
+.lmd-home-actions .lmd-btn-fill:hover { filter: brightness(1.06); }
+.lmd-home-actions .lmd-btn:active { transform: translateY(1px); }
+.lmd-home-more { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); display: grid; gap: 5px; color: var(--fg-faint); font-size: 12.5px; line-height: 1.5; }
+.lmd-home-more:empty { display: none; }
+.lmd-home-hint, .lmd-home-notes { margin: 0; }
+.lmd-home-notes b { color: var(--fg-muted); font-weight: 600; }
+.lmd-home-notes .lmd-link { color: var(--accent); font-size: 12.5px; padding: 0; }
+.lmd-home-foot { grid-row: 3; align-self: end; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 22px; }
+@media (prefers-reduced-motion: reduce) { .lmd-home-actions .lmd-btn, .lmd-home-card { transition: none; } .lmd-home-actions .lmd-btn:active { transform: none; } }
+
+/* La cuenta, fija al pie de la barra lateral: quién entró y su plan, con las acciones en un menú; sin sesión, la
+   invitación a entrar. Conserva los nombres de cuando vivía en la tarjeta del inicio (lmd-home-cloud, lmd-home-acct). */
+.lmd-side-acct { flex: none; position: relative; padding: 6px; border-top: 1px solid var(--line); font-size: 13px; color: var(--fg-muted); }
+.lmd-side-acct[hidden] { display: none; }
+.lmd-side-acct * { box-sizing: border-box; }
+.lmd-home-acct { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 6px 7px 8px; border: 0; border-radius: 9px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.lmd-home-acct:hover, .lmd-home-acct[aria-expanded=true] { background: var(--accent-soft); }
+.lmd-home-acct:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: -2px; }
+.lmd-home-acct-ico { flex: none; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
+.lmd-home-acct-ask .lmd-home-acct-ico { background: transparent; border: 1px dashed var(--fg-faint); color: var(--fg-muted); }
+.lmd-side-acct svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.lmd-home-acct-who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.lmd-home-acct-who b { color: var(--fg); font-size: 13px; font-weight: 600; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lmd-home-acct-who small { font-size: 11.5px; line-height: 1.35; color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lmd-home-acct-ask .lmd-home-acct-who small { white-space: normal; }
+.lmd-home-acct-more { flex: none; display: grid; place-items: center; width: 22px; height: 22px; color: var(--fg-faint); }
+.lmd-home-acct-more svg circle { fill: currentColor; stroke: none; }
+.lmd-home-acct:hover .lmd-home-acct-more, .lmd-home-acct[aria-expanded=true] .lmd-home-acct-more { color: var(--fg); }
+/* Cuánto del plan gratis está usado: una línea fina sobre el borde del pie. */
+.lmd-acct-meter { position: absolute; left: 0; top: -1px; height: 2px; max-width: 100%; border-radius: 0 2px 2px 0; background: var(--accent-fill); opacity: .75; }
+.lmd-side-acct .lmd-menu { position: absolute; left: 6px; right: 6px; bottom: calc(100% + 6px); width: auto; }
+.lmd-side-acct .lmd-signin { padding: 8px 6px 6px; }
+.lmd-side-acct .lmd-signin p { margin: 0 0 8px; overflow-wrap: anywhere; }
+.lmd-side-acct .lmd-home-cloud-row { flex-direction: column; align-items: stretch; gap: 6px; }
+.lmd-side-acct .lmd-home-cloud-row .lmd-btn { border-radius: 8px; padding: 7px 12px; }
+.lmd-side-acct input { flex: none; width: 100%; height: 34px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); font: inherit; outline: none; }
+.lmd-side-acct input:focus, .lmd-body .lmd-side-acct input:focus-visible { border-color: var(--accent-fill); outline: none; }
+.lmd-side-acct .lmd-home-cloud-err { margin: 6px 4px 2px; font-size: 12.5px; line-height: 1.4; }
+.lmd-side-acct .lmd-signin .lmd-home-cloud-err { margin: 6px 0 0; }
+.lmd-side-acct .lmd-signin-back { margin: 6px 0 0; text-align: left; }
 .lmd-home.lmd-drop .lmd-home-card { border-color: var(--accent-fill); border-style: dashed; }
-.lmd-home-logo { width: 64px; height: 64px; border-radius: 14px; }
 .lmd-home h1 { margin: 14px 0 6px; font-size: 24px; border: 0; padding: 0; overflow-wrap: anywhere; }
-.lmd-home-sub { margin: 0 0 22px; color: var(--fg-muted); }
-.lmd-home-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-.lmd-home-actions .lmd-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; font-size: 15px; }
 .lmd-home svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
-.lmd-home-hint { margin: 16px 0 0; color: var(--fg-faint); font-size: 13px; }
 .lmd-home-msg { margin: 14px 0 0; padding: 9px 12px; border-radius: 8px; border: 1px solid #dc2626; color: #dc2626; font-size: 13.5px; }
 .lmd-home-msg[hidden] { display: none; }
 .lmd-home-coffee { display: inline-flex; align-items: center; gap: 8px; color: var(--fg-muted); font-size: 13.5px; text-decoration: none; }
@@ -525,8 +569,6 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-search input:focus { border-color: var(--accent-fill) !important; outline: none; }
 .lmd-editing .lmd-draft { padding: 4px 8px; margin: 0 -8px 1em; }
 .lmd-editing .lmd-draft:focus { outline-offset: 0; }
-.lmd-home-notes { margin: 14px 0 0; font-size: 13px; color: var(--fg-muted); }
-.lmd-home-notes .lmd-link { color: var(--accent); font-size: 13px; padding: 0; }
 
 /* ---------- Tipografía ---------- */
 .lmd-root { -webkit-font-smoothing: antialiased; }
@@ -579,14 +621,9 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 @media print { .lmd-board-edit { display: none !important; } .lmd-board { flex-wrap: wrap; overflow: visible; } }
 
 /* ---------- Cuenta y nube ---------- */
-.lmd-home-cloud { margin-top: 20px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); text-align: left; font-size: 13.5px; color: var(--fg-muted); }
 .lmd-home-cloud[hidden] { display: none; }
-.lmd-home-cloud p { margin: 0 0 9px; }
 .lmd-home-cloud-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.lmd-home-cloud-row span { flex: 1; min-width: 12em; }
 .lmd-home-cloud-row .lmd-btn { padding: 6px 13px; font-size: 13px; border-radius: 999px; }
-.lmd-home-cloud input { flex: 1; min-width: 0; height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--fg); font: inherit; outline: none; }
-.lmd-home-cloud input:focus { border-color: var(--accent-fill); }
 .lmd-home-cloud-err { color: #dc2626; }
 
 /* ---------- Íconos del menú, imágenes, color del código, forma de los diagramas ---------- */
@@ -853,13 +890,6 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-fb textarea:focus, .lmd-fb input[type=email]:focus { border-color: var(--accent-fill); }
 .lmd-fb .lmd-fb-ok { display: flex; align-items: center; gap: 10px; margin: 8px 0 2px; color: var(--fg); font-weight: 600; }
 .lmd-fb-ok svg { width: 20px; height: 20px; flex: none; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.lmd-home-acct { display: flex; align-items: center; gap: 11px; margin-bottom: 12px; }
-.lmd-home-acct-ico { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
-.lmd-home-acct-who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.lmd-home-acct-who b { color: var(--fg); font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lmd-home-acct-who small { font-size: 12.5px; color: var(--fg-muted); }
-.lmd-home-acct .lmd-link { flex: none; }
-.lmd-home-acct-who .lmd-link { padding: 0; color: var(--accent); font-size: 12.5px; }
 .lmd-home-cloud .lmd-home-cloud-err { margin: 8px 0 0; font-size: 13px; }
 .lmd-home-cloud-err[hidden] { display: none; }
 .lmd-share-new input { flex: 1; min-width: 0; }
@@ -867,7 +897,6 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-share .lmd-hint { margin: 2px 0 10px; }
 .lmd-signin-back { display: block; margin: 8px auto 0; padding: 2px 0; font-size: 12.5px; }
 .lmd-home-cloud input[aria-invalid=true] { border-color: #dc2626; }
-.lmd-home-foot { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 20px; }
 button.lmd-home-coffee { border: 0; background: none; padding: 0; font: inherit; font-size: 13.5px; cursor: pointer; }
 
 /* ---------- Comentarios para la IA ---------- */
@@ -995,7 +1024,6 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-res-doc svg { width: 15px; height: 15px; }
 .lmd-res-root { display: flex; align-items: center; gap: 6px; margin: 10px 6px 4px; color: var(--fg-faint); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 /* Estado vacío: liviano, sin título */
-.lmd-home-card .lmd-home-sub { margin-top: 14px; }
 /* ---------- Desde una plantilla: la lista por grupos y cómo queda la elegida ---------- */
 .lmd-tpl-card { width: min(900px, 100%); }
 .lmd-tpl-card h3 { margin-bottom: 12px; }
@@ -1014,8 +1042,6 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-tpl-side .lmd-lk-q:focus-visible { outline: none; }
 .lmd-nodoc .lmd-sync { display: none !important; }
 .lmd-zone .lmd-pane { scrollbar-width: thin; }
-.lmd-home-card { width: min(690px, 100%); }
-.lmd-home-cloud { max-width: 520px; margin-left: auto; margin-right: auto; }
 
 /* ---------- Pantalla chica y táctil ---------- */
 /* Áreas seguras: con viewport-fit=cover la página llega hasta los bordes del teléfono, y las barras dejan libre
@@ -1122,14 +1148,16 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
   .lmd-format, .lmd-tablebar { max-width: calc(100vw - 16px); overflow-x: auto; }
 
   /* Estado vacío: las acciones en dos columnas y la cuenta a lo ancho. */
-  .lmd-home { gap: 16px; padding: 20px 14px calc(28px + env(safe-area-inset-bottom, 0px)); }
-  .lmd-home-card { padding: 24px 16px 18px; }
+  .lmd-home { padding: 16px 14px calc(18px + env(safe-area-inset-bottom, 0px)); }
+  .lmd-home-card { padding: 18px 4px 14px; }
+  .lmd-home-sub { margin: 16px 0 20px; }
+  .lmd-home-actions .lmd-btn, .lmd-home-actions .lmd-btn-fill, .lmd-home-actions .lmd-btn-fill:hover { font-size: 14.5px; border-radius: 11px; }
+  .lmd-home-acct { min-height: 48px; }
+  .lmd-side-acct .lmd-menu button { min-height: 44px; }
   .lmd-home-logo { width: 56px; height: 56px; }
   .lmd-home-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
   .lmd-home-actions .lmd-btn { justify-content: center; gap: 7px; min-height: 46px; padding: 8px 6px; font-size: 14.5px; }
   .lmd-home-actions .lmd-btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
-  .lmd-home-cloud { max-width: none; }
-  .lmd-home-cloud-row span { flex-basis: 100%; min-width: 0; }
   .lmd-perks { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .lmd-perks dd { margin-bottom: 8px; }
 
@@ -1387,7 +1415,7 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 @media print { .lmd-trash-link, .lmd-drop-caret { display: none !important; } }
 
 /* Dentro de la app de la tienda (Android) no se ofrece comprar, cambiar el cobro ni donar: el plan se ve, no se vende. */
-.lmd-store-app .lmd-plan-buy, .lmd-store-app [data-pay], .lmd-store-app .lmd-ptabs-link, .lmd-store-app .lmd-plan h4 small, .lmd-store-app .lmd-team-seats, .lmd-store-app .lmd-team-cost,
+.lmd-store-app [data-cloud=plan], .lmd-store-app .lmd-plan-buy, .lmd-store-app [data-pay], .lmd-store-app .lmd-ptabs-link, .lmd-store-app .lmd-plan h4 small, .lmd-store-app .lmd-team-seats, .lmd-store-app .lmd-team-cost,
 .lmd-store-app .lmd-plan a[target="_blank"], .lmd-store-app .lmd-team a[target="_blank"], .lmd-store-app .lmd-team-solo a, .lmd-store-app .lmd-paywait { display: none !important; }
 
 /* Ajustes > IA: cada token lleva dos acciones (copiar las instrucciones y revocar) y, al crearlo, el permiso de compartir. */

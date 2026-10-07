@@ -97,7 +97,7 @@ try {
   await app.click('[data-cloud=ask]'); await app.fill('[data-field=email]', 'ana@ejemplo.test');
   const [started] = await Promise.all([app.waitForResponse((r) => r.url().endsWith('/auth/start')), app.click('[data-cloud=start]')]);
   await app.waitForSelector('[data-field=code]'); await app.fill('[data-field=code]', (await started.json()).dev_code); await app.click('[data-cloud=verify]');
-  await app.waitForSelector('[data-cloud=logout]');
+  await app.waitForSelector('[data-cloud=menu]');
   await app.evaluate((t) => LMD.cloud.write('foco.md', t), DOC);
   await app.goto(home + '?f=' + encodeURIComponent('cloud/foco.md')); await app.waitForSelector('.markdown-body h1');
   await pass('nube', () => app.evaluate(async () => (await LMD.cloud.read('foco.md')).text));

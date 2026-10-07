@@ -2,7 +2,7 @@
 
 <h1 align="center">SharpMD</h1>
 
-<p align="center">A Markdown editor and reader that runs in the browser.<br>Open a file or a whole folder and edit on the formatted text.</p>
+<p align="center">Edit Markdown without writing Markdown.<br>Your files stay on your disk, and your AI can work on the same notes.</p>
 
 <p align="center">
   <a href="https://sharpmd.app/"><strong>Website</strong></a> ·
@@ -11,9 +11,16 @@
   <a href="README.es.md">Español</a>
 </p>
 
+- **No syntax to type.** Click a heading, a table, a task list, a diagram or a formula and change it right there, with buttons. The source is one click away.
+- **Your files, on your disk.** Open a `.md` or a whole folder. Nothing is uploaded and there is no account to create.
+- **A cloud when you want one.** The same notes on every device, sharing, and editing together live through a link.
+- **Your AI on the same notes.** Over MCP it reads, writes, documents what it does and answers the comments you leave.
+- **Private.** Folders with a password that the server cannot read, open source, and your own server if you want one.
+- **Web, Chrome and phone.** A web app, a Chrome extension and an app on the phone. It also works without a connection.
+
 ![SharpMD showing a Markdown document with its outline](docs/store/1-reader.png)
 
-Free and open source. No account, no tracking: files are read in your browser and never uploaded.
+Free and open source. No tracking: files are read in your browser and never uploaded.
 
 ## Features
 
