@@ -809,3 +809,10 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-home-foot { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 20px; }
 button.lmd-home-coffee { border: 0; background: none; padding: 0; font: inherit; font-size: 13.5px; cursor: pointer; }
 button.lmd-home-item { width: 100%; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
+
+/* ---------- Antes de dibujar ---------- */
+/* Al abrir o recargar un .md, el navegador muestra el texto crudo hasta que el lector lo reemplaza.
+   Se oculta ese instante. Si el lector no llegara a arrancar, a los dos segundos vuelve a verse. */
+html:not(.lmd-root) { color-scheme: light dark; background: Canvas; }
+html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lmd-raw-back 0s linear 2s forwards; }
+@keyframes lmd-raw-back { to { visibility: visible; } }
