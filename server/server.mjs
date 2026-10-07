@@ -11,6 +11,7 @@
 //   DEV_CODES=1     sin correo: el código vuelve en la respuesta (solo para pruebas)
 //   FREE_NOTES      notas del plan gratis (20)
 //   MCP_FREE=1      habilita el MCP también en el plan gratis
+//   SHARE_FREE=1    habilita compartir también en el plan gratis
 //   ADMIN_KEY       clave para cambiar el plan de una cuenta desde /admin/plan
 import http from 'node:http';
 import fs from 'node:fs';
@@ -38,6 +39,8 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS notes (user INTEGER NOT NULL, path TEXT NOT NULL, text TEXT NOT NULL, updated INTEGER NOT NULL, PRIMARY KEY (user, path));
   CREATE TABLE IF NOT EXISTS versions (id INTEGER PRIMARY KEY, user INTEGER NOT NULL, path TEXT NOT NULL, text TEXT NOT NULL, saved INTEGER NOT NULL);
   CREATE INDEX IF NOT EXISTS versions_note ON versions (user, path, saved);
+  CREATE TABLE IF NOT EXISTS shares (id INTEGER PRIMARY KEY, owner INTEGER NOT NULL, path TEXT NOT NULL, kind TEXT NOT NULL, email TEXT NOT NULL, role TEXT NOT NULL, created INTEGER NOT NULL, UNIQUE (owner, path, email));
+  CREATE TABLE IF NOT EXISTS links (id INTEGER PRIMARY KEY, hash TEXT UNIQUE NOT NULL, owner INTEGER NOT NULL, path TEXT NOT NULL, pass TEXT, fails INTEGER NOT NULL DEFAULT 0, locked INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL);
 `);
 const q = (sql) => db.prepare(sql);
 const now = () => Date.now();
@@ -103,7 +106,8 @@ function userFrom(req, kind) {
 
 const countNotes = (user) => q('SELECT COUNT(*) AS n FROM notes WHERE user = ?').get(user.id).n;
 const mcpAllowed = (user) => user.plan === 'pro' || !!env.MCP_FREE;
-const account = (user) => ({ email: user.email, plan: user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, mcp: mcpAllowed(user), mcp_url: PUBLIC_URL + '/mcp' });
+const shareAllowed = (user) => user.plan === 'pro' || !!env.SHARE_FREE;
+const account = (user) => ({ id: user.id, share: shareAllowed(user), email: user.email, plan: user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, mcp: mcpAllowed(user), mcp_url: PUBLIC_URL + '/mcp' });
 
 // ---------- Notas ----------
 function cleanPath(v) {
@@ -154,6 +158,95 @@ function searchNotes(user, text) {
   return out;
 }
 
+// ---------- Compartir entre cuentas ----------
+// Una nota o una carpeta se comparte con el correo de otra cuenta, para ver o para editar.
+const covers = (share, p) => (share.kind === 'folder' ? p.startsWith(share.path + '/') : p === share.path);
+function roleOn(user, ownerId, p) {
+  if (ownerId === user.id) return 'owner';
+  const hit = q('SELECT path, kind, role FROM shares WHERE owner = ? AND email = ?').all(ownerId, user.email).filter((s) => covers(s, p));
+  if (!hit.length) return null;
+  return hit.some((s) => s.role === 'edit') ? 'edit' : 'view';
+}
+// Dueño de la nota a la que apunta el pedido, y con qué permiso entra quien pide.
+function target(user, url, p, need) {
+  const ownerId = +(url.searchParams.get('o') || user.id);
+  const role = roleOn(user, ownerId, p);
+  if (!role || (need === 'edit' && role === 'view') || (need === 'owner' && role !== 'owner')) throw new Fail(403, 'no_access');
+  return { owner: ownerId === user.id ? user : q('SELECT * FROM users WHERE id = ?').get(ownerId), role };
+}
+function sharedWith(user) {
+  const out = []; const seen = new Set();
+  for (const s of q('SELECT s.owner, s.path, s.kind, s.role, u.email AS by FROM shares s JOIN users u ON u.id = s.owner WHERE s.email = ?').all(user.email)) {
+    const notes = s.kind === 'folder' ? q("SELECT path, updated, LENGTH(text) AS size FROM notes WHERE user = ? AND path LIKE ? ESCAPE '!'").all(s.owner, s.path.replace(/[!%_]/g, '!$&') + '/%')
+      : q('SELECT path, updated, LENGTH(text) AS size FROM notes WHERE user = ? AND path = ?').all(s.owner, s.path);
+    for (const n of notes) { const key = s.owner + ':' + n.path; if (seen.has(key)) continue; seen.add(key); out.push({ owner: s.owner, by: s.by, path: n.path, updated: n.updated, size: n.size, role: roleOn(user, s.owner, n.path) }); }
+  }
+  return out.sort((a, b) => b.updated - a.updated);
+}
+function addShare(user, body) {
+  if (!shareAllowed(user)) throw new Fail(402, 'share_needs_plan');
+  const p = cleanPath(body.path); const email = cleanEmail(body.email);
+  const kind = body.kind === 'folder' ? 'folder' : 'note'; const role = body.role === 'edit' ? 'edit' : 'view';
+  if (email === user.email) throw new Fail(400, 'own_email');
+  if (kind === 'note' && !q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(user.id, p)) throw new Fail(404, 'not_found');
+  q('INSERT INTO shares (owner, path, kind, email, role, created) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (owner, path, email) DO UPDATE SET role = excluded.role, kind = excluded.kind').run(user.id, p, kind, email, role, now());
+  return { ok: true };
+}
+
+// Enlace público de solo lectura, con contraseña opcional. La contraseña se guarda con scrypt.
+const passHash = (pass, salt) => crypto.scryptSync(String(pass), salt, 32).toString('hex');
+function addLink(user, body) {
+  if (!shareAllowed(user)) throw new Fail(402, 'share_needs_plan');
+  const p = cleanPath(body.path);
+  if (!q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(user.id, p)) throw new Fail(404, 'not_found');
+  const token = random(24); let pass = null;
+  if (body.password) { const salt = random(12); pass = salt + ':' + passHash(body.password, salt); }
+  q('INSERT INTO links (hash, owner, path, pass, created) VALUES (?, ?, ?, ?, ?)').run(sha(token), user.id, p, pass, now());
+  return { token, protected: !!pass };
+}
+function publicNote(token, password) {
+  const link = q('SELECT * FROM links WHERE hash = ?').get(sha(String(token)));
+  if (!link) throw new Fail(404, 'not_found');
+  if (link.pass) {
+    if (link.locked > now()) throw new Fail(429, 'locked');
+    if (!password) throw new Fail(401, 'need_password');
+    const [salt, hash] = link.pass.split(':');
+    const given = Buffer.from(passHash(password, salt), 'hex');
+    if (!crypto.timingSafeEqual(given, Buffer.from(hash, 'hex'))) {
+      // Diez intentos fallidos bloquean el enlace diez minutos.
+      const fails = link.fails + 1;
+      q('UPDATE links SET fails = ?, locked = ? WHERE id = ?').run(fails >= 10 ? 0 : fails, fails >= 10 ? now() + 600000 : 0, link.id);
+      throw new Fail(403, 'bad_password');
+    }
+    if (link.fails) q('UPDATE links SET fails = 0 WHERE id = ?').run(link.id);
+  }
+  const n = q('SELECT path, text, updated FROM notes WHERE user = ? AND path = ?').get(link.owner, link.path);
+  if (!n) throw new Fail(404, 'not_found');
+  return n;
+}
+
+// ---------- En vivo ----------
+// Quien tiene una nota abierta queda escuchando: se entera al instante cuando otro la guarda, y de quién más está.
+const rooms = new Map();
+const roomKey = (ownerId, p) => ownerId + ':' + p;
+function announce(key, event, skip) {
+  const room = rooms.get(key); if (!room) return;
+  const who = Array.from(new Set(Array.from(room).map((c) => c.email)));
+  for (const c of room) if (c !== skip) c.res.write('data: ' + JSON.stringify(Object.assign({ who }, event)) + '\n\n');
+}
+function listen(req, res, user, url) {
+  const p = cleanPath(url.searchParams.get('path'));
+  const { owner } = target(user, url, p, 'view');
+  const key = roomKey(owner.id, p);
+  res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', 'x-accel-buffering': 'no' });
+  const client = { res, email: user.email };
+  if (!rooms.has(key)) rooms.set(key, new Set());
+  rooms.get(key).add(client);
+  announce(key, { type: 'presence' });
+  const beat = setInterval(() => res.write(': ping\n\n'), 25000);
+  req.on('close', () => { clearInterval(beat); const room = rooms.get(key); if (room) { room.delete(client); if (!room.size) rooms.delete(key); else announce(key, { type: 'presence' }); } });
+}
+
 // ---------- MCP (Streamable HTTP, respuestas JSON) ----------
 const TOOLS = [
   { name: 'list_notes', description: 'List the Markdown notes in the Sharpmd cloud folder, newest first.', inputSchema: { type: 'object', properties: {} } },
@@ -200,7 +293,7 @@ function cors(req, res) {
   if (origin && (/^(chrome|moz)-extension:\/\//.test(origin) || ORIGINS.includes(origin) || ORIGINS.includes('*'))) {
     res.setHeader('access-control-allow-origin', origin);
     res.setHeader('vary', 'origin');
-    res.setHeader('access-control-allow-headers', 'authorization, content-type');
+    res.setHeader('access-control-allow-headers', 'authorization, content-type, x-password');
     res.setHeader('access-control-allow-methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('access-control-max-age', '86400');
   }
@@ -232,7 +325,19 @@ async function route(req, url) {
     const out = Array.isArray(body) ? body.map((x) => mcp(user, x)).filter(Boolean) : mcp(user, body);
     return out == null || (Array.isArray(out) && !out.length) ? { __status: 202 } : out;
   }
+  if (p.startsWith('/public/') && m === 'GET') return publicNote(decodeURIComponent(p.slice(8)), req.headers['x-password']);
   const user = userFrom(req, 'session');
+  if (p === '/shared' && m === 'GET') return sharedWith(user);
+  if (p === '/shares' && m === 'POST') return addShare(user, await readBody(req));
+  if (p === '/shares' && m === 'GET') {
+    const of = url.searchParams.get('path');
+    const people = q('SELECT id, path, kind, email, role FROM shares WHERE owner = ?').all(user.id).filter((s) => !of || s.path === of);
+    const links = q('SELECT id, path, pass IS NOT NULL AS protected, created FROM links WHERE owner = ?').all(user.id).filter((l) => !of || l.path === of);
+    return { people, links };
+  }
+  if (p.startsWith('/shares/') && m === 'DELETE') { q('DELETE FROM shares WHERE id = ? AND owner = ?').run(+p.slice(8), user.id); return { ok: true }; }
+  if (p === '/links' && m === 'POST') return addLink(user, await readBody(req));
+  if (p.startsWith('/links/') && m === 'DELETE') { q('DELETE FROM links WHERE id = ? AND owner = ?').run(+p.slice(7), user.id); return { ok: true }; }
   if (p === '/account' && m === 'GET') return account(user);
   if (p === '/auth/logout' && m === 'POST') { q('DELETE FROM sessions WHERE hash = ?').run(sha(req.headers.authorization.split(/\s+/)[1])); return { ok: true }; }
   if (p === '/tokens' && m === 'GET') return q('SELECT id, name, created, used FROM tokens WHERE user = ? ORDER BY created DESC').all(user.id);
@@ -243,14 +348,24 @@ async function route(req, url) {
     return { token, mcp_url: PUBLIC_URL + '/mcp' };
   }
   if (p.startsWith('/tokens/') && m === 'DELETE') { q('DELETE FROM tokens WHERE id = ? AND user = ?').run(+p.slice(8), user.id); return { ok: true }; }
-  if (p === '/notes' && m === 'GET') return listNotes(user);
+  if (p === '/notes' && m === 'GET') {
+    const oid = +(url.searchParams.get('o') || user.id);
+    if (oid === user.id) return listNotes(user);
+    return sharedWith(user).filter((n) => n.owner === oid).map((n) => ({ path: n.path, updated: n.updated, size: n.size }));
+  }
   if (p === '/search' && m === 'GET') return searchNotes(user, url.searchParams.get('q'));
   if (p === '/rename' && m === 'POST') { const b = await readBody(req); return renameNote(user, b.from, b.to); }
   if (p.startsWith('/notes/')) {
     const note = decodeURIComponent(p.slice(7));
-    if (m === 'GET') return readNote(user, note);
-    if (m === 'PUT') return writeNote(user, note, (await readBody(req)).text);
-    if (m === 'DELETE') return deleteNote(user, note);
+    const clean = cleanPath(note);
+    if (m === 'GET') { const t = target(user, url, clean, 'view'); return Object.assign(readNote(t.owner, clean), { role: t.role }); }
+    if (m === 'PUT') {
+      const t = target(user, url, clean, 'edit');
+      const saved = writeNote(t.owner, clean, (await readBody(req)).text);
+      announce(roomKey(t.owner.id, clean), { type: 'saved', by: user.email, updated: saved.updated });
+      return saved;
+    }
+    if (m === 'DELETE') return deleteNote(target(user, url, clean, 'owner').owner, clean);
   }
   if (p.startsWith('/versions/') && m === 'GET') return q('SELECT id, saved, LENGTH(text) AS size FROM versions WHERE user = ? AND path = ? ORDER BY saved DESC LIMIT 100').all(user.id, cleanPath(decodeURIComponent(p.slice(10))));
   if (p.startsWith('/version/') && m === 'GET') {
@@ -265,7 +380,9 @@ const server = http.createServer(async (req, res) => {
   cors(req, res);
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
   try {
-    const out = await route(req, new URL(req.url, 'http://x'));
+    const url = new URL(req.url, 'http://x');
+    if (url.pathname === '/events' && req.method === 'GET') { listen(req, res, userFrom(req, 'session'), url); return; }
+    const out = await route(req, url);
     if (out && out.__status) { res.writeHead(out.__status); res.end(); return; }
     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
     res.end(JSON.stringify(out));
