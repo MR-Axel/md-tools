@@ -7,4 +7,7 @@
   var root = document.documentElement;
   root.style.background = dark ? '#121418' : '#fbfaf7';
   root.style.colorScheme = dark ? 'dark' : 'light';
+  // La barra del sistema (en el teléfono y en la app instalada) toma el mismo color.
+  var meta = document.querySelector('meta[name=theme-color]');
+  if (meta) meta.content = dark ? '#121418' : '#fbfaf7';
 })();

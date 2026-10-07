@@ -69,14 +69,13 @@ await app.evaluate(async (launch) => {
   await write(notes, 'customers.md', '# Customer calls\n\nThree of five asked for a reminder the same morning, not only the day before.\n');
   window.showDirectoryPicker = async () => dir;
 }, LAUNCH);
-// pantalla de inicio con un reciente
-await Promise.all([app.waitForNavigation(), app.click('[data-home=dir]')]); await app.waitForSelector('.lmd-diagram svg');
+// sin nota abierta: el estado vacío en el centro y, a la izquierda, el explorador con lo reciente
+await app.click('[data-home=dir]'); await app.waitForSelector('.lmd-diagram svg');
 const docUrl = app.url();
-await app.goto(`chrome-extension://${id}/src/app.html`); await app.waitForSelector('.lmd-home-item'); await app.waitForTimeout(400);
+await app.goto(`chrome-extension://${id}/src/app.html`); await app.waitForSelector('.lmd-home [data-home=new]'); await app.waitForSelector('.lmd-sidebar .lmd-node'); await app.waitForTimeout(400);
 await shot('5-start');
 
 await app.goto(docUrl); await app.waitForSelector('.lmd-diagram svg'); await app.waitForTimeout(800);
-await app.click('.lmd-tab[data-tab=outline]'); await app.waitForTimeout(300);
 await shot('1-reader');
 
 // edición: una celda de la tabla con el cursor
@@ -98,7 +97,7 @@ await app.keyboard.press('Escape'); await app.click('[data-act=mode-read]'); awa
 
 // búsqueda en la carpeta
 await app.evaluate(() => window.scrollTo(0, 0));
-await app.click('.lmd-tab[data-tab=files]'); await app.waitForSelector('.lmd-node');
+await app.waitForSelector('.lmd-sidebar .lmd-node');
 await app.fill('.lmd-search input', 'reminder'); await app.waitForSelector('.lmd-res-file'); await app.waitForTimeout(500);
 await shot('6-search');
 

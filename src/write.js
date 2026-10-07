@@ -452,6 +452,8 @@
         if (openReadMenu(e)) e.preventDefault();
         return;
       }
+      // Con el dedo, mantener apretado mientras se edita es elegir texto: el menú de bloques sale de la manija.
+      if (LMD.touch.touched()) return;
       e.preventDefault();
       const active = document.activeElement;
       if (active && active.blur && active.isContentEditable) active.blur();
@@ -486,19 +488,27 @@
     document.body.appendChild(handle);
     let held = null; let hideTimer = null;
     const hideHandle = () => { handle.hidden = true; held = null; };
-    article.addEventListener('mousemove', (e) => {
-      if (!core.editMode || !core.blocks || menu) return;
-      const block = e.target === article ? null : topBlock(e.target);
-      if (!block || block === held || block.classList.contains('lmd-add') || block.classList.contains('lmd-draft') || !span(block)) return;
-      clearTimeout(hideTimer);
-      held = block;
+    const place = (block) => {
       const box = block.getBoundingClientRect();
       handle.style.top = Math.max(58, box.top + 1) + 'px';
       handle.style.left = Math.max(4, box.left - 34) + 'px';
       handle.hidden = false;
-    });
-    article.addEventListener('mouseleave', () => { hideTimer = setTimeout(() => { if (!handle.matches(':hover')) hideHandle(); }, 250); });
-    handle.addEventListener('mouseleave', () => { hideTimer = setTimeout(() => { if (!article.matches(':hover')) hideHandle(); }, 250); });
+    };
+    const hold = (target) => {
+      if (!core.editMode || !core.blocks || menu) return;
+      const block = target === article ? null : topBlock(target);
+      if (!block || block === held || block.classList.contains('lmd-add') || block.classList.contains('lmd-draft') || !span(block)) return;
+      clearTimeout(hideTimer);
+      held = block;
+      place(block);
+    };
+    article.addEventListener('mousemove', (e) => hold(e.target));
+    // Con el dedo no hay mouse que pase por encima: la manija queda en el bloque que se tocó o en el que tiene el cursor.
+    const touch = () => LMD.touch.coarse();
+    article.addEventListener('click', (e) => { if (touch()) hold(e.target); });
+    article.addEventListener('focusin', (e) => { if (touch()) hold(e.target); });
+    article.addEventListener('mouseleave', () => { if (touch()) return; hideTimer = setTimeout(() => { if (!handle.matches(':hover')) hideHandle(); }, 250); });
+    handle.addEventListener('mouseleave', () => { if (touch()) return; hideTimer = setTimeout(() => { if (!article.matches(':hover')) hideHandle(); }, 250); });
     handle.addEventListener('mousedown', (e) => e.preventDefault());
     handle.addEventListener('click', () => {
       if (!held || !held.isConnected) return;
@@ -508,8 +518,17 @@
       hideHandle();
       openMenu(box.right + 6, box.top, block);
     });
-    window.addEventListener('scroll', hideHandle, { passive: true });
-    core.hooks.render.push(hideHandle);
+    // Al mover la página con el dedo la manija acompaña a su bloque mientras siga a la vista; con mouse se esconde.
+    window.addEventListener('scroll', () => {
+      const box = held && touch() && held.isConnected ? held.getBoundingClientRect() : null;
+      if (box && box.bottom > 70 && box.top < window.innerHeight - 40) place(held); else hideHandle();
+    }, { passive: true });
+    core.hooks.render.push(() => {
+      hideHandle();
+      // Tras redibujar, sigue en el bloque donde quedó el cursor.
+      const a = document.activeElement;
+      if (touch() && a && a.isContentEditable && article.contains(a)) hold(a);
+    });
 
     // En edición siempre queda un lugar al final para seguir escribiendo, también con el documento vacío.
     core.hooks.render.push(() => {

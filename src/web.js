@@ -48,4 +48,13 @@
     const changes = {}; changes[e.key.slice(KEY.length)] = { oldValue: parse(e.oldValue), newValue: parse(e.newValue) };
     listeners.forEach((fn) => fn(changes, 'local'));
   });
+
+  // Sin conexión: un service worker guarda el esqueleto de la app (sw.js, en la raíz del sitio). Se registra con la
+  // versión en la dirección, así cada versión nueva lo reemplaza y arma su propia caché. La extensión no llega acá.
+  if ('serviceWorker' in navigator && window.isSecureContext) {
+    window.addEventListener('load', () => {
+      const version = (window.LMD && LMD.VERSION) || '';
+      navigator.serviceWorker.register(base + 'sw.js?v=' + encodeURIComponent(version), { scope: base }).catch(() => { /* sin service worker la app anda igual, con conexión */ });
+    });
+  }
 })();

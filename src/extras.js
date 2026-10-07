@@ -235,7 +235,7 @@
     menu.innerHTML = '<div class="lmd-menu-list">' + items.map((i) => '<button type="button" role="menuitem" data-f="' + i[0] + '"' + (i[2] ? ' class="lmd-menu-danger"' : '') + '>' + T(i[1]) + '</button>').join('') + '</div>';
     document.body.appendChild(menu);
     menu.style.left = Math.max(8, Math.min(window.innerWidth - menu.offsetWidth - 8, x)) + 'px';
-    menu.style.top = Math.min(window.innerHeight - menu.offsetHeight - 8, y) + 'px';
+    menu.style.top = Math.max(8, Math.min(window.innerHeight - menu.offsetHeight - 8, y)) + 'px';
     menu.addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       closeMenu();
@@ -438,6 +438,7 @@
     imgNow = img;
     const box = img.getBoundingClientRect();
     imgBar.hidden = false;
+    if (LMD.touch.dock()) return;
     imgBar.style.left = Math.max(8, box.left) + 'px';
     imgBar.style.top = Math.max(60, box.top - 44) + 'px';
   }
@@ -486,7 +487,9 @@
     if (!node || !node.closest || !node.closest('.lmd-editable')) return;
     let box = sel.getRangeAt(0).getBoundingClientRect();
     if (!box.height) box = node.getBoundingClientRect();
-    const delta = box.top + box.height / 2 - window.innerHeight / 2;
+    // La mitad de lo que se ve: con el teclado en pantalla, la zona visible es más baja que la ventana.
+    const seen = LMD.touch.visible();
+    const delta = box.top + box.height / 2 - (seen.top + seen.bottom) / 2;
     if (Math.abs(delta) > 8) window.scrollBy({ top: delta, behavior: 'smooth' });
   }
 

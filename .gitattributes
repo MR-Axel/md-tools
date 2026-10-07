@@ -20,3 +20,5 @@
 /sitemap.xml export-ignore
 /CNAME export-ignore
 /support.html export-ignore
+/manifest.webmanifest export-ignore
+/sw.js export-ignore
