@@ -279,6 +279,37 @@ try {
   o.vaciada = [(await bin()).length, await app.locator('.lmd-trash [data-tr=empty]').count()];
   await app.click('.lmd-trash [data-tr=no]');
 
+  // ---------- Soltar en la papelera ----------
+  await put('soltar.md', '# Soltar\n'); await put('bolsa/a.md', '# A\n'); await put('bolsa/b.md', '# B\n');
+  await app.evaluate(() => LMD.store.notePut('local-tirar.md', '# Local\n'));
+  await app.goto(cloudUrl('queda.md')); await opened(); await manual(true);
+  const binLink = app.locator(CLOUD + ' > .lmd-trash-link');
+  const dragBin = async (from) => {
+    await from.hover(); await app.mouse.down(); await binLink.hover(); await binLink.hover();
+    const marked = await app.evaluate(() => !!document.querySelector('.lmd-trash-link.lmd-drop'));
+    await app.mouse.up(); await app.waitForSelector('.lmd-dlg');
+    const said = [marked, await app.textContent('.lmd-dlg-card h3, .lmd-dlg-card [class*=title]').catch(() => ''), await app.textContent('.lmd-dlg-card p'), await app.locator('.lmd-trash').count(), await app.locator('.lmd-drop').count()];
+    return said;
+  };
+  const binPaths = async () => (await bin()).map((r) => r.path).sort();
+  // Cancelar no elimina nada.
+  o.soltarCancela = await dragBin(node('soltar.md')); await app.click('.lmd-dlg [data-dlg=no]'); await app.waitForTimeout(300);
+  o.soltarCancela = [o.soltarCancela[0], (await paths()).includes('soltar.md')];
+  o.soltarNota = await dragBin(node('soltar.md')); await app.click('.lmd-dlg [data-dlg=ok]');
+  await until2(async () => !(await paths()).includes('soltar.md'));
+  o.soltarNota.push(!(await paths()).includes('soltar.md'), (await binPaths()).includes('soltar.md'));
+  await app.waitForSelector(CLOUD + ' .lmd-node-dir:has-text("bolsa")');
+  o.soltarCarpeta = await dragBin(app.locator(CLOUD + ' .lmd-node-dir', { hasText: 'bolsa' }).first()); await app.click('.lmd-dlg [data-dlg=ok]');
+  await until2(async () => !(await paths()).some((p) => p.startsWith('bolsa/')));
+  o.soltarCarpeta.push(!(await paths()).some((p) => p.startsWith('bolsa/')), (await binPaths()).filter((p) => p.startsWith('bolsa/')), (await paths()).includes('queda.md'));
+  // Una nota del navegador no tiene papelera: la confirmación de siempre, y se va.
+  const localNode = app.locator('.lmd-xroot[data-root=local] .lmd-node', { hasText: 'local-tirar.md' }).first();
+  if (!(await localNode.isVisible())) await app.click('.lmd-xroot[data-root=local] .lmd-tree-head');
+  o.soltarLocal = await dragBin(localNode); await app.click('.lmd-dlg [data-dlg=ok]');
+  await until2(() => app.evaluate(async () => !(await LMD.store.notesAll()).some((n) => n.name === 'local-tirar.md')));
+  o.soltarLocal.push(await app.evaluate(async () => (await LMD.store.notesAll()).some((n) => n.name === 'local-tirar.md')), (await binPaths()).length);
+  await api('DELETE', '/trash', undefined, session);
+
   // ---------- Arrastrar carpetas, y soltar un archivo adentro de la nota ----------
   await put('mover/adentro/uno.md', '# Uno\n'); await put('destino/dos.md', '# Dos\n\nTexto.'); await put('tirar.md', '# Tirar\n');
   await app.goto(cloudUrl('queda.md')); await opened(); await manual(true);
@@ -501,6 +532,9 @@ const checks = [
   ['restaurar desde la papelera devuelve la nota y la muestra en el explorador', o.restaurada && /vacía/.test(o.restaurada[0]) && o.restaurada[1] === true && o.restaurada[2] === '# Tirar\n\nrabanito' && /restaurada/.test(o.restaurada[3]) && o.restaurada[4] === 0, o.restaurada],
   ['si el nombre está ocupado, la nota se restaura con otro nombre', o.restauradaOtra && /tirar \(2\)\.md/.test(o.restauradaOtra[0]) && o.restauradaOtra[1] === true && o.restauradaOtra[2] === '# Tirar\n\nrabanito' && o.restauradaOtra[3] === 'la nueva', o.restauradaOtra],
   ['eliminar del todo pide confirmación y saca solo esa nota', o.borrarDelTodo && /del todo/.test(o.borrarDelTodo[0]) && o.borrarDelTodo[1] === true && o.borrarDelTodo[2] === 2 && o.borrarDelTodo[3] === 'tirar (2).md', o.borrarDelTodo],
+  ['soltar una nota de la nube en la papelera la marca, pide confirmar y la manda a la papelera de 30 días', J(o.soltarCancela) === J([true, true]) && o.soltarNota && o.soltarNota[0] === true && /30 días/.test(o.soltarNota[2]) && o.soltarNota[3] === 0 && o.soltarNota[4] === 0 && o.soltarNota[5] === true && o.soltarNota[6] === true, [o.soltarCancela, o.soltarNota]],
+  ['soltar una carpeta de la nube en la papelera manda todas sus notas, con su confirmación', o.soltarCarpeta && o.soltarCarpeta[0] === true && /30 días/.test(o.soltarCarpeta[2]) && o.soltarCarpeta[5] === true && J(o.soltarCarpeta[6]) === J(['bolsa/a.md', 'bolsa/b.md']) && o.soltarCarpeta[7] === true, o.soltarCarpeta],
+  ['soltar una nota del navegador en la papelera pide la confirmación de siempre y la elimina', o.soltarLocal && o.soltarLocal[0] === true && /No se puede deshacer/.test(o.soltarLocal[2]) && o.soltarLocal[5] === false && o.soltarLocal[6] === 3, o.soltarLocal],
   ['vaciar la papelera la deja sin nada', J(o.vaciada) === J([0, 0]), o.vaciada],
   ['arrastrar una carpeta de la nube a otra la mueve con todo lo que tiene', o.carpetaMarca === 'destino' && J(o.carpetaMovida) === J([true, false, true]), [o.carpetaMarca, o.carpetaMovida]],
   ['una carpeta no se suelta adentro de sí misma, de una hija ni donde ya está', J(o.carpetaEnSi) === J(['', '', '', true]), o.carpetaEnSi],

@@ -174,6 +174,18 @@ await app.goto(`chrome-extension://${id}/src/app.html?f=` + encodeURIComponent('
 await app.evaluate(() => { window.__answer = 'tercera'; });
 await node('segunda.md').click({ button: 'right' }); await app.waitForSelector('.lmd-menu [data-f=ren]');
 o.localMenu = await app.evaluate(() => [...document.querySelectorAll('.lmd-menu [data-f]')].map((b) => b.dataset.f));
+// El menú es compacto, cada opción lleva su ícono y eliminar va en rojo, en los dos temas.
+const menuLook = () => app.evaluate(() => {
+  const m = document.querySelector('.lmd-menu'); const bs = [...m.querySelectorAll('button')]; const del = m.querySelector('[data-f=del]'); const ren = m.querySelector('[data-f=ren]');
+  const rgb = (c) => c.match(/\d+/g).slice(0, 3).map(Number); const d = rgb(getComputedStyle(del).color);
+  return [m.offsetWidth >= 168 && m.offsetWidth <= 220, bs.every((b) => b.offsetHeight <= 30), bs.every((b) => b.firstElementChild.tagName.toLowerCase() === 'svg' && b.lastElementChild.tagName === 'SPAN'),
+    d[0] > 150 && d[0] > d[1] * 1.5 && d[0] > d[2] * 1.5, getComputedStyle(del.querySelector('svg')).color === getComputedStyle(del).color, getComputedStyle(ren).color !== getComputedStyle(del).color, ren.textContent];
+});
+o.menuCompacto = await menuLook();
+const wasDark = await app.evaluate(() => document.documentElement.classList.contains('lmd-dark'));
+await app.evaluate(() => { const c = document.documentElement.classList; c.toggle('lmd-dark'); c.toggle('lmd-light'); });
+o.menuOtroTema = (await menuLook()).slice(3, 6);
+await app.evaluate((dark) => { const c = document.documentElement.classList; c.toggle('lmd-dark', dark); c.toggle('lmd-light', !dark); }, wasDark);
 await app.click('.lmd-menu [data-f=ren]');
 await app.waitForFunction(() => [...document.querySelectorAll('.lmd-node')].some((n) => n.textContent.trim() === 'tercera.md'));
 o.localArbol = await notes();
@@ -210,6 +222,7 @@ const checks = [
   ['soltar sobre la raíz del árbol la saca de la carpeta', J(o.arrastreRaiz) === J(['raíz', true, true, ['dentro.md', 'movible.md']]), o.arrastreRaiz],
   ['las notas del navegador se renombran desde el árbol', J(o.localMenu) === J(['ren', 'del']) && J(o.localArbol) === J(['primera.md', 'tercera.md']), [o.localMenu, o.localArbol]],
   ['y desde el título, sin perder lo que no se había guardado', J(o.localTitulo) === J(['principal.md', 'Primera nota', ['principal.md', 'tercera.md'], true]), o.localTitulo],
+  ['el menú del explorador es compacto, con ícono en cada opción y eliminar en rojo en los dos temas', J(o.menuCompacto) === J([true, true, true, true, true, true, 'Renombrar']) && J(o.menuOtroTema) === J([true, true, true]), [o.menuCompacto, o.menuOtroTema]],
   ['arrastrar una nota del navegador no hace nada', J(o.localArrastre) === J(['', '', ['principal.md', 'tercera.md'], true]), o.localArrastre],
   ['sin errores de JavaScript', errors.length === 0, errors],
 ];

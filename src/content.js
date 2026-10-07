@@ -1816,7 +1816,7 @@
       if (row.dir) {
         item.type = 'button';
         // Una carpeta se arrastra a otra, como un archivo. En pantalla táctil se mueve desde el menú.
-        if (APP && sectionOf(dirUrl) !== 'local' && !LMD.touch.coarse()) item.draggable = true;
+        if (APP && !LMD.touch.coarse()) item.draggable = true;
         const kids = el('div', { class: 'lmd-node-kids', hidden: '' });
         container.appendChild(kids);
         const open = async () => {

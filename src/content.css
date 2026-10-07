@@ -1425,3 +1425,23 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-tokens li .lmd-tok-brief:hover { color: var(--accent); text-decoration: underline; }
 .lmd-acct .lmd-tok-share { margin: 10px 0 0; font-size: 13px; color: var(--fg); }
 .lmd-acct > .lmd-acct-msg.lmd-acct-done { color: var(--fg-muted); }
+/* ---------- Menús contextuales compactos ---------- */
+/* El peligro (eliminar) tiene su color en cada tema. */
+.lmd-root.lmd-light { --danger: #c62020; }
+.lmd-root.lmd-dark { --danger: #f87171; }
+/* Los menús de lista (explorador, lectura, nube, "más"): el ancho de lo que dicen, renglones bajos. */
+.lmd-menu.lmd-menu-narrow, .lmd-menu.lmd-menu-read, .lmd-menu.lmd-menu-more { width: max-content; min-width: 168px; max-width: min(320px, calc(100vw - 16px)); padding: 5px; border-radius: 9px; font-size: 13px; }
+.lmd-menu-list { gap: 1px; }
+.lmd-menu-list button { gap: 8px; padding: 5px 10px 5px 8px; }
+.lmd-menu-list button svg { width: 15px; height: 15px; }
+.lmd-menu button.lmd-menu-danger, .lmd-menu button.lmd-menu-danger svg { color: var(--danger, #dc2626); opacity: 1; }
+.lmd-menu button.lmd-menu-danger:hover { background: color-mix(in srgb, var(--danger, #dc2626) 14%, transparent); color: var(--danger, #dc2626); }
+/* La Papelera, mientras se arrastra algo encima. */
+.lmd-trash-link.lmd-drop { outline: 2px dashed var(--danger, #dc2626); outline-offset: -2px; border-radius: 6px; background: color-mix(in srgb, var(--danger, #dc2626) 12%, transparent); color: var(--danger, #dc2626); }
+/* Con el dedo, cada renglón conserva su alto. */
+@media (max-width: 720px), (pointer: coarse) {
+  .lmd-menu.lmd-menu-narrow, .lmd-menu.lmd-menu-read, .lmd-menu.lmd-menu-more { min-width: 200px; font-size: 14.5px; }
+  .lmd-menu button { min-height: 42px; }
+  .lmd-menu-list button { padding: 7px 12px 7px 10px; }
+  .lmd-menu-list button svg { width: 17px; height: 17px; }
+}
