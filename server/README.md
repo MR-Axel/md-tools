@@ -149,13 +149,29 @@ Sign-in is a six-digit code sent by mail, no passwords.
 | `POST /vaults/{id}/lock` | Forget the key now |
 | `POST /vaults/{id}/destroy` `{ folder }` | Delete the folder and its notes without the key. `folder` has to be the exact name of the folder, or it answers `400 bad_confirm` |
 | `POST /vaults/{id}/open`, `DELETE /vaults/{id}` | Remove protection: the first lets the folder take plain text again while the browser decrypts each note, the second ends it and answers `409 vault_not_empty` while encrypted notes remain |
-| `POST /tokens` `{ name, folder }` | Creates a token for MCP, shown once. With `folder`, the token only reaches that folder |
+| `POST /tokens` `{ name, folder, share }` | Creates a token for MCP, shown once. With `folder`, the token only reaches that folder. With `share: true`, it can share notes and create public links |
 | `GET` / `POST /comments`, `DELETE /comments/{id}` | Comments left on a note for the AI: `{ path, quote, text }` |
-| `GET /tokens`, `DELETE /tokens/{id}` | List the tokens and revoke one |
+| `GET /tokens`, `DELETE /tokens/{id}` | List the tokens (with `scope` and `share`) and revoke one |
 | `POST /feedback` `{ text, email?, context? }` | Mails the text to `FEEDBACK_TO`, with or without a session. 5 to 4000 characters, five an hour per IP and per account. Behind a proxy the IP is the last entry of `x-forwarded-for` |
 | `POST /mcp` | MCP over Streamable HTTP, with `Authorization: Bearer mdt_...` |
 
-MCP tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`.
+MCP tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`, `move_note`, `note_history`.
+
+`write_note`, `append_note` and `move_note` end their answer with `Open it: <url>`, the address that opens the note in the app. It is built from `APP_URL` as `?f=cloud/<path>`, the same address the app uses, so point `APP_URL` at the app your users open. Opened without a session, the app asks to sign in and then opens the note.
+
+`move_note` `{ from, to }` moves or renames a note inside the same space, and its history, comments, shares and public links follow it. `note_history` `{ path, version? }` lists the earlier versions of a note, or returns the text of one. Neither works inside a folder protected with a password.
+
+Sharing from an AI is a way out for the notes if the AI is fed instructions by someone else, so it is a separate permission. Five more tools exist only for a token created with `share: true` ("Can share and create links" in Settings > AI), which is off by default, cannot be added to an existing token and shows in the token list:
+
+| Tool | What it does |
+| --- | --- |
+| `list_shares` `{ path? }` | Who the notes are shared with and which public links exist |
+| `share_note` `{ path, email, role? }` | Shares a note, or a folder if `path` is one, with another account to `view` (default) or `edit` |
+| `unshare_note` `{ path, email }` | Stops sharing it with that address |
+| `create_public_link` `{ path, password? }` | Creates a read-only public link and returns its URL, once |
+| `revoke_public_link` `{ id }` or `{ path }` | Revokes one link, or every link to a note |
+
+Without the permission these tools are not in `tools/list` and calling them fails. With it, they go through the same code as `POST /shares` and `POST /links`, so the same rules and limits apply. They stay inside the folder of the token, and they do not reach folders protected with a password or the team space.
 
 ### Trash
 
@@ -252,7 +268,7 @@ The team space. The notes of a team belong to the team, not to a person: they st
 
 What the team space does not have in this version: folders protected with a password (text that starts with `vault1:` is refused there with `409 vault_text`), sharing with accounts outside the team, public links, comments for the AI and live sessions. Those routes work on the caller's own notes.
 
-MCP. The token of a member reaches the team notes under the prefix `@team/`: `list_notes` and `list_folders` show them with `team: true`, and `read_note`, `write_note`, `append_note` and `search_notes` work on them. The folder limit of a token is checked on the whole path, prefix included: a token limited to one of the person's own folders does not see the team, and a token limited to `@team` or `@team/some/folder` sees only that. While someone belongs to a team, a personal folder literally named `@team` is hidden from their MCP tools.
+MCP. The token of a member reaches the team notes under the prefix `@team/`: `list_notes` and `list_folders` show them with `team: true`, and `read_note`, `write_note`, `append_note` and `search_notes` work on them. The folder limit of a token is checked on the whole path, prefix included: a token limited to one of the person's own folders does not see the team, and a token limited to `@team` or `@team/some/folder` sees only that. While someone belongs to a team, a personal folder literally named `@team` is hidden from their MCP tools. `move_note` and `note_history` work on team notes; a note cannot be moved between the team space and personal notes. The sharing tools do not work on team notes.
 
 Leaving and cancelling. A member who leaves or is removed goes back to their own plan and keeps their notes; their open connections to team notes are closed at once. When the subscription of the team ends, the team stays with its people and its notes but no longer gives the paid plan: the team notes can still be read and edited, new ones are refused past the free limit (`402 team_ended`) and no history is kept. Nothing is deleted. A new payment by the same account brings the team back. Someone who already pays an individual subscription and joins a team keeps that subscription: the server never cancels it, `mine.solo` is `true` and the app tells them it is still active and links to `PORTAL_URL`.
 
@@ -267,7 +283,7 @@ Billing. A team is one Paddle subscription with two items: the base price, quant
 | `CHECKOUT_TEAM` | Payment link for the team plan that the app shows in Settings → Plan. The account email is appended as `email=` | |
 | `TEAM_MAX_SEATS` | Most seats a team can have | `50` |
 | `TEAM_INVITES_DAY` | Invitations one team may send per day | `20` |
-| `APP_URL` | Address of the app that the invitation email links to | `https://sharpmd.app/src/app.html` |
+| `APP_URL` | Address of the app: the invitation email links to it, and the MCP tools build on it the link that opens a note | `https://sharpmd.app/src/app.html` |
 | `TRASH_DAYS` | Days a deleted note stays in the trash. `0` turns the trash off: deleting is final | `30` |
 
 The team plan is offered only when `PADDLE_WEBHOOK_SECRET`, `PADDLE_TEAM_BASE`, `PADDLE_TEAM_SEAT` and `PADDLE_API_KEY` are all set. Without them `team.enabled` is `false` and the app does not show it.

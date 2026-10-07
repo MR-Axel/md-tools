@@ -31,7 +31,10 @@
 - The account can be deleted from the app (Settings, Cloud, "Delete account"), which removes its notes and everything else stored for it.
 - Cloud notes can be shared with another account, to read or to edit, or through a read-only public link with an optional password.
 - Live sessions: the owner of a cloud note, on the paid plan, opens a session and hands out a link. Guests join from the browser with a name and no account, up to 12 people, and edit the same note at once. The secret of the link travels after the # of the address.
-- MCP endpoint over Streamable HTTP at https://sync.sharpmd.app/mcp with eight tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`. Authentication is a bearer token the user creates in the app, and a token can be limited to one folder.
+- MCP endpoint over Streamable HTTP at https://sync.sharpmd.app/mcp with ten tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`, `move_note`, `note_history`. Authentication is a bearer token the user creates in the app, and a token can be limited to one folder.
+- `write_note`, `append_note` and `move_note` return a link that opens the note in the web app.
+- Five more tools exist only for a token the user created with the sharing permission, which is off by default: `list_shares`, `share_note`, `unshare_note`, `create_public_link`, `revoke_public_link`. They stay inside the folder of the token and do not reach protected folders or team notes.
+- Settings > AI has a "Copy instructions for your AI" button: a message in English with how to connect and how to document work in SharpMD.
 - The user can leave a comment on a passage of a note. The AI reads the open comments with `list_comments`, makes the change and closes each one with `resolve_comment`.
 - Cloud notes are encrypted at rest on the server, which holds the key so it can share them and serve MCP.
 - A folder can be protected with a password. Its notes are encrypted in the browser (AES-256-GCM, key wrapped with PBKDF2) and the server cannot read them. File and folder names stay visible. Protected folders are left out of sharing, public links and MCP, unless the user unlocks one for the AI for a set time; while unlocked, the server holds the key in memory only.

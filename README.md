@@ -39,7 +39,7 @@ Free and open source. No account, no tracking: files are read in your browser an
 | **Protected folders** | A cloud folder can carry a password. Its notes are encrypted in the browser and the server cannot read them. You unlock it for your AI for as long as you choose. |
 | **Sharing** | A note or a folder with another account, to read or to edit, or a read-only public link with a password. |
 | **Live sessions** | Open a session on a cloud note and send the link. Guests join from the browser with a name, without an account, and everyone edits at once. |
-| **AI over MCP** | Claude or any MCP client can list, read, write, append to and search your cloud notes. A token can be limited to one folder, and a comment on a block tells the AI what to change. |
+| **AI over MCP** | Claude or any MCP client can list, read, write, append to, move and search your cloud notes, and read their history. Each write returns a link that opens the note in the app. A token can be limited to one folder, and only a token created with the sharing permission can share notes or create public links. A comment on a block tells the AI what to change, and Settings has a ready message to paste into your AI. |
 | **Phone** | The same app on a small screen, and the web app opens without a connection. |
 | **Yours to adjust** | Light and dark themes, width, font size, code block color, custom CSS, English and Spanish. |
 
