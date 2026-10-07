@@ -18,6 +18,13 @@
     { "src": "icons/icon512.png", "sizes": "512x512", "type": "image/png" },
     { "src": "icons/icon512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
+  "file_handlers": [
+    {
+      "action": "src/app.html",
+      "accept": { "text/markdown": [".md", ".markdown", ".mdx"] },
+      "launch_type": "multiple-clients"
+    }
+  ],
   "shortcuts": [
     {
       "name": "New note",

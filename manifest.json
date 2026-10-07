@@ -10,8 +10,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "SharpMD",
-    "default_popup": "src/popup.html"
+    "default_title": "SharpMD"
   },
   "background": {
     "service_worker": "src/background.js"
@@ -45,6 +44,15 @@
   ],
   "content_scripts": [
     {
+      "run_at": "document_start",
+      "js": [
+        "src/bridge-cs.js"
+      ],
+      "matches": [
+        "https://sharpmd.app/src/app.html*"
+      ]
+    },
+    {
       "run_at": "document_end",
       "css": [
         "vendor/hljs-themes.css",
@@ -61,6 +69,7 @@
         "src/theme.js",
         "src/serialize.js",
         "src/store.js",
+        "src/bridge.js",
         "src/seal.js",
         "src/cloud.js",
         "src/home.js",
@@ -77,6 +86,7 @@
         "src/vault.js",
         "src/live.js",
         "src/team.js",
+        "src/install.js",
         "vendor/markdown-it.min.js",
         "vendor/markdown-it-emoji.min.js",
         "vendor/markdown-it-sub.min.js",

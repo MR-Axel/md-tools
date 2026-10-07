@@ -15,8 +15,8 @@ const ROOT = new URL('./', self.location.href);
 const SHELL = [
   'src/app.html', 'src/content.css', 'src/editors.css', 'vendor/hljs-themes.css', 'manifest.webmanifest',
   'src/boot.js', 'src/web.js', 'src/defaults.js', 'src/storeapp.js', 'src/kit.js', 'src/touch.js', 'src/formula.js', 'src/dialog.js', 'src/templates.js', 'src/markdown.js',
-  'src/theme.js', 'src/serialize.js', 'src/store.js', 'src/seal.js', 'src/cloud.js', 'src/home.js', 'src/write.js', 'src/links.js',
-  'src/emoji-data.js', 'src/emoji.js', 'src/diagram.js', 'src/extras.js', 'src/board.js', 'src/sync.js', 'src/comments.js', 'src/vault.js', 'src/live.js', 'src/team.js', 'src/content.js',
+  'src/theme.js', 'src/serialize.js', 'src/store.js', 'src/bridge.js', 'src/seal.js', 'src/cloud.js', 'src/home.js', 'src/write.js', 'src/links.js',
+  'src/emoji-data.js', 'src/emoji.js', 'src/diagram.js', 'src/extras.js', 'src/board.js', 'src/sync.js', 'src/comments.js', 'src/vault.js', 'src/live.js', 'src/team.js', 'src/install.js', 'src/content.js',
   'vendor/markdown-it.min.js', 'vendor/markdown-it-emoji.min.js', 'vendor/markdown-it-sub.min.js', 'vendor/markdown-it-sup.min.js',
   'vendor/markdown-it-ins.min.js', 'vendor/markdown-it-mark.min.js', 'vendor/markdown-it-abbr.min.js', 'vendor/markdown-it-deflist.min.js',
   'vendor/markdown-it-footnote.min.js', 'vendor/markdown-it-multimd-table.min.js', 'vendor/markdown-it-container.min.js',

@@ -1,4 +1,4 @@
-// Ajustes por defecto, compartidos entre el script de contenido, el popup y el service worker.
+// Ajustes por defecto, compartidos entre el script de contenido, la página propia y el service worker.
 (function (root) {
   const DEFAULTS = {
     enabled: true,
@@ -14,6 +14,7 @@
     autoRefresh: true,
     rememberPosition: true,
     updateCheck: 'daily', // daily | weekly | off: cada cuánto mira si hay versión nueva en GitHub
+    openIn: 'web', // web | ext: qué abre el botón de la extensión, la app web o su propia página
     wrapCode: true, // las líneas largas de los bloques de código bajan de renglón
     autosave: false,
     autosaveDelay: 2000, // ms después del último cambio
@@ -490,6 +491,31 @@
       "Abrir carpeta": "Open folder",
       "También podés arrastrar un archivo o una carpeta a esta ventana.": "You can also drag a file or a folder onto this window.",
       "Recientes": "Recent",
+      // Un solo depósito entre la web y la extensión, y la pestaña Instalar de Ajustes.
+      "Reconectar": "Reconnect", "Reconectar \"{a}\"": "Reconnect \"{a}\"",
+      "Esta carpeta se abrió desde el otro lado. Elegila una vez acá y queda.": "This folder was opened from the other side. Pick it once here and it stays.",
+      "Este archivo se abrió desde el otro lado. Elegilo una vez acá y queda.": "This file was opened from the other side. Pick it once here and it stays.",
+      "Elegir carpeta": "Choose folder", "Elegir archivo": "Choose file",
+      "Instalar": "Install", "Abrir SharpMD en": "Open SharpMD in",
+      "App web (recomendada). Sin conexión se abre en la extensión, con las mismas notas.": "Web app (recommended). Offline it opens in the extension, with the same notes.",
+      "Esta extensión": "This extension", "La extensión": "The extension",
+      "Extensión de Chrome": "Chrome extension", "Instalada, versión {v}": "Installed, version {v}",
+      "No está en este navegador.": "Not in this browser.",
+      "Abre los .md del disco y de cualquier sitio, también sin conexión.": "Opens .md files from disk and from any site, offline too.",
+      "Conseguir la extensión": "Get the extension",
+      "Instalar como app": "Install as an app",
+      "Ventana propia y \"Abrir con\" para los .md en Windows.": "Its own window and \"Open with\" for .md files on Windows.",
+      "Ya está instalada.": "Already installed.",
+      "Se instala desde la app web.": "It installs from the web app.", "Abrir la app web": "Open the web app",
+      "Desde el menú del navegador: Instalar SharpMD. En iPhone: Compartir, Agregar a inicio.": "From the browser menu: Install SharpMD. On iPhone: Share, Add to Home Screen.",
+      "Abrir los .md con doble clic": "Open .md files with a double click",
+      "Clic derecho en un .md, Abrir con, Elegir otra aplicación, Chrome, Siempre.": "Right-click a .md file, Open with, Choose another app, Chrome, Always.",
+      "El acceso a archivos ya está activado.": "File access is already on.",
+      "Detalles de la extensión": "Extension details", "Ayuda": "Help",
+      "App de Android": "Android app", "La misma app en el teléfono, con tus notas de la nube.": "The same app on your phone, with your cloud notes.", "Conseguir la app": "Get the app",
+      "En la computadora": "On a computer",
+      "Abrí sharpmd.app en Chrome. Con tu cuenta, las notas de la nube son las mismas.": "Open sharpmd.app in Chrome. With your account, the cloud notes are the same.",
+      "Lo guardado en este dispositivo sigue disponible. La nube se actualiza al volver la conexión.": "What is on this device stays available. The cloud updates when the connection is back.",
       "También podés arrastrar un archivo a esta ventana. Este navegador no deja escribir sobre el archivo: al guardar se descarga una copia.": "You can also drag a file onto this window. This browser cannot write to the file: saving downloads a copy.",
       "Quitar de la lista": "Remove from the list",
       "Esa carpeta no tiene archivos Markdown.": "That folder has no Markdown files.",
