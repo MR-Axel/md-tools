@@ -75,7 +75,7 @@
       kind: 'file', name,
       queryPermission: async () => 'granted',
       getFile: async () => { const r = await noteGet(name); if (!r) throw new Error('missing'); return { text: async () => r.text, lastModified: r.at, size: r.text.length }; },
-      createWritable: async () => { let data = ''; return { write: async (t) => { data = String(t); }, close: async () => { await notePut(name, data); } }; },
+      createWritable: async () => { let data = ''; return { write: async (t) => { data = String(t); }, close: async () => { await LMD.store.notePut(name, data); } }; }, // por LMD.store: el puente con la extensión se entera
     };
   }
 

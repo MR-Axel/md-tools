@@ -39,6 +39,7 @@
     <p>The files you open are read by your browser, on your machine. They are never uploaded. When you save, the browser writes to the file or folder you picked.</p>
     <h2>What is stored, and where</h2>
     <p>Settings, reading positions and the list of recently opened folders are stored in your browser, on your device. Clearing the site or extension data removes them.</p>
+    <p>With the extension installed, the web app and the extension share one store on your device: browser notes, the list of recently opened files and folders, and display preferences. They pass between the two inside your browser, never over the network. The cloud session, the copies of cloud notes and the keys of protected folders are not shared.</p>
     <h2>Cloud notes, if you sign in</h2>
     <p>The sync server stores your email address, the notes you send to the cloud and, on the paid plan, their previous versions for 30 days. Sign-in codes, sessions and AI tokens are stored as hashes.</p>
     <ul>
@@ -78,8 +79,8 @@
     </ul>
     <h2>Permissions of the extension</h2>
     <ul>
-      <li><code>file:///*</code> and all sites: to render a Markdown file wherever it lives, local or served by a website. The extension only acts on addresses that end in a Markdown extension.</li>
-      <li><code>storage</code>: to keep your settings in the browser.</li>
+      <li><code>file:///*</code> and all sites: to render a Markdown file wherever it lives, local or served by a website. The extension only acts on addresses that end in a Markdown extension, and on the SharpMD web app, to share the browser notes with it. When you click its button it checks that the web app answers before opening it.</li>
+      <li><code>storage</code>: to keep your settings and browser notes in the browser.</li>
       <li><code>scripting</code>: to load the math and diagram libraries only when a document uses them.</li>
     </ul>
     <h2>Questions</h2>
@@ -94,6 +95,7 @@
     <p>Los archivos que abrís los lee tu navegador, en tu máquina. Nunca se suben. Al guardar, el navegador escribe en el archivo o la carpeta que elegiste.</p>
     <h2>Qué se guarda y dónde</h2>
     <p>Los ajustes, la posición de lectura y la lista de carpetas recientes se guardan en tu navegador, en tu dispositivo. Si borrás los datos del sitio o de la extensión, se van.</p>
+    <p>Con la extensión instalada, la app web y la extensión comparten un solo depósito en tu dispositivo: las notas del navegador, la lista de archivos y carpetas recientes y las preferencias de apariencia. Pasan de una a la otra dentro de tu navegador, nunca por la red. La sesión de la nube, las copias de las notas de la nube y las llaves de las carpetas protegidas no se comparten.</p>
     <h2>Notas en la nube, si entrás con tu cuenta</h2>
     <p>El servidor de sincronización guarda tu correo, las notas que mandás a la nube y, en el plan pago, sus versiones anteriores durante 30 días. Los códigos de acceso, las sesiones y los tokens para la IA se guardan como hashes.</p>
     <ul>
@@ -133,8 +135,8 @@
     </ul>
     <h2>Permisos de la extensión</h2>
     <ul>
-      <li><code>file:///*</code> y todos los sitios: para mostrar un archivo Markdown esté donde esté, local o servido por un sitio web. La extensión solo actúa sobre direcciones que terminan en una extensión de Markdown.</li>
-      <li><code>storage</code>: para guardar tus ajustes en el navegador.</li>
+      <li><code>file:///*</code> y todos los sitios: para mostrar un archivo Markdown esté donde esté, local o servido por un sitio web. La extensión solo actúa sobre direcciones que terminan en una extensión de Markdown, y sobre la app web de SharpMD, para compartir con ella las notas del navegador. Al tocar su botón consulta si la app web contesta antes de abrirla.</li>
+      <li><code>storage</code>: para guardar tus ajustes y las notas del navegador.</li>
       <li><code>scripting</code>: para cargar las librerías de matemática y diagramas solo cuando un documento las usa.</li>
     </ul>
     <h2>Consultas</h2>

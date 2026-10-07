@@ -692,6 +692,7 @@
     LMD.vault.init(core);
     LMD.live.init(core);
     LMD.team.init(core);
+    LMD.install.init(core, homeCtx);
     document.documentElement.dataset.lmdFs = String(!!window.showOpenFilePicker && window.isSecureContext);
   }
 
@@ -1697,7 +1698,9 @@
           const go = el('a', { class: 'lmd-node', href: APP_URL + '?f=' + encodeURIComponent(r.last || r.id + '/'), title: r.name });
           go.innerHTML = '<span class="lmd-node-ico">' + (r.kind === 'dir' ? ICON.folder : ICON.md) + '</span><span class="lmd-node-name"></span><span class="lmd-node-sub"></span>';
           go.querySelector('.lmd-node-name').textContent = r.name;
-          go.querySelector('.lmd-node-sub').textContent = r.kind === 'dir' ? decodeURIComponent((r.last || '').split('/').slice(1).join('/')) : '';
+          go.querySelector('.lmd-node-sub').textContent = r.ghost ? T('Reconectar') : r.kind === 'dir' ? decodeURIComponent((r.last || '').split('/').slice(1).join('/')) : '';
+          // Se abrió del otro lado (la web o la extensión): acá todavía falta elegirla una vez.
+          if (r.ghost) { go.dataset.ghost = r.key; go.classList.add('lmd-node-ghost'); }
           const del = el('button', { type: 'button', class: 'lmd-node-x', title: T('Quitar de la lista'), 'data-key': r.key }, ICON.close);
           row.append(go, del); list.appendChild(row);
         });
@@ -1764,6 +1767,8 @@
       return true;
     }
     if (e.target.closest('.lmd-tree-up:not(.lmd-tree-new)')) { treeUp(); return true; }
+    const ghost = e.target.closest('a[data-ghost]');
+    if (ghost && !e.target.closest('.lmd-node-x')) { e.preventDefault(); LMD.bridge.reconnect(ghost.dataset.ghost, homeCtx()).then(() => loadTree()); return true; }
     const x = e.target.closest('.lmd-node-x');
     if (x) { LMD.store.handlesDelete(x.dataset.key).then(() => loadTree()); return true; }
     if (e.target.closest('.lmd-root-hint')) { LMD.sync.login(); return true; }
@@ -2082,7 +2087,7 @@
   let panelStale = false;
   let panelTab = 'look';
   let serverDraft = false; // "Uso mi propio servidor" prendido y la dirección todavía sin escribir
-  const PANEL_TABS = [['look', 'Apariencia', ICON.eye], ['read', 'Lectura y edición', ICON.pencil], ['plug', 'Plugins', ICON.b_code], ['cloud', 'Nube', ICON.cloud], ['ai', 'IA', ICON.spark], ['plan', 'Plan', ICON.card], ['adv', 'Avanzado', ICON.gear]];
+  const PANEL_TABS = [['look', 'Apariencia', ICON.eye], ['read', 'Lectura y edición', ICON.pencil], ['plug', 'Plugins', ICON.b_code], ['cloud', 'Nube', ICON.cloud], ['ai', 'IA', ICON.spark], ['plan', 'Plan', ICON.card], ['inst', 'Instalar', ICON.download], ['adv', 'Avanzado', ICON.gear]];
   // Al cerrar Ajustes el foco vuelve a donde estaba al abrirlos.
   let panelBack = null;
   function closePanel() {
@@ -2172,6 +2177,7 @@
           '<section data-tab="cloud"><h3>' + T('Nube') + '</h3><div class="lmd-acct" data-acct="cloud"></div></section>' +
           '<section data-tab="ai"><h3>' + T('Conectar una IA') + '</h3><div class="lmd-acct" data-acct="ai"></div></section>' +
           '<section data-tab="plan"><h3>' + T('Plan') + '</h3><div class="lmd-acct" data-acct="plan"></div></section>' +
+          '<section data-tab="inst"><h3>' + T('Instalar') + '</h3><div class="lmd-acct lmd-inst" data-inst-pane></div></section>' +
           '<section data-tab="adv"><h3>' + T('CSS propio') + (s.supporter ? '' : EXTRA) + '</h3>' +
             '<textarea data-key="customCSS"' + (s.supporter ? '' : ' disabled') + ' spellcheck="false" placeholder=".markdown-body h1 { color: tomato; }">' + esc(s.customCSS) + '</textarea>' +
             '<p class="lmd-hint">' + T('Se aplica encima del tema. El documento vive dentro de .markdown-body.') + '</p>' +
@@ -2214,6 +2220,7 @@
       ui.panel.querySelector('.lmd-panel-body').scrollTop = 0;
       const acct = ui.panel.querySelector('[data-acct=' + tab + ']');
       if (acct) LMD.sync.panes[tab](acct, host);
+      if (tab === 'inst') LMD.install.pane(ui.panel.querySelector('[data-inst-pane]'));
     };
     ui.panel.querySelectorAll('[data-ptab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.ptab)));
     showTab(panelTab);
@@ -2889,6 +2896,8 @@
       flushTyping();
       if (dirty && appRoot && (appRoot.kind === 'local' || appRoot.kind === 'cloud')) { clearTimeout(autosaveTimer); save(false); }
     });
+    // El depósito cambió desde el otro lado (la web o la extensión): la lista se vuelve a leer.
+    window.addEventListener('lmd-store-changed', () => { if (APP && ui.paneFiles.dataset.loaded) loadTree(); });
     window.addEventListener('online', () => {
       if (!appRoot || appRoot.kind !== 'cloud') return;
       if (dirty && cloudState === 'error') { clearTimeout(autosaveTimer); save(false); } else { cloudPoll = 0; checkForChanges(false); }
@@ -3263,7 +3272,9 @@
     }
     if (id === 'local') {
       // Nota guardada en el navegador.
-      const note = await LMD.store.noteGet(name);
+      let note = await LMD.store.noteGet(name);
+      // Con la extensión instalada, la nota puede estar llegando de su depósito.
+      if (!note) { await LMD.bridge.settle(); note = await LMD.store.noteGet(name); }
       if (!note) return fail(T('No se encontró "{a}".', { a: name }));
       return { root: roots.local, raw: note.text, disk: note.text };
     }
@@ -3278,6 +3289,7 @@
     }
     const rec = (roots[id] && roots[id].root ? roots[id] : null) || (await handlesAll()).find((r) => r.root && r.id === id);
     if (!rec) return fail(T('Ese acceso ya no está guardado. Abrí el archivo o la carpeta de nuevo.'));
+    if (rec.ghost) return fail(T('Falta el permiso para abrir "{a}".', { a: rec.name }));
     const mode = rec.kind === 'dir' ? 'readwrite' : 'read';
     let ok = false;
     try { ok = (await rec.handle.queryPermission({ mode })) === 'granted'; } catch (e) { /* se pide abajo */ }

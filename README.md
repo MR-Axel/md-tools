@@ -64,6 +64,10 @@ Free and open source. No tracking: files are read in your browser and never uplo
 
 **As an extension.** Set Chrome as the default app for `.md` files and a double-click opens them rendered. It also renders Markdown served by any website, and it works offline.
 
+**Both at once.** With the extension installed, the web app and the extension share one store: the same browser notes and the same list of opened files and folders on both sides. A folder opened on one side shows on the other as "Reconnect": pick it once there and it stays. The extension button opens the web app, or the extension's own page when there is no connection; Settings → Install chooses which. Cloud sessions are not shared: each side signs in on its own.
+
+**As an installed app.** From Settings → Install the web app installs with its own window, and Windows offers it under "Open with" for `.md` files.
+
 ## Android app
 
 The Android app is the web app in a package (a Trusted Web Activity): it opens `sharpmd.app` full screen, with the same notes, the same account and the same offline cache. Nothing else is bundled, so it is always the current version of the site.
@@ -87,7 +91,7 @@ It works the same in Edge, Brave and Arc.
 
 ## Updating
 
-Chrome cannot update an extension loaded from a folder, so SharpMD checks this repository once a day (or once a week, or never: Settings → Updates) and tells you in the sidebar and in the popup when there is a newer version. Download the ZIP, replace the folder and click **Apply**. If you cloned the repository, `git pull` and **Apply** is enough.
+Chrome cannot update an extension loaded from a folder, so SharpMD checks this repository once a day (or once a week, or never: Settings → Updates) and tells you in the sidebar when there is a newer version. Download the ZIP, replace the folder and click **Apply**. If you cloned the repository, `git pull` and **Apply** is enough.
 
 ## Shortcuts
 
@@ -110,7 +114,7 @@ A page cannot write to disk on its own, so the first time you save a file opened
 
 ## Privacy
 
-No analytics. Settings, reading positions and browser notes are stored in your browser. Files you open are never uploaded. Cloud notes are optional: a note reaches the sync server only when you send it there. Apart from that, the only network request the extension makes is the daily check of the version number published here, which you can turn off. HTML produced from the Markdown goes through DOMPurify before it reaches the page. Details in the [privacy page](https://sharpmd.app/privacy.html).
+No analytics. Settings, reading positions and browser notes are stored in your browser. Files you open are never uploaded. Cloud notes are optional: a note reaches the sync server only when you send it there. With the extension installed, browser notes, the list of opened files and folders and display preferences pass between the web app and the extension inside your browser, never over the network. Apart from that, the extension makes two network requests: the daily check of the version number published here, which you can turn off, and a short check that the web app answers when you click its button. HTML produced from the Markdown goes through DOMPurify before it reaches the page. Details in the [privacy page](https://sharpmd.app/privacy.html).
 
 ## Cloud notes and the sync server
 
@@ -132,6 +136,10 @@ src/
   theme.js        light or dark theme and accent color
   serialize.js    from an edited block back to Markdown
   store.js        file and folder permissions and browser notes, kept in IndexedDB
+  bridge.js       one store for the web app and the extension: keeps both sides equal, reconnects folders
+  bridge-cs.js    content script on the web app that relays its requests to the extension
+  bridge-sw.js    the extension side of the bridge, and what the extension button opens
+  install.js      Settings → Install, installing the app, files from "Open with", the offline mark
   cloud.js        client for the optional sync server
   home.js         the empty state of the app and the sign-in form
   write.js        new blocks, Markdown shortcuts and the block menu
@@ -158,7 +166,6 @@ src/
   storeapp.js     tells whether the page runs inside the Android app
   boot.js         paints the theme background before anything else loads
   app.html        the app: sidebar with the outline and the files, and the note in the center
-  popup.html/js   the popup of the extension icon
 server/           optional sync server with MCP
 sw.js             offline cache of the web app
 tools/            generator of the landing page

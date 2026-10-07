@@ -1,6 +1,6 @@
 // Service worker: lee archivos y carpetas por la página (que no puede hacer fetch de file://),
 // inyecta las librerías pesadas solo cuando el documento las usa, y reparte los atajos.
-importScripts('defaults.js');
+importScripts('defaults.js', 'store.js', 'bridge-sw.js');
 
 const LAZY = {
   katex: { js: ['vendor/katex/katex.min.js'], css: 'vendor/katex/katex.min.css' },
@@ -73,6 +73,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     chrome.storage.local.get('update').then((r) => chrome.storage.local.set({ update: Object.assign({}, r.update, { dismissed: msg.version }) })).then(() => sendResponse({ ok: true }));
     return true;
   }
+  // Pedidos de la app web, que comparte el depósito de la extensión (bridge-sw.js valida de dónde vienen).
+  if (msg.type === 'bridge') return LMD.bridgeHost.onMessage(msg, sender, sendResponse);
   if (msg.type === 'openApp') { chrome.tabs.create({ url: chrome.runtime.getURL('src/app.html') + (msg.fresh ? '?new=1' : (msg.query || '')) }); sendResponse({ ok: true }); return; }
   if (msg.type === 'reloadExtension') {
     // Recargar la extensión cierra sus páginas y deja huérfanas las pestañas de archivos:
