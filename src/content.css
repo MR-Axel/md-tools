@@ -211,7 +211,7 @@
 .lmd-editing .lmd-noedit { cursor: not-allowed; }
 .lmd-editing .lmd-code { cursor: pointer; }
 .lmd-src, .lmd-raw-edit { display: block; width: 100%; font-family: var(--lmd-mono); font-size: 0.86em; line-height: 1.5; color: var(--fg); background: var(--bg-code); border: 2px solid var(--accent-fill); border-radius: 9px; padding: 14px 16px; resize: vertical; }
-.lmd-raw-edit { min-height: 75vh; border-width: 1px; border-color: var(--line); margin-bottom: 60px; }
+.lmd-raw-edit { min-height: calc(100vh - 96px); border-width: 1px; border-color: var(--line); margin-bottom: 16px; }
 .lmd-raw-edit:focus, .lmd-src:focus { outline: none; border-color: var(--accent-fill); }
 .lmd-format, .lmd-tablebar { position: fixed; z-index: 40; display: flex; gap: 2px; padding: 4px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 9px; box-shadow: var(--shadow); }
 .lmd-format button, .lmd-tablebar button { min-width: 30px; height: 30px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--fg); font: inherit; font-size: 13.5px; cursor: pointer; display: grid; place-items: center; }

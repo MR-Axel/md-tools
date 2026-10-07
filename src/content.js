@@ -2214,6 +2214,15 @@
         }
       }
     });
+    // Lo escrito pasa al Markdown tras una pausa, sin esperar a salir del bloque: si no, el guardado automático
+    // no ve nada hasta que la persona hace clic en otro lado, y cerrar la pestaña a mitad de un párrafo lo pierde.
+    let typeTimer = null;
+    ui.article.addEventListener('input', (e) => {
+      const node = e.target.closest && e.target.closest('.lmd-editable');
+      if (!node || !editMode || node.classList.contains('lmd-draft') || node.dataset.formula) return;
+      clearTimeout(typeTimer);
+      typeTimer = setTimeout(() => { if (editMode && node.isConnected && !core.hold && commitBlock(node)) node._typed = true; }, 1200);
+    });
     ui.article.addEventListener('focusout', (e) => {
       const node = e.target.closest && e.target.closest('.lmd-editable');
       if (!node || !editMode) return;
@@ -2221,7 +2230,8 @@
       if (node.classList.contains('lmd-draft')) { LMD.write.blur(node); return; }
       // Lo que quedó escrito en una celda de cuentas pasa a ser su fórmula, o un valor común si dejó de serlo.
       if (node.dataset.formula) { const typed = node.textContent.trim(); if (LMD.board.formulaOf(typed)) node.dataset.formula = typed; else delete node.dataset.formula; }
-      if (!commitBlock(node)) { if (node.dataset.formula) LMD.board.calcTables(node.closest('table').parentNode); return; }
+      const typed = node._typed; node._typed = false;
+      if (!commitBlock(node) && !typed) { if (node.dataset.formula) LMD.board.calcTables(node.closest('table').parentNode); return; }
       node._md = null;
       softRender();
     });

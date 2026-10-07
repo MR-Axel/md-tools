@@ -169,6 +169,15 @@ await app.click('.lmd-menu [data-ins=h1]'); await app.keyboard.type('Primero'); 
 o.vaciaEscrita = await src();
 await app.keyboard.press('Control+s'); await app.waitForTimeout(900);
 
+// lo escrito llega al Markdown tras una pausa, sin salir del bloque
+if (!(await app.evaluate(() => document.documentElement.classList.contains('lmd-editing')))) { await app.click('[data-act=mode-edit]'); await app.waitForTimeout(400); }
+await app.locator('.lmd-article h1.lmd-editable').first().click(); await app.keyboard.press('End'); await app.keyboard.type(' sigo escribiendo'); await app.waitForTimeout(1700);
+o.pausa = await app.evaluate(() => ({ enfocado: !!(document.activeElement && document.activeElement.isContentEditable), texto: document.activeElement.textContent.slice(-17) }));
+await app.keyboard.type(' y más'); await app.waitForTimeout(200);
+o.pausaCursor = await app.evaluate(() => document.activeElement.textContent.slice(-23));
+await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(700);
+o.pausaFinal = String(await src()).includes('sigo escribiendo y más');
+
 const checks = [
   ['Enter crea párrafos, títulos y listas', J(o.escribir) === J(['# Doc', '', 'Primer párrafo.', '', 'Segundo párrafo', '', '## Sub', '', '- uno', '- dos', '', 'fin', '', '- alfa', '- beta', '', 'Último párrafo.', '']), o.escribir],
   ['Enter en un ítem agrega otro y en un párrafo lo parte', J(o.lista.slice(13)) === J(['- alfa', '- alfa bis', '- beta', '', 'Último', '', 'párrafo.', '']), o.lista],
@@ -196,6 +205,7 @@ const checks = [
   ['doble clic leyendo sobre títulos de sección, ítems de lista y celdas entra a edición ahí', J(o.dobleSecciones) === J(['false>true:Sección dos:true:true', 'false>true:Sección tres:true:true', 'false>true:ítem dos:true:true', 'false>true:Paso con negrita:true:true', 'false>true:celda dos:true:true', 'false>true:Doc:true:true']), o.dobleSecciones],
   ['una nota vacía abre en edición con el cursor listo', J(o.vacia) === J([true, true]), o.vacia],
   ['en la nota vacía el clic derecho inserta el primer bloque', J(o.vaciaMenu) === J(['Insertar']) && o.vaciaEscrita.trim() === '# Primero', [o.vaciaMenu, o.vaciaEscrita]],
+  ['escribir y hacer una pausa no saca el cursor del bloque, y el texto queda', o.pausa.enfocado && o.pausa.texto === ' sigo escribiendo' && o.pausaCursor === ' sigo escribiendo y más' && o.pausaFinal, [o.pausa, o.pausaCursor, o.pausaFinal]],
   ['sin errores de JavaScript', errors.length === 0, errors],
 ];
 console.log('Escritura');
