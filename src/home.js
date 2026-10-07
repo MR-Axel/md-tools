@@ -92,7 +92,7 @@
       if (folder) {
         notesLine.append(T('Las notas nuevas se guardan en') + ' ', el('b', { text: folder.name }), ' · ');
         notesLine.appendChild(el('button', { type: 'button', class: 'lmd-link', 'data-home': 'notes', text: T('Cambiar') }));
-      } else notesLine.appendChild(el('button', { type: 'button', class: 'lmd-link', 'data-home': 'notes', text: T('Elegir una carpeta para las notas nuevas') }));
+      } else { notesLine.append(T('Las notas nuevas se guardan en este navegador') + ' · '); notesLine.appendChild(el('button', { type: 'button', class: 'lmd-link', 'data-home': 'notes', text: T('Guardarlas en una carpeta') })); }
     };
     paintNotes();
 
