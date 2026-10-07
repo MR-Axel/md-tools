@@ -13,8 +13,11 @@
 
   // Lo aceptado sobre el audio se guarda aparte de los ajustes: { consent: cuándo, skip: { idioma: true } }.
   const STORE = 'dictation';
-  const stored = () => new Promise((resolve) => { try { chrome.storage.local.get(STORE, (r) => resolve((r && r[STORE]) || {})); } catch (e) { resolve({}); } });
-  const store = (value) => new Promise((resolve) => { const o = {}; o[STORE] = value; try { chrome.storage.local.set(o, resolve); } catch (e) { resolve(); } });
+  // Se lee una vez y queda en memoria: cuando no hay nada que preguntar, el micrófono arranca dentro del mismo gesto
+  // (Safari no deja prenderlo si entre el toque y el pedido pasó una espera).
+  let memo = null;
+  const stored = () => (memo ? Promise.resolve(memo) : new Promise((resolve) => { const done = (v) => { memo = memo || v || {}; resolve(memo); }; try { chrome.storage.local.get(STORE, (r) => done(r && r[STORE])); } catch (e) { done({}); } }));
+  const store = (value) => new Promise((resolve) => { memo = value; const o = {}; o[STORE] = value; try { chrome.storage.local.set(o, resolve); } catch (e) { resolve(); } });
 
   const cfg = { silence: 30000 }; // sin oír nada durante este tiempo, se corta
   const ses = { rec: null, active: false, starting: false, closing: false, audio: false, local: false, short: 'en', tag: 'en-US', mode: 'text', chunks: [], ghost: null, fmt: null, glue: false, snaps: [], timer: null, starts: [], note: '', seq: 0 };
@@ -40,7 +43,8 @@
   }
   // Antes de prender el micrófono: 'local', 'cloud' o nada si la persona no aceptó.
   async function clearance(tag) {
-    const saved = await stored(); const state = await localState(tag);
+    const S = SR(); const saved = memo || await stored();
+    const state = S && typeof S.available === 'function' ? await localState(tag) : 'unknown';
     if (state === 'available') return 'local';
     if ((state === 'downloadable' || state === 'downloading') && !(saved.skip && saved.skip[tag])) {
       const yes = await LMD.dialog.confirm({ title: T('Dictar sin enviar audio'), text: T('El navegador puede descargar el reconocimiento de voz de este idioma. Con eso el audio no sale del dispositivo.'), ok: T('Descargar'), cancel: T('Ahora no') });
@@ -64,6 +68,9 @@
   // El bloque con el cursor; si el foco se fue, el último que se tocó; si no hay, uno nuevo al final.
   function target() {
     let d = active();
+    // En una sesión en vivo, el bloque en el que otra persona está escribiendo no se toca.
+    const holder = d && LMD.live && LMD.live.heldBy ? LMD.live.heldBy(d) : '';
+    if (holder) { core.flash(T('{a} está escribiendo en este bloque', { a: holder }), 'warn'); return null; }
     if (d) { const sel = getSelection(); if (!sel.rangeCount || !d.contains(sel.anchorNode)) caretEnd(d); return d; }
     if (!core.editMode || core.readOnly || !core.blocks) return null;
     d = core.lastBlock;
@@ -144,7 +151,12 @@
   function block(kind, done) {
     closeFmt(); ses.glue = false;
     let d = target(); if (!d || d.classList.contains('lmd-cell')) return;
-    if (!d.classList.contains('lmd-draft')) { sync(); d = LMD.write.open(LMD.write.top(d), 'p'); }
+    if (!d.classList.contains('lmd-draft')) {
+      sync();
+      // Con el cursor en un ítem ya escrito de una lista de ese tipo, es el ítem que sigue.
+      if (d.closest('li') && ((kind === 'task' && isTask(d)) || (kind === 'ul' && !isTask(d)))) { caretEnd(d); LMD.write.enter(d); d = active(); }
+      else d = LMD.write.open(LMD.write.top(d), 'p');
+    }
     else if (clean(d.textContent).trim()) { LMD.write.enter(d); d = active(); }
     // Quedó un ítem vacío: sirve si es del tipo pedido; si no, se sale de la lista.
     if (d && d._li && !((kind === 'task' && isTask(d)) || (kind === 'ul' && !isTask(d)))) { LMD.write.enter(d); d = active(); }
@@ -289,13 +301,15 @@
   };
   function listen() {
     const S = SR(); const rec = new S();
-    rec.lang = ses.tag; rec.continuous = true; rec.interimResults = true;
+    // En Android, Chrome con escucha continua repite en cada resultado lo que ya había entregado: ahí se escucha
+    // de a una frase y se retoma al terminar cada una.
+    rec.lang = ses.tag; rec.continuous = !/Android/i.test(navigator.userAgent); rec.interimResults = true;
     if (ses.local) { try { rec.processLocally = true; } catch (e) { /* el navegador no lo deja fijar */ } }
     rec.onstart = () => { if (rec !== ses.rec) return; ses.starting = false; ses.active = true; showBar(); paintMic(); quiet(); };
     rec.onaudiostart = () => { if (rec === ses.rec) ses.audio = true; };
     rec.onresult = (e) => {
       if (rec !== ses.rec) return;
-      quiet();
+      quiet(); ses.starts = []; // se oyó algo: los cortes del navegador que siguen no cuentan como falla
       let soft = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i]; const text = r[0] ? r[0].transcript : '';
@@ -452,13 +466,13 @@
   }
   function enable(c) {
     core = c; on = true;
+    stored();
     if (!wired) {
       wired = true;
       mic = el('button', { type: 'button', class: 'lmd-dct-mic', hidden: '' }, ICON.mic);
       document.body.appendChild(mic);
-      // El foco y el cursor se quedan en el bloque: el clic no se los lleva.
+      // El foco y el cursor se quedan en el bloque: el clic no se los lleva. (Frenar pointerdown, en Safari, se come el toque.)
       mic.addEventListener('mousedown', (e) => e.preventDefault());
-      mic.addEventListener('pointerdown', (e) => e.preventDefault());
       mic.addEventListener('click', () => begin());
       window.addEventListener('keydown', onKey);
       const later = debounce(paintMic, 40);

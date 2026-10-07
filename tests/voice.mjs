@@ -296,6 +296,9 @@ try {
     check('sus opciones: velocidad, idioma, voz y leer la nota', await page.evaluate(() => { const o = document.querySelector('.lmd-tl-card[data-tool=speak] .lmd-tl-opts'); return o.querySelectorAll('select').length === 3 && !!o.querySelector('[data-spk=go]') && o.querySelector('[data-spk=voice]').options.length === 3; }));
     await page.selectOption('.lmd-tl-opts [data-spk=rate]', '1.5'); await sleep(350);
     check('las opciones se guardan junto al interruptor', J((await stored(page, 'settings')).tools) === J({ speak: true, speakRate: 1.5 }), (await stored(page, 'settings')).tools);
+    await page.click('.lmd-tl-opts [data-spk=go]'); await until(() => page.evaluate(() => window.__tts.log.length >= 3 && !LMD.speak.state().active));
+    check('"Read this note" cierra Ajustes y lee la nota, a la velocidad elegida', await page.evaluate(() => document.querySelector('.lmd-panel').hidden && window.__tts.log.map((x) => x.text + '@' + x.rate).join('|') === 'Tools@1.5|A paragraph.@1.5'), await page.evaluate(() => window.__tts.log.map((x) => x.text + '@' + x.rate)));
+    await page.click('[data-act=settings]'); await page.waitForSelector('.lmd-tl-card');
 
     await page.click('.lmd-tl-card[data-tool=dictate] .lmd-switch'); await until(() => page.evaluate(() => !!LMD.dictate && !!LMD.voice));
     check('al prender Dictado llegan su gramática y su código', (await loaded()).tags.join() === 'speak.js,voice.js,dictate.js', (await loaded()).tags);
@@ -521,12 +524,22 @@ try {
     await page.click('.lmd-dct-bar [data-dct=stop]'); await stopped(page); await sleep(1000);
     check('lo que quedó es lo que no se borró', /This one stays\. The end\.\n$/.test(await saved(page, 'cmd.md')) && !/goes away|still here/.test(await saved(page, 'cmd.md')), (await saved(page, 'cmd.md')).slice(-80));
 
+    // "task" con el cursor en una tarea que ya estaba: sigue esa lista, con su misma marca.
+    await page.evaluate(() => LMD.store.notePut('tasks.md', '- [ ] One\n- [x] Two\n'));
+    await page.goto(noteUrl('tasks.md', true)); await page.waitForSelector('.lmd-editing .lmd-article li'); await sleep(350);
+    await page.locator('.lmd-article li .lmd-editable', { hasText: 'Two' }).click(); await page.keyboard.press('Control+End'); await sleep(150);
+    await micOn(page); await listening(page);
+    await say(page, 'task three'); await say(page, 'task done four');
+    await page.click('.lmd-dct-bar [data-dct=stop]'); await stopped(page); await sleep(1000);
+    check('"task" sobre una tarea ya escrita agrega a la misma lista', (await saved(page, 'tasks.md')) === '- [ ] One\n- [x] Two\n- [ ] Three\n- [x] Four\n', await saved(page, 'tasks.md'));
+    await page.goto(noteUrl('cmd.md', true)); await page.waitForSelector('.lmd-editing .lmd-article h1'); await sleep(350);
+
     // Sin órdenes: todo entra como texto.
     await page.evaluate(() => LMD.tools.setOpt({ dictateCommands: false })); await sleep(350);
     await caretLast(page); await micOn(page); await listening(page);
     await say(page, 'new paragraph title comma period');
     await page.click('.lmd-dct-bar [data-dct=stop]'); await stopped(page); await sleep(1000);
-    check('con las órdenes apagadas, lo dicho entra tal cual', /The end\. New paragraph title comma period\n$/.test(await saved(page, 'cmd.md')), (await saved(page, 'cmd.md')).slice(-80));
+    check('con las órdenes apagadas, lo dicho entra tal cual', /The end\.\n\nNew paragraph title comma period\n$/.test(await saved(page, 'cmd.md')), (await saved(page, 'cmd.md')).slice(-80));
     check('sin errores de página', R.errors.length === 0, R.errors);
     await ctx.close();
   });
@@ -636,10 +649,10 @@ try {
     check('y lo dictado quedó en la nota anterior, no en la nueva', /Text something\n$/.test(await saved(page, 'cut.md')) && (await saved(page, 'cut2.md')) === '# Second\n\nMore\n', [await saved(page, 'cut.md'), await saved(page, 'cut2.md')]);
 
     await page.click('[data-act=mode-edit]').catch(() => {}); await sleep(300);
-    await page.evaluate(() => { LMD.dictate.cfg.silence = 500; });
+    await page.evaluate(() => { LMD.dictate.cfg.silence = 1500; });
     check('escuchando', await start());
-    await sleep(250); await say(page, 'word');
-    await sleep(350);
+    await sleep(700); await say(page, 'word');
+    await sleep(1000); // ya pasó más que la espera desde que empezó, y menos desde lo último que se oyó
     check('cada cosa que se oye renueva la espera', (await dct(page)).active);
     check('tras un silencio largo se corta solo y lo dice', !!(await stopped(page)) && /stopped after a long silence/.test(await flashText(page)), await flashText(page));
     await page.evaluate(() => { LMD.dictate.cfg.silence = 30000; });
