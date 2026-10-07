@@ -1627,3 +1627,29 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
   .lmd-dct-sheet dd { margin: 0 0 8px; }
 }
 @media print { .lmd-spk, .lmd-dct-mic, .lmd-dct-bar, .lmd-voice-ghost { display: none !important; } .lmd-article .lmd-speaking { background: none; box-shadow: none; } }
+/* Seguridad de la nube, en Ajustes → Nube: un hecho por renglón, con el dato técnico en chico. */
+.lmd-sec { margin: 18px 0 0; padding-top: 14px; border-top: 1px solid var(--line); }
+.lmd-sec h4 { margin: 0 0 10px; font-size: 14px; }
+.lmd-sec ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; margin: 0; padding: 0; list-style: none; }
+.lmd-sec li { display: flex; gap: 10px; min-width: 0; }
+.lmd-sec li > div { min-width: 0; }
+.lmd-sec-ico { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); }
+.lmd-sec-ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-sec li b { display: block; font-size: 13.5px; font-weight: 600; color: var(--fg); }
+.lmd-sec li p { margin: 2px 0 0; font-size: 13px; line-height: 1.45; color: var(--fg-muted); overflow-wrap: anywhere; }
+.lmd-sec li small { display: block; margin-top: 4px; font-size: 11.5px; color: var(--fg-faint); overflow-wrap: anywhere; }
+.lmd-sec li p.lmd-sec-count { color: var(--fg); font-weight: 600; }
+.lmd-sec-act .lmd-link, .lmd-dlg-more .lmd-link { padding: 0; color: var(--accent); font-size: 13px; text-decoration: underline; }
+.lmd-sec-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 0; font-size: 12.5px; color: var(--fg-muted); }
+.lmd-sec-pick > span { flex: 1 0 100%; }
+.lmd-sec-pick .lmd-btn { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 10px; font-size: 12.5px; }
+.lmd-sec-pick .lmd-btn span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lmd-sec-pick .lmd-btn svg { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-sec-foot { margin: 12px 0 0; font-size: 12.5px; color: var(--fg-faint); }
+.lmd-sec-foot a { color: var(--accent); }
+.lmd-ask-card p.lmd-dlg-more { margin: -8px 0 18px; font-size: 13px; color: var(--fg-muted); }
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  .lmd-sec ul { grid-template-columns: minmax(0, 1fr); }
+  .lmd-sec-act .lmd-link { min-height: 40px; }
+  .lmd-sec-pick .lmd-btn { min-height: 40px; }
+}

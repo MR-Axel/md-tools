@@ -60,14 +60,16 @@
   async function upload() {
     const root = core.APP ? core.appRoot : null; const kind = root ? root.kind : ''; const here = core.HERE; const name = core.docName;
     let move = false;
+    // La primera nota que va a la nube: una línea de cómo queda guardada, con el camino al detalle en Ajustes.
+    const more = account && account.notes > 0 ? null : { text: LMD.cloud.own() ? '' : T('Viaja cifrada y se guarda cifrada en el servidor.'), link: T('Seguridad de la nube'), go: () => core.openPanel('cloud') };
     if (kind === 'local') {
-      if (!(await LMD.dialog.confirm({ title: T('¿Mover "{a}" a la nube?', { a: name }), text: T('Deja de estar guardada en este navegador.'), ok: T('Mover a la nube') }))) return;
+      if (!(await LMD.dialog.confirm({ title: T('¿Mover "{a}" a la nube?', { a: name }), text: T('Deja de estar guardada en este navegador.'), ok: T('Mover a la nube'), more }))) return;
       move = true;
     } else if (kind === 'dir') {
-      const pick = await LMD.dialog.confirm({ title: T('¿Subir "{a}" a la nube?', { a: name }), text: T('Al moverla, el archivo se elimina del disco.'), ok: T('Mover a la nube'), alt: T('Dejar una copia') });
+      const pick = await LMD.dialog.confirm({ title: T('¿Subir "{a}" a la nube?', { a: name }), text: T('Al moverla, el archivo se elimina del disco.'), ok: T('Mover a la nube'), alt: T('Dejar una copia'), more });
       if (!pick) return;
       move = pick === true;
-    } else if (!(await LMD.dialog.confirm({ title: T('¿Subir "{a}" a la nube?', { a: name }), text: T('Queda una copia sincronizada; el archivo de acá no se toca.'), ok: T('Subir a la nube') }))) return;
+    } else if (!(await LMD.dialog.confirm({ title: T('¿Subir "{a}" a la nube?', { a: name }), text: T('Queda una copia sincronizada; el archivo de acá no se toca.'), ok: T('Subir a la nube'), more }))) return;
     // Lo que se muda es lo último escrito: primero se guarda donde está.
     if (move && core.dirty && !(await core.save(false))) return;
     try {
@@ -166,20 +168,60 @@
     } catch (e) { if (host.say) host.say(T(e.code === 'offline' ? 'No hay conexión con el servidor.' : 'No se pudo completar. Probá de nuevo.')); }
   }
 
+  // ---------- Seguridad de la nube: qué se cifra, dónde, y quién tiene la llave ----------
+  // Va en Ajustes → Nube, con sesión y sin ella. Cada renglón es un hecho que se puede comprobar en el código.
+  const PRIVACY = 'https://sharpmd.app/privacy.html#cloud-notes';
+  let secRedraw = null;
+  const secRow = (id, icon, title, text, tech, extra) => '<li data-sec-row="' + id + '"><span class="lmd-sec-ico">' + icon + '</span><div><b>' + T(title) + '</b><p>' + T(text) + '</p>' + (extra || '') + (tech ? '<small>' + tech + '</small>' : '') + '</div></li>';
+  // own: un servidor propio. can: se ofrece proteger una carpeta. count: carpetas protegidas de la cuenta.
+  // pick: se está eligiendo cuál proteger, entre folders.
+  function security(o) {
+    o = o || {};
+    const n = o.count || 0;
+    const choose = !o.pick ? '' : !(o.folders || []).length ? '<p class="lmd-sec-pick" role="status">' + T('Primero creá una carpeta en la Nube. Después la protegés desde acá o desde el menú de la carpeta.') + '</p>'
+      : '<div class="lmd-sec-pick"><span>' + T('Elegí la carpeta') + '</span>' + o.folders.map((f) => '<button type="button" class="lmd-btn" data-c="protect-at" data-f="' + esc(f) + '">' + ICON.folder + '<span>' + esc(f) + '</span></button>').join('') + '</div>';
+    return '<section class="lmd-sec" aria-label="' + T('Seguridad') + '"><h4>' + T('Seguridad') + '</h4><ul>' +
+      (o.own ? secRow('notes', ICON.lock, 'Notas en la nube', 'En un servidor propio, el cifrado en tránsito y en el servidor depende de cómo esté instalado. El servidor puede leerlas, para compartirlas y atender a tu IA.', 'HTTPS · DATA_KEY')
+        : secRow('notes', ICON.lock, 'Notas en la nube', 'Viajan cifradas y se guardan cifradas en el servidor. El servidor tiene la llave, para poder compartirlas y atender a tu IA.', 'HTTPS · AES-256-GCM')) +
+      secRow('vaults', ICON.shield, 'Carpetas protegidas', 'Se cifran en tu dispositivo con tu contraseña. Ni el servidor puede leerlas.', 'AES-256-GCM · PBKDF2 · ' + T('En el plan gratis y en el pago'),
+        '<p>' + T('Los nombres de archivos y carpetas quedan visibles. Sin la contraseña y sin la clave de respaldo, esas notas no se pueden recuperar.') + '</p>' +
+        (n ? '<p class="lmd-sec-count">' + T(n === 1 ? 'Tenés 1 carpeta protegida.' : 'Tenés {n} carpetas protegidas.', { n }) + '</p>' : '') +
+        (o.can ? '<p class="lmd-sec-act"><button type="button" class="lmd-link" data-c="protect">' + T('Proteger una carpeta') + '</button></p>' + choose : '')) +
+      secRow('signin', ICON.key, 'Entrar sin contraseña', 'Entrás con un código de un solo uso que llega a tu correo. No hay contraseña de cuenta que se pueda filtrar.', T('Las sesiones y los tokens se guardan como hash')) +
+      secRow('open', ICON.code, 'Sin analítica y con código abierto', 'No hay analítica. El código es abierto y podés usar tu propio servidor.', T('App MIT · Servidor AGPL')) +
+      '</ul><p class="lmd-sec-foot">' + T('Una nota eliminada queda 30 días en la papelera.') + ' <a href="' + PRIVACY + '" target="_blank" rel="noopener noreferrer">' + T('Cómo funciona') + '</a></p></section>';
+  }
+
   async function cloudPane(box, host) {
     await LMD.cloud.ready();
+    secRedraw = null;
+    const canProtect = !host.direct && LMD.vault.can(); let picking = false; let free = [];
+    const secNow = (count) => security({ own: LMD.cloud.own(), can: canProtect, count, pick: picking, folders: free });
     if (!LMD.cloud.enabled()) box.innerHTML = hint(T('La nube está apagada: SharpMD funciona sin cuenta y sin sincronizar.')) + actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="on">' + T('Prender la nube') + '</button>');
-    else if (host.direct) box.innerHTML = direct(host, 'cloud');
-    else if (!LMD.cloud.signedIn()) box.innerHTML = LMD.home.perks() + actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="login">' + T('Crear cuenta o entrar') + '</button>');
+    else if (host.direct) box.innerHTML = direct(host, 'cloud') + '<div data-sec>' + secNow(0) + '</div>';
+    else if (!LMD.cloud.signedIn()) box.innerHTML = LMD.home.perks() + actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="login">' + T('Crear cuenta o entrar') + '</button>') + '<div data-sec>' + secNow(0) + '</div>';
     else {
       try {
         const a = await fetchAccount(host);
         box.innerHTML = acctRow(T('Cuenta'), esc(a.email)) + acctRow(T('Plan'), T(a.plan === 'pro' ? 'Pago' : 'Gratis')) + acctRow(T('Notas en la nube'), quota(a)) +
           actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="open">' + T('Abrir la carpeta Nube') + '</button><button type="button" class="lmd-btn" data-c="out">' + T('Salir') + '</button>') +
-          '<p class="lmd-hint lmd-acct-msg" role="status" hidden></p>' +
+          '<p class="lmd-hint lmd-acct-msg" role="status" hidden></p>' + '<div data-sec>' + secNow(0) + '</div>' +
           '<p class="lmd-acct-del"><button type="button" class="lmd-link" data-c="delete">' + T('Eliminar la cuenta') + '</button></p>';
       } catch (e) { if (!LMD.cloud.signedIn()) return cloudPane(box, host); box.innerHTML = offline(); }
     }
+    // Con sesión, el bloque de seguridad suma cuántas carpetas protegidas hay y cuáles se pueden proteger.
+    const sec = async () => {
+      const slot = box.querySelector('[data-sec]'); if (!slot) return;
+      let count = 0;
+      if (LMD.cloud.signedIn() && !host.direct) {
+        try {
+          count = (await LMD.vault.load()).filter((v) => v.state === 'on').length;
+          free = foldersOf(await LMD.cloud.list(true)).filter((f) => LMD.vault.menu(f).some((m) => m[0] === 'v-protect'));
+        } catch (e) { /* sin conexión: el bloque queda sin la cuenta */ }
+      }
+      if (slot.isConnected) slot.innerHTML = secNow(count);
+    };
+    if (box.querySelector('[data-sec]')) { secRedraw = () => { if (box.isConnected) { picking = false; sec(); } }; sec(); }
     // El correo y el código se piden acá, con el mismo formulario del inicio: no hace falta salir de la nota.
     const askLogin = () => {
       const acts = box.querySelector('.lmd-acct-actions'); if (!acts || LMD.cloud.signedIn()) return;
@@ -195,6 +237,9 @@
       else if (b.dataset.c === 'open') openCloud(Object.assign({ say: (t) => { const m = box.querySelector('.lmd-acct-msg'); if (m) { m.hidden = false; m.textContent = t; } } }, host));
       else if (b.dataset.c === 'out') { await signOut(host); cloudPane(box, host); }
       else if (b.dataset.c === 'delete') { if (await deleteAccount()) cloudPane(box, host); }
+      // Proteger una carpeta: sin sesión primero se entra; con una sola carpeta se va directo, con varias se elige.
+      else if (b.dataset.c === 'protect') { if (!LMD.cloud.signedIn()) askLogin(); else if (free.length === 1) LMD.vault.pick('v-protect', free[0]); else { picking = true; sec(); } }
+      else if (b.dataset.c === 'protect-at') LMD.vault.pick('v-protect', b.dataset.f);
     };
   }
 
@@ -461,9 +506,9 @@
       (state ? '<p class="lmd-paywait lmd-paywait-' + state + '" role="status"><span>' + T({ wait: 'Esperando la confirmación del pago…', late: 'La confirmación del pago todavía no llegó. Volvé a revisar en unos minutos.', done: wait.team ? 'Pago confirmado. Tu equipo está listo.' : 'Pago confirmado. Ya tenés el plan pago.' }[state]) + '</span>' +
         (state === 'late' ? '<button type="button" class="lmd-link" data-c="recheck">' + T('Revisar ahora') + '</button>' : '') + '</p>' : '') + note +
       '<div class="lmd-plans' + (teamCol ? ' lmd-plans-3' : '') + '">' +
-        '<div class="lmd-plan' + (a && !pro ? ' lmd-plan-on' : '') + '"><h4>' + T('Gratis') + '</h4><ul><li>' + T('Todo el editor') + '</li><li>' + T('Hasta 10 notas en la nube') + '</li><li>' + T('Notas en el navegador y en tu disco, sin límite') + '</li></ul>' +
+        '<div class="lmd-plan' + (a && !pro ? ' lmd-plan-on' : '') + '"><h4>' + T('Gratis') + '</h4><ul><li>' + T('Todo el editor') + '</li><li>' + T('Hasta 10 notas en la nube') + '</li><li>' + T('Notas en el navegador y en tu disco, sin límite') + '</li><li>' + T('Carpetas protegidas') + '</li></ul>' +
           (a && !pro ? '<p class="lmd-hint">' + T('Es tu plan actual.') + '</p>' : '') + '</div>' +
-        '<div class="lmd-plan' + (own ? ' lmd-plan-on' : '') + '"><h4>' + T('Pago') + ' <small>USD 3.99 / ' + T('mes') + '</small></h4><ul><li>' + T('Notas en la nube sin límite') + '</li><li>' + T('Compartir y editar entre varios') + '</li><li>' + T('Sesiones en vivo: quien invitás entra sin cuenta') + '</li><li>' + T('Conectar una IA por MCP') + '</li><li>' + T('Historial de versiones de 30 días') + '</li><li>' + T('Colores, tipografía y CSS propio') + '</li></ul>' +
+        '<div class="lmd-plan' + (own ? ' lmd-plan-on' : '') + '"><h4>' + T('Pago') + ' <small>USD 3.99 / ' + T('mes') + '</small></h4><ul><li>' + T('Notas en la nube sin límite') + '</li><li>' + T('Carpetas protegidas') + '</li><li>' + T('Compartir y editar entre varios') + '</li><li>' + T('Sesiones en vivo: quien invitás entra sin cuenta') + '</li><li>' + T('Conectar una IA por MCP') + '</li><li>' + T('Historial de versiones de 30 días') + '</li><li>' + T('Colores, tipografía y CSS propio') + '</li></ul>' +
           (own ? '<p class="lmd-hint">' + T('Es tu plan actual.') + (a.manage ? ' <a href="' + esc(a.manage) + '" target="_blank" rel="noopener noreferrer">' + T('Administrar la suscripción') + '</a>' : '') + '</p>'
             : pro ? '<p class="lmd-hint">' + T('Lo tenés con el equipo.') + '</p>'
             : a ? '<div class="lmd-plan-buy">' + btn(pay.monthly, 'USD 3.99 / ' + T('mes')) + btn(pay.yearly, 'USD 39 / ' + T('año')) + '</div>'
@@ -687,5 +732,5 @@
   const reload = async () => { account = await LMD.cloud.account(); asked = true; adopt(account, true); paint(); return account; };
 
   LMD.sync = { init, paint, click, panes, reload, dialog, feedback, report, reportRef, awaitPaid, openCloud, quota, PAY, login, me, foldersOf, signOut, aiBrief, account: () => account, why: (text) => { planWhy = text || ''; },
-    repaintAi: () => { if (aiRedraw) aiRedraw(); } };
+    repaintAi: () => { if (aiRedraw) aiRedraw(); if (secRedraw) secRedraw(); }, security };
 })();
