@@ -114,11 +114,12 @@
       const m = ITEM_RE.exec(lines()[s] || '') || ['', '', '-', ' ', ''];
       const marker = /\d/.test(m[2]) ? (parseInt(m[2], 10) + 1) + m[2].slice(-1) : m[2];
       for (let n = d._li.parentNode; n && n !== core.ui.article; n = n.parentNode) owners.push(n);
-      body = [m[1] + marker + (m[3] || ' ') + (m[4] ? '[ ] ' : '') + text.replace(/\n/g, ' ')];
+      body = [m[1] + marker + (m[3] || ' ') + (m[4] ? (d.dataset.done ? '[x] ' : '[ ] ') : '') + text.replace(/\n/g, ' ')];
       kind = 'item';
     } else {
       at = lineAfter(d._anchor);
-      const prefix = kind === 'ul' || kind === 'task' ? listPrefix(kind, at) : (KINDS[kind] || '');
+      // Una tarea dictada como hecha (dictate.js) nace tildada.
+      const prefix = kind === 'ul' || kind === 'task' ? listPrefix(kind, at).replace('[ ]', d.dataset.done ? '[x]' : '[ ]') : (KINDS[kind] || '');
       const parts = text.split('\n');
       if (kind === 'p') body = parts.map((p, i) => p.trim() + (i < parts.length - 1 ? '\\' : ''));
       else if (kind === 'quote') body = parts.map((p) => '> ' + p.trim());
@@ -409,6 +410,7 @@
   // ---------- Menú de lectura ----------
   // Leyendo, el clic derecho no pasa a edición: ofrece copiar, buscar o editar según haya texto elegido o no.
   // En una nota de solo lectura no aparece lo que edita.
+  const READ_MENU = [];
   function openReadMenu(e) {
     closeMenu();
     const article = core.ui.article; const x = e.clientX; const y = e.clientY;
@@ -430,6 +432,8 @@
       if (can) items.push(['insert', ICON.plus, 'Insertar debajo']);
     }
     if (block && lines_ && LMD.comments.mode()) items.push(['comment', ICON.comment, 'Comentar para la IA']);
+    // Lo que suman las herramientas: cada una devuelve [id, ícono, texto, qué hacer] o nada.
+    READ_MENU.forEach((fn) => { const it = fn({ block, picked, target: e.target }); if (it) items.push(it); });
     if (!items.length) return false;
     menu = el('div', { class: 'lmd-menu lmd-menu-read', role: 'menu' });
     menu.innerHTML = '<div class="lmd-menu-list">' + items.map((i) => '<button type="button" role="menuitem" data-read="' + i[0] + '">' + i[1] + '<span>' + T(i[2]) + '</span></button>').join('') + '</div>';
@@ -441,8 +445,9 @@
     menu.addEventListener('click', async (ev) => {
       const b = ev.target.closest('button'); if (!b) return;
       closeMenu();
-      const act = b.dataset.read;
-      if (act === 'copy') core.copy(picked);
+      const act = b.dataset.read; const extra = items.find((i) => i[0] === act && i[3]);
+      if (extra) extra[3]();
+      else if (act === 'copy') core.copy(picked);
       else if (act === 'find') core.searchFor(picked.replace(/\s+/g, ' ').slice(0, 80));
       else if (act === 'block') core.copy(lines().slice(lines_.s, lines_.e).join('\n'));
       else if (act === 'anchor') core.copy(core.sectionLink(head.gh));
@@ -578,7 +583,9 @@
     remove: (node) => { const b = topBlock(node); if (b) removeBlock(b); },
     blur: (d) => commitDraft(d, false),
     sync: syncDraft,
-    put: (after, body) => insertTemplate(after, body),
+    put: (after, body, then) => insertTemplate(after, body, then),
+    // Para las herramientas que escriben por su cuenta (el dictado): abrir un bloque nuevo, cambiarle el tipo, descartarlo.
+    open: (after, kind) => openDraft(after, kind), kind: setKind, discard, top: topBlock, readMenu: READ_MENU,
     drop: (d) => { d._done = true; unplace(d); },
     settle: (d) => commitDraft(d, 'stay') || null,
     // En una sesión en vivo otra persona cambió líneas más arriba: lo que cada borrador ya escribió en el archivo

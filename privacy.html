@@ -70,6 +70,15 @@
       <li>You can end the session at any time: every guest loses access at once and the link stops working. Removing one guest cuts their access at once and changes the link. A session ends by itself after 12 hours with nobody connected, and when its note is deleted, renamed or moved.</li>
       <li>A note in a password-protected folder cannot be opened live: the server cannot read it.</li>
     </ul>
+    <h2 id="voice">Dictation and reading aloud</h2>
+    <p>Both are tools you turn on in Settings, Tools. They are off until you do.</p>
+    <ul>
+      <li>Reading aloud uses the voices installed in your device or browser. The text is not sent to SharpMD or to any service of ours.</li>
+      <li>Dictation uses the speech recognition of your browser. SharpMD does not receive, record or store audio: it only gets the text the browser returns, and writes it in your note.</li>
+      <li>Where the audio is transcribed depends on the browser. If it can recognize speech on the device, SharpMD offers to download that language and uses it, and the audio does not leave the device. If not, the browser may send the audio to its own provider (in Chrome, Google; in Safari, Apple) to transcribe it. The app tells you this before the first time and waits for you to accept.</li>
+      <li>The microphone turns on only when you press its button or its shortcut. While it listens there is a fixed indicator with a button to stop. It stops by itself when you switch notes, leave the tab or stay silent for a while.</li>
+      <li>What is stored: your choices (the tools turned on, the language, the voice, the speed) and that you accepted the notice, in your browser.</li>
+    </ul>
     <h2>Network requests</h2>
     <ul>
       <li>The extension installed from its ZIP checks once a day the version number published on GitHub, to tell you when there is an update. It sends no data, and you can make it weekly or turn it off in Settings. The Chrome Web Store version does not make this request.</li>
@@ -125,6 +134,15 @@
       <li>El enlace es la llave: quien lo tenga puede leer y editar esa nota hasta que la sesión termine. El servidor guarda solo un hash de su secreto. El secreto viaja después del # de la dirección, que el navegador no le manda al sitio que aloja la versión web.</li>
       <li>Podés terminar la sesión cuando quieras: todos los invitados pierden el acceso en el acto y el enlace deja de servir. Sacar a un invitado le corta el acceso en el acto y cambia el enlace. Una sesión termina sola a las 12 horas sin nadie conectado, y cuando su nota se elimina, cambia de nombre o se mueve.</li>
       <li>Una nota de una carpeta protegida con contraseña no se puede abrir en vivo: el servidor no la puede leer.</li>
+    </ul>
+    <h2 id="voz" data-same="voice">Dictado y lectura en voz alta</h2>
+    <p>Las dos son herramientas que prendés en Ajustes, Herramientas. Hasta entonces están apagadas.</p>
+    <ul>
+      <li>La lectura en voz alta usa las voces instaladas en tu dispositivo o en tu navegador. El texto no se manda a SharpMD ni a ningún servicio nuestro.</li>
+      <li>El dictado usa el reconocimiento de voz de tu navegador. SharpMD no recibe, no graba y no guarda audio: solo le llega el texto que devuelve el navegador, y lo escribe en tu nota.</li>
+      <li>Dónde se transcribe el audio depende del navegador. Si puede reconocer la voz en el dispositivo, SharpMD ofrece descargar ese idioma y lo usa, y el audio no sale del dispositivo. Si no, el navegador puede enviar el audio a su propio proveedor (en Chrome, Google; en Safari, Apple) para transcribirlo. La app te lo avisa antes de la primera vez y espera a que aceptes.</li>
+      <li>El micrófono se prende solo cuando apretás su botón o su atajo. Mientras escucha hay un indicador fijo con un botón para cortar. Se corta solo al cambiar de nota, al salir de la pestaña y tras un rato de silencio.</li>
+      <li>Qué se guarda: tus elecciones (las herramientas prendidas, el idioma, la voz, la velocidad) y que aceptaste el aviso, en tu navegador.</li>
     </ul>
     <h2>Pedidos de red</h2>
     <ul>

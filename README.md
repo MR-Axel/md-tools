@@ -47,6 +47,8 @@ Free and open source. No tracking: files are read in your browser and never uplo
 | **Sharing** | A note or a folder with another account, to read or to edit, or a read-only public link with a password. |
 | **Live sessions** | Open a session on a cloud note and send the link. Guests join from the browser with a name, without an account, and everyone edits at once. |
 | **AI over MCP** | Claude or any MCP client can list, read, write, append to, move and search your cloud notes, and read their history. Each write returns a link that opens the note in the app. A token can be limited to one folder, and only a token created with the sharing permission can share notes or create public links. A comment on a block tells the AI what to change, and Settings has a ready message to paste into your AI. |
+| **Read aloud** | A tool you turn on in Settings → Tools. Reads the whole note, from a block or the selection, with the voices of your device. It marks the block it is reading and announces code and diagrams instead of reading them. |
+| **Dictation** | Also in Settings → Tools. Write by speaking, in English or Spanish, with spoken commands for punctuation, headings, lists, tasks and formatting. "Formula … end formula" builds LaTeX and "flowchart … end diagram" builds a Mermaid flowchart, both drawn while you speak. It uses the speech recognition of the browser, on the device when the browser offers it. |
 | **Phone** | The same app on a small screen, and the web app opens without a connection. |
 | **Yours to adjust** | Light and dark themes, width, font size, code block color, custom CSS, English and Spanish. |
 
@@ -105,8 +107,10 @@ Chrome cannot update an extension loaded from a folder, so SharpMD checks this r
 | Alt+Shift+C | Toggle centered content |
 | Alt+Shift+R | Toggle auto-reload |
 | Alt+Shift+T | Switch theme |
+| Alt+Shift+S | Read aloud: start, pause and resume (with the tool on) |
+| Alt+Shift+D | Dictation: start and stop (with the tool on) |
 
-The Alt+Shift shortcuts can be changed at `chrome://extensions/shortcuts`.
+The first four Alt+Shift shortcuts can be changed at `chrome://extensions/shortcuts`.
 
 ## Saving
 
@@ -114,7 +118,7 @@ A page cannot write to disk on its own, so the first time you save a file opened
 
 ## Privacy
 
-No analytics. Settings, reading positions and browser notes are stored in your browser. Files you open are never uploaded. Cloud notes are optional: a note reaches the sync server only when you send it there. With the extension installed, browser notes, the list of opened files and folders and display preferences pass between the web app and the extension inside your browser, never over the network. Apart from that, the extension makes two network requests: the daily check of the version number published here, which you can turn off, and a short check that the web app answers when you click its button. HTML produced from the Markdown goes through DOMPurify before it reaches the page. Details in the [privacy page](https://sharpmd.app/privacy.html).
+No analytics. Settings, reading positions and browser notes are stored in your browser. Files you open are never uploaded. Reading aloud uses the voices of your device, and dictation uses the speech recognition of the browser: SharpMD never receives audio. Cloud notes are optional: a note reaches the sync server only when you send it there. With the extension installed, browser notes, the list of opened files and folders and display preferences pass between the web app and the extension inside your browser, never over the network. Apart from that, the extension makes two network requests: the daily check of the version number published here, which you can turn off, and a short check that the web app answers when you click its button. HTML produced from the Markdown goes through DOMPurify before it reaches the page. Details in the [privacy page](https://sharpmd.app/privacy.html).
 
 ## Cloud notes and the sync server
 
@@ -140,6 +144,10 @@ src/
   bridge-cs.js    content script on the web app that relays its requests to the extension
   bridge-sw.js    the extension side of the bridge, and what the extension button opens
   install.js      Settings → Install, installing the app, files from "Open with", the offline mark
+  tools.js        Settings → Tools: the registry of tools and their switches
+  speak.js        tool: read aloud with the device voices
+  voice.js        the dictation grammar: text commands, formulas and flowcharts, per language
+  dictate.js      tool: dictation, the microphone button and the listening indicator
   cloud.js        client for the optional sync server
   home.js         the empty state of the app and the sign-in form
   write.js        new blocks, Markdown shortcuts and the block menu
@@ -188,6 +196,8 @@ Two more scripts run by hand, outside `npm test`:
 
 - `BROWSER=firefox node browsers.mjs` (or `webkit`) walks the landing page and the web app in the other engines. Install them once with `npx playwright-core install firefox webkit`.
 - `node perf.mjs` measures the web app load, cold and warm, on a throttled network and CPU. Run it before and after touching what `src/app.html` loads.
+
+A tool for Settings → Tools is one file plus one `LMD.tools.register({ id, name, about, icon, defaultOn, lazy, module })` line in `src/tools.js`. Its file is requested only while the tool is on. The dictation phrases are tables in `src/voice.js`, one per language, and `LMD.voice.parse(text, mode, lang)` is a pure function that `tests/voice.mjs` exercises without a microphone.
 
 A script that the first paint does not need is not added to `src/app.html`: it goes in `LAZY_APP` (`src/content.js`) and in the `LATE` list of `sw.js`, and stays in `manifest.json` for the extension.
 

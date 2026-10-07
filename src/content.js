@@ -170,8 +170,12 @@
     hljs: { js: ['vendor/highlight.min.js'] },
     emoji: { js: ['vendor/markdown-it-emoji.min.js'] },
     tools: { js: ['src/emoji-data.js', 'src/emoji.js', 'src/templates.js', 'src/diagram.js', 'src/formula.js'] },
+    // Las herramientas de Ajustes > Herramientas (tools.js): cada una se pide recién cuando está prendida.
+    speak: { js: ['src/speak.js'] },
+    dictate: { js: ['src/voice.js', 'src/dictate.js'] },
   };
   const LAZY_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, tools: () => !!(LMD.diagram && LMD.formula && LMD.templates) };
+  LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
   async function appLazy(what) {
     const spec = LAZY_APP[what];
     try {
@@ -733,6 +737,7 @@
     LMD.live.init(core);
     LMD.team.init(core);
     LMD.install.init(core, homeCtx);
+    LMD.tools.init(core);
     document.documentElement.dataset.lmdFs = String(!!window.showOpenFilePicker && window.isSecureContext);
   }
 
@@ -2129,6 +2134,8 @@
   let panelTab = 'look';
   let serverDraft = false; // "Uso mi propio servidor" prendido y la dirección todavía sin escribir
   const PANEL_TABS = [['look', 'Apariencia', ICON.eye], ['read', 'Lectura y edición', ICON.pencil], ['plug', 'Plugins', ICON.b_code], ['cloud', 'Nube', ICON.cloud], ['ai', 'IA', ICON.spark], ['plan', 'Plan', ICON.card], ['inst', 'Instalar', ICON.download], ['adv', 'Avanzado', ICON.gear]];
+  // Herramientas (tools.js) va después de Plugins. El invitado de una sesión en vivo no la ve.
+  PANEL_TABS.splice(3, 0, ['tools', 'Herramientas', LMD.tools.ICON.tools]);
   // Al cerrar Ajustes el foco vuelve a donde estaba al abrirlos.
   let panelBack = null;
   function closePanel() {
@@ -2214,6 +2221,7 @@
             '<label class="lmd-check"><input type="checkbox" data-key="filesShowHidden"' + (s.filesShowHidden ? ' checked' : '') + '><span>' + T('Mostrar archivos y carpetas ocultos') + '</span></label>' +
           '</section>' +
           '<section data-tab="plug"><h3>' + T('Plugins de Markdown') + '</h3><div class="lmd-grid">' + plugins + '</div></section>' +
+          '<section data-tab="tools"><h3>' + T('Herramientas') + '</h3><div class="lmd-acct lmd-tl" data-tools-pane></div></section>' +
           // Nube, IA y Plan los dibuja sync.js al entrar a cada pestaña, con la cuenta recién consultada.
           '<section data-tab="cloud"><h3>' + T('Nube') + '</h3><div class="lmd-acct" data-acct="cloud"></div></section>' +
           '<section data-tab="ai"><h3>' + T('Conectar una IA') + '</h3><div class="lmd-acct" data-acct="ai"></div></section>' +
@@ -2262,6 +2270,7 @@
       const acct = ui.panel.querySelector('[data-acct=' + tab + ']');
       if (acct) LMD.sync.panes[tab](acct, host);
       if (tab === 'inst') LMD.install.pane(ui.panel.querySelector('[data-inst-pane]'));
+      if (tab === 'tools') LMD.tools.pane(ui.panel.querySelector('[data-tools-pane]'));
     };
     ui.panel.querySelectorAll('[data-ptab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.ptab)));
     showTab(panelTab);

@@ -29,6 +29,7 @@
     filesOnlyMarkdown: true,
     filesShowHidden: false,
     customCSS: '',
+    tools: {}, // Ajustes > Herramientas: cuáles están prendidas (por id) y sus opciones. Lo que falta sale del registro (tools.js)
     plugins: {
       highlight: true,
       emoji: true,
@@ -121,6 +122,7 @@
   function merge(saved) {
     const out = Object.assign({}, DEFAULTS, saved || {});
     out.plugins = Object.assign({}, DEFAULTS.plugins, (saved && saved.plugins) || {});
+    out.tools = Object.assign({}, DEFAULTS.tools, (saved && saved.tools) || {});
     return out;
   }
 
@@ -141,6 +143,7 @@
       const cur = await load();
       const next = Object.assign({}, cur, partial);
       if (partial.plugins) next.plugins = Object.assign({}, cur.plugins, partial.plugins);
+      if (partial.tools) next.tools = Object.assign({}, cur.tools, partial.tools);
       await save(next);
       return next;
     });
@@ -1089,6 +1092,40 @@
       "Demasiados cambios seguidos. Probá más tarde.": "Too many changes in a row. Try later.",
       "Esa invitación ya no está.": "That invitation is no longer there.",
       "Pago confirmado. Tu equipo está listo.": "Payment confirmed. Your team is ready.",
+      // Ajustes > Herramientas (tools.js)
+      "Herramientas": "Tools", "Incluida": "Built in", "Opciones": "Options",
+      "Funciones que se suman a la app. Cada una se prende acá.": "Features added to the app. Turn each one on here.",
+      "Tablero kanban": "Kanban board", "Un bloque kanban se ve como un tablero con columnas y tarjetas que se arrastran.": "A kanban block shows as a board with columns and cards you can drag.",
+      // Leer en voz alta (speak.js)
+      "Leer en voz alta": "Read aloud", "Lee la nota con la voz del dispositivo y marca por dónde va.": "Reads the note with the device voice and marks where it is.",
+      "Este navegador no tiene voces para leer.": "This browser has no voices to read with.", "Este navegador no tiene voces instaladas para leer.": "This browser has no voices installed to read with.",
+      "El navegador no pudo leer en voz alta.": "The browser could not read aloud.", "No hay texto para leer.": "There is no text to read.",
+      "Seguir leyendo": "Resume", "Pausar": "Pause", "Detener": "Stop", "Voz automática": "Automatic voice", "Idioma automático": "Automatic language",
+      "Velocidad": "Speed", "Idioma de la lectura": "Reading language", "Voz": "Voice",
+      "Atajo: Alt+Shift+S. También con clic derecho, Leer desde acá.": "Shortcut: Alt+Shift+S. Also with right click, Read from here.",
+      "Leer esta nota": "Read this note", "Leer la selección": "Read the selection", "Leer desde acá": "Read from here",
+      // Dictado (dictate.js)
+      "Dictado": "Dictation", "Escribí hablando, con órdenes para puntuar, dar formato y armar fórmulas y diagramas.": "Write by speaking, with commands for punctuation, formatting, formulas and diagrams.",
+      "El micrófono no está disponible dentro de esta app. Usá el dictado del teclado.": "The microphone is not available inside this app. Use the keyboard dictation.",
+      "Este navegador no reconoce voz. Funciona en Chrome, Edge y Safari.": "This browser has no speech recognition. It works in Chrome, Edge and Safari.",
+      "Descargando el reconocimiento de voz…": "Downloading speech recognition…", "Dictar sin enviar audio": "Dictate without sending audio",
+      "El navegador puede descargar el reconocimiento de voz de este idioma. Con eso el audio no sale del dispositivo.": "The browser can download speech recognition for this language. With it, audio stays on the device.",
+      "No se pudo descargar. Se puede probar de nuevo desde Ajustes.": "The download failed. You can try again from Settings.",
+      "Para transcribir, el navegador puede enviar el audio a su proveedor. SharpMD no recibe ni guarda audio.": "To transcribe, the browser may send the audio to its provider. SharpMD does not receive or store audio.",
+      "Aceptar y dictar": "Accept and dictate", "No hay nada dictado para borrar.": "There is nothing dictated to remove.",
+      "Decí la fórmula. Para cerrar: fin fórmula.": "Say the formula. To close: end formula.", "Decí los pasos. Para cerrar: fin diagrama.": "Say the steps. To close: end diagram.",
+      "El dictado se cortó por silencio.": "Dictation stopped after a long silence.",
+      "El navegador no dio permiso para usar el micrófono.": "The browser did not allow the microphone.", "No se encontró un micrófono.": "No microphone was found.",
+      "El reconocimiento de voz necesita conexión.": "Speech recognition needs a connection.", "Este idioma no está disponible para dictar.": "This language is not available for dictation.",
+      "No se pudo prender el micrófono.": "The microphone could not be turned on.",
+      "Escuchando": "Listening", "En este dispositivo": "On this device", "Frases que entiende": "Phrases it understands", "Cortar": "Stop",
+      "Cortar el dictado (Alt+Shift+D)": "Stop dictation (Alt+Shift+D)", "Dictar (Alt+Shift+D)": "Dictate (Alt+Shift+D)",
+      "Idioma del dictado": "Dictation language", "El de la app": "Same as the app",
+      "Órdenes habladas. Sin esto, todo lo dicho entra como texto.": "Spoken commands. Without this, everything said goes in as text.",
+      "El audio se transcribe en este dispositivo.": "Audio is transcribed on this device.",
+      "El navegador puede enviar el audio a su proveedor para transcribirlo. SharpMD no recibe ni guarda audio.": "The browser may send the audio to its provider to transcribe it. SharpMD does not receive or store audio.",
+      "El navegador está descargando el reconocimiento de voz.": "The browser is downloading speech recognition.",
+      "Atajo: Alt+Shift+D, o el micrófono al lado del bloque que estás escribiendo.": "Shortcut: Alt+Shift+D, or the microphone next to the block you are writing.",
   };
   let current = 'es';
   function setLang(pref) {

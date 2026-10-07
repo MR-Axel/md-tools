@@ -137,5 +137,8 @@
     document.addEventListener('input', () => { if (kb) caretIntoView(); });
   }
 
-  LMD.touch = { small, coarse, touched, dock, longPress, init, caretIntoView, visible, backMark };
+  // Lo que ocupan arriba del teclado las barras flotantes y el pie: ahí arriba va el botón del dictado (dictate.js).
+  const above = () => { const foot = document.querySelector('.lmd-foot'); return docked() + (kb || !foot ? 0 : foot.getBoundingClientRect().height + (foot.offsetParent ? 4 : 0)); };
+
+  LMD.touch = { small, coarse, touched, dock, longPress, init, caretIntoView, visible, backMark, above };
 })();
