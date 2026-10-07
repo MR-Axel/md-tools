@@ -582,7 +582,7 @@
       const a = e.target.closest('.lmd-article a[href^="#"], .lmd-pane-outline a');
       if (a) {
         const target = document.getElementById(decodeURIComponent(a.getAttribute('href').slice(1)));
-        if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', '#' + target.id); }
+        if (target) { e.preventDefault(); spyPin = a.closest('.lmd-pane-outline') ? target.id : null; target.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', '#' + target.id); }
       }
     });
 
@@ -892,6 +892,9 @@
     for (const h of spyHeadings) {
       if (h.getBoundingClientRect().top <= linea) current = h; else break;
     }
+    // Si se eligió un título del índice y está a la vista, ese es el activo: cerca del final la página no
+    // llega a subirlo hasta la línea de lectura y quedaba marcado el último.
+    if (spyPin) { const p = spyHeadings.find((h) => h.id === spyPin); const t = p ? p.getBoundingClientRect().top : -1; if (p && t >= -8 && t < window.innerHeight) current = p; }
     const rows = ui.paneOutline.querySelectorAll('.lmd-o-row');
     let activeRow = null;
     rows.forEach((r) => {
@@ -1254,6 +1257,11 @@
     ui.viewer.appendChild(el('img', { src: img.currentSrc || img.src, alt: img.alt || '' }));
     ui.viewer.hidden = false;
   }
+
+  // El título elegido en el índice manda hasta que la persona vuelve a mover la página por su cuenta.
+  let spyPin = null;
+  ['wheel', 'touchmove'].forEach((ev) => window.addEventListener(ev, () => { spyPin = null; }, { passive: true }));
+  window.addEventListener('keydown', (e) => { if (/^(Arrow|Page|Home|End| )/.test(e.key)) spyPin = null; }, true);
 
   // ---------- Panel de ajustes ----------
   let panelStale = false;

@@ -9,6 +9,8 @@
   let viz = null;
   let seq = 0;
 
+  // Piezas de un diagrama de flujo, para agregar de a una al final.
+  const PIECES = [['Paso', 'N[New step]'], ['Pregunta', 'Q{Question?}'], ['Flecha', 'A --> B'], ['Flecha con texto', 'A -- yes --> B']];
   const templates = () => [
     [T('Flujo'), 'graph TD\n  A[' + T('Inicio') + '] --> B{' + T('¿Sirve?') + '}\n  B -- ' + T('Sí') + ' --> C[' + T('Seguir') + ']\n  B -- No --> D[' + T('Corregir') + ']\n  D --> B'],
     [T('Secuencia'), 'sequenceDiagram\n  participant U as ' + T('Usuario') + '\n  participant A as App\n  participant S as ' + T('Servidor') + '\n  U->>A: ' + T('Pide algo') + '\n  A->>S: ' + T('Consulta') + '\n  S-->>A: ' + T('Respuesta') + '\n  A-->>U: ' + T('Resultado')],
@@ -54,7 +56,8 @@
     modal.innerHTML =
       '<div class="lmd-dgm-card" role="dialog" aria-label="' + T('Editar diagrama') + '">' +
         '<header><h3>' + T('Editar diagrama') + ' <small>' + (kind === 'dot' ? 'Graphviz' : 'Mermaid') + '</small></h3>' +
-          (kind === 'dot' ? '' : '<div class="lmd-dgm-tpl"><span>' + T('Plantillas') + '</span>' + templates().map((t, i) => '<button type="button" data-tpl="' + i + '">' + t[0] + '</button>').join('') + '</div>') +
+          (kind === 'dot' ? '' : '<div class="lmd-dgm-tpl"><span>' + T('Plantillas') + '</span>' + templates().map((t, i) => '<button type="button" data-tpl="' + i + '">' + t[0] + '</button>').join('') + '<button type="button" class="lmd-dgm-back" data-dgm-back hidden>' + T('Volver a lo que tenía') + '</button></div>' +
+            '<div class="lmd-dgm-tpl lmd-dgm-add" hidden><span>' + T('Agregar') + '</span>' + PIECES.map((x, i) => '<button type="button" data-piece="' + i + '">' + T(x[0]) + '</button>').join('') + '</div>') +
         '</header>' +
         '<div class="lmd-dgm-body"><textarea spellcheck="false"></textarea><div class="lmd-dgm-view"><div class="lmd-dgm-svg lmd-diagram' + (kind === 'dot' ? ' lmd-diagram-dot' : '') + '"></div><p class="lmd-dgm-err" hidden></p></div></div>' +
         '<footer><a href="' + (kind === 'dot' ? 'https://graphviz.org/doc/info/lang.html' : 'https://mermaid.js.org/intro/') + '" target="_blank" rel="noopener noreferrer">' + T('Ver la sintaxis') + '</a><span></span>' +
@@ -84,6 +87,12 @@
     };
     refresh();
     ta.addEventListener('input', debounce(refresh, 300));
+    // Las piezas sueltas valen para los diagramas de flujo, que son los que se arman paso a paso.
+    const addRow = modal.querySelector('.lmd-dgm-add'); const back = modal.querySelector('[data-dgm-back]'); let before = null;
+    const showAdd = () => { if (addRow) addRow.hidden = !/^\s*(graph|flowchart)\b/.test(ta.value); };
+    showAdd(); ta.addEventListener('input', showAdd);
+    // Se escribe con insertText para que Ctrl+Z lo deshaga dentro del cuadro.
+    const type = (text, all) => { ta.focus(); if (all) ta.select(); if (!document.execCommand('insertText', false, text)) { if (all) ta.value = text; else ta.setRangeText(text, ta.selectionStart, ta.selectionEnd, 'end'); } showAdd(); refresh(); };
     ta.focus();
 
     const close = (apply) => {
@@ -94,7 +103,10 @@
     };
     modal.addEventListener('click', (ev) => {
       const tpl = ev.target.closest('[data-tpl]');
-      if (tpl) { ta.value = templates()[+tpl.dataset.tpl][1]; refresh(); ta.focus(); return; }
+      if (tpl) { const had = ta.value; const next = templates()[+tpl.dataset.tpl][1]; if (had.trim() && had !== next && !templates().some((t) => t[1] === had)) { before = had; back.hidden = false; } type(next, true); return; }
+      if (ev.target.closest('[data-dgm-back]')) { if (before != null) type(before, true); before = null; back.hidden = true; return; }
+      const piece = ev.target.closest('[data-piece]');
+      if (piece) { ta.focus(); const end = ta.value.replace(/\s+$/, '').length; ta.setSelectionRange(end, ta.value.length); type('\n  ' + PIECES[+piece.dataset.piece][1] + '\n', false); return; }
       const b = ev.target.closest('[data-dgm]');
       if (b && b.dataset.dgm === 'del') { modal.remove(); LMD.write.remove(box.isConnected ? box : core.ui.article.querySelector('[data-l^="' + r[0] + '-"]')); return; }
       if (b) close(b.dataset.dgm === 'ok');

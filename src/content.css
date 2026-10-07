@@ -755,3 +755,8 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-emoji button.lmd-on, .lmd-emoji button:hover { background: var(--accent-soft); }
 .lmd-emoji button.lmd-on small { color: var(--accent); }
 @media print { .lmd-emoji { display: none !important; } }
+
+/* ---------- Editor de diagramas: piezas y volver atrás ---------- */
+.lmd-dgm-add { margin-top: 6px; }
+.lmd-dgm-add[hidden], .lmd-dgm-back[hidden] { display: none; }
+.lmd-dgm-tpl .lmd-dgm-back { margin-left: 8px; border-color: var(--accent-fill); color: var(--accent); }
