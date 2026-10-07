@@ -14,6 +14,10 @@ Extensión de Chrome para leer y editar archivos Markdown en el navegador, local
 
 - **Edición en el lugar**: pasás a modo Edición y hacés clic en cualquier párrafo, título, ítem o celda para cambiarlo. Negrita, cursiva, tachado, código y enlaces desde una barrita o con los atajos de siempre; agregar y quitar filas y columnas; tildar tareas. El Markdown se reescribe por detrás, sin que veas la sintaxis. Se guarda con Ctrl+S, o con guardado automático.
 - **Escribir contenido nuevo**: Enter cierra un bloque y abre el siguiente, o agrega un ítem a la lista. Una línea que empieza con `#`, `-`, `1.`, `>` o `[]` se convierte en título, lista, cita o tarea mientras escribís. El clic derecho (o el botón +, o `/` en una línea vacía) inserta párrafo, título, lista, tabla, bloque de código, diagrama, fórmula, aviso, imagen o separador, y convierte, mueve, duplica o elimina el bloque donde hiciste clic. Ctrl+Z deshace las operaciones de bloques y Ctrl+Y las rehace. Shift + clic derecho deja el menú del navegador, para la ortografía.
+- **Tableros**: un bloque `kanban` convierte los títulos en columnas y las tareas en tarjetas. Arrastrás tarjetas entre columnas, las tildás, agregás y renombrás. En cualquier otro programa se lee como una lista de tareas común.
+- **Listas de tareas** que se tildan también leyendo; las hechas quedan tachadas.
+- **Totales en tablas**: el botón Σ agrega una fila que suma cada columna con números. Una celda con `=sum`, `=avg`, `=min`, `=max`, `=count` o `=median` muestra el resultado de su columna, con la misma moneda y el mismo formato de decimales que los números de arriba.
+- **Notas en el navegador**: Nuevo arranca una nota que se guarda sola en el navegador, sin carpeta ni cuenta, y sigue ahí cuando volvés. Ctrl+S la convierte en archivo.
 - **Editor de diagramas**: en modo Editar, un clic sobre un diagrama Mermaid o Graphviz lo abre con el código a un lado y la vista previa en vivo al otro. Nueve plantillas de Mermaid para arrancar (flujo, secuencia, estados, clases, datos, Gantt, torta, mapa mental, línea de tiempo); un error de sintaxis se muestra debajo del último dibujo que salió bien. Al pasar el mouse por un diagrama: copiar el código, bajar el SVG y ampliarlo.
 - **Buscar y reemplazar** en el documento mientras editás, de a una coincidencia o todas.
 - **Modo foco y máquina de escribir** (Ajustes → Edición): atenúa todo menos el bloque que estás escribiendo, y mantiene el renglón actual a media altura.
@@ -91,6 +95,7 @@ src/
   home.js         pantalla de inicio de la página propia
   write.js        bloques nuevos, atajos de Markdown y menú de clic derecho
   diagram.js      editor de diagramas con vista previa en vivo
+  board.js        tableros kanban y cuentas en tablas
   extras.js       archivos desde el árbol, imágenes pegadas, reemplazar, máquina de escribir, exportar a HTML
   content.js      el lector: interfaz, índice, árbol, búsqueda, edición, guardado, ajustes
   content.css     estilos y temas

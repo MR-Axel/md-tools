@@ -153,11 +153,12 @@
     'table{border-collapse:collapse;margin:0 0 1em}th,td{padding:7px 12px;border:1px solid #dedbd2;text-align:left}th{background:#f1efe9}hr{border:0;border-top:1px solid #dedbd2;margin:2em 0}' +
     '.lmd-diagram{text-align:center;margin:0 0 1em}.lmd-box,.lmd-alert{margin:0 0 1em;padding:.6em 1em;border-left:3px solid #7c8b99;background:#f1efe9;border-radius:0 8px 8px 0}.lmd-box-title,.lmd-alert-title{font-weight:700;margin:0 0 .3em}' +
     'li.lmd-task-item{list-style:none;margin-left:-1.3em}.lmd-front{display:none}' +
+    '.lmd-board{display:flex;gap:12px;align-items:flex-start;overflow-x:auto;margin:0 0 1em}.lmd-col{flex:0 0 240px;padding:10px;border:1px solid #dedbd2;border-radius:10px}.lmd-col-head{font-weight:700;margin-bottom:8px}.lmd-col-n{margin-left:6px;opacity:.55;font-weight:400}.lmd-card{padding:8px 10px;margin-bottom:6px;border:1px solid #dedbd2;border-radius:8px}.lmd-card-done{opacity:.6;text-decoration:line-through}' +
     '@media(prefers-color-scheme:dark){body{background:#121418;color:#e6e8ec}a{color:#bef264}pre,th,.lmd-box,.lmd-alert{background:#1a1d23}:not(pre)>code{background:#232730}pre,th,td,h2,hr,blockquote{border-color:#2a2e37}blockquote{color:#a0a7b4}}';
 
   function exportHtml() {
     const copy = core.ui.article.cloneNode(true);
-    copy.querySelectorAll('.lmd-anchor, .lmd-code-copy, .lmd-code-lang, .lmd-dgm-tools, .lmd-add, .lmd-draft, .lmd-draft-li').forEach((n) => n.remove());
+    copy.querySelectorAll('.lmd-anchor, .lmd-code-copy, .lmd-code-lang, .lmd-dgm-tools, .lmd-add, .lmd-draft, .lmd-draft-li, .lmd-board-edit').forEach((n) => n.remove());
     copy.querySelectorAll('[contenteditable]').forEach((n) => n.removeAttribute('contenteditable'));
     copy.querySelectorAll('[data-l], [data-p]').forEach((n) => { n.removeAttribute('data-l'); n.removeAttribute('data-p'); });
     // La matemática viaja como MathML, que el navegador dibuja solo, sin la hoja de estilos de KaTeX.

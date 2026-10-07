@@ -557,3 +557,34 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-dgm-del:hover, .lmd-dgm-remove:hover { color: #dc2626 !important; }
 .lmd-dgm-remove:hover { border-color: #dc2626; }
 @media print { .lmd-handle { display: none !important; } }
+
+/* ---------- Tareas, tableros y cuentas ---------- */
+.markdown-body .lmd-task { cursor: pointer; }
+.markdown-body li.lmd-task-item:has(> input.lmd-task:checked), .markdown-body li.lmd-task-item:has(> p > input.lmd-task:checked) > p,
+.markdown-body li.lmd-task-item:has(> input.lmd-task:checked) > .lmd-li-text { color: var(--fg-faint); text-decoration: line-through; }
+/* la sublista de una tarea hecha no hereda el tachado */
+.markdown-body li.lmd-task-item > ul, .markdown-body li.lmd-task-item > ol { display: inline-block; width: 100%; color: var(--fg); }
+.markdown-body td.lmd-calc, .markdown-body th.lmd-calc { font-weight: 650; font-variant-numeric: tabular-nums; background: var(--bg-soft); }
+.lmd-board { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 1.2em; padding-bottom: 6px; overflow-x: auto; }
+.lmd-col { flex: 0 0 250px; display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-soft); transition: border-color .12s; }
+.lmd-col.lmd-drop-here { border-color: var(--accent-fill); }
+.lmd-col-head { display: flex; align-items: center; gap: 7px; padding: 2px 4px; font-size: 0.88em; font-weight: 700; }
+.lmd-col-title { min-width: 2em; border-radius: 4px; outline: none; }
+.lmd-col-title[contenteditable="plaintext-only"], .lmd-card-text[contenteditable="plaintext-only"] { box-shadow: 0 0 0 2px var(--accent-fill); cursor: text; }
+.lmd-col-n { margin-right: auto; padding: 0 7px; border-radius: 999px; background: var(--bg); color: var(--fg-faint); font-size: 0.85em; font-weight: 600; }
+.lmd-cards { display: flex; flex-direction: column; gap: 6px; min-height: 26px; }
+.lmd-card { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); font-size: 0.92em; line-height: 1.4; cursor: grab; }
+.lmd-card.lmd-dragging { opacity: 0.4; }
+.lmd-card-check { margin: 3px 0 0; accent-color: var(--accent); cursor: pointer; flex: none; }
+.lmd-card-text { flex: 1; min-width: 0; overflow-wrap: anywhere; border-radius: 4px; outline: none; }
+.lmd-card-done .lmd-card-text { color: var(--fg-faint); text-decoration: line-through; }
+.lmd-board-edit { display: none; }
+.lmd-editing .lmd-board-edit { display: inline-grid; place-items: center; }
+.lmd-card-del, .lmd-col-del { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--fg-faint); cursor: pointer; flex: none; opacity: 0; }
+.lmd-card:hover .lmd-card-del, .lmd-col-head:hover .lmd-col-del { opacity: 1; }
+.lmd-card-del:hover, .lmd-col-del:hover { background: var(--bg-soft); color: #dc2626; }
+.lmd-card-del svg, .lmd-col-del svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.lmd-card-add, .lmd-col-add { padding: 7px 10px; border: 1px dashed var(--line); border-radius: 9px; background: transparent; color: var(--fg-faint); font: inherit; font-size: 0.88em; cursor: pointer; }
+.lmd-col-add { flex: 0 0 auto; align-self: flex-start; white-space: nowrap; }
+.lmd-card-add:hover, .lmd-col-add:hover { border-color: var(--accent-fill); color: var(--accent); }
+@media print { .lmd-board-edit { display: none !important; } .lmd-board { flex-wrap: wrap; overflow: visible; } }

@@ -246,6 +246,7 @@
     math: { body: () => ['$$', 'E = mc^2', '$$'] },
     alert: { body: () => ['> [!NOTE]', '> ' + T('Texto del aviso')], then: (top) => { const p = top.querySelector('.lmd-editable'); if (p) { p.focus(); getSelection().selectAllChildren(p); } } },
     hr: { body: () => ['---'] },
+    board: { body: () => ['```kanban', '## ' + T('Por hacer'), '- [ ] ' + T('Primera tarjeta'), '', '## ' + T('En curso'), '', '## ' + T('Hecho'), '```'] },
   };
 
   function insert(what, after, draft) {
@@ -300,7 +301,7 @@
     ['p', 'Párrafo'], ['h1', 'Título 1'], ['h2', 'Título 2'], ['h3', 'Título 3'],
     ['ul', 'Lista'], ['ol', 'Lista numerada'], ['task', 'Lista de tareas'], ['quote', 'Cita'],
     ['table', 'Tabla'], ['code', 'Bloque de código'], ['diagram', 'Diagrama'], ['math', 'Fórmula'],
-    ['alert', 'Aviso'], ['image', 'Imagen'], ['hr', 'Separador'],
+    ['board', 'Tablero'], ['alert', 'Aviso'], ['image', 'Imagen'], ['hr', 'Separador'],
   ];
   let menu = null;
   function closeMenu() { if (menu) { menu.remove(); menu = null; } }

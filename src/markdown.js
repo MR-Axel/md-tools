@@ -122,6 +122,7 @@
     md.renderer.rules.fence = (tokens, idx, options, env, self) => {
       const info = (tokens[idx].info || '').trim().split(/\s+/)[0].toLowerCase();
       const at = tokens[idx].attrGet('data-l') ? ' data-l="' + tokens[idx].attrGet('data-l') + '"' : '';
+      if (info === 'kanban' || info === 'tablero' || info === 'board') return '<pre class="lmd-kanban"' + at + '>' + esc(tokens[idx].content) + '</pre>\n';
       if (p.mermaid && info === 'mermaid') return '<pre class="lmd-mermaid"' + at + '>' + esc(tokens[idx].content) + '</pre>\n';
       if (p.graphviz && (info === 'dot' || info === 'graphviz')) return '<pre class="lmd-graphviz"' + at + '>' + esc(tokens[idx].content) + '</pre>\n';
       return fence(tokens, idx, options, env, self);

@@ -14,6 +14,10 @@ A Chrome extension to read and edit Markdown files in the browser, local (`file:
 
 - **Edit in place**: switch to Edit mode and click any paragraph, heading, list item or table cell to change it. Bold, italic, strikethrough, code and links from a small toolbar or the usual shortcuts; add and remove table rows and columns; tick task boxes. The Markdown is rewritten behind the scenes, so you never see the syntax. Save with Ctrl+S, or turn on auto-save.
 - **Write new content**: Enter closes a block and opens the next one, or adds a list item. A line that starts with `#`, `-`, `1.`, `>` or `[]` turns into a heading, a list, a quote or a task as you type. Right-click (or the + button, or `/` on an empty line) inserts a paragraph, heading, list, table, code block, diagram, formula, callout, image or divider, and turns, moves, duplicates or deletes the block you clicked. Ctrl+Z undoes block operations and Ctrl+Y redoes them. Shift+right-click keeps the browser menu, for spelling.
+- **Boards**: a `kanban` block turns headings into columns and tasks into cards. Drag cards between columns, tick them, add and rename. In any other program it reads as a plain task list.
+- **Task lists** you can tick while reading; done items are struck through.
+- **Table totals**: the Σ button adds a row that sums each numeric column. A cell with `=sum`, `=avg`, `=min`, `=max`, `=count` or `=median` shows the result for its column, keeping the currency and decimal style of the numbers above.
+- **Notes in the browser**: New starts a note that saves itself in the browser, with no folder or account, and is still there when you come back. Ctrl+S turns it into a file.
 - **Diagram editor**: in Edit mode, click a Mermaid or Graphviz diagram to open it side by side with a live preview. Nine Mermaid templates to start from (flowchart, sequence, states, classes, data, Gantt, pie, mind map, timeline); a syntax error shows under the last drawing that worked. Hovering a diagram offers copy code, download SVG and enlarge.
 - **Find and replace** in the document while editing, one match or all.
 - **Focus mode and typewriter mode** (Settings → Editing): dim everything but the block you are writing, and keep the current line at mid height.
@@ -107,6 +111,7 @@ src/
   home.js         start screen of the MD Tools page
   write.js        new blocks, Markdown shortcuts and the right-click menu
   diagram.js      diagram editor with live preview
+  board.js        kanban boards and table formulas
   extras.js       files from the tree, pasted images, replace, typewriter mode, HTML export
   content.js      the reader: interface, outline, tree, search, editing, saving, settings
   content.css     styles and themes

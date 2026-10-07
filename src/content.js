@@ -164,7 +164,7 @@
         const m = /^\[([ xX])\]\s+/.exec(target.nodeValue);
         if (!m) return;
         target.nodeValue = target.nodeValue.slice(m[0].length);
-        const box = el('input', { type: 'checkbox', disabled: '', class: 'lmd-task' });
+        const box = el('input', { type: 'checkbox', class: 'lmd-task' });
         if (m[1] !== ' ') box.setAttribute('checked', '');
         target.parentNode.insertBefore(box, target);
         li.classList.add('lmd-task-item');
@@ -230,6 +230,8 @@
         try { const h = await vFile(new URL(src, HERE).href); if (h) img.src = URL.createObjectURL(await h.getFile()); } catch (e) { /* no está en la carpeta */ }
       });
     }
+
+    LMD.board.calcTables(article);
 
     if (p.imageViewer) article.querySelectorAll('img').forEach((img) => img.classList.add('lmd-zoomable'));
 
@@ -510,7 +512,8 @@
       '<button type="button" data-top="row+">+ ' + T('Fila') + '</button>' +
       '<button type="button" data-top="col+">+ ' + T('Columna') + '</button>' +
       '<button type="button" data-top="row-">− ' + T('Fila') + '</button>' +
-      '<button type="button" data-top="col-">− ' + T('Columna') + '</button>');
+      '<button type="button" data-top="col-">− ' + T('Columna') + '</button>' +
+      '<button type="button" data-top="total" title="' + T('Agregar una fila que suma cada columna') + '">Σ ' + T('Totales') + '</button>');
 
     document.body.append(ui.sidebar, ui.main, ui.toTop, ui.panel, ui.viewer, ui.format, ui.tableBar);
 
@@ -535,6 +538,7 @@
     LMD.write.init(core);
     LMD.diagram.init(core);
     LMD.extras.init(core);
+    LMD.board.init(core);
     document.documentElement.dataset.lmdFs = String(!!window.showOpenFilePicker && window.isSecureContext);
   }
 
@@ -1525,7 +1529,7 @@
       make(span);
     });
     article.querySelectorAll('.lmd-math, .lmd-wiki').forEach((n) => { n.contentEditable = 'false'; });
-    article.querySelectorAll('input.lmd-task').forEach((box) => { box.disabled = false; box.contentEditable = 'false'; });
+    article.querySelectorAll('input.lmd-task').forEach((box) => { box.contentEditable = 'false'; });
 
     article.querySelectorAll('table[data-l]').forEach((table) => {
       const r = rangeOf(table); if (!r) return;
@@ -1550,7 +1554,8 @@
   }
 
   const splitRow = (line) => line.replace(/^\s*(?:>\s?)*/, '').trim().replace(/^\|/, '').replace(/(^|[^\\])\|\s*$/, '$1').split(/(?<!\\)\|/).map((c) => c.trim());
-  const cellMd = (cell) => inlineMd(cell).replace(/\n+$/, '').replace(/\n/g, ' ').replace(/(?<!\\)\|/g, '\\|').trim();
+  // Una celda con fórmula muestra el resultado; al archivo va la fórmula, salvo mientras se la está editando.
+  const cellMd = (cell) => (cell.dataset.formula && document.activeElement !== cell ? cell.dataset.formula : inlineMd(cell)).replace(/\n+$/, '').replace(/\n/g, ' ').replace(/(?<!\\)\|/g, '\\|').trim();
 
   function tableContext(table) {
     const r = rangeOf(table);
@@ -1577,6 +1582,12 @@
     if (op === 'row+') { grid.splice(Math.max(ri, 0) + 1, 0, grid[0].map(() => '')); nr = ri + 1; }
     if (op === 'row-') { if (ri === 0 || grid.length <= 2) return; grid.splice(ri, 1); nr = Math.min(ri, grid.length - 1); }
     if (op === 'col+') { grid.forEach((row) => row.splice(ci + 1, 0, '')); sep.splice(ci + 1, 0, '---'); nc = ci + 1; }
+    if (op === 'total') {
+      const made = LMD.board.totalsRow(grid);
+      if (made.error) { flash(made.error, 'warn'); return; }
+      grid.push(made.row); nr = grid.length - 1;
+      flash(T('Fila de totales agregada. Cambiá =sum por =avg, =min, =max, =count o =median'));
+    }
     if (op === 'col-') { if (grid[0].length <= 1) return; grid.forEach((row) => row.splice(ci, 1)); sep.splice(ci, 1); nc = Math.min(ci, grid[0].length - 1); }
     while (sep.length < grid[0].length) sep.push('---');
     sep.length = grid[0].length;
@@ -1651,6 +1662,7 @@
   function bindEditing() {
     ui.article.addEventListener('focusin', (e) => {
       const node = e.target.closest && e.target.closest('.lmd-editable');
+      if (node && node.dataset.formula) node.textContent = node.dataset.formula;
       if (node) { node._md = inlineMd(node); core.lastBlock = node; }
       ui.tableBar.hidden = !(node && node.classList.contains('lmd-cell'));
       if (!ui.tableBar.hidden) {
@@ -1671,7 +1683,9 @@
       if (!node || !editMode) return;
       setTimeout(() => { const a = document.activeElement; if (!(a && a.classList && a.classList.contains('lmd-cell'))) ui.tableBar.hidden = true; }, 0);
       if (node.classList.contains('lmd-draft')) { LMD.write.blur(node); return; }
-      if (!commitBlock(node)) return;
+      // Lo que quedó escrito en una celda de cuentas pasa a ser su fórmula, o un valor común si dejó de serlo.
+      if (node.dataset.formula) { const typed = node.textContent.trim(); if (LMD.board.formulaOf(typed)) node.dataset.formula = typed; else delete node.dataset.formula; }
+      if (!commitBlock(node)) { if (node.dataset.formula) LMD.board.calcTables(node.closest('table').parentNode); return; }
       node._md = null;
       softRender();
     });
@@ -1692,7 +1706,8 @@
       e.preventDefault();
       document.execCommand('insertText', false, (e.clipboardData.getData('text/plain') || '').replace(/\r?\n/g, ' '));
     });
-    ui.article.addEventListener('change', (e) => { if (editMode && e.target.matches && e.target.matches('input.lmd-task')) toggleTask(e.target); });
+    // Las tareas se tildan también leyendo; el cambio queda sin guardar hasta Ctrl+S (o se guarda solo, si está activado).
+    ui.article.addEventListener('change', (e) => { if (docKind() === 'md' && e.target.matches && e.target.matches('input.lmd-task')) toggleTask(e.target); });
     ui.article.addEventListener('dblclick', (e) => {
       if (!editMode) return;
       const box = e.target.closest('.lmd-code');
@@ -1718,6 +1733,7 @@
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
     rangeOf, render, softRender, flash, insertLines, spliceLines, commitBlock, undo, redo, editCode, vFile, toHref,
+    inline: (text) => DOMPurify.sanitize(buildParser().renderInline(text)),
     setRaw(text) { pushUndo(); raw = text; syncSource(); markDirty(); render(); },
   };
 
