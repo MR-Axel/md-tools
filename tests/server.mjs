@@ -52,7 +52,7 @@ try {
   check('MCP: initialize', init.json.result.serverInfo.name === 'sharpmd' && !!init.json.result.capabilities.tools, init.json);
   check('MCP: las notificaciones no llevan respuesta', (await call('POST', '/mcp', { jsonrpc: '2.0', method: 'notifications/initialized' }, t)).status === 202);
   const tools = await call('POST', '/mcp', { jsonrpc: '2.0', id: 2, method: 'tools/list' }, t);
-  check('MCP: lista cinco herramientas', tools.json.result.tools.map((x) => x.name).join() === 'list_notes,read_note,write_note,append_note,search_notes', tools.json);
+  check('MCP: lista las ocho herramientas', tools.json.result.tools.map((x) => x.name).join() === 'list_notes,list_folders,read_note,write_note,append_note,search_notes,list_comments,resolve_comment', tools.json);
   const tool = (name, args, id) => call('POST', '/mcp', { jsonrpc: '2.0', id: id || 9, method: 'tools/call', params: { name, arguments: args } }, t);
   await tool('write_note', { path: 'ia/resumen.md', text: '# Resumen\n\nEscrito por la IA.' });
   await tool('append_note', { path: 'ia/resumen.md', text: 'Segunda parte.' });
@@ -119,6 +119,33 @@ try {
   await call('POST', '/rename', { from: 'viejo.md', to: 'nuevo.md' }, rs);
   const rcomp = (await call('GET', '/shares?path=nuevo.md', undefined, rs)).json; const rver = (await call('GET', '/versions/nuevo.md', undefined, rs)).json;
   check('renombrar lleva consigo lo compartido y el historial', JSON.stringify(rcomp).includes('pago@ejemplo.test') && Array.isArray(rver) && rver.length >= 1, [rcomp, rver]);
+  // IA: carpetas, token limitado a una carpeta y comentarios pendientes
+  const ic = await call('POST', '/auth/start', { email: 'ia@ejemplo.test' }); const is = (await call('POST', '/auth/verify', { email: 'ia@ejemplo.test', code: ic.json.dev_code })).json.session;
+  check('comentar necesita el plan pago', (await call('POST', '/comments', { path: 'x.md', text: 'hola' }, is)).status === 402);
+  await call('POST', '/admin/plan', { email: 'ia@ejemplo.test', plan: 'pro' }, undefined, { 'x-admin-key': 'clave-de-prueba' });
+  for (const [pa, tx] of [['alfa/plan.md', '# Plan\n\nPaso uno.\n'], ['alfa/notas/reunion.md', 'reunion'], ['beta/ideas.md', 'ideas'], ['suelta.md', 'suelta']]) await call('PUT', '/notes/' + pa, { text: tx }, is);
+  const mk = async (body) => (await call('POST', '/tokens', body, is)).json;
+  const full = (await mk({ name: 'todo' })).token; const lim = await mk({ name: 'alfa', folder: 'alfa/' });
+  const ask = async (tok, name, args) => { const r = await call('POST', '/mcp', { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name, arguments: args || {} } }, tok); const c = r.json.result; let v = c.content[0].text; try { v = JSON.parse(v); } catch (e) { /* texto */ } return { v, err: !!c.isError }; };
+  const carpetas = (await ask(full, 'list_folders')).v;
+  check('MCP: lista las carpetas con su cantidad de notas', JSON.stringify(carpetas) === JSON.stringify([{ folder: 'alfa', notes: 2 }, { folder: 'alfa/notas', notes: 1 }, { folder: 'beta', notes: 1 }]), carpetas);
+  check('MCP: list_notes filtra por carpeta', (await ask(full, 'list_notes', { folder: 'alfa' })).v.map((n) => n.path).sort().join() === 'alfa/notas/reunion.md,alfa/plan.md');
+  const vistas = (await ask(lim.token, 'list_notes')).v.map((n) => n.path).sort().join();
+  check('token de carpeta: solo ve su carpeta', lim.scope === 'alfa' && vistas === 'alfa/notas/reunion.md,alfa/plan.md', [lim.scope, vistas]);
+  const fuera = await ask(lim.token, 'read_note', { path: 'beta/ideas.md' }); const escribeFuera = await ask(lim.token, 'write_note', { path: 'suelta.md', text: 'x' });
+  check('token de carpeta: no lee ni escribe afuera', fuera.err && escribeFuera.err && (await call('GET', '/notes/suelta.md', undefined, is)).json.text === 'suelta', [fuera, escribeFuera]);
+  check('token de carpeta: la búsqueda no sale de la carpeta', (await ask(lim.token, 'search_notes', { query: 'ideas' })).v.length === 0 && (await ask(full, 'search_notes', { query: 'ideas' })).v.length === 1);
+  const com = await call('POST', '/comments', { path: 'alfa/plan.md', quote: 'Paso uno.', text: 'Que el pago vaya primero' }, is);
+  await call('POST', '/comments', { path: 'beta/ideas.md', quote: 'ideas', text: 'Sumar una idea' }, is);
+  const pend = (await ask(full, 'list_comments')).v; const pendLim = (await ask(lim.token, 'list_comments')).v;
+  check('comentarios: la IA los lee con la nota y la cita', com.status === 200 && pend.length === 2 && pend[0].path === 'alfa/plan.md' && pend[0].quote === 'Paso uno.' && pend[0].comment === 'Que el pago vaya primero', pend);
+  check('comentarios: el token de carpeta solo ve los de su carpeta', pendLim.length === 1 && pendLim[0].path === 'alfa/plan.md', pendLim);
+  check('comentarios: el token de carpeta no cierra uno de afuera', (await ask(lim.token, 'resolve_comment', { id: pend[1].id })).err);
+  await ask(lim.token, 'resolve_comment', { id: pend[0].id, reply: 'Movi el pago al principio' });
+  const abiertos = (await call('GET', '/comments?path=alfa/plan.md', undefined, is)).json; const todos = (await call('GET', '/comments?path=alfa/plan.md&all=1', undefined, is)).json;
+  check('comentarios: al resolverlo queda cerrado con la respuesta', abiertos.length === 0 && todos.length === 1 && todos[0].status === 'done' && todos[0].reply === 'Movi el pago al principio', [abiertos, todos]);
+  await call('POST', '/rename', { from: 'beta/ideas.md', to: 'beta/lista.md' }, is);
+  check('comentarios: siguen a la nota renombrada y se van al borrarla', (await call('GET', '/comments?path=beta/lista.md', undefined, is)).json.length === 1 && (await call('DELETE', '/notes/beta/lista.md', undefined, is)).status === 200 && (await call('GET', '/comments', undefined, is)).json.length === 0);
   // Cuenta de prueba con código fijo
   const tl = await call('POST', '/auth/start', { email: 'revision@ejemplo.test' });
   check('la cuenta de prueba no devuelve ni manda código', tl.status === 200 && !tl.json.dev_code, tl.json);

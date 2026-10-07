@@ -72,12 +72,15 @@ Sign-in is a six-digit code sent by mail, no passwords.
 | `GET` / `PUT` / `DELETE /notes/{path}` | Read, write `{ text }`, delete |
 | `POST /rename` `{ from, to }` | Rename |
 | `GET /search?q=` | Search the text of every note |
-| `POST /tokens` `{ name }` | Creates a token for MCP, shown once |
+| `POST /tokens` `{ name, folder }` | Creates a token for MCP, shown once. With `folder`, the token only reaches that folder |
+| `GET` / `POST /comments`, `DELETE /comments/{id}` | Comments left on a note for the AI: `{ path, quote, text }` |
 | `GET /tokens`, `DELETE /tokens/{id}` | List the tokens and revoke one |
 | `POST /feedback` `{ text, email?, context? }` | Mails the text to `FEEDBACK_TO`, with or without a session. 5 to 4000 characters, five an hour per IP and per account. Behind a proxy the IP is the last entry of `x-forwarded-for` |
 | `POST /mcp` | MCP over Streamable HTTP, with `Authorization: Bearer mdt_...` |
 
-MCP tools: `list_notes`, `read_note`, `write_note`, `append_note`, `search_notes`.
+MCP tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`.
+
+A comment is how the user points the AI at a passage: it stays open until the AI reads it with `list_comments`, makes the change and calls `resolve_comment`. The server cannot wake an AI client up; the client reads the open comments when it is asked to, or on its own schedule.
 
 Connecting Claude Code:
 

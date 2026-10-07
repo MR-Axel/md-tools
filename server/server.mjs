@@ -49,6 +49,8 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS links (id INTEGER PRIMARY KEY, hash TEXT UNIQUE NOT NULL, owner INTEGER NOT NULL, path TEXT NOT NULL, pass TEXT, fails INTEGER NOT NULL DEFAULT 0, locked INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL);
 `);
 try { db.exec('ALTER TABLE users ADD COLUMN paddle_sub TEXT'); } catch (e) { /* ya estaba */ }
+try { db.exec('ALTER TABLE tokens ADD COLUMN scope TEXT'); } catch (e) { /* ya estaba */ }
+db.exec("CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY, user INTEGER NOT NULL, path TEXT NOT NULL, quote TEXT NOT NULL, text TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open', reply TEXT, created INTEGER NOT NULL, done INTEGER)");
 const q = (sql) => db.prepare(sql);
 const now = () => Date.now();
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
@@ -136,8 +138,8 @@ function userFrom(req, kind) {
     if (s) { q('UPDATE sessions SET seen = ? WHERE hash = ?').run(now(), sha(m[1])); return q('SELECT * FROM users WHERE id = ?').get(s.user); }
   }
   if (kind === 'token' && m[1].startsWith('mdt_')) {
-    const t = q('SELECT id, user FROM tokens WHERE hash = ?').get(sha(m[1]));
-    if (t) { q('UPDATE tokens SET used = ? WHERE id = ?').run(now(), t.id); return q('SELECT * FROM users WHERE id = ?').get(t.user); }
+    const t = q('SELECT id, user, scope FROM tokens WHERE hash = ?').get(sha(m[1]));
+    if (t) { q('UPDATE tokens SET used = ? WHERE id = ?').run(now(), t.id); const u = q('SELECT * FROM users WHERE id = ?').get(t.user); if (u) u.scope = t.scope || ''; return u; }
   }
   throw new Fail(401, 'bad_auth');
 }
@@ -207,6 +209,7 @@ function writeNote(user, p, text) {
 function deleteNote(user, p) {
   const r = q('DELETE FROM notes WHERE user = ? AND path = ?').run(user.id, cleanPath(p));
   if (!r.changes) throw new Fail(404, 'not_found');
+  q('DELETE FROM comments WHERE user = ? AND path = ?').run(user.id, cleanPath(p));
   return { ok: true };
 }
 function renameNote(user, from, to) {
@@ -218,6 +221,7 @@ function renameNote(user, from, to) {
   q('UPDATE versions SET path = ? WHERE user = ? AND path = ?').run(to, user.id, from);
   q("UPDATE OR REPLACE shares SET path = ? WHERE owner = ? AND path = ? AND kind != 'folder'").run(to, user.id, from);
   q('UPDATE links SET path = ? WHERE owner = ? AND path = ?').run(to, user.id, from);
+  q('UPDATE comments SET path = ? WHERE user = ? AND path = ?').run(to, user.id, from);
   return { path: to };
 }
 function searchNotes(user, text) {
@@ -321,34 +325,69 @@ function listen(req, res, user, url) {
   req.on('close', () => { clearInterval(beat); const room = rooms.get(key); if (room) { room.delete(client); if (!room.size) rooms.delete(key); else announce(key, { type: 'presence' }); } });
 }
 
+// Comentarios para la IA: la persona marca un bloque de una nota y escribe qué quiere cambiar.
+// Quedan pendientes hasta que la IA los lee con list_comments y los cierra con resolve_comment.
+function addComment(user, body) {
+  if (!mcpAllowed(user)) throw new Fail(402, 'mcp_needs_plan');
+  const p = cleanPath(body.path); readNote(user, p);
+  const text = String(body.text == null ? '' : body.text).trim(); const quote = String(body.quote == null ? '' : body.quote).trim().slice(0, 2000);
+  if (!text || text.length > 2000) throw new Fail(400, 'bad_text');
+  if (q("SELECT COUNT(*) AS n FROM comments WHERE user = ? AND status = 'open'").get(user.id).n >= 200) throw new Fail(429, 'too_many');
+  const r = q('INSERT INTO comments (user, path, quote, text, created) VALUES (?, ?, ?, ?, ?)').run(user.id, p, quote, text, now());
+  return { id: Number(r.lastInsertRowid), path: p, quote, text, status: 'open', created: now() };
+}
+const listComments = (user, p, all) => q('SELECT id, path, quote, text, status, reply, created, done FROM comments WHERE user = ?' + (p ? ' AND path = ?' : '') + (all ? '' : " AND status = 'open'") + ' ORDER BY created').all(...(p ? [user.id, cleanPath(p)] : [user.id]));
+
+// Un token puede estar limitado a una carpeta: fuera de ella no ve ni escribe nada.
+const within = (user, p) => !user.scope || p === user.scope || p.startsWith(user.scope + '/');
+function scoped(user, p) { p = cleanPath(p); if (!within(user, p)) throw new Fail(403, 'out_of_scope', 'This token only reaches the folder ' + user.scope + '/'); return p; }
+const inFolder = (p, folder) => !folder || p.startsWith(folder.replace(/\/+$/, '') + '/');
+
 // ---------- MCP (Streamable HTTP, respuestas JSON) ----------
 const TOOLS = [
-  { name: 'list_notes', description: 'List the Markdown notes in the SharpMD cloud folder, newest first.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'list_notes', description: 'List the Markdown notes in the SharpMD cloud folder, newest first. Pass a folder to list only what is inside it.', inputSchema: { type: 'object', properties: { folder: { type: 'string', description: 'Optional folder, for example projects/launch' } } } },
+  { name: 'list_folders', description: 'List the folders that hold notes, with how many notes each one has. A top-level folder is usually a project.', inputSchema: { type: 'object', properties: {} } },
   { name: 'read_note', description: 'Read one note by its path.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path of the note, for example ideas/launch.md' } }, required: ['path'] } },
   { name: 'write_note', description: 'Create a note or replace its whole content with Markdown text.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, text: { type: 'string', description: 'Full Markdown content' } }, required: ['path', 'text'] } },
   { name: 'append_note', description: 'Append Markdown text to the end of a note, creating it if it does not exist.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, text: { type: 'string' } }, required: ['path', 'text'] } },
   { name: 'search_notes', description: 'Search the text of every note. Returns matching notes with the lines that match.', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
+  { name: 'list_comments', description: 'List the comments the user left for you and that are still open. Each one has the note path, the quoted passage it refers to and what the user asks. Check this when the user says they left comments, and before editing a note.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Optional: only the comments on this note' } } } },
+  { name: 'resolve_comment', description: 'Mark a comment as done after making the change it asks for with write_note. Add a short reply saying what you changed.', inputSchema: { type: 'object', properties: { id: { type: 'number' }, reply: { type: 'string', description: 'One or two sentences on what was changed' } }, required: ['id'] } },
 ];
 
 function callTool(user, name, args) {
   args = args || {};
-  if (name === 'list_notes') return listNotes(user).map((n) => ({ path: n.path, updated: new Date(n.updated).toISOString(), size: n.size }));
-  if (name === 'read_note') return readNote(user, args.path).text;
-  if (name === 'write_note') { const r = writeNote(user, args.path, args.text); return 'Saved ' + r.path + ' (' + r.size + ' characters).'; }
+  const mine = () => listNotes(user).filter((n) => within(user, n.path));
+  if (name === 'list_notes') return mine().filter((n) => inFolder(n.path, args.folder && cleanPath(args.folder))).map((n) => ({ path: n.path, updated: new Date(n.updated).toISOString(), size: n.size }));
+  if (name === 'list_folders') {
+    const count = new Map();
+    for (const n of mine()) { const parts = n.path.split('/'); for (let i = 1; i < parts.length; i++) { const f = parts.slice(0, i).join('/'); count.set(f, (count.get(f) || 0) + 1); } }
+    return [...count].sort((a, b) => a[0].localeCompare(b[0])).map(([folder, notes]) => ({ folder, notes }));
+  }
+  if (name === 'read_note') return readNote(user, scoped(user, args.path)).text;
+  if (name === 'write_note') { const r = writeNote(user, scoped(user, args.path), args.text); return 'Saved ' + r.path + ' (' + r.size + ' characters).'; }
   if (name === 'append_note') {
-    let prev = '';
-    try { prev = readNote(user, args.path).text; } catch (e) { if (e.code !== 'not_found') throw e; }
-    const r = writeNote(user, args.path, prev + (prev && !prev.endsWith('\n') ? '\n' : '') + (prev ? '\n' : '') + String(args.text || ''));
+    const p = scoped(user, args.path); let prev = '';
+    try { prev = readNote(user, p).text; } catch (e) { if (e.code !== 'not_found') throw e; }
+    const r = writeNote(user, p, prev + (prev && !prev.endsWith('\n') ? '\n' : '') + (prev ? '\n' : '') + String(args.text || ''));
     return 'Appended to ' + r.path + '.';
   }
-  if (name === 'search_notes') return searchNotes(user, args.query);
+  if (name === 'search_notes') return searchNotes(user, args.query).filter((r) => within(user, r.path));
+  if (name === 'list_comments') return listComments(user, args.path ? scoped(user, args.path) : '', false).filter((c) => within(user, c.path)).map((c) => ({ id: c.id, path: c.path, quote: c.quote, comment: c.text, created: new Date(c.created).toISOString() }));
+  if (name === 'resolve_comment') {
+    const c = q('SELECT id, path FROM comments WHERE id = ? AND user = ?').get(+args.id, user.id);
+    if (!c || !within(user, c.path)) throw new Fail(404, 'not_found');
+    q("UPDATE comments SET status = 'done', reply = ?, done = ? WHERE id = ?").run(String(args.reply || '').slice(0, 1000), now(), c.id);
+    announce(roomKey(user.id, c.path), { type: 'comments' });
+    return 'Comment ' + c.id + ' marked as done.';
+  }
   throw new Fail(400, 'unknown_tool');
 }
 
 function mcp(user, msg) {
   const reply = (result) => ({ jsonrpc: '2.0', id: msg.id, result });
   if (msg.method === 'initialize') return reply({ protocolVersion: (msg.params && msg.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'sharpmd', version: '1.0.0' },
-    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md.' });
+    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with write_note, then resolve_comment.' });
   if (msg.method === 'ping') return reply({});
   if (msg.method === 'tools/list') return reply({ tools: TOOLS });
   if (msg.method === 'tools/call') {
@@ -454,12 +493,16 @@ async function route(req, url) {
   if (p.startsWith('/links/') && m === 'DELETE') { q('DELETE FROM links WHERE id = ? AND owner = ?').run(+p.slice(7), user.id); return { ok: true }; }
   if (p === '/account' && m === 'GET') return account(user);
   if (p === '/auth/logout' && m === 'POST') { q('DELETE FROM sessions WHERE hash = ?').run(sha(req.headers.authorization.split(/\s+/)[1])); return { ok: true }; }
-  if (p === '/tokens' && m === 'GET') return q('SELECT id, name, created, used FROM tokens WHERE user = ? ORDER BY created DESC').all(user.id);
+  if (p === '/tokens' && m === 'GET') return q('SELECT id, name, scope, created, used FROM tokens WHERE user = ? ORDER BY created DESC').all(user.id);
+  if (p === '/comments' && m === 'GET') return listComments(user, url.searchParams.get('path') || '', url.searchParams.get('all') === '1');
+  if (p === '/comments' && m === 'POST') { const c = addComment(user, await readBody(req)); announce(roomKey(user.id, c.path), { type: 'comments' }); return c; }
+  if (p.startsWith('/comments/') && m === 'DELETE') { q('DELETE FROM comments WHERE id = ? AND user = ?').run(+p.slice(10), user.id); return { ok: true }; }
   if (p === '/tokens' && m === 'POST') {
     if (!mcpAllowed(user)) throw new Fail(402, 'mcp_needs_plan');
     const b = await readBody(req); const token = 'mdt_' + random(30);
-    q('INSERT INTO tokens (hash, user, name, created) VALUES (?, ?, ?, ?)').run(sha(token), user.id, String(b.name || 'AI').slice(0, 60), now());
-    return { token, mcp_url: PUBLIC_URL + '/mcp' };
+    const scope = String(b.folder || '').trim() ? cleanPath(String(b.folder).replace(/\/+$/, '')) : '';
+    q('INSERT INTO tokens (hash, user, name, scope, created) VALUES (?, ?, ?, ?, ?)').run(sha(token), user.id, String(b.name || 'AI').slice(0, 60), scope, now());
+    return { token, scope, mcp_url: PUBLIC_URL + '/mcp' };
   }
   if (p.startsWith('/tokens/') && m === 'DELETE') { q('DELETE FROM tokens WHERE id = ? AND user = ?').run(+p.slice(8), user.id); return { ok: true }; }
   if (p === '/notes' && m === 'GET') {
