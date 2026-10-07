@@ -340,7 +340,7 @@
       "Demasiados intentos. Pedí un código nuevo.": "Too many tries. Ask for a new code.", "No hay conexión con el servidor.": "Cannot reach the server.",
       "Conectar una IA es parte del plan pago.": "Connecting an AI is part of the paid plan.", "No se pudo completar. Probá de nuevo.": "Could not complete it. Try again.",
       "Te mandamos un código a {a}.": "We sent a code to {a}.", "Entrar": "Sign in", "tu correo": "your email", "Enviar código": "Send code",
-      "Tus notas en todos tus dispositivos.": "Your notes on all your devices.", "{n} de {m} notas": "{n} of {m} notes", "{n} notas": "{n} notes",
+      "Guardá tus notas en la nube y abrilas desde cualquier dispositivo. Gratis hasta 10 notas.": "Save your notes to the cloud and open them on any device. Free up to 10 notes.", "Crear cuenta o entrar": "Sign up or sign in", "{n} de {m} notas": "{n} of {m} notes", "{n} notas": "{n} notes",
       "Conectar una IA": "Connect an AI", "Salir": "Sign out",
       "Copiá estos datos ahora: el token no se vuelve a mostrar.": "Copy these now: the token is not shown again.",
       "Servidor de sincronización": "Sync server", "Dejalo vacío salvo que alojes tu propio servidor.": "Leave it empty unless you host your own server.",
@@ -537,6 +537,8 @@
   function setLang(pref) {
     if (pref === 'es' || pref === 'en') current = pref;
     else {
+      // En la web, "automático" sigue a la portada: inglés, o español si se eligió ahí.
+      if (typeof window !== 'undefined' && window.__MDT_WEB) { let site = ''; try { site = localStorage.getItem('mdtools:site-lang') || ''; } catch (e) { /* sin almacenamiento */ } current = site === 'es' ? 'es' : 'en'; return current; }
       let ui = '';
       try { ui = chrome.i18n.getUILanguage(); } catch (e) { ui = (typeof navigator !== 'undefined' && navigator.language) || ''; }
       current = /^es\b/i.test(ui) ? 'es' : 'en';

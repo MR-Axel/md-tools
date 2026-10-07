@@ -119,7 +119,7 @@
         } else if (step === 'email') {
           const r = row(); const input = el('input', { type: 'email', placeholder: T('tu correo'), 'data-field': 'email' });
           r.append(input, button(T('Enviar código'), 'start', true)); input.focus();
-        } else { const r = row(); r.append(el('span', { text: T('Tus notas en todos tus dispositivos.') }), button(T('Entrar'), 'ask')); }
+        } else { const r = row(); const b = button(T('Crear cuenta o entrar'), 'ask'); b.classList.add('lmd-btn-fill'); r.append(el('span', { text: T('Guardá tus notas en la nube y abrilas desde cualquier dispositivo. Gratis hasta 10 notas.') }), b); }
         return;
       }
       try {
