@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sharpmd: editor y lector de Markdown en el navegador, gratis y de código abierto</title>
-<meta name="description" content="Editor y lector de Markdown gratis y de código abierto que corre en el navegador. Abrís un .md o una carpeta entera, editás sobre el texto ya formateado y dibujás diagramas Mermaid. Notas en la nube opcionales, compartir y conexión MCP para tu IA.">
+<title>Sharpmd: editor y lector de Markdown en el navegador</title>
+<meta name="description" content="Editor de Markdown gratis y de código abierto en el navegador. Abrís un archivo o una carpeta y editás sobre el texto ya formateado. Nube y MCP opcionales.">
 <link rel="canonical" href="https://sharpmd.app/es/">
 <link rel="alternate" hreflang="en" href="https://sharpmd.app/">
 <link rel="alternate" hreflang="es" href="https://sharpmd.app/es/">
 <link rel="alternate" hreflang="x-default" href="https://sharpmd.app/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Sharpmd">
-<meta property="og:title" content="Sharpmd: editor y lector de Markdown en el navegador, gratis y de código abierto">
+<meta property="og:title" content="Sharpmd: editor y lector de Markdown en el navegador">
 <meta property="og:description" content="Leé y editá Markdown en el navegador. Gratis y de código abierto. Tus archivos quedan en tu máquina.">
 <meta property="og:url" content="https://sharpmd.app/es/">
 <meta property="og:locale" content="es_AR">
@@ -23,7 +23,7 @@
 <meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
 <link rel="preload" href="../vendor/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="icon" href="../icons/icon32.png">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Sharpmd","url":"https://sharpmd.app/es/","applicationCategory":"ProductivityApplication","operatingSystem":"Web, Chrome, Edge, Brave","description":"Editor y lector de Markdown gratis y de código abierto que corre en el navegador. Abrís un .md o una carpeta entera, editás sobre el texto ya formateado y dibujás diagramas Mermaid. Notas en la nube opcionales, compartir y conexión MCP para tu IA.","inLanguage":"es","image":"https://sharpmd.app/docs/store/1-reader.png","screenshot":"https://sharpmd.app/docs/store/2-editing.png","isAccessibleForFree":true,"offers":[{"@type":"Offer","name":"Free","price":"0","priceCurrency":"USD"},{"@type":"Offer","name":"Paid","price":"3.99","priceCurrency":"USD"}],"license":"https://opensource.org/licenses/MIT","codeRepository":"https://github.com/MR-Axel/sharpmd"}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Sharpmd","url":"https://sharpmd.app/es/","applicationCategory":"ProductivityApplication","operatingSystem":"Web, Chrome, Edge, Brave","description":"Editor de Markdown gratis y de código abierto en el navegador. Abrís un archivo o una carpeta y editás sobre el texto ya formateado. Nube y MCP opcionales.","inLanguage":"es","image":"https://sharpmd.app/docs/store/1-reader.png","screenshot":"https://sharpmd.app/docs/store/2-editing.png","isAccessibleForFree":true,"offers":[{"@type":"Offer","name":"Free","price":"0","priceCurrency":"USD"},{"@type":"Offer","name":"Paid","price":"3.99","priceCurrency":"USD"}],"license":"https://opensource.org/licenses/MIT","codeRepository":"https://github.com/MR-Axel/sharpmd"}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"¿Sharpmd es gratis?","acceptedAnswer":{"@type":"Answer","text":"El editor es gratis y de código abierto, sin límite de archivos ni de notas guardadas en el navegador. La nube es gratis hasta 10 notas."}},{"@type":"Question","name":"¿Cómo abro un .md con doble clic?","acceptedAnswer":{"@type":"Answer","text":"Instalás la extensión, activás \"Permitir acceso a URLs de archivo\" en sus detalles, y ponés Chrome como programa por defecto para los .md."}},{"@type":"Question","name":"¿Qué Markdown soporta?","acceptedAnswer":{"@type":"Answer","text":"GitHub Flavored Markdown, más matemática con KaTeX, diagramas Mermaid y Graphviz, notas al pie, listas de tareas, avisos, listas de definición y cabecera YAML."}},{"@type":"Question","name":"¿Funciona sin conexión?","acceptedAnswer":{"@type":"Answer","text":"La extensión, sí. Las notas de la nube que ya abriste también se abren sin conexión, y lo que escribís se sube cuando vuelve."}},{"@type":"Question","name":"¿Cómo llega mi IA a mis notas?","acceptedAnswer":{"@type":"Answer","text":"Creás un token en la app y agregás Sharpmd como servidor MCP en Claude u otro cliente. Solo ve las notas que tenés en la nube."}}]}</script>
 <script>try{localStorage.setItem("mdtools:site-lang","es");if(localStorage.getItem("sharpmd:app")&&location.search.indexOf("site")<0&&!location.hash&&document.referrer.indexOf(location.origin)!==0)location.replace("../src/app.html")}catch(e){}</script>
 <style>
@@ -120,7 +120,7 @@
 </head>
 <body>
 <nav><div class="wrap">
-  <a class="brand" href="#top"><img src="../icons/icon48.png" alt=""><span>Sharpmd</span></a>
+  <a class="brand" href="#top"><img src="../icons/icon48.png" alt="Sharpmd logo" width="26" height="26"><span>Sharpmd</span></a>
   <a class="link" href="#features">Funciones</a>
   <a class="link" href="#cloud">Nube e IA</a>
   <a class="link" href="#plans">Planes</a>

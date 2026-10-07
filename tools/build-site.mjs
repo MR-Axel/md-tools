@@ -8,11 +8,11 @@ const SITE = 'https://sharpmd.app';
 const src = fs.readFileSync(path.join(root, 'tools', 'landing.src.html'), 'utf8').replace(/\r\n/g, '\n');
 
 const META = {
-  en: { title: 'Sharpmd: Markdown editor and reader in the browser, free and open source',
-    desc: 'Free, open source Markdown editor and reader that runs in the browser. Open a .md file or a whole folder, edit on the formatted text, draw Mermaid diagrams. Optional cloud notes, sharing and an MCP connection for your AI.',
+  en: { title: 'Sharpmd: Markdown editor and reader in the browser',
+    desc: 'Free, open source Markdown editor that runs in the browser. Open a file or a folder, edit on the formatted text, draw diagrams. Optional cloud notes and MCP.',
     og: 'Read and edit Markdown in the browser. Free and open source. Your files stay on your machine.', locale: 'en_US', url: SITE + '/' },
-  es: { title: 'Sharpmd: editor y lector de Markdown en el navegador, gratis y de código abierto',
-    desc: 'Editor y lector de Markdown gratis y de código abierto que corre en el navegador. Abrís un .md o una carpeta entera, editás sobre el texto ya formateado y dibujás diagramas Mermaid. Notas en la nube opcionales, compartir y conexión MCP para tu IA.',
+  es: { title: 'Sharpmd: editor y lector de Markdown en el navegador',
+    desc: 'Editor de Markdown gratis y de código abierto en el navegador. Abrís un archivo o una carpeta y editás sobre el texto ya formateado. Nube y MCP opcionales.',
     og: 'Leé y editá Markdown en el navegador. Gratis y de código abierto. Tus archivos quedan en tu máquina.', locale: 'es_AR', url: SITE + '/es/' },
 };
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
