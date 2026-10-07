@@ -1,8 +1,8 @@
-# Sharpmd
+# SharpMD
 
 [English](README.md) · Español
 
-![Sharpmd](docs/store/1-reader.png)
+![SharpMD](docs/store/1-reader.png)
 
 ![Editando una celda de la tabla en el lugar](docs/store/2-editing.png)
 
@@ -25,9 +25,9 @@ Extensión de Chrome para leer y editar archivos Markdown en el navegador, local
 - **Buscar y reemplazar** en el documento mientras editás, de a una coincidencia o todas.
 - **Modo foco y máquina de escribir** (Ajustes → Edición): atenúa todo menos el bloque que estás escribiendo, y mantiene el renglón actual a media altura.
 - **Exportar a HTML**: un solo archivo, con la matemática en MathML.
-- **Archivos desde el árbol** (página de Sharpmd): archivo nuevo, renombrar y eliminar con clic derecho.
-- **Pegar imágenes** (página de Sharpmd): una imagen del portapapeles se guarda en `assets/`, al lado del documento, y queda insertada.
-- **No solo Markdown** (página de Sharpmd): los archivos de código y configuración se ven resaltados y se editan como texto, los CSV y TSV se ven como tabla, y las imágenes como imágenes.
+- **Archivos desde el árbol** (página de SharpMD): archivo nuevo, renombrar y eliminar con clic derecho.
+- **Pegar imágenes** (página de SharpMD): una imagen del portapapeles se guarda en `assets/`, al lado del documento, y queda insertada.
+- **No solo Markdown** (página de SharpMD): los archivos de código y configuración se ven resaltados y se editan como texto, los CSV y TSV se ven como tabla, y las imágenes como imágenes.
 - **Índice automático** del documento, con la sección actual resaltada mientras se hace scroll.
 - **Árbol de carpetas**: los archivos Markdown de la carpeta del documento, con subcarpetas que se abren y botón para subir de nivel.
 - **Recarga automática** cuando el archivo cambia en disco, sin perder la posición.
@@ -48,26 +48,26 @@ Extensión de Chrome para leer y editar archivos Markdown en el navegador, local
 1. Abrir `chrome://extensions`.
 2. Activar **Modo de desarrollador** (arriba a la derecha).
 3. **Cargar descomprimida** y elegir esta carpeta .
-4. En la tarjeta de Sharpmd, entrar a **Detalles** y activar **Permitir acceso a URL de archivo**. Sin eso no abre archivos locales.
+4. En la tarjeta de SharpMD, entrar a **Detalles** y activar **Permitir acceso a URL de archivo**. Sin eso no abre archivos locales.
 5. Si hay otra extensión de Markdown instalada, desactivarla para que no actúen las dos sobre el mismo archivo.
 
 Después alcanza con arrastrar un `.md` al navegador.
 
-## Abrir archivos desde Sharpmd
+## Abrir archivos desde SharpMD
 
-Hacé clic en el ícono de la extensión y elegí **Nuevo** o **Abrir**. **Nuevo** arranca una nota vacía lista para escribir; el primer Ctrl+S pregunta dónde guardarla. **Abrir** lleva a la página de Sharpmd, donde elegís un archivo o una carpeta (o los arrastrás) y los leés y editás ahí mismo. Como la carpeta ya la elegiste vos, guardar no pide ningún permiso más, y la página recuerda lo último que abriste.
+Hacé clic en el ícono de la extensión y elegí **Nuevo** o **Abrir**. **Nuevo** arranca una nota vacía lista para escribir; el primer Ctrl+S pregunta dónde guardarla. **Abrir** lleva a la página de SharpMD, donde elegís un archivo o una carpeta (o los arrastrás) y los leés y editás ahí mismo. Como la carpeta ya la elegiste vos, guardar no pide ningún permiso más, y la página recuerda lo último que abriste.
 
 Abrir un `.md` directo en el navegador sigue funcionando igual que antes. La pestaña Carpeta de la barra lateral tiene un botón que lleva a esta página.
 
 ## Sin instalar nada
 
-La página de Sharpmd es HTML y JavaScript, así que también funciona servida desde cualquier hosting estático, sin la extensión. En Chrome, Edge, Brave y otros navegadores Chromium abre archivos y carpetas y guarda en el lugar. En Firefox y Safari, que no dejan que una página escriba en el disco, abre de a un archivo y al guardar descarga una copia. En los dos casos no se sube nada: los archivos se leen en tu navegador.
+La página de SharpMD es HTML y JavaScript, así que también funciona servida desde cualquier hosting estático, sin la extensión. En Chrome, Edge, Brave y otros navegadores Chromium abre archivos y carpetas y guarda en el lugar. En Firefox y Safari, que no dejan que una página escriba en el disco, abre de a un archivo y al guardar descarga una copia. En los dos casos no se sube nada: los archivos se leen en tu navegador.
 
 Está publicada en [sharpmd.app](https://sharpmd.app/). Para correr tu propia copia, serví esta carpeta (`npx serve .`) y abrí la dirección que te muestra.
 
 ## Actualizar
 
-Chrome no puede actualizar una extensión cargada desde una carpeta, así que Sharpmd mira este repositorio una vez por día (o por semana, o nunca: Ajustes → Actualizaciones) y avisa en la barra lateral, y en el popup del ícono de la extensión, cuando hay una versión más nueva. Desde ahí: descargás el ZIP, reemplazás la carpeta de la extensión con su contenido y tocás **Aplicar**, que recarga la extensión. Si clonaste el repositorio, alcanza con `git pull` y **Aplicar**.
+Chrome no puede actualizar una extensión cargada desde una carpeta, así que SharpMD mira este repositorio una vez por día (o por semana, o nunca: Ajustes → Actualizaciones) y avisa en la barra lateral, y en el popup del ícono de la extensión, cuando hay una versión más nueva. Desde ahí: descargás el ZIP, reemplazás la carpeta de la extensión con su contenido y tocás **Aplicar**, que recarga la extensión. Si clonaste el repositorio, alcanza con `git pull` y **Aplicar**.
 
 Es el único pedido de red que hace la extensión: lee el número de versión publicado y no manda ningún dato.
 
@@ -104,8 +104,8 @@ src/
   content.css     estilos y temas
   background.js   lectura de archivos y carpetas, carga diferida de las librerías pesadas, atajos, aviso de versión
   web.js          reemplaza las APIs de la extensión cuando la página se sirve desde un sitio
-  app.html        la página de Sharpmd: abrir un archivo o una carpeta y editar ahí
-  popup.html/js   el encendido y el botón que abre la página de Sharpmd
+  app.html        la página de SharpMD: abrir un archivo o una carpeta y editar ahí
+  popup.html/js   el encendido y el botón que abre la página de SharpMD
 vendor/           librerías de terceros, sin modificar
 examples/         documentos de prueba con todas las funciones
 tests/            prueba de punta a punta
@@ -141,9 +141,9 @@ El HTML que sale del Markdown pasa por DOMPurify antes de entrar a la página.
 
 ## Notas en la nube y servidor de sincronización
 
-En `server/` está Sharpmd Sync: cuentas, notas en la nube y un servidor MCP para que una IA las lea y las escriba. Entrás desde la pantalla de inicio con un código que llega a tu correo. El plan gratis guarda 10 notas en la nube; el pago (USD 3,99 por mes o USD 39 por año) no tiene límite y suma compartir, la conexión MCP, 30 días de historial y las opciones de apariencia.
+En `server/` está SharpMD Sync: cuentas, notas en la nube y un servidor MCP para que una IA las lea y las escriba. Entrás desde la pantalla de inicio con un código que llega a tu correo. El plan gratis guarda 10 notas en la nube; el pago (USD 3,99 por mes o USD 39 por año) no tiene límite y suma compartir, la conexión MCP, 30 días de historial y las opciones de apariencia.
 
-El servidor es un solo archivo, sin dependencias, y lo podés alojar vos: cargás su dirección en Ajustes → Cuenta, o escribís `off` ahí para usar Sharpmd sin nada de nube. El detalle está en [server/README.md](server/README.md).
+El servidor es un solo archivo, sin dependencias, y lo podés alojar vos: cargás su dirección en Ajustes → Cuenta, o escribís `off` ahí para usar SharpMD sin nada de nube. El detalle está en [server/README.md](server/README.md).
 
 La app es MIT. El servidor de `server/` es AGPL-3.0 o posterior.
 

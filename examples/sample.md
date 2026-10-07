@@ -1,11 +1,11 @@
 ---
 name: sample
-description: Test document for Sharpmd
+description: Test document for SharpMD
 metadata:
   type: reference
 ---
 
-# Sharpmd: test document
+# SharpMD: test document
 
 [[toc]]
 
@@ -58,7 +58,7 @@ Code `inline`.
 
 | Field | Value |
 |---|---|
-| Name | Sharpmd |
+| Name | SharpMD |
 | Price | $0 |
 
 ## Math
@@ -75,7 +75,7 @@ A price like $5 and another of $10 should not break.
 
 ```mermaid
 graph LR
-  A[.md file] --> B{Sharpmd}
+  A[.md file] --> B{SharpMD}
   B --> C[Outline]
   B --> D[Folder]
 ```

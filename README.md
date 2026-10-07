@@ -1,6 +1,6 @@
-<p align="center"><img src="icons/icon128.png" width="84" alt="Sharpmd"></p>
+<p align="center"><img src="icons/icon128.png" width="84" alt="SharpMD"></p>
 
-<h1 align="center">Sharpmd</h1>
+<h1 align="center">SharpMD</h1>
 
 <p align="center">A Markdown editor and reader that runs in the browser.<br>Open a file or a whole folder and edit on the formatted text.</p>
 
@@ -11,7 +11,7 @@
   <a href="README.es.md">Español</a>
 </p>
 
-![Sharpmd showing a Markdown document with its outline](docs/store/1-reader.png)
+![SharpMD showing a Markdown document with its outline](docs/store/1-reader.png)
 
 Free and open source. No account, no tracking: files are read in your browser and never uploaded.
 
@@ -61,7 +61,7 @@ The extension is not on the Chrome Web Store yet. To load it from source:
 2. Open `chrome://extensions`.
 3. Turn on **Developer mode** (top right).
 4. Click **Load unpacked** and pick the folder.
-5. On the Sharpmd card, open **Details** and turn on **Allow access to file URLs**. Without it, local files will not open.
+5. On the SharpMD card, open **Details** and turn on **Allow access to file URLs**. Without it, local files will not open.
 6. If another Markdown extension is installed, disable it so they do not both act on the same file.
 
 Then drag any `.md` file into the browser, or click the extension icon and choose **New** or **Open**. `examples/sample.md` exercises every feature.
@@ -70,7 +70,7 @@ It works the same in Edge, Brave and Arc.
 
 ## Updating
 
-Chrome cannot update an extension loaded from a folder, so Sharpmd checks this repository once a day (or once a week, or never: Settings → Updates) and tells you in the sidebar and in the popup when there is a newer version. Download the ZIP, replace the folder and click **Apply**. If you cloned the repository, `git pull` and **Apply** is enough.
+Chrome cannot update an extension loaded from a folder, so SharpMD checks this repository once a day (or once a week, or never: Settings → Updates) and tells you in the sidebar and in the popup when there is a newer version. Download the ZIP, replace the folder and click **Apply**. If you cloned the repository, `git pull` and **Apply** is enough.
 
 ## Shortcuts
 
@@ -89,7 +89,7 @@ The Alt+Shift shortcuts can be changed at `chrome://extensions/shortcuts`.
 
 ## Saving
 
-A page cannot write to disk on its own, so the first time you save a file opened by double-click, Sharpmd asks you to pick its folder. From then on every Markdown file inside saves straight to itself. Files and folders opened from the Sharpmd page already carry that permission.
+A page cannot write to disk on its own, so the first time you save a file opened by double-click, SharpMD asks you to pick its folder. From then on every Markdown file inside saves straight to itself. Files and folders opened from the SharpMD page already carry that permission.
 
 ## Privacy
 
@@ -97,9 +97,9 @@ No analytics. Settings, reading positions and browser notes are stored in your b
 
 ## Cloud notes and the sync server
 
-`server/` holds Sharpmd Sync: accounts, notes in the cloud and an MCP endpoint so an AI can read and write them. Sign in from the start screen with a code sent to your email. The free plan holds 10 cloud notes; the paid plan (USD 3.99 a month or USD 39 a year) has no limit and adds sharing, the MCP connection, 30 days of version history and the appearance options.
+`server/` holds SharpMD Sync: accounts, notes in the cloud and an MCP endpoint so an AI can read and write them. Sign in from the start screen with a code sent to your email. The free plan holds 10 cloud notes; the paid plan (USD 3.99 a month or USD 39 a year) has no limit and adds sharing, the MCP connection, 30 days of version history and the appearance options.
 
-The server is one file with no dependencies, and you can host it yourself: set its address in Settings → Account, or type `off` there to use Sharpmd with no cloud at all. See [server/README.md](server/README.md).
+The server is one file with no dependencies, and you can host it yourself: set its address in Settings → Account, or type `off` there to use SharpMD with no cloud at all. See [server/README.md](server/README.md).
 
 ## Development
 
@@ -118,7 +118,7 @@ src/
   serialize.js    from an edited block back to Markdown
   store.js        file and folder permissions and browser notes, kept in IndexedDB
   cloud.js        client for the optional sync server
-  home.js         start screen of the Sharpmd page
+  home.js         start screen of the SharpMD page
   write.js        new blocks, Markdown shortcuts and the block menu
   diagram.js      diagram editor with live preview
   board.js        kanban boards and table formulas
@@ -127,7 +127,7 @@ src/
   content.css     styles and themes
   background.js   reads files and folders, lazy-loads the heavy libraries, shortcuts, update check
   web.js          stands in for the extension APIs when the page is served from a site
-  app.html        the Sharpmd page: open a file or a folder and edit it there
+  app.html        the SharpMD page: open a file or a folder and edit it there
   popup.html/js   the popup of the extension icon
 server/           optional sync server with MCP
 vendor/           third-party libraries, unmodified

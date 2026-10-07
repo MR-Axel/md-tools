@@ -1,4 +1,4 @@
-# Chrome Web Store: ficha de Sharpmd
+# Chrome Web Store: ficha de SharpMD
 
 Todo lo que pide el panel de desarrollador, listo para copiar. El paquete se arma con:
 
@@ -67,7 +67,7 @@ El panel la toma del manifest, que ya la tiene en inglés y en español:
 ## Descripción larga (English)
 
 ```
-Sharpmd opens Markdown files in the browser and lets you edit them on the formatted text.
+SharpMD opens Markdown files in the browser and lets you edit them on the formatted text.
 
 Set Chrome as the default app for .md files and a double-click opens them with an outline, the folder they live in and search. Click the extension icon to start a new note or to open a file or a whole folder.
 
@@ -114,7 +114,7 @@ After installing, open the extension details and turn on "Allow access to file U
 ## Descripción larga (Español)
 
 ```
-Sharpmd abre archivos Markdown en el navegador y te deja editarlos sobre el texto ya formateado.
+SharpMD abre archivos Markdown en el navegador y te deja editarlos sobre el texto ya formateado.
 
 Poné Chrome como programa por defecto para los .md y con doble clic se abren con el índice, la carpeta donde están y un buscador. Desde el ícono de la extensión arrancás una nota nueva o abrís un archivo o una carpeta entera.
 
@@ -163,7 +163,7 @@ Después de instalarla, abrí los detalles de la extensión y activá "Permitir 
 **Propósito único**
 
 ```
-Sharpmd renders Markdown files in the browser and lets the user edit and save them.
+SharpMD renders Markdown files in the browser and lets the user edit and save them.
 ```
 
 **Justificación de permisos**

@@ -2,7 +2,7 @@
   src: url("chrome-extension://__MSG_@@extension_id__/vendor/fonts/inter.woff2") format("woff2"), url("../vendor/fonts/inter.woff2") format("woff2"); }
 @font-face { font-family: "MDT Inter"; font-style: italic; font-weight: 100 900; font-display: swap;
   src: url("chrome-extension://__MSG_@@extension_id__/vendor/fonts/inter-italic.woff2") format("woff2"), url("../vendor/fonts/inter-italic.woff2") format("woff2"); }
-/* Sharpmd. Todo cuelga de .lmd-root para no tocar páginas donde la extensión no actúa. */
+/* SharpMD. Todo cuelga de .lmd-root para no tocar páginas donde la extensión no actúa. */
 .lmd-root {
   --lmd-side-w: 300px;
   --lmd-content-w: 1040px;

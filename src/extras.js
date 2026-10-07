@@ -318,7 +318,7 @@
             if (file.size > 10 * 1024 * 1024) return fail(T('La imagen pesa más de 10 MB.'));
             if (canManage()) src = await saveImage(file);
             else if (file.type !== 'image/svg+xml' && file.size <= 400 * 1024) src = await asDataUrl(file);
-            else return fail(T('Sin una carpeta abierta la imagen va dentro del documento, y esta es muy grande para eso. Abrí la carpeta desde Sharpmd, o usá una dirección web.'));
+            else return fail(T('Sin una carpeta abierta la imagen va dentro del documento, y esta es muy grande para eso. Abrí la carpeta desde SharpMD, o usá una dirección web.'));
           }
           if (!src) return fail(T('Falta la dirección o el archivo.'));
           if (!safeSrc(src)) return fail(T('Esa dirección no sirve para una imagen.'));
@@ -362,7 +362,7 @@
     const item = Array.from((e.clipboardData && e.clipboardData.items) || []).find((i) => i.kind === 'file' && /^image\//.test(i.type));
     if (!item) return false;
     e.preventDefault();
-    if (!canManage()) { core.flash(T('Para pegar imágenes abrí la carpeta desde la página de Sharpmd'), 'warn'); return true; }
+    if (!canManage()) { core.flash(T('Para pegar imágenes abrí la carpeta desde la página de SharpMD'), 'warn'); return true; }
     const file = item.getAsFile();
     const target = e.target.closest && e.target.closest('.lmd-editable');
     const range = target && getSelection().rangeCount ? getSelection().getRangeAt(0).cloneRange() : null;

@@ -8,10 +8,10 @@ const SITE = 'https://sharpmd.app';
 const src = fs.readFileSync(path.join(root, 'tools', 'landing.src.html'), 'utf8').replace(/\r\n/g, '\n');
 
 const META = {
-  en: { title: 'Sharpmd: Markdown editor and reader in the browser',
+  en: { title: 'SharpMD: Markdown editor and reader in the browser',
     desc: 'Free, open source Markdown editor that runs in the browser. Open a file or a folder, edit on the formatted text, draw diagrams. Optional cloud notes and MCP.',
     og: 'Read and edit Markdown in the browser. Free and open source. Your files stay on your machine.', locale: 'en_US', url: SITE + '/' },
-  es: { title: 'Sharpmd: editor y lector de Markdown en el navegador',
+  es: { title: 'SharpMD: editor y lector de Markdown en el navegador',
     desc: 'Editor de Markdown gratis y de código abierto en el navegador. Abrís un archivo o una carpeta y editás sobre el texto ya formateado. Nube y MCP opcionales.',
     og: 'Leé y editá Markdown en el navegador. Gratis y de código abierto. Tus archivos quedan en tu máquina.', locale: 'es_AR', url: SITE + '/es/' },
 };
@@ -29,7 +29,7 @@ function build(lang) {
   // preguntas frecuentes, también como datos estructurados
   const faq = [...html.matchAll(/<details class="faq"><summary>([\s\S]*?)<\/summary><p>([\s\S]*?)<\/p><\/details>/g)].map((x) => ({ '@type': 'Question', name: plain(x[1]), acceptedAnswer: { '@type': 'Answer', text: plain(x[2]) } }));
   if (faq.length < 3) throw new Error('no se encontraron las preguntas frecuentes');
-  const app = { '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'Sharpmd', url: m.url, applicationCategory: 'ProductivityApplication', operatingSystem: 'Web, Chrome, Edge, Brave',
+  const app = { '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'SharpMD', url: m.url, applicationCategory: 'ProductivityApplication', operatingSystem: 'Web, Chrome, Edge, Brave',
     description: m.desc, inLanguage: lang, image: SITE + '/docs/store/1-reader.png', screenshot: SITE + '/docs/store/2-editing.png', isAccessibleForFree: true,
     offers: [{ '@type': 'Offer', name: 'Free', price: '0', priceCurrency: 'USD' }, { '@type': 'Offer', name: 'Paid', price: '3.99', priceCurrency: 'USD' }],
     license: 'https://opensource.org/licenses/MIT', codeRepository: 'https://github.com/MR-Axel/sharpmd' };
@@ -40,7 +40,7 @@ function build(lang) {
     '<link rel="alternate" hreflang="en" href="' + META.en.url + '">',
     '<link rel="alternate" hreflang="es" href="' + META.es.url + '">',
     '<link rel="alternate" hreflang="x-default" href="' + META.en.url + '">',
-    '<meta property="og:type" content="website">', '<meta property="og:site_name" content="Sharpmd">', '<meta property="og:title" content="' + esc(m.title) + '">',
+    '<meta property="og:type" content="website">', '<meta property="og:site_name" content="SharpMD">', '<meta property="og:title" content="' + esc(m.title) + '">',
     '<meta property="og:description" content="' + esc(m.og) + '">', '<meta property="og:url" content="' + m.url + '">', '<meta property="og:locale" content="' + m.locale + '">',
     '<meta property="og:image" content="' + SITE + '/docs/store/1-reader.png">', '<meta property="og:image:width" content="1280">', '<meta property="og:image:height" content="800">',
     '<meta name="twitter:card" content="summary_large_image">',

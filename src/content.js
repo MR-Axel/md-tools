@@ -1,4 +1,4 @@
-// Sharpmd: reemplaza la vista de texto plano de un archivo Markdown por un lector completo.
+// SharpMD: reemplaza la vista de texto plano de un archivo Markdown por un lector completo.
 (function () {
   'use strict';
 
@@ -60,7 +60,7 @@
     orphan = true;
     clearInterval(refreshTimer);
     const bar = el('div', { class: 'lmd-orphan', role: 'alert' });
-    bar.appendChild(el('span', { text: 'Sharpmd se actualizó. Recargá esta pestaña para seguir. · Sharpmd was updated. Reload this tab to continue.' }));
+    bar.appendChild(el('span', { text: 'SharpMD se actualizó. Recargá esta pestaña para seguir. · SharpMD was updated. Reload this tab to continue.' }));
     const b = el('button', { type: 'button', text: 'Recargar · Reload' });
     b.addEventListener('click', () => location.reload());
     bar.appendChild(b);
@@ -457,7 +457,7 @@
       document.head.appendChild(el('meta', { name: 'viewport', content: 'width=device-width, initial-scale=1' }));
     }
     ui.customStyle = el('style', { id: 'lmd-custom-css' });
-    // Ícono de la pestaña: el de Sharpmd, para que no quede el genérico ni el de otra extensión.
+    // Ícono de la pestaña: el de SharpMD, para que no quede el genérico ni el de otra extensión.
     document.querySelectorAll('link[rel~="icon"]').forEach((n) => n.remove());
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#1a1d23"/>' +
       '<g stroke="#bef264" stroke-width="5.5" stroke-linecap="round"><path d="M27 16 22 48M41 16 36 48M13 27h30M11 38h30"/></g>' +
@@ -1372,7 +1372,7 @@
       };
       if (!LMD.cloud.enabled()) { acct.innerHTML = '<p class="lmd-hint">' + T('Las cuentas y la sincronización todavía no están activas en esta versión.') + '</p>' + plans(null); return; }
       if (!LMD.cloud.signedIn()) {
-        acct.innerHTML = '<p class="lmd-hint">' + T('Entrá a tu cuenta desde la pantalla de inicio de Sharpmd.') + '</p><button type="button" class="lmd-btn lmd-btn-fill" data-act="go-home">' + T('Entrar') + '</button>' + plans(null);
+        acct.innerHTML = '<p class="lmd-hint">' + T('Entrá a tu cuenta desde la pantalla de inicio de SharpMD.') + '</p><button type="button" class="lmd-btn lmd-btn-fill" data-act="go-home">' + T('Entrar') + '</button>' + plans(null);
         return;
       }
       try {
@@ -1967,7 +1967,7 @@
       box.innerHTML =
         '<div class="lmd-ask-card" role="dialog" aria-label="' + T('Permiso para guardar') + '">' +
           '<h3>' + T('Permiso para guardar') + '</h3>' +
-          '<p>' + T('Chrome pide que elijas dónde puede escribir Sharpmd. Elegí la carpeta de este archivo una sola vez y vas a poder guardar todo lo que haya adentro, sin que vuelva a preguntar.') + '</p>' +
+          '<p>' + T('Chrome pide que elijas dónde puede escribir SharpMD. Elegí la carpeta de este archivo una sola vez y vas a poder guardar todo lo que haya adentro, sin que vuelva a preguntar.') + '</p>' +
           '<div class="lmd-ask-actions">' +
             '<button type="button" class="lmd-btn lmd-btn-fill" data-ask="dir">' + T('Elegir la carpeta') + '</button>' +
             '<button type="button" class="lmd-btn" data-ask="file">' + T('Solo este archivo') + '</button>' +

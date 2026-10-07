@@ -57,13 +57,13 @@
 
   async function home(note) {
     LMD.theme.themeOnly(ctx.settings);
-    document.title = 'Sharpmd';
+    document.title = 'SharpMD';
     document.body.textContent = '';
     const box = el('main', { class: 'lmd-home' });
     box.innerHTML =
       '<div class="lmd-home-card">' +
         '<img class="lmd-home-logo" src="' + chrome.runtime.getURL('icons/icon128.png') + '" alt="">' +
-        '<h1>Sharpmd</h1>' +
+        '<h1>SharpMD</h1>' +
         '<p class="lmd-home-sub">' + T('Empezá una nota nueva, o abrí un archivo o una carpeta para leerlo y editarlo acá mismo.') + '</p>' +
         '<div class="lmd-home-actions">' +
           '<button type="button" class="lmd-btn lmd-btn-fill" data-home="new">' + ICON.plus + '<span>' + T('Nuevo archivo') + '</span></button>' +
@@ -78,7 +78,7 @@
         '<p class="lmd-home-msg" role="status" hidden></p>' +
         '<div class="lmd-home-recent" hidden><h2>' + T('Recientes') + '</h2><ul></ul></div>' +
       '</div>' +
-      (window.__MDT_WEB ? '<a class="lmd-home-coffee" href="../?site">' + T('Qué es Sharpmd') + '</a>' : '');
+      (window.__MDT_WEB ? '<a class="lmd-home-coffee" href="../?site">' + T('Qué es SharpMD') + '</a>' : '');
     document.body.appendChild(box);
     const msg = box.querySelector('.lmd-home-msg');
     const say = (text) => { msg.hidden = !text; msg.textContent = text || ''; };
@@ -256,7 +256,7 @@
   function gate(rec, mode) {
     return new Promise((resolve) => {
       LMD.theme.themeOnly(ctx.settings);
-      document.title = 'Sharpmd';
+      document.title = 'SharpMD';
       document.body.textContent = '';
       const box = el('main', { class: 'lmd-home' });
       box.innerHTML =
