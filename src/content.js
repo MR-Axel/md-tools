@@ -359,9 +359,10 @@
     if (!nodes.length) return;
     if (!(await ensure('katex')) || !window.katex) return;
     nodes.forEach((n) => {
+      // Una fórmula con error no muestra el mensaje crudo de KaTeX: queda el código, con un aviso corto.
       try {
-        katex.render(n.getAttribute('data-tex'), n, { displayMode: n.classList.contains('lmd-math-block'), throwOnError: false });
-      } catch (e) { n.textContent = n.getAttribute('data-tex'); }
+        katex.render(n.getAttribute('data-tex'), n, { displayMode: n.classList.contains('lmd-math-block'), throwOnError: true });
+      } catch (e) { LMD.formula.fail(n, e); }
     });
   }
 
@@ -381,8 +382,8 @@
         if (n.hasAttribute('data-l')) box.setAttribute('data-l', n.getAttribute('data-l'));
         n.replaceWith(box);
       } catch (e) {
-        n.classList.add('lmd-mermaid-error');
-        n.title = String(e && e.message || e);
+        // El aviso corto arriba del código, y el volcado del parser detrás de "Ver detalle".
+        LMD.diagram.fail(n, 'mermaid', e);
         document.querySelectorAll('body > [id^="dlmd-mermaid-"]').forEach((x) => x.remove());
       }
     }
@@ -421,12 +422,10 @@
         const box = el('div', { class: 'lmd-diagram lmd-diagram-dot' });
         box.dataset.code = n.textContent; box.dataset.kind = 'dot';
         if (n.hasAttribute('data-l')) box.setAttribute('data-l', n.getAttribute('data-l'));
+        LMD.diagram.keepColors(svg);
         box.appendChild(svg);
         n.replaceWith(box);
-      } catch (e) {
-        n.classList.add('lmd-mermaid-error');
-        n.title = String(e && e.message || e);
-      }
+      } catch (e) { LMD.diagram.fail(n, 'dot', e); }
     }
   }
 
@@ -656,6 +655,7 @@
     LMD.write.init(core);
     LMD.links.init(core);
     LMD.diagram.init(core);
+    LMD.formula.init(core);
     LMD.extras.init(core);
     LMD.board.init(core);
     ui.sync = ui.main.querySelector('.lmd-sync');
@@ -1125,12 +1125,12 @@
 
   let checking = false;
   async function checkForChanges(manual) {
-    if (checking || noDoc) return;
+    if (checking || noDoc || saving) return;
     checking = true;
     const seq = docSeq;
     try {
       const text = await readCurrent();
-      if (seq !== docSeq) return; // mientras se leía, se pasó a otra nota
+      if (seq !== docSeq || saving) return; // mientras se leía, se pasó a otra nota o salió un guardado propio
       // En una nota de la nube, no poder leer es estar sin conexión; volver a leer es haberla recuperado.
       if (appRoot && appRoot.kind === 'cloud') { const was = cloudState; if (text == null) cloudState = 'error'; else if (polled && cloudState === 'error' && !dirty) cloudState = 'ok'; if (was !== cloudState) updateSaveState(); }
       if (text == null) {
@@ -1138,15 +1138,16 @@
       } else if (text !== diskText) {
         // Con cambios hechos sin conexión, de juntarlos con los del servidor se ocupa save() al subirlos.
         if (appRoot && appRoot.kind === 'cloud' && dirty && cloudState === 'error') { clearTimeout(autosaveTimer); save(false); return; }
-        const typing = document.activeElement && document.activeElement.isContentEditable;
-        const merged = dirty && appRoot && appRoot.kind === 'cloud' && !typing ? merge3(diskText, raw, text) : null;
-        // Con el cursor en un bloque no se redibuja: se reintenta apenas se suelta.
-        if (dirty && appRoot && appRoot.kind === 'cloud' && typing) { cloudPoll = 0; return; }
+        // Con el cursor en un bloque no se toca nada: ni el texto ni el dibujo. Lo de afuera queda esperando
+        // (y el guardado automático también, para no pisarlo) hasta que la persona sale del bloque.
+        if (typingNode()) { outside = true; diskStamp = ''; return; }
+        outside = false;
+        const merged = dirty && appRoot && appRoot.kind === 'cloud' ? merge3(diskText, raw, text) : null;
         diskText = text;
         if (merged != null) { raw = merged; syncSource(); markDirty(); render(); flash(T('Se sumaron los cambios de otra persona')); }
         else if (dirty) flash(T('El archivo cambió en el disco. Tus cambios sin guardar se mantienen'), 'warn');
         else { raw = text; render(); flash(T('Documento actualizado')); }
-      } else if (manual) flash(T('Sin cambios'));
+      } else { if (polled) outside = false; if (manual) flash(T('Sin cambios')); }
     } finally { checking = false; }
   }
 
@@ -1886,6 +1887,26 @@
 
   const BLOCKS_INSIDE = 'UL,OL,P,PRE,BLOCKQUOTE,DIV,TABLE,DL,H1,H2,H3,H4,H5,H6';
 
+  // REGLA: mientras hay un elemento editable con foco dentro del artículo (un bloque, una celda, un bloque nuevo
+  // o el cuadro de un bloque de código), nada lo reemplaza ni le saca el foco: ni un guardado, ni el sondeo de
+  // cambios, ni un evento en vivo de la nube. Lo escrito se lleva al Markdown sin tocar ese nodo (flushTyping), y
+  // lo que haya que redibujar o traer de afuera espera a que la persona salga. Quien agregue algo que corre solo
+  // (un temporizador, un evento) pregunta primero por typingNode().
+  const typingNode = () => {
+    const a = document.activeElement;
+    return a && a !== ui.rawEdit && ui.article.contains(a) && (a.isContentEditable || a.classList.contains('lmd-src')) ? a : null;
+  };
+  let outside = false; // hay un cambio de afuera (disco o nube) esperando a que se suelte el bloque
+  let saving = false; // hay una escritura propia en curso: lo que se relea en el medio no es un cambio de otro
+  // Pasa al Markdown lo escrito en el elemento con foco, sin tocarlo.
+  function flushTyping() {
+    const a = typingNode();
+    if (!a || !editMode || core.hold) return;
+    if (a.classList.contains('lmd-src')) { if (a._flush) a._flush(); }
+    else if (a.classList.contains('lmd-draft')) LMD.write.sync(a);
+    else if (a.classList.contains('lmd-editable') && commitBlock(a)) a._typed = true;
+  }
+
   function syncSource() {
     eol = raw.indexOf('\r\n') !== -1 ? '\r\n' : '\n';
     srcLines = raw.split(/\r?\n/);
@@ -2040,7 +2061,7 @@
     softTimer = setTimeout(() => {
       const a = document.activeElement;
       // Con el selector de enlaces abierto tampoco: el bloque donde va el enlace tiene que seguir ahí.
-      if (!needsRender || core.hold || (a && (a.isContentEditable || a.classList.contains('lmd-src')))) return;
+      if (!needsRender || core.hold || typingNode() || (a && (a.isContentEditable || a.classList.contains('lmd-src')))) return;
       render();
     }, 350);
   }
@@ -2178,18 +2199,26 @@
     if (!r || codeBox.querySelector('.lmd-src')) return;
     const s = r[0] + fmOffset; const e = r[1] + fmOffset;
     const fenced = /^\s*(`{3,}|~{3,})/.test(srcLines[s] || '');
-    const from = fenced ? s + 1 : s; const to = fenced ? e - 1 : e;
+    const from = fenced ? s + 1 : s; let to = fenced ? e - 1 : e;
+    const before = srcLines.slice(from, to);
     const ta = el('textarea', { class: 'lmd-src', spellcheck: 'false' });
-    ta.value = srcLines.slice(from, to).join('\n');
+    ta.value = before.join('\n');
     ta.rows = Math.max(3, to - from + 1);
     codeBox.querySelector('pre').hidden = true;
     codeBox.appendChild(ta); ta.focus();
     let done = false;
     const finish = (apply) => {
       if (done) return; done = true;
-      if (apply && ta.value !== srcLines.slice(from, to).join('\n')) replaceLines(from, to, ta.value.split('\n'), null);
+      clearTimeout(typed);
+      if (apply) put(ta.value.split('\n')); else put(before);
       needsRender = true; ta.remove(); codeBox.querySelector('pre').hidden = false; render();
     };
+    // Lo escrito pasa al Markdown tras una pausa, con el cuadro abierto y sin redibujar: así el guardado
+    // automático lo ve aunque no se salga del bloque. Escape vuelve a lo que había.
+    const put = (lines) => { if (lines.join('\n') !== srcLines.slice(from, to).join('\n')) { replaceLines(from, to, lines, null); to = from + lines.length; } };
+    let typed = null;
+    ta._flush = () => { if (!done) put(ta.value.split('\n')); };
+    ta.addEventListener('input', () => { clearTimeout(typed); typed = setTimeout(ta._flush, 1200); });
     ta.addEventListener('blur', () => finish(true));
     ta.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
@@ -2290,9 +2319,15 @@
     let typeTimer = null;
     ui.article.addEventListener('input', (e) => {
       const node = e.target.closest && e.target.closest('.lmd-editable');
-      if (!node || !editMode || node.classList.contains('lmd-draft') || node.dataset.formula) return;
+      if (!node || !editMode) return;
       clearTimeout(typeTimer);
-      typeTimer = setTimeout(() => { if (editMode && node.isConnected && !core.hold && commitBlock(node)) node._typed = true; }, 1200);
+      // Solo se reescribe el Markdown: el nodo con foco no se toca (una celda no recalcula ni redibuja la tabla
+      // hasta que se sale de ella). Vale también para un bloque nuevo y para una celda con fórmula.
+      typeTimer = setTimeout(() => {
+        if (!editMode || !node.isConnected || core.hold) return;
+        if (node.classList.contains('lmd-draft')) LMD.write.sync(node);
+        else if (commitBlock(node)) node._typed = true;
+      }, 1200);
     });
     ui.article.addEventListener('focusout', (e) => {
       const node = e.target.closest && e.target.closest('.lmd-editable');
@@ -2306,6 +2341,10 @@
       node._md = null;
       softRender();
     });
+    // Al soltar el bloque se trae lo que cambió afuera mientras se escribía.
+    ui.article.addEventListener('focusout', () => {
+      if (outside) setTimeout(() => { if (outside && !typingNode()) { cloudPoll = 0; checkForChanges(false); } }, 450);
+    });
     ui.article.addEventListener('keydown', (e) => {
       const node = e.target.closest && e.target.closest('.lmd-editable');
       if (!node) return;
@@ -2313,7 +2352,7 @@
       // Enter cierra el bloque y abre uno nuevo debajo; en una celda solo la confirma.
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (node.classList.contains('lmd-cell')) node.blur(); else LMD.write.enter(node); }
       else if (e.key === 'Enter') { e.preventDefault(); document.execCommand('insertLineBreak'); }
-      else if (e.key === 'Escape') { e.preventDefault(); node._md = null; if (draft) node._done = true; needsRender = true; node.blur(); render(); }
+      else if (e.key === 'Escape') { e.preventDefault(); node._md = null; if (draft) LMD.write.drop(node); needsRender = true; node.blur(); render(); }
       else if (draft) LMD.write.onKey(e, node);
     });
     document.addEventListener('paste', (e) => {
@@ -2378,7 +2417,7 @@
     dirHandle: async (dirUrl) => { let dir = rootOf(dirUrl).handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, ensure, isDark,
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
-    rangeOf, render, softRender, flash, insertLines, spliceLines, commitBlock, undo, redo, editCode, vFile, toHref,
+    rangeOf, render, softRender, flash, insertLines, spliceLines, replaceLines, commitBlock, undo, redo, editCode, vFile, toHref,
     inline: (text) => DOMPurify.sanitize(buildParser().renderInline(text)),
     setRaw(text) { pushUndo(); raw = text; syncSource(); markDirty(); render(); },
   };
@@ -2499,12 +2538,15 @@
   async function catchUp(path) {
     let n = null;
     try { n = await LMD.cloud.read(path); } catch (e) { if (e.code !== 'not_found') throw e; }
-    if (!n || n.text === diskText) return;
+    if (!n || n.text === diskText) return true;
+    // Juntar cambia el texto y hay que redibujar: con el cursor en un bloque, espera.
+    if (typingNode()) return false;
     const r = await LMD.cloud.settle(path, diskText, raw, n.text);
     diskText = n.text;
     if (r.text !== raw) { raw = r.text; syncSource(); render(); }
     dirty = raw !== diskText;
     offlineNote(r);
+    return true;
   }
   function offlineNote(r) {
     if (r.aside) flash(T('La nota cambió en la nube. Lo que escribiste sin conexión quedó en "{a}"', { a: r.aside }), 'warn');
@@ -2514,8 +2556,9 @@
   async function save(interactive) {
     if (noDoc) return true;
     const seq = docSeq;
-    const focused = document.activeElement;
-    if (focused && focused.blur && (focused.isContentEditable || focused.classList.contains('lmd-src'))) focused.blur();
+    const later = () => { clearTimeout(autosaveTimer); autosaveTimer = setTimeout(() => save(false), 2500); return false; };
+    // Guardar no saca el foco: lo escrito en el bloque abierto pasa al Markdown y la persona sigue escribiendo.
+    flushTyping();
     if (ui.rawEdit && !ui.rawEdit.hidden) { raw = ui.rawEdit.value.replace(/\r?\n/g, eol); syncSource(); dirty = raw !== diskText; }
     if (interactive && appRoot && appRoot.kind === 'local') return saveNoteToDisk();
     if (!dirty && fileHandle) { if (interactive) flash(T('Sin cambios para guardar')); return true; }
@@ -2553,15 +2596,25 @@
       if (appRoot && appRoot.kind === 'cloud') {
         const path = vParts(HERE).join('/');
         await LMD.cloud.stash(path, raw, diskText); stashed = raw;
-        if (cloudState === 'error') { await catchUp(path); await LMD.cloud.stash(path, raw, diskText); stashed = raw; }
+        if (cloudState === 'error') { if (!(await catchUp(path))) return later(); await LMD.cloud.stash(path, raw, diskText); stashed = raw; }
       }
-      const writable = await fileHandle.createWritable();
-      await writable.write(raw);
-      await writable.close();
+      // Cambió afuera mientras se escribía: no se pisa. La copia local ya quedó; se sube al soltar el bloque.
+      // Ya fuera del bloque, primero se trae y se junta lo de afuera, y recién después se guarda.
+      if (outside && !interactive) { if (!typingNode()) { cloudPoll = 0; checkForChanges(false); } return later(); }
+      // Mientras se escribe en el archivo la persona puede seguir tecleando: se da por guardado lo que salió,
+      // no lo que haya ahora.
+      const sent = raw;
+      saving = true;
+      try {
+        const writable = await fileHandle.createWritable();
+        await writable.write(sent);
+        await writable.close();
+      } finally { saving = false; }
       if (seq !== docSeq) return true;
       fileCache.delete(HERE); // la búsqueda en la carpeta vuelve a leerlo
       cloudState = 'ok';
-      diskText = raw; dirty = false; updateSaveState();
+      diskText = sent; diskStamp = ''; dirty = raw !== diskText; updateSaveState();
+      if (dirty) markDirty(); // se escribió más durante el guardado: sale en el próximo
       if (interactive || !(appRoot && (appRoot.kind === 'local' || appRoot.kind === 'cloud'))) flash(T('Guardado'));
       return true;
     } catch (e) {

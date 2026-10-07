@@ -103,8 +103,59 @@
 
   const draftText = (d) => inlineMd(d).replace(/\n+$/, '').trim();
 
+  // Escribe en el archivo las líneas del borrador, o las reescribe si ya estaban (d._syn guarda dónde quedaron).
+  // No toca el borrador en pantalla. Devuelve en qué línea quedó el bloque y de qué tipo es.
+  function place(d, text) {
+    let kind = d.dataset.kind || 'p'; let at; let body; const owners = [];
+    if (d._li) {
+      const r = core.rangeOf(d._li);
+      const s = r[0] + fm(); at = r[1] + fm();
+      while (at - 1 > s && blank(at - 1)) at--;
+      const m = ITEM_RE.exec(lines()[s] || '') || ['', '', '-', ' ', ''];
+      const marker = /\d/.test(m[2]) ? (parseInt(m[2], 10) + 1) + m[2].slice(-1) : m[2];
+      for (let n = d._li.parentNode; n && n !== core.ui.article; n = n.parentNode) owners.push(n);
+      body = [m[1] + marker + m[3] + (m[4] ? '[ ] ' : '') + text.replace(/\n/g, ' ')];
+      kind = 'item';
+    } else {
+      at = lineAfter(d._anchor);
+      const prefix = kind === 'ul' || kind === 'task' ? listPrefix(kind, at) : (KINDS[kind] || '');
+      const parts = text.split('\n');
+      if (kind === 'p') body = parts.map((p, i) => p.trim() + (i < parts.length - 1 ? '\\' : ''));
+      else if (kind === 'quote') body = parts.map((p) => '> ' + p.trim());
+      else body = [prefix + parts.join(' ').trim()];
+    }
+    const y = d._syn;
+    if (y) {
+      if (y.text !== text) { core.replaceLines(y.at, y.at + y.n, y.fix(body)); y.n = body.length; y.text = text; }
+      return { at: y.at, kind };
+    }
+    const out = d._li ? body : padded(at, body);
+    core.insertLines(at, out, owners);
+    const pre = out[0] === '' && body[0] !== '' ? 1 : 0;
+    // El marcador de un ítem se decidió mirando las líneas de al lado antes de escribirlo: al reescribir se mantiene.
+    const lead = /^(\s*(?:[-*+]|\d{1,9}[.)])\s+)/.exec(body[0]);
+    const fix = (b) => (lead && kind !== 'p' && kind !== 'quote' ? [b[0].replace(/^(\s*(?:[-*+]|\d{1,9}[.)])\s+)/, lead[1])].concat(b.slice(1)) : b);
+    d._syn = { s: at, at: at + pre, n: body.length, post: out.length - pre - body.length, text, fix };
+    return { at: at + pre, kind };
+  }
+
+  // Saca del archivo lo que el borrador había escrito, con los renglones en blanco que sumó.
+  function unplace(d) {
+    const y = d._syn; if (!y) return;
+    d._syn = null;
+    core.replaceLines(y.s, y.at + y.n + y.post, []);
+  }
+
+  // Lo escrito en un borrador pasa al archivo tras una pausa, sin cerrarlo ni redibujar: el foco sigue ahí.
+  function syncDraft(d) {
+    if (d._done || !d.isConnected) return;
+    const text = draftText(d);
+    if (text) place(d, text); else unplace(d);
+  }
+
   function discard(d) {
     d._done = true;
+    unplace(d);
     (d._li ? d.parentNode : d).remove();
   }
 
@@ -122,30 +173,7 @@
       return;
     }
     d._done = true;
-    let at; let kind = d.dataset.kind || 'p';
-    if (d._li) {
-      const r = core.rangeOf(d._li);
-      const s = r[0] + fm(); at = r[1] + fm();
-      while (at - 1 > s && blank(at - 1)) at--;
-      const m = ITEM_RE.exec(lines()[s] || '') || ['', '', '-', ' ', ''];
-      const marker = /\d/.test(m[2]) ? (parseInt(m[2], 10) + 1) + m[2].slice(-1) : m[2];
-      const owners = [];
-      for (let n = d._li.parentNode; n && n !== core.ui.article; n = n.parentNode) owners.push(n);
-      core.insertLines(at, [m[1] + marker + m[3] + (m[4] ? '[ ] ' : '') + text.replace(/\n/g, ' ')], owners);
-      kind = 'item';
-    } else {
-      at = lineAfter(d._anchor);
-      const prefix = kind === 'ul' || kind === 'task' ? listPrefix(kind, at) : (KINDS[kind] || '');
-      const parts = text.split('\n');
-      let body;
-      if (kind === 'p') body = parts.map((p, i) => p.trim() + (i < parts.length - 1 ? '\\' : ''));
-      else if (kind === 'quote') body = parts.map((p) => '> ' + p.trim());
-      else body = [prefix + parts.join(' ').trim()];
-      at = lineAfter(d._anchor);
-      const out = padded(at, body);
-      core.insertLines(at, out, []);
-      at += out[0] === '' && body[0] !== '' ? 1 : 0;
-    }
+    const { at, kind } = place(d, text);
     if (follow === 'stay') {
       // Hace falta ya el bloque definitivo (por ejemplo, para ponerle un enlace): se redibuja y se lo devuelve.
       core.render();
@@ -272,7 +300,6 @@
     table: { body: () => ['| ' + T('Columna') + ' 1 | ' + T('Columna') + ' 2 |', '| --- | --- |', '|  |  |'], then: (top) => { const c = top.querySelector('th'); if (c) { c.focus(); getSelection().selectAllChildren(c); } } },
     code: { body: () => ['```', '', '```'], then: (top) => core.editCode(top) },
     diagram: { body: () => ['```mermaid', 'graph LR', '  A[' + T('Inicio') + '] --> B[' + T('Fin') + ']', '```'], then: (top) => { if (LMD.diagram) LMD.diagram.edit(top.matches('.lmd-diagram, pre.lmd-mermaid') ? top : top.querySelector('.lmd-diagram, pre.lmd-mermaid')); } },
-    math: { body: () => ['$$', 'E = mc^2', '$$'] },
     alert: { body: () => ['> [!NOTE]', '> ' + T('Texto del aviso')], then: (top) => { const p = top.querySelector('.lmd-editable'); if (p) { p.focus(); getSelection().selectAllChildren(p); } } },
     hr: { body: () => ['---'] },
     board: { body: () => ['```kanban', '## ' + T('Por hacer'), '- [ ] ' + T('Primera tarjeta'), '', '## ' + T('En curso'), '', '## ' + T('Hecho'), '```'] },
@@ -290,6 +317,8 @@
       LMD.links.dialog(null).then((link) => { if (link) insertTemplate(after, [LMD.links.md(link)]); });
       return;
     }
+    // Una fórmula no se inserta con un ejemplo: abre su editor, y recién se escribe al aplicar.
+    if (what === 'math') { LMD.formula.create(after); return; }
     const t = TEMPLATES[what];
     if (t) insertTemplate(after, t.body(), t.then);
   }
@@ -348,7 +377,7 @@
     menu = el('div', { class: 'lmd-menu', role: 'menu' });
     menu.innerHTML =
       '<p class="lmd-menu-label">' + T(block ? 'Insertar debajo' : 'Insertar') + '</p>' +
-      '<div class="lmd-menu-grid">' + INSERTS.map((i) => '<button type="button" role="menuitem" data-ins="' + i[0] + '">' + (ICON['b_' + i[0]] || '') + '<span>' + T(i[1]) + '</span></button>').join('') + '</div>' +
+      '<div class="lmd-menu-grid">' + INSERTS.filter((i) => i[0] !== 'math' || core.settings.plugins.katex).map((i) => '<button type="button" role="menuitem" data-ins="' + i[0] + '">' + (ICON['b_' + i[0]] || '') + '<span>' + T(i[1]) + '</span></button>').join('') + '</div>' +
       (block && !draft && span(block) ?
         (plain ? '<p class="lmd-menu-label">' + T('Convertir en') + '</p><div class="lmd-menu-grid">' +
           [['p', 'Párrafo'], ['h1', 'Título 1'], ['h2', 'Título 2'], ['h3', 'Título 3']].map((i) => '<button type="button" role="menuitem" data-conv="' + i[0] + '">' + ICON['b_' + i[0]] + '<span>' + T(i[1]) + '</span></button>').join('') + '</div>' : '') +
@@ -547,6 +576,9 @@
     init, enter, onKey, append, closeMenu,
     remove: (node) => { const b = topBlock(node); if (b) removeBlock(b); },
     blur: (d) => commitDraft(d, false),
+    sync: syncDraft,
+    put: (after, body) => insertTemplate(after, body),
+    drop: (d) => { d._done = true; unplace(d); },
     settle: (d) => commitDraft(d, 'stay') || null,
     menuAt: (x, y) => openMenu(x, y, core.lastBlock && core.lastBlock.isConnected ? topBlock(core.lastBlock) : blockNear(window.innerHeight)),
   };

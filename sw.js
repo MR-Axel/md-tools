@@ -13,8 +13,8 @@ const ROOT = new URL('./', self.location.href);
 
 // El esqueleto: lo que carga src/app.html. Una prueba (tests/mobile.mjs) falla si acá falta algo de esa página.
 const SHELL = [
-  'src/app.html', 'src/content.css', 'vendor/hljs-themes.css', 'manifest.webmanifest',
-  'src/boot.js', 'src/web.js', 'src/defaults.js', 'src/kit.js', 'src/touch.js', 'src/dialog.js', 'src/templates.js', 'src/markdown.js',
+  'src/app.html', 'src/content.css', 'src/editors.css', 'vendor/hljs-themes.css', 'manifest.webmanifest',
+  'src/boot.js', 'src/web.js', 'src/defaults.js', 'src/kit.js', 'src/touch.js', 'src/formula.js', 'src/dialog.js', 'src/templates.js', 'src/markdown.js',
   'src/theme.js', 'src/serialize.js', 'src/store.js', 'src/cloud.js', 'src/home.js', 'src/write.js', 'src/links.js',
   'src/emoji-data.js', 'src/emoji.js', 'src/diagram.js', 'src/extras.js', 'src/board.js', 'src/sync.js', 'src/comments.js', 'src/content.js',
   'vendor/markdown-it.min.js', 'vendor/markdown-it-emoji.min.js', 'vendor/markdown-it-sub.min.js', 'vendor/markdown-it-sup.min.js',
