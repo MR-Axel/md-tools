@@ -53,6 +53,16 @@
       <li>"Remember on this device" keeps the key of a protected folder in your browser, in a form that cannot be exported. "Forget on this device", locking the folder or signing out removes it.</li>
       <li>Deleting a note removes it from the server. To delete the whole account, write to <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a> from the account's email.</li>
     </ul>
+    <h2>Live sessions</h2>
+    <p>On the paid plan you can open a live session on one of your cloud notes and pass its link to other people. They join from the web, without an account, and edit the note with you.</p>
+    <ul>
+      <li>What a guest sees: that note and nothing else. Its text while the session is open, the name you chose for the session, the names of the other people in it and the block each one is in. Not your email, not your other notes or folders, not the history of the note.</li>
+      <li>What is kept about a guest: the name they chose, in the memory of the server while they are in the session, and a re-entry key stored as a hash so they can come back after a dropped connection. No email and no account. Both are gone when the session ends, when you remove that guest or when they leave. Their own browser remembers the name, to suggest it next time.</li>
+      <li>What a guest writes becomes part of your note, like any other edit, and of its version history.</li>
+      <li>The link is the key: whoever has it can read and edit that note until the session ends. The server stores only a hash of its secret. The secret travels in the address of the page, so GitHub Pages, as the host of the web version, may log it like any other address.</li>
+      <li>You can end the session at any time: every guest loses access at once and the link stops working. Removing one guest cuts their access at once and changes the link. A session ends by itself after 12 hours with nobody connected, and when its note is deleted, renamed or moved.</li>
+      <li>A note in a password-protected folder cannot be opened live: the server cannot read it.</li>
+    </ul>
     <h2>Network requests</h2>
     <ul>
       <li>The extension installed from its ZIP checks once a day the version number published on GitHub, to tell you when there is an update. It sends no data, and you can make it weekly or turn it off in Settings. The Chrome Web Store version does not make this request.</li>
@@ -92,6 +102,16 @@
       <li>De cada nota de la nube que abrís queda una copia en tu navegador, para abrirla sin conexión. La copia de una nota de una carpeta protegida queda cifrada. Al salir de la cuenta esas copias se borran, salvo lo escrito que todavía no se subió.</li>
       <li>"Recordar en este dispositivo" guarda la llave de una carpeta protegida en tu navegador, de una forma que no se puede exportar. "Olvidar en este dispositivo", bloquear la carpeta o salir de la cuenta la borran.</li>
       <li>Al eliminar una nota se borra del servidor. Para borrar la cuenta entera, escribí a <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a> desde el correo de la cuenta.</li>
+    </ul>
+    <h2>Sesiones en vivo</h2>
+    <p>Con el plan pago podés abrir una sesión en vivo sobre una de tus notas de la nube y pasarle el enlace a otras personas. Entran desde la web, sin cuenta, y editan la nota con vos.</p>
+    <ul>
+      <li>Qué ve un invitado: esa nota y nada más. Su texto mientras la sesión esté abierta, el nombre que elegiste para la sesión, los nombres de las demás personas y en qué bloque está cada una. No ve tu correo, ni tus otras notas o carpetas, ni el historial de la nota.</li>
+      <li>Qué se guarda de un invitado: el nombre que eligió, en la memoria del servidor mientras está en la sesión, y una contraseña de reingreso guardada como hash, para que pueda volver si se le corta la conexión. Ni correo ni cuenta. Las dos cosas se van cuando termina la sesión, cuando sacás a ese invitado o cuando sale. Su propio navegador recuerda el nombre, para proponérselo la próxima vez.</li>
+      <li>Lo que escribe un invitado pasa a ser parte de tu nota, como cualquier otra edición, y de su historial de versiones.</li>
+      <li>El enlace es la llave: quien lo tenga puede leer y editar esa nota hasta que la sesión termine. El servidor guarda solo un hash de su secreto. El secreto viaja en la dirección de la página, así que GitHub Pages, que aloja la versión web, puede registrarlo como cualquier otra dirección.</li>
+      <li>Podés terminar la sesión cuando quieras: todos los invitados pierden el acceso en el acto y el enlace deja de servir. Sacar a un invitado le corta el acceso en el acto y cambia el enlace. Una sesión termina sola a las 12 horas sin nadie conectado, y cuando su nota se elimina, cambia de nombre o se mueve.</li>
+      <li>Una nota de una carpeta protegida con contraseña no se puede abrir en vivo: el servidor no la puede leer.</li>
     </ul>
     <h2>Pedidos de red</h2>
     <ul>

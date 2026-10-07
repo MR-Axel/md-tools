@@ -58,7 +58,7 @@ curl -X POST https://sync.example.com/admin/plan -H "x-admin-key: $ADMIN_KEY" \
 
 ## What it stores
 
-Email, notes and their previous versions (paid plan, 30 days), and hashes of sign-in codes, sessions and tokens. Sessions and tokens are stored hashed: the server cannot show a token again after creating it.
+Email, notes and their previous versions (paid plan, 30 days), and hashes of sign-in codes, sessions and tokens. Sessions and tokens are stored hashed: the server cannot show a token again after creating it. Of a live session it stores the note, the name its owner chose and the hash of the link's secret; the guests live in memory only (see "Live sessions").
 
 Notes are not end-to-end encrypted by default: the MCP endpoint has to read them to serve an AI, and sharing has to hand them to another account. There are two layers on top of that, and they are independent:
 
@@ -133,7 +133,8 @@ Sign-in is a six-digit code sent by mail, no passwords.
 | `POST /auth/verify` `{ email, code }` | Returns `{ session, account }`. Limits: `tries_mail_hour`, `tries_mail_day`, `tries_ip_hour`, with the wait, and `tries_code` when that code is used up and a new one is needed |
 | `GET /account` | Plan, note count and limit |
 | `GET /notes` | List |
-| `GET` / `PUT` / `DELETE /notes/{path}` | Read, write `{ text }`, delete |
+| `GET` / `PUT` / `DELETE /notes/{path}` | Read (`{ text, rev, updated, role }`), write `{ text, rev? }`, delete. See "Revisions" below |
+| `GET /events?path=` | Server-sent events for an open note: `presence` (who else has it open), `saved` (`{ by, updated, rev }`), `comments`, `vault`, and `live` while a live session is open |
 | `POST /rename` `{ from, to, text?, updated? }` | Rename. With a protected folder involved, `text` is the note for its new path and `updated` what the client read: `409 changed` if the note changed meanwhile |
 | `GET /search?q=` | Search the text of every note outside protected folders |
 | `GET /vaults` | Protected folders: `{ id, folder, salt, iters, wrapped, check, state, ai }`. `ai` is `null`, or `{ until }` while unlocked for the AI (`until: 0` means until locked) |
@@ -150,6 +151,51 @@ Sign-in is a six-digit code sent by mail, no passwords.
 
 MCP tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`.
 
+### Revisions
+
+Every note has a revision number, `rev`. It starts at 1 and goes up by one with each save. `GET /notes/{path}` returns it, and so does a successful `PUT`.
+
+- `PUT { text, rev }` saves only if `rev` is the current revision of the note. If someone saved in between, nothing is written and the answer is `409 rev_conflict` with the current `text`, `rev` and `updated`. The client merges and tries again over the new revision. The app merges by lines and, where both sides touched the same lines, keeps the saved text and puts the local one aside.
+- `PUT { text }` without `rev` saves as before, overwriting. That keeps an extension that has not been updated working. A note that does not exist yet is created either way.
+- `rev` must be a whole number, zero or more: anything else answers `400 bad_rev`.
+- `write_note` and `append_note` save over the revision that is current at that instant, in one step, so an AI never overwrites a save that came in between and never appends to an old text. Both are announced on `/events`, with `by: "mcp"`.
+
+### Live sessions
+
+The owner of a note, on the paid plan (or with `LIVE_FREE=1`), opens a live session on it and hands out a link. Whoever has the link joins without an account and gets a pass that works only for that note and only while the session is open.
+
+| Call | What it does |
+|---|---|
+| `POST /live` `{ path, name }` | Opens the session on a note of the account and returns `{ secret, open, name, created, max, people }`. `name` is what guests see instead of the email. The secret is returned once: only its hash is stored. If the session was already open it answers without `secret`. `402 live_needs_plan`, `409 live_vault` for a note in a protected folder |
+| `GET /live?path=` | `{ open: false }`, or the session: `{ open, name, created, max, people }` |
+| `DELETE /live?path=` | Ends the session. Every pass stops working at once |
+| `POST /live/rotate` `{ path }` | New secret. The old link stops working; the people inside stay |
+| `POST /live/kick` `{ path, id }` | Removes a guest (`id` as in `people`, for example `g3`). Their pass and re-entry key die at once, and the secret changes so they cannot come back with the same link. Returns the session with the new `secret` |
+| `POST /live/look` `{ secret }` | Before joining: `{ by, note, people, full }`. `404 live_gone` for a wrong secret and for a session that ended, with no way to tell them apart. Twenty wrong secrets an hour per IP |
+| `POST /live/join` `{ secret, name }` | Returns `{ pass, ticket, you, name, color, by, max, note: { name, text, rev, updated }, people }`. `429 live_full` when the session is full. With `{ ticket, name }` instead of the secret, someone who had already joined comes back after losing the pass, even if the link changed |
+| `GET /live/note` | With `Authorization: Bearer mdl_...` (the pass): `{ name, text, rev, updated }` |
+| `PUT /live/note` `{ text, rev }` | A guest always saves over a revision: `400 rev_required` without it, `409 rev_conflict` like any other save. 300 saves a minute per guest |
+| `GET /live/events` | Server-sent events for the guest: `live` and `saved`, nothing else |
+| `POST /live/presence` `{ block, editing }` | Where the caller is. A guest sends it with the pass; the owner with the account session and `path`. `block` is a short mark of letters, digits, dots, dashes and colons (the app sends a fingerprint of the block and its lines; the text never travels here). Forty every ten seconds per person, then `429 presence_rate`. If someone else is already writing in that block the answer carries `held` with their id |
+| `POST /live/leave` | The guest leaves: pass and re-entry key are deleted |
+
+`people` is `[{ id, name, color, block, editing, here }]`. `id` is `o` for whoever opened the session and `g1`, `g2`... for guests; `color` is a number the server assigns. Nobody can speak for someone else: presence is always attributed to the pass or session that sent it, and names cannot be changed by another participant. A name is trimmed to 40 characters and loses control characters and invisible direction marks; it is otherwise stored as typed, so a client must always show it as text, never as HTML.
+
+While a session is open, the `saved` event sent to its members (the owner and the guests) carries the change itself, so they apply it without another request: `text` with the whole note, or, when the note is over 4000 characters, `base` and `patch: { at, del, lines }` (from line `at`, remove `del` lines and put `lines`, over revision `base`). `pid` says who saved. An event for a guest never carries an email. Roster changes are batched: at most one `live` event every 120 ms per session.
+
+What a pass cannot do: list or read any other note, see the history, share, create links or tokens, use MCP, or call any route outside `/live/`. Guests are kept in memory only (name, color, pass hash); re-entry keys are stored as hashes in the `live_tickets` table and deleted with the session. A guest with no connection and no requests for two minutes gives up the place and can come back with the re-entry key.
+
+A session ends when the owner ends it, after 12 hours with nobody connected, when the note is deleted, renamed or moved, when its folder gets a password, or when the account leaves the paid plan.
+
+| Variable | What it does | Default |
+|---|---|---|
+| `LIVE_FREE` | `1` lets the free plan open live sessions too | off |
+| `LIVE_PEOPLE` | People per session, counting whoever opened it | `12` |
+| `LIVE_IDLE_MS` | How long a session with nobody connected lasts | 12 hours |
+| `LIVE_GUEST_MS` | How long a guest with no connection keeps the place | 2 minutes |
+
+The connection limits of `/events` apply to `/live/events` too: 60 open connections per IP, and 4 per guest. Behind a proxy, make sure it does not buffer event streams (the server sends `x-accel-buffering: no`) and that it lets them stay open.
+
 A comment is how the user points the AI at a passage: it stays open until the AI reads it with `list_comments`, makes the change and calls `resolve_comment`. The server cannot wake an AI client up; the client reads the open comments when it is asked to, or on its own schedule.
 
 Connecting Claude Code:
@@ -163,6 +209,8 @@ claude mcp add --transport http sharpmd https://sync.example.com/mcp --header "A
 ```
 cd ../tests
 node server.mjs
+node revision.mjs
+node live.mjs
 node cloud.mjs
 node vault.mjs
 node vaultapp.mjs
