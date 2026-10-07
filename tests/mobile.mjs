@@ -10,11 +10,15 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // El sitio, servido como en sharpmd.app
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.woff2': 'font/woff2', '.md': 'text/markdown' };
 const hits = [];
+const published = { mark: '' }; // una publicación nueva de la app: la página y un script cambian a la vez
 const site = http.createServer((req, res) => {
   const rel = decodeURIComponent(req.url.split('?')[0]); const file = path.join(root, rel.endsWith('/') ? rel + 'index.html' : rel);
   hits.push(rel);
   if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end(); return; }
-  res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' }); fs.createReadStream(file).pipe(res);
+  res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' });
+  if (published.mark && rel === '/src/app.html') { res.end(fs.readFileSync(file, 'utf8').replace('<body>', '<body data-published="' + published.mark + '">')); return; }
+  if (published.mark && rel === '/src/kit.js') { res.end(fs.readFileSync(file, 'utf8') + '\nwindow.__published = "' + published.mark + '";\n'); return; }
+  fs.createReadStream(file).pipe(res);
 });
 await new Promise((resolve) => site.listen(0, '127.0.0.1', resolve));
 const origin = 'http://127.0.0.1:' + site.address().port; const home = origin + '/src/app.html';
@@ -449,7 +453,15 @@ try {
     const html = fs.readFileSync(path.join(root, 'src', 'app.html'), 'utf8');
     const used = [...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)].map((m) => path.posix.normalize('src/' + m[1]));
     check('el esqueleto guardado incluye la página y todo lo que ella carga', shell.includes('src/app.html') && used.length > 30 && used.every((u) => shell.includes(u)), used.filter((u) => !shell.includes(u)));
-    check('y cada archivo de esa lista existe', shell.every((u) => fs.existsSync(path.join(root, u))), shell.filter((u) => !fs.existsSync(path.join(root, u))));
+    // Lo que la app pide después (LAZY_APP en content.js) se guarda aparte, ya con el service worker activo.
+    const late = eval(/const LATE = (\[[\s\S]*?\]);/.exec(sw)[1]);
+    const lazySrc = /const LAZY_APP = \{([\s\S]*?)\n\s*\};/.exec(fs.readFileSync(path.join(root, 'src', 'content.js'), 'utf8'))[1];
+    const lazy = [...lazySrc.matchAll(/'((?:src|vendor)\/[^']+)'/g)].map((m) => m[1]).filter((u) => !/mermaid|viz-global/.test(u));
+    check('lo que se carga después del primer pintado no está en la página y sí en la lista de después', lazy.length >= 9 && lazy.every((u) => late.includes(u) && !shell.includes(u) && !used.includes(u)), lazy.filter((u) => !late.includes(u) || used.includes(u)));
+    check('los scripts de la página no frenan al analizador: todos llevan defer menos el del primer cuadro', [...html.matchAll(/<script([^>]*)src="([^"]+)"/g)].every((m) => /\bdefer\b/.test(m[1]) || m[2] === 'boot.js'));
+    const ext0 = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8')).content_scripts[1].js;
+    check('la extensión sigue llevando todo en su lista de scripts', lazy.filter((u) => /\.js$/.test(u) && !/katex/.test(u)).every((u) => ext0.includes(u)), lazy.filter((u) => !ext0.includes(u)));
+    check('y cada archivo de esas listas existe', shell.concat(late).every((u) => fs.existsSync(path.join(root, u))), shell.concat(late).filter((u) => !fs.existsSync(path.join(root, u))));
     const attrs = fs.readFileSync(path.join(root, '.gitattributes'), 'utf8');
     check('sw.js y el manifiesto del sitio no van en el paquete de la extensión', /^\/sw\.js export-ignore\r?$/m.test(attrs) && /^\/manifest\.webmanifest export-ignore\r?$/m.test(attrs));
     const ext = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
@@ -486,10 +498,22 @@ try {
     await page.goto(home + '?new=1', { timeout: 15000 }).catch(() => {}); await page.waitForSelector('.lmd-editing .lmd-article', { timeout: 8000 }).catch(() => {});
     check('sin red también anda el atajo de nota nueva', await page.evaluate(() => /^local\//.test(new URLSearchParams(location.search).get('f') || '')).catch(() => false));
     await ctx.setOffline(false);
-    // Con red de nuevo, la página se pide al servidor: nadie queda con el HTML viejo.
-    const mark = hits.length;
+    // Con red de nuevo y una publicación en el medio: esta visita abre al instante con lo guardado y por detrás se
+    // trae la versión nueva entera; la visita siguiente ya es la nueva. Nadie queda con la vieja más de una visita.
+    const mark = hits.length; published.mark = 'v2';
     await page.goto(home); await page.waitForSelector('.lmd-home');
-    check('con red, el HTML de la app se pide otra vez al servidor', hits.slice(mark).includes('/src/app.html'), hits.slice(mark).slice(0, 5));
+    const stale = await page.evaluate(() => ({ page: document.body.dataset.published || '', script: window.__published || '' }));
+    check('con una publicación nueva, la visita abre con lo guardado, sin esperar a la red', stale.page === '' && stale.script === '', stale);
+    let renewed = false;
+    for (let i = 0; i < 50 && !renewed; i++) {
+      await page.waitForTimeout(300);
+      renewed = await page.evaluate(async () => { for (const k of await caches.keys()) { const c = await caches.open(k); const a = await c.match('/src/app.html'); const b = await c.match('/src/kit.js'); if (a && b && /data-published="v2"/.test(await a.text()) && /__published = "v2"/.test(await b.text())) return true; } return false; });
+    }
+    check('por detrás se pide todo de nuevo al servidor y se guarda junto', renewed && hits.slice(mark).includes('/src/app.html') && hits.slice(mark).includes('/src/kit.js') && hits.slice(mark).includes('/vendor/highlight.min.js'), hits.slice(mark).slice(0, 5));
+    await page.goto(home); await page.waitForSelector('.lmd-home');
+    const fresh = await page.evaluate(() => ({ page: document.body.dataset.published || '', script: window.__published || '' }));
+    check('y la visita siguiente ya abre la versión nueva, página y scripts', fresh.page === 'v2' && fresh.script === 'v2', fresh);
+    published.mark = '';
     // Una versión nueva arma su caché y borra la anterior.
     const next = await page.evaluate(async () => {
       const r = await navigator.serviceWorker.register('../sw.js?v=9.9.9', { scope: '../' });

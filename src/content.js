@@ -166,7 +166,12 @@
     katex: { js: ['vendor/katex/katex.min.js'], css: 'vendor/katex/katex.min.css' },
     mermaid: { js: ['vendor/mermaid.min.js'] },
     graphviz: { js: ['vendor/viz-global.js'] },
+    // Lo que el primer pintado no necesita. En la app se pide aparte; sobre un .md (script de contenido) ya viene con el resto.
+    hljs: { js: ['vendor/highlight.min.js'] },
+    emoji: { js: ['vendor/markdown-it-emoji.min.js'] },
+    tools: { js: ['src/emoji-data.js', 'src/emoji.js', 'src/templates.js', 'src/diagram.js', 'src/formula.js'] },
   };
+  const LAZY_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, tools: () => !!(LMD.diagram && LMD.formula && LMD.templates) };
   async function appLazy(what) {
     const spec = LAZY_APP[what];
     try {
@@ -256,10 +261,12 @@
     });
 
     // Bloques de código: etiqueta de lenguaje y botón de copiar
+    const plainCode = [];
     article.querySelectorAll('pre > code').forEach((code) => {
       const preEl = code.parentNode;
       const lang = (/language-([\w+#-]+)/.exec(code.className) || [])[1];
       code.classList.add('hljs');
+      if (p.highlight && lang && !window.hljs) plainCode.push([code, lang]);
       const wrap = el('div', { class: 'lmd-code' });
       preEl.replaceWith(wrap); wrap.appendChild(preEl);
       if (lang) wrap.appendChild(el('span', { class: 'lmd-code-lang', text: lang }));
@@ -269,6 +276,7 @@
         wrap.appendChild(btn);
       }
     });
+    if (plainCode.length) paintCode(plainCode);
 
     // Links externos en pestaña nueva
     article.querySelectorAll('a[href]').forEach((a) => {
@@ -373,14 +381,44 @@
 
   async function ensure(what) {
     if (lazyLoaded[what]) return lazyLoaded[what];
+    if (LAZY_HAVE[what] && LAZY_HAVE[what]()) return (lazyLoaded[what] = Promise.resolve(true));
     lazyLoaded[what] = APP ? appLazy(what) : bg({ type: 'lazyLoad', what }).then((r) => !!(r && r.ok));
     return lazyLoaded[what];
+  }
+
+  // Los editores de diagramas y fórmulas, las plantillas y la lista de emojis: llegan después del primer pintado,
+  // o antes si el documento o la persona los piden. Quien los usa espera esta promesa.
+  let toolsReady = null;
+  const tools = () => toolsReady || (toolsReady = ensure('tools').then((ok) => { if (ok) { LMD.diagram.init(core); LMD.formula.init(core); } return ok; }));
+  // El resaltado llega después que el código: el bloque ya está a la vista como texto y solo toma color.
+  function paintCode(pending) {
+    ensure('hljs').then((ok) => {
+      if (!ok || !window.hljs) return;
+      pending.forEach(([code, lang]) => {
+        if (!code.isConnected || code.children.length || !hljs.getLanguage(lang)) return;
+        try { code.innerHTML = hljs.highlight(code.textContent, { language: lang, ignoreIllegals: true }).value; } catch (e) { /* queda como texto */ }
+      });
+    });
+  }
+  // Los emojis por nombre (:smile:) y las caritas (:-)) los convierte un plugin que solo se pide si el texto los trae.
+  const EMOJI_RE = /:[a-z0-9_+-]+:|(^|\s)(>?[:;=8B][-'",]?[)(\/\\*DOoPpsSzZ|@$]|[\]oO0,>]:-?[)(]|<[\/\\]?3)/im;
+  let emojiAsked = false;
+  function wantEmoji(text) {
+    if (emojiAsked || !settings.plugins.emoji || window.markdownitEmoji || !EMOJI_RE.test(text)) return;
+    emojiAsked = true;
+    ensure('emoji').then((ok) => {
+      if (!ok || !window.markdownitEmoji) return;
+      parserKey = '';
+      // Con el cursor en un bloque el dibujo espera a que se lo suelte, como cualquier otro redibujo.
+      if (ui.article.contains(document.activeElement)) needsRender = true; else render();
+    });
   }
 
   async function renderMath(article) {
     const nodes = article.querySelectorAll('.lmd-math');
     if (!nodes.length) return;
     if (!(await ensure('katex')) || !window.katex) return;
+    await tools();
     nodes.forEach((n) => {
       // Una fórmula con error no muestra el mensaje crudo de KaTeX: queda el código, con un aviso corto.
       try {
@@ -394,6 +432,7 @@
     const nodes = Array.from(article.querySelectorAll('pre.lmd-mermaid'));
     if (!nodes.length) return;
     if (!(await ensure('mermaid')) || !window.mermaid) return;
+    await tools();
     mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: isDark() ? 'dark' : 'default', flowchart: { curve: settings.diagramShape === 'square' ? 'linear' : 'basis' } });
     for (const n of nodes) {
       const code = n.textContent;
@@ -438,6 +477,7 @@
     const nodes = Array.from(article.querySelectorAll('pre.lmd-graphviz'));
     if (!nodes.length) return;
     if (!(await ensure('graphviz')) || !window.Viz) return;
+    await tools();
     try { vizInstance = vizInstance || await Viz.instance(); } catch (e) { return; }
     for (const n of nodes) {
       try {
@@ -682,8 +722,8 @@
     LMD.touch.longPress(ui.treeBox);
     LMD.write.init(core);
     LMD.links.init(core);
-    LMD.diagram.init(core);
-    LMD.formula.init(core);
+    if (LAZY_HAVE.tools()) { LMD.diagram.init(core); LMD.formula.init(core); toolsReady = Promise.resolve(true); }
+    else { const later = () => (window.requestIdleCallback ? requestIdleCallback(tools, { timeout: 2500 }) : setTimeout(tools, 300)); if (document.readyState === 'complete') later(); else window.addEventListener('load', later); }
     LMD.extras.init(core);
     LMD.board.init(core);
     ui.sync = ui.main.querySelector('.lmd-sync');
@@ -1011,6 +1051,7 @@
     fmOffset = kind !== 'md' ? 0 : raw.slice(0, raw.length - fm.body.length).split('\n').length - 1;
     needsRender = false;
     let html = md.render(fm.body);
+    wantEmoji(fm.body);
     html = DOMPurify.sanitize(html, { ADD_ATTR: ['target', 'data-tex'], FORBID_TAGS: ['style', 'form'] });
     const y = window.scrollY;
     ui.article.innerHTML = html;
@@ -2742,7 +2783,7 @@
     } else if (kind === 'link') {
       LMD.links.open();
     } else if (kind === 'math') {
-      LMD.formula.createInline();
+      tools().then((ok) => { if (ok) LMD.formula.createInline(); });
     } else if (kind === 'clear') { document.execCommand('removeFormat'); document.execCommand('unlink'); }
   }
 
@@ -2956,7 +2997,8 @@
     diskDir: () => (APP && diskRoot && diskRoot.kind === 'dir' ? treeRoot : ''),
     newNote: (opt) => LMD.home.create(homeCtx(), opt),
     pick: (what) => LMD.home.pick(homeCtx(), what),
-    pickTemplate: () => LMD.home.pickTemplate(homeCtx()),
+    pickTemplate: () => tools().then((ok) => (ok ? LMD.home.pickTemplate(homeCtx()) : null)),
+    tools,
     showFiles,
     reloadTree: () => { fileCache.clear(); folderIndex.clear(); wikiIndex = null; linkIndex = null; if (ui.searchInput.value.trim()) runSearch(ui.searchInput.value); const done = loadTree(); resumeCloud(); return done; },
     dirHandle: async (dirUrl) => { let dir = rootOf(dirUrl).handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, ensure, isDark,

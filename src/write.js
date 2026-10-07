@@ -300,7 +300,7 @@
   const TEMPLATES = {
     table: { body: () => ['| ' + T('Columna') + ' 1 | ' + T('Columna') + ' 2 |', '| --- | --- |', '|  |  |'], then: (top) => { const c = top.querySelector('th'); if (c) { c.focus(); getSelection().selectAllChildren(c); } } },
     code: { body: () => ['```', '', '```'], then: (top) => core.editCode(top) },
-    diagram: { body: () => ['```mermaid', 'graph LR', '  A[' + T('Inicio') + '] --> B[' + T('Fin') + ']', '```'], then: (top) => { if (LMD.diagram) LMD.diagram.edit(top.matches('.lmd-diagram, pre.lmd-mermaid') ? top : top.querySelector('.lmd-diagram, pre.lmd-mermaid')); } },
+    diagram: { body: () => ['```mermaid', 'graph LR', '  A[' + T('Inicio') + '] --> B[' + T('Fin') + ']', '```'], then: (top) => { core.tools().then((ok) => { if (ok) LMD.diagram.edit(top.matches('.lmd-diagram, pre.lmd-mermaid') ? top : top.querySelector('.lmd-diagram, pre.lmd-mermaid')); }); } },
     alert: { body: () => ['> [!NOTE]', '> ' + T('Texto del aviso')], then: (top) => { const p = top.querySelector('.lmd-editable'); if (p) { p.focus(); getSelection().selectAllChildren(p); } } },
     hr: { body: () => ['---'] },
     board: { body: () => ['```kanban', '## ' + T('Por hacer'), '- [ ] ' + T('Primera tarjeta'), '', '## ' + T('En curso'), '', '## ' + T('Hecho'), '```'] },
@@ -319,7 +319,7 @@
       return;
     }
     // Una fórmula no se inserta con un ejemplo: abre su editor, y recién se escribe al aplicar.
-    if (what === 'math') { LMD.formula.create(after); return; }
+    if (what === 'math') { core.tools().then((ok) => { if (ok) LMD.formula.create(after); }); return; }
     const t = TEMPLATES[what];
     if (t) insertTemplate(after, t.body(), t.then);
   }

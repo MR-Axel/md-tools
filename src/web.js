@@ -52,9 +52,11 @@
   // Sin conexión: un service worker guarda el esqueleto de la app (sw.js, en la raíz del sitio). Se registra con la
   // versión en la dirección, así cada versión nueva lo reemplaza y arma su propia caché. La extensión no llega acá.
   if ('serviceWorker' in navigator && window.isSecureContext) {
-    window.addEventListener('load', () => {
+    // Recién con la página cargada y el hilo en reposo: guardar el esqueleto no compite con la primera carga.
+    const register = () => {
       const version = (window.LMD && LMD.VERSION) || '';
       navigator.serviceWorker.register(base + 'sw.js?v=' + encodeURIComponent(version), { scope: base }).catch(() => { /* sin service worker la app anda igual, con conexión */ });
-    });
+    };
+    window.addEventListener('load', () => { if (window.requestIdleCallback) requestIdleCallback(register, { timeout: 3000 }); else setTimeout(register, 400); });
   }
 })();

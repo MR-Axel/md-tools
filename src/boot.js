@@ -15,4 +15,11 @@
   // La barra del sistema (en el teléfono y en la app instalada) toma el mismo color.
   var meta = document.querySelector('meta[name=theme-color]');
   if (meta) meta.content = bg;
+  // Con una sesión abierta en la web, la conexión al servidor de sincronización se va abriendo mientras carga el resto.
+  try {
+    if (JSON.parse(localStorage.getItem('mdtools:cloud') || '{}').session) {
+      var url = (JSON.parse(localStorage.getItem('mdtools:settings') || '{}') || {}).cloudUrl || 'https://sync.sharpmd.app';
+      if (/^https?:\/\//.test(url)) { var link = document.createElement('link'); link.rel = 'preconnect'; link.href = new URL(url).origin; link.crossOrigin = 'anonymous'; document.head.appendChild(link); }
+    }
+  } catch (e) { /* sin almacenamiento o sin sesión */ }
 })();
