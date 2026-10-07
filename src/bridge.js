@@ -171,7 +171,10 @@
       // Cambió de este lado. Si también cambió del otro, la extensión guarda su versión en una copia con sufijo.
       const mine = await o.noteGet(name);
       if (!mine) continue;
-      const r = must(await call('notes.put', { name, text: mine.text || '', base: B }));
+      const sent = await call('notes.put', { name, text: mine.text || '', base: B });
+      // Una nota que el puente no acepta (un nombre raro, un texto enorme) queda de este lado y no frena a las demás.
+      if (!sent.ok && sent.error === 'shape') { if (B) agreed[name] = B; continue; }
+      const r = must(sent);
       if (r.failed) { if (B) agreed[name] = B; continue; }
       agreed[name] = r.h;
       if (r.kept) {
