@@ -95,8 +95,24 @@
     } catch (e) { core.flash(cloudWhy(e, 'No se pudo eliminar'), 'error'); }
   }
 
+  // Carpeta nueva: en el disco se crea vacía; en la nube nace con su primera nota.
+  async function newFolder(dirUrl) {
+    if (inCloud(dirUrl)) return cloudNew(dirUrl, true);
+    const name = (window.prompt(T('Nombre de la carpeta nueva'), T('carpeta')) || '').trim();
+    if (!name) return;
+    if (/[\\/:*?"<>|]/.test(name) || /^\.\.?$/.test(name)) { core.flash(T('Ese nombre tiene caracteres que no se pueden usar'), 'error'); return; }
+    try {
+      const dir = await core.dirHandle(dirUrl);
+      if (await exists(dir, name)) { core.flash(T('Ya hay una carpeta con ese nombre'), 'error'); return; }
+      await dir.getDirectoryHandle(name, { create: true });
+      core.reloadTree();
+    } catch (e) { core.flash(T('No se pudo crear la carpeta'), 'error'); }
+  }
+
   async function newFile(dirUrl) {
     if (inCloud(dirUrl)) return cloudNew(dirUrl, false);
+    // Las notas del navegador no piden nombre: nacen con la fecha y se listan por su primer renglón.
+    if (inLocal(dirUrl)) return core.newNote({ target: 'local' });
     let name = (window.prompt(T('Nombre del archivo nuevo'), T('nota') + '.md') || '').trim();
     if (!name) return;
     if (/[\\/:*?"<>|]/.test(name)) { core.flash(T('Ese nombre tiene caracteres que no se pueden usar'), 'error'); return; }
@@ -179,27 +195,51 @@
 
   let menu = null;
   const closeMenu = () => { if (menu) { menu.remove(); menu = null; } };
-  function treeMenu(x, y, node) {
+  // Un menú corto en un punto de la pantalla. items: [id, texto, peligroso]. onPick recibe el id elegido.
+  function showMenu(x, y, items, onPick) {
     closeMenu();
-    const url = node.dataset.url; const isDir = node.classList.contains('lmd-node-dir'); const cloud = inCloud(url);
     menu = el('div', { class: 'lmd-menu lmd-menu-narrow', role: 'menu' });
-    menu.innerHTML = '<div class="lmd-menu-list">' +
-      (inLocal(url) ? '' : '<button type="button" role="menuitem" data-f="new">' + T(isDir ? 'Nuevo archivo acá' : 'Nuevo archivo') + '</button>') +
-      (cloud ? '<button type="button" role="menuitem" data-f="dir">' + T('Nueva carpeta') + '</button>' : '') +
-      (isDir && !cloud ? '' : '<button type="button" role="menuitem" data-f="ren">' + T('Renombrar') + '</button>') +
-      (isDir ? '' : '<button type="button" role="menuitem" data-f="del" class="lmd-menu-danger">' + T('Eliminar') + '</button>') + '</div>';
+    menu.innerHTML = '<div class="lmd-menu-list">' + items.map((i) => '<button type="button" role="menuitem" data-f="' + i[0] + '"' + (i[2] ? ' class="lmd-menu-danger"' : '') + '>' + T(i[1]) + '</button>').join('') + '</div>';
     document.body.appendChild(menu);
-    menu.style.left = Math.min(window.innerWidth - menu.offsetWidth - 8, x) + 'px';
+    menu.style.left = Math.max(8, Math.min(window.innerWidth - menu.offsetWidth - 8, x)) + 'px';
     menu.style.top = Math.min(window.innerHeight - menu.offsetHeight - 8, y) + 'px';
     menu.addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       closeMenu();
-      if (b.dataset.f === 'new') newFile(isDir ? url : parentOf(url));
-      else if (b.dataset.f === 'dir') cloudNew(isDir ? url : parentOf(url), true);
-      else if (b.dataset.f === 'ren') rename(url, isDir);
+      onPick(b.dataset.f);
+    });
+  }
+  function treeMenu(x, y, node) {
+    const url = node.dataset.url; const isDir = node.classList.contains('lmd-node-dir'); const cloud = inCloud(url); const local = inLocal(url);
+    const at = isDir ? url : parentOf(url);
+    showMenu(x, y, [
+      !local && ['new', isDir ? 'Nuevo archivo acá' : 'Nuevo archivo'],
+      !local && ['dir', 'Nueva carpeta'],
+      (!isDir || cloud) && ['ren', 'Renombrar'],
+      !isDir && ['del', 'Eliminar', true],
+    ].filter(Boolean), (f) => {
+      if (f === 'new') newFile(at);
+      else if (f === 'dir') newFolder(at);
+      else if (f === 'ren') rename(url, isDir);
       else remove(url);
     });
   }
+  // Crear: desde la cabecera del explorador (sin dirUrl: donde van las notas nuevas) o dentro de una raíz.
+  function createMenu(x, y, dirUrl) {
+    const folderAt = dirUrl ? (canTree(dirUrl) ? dirUrl : '') : (core.diskDir() || (LMD.cloud.signedIn() ? core.urlOf('') : ''));
+    showMenu(x, y, [['new', 'Nota en blanco'], folderAt && ['dir', 'Carpeta']].filter(Boolean), (f) => {
+      if (f === 'dir') newFolder(folderAt);
+      else if (dirUrl) newFile(dirUrl);
+      else core.newNote();
+    });
+  }
+  // Abrir otra carpeta u otro archivo del disco, sin salir de la nota. Sobre un .md abierto directo, eso es abrir la app.
+  function openMenu(x, y) {
+    if (!core.APP) { core.openApp(''); return; }
+    if (!window.showDirectoryPicker) { core.pick('file'); return; }
+    showMenu(x, y, [['dir', 'Abrir carpeta'], ['file', 'Abrir archivo']], (f) => core.pick(f));
+  }
+  const rootUrl = (node) => { const sec = node.closest('.lmd-xroot'); const list = sec && sec.querySelector('.lmd-tree'); return (list && list.dataset.url) || ''; };
 
   // ---------- Renombrar desde el título ----------
   // El nombre de la barra de arriba se vuelve un campo: Enter confirma, Escape cancela.
@@ -231,13 +271,16 @@
   let dragged = ''; let dropMark = null;
   const markDrop = (node) => { if (dropMark === node) return; if (dropMark) dropMark.classList.remove('lmd-drop'); dropMark = node; if (node) node.classList.add('lmd-drop'); };
   const endDrag = () => { markDrop(null); dragged = ''; const n = core.ui.treeBox.querySelector('.lmd-dragging'); if (n) n.classList.remove('lmd-dragging'); };
-  // Carpeta de destino según dónde está el puntero: la carpeta misma, la que contiene al archivo de abajo, o la raíz.
+  // Carpeta de destino según dónde está el puntero: la carpeta misma, la que contiene al archivo de abajo, o la
+  // raíz. Solo dentro de la raíz de donde salió el archivo: entre el disco, el navegador y la nube no se arrastra.
   function dropTarget(e) {
-    const node = e.target.closest && e.target.closest('.lmd-node-dir');
+    const sec = e.target.closest && e.target.closest('.lmd-xroot'); const top = sec ? rootUrl(sec) : '';
+    if (!top || core.rootOf(top) !== core.rootOf(dragged)) return null;
+    const node = e.target.closest('.lmd-node-dir');
     if (node) return { url: node.dataset.url, mark: node };
-    const kids = e.target.closest && e.target.closest('.lmd-node-kids');
+    const kids = e.target.closest('.lmd-node-kids');
     if (kids) return { url: kids.previousElementSibling.dataset.url, mark: kids.previousElementSibling };
-    return { url: core.treeRoot(), mark: core.ui.treeBox };
+    return { url: top, mark: sec };
   }
   function bindDrag(box) {
     box.addEventListener('dragstart', (e) => {
@@ -250,7 +293,7 @@
       if (!dragged) return;
       const t = dropTarget(e);
       // Soltarlo en la carpeta donde ya está no es un destino.
-      if (t.url === parentOf(dragged)) { markDrop(null); return; }
+      if (!t || t.url === parentOf(dragged)) { markDrop(null); return; }
       e.preventDefault(); e.dataTransfer.dropEffect = 'move'; markDrop(t.mark);
     });
     box.addEventListener('dragleave', (e) => { if (!box.contains(e.relatedTarget)) markDrop(null); });
@@ -259,7 +302,7 @@
       e.preventDefault();
       const url = dragged; const t = dropTarget(e);
       endDrag();
-      if (t.url !== parentOf(url)) moveTo(url, t.url);
+      if (t && t.url !== parentOf(url)) moveTo(url, t.url);
     });
     box.addEventListener('dragend', endDrag);
   }
@@ -445,8 +488,18 @@
     // Árbol: clic derecho sobre un archivo o carpeta, y botón de archivo nuevo en la cabecera.
     core.ui.treeBox.addEventListener('contextmenu', (e) => {
       const node = e.target.closest('.lmd-node');
-      if (!node || !node.dataset.url || !(canTree(node.dataset.url) || inLocal(node.dataset.url))) return;
-      e.preventDefault(); treeMenu(e.clientX, e.clientY, node);
+      // Sobre un archivo o una carpeta, sus acciones; sobre el resto de una raíz, crear ahí.
+      const at = node ? node.dataset.url : rootUrl(e.target);
+      if (!at || !(canTree(at) || inLocal(at))) return;
+      e.preventDefault();
+      if (node) treeMenu(e.clientX, e.clientY, node); else createMenu(e.clientX, e.clientY, at);
+    });
+    // Los botones de la cabecera del explorador y el "+" de cada raíz.
+    core.ui.sidebar.addEventListener('click', (e) => {
+      const b = e.target.closest('.lmd-tree-new, .lmd-tree-add, .lmd-tree-open'); if (!b) return;
+      const box = b.getBoundingClientRect();
+      if (b.classList.contains('lmd-tree-open')) openMenu(box.left, box.bottom + 6);
+      else createMenu(box.left, box.bottom + 6, b.classList.contains('lmd-tree-new') ? rootUrl(b) : '');
     });
     bindDrag(core.ui.paneFiles);
     const label = core.ui.main.querySelector('.lmd-docname');
@@ -454,11 +507,6 @@
     const paintLabel = () => { const can = canRename(); label.classList.toggle('lmd-docname-edit', can); label.title = can ? T('Doble clic o F2 para cambiar el nombre') : ''; };
     paintLabel(); core.hooks.doc.push(paintLabel);
     label.addEventListener('dblclick', editTitle);
-    core.ui.treeBox.addEventListener('click', (e) => { if (e.target.closest('.lmd-tree-new')) newFile(core.treeRoot()); });
-    core.hooks.tree.push((head) => {
-      if (!canTree(core.treeRoot())) return;
-      head.insertBefore(el('button', { class: 'lmd-tree-up lmd-tree-new', type: 'button', title: T('Archivo nuevo en esta carpeta') }, ICON.plus), head.lastChild);
-    });
     document.addEventListener('mousedown', (e) => { if (menu && !menu.contains(e.target)) closeMenu(); });
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeMenu();

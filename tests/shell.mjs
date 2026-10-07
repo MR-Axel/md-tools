@@ -1,5 +1,6 @@
 // Una sola pantalla: la barra lateral y el centro siempre a la vista, cambiar de nota sin recargar la página,
-// atrás y adelante, y quedarse en la app al eliminar la nota abierta.
+// atrás y adelante, y quedarse en la app al eliminar la nota abierta. Y la barra lateral: el índice arriba y el
+// explorador abajo, con sus raíces, lo reciente, la búsqueda en todo y el árbol que arranca en la raíz del repositorio.
 import { chromium } from 'playwright-core';
 import fs from 'fs'; import os from 'os'; import path from 'path'; import { fileURLToPath } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -46,7 +47,7 @@ try {
   check('abrir una carpeta no recarga la página', (await mark()) === 'misma página' && (await app.title()) === 'README.md' && /\?f=/.test(app.url()), await state());
 
   console.log('Cambiar de nota sin recargar');
-  await app.click('.lmd-tab[data-tab=files]'); await app.waitForSelector('.lmd-node');
+  await app.waitForSelector('.lmd-node');
   await node('otra.md').click(); await app.waitForFunction(() => document.title === 'otra.md');
   let s = await state();
   check('un archivo del árbol reemplaza la nota en el lugar', s.h1.startsWith('Otra') && s.url === 'otra.md' && s.mark === 'misma página', s);
@@ -77,7 +78,7 @@ try {
 
   console.log('Salir de una nota');
   // Lo escrito se guarda antes de pasar a otra nota, y el modo edición sigue.
-  await app.click('.lmd-tab[data-tab=files]'); await app.waitForSelector('.lmd-node');
+  await app.waitForSelector('.lmd-node');
   await app.click('[data-act=mode-edit]'); await app.waitForTimeout(300);
   await app.locator('.lmd-article p.lmd-editable').first().click(); await app.keyboard.press('End'); await app.keyboard.type(' Escrito antes de salir.');
   await node('otra.md').click(); await app.waitForFunction(() => document.title === 'otra.md'); await app.waitForTimeout(300);
@@ -100,7 +101,7 @@ try {
   await app.goto(base + 'README.md'); await app.waitForSelector('.markdown-body h1');
   await app.evaluate(() => { window.__mark = 'misma página'; });
   await app.click('[data-act=settings]'); await app.waitForSelector('.lmd-panel-card'); await app.click('[data-ptab=read]'); await app.click('input[data-key=filesOnlyMarkdown]'); await app.click('[data-act=close-panel]');
-  await app.click('.lmd-tab[data-tab=files]'); await app.waitForSelector('.lmd-node:has-text("datos.csv")');
+  await app.waitForSelector('.lmd-node:has-text("datos.csv")');
   await node('datos.csv').click(); await app.waitForSelector('.markdown-body table');
   const csv = await app.evaluate(() => ({ mark: window.__mark, cells: [...document.querySelectorAll('.markdown-body tr')].map((tr) => [...tr.cells].map((c) => c.textContent)), title: document.title }));
   check('un CSV también abre en el lugar, como tabla', csv.mark === 'misma página' && csv.title === 'datos.csv' && J(csv.cells) === J([['a', 'b'], ['1', '2']]), csv);
@@ -120,6 +121,127 @@ try {
   check('desde ahí se abre otra nota del árbol', (await mark()) === 'misma página' && (await app.textContent('.markdown-body h1')).startsWith('Otra'));
   await app.goBack(); await app.waitForSelector('.lmd-home [data-home=new]');
   check('atrás vuelve al centro vacío, no a la nota borrada', (await app.title()) === 'SharpMD' && app.url() === home, app.url());
+
+  console.log('Barra lateral: índice arriba, explorador abajo');
+  await app.goto(base + 'otra.md'); await app.waitForSelector('.markdown-body h1'); await app.waitForSelector('.lmd-xroot[data-root=disk] .lmd-node.lmd-active');
+  const zones = () => app.evaluate(() => { const h = (s) => Math.round(document.querySelector(s).getBoundingClientRect().height); return { tabs: document.querySelectorAll('.lmd-tab').length, outline: h('.lmd-pane-outline'), files: h('.lmd-pane-files'), search: Math.round(document.querySelector('.lmd-search').getBoundingClientRect().top), outlineTop: Math.round(document.querySelector('.lmd-zone-outline').getBoundingClientRect().top), filesTop: Math.round(document.querySelector('.lmd-zone-files').getBoundingClientRect().top) }; });
+  let z = await zones();
+  check('sin pestañas: el buscador arriba, después el índice y debajo el explorador, los dos a la vista', z.tabs === 0 && z.outline > 80 && z.files > 80 && z.search < z.outlineTop && z.outlineTop < z.filesTop, z);
+  const roots = await app.evaluate(() => [...document.querySelectorAll('.lmd-xroot')].map((s) => s.dataset.root + ':' + s.querySelector('.lmd-tree-path').textContent));
+  check('el explorador lista las raíces en orden: la carpeta del disco y las notas del navegador', roots.join('|') === 'disk:pantalla|local:En este navegador', roots);
+  const icons = await app.evaluate(() => [...document.querySelectorAll('.lmd-xroot a.lmd-node')].map((n) => n.closest('.lmd-xroot').dataset.root + ':' + n.querySelector('.lmd-node-where').title).filter((v, i, a) => a.indexOf(v) === i));
+  check('cada archivo lleva el ícono de dónde está guardado', J(icons) === J(['disk:En el disco', 'local:En este navegador']), icons);
+  // La división se arrastra y cada zona se pliega; las dos cosas se recuerdan.
+  const split = await app.locator('.lmd-split').boundingBox();
+  await app.mouse.move(split.x + 40, split.y + 3); await app.mouse.down(); await app.mouse.move(split.x + 40, split.y + 123, { steps: 4 }); await app.mouse.up();
+  const z2 = await zones();
+  check('arrastrar la división agranda el índice y achica el explorador', z2.outline > z.outline + 80 && z2.files < z.files - 80, [z, z2]);
+  await app.click('[data-zone-tog=outline]');
+  const z3 = await zones();
+  check('plegar el índice le deja todo el alto al explorador', z3.outline === 0 && z3.files > z2.files + z2.outline - 10, z3);
+  await app.reload(); await app.waitForSelector('.markdown-body h1'); await app.waitForSelector('.lmd-xroot[data-root=disk] .lmd-node.lmd-active');
+  check('el índice plegado se recuerda al recargar', (await zones()).outline === 0 && (await app.getAttribute('[data-zone-tog=outline]', 'aria-expanded')) === 'false');
+  await app.click('[data-zone-tog=outline]');
+  const z4 = await zones();
+  check('y al desplegarlo vuelve con el reparto que se había dejado', Math.abs(z4.outline - z2.outline) < 12, [z2, z4]);
+  await app.click('.lmd-xroot[data-root=local] .lmd-root-tog');
+  check('una raíz se pliega desde su encabezado', await app.evaluate(() => document.querySelector('.lmd-xroot[data-root=local] .lmd-tree').getBoundingClientRect().height === 0));
+  await app.click('.lmd-xroot[data-root=local] .lmd-root-tog');
+  await app.goto(home); await app.waitForSelector('.lmd-home [data-home=new]'); await app.waitForSelector('.lmd-xroot[data-root=local] .lmd-node');
+  const noDoc = await app.evaluate(() => ({ outline: document.querySelector('.lmd-zone-outline').getBoundingClientRect().height, files: document.querySelector('.lmd-pane-files').getBoundingClientRect().height, local: [...document.querySelectorAll('.lmd-xroot[data-root=local] .lmd-node')].map((n) => n.textContent.trim()), disk: document.querySelector('.lmd-xroot[data-root=disk] .lmd-tree-path').textContent }));
+  check('sin nota abierta el índice no ocupa lugar y el explorador ya lista las notas del navegador', noDoc.outline === 0 && noDoc.files > 300 && noDoc.local.includes('uno.md') && noDoc.local.includes('dos.md') && noDoc.disk === 'pantalla', noDoc);
+
+  console.log('Crear y abrir desde el explorador');
+  await app.evaluate(() => { window.__mark = 'misma página'; });
+  await app.click('.lmd-tree-add'); await app.waitForSelector('.lmd-menu [data-f=new]');
+  const addMenu = await app.evaluate(() => [...document.querySelectorAll('.lmd-menu [data-f]')].map((b) => b.dataset.f + ':' + b.textContent));
+  await app.click('.lmd-menu [data-f=new]'); await app.waitForSelector('.lmd-draft');
+  const made = await app.evaluate(() => ({ mark: window.__mark, url: location.search, active: document.querySelectorAll('.lmd-xroot[data-root=local] .lmd-node.lmd-active').length, editing: document.documentElement.classList.contains('lmd-editing') }));
+  check('el "+" del explorador ofrece nota en blanco y carpeta', J(addMenu) === J(['new:Nota en blanco', 'dir:Carpeta']), addMenu);
+  check('la nota en blanco nace donde van las notas nuevas y queda abierta en edición, sin recargar', made.mark === 'misma página' && /f=local%2Fnota-/.test(made.url) && made.active === 1 && made.editing, made);
+  await app.click('[data-act=mode-read]'); await app.waitForTimeout(200);
+  await app.addInitScript(() => { window.prompt = () => window.__answer; });
+  await app.evaluate(() => { window.prompt = () => window.__answer; window.__answer = 'apuntes'; });
+  await app.click('.lmd-xroot[data-root=disk] .lmd-tree-new'); await app.click('.lmd-menu [data-f=dir]');
+  await app.waitForSelector('.lmd-xroot[data-root=disk] .lmd-node-dir:has-text("apuntes")');
+  await app.evaluate(() => { window.__answer = 'adentro'; });
+  await app.locator('.lmd-xroot[data-root=disk] .lmd-node-dir', { hasText: 'apuntes' }).click({ button: 'right' }); await app.click('.lmd-menu [data-f=new]');
+  await app.waitForFunction(() => document.title === 'adentro.md'); await app.waitForSelector('.lmd-node-kids .lmd-node.lmd-active');
+  const inDir = await app.evaluate(async () => { const d = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('pantalla')).getDirectoryHandle('apuntes'); const out = []; for await (const [n] of d.entries()) out.push(n); return { files: out, url: decodeURIComponent(location.search), open: !!document.querySelector('.lmd-node-dir.lmd-open + .lmd-node-kids .lmd-node.lmd-active') }; });
+  check('"Carpeta" crea una carpeta en el disco, y crear dentro de ella crea ahí', J(inDir.files) === J(['adentro.md']) && /apuntes\/adentro\.md$/.test(inDir.url) && inDir.open, inDir);
+  await app.click('.lmd-tree-open'); await app.waitForSelector('.lmd-menu [data-f=dir]');
+  check('"abrir" ofrece otra carpeta u otro archivo', J(await app.evaluate(() => [...document.querySelectorAll('.lmd-menu [data-f]')].map((b) => b.dataset.f))) === J(['dir', 'file']));
+  await app.evaluate(async () => {
+    const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('segunda', { create: true });
+    const h = await dir.getFileHandle('LEEME.md', { create: true }); const s = await h.createWritable(); await s.write('# Segunda carpeta\n\nCon una zanahoria más.\n'); await s.close();
+    window.showDirectoryPicker = async () => dir;
+  });
+  await app.click('.lmd-menu [data-f=dir]'); await app.waitForFunction(() => document.title === 'LEEME.md'); await app.waitForSelector('.lmd-xroot[data-root=recent] .lmd-node');
+  const second = await app.evaluate(() => ({ mark: window.__mark, disk: document.querySelector('.lmd-xroot[data-root=disk] .lmd-tree-path').textContent, recent: [...document.querySelectorAll('.lmd-xroot[data-root=recent] .lmd-node-name')].map((n) => n.textContent), order: [...document.querySelectorAll('.lmd-xroot')].map((s) => s.dataset.root).join() }));
+  check('abrir otra carpeta la pone en el explorador y deja la anterior en Recientes', second.mark === 'misma página' && second.disk === 'segunda' && J(second.recent) === J(['pantalla']) && second.order === 'disk,local,recent', second);
+
+  console.log('Buscar en todo');
+  await app.fill('.lmd-search input', 'zanahoria');
+  await app.waitForFunction(() => /\d/.test((document.querySelector('.lmd-results-sum') || {}).textContent || ''), null, { timeout: 15000 });
+  await app.evaluate(() => LMD.store.notePut('huerta.md', '# Huerta\n\nSembrar zanahoria en marzo.\n'));
+  await app.fill('.lmd-search input', '');
+  await app.reload(); await app.waitForSelector('.markdown-body h1'); await app.waitForSelector('.lmd-xroot[data-root=local] .lmd-node:has-text("huerta.md")');
+  await app.evaluate(() => { window.__mark = 'misma página'; });
+  await app.fill('.lmd-search input', 'zanahoria');
+  await app.waitForFunction(() => /\d/.test((document.querySelector('.lmd-results-sum') || {}).textContent || ''), null, { timeout: 15000 });
+  const res = await app.evaluate(() => ({ doc: document.querySelector('.lmd-res-doc').textContent, count: document.querySelector('.lmd-search-count').textContent, roots: [...document.querySelectorAll('.lmd-res-root')].map((r) => r.dataset.root + ':' + r.textContent), files: [...document.querySelectorAll('.lmd-res-file .lmd-res-name')].map((n) => n.textContent), outline: document.querySelector('.lmd-pane-outline').getBoundingClientRect().height > 40, tree: document.querySelector('.lmd-tree-box').hidden }));
+  check('con texto busca en la nota abierta y lo cuenta arriba de los resultados', /^En esta nota\s*1$/.test(res.doc) && res.count === '1 / 1' && res.outline, res);
+  check('y en los archivos de cada raíz, diciendo de dónde viene cada resultado', J(res.roots) === J(['disk:segunda', 'local:En este navegador']) && J(res.files) === J(['LEEME.md', 'huerta.md']) && res.tree, res);
+  await app.locator('.lmd-res-file', { hasText: 'huerta.md' }).click(); await app.waitForFunction(() => document.title === 'huerta.md'); await app.waitForTimeout(300);
+  const hop = await app.evaluate(() => ({ mark: window.__mark, kept: [...document.querySelectorAll('.lmd-res-file .lmd-res-name')].map((n) => n.textContent), here: [...document.querySelectorAll('.lmd-res-here .lmd-res-name')].map((n) => n.textContent), doc: document.querySelector('.lmd-res-doc .lmd-res-count').textContent }));
+  check('abrir un resultado de otra raíz deja la lista de resultados y marca la nota abierta', hop.mark === 'misma página' && J(hop.kept) === J(['LEEME.md', 'huerta.md']) && J(hop.here) === J(['huerta.md']) && hop.doc === '1', hop);
+  await app.fill('.lmd-search input', ''); await app.waitForSelector('.lmd-xroot[data-root=local] .lmd-root-tog'); await app.click('.lmd-xroot[data-root=local] .lmd-root-tog');
+  await app.fill('.lmd-search input', 'zanahoria');
+  await app.waitForFunction(() => /\d/.test((document.querySelector('.lmd-results-sum') || {}).textContent || ''), null, { timeout: 15000 });
+  const folded = await app.evaluate(() => [...document.querySelectorAll('.lmd-res-root')].map((r) => r.dataset.root));
+  check('una raíz plegada no entra en la búsqueda', J(folded) === J(['disk']), folded);
+  await app.fill('.lmd-search input', ''); await app.click('.lmd-xroot[data-root=local] .lmd-root-tog');
+
+  console.log('Recientes');
+  await app.locator('.lmd-xroot[data-root=recent] .lmd-node', { hasText: 'pantalla' }).click(); await app.waitForSelector('.lmd-xroot[data-root=disk] .lmd-root-tog[title^="pantalla"]'); await app.waitForFunction(() => document.title === 'adentro.md');
+  const again = await app.evaluate(() => ({ mark: window.__mark, title: document.title, recent: [...document.querySelectorAll('.lmd-xroot[data-root=recent] .lmd-node-name')].map((n) => n.textContent) }));
+  check('un reciente vuelve a abrir esa carpeta en su última nota, sin recargar', again.mark === 'misma página' && again.title === 'adentro.md' && J(again.recent) === J(['segunda']), again);
+  await app.hover('.lmd-xroot[data-root=recent] .lmd-recent'); await app.click('.lmd-xroot[data-root=recent] .lmd-node-x');
+  await app.waitForFunction(() => !document.querySelector('.lmd-xroot[data-root=recent]'));
+  check('la cruz lo quita de la lista', (await app.evaluate(async () => (await LMD.store.rootsAll()).map((r) => r.name))).join() === 'pantalla');
+
+  console.log('Raíz del árbol en el disco');
+  await app.evaluate(async () => {
+    const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('trabajo', { create: true });
+    const write = async (d, name, data) => { const h = await d.getFileHandle(name, { create: true }); const s = await h.createWritable(); await s.write(data); await s.close(); };
+    const repo = await dir.getDirectoryHandle('repo', { create: true });
+    await write(await repo.getDirectoryHandle('.git', { create: true }), 'HEAD', 'ref: refs/heads/main\n');
+    await write(repo, 'README.md', '# Repo\n');
+    await write(await (await repo.getDirectoryHandle('docs', { create: true })).getDirectoryHandle('guia', { create: true }), 'pasos.md', '# Pasos\n');
+    await write(await (await dir.getDirectoryHandle('suelto', { create: true })).getDirectoryHandle('notas', { create: true }), 'una.md', '# Una\n');
+    await write(dir, 'LEEME.md', '# Trabajo\n');
+    window.showDirectoryPicker = async () => dir;
+  });
+  await app.click('.lmd-tree-open'); await app.click('.lmd-menu [data-f=dir]'); await app.waitForFunction(() => document.title === 'LEEME.md');
+  const work = app.url().replace(/LEEME\.md$/, '');
+  const treeNow = () => app.evaluate(() => ({ head: document.querySelector('.lmd-xroot[data-root=disk] .lmd-tree-path').textContent, top: [...document.querySelectorAll('.lmd-xroot[data-root=disk] > .lmd-tree > .lmd-node')].map((n) => n.textContent.trim()), open: [...document.querySelectorAll('.lmd-xroot[data-root=disk] .lmd-node-dir.lmd-open')].map((n) => n.textContent.trim()), active: [...document.querySelectorAll('.lmd-xroot[data-root=disk] .lmd-node.lmd-active')].filter((n) => n.offsetParent).map((n) => n.textContent.trim()), up: !!document.querySelector('.lmd-xroot[data-root=disk] .lmd-tree-up:not(.lmd-tree-new)') }));
+  await app.goto(work + encodeURIComponent('repo/docs/guia/pasos.md')); await app.waitForFunction(() => document.title === 'pasos.md'); await app.waitForSelector('.lmd-xroot[data-root=disk] .lmd-node.lmd-active');
+  let t = await treeNow();
+  check('un archivo dentro de un repositorio: el árbol arranca en la raíz del repo, con su rama desplegada', t.head === 'repo' && J(t.top) === J(['docs', 'README.md']) && J(t.open) === J(['docs', 'guia']) && J(t.active) === J(['pasos.md']) && t.up, t);
+  await app.goto(work + encodeURIComponent('suelto/notas/una.md')); await app.waitForFunction(() => document.title === 'una.md'); await app.waitForSelector('.lmd-xroot[data-root=disk] .lmd-node.lmd-active');
+  t = await treeNow();
+  check('sin repositorio arranca en la carpeta del archivo', t.head === 'notas' && J(t.top) === J(['una.md']) && t.up, t);
+  await app.click('.lmd-xroot[data-root=disk] .lmd-tree-up:not(.lmd-tree-new)'); await app.waitForSelector('.lmd-xroot[data-root=disk] .lmd-tree-path:has-text("suelto")');
+  await app.click('.lmd-xroot[data-root=disk] .lmd-tree-up:not(.lmd-tree-new)'); await app.waitForSelector('.lmd-xroot[data-root=disk] .lmd-tree-path:has-text("trabajo")');
+  t = await treeNow();
+  check('la flecha sube hasta la carpeta elegida y no más', t.head === 'trabajo' && !t.up && t.top.includes('repo') && t.top.includes('suelto') && J(t.active) === J(['una.md']), t);
+  await app.goto(work + encodeURIComponent('suelto/notas/una.md')); await app.waitForFunction(() => document.title === 'una.md'); await app.waitForSelector('.lmd-xroot[data-root=disk] .lmd-node.lmd-active');
+  t = await treeNow();
+  check('hasta dónde se subió se recuerda para esa carpeta', t.head === 'trabajo' && J(t.active) === J(['una.md']), t);
+  await app.evaluate(() => { window.__mark = 'misma página'; });
+  await app.locator('.lmd-xroot[data-root=disk] .lmd-node-dir', { hasText: 'repo' }).click(); await app.locator('.lmd-xroot[data-root=disk] .lmd-node', { hasText: 'README.md' }).click(); await app.waitForFunction(() => document.title === 'README.md');
+  t = await treeNow();
+  check('pasar a otra nota del mismo árbol no lo mueve de lugar', t.head === 'trabajo' && J(t.active) === J(['README.md']) && (await mark()) === 'misma página', t);
 
   check('sin errores de JavaScript', errors.length === 0, errors);
 } catch (e) { check('sin excepciones en la prueba', false, String(e && e.stack || e).slice(0, 700)); }

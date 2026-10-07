@@ -86,8 +86,8 @@
 }
 .lmd-icon-btn:hover { background: var(--bg-soft); color: var(--fg); }
 
-.lmd-search { display: flex; align-items: center; gap: 6px; padding: 0 10px 8px; position: relative; }
-.lmd-search-ico { position: absolute; left: 19px; top: 7px; color: var(--fg-faint); pointer-events: none; }
+.lmd-search { display: flex; align-items: center; gap: 6px; padding: 10px 10px 8px; position: relative; }
+.lmd-search-ico { position: absolute; left: 19px; top: 17px; color: var(--fg-faint); pointer-events: none; }
 .lmd-search-ico svg { width: 15px; height: 15px; }
 .lmd-search input { padding-left: 30px !important; }
 .lmd-search-count:empty { display: none; }
@@ -151,7 +151,7 @@
 .lmd-node-dir { color: var(--fg); }
 /* Arrastrar un archivo: el que se lleva se atenúa y el destino queda marcado. */
 .lmd-node.lmd-dragging { opacity: 0.45; }
-.lmd-node.lmd-drop, .lmd-tree-box.lmd-drop { outline: 2px dashed var(--accent-fill); outline-offset: -2px; border-radius: 6px; background: var(--accent-soft); }
+.lmd-node.lmd-drop, .lmd-xroot.lmd-drop { outline: 2px dashed var(--accent-fill); outline-offset: -2px; border-radius: 6px; background: var(--accent-soft); }
 
 .lmd-update { flex: none; margin: 0 10px 10px; padding: 11px 12px; border: 1px solid var(--accent-fill); border-radius: 9px; background: var(--bg-soft); font-size: 12.5px; color: var(--fg-muted); }
 .lmd-update[hidden] { display: none; }
@@ -525,7 +525,7 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 
 /* ---------- Reemplazar, árbol, foco ---------- */
 .lmd-replace { display: none; gap: 5px; margin: -2px 10px 8px; }
-.lmd-editing.lmd-tab-outline .lmd-replace { display: flex; }
+.lmd-editing.lmd-searching:not(.lmd-nodoc) .lmd-replace { display: flex; }
 .lmd-replace input { flex: 1; min-width: 0; height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); font: inherit; font-size: 13px; outline: none; }
 .lmd-replace input:focus { border-color: var(--accent-fill); }
 .lmd-replace button { height: 30px; padding: 0 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg-soft); color: var(--fg-muted); font: inherit; font-size: 12.5px; cursor: pointer; }
@@ -896,3 +896,56 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-btn-danger { background: #dc2626; border-color: #dc2626; color: #fff; font-weight: 600; }
 .lmd-btn-danger:hover { background: #b91c1c; border-color: #b91c1c; }
 .lmd-topbar > .lsharpmd { grid-column: 3; }
+/* ---------- Barra lateral: el índice arriba y el explorador abajo, los dos a la vista ---------- */
+.lmd-zones { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.lmd-zone { flex: 1 1 0px; min-height: 0; display: flex; flex-direction: column; }
+.lmd-zone.lmd-shut { flex: 0 0 auto; }
+.lmd-zone.lmd-shut > .lmd-pane { display: none; }
+.lmd-zone-head { flex: none; display: flex; align-items: center; gap: 2px; height: 30px; padding: 0 6px 0 4px; border-top: 1px solid var(--line); color: var(--fg-faint); }
+.lmd-zone-tog { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; height: 100%; padding: 0 4px; border: 0; background: none; color: inherit; font: inherit; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; text-align: left; cursor: pointer; }
+.lmd-zone-tog:hover { color: var(--fg); }
+.lmd-zone-tog svg, .lmd-root-tog .lmd-node-chev svg { width: 14px; height: 14px; transition: transform 0.12s ease; }
+.lmd-zone-tog[aria-expanded=true] svg, .lmd-root-tog[aria-expanded=true] .lmd-node-chev svg { transform: rotate(90deg); }
+.lmd-zone-btn { flex: none; width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: inherit; display: grid; place-items: center; cursor: pointer; }
+.lmd-zone-btn:hover { background: var(--bg-soft); color: var(--fg); }
+.lmd-zone-btn svg { width: 15px; height: 15px; }
+.lmd-split { flex: none; height: 7px; margin: -3px 0 -4px; position: relative; z-index: 3; cursor: row-resize; }
+.lmd-split:hover, .lmd-splitting .lmd-split { background: var(--accent-soft); }
+.lmd-zones.lmd-one .lmd-split, .lmd-nodoc .lmd-split, .lmd-nodoc .lmd-zone-outline { display: none; }
+.lmd-splitting { cursor: row-resize; user-select: none; }
+.lmd-zone .lmd-pane { padding-top: 0; }
+.lmd-zone-files .lmd-pane { padding-top: 2px; }
+/* Buscando, el explorador muestra los resultados aunque esté plegado. */
+.lmd-searching .lmd-zone-files.lmd-shut { flex: 1 1 0px; }
+.lmd-searching .lmd-zone-files.lmd-shut > .lmd-pane { display: block; }
+/* Raíces del explorador */
+.lmd-xroot { margin-bottom: 4px; border-radius: 6px; }
+.lmd-xroot .lmd-tree-head { gap: 2px; padding: 0 2px 0 0; }
+.lmd-root-tog { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 6px 0 4px; border: 0; border-radius: 6px; background: transparent; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+.lmd-root-tog:hover { background: var(--bg-soft); }
+.lmd-root-ico { display: grid; place-items: center; color: var(--fg-muted); }
+.lmd-root-ico svg { width: 15px; height: 15px; }
+.lmd-xroot .lmd-tree-up { flex: none; width: 24px; height: 24px; border: 0; color: var(--fg-faint); }
+.lmd-xroot.lmd-shut > .lmd-tree { display: none; }
+.lmd-xroot .lmd-tree { padding-left: 6px; }
+.lmd-xroot .lmd-empty { padding: 4px 10px 6px; font-size: 12.5px; }
+.lmd-root-hint { display: block; padding: 3px 10px 6px; color: var(--accent); text-align: left; }
+.lmd-node-name { flex: 1; min-width: 0; }
+.lmd-node-where { flex: none; margin-left: 4px; color: var(--fg-faint); opacity: 0.75; }
+.lmd-node-where svg { width: 13px; height: 13px; margin-top: 3px; }
+.lmd-node.lmd-active .lmd-node-where { color: inherit; }
+.lmd-recent { display: flex; align-items: center; gap: 2px; }
+.lmd-recent .lmd-node { flex: 1; min-width: 0; }
+.lmd-recent .lmd-node-name { flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lmd-node-sub { flex: 1; min-width: 0; color: var(--fg-faint); font-size: 12px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lmd-node-x { flex: none; width: 22px; height: 22px; border: 0; border-radius: 6px; background: transparent; color: var(--fg-faint); display: grid; place-items: center; cursor: pointer; opacity: 0; }
+.lmd-recent:hover .lmd-node-x, .lmd-node-x:focus-visible { opacity: 1; }
+.lmd-node-x:hover { background: var(--bg-soft); color: var(--fg); }
+.lmd-node-x svg { width: 13px; height: 13px; }
+/* Resultados: primero la nota abierta, después cada raíz con su nombre */
+.lmd-res-doc { display: flex; align-items: center; gap: 6px; width: 100%; margin: 2px 0 8px; padding: 5px 8px; border: 0; border-radius: 6px; background: var(--bg-soft); color: var(--fg); font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.lmd-res-doc:hover { color: var(--accent); }
+.lmd-res-doc svg { width: 15px; height: 15px; }
+.lmd-res-root { display: flex; align-items: center; gap: 6px; margin: 10px 6px 4px; color: var(--fg-faint); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+/* Estado vacío: liviano, sin título */
+.lmd-home-card .lmd-home-sub { margin-top: 14px; }

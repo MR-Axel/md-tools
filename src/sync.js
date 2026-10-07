@@ -102,7 +102,7 @@
   // Abre la carpeta Nube con el árbol a la vista: la nota más nueva, o la primera si todavía no hay ninguna.
   async function openCloud(host) {
     try {
-      await LMD.patch({ sidebarTab: 'files', sidebarHidden: false });
+      core.showFiles('cloud');
       if (core && isCloud()) { host.close(); return; }
       const rows = await LMD.cloud.list(true);
       const made = rows.length ? null : await LMD.home.cloudNote();
@@ -129,7 +129,7 @@
     const askLogin = () => {
       const acts = box.querySelector('.lmd-acct-actions'); if (!acts || LMD.cloud.signedIn()) return;
       const form = el('div', { class: 'lmd-signin' }); acts.replaceWith(form);
-      LMD.home.signIn(form, async () => { account = null; asked = false; paint(); await cloudPane(box, host); });
+      LMD.home.signIn(form, async () => { account = null; asked = false; paint(); if (core.APP) core.reloadTree(); await cloudPane(box, host); });
     };
     if (wantLogin) { wantLogin = false; if (LMD.cloud.enabled() && !host.direct) askLogin(); }
     box.onclick = async (e) => {
@@ -137,7 +137,7 @@
       if (b.dataset.c === 'on') LMD.patch({ cloudUrl: '' });
       else if (b.dataset.c === 'login') { if (host.direct) host.login(); else askLogin(); }
       else if (b.dataset.c === 'open') openCloud(Object.assign({ say: (t) => { const m = box.querySelector('.lmd-acct-msg'); if (m) { m.hidden = false; m.textContent = t; } } }, host));
-      else if (b.dataset.c === 'out') { await LMD.cloud.logout(); account = null; asked = false; paint(); cloudPane(box, host); }
+      else if (b.dataset.c === 'out') { await LMD.cloud.logout(); account = null; asked = false; paint(); if (core.APP) core.reloadTree(); cloudPane(box, host); }
     };
   }
 
@@ -384,5 +384,8 @@
     LMD.cloud.ready().then(paint);
   }
 
-  LMD.sync = { init, paint, click, panes, dialog, feedback, awaitPaid, openCloud, quota, PAY };
+  // Entrar a la cuenta desde cualquier lado: Ajustes en Nube, con el correo ya pedido.
+  const login = () => { wantLogin = true; core.openPanel('cloud'); };
+
+  LMD.sync = { init, paint, click, panes, dialog, feedback, awaitPaid, openCloud, quota, PAY, login };
 })();

@@ -43,9 +43,12 @@ try {
   check('links [[wiki]] resueltos', doc.wiki[0] === 'notes.md' && doc.wiki[2] === '', doc.wiki);
   check('el HTML del documento no ejecuta scripts', !doc.xss);
 
-  await page.click('.lmd-tab[data-tab=files]'); await page.waitForSelector('.lmd-node');
+  await page.waitForSelector('.lmd-node');
   const tree = await page.evaluate(() => [...document.querySelectorAll('.lmd-node')].map((n) => n.textContent.trim() + (n.classList.contains('lmd-active') ? '*' : '')));
   check('árbol de la carpeta', tree.includes('sample.md*') && tree.includes('sub'), tree);
+  // El ejemplo vive dentro del repositorio: el árbol arranca en su raíz (donde está .git), con examples desplegada.
+  const repo = await page.evaluate(() => ({ head: document.querySelector('.lmd-xroot[data-root=disk] .lmd-tree-path').textContent, top: [...document.querySelectorAll('.lmd-xroot > .lmd-tree > .lmd-node')].map((n) => n.textContent.trim()), open: [...document.querySelectorAll('.lmd-node-dir.lmd-open')].map((n) => n.textContent.trim()), where: document.querySelector('.lmd-node.lmd-active .lmd-node-where').title }));
+  check('sobre un archivo del disco el árbol sube hasta la raíz del repositorio', repo.head === path.basename(root) && repo.top.includes('examples') && repo.top.includes('README.md') && repo.open.includes('examples') && repo.where === 'En el disco', repo);
   await page.fill('.lmd-search input', 'SharpMD'); await page.waitForSelector('.lmd-results-sum');
   await page.waitForFunction(() => /\d/.test(document.querySelector('.lmd-results-sum').textContent), null, { timeout: 15000 });
   check('búsqueda en la carpeta', /coincidencia/.test(await page.textContent('.lmd-results-sum')), await page.textContent('.lmd-results-sum'));
@@ -101,7 +104,7 @@ try {
   check('imágenes relativas', opened.img === 40, opened.img);
   check('matemática y diagramas en la app', opened.katex && opened.diagrams === 2, opened);
 
-  await app.click('.lmd-tab[data-tab=files]'); await app.waitForSelector('.lmd-node');
+  await app.waitForSelector('.lmd-node');
   await app.fill('.lmd-search input', 'zanahoria');
   await app.waitForFunction(() => /\d/.test((document.querySelector('.lmd-results-sum') || {}).textContent || ''), null, { timeout: 15000 });
   check('búsqueda en la carpeta de la app', (await app.locator('.lmd-res-file').count()) === 2);
@@ -116,8 +119,11 @@ try {
   await app.click('[data-act=mode-read]'); await app.waitForTimeout(300);
   await Promise.all([app.waitForNavigation(), app.click('.lmd-node:has-text("otro.md")')]); await app.waitForSelector('.markdown-body h1');
   check('navega a otro archivo', (await app.title()) === 'otro.md');
-  await Promise.all([app.waitForNavigation(), app.click('.lmd-tree-open')]); await app.waitForSelector('.lmd-home-item');
-  check('recientes', /notas/.test(await app.textContent('.lmd-home-item')));
+  // Al volver a la app sin nota, la carpeta que se venía usando sigue en el explorador, con sus archivos.
+  await app.goto(`chrome-extension://${id}/src/app.html`); await app.waitForSelector('.lmd-home [data-home=new]'); await app.waitForSelector('.lmd-xroot[data-root=disk] .lmd-node');
+  const back = await app.evaluate(() => ({ head: document.querySelector('.lmd-xroot[data-root=disk] .lmd-tree-path').textContent, files: [...document.querySelectorAll('.lmd-xroot[data-root=disk] .lmd-tree > .lmd-node')].map((n) => n.textContent.trim()), where: [...document.querySelectorAll('.lmd-xroot[data-root=disk] a.lmd-node .lmd-node-where')].map((w) => w.title) }));
+  check('al volver, la carpeta abierta sigue en el explorador', back.head === 'notas' && back.files.includes('otro.md') && back.files.includes('README.md'), back);
+  check('cada archivo dice dónde está guardado', back.where.length >= 2 && back.where.every((t) => t === 'En el disco'), back.where);
 
   const popup = await ctx.newPage(); watch(popup);
   await popup.goto(`chrome-extension://${id}/src/popup.html`); await popup.waitForTimeout(600);
@@ -136,8 +142,9 @@ try {
   const noteUrl = fresh.url();
   await fresh.close();
   const again = await ctx.newPage(); watch(again);
-  await again.goto(`chrome-extension://${id}/src/app.html`); await again.waitForSelector('.lmd-home-item');
-  check('al volver, la nota aparece en el inicio con su título', /Idea/.test(await again.textContent('.lmd-home-item')), await again.textContent('.lmd-home-item'));
+  await again.goto(`chrome-extension://${id}/src/app.html`); await again.waitForSelector('.lmd-xroot[data-root=local] .lmd-node');
+  const listed = await again.evaluate(() => { const n = document.querySelector('.lmd-xroot[data-root=local] .lmd-node'); return [n.textContent.trim(), n.title, n.querySelector('.lmd-node-where').title]; });
+  check('al volver, la nota aparece en el explorador con su título', listed[0] === 'Idea' && /^nota-\d{8}-\d{4}\.md$/.test(listed[1]) && listed[2] === 'En este navegador', listed);
   await again.close();
   fresh = await ctx.newPage(); watch(fresh);
   await fresh.goto(noteUrl); await fresh.waitForSelector('.markdown-body h1');

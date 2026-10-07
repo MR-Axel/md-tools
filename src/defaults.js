@@ -24,7 +24,6 @@
     typewriter: false, // al editar, mantiene el renglón actual a media altura
     refreshInterval: 1000, // ms
     sidebarHidden: false,
-    sidebarTab: 'outline', // outline | files
     sidebarWidth: 300,
     filesOnlyMarkdown: true,
     filesShowHidden: false,
@@ -597,6 +596,23 @@
       "Salir sin guardar": "Leave without saving",
       "Aceptar": "OK",
       "Escribí un nombre.": "Type a name.",
+      "Arrastrar para cambiar el alto": "Drag to resize",
+      "Crear": "Create",
+      "Crear acá": "Create here",
+      "Abrir otra carpeta o archivo": "Open another folder or file",
+      "Buscar en la nota y en los archivos": "Search this note and your files",
+      "En el disco": "On disk",
+      "En la nube": "In the cloud",
+      "Entrar para ver tus notas": "Sign in to see your notes",
+      "No se pudo leer esta carpeta.": "This folder could not be read.",
+      "Creá una nota con el botón +.": "Create a note with the + button.",
+      "En esta nota": "In this note",
+      "Buscando en los archivos…": "Searching your files…",
+      "Nota en blanco": "Blank note",
+      "Nueva nota": "New note",
+      "Nombre de la nota nueva": "Name of the new note",
+      "Elegí una nota de la izquierda o empezá una nueva.": "Pick a note on the left or start a new one.",
+      "No se pudo crear la carpeta": "The folder could not be created",
   };
   let current = 'es';
   function setLang(pref) {

@@ -60,7 +60,7 @@
   const isDark = () => LMD.theme.isDark(settings);
   const applyAccent = (root, dark) => LMD.theme.applyAccent(root, dark, settings);
   // Lo que el estado vacío (home.js) necesita del lector: dónde dibujarse y cómo abrir una nota sin recargar.
-  const homeCtx = () => ({ settings, APP_URL, box: ui.home, open: (f, opt) => go(f, opt), refresh: () => core.reloadTree() });
+  const homeCtx = () => ({ settings, APP_URL, box: ui.home, open: (f, opt) => go(f, opt), refresh: () => core.reloadTree(), say: (text) => flash(text, 'error') });
   // Si la extensión se recargó o se actualizó, esta pestaña queda desconectada de ella: no puede
   // releer el archivo ni la carpeta. Se detecta y se avisa, en vez de fallar en silencio.
   let orphan = false;
@@ -117,9 +117,16 @@
           if (seen.has(name)) return; seen.add(name);
           rows.push({ name, url: dirUrl + encodeURIComponent(name) + (cut < 0 ? '' : '/'), dir: cut >= 0 });
         });
+        // Arriba de todo, una carpeta por cada persona que compartió notas con esta cuenta.
+        if (!parts.length && !other) {
+          try { (await LMD.cloud.shared()).forEach((n) => { if (seen.has('~' + n.owner)) return; seen.add('~' + n.owner); rows.push({ name: '~' + n.owner, label: n.by, url: dirUrl + '~' + n.owner + '/', dir: true }); }); } catch (e) { /* sin compartidas */ }
+        }
         return rows;
       }
-      if (root.kind === 'local') return (await LMD.store.notesAll()).map((n) => ({ name: n.name, url: dirUrl + encodeURIComponent(n.name), dir: false }));
+      if (root.kind === 'local') return (await LMD.store.notesAll()).map((n) => {
+        const first = STAMP_RE.test(n.name) ? (n.text.split('\n').find((l) => l.trim()) || '').replace(/^#+\s*/, '').slice(0, 60) : '';
+        return { name: n.name, label: first, url: dirUrl + encodeURIComponent(n.name), dir: false };
+      });
       if (root.kind === 'file') return [{ name: root.handle.name, url: dirUrl + encodeURIComponent(root.handle.name), dir: false }];
       let dir = root.handle;
       for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p);
@@ -533,19 +540,25 @@
 
     ui.sidebar = el('aside', { class: 'lmd-sidebar' });
     ui.sidebar.innerHTML =
-      '<div class="lmd-side-head">' +
-        '<div class="lmd-tabs" role="tablist">' +
-          '<button class="lmd-tab" data-tab="files" role="tab">' + ICON.folder + '<span>' + T('Archivos') + '</span></button>' +
-          '<button class="lmd-tab" data-tab="outline" role="tab">' + ICON.outline + '<span>' + T('Índice') + '</span></button>' +
-        '</div>' +
-      '</div>' +
+      // El buscador va arriba de todo. Debajo, las dos zonas a la vez: el índice de la nota y el explorador.
       '<div class="lmd-search">' +
         '<span class="lmd-search-ico">' + ICON.search + '</span>' +
         '<input type="search" spellcheck="false">' +
         '<span class="lmd-search-count"></span>' +
       '</div>' +
-      '<div class="lmd-pane lmd-pane-files" data-pane="files"><div class="lmd-tree-box"></div><div class="lmd-results" hidden></div></div>' +
-      '<div class="lmd-pane lmd-pane-outline" data-pane="outline"></div>' +
+      '<div class="lmd-zones">' +
+        '<section class="lmd-zone lmd-zone-outline" data-zone="outline">' +
+          '<div class="lmd-zone-head"><button type="button" class="lmd-zone-tog" data-zone-tog="outline"><span class="lmd-node-chev">' + ICON.chevron + '</span><span>' + T('Índice') + '</span></button></div>' +
+          '<div class="lmd-pane lmd-pane-outline" data-pane="outline"></div>' +
+        '</section>' +
+        '<div class="lmd-split" title="' + T('Arrastrar para cambiar el alto') + '"></div>' +
+        '<section class="lmd-zone lmd-zone-files" data-zone="files">' +
+          '<div class="lmd-zone-head"><button type="button" class="lmd-zone-tog" data-zone-tog="files"><span class="lmd-node-chev">' + ICON.chevron + '</span><span>' + T('Archivos') + '</span></button>' +
+            (APP ? '<button type="button" class="lmd-zone-btn lmd-tree-add" title="' + T('Crear') + '">' + ICON.plus + '</button>' : '') +
+            '<button type="button" class="lmd-zone-btn lmd-tree-open" title="' + T(APP ? 'Abrir otra carpeta o archivo' : 'Abrir otro archivo o carpeta') + '">' + ICON.open + '</button></div>' +
+          '<div class="lmd-pane lmd-pane-files" data-pane="files"><div class="lmd-tree-box"></div><div class="lmd-results" hidden></div></div>' +
+        '</section>' +
+      '</div>' +
       '<div class="lmd-update" hidden></div>' +
       '<div class="lmd-resizer" title="' + T('Arrastrar para cambiar el ancho') + '"></div>';
 
@@ -617,6 +630,7 @@
     ui.results = ui.sidebar.querySelector('.lmd-results');
     ui.paneFiles = ui.sidebar.querySelector('.lmd-pane-files');
     ui.paneOutline = ui.sidebar.querySelector('.lmd-pane-outline');
+    ui.zones = ui.sidebar.querySelector('.lmd-zones');
     ui.searchBox = ui.sidebar.querySelector('.lmd-search');
     ui.update = ui.sidebar.querySelector('.lmd-update');
     ui.searchInput = ui.searchBox.querySelector('input');
@@ -640,15 +654,15 @@
     document.body.addEventListener('click', (e) => {
       const actEl = e.target.closest('[data-act]');
       if (actEl) { onAction(actEl.dataset.act, actEl); return; }
-      const tab = e.target.closest('.lmd-tab');
-      if (tab) { LMD.patch({ sidebarTab: tab.dataset.tab }); return; }
+      if (sideClick(e)) return;
       const img = e.target.closest('img.lmd-zoomable');
       if (img && !img.closest('a') && !editMode) { openViewer(img); return; }
       const plain = !(e.ctrlKey || e.metaKey || e.shiftKey);
+      if (e.target.closest('.lmd-res-doc')) { stepSearch(1); return; }
       const res = e.target.closest('.lmd-results a');
       if (res && res.href.split('#')[0] === location.href.split('#')[0]) { e.preventDefault(); stepSearch(1); return; }
       // Un archivo del árbol, un resultado de búsqueda o un reciente: se abre sin recargar la página.
-      const nav = e.target.closest('a.lmd-node, .lmd-results a, .lmd-home a');
+      const nav = e.target.closest('a.lmd-node, .lmd-results a');
       if (nav && inApp(nav)) { if (plain) { e.preventDefault(); openDoc(nav.href); } return; }
       const a = e.target.closest('.lmd-article a[href], .lmd-pane-outline a');
       if (!a) return;
@@ -696,7 +710,8 @@
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k' && editMode && !rawMode && docKind() === 'md') { e.preventDefault(); LMD.links.open(); }
     });
 
-    ui.searchInput.addEventListener('input', debounce(() => runSearch(ui.searchInput.value), 180));
+    ui.searchInput.addEventListener('input', debounce(() => runSearch(ui.searchInput.value, true), 180));
+    ui.searchInput.addEventListener('input', () => document.documentElement.classList.toggle('lmd-searching', !!ui.searchInput.value.trim()));
     ui.searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); stepSearch(e.shiftKey ? -1 : 1); }
     });
@@ -717,6 +732,16 @@
         document.body.classList.remove('lmd-resizing');
         LMD.patch({ sidebarWidth: settings.sidebarWidth });
       };
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+    });
+
+    // Alto de las dos zonas: se arrastra la división y se recuerda.
+    ui.sidebar.querySelector('.lmd-split').addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      document.body.classList.add('lmd-resizing', 'lmd-splitting');
+      const move = (ev) => { const box = ui.zones.getBoundingClientRect(); side.split = Math.round(Math.min(85, Math.max(15, (ev.clientY - box.top) / box.height * 100))); applySide(); };
+      const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); document.body.classList.remove('lmd-resizing', 'lmd-splitting'); saveSide(); };
       document.addEventListener('mousemove', move);
       document.addEventListener('mouseup', up);
     });
@@ -802,11 +827,10 @@
       const on = (b.dataset.act === 'view-raw') === rawMode;
       b.classList.toggle('lmd-on', on); b.setAttribute('aria-checked', String(on));
     });
-    if (!ui.searchBox.hidden && ui.searchInput.value) runSearch(ui.searchInput.value);
+    if (ui.searchInput.value) runSearch(ui.searchInput.value, false, true);
     updateCount();
   }
 
-  let lastTab = null;
   function applySettings() {
     const root = document.documentElement;
     const dark = isDark();
@@ -816,7 +840,6 @@
     root.classList.toggle('lmd-wrap', !!settings.wrapCode);
     root.classList.toggle('lmd-focus', !!settings.focusMode);
     root.classList.toggle('lmd-typewriter', !!settings.typewriter);
-    root.classList.toggle('lmd-tab-outline', settings.sidebarTab === 'outline');
     root.classList.toggle('lmd-side-hidden', !!settings.sidebarHidden);
     root.style.setProperty('--lmd-content-w', settings.contentWidth + 'px');
     root.style.setProperty('--lmd-font-size', settings.fontSize + 'px');
@@ -829,16 +852,8 @@
     if (/^#[0-9a-f]{6}$/i.test(settings.codeColor || '')) root.style.setProperty('--code-tint', settings.codeColor); else root.style.removeProperty('--code-tint');
     ui.customStyle.textContent = settings.supporter ? (settings.customCSS || '') : '';
 
-    ui.sidebar.querySelectorAll('.lmd-tab').forEach((t) => t.classList.toggle('lmd-active', t.dataset.tab === settings.sidebarTab));
-    ui.paneFiles.hidden = settings.sidebarTab !== 'files';
-    ui.paneOutline.hidden = settings.sidebarTab !== 'outline';
-    if (settings.sidebarTab === 'files' && !ui.paneFiles.dataset.loaded) loadTree();
-    ui.searchInput.placeholder = settings.sidebarTab === 'files' ? T('Buscar en todos los archivos de la carpeta') : T('Buscar en este documento');
-    if (lastTab !== settings.sidebarTab) {
-      lastTab = settings.sidebarTab;
-      if (!ui.searchBox.hidden && ui.searchInput.value) runSearch(ui.searchInput.value);
-      else showResults(false);
-    }
+    ui.searchInput.placeholder = T('Buscar en la nota y en los archivos');
+    applySide();
 
     ui.status.textContent = settings.autoRefresh ? T('Recarga automática activa') : '';
     setupRefresh();
@@ -885,7 +900,7 @@
   }
 
   function render() {
-    if (noDoc) { ui.article.textContent = ''; spyHeadings = []; ui.paneOutline.textContent = ''; ui.progress = null; needsRender = false; return; }
+    if (noDoc) { ui.article.textContent = ''; spyHeadings = []; ui.paneOutline.textContent = ''; ui.progress = null; needsRender = false; if (ui.searchInput.value) runSearch(ui.searchInput.value, false, true); return; }
     const md = buildParser();
     const kind = docKind();
     const fm = kind !== 'md' ? { body: asMarkdown(kind), rows: null } : (settings.plugins.frontmatter ? splitFrontmatter(raw) : { body: raw, rows: null });
@@ -904,7 +919,7 @@
     window.scrollTo(0, y);
     onScroll();
     updateCount();
-    if (!ui.searchBox.hidden && ui.searchInput.value) runSearch(ui.searchInput.value);
+    if (ui.searchInput.value) runSearch(ui.searchInput.value, false, true);
     core.hooks.render.forEach((fn) => fn());
   }
 
@@ -1117,43 +1132,193 @@
     return all ? rows : visibleRows(rows);
   }
 
-  let treeRoot = APP ? '' : new URL('.', HERE).href;
+  // ---------- Explorador ----------
+  // Raíces desplegables, en este orden y solo las que apliquen: la carpeta del disco, las notas de este
+  // navegador y la nube. Sobre un .md abierto directo en el navegador hay una sola: la carpeta del archivo.
+  let treeRoot = APP ? '' : new URL('.', HERE).href; // hasta dónde llega el árbol del disco
+  let diskRoot = null; // la carpeta o el archivo del disco que muestra el explorador de la app
+  let diskTried = false;
+  const lastTree = {}; // dónde quedó el árbol de cada carpeta del disco, mientras dure la pestaña
+  const openDirs = new Set(); // carpetas desplegadas: siguen así al redibujar
+  // Cómo quedó la barra: el reparto entre las dos zonas, y qué está plegado.
+  let side = { split: 40, outlineShut: false, filesShut: false, shut: {} };
+  const saveSide = () => { try { chrome.storage.local.set({ side }); } catch (e) { /* queda para esta sesión */ } };
+  const loadSide = () => new Promise((resolve) => { try { chrome.storage.local.get('side', (r) => resolve(r && r.side)); } catch (e) { resolve(null); } });
+  function applySide() {
+    const o = ui.sidebar.querySelector('.lmd-zone-outline'); const f = ui.sidebar.querySelector('.lmd-zone-files');
+    o.classList.toggle('lmd-shut', !!side.outlineShut); f.classList.toggle('lmd-shut', !!side.filesShut);
+    o.style.flexGrow = side.outlineShut ? '' : String(side.split); f.style.flexGrow = side.filesShut ? '' : String(100 - side.split);
+    ui.zones.classList.toggle('lmd-one', !!side.outlineShut || !!side.filesShut);
+    ui.sidebar.querySelectorAll('[data-zone-tog]').forEach((b) => b.setAttribute('aria-expanded', String(!side[b.dataset.zoneTog + 'Shut'])));
+  }
+  // Dónde está guardado cada archivo: el ícono chico al lado del nombre.
+  const WHERE = { disk: ['disk', 'En el disco'], local: ['browser', 'En este navegador'], cloud: ['cloud', 'En la nube'] };
+  const sectionOf = (url) => { if (!APP) return isFile ? 'disk' : ''; const r = rootOf(url); return !r ? '' : r.kind === 'local' || r.kind === 'cloud' ? r.kind : 'disk'; };
+  // Las notas que nacen con la fecha por nombre se listan por su primer renglón.
+  const STAMP_RE = /^(nota|note)-\d{8}-\d{4}(-\d+)?\.md$/i;
 
-  async function loadTree() {
-    ui.paneFiles.dataset.loaded = '1';
-    ui.treeBox.textContent = '';
-    if (!treeRoot) return; // todavía no se abrió nada
+  // Hasta dónde subió la persona con la flecha, por carpeta: la próxima vez el árbol arranca ahí.
+  const TROOT_MAX = 200;
+  const treeMemo = () => new Promise((resolve) => { try { chrome.storage.local.get('treeRoots', (r) => resolve((r && r.treeRoots) || {})); } catch (e) { resolve({}); } });
+  async function rememberRoot(dir, top) {
+    const all = await treeMemo(); all[dir] = { u: top, t: Date.now() };
+    const keys = Object.keys(all);
+    if (keys.length > TROOT_MAX) keys.sort((a, b) => all[a].t - all[b].t).slice(0, keys.length - TROOT_MAX).forEach((k) => delete all[k]);
+    try { chrome.storage.local.set({ treeRoots: all }); } catch (e) { /* queda para esta sesión */ }
+  }
+  // Dónde arranca el árbol para un archivo: donde lo dejó la persona, la raíz del repositorio si hay un .git
+  // más arriba, o la carpeta del archivo. limit es lo más arriba que se puede llegar: en la app, la carpeta
+  // que la persona eligió; sobre file:// se mira hasta GIT_UP carpetas hacia arriba.
+  const GIT_UP = 8;
+  async function startRoot(fileUrl, limit) {
+    const dir = new URL('.', fileUrl).href;
+    const inside = (u) => !!u && dir.startsWith(u) && (!limit || u.startsWith(limit));
+    const memo = (await treeMemo())[dir];
+    if (memo && inside(memo.u)) return memo.u;
+    if (!APP && !isFile) return dir;
+    let u = dir;
+    for (let k = 0; k <= (APP ? 40 : GIT_UP); k++) {
+      const rows = await listDir(u, true);
+      if (!rows) break;
+      if (rows.some((r) => r.name === '.git')) return u;
+      const up = new URL('..', u).href;
+      if (up === u || (limit && !up.startsWith(limit))) break;
+      u = up;
+    }
+    return dir;
+  }
+  // La carpeta del disco más reciente que todavía tiene permiso: es la que se muestra al entrar.
+  async function recentDisk() {
+    for (const r of await LMD.store.rootsAll()) {
+      try { if ((await r.handle.queryPermission({ mode: r.kind === 'dir' ? 'readwrite' : 'read' })) === 'granted') return r; } catch (e) { /* permiso vencido */ }
+    }
+    return null;
+  }
+
+  function rootSection(key, o) {
+    const sec = el('section', { class: 'lmd-xroot' + (side.shut[key] ? ' lmd-shut' : ''), 'data-root': key });
     const head = el('div', { class: 'lmd-tree-head' });
-    const upBtn = el('button', { class: 'lmd-tree-up', title: T('Subir a la carpeta superior'), type: 'button' }, ICON.up);
-    const top = APP ? rootOf(treeRoot) : null;
-    const atTop = !!top && treeRoot === VBASE + top.id + '/';
-    const label = el('span', { class: 'lmd-tree-path', text: atTop ? top.name : decodeURIComponent(treeRoot.replace(/\/$/, '').split('/').pop() || treeRoot), title: APP ? (top ? top.name : '') : decodeURIComponent(treeRoot) });
-    const openBtn = el('button', { class: 'lmd-tree-up lmd-tree-open', title: T('Abrir otro archivo o carpeta'), type: 'button' }, ICON.open);
-    openBtn.addEventListener('click', () => { if (APP) go(''); else bg({ type: 'openApp' }); });
-    head.append(upBtn, label, openBtn);
-    core.hooks.tree.forEach((fn) => fn(head));
-    if (atTop) upBtn.style.display = 'none';
-    upBtn.addEventListener('click', () => {
-      if (atTop) return;
-      const parent = new URL('..', treeRoot).href;
-      if (parent !== treeRoot) { treeRoot = parent; loadTree(); if (!ui.searchBox.hidden && ui.searchInput.value) runSearch(ui.searchInput.value); }
-    });
+    const tog = el('button', { type: 'button', class: 'lmd-root-tog', 'aria-expanded': String(!side.shut[key]), title: o.title || o.name },
+      '<span class="lmd-node-chev">' + ICON.chevron + '</span><span class="lmd-root-ico">' + o.icon + '</span><span class="lmd-tree-path"></span>');
+    tog.querySelector('.lmd-tree-path').textContent = o.name;
+    head.appendChild(tog);
+    if (o.up) head.appendChild(el('button', { class: 'lmd-tree-up', type: 'button', title: T('Subir a la carpeta superior') }, ICON.up));
+    if (o.add) head.appendChild(el('button', { class: 'lmd-tree-up lmd-tree-new', type: 'button', title: T('Crear acá') }, ICON.plus));
     const list = el('div', { class: 'lmd-tree' });
-    ui.treeBox.append(head, list);
-    await fillDir(list, treeRoot, 0);
+    if (o.url) list.dataset.url = o.url;
+    sec.append(head, list);
+    return sec;
+  }
+
+  let treeTurn = 0;
+  async function loadTree() {
+    const turn = ++treeTurn;
+    ui.paneFiles.dataset.loaded = '1';
+    const secs = []; const fills = [];
+    const add = (key, o) => { const sec = rootSection(key, o); secs.push(sec); const list = sec.querySelector('.lmd-tree'); if (o.url) fills.push(fillDir(list, o.url, 0)); return list; };
+    const leaf = (u) => decodeURIComponent(u.replace(/\/$/, '').split('/').pop() || u);
+    if (!APP) add('disk', { name: leaf(treeRoot), title: decodeURIComponent(treeRoot), icon: ICON.folder, url: treeRoot, up: new URL('..', treeRoot).href !== treeRoot });
+    else {
+      if (!diskRoot && !diskTried) {
+        diskTried = true;
+        const r = await recentDisk();
+        if (turn !== treeTurn) return;
+        if (r && !diskRoot) { diskRoot = roots[r.id] || r; roots[r.id] = diskRoot; }
+      }
+      await LMD.cloud.ready();
+      const others = (await LMD.store.rootsAll()).filter((r) => !diskRoot || r.id !== diskRoot.id).slice(0, 8);
+      if (turn !== treeTurn) return;
+      if (diskRoot) {
+        const top = VBASE + diskRoot.id + '/';
+        if (!treeRoot || !treeRoot.startsWith(top)) treeRoot = top;
+        const atTop = treeRoot === top;
+        add('disk', { name: atTop ? diskRoot.name : leaf(treeRoot), title: diskRoot.name + (atTop ? '' : '/' + vParts(treeRoot).join('/')), icon: diskRoot.kind === 'dir' ? ICON.folder : ICON.file, url: treeRoot, up: !atTop, add: diskRoot.kind === 'dir' });
+      }
+      add('local', { name: T('En este navegador'), icon: ICON.browser, url: VBASE + 'local/', add: true });
+      if (LMD.cloud.enabled()) {
+        if (LMD.cloud.signedIn()) add('cloud', { name: T('Nube'), icon: ICON.cloud, url: VBASE + 'cloud/', add: true });
+        // Sin sesión, un renglón que invita a entrar.
+        else add('cloud', { name: T('Nube'), icon: ICON.cloud }).appendChild(el('button', { type: 'button', class: 'lmd-link lmd-root-hint', text: T('Entrar para ver tus notas') }));
+      }
+      // Las otras carpetas y archivos del disco que se abrieron antes: un clic los trae de vuelta.
+      if (others.length) {
+        const list = add('recent', { name: T('Recientes'), icon: ICON.clock });
+        others.forEach((r) => {
+          const row = el('div', { class: 'lmd-recent' });
+          const go = el('a', { class: 'lmd-node', href: APP_URL + '?f=' + encodeURIComponent(r.last || r.id + '/'), title: r.name });
+          go.innerHTML = '<span class="lmd-node-ico">' + (r.kind === 'dir' ? ICON.folder : ICON.md) + '</span><span class="lmd-node-name"></span><span class="lmd-node-sub"></span>';
+          go.querySelector('.lmd-node-name').textContent = r.name;
+          go.querySelector('.lmd-node-sub').textContent = r.kind === 'dir' ? decodeURIComponent((r.last || '').split('/').slice(1).join('/')) : '';
+          const del = el('button', { type: 'button', class: 'lmd-node-x', title: T('Quitar de la lista'), 'data-key': r.key }, ICON.close);
+          row.append(go, del); list.appendChild(row);
+        });
+      }
+    }
+    // Lo que se lista rápido entra ya dibujado, sin parpadeo; lo lento (la nube) se completa después.
+    await Promise.race([Promise.all(fills), new Promise((resolve) => setTimeout(resolve, 200))]);
+    if (turn !== treeTurn) return;
+    const y = ui.paneFiles.scrollTop;
+    ui.treeBox.replaceChildren(...secs);
+    ui.paneFiles.scrollTop = y;
+    markActive();
   }
   // Marca en el árbol la nota abierta. Devuelve false si no está a la vista.
   function markActive() {
     let hit = null;
     ui.treeBox.querySelectorAll('.lmd-node').forEach((n) => { const on = !noDoc && n.dataset.url === HERE; n.classList.toggle('lmd-active', on); if (on) hit = n; });
-    if (hit) hit.scrollIntoView({ block: 'nearest' });
+    if (hit && hit.offsetParent) hit.scrollIntoView({ block: 'nearest' });
     return !!hit;
   }
-  // Al cambiar de nota el árbol sigue a su carpeta, como cuando cada nota era una página.
-  function syncTree(fresh) {
-    const want = noDoc ? treeRoot : new URL('.', HERE).href;
-    if (want !== treeRoot) { treeRoot = want; folderIndex = null; fresh = true; }
-    if (ui.paneFiles.dataset.loaded && (fresh || !markActive()) && !(noDoc && !fresh)) loadTree();
+  // Al cambiar de nota el explorador la deja marcada y a la vista. Si es del disco y quedó fuera del árbol,
+  // el árbol se vuelve a ubicar: en la raíz del repositorio si la hay, o en la carpeta del archivo.
+  let rootTurn = 0;
+  async function syncTree(fresh) {
+    const turn = ++rootTurn;
+    if (APP && !noDoc && appRoot.root) {
+      const top = VBASE + appRoot.id + '/';
+      if (!diskRoot || diskRoot.id !== appRoot.id) {
+        // Al volver a una carpeta que ya se usó en esta sesión, el árbol queda donde estaba.
+        if (diskRoot && treeRoot) lastTree[diskRoot.id] = treeRoot;
+        treeRoot = lastTree[appRoot.id] || ''; fresh = true;
+      }
+      diskRoot = appRoot;
+      if (!treeRoot || !treeRoot.startsWith(top) || !HERE.startsWith(treeRoot)) {
+        const next = await startRoot(HERE, top);
+        if (turn !== rootTurn) return;
+        treeRoot = next; fresh = true;
+      }
+    }
+    // La raíz de la nota abierta se despliega sola.
+    const key = noDoc ? '' : sectionOf(HERE);
+    if (key && side.shut[key]) { delete side.shut[key]; saveSide(); fresh = true; }
+    if (fresh || !markActive()) loadTree();
+  }
+  // Sube el árbol del disco una carpeta, y lo recuerda para la carpeta de la nota abierta.
+  function treeUp() {
+    const top = APP && diskRoot ? VBASE + diskRoot.id + '/' : '';
+    const parent = new URL('..', treeRoot).href;
+    if ((top && treeRoot === top) || parent === treeRoot) return;
+    treeRoot = parent;
+    if (!noDoc && HERE.startsWith(treeRoot)) rememberRoot(new URL('.', HERE).href, treeRoot);
+    loadTree();
+    if (ui.searchInput.value.trim()) runSearch(ui.searchInput.value);
+  }
+  // Clics en la barra que no abren nada: plegar una zona o una raíz, subir, quitar un reciente, entrar.
+  function sideClick(e) {
+    const zone = e.target.closest('[data-zone-tog]');
+    if (zone) { const k = zone.dataset.zoneTog + 'Shut'; side[k] = !side[k]; applySide(); saveSide(); return true; }
+    const tog = e.target.closest('.lmd-root-tog');
+    if (tog) {
+      const sec = tog.closest('.lmd-xroot'); const shut = sec.classList.toggle('lmd-shut');
+      if (shut) side.shut[sec.dataset.root] = true; else delete side.shut[sec.dataset.root];
+      tog.setAttribute('aria-expanded', String(!shut)); saveSide();
+      return true;
+    }
+    if (e.target.closest('.lmd-tree-up:not(.lmd-tree-new)')) { treeUp(); return true; }
+    const x = e.target.closest('.lmd-node-x');
+    if (x) { LMD.store.handlesDelete(x.dataset.key).then(() => loadTree()); return true; }
+    if (e.target.closest('.lmd-root-hint')) { LMD.sync.login(); return true; }
+    return false;
   }
 
   async function fillDir(container, dirUrl, depth) {
@@ -1161,23 +1326,29 @@
     container.appendChild(el('p', { class: 'lmd-empty', text: T('Leyendo carpeta…') }));
     const rows = await listDir(dirUrl);
     container.textContent = '';
+    const where = WHERE[sectionOf(dirUrl)];
     if (rows == null) {
-      const msg = isFile
+      const msg = APP ? T('No se pudo leer esta carpeta.') : isFile
         ? T('No se pudo leer la carpeta. Activá "Permitir acceso a URL de archivo" en los detalles de la extensión.')
         : T('Este servidor no expone el listado de la carpeta.');
       container.appendChild(el('p', { class: 'lmd-empty', text: msg }));
       return;
     }
-    if (!rows.length) { container.appendChild(el('p', { class: 'lmd-empty', text: T('Carpeta sin archivos Markdown.') })); return; }
+    if (!rows.length) {
+      // Una raíz sin nada dice cómo empezar; una carpeta del disco, que no tiene Markdown.
+      const fresh = APP && depth === 0 && sectionOf(dirUrl) !== 'disk';
+      container.appendChild(el('p', { class: 'lmd-empty', text: T(fresh ? 'Creá una nota con el botón +.' : 'Carpeta sin archivos Markdown.') }));
+      return;
+    }
     const here = noDoc ? '' : HERE;
     rows.forEach((row) => {
-      const item = el(row.dir ? 'button' : 'a', { class: 'lmd-node' + (row.dir ? ' lmd-node-dir' : ''), title: row.name });
+      const item = el(row.dir ? 'button' : 'a', { class: 'lmd-node' + (row.dir ? ' lmd-node-dir' : ''), title: row.label && row.dir ? row.label : row.name });
       item.style.paddingLeft = (10 + depth * 14) + 'px';
       item.dataset.url = row.url;
       const md = MD_RE.test(row.name);
       item.innerHTML = (row.dir ? '<span class="lmd-node-chev">' + ICON.chevron + '</span>' : '<span class="lmd-node-ico">' + (md ? ICON.md : ICON.file) + '</span>') +
-        '<span class="lmd-node-name"></span>';
-      item.querySelector('.lmd-node-name').textContent = row.name;
+        '<span class="lmd-node-name"></span>' + (!row.dir && where ? '<span class="lmd-node-where" title="' + T(where[1]) + '">' + ICON[where[0]] + '</span>' : '');
+      item.querySelector('.lmd-node-name').textContent = row.label || row.name;
       container.appendChild(item);
       if (row.dir) {
         item.type = 'button';
@@ -1186,26 +1357,27 @@
         const open = async () => {
           kids.hidden = !kids.hidden;
           item.classList.toggle('lmd-open', !kids.hidden);
+          if (kids.hidden) openDirs.delete(row.url); else openDirs.add(row.url);
           if (!kids.hidden && !kids.dataset.loaded) { kids.dataset.loaded = '1'; await fillDir(kids, row.url, depth + 1); }
         };
         item.addEventListener('click', open);
-        if (here && here.startsWith(row.url)) open();
+        if ((here && here.startsWith(row.url)) || openDirs.has(row.url)) open();
       } else {
         item.href = toHref(row.url);
-        if (row.url === here) { item.classList.add('lmd-active'); setTimeout(() => item.scrollIntoView({ block: 'nearest' }), 0); }
+        if (row.url === here) { item.classList.add('lmd-active'); setTimeout(() => { if (item.offsetParent) item.scrollIntoView({ block: 'nearest' }); }, 0); }
       }
     });
   }
 
   // ---------- Búsqueda ----------
-  // Con la pestaña Índice busca en este documento; con la pestaña Carpeta, en todos los Markdown de la carpeta.
+  // Con texto en el buscador se marca lo encontrado en la nota abierta y se busca en los Markdown de las
+  // raíces desplegadas del explorador. Los resultados dicen de dónde viene cada uno.
   const FOLDER_MAX_FILES = 600;
   const FOLDER_MAX_DEPTH = 6;
   const fileCache = new Map();
-  let folderIndex = null;
+  const folderIndex = new Map(); // los Markdown de cada raíz ya recorrida
   let folderToken = 0;
-
-  const folderMode = () => settings.sidebarTab === 'files';
+  let resultsFor = ''; // el texto de los resultados que están a la vista
 
   // El buscador está siempre a la vista: "abrir" es darle foco y "cerrar" es vaciarlo.
   function toggleSearch(show) {
@@ -1213,12 +1385,13 @@
       if (settings.sidebarHidden) LMD.patch({ sidebarHidden: false });
       ui.searchInput.focus(); ui.searchInput.select();
       if (ui.searchInput.value) runSearch(ui.searchInput.value);
-    } else { ui.searchInput.value = ''; ui.searchInput.blur(); clearSearch(); showResults(false); folderToken++; }
+    } else { ui.searchInput.value = ''; ui.searchInput.blur(); runSearch(''); }
   }
 
   function showResults(on) {
     ui.results.hidden = !on;
     ui.treeBox.hidden = on;
+    if (!on) { resultsFor = ''; ui.results.textContent = ''; }
   }
 
   function clearSearch() {
@@ -1226,13 +1399,15 @@
     if (window.CSS && CSS.highlights) { CSS.highlights.delete('lmd-hit'); CSS.highlights.delete('lmd-hit-current'); }
   }
 
-  function runSearch(q, jump) {
+  // jump lleva la nota a la primera coincidencia. keep deja los resultados de archivos que ya están a la
+  // vista (al redibujar la nota, o al abrir uno de esos resultados) y solo vuelve a marcar la nota.
+  function runSearch(q, jump, keep) {
     clearSearch();
     q = (q || '').trim();
-    const folder = folderMode();
+    document.documentElement.classList.toggle('lmd-searching', !!q);
     if (!q) { showResults(false); folderToken++; return; }
-    highlightInDoc(q.toLowerCase(), !folder || jump);
-    if (folder) searchFolder(q); else showResults(false);
+    if (!noDoc) highlightInDoc(q.toLowerCase(), jump);
+    if (keep && resultsFor === q && !ui.results.hidden) docRow(); else searchFiles(q);
   }
 
   function highlightInDoc(q, scroll) {
@@ -1251,8 +1426,8 @@
     }
     if (searchHits.length) {
       CSS.highlights.set('lmd-hit', new Highlight(...searchHits));
-      if (scroll) stepSearch(1);
-    } else if (!folderMode()) ui.searchCount.textContent = '0';
+      if (scroll) stepSearch(1); else ui.searchCount.textContent = String(searchHits.length);
+    } else ui.searchCount.textContent = '0';
   }
 
   function stepSearch(dir) {
@@ -1262,7 +1437,7 @@
     CSS.highlights.set('lmd-hit-current', new Highlight(r));
     const rect = r.getBoundingClientRect();
     window.scrollTo({ top: window.scrollY + rect.top - window.innerHeight / 3, behavior: 'smooth' });
-    if (!folderMode()) ui.searchCount.textContent = (searchIndex + 1) + ' / ' + searchHits.length;
+    ui.searchCount.textContent = (searchIndex + 1) + ' / ' + searchHits.length;
   }
 
   async function collectFiles(root) {
@@ -1292,26 +1467,53 @@
     return text;
   }
 
-  async function searchFolder(q) {
+  // Dónde se busca: las raíces del explorador que están desplegadas.
+  function searchRoots() {
+    const leaf = (u) => decodeURIComponent(u.replace(/\/$/, '').split('/').pop() || u);
+    if (!APP) return [{ key: 'disk', name: leaf(treeRoot), icon: ICON.folder, url: treeRoot }];
+    const out = [];
+    if (diskRoot && treeRoot && !side.shut.disk) out.push({ key: 'disk', name: treeRoot === VBASE + diskRoot.id + '/' ? diskRoot.name : leaf(treeRoot), icon: ICON.folder, url: treeRoot });
+    if (!side.shut.local) out.push({ key: 'local', name: T('En este navegador'), icon: ICON.browser, url: VBASE + 'local/' });
+    if (LMD.cloud.enabled() && LMD.cloud.signedIn() && !side.shut.cloud) out.push({ key: 'cloud', name: T('Nube'), icon: ICON.cloud, url: VBASE + 'cloud/' });
+    return out;
+  }
+
+  // El renglón de arriba de los resultados: cuántas veces aparece en la nota abierta. Un clic va a la siguiente.
+  function docRow() {
+    let row = ui.results.querySelector('.lmd-res-doc');
+    if (noDoc) { if (row) row.remove(); return; }
+    if (!row) {
+      row = el('button', { type: 'button', class: 'lmd-res-doc' }, '<span class="lmd-node-ico">' + ICON.doc + '</span><span class="lmd-res-name"></span><span class="lmd-res-count"></span>');
+      ui.results.insertBefore(row, ui.results.firstChild);
+    }
+    row.querySelector('.lmd-res-name').textContent = T('En esta nota');
+    row.querySelector('.lmd-res-count').textContent = searchHits.length;
+    row.title = DOC_NAME;
+    ui.results.querySelectorAll('.lmd-res').forEach((g) => g.classList.toggle('lmd-res-here', g.dataset.url === HERE));
+  }
+
+  async function searchFiles(q) {
     const token = ++folderToken;
     const needle = q.toLowerCase();
-    showResults(true);
+    showResults(true); resultsFor = q;
     ui.results.textContent = '';
-    ui.results.appendChild(el('p', { class: 'lmd-empty', text: T('Buscando en la carpeta…') }));
-    ui.searchCount.textContent = '…';
-
-    if (!folderIndex || folderIndex.root !== treeRoot) {
-      const files = await collectFiles(treeRoot);
-      if (token !== folderToken) return;
-      if (files == null) {
-        ui.results.textContent = '';
-        ui.results.appendChild(el('p', { class: 'lmd-empty', text: isFile ? T('No se pudo leer la carpeta. Activá "Permitir acceso a URL de archivo" en los detalles de la extensión.') : T('Este servidor no expone el listado de la carpeta.') }));
-        ui.searchCount.textContent = '';
-        return;
+    docRow();
+    const wait = el('p', { class: 'lmd-empty', text: T('Buscando en los archivos…') });
+    ui.results.appendChild(wait);
+    const where = searchRoots(); const files = [];
+    for (const r of where) {
+      if (!folderIndex.has(r.url)) {
+        const got = await collectFiles(r.url);
+        if (token !== folderToken) return;
+        if (got == null) {
+          // Sobre un archivo abierto directo, la carpeta puede no dejarse leer: se dice por qué.
+          if (!APP) { wait.textContent = isFile ? T('No se pudo leer la carpeta. Activá "Permitir acceso a URL de archivo" en los detalles de la extensión.') : T('Este servidor no expone el listado de la carpeta.'); return; }
+          continue;
+        }
+        folderIndex.set(r.url, got);
       }
-      folderIndex = { root: treeRoot, files };
+      folderIndex.get(r.url).forEach((f) => files.push({ rel: f.rel, url: f.url, root: r }));
     }
-    const files = folderIndex.files;
     const found = [];
     let next = 0; let total = 0;
     const worker = async () => {
@@ -1337,40 +1539,56 @@
     if (token !== folderToken) return;
 
     found.sort((x, y) => x.file.rel.localeCompare(y.file.rel, undefined, { numeric: true, sensitivity: 'base' }));
-    ui.results.textContent = '';
-    const here = HERE;
+    wait.remove();
+    if (!where.length) return; // con todo plegado solo se busca en la nota
     const summary = found.length
       ? T((total === 1 ? '{t} coincidencia' : '{t} coincidencias') + (found.length === 1 ? ' en {f} archivo (de {n})' : ' en {f} archivos (de {n})'), { t: total, f: found.length, n: files.length })
       : T(files.length === 1 ? 'Sin coincidencias en {n} archivo' : 'Sin coincidencias en {n} archivos', { n: files.length });
     ui.results.appendChild(el('p', { class: 'lmd-results-sum', text: summary + (files.length >= FOLDER_MAX_FILES ? T('. Se revisaron los primeros {n}.', { n: FOLDER_MAX_FILES }) : '') }));
-    ui.searchCount.textContent = String(total);
-    const frag = '#lmd-q=' + encodeURIComponent(q) + '&r=' + encodeURIComponent(treeRoot);
-    found.forEach((r) => {
-      const group = el('div', { class: 'lmd-res' + (r.file.url === here ? ' lmd-res-here' : '') });
-      const head = el('a', { class: 'lmd-res-file', href: toHref(r.file.url + frag), title: r.file.rel });
-      head.innerHTML = '<span class="lmd-node-ico">' + ICON.md + '</span><span class="lmd-res-name"></span><span class="lmd-res-count"></span>';
-      head.querySelector('.lmd-res-name').textContent = r.file.rel;
-      head.querySelector('.lmd-res-count').textContent = r.count;
-      group.appendChild(head);
-      r.hits.forEach((h) => {
-        const start = Math.max(0, h.pos - 34);
-        const cut = h.text.slice(start, h.pos + needle.length + 70);
-        const rel = h.pos - start;
-        const a = el('a', { class: 'lmd-res-hit', href: toHref(r.file.url + frag), title: T('Línea {n}', { n: h.line }) });
-        a.append((start > 0 ? '…' : '') + cut.slice(0, rel), el('mark', { text: cut.slice(rel, rel + needle.length) }), cut.slice(rel + needle.length));
-        group.appendChild(a);
+    if (noDoc) ui.searchCount.textContent = String(total);
+    // Sobre un archivo abierto directo cada resultado es otra página: la búsqueda viaja en la dirección.
+    const frag = '#lmd-q=' + encodeURIComponent(q) + (APP ? '' : '&r=' + encodeURIComponent(treeRoot));
+    where.forEach((root) => {
+      const mine = found.filter((r) => r.file.root === root);
+      if (!mine.length) return;
+      const head = el('p', { class: 'lmd-res-root', 'data-root': root.key }, '<span class="lmd-root-ico">' + root.icon + '</span><span></span>');
+      head.lastChild.textContent = root.name;
+      ui.results.appendChild(head);
+      mine.forEach((r) => {
+        const group = el('div', { class: 'lmd-res' + (!noDoc && r.file.url === HERE ? ' lmd-res-here' : '') });
+        group.dataset.url = r.file.url;
+        const file = el('a', { class: 'lmd-res-file', href: toHref(r.file.url + frag), title: r.file.rel });
+        file.innerHTML = '<span class="lmd-node-ico">' + ICON.md + '</span><span class="lmd-res-name"></span><span class="lmd-res-count"></span>';
+        file.querySelector('.lmd-res-name').textContent = r.file.rel;
+        file.querySelector('.lmd-res-count').textContent = r.count;
+        group.appendChild(file);
+        r.hits.forEach((h) => {
+          const start = Math.max(0, h.pos - 34);
+          const cut = h.text.slice(start, h.pos + needle.length + 70);
+          const rel = h.pos - start;
+          const a = el('a', { class: 'lmd-res-hit', href: toHref(r.file.url + frag), title: T('Línea {n}', { n: h.line }) });
+          a.append((start > 0 ? '…' : '') + cut.slice(0, rel), el('mark', { text: cut.slice(rel, rel + needle.length) }), cut.slice(rel + needle.length));
+          group.appendChild(a);
+        });
+        if (r.count > r.hits.length && r.hits.length === 4) group.appendChild(el('span', { class: 'lmd-res-more', text: T('y más en este archivo') }));
+        ui.results.appendChild(group);
       });
-      if (r.count > r.hits.length && r.hits.length === 4) group.appendChild(el('span', { class: 'lmd-res-more', text: T('y más en este archivo') }));
-      ui.results.appendChild(group);
     });
   }
 
-  // Busca un texto en toda la carpeta, con el buscador de siempre.
+  // Busca un texto en la nota y en los archivos, con el buscador de siempre.
   function searchFor(q) {
     ui.searchInput.value = q;
-    if (settings.sidebarTab === 'files') runSearch(q);
-    // Al cambiar de pestaña, applySettings repite la búsqueda con lo que quedó escrito.
-    if (settings.sidebarHidden || settings.sidebarTab !== 'files') LMD.patch({ sidebarHidden: false, sidebarTab: 'files' });
+    if (settings.sidebarHidden) LMD.patch({ sidebarHidden: false });
+    if (side.filesShut) { side.filesShut = false; applySide(); saveSide(); }
+    runSearch(q);
+  }
+  // Deja el explorador a la vista, con una raíz desplegada.
+  function showFiles(key) {
+    if (settings.sidebarHidden) LMD.patch({ sidebarHidden: false });
+    if (side.filesShut) { side.filesShut = false; applySide(); }
+    if (key && side.shut[key]) { delete side.shut[key]; loadTree(); }
+    saveSide();
   }
   // Enlace a una sección para pegar en otro lado: la dirección completa si el documento tiene una pública
   // (un .md abierto desde la web, o una nota compartida por enlace); si no, solo el ancla.
@@ -2060,12 +2278,16 @@
     get HERE() { return HERE; }, get docName() { return DOC_NAME; }, get noDoc() { return noDoc; },
     openApp: (query) => bg({ type: 'openApp', query }),
     openPanel: (tab) => openPanel(tab),
-    ui, hooks: { render: [], tree: [], doc: [] }, lastBlock: null, appUrl: APP_URL, hold: false,
+    ui, hooks: { render: [], doc: [] }, lastBlock: null, appUrl: APP_URL, hold: false,
     editAt: (e) => editAt(e), copy: (text) => { copyText(text); flash(T('Copiado')); }, searchFor, sectionLink,
     links: { headings: () => anchorsOf(spyHeadings), headingsIn, files: linkFiles, read: readDoc, rel: relLink, find: findAnchor, same: sameUrl },
     get blocks() { return docKind() === 'md'; },
-    treeRoot: () => treeRoot,
-    reloadTree: () => { fileCache.clear(); folderIndex = null; wikiIndex = null; linkIndex = null; return loadTree(); },
+    // Dónde se crea desde la cabecera del explorador cuando hace falta una carpeta: la del disco, si hay una abierta.
+    diskDir: () => (APP && diskRoot && diskRoot.kind === 'dir' ? treeRoot : ''),
+    newNote: (opt) => LMD.home.create(homeCtx(), opt),
+    pick: (what) => LMD.home.pick(homeCtx(), what),
+    showFiles,
+    reloadTree: () => { fileCache.clear(); folderIndex.clear(); wikiIndex = null; linkIndex = null; if (ui.searchInput.value.trim()) runSearch(ui.searchInput.value); return loadTree(); },
     dirHandle: async (dirUrl) => { let dir = rootOf(dirUrl).handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, ensure, isDark,
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
@@ -2357,6 +2579,7 @@
     docSeq++;
     clearTimeout(autosaveTimer); clearTimeout(softTimer);
     if (stopEvents) { stopEvents(); stopEvents = null; }
+    if (LMD.comments) LMD.comments.detach();
     if (unhold) { unhold(); unhold = null; LMD.cloud.flush(); }
     blobUrls.splice(0).forEach((u) => URL.revokeObjectURL(u));
     if (!noDoc) fileCache.delete(HERE);
@@ -2399,7 +2622,7 @@
     const wasEditing = editMode;
     dropDoc();
     // Se creó, se movió o se borró un archivo: el árbol y lo que se sabía de la carpeta se vuelven a leer.
-    if (opt.tree) { fileCache.clear(); folderIndex = null; wikiIndex = null; linkIndex = null; }
+    if (opt.tree) { fileCache.clear(); folderIndex.clear(); wikiIndex = null; linkIndex = null; }
     HERE = VBASE + f; DOC_NAME = doc ? decodeURIComponent(HERE.split('/').pop() || '') : ''; noDoc = !doc;
     appRoot = doc ? doc.root : null;
     if (doc) roots[appRoot.id] = appRoot;
@@ -2427,10 +2650,13 @@
           if (mine !== docSeq) return;
           present = ev.who || [];
           if (ev.type === 'saved' && ev.by !== LMD.cloud.email()) { cloudPoll = 0; checkForChanges(false); }
+          if (ev.type === 'comments' && LMD.comments) { cloudPoll = 0; checkForChanges(false).then(() => { if (mine === docSeq) LMD.comments.onEvent(ev); }); }
           LMD.sync.paint();
         });
       }
       afterOpen({ edit: opt.edit, editing: wasEditing, hash: opt.hash });
+      // Los comentarios para la IA son de cada nota: con la nueva ya dibujada se traen los suyos.
+      if (appRoot.kind === 'cloud' && LMD.comments) LMD.comments.attach(vParts(HERE).join('/'));
     }
     core.hooks.doc.forEach((fn) => fn());
   }
@@ -2463,15 +2689,8 @@
     if (fromSearch) {
       // Se llegó desde un resultado de búsqueda en la carpeta: se repite la búsqueda acá.
       if (!APP) history.replaceState(null, '', location.href.split('#')[0]);
-      if (fromSearch[2]) {
-        const root = decodeURIComponent(fromSearch[2]);
-        if (HERE.startsWith(root) && root !== treeRoot) {
-          treeRoot = root; // se conserva la carpeta donde se buscó
-          if (ui.paneFiles.dataset.loaded) loadTree();
-        }
-      }
       ui.searchInput.value = decodeURIComponent(fromSearch[1]);
-      runSearch(ui.searchInput.value, true);
+      runSearch(ui.searchInput.value, true, true);
     } else if (hash && !/^#lmd-/.test(hash)) {
       // Se llegó por un enlace a una sección: si no existe, se avisa en vez de quedar arriba sin decir nada.
       const frag = unesc(hash.slice(1)); const t = findAnchor(frag);
@@ -2485,7 +2704,7 @@
     // Desde el popup: una nota nueva, sin pasar por el estado vacío.
     if (params.has('new')) { LMD.home.create(homeCtx(), { replace: true }); return; }
     const f = params.get('f');
-    if (!f) { showEmpty(); return; }
+    if (!f) { showEmpty(); loadTree(); return; }
     await go(f, { boot: true, edit: params.has('edit'), hash: location.hash });
   }
 
@@ -2493,8 +2712,9 @@
   const RENDER_KEYS = ['plugins', 'theme', 'diagramShape'];
   const TREE_KEYS = ['filesOnlyMarkdown', 'filesShowHidden'];
 
-  LMD.load().then(async (s) => {
+  Promise.all([LMD.load(), loadSide()]).then(async ([s, saved]) => {
     settings = s;
+    if (saved) side = Object.assign(side, saved, { shut: Object.assign({}, saved.shut) });
     LMD.setLang(settings.language);
     if (APP) { roots.local = { id: 'local', kind: 'local', name: T('En este navegador') }; roots.cloud = { id: 'cloud', kind: 'cloud', name: T('Nube') }; }
     buildUI();
@@ -2505,7 +2725,12 @@
     if (APP && withDoc && location.hash === '#lmd-paid') { openPanel('plan'); LMD.sync.awaitPaid(); }
     updateSaveState();
     checkUpdate(false);
-    if (APP) appBoot(); else afterOpen({ hash: location.hash });
+    if (APP) appBoot();
+    else {
+      afterOpen({ hash: location.hash });
+      // El árbol arranca donde lo dejó la persona, o en la raíz del repositorio si el archivo está dentro de uno.
+      startRoot(HERE).then((u) => { treeRoot = u; loadTree(); });
+    }
 
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local' || !changes.settings) return;
@@ -2514,10 +2739,10 @@
       if (settings.language !== prev.language) { if (!ui.panel.hidden) { try { sessionStorage.setItem('lmd-panel', panelTab); } catch (e) {} } location.reload(); return; }
       applySettings();
       // Cambió el servidor, o se prendió o apagó la nube: la cuenta y el ícono se vuelven a leer.
-      if ((settings.cloudUrl || '') !== (prev.cloudUrl || '')) { LMD.cloud.reset(); LMD.cloud.ready().then(() => LMD.sync.paint()); panelStale = true; }
+      if ((settings.cloudUrl || '') !== (prev.cloudUrl || '')) { LMD.cloud.reset(); LMD.cloud.ready().then(() => { LMD.sync.paint(); if (APP) core.reloadTree(); }); panelStale = true; }
       if (panelStale && !ui.panel.hidden) { panelStale = false; openPanel(); }
       if (RENDER_KEYS.some((k) => JSON.stringify(prev[k]) !== JSON.stringify(settings[k]))) render();
-      if (TREE_KEYS.some((k) => prev[k] !== settings[k]) && ui.paneFiles.dataset.loaded) loadTree();
+      if (TREE_KEYS.some((k) => prev[k] !== settings[k]) && ui.paneFiles.dataset.loaded) core.reloadTree();
     });
   });
 })();
