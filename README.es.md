@@ -19,6 +19,7 @@ Extensión de Chrome para leer y editar archivos Markdown en el navegador, local
 - **Totales en tablas**: el botón Σ agrega una fila que suma cada columna con números. Una celda con `=sum`, `=avg`, `=min`, `=max`, `=count` o `=median` muestra el resultado de su columna, con la misma moneda y el mismo formato de decimales que los números de arriba.
 - **Notas en la nube**, opcionales: entrás con un código que llega a tu correo, mandás una nota a la nube y la abrís en cualquier dispositivo, también sin conexión. Se comparten con otra cuenta o con un enlace público de solo lectura.
 - **Carpetas con contraseña**: una carpeta de la nube puede llevar contraseña. Sus notas se cifran en el navegador y el servidor no puede leerlas. La desbloqueás para tu IA por el tiempo que elijas.
+- **Sesiones en vivo**: abrís una sesión sobre una nota de la nube y mandás el enlace. Quien lo tiene entra desde el navegador con un nombre, sin cuenta, y editan todos a la vez.
 - **IA por MCP**: Claude o cualquier cliente MCP puede listar, leer, escribir, agregar y buscar en tus notas de la nube. Un token puede quedar limitado a una carpeta, y un comentario sobre un bloque le dice a la IA qué cambiar.
 - **Plantillas y enlaces**: 26 plantillas para arrancar una nota, y Ctrl+K para enlazar a una sección o a otro archivo eligiendo de una lista.
 - **Editor de fórmulas** con vista previa en vivo, y editor de diagramas con piezas, paletas de colores y errores explicados.

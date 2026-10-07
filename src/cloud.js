@@ -25,32 +25,89 @@
     return loaded;
   }
   let parked = null; // la sesión de otro servidor, que no se pisa mientras no se entre en este
-  const remember = () => new Promise((resolve) => chrome.storage.local.set({ cloud: !session && parked ? parked : { session, email, at: base } }, resolve));
+  // Quien entró por el enlace de una sesión en vivo, sin cuenta: { secret, name, id, color, by, note, who, ended }.
+  // Mientras dure, session es su pase y email un nombre interno para la copia local. Nada de eso se guarda como
+  // cuenta: si en este navegador había una sesión propia, sigue guardada tal cual y vuelve al recargar sin el enlace.
+  let guest = null;
+  const remember = () => (guest ? Promise.resolve() : new Promise((resolve) => chrome.storage.local.set({ cloud: !session && parked ? parked : { session, email, at: base } }, resolve)));
+  const OPEN_LIVE = ['/live/look', '/live/join']; // se piden con el secreto del enlace, sin pase ni cuenta
 
-  async function api(method, path, body) {
+  async function api(method, path, body, again) {
     await ready();
     if (!base) throw Object.assign(new Error('no_server'), { code: 'no_server' });
+    // Un invitado solo habla con las rutas de su sesión: lo demás no sale de acá (y el servidor tampoco lo aceptaría).
+    if (guest && !path.startsWith('/live/')) throw Object.assign(new Error('guest'), { code: 'guest', status: 403 });
     let res;
     try {
-      res = await fetch(base + path, { method, headers: Object.assign({ 'content-type': 'application/json' }, session ? { authorization: 'Bearer ' + session } : {}), body: body === undefined ? undefined : JSON.stringify(body) });
+      res = await fetch(base + path, { method, headers: Object.assign({ 'content-type': 'application/json' }, session && !OPEN_LIVE.includes(path) ? { authorization: 'Bearer ' + session } : {}), body: body === undefined ? undefined : JSON.stringify(body) });
     } catch (e) { throw Object.assign(new Error('offline'), { code: 'offline' }); }
     let json = null;
     try { json = await res.json(); } catch (e) { /* respuesta sin cuerpo */ }
     if (!res.ok) {
-      if (res.status === 401 && session) { session = ''; await remember(); }
+      if (res.status === 401 && guest && !OPEN_LIVE.includes(path)) {
+        // El pase dejó de servir. Si la sesión sigue abierta (el servidor se reinició, o pasó un rato largo sin
+        // conexión) se vuelve a entrar con el enlace y el pedido sale de nuevo. Si no, la sesión terminó.
+        if (!again && !guest.ended && await rejoin()) return api(method, path, body, true);
+        throw Object.assign(new Error('live_ended'), { code: 'live_ended', status: 401 });
+      }
+      if (res.status === 401 && session && !guest) { session = ''; await remember(); }
       // retry: los segundos que faltan cuando el servidor frenó por un tope (del cuerpo o de la cabecera Retry-After).
       const retry = +((json && json.retry_after) || res.headers.get('retry-after') || 0) || 0;
-      throw Object.assign(new Error((json && json.error) || 'failed'), { code: (json && json.error) || 'failed', status: res.status, retry });
+      throw Object.assign(new Error((json && json.error) || 'failed'), { code: (json && json.error) || 'failed', status: res.status, retry, body: json });
     }
     return json;
   }
 
+  // ---------- Invitado de una sesión en vivo ----------
+  const liveTag = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
+  const guestFns = [];
+  const tellGuest = (what) => guestFns.forEach((fn) => { try { fn(what); } catch (e) { /* quien escucha se arregla */ } });
+  // El pase queda en la pestaña (sessionStorage): recargar no crea otro invitado, y cerrar la pestaña lo olvida.
+  // ticket es la contraseña de reingreso que da el servidor al entrar: con ella se vuelve aunque el enlace haya cambiado.
+  function adopt(secret, r) {
+    const ticket = r.ticket || (guest && guest.ticket) || '';
+    guest = { secret, ticket, name: r.name, id: r.you, color: r.color, by: r.by, note: r.note.name, max: r.max, who: 'live:' + liveTag(secret), people: r.people || [], ended: '' };
+    session = r.pass; email = guest.who; listCache = null; vaultCache = []; vaultAt = Date.now();
+    try { sessionStorage.setItem('lmd-live', JSON.stringify({ secret, ticket, pass: r.pass, name: r.name, you: r.you, color: r.color, by: r.by, max: r.max, note: { name: r.note.name } })); } catch (e) { /* sin sesión: al recargar se vuelve a pedir el nombre */ }
+    return guest;
+  }
+  let rejoining = null;
+  function rejoin() {
+    if (!rejoining) rejoining = (async () => {
+      try { adopt(guest.secret, await api('POST', '/live/join', guest.ticket ? { ticket: guest.ticket, name: guest.name } : { secret: guest.secret, name: guest.name })); tellGuest('rejoined'); return true; }
+      catch (e) {
+        if (e.code === 'offline') throw e;
+        guest.ended = e.code === 'live_full' ? 'full' : 'gone'; tellGuest('ended');
+        return false;
+      } finally { setTimeout(() => { rejoining = null; }, 0); }
+    })();
+    return rejoining;
+  }
+  // Tras recargar la pestaña: el mismo pase, si todavía sirve (si no, api() vuelve a entrar con el mismo nombre).
+  async function resumeGuest(secret) {
+    let kept = null;
+    try { kept = JSON.parse(sessionStorage.getItem('lmd-live') || 'null'); } catch (e) { /* sin sesión */ }
+    if (!kept || kept.secret !== secret || !kept.pass) return null;
+    await ready();
+    adopt(secret, kept);
+    try { await api('GET', '/live/note'); return guest; }
+    catch (e) { if (e.code === 'offline') return guest; guest = null; session = ''; email = ''; loaded = null; await ready(); throw e; }
+  }
+  async function leaveGuest() {
+    if (!guest) return;
+    try { if (!guest.ended) await api('POST', '/live/leave', {}); } catch (e) { /* igual se sale */ }
+    try { sessionStorage.removeItem('lmd-live'); } catch (e) { /* sin sesión */ }
+    for (const c of await S.cloudAll(guest.who)) await S.cloudDelete(guest.who, c.path);
+  }
+
   // Una ruta que empieza con ~12/ es una nota de otra cuenta (la 12) que nos compartieron.
   const split = (p) => { const m = /^~(\d+)\/(.*)$/.exec(p); return m ? { owner: m[1], path: m[2] } : { owner: '', path: p }; };
-  const notePath = (p) => { const s = split(p); return '/notes/' + s.path.split('/').map(encodeURIComponent).join('%2F') + (s.owner ? '?o=' + s.owner : ''); };
+  // Para un invitado hay una sola nota, la de la sesión: cualquier otra ruta no existe.
+  const notePath = (p) => { if (guest) return p === guest.note ? '/live/note' : '/live/none'; const s = split(p); return '/notes/' + s.path.split('/').map(encodeURIComponent).join('%2F') + (s.owner ? '?o=' + s.owner : ''); };
 
   const otherLists = {};
   async function list(fresh, owner) {
+    if (guest) return owner ? [] : [{ path: guest.note, updated: 0, size: 0 }];
     if (owner) {
       const c = otherLists[owner];
       if (!fresh && c && Date.now() - c.at < 5000) return c.rows;
@@ -81,7 +138,7 @@
   let vaultCache = null; let vaultAt = 0; let vaultOk = true;
   async function vaults(fresh) {
     await ready();
-    if (!base || !session) return [];
+    if (!base || !session || guest) return [];
     if (!fresh && vaultCache && Date.now() - vaultAt < 30000) return vaultCache;
     try { vaultCache = await api('GET', '/vaults'); vaultAt = Date.now(); vaultOk = true; S.vaultsPut(email, vaultCache); }
     catch (e) {
@@ -107,13 +164,22 @@
     return vault && vault.state === 'on' ? Z.seal(await keyOf(vault), path, text) : text;
   }
   const getNote = async (path) => { const n = await api('GET', notePath(path)); n.text = await plain(path, n.text); return n; };
-  async function putNote(path, text) {
-    try { return await api('PUT', notePath(path), { text: await wire(path, text) }); }
-    catch (e) {
-      // La carpeta se protegió, o dejó de estarlo, desde otra pestaña: se vuelve a mirar y se manda como corresponde.
-      if (e.code !== 'vault' && e.code !== 'vault_text') throw e;
-      await vaults(true);
-      return api('PUT', notePath(path), { text: await wire(path, text) });
+  // rev es la revisión sobre la que se escribió (la que vino al leer). Si la nota ya va por otra, el servidor no
+  // guarda y esto sale con rev_conflict, con el texto de ahora en claro (theirs) y su revisión (rev): quien llama
+  // junta y reintenta. Sin rev se guarda pisando, como antes: para una nota nueva, o un servidor sin actualizar.
+  async function putNote(path, text, rev) {
+    const send = async () => api('PUT', notePath(path), Object.assign({ text: await wire(path, text) }, rev == null ? {} : { rev }));
+    try {
+      try { return await send(); }
+      catch (e) {
+        // La carpeta se protegió, o dejó de estarlo, desde otra pestaña: se vuelve a mirar y se manda como corresponde.
+        if (e.code !== 'vault' && e.code !== 'vault_text') throw e;
+        await vaults(true);
+        return await send();
+      }
+    } catch (e) {
+      if (e.code === 'rev_conflict' && e.body) { e.theirs = await plain(path, String(e.body.text == null ? '' : e.body.text)); e.rev = e.body.rev; e.pid = e.body.pid || ''; }
+      throw e;
     }
   }
 
@@ -154,16 +220,61 @@
   // Junta dos ediciones de la misma nota si tocaron partes distintas. Devuelve null si se pisan.
   // Trabaja sobre texto en claro: para una nota protegida, ya descifrado en este navegador.
   function merge3(base, mine, theirs) {
-    const b = base.split('\n'); const m = mine.split('\n'); const t = theirs.split('\n');
-    const span = (x) => {
-      let s = 0; while (s < b.length && s < x.length && b[s] === x[s]) s++;
-      let e = 0; while (e < b.length - s && e < x.length - s && b[b.length - 1 - e] === x[x.length - 1 - e]) e++;
-      return { s, end: b.length - e, lines: x.slice(s, x.length - e) };
-    };
-    const a = span(m); const c = span(t);
-    if (a.end <= c.s) return b.slice(0, a.s).concat(a.lines, b.slice(a.end, c.s), c.lines, b.slice(c.end)).join('\n');
-    if (c.end <= a.s) return b.slice(0, c.s).concat(c.lines, b.slice(c.end, a.s), a.lines, b.slice(a.end)).join('\n');
-    return null;
+    const r = merge(base, mine, theirs);
+    return r.lost.length ? null : r.text;
+  }
+  // Qué cambió x respecto de b, como tramos sobre las líneas de b: [{ s, e, lines }] (de s a e pasan a ser lines).
+  // Fuera del principio y el final iguales se buscan las líneas en común; si el medio es enorme, va como un solo tramo.
+  function hunks(b, x) {
+    const nb = b.length; const nx = x.length;
+    let s = 0; while (s < nb && s < nx && b[s] === x[s]) s++;
+    let e = 0; while (e < nb - s && e < nx - s && b[nb - 1 - e] === x[nx - 1 - e]) e++;
+    const B = b.slice(s, nb - e); const X = x.slice(s, nx - e); const n = B.length; const m = X.length;
+    if (!n && !m) return [];
+    if (!n || !m || n * m > 1000000) return [{ s, e: nb - e, lines: X }];
+    const w = m + 1; const t = new Uint32Array((n + 1) * w);
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) t[i * w + j] = B[i] === X[j] ? t[(i + 1) * w + j + 1] + 1 : Math.max(t[(i + 1) * w + j], t[i * w + j + 1]);
+    const out = []; let cur = null; let i = 0; let j = 0;
+    while (i < n || j < m) {
+      if (i < n && j < m && B[i] === X[j]) { cur = null; i++; j++; continue; }
+      if (!cur) { cur = { s: s + i, e: s + i, lines: [] }; out.push(cur); }
+      if (j < m && (i >= n || t[i * w + j + 1] >= t[(i + 1) * w + j])) cur.lines.push(X[j++]); else cur.e = s + (++i);
+    }
+    return out;
+  }
+  // Mezcla de tres vías por líneas, tramo por tramo. Lo que cada uno cambió en partes distintas entra entero. Donde
+  // los dos tocaron las mismas líneas queda lo de theirs (lo que ya está guardado), y lo de acá vuelve en lost,
+  // para que quien llama no lo pierda en silencio: [{ mine, theirs }], cada uno con el texto de ese tramo.
+  // Trabaja sobre texto en claro: para una nota protegida, ya descifrado en este navegador.
+  function merge(base, mine, theirs) {
+    if (mine === base || mine === theirs) return { text: theirs, lost: [] };
+    if (theirs === base) return { text: mine, lost: [] };
+    const b = base.split('\n'); const A = hunks(b, mine.split('\n')); const C = hunks(b, theirs.split('\n'));
+    const out = []; const lost = []; let pos = 0; let i = 0; let j = 0;
+    const same = (x, y) => x.length === y.length && x.every((l, k) => l === y[k]);
+    const take = (h) => { for (let k = pos; k < h.s; k++) out.push(b[k]); for (const l of h.lines) out.push(l); pos = h.e; };
+    // Un lado de un tramo en disputa: las líneas de la base entre gs y ge con los cambios de ese lado puestos.
+    const side = (list, gs, ge) => { const o = []; let p = gs; for (const h of list) { for (let k = p; k < h.s; k++) o.push(b[k]); for (const l of h.lines) o.push(l); p = h.e; } for (let k = p; k < ge; k++) o.push(b[k]); return o; };
+    while (i < A.length || j < C.length) {
+      const a = A[i]; const c = C[j];
+      if (!c) { take(a); i++; continue; }
+      if (!a) { take(c); j++; continue; }
+      if (a.s === c.s && a.e === c.e && same(a.lines, c.lines)) { take(a); i++; j++; continue; } // el mismo cambio de los dos lados
+      if (a.e <= c.s) { take(a); i++; continue; }
+      if (c.e <= a.s) { take(c); j++; continue; }
+      // Se pisan: se junta todo lo que se encadena con ese tramo, de un lado y del otro.
+      let gs = Math.min(a.s, c.s); let ge = Math.max(a.e, c.e); const ga = []; const gc = [];
+      for (;;) {
+        if (i < A.length && A[i].s < ge) { ge = Math.max(ge, A[i].e); ga.push(A[i++]); }
+        else if (j < C.length && C[j].s < ge) { ge = Math.max(ge, C[j].e); gc.push(C[j++]); }
+        else break;
+      }
+      const m = side(ga, gs, ge); const t = side(gc, gs, ge);
+      if (!same(m, t)) lost.push({ mine: m.join('\n'), theirs: t.join('\n') });
+      take({ s: gs, e: ge, lines: t });
+    }
+    for (let k = pos; k < b.length; k++) out.push(b[k]);
+    return { text: out.join('\n'), lost };
   }
 
   // Lo que no se pudo juntar queda aparte, como nota del navegador, para que no se pierda.
@@ -199,8 +310,22 @@
       roles[path] = n.role || 'owner';
       const r = unsent ? await settle(path, copy.base, copy.text, n.text) : { text: n.text };
       await keep(path, r.text, n.text, r.text !== n.text);
-      return Object.assign(r, { base: n.text });
+      return Object.assign(r, { base: n.text, rev: n.rev });
     });
+  }
+  // Guarda sobre la revisión leída. Si en el medio guardó otro, junta lo de acá con lo del servidor y reintenta;
+  // lo que no se pueda juntar queda aparte (settle). Devuelve { text, rev } con lo que quedó en el servidor.
+  async function putMerged(path, base, mine, n) {
+    for (let turn = 0; ; turn++) {
+      const r = await settle(path, base, mine, n.text);
+      if (r.text === n.text) return { text: n.text, rev: n.rev };
+      try { const saved = await putNote(path, r.text, n.rev); return { text: r.text, rev: saved.rev }; }
+      catch (e) {
+        if (e.code !== 'rev_conflict' || turn >= 4) throw e;
+        // Lo ya juntado pasa a ser lo de acá, sobre lo que el servidor tenía cuando se juntó.
+        base = n.text; mine = r.text; n = { text: e.theirs, rev: e.rev };
+      }
+    }
   }
 
   // Sube lo pendiente de las notas que no están abiertas en ninguna pestaña.
@@ -219,8 +344,7 @@
           if (!now || !now.pending) return false;
           try {
             const n = await getNote(c.path);
-            const r = await settle(c.path, now.base, now.text, n.text);
-            if (r.text !== n.text) await putNote(c.path, r.text);
+            const r = await putMerged(c.path, now.base, now.text, n);
             await keep(c.path, r.text, r.text, false, n.role);
           } catch (e) {
             if (e.code === 'offline') return true;
@@ -235,15 +359,23 @@
   }
 
   // Escucha una nota: avisa cuando otro la guarda y quién más la tiene abierta. Se reconecta sola.
-  function events(p, onEvent) {
+  // Además de lo que manda el servidor, avisa { type: 'link', up } cuando la escucha se abre o se corta.
+  // quick() dice si hay una sesión en vivo en curso: ahí se reconecta enseguida en vez de esperar cinco segundos.
+  function events(p, onEvent, quick) {
     let stop = false; let ctrl = null;
+    // Un error de quien escucha no corta la escucha, pero tampoco se esconde: queda en la consola.
+    const tell = (ev) => { try { onEvent(ev); } catch (e) { console.error(e); } };
     const run = async () => {
       while (!stop) {
+        let up = false;
         try {
           await ready();
           const s = split(p); ctrl = new AbortController();
-          const res = await fetch(base + '/events?path=' + encodeURIComponent(s.path) + (s.owner ? '&o=' + s.owner : ''), { headers: { authorization: 'Bearer ' + session }, signal: ctrl.signal });
+          const res = await fetch(base + (guest ? '/live/events' : '/events?path=' + encodeURIComponent(s.path) + (s.owner ? '&o=' + s.owner : '')), { headers: { authorization: 'Bearer ' + session }, signal: ctrl.signal });
+          // El pase de un invitado dejó de servir: se vuelve a entrar con el enlace, o la sesión terminó y no se insiste.
+          if (res.status === 401 && guest && !(await rejoin())) { stop = true; break; }
           if (!res.ok || !res.body) throw new Error('events');
+          up = true; if (!stop) tell({ type: 'link', up: true });
           const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
           for (;;) {
             const r = await reader.read(); if (r.done) break;
@@ -256,7 +388,9 @@
             }
           }
         } catch (e) { /* sin conexión: se reintenta */ }
-        if (!stop) await new Promise((r) => setTimeout(r, 5000));
+        if (stop) break;
+        tell({ type: 'link', up: false, was: up });
+        await new Promise((r) => setTimeout(r, guest || (quick && quick()) ? 1500 : 5000));
       }
     };
     run();
@@ -273,7 +407,8 @@
         // La copia local sigue al servidor mientras no tenga cambios propios sin subir.
         const copy = await copyOf(path);
         if (copy && !copy.pending && copy.text !== n.text) await keep(path, n.text, n.text, false);
-        return { text: async () => n.text, lastModified: n.updated, size: n.text.length };
+        // rev viaja con el texto: quien lo toma como base guarda después sobre esa revisión.
+        return { text: async () => n.text, lastModified: n.updated, size: n.text.length, rev: n.rev };
       },
       createWritable: async () => { let data = ''; return { write: async (t) => { data = String(t); }, close: async () => { await putNote(path, data); listCache = null; await keep(path, data, data, false); } }; },
     };
@@ -293,7 +428,7 @@
     for (const n of rows) {
       await locked(n.path, async () => {
         const got = await api('GET', notePath(n.path));
-        if (!Z.sealed(got.text)) await api('PUT', notePath(n.path), { text: await Z.seal(key, n.path, got.text) });
+        if (!Z.sealed(got.text)) await api('PUT', notePath(n.path), Object.assign({ text: await Z.seal(key, n.path, got.text) }, got.rev == null ? {} : { rev: got.rev }));
       });
       if (onStep) onStep(++done, rows.length);
     }
@@ -314,7 +449,7 @@
     for (const n of rows) {
       await locked(n.path, async () => {
         const got = await api('GET', notePath(n.path));
-        if (Z.sealed(got.text)) await api('PUT', notePath(n.path), { text: await Z.open(key, n.path, got.text) });
+        if (Z.sealed(got.text)) await api('PUT', notePath(n.path), Object.assign({ text: await Z.open(key, n.path, got.text) }, got.rev == null ? {} : { rev: got.rev }));
       });
       if (onStep) onStep(++done, rows.length);
     }
@@ -328,8 +463,28 @@
   }
 
   LMD.cloud = {
-    ready, api, list: listOr, handle, events, split, merge3, settle, open, hold, flush, kept,
+    ready, api, list: listOr, handle, events, split, merge3, merge, hunks, settle, open, hold, flush, kept,
     read: (p) => getNote(p),
+    // Sesión en vivo. De un lado, quien entra por el enlace (mirar, entrar, retomar tras recargar, salir); del otro,
+    // quien la abre sobre una nota propia (abrir, ver quiénes están, cambiar el enlace, sacar a alguien, terminarla).
+    // at() dice en qué bloque se está, para los dos.
+    guest: () => guest,
+    onGuest: (fn) => { guestFns.push(fn); },
+    live: {
+      look: (secret) => api('POST', '/live/look', { secret }),
+      join: async (secret, name) => adopt(secret, await api('POST', '/live/join', { secret, name })),
+      resume: resumeGuest, leave: leaveGuest,
+      status: (p) => api('GET', '/live?path=' + encodeURIComponent(p)),
+      open: (p, name) => api('POST', '/live', { path: p, name }),
+      close: (p) => api('DELETE', '/live?path=' + encodeURIComponent(p)),
+      rotate: (p) => api('POST', '/live/rotate', { path: p }),
+      kick: (p, id) => api('POST', '/live/kick', { path: p, id }),
+      at: (p, body) => api('POST', '/live/presence', guest ? body : Object.assign({ path: p }, body)),
+    },
+    // Guarda la nota abierta sobre la revisión que tiene como base. Sale con rev_conflict si otro guardó antes.
+    save: async (p, text, rev) => { const r = await putNote(p, text, rev); listCache = null; await keep(p, text, text, false); return r; },
+    // Lo de acá ya es lo mismo que hay en el servidor: la copia local deja de estar pendiente.
+    settled: (p, text) => keep(p, text, text, false),
     // Antes de subir, lo escrito queda guardado acá como pendiente: si no hay conexión, espera en la cola.
     stash: (p, text, was) => keep(p, text, was, true),
     // Dentro, hacia o desde una carpeta protegida, mover es volver a cifrar: el texto cifrado está atado a su ruta.

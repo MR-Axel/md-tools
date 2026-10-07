@@ -677,6 +677,7 @@
     LMD.sync.init(core);
     LMD.comments.init(core);
     LMD.vault.init(core);
+    LMD.live.init(core);
     document.documentElement.dataset.lmdFs = String(!!window.showOpenFilePicker && window.isSecureContext);
   }
 
@@ -814,6 +815,8 @@
     const md = docKind() === 'md'; const cloud = !!appRoot && appRoot.kind === 'cloud';
     const items = [
       !ui.sync.hidden && ['sync', (ui.sync.querySelector('svg') || { outerHTML: ICON.cloud }).outerHTML, cloud ? 'Nube: compartir, historial y más' : LMD.cloud.signedIn() ? 'Subir esta nota a la nube' : 'Entrar a la cuenta'],
+      // Con una sesión en vivo, quiénes están y cómo salir o terminarla (en pantalla chica la barra de arriba no los muestra).
+      cloud && LMD.live.active() && ['live', ICON.people, 'Colaborar en vivo'],
       editMode && md && !rawMode && ['insert', ICON.plus, 'Insertar un bloque'],
       rawMode ? ['view-doc', ICON.doc, 'Ver documento'] : ['view-raw', ICON.code, 'Ver código fuente'],
       ['copy-md', ICON.copy, 'Copiar Markdown'],
@@ -844,6 +847,7 @@
     else if (act === 'mode-edit') { if (!editMode) setEditMode(true); }
     else if (act === 'save') save(true);
     else if (act === 'sync') LMD.sync.click(source);
+    else if (act === 'live') LMD.live.open();
     else if (act === 'insert') { const box = source.getBoundingClientRect(); LMD.write.menuAt(box.left - 120, box.bottom + 8); }
     else if (act === 'view-doc') { rawMode = false; applyRawMode(); }
     else if (act === 'view-raw') { rawMode = true; applyRawMode(); }
@@ -1113,12 +1117,14 @@
 
   let diskStamp = ''; let cloudPoll = 0; let cloudState = 'ok'; let readOnly = false; let present = [];
   let polled = true; // false cuando la nube no se consultó de verdad porque todavía no tocaba
+  // La revisión de la nube que corresponde a diskText: sobre esa se guarda. Cambia solo junto con diskText, cuando
+  // lo leído ya entró al documento; así un guardado nunca pasa por encima de un cambio que todavía no se juntó.
+  let diskRev = null; let readRev = null;
+  const isCloud = () => !!appRoot && appRoot.kind === 'cloud';
 
-  // La mezcla de tres vías vive en cloud.js: también la usa la cola de lo escrito sin conexión.
-  const merge3 = LMD.cloud.merge3;
   async function readCurrent() {
     // La nube se consulta cada diez segundos: alcanza para ver lo que escribió una IA sin martillar el servidor.
-    polled = true; const seq = docSeq;
+    polled = true; readRev = null; const seq = docSeq;
     if (APP && appRoot && appRoot.kind === 'cloud') { if (Date.now() - cloudPoll < (cloudState === 'error' ? 5000 : 10000)) { polled = false; return diskText; } cloudPoll = Date.now(); }
     if (APP) {
       // Con el permiso de la carpeta alcanza con mirar fecha y tamaño: el archivo se lee solo si cambió.
@@ -1127,7 +1133,7 @@
         const stamp = file.lastModified + ':' + file.size;
         if (stamp === diskStamp) return diskText;
         const text = await file.text();
-        if (seq === docSeq) diskStamp = stamp;
+        if (seq === docSeq) { diskStamp = stamp; if (file.rev != null) readRev = file.rev; }
         return text;
       } catch (e) { return null; }
     }
@@ -1154,19 +1160,348 @@
       if (text == null) {
         if (manual) flash(T('No se pudo releer el archivo. Recargá la pestaña con F5'), 'error');
       } else if (text !== diskText) {
+        // Una lectura que llega tarde, cuando ya entró algo más nuevo, no vuelve el documento atrás.
+        if (isCloud() && readRev != null && diskRev != null && readRev <= diskRev) return;
+        // En una sesión en vivo entra enseguida, alrededor del bloque que se esté escribiendo.
+        if (liveOn() && readRev != null && cloudState !== 'error') { applyRemote(text, readRev, ''); return; }
         // Con cambios hechos sin conexión, de juntarlos con los del servidor se ocupa save() al subirlos.
         if (appRoot && appRoot.kind === 'cloud' && dirty && cloudState === 'error') { clearTimeout(autosaveTimer); save(false); return; }
         // Con el cursor en un bloque no se toca nada: ni el texto ni el dibujo. Lo de afuera queda esperando
         // (y el guardado automático también, para no pisarlo) hasta que la persona sale del bloque.
         if (typingNode()) { outside = true; diskStamp = ''; return; }
-        outside = false;
-        const merged = dirty && appRoot && appRoot.kind === 'cloud' ? merge3(diskText, raw, text) : null;
-        diskText = text;
-        if (merged != null) { raw = merged; syncSource(); markDirty(); render(); flash(T('Se sumaron los cambios de otra persona')); }
-        else if (dirty) flash(T('El archivo cambió en el disco. Tus cambios sin guardar se mantienen'), 'warn');
-        else { raw = text; render(); flash(T('Documento actualizado')); }
-      } else { if (polled) outside = false; if (manual) flash(T('Sin cambios')); }
+        await takeOutside(text, readRev);
+      } else { if (polled) { outside = false; if (readRev != null) diskRev = readRev; } if (manual) flash(T('Sin cambios')); }
     } finally { checking = false; }
+  }
+
+  // Lo que cambió afuera entra al documento. En una nota de la nube con cambios propios sin subir, se juntan las dos
+  // ediciones; si tocaron lo mismo queda lo del servidor y lo de acá va aparte, a una nota del navegador: nada se
+  // pierde y el próximo guardado no pisa a nadie. Quien llama ya comprobó que no hay un bloque con el cursor.
+  async function takeOutside(text, rev) {
+    const seq = docSeq; outside = false;
+    if (dirty && isCloud()) {
+      const r = await LMD.cloud.settle(vParts(HERE).join('/'), diskText, raw, text);
+      if (seq !== docSeq) return;
+      diskText = text; if (rev != null) diskRev = rev;
+      if (r.text !== raw) { raw = r.text; syncSource(); }
+      markDirty(); render(); offlineNote(r, true);
+      return;
+    }
+    diskText = text; if (rev != null) diskRev = rev;
+    if (dirty) flash(T('El archivo cambió en el disco. Tus cambios sin guardar se mantienen'), 'warn');
+    else { raw = text; render(); flash(T('Documento actualizado')); }
+  }
+
+  // ---------- Sesión en vivo: lo que escriben los demás entra en el lugar ----------
+  // Con una sesión en vivo, un cambio ajeno no espera a que se suelte el bloque: se junta con lo escrito acá (mezcla
+  // por líneas) y se dibuja solo donde cambió, ALREDEDOR del bloque que tiene el cursor. Ese nodo no se reemplaza
+  // ni pierde el foco (la regla de typingNode). Si el cambio cae en ese mismo bloque y ahí no hay nada tecleado sin
+  // pasar al Markdown, se le pone adentro el texto nuevo, con el cursor a la misma altura; si no se puede, el dibujo
+  // de ese bloque espera a que se lo suelte, con el Markdown ya al día.
+  const liveOn = () => !!LMD.live && LMD.live.active();
+  let inbox = null; // lo último que se supo del servidor y todavía no entró al documento: { text, rev, by }
+  // Llegó el aviso de un guardado con el cambio adentro: el texto entero, o las líneas que cambiaron sobre base.
+  function liveSaved(ev) {
+    const top = inbox || { text: diskText, rev: diskRev };
+    if (ev.rev == null || (top.rev != null && ev.rev <= top.rev)) return;
+    let text = typeof ev.text === 'string' ? ev.text : null;
+    const p = ev.patch;
+    if (text == null && p && ev.base === top.rev && Array.isArray(p.lines) && p.at >= 0 && p.del >= 0) { const lines = top.text.split('\n'); text = lines.slice(0, p.at).concat(p.lines, lines.slice(p.at + p.del)).join('\n'); }
+    // Faltó un aviso en el medio: se relee la nota.
+    if (text == null) { cloudPoll = 0; checkForChanges(false); return; }
+    inbox = { text, rev: ev.rev, by: ev.pid || '' };
+    drainInbox();
+  }
+  // Mientras sale un guardado propio, lo que llega espera: se aplica sobre lo que ese guardado deje como base.
+  function drainInbox() {
+    if (!inbox || saving) return;
+    const x = inbox; inbox = null;
+    applyRemote(x.text, x.rev, x.by);
+  }
+  // El servidor tiene text en la revisión rev. Se junta con lo de acá y se dibuja lo que cambió. Lo que los dos
+  // tocaron a la vez queda como en el servidor, y lo de acá vuelve en un aviso para copiarlo: no se pierde en silencio.
+  function applyRemote(text, rev, by) {
+    if (noDoc || (rev != null && diskRev != null && rev <= diskRev)) return;
+    // Lo tecleado hasta ahora pasa al Markdown sin tocar el bloque: así entra en la mezcla como lo de acá.
+    flushTyping();
+    if (ui.rawEdit && !ui.rawEdit.hidden && document.activeElement === ui.rawEdit) { const typed = ui.rawEdit.value.replace(/\r?\n/g, eol); if (typed !== raw) { raw = typed; syncSource(); } }
+    const m = raw === diskText ? { text, lost: [] } : LMD.cloud.merge(diskText, raw, text);
+    diskText = text; if (rev != null) diskRev = rev; outside = false;
+    if (m.text !== raw) patchDoc(m.text, by);
+    dirty = raw !== diskText;
+    if (dirty) markDirty(); else { clearTimeout(autosaveTimer); if (cloudState === 'saving') cloudState = 'ok'; updateSaveState(); }
+    if (m.lost.length && LMD.live) LMD.live.lost(m.lost, by);
+  }
+  // Lo que se podía deshacer se corre junto con el documento: deshacer vuelve atrás lo de acá, no lo de los demás.
+  function rebaseUndo(from, to) {
+    for (const stack of [undoStack, redoStack]) {
+      const keep = to.length > 300000 ? [] : stack.slice(-30);
+      stack.length = 0;
+      for (const snap of keep) { const r = LMD.cloud.merge(from, snap, to); if (r.lost.length) stack.length = 0; else stack.push(r.text); }
+    }
+  }
+  let composing = false; // hay un texto a medio componer (acentos, teclado en pantalla): ese nodo no se toca
+  const keepCaret = (ta, value) => {
+    const old = ta.value; const a = ta.selectionStart; const b = ta.selectionEnd; const max = Math.min(old.length, value.length);
+    let p = 0; while (p < max && old.charCodeAt(p) === value.charCodeAt(p)) p++;
+    const d = value.length - old.length; const move = (x) => (x <= p ? x : Math.max(p, x + d)); const top = ta.scrollTop;
+    ta.value = value; ta.setSelectionRange(move(a), move(b)); ta.scrollTop = top;
+  };
+  // Cambia el Markdown por next y pone el dibujo al día sin sacar a nadie de donde está.
+  function patchDoc(next, by) {
+    const oldLines = srcLines; const oldFm = fmOffset;
+    rebaseUndo(raw, next);
+    raw = next; syncSource();
+    if (docKind() === 'md' && settings.plugins.frontmatter) fmOffset = raw.slice(0, raw.length - splitFrontmatter(raw).body.length).split('\n').length - 1;
+    if (rawMode) {
+      // En la vista de código el documento no está a la vista: se redibuja al volver a él.
+      ui.rawPre.textContent = raw; needsRender = true;
+      if (document.activeElement !== ui.rawEdit) ui.rawEdit.value = raw; else keepCaret(ui.rawEdit, raw);
+      return;
+    }
+    const focus = typingNode(); let done = false;
+    // Qué cambió, tramo por tramo (de la línea s a la e de lo que había pasan a ser lines). Pueden ser varios y
+    // separados: lo de dos personas que llegó junto, o lo que cambió mientras no había conexión.
+    const H = LMD.cloud.hunks(oldLines, srcLines);
+    const grow = (h) => h.lines.length - (h.e - h.s);
+    // Cuánto se corre una línea que queda después de los tramos que terminan antes de ella, y cuánto el final de
+    // un bloque (ahí no cuenta lo agregado justo después de su última línea, que no es suyo).
+    const d = { H, was: new Map(),
+      start: (line) => { let n = 0; for (const h of H) if (h.e <= line) n += grow(h); return n; },
+      end: (line) => { let n = 0; for (const h of H) if (h.e <= line && h.s < line) n += grow(h); return n; },
+      // Algún tramo toca las líneas de s a e.
+      hit: (s, e) => H.some((h) => (h.s < e && h.e > s) || (h.s === h.e && h.s > s && h.s < e)) };
+    if (docKind() === 'md' && fmOffset === oldFm && H.length && H[0].s >= oldFm) {
+      // Las líneas que ocupaba cada bloque antes del cambio, y después los números corridos.
+      const moved = H.some((h) => grow(h));
+      ui.article.querySelectorAll('[data-l], [data-p]').forEach((n) => {
+        if (n.hasAttribute('data-l')) d.was.set(n, rangeOf(n));
+        if (moved) ['data-l', 'data-p'].forEach((a) => {
+          const r = rangeOf(n, a); if (!r) return;
+          const s = r[0] + d.start(r[0] + oldFm); const e = Math.max(s, r[1] + d.end(r[1] + oldFm));
+          if (s !== r[0] || e !== r[1]) n.setAttribute(a, s + '-' + e);
+        });
+      });
+      ui.article.querySelectorAll('.lmd-draft').forEach((n) => { if (n._syn) d.was.set(n, [n._syn.at - oldFm, n._syn.at - oldFm + n._syn.n]); });
+      // Lo que guarda líneas por su cuenta: los bloques nuevos a medio escribir y el cuadro de un bloque de código.
+      if (moved) { LMD.write.shift(d.start); ui.article.querySelectorAll('.lmd-src').forEach((ta) => { const g = ta._range; if (g) { g.from += d.start(g.from); g.to += d.end(g.to); } }); }
+      try { done = patchArticle(oldLines, d, focus, LMD.live ? LMD.live.colorOf(by) : '', by); } catch (e) { done = false; console.error(e); }
+      LMD.write.reanchor();
+    } else if (!H.length) done = true;
+    // No se pudo dibujar solo lo que cambió. Sin un bloque con el cursor se redibuja entero (la página no se mueve);
+    // con uno, el dibujo espera a que se lo suelte: los números de línea ya quedaron corridos.
+    if (!done) { if (focus) needsRender = true; else render(); }
+    core.hooks.patch.forEach((fn) => fn());
+  }
+
+  const HEADS = 'h1,h2,h3,h4,h5,h6';
+  const ownRange = (n) => (n.hasAttribute('data-l') ? n : n.querySelector('[data-l]'));
+  // Dibuja en el lugar la diferencia entre lo que hay en pantalla y el Markdown de ahora. Devuelve false si no pudo
+  // (o pudo solo en parte): quien llama redibuja entero cuando se puede.
+  function patchArticle(oldLines, d, focus, color, by) {
+    const fm = fmOffset; const art = ui.article;
+    const touched = []; for (const h of d.H) { for (let k = h.s; k < h.e; k++) touched.push(oldLines[k]); for (const l of h.lines) touched.push(l); }
+    // Lo que cambia el dibujo de otros bloques no se aplica de a un bloque: definiciones de enlaces, notas al pie,
+    // y los títulos cuando hay un índice en el texto.
+    if (touched.some((l) => /^\s{0,3}\[[^\]]+\]:/.test(l) || /\[\^[^\]]+\]/.test(l))) return false;
+    if (art.querySelector('.lmd-toc') && touched.some((l) => /^\s{0,3}(#{1,6}(\s|$)|=+\s*$|-+\s*$)/.test(l))) return false;
+    // Los bloques de un contenedor con las líneas que ocupan: para lo que ya estaba en pantalla, las de antes del
+    // cambio. null si adentro hay texto suelto, que no se sabe comparar.
+    const kidsOf = (box, old) => {
+      const out = [];
+      for (const n of box.childNodes) {
+        if (n.nodeType === 3) { if (n.nodeValue.trim()) return null; continue; }
+        if (n.nodeType !== 1 || n.classList.contains('lmd-add') || n.classList.contains('lmd-front')) continue;
+        const draft = n.classList.contains('lmd-draft') ? n : (n.classList.contains('lmd-draft-li') ? n.querySelector('.lmd-draft') : null);
+        if (draft) { if (old && d.was.has(draft)) out.push({ node: n, el: null, r: d.was.get(draft), draft: true }); continue; }
+        const own = ownRange(n);
+        out.push({ node: n, el: own, r: own ? (old ? d.was.get(own) || null : rangeOf(own)) : null });
+      }
+      return out;
+    };
+    // El mismo bloque de un lado y del otro: ningún tramo lo tocó, quedó donde le corresponde tras correrse, y dice lo mismo.
+    const same = (o, n) => {
+      if (!o.r || !n.r) return !o.r && !n.r && o.node.tagName === n.node.tagName;
+      if (o.r[0] + d.start(o.r[0] + fm) !== n.r[0] || o.r[1] - o.r[0] !== n.r[1] - n.r[0] || d.hit(o.r[0] + fm, o.r[1] + fm)) return false;
+      if (o.el && n.el && o.el.hasAttribute('data-p') !== n.el.hasAttribute('data-p')) return false;
+      for (let k = o.r[0], j = n.r[0]; k < o.r[1]; k++, j++) if (oldLines[k + fm] !== srcLines[j + fm]) return false;
+      return true;
+    };
+    // Con quién se queda cada bloque de los que había: el índice de su par en lo nuevo, o -1 si cambió o ya no está.
+    // Lo que no ocupa líneas (la casilla de una tarea, el título de un aviso, las notas al pie) va con su vecino.
+    const match = (O, N) => {
+      const at = new Map(); N.forEach((k, j) => { if (k.r && !at.has(k.r[0])) at.set(k.r[0], j); });
+      let last = -1;
+      return O.map((o) => {
+        let j = -1;
+        if (o.r) { const c = at.get(o.r[0] + d.start(o.r[0] + fm)); if (c !== undefined && c > last && same(o, N[c])) j = c; }
+        else if (N[last + 1] && same(o, N[last + 1])) j = last + 1;
+        if (j >= 0) last = j;
+        return j;
+      });
+    };
+    const body = settings.plugins.frontmatter ? splitFrontmatter(raw).body : raw;
+    const tmp = el('div');
+    tmp.innerHTML = DOMPurify.sanitize(buildParser().render(body), { ADD_ATTR: ['target', 'data-tex'], FORBID_TAGS: ['style', 'form'] });
+    const O = kidsOf(art, true); const N = kidsOf(tmp, false);
+    if (!O || !N) return false;
+    const pairs = match(O, N); const kept = new Set(pairs.filter((j) => j >= 0));
+    const fresh = N.filter((k, j) => !kept.has(j));
+    // Solo lo nuevo pasa por lo que se le hace a un bloque al dibujarlo (código, tablas, tareas, fórmulas, edición).
+    const box = el('div'); fresh.forEach((k) => box.appendChild(k.node));
+    postProcess(box);
+    if (box.querySelector('.lmd-toc')) return false;
+    if (editMode) enableEditing(box);
+    if (box.children.length !== fresh.length) return false;
+    fresh.forEach((k, i) => { k.node = box.children[i]; k.el = ownRange(k.node); });
+    Array.from(box.children).forEach((n) => n.remove());
+
+    let heads = false; const many = fresh.length > 30;
+    const glow = (n) => {
+      // Quién hizo el último cambio que se dibujó en ese bloque (lo usa locate, mientras llega su marca nueva).
+      if (by) n.dataset.liveByLast = by;
+      if (!color || many) return;
+      n.style.setProperty('--lmd-live', color); n.classList.add('lmd-live-flash');
+      setTimeout(() => { n.classList.remove('lmd-live-flash'); n.style.removeProperty('--lmd-live'); if (!n.getAttribute('style')) n.removeAttribute('style'); }, 1400);
+    };
+    const hasHead = (n) => n.matches(HEADS) || !!n.querySelector(HEADS);
+    const put = (parent, olds, news, ref) => {
+      const at = olds.length ? olds[0].node : ref;
+      news.forEach((k) => { parent.insertBefore(k.node, at && at.parentNode === parent ? at : null); if (hasHead(k.node)) heads = true; glow(k.node); });
+      olds.forEach((k) => { if (hasHead(k.node)) heads = true; k.node.remove(); });
+    };
+    // El texto nuevo de un bloque, dentro del mismo nodo que tiene el cursor.
+    const caretOf = (node) => { const sel = getSelection(); if (!sel.rangeCount || !node.contains(sel.focusNode)) return -1; const r = document.createRange(); r.selectNodeContents(node); r.setEnd(sel.focusNode, sel.focusOffset); return r.toString().length; };
+    const clean = (node) => !composing && node._md != null && inlineMd(node) === node._md;
+    const refresh = (node, fresh) => {
+      if (node.tagName !== fresh.tagName || !node.classList.contains('lmd-editable') || !fresh.classList.contains('lmd-editable') || !clean(node)) return false;
+      const offset = caretOf(node);
+      node.replaceChildren(...fresh.childNodes);
+      node._md = inlineMd(node);
+      const at = sourceOf(node); node._was = at ? srcLines.slice(at.s, at.s + at.n) : null;
+      if (offset >= 0) caretAt(node, Math.min(offset, node.textContent.length));
+      if (node.matches(HEADS)) heads = true;
+      glow(node);
+      return true;
+    };
+    // Una tabla con el cursor en una celda: las demás celdas se cambian una por una.
+    const patchTable = (a, b) => {
+      const ot = a.querySelector('table'); const nt = b.querySelector('table');
+      if (!ot || !nt || ot.rows.length !== nt.rows.length || ot.classList.contains('lmd-noedit') !== nt.classList.contains('lmd-noedit')) return false;
+      for (let i = 0; i < ot.rows.length; i++) if (ot.rows[i].cells.length !== nt.rows[i].cells.length) return false;
+      let ok = true;
+      for (let i = 0; i < ot.rows.length; i++) for (let j = ot.rows[i].cells.length - 1; j >= 0; j--) {
+        const oc = ot.rows[i].cells[j]; const nc = nt.rows[i].cells[j];
+        if (oc === focus) {
+          const now = nc.dataset.formula || inlineMd(nc);
+          if (now === inlineMd(oc)) continue;
+          if (!clean(oc)) { ok = false; continue; }
+          const offset = caretOf(oc);
+          if (nc.dataset.formula) { oc.textContent = nc.dataset.formula; oc.dataset.formula = nc.dataset.formula; } else { oc.replaceChildren(...nc.childNodes); delete oc.dataset.formula; }
+          oc._md = inlineMd(oc); oc._was = [srcLines[sourceOf(oc).s]];
+          if (offset >= 0) caretAt(oc, Math.min(offset, oc.textContent.length));
+          glow(oc);
+        } else if (oc.innerHTML !== nc.innerHTML || oc.dataset.formula !== nc.dataset.formula) { oc.replaceWith(nc); glow(nc); }
+      }
+      // Los totales de las otras celdas se vuelven a calcular al salir de la tabla.
+      if (ot.querySelector('[data-formula]')) needsRender = true;
+      return ok;
+    };
+    // Recorre un contenedor: lo que tiene par queda como está, y entre par y par se cambia lo viejo por lo nuevo.
+    function apply(parent, O, N, pairs, depth) {
+      const front = parent.querySelector(':scope > .lmd-front');
+      const tail = O.length ? O[O.length - 1].node.nextSibling : (front ? front.nextSibling : parent.firstChild);
+      let ok = true; let i = 0; let j = 0;
+      for (let k = 0; k <= O.length; k++) {
+        if (k < O.length && pairs[k] < 0) continue;
+        const nj = k < O.length ? pairs[k] : N.length;
+        const olds = O.slice(i, k); const news = N.slice(j, nj);
+        if (olds.length || news.length) ok = swap(parent, olds, news, k < O.length ? O[k].node : tail, depth) && ok;
+        i = k + 1; j = nj + 1;
+      }
+      return ok;
+    }
+    // Un tramo: olds deja su lugar a news, antes de ref.
+    function swap(parent, olds, news, ref, depth) {
+      if (olds.some((k) => !k.r) || news.some((k) => !k.r)) return false;
+      const hit = focus ? olds.findIndex((k) => k.node === focus || k.node.contains(focus)) : -1;
+      if (hit < 0) { put(parent, olds, news, ref); return true; }
+      // El bloque con el cursor queda donde está. Su par en lo nuevo es el que empieza en la línea que le toca.
+      const keep = olds[hit];
+      const start = keep.r[0] + d.start(keep.r[0] + fm);
+      const j = news.findIndex((k) => k.r[0] === start);
+      if (j < 0) return false;
+      const after = keep.node.nextSibling;
+      put(parent, olds.slice(0, hit), news.slice(0, j), keep.node);
+      put(parent, olds.slice(hit + 1), news.slice(j + 1), after);
+      return join(keep, news[j], depth);
+    }
+    function join(keep, pair, depth) {
+      if (same(keep, pair)) return true;
+      if (keep.draft) return false;
+      // Las líneas que ocupa ahora, exactas.
+      if (keep.el && pair.el) ['data-l', 'data-p'].forEach((a) => { if (pair.el.hasAttribute(a) && keep.el.hasAttribute(a)) keep.el.setAttribute(a, pair.el.getAttribute(a)); });
+      const node = keep.node;
+      if (node === focus) return refresh(node, pair.node);
+      if (depth > 8 || node.tagName !== pair.node.tagName) return false;
+      if (node.classList.contains('lmd-table')) return patchTable(node, pair.node);
+      const inO = kidsOf(node, true); const inN = kidsOf(pair.node, false);
+      if (!inO || !inN) return false;
+      // La casilla de una tarea es del ítem, no de su texto.
+      const ob = node.querySelector(':scope > input.lmd-task'); const nb = pair.node.querySelector(':scope > input.lmd-task');
+      if (!!ob !== !!nb) return false;
+      if (ob) ob.checked = nb.checked;
+      return apply(node, inO, inN, match(inO, inN), depth + 1);
+    }
+    // La página no se mueve: lo que estaba a la vista (o el bloque con el cursor) queda a la misma altura.
+    const pin = focus || (O.find((k, i) => pairs[i] >= 0 && k.node.getBoundingClientRect().bottom > 60) || {}).node || null;
+    const pinTop = pin ? pin.getBoundingClientRect().top : 0;
+    const ok = apply(art, O, N, pairs, 0);
+    if (heads) {
+      const used = new Set(); const hs = Array.from(art.querySelectorAll(HEADS)).filter((h) => !h.closest('.lmd-front'));
+      hs.forEach((h) => { h.id = slugify(headingText(h), used); const a = h.querySelector(':scope > .lmd-anchor'); if (a) a.setAttribute('href', '#' + h.id); });
+      spyHeadings = hs; buildOutline(hs);
+    }
+    if (pin && pin.isConnected) { const dy = pin.getBoundingClientRect().top - pinTop; if (Math.abs(dy) >= 1) window.scrollBy(0, dy); }
+    onScroll(); updateCount();
+    if (!ok) needsRender = true;
+    return ok;
+  }
+
+  // En qué bloque está alguien, para decírselo a los demás: una huella del texto de sus líneas, dónde empieza y
+  // cuántas son. La huella lo encuentra aunque a quien mira se le hayan corrido las líneas. El texto no viaja.
+  const fnv = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
+  function blockId(node) {
+    let at = null;
+    // Una celda cuenta como su tabla entera, y el cuadro de un bloque de código como ese bloque.
+    const table = node.classList.contains('lmd-cell') && node.closest('table[data-l]');
+    const code = node.classList.contains('lmd-src') && node.closest('.lmd-code') && node.closest('.lmd-code').querySelector('code[data-l]');
+    const whole = table || code;
+    if (whole) { const r = rangeOf(whole); at = r && { s: r[0] + fmOffset, n: r[1] - r[0] }; }
+    // Un bloque nuevo: sus líneas si ya las tiene; si no, el bloque después del cual se está escribiendo.
+    else if (node.classList.contains('lmd-draft')) { const y = node._syn; const near = node._li || node._anchor; const r = !y && near && near.isConnected ? rangeOf(ownRange(near) || near) : null; at = y ? { s: y.at, n: y.n } : r && { s: r[0] + fmOffset, n: r[1] - r[0] }; }
+    else at = sourceOf(node);
+    if (!at || at.n < 1) return null;
+    return fnv(srcLines.slice(at.s, at.s + at.n).join('\n')) + '.' + at.s + '.' + at.n;
+  }
+  // El bloque de acá que corresponde a esa marca: el de la misma huella (el más cercano, si hay varios iguales).
+  // Mientras esa persona escribe, su texto cambia antes de que llegue su marca nueva: ahí vale el bloque de esa
+  // línea solo si lo último que se dibujó en él fue un cambio suyo (pid). Por el número de línea a secas no se
+  // marca nada: a quien mira se le pueden haber corrido las líneas, y quedaría tomado un bloque que no es.
+  // Devuelve lo que se ve del bloque (la tabla entera, la caja del código).
+  function locate(id, pid) {
+    const m = /^([a-z0-9]+)\.(\d+)\.(\d+)$/.exec(id || ''); if (!m || noDoc || rawMode) return null;
+    const s = +m[2] - fmOffset; const n = +m[3]; let best = null; let score = Infinity; let last = null; let span = Infinity;
+    ui.article.querySelectorAll('[data-l]').forEach((e) => {
+      const r = rangeOf(e); if (!r) return;
+      if (r[1] - r[0] === n) {
+        const sc = Math.abs(r[0] - s) * 2 + (e.classList.contains('lmd-editable') ? 0 : 1);
+        if (sc < score && fnv(srcLines.slice(r[0] + fmOffset, r[1] + fmOffset).join('\n')) === m[1]) { best = e; score = sc; }
+      }
+      if (pid && r[0] <= s && r[1] > s && r[1] - r[0] <= span) { const by = e.closest('[data-live-by-last]'); if (by && by.dataset.liveByLast === pid) { last = e; span = r[1] - r[0]; } }
+    });
+    const hit = best || last;
+    return hit ? hit.closest('.lmd-table') || hit.closest('.lmd-code') || hit : null;
   }
 
   // Lo que dice el pie cuando no hay nada que avisar. La recarga automática se nombra solo donde hay un archivo
@@ -1306,6 +1641,8 @@
   async function loadTree() {
     const turn = ++treeTurn;
     ui.paneFiles.dataset.loaded = '1';
+    // Quien entró por el enlace de una sesión en vivo ve solo esa nota: no hay explorador que mostrarle.
+    if (APP && LMD.cloud.guest()) { ui.treeBox.replaceChildren(); return; }
     const secs = []; const fills = [];
     const add = (key, o) => { const sec = rootSection(key, o); secs.push(sec); const list = sec.querySelector('.lmd-tree'); if (o.url) fills.push(fillDir(list, o.url, 0)); return list; };
     const leaf = (u) => decodeURIComponent(u.replace(/\/$/, '').split('/').pop() || u);
@@ -1732,7 +2069,9 @@
   function openPanel(tab, why) {
     if (tab) panelTab = tab;
     LMD.sync.why(why);
-    if (!PANEL_TABS.some((t) => t[0] === panelTab)) panelTab = 'look';
+    // Un invitado de una sesión en vivo no tiene cuenta que manejar acá, ni cambia de servidor a mitad de la sesión.
+    const guestTabs = APP && LMD.cloud.guest() ? ['look', 'read', 'plug'] : null;
+    if (!PANEL_TABS.some((t) => t[0] === panelTab) || (guestTabs && !guestTabs.includes(panelTab))) panelTab = 'look';
     LMD.write.closeMenu(); // un menú de bloques abierto quedaría encima de los ajustes
     const s = settings;
     const wasHidden = ui.panel.hidden; const hadFocus = !wasHidden && ui.panel.contains(document.activeElement);
@@ -1754,7 +2093,7 @@
       '<div class="lmd-panel-card" role="dialog" aria-modal="true" aria-label="' + T('Ajustes') + '">' +
         '<header><h2>' + T('Ajustes') + '</h2><button class="lmd-icon-btn" data-act="close-panel" title="' + T('Cerrar') + '" aria-label="' + T('Cerrar') + '">' + ICON.close + '</button></header>' +
         '<nav class="lmd-ptabs" role="tablist">' +
-          PANEL_TABS.map((t) => '<button type="button" role="tab" data-ptab="' + t[0] + '">' + t[2] + '<span>' + T(t[1]) + '</span></button>').join('') +
+          PANEL_TABS.filter((t) => !guestTabs || guestTabs.includes(t[0])).map((t) => '<button type="button" role="tab" data-ptab="' + t[0] + '">' + t[2] + '<span>' + T(t[1]) + '</span></button>').join('') +
           '<button type="button" class="lmd-ptabs-foot" data-act="feedback">' + ICON.mail + '<span>' + T('Enviar comentarios') + '</span></button>' +
           '<a class="lmd-ptabs-link" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">' + ICON.coffee + '<span>' + T('Apoyar el proyecto') + '</span></a>' +
           '<small class="lmd-ptabs-ver">SharpMD ' + LMD.VERSION + '</small>' +
@@ -1940,6 +2279,10 @@
   // cambios, ni un evento en vivo de la nube. Lo escrito se lleva al Markdown sin tocar ese nodo (flushTyping), y
   // lo que haya que redibujar o traer de afuera espera a que la persona salga. Quien agregue algo que corre solo
   // (un temporizador, un evento) pregunta primero por typingNode().
+  // En una sesión en vivo lo de afuera no espera: se aplica ALREDEDOR de ese nodo (applyRemote, patchArticle). El
+  // nodo sigue siendo el mismo y conserva el foco. Lo único que se le toca es el contenido, y solo si el cambio
+  // ajeno cayó en ese mismo bloque y ahí no hay nada tecleado sin pasar al Markdown: entra el texto nuevo con el
+  // cursor a la misma altura. Con algo a medio escribir, o a medio componer, tampoco eso.
   const typingNode = () => {
     const a = document.activeElement;
     return a && a !== ui.rawEdit && ui.article.contains(a) && (a.isContentEditable || a.classList.contains('lmd-src')) ? a : null;
@@ -2077,7 +2420,8 @@
     clearTimeout(autosaveTimer);
     // Las notas del navegador se guardan solas, siempre.
     if (dirty && appRoot && appRoot.kind === 'local') { autosaveTimer = setTimeout(() => save(false), 600); return; }
-    if (dirty && appRoot && appRoot.kind === 'cloud') { if (cloudState !== 'error') cloudState = 'saving'; autosaveTimer = setTimeout(() => save(false), 1500); return; }
+    // En una sesión en vivo lo escrito sale enseguida: la pausa ya la puso el tecleo.
+    if (dirty && appRoot && appRoot.kind === 'cloud') { if (cloudState !== 'error') cloudState = 'saving'; autosaveTimer = setTimeout(() => save(false), liveOn() ? 120 : 1500); return; }
     if (dirty && settings.autosave) {
       if (fileHandle) autosaveTimer = setTimeout(() => save(false), Math.max(500, settings.autosaveDelay | 0));
       else flash(T('Guardá una vez con Ctrl+S para activar el guardado automático'), 'warn');
@@ -2086,6 +2430,7 @@
 
   function updateSaveState() {
     if (LMD.sync) LMD.sync.paint();
+    if (LMD.live) LMD.live.state();
     const root = document.documentElement;
     root.classList.toggle('lmd-dirty', dirty);
     root.classList.toggle('lmd-editing', editMode);
@@ -2263,13 +2608,18 @@
   function editCode(codeBox) {
     const code = codeBox.querySelector('code'); const r = code && rangeOf(code);
     if (!r || codeBox.querySelector('.lmd-src')) return;
+    const holder = LMD.live ? LMD.live.heldBy(codeBox) : '';
+    if (holder) { flash(T('{a} está escribiendo en este bloque', { a: holder }), 'warn'); return; }
     const s = r[0] + fmOffset; const e = r[1] + fmOffset;
     const fenced = /^\s*(`{3,}|~{3,})/.test(srcLines[s] || '');
-    const from = fenced ? s + 1 : s; let to = fenced ? e - 1 : e;
-    const before = srcLines.slice(from, to);
+    // Qué líneas del archivo edita el cuadro. Va en el nodo (ta._range): en una sesión en vivo, si otra persona
+    // agrega o saca líneas más arriba, patchDoc las corre.
+    const g = { from: fenced ? s + 1 : s, to: fenced ? e - 1 : e };
+    const before = srcLines.slice(g.from, g.to);
     const ta = el('textarea', { class: 'lmd-src', spellcheck: 'false' });
+    ta._range = g;
     ta.value = before.join('\n');
-    ta.rows = Math.max(3, to - from + 1);
+    ta.rows = Math.max(3, g.to - g.from + 1);
     codeBox.querySelector('pre').hidden = true;
     codeBox.appendChild(ta); ta.focus();
     let done = false;
@@ -2281,10 +2631,10 @@
     };
     // Lo escrito pasa al Markdown tras una pausa, con el cuadro abierto y sin redibujar: así el guardado
     // automático lo ve aunque no se salga del bloque. Escape vuelve a lo que había.
-    const put = (lines) => { if (lines.join('\n') !== srcLines.slice(from, to).join('\n')) { replaceLines(from, to, lines, null); to = from + lines.length; } };
+    const put = (lines) => { if (lines.join('\n') !== srcLines.slice(g.from, g.to).join('\n')) { replaceLines(g.from, g.to, lines, null); g.to = g.from + lines.length; } };
     let typed = null;
     ta._flush = () => { if (!done) put(ta.value.split('\n')); };
-    ta.addEventListener('input', () => { clearTimeout(typed); typed = setTimeout(ta._flush, 1200); });
+    ta.addEventListener('input', () => { clearTimeout(typed); typed = setTimeout(ta._flush, typePause()); if (LMD.live) LMD.live.at(ta, true); });
     ta.addEventListener('blur', () => finish(true));
     ta.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
@@ -2401,7 +2751,19 @@
     else if (!raw.trim()) { const add = ui.article.querySelector('.lmd-add'); if (add) add.click(); }
   }
 
+  // Cuánto se espera sin teclear para pasar lo escrito al Markdown. En una sesión en vivo, menos: los demás lo
+  // ven aparecer mientras se escribe.
+  const typePause = () => (liveOn() ? 500 : 1200);
   function bindEditing() {
+    ui.article.addEventListener('compositionstart', () => { composing = true; });
+    ui.article.addEventListener('compositionend', () => { composing = false; });
+    // Sesión en vivo: los demás ven en qué bloque está cada uno, y en el que otro está escribiendo no se escribe.
+    ui.article.addEventListener('focusin', (e) => { const n = e.target.closest && e.target.closest('.lmd-editable, .lmd-src'); if (n && LMD.live) LMD.live.at(n, false); });
+    ui.article.addEventListener('focusout', () => { if (LMD.live) LMD.live.at(null, false); });
+    ui.article.addEventListener('beforeinput', (e) => {
+      const n = e.target.closest && e.target.closest('.lmd-editable, .lmd-src'); const holder = n && LMD.live ? LMD.live.heldBy(n) : '';
+      if (holder && e.cancelable) { e.preventDefault(); flash(T('{a} está escribiendo en este bloque', { a: holder }), 'warn'); }
+    });
     ui.article.addEventListener('focusin', (e) => {
       const node = e.target.closest && e.target.closest('.lmd-editable');
       if (node && node.dataset.formula) node.textContent = node.dataset.formula;
@@ -2428,13 +2790,16 @@
       const node = e.target.closest && e.target.closest('.lmd-editable');
       if (!node || !editMode) return;
       clearTimeout(typeTimer);
+      if (LMD.live) LMD.live.at(node, true);
       // Solo se reescribe el Markdown: el nodo con foco no se toca (una celda no recalcula ni redibuja la tabla
       // hasta que se sale de ella). Vale también para un bloque nuevo y para una celda con fórmula.
       typeTimer = setTimeout(() => {
         if (!editMode || !node.isConnected || core.hold) return;
         if (node.classList.contains('lmd-draft')) LMD.write.sync(node);
         else if (commitBlock(node)) node._typed = true;
-      }, 1200);
+        // El bloque cambió de texto: los demás siguen viendo la marca en el mismo lugar.
+        if (LMD.live && document.activeElement === node) LMD.live.at(node, true);
+      }, typePause());
     });
     ui.article.addEventListener('focusout', (e) => {
       const node = e.target.closest && e.target.closest('.lmd-editable');
@@ -2524,7 +2889,32 @@
     get HERE() { return HERE; }, get docName() { return DOC_NAME; }, get noDoc() { return noDoc; },
     openApp: (query) => bg({ type: 'openApp', query }),
     openPanel: (tab, why) => openPanel(tab, why),
-    ui, hooks: { render: [], tree: [], doc: [] }, lastBlock: null, appUrl: APP_URL, hold: false,
+    // patch: se dibujó en el lugar un cambio de otra persona (sesión en vivo), sin pasar por render.
+    ui, hooks: { render: [], tree: [], doc: [], patch: [] }, lastBlock: null, appUrl: APP_URL, hold: false,
+    // Lo que la sesión en vivo (live.js) necesita del lector.
+    live: {
+      blockId, locate,
+      // Abre la nota de la sesión para un invitado: en edición, sin ofrecer un bloque nuevo.
+      open: (name) => go('cloud/' + encodeURIComponent(name), { edit: 'on', replace: true, boot: true }),
+      // Sin nota: el inicio de siempre, con un aviso y sin el enlace en la dirección.
+      home: (note) => { history.replaceState(null, '', APP_URL); showEmpty(note); loadTree(); },
+      // La sesión terminó: lo escrito queda a la vista, sin poder seguir editando ni guardando.
+      freeze: () => {
+        flushTyping(); const a = document.activeElement; if (a && a.blur && ui.article.contains(a)) a.blur();
+        clearTimeout(autosaveTimer); if (stopEvents) { stopEvents(); stopEvents = null; }
+        readOnly = true; editMode = false; rememberEdit(false); document.documentElement.classList.add('lmd-readonly');
+        ui.format.hidden = true; ui.tableBar.hidden = true; updateSaveState(); render(); applyRawMode();
+      },
+      // La nota como está acá, con lo que no llegó a enviarse.
+      download: () => {
+        flushTyping();
+        const a = el('a', { download: DOC_NAME || 'nota.md' });
+        a.href = URL.createObjectURL(new Blob([raw], { type: 'text/markdown' }));
+        a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      },
+      flush: async () => { flushTyping(); if (dirty) { clearTimeout(autosaveTimer); await save(false); } return !dirty; },
+      typing: () => typingNode(),
+    },
     editAt: (e) => editAt(e), copy: (text) => { copyText(text); flash(T('Copiado')); }, searchFor, sectionLink,
     links: { headings: () => anchorsOf(spyHeadings), headingsIn, files: linkFiles, read: readDoc, rel: relLink, find: findAnchor, same: sameUrl },
     get blocks() { return docKind() === 'md'; },
@@ -2659,22 +3049,25 @@
   async function catchUp(path) {
     let n = null;
     try { n = await LMD.cloud.read(path); } catch (e) { if (e.code !== 'not_found') throw e; }
-    if (!n || n.text === diskText) return true;
+    if (!n) { diskRev = null; return true; } // ya no está en el servidor: se guarda como nota nueva
+    if (n.text === diskText) { if (n.rev != null) diskRev = n.rev; return true; }
     // Juntar cambia el texto y hay que redibujar: con el cursor en un bloque, espera.
     if (typingNode()) return false;
     const r = await LMD.cloud.settle(path, diskText, raw, n.text);
-    diskText = n.text;
+    diskText = n.text; if (n.rev != null) diskRev = n.rev;
     if (r.text !== raw) { raw = r.text; syncSource(); render(); }
     dirty = raw !== diskText;
     offlineNote(r);
     return true;
   }
-  function offlineNote(r) {
-    if (r.aside) flash(T('La nota cambió en la nube. Lo que escribiste sin conexión quedó en "{a}"', { a: r.aside }), 'warn');
+  // online: el choque fue con la nota abierta y con conexión (otro guardó lo mismo a la vez), no al volver de estar sin ella.
+  function offlineNote(r, online) {
+    if (r.aside) flash(T(online ? 'La nota cambió en la nube. Lo tuyo quedó aparte, en "{a}"' : 'La nota cambió en la nube. Lo que escribiste sin conexión quedó en "{a}"', { a: r.aside }), 'warn');
     else if (r.merged) flash(T('Se sumaron los cambios de otra persona'));
   }
 
-  async function save(interactive) {
+  // turn: cuántas veces seguidas ya se rechazó este guardado porque otro guardó antes.
+  async function save(interactive, turn) {
     if (noDoc) return true;
     const seq = docSeq;
     const later = () => { clearTimeout(autosaveTimer); autosaveTimer = setTimeout(() => save(false), 2500); return false; };
@@ -2717,21 +3110,54 @@
       if (appRoot && appRoot.kind === 'cloud') {
         const path = vParts(HERE).join('/');
         await LMD.cloud.stash(path, raw, diskText); stashed = raw;
-        if (cloudState === 'error') { if (!(await catchUp(path))) return later(); await LMD.cloud.stash(path, raw, diskText); stashed = raw; }
+        if (cloudState === 'error' && liveOn()) {
+          // Vuelve la conexión en una sesión en vivo: lo que cambió mientras tanto se junta acá mismo, sin esperar
+          // a soltar el bloque, y lo de acá sale sobre la revisión nueva.
+          const n = await LMD.cloud.read(path);
+          if (seq !== docSeq) return false;
+          applyRemote(n.text, n.rev, '');
+          await LMD.cloud.stash(path, raw, diskText); stashed = raw;
+          if (raw === diskText) { cloudState = 'ok'; dirty = false; await LMD.cloud.settled(path, raw); updateSaveState(); return true; }
+        } else if (cloudState === 'error') { if (!(await catchUp(path))) return later(); await LMD.cloud.stash(path, raw, diskText); stashed = raw; }
       }
       // Cambió afuera mientras se escribía: no se pisa. La copia local ya quedó; se sube al soltar el bloque.
       // Ya fuera del bloque, primero se trae y se junta lo de afuera, y recién después se guarda.
-      if (outside && !interactive) { if (!typingNode()) { cloudPoll = 0; checkForChanges(false); } return later(); }
+      // En la nube tampoco pasa un guardado a mano: el servidor lo rechazaría, y juntar hace falta igual.
+      if (outside && (!interactive || isCloud())) { if (!typingNode()) { cloudPoll = 0; checkForChanges(false); } return later(); }
       // Mientras se escribe en el archivo la persona puede seguir tecleando: se da por guardado lo que salió,
       // no lo que haya ahora.
-      const sent = raw;
+      const sent = raw; let savedRev = null;
       saving = true;
       try {
-        const writable = await fileHandle.createWritable();
-        await writable.write(sent);
-        await writable.close();
-      } finally { saving = false; }
+        if (isCloud()) {
+          // Se guarda sobre la revisión que se tiene como base. Si otro guardó antes, el servidor no pisa: devuelve
+          // lo que hay, se junta con lo de acá y se vuelve a intentar.
+          try { savedRev = (await LMD.cloud.save(vParts(HERE).join('/'), sent, diskRev)).rev; }
+          catch (e) {
+            if (e.code !== 'rev_conflict' || seq !== docSeq) throw e;
+            saving = false;
+            // En una sesión en vivo se junta ya, alrededor del bloque que se está escribiendo, y se reintenta.
+            if (liveOn()) {
+              if (e.rev != null && diskRev != null && e.rev <= diskRev) diskRev = e.rev - 1; // la nota se volvió a crear: vale lo que hay
+              applyRemote(e.theirs, e.rev, e.pid || ''); drainInbox();
+              if (!dirty) return true;
+              if ((turn || 0) >= 6) { clearTimeout(autosaveTimer); autosaveTimer = setTimeout(() => save(false), 300); return false; }
+              return save(interactive, (turn || 0) + 1);
+            }
+            // Con el cursor en un bloque, juntar espera a que se lo suelte (lo escrito ya quedó en la copia local).
+            if (typingNode() || (turn || 0) >= 4) { outside = true; diskStamp = ''; return later(); }
+            await takeOutside(e.theirs, e.rev);
+            if (seq !== docSeq) return false;
+            return dirty ? save(interactive, (turn || 0) + 1) : true;
+          }
+        } else {
+          const writable = await fileHandle.createWritable();
+          await writable.write(sent);
+          await writable.close();
+        }
+      } finally { saving = false; if (inbox) setTimeout(drainInbox, 0); } // lo que llegó mientras salía este guardado entra después
       if (seq !== docSeq) return true;
+      if (isCloud()) diskRev = savedRev == null ? null : savedRev;
       fileCache.delete(HERE); // la búsqueda en la carpeta vuelve a leerlo
       cloudState = 'ok';
       diskText = sent; diskStamp = ''; dirty = raw !== diskText; updateSaveState();
@@ -2751,8 +3177,12 @@
       else if (e && e.code === 'offline') {
         // El aviso sale una vez; después se reintenta en silencio hasta que vuelva.
         if (cloudState !== 'error' || interactive) flash(T('Sin conexión. Se guarda cuando vuelva'), 'warn');
-        cloudState = 'error'; updateSaveState(); clearTimeout(autosaveTimer); autosaveTimer = setTimeout(() => save(false), 8000);
+        cloudState = 'error'; updateSaveState(); clearTimeout(autosaveTimer); autosaveTimer = setTimeout(() => save(false), liveOn() ? 3000 : 8000);
       }
+      // La sesión en vivo terminó con cambios sin enviar: lo escrito sigue acá y la barra de la sesión ofrece descargarlo.
+      else if (e && (e.code === 'live_ended' || e.code === 'guest')) { cloudState = 'error'; updateSaveState(); }
+      // Muchos guardados en un minuto (un invitado tiene tope): se espera lo que pide el servidor.
+      else if (e && e.status === 429 && liveOn()) { clearTimeout(autosaveTimer); autosaveTimer = setTimeout(() => save(false), Math.min(60, e.retry || 5) * 1000); }
       else flash(T('No se pudo guardar'), 'error');
       return false;
     }
@@ -2764,7 +3194,8 @@
   let docSeq = 0; // cada nota abierta; lo que llega tarde de la anterior no toca a la nueva
   let stopEvents = null; let unhold = null;
   const blobUrls = [];
-  const hrefOf = (f, hash) => APP_URL + (f ? '?f=' + encodeURIComponent(f) : '') + (hash && !/^#lmd-/.test(hash) ? hash : '');
+  // Quien entró por el enlace de una sesión en vivo sigue en esa dirección: recargar la pestaña lo vuelve a traer.
+  const hrefOf = (f, hash) => f && /^#live=/.test(location.hash) && LMD.cloud.guest() ? location.href : (f && LMD.cloud.guest() ? location.href.split('#')[0] : APP_URL + (f ? '?f=' + encodeURIComponent(f) : '')) + (hash && !/^#lmd-/.test(hash) ? hash : '');
 
   // Lee lo que hace falta para abrir f sin tocar la nota que está a la vista: si falla, todo sigue como estaba.
   // Devuelve { root, raw, disk, ... } o { fail: aviso }.
@@ -2782,7 +3213,7 @@
       }
       if (!got && (why === 'vault_locked' || why === 'vault_unreadable')) return fail(T(why === 'vault_locked' ? '"{a}" está en una carpeta protegida. Desbloqueala para abrirla.' : '"{a}" no se pudo descifrar con la llave de su carpeta.', { a: name }));
       if (!got) return fail(T(!LMD.cloud.signedIn() ? 'Entrá a tu cuenta para abrir las notas de la nube.' : why === 'offline' ? 'Sin conexión, y "{a}" no tiene copia en este navegador.' : 'No se encontró "{a}".', { a: name }));
-      return { root: roots.cloud, raw: got.text, disk: got.base, opened: got, readOnly: LMD.cloud.roleOf(path) === 'view' };
+      return { root: roots.cloud, raw: got.text, disk: got.base, rev: got.rev, opened: got, readOnly: LMD.cloud.roleOf(path) === 'view' };
     }
     if (id === 'pub') {
       // Enlace público de solo lectura; si tiene contraseña, se pide.
@@ -2851,11 +3282,13 @@
     clearTimeout(autosaveTimer); clearTimeout(softTimer);
     if (stopEvents) { stopEvents(); stopEvents = null; }
     if (LMD.comments) LMD.comments.detach();
+    if (LMD.live) LMD.live.detach();
+    inbox = null;
     if (unhold) { unhold(); unhold = null; LMD.cloud.flush(); }
     blobUrls.splice(0).forEach((u) => URL.revokeObjectURL(u));
     if (!noDoc) fileCache.delete(HERE);
     undoStack.length = 0; redoStack.length = 0; collapsed.clear(); spyPin = null; present = [];
-    pendingCell = null; fileHandle = null; stashed = null; opened = null; diskStamp = ''; cloudPoll = 0; cloudState = 'ok';
+    pendingCell = null; fileHandle = null; stashed = null; opened = null; diskStamp = ''; cloudPoll = 0; cloudState = 'ok'; diskRev = null;
     needsRender = false; core.lastBlock = null; core.hold = false;
     LMD.write.closeMenu(); closeMore(); setDrawer(false);
     document.querySelectorAll('.lmd-menu, .lmd-ask').forEach((n) => n.remove());
@@ -2898,6 +3331,7 @@
     appRoot = doc ? doc.root : null;
     if (doc) roots[appRoot.id] = appRoot;
     raw = doc ? doc.raw : ''; diskText = doc ? doc.disk : ''; dirty = raw !== diskText;
+    diskRev = doc && doc.rev != null ? doc.rev : null;
     readOnly = !!(doc && doc.readOnly); opened = (doc && doc.opened) || null;
     rawMode = false; editMode = false;
     if (!opt.pop) {
@@ -2917,19 +3351,30 @@
         if (opened.offline) { cloudState = 'error'; flash(T('Sin conexión. Esta es la copia guardada en este navegador'), 'warn'); } else offlineNote(opened);
         if (dirty) markDirty(); // lo que quedó sin subir sale ahora, o apenas vuelva la conexión
         unhold = LMD.cloud.hold(path); LMD.cloud.flush();
+        let linkUp = true;
         stopEvents = LMD.cloud.events(path, (ev) => {
           if (mine !== docSeq) return;
-          present = ev.who || [];
-          if (ev.type === 'saved' && ev.by !== LMD.cloud.email()) { cloudPoll = 0; checkForChanges(false); }
+          if (ev.who) present = ev.who;
+          // La escucha se cortó o volvió. Al volver se trae lo que haya cambiado mientras tanto, y sale lo pendiente.
+          if (ev.type === 'link') {
+            if (ev.up && !linkUp) { if (dirty && cloudState === 'error') { clearTimeout(autosaveTimer); save(false); } else { cloudPoll = 0; checkForChanges(false); } }
+            linkUp = !!ev.up; LMD.live.event(ev); return;
+          }
+          if (ev.type === 'live') { LMD.live.event(ev); LMD.sync.paint(); return; }
+          // En una sesión en vivo el aviso trae el cambio: se aplica sin pedir la nota.
+          if (ev.type === 'saved' && liveOn() && (typeof ev.text === 'string' || ev.patch)) liveSaved(ev);
+          else if (ev.type === 'saved' && ev.by !== LMD.cloud.email()) { cloudPoll = 0; checkForChanges(false); }
           // Cambió el estado de una carpeta protegida (se abrió o se cerró para la IA, venció el plazo, otra pestaña).
           if (ev.type === 'vault') LMD.vault.changed();
           if (ev.type === 'comments' && LMD.comments) { cloudPoll = 0; checkForChanges(false).then(() => { if (mine === docSeq) LMD.comments.onEvent(ev); }); }
           LMD.sync.paint();
-        });
+        }, liveOn);
       }
       afterOpen({ edit: opt.edit, editing: wasEditing, hash: opt.hash });
       // Los comentarios para la IA son de cada nota: con la nueva ya dibujada se traen los suyos.
-      if (appRoot.kind === 'cloud' && LMD.comments) LMD.comments.attach(vParts(HERE).join('/'));
+      // Quien entró por el enlace de una sesión en vivo no tiene cuenta: no hay comentarios que traerle.
+      if (appRoot.kind === 'cloud' && LMD.comments && !LMD.cloud.guest()) LMD.comments.attach(vParts(HERE).join('/'));
+      if (appRoot.kind === 'cloud') LMD.live.attach(vParts(HERE).join('/'));
     }
     core.hooks.doc.forEach((fn) => fn());
   }
@@ -2977,6 +3422,16 @@
     const params = new URLSearchParams(location.search);
     // Desde el popup: una nota nueva, sin pasar por el estado vacío.
     if (params.has('new')) { LMD.home.create(homeCtx(), { replace: true }); return; }
+    // El enlace de una sesión en vivo: se pide un nombre y se abre la nota de esa sesión, sin cuenta.
+    // El secreto viaja tras el # (no llega al alojamiento de la web); los enlaces viejos con ?live= siguen sirviendo.
+    let liveKey = decodeURIComponent((/^#live=([^&]+)/.exec(location.hash) || [])[1] || '') || params.get('live'); let kept = false;
+    // Un invitado que recarga después de ir a una sección ya no tiene el secreto en la dirección: vale el de la pestaña.
+    if (!liveKey && !params.get('f')) { try { liveKey = (JSON.parse(sessionStorage.getItem('lmd-live') || 'null') || {}).secret; kept = !!liveKey; } catch (e) { /* sin sesión */ } }
+    if (liveKey) {
+      await LMD.live.enter(liveKey);
+      if (kept && !LMD.cloud.guest()) { try { sessionStorage.removeItem('lmd-live'); } catch (e) { /* sin sesión */ } }
+      return;
+    }
     const f = params.get('f');
     if (!f) { showEmpty(); loadTree(); return; }
     await go(f, { boot: true, edit: params.has('edit'), hash: location.hash });

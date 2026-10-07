@@ -11,7 +11,7 @@
   let loading = null;
   function loadAccount() {
     // Sobre un archivo abierto directo en el navegador no se consulta: ahí el servidor no responde (CORS).
-    if (asked || !LMD.cloud.signedIn() || !core.APP) return loading || Promise.resolve();
+    if (asked || !LMD.cloud.signedIn() || !core.APP || LMD.cloud.guest()) return loading || Promise.resolve();
     asked = true;
     // Si falla no se repinta: repintar volvería a consultar y quedaría pidiendo en bucle mientras no haya conexión.
     loading = (async () => { try { account = await LMD.cloud.account(); } catch (e) { account = null; asked = false; return; } paint(); })();
@@ -24,7 +24,8 @@
 
   function paint() {
     const btn = core && core.ui.sync; if (!btn) return;
-    btn.hidden = !LMD.cloud.enabled();
+    // Quien entró por el enlace de una sesión en vivo no tiene cuenta acá: su estado lo dice la barra de la sesión.
+    btn.hidden = !LMD.cloud.enabled() || !!LMD.cloud.guest();
     if (btn.hidden) return;
     let icon = ICON.cloudOff; let cls = 'lmd-sync-off'; let title;
     if (isCloud()) {
@@ -70,6 +71,8 @@
     menu = el('div', { class: 'lmd-menu lmd-menu-narrow', role: 'menu' });
     menu.innerHTML = '<div class="lmd-menu-list">' +
       (core.readOnly ? '' : '<button type="button" role="menuitem" data-s="share"' + (account && account.share && !mine().owner && !vaulted ? '' : ' class="lmd-locked"') + '>' + ICON.link + '<span>' + T('Compartir') + '</span></button>') +
+      // Sesión en vivo: quien tiene el enlace entra a editar sin cuenta. La abre quien creó la nota, con el plan pago.
+      (core.readOnly ? '' : '<button type="button" role="menuitem" data-s="live"' + (account && account.live && !mine().owner && !vaulted ? '' : ' class="lmd-locked"') + '>' + ICON.people + '<span>' + T('Colaborar en vivo') + '</span>' + (LMD.live.active() ? '<b class="lmd-menu-n">' + LMD.live.count() + '</b>' : '') + '</button>') +
       '<button type="button" role="menuitem" data-s="history"' + (pro ? '' : ' class="lmd-locked"') + '>' + ICON.reload + '<span>' + T('Historial de versiones') + '</span></button>' +
       '<button type="button" role="menuitem" data-s="ai"' + (account && account.mcp ? '' : ' class="lmd-locked"') + '>' + ICON.link + '<span>' + T('Conectar una IA') + '</span></button>' +
       (notes ? '<button type="button" role="menuitem" data-s="comments"' + (notes === 'on' ? '' : ' class="lmd-locked"') + '>' + ICON.comment + '<span>' + T('Comentarios para la IA') + '</span>' + (LMD.comments.count() ? '<b class="lmd-menu-n">' + LMD.comments.count() + '</b>' : '') + '</button>' : '') +
@@ -86,12 +89,14 @@
       if (b.dataset.s === 'ai') { core.openPanel('ai'); return; }
       if (b.dataset.s === 'comments') { LMD.comments.list(); return; } // sin plan, lleva a Ajustes → Plan
       if (vaulted && b.dataset.s === 'share') { LMD.vault.explain(); return; }
+      // En una carpeta protegida el servidor no puede leer la nota, así que no puede repartir los cambios.
+      if (vaulted && b.dataset.s === 'live') { LMD.live.explainVault(); return; }
       if (b.classList.contains('lmd-locked')) {
         if (mine().owner) core.flash(T('Solo quien creó la nota puede hacer eso.'), 'warn');
-        else core.openPanel('plan', T(b.dataset.s === 'history' ? 'El historial de versiones es parte del plan pago.' : 'Compartir es parte del plan pago.'));
+        else core.openPanel('plan', T(b.dataset.s === 'history' ? 'El historial de versiones es parte del plan pago.' : b.dataset.s === 'live' ? 'Colaborar en vivo es parte del plan pago.' : 'Compartir es parte del plan pago.'));
         return;
       }
-      if (b.dataset.s === 'history') history(); else share();
+      if (b.dataset.s === 'history') history(); else if (b.dataset.s === 'live') LMD.live.open(); else share();
     });
   }
 
@@ -278,7 +283,7 @@
       '<div class="lmd-plans">' +
         '<div class="lmd-plan' + (a && !pro ? ' lmd-plan-on' : '') + '"><h4>' + T('Gratis') + '</h4><ul><li>' + T('Todo el editor') + '</li><li>' + T('Hasta 10 notas en la nube') + '</li><li>' + T('Notas en el navegador y en tu disco, sin límite') + '</li></ul>' +
           (a && !pro ? '<p class="lmd-hint">' + T('Es tu plan actual.') + '</p>' : '') + '</div>' +
-        '<div class="lmd-plan' + (pro ? ' lmd-plan-on' : '') + '"><h4>' + T('Pago') + ' <small>USD 3.99 / ' + T('mes') + '</small></h4><ul><li>' + T('Notas en la nube sin límite') + '</li><li>' + T('Compartir y editar entre varios') + '</li><li>' + T('Conectar una IA por MCP') + '</li><li>' + T('Historial de versiones de 30 días') + '</li><li>' + T('Colores, tipografía y CSS propio') + '</li></ul>' +
+        '<div class="lmd-plan' + (pro ? ' lmd-plan-on' : '') + '"><h4>' + T('Pago') + ' <small>USD 3.99 / ' + T('mes') + '</small></h4><ul><li>' + T('Notas en la nube sin límite') + '</li><li>' + T('Compartir y editar entre varios') + '</li><li>' + T('Sesiones en vivo: quien invitás entra sin cuenta') + '</li><li>' + T('Conectar una IA por MCP') + '</li><li>' + T('Historial de versiones de 30 días') + '</li><li>' + T('Colores, tipografía y CSS propio') + '</li></ul>' +
           (pro ? '<p class="lmd-hint">' + T('Es tu plan actual.') + (a.manage ? ' <a href="' + esc(a.manage) + '" target="_blank" rel="noopener noreferrer">' + T('Administrar la suscripción') + '</a>' : '') + '</p>'
             : a ? '<div class="lmd-plan-buy">' + btn(pay.monthly, 'USD 3.99 / ' + T('mes')) + btn(pay.yearly, 'USD 39 / ' + T('año')) + '</div>' : '') + '</div></div>';
     box.onclick = async (e) => {

@@ -581,6 +581,15 @@
     put: (after, body) => insertTemplate(after, body),
     drop: (d) => { d._done = true; unplace(d); },
     settle: (d) => commitDraft(d, 'stay') || null,
+    // En una sesión en vivo otra persona cambió líneas más arriba: lo que cada borrador ya escribió en el archivo
+    // (d._syn) se corre con ellas. move(línea) dice cuánto se corrió esa línea.
+    shift: (move) => core.ui.article.querySelectorAll('.lmd-draft').forEach((d) => { const y = d._syn; if (y) { const s = move(y.s); const at = move(y.at); y.s += s; y.at += at; } }),
+    // Y si se cambió el bloque del que colgaba un borrador, pasa a colgar del que quedó en su lugar.
+    reanchor: () => core.ui.article.querySelectorAll('.lmd-draft').forEach((d) => {
+      const lost = (n) => n && !n.isConnected;
+      if (lost(d._anchor)) { let p = d.previousElementSibling; while (p && p.matches('.lmd-draft, .lmd-add, .lmd-front')) p = p.previousElementSibling; d._anchor = p || null; }
+      if (lost(d._li)) { const item = d.closest('li'); const p = item && item.previousElementSibling; if (p) d._li = p; }
+    }),
     menuAt: (x, y) => openMenu(x, y, core.lastBlock && core.lastBlock.isConnected ? topBlock(core.lastBlock) : blockNear(window.innerHeight)),
   };
 })();

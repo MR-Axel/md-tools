@@ -38,6 +38,7 @@ Free and open source. No account, no tracking: files are read in your browser an
 | **Cloud notes** | Optional. Sign in with a code sent to your email, send a note to the cloud and open it on any device, also without a connection. |
 | **Protected folders** | A cloud folder can carry a password. Its notes are encrypted in the browser and the server cannot read them. You unlock it for your AI for as long as you choose. |
 | **Sharing** | A note or a folder with another account, to read or to edit, or a read-only public link with a password. |
+| **Live sessions** | Open a session on a cloud note and send the link. Guests join from the browser with a name, without an account, and everyone edits at once. |
 | **AI over MCP** | Claude or any MCP client can list, read, write, append to and search your cloud notes. A token can be limited to one folder, and a comment on a block tells the AI what to change. |
 | **Phone** | The same app on a small screen, and the web app opens without a connection. |
 | **Yours to adjust** | Light and dark themes, width, font size, code block color, custom CSS, English and Spanish. |
@@ -132,6 +133,7 @@ src/
   dialog.js       the app's own prompt and confirm dialogs
   touch.js        touch editing and the small-screen layout
   sync.js         cloud icon, sharing, history, tokens and plans
+  live.js         live sessions: the link, the guests and who is on each block
   board.js        kanban boards and table formulas
   extras.js       files from the tree, images, replace, typewriter mode, HTML export
   content.js      the reader: interface, outline, tree, search, editing, saving, settings

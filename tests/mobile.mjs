@@ -294,7 +294,7 @@ try {
     check(tag + 'la marca del comentario no tapa el texto ni se sale de la pantalla', mark.mark[0] >= mark.text && mark.mark[1] <= mark.w, mark);
     await page.tap('[data-act=more]'); await page.tap('.lmd-menu-more [data-more=sync]'); await page.waitForSelector('.lmd-menu [data-s=comments]');
     const cloudMenu = await page.evaluate(() => { const m = document.querySelector('.lmd-menu [data-s]').closest('.lmd-menu').getBoundingClientRect(); return { items: [...document.querySelectorAll('.lmd-menu [data-s]')].map((b) => b.dataset.s), in: m.left >= 0 && m.right <= window.innerWidth && m.bottom <= window.innerHeight }; });
-    check(tag + '"más" lleva a las acciones de la nube: compartir, historial, IA y comentarios', J(cloudMenu.items) === J(['share', 'history', 'ai', 'comments']) && cloudMenu.in, cloudMenu);
+    check(tag + '"más" lleva a las acciones de la nube: compartir, colaborar en vivo, historial, IA y comentarios', J(cloudMenu.items) === J(['share', 'live', 'history', 'ai', 'comments']) && cloudMenu.in, cloudMenu);
     await page.tap('.lmd-menu [data-s=comments]'); await page.waitForSelector('.lmd-cm-card li');
     card = await inCard('.lmd-cm-card');
     check(tag + 'la lista de comentarios para la IA entra en la pantalla', card.in && !card.cut.length && (await page.locator('.lmd-cm-card li').count()) === 2, card);

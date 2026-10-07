@@ -28,6 +28,7 @@
 - Sign-in is a six-digit code sent by email, with no password.
 - A note reaches the server only when the user sends it to the cloud. Files opened from disk are never uploaded.
 - Cloud notes can be shared with another account, to read or to edit, or through a read-only public link with an optional password.
+- Live sessions: the owner of a cloud note, on the paid plan, opens a session and hands out a link. Guests join from the browser with a name and no account, up to 12 people, and edit the same note at once. The secret of the link travels after the # of the address.
 - MCP endpoint over Streamable HTTP at https://sync.sharpmd.app/mcp with eight tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`. Authentication is a bearer token the user creates in the app, and a token can be limited to one folder.
 - The user can leave a comment on a passage of a note. The AI reads the open comments with `list_comments`, makes the change and closes each one with `resolve_comment`.
 - Cloud notes are encrypted at rest on the server, which holds the key so it can share them and serve MCP.
@@ -36,7 +37,7 @@
 ## Plans
 
 - Free: the whole editor, unlimited files and browser notes, 10 notes in the cloud.
-- Paid: USD 3.99 a month or USD 39 a year. Unlimited cloud notes, sharing and public links, the MCP connection, 30 days of version history, and colors, fonts and custom CSS.
+- Paid: USD 3.99 a month or USD 39 a year. Unlimited cloud notes, sharing and public links, live sessions, the MCP connection, 30 days of version history, and colors, fonts and custom CSS.
 
 ## Privacy
 

@@ -2,7 +2,7 @@
 // Todo corre contra un servidor local con claves inventadas y contra la extensión cargada en un Chromium:
 // ningún pedido sale a sync.sharpmd.app ni a sharpmd.app (lo que apunte ahí se corta y se anota como falla).
 // SHARPMD_SERVER apunta a otro server.mjs, para comparar contra una versión anterior. SEC_ONLY=server|app corre una mitad.
-import { spawn } from 'child_process'; import { createHmac } from 'crypto'; import { DatabaseSync } from 'node:sqlite';
+import { spawn } from 'child_process'; import { createHmac, createHash } from 'crypto'; import { DatabaseSync } from 'node:sqlite';
 import fs from 'fs'; import os from 'os'; import path from 'path'; import http from 'http'; import net from 'net'; import { fileURLToPath, pathToFileURL } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER = process.env.SHARPMD_SERVER || path.join(root, 'server', 'server.mjs');
@@ -353,7 +353,7 @@ async function serverSuite() {
   await N.stop();
 }
 
-if (ONLY !== 'app') await serverSuite();
+if (ONLY !== 'app' && ONLY !== 'live') await serverSuite();
 
 // ---------- App, extensión y página de pago ----------
 async function appSuite() {
@@ -501,7 +501,258 @@ async function appSuite() {
   await ctx.close(); other.close(); far.close(); site.close(); await S.stop();
   try { fs.rmSync(profile, { recursive: true, force: true }); } catch (e) { /* el navegador suelta el perfil un rato después */ }
 }
-if (ONLY !== 'server') await appSuite();
+if (ONLY !== 'server' && ONLY !== 'live') await appSuite();
+
+// ---------- Sesión en vivo ----------
+// Quien entra por el enlace no tiene cuenta: recibe un pase que sirve solo para la nota de esa sesión y solo
+// mientras esté abierta. Acá se prueba que no alcanza nada más, que se corta en el acto, y los topes.
+// (Lo que pasa en el navegador con un nombre o un contenido hostil se prueba en live.mjs, con navegadores de verdad.)
+async function liveSuite() {
+  console.log('Seguridad de la sesión en vivo');
+  const S = await boot({ ADMIN_KEY: ADMIN, LIVE_PEOPLE: '4', SHARE_FREE: '1', MCP_FREE: '1' });
+  const { call } = S; const sha = (s) => createHash('sha256').update(s).digest('hex');
+  // Una escucha abierta: lo que fue llegando, y cómo cortarla.
+  const listen = async (url, auth, extra) => {
+    const ctrl = new AbortController(); const st = { text: '', status: 0, done: false };
+    try {
+      const res = await fetch(S.base + url, { headers: { ...(auth ? { authorization: 'Bearer ' + auth } : {}), ...(extra || {}) }, signal: ctrl.signal });
+      st.status = res.status;
+      if (res.ok) (async () => { const rd = res.body.getReader(); const d = new TextDecoder(); try { for (;;) { const x = await rd.read(); if (x.done) break; st.text += d.decode(x.value); } } catch (e) { /* cortada */ } st.done = true; })();
+      else ctrl.abort();
+    } catch (e) { st.status = 0; }
+    return { get text() { return st.text; }, get status() { return st.status; }, get done() { return st.done; }, stop: () => ctrl.abort(), events: () => st.text.split('\n\n').filter((c) => c.startsWith('data: ')).map((c) => JSON.parse(c.slice(6))) };
+  };
+  const guestSecrets = [];
+  try {
+    const A = await signup(S, 'ana@ejemplo.test'); const B = await signup(S, 'beto@ejemplo.test'); const F = await signup(S, 'gratis@ejemplo.test');
+    await makePro(S, A.email); await makePro(S, B.email);
+    const SECRET = 'REMOLACHA-SECRETA-9917'; secrets.push(SECRET);
+    for (const [p, t] of [['equipo/plan.md', '# Plan\n\nUno.\n\nDos.\n'], ['privada.md', '# Privada\n\n' + SECRET], ['equipo/otra.md', 'otra ' + SECRET], ['borrar.md', 'x'], ['mover.md', 'x'], ['plan-pago.md', 'x'], ['cofre/a.md', 'x']]) await call('PUT', '/notes/' + enc(p), { text: t }, A.s);
+    await call('PUT', '/notes/b.md', { text: 'de beto ' + SECRET }, B.s);
+    await call('PUT', '/notes/gratis.md', { text: 'x' }, F.s);
+    await call('POST', '/shares', { path: 'equipo/plan.md', email: B.email, role: 'edit' }, A.s);
+    const live = (body, s) => call('POST', '/live', body, s);
+    const leaks = (r) => JSON.stringify(r.json || '').includes(SECRET);
+
+    // ---------- Abrir ----------
+    console.log(' Quién abre una sesión');
+    check('sin cuenta no se abre una sesión', (await live({ path: 'equipo/plan.md', name: 'X' })).status === 401);
+    const freeTry = await live({ path: 'gratis.md', name: 'Gratis' }, F.s);
+    check('con el plan gratis responde 402 con un código propio', freeTry.status === 402 && freeTry.json.error === 'live_needs_plan', freeTry.json);
+    check('la cuenta dice si puede abrir sesiones', (await call('GET', '/account', undefined, A.s)).json.live === true && (await call('GET', '/account', undefined, F.s)).json.live === false);
+    check('no se abre sobre la nota de otra cuenta, ni compartida para editar', (await live({ path: 'equipo/plan.md', name: 'Beto' }, B.s)).status === 404 && (await live({ path: 'privada.md', name: 'Beto' }, B.s)).status === 404);
+    check('ni sobre una nota que no existe o una ruta mal formada', (await live({ path: 'no-existe.md', name: 'Ana' }, A.s)).status === 404 && (await live({ path: '../x.md', name: 'Ana' }, A.s)).status === 400 && (await live({ name: 'Ana' }, A.s)).status === 400);
+    const noName = await Promise.all(['', '   ', null, 7, {}, ['Ana'], '\u200b\u200e'].map((name) => live({ path: 'equipo/plan.md', name }, A.s)));
+    check('sin un nombre de verdad no se abre', noName.every((r) => r.status === 400 && r.json.error === 'bad_name'), noName.map((r) => r.status));
+    const opened = await live({ path: 'equipo/plan.md', name: 'Ana' }, A.s);
+    const secret = opened.json.secret; guestSecrets.push(secret);
+    check('abrir devuelve un secreto de 256 bits al azar', opened.status === 200 && /^[A-Za-z0-9_-]{43}$/.test(secret) && opened.json.open === true && opened.json.people.length === 1, opened.json && { ...opened.json, secret: '…' });
+    const again = await live({ path: 'equipo/plan.md', name: 'Ana' }, A.s);
+    check('una sola sesión por nota, y el secreto no se vuelve a dar', again.status === 200 && again.json.open === true && !('secret' in again.json) && !JSON.stringify(again.json).includes(secret));
+    const other = await live({ path: 'equipo/otra.md', name: 'Ana' }, A.s); guestSecrets.push(other.json.secret);
+    check('dos sesiones tienen secretos distintos', other.json.secret !== secret && /^[A-Za-z0-9_-]{43}$/.test(other.json.secret));
+    const db = S.db(); const rows = db.prepare('SELECT * FROM lives').all(); db.close();
+    check('en la base queda el hash del secreto, no el secreto', rows.length === 2 && rows.some((r) => r.hash === sha(secret)) && !JSON.stringify(rows).includes(secret), rows.map((r) => Object.keys(r)));
+    const onDisk = ['mdtools.db', 'mdtools.db-wal'].map((f) => { try { return fs.readFileSync(path.join(S.dir, f)).toString('latin1'); } catch (e) { return ''; } }).join('');
+    check('ni en el archivo de la base ni en su registro de escritura aparece el secreto', !onDisk.includes(secret) && !onDisk.includes(other.json.secret) && onDisk.includes(sha(secret)));
+    check('el estado de la sesión es de su dueño: otra cuenta no la ve ni la toca', (await call('GET', '/live?path=' + enc('equipo/plan.md'), undefined, B.s)).json.open === false && (await call('DELETE', '/live?path=' + enc('equipo/plan.md'), undefined, B.s)).status === 404
+      && (await call('POST', '/live/rotate', { path: 'equipo/plan.md' }, B.s)).status === 404 && (await call('POST', '/live/kick', { path: 'equipo/plan.md', id: 'g1' }, B.s)).status === 404 && (await call('GET', '/live?path=' + enc('equipo/plan.md'))).status === 401);
+    check('en una carpeta con contraseña no hay sesión: error propio', await (async () => {
+      const b64 = (n) => Buffer.alloc(n, 7).toString('base64');
+      await call('POST', '/vaults', { folder: 'cofre', salt: b64(16), iters: 200000, wrapped: b64(60), check: b64(32) }, A.s);
+      const r = await live({ path: 'cofre/a.md', name: 'Ana' }, A.s); return r.status === 409 && r.json.error === 'live_vault';
+    })());
+
+    // ---------- El secreto ----------
+    console.log(' El secreto del enlace');
+    const ipBad = nextIp(); const wrongs = [];
+    for (const s of ['', 'corto', 'x'.repeat(43), secret.slice(0, 42) + (secret[42] === 'A' ? 'B' : 'A'), secret + 'x', secret.toLowerCase() === secret ? secret.toUpperCase() : secret.toLowerCase(), null, 12345, { $ne: '' }, [secret], sha(secret)]) wrongs.push(await call('POST', '/live/look', { secret: s }, undefined, from(ipBad)));
+    check('un secreto casi igual, su hash o cualquier otra cosa: la misma respuesta que una sesión que no existe', wrongs.every((r) => r.status === 404 && r.json.error === 'live_gone') && new Set(wrongs.map((r) => JSON.stringify(r.json))).size === 1, wrongs.map((r) => [r.status, r.json]));
+    const flood = []; for (let i = 0; i < 12; i++) flood.push((await call('POST', '/live/join', { secret: 'y'.repeat(43) + i, name: 'x' }, undefined, from(ipBad))).status);
+    check('veinte secretos equivocados por hora desde una red, y se corta', flood.slice(0, 9).every((s) => s === 404) && flood.slice(9).every((s) => s === 429), flood);
+    check('cortado, tampoco entra el secreto bueno desde esa red (no sirve para probar)', (await call('POST', '/live/look', { secret }, undefined, from(ipBad))).status === 429);
+    const look = await call('POST', '/live/look', { secret }, undefined, from(nextIp()));
+    check('con el secreto se ve de quién es la sesión y el nombre de la nota, sin la carpeta ni el correo', look.status === 200 && look.json.by === 'Ana' && look.json.note === 'plan.md' && !/equipo|@/.test(JSON.stringify(look.json)), look.json);
+
+    // ---------- Entrar ----------
+    console.log(' El pase del invitado');
+    const join = (name, sec, ip) => call('POST', '/live/join', { secret: sec || secret, name }, undefined, from(ip || nextIp()));
+    const j1 = await join('Ben'); const g1 = j1.json; guestSecrets.push(g1.pass, g1.ticket);
+    check('entrar da un pase propio, el texto de la nota y su revisión', j1.status === 200 && /^mdl_[A-Za-z0-9_-]{43}$/.test(g1.pass) && g1.note.name === 'plan.md' && g1.note.text === '# Plan\n\nUno.\n\nDos.\n' && g1.note.rev === 1 && g1.by === 'Ana' && g1.you === 'g1');
+    check('lo que recibe no trae el correo ni la carpeta de nadie', !/@ejemplo|equipo\//.test(JSON.stringify(g1)), JSON.stringify(g1).slice(0, 300));
+    const badNames = await Promise.all(['', '  ', null, 9, {}, '\u0000\u0007', '\u202e\u200f'].map((n) => join(n)));
+    check('sin un nombre de verdad no se entra', badNames.every((r) => r.status === 400 && r.json.error === 'bad_name'), badNames.map((r) => r.status));
+    const HTML = '<img src=x onerror=alert(1)>"\'&<script>'; const j2 = await join(HTML + 'x'.repeat(100)); const g2 = j2.json; guestSecrets.push(g2.pass, g2.ticket);
+    check('el nombre se guarda como texto, recortado a 40 caracteres', j2.status === 200 && g2.name === (HTML + 'x'.repeat(100)).slice(0, 40) && g2.name.length === 40, g2.name);
+    const j3 = await join('  A\tn\u0000a\u202e \n '); const g3 = j3.json; guestSecrets.push(g3.pass, g3.ticket);
+    check('sin caracteres de control ni marcas que den vuelta el texto, y sin repetir el nombre de otro', j3.status === 200 && g3.name === 'Ana 2', g3.name);
+    const roster = (await call('GET', '/live?path=' + enc('equipo/plan.md'), undefined, A.s)).json.people;
+    check('cada uno tiene su número y su color, asignados por el servidor', roster.map((p) => p.id).join() === 'o,g1,g2,g3' && new Set(roster.map((p) => p.color)).size === 4 && roster[0].color === 0, roster);
+    const j4 = await join('Uno de más');
+    check('tope de participantes: con cuatro (contando a quien la abrió) no entra otro', j4.status === 429 && j4.json.error === 'live_full' && (await call('POST', '/live/look', { secret }, undefined, from(nextIp()))).json.full === true, j4.json);
+
+    // ---------- Lo que alcanza un pase ----------
+    console.log(' Lo que el pase alcanza, y lo que no');
+    const P = g1.pass;
+    const mine = await call('GET', '/live/note', undefined, P);
+    check('lee la nota de su sesión', mine.status === 200 && mine.json.text === '# Plan\n\nUno.\n\nDos.\n' && mine.json.name === 'plan.md' && !('path' in mine.json));
+    const elsewhere = [
+      ['GET', '/notes'], ['GET', '/notes?o=' + A.id], ['GET', '/notes/privada.md'], ['GET', '/notes/' + enc('equipo/plan.md')], ['GET', '/notes/privada.md?o=' + A.id], ['PUT', '/notes/privada.md', { text: 'pisada' }], ['PUT', '/notes/' + enc('equipo/plan.md'), { text: 'pisada' }],
+      ['PUT', '/notes/nueva.md', { text: 'nueva' }], ['DELETE', '/notes/privada.md'], ['POST', '/rename', { from: 'privada.md', to: 'x.md' }], ['GET', '/search?q=REMOLACHA'], ['GET', '/account'], ['GET', '/shared'], ['GET', '/shares'], ['POST', '/shares', { path: 'privada.md', email: 'x@ejemplo.test' }],
+      ['POST', '/links', { path: 'privada.md' }], ['GET', '/tokens'], ['POST', '/tokens', { name: 'x' }], ['GET', '/versions/privada.md'], ['GET', '/versions/' + enc('equipo/plan.md')], ['GET', '/version/1'], ['GET', '/comments'], ['POST', '/comments', { path: 'privada.md', text: 'x' }],
+      ['GET', '/vaults'], ['POST', '/vaults', {}], ['POST', '/auth/logout', {}], ['POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'read_note', arguments: { path: 'privada.md' } } }],
+      ['GET', '/live?path=' + enc('equipo/plan.md')], ['POST', '/live', { path: 'privada.md', name: 'x' }], ['DELETE', '/live?path=' + enc('equipo/plan.md')],
+      ['GET', '/events?path=privada.md'], ['GET', '/events?path=' + enc('equipo/plan.md')], ['GET', '/events?path=' + enc('equipo/plan.md') + '&o=' + A.id],
+    ];
+    const tried = []; for (const [m, u, b] of elsewhere) { const r = await call(m, u, b, P); tried.push([m + ' ' + u.slice(0, 30), r.status, leaks(r)]); }
+    check('fuera de su sesión no sirve para nada: ' + elsewhere.length + ' rutas de cuenta responden 401 sin soltar un dato', tried.every((t) => t[1] === 401 && !t[2]), tried.filter((t) => t[1] !== 401 || t[2]));
+    const ownerOnly = []; for (const [m, u, b] of [['POST', '/live/rotate', { path: 'equipo/plan.md' }], ['POST', '/live/kick', { path: 'equipo/plan.md', id: 'g2' }], ['GET', '/live/notes'], ['GET', '/live/note/privada.md'], ['DELETE', '/live/note'], ['POST', '/live/note', { text: 'x' }], ['GET', '/live/'], ['PUT', '/live/presence', {}]]) ownerOnly.push((await call(m, u, b, P)).status);
+    check('tampoco cambia el enlace, saca a otro ni llega a rutas que no son suyas', ownerOnly.every((s) => s === 404), ownerOnly);
+    check('sacar a alguien es de quien abrió la sesión: nadie quedó afuera', (await call('GET', '/live?path=' + enc('equipo/plan.md'), undefined, A.s)).json.people.length === 4);
+    const tricks = [await call('GET', '/live/note?path=privada.md&o=' + A.id, undefined, P), await call('GET', '/live/note?note=privada.md', undefined, P)];
+    check('no hay forma de pedirle otra nota: los parámetros de más no cuentan', tricks.every((r) => r.status === 200 && r.json.name === 'plan.md' && !leaks(r)));
+    const put = (body, pass) => call('PUT', '/live/note', body, pass || P);
+    const noRev = await put({ text: 'sin revisión' });
+    check('un invitado no guarda a ciegas: sin revisión responde 400', noRev.status === 400 && noRev.json.error === 'rev_required' && (await call('GET', '/live/note', undefined, P)).json.rev === 1, noRev.json);
+    const okPut = await put({ text: '# Plan\n\nUno, de Ben.\n\nDos.\n', rev: 1, path: 'privada.md', o: B.id, owner: B.id, name: 'privada.md' });
+    check('guarda sobre la revisión, y solo en la nota de su sesión', okPut.status === 200 && okPut.json.rev === 2 && !('path' in okPut.json) && (await call('GET', '/notes/' + enc('equipo/plan.md'), undefined, A.s)).json.text === '# Plan\n\nUno, de Ben.\n\nDos.\n'
+      && (await call('GET', '/notes/privada.md', undefined, A.s)).json.text === '# Privada\n\n' + SECRET && (await call('GET', '/notes/b.md', undefined, B.s)).json.text === 'de beto ' + SECRET, okPut.json);
+    const stalePut = await put({ text: 'PISADO', rev: 1 });
+    check('sobre una revisión vieja recibe 409 con lo que hay, sin guardar', stalePut.status === 409 && stalePut.json.error === 'rev_conflict' && stalePut.json.rev === 2 && stalePut.json.text.includes('Uno, de Ben.') && stalePut.json.pid === 'g1' && !/@/.test(JSON.stringify(stalePut.json)), stalePut.json);
+    const bigPut = await put({ text: 'a'.repeat(1024 * 1024 + 1), rev: 2 });
+    check('el tope de 1 MB vale también para él', bigPut.status === 413 && (await put({ text: 'vault1:' + Buffer.alloc(60).toString('base64'), rev: 2 })).status === 409 && (await put({ text: 'x', rev: '2' })).status === 400 && (await call('PUT', '/live/note', '[1]', P)).status === 400);
+    check('el pase de una sesión no sirve en otra: cada uno lee solo su nota', await (async () => { const o = (await join('Otra', other.json.secret)).json; guestSecrets.push(o.pass, o.ticket); const r = await call('GET', '/live/note', undefined, o.pass); return r.json.name === 'otra.md' && (await call('GET', '/live/note', undefined, P)).json.name === 'plan.md'; })());
+    check('un pase inventado, uno cortado o una contraseña de reingreso no son un pase', (await call('GET', '/live/note', undefined, 'mdl_' + 'z'.repeat(43))).status === 401 && (await call('GET', '/live/note', undefined, P.slice(0, 30))).status === 401 && (await call('GET', '/live/note')).status === 401 && (await call('GET', '/live/note', undefined, g1.ticket)).status === 401);
+    check('y la sesión de una cuenta tampoco entra por las rutas de invitado', (await call('GET', '/live/note', undefined, A.s)).status === 404 && (await call('PUT', '/live/note', { text: 'x', rev: 2 }, B.s)).status === 404 && (await call('GET', '/live/events', undefined, A.s)).status === 401);
+
+    // ---------- Lo que escucha ----------
+    console.log(' Lo que le llega por la escucha');
+    const earG = await listen('/live/events', g2.pass); const earO = await listen('/events?path=' + enc('equipo/plan.md'), A.s); const earB = await listen('/events?path=' + enc('equipo/plan.md') + '&o=' + A.id, B.s);
+    await sleep(300);
+    await call('PUT', '/notes/' + enc('equipo/plan.md'), { text: '# Plan\n\nUno, de Ben.\n\nDos, de Ana.\n', rev: 2 }, A.s);
+    await put({ text: '# Plan\n\nUno, de Ben.\n\nDos, de Ana.\n\nTres.\n', rev: 3 });
+    await call('PUT', '/notes/' + enc('equipo/plan.md') + '?o=' + A.id, { text: '# Plan\n\nUno, de Ben.\n\nDos, de Ana.\n\nTres.\n\nCuatro, de Beto.\n', rev: 4 }, B.s);
+    await call('POST', '/comments', { path: 'equipo/plan.md', quote: 'Uno', text: 'un comentario para la IA' }, A.s);
+    await call('POST', '/vaults', { folder: 'cofre2', salt: Buffer.alloc(16, 1).toString('base64'), iters: 200000, wrapped: Buffer.alloc(60, 1).toString('base64'), check: Buffer.alloc(32, 1).toString('base64') }, A.s);
+    await sleep(400);
+    const evG = earG.events(); const evO = earO.events(); const evB = earB.events();
+    const savedG = evG.filter((e) => e.type === 'saved');
+    check('al invitado le llega cada guardado con el texto nuevo y quién fue (por número), sin pedir la nota', savedG.length === 3 && savedG[0].text.includes('Dos, de Ana.') && savedG[0].pid === 'o' && savedG[1].pid === 'g1' && savedG[2].pid === 'x' && savedG[2].text.includes('Cuatro, de Beto.') && savedG.map((e) => e.rev).join() === '3,4,5', savedG);
+    check('por la escucha del invitado no pasa ningún correo, ni quién más tiene la nota abierta por su cuenta, ni comentarios ni carpetas', !/@ejemplo|"who"|"by"|"presence"|"comments"|"vault"/.test(earG.text) && evG.every((e) => e.type === 'saved' || e.type === 'live'), earG.text.slice(0, 400));
+    check('a quien abrió la sesión le llega el guardado del invitado con el texto, sin correo de invitado', evO.some((e) => e.type === 'saved' && e.pid === 'g1' && e.by === 'guest' && e.text.includes('Tres.')), evO.filter((e) => e.type === 'saved'));
+    check('a la cuenta con la nota compartida, que no es parte de la sesión, el aviso le llega sin el texto ni la lista de invitados', evB.filter((e) => e.type === 'saved').length === 3 && evB.every((e) => !('text' in e) && !('patch' in e) && e.type !== 'live') && !/Ben|img/.test(earB.text), evB);
+    const ears = []; for (let i = 0; i < 5; i++) ears.push(await listen('/live/events', g3.pass));
+    check('tope de conexiones por invitado: la quinta escucha con el mismo pase se rechaza', ears.slice(0, 4).every((e) => e.status === 200) && ears[4].status === 429, ears.map((e) => e.status));
+    ears.forEach((e) => e.stop());
+    // Sesenta escuchas abiertas desde una misma red (tres cuentas con veinte cada una): ahí tampoco entra la de un invitado.
+    const many = []; const ipMany = '10.98.0.1';
+    for (const mail of ['red1@ejemplo.test', 'red2@ejemplo.test', 'red3@ejemplo.test']) { const X = await signup(S, mail); await call('PUT', '/notes/n.md', { text: 'x' }, X.s); for (let i = 0; i < 20; i++) many.push(await listen('/events?path=n.md', X.s, from(ipMany))); }
+    const overIp = await listen('/live/events', g3.pass, from(ipMany));
+    check('y el tope de conexiones por red que ya existía también lo alcanza', many.every((e) => e.status === 200) && overIp.status === 429, [many.filter((e) => e.status === 200).length, overIp.status]);
+    many.forEach((e) => e.stop()); overIp.stop(); await sleep(300);
+
+    // ---------- Presencia ----------
+    console.log(' Presencia: nadie habla por otro');
+    const at = (body, pass) => call('POST', '/live/presence', body, pass);
+    const people = async () => (await call('GET', '/live?path=' + enc('equipo/plan.md'), undefined, A.s)).json.people;
+    const earP = await listen('/live/events', g1.pass); const ear2 = await listen('/live/events', g2.pass); await sleep(200);
+    await at({ block: 'abc123.2.1', editing: true, id: 'o', pid: 'o', you: 'g2', name: 'Ana', color: 0, who: 'o', here: false }, g1.pass);
+    await sleep(300);
+    let now = await people();
+    check('lo que avisa un invitado vale solo para él: no cambia el nombre, el color ni el lugar de otro', now[1].id === 'g1' && now[1].block === 'abc123.2.1' && now[1].editing === true && now[1].name === 'Ben' && now[0].name === 'Ana' && now[0].block === null && now[0].color === 0 && now[2].block === null, now);
+    const claim = await at({ block: 'abc123.2.1', editing: true }, g2.pass); await sleep(200); now = await people();
+    check('dos no toman el mismo bloque: el segundo se entera de quién lo tiene y no queda como que escribe', claim.json.held === 'g1' && now[2].block === 'abc123.2.1' && now[2].editing === false && now[1].editing === true, [claim.json, now]);
+    const badBlocks = await Promise.all(['<img src=x onerror=1>', 'a b', 'x'.repeat(81), 7, {}, ['a'], '../../x', 'a\nb'].map((block) => at({ block, editing: true }, g2.pass)));
+    check('el lugar es una marca corta de letras y números: otra cosa se rechaza', badBlocks.every((r) => r.status === 400 && r.json.error === 'bad_block'), badBlocks.map((r) => r.status));
+    check('sin pase no se avisa nada, y quien abrió la sesión avisa lo suyo por su cuenta', (await at({ block: 'a.1.1' })).status === 401 && (await at({ path: 'equipo/plan.md', block: 'own.9.1', editing: false }, A.s)).status === 200 && (await at({ path: 'equipo/plan.md', block: 'x.1.1' }, B.s)).status === 404);
+    const before = ear2.events().filter((e) => e.type === 'live').length; const burst = [];
+    for (let i = 0; i < 60; i++) burst.push(at({ block: 'r' + i + '.1.1', editing: false }, g3.pass));
+    const res = await Promise.all(burst); await sleep(500);
+    const okN = res.filter((r) => r.status === 200).length; const cut = res.filter((r) => r.status === 429);
+    const told = ear2.events().filter((e) => e.type === 'live').length - before;
+    check('tope de ritmo: de sesenta avisos seguidos entran cuarenta y el resto recibe 429 con cuánto esperar', okN === 40 && cut.length === 20 && cut.every((r) => r.json.error === 'presence_rate' && r.json.retry_after >= 1 && r.headers.get('retry-after')), [okN, cut.length]);
+    check('y a los demás les llegan juntos, no uno por aviso', told >= 1 && told <= 6, told);
+    check('el tope de uno no frena al otro', (await at({ block: 'abc123.2.1', editing: true }, g1.pass)).status === 200);
+    await sleep(8600); now = await people();
+    check('"está escribiendo" se suelta solo a los ocho segundos si no se renueva', now[1].editing === false && now[1].block === 'abc123.2.1' && earP.events().filter((e) => e.type === 'live').pop().people[1].editing === false, now[1]);
+    earP.stop(); ear2.stop();
+
+    // ---------- Sacar a un invitado ----------
+    console.log(' Sacar a un invitado, cambiar el enlace');
+    const earK = await listen('/live/events', g2.pass); const earStay = await listen('/live/events', g1.pass); await sleep(200);
+    check('un invitado no se saca solo a otro ni a quien abrió', (await call('POST', '/live/kick', { path: 'equipo/plan.md', id: 'g1' }, g2.pass)).status === 404 && (await call('POST', '/live/kick', { path: 'equipo/plan.md', id: 'o' }, A.s)).status === 404 && (await call('POST', '/live/kick', { path: 'equipo/plan.md', id: 'g99' }, A.s)).status === 404);
+    const kick = await call('POST', '/live/kick', { path: 'equipo/plan.md', id: 'g2' }, A.s); const secret2 = kick.json.secret; guestSecrets.push(secret2);
+    const right = [(await call('GET', '/live/note', undefined, g2.pass)).status, (await put({ text: 'x', rev: 5 }, g2.pass)).status, (await at({ block: 'a.1.1' }, g2.pass)).status, (await listen('/live/events', g2.pass)).status];
+    check('sacar a un invitado lo corta en el acto: su pase ya no lee, no guarda, no avisa ni escucha', kick.status === 200 && right.every((s) => s === 401), right);
+    await sleep(300);
+    const lastK = earK.events().pop();
+    check('su escucha abierta recibe el motivo y se cierra', earK.done && lastK.type === 'live' && lastK.open === false && lastK.why === 'kicked', [earK.done, lastK]);
+    check('el enlace cambia: con el anterior no vuelve a entrar, ni con su contraseña de reingreso', /^[A-Za-z0-9_-]{43}$/.test(secret2) && secret2 !== secret && (await join('Otra vez')).status === 404 && (await call('POST', '/live/join', { ticket: g2.ticket, name: 'Otra vez' }, undefined, from(nextIp()))).status === 404);
+    check('los demás siguen adentro con su pase', (await call('GET', '/live/note', undefined, g1.pass)).status === 200 && !earStay.done && (await people()).map((p) => p.id).join() === 'o,g1,g3');
+    const back = await call('POST', '/live/join', { ticket: g1.ticket, name: 'Ben' }, undefined, from(nextIp())); guestSecrets.push(back.json.pass);
+    check('y quien sigue adentro puede volver a entrar con su contraseña de reingreso aunque el enlace haya cambiado', back.status === 200 && /^mdl_/.test(back.json.pass) && !('ticket' in back.json) && (await call('GET', '/live/note', undefined, back.json.pass)).status === 200 && (await call('GET', '/live/note', undefined, g1.pass)).status === 401 && (await people()).length === 3);
+    const rot = await call('POST', '/live/rotate', { path: 'equipo/plan.md' }, A.s); const secret3 = rot.json.secret; guestSecrets.push(secret3);
+    check('"crear un enlace nuevo" deja sin efecto el anterior sin sacar a nadie', rot.status === 200 && (await join('Tarde', secret2)).status === 404 && (await call('POST', '/live/look', { secret: secret3 }, undefined, from(nextIp()))).status === 200 && (await call('GET', '/live/note', undefined, back.json.pass)).status === 200);
+    const left = await call('POST', '/live/leave', {}, g3.pass);
+    check('quien sale por su cuenta deja de tener pase y contraseña de reingreso', left.status === 200 && (await call('GET', '/live/note', undefined, g3.pass)).status === 401 && (await call('POST', '/live/join', { ticket: g3.ticket, name: 'x' }, undefined, from(nextIp()))).status === 404);
+    earStay.stop();
+
+    // ---------- Cerrar ----------
+    console.log(' Cerrar la sesión');
+    const n1 = (await call('POST', '/live/join', { secret: secret3, name: 'Uno' }, undefined, from(nextIp()))).json; const n2 = (await call('POST', '/live/join', { secret: secret3, name: 'Dos' }, undefined, from(nextIp()))).json; guestSecrets.push(n1.pass, n2.pass, n1.ticket, n2.ticket);
+    const earC = await listen('/live/events', n1.pass); const earOwner = await listen('/events?path=' + enc('equipo/plan.md'), A.s); await sleep(200);
+    const closed = await call('DELETE', '/live?path=' + enc('equipo/plan.md'), undefined, A.s);
+    const dead = []; for (const p of [n1.pass, n2.pass, back.json.pass]) dead.push((await call('GET', '/live/note', undefined, p)).status, (await put({ text: 'tarde', rev: 5 }, p)).status, (await listen('/live/events', p)).status);
+    check('al cerrar la sesión todos los pases dejan de servir en el acto', closed.status === 200 && dead.every((s) => s === 401), dead);
+    await sleep(300);
+    check('las escuchas de los invitados se cierran con el motivo, y la de quien la abrió sigue', earC.done && earC.events().pop().why === 'closed' && !earOwner.done && earOwner.events().some((e) => e.type === 'live' && e.open === false));
+    check('el enlace y las contraseñas de reingreso dejan de servir, con la misma respuesta que un secreto equivocado', (await join('x', secret3)).json.error === 'live_gone' && (await call('POST', '/live/look', { secret: secret3 }, undefined, from(nextIp()))).status === 404 && (await call('POST', '/live/join', { ticket: n1.ticket, name: 'x' }, undefined, from(nextIp()))).status === 404
+      && (await call('GET', '/live?path=' + enc('equipo/plan.md'), undefined, A.s)).json.open === false);
+    const db2 = S.db(); const left2 = [db2.prepare("SELECT COUNT(*) AS n FROM lives WHERE path = 'equipo/plan.md'").get().n, db2.prepare('SELECT COUNT(*) AS n FROM live_tickets WHERE live NOT IN (SELECT id FROM lives)').get().n]; db2.close();
+    check('en la base no queda nada de esa sesión', left2[0] === 0 && left2[1] === 0, left2);
+    check('lo guardado durante la sesión quedó en la nota de su dueño', (await call('GET', '/notes/' + enc('equipo/plan.md'), undefined, A.s)).json.text.includes('Cuatro, de Beto.'));
+    earOwner.stop(); earG.stop(); earO.stop(); earB.stop();
+    // Otras formas de terminar: la nota se elimina, cambia de nombre, queda en una carpeta con contraseña, o la cuenta deja el plan pago.
+    const endBy = async (p, act) => { const s = (await live({ path: p, name: 'Ana' }, A.s)).json.secret; const g = (await call('POST', '/live/join', { secret: s, name: 'Inv' }, undefined, from(nextIp()))).json; guestSecrets.push(s, g.pass, g.ticket); const pre = (await call('GET', '/live/note', undefined, g.pass)).status; await act(); return [pre, (await call('GET', '/live/note', undefined, g.pass)).status, (await call('POST', '/live/look', { secret: s }, undefined, from(nextIp()))).status]; };
+    const byDelete = await endBy('borrar.md', () => call('DELETE', '/notes/borrar.md', undefined, A.s));
+    const byRename = await endBy('mover.md', () => call('POST', '/rename', { from: 'mover.md', to: 'movida.md' }, A.s));
+    const byPlan = await endBy('plan-pago.md', () => S.call('POST', '/admin/plan', { email: A.email, plan: 'free' }, undefined, { 'x-admin-key': ADMIN }));
+    check('eliminar la nota, cambiarle el nombre o dejar el plan pago cierran la sesión y cortan los pases', [byDelete, byRename, byPlan].every((r) => r[0] === 200 && r[1] === 401 && r[2] === 404), [byDelete, byRename, byPlan]);
+    await makePro(S, A.email);
+    const stillOther = await call('GET', '/live?path=' + enc('equipo/otra.md'), undefined, A.s);
+    check('la otra sesión de la misma cuenta siguió abierta todo el tiempo salvo por el plan', stillOther.status === 200);
+
+    const logged = guestSecrets.concat(secrets).filter((x) => x && S.log().includes(x));
+    check('la salida del servidor no trae secretos de enlace, pases, contraseñas de reingreso ni texto de notas', logged.length === 0 && guestSecrets.filter(Boolean).length > 15 && !/mdl_|mdk_/.test(S.log()), logged.map((x) => x.slice(0, 8)));
+    check('nada de esto se anotó como error del servidor, y sigue arriba', !/error 500|error no capturado|promesa sin atender/.test(S.log()) && S.alive() && (await call('GET', '/health')).status === 200, (S.log().match(/error[^\n]*/g) || []).slice(0, 4));
+  } catch (e) { check('sesión en vivo: sin excepciones en la prueba', false, String(e && e.stack || e)); console.log(S.log().slice(-2000)); }
+  await S.stop();
+
+  // Vencimiento: con tiempos cortos, para verlo pasar.
+  console.log(' Vencimiento');
+  const V = await boot({ ADMIN_KEY: ADMIN, LIVE_IDLE_MS: '1500', LIVE_GUEST_MS: '700' });
+  try {
+    const A = await signup(V, 'ana@ejemplo.test'); await V.call('POST', '/admin/plan', { email: A.email, plan: 'pro' }, undefined, { 'x-admin-key': ADMIN });
+    await V.call('PUT', '/notes/a.md', { text: 'a' }, A.s); await V.call('PUT', '/notes/b.md', { text: 'b' }, A.s);
+    const sa = (await V.call('POST', '/live', { path: 'a.md', name: 'Ana' }, A.s)).json.secret; const sb = (await V.call('POST', '/live', { path: 'b.md', name: 'Ana' }, A.s)).json.secret;
+    const ga = (await V.call('POST', '/live/join', { secret: sa, name: 'Inv' }, undefined, from(nextIp()))).json; const gb = (await V.call('POST', '/live/join', { secret: sb, name: 'Inv' }, undefined, from(nextIp()))).json;
+    // En b queda alguien escuchando; en a, nadie.
+    const ctrl = new AbortController(); const held = await fetch(V.base + '/live/events', { headers: { authorization: 'Bearer ' + gb.pass }, signal: ctrl.signal });
+    await sleep(1000);
+    const mid = (await V.call('GET', '/live?path=a.md', undefined, A.s)).json;
+    check('un invitado sin conexión deja su lugar pasado un rato, y puede volver con su contraseña de reingreso', mid.open === true && mid.people.length === 1 && (await V.call('GET', '/live/note', undefined, ga.pass)).status === 401 && (await V.call('POST', '/live/join', { ticket: ga.ticket, name: 'Inv' }, undefined, from(nextIp()))).status === 200);
+    await sleep(3200);
+    const a = (await V.call('GET', '/live?path=a.md', undefined, A.s)).json; const b = (await V.call('GET', '/live?path=b.md', undefined, A.s)).json;
+    check('la sesión sin nadie conectado vence sola', a.open === false && (await V.call('POST', '/live/look', { secret: sa }, undefined, from(nextIp()))).status === 404 && (await V.call('POST', '/live/join', { ticket: ga.ticket, name: 'x' }, undefined, from(nextIp()))).status === 404 && (await V.call('GET', '/live/note', undefined, ga.pass)).status === 401, a);
+    check('la que tiene a alguien conectado no vence', held.status === 200 && b.open === true && b.people.length === 2 && (await V.call('GET', '/live/note', undefined, gb.pass)).status === 200, b);
+    ctrl.abort(); await sleep(2600);
+    check('y vence cuando se va el último', (await V.call('GET', '/live?path=b.md', undefined, A.s)).json.open === false && (await V.call('GET', '/live/note', undefined, gb.pass)).status === 401);
+    const db = V.db(); const n = [db.prepare('SELECT COUNT(*) AS n FROM lives').get().n, db.prepare('SELECT COUNT(*) AS n FROM live_tickets').get().n]; db.close();
+    check('vencidas, no dejan nada en la base', n[0] === 0 && n[1] === 0, n);
+  } catch (e) { check('vencimiento: sin excepciones en la prueba', false, String(e && e.stack || e)); console.log(V.log().slice(-2000)); }
+  await V.stop();
+}
+if (ONLY !== 'server' && ONLY !== 'app') await liveSuite();
 
 const failed = results.filter((r) => !r.ok);
 console.log('\n' + (results.length - failed.length) + ' de ' + results.length + ' pruebas pasaron');
