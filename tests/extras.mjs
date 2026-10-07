@@ -73,6 +73,73 @@ o.jsonEdit = await app.evaluate(() => !document.querySelector('.lmd-raw-edit').h
 await app.goto(base + 'punto.svg'); await app.waitForSelector('.markdown-body img'); await app.waitForTimeout(600);
 o.svg = await app.evaluate(() => document.querySelector('.markdown-body img').naturalWidth);
 
+// ---------- Renombrar desde el título, F2 y arrastrar en el árbol ----------
+const said = async (re) => { await app.waitForFunction((r) => new RegExp(r).test(document.querySelector('.lmd-foot .lmd-status').textContent), re, { timeout: 8000 }); return app.textContent('.lmd-foot .lmd-status'); };
+const tree = () => app.evaluate(() => [...document.querySelectorAll('.lmd-node')].map((n) => n.textContent.trim()));
+const node = (name) => app.locator('.lmd-node', { hasText: name }).first();
+// Arrastra con el mouse y devuelve qué quedó marcado como destino antes de soltar.
+const drag = async (from, to) => {
+  await from.hover(); await app.mouse.down(); await to.hover(); await to.hover();
+  const marked = await app.evaluate(() => { const m = document.querySelector('.lmd-drop'); return !m ? '' : m.dataset.url ? decodeURIComponent(m.dataset.url.replace(/\/$/, '').split('/').pop()) : 'raíz'; });
+  await app.mouse.up();
+  return marked;
+};
+const inFolder = () => app.evaluate(async () => { const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('x')).getDirectoryHandle('carpeta'); const out = []; for await (const [n] of dir.entries()) out.push(n); return out.sort(); });
+await app.evaluate(async () => {
+  const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('x');
+  const write = async (d, name, data) => { const h = await d.getFileHandle(name, { create: true }); const s = await h.createWritable(); await s.write(data); await s.close(); };
+  await write(dir, 'abierta.md', '# Abierta\n'); await write(dir, 'suelta.md', '# Suelta\n');
+  await write(await dir.getDirectoryHandle('carpeta', { create: true }), 'dentro.md', '# Dentro\n');
+});
+await app.goto(base + 'abierta.md'); await app.waitForSelector('.markdown-body h1');
+await app.click('.lmd-tab[data-tab=files]'); await app.waitForSelector('.lmd-node');
+// Escape cancela, un nombre repetido avisa y Enter renombra dejando la nota abierta
+await app.dblclick('.lmd-docname'); await app.waitForSelector('.lmd-docname-input');
+o.tituloCampo = await app.evaluate(() => { const i = document.querySelector('.lmd-docname-input'); return [i.value, i.value.slice(i.selectionStart, i.selectionEnd), document.activeElement === i]; });
+await app.keyboard.type('otra'); await app.keyboard.press('Escape'); await app.waitForTimeout(200);
+o.tituloEscape = [await app.textContent('.lmd-docname'), await app.locator('.lmd-docname-input').count(), (await names()).includes('abierta.md')];
+await app.dblclick('.lmd-docname'); await app.fill('.lmd-docname-input', 'README'); await app.keyboard.press('Enter');
+o.tituloRepetido = [await said('Ya hay'), (await names()).includes('abierta.md')];
+await app.dblclick('.lmd-docname'); await app.fill('.lmd-docname-input', 'titulada');
+await Promise.all([app.waitForNavigation(), app.keyboard.press('Enter')]); await app.waitForSelector('.markdown-body h1');
+o.titulo = [await app.title(), await app.textContent('.markdown-body h1'), (await names()).includes('titulada.md') && !(await names()).includes('abierta.md')];
+// F2: sin nada en foco edita el título; sobre un archivo del árbol, renombra ese
+await app.waitForSelector('.lmd-node'); await app.click('.lmd-foot .lmd-status', { force: true });
+await app.keyboard.press('F2'); await app.waitForSelector('.lmd-docname-input'); await app.keyboard.press('Escape');
+await app.evaluate(() => { window.__answer = 'movible'; });
+await node('suelta.md').focus(); await app.keyboard.press('F2');
+await app.waitForFunction(() => [...document.querySelectorAll('.lmd-node')].some((n) => n.textContent.trim() === 'movible.md'));
+o.f2 = [(await names()).includes('movible.md'), !(await names()).includes('suelta.md'), await app.title()];
+// arrastrar un archivo a una carpeta lo mueve; soltarlo en su misma carpeta no hace nada
+o.arrastreMismo = [await drag(node('movible.md'), app.locator('.lmd-tree-head')), (await names()).includes('movible.md')];
+o.arrastreMarca = await drag(node('movible.md'), node('carpeta'));
+await app.waitForFunction(() => ![...document.querySelectorAll('.lmd-tree > .lmd-node')].some((n) => n.textContent.trim() === 'movible.md'));
+o.arrastre = [await inFolder(), (await names()).includes('movible.md'), await app.title()];
+// arrastrar la nota abierta la deja abierta en su ruta nueva, y de vuelta a la raíz también
+const [, mark1] = await Promise.all([app.waitForNavigation(), drag(node('titulada.md'), node('carpeta'))]); await app.waitForSelector('.markdown-body h1'); await app.waitForSelector('.lmd-node');
+o.arrastreAbierta = [mark1, /carpeta%2Ftitulada\.md$/.test(app.url()), await app.title(), await inFolder()];
+await app.click('.lmd-tree-head .lmd-tree-up:not(.lmd-tree-new):not(.lmd-tree-open)'); await app.waitForSelector('.lmd-node-dir.lmd-open'); await app.waitForSelector('.lmd-node-kids .lmd-node.lmd-active');
+const [, mark2] = await Promise.all([app.waitForNavigation(), drag(node('titulada.md'), app.locator('.lmd-tree-head'))]); await app.waitForSelector('.markdown-body h1');
+o.arrastreRaiz = [mark2, /%2Ftitulada\.md$/.test(app.url()) && !/carpeta/.test(app.url()), (await names()).includes('titulada.md'), await inFolder()];
+
+// Notas "en este navegador": se renombran desde el árbol y desde el título; no tienen carpetas, así que arrastrar no hace nada.
+const notes = () => app.evaluate(async () => (await LMD.store.notesAll()).map((n) => n.name).sort());
+await app.evaluate(() => Promise.all([LMD.store.notePut('primera.md', '# Primera\n'), LMD.store.notePut('segunda.md', '# Segunda\n')]));
+await app.goto(`chrome-extension://${id}/src/app.html?f=` + encodeURIComponent('local/primera.md')); await app.waitForSelector('.markdown-body h1'); await app.waitForSelector('.lmd-node');
+await app.evaluate(() => { window.__answer = 'tercera'; });
+await node('segunda.md').click({ button: 'right' }); await app.waitForSelector('.lmd-menu [data-f=ren]');
+o.localMenu = await app.evaluate(() => [...document.querySelectorAll('.lmd-menu [data-f]')].map((b) => b.dataset.f));
+await app.click('.lmd-menu [data-f=ren]');
+await app.waitForFunction(() => [...document.querySelectorAll('.lmd-node')].some((n) => n.textContent.trim() === 'tercera.md'));
+o.localArbol = await notes();
+await app.click('[data-act=mode-edit]'); await app.waitForTimeout(200);
+await app.locator('.lmd-article h1.lmd-editable').click(); await app.keyboard.press('End'); await app.keyboard.type(' nota'); // renombrar con cambios sin guardar no los pierde
+await app.dblclick('.lmd-docname'); await app.fill('.lmd-docname-input', 'principal');
+await Promise.all([app.waitForNavigation(), app.keyboard.press('Enter')]); await app.waitForSelector('.markdown-body h1'); await app.waitForSelector('.lmd-node');
+o.localTitulo = [await app.title(), await app.textContent('.markdown-body h1'), await notes(), /f=local%2Fprincipal\.md/.test(app.url())];
+const localUrl = app.url();
+o.localArrastre = [await drag(node('tercera.md'), app.locator('.lmd-tree-head')), await drag(node('tercera.md'), node('principal.md')), await notes(), app.url() === localUrl];
+
 const J = (v) => JSON.stringify(v);
 const checks = [
   ['archivo nuevo desde el árbol', o.nuevo.title === 'nueva.md' && o.nuevo.h1.startsWith('nueva'), o.nuevo],
@@ -85,6 +152,16 @@ const checks = [
   ['un CSV se ve como tabla', J(o.csv) === J([['nombre', 'cantidad'], ['Pérez, Ana', '3'], ['Luis', '5']]), o.csv],
   ['un JSON se ve resaltado y se edita como texto', o.json.lang === 'json' && o.json.hl && o.jsonEdit, o.json],
   ['una imagen se abre', o.svg === 40, o.svg],
+  ['doble clic en el título lo vuelve un campo con el nombre seleccionado', J(o.tituloCampo) === J(['abierta.md', 'abierta', true]), o.tituloCampo],
+  ['en el título, Escape cancela y un nombre repetido avisa', J(o.tituloEscape) === J(['abierta.md', 0, true]) && /Ya hay un archivo con ese nombre/.test(o.tituloRepetido[0]) && o.tituloRepetido[1], [o.tituloEscape, o.tituloRepetido]],
+  ['Enter en el título renombra y deja la nota abierta', J(o.titulo) === J(['titulada.md', 'Abierta', true]), o.titulo],
+  ['F2 renombra el archivo del árbol que tiene el foco', J(o.f2) === J([true, true, 'titulada.md']), o.f2],
+  ['arrastrar a una carpeta mueve el archivo y marca el destino', o.arrastreMarca === 'carpeta' && J(o.arrastre) === J([['dentro.md', 'movible.md'], false, 'titulada.md']) && J(o.arrastreMismo) === J(['', true]), [o.arrastreMarca, o.arrastre, o.arrastreMismo]],
+  ['arrastrar la nota abierta la deja abierta en su ruta nueva', J(o.arrastreAbierta) === J(['carpeta', true, 'titulada.md', ['dentro.md', 'movible.md', 'titulada.md']]), o.arrastreAbierta],
+  ['soltar sobre la raíz del árbol la saca de la carpeta', J(o.arrastreRaiz) === J(['raíz', true, true, ['dentro.md', 'movible.md']]), o.arrastreRaiz],
+  ['las notas del navegador se renombran desde el árbol', J(o.localMenu) === J(['ren', 'del']) && J(o.localArbol) === J(['primera.md', 'tercera.md']), [o.localMenu, o.localArbol]],
+  ['y desde el título, sin perder lo que no se había guardado', J(o.localTitulo) === J(['principal.md', 'Primera nota', ['principal.md', 'tercera.md'], true]), o.localTitulo],
+  ['arrastrar una nota del navegador no hace nada', J(o.localArrastre) === J(['', '', ['principal.md', 'tercera.md'], true]), o.localArrastre],
   ['sin errores de JavaScript', errors.length === 0, errors],
 ];
 console.log('Archivos y extras');

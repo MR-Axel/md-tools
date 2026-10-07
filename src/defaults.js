@@ -382,6 +382,8 @@
       "No se pudo crear el archivo": "Could not create the file", "No se pudo renombrar": "Could not rename", "No se pudo eliminar": "Could not delete",
       "¿Eliminar \"{a}\"? No se puede deshacer.": "Delete \"{a}\"? This cannot be undone.",
       "Nuevo archivo acá": "New file here", "Nuevo archivo": "New file", "Renombrar": "Rename",
+      "Nombre del archivo": "File name", "Doble clic o F2 para cambiar el nombre": "Double-click or press F2 to rename",
+      "No se pudo mover": "Could not move",
       "Archivo nuevo en esta carpeta": "New file in this folder",
       "Para pegar imágenes abrí la carpeta desde la página de Sharpmd": "To paste images, open the folder from the Sharpmd page",
       "imagen": "image", "Imagen guardada en {a}": "Image saved to {a}", "No se pudo guardar la imagen": "Could not save the image",

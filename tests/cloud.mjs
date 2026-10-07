@@ -127,6 +127,40 @@ try {
   await Promise.all([app.waitForNavigation(), app.click('.lmd-menu [data-f=ren]')]); await opened();
   o.carpetaRenombrada = [/borradores%2Flista\.md/.test(app.url()), (await paths()).includes('proyecto/borradores/lista.md')];
 
+  // Renombrar desde el título de arriba: el nombre vale dentro de la carpeta donde está la nota.
+  const retitle = async (name) => { await app.dblclick('.lmd-docname'); await app.fill('.lmd-docname-input', name); await Promise.all([app.waitForNavigation(), app.keyboard.press('Enter')]); await opened(); };
+  await retitle('listado');
+  now = await paths();
+  o.tituloNube = [/borradores%2Flistado\.md/.test(app.url()), await app.title(), now.includes('proyecto/borradores/listado.md') && !now.includes('proyecto/borradores/lista.md')];
+  await retitle('lista.md');
+
+  // Arrastrar en el árbol: a una carpeta, de vuelta a la raíz, y la nota abierta.
+  const up = '.lmd-tree-head .lmd-tree-up:not(.lmd-tree-new):not(.lmd-tree-open)';
+  const node = (name) => app.locator('.lmd-node', { hasText: name }).first();
+  const drag = async (from, to) => {
+    await from.hover(); await app.mouse.down(); await to.hover(); await to.hover();
+    const marked = await app.evaluate(() => { const m = document.querySelector('.lmd-drop'); return !m ? '' : m.dataset.url ? decodeURIComponent(m.dataset.url.replace(/\/$/, '').split('/').pop()) : 'raíz'; });
+    await app.mouse.up();
+    return marked;
+  };
+  const until = async (fn) => { for (let i = 0; i < 40 && !fn(await paths()); i++) await app.waitForTimeout(150); return paths(); };
+  await app.click(up); await app.waitForSelector('.lmd-node-dir.lmd-open'); await app.click(up); await app.waitForSelector('.lmd-node-kids .lmd-node.lmd-active');
+  o.arrastreNube = [await drag(node('suelta.md'), node('archivo'))];
+  now = await until((p) => p.includes('archivo/suelta.md'));
+  o.arrastreNube.push(now.includes('archivo/suelta.md') && !now.includes('suelta.md'));
+  await app.waitForFunction(() => ![...document.querySelectorAll('.lmd-tree > .lmd-node')].some((n) => n.textContent.trim() === 'suelta.md'));
+  await node('archivo').click(); await app.waitForSelector('.lmd-node-kids .lmd-node:has-text("suelta.md")');
+  o.arrastreNube.push(await drag(node('suelta.md'), app.locator('.lmd-tree-head')));
+  now = await until((p) => p.includes('suelta.md'));
+  o.arrastreNube.push(now.includes('suelta.md') && !now.includes('archivo/suelta.md'));
+  await app.waitForFunction(() => [...document.querySelectorAll('.lmd-tree > .lmd-node')].some((n) => n.textContent.trim() === 'suelta.md'));
+  await app.waitForSelector('.lmd-node-kids .lmd-node.lmd-active');
+  const [, marked] = await Promise.all([app.waitForNavigation(), drag(node('lista.md'), node('proyecto'))]); await opened();
+  now = await paths();
+  o.arrastreAbiertaNube = [marked, /f=cloud%2Fproyecto%2Flista\.md/.test(app.url()), await app.title(), now.includes('proyecto/lista.md') && !now.includes('proyecto/borradores/lista.md')];
+  await answer('proyecto/borradores/lista.md'); await menu('lista.md', 'ren');
+  await Promise.all([app.waitForNavigation(), app.click('.lmd-menu [data-f=ren]')]); await opened();
+
   await answer('borrar.md');
   await Promise.all([app.waitForNavigation(), app.click('.lmd-tree-new')]); await opened();
   await menu('lista.md', 'del'); await app.click('.lmd-menu [data-f=del]');
@@ -147,7 +181,15 @@ try {
   await api('PUT', '/notes/de-beto.md', { text: '# De Beto\n' }, beto);
   await api('POST', '/shares', { path: 'de-beto.md', email: mail, role: 'view', kind: 'note' }, beto);
   const owner = (await api('GET', '/shared', undefined, session))[0].owner;
+  // Aunque la pestaña venga de editar, una nota de solo lectura abre leyendo y no pasa a edición.
+  await app.evaluate(() => sessionStorage.setItem('lmd-edit', String(Date.now())));
   await app.goto(cloudUrl('~' + owner + '/de-beto.md')); await opened();
+  const editing = () => app.evaluate(() => document.documentElement.classList.contains('lmd-editing'));
+  o.soloLectura = [await editing()];
+  await app.locator('.markdown-body h1').dblclick(); await app.waitForTimeout(300); o.soloLectura.push(await editing());
+  await app.locator('.markdown-body h1').click({ button: 'right' }); await app.waitForTimeout(300); o.soloLectura.push(await editing(), await app.locator('.lmd-menu').count());
+  await app.keyboard.press('F2'); await app.dblclick('.lmd-docname'); await app.waitForTimeout(200); o.soloLectura.push(await app.locator('.lmd-docname-input').count());
+  await app.evaluate(() => sessionStorage.removeItem('lmd-edit'));
   o.soloVer = [await app.evaluate(() => document.documentElement.classList.contains('lmd-readonly'))];
   await answer('otra.md'); await menu('de-beto.md', 'ren'); await app.click('.lmd-menu [data-f=ren]');
   o.soloVer.push(await said('Solo quien'));
@@ -238,6 +280,10 @@ const checks = [
   ['renombrar la nota abierta la deja abierta en su ruta nueva', o.renombrada && o.renombrada[0] && o.renombrada[1] === 'lista.md' && /nota/.test(o.renombrada[2]) && o.renombrada[3], o.renombrada],
   ['renombrar con otra ruta mueve la nota', o.movida === true],
   ['renombrar una carpeta mueve lo que tiene adentro', o.carpetaRenombrada && o.carpetaRenombrada[0] && o.carpetaRenombrada[1], o.carpetaRenombrada],
+  ['renombrar desde el título deja la nota de la nube abierta con su nombre nuevo', o.tituloNube && o.tituloNube[0] && o.tituloNube[1] === 'listado.md' && o.tituloNube[2], o.tituloNube],
+  ['arrastrar en el árbol de la Nube mueve la nota a la carpeta y de vuelta a la raíz', J(o.arrastreNube) === J(['archivo', true, 'raíz', true]), o.arrastreNube],
+  ['arrastrar la nota abierta de la nube la deja abierta en su ruta nueva', J(o.arrastreAbiertaNube) === J(['proyecto', true, 'lista.md', true]), o.arrastreAbiertaNube],
+  ['una nota de solo lectura no entra en edición ni se renombra desde el título', J(o.soloLectura) === J([false, false, false, 0, 0]), o.soloLectura],
   ['eliminar desde el árbol la saca de la nube', o.eliminada && o.eliminada[0] && J(o.eliminada[1]) === '["borrar.md"]', o.eliminada],
   ['en el límite del plan gratis no crea y invita al plan pago', o.limite && /límite de notas del plan gratis/.test(o.limite[0]) && /plan pago/.test(o.limite[0]) && !/[!¡—]/.test(o.limite[0]) && o.limite[1] === 10, o.limite],
   ['una nota compartida solo para ver no se renombra ni deja crear al lado', o.soloVer && o.soloVer[0] === true && /Solo quien creó/.test(o.soloVer[1]) && /solo lectura/.test(o.soloVer[2]) && o.soloVer[3] === 1, o.soloVer],
