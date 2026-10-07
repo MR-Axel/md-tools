@@ -75,6 +75,8 @@ try { db.exec('ALTER TABLE comments ADD COLUMN e INTEGER NOT NULL DEFAULT 0'); }
 // v: el texto de la nota llegó cifrado desde el navegador (carpeta con contraseña). aad: la ruta a la que quedó atada una versión cifrada.
 try { db.exec('ALTER TABLE notes ADD COLUMN v INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* ya estaba */ }
 try { db.exec('ALTER TABLE versions ADD COLUMN aad TEXT'); } catch (e) { /* ya estaba */ }
+// rev: el número de revisión de la nota. Sube de a uno con cada guardado; quien guarda dice sobre cuál escribió.
+try { db.exec('ALTER TABLE notes ADD COLUMN rev INTEGER NOT NULL DEFAULT 1'); } catch (e) { /* ya estaba */ }
 db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
 // Carpetas con contraseña. De cada una se guarda con qué se envolvió su llave (sal, vueltas y la llave envuelta) y un
 // valor para comprobar la llave. Nunca la contraseña ni la llave. state: 'on', o 'opening' mientras se le quita la protección.
@@ -448,15 +450,22 @@ function cleanPath(v) {
 // marca todavía está en claro: el navegador la cifra apenas tiene la llave.
 const listNotes = (user) => q('SELECT path, updated, size, v FROM notes WHERE user = ? ORDER BY updated DESC').all(user.id);
 function readNote(user, p) {
-  const n = q('SELECT path, text, updated, e FROM notes WHERE user = ? AND path = ?').get(user.id, cleanPath(p));
+  const n = q('SELECT path, text, updated, e, rev FROM notes WHERE user = ? AND path = ?').get(user.id, cleanPath(p));
   if (!n) throw new Fail(404, 'not_found');
-  return { path: n.path, text: unseal(n.text, n.e, 'notes.text'), updated: n.updated };
+  return { path: n.path, text: unseal(n.text, n.e, 'notes.text'), updated: n.updated, rev: n.rev };
 }
-function writeNote(user, p, text) {
+// La revisión que manda quien guarda: un entero desde cero, o nada (una extensión sin actualizar no la manda).
+const cleanRev = (v) => { if (v == null) return null; if (!Number.isInteger(v) || v < 0) throw new Fail(400, 'bad_rev'); return v; };
+// base es la revisión sobre la que se escribió. Si la nota ya va por otra, no se guarda nada y vuelven el texto y
+// la revisión de ahora (409 rev_conflict): quien guardaba junta lo suyo y reintenta. Sin base se guarda como
+// siempre, pisando. Leer, comparar y escribir pasan sin soltar el hilo: entre dos guardados no se cuela otro.
+// Devuelve también prev, el texto que había, para quien quiera avisar solo lo que cambió.
+function writeNote(user, p, text, base) {
   p = cleanPath(p); text = String(text == null ? '' : text);
   const kind = checkText(user.id, p, text);
-  const row = q('SELECT text, e, v, size FROM notes WHERE user = ? AND path = ?').get(user.id, p);
+  const row = q('SELECT text, e, v, size, rev, updated FROM notes WHERE user = ? AND path = ?').get(user.id, p);
   const prev = row ? { text: unseal(row.text, row.e, 'notes.text') } : null;
+  if (row && base != null && base !== row.rev) throw new Fail(409, 'rev_conflict', '', { text: prev.text, rev: row.rev, updated: row.updated });
   if (!prev && user.plan !== 'pro' && countNotes(user) >= FREE_NOTES) throw new Fail(402, 'note_limit', 'The free plan holds ' + FREE_NOTES + ' notes');
   // El historial es del plan pago: se guarda la versión anterior si cambió y pasó más de un minuto. Al cifrar una
   // nota (o al descifrarla) la versión anterior no se guarda: sería dejar el texto en claro, o uno que ya nadie abre.
@@ -464,9 +473,13 @@ function writeNote(user, p, text) {
     const last = q('SELECT saved FROM versions WHERE user = ? AND path = ? ORDER BY saved DESC LIMIT 1').get(user.id, p);
     if (!last || now() - last.saved > 60000) q('INSERT INTO versions (user, path, text, saved, size, e, aad) VALUES (?, ?, ?, ?, ?, ?, ?)').run(user.id, p, seal(prev.text, 'versions.text'), now(), row.size == null ? prev.text.length : row.size, SEALED, row.v ? p : null);
   }
-  q('INSERT INTO notes (user, path, text, updated, size, e, v) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (user, path) DO UPDATE SET text = excluded.text, updated = excluded.updated, size = excluded.size, e = excluded.e, v = excluded.v').run(user.id, p, seal(text, 'notes.text'), now(), kind.size, SEALED, kind.v);
+  const rev = row ? row.rev + 1 : 1; const at = now();
+  q('INSERT INTO notes (user, path, text, updated, size, e, v, rev) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (user, path) DO UPDATE SET text = excluded.text, updated = excluded.updated, size = excluded.size, e = excluded.e, v = excluded.v, rev = excluded.rev').run(user.id, p, seal(text, 'notes.text'), at, kind.size, SEALED, kind.v, rev);
   if (row && !row.v && kind.v) scrub();
-  return { path: p, updated: now(), size: kind.size };
+  const saved = { path: p, updated: at, size: kind.size, rev };
+  // prev no viaja en la respuesta: lo usa quien llama para avisar el cambio a los que tienen la nota abierta.
+  Object.defineProperty(saved, 'prev', { value: prev ? prev.text : null, enumerable: false });
+  return saved;
 }
 function deleteNote(user, p) {
   const r = q('DELETE FROM notes WHERE user = ? AND path = ?').run(user.id, cleanPath(p));
@@ -490,7 +503,7 @@ function renameNote(user, from, to, body) {
     if (!body || body.text == null) throw new Fail(409, 'vault', 'Moving a note into, out of or inside a protected folder needs its text again');
     if (body.updated != null && +body.updated !== row.updated) throw new Fail(409, 'changed');
     const text = String(body.text); const kind = checkText(user.id, to, text);
-    q('UPDATE notes SET path = ?, text = ?, size = ?, e = ?, v = ?, updated = ? WHERE user = ? AND path = ?').run(to, seal(text, 'notes.text'), kind.size, SEALED, kind.v, now(), user.id, from);
+    q('UPDATE notes SET path = ?, text = ?, size = ?, e = ?, v = ?, updated = ?, rev = rev + 1 WHERE user = ? AND path = ?').run(to, seal(text, 'notes.text'), kind.size, SEALED, kind.v, now(), user.id, from);
     if (!row.v && kind.v) scrub();
     // Dentro de la misma carpeta el historial sigue a la nota (cada versión recuerda la ruta con la que se cifró).
     // Al entrar o salir se elimina: quedaría en claro, o cifrado con una llave que la nota ya no usa.
@@ -620,6 +633,10 @@ function announce(key, event, skip) {
   const who = Array.from(new Set(Array.from(room).map((c) => c.email)));
   for (const c of room) if (c !== skip && !c.res.destroyed) c.res.write('data: ' + JSON.stringify(Object.assign({ who }, event)) + '\n\n');
 }
+// Alguien guardó: quienes tienen la nota abierta se enteran, con la revisión nueva. text es lo que quedó guardado.
+function tellSaved(ownerId, p, saved, who, text) {
+  announce(roomKey(ownerId, p), { type: 'saved', by: who.by, updated: saved.updated, rev: saved.rev });
+}
 // Un aviso para todas las notas abiertas de una cuenta: por ejemplo, que cambió el estado de una carpeta con contraseña.
 function announceUser(userId, event) { for (const key of rooms.keys()) if (key.startsWith(userId + ':')) announce(key, event); }
 // Cada conexión abierta ocupa memoria y un descriptor: hay un tope por cuenta y otro por IP.
@@ -710,17 +727,23 @@ function callTool(user, name, args) {
     if (!n.text.startsWith(VAULT)) throw new Fail(423, 'vault_locked', 'This note is still being encrypted by SharpMD. Try again in a moment.');
     return vaultOpen(key, p, n.text);
   };
-  const write = (p, key, text) => {
+  // La IA guarda sobre la revisión que hay en ese momento: lee y escribe sin soltar el hilo, así que no pisa un
+  // guardado que entró en el medio ni se cruza con otro. Quien tiene la nota abierta se entera al instante.
+  const revOf = (p) => { const at = q('SELECT rev FROM notes WHERE user = ? AND path = ?').get(user.id, p); return at ? at.rev : null; };
+  const write = (p, key, text, base) => {
     text = String(text == null ? '' : text);
     if (key && Buffer.byteLength(text) > MAX_NOTE) throw new Fail(413, 'too_large');
-    return writeNote(user, p, key ? vaultSeal(key, p, text) : text);
+    const saved = writeNote(user, p, key ? vaultSeal(key, p, text) : text, base === undefined ? revOf(p) : base);
+    tellSaved(user.id, p, saved, { by: 'mcp' }, text);
+    return saved;
   };
   if (name === 'read_note') { const p = scoped(user, args.path); return read(p, vaultGate(user, p)); }
   if (name === 'write_note') { const p = scoped(user, args.path); const r = write(p, vaultGate(user, p), args.text); return 'Saved ' + r.path + ' (' + String(args.text == null ? '' : args.text).length + ' characters).'; }
   if (name === 'append_note') {
-    const p = scoped(user, args.path); const key = vaultGate(user, p); let prev = '';
+    // Lo que se lee y lo que se escribe son de la misma revisión: si no coincidiera, no se agrega sobre un texto viejo.
+    const p = scoped(user, args.path); const key = vaultGate(user, p); let prev = ''; const base = revOf(p);
     try { prev = read(p, key); } catch (e) { if (e.code !== 'not_found') throw e; }
-    const r = write(p, key, prev + (prev && !prev.endsWith('\n') ? '\n' : '') + (prev ? '\n' : '') + String(args.text || ''));
+    const r = write(p, key, prev + (prev && !prev.endsWith('\n') ? '\n' : '') + (prev ? '\n' : '') + String(args.text || ''), base);
     return 'Appended to ' + r.path + '.';
   }
   if (name === 'search_notes') {
@@ -910,8 +933,9 @@ async function route(req, url) {
     if (m === 'GET') { const t = target(user, url, clean, 'view'); return Object.assign(readNote(t.owner, clean), { role: t.role }); }
     if (m === 'PUT') {
       const t = target(user, url, clean, 'edit');
-      const saved = writeNote(t.owner, clean, (await readBody(req)).text);
-      announce(roomKey(t.owner.id, clean), { type: 'saved', by: user.email, updated: saved.updated });
+      const body = await readBody(req);
+      const saved = writeNote(t.owner, clean, body.text, cleanRev(body.rev));
+      tellSaved(t.owner.id, clean, saved, { by: user.email }, String(body.text == null ? '' : body.text));
       return saved;
     }
     if (m === 'DELETE') return deleteNote(target(user, url, clean, 'owner').owner, clean);

@@ -1113,12 +1113,14 @@
 
   let diskStamp = ''; let cloudPoll = 0; let cloudState = 'ok'; let readOnly = false; let present = [];
   let polled = true; // false cuando la nube no se consultó de verdad porque todavía no tocaba
+  // La revisión de la nube que corresponde a diskText: sobre esa se guarda. Cambia solo junto con diskText, cuando
+  // lo leído ya entró al documento; así un guardado nunca pasa por encima de un cambio que todavía no se juntó.
+  let diskRev = null; let readRev = null;
+  const isCloud = () => !!appRoot && appRoot.kind === 'cloud';
 
-  // La mezcla de tres vías vive en cloud.js: también la usa la cola de lo escrito sin conexión.
-  const merge3 = LMD.cloud.merge3;
   async function readCurrent() {
     // La nube se consulta cada diez segundos: alcanza para ver lo que escribió una IA sin martillar el servidor.
-    polled = true; const seq = docSeq;
+    polled = true; readRev = null; const seq = docSeq;
     if (APP && appRoot && appRoot.kind === 'cloud') { if (Date.now() - cloudPoll < (cloudState === 'error' ? 5000 : 10000)) { polled = false; return diskText; } cloudPoll = Date.now(); }
     if (APP) {
       // Con el permiso de la carpeta alcanza con mirar fecha y tamaño: el archivo se lee solo si cambió.
@@ -1127,7 +1129,7 @@
         const stamp = file.lastModified + ':' + file.size;
         if (stamp === diskStamp) return diskText;
         const text = await file.text();
-        if (seq === docSeq) diskStamp = stamp;
+        if (seq === docSeq) { diskStamp = stamp; if (file.rev != null) readRev = file.rev; }
         return text;
       } catch (e) { return null; }
     }
@@ -1159,14 +1161,27 @@
         // Con el cursor en un bloque no se toca nada: ni el texto ni el dibujo. Lo de afuera queda esperando
         // (y el guardado automático también, para no pisarlo) hasta que la persona sale del bloque.
         if (typingNode()) { outside = true; diskStamp = ''; return; }
-        outside = false;
-        const merged = dirty && appRoot && appRoot.kind === 'cloud' ? merge3(diskText, raw, text) : null;
-        diskText = text;
-        if (merged != null) { raw = merged; syncSource(); markDirty(); render(); flash(T('Se sumaron los cambios de otra persona')); }
-        else if (dirty) flash(T('El archivo cambió en el disco. Tus cambios sin guardar se mantienen'), 'warn');
-        else { raw = text; render(); flash(T('Documento actualizado')); }
-      } else { if (polled) outside = false; if (manual) flash(T('Sin cambios')); }
+        await takeOutside(text, readRev);
+      } else { if (polled) { outside = false; if (readRev != null) diskRev = readRev; } if (manual) flash(T('Sin cambios')); }
     } finally { checking = false; }
+  }
+
+  // Lo que cambió afuera entra al documento. En una nota de la nube con cambios propios sin subir, se juntan las dos
+  // ediciones; si tocaron lo mismo queda lo del servidor y lo de acá va aparte, a una nota del navegador: nada se
+  // pierde y el próximo guardado no pisa a nadie. Quien llama ya comprobó que no hay un bloque con el cursor.
+  async function takeOutside(text, rev) {
+    const seq = docSeq; outside = false;
+    if (dirty && isCloud()) {
+      const r = await LMD.cloud.settle(vParts(HERE).join('/'), diskText, raw, text);
+      if (seq !== docSeq) return;
+      diskText = text; if (rev != null) diskRev = rev;
+      if (r.text !== raw) { raw = r.text; syncSource(); }
+      markDirty(); render(); offlineNote(r, true);
+      return;
+    }
+    diskText = text; if (rev != null) diskRev = rev;
+    if (dirty) flash(T('El archivo cambió en el disco. Tus cambios sin guardar se mantienen'), 'warn');
+    else { raw = text; render(); flash(T('Documento actualizado')); }
   }
 
   // Lo que dice el pie cuando no hay nada que avisar. La recarga automática se nombra solo donde hay un archivo
@@ -2659,22 +2674,25 @@
   async function catchUp(path) {
     let n = null;
     try { n = await LMD.cloud.read(path); } catch (e) { if (e.code !== 'not_found') throw e; }
-    if (!n || n.text === diskText) return true;
+    if (!n) { diskRev = null; return true; } // ya no está en el servidor: se guarda como nota nueva
+    if (n.text === diskText) { if (n.rev != null) diskRev = n.rev; return true; }
     // Juntar cambia el texto y hay que redibujar: con el cursor en un bloque, espera.
     if (typingNode()) return false;
     const r = await LMD.cloud.settle(path, diskText, raw, n.text);
-    diskText = n.text;
+    diskText = n.text; if (n.rev != null) diskRev = n.rev;
     if (r.text !== raw) { raw = r.text; syncSource(); render(); }
     dirty = raw !== diskText;
     offlineNote(r);
     return true;
   }
-  function offlineNote(r) {
-    if (r.aside) flash(T('La nota cambió en la nube. Lo que escribiste sin conexión quedó en "{a}"', { a: r.aside }), 'warn');
+  // online: el choque fue con la nota abierta y con conexión (otro guardó lo mismo a la vez), no al volver de estar sin ella.
+  function offlineNote(r, online) {
+    if (r.aside) flash(T(online ? 'La nota cambió en la nube. Lo tuyo quedó aparte, en "{a}"' : 'La nota cambió en la nube. Lo que escribiste sin conexión quedó en "{a}"', { a: r.aside }), 'warn');
     else if (r.merged) flash(T('Se sumaron los cambios de otra persona'));
   }
 
-  async function save(interactive) {
+  // turn: cuántas veces seguidas ya se rechazó este guardado porque otro guardó antes.
+  async function save(interactive, turn) {
     if (noDoc) return true;
     const seq = docSeq;
     const later = () => { clearTimeout(autosaveTimer); autosaveTimer = setTimeout(() => save(false), 2500); return false; };
@@ -2721,17 +2739,34 @@
       }
       // Cambió afuera mientras se escribía: no se pisa. La copia local ya quedó; se sube al soltar el bloque.
       // Ya fuera del bloque, primero se trae y se junta lo de afuera, y recién después se guarda.
-      if (outside && !interactive) { if (!typingNode()) { cloudPoll = 0; checkForChanges(false); } return later(); }
+      // En la nube tampoco pasa un guardado a mano: el servidor lo rechazaría, y juntar hace falta igual.
+      if (outside && (!interactive || isCloud())) { if (!typingNode()) { cloudPoll = 0; checkForChanges(false); } return later(); }
       // Mientras se escribe en el archivo la persona puede seguir tecleando: se da por guardado lo que salió,
       // no lo que haya ahora.
-      const sent = raw;
+      const sent = raw; let savedRev = null;
       saving = true;
       try {
-        const writable = await fileHandle.createWritable();
-        await writable.write(sent);
-        await writable.close();
+        if (isCloud()) {
+          // Se guarda sobre la revisión que se tiene como base. Si otro guardó antes, el servidor no pisa: devuelve
+          // lo que hay, se junta con lo de acá y se vuelve a intentar.
+          try { savedRev = (await LMD.cloud.save(vParts(HERE).join('/'), sent, diskRev)).rev; }
+          catch (e) {
+            if (e.code !== 'rev_conflict' || seq !== docSeq) throw e;
+            saving = false;
+            // Con el cursor en un bloque, juntar espera a que se lo suelte (lo escrito ya quedó en la copia local).
+            if (typingNode() || (turn || 0) >= 4) { outside = true; diskStamp = ''; return later(); }
+            await takeOutside(e.theirs, e.rev);
+            if (seq !== docSeq) return false;
+            return dirty ? save(interactive, (turn || 0) + 1) : true;
+          }
+        } else {
+          const writable = await fileHandle.createWritable();
+          await writable.write(sent);
+          await writable.close();
+        }
       } finally { saving = false; }
       if (seq !== docSeq) return true;
+      if (isCloud()) diskRev = savedRev == null ? null : savedRev;
       fileCache.delete(HERE); // la búsqueda en la carpeta vuelve a leerlo
       cloudState = 'ok';
       diskText = sent; diskStamp = ''; dirty = raw !== diskText; updateSaveState();
@@ -2782,7 +2817,7 @@
       }
       if (!got && (why === 'vault_locked' || why === 'vault_unreadable')) return fail(T(why === 'vault_locked' ? '"{a}" está en una carpeta protegida. Desbloqueala para abrirla.' : '"{a}" no se pudo descifrar con la llave de su carpeta.', { a: name }));
       if (!got) return fail(T(!LMD.cloud.signedIn() ? 'Entrá a tu cuenta para abrir las notas de la nube.' : why === 'offline' ? 'Sin conexión, y "{a}" no tiene copia en este navegador.' : 'No se encontró "{a}".', { a: name }));
-      return { root: roots.cloud, raw: got.text, disk: got.base, opened: got, readOnly: LMD.cloud.roleOf(path) === 'view' };
+      return { root: roots.cloud, raw: got.text, disk: got.base, rev: got.rev, opened: got, readOnly: LMD.cloud.roleOf(path) === 'view' };
     }
     if (id === 'pub') {
       // Enlace público de solo lectura; si tiene contraseña, se pide.
@@ -2855,7 +2890,7 @@
     blobUrls.splice(0).forEach((u) => URL.revokeObjectURL(u));
     if (!noDoc) fileCache.delete(HERE);
     undoStack.length = 0; redoStack.length = 0; collapsed.clear(); spyPin = null; present = [];
-    pendingCell = null; fileHandle = null; stashed = null; opened = null; diskStamp = ''; cloudPoll = 0; cloudState = 'ok';
+    pendingCell = null; fileHandle = null; stashed = null; opened = null; diskStamp = ''; cloudPoll = 0; cloudState = 'ok'; diskRev = null;
     needsRender = false; core.lastBlock = null; core.hold = false;
     LMD.write.closeMenu(); closeMore(); setDrawer(false);
     document.querySelectorAll('.lmd-menu, .lmd-ask').forEach((n) => n.remove());
@@ -2898,6 +2933,7 @@
     appRoot = doc ? doc.root : null;
     if (doc) roots[appRoot.id] = appRoot;
     raw = doc ? doc.raw : ''; diskText = doc ? doc.disk : ''; dirty = raw !== diskText;
+    diskRev = doc && doc.rev != null ? doc.rev : null;
     readOnly = !!(doc && doc.readOnly); opened = (doc && doc.opened) || null;
     rawMode = false; editMode = false;
     if (!opt.pop) {

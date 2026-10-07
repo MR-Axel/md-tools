@@ -40,7 +40,7 @@
       if (res.status === 401 && session) { session = ''; await remember(); }
       // retry: los segundos que faltan cuando el servidor frenó por un tope (del cuerpo o de la cabecera Retry-After).
       const retry = +((json && json.retry_after) || res.headers.get('retry-after') || 0) || 0;
-      throw Object.assign(new Error((json && json.error) || 'failed'), { code: (json && json.error) || 'failed', status: res.status, retry });
+      throw Object.assign(new Error((json && json.error) || 'failed'), { code: (json && json.error) || 'failed', status: res.status, retry, body: json });
     }
     return json;
   }
@@ -107,13 +107,22 @@
     return vault && vault.state === 'on' ? Z.seal(await keyOf(vault), path, text) : text;
   }
   const getNote = async (path) => { const n = await api('GET', notePath(path)); n.text = await plain(path, n.text); return n; };
-  async function putNote(path, text) {
-    try { return await api('PUT', notePath(path), { text: await wire(path, text) }); }
-    catch (e) {
-      // La carpeta se protegió, o dejó de estarlo, desde otra pestaña: se vuelve a mirar y se manda como corresponde.
-      if (e.code !== 'vault' && e.code !== 'vault_text') throw e;
-      await vaults(true);
-      return api('PUT', notePath(path), { text: await wire(path, text) });
+  // rev es la revisión sobre la que se escribió (la que vino al leer). Si la nota ya va por otra, el servidor no
+  // guarda y esto sale con rev_conflict, con el texto de ahora en claro (theirs) y su revisión (rev): quien llama
+  // junta y reintenta. Sin rev se guarda pisando, como antes: para una nota nueva, o un servidor sin actualizar.
+  async function putNote(path, text, rev) {
+    const send = async () => api('PUT', notePath(path), Object.assign({ text: await wire(path, text) }, rev == null ? {} : { rev }));
+    try {
+      try { return await send(); }
+      catch (e) {
+        // La carpeta se protegió, o dejó de estarlo, desde otra pestaña: se vuelve a mirar y se manda como corresponde.
+        if (e.code !== 'vault' && e.code !== 'vault_text') throw e;
+        await vaults(true);
+        return await send();
+      }
+    } catch (e) {
+      if (e.code === 'rev_conflict' && e.body) { e.theirs = await plain(path, String(e.body.text == null ? '' : e.body.text)); e.rev = e.body.rev; }
+      throw e;
     }
   }
 
@@ -154,16 +163,61 @@
   // Junta dos ediciones de la misma nota si tocaron partes distintas. Devuelve null si se pisan.
   // Trabaja sobre texto en claro: para una nota protegida, ya descifrado en este navegador.
   function merge3(base, mine, theirs) {
-    const b = base.split('\n'); const m = mine.split('\n'); const t = theirs.split('\n');
-    const span = (x) => {
-      let s = 0; while (s < b.length && s < x.length && b[s] === x[s]) s++;
-      let e = 0; while (e < b.length - s && e < x.length - s && b[b.length - 1 - e] === x[x.length - 1 - e]) e++;
-      return { s, end: b.length - e, lines: x.slice(s, x.length - e) };
-    };
-    const a = span(m); const c = span(t);
-    if (a.end <= c.s) return b.slice(0, a.s).concat(a.lines, b.slice(a.end, c.s), c.lines, b.slice(c.end)).join('\n');
-    if (c.end <= a.s) return b.slice(0, c.s).concat(c.lines, b.slice(c.end, a.s), a.lines, b.slice(a.end)).join('\n');
-    return null;
+    const r = merge(base, mine, theirs);
+    return r.lost.length ? null : r.text;
+  }
+  // Qué cambió x respecto de b, como tramos sobre las líneas de b: [{ s, e, lines }] (de s a e pasan a ser lines).
+  // Fuera del principio y el final iguales se buscan las líneas en común; si el medio es enorme, va como un solo tramo.
+  function hunks(b, x) {
+    const nb = b.length; const nx = x.length;
+    let s = 0; while (s < nb && s < nx && b[s] === x[s]) s++;
+    let e = 0; while (e < nb - s && e < nx - s && b[nb - 1 - e] === x[nx - 1 - e]) e++;
+    const B = b.slice(s, nb - e); const X = x.slice(s, nx - e); const n = B.length; const m = X.length;
+    if (!n && !m) return [];
+    if (!n || !m || n * m > 1000000) return [{ s, e: nb - e, lines: X }];
+    const w = m + 1; const t = new Uint32Array((n + 1) * w);
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) t[i * w + j] = B[i] === X[j] ? t[(i + 1) * w + j + 1] + 1 : Math.max(t[(i + 1) * w + j], t[i * w + j + 1]);
+    const out = []; let cur = null; let i = 0; let j = 0;
+    while (i < n || j < m) {
+      if (i < n && j < m && B[i] === X[j]) { cur = null; i++; j++; continue; }
+      if (!cur) { cur = { s: s + i, e: s + i, lines: [] }; out.push(cur); }
+      if (j < m && (i >= n || t[i * w + j + 1] >= t[(i + 1) * w + j])) cur.lines.push(X[j++]); else cur.e = s + (++i);
+    }
+    return out;
+  }
+  // Mezcla de tres vías por líneas, tramo por tramo. Lo que cada uno cambió en partes distintas entra entero. Donde
+  // los dos tocaron las mismas líneas queda lo de theirs (lo que ya está guardado), y lo de acá vuelve en lost,
+  // para que quien llama no lo pierda en silencio: [{ mine, theirs }], cada uno con el texto de ese tramo.
+  // Trabaja sobre texto en claro: para una nota protegida, ya descifrado en este navegador.
+  function merge(base, mine, theirs) {
+    if (mine === base || mine === theirs) return { text: theirs, lost: [] };
+    if (theirs === base) return { text: mine, lost: [] };
+    const b = base.split('\n'); const A = hunks(b, mine.split('\n')); const C = hunks(b, theirs.split('\n'));
+    const out = []; const lost = []; let pos = 0; let i = 0; let j = 0;
+    const same = (x, y) => x.length === y.length && x.every((l, k) => l === y[k]);
+    const take = (h) => { for (let k = pos; k < h.s; k++) out.push(b[k]); for (const l of h.lines) out.push(l); pos = h.e; };
+    // Un lado de un tramo en disputa: las líneas de la base entre gs y ge con los cambios de ese lado puestos.
+    const side = (list, gs, ge) => { const o = []; let p = gs; for (const h of list) { for (let k = p; k < h.s; k++) o.push(b[k]); for (const l of h.lines) o.push(l); p = h.e; } for (let k = p; k < ge; k++) o.push(b[k]); return o; };
+    while (i < A.length || j < C.length) {
+      const a = A[i]; const c = C[j];
+      if (!c) { take(a); i++; continue; }
+      if (!a) { take(c); j++; continue; }
+      if (a.s === c.s && a.e === c.e && same(a.lines, c.lines)) { take(a); i++; j++; continue; } // el mismo cambio de los dos lados
+      if (a.e <= c.s) { take(a); i++; continue; }
+      if (c.e <= a.s) { take(c); j++; continue; }
+      // Se pisan: se junta todo lo que se encadena con ese tramo, de un lado y del otro.
+      let gs = Math.min(a.s, c.s); let ge = Math.max(a.e, c.e); const ga = []; const gc = [];
+      for (;;) {
+        if (i < A.length && A[i].s < ge) { ge = Math.max(ge, A[i].e); ga.push(A[i++]); }
+        else if (j < C.length && C[j].s < ge) { ge = Math.max(ge, C[j].e); gc.push(C[j++]); }
+        else break;
+      }
+      const m = side(ga, gs, ge); const t = side(gc, gs, ge);
+      if (!same(m, t)) lost.push({ mine: m.join('\n'), theirs: t.join('\n') });
+      take({ s: gs, e: ge, lines: t });
+    }
+    for (let k = pos; k < b.length; k++) out.push(b[k]);
+    return { text: out.join('\n'), lost };
   }
 
   // Lo que no se pudo juntar queda aparte, como nota del navegador, para que no se pierda.
@@ -199,8 +253,22 @@
       roles[path] = n.role || 'owner';
       const r = unsent ? await settle(path, copy.base, copy.text, n.text) : { text: n.text };
       await keep(path, r.text, n.text, r.text !== n.text);
-      return Object.assign(r, { base: n.text });
+      return Object.assign(r, { base: n.text, rev: n.rev });
     });
+  }
+  // Guarda sobre la revisión leída. Si en el medio guardó otro, junta lo de acá con lo del servidor y reintenta;
+  // lo que no se pueda juntar queda aparte (settle). Devuelve { text, rev } con lo que quedó en el servidor.
+  async function putMerged(path, base, mine, n) {
+    for (let turn = 0; ; turn++) {
+      const r = await settle(path, base, mine, n.text);
+      if (r.text === n.text) return { text: n.text, rev: n.rev };
+      try { const saved = await putNote(path, r.text, n.rev); return { text: r.text, rev: saved.rev }; }
+      catch (e) {
+        if (e.code !== 'rev_conflict' || turn >= 4) throw e;
+        // Lo ya juntado pasa a ser lo de acá, sobre lo que el servidor tenía cuando se juntó.
+        base = n.text; mine = r.text; n = { text: e.theirs, rev: e.rev };
+      }
+    }
   }
 
   // Sube lo pendiente de las notas que no están abiertas en ninguna pestaña.
@@ -219,8 +287,7 @@
           if (!now || !now.pending) return false;
           try {
             const n = await getNote(c.path);
-            const r = await settle(c.path, now.base, now.text, n.text);
-            if (r.text !== n.text) await putNote(c.path, r.text);
+            const r = await putMerged(c.path, now.base, now.text, n);
             await keep(c.path, r.text, r.text, false, n.role);
           } catch (e) {
             if (e.code === 'offline') return true;
@@ -273,7 +340,8 @@
         // La copia local sigue al servidor mientras no tenga cambios propios sin subir.
         const copy = await copyOf(path);
         if (copy && !copy.pending && copy.text !== n.text) await keep(path, n.text, n.text, false);
-        return { text: async () => n.text, lastModified: n.updated, size: n.text.length };
+        // rev viaja con el texto: quien lo toma como base guarda después sobre esa revisión.
+        return { text: async () => n.text, lastModified: n.updated, size: n.text.length, rev: n.rev };
       },
       createWritable: async () => { let data = ''; return { write: async (t) => { data = String(t); }, close: async () => { await putNote(path, data); listCache = null; await keep(path, data, data, false); } }; },
     };
@@ -293,7 +361,7 @@
     for (const n of rows) {
       await locked(n.path, async () => {
         const got = await api('GET', notePath(n.path));
-        if (!Z.sealed(got.text)) await api('PUT', notePath(n.path), { text: await Z.seal(key, n.path, got.text) });
+        if (!Z.sealed(got.text)) await api('PUT', notePath(n.path), Object.assign({ text: await Z.seal(key, n.path, got.text) }, got.rev == null ? {} : { rev: got.rev }));
       });
       if (onStep) onStep(++done, rows.length);
     }
@@ -314,7 +382,7 @@
     for (const n of rows) {
       await locked(n.path, async () => {
         const got = await api('GET', notePath(n.path));
-        if (Z.sealed(got.text)) await api('PUT', notePath(n.path), { text: await Z.open(key, n.path, got.text) });
+        if (Z.sealed(got.text)) await api('PUT', notePath(n.path), Object.assign({ text: await Z.open(key, n.path, got.text) }, got.rev == null ? {} : { rev: got.rev }));
       });
       if (onStep) onStep(++done, rows.length);
     }
@@ -328,8 +396,10 @@
   }
 
   LMD.cloud = {
-    ready, api, list: listOr, handle, events, split, merge3, settle, open, hold, flush, kept,
+    ready, api, list: listOr, handle, events, split, merge3, merge, settle, open, hold, flush, kept,
     read: (p) => getNote(p),
+    // Guarda la nota abierta sobre la revisión que tiene como base. Sale con rev_conflict si otro guardó antes.
+    save: async (p, text, rev) => { const r = await putNote(p, text, rev); listCache = null; await keep(p, text, text, false); return r; },
     // Antes de subir, lo escrito queda guardado acá como pendiente: si no hay conexión, espera en la cola.
     stash: (p, text, was) => keep(p, text, was, true),
     // Dentro, hacia o desde una carpeta protegida, mover es volver a cifrar: el texto cifrado está atado a su ruta.

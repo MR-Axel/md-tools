@@ -299,6 +299,7 @@
       "Sin conexión. Esta es la copia guardada en este navegador": "Offline. This is the copy saved in this browser",
       "Sin conexión, y \"{a}\" no tiene copia en este navegador.": "Offline, and \"{a}\" has no copy in this browser.",
       "La nota cambió en la nube. Lo que escribiste sin conexión quedó en \"{a}\"": "The note changed in the cloud. What you wrote offline was kept in \"{a}\"",
+      "La nota cambió en la nube. Lo tuyo quedó aparte, en \"{a}\"": "The note changed in the cloud. Your version was kept aside, in \"{a}\"",
       "sin conexión": "offline",
       "Llegaste al límite de notas del plan gratis. El plan pago no tiene límite.": "You reached the note limit of the free plan. The paid plan has no limit.",
       "Esta carpeta es de solo lectura": "This folder is read-only", "Nueva carpeta": "New folder", "carpeta": "folder",
