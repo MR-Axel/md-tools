@@ -15,11 +15,11 @@ En el orden del menú de la izquierda del panel. Lo que ya está cargado no figu
 | Dónde | Qué falta |
 |---|---|
 | **Paquete** | Subir `dist/sharpmd.zip`, que es la versión 2.35.0. Con eso el título pasa a decir "SharpMD" |
-| **Ficha de Play Store** | Volver a pegar la descripción (la cargada dice "Sharpmd"). Subir las cinco capturas también en "Capturas de pantalla localizadas": el panel pide al menos una ahí |
-| **Privacidad** | Toda la pestaña. Los textos y qué tildar están en "Pestaña de privacidad", más abajo |
+| **Ficha de Play Store** | Volver a pegar la descripción (la cargada dice "Sharpmd"). Subir las cinco capturas también en "Capturas de pantalla localizadas": el panel pide al menos una ahí. Cuáles son: [Recursos gráficos](#recursos-gráficos) |
+| **Privacidad** | Toda la pestaña. Los textos y qué tildar están en [Pestaña de privacidad](#pestaña-de-privacidad) |
 | **Distribución** | En Pagos, cambiar a "Contiene compras en la aplicación" |
-| **Instrucciones de la prueba** | Pegar el texto de "Instrucciones de la prueba", más abajo |
-| **Configuración del editor** | El correo de contacto. Ver el paso a paso de abajo |
+| **Instrucciones de la prueba** | Pegar el texto de [Instrucciones de la prueba](#instrucciones-de-la-prueba) |
+| **Configuración del editor** | El correo de contacto. Ver [el paso a paso](#el-correo-de-contacto-paso-a-paso) |
 
 ### El correo de contacto, paso a paso
 
@@ -47,7 +47,7 @@ El formulario tiene tres pestañas. Esta es la primera, "Ficha de Chrome Web Sto
 | Campo del panel | Qué cargar |
 |---|---|
 | Título y resumen | No se escriben: salen del `manifest.json` del ZIP |
-| Descripción | El bloque "Descripción larga (English)" de más abajo. El de español va al agregar el idioma Español |
+| Descripción | El bloque [Descripción larga (English)](#descripción-larga-english). El de [español](#descripción-larga-español) va al agregar el idioma Español |
 | Categoría | Herramientas |
 | Idioma | English |
 
@@ -82,9 +82,9 @@ Las capturas se regeneran con `node tests/shots.mjs` y los mosaicos con `node te
 
 | Pestaña | Qué cargar |
 |---|---|
-| Privacidad | Ver "Pestaña de privacidad", más abajo |
+| Privacidad | Ver [Pestaña de privacidad](#pestaña-de-privacidad) |
 | Distribución | Pagos: "Contiene compras en la aplicación". Visibilidad: Público. Regiones: todas |
-| Instrucciones de la prueba | Ver "Instrucciones de la prueba", más abajo |
+| Instrucciones de la prueba | Ver [Instrucciones de la prueba](#instrucciones-de-la-prueba) |
 
 ## Descripción corta (máximo 132 caracteres)
 

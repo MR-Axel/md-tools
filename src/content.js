@@ -584,7 +584,9 @@
       if (res && res.href.split('#')[0] === location.href.split('#')[0]) { e.preventDefault(); stepSearch(1); return; }
       const a = e.target.closest('.lmd-article a[href^="#"], .lmd-pane-outline a');
       if (a) {
-        const target = document.getElementById(decodeURIComponent(a.getAttribute('href').slice(1)));
+        // Un enlace escrito como en GitHub (con acentos o mayúsculas) llega igual al título, que acá lleva el ancla sin acentos.
+        const frag = decodeURIComponent(a.getAttribute('href').slice(1));
+        const target = document.getElementById(frag) || document.getElementById(slugify(frag.replace(/-/g, ' '), new Set()));
         if (target) { e.preventDefault(); spyPin = a.closest('.lmd-pane-outline') ? target.id : null; target.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', '#' + target.id); }
       }
     });
