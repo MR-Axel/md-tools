@@ -28,7 +28,8 @@
 - Sign-in is a six-digit code sent by email, with no password.
 - A note reaches the server only when the user sends it to the cloud. Files opened from disk are never uploaded.
 - Cloud notes can be shared with another account, to read or to edit, or through a read-only public link with an optional password.
-- MCP endpoint over Streamable HTTP at https://sync.sharpmd.app/mcp with five tools: `list_notes`, `read_note`, `write_note`, `append_note`, `search_notes`. Authentication is a bearer token the user creates in the app.
+- MCP endpoint over Streamable HTTP at https://sync.sharpmd.app/mcp with eight tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`. Authentication is a bearer token the user creates in the app, and a token can be limited to one folder.
+- The user can leave a comment on a passage of a note. The AI reads the open comments with `list_comments`, makes the change and closes each one with `resolve_comment`.
 - Cloud notes are not end-to-end encrypted, because the server has to read them to share them and to serve MCP.
 
 ## Plans
