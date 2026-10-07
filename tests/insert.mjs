@@ -45,6 +45,30 @@ await app.setInputFiles('.lmd-img-card input[type=file]', { name: 'foto.png', mi
 await app.click('[data-i=ok]'); await app.waitForTimeout(700);
 o.subida = (await src()).split('\n').filter((l) => l.includes('assets/'))[0];
 
+// dos tablas seguidas: cada una queda como una tabla aparte, se inserte arriba o abajo, se duplique o se mueva
+const tables = () => app.evaluate(() => ({ n: document.querySelectorAll('.lmd-article table').length, rows: [...document.querySelectorAll('.lmd-article table')].map((t) => t.rows.length), rules: [...document.querySelectorAll('.lmd-article td, .lmd-article th')].filter((c) => /^[-—–\s]+$/.test(c.textContent) && /[-—–]/.test(c.textContent)).length }));
+const glued = async () => /\|[ \t]*\n[ \t]*\n[ \t]*\|/.test(await src()); // dos filas de tabla con un solo renglón en blanco en el medio
+const onTable = async (i, pick) => { await blur(); await app.locator('.lmd-article table').nth(i).click({ button: 'right', position: { x: 30, y: 8 } }); await app.waitForSelector('.lmd-menu'); await app.click('.lmd-menu ' + pick); await app.waitForTimeout(500); };
+await app.locator('.lmd-article p', { hasText: 'Texto final' }).click({ button: 'right' }); await app.click('.lmd-menu [data-ins=table]'); await app.waitForTimeout(500);
+o.unaTabla = await tables();
+await onTable(0, '[data-ins=table]'); // justo debajo de la primera
+o.debajo = [await tables(), await glued()];
+o.fuente = (await src()).split('\n').filter((l, i, all) => /^\|/.test(l) || (l === '' && (/^\|/.test(all[i - 1] || '') || /^\|/.test(all[i + 1] || '') || all[i - 1] === ''))).slice(0, 8);
+await blur(); await app.keyboard.press('Control+z'); await app.waitForTimeout(400);
+o.deshecha = (await tables()).n;
+await app.keyboard.press('Control+y'); await app.waitForTimeout(400); await blur();
+await app.locator('.lmd-article p', { hasText: 'Texto final' }).click({ button: 'right' }); await app.click('.lmd-menu [data-ins=table]'); await app.waitForTimeout(500); // justo arriba de las otras dos
+o.arriba = [await tables(), await glued()];
+await onTable(0, '[data-op=dup]');
+o.duplicada = [await tables(), await glued()];
+// Un separador entre dos tablas, y se lo sube: las dos tablas quedan una al lado de la otra.
+await onTable(2, '[data-ins=hr]');
+await app.locator('.lmd-article > hr').first().click({ button: 'right', force: true }); await app.waitForSelector('.lmd-menu [data-op=up]'); await app.click('.lmd-menu [data-op=up]'); await app.waitForTimeout(500);
+o.movida = [await tables(), await glued(), await app.evaluate(() => { const hr = document.querySelector('.lmd-article > hr'); const t = (n) => (n.matches('table') || n.querySelector('table') ? 'TABLE' : n.tagName); return [t(hr.nextElementSibling), t(hr.nextElementSibling.nextElementSibling)]; })];
+// Al eliminar el separador que quedó entre otras dos pasa lo mismo.
+await app.locator('.lmd-article > hr').first().click({ button: 'right', force: true }); await app.waitForSelector('.lmd-menu [data-op=del]'); await app.click('.lmd-menu [data-op=del]'); await app.waitForTimeout(500);
+o.sinSeparador = [await tables(), await glued()];
+
 // color del código y forma de los diagramas
 await app.click('[data-act=settings]'); await app.waitForSelector('.lmd-panel-card');
 await app.click('[data-code-color="#3b82f6"]'); await app.waitForTimeout(400);
@@ -62,6 +86,13 @@ const checks = [
   ['inserta la imagen con descripción y tamaño', o.imagen === '![Logo|480](https://example.com/logo.png)' && J(o.atributos) === J(['Logo', '480']), [o.imagen, o.atributos]],
   ['el tamaño se cambia desde la barra de la imagen', o.achicada === '![Logo|240](https://example.com/logo.png)', o.achicada],
   ['una imagen subida se guarda al lado del documento', /^!\[\]\(assets\/imagen-\d{8}-\d{6}\.png\)$/.test(o.subida || ''), o.subida],
+  ['una tabla insertada justo debajo de otra queda como tabla aparte', o.unaTabla.n === 1 && o.debajo[0].n === 2 && J(o.debajo[0].rows) === J([2, 2]) && o.debajo[0].rules === 0 && o.debajo[1] === false, [o.unaTabla, o.debajo]],
+  ['en el Markdown las separan dos renglones en blanco', J(o.fuente.slice(3, 7)) === J(['|  |  |', '', '', '| Columna 1 | Columna 2 |']), o.fuente],
+  ['un solo Ctrl+Z deshace esa inserción', o.deshecha === 1, o.deshecha],
+  ['insertada justo arriba de otra, también', o.arriba[0].n === 3 && o.arriba[0].rules === 0 && o.arriba[1] === false, o.arriba],
+  ['duplicar una tabla no la pega a la de al lado', o.duplicada[0].n === 4 && o.duplicada[0].rules === 0 && o.duplicada[1] === false, o.duplicada],
+  ['mover un bloque que estaba entre dos tablas no las pega', o.movida[0].n === 4 && o.movida[0].rules === 0 && o.movida[1] === false && J(o.movida[2]) === J(['TABLE', 'TABLE']), o.movida],
+  ['eliminar un bloque que estaba entre dos tablas tampoco', o.sinSeparador[0].n === 4 && o.sinSeparador[0].rules === 0 && o.sinSeparador[1] === false, o.sinSeparador],
   ['el color de los bloques de código se aplica', o.tinte === '#3b82f6', o.tinte],
   ['los diagramas pasan de redondeados a rectos', o.redondo === true && o.recto === true, [o.redondo, o.recto]],
   ['sin errores de JavaScript', errors.length === 0, errors],

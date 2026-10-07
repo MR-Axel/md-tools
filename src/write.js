@@ -244,12 +244,27 @@
   }
 
   // ---------- Operaciones sobre bloques ----------
+  // Dos tablas con un solo renglón en blanco en el medio se leen como una: la de abajo queda como filas de la de
+  // arriba, con su línea de guiones a la vista. Con dos renglones en blanco quedan separadas, acá y en GitHub.
+  // put cambia líneas como spliceLines y, si el cambio deja dos tablas pegadas, suma ese renglón en el mismo paso
+  // (un solo Ctrl+Z). Devuelve cómo quedó corrida cada línea.
+  const RULE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+  function put(s, count, body) {
+    const all = lines(); const from = Math.max(fm(), s - 3); const tail = all.slice(s + count, s + count + 3);
+    const win = all.slice(from, s).concat(body, tail); const added = [];
+    for (let i = win.length - 3; i > 0; i--) {
+      if (win[i].trim() === '' && win[i - 1].includes('|') && win[i + 1].includes('|') && win[i + 2].includes('|') && RULE.test(win[i + 2])) { win.splice(i, 0, ''); added.push(from + i); }
+    }
+    core.spliceLines(from, s - from + count + tail.length, win);
+    return (line) => line + added.filter((i) => i < line).length;
+  }
+
   function insertTemplate(after, body, then) {
     const at = lineAfter(after);
     const out = padded(at, body);
-    core.spliceLines(at, 0, out);
+    const moved = put(at, 0, out);
     core.render();
-    const made = blockAtLine(at + (out[0] === '' && body[0] !== '' ? 1 : 0));
+    const made = blockAtLine(moved(at + (out[0] === '' && body[0] !== '' ? 1 : 0)));
     if (made && then) then(topBlock(made) || made, made);
   }
 
@@ -283,14 +298,14 @@
     const r = span(block); if (!r) return;
     let s = r.s; let n = r.e - r.s;
     if (blank(s - 1) && blank(r.e)) { if (r.e < lines().length) n++; else if (s > fm()) { s--; n++; } }
-    core.spliceLines(s, n, []);
+    put(s, n, []);
     core.render();
     core.flash(T('Bloque eliminado. Ctrl+Z lo deshace'));
   }
 
   function duplicate(block) {
     const r = span(block); if (!r) return;
-    core.spliceLines(r.e, 0, [''].concat(lines().slice(r.s, r.e), blank(r.e) ? [] : ['']));
+    put(r.e, 0, [''].concat(lines().slice(r.s, r.e), blank(r.e) ? [] : ['']));
     core.render();
   }
 
@@ -300,9 +315,9 @@
     const a = span(dir < 0 ? other : block); const b = span(dir < 0 ? block : other);
     if (!a || !b) return;
     const first = lines().slice(a.s, a.e); const gap = lines().slice(a.e, b.s); const second = lines().slice(b.s, b.e);
-    core.spliceLines(a.s, b.e - a.s, second.concat(gap, first));
+    const shifted = put(a.s, b.e - a.s, second.concat(gap, first));
     core.render();
-    const at = dir < 0 ? a.s : a.s + second.length + gap.length;
+    const at = shifted(dir < 0 ? a.s : a.s + second.length + gap.length);
     const moved = blockAtLine(at);
     if (moved) (topBlock(moved) || moved).scrollIntoView({ block: 'nearest' });
   }
@@ -327,6 +342,9 @@
   function openMenu(x, y, block, draft) {
     closeMenu();
     const plain = block && /^(P|H[1-6])$/.test(block.tagName) && span(block);
+    // Lo elegido dentro del bloque es lo que se cita al comentar; sin nada elegido, el bloque.
+    const sel = getSelection();
+    const picked = block && sel.rangeCount && !sel.isCollapsed && block.contains(sel.anchorNode) && block.contains(sel.focusNode) ? sel.toString().trim() : '';
     menu = el('div', { class: 'lmd-menu', role: 'menu' });
     menu.innerHTML =
       '<p class="lmd-menu-label">' + T(block ? 'Insertar debajo' : 'Insertar') + '</p>' +
@@ -339,6 +357,7 @@
           '<button type="button" role="menuitem" data-op="down">' + ICON.download + '<span>' + T('Bajar') + '</span></button>' +
           '<button type="button" role="menuitem" data-op="dup">' + ICON.copy + '<span>' + T('Duplicar') + '</span></button>' +
           '<button type="button" role="menuitem" data-op="del" class="lmd-menu-danger">' + ICON.trash + '<span>' + T('Eliminar') + '</span></button>' +
+          (LMD.comments.mode() ? '<button type="button" role="menuitem" data-op="comment" class="lmd-menu-wide">' + ICON.comment + '<span>' + T('Comentar para la IA') + '</span></button>' : '') +
         '</div>' : '');
     document.body.appendChild(menu);
     const w = menu.offsetWidth; const h = menu.offsetHeight;
@@ -352,6 +371,7 @@
       else if (b.dataset.conv) convert(block, b.dataset.conv);
       else if (b.dataset.op === 'del') removeBlock(block);
       else if (b.dataset.op === 'dup') duplicate(block);
+      else if (b.dataset.op === 'comment') LMD.comments.compose(block, picked);
       else move(block, b.dataset.op === 'up' ? -1 : 1);
     });
   }
@@ -379,6 +399,7 @@
       if (head) items.push(['anchor', ICON.link, 'Copiar el enlace a esta sección']);
       if (can) items.push(['insert', ICON.plus, 'Insertar debajo']);
     }
+    if (block && lines_ && LMD.comments.mode()) items.push(['comment', ICON.comment, 'Comentar para la IA']);
     if (!items.length) return false;
     menu = el('div', { class: 'lmd-menu lmd-menu-read', role: 'menu' });
     menu.innerHTML = '<div class="lmd-menu-list">' + items.map((i) => '<button type="button" role="menuitem" data-read="' + i[0] + '">' + i[1] + '<span>' + T(i[2]) + '</span></button>').join('') + '</div>';
@@ -396,6 +417,7 @@
       else if (act === 'block') core.copy(lines().slice(lines_.s, lines_.e).join('\n'));
       else if (act === 'anchor') core.copy(core.sectionLink(head.gh));
       else if (act === 'edit') core.editAt(at);
+      else if (act === 'comment') LMD.comments.compose(block, picked);
       else {
         // Pasa a edición y abre, sobre ese mismo bloque, el menú de insertar de siempre.
         const i = block ? Array.prototype.indexOf.call(article.children, block) : -1;

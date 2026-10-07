@@ -128,6 +128,15 @@ try {
   console.log('Ajustes, plan gratis');
   await openSettings();
   check('siete pestañas en orden', (await app.evaluate(() => [...document.querySelectorAll('[data-ptab]')].map((b) => b.dataset.ptab + ':' + b.textContent.trim()).join('|'))) === 'look:Apariencia|read:Lectura y edición|plug:Plugins|cloud:Nube|ai:IA|plan:Plan|adv:Avanzado');
+  // Pie de la barra: comentarios, apoyar el proyecto y la versión, que tiene que ser la del manifiesto.
+  const foot = await app.evaluate(() => { const nav = document.querySelector('.lmd-ptabs'); const a = nav.querySelector('a.lmd-ptabs-link'); const v = nav.querySelector('.lmd-ptabs-ver'); const box = (n) => n.getBoundingClientRect();
+    return { last: [...nav.children].slice(-3).map((k) => k.textContent.trim()), href: a.href, target: a.target, rel: a.rel, ver: v.textContent, lmd: LMD.VERSION, sponsor: LMD.SPONSOR_URL,
+      stacked: box(a).top >= box(nav.querySelector('[data-act=feedback]')).bottom - 1 && box(v).top >= box(a).bottom - 1 && box(v).bottom <= box(nav).bottom }; });
+  const manifestVersion = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8')).version;
+  const constVersion = (/const VERSION = '([^']+)'/.exec(fs.readFileSync(path.join(root, 'src', 'defaults.js'), 'utf8')) || [])[1];
+  check('LMD.VERSION es el mismo número que manifest.json', /^\d+\.\d+\.\d+$/.test(manifestVersion) && constVersion === manifestVersion && foot.lmd === manifestVersion, [manifestVersion, constVersion, foot.lmd]);
+  check('al pie de las pestañas: enviar comentarios, apoyar el proyecto y la versión', JSON.stringify(foot.last) === JSON.stringify(['Enviar comentarios', 'Apoyar el proyecto', 'SharpMD ' + manifestVersion]) && foot.stacked, foot);
+  check('apoyar el proyecto abre el enlace en una pestaña nueva', foot.href.replace(/\/$/, '') === foot.sponsor.replace(/\/$/, '') && foot.target === '_blank' && /noopener/.test(foot.rel), foot);
   let over = await overflow();
   check('ninguna pestaña necesita scroll a 800 px de alto (plan gratis)', over.length === 0, over);
   await tab('cloud');

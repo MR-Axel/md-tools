@@ -592,6 +592,19 @@
       "Falta un permiso para abrir archivos locales.": "A permission is missing to open local files.",
       "En los detalles de la extensión, activá \"Permitir acceso a URL de archivo\".": "In the extension details, turn on \"Allow access to file URLs\".",
       "Abrir los detalles": "Open details",
+      "Comentar para la IA": "Comment for the AI", "Comentarios para la IA": "Comments for the AI", "Comentario para la IA": "Comment for the AI",
+      "{n} comentarios para la IA": "{n} comments for the AI", "Qué querés que cambie": "What you want changed",
+      "Escribí qué querés que cambie.": "Write what you want changed.",
+      "La nota no se pudo guardar. El comentario no se envió.": "The note could not be saved. The comment was not sent.",
+      "Hay demasiados comentarios abiertos. Borrá alguno o esperá a que la IA los resuelva.": "Too many open comments. Delete some or wait for the AI to resolve them.",
+      "Los comentarios para la IA son parte del plan pago.": "Comments for the AI are part of the paid plan.",
+      "La IA conectada los lee cuando le pedís que revise los comentarios.": "The connected AI reads them when you ask it to review the comments.",
+      "Todavía no hay comentarios en esta nota.": "No comments on this note yet.",
+      "Abiertos": "Open", "Resueltos": "Resolved", "Respuesta de la IA": "Reply from the AI", "Resuelto el {a}": "Resolved {a}",
+      "Comentario enviado": "Comment sent", "Comentario borrado": "Comment deleted", "Borrar": "Delete", "Ver todos": "See all",
+      "La IA resolvió un comentario": "The AI resolved a comment", "La IA resolvió {n} comentarios": "The AI resolved {n} comments",
+      "Ir a esa parte de la nota": "Go to that part of the note", "Ese texto ya no está en la nota": "That text is no longer in the note",
+      "Todas las notas": "All notes", "Carpeta {a}": "Folder {a}",
   };
   let current = 'es';
   function setLang(pref) {
@@ -617,6 +630,8 @@
   // Dirección pública de la app web: es la que llevan los enlaces para compartir.
   const WEB_APP_URL = 'https://sharpmd.app/src/app.html';
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
+  // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
+  const VERSION = '2.37.0';
 
-  root.LMD = { PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
+  root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
 })(typeof self !== 'undefined' ? self : this);
