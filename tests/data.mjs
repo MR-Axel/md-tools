@@ -1,5 +1,6 @@
 // Tareas que se tachan, cuentas en tablas y tableros.
 import { chromium } from 'playwright-core';
+import { autoDialogs } from './dialogs.mjs';
 import fs from 'fs'; import os from 'os'; import path from 'path'; import { fileURLToPath } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'mdtools-'));
@@ -7,7 +8,7 @@ const ctx = await chromium.launchPersistentContext(profile, { headless: false, e
   args: [`--disable-extensions-except=${root}`, `--load-extension=${root}`, '--headless=new', '--disable-features=DisableLoadExtensionCommandLineSwitch', '--lang=es-AR'] });
 const sw = ctx.serviceWorkers()[0] || await ctx.waitForEvent('serviceworker'); const id = new URL(sw.url()).host;
 const app = await ctx.newPage(); const errors = []; app.on('pageerror', (e) => errors.push(e.message));
-await app.addInitScript(() => { window.confirm = () => true; });
+await app.addInitScript(autoDialogs);
 await app.goto(`chrome-extension://${id}/src/app.html`); await app.waitForSelector('.lmd-home');
 await app.evaluate(async () => {
   const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('datos', { create: true });

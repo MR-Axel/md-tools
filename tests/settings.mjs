@@ -2,6 +2,7 @@
 // Todo contra un servidor local. sharpmd.app (la página de pago) se sirve desde esta carpeta y Paddle es un doble:
 // nada sale a la red, y si algo intentara llegar al servidor de producción la prueba lo cuenta como falla.
 import { chromium } from 'playwright-core';
+import { autoDialogs } from './dialogs.mjs';
 import { spawn } from 'child_process';
 import fs from 'fs'; import os from 'os'; import path from 'path'; import { fileURLToPath, pathToFileURL } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -29,7 +30,7 @@ await ctx.route('https://cdn.paddle.com/**', (r) => r.fulfill({ status: 200, con
 await ctx.route((url) => /(^|\.)(sync\.sharpmd\.app|evil\.example|ejemplo\.test)$/.test(url.hostname), (r) => { outside.push(r.request().url()); return r.abort(); });
 
 const app = await ctx.newPage(); const errors = []; app.on('pageerror', (e) => errors.push(e.message));
-await app.addInitScript(() => { window.confirm = () => true; });
+await app.addInitScript(autoDialogs);
 const sent = []; app.on('request', (r) => { if (r.url().startsWith(base)) sent.push(r.method() + ' ' + new URL(r.url()).pathname); });
 const home = `chrome-extension://${id}/src/app.html`;
 const mail = 'maria.fernandez.lopez.de.la.torre@estudio-ejemplo.com';

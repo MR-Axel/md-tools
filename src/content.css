@@ -966,3 +966,7 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 @media (max-width: 720px) { .lmd-tpl-body { grid-template-columns: 1fr; grid-template-rows: 190px minmax(0, 1fr); } }
 .lmd-tpl-list, .lmd-tpl-prev { scrollbar-width: thin; }
 .lmd-tpl-side .lmd-lk-q:focus-visible { outline: none; }
+.lmd-nodoc .lmd-sync { display: none !important; }
+.lmd-zone .lmd-pane { scrollbar-width: thin; }
+.lmd-home-card { width: min(690px, 100%); }
+.lmd-home-cloud { max-width: 520px; margin-left: auto; margin-right: auto; }

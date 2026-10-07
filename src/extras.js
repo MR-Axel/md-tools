@@ -39,11 +39,17 @@
   // Renombrar y eliminar son de quien creó la nota: lo compartido se puede leer o editar, no mover.
   const notMine = (path) => { if (!LMD.cloud.split(path).owner) return false; core.flash(T('Solo quien creó la nota puede hacer eso.'), 'warn'); return true; };
 
+  // Los nombres se piden en un diálogo propio, que avisa ahí mismo si el nombre no sirve.
+  const BAD_NAME = 'Ese nombre tiene caracteres que no se pueden usar';
+  const badName = (v) => (/[\\/:*?"<>|]/.test(v) || /^\.\.?$/.test(v) ? T(BAD_NAME) : '');
+  const badPath = (v) => (cloudName(v) ? '' : T(BAD_NAME));
+  const askName = (title, value, validate, ok, label) => LMD.dialog.prompt({ title: T(title), value, validate, ok: T(ok), label: label ? T(label) : '', stem: true });
+  const askDelete = (name) => LMD.dialog.confirm({ title: T('¿Eliminar "{a}"?', { a: name }), text: T('No se puede deshacer.'), ok: T('Eliminar'), danger: true });
+
   async function cloudNew(dirUrl, folder) {
-    const typed = window.prompt(T(folder ? 'Nombre de la carpeta nueva' : 'Nombre del archivo nuevo'), folder ? T('carpeta') : T('nota') + '.md');
-    if (!typed || !typed.trim()) return;
+    const typed = await askName(folder ? 'Nombre de la carpeta nueva' : 'Nombre del archivo nuevo', folder ? T('carpeta') : T('nota') + '.md', badPath, 'Crear');
+    if (!typed) return;
     let name = cloudName(typed);
-    if (!name) { core.flash(T('Ese nombre tiene caracteres que no se pueden usar'), 'error'); return; }
     // Una carpeta existe mientras tenga algo adentro: nace con su primera nota.
     if (folder) name += '/' + T('nota') + '.md'; else if (!/\.[A-Za-z0-9]+$/.test(name)) name += '.md';
     const dir = core.pathOf(dirUrl); const path = (dir ? dir + '/' : '') + name; const s = LMD.cloud.split(path);
@@ -61,7 +67,7 @@
   async function cloudRename(url, isDir, given) {
     const old = core.pathOf(url);
     if (notMine(old)) return;
-    const typed = given != null ? old.slice(0, old.lastIndexOf('/') + 1) + given : window.prompt(T('Nombre nuevo. Con "/" se mueve a una carpeta'), old);
+    const typed = given != null ? old.slice(0, old.lastIndexOf('/') + 1) + given : await askName('Renombrar', old, badPath, 'Renombrar', 'Con "/" se mueve a una carpeta');
     if (!typed || !typed.trim()) return;
     let to = cloudName(typed);
     if (!to) { core.flash(T('Ese nombre tiene caracteres que no se pueden usar'), 'error'); return; }
@@ -87,7 +93,7 @@
   async function cloudRemove(url) {
     const path = core.pathOf(url);
     if (notMine(path)) return;
-    if (!window.confirm(T('¿Eliminar "{a}"? No se puede deshacer.', { a: path }))) return;
+    if (!(await askDelete(path))) return;
     try {
       await LMD.cloud.remove(path);
       if (url === core.HERE) closeGone();
@@ -98,9 +104,8 @@
   // Carpeta nueva: en el disco se crea vacía; en la nube nace con su primera nota.
   async function newFolder(dirUrl) {
     if (inCloud(dirUrl)) return cloudNew(dirUrl, true);
-    const name = (window.prompt(T('Nombre de la carpeta nueva'), T('carpeta')) || '').trim();
+    const name = await askName('Nombre de la carpeta nueva', T('carpeta'), badName, 'Crear');
     if (!name) return;
-    if (/[\\/:*?"<>|]/.test(name) || /^\.\.?$/.test(name)) { core.flash(T('Ese nombre tiene caracteres que no se pueden usar'), 'error'); return; }
     try {
       const dir = await core.dirHandle(dirUrl);
       if (await exists(dir, name)) { core.flash(T('Ya hay una carpeta con ese nombre'), 'error'); return; }
@@ -142,9 +147,8 @@
     if (inLocal(dirUrl)) return core.newNote(Object.assign({ target: 'local' }, given));
     if (given) return newFrom(dirUrl, given);
     if (inCloud(dirUrl)) return cloudNew(dirUrl, false);
-    let name = (window.prompt(T('Nombre del archivo nuevo'), T('nota') + '.md') || '').trim();
+    let name = await askName('Nombre del archivo nuevo', T('nota') + '.md', badName, 'Crear');
     if (!name) return;
-    if (/[\\/:*?"<>|]/.test(name)) { core.flash(T('Ese nombre tiene caracteres que no se pueden usar'), 'error'); return; }
     if (!/\.[A-Za-z0-9]+$/.test(name)) name += '.md';
     try {
       const dir = await core.dirHandle(dirUrl);
@@ -173,7 +177,7 @@
   async function rename(url, isDir, typed) {
     if (inCloud(url)) return cloudRename(url, isDir, typed);
     const old = nameOf(url);
-    let name = (typed != null ? typed : window.prompt(T('Nombre nuevo'), old) || '').trim();
+    let name = (typed != null ? typed : await askName('Renombrar', old, badName, 'Renombrar') || '').trim();
     if (!name || name === old) return;
     if (/[\\/:*?"<>|]/.test(name)) { core.flash(T('Ese nombre tiene caracteres que no se pueden usar'), 'error'); return; }
     if (!/\.[A-Za-z0-9]+$/.test(name)) name += (/\.[^.]+$/.exec(old) || ['.md'])[0];
@@ -213,7 +217,7 @@
   async function remove(url) {
     if (inCloud(url)) return cloudRemove(url);
     const name = nameOf(url);
-    if (!window.confirm(T('¿Eliminar "{a}"? No se puede deshacer.', { a: name }))) return;
+    if (!(await askDelete(name))) return;
     try {
       if (inLocal(url)) await LMD.store.noteDelete(name);
       else await (await core.dirHandle(parentOf(url))).removeEntry(name);

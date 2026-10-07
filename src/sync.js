@@ -42,7 +42,7 @@
   const openNote = (path, opt) => (core.APP ? core.open(core.urlOf(path), opt) : core.openApp(cloudHref(path) + (opt && opt.edit ? '&edit=1' : '')));
 
   async function upload() {
-    if (!window.confirm(T('¿Subir "{a}" a la nube? Queda una copia sincronizada; el archivo de acá no se toca.', { a: core.docName }))) return;
+    if (!(await LMD.dialog.confirm({ title: T('¿Subir "{a}" a la nube?', { a: core.docName }), text: T('Queda una copia sincronizada; el archivo de acá no se toca.'), ok: T('Subir a la nube') }))) return;
     try {
       const taken = new Set((await LMD.cloud.list(true)).map((n) => n.path));
       const dot = core.docName.lastIndexOf('.'); const stem = dot > 0 ? core.docName.slice(0, dot) : core.docName; const ext = dot > 0 ? core.docName.slice(dot) : '.md';
@@ -171,7 +171,7 @@
       const rm = e.target.closest('[data-rm]'); const b = e.target.closest('[data-c]');
       const say = (t) => { const m = box.querySelector('.lmd-acct-msg'); if (m) { m.hidden = false; m.textContent = t; } };
       try {
-        if (rm) { if (window.confirm(T('¿Revocar este token? La IA que lo usa deja de entrar.'))) { await LMD.cloud.revoke(rm.dataset.rm); await draw(); } }
+        if (rm) { if (await LMD.dialog.confirm({ title: T('¿Revocar este token?'), text: T('La IA que lo usa deja de entrar.'), ok: T('Revocar'), danger: true })) { await LMD.cloud.revoke(rm.dataset.rm); await draw(); } }
         else if (!b) return;
         else if (b.dataset.c === 'login') goLogin(host);
         else if (b.dataset.c === 'plans') host.tab('plan');

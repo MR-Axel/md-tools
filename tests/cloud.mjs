@@ -2,6 +2,7 @@
 // el árbol de la carpeta Nube (crear, renombrar, mover, eliminar, límite) y el trabajo sin conexión.
 // Todo contra un servidor local: la nube de verdad queda apagada con cloudUrl 'off' antes de apuntar acá.
 import { chromium } from 'playwright-core';
+import { autoDialogs } from './dialogs.mjs';
 import { spawn } from 'child_process';
 import fs from 'fs'; import os from 'os'; import path from 'path'; import { fileURLToPath } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -23,7 +24,7 @@ const ctx = await chromium.launchPersistentContext(profile, { headless: false, e
   args: [`--disable-extensions-except=${root}`, `--load-extension=${root}`, '--headless=new', '--disable-features=DisableLoadExtensionCommandLineSwitch', '--lang=es-AR'] });
 const sw = ctx.serviceWorkers()[0] || await ctx.waitForEvent('serviceworker'); const id = new URL(sw.url()).host;
 const app = await ctx.newPage(); const errors = []; app.on('pageerror', (e) => errors.push(e.message));
-await app.addInitScript(() => { window.confirm = () => true; window.prompt = () => window.__answer || null; });
+await app.addInitScript(autoDialogs);
 const home = `chrome-extension://${id}/src/app.html`;
 const o = {};
 const mcp = (token, name, args) => fetch(base + '/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) }).then((r) => r.json());
@@ -83,8 +84,12 @@ try {
   o.enlace = /app\.html\?f=pub%2F/.test(shareUrl);
   await app.click('[data-sh=close]');
   const visitor = await ctx.newPage();
-  await visitor.addInitScript(() => { let n = 0; window.prompt = () => (n++ ? 'manzana-42' : 'equivocada'); });
-  await visitor.goto(home + '?' + shareUrl.split('?')[1]); await visitor.waitForSelector('.markdown-body h1');
+  // La contraseña se pide en un diálogo propio: una equivocada se avisa ahí mismo y deja corregirla.
+  await visitor.goto(home + '?' + shareUrl.split('?')[1]); await visitor.waitForSelector('.lmd-dlg input[type=password]');
+  o.pideClave = [await visitor.textContent('.lmd-dlg h3'), await visitor.evaluate(() => document.activeElement.type)];
+  await visitor.keyboard.type('equivocada'); await visitor.keyboard.press('Enter'); await visitor.waitForSelector('.lmd-dlg-err:not([hidden])');
+  o.pideClave.push(await visitor.textContent('.lmd-dlg-err'), await visitor.locator('.markdown-body h1').count());
+  await visitor.fill('.lmd-dlg input', 'manzana-42'); await visitor.keyboard.press('Enter'); await visitor.waitForSelector('.markdown-body h1');
   o.publico = [await visitor.textContent('.markdown-body h1'), await visitor.title(), await visitor.evaluate(() => document.documentElement.classList.contains('lmd-readonly'))];
   await visitor.click('[data-act=mode-edit]'); await visitor.waitForTimeout(300);
   o.publicoNoEdita = await visitor.evaluate(() => !document.documentElement.classList.contains('lmd-editing'));
@@ -274,6 +279,7 @@ try {
   o.sinCopias = await app.evaluate((who) => LMD.store.cloudAll(who).then((all) => all.length), mail);
   await app.goto(noteUrl.replace('&edit=1', '')); await app.waitForSelector('.lmd-home-msg:not([hidden])');
   o.sinSesion = await app.textContent('.lmd-home-msg');
+  o.nativos = await app.evaluate(() => window.__native);
 } catch (e) { o.excepcion = String(e && e.stack || e).slice(0, 600); }
 
 const J = (v) => JSON.stringify(v);
@@ -289,6 +295,7 @@ const checks = [
   ['el historial figura bloqueado en el plan gratis', o.historialBloqueado === true],
   ['compartir con otra cuenta la deja en la lista', /beto@ejemplo\.test/.test(o.invitado || ''), o.invitado],
   ['crea un enlace público para la app web', o.enlace === true],
+  ['la contraseña del enlace se pide en un diálogo propio, que avisa si no coincide', J(o.pideClave) === J(['Nota protegida', 'password', 'Esa contraseña no coincide.', 0]), o.pideClave],
   ['el enlace con contraseña abre de solo lectura', o.publico && /Suelta/.test(o.publico[0]) && o.publico[1] === 'suelta.md' && o.publico[2] === true && o.publicoNoEdita === true, o.publico],
   ['aparece en el explorador como nota de la nube', o.enInicio && /^nota-.*\.md$/.test(o.enInicio[0]) && o.enInicio[1] === 'En la nube', o.enInicio],
   ['el panel para conectar una IA da URL, token y comando', o.campos && o.campos[0] === base + '/mcp' && o.campos[1] === 'mdt_' && o.campos[2].startsWith('claude mcp add --transport http sharpmd'), o.campos],
@@ -321,7 +328,7 @@ const checks = [
   ['salir saca las notas de la nube del explorador y deja la invitación a entrar', o.salio === true],
   ['salir borra las copias locales de la cuenta', o.sinCopias === 0, o.sinCopias],
   ['sin sesión no se abre una nota de la nube', /Entrá a tu cuenta/.test(o.sinSesion || ''), o.sinSesion],
-  ['sin errores', errors.length === 0 && !o.excepcion, [errors, o.excepcion]],
+  ['sin errores, y sin cuadros nativos del navegador', errors.length === 0 && !o.excepcion && J(o.nativos) === '[]', [errors, o.excepcion, o.nativos]],
 ];
 console.log('Nube y MCP');
 checks.forEach(([name, ok, detail]) => console.log((ok ? '  ok   ' : '  FALLA ') + name + (ok || detail === undefined ? '' : '  -> ' + J(detail))));

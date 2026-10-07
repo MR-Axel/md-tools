@@ -2339,7 +2339,7 @@
         if (!weak) weak = found;
       } catch (e) { /* no está a esa profundidad */ }
     }
-    if (weak && window.confirm(T('En esa carpeta hay un archivo con el mismo nombre, pero su contenido no coincide con el que tenés abierto. ¿Guardar igual sobre ese archivo?'))) return weak;
+    if (weak && await LMD.dialog.confirm({ title: T('El contenido no coincide'), text: T('En esa carpeta hay un archivo con el mismo nombre, pero su contenido no coincide con el que tenés abierto.'), ok: T('Guardar sobre ese archivo') })) return weak;
     return null;
   }
 
@@ -2376,7 +2376,7 @@
             types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.mkd', '.mdown'] } }],
           });
           const handle = picked[0];
-          if (handle.name !== name && !window.confirm(T('Elegiste "{a}" y el documento abierto es "{b}". ¿Guardar igual sobre el archivo elegido?', { a: handle.name, b: name }))) return;
+          if (handle.name !== name && !(await LMD.dialog.confirm({ title: T('Elegiste otro archivo'), text: T('Elegiste "{a}" y el documento abierto es "{b}".', { a: handle.name, b: name }), ok: T('Guardar sobre el archivo elegido') }))) return;
           await handlesPut({ key: hereUrl(), kind: 'file', handle });
           return close(handle);
         } catch (err) {
@@ -2517,19 +2517,18 @@
     if (id === 'pub') {
       // Enlace público de solo lectura; si tiene contraseña, se pide.
       await LMD.cloud.ready();
-      const token = vParts(url).join('/'); let password = '';
-      for (let tries = 0; tries < 6; tries++) {
-        try {
-          const n = await LMD.cloud.publicNote(token, password);
-          return { root: { id, kind: 'pub', name: T('Compartido'), title: n.path.split('/').pop(), text: n.text }, raw: n.text, disk: n.text, readOnly: true };
-        } catch (e) {
-          if (e.code === 'need_password' || e.code === 'bad_password') {
-            password = window.prompt(T(e.code === 'bad_password' ? 'Esa contraseña no coincide. Probá de nuevo:' : 'Esta nota está protegida. Contraseña:')) || '';
-            if (!password) break;
-          } else return fail(T(e.code === 'locked' ? 'Demasiados intentos. Probá de nuevo en unos minutos.' : 'Ese enlace ya no existe.'));
-        }
+      const token = vParts(url).join('/');
+      const why = (e) => T(e.code === 'locked' ? 'Demasiados intentos. Probá de nuevo en unos minutos.' : e.code === 'offline' ? 'No hay conexión con el servidor.' : 'Ese enlace ya no existe.');
+      let n = null; let stop = '';
+      try { n = await LMD.cloud.publicNote(token, ''); }
+      catch (e) {
+        if (e.code !== 'need_password' && e.code !== 'bad_password') return fail(why(e));
+        // La contraseña se prueba desde el diálogo: si no coincide, lo dice ahí y deja corregirla.
+        const typed = await LMD.dialog.prompt({ title: T('Nota protegida'), label: T('Contraseña'), password: true, ok: T('Abrir'), empty: T('Escribí la contraseña.'),
+          validate: async (v) => { try { n = await LMD.cloud.publicNote(token, v); return ''; } catch (err) { if (err.code === 'bad_password') return T('Esa contraseña no coincide.'); stop = why(err); return ''; } } });
+        if (typed == null || !n) return fail(stop);
       }
-      return fail('');
+      return { root: { id, kind: 'pub', name: T('Compartido'), title: n.path.split('/').pop(), text: n.text }, raw: n.text, disk: n.text, readOnly: true };
     }
     if (id === 'local') {
       // Nota guardada en el navegador.

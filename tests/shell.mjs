@@ -2,6 +2,7 @@
 // atrás y adelante, y quedarse en la app al eliminar la nota abierta. Y la barra lateral: el índice arriba y el
 // explorador abajo, con sus raíces, lo reciente, la búsqueda en todo y el árbol que arranca en la raíz del repositorio.
 import { chromium } from 'playwright-core';
+import { autoDialogs } from './dialogs.mjs';
 import fs from 'fs'; import os from 'os'; import path from 'path'; import { fileURLToPath } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'mdtools-'));
@@ -10,7 +11,7 @@ const ctx = await chromium.launchPersistentContext(profile, { headless: false, e
 const sw = ctx.serviceWorkers()[0] || await ctx.waitForEvent('serviceworker'); const id = new URL(sw.url()).host;
 const home = `chrome-extension://${id}/src/app.html`;
 const app = await ctx.newPage(); const errors = []; app.on('pageerror', (e) => errors.push(e.message));
-await app.addInitScript(() => { window.confirm = () => true; });
+await app.addInitScript(autoDialogs);
 const results = [];
 const check = (name, ok, detail) => { results.push({ name, ok: !!ok }); console.log((ok ? '  ok   ' : '  FALLA ') + name + (ok || detail === undefined ? '' : '  -> ' + JSON.stringify(detail))); };
 const J = (v) => JSON.stringify(v);
@@ -160,8 +161,7 @@ try {
   check('el "+" del explorador ofrece nota en blanco, desde una plantilla y carpeta', J(addMenu) === J(['new:Nota en blanco', 'tpl:Desde una plantilla…', 'dir:Carpeta']), addMenu);
   check('la nota en blanco nace donde van las notas nuevas y queda abierta en edición, sin recargar', made.mark === 'misma página' && /f=local%2Fnota-/.test(made.url) && made.active === 1 && made.editing, made);
   await app.click('[data-act=mode-read]'); await app.waitForTimeout(200);
-  await app.addInitScript(() => { window.prompt = () => window.__answer; });
-  await app.evaluate(() => { window.prompt = () => window.__answer; window.__answer = 'apuntes'; });
+  await app.evaluate(() => { window.__answer = 'apuntes'; });
   await app.click('.lmd-xroot[data-root=disk] .lmd-tree-new'); await app.click('.lmd-menu [data-f=dir]');
   await app.waitForSelector('.lmd-xroot[data-root=disk] .lmd-node-dir:has-text("apuntes")');
   await app.evaluate(() => { window.__answer = 'adentro'; });
@@ -276,6 +276,42 @@ try {
   await app.click('[data-act=mode-read]'); await app.waitForTimeout(200);
   await app.click('.lmd-tree-add'); await app.click('.lmd-menu [data-f=tpl]'); await app.waitForSelector('.lmd-tpl-card'); await app.keyboard.press('Escape');
   check('Escape cierra el selector sin crear nada', (await app.locator('.lmd-tpl-card').count()) === 0 && (await app.title()) === meet.file + '.md');
+
+  console.log('Diálogos propios');
+  const manual = (on) => app.evaluate((v) => { window.__manual = v; }, on);
+  const inWork = () => app.evaluate(async () => { const d = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('trabajo')).getDirectoryHandle('repo'); const out = []; for await (const [n] of d.entries()) out.push(n); return out.sort(); });
+  await app.goto(work + encodeURIComponent('repo/README.md')); await app.waitForFunction(() => document.title === 'README.md'); await app.waitForSelector('.lmd-xroot[data-root=disk] .lmd-node.lmd-active');
+  await manual(true); await app.evaluate(() => { window.__mark = 'misma página'; });
+  const readme = app.locator('.lmd-xroot[data-root=disk] .lmd-node.lmd-active');
+  await readme.click({ button: 'right' }); await app.click('.lmd-menu [data-f=ren]'); await app.waitForSelector('.lmd-dlg input');
+  const dlg = await app.evaluate(() => { const i = document.querySelector('.lmd-dlg input'); return { title: document.querySelector('.lmd-dlg h3').textContent, value: i.value, picked: i.value.slice(i.selectionStart, i.selectionEnd), focus: document.activeElement === i, buttons: [...document.querySelectorAll('.lmd-dlg [data-dlg]')].map((b) => b.textContent), modal: document.querySelector('.lmd-dlg-card').getAttribute('aria-modal') }; });
+  check('renombrar abre un diálogo propio con el nombre cargado y lo de antes de la extensión seleccionado', J(dlg) === J({ title: 'Renombrar', value: 'README.md', picked: 'README', focus: true, buttons: ['Cancelar', 'Renombrar'], modal: 'true' }), dlg);
+  await app.keyboard.type('mal:nombre'); await app.keyboard.press('Enter'); await app.waitForSelector('.lmd-dlg-err:not([hidden])');
+  const bad = await app.evaluate(() => ({ err: document.querySelector('.lmd-dlg-err').textContent, invalid: document.querySelector('.lmd-dlg input').getAttribute('aria-invalid'), open: !!document.querySelector('.lmd-dlg'), value: document.querySelector('.lmd-dlg input').value }));
+  check('un nombre que no sirve se avisa en el diálogo, sin cerrarlo ni borrar lo escrito', /caracteres que no se pueden usar/.test(bad.err) && bad.invalid === 'true' && bad.open && bad.value === 'mal:nombre.md', bad);
+  await app.fill('.lmd-dlg input', ''); await app.keyboard.press('Enter');
+  check('vacío también avisa', /Escribí un nombre/.test(await app.textContent('.lmd-dlg-err')) && (await inWork()).includes('README.md'));
+  await app.fill('.lmd-dlg input', 'otro'); await app.keyboard.press('Escape'); await app.waitForSelector('.lmd-dlg', { state: 'detached' });
+  check('Escape cancela: no cambia nada', (await inWork()).includes('README.md') && (await app.title()) === 'README.md');
+  await readme.click({ button: 'right' }); await app.click('.lmd-menu [data-f=ren]'); await app.waitForSelector('.lmd-dlg input');
+  await app.keyboard.type('LEEME'); await app.keyboard.press('Enter'); await app.waitForFunction(() => document.title === 'LEEME.md');
+  check('Enter confirma: el archivo abierto queda con su nombre nuevo', J(await inWork()) === J(['.git', 'LEEME.md', 'docs']) && (await mark()) === 'misma página', await inWork());
+  await app.locator('.lmd-xroot[data-root=disk] .lmd-node.lmd-active').click({ button: 'right' }); await app.click('.lmd-menu [data-f=del]'); await app.waitForSelector('.lmd-dlg');
+  const ask = await app.evaluate(() => ({ title: document.querySelector('.lmd-dlg h3').textContent, text: document.querySelector('.lmd-dlg p').textContent, ok: document.querySelector('.lmd-dlg [data-dlg=ok]').textContent, danger: document.querySelector('.lmd-dlg [data-dlg=ok]').classList.contains('lmd-btn-danger'), input: document.querySelectorAll('.lmd-dlg input').length }));
+  check('eliminar pregunta en un diálogo propio, y el botón dice qué pasa', J(ask) === J({ title: '¿Eliminar "LEEME.md"?', text: 'No se puede deshacer.', ok: 'Eliminar', danger: true, input: 0 }), ask);
+  await app.click('.lmd-dlg [data-dlg=no]'); await app.waitForSelector('.lmd-dlg', { state: 'detached' });
+  check('Cancelar deja el archivo', (await inWork()).includes('LEEME.md') && (await app.title()) === 'LEEME.md');
+  await app.locator('.lmd-xroot[data-root=disk] .lmd-node.lmd-active').click({ button: 'right' }); await app.click('.lmd-menu [data-f=del]'); await app.waitForSelector('.lmd-dlg');
+  await app.click('.lmd-dlg [data-dlg=ok]'); await app.waitForSelector('.lmd-home [data-home=new]');
+  check('y confirmar lo elimina, sin salir de la app', !(await inWork()).includes('LEEME.md') && (await mark()) === 'misma página');
+  await manual(false);
+  const natives = [];
+  for (const f of fs.readdirSync(path.join(root, 'src')).filter((n) => n.endsWith('.js'))) {
+    const code = fs.readFileSync(path.join(root, 'src', f), 'utf8');
+    (code.match(/(window\.|[^.\w])(prompt|alert|confirm)\(/g) || []).forEach((m) => { if (f !== 'dialog.js') natives.push(f + ': ' + m.trim()); });
+  }
+  check('en src no queda ningún prompt, alert ni confirm del navegador', natives.length === 0, natives);
+  check('y ninguno se abrió durante la prueba', J(await app.evaluate(() => window.__native)) === '[]');
 
   check('sin errores de JavaScript', errors.length === 0, errors);
 } catch (e) { check('sin excepciones en la prueba', false, String(e && e.stack || e).slice(0, 700)); }
