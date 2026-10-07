@@ -43,7 +43,7 @@ Free and open source. No tracking: files are read in your browser and never uplo
 | **Export** | One standalone HTML file, or PDF through print. |
 | **More than Markdown** | Code and config files open highlighted, CSV as a table, images as images. |
 | **Cloud notes** | Optional. Sign in with a code sent to your email, move a note to the cloud and open it on any device, also without a connection. A deleted cloud note stays in the trash for 30 days. The account can be deleted from Settings. |
-| **Protected folders** | A cloud folder can carry a password. Its notes are encrypted in the browser and the server cannot read them. You unlock it for your AI for as long as you choose. |
+| **Protected folders** | A cloud folder can carry a password. Its notes are encrypted in the browser and the server cannot read them. You unlock it for your AI for as long as you choose. On a team plan the administrator can protect the whole team space the same way, with one password for the team. |
 | **Sharing** | A note or a folder with another account, to read or to edit, or a read-only public link with a password. |
 | **Live sessions** | Open a session on a cloud note and send the link. Guests join from the browser with a name, without an account, and everyone edits at once. |
 | **AI over MCP** | Claude or any MCP client can list, read, write, append to, move and search your cloud notes, and read their history. Each write returns a link that opens the note in the app. A token can be limited to one folder, and only a token created with the sharing permission can share notes or create public links. A comment on a block tells the AI what to change, and Settings has a ready message to paste into your AI. |
@@ -123,7 +123,7 @@ No analytics. Settings, reading positions and browser notes are stored in your b
 
 ## Cloud notes and the sync server
 
-`server/` holds SharpMD Sync: accounts, notes in the cloud and an MCP endpoint so an AI can read and write them. Sign in from the start screen with a code sent to your email. The free plan holds 10 cloud notes; the paid plan (USD 3.99 a month or USD 39 a year) has no limit and adds sharing, the MCP connection, 30 days of version history and the appearance options. The team plan (USD 7.98 a month for 2 people, USD 3 a month for each extra one) gives every member the paid plan and a shared space for the team notes: whoever pays invites by email and manages the seats.
+`server/` holds SharpMD Sync: accounts, notes in the cloud and an MCP endpoint so an AI can read and write them. Sign in from the start screen with a code sent to your email. The free plan holds 10 cloud notes; the paid plan (USD 3.99 a month or USD 39 a year) has no limit and adds sharing, the MCP connection, 30 days of version history and the appearance options. The team plan (USD 7.98 a month for 2 people, USD 3 a month for each extra one) gives every member the paid plan and a shared space for the team notes: whoever pays invites by email and manages the seats. That person can protect the team space with one password: the team notes are then encrypted in each member's browser and the server cannot read them. Members get the password from the administrator, outside the app.
 
 The server is one file with no dependencies, and you can host it yourself: set its address in Settings → Account, or type `off` there to use SharpMD with no cloud at all. See [server/README.md](server/README.md).
 
@@ -159,7 +159,7 @@ src/
   links.js        link picker for sections, other files and web addresses
   comments.js     comments left on a block for the AI
   seal.js         encryption of protected folders (WebCrypto)
-  vault.js        protected folders: password, backup key, unlock for the AI
+  vault.js        protected folders and the protected team space: password, backup key, key rotation, unlock for the AI
   templates.js    note templates, in English and Spanish
   emoji.js        emoji list while typing
   dialog.js       the app's own prompt and confirm dialogs

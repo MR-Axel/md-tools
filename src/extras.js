@@ -352,7 +352,7 @@
   let menu = null;
   const closeMenu = () => { if (menu) { menu.remove(); menu = null; } };
   // El ícono de cada acción de los menús del explorador, por id.
-  const MENU_ICON = { new: 'file', tpl: 'doc', dir: 'folder', ren: 'pencil', del: 'trash', file: 'file', 'v-protect': 'lock', 'v-lock': 'lock', 'v-unlock': 'unlock', 'v-ai': 'spark', 'v-ailock': 'lock', 'v-drop': 'close', 'v-pass': 'pencil', 'v-off': 'unlock', 'v-destroy': 'trash' };
+  const MENU_ICON = { new: 'file', tpl: 'doc', dir: 'folder', ren: 'pencil', del: 'trash', file: 'file', 'v-protect': 'lock', 'v-lock': 'lock', 'v-unlock': 'unlock', 'v-ai': 'spark', 'v-ailock': 'lock', 'v-drop': 'close', 'v-pass': 'pencil', 'v-off': 'unlock', 'v-destroy': 'trash', 'v-backup': 'copy', 'v-rotate': 'lock' };
   // Un menú corto en un punto de la pantalla. items: [id, texto, peligroso, ícono]. onPick recibe el id elegido.
   function showMenu(x, y, items, onPick) {
     closeMenu();
@@ -817,5 +817,5 @@
     article.addEventListener('keyup', (e) => { if (/^Arrow|^Page|^Home$|^End$/.test(e.key)) centerCaret(); });
   }
 
-  LMD.extras = { init, pasteImage, exportHtml, htmlOf, imageDialog, imageMd, fromTemplate, trash };
+  LMD.extras = { init, pasteImage, exportHtml, htmlOf, imageDialog, imageMd, fromTemplate, trash, menu: showMenu };
 })();

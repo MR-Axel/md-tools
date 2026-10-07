@@ -304,7 +304,7 @@ One account pays for a team and manages it. It is the only one that invites, rem
 
 | Call | What it does |
 |---|---|
-| `GET /team` | The same `team` object that `GET /account` carries: `{ enabled, checkout, included, max, mine, invites }`. `mine` is `null` or `{ id, name, role, active, space, seats, used, members, solo }`, plus `pending` and `billing` for the administrator. `invites` are the invitations waiting for this account: `{ id, name, by }` |
+| `GET /team` | The same `team` object that `GET /account` carries: `{ enabled, checkout, included, max, mine, invites }`. `mine` is `null` or `{ id, name, role, active, space, seats, used, members, solo, vault }`, plus `pending` and `billing` for the administrator. `vault` is `null`, or the protection of the team space as `GET /team/vault` returns it. `invites` are the invitations waiting for this account: `{ id, name, by }` |
 | `PUT /team` `{ name }` | Administrator: the name of the team, up to 40 characters |
 | `POST /team/invite` `{ email, lang }` | Administrator: invites that address and mails it, in English or with `lang: "es"` in Spanish. `409 team_full` when members plus pending invitations fill the seats, `409 already_member`, `400 own_email`. Limits: `429 invite_day` (per team and day, `TEAM_INVITES_DAY`) and `429 invite_mail_day` (three a day per address, across all teams). The answer and the email are the same whether or not that address has an account |
 | `DELETE /team/invites/{id}` | Administrator: removes a pending invitation |
@@ -315,7 +315,34 @@ One account pays for a team and manages it. It is the only one that invites, rem
 
 The team space. The notes of a team belong to the team, not to a person: they stay when someone leaves. They are stored under an internal account of the team (its email is `team:...`, which is not an address: nobody can sign in as it or share with it), so they get revisions, history, events and encryption at rest exactly like any other note. `mine.space` is the number of that account, and a member reaches the team notes with `o=`: `GET /notes?o=`, `GET` / `PUT` / `DELETE /notes/{path}?o=`, `GET /events?path=&o=`, `GET /search?q=&o=`, `GET /versions/{path}?o=`, `GET /version/{id}?o=`, and `POST /rename` with `o` in the body. Every member reads, edits, moves and deletes. Anyone else gets `403 no_access`. A member cannot read anything personal of another member.
 
-What the team space does not have in this version: folders protected with a password (text that starts with `vault1:` is refused there with `409 vault_text`), sharing with accounts outside the team, public links, comments for the AI and live sessions. Those routes work on the caller's own notes.
+What the team space does not have in this version: sharing with accounts outside the team, public links, comments for the AI and live sessions. Those routes work on the caller's own notes. A member cannot protect a folder inside the team space: `/vaults` only works on the caller's own notes. The whole space can be protected by its administrator, see below. Until then, text that starts with `vault1:` is refused there with `409 vault_text`.
+
+Protecting the team space. The administrator can protect the whole team space with one password. It is not per folder, and members cannot add passwords of their own, so nobody can lock the rest of the team out. It is a protected folder like the ones above: the same data key, the same wrapping with the password, the same backup key and the same `vault1:` format, stored as one more row of the same table under the internal account of the team. The only difference in the encryption is the associated data of each note, which is `~{space}/{path}` instead of the bare path, so a ciphertext of a team note does not open as a personal note or in another team. Members receive the password from the administrator, outside the app. Anyone who knows it can unwrap the data key in their browser, read and write.
+
+| Call | Who | What it does |
+|---|---|---|
+| `GET /team/vault` | Any member | `{ vault }`: `null`, or `{ id, team, admin, salt, iters, wrapped, check, state, ai, ai_members }`. The administrator also gets `gone` (when a member last left since the password changed, or `0`) and, while a rotation is running, `next` |
+| `POST /team/vault` `{ salt, iters, wrapped, check }` | Administrator | Protects the space. `409 vault_exists`. Deletes the plain-text history and trash of the space |
+| `PUT /team/vault` `{ salt, iters, wrapped }` | Administrator | Changes the password: the same data key, wrapped again. The notes are not touched. Clears `gone` |
+| `POST /team/vault/rotate` `{ salt, iters, wrapped, check }` | Administrator | Starts a key rotation with a new data key, already wrapped with a new password. `state` becomes `rotating` |
+| `POST /team/vault/rotate/done` | Administrator | Ends it: the new key replaces the old one, and the history and trash encrypted with the old key are deleted |
+| `POST /team/vault/open`, `DELETE /team/vault` | Administrator | Remove the protection, as for a folder: `409 vault_not_empty` while encrypted notes remain |
+| `POST /team/vault/destroy` `{ name }` | Administrator | Deletes every note of the space, their history and trash, and the protection, without the key. `name` has to be the exact name of the team, or the administrator's email if the team has no name: `400 bad_confirm` |
+| `PUT /team/vault/ai` `{ members }` | Administrator | Whether members may unlock the space for their AI. Off by default. Turning it off forgets the keys members had unlocked |
+| `DELETE /team/vault/gone` | Administrator | Dismisses the notice that a member left |
+| `POST /team/vault/unlock` `{ key, minutes }`, `POST /team/vault/lock` | Administrator, or a member when `ai_members` is on (`403 ai_not_allowed` otherwise) | Unlock for the caller's own AI, with the same times and limits as a folder |
+
+Every route checks membership and role on the server: `404 no_team` for an account that is not in a team, `403 not_admin` for a member on an administrator route, `401` without a session (an MCP token is not a session). The administrator routes share a limit of 40 changes an hour per team. The server stores the salt, the rounds, the wrapped key and the check value. It never receives the password or the data key, except in `unlock`. With `DATA_KEY`, encryption at rest is applied on top, as for any note.
+
+What the server enforces in a protected space: only text that starts with `vault1:` is accepted, from any member (`409 vault`). `GET /search?o=` returns nothing from it. History and trash hold ciphertext. `POST /rename` with `o` needs `text` for the new path. The names of notes and folders are not encrypted. `GET /notes?o=` adds `v: 1` to the notes that are already encrypted, so the browser of the administrator knows which ones are left after protecting a space that had notes. `GET /events` sends `vault` to the members who have a team note open whenever the protection changes.
+
+MCP on a protected space. `@team/` notes are listed with `protected: true` and `locked: true`, and reading, writing and searching them answers with a message for the AI. `unlock` keeps the encryption key in memory for the account that sent it, not for the team: one member unlocking does not open the space for the tokens of the others. The token has to reach the whole `@team`. `move_note` and `note_history` do not work on a protected space.
+
+Key rotation. While `state` is `rotating`, the browser of the administrator reads each note with the old key and saves it with the new one. Other members cannot save, rename or restore (`423 vault_rotating`), so nothing new is written with the old key, and nobody can unlock for the AI. If it stops halfway it stays in `rotating` and the administrator resumes it with both passwords. The new key has a new backup key.
+
+When a member leaves or is removed, their AI key is forgotten at once, they stop receiving the wrapped key and the notes, and `gone` is set so the app tells the administrator, with two actions. Changing the password stops someone who only knew the password: the server no longer hands out a wrapped key that opens with it. Rotating the key covers someone who kept the data key, or a copy of the old wrapped key: nothing saved from then on opens with it. The honest limit: neither takes back what that person already read, copied or downloaded, and a copy of the old ciphertext taken before the rotation still opens with the old key.
+
+The backup key is the data key written for a person. The server never has it and no route returns it. The app shows it to the administrator only, and only the administrator can use it to set a new password (`PUT /team/vault`). A member who knows the password does hold the data key in their browser, which is what lets them read: the restriction on members is on what they can change, not on a secret they could not derive.
 
 MCP. The token of a member reaches the team notes under the prefix `@team/`: `list_notes` and `list_folders` show them with `team: true`, and `read_note`, `write_note`, `append_note` and `search_notes` work on them. The folder limit of a token is checked on the whole path, prefix included: a token limited to one of the person's own folders does not see the team, and a token limited to `@team` or `@team/some/folder` sees only that. While someone belongs to a team, a personal folder literally named `@team` is hidden from their MCP tools. `move_note` and `note_history` work on team notes; a note cannot be moved between the team space and personal notes. The sharing tools do not work on team notes.
 
@@ -360,6 +387,7 @@ node server.mjs
 node revision.mjs
 node live.mjs
 node team.mjs
+node teamvault.mjs
 node cloud.mjs
 node vault.mjs
 node vaultapp.mjs

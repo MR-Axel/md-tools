@@ -1088,6 +1088,104 @@ async function teamSuite() {
       check('eliminar la cuenta: quien queda sola en su equipo se borra con el equipo y su espacio, sin tocar otros equipos', ownerGone.every((r) => r.status === 200) && rest.join() === '0,0,0,0' && untouched > 0, [ownerGone.map((r) => r.json), rest, untouched]);
     }
 
+    // ---------- El espacio del equipo protegido con contraseña ----------
+    console.log(' El espacio protegido');
+    {
+      const { hkdfSync, randomBytes, createCipheriv } = await import('crypto');
+      const hk = (K, info) => Buffer.from(hkdfSync('sha256', K, Buffer.alloc(0), info, 32));
+      const b = (n) => randomBytes(n).toString('base64');
+      // Una llave de datos y lo que el navegador mandaría: sal, vueltas, llave envuelta (acá, bytes al azar) y comprobación.
+      const mk = () => { const K = randomBytes(32); return { K, key: hk(K, 'sharpmd vault enc v1'), body: { salt: b(16), iters: 600000, wrapped: b(60), check: hk(K, 'sharpmd vault check v1').toString('base64') } }; };
+      const sealFor = (key, aad, text) => { const iv = randomBytes(12); const c = createCipheriv('aes-256-gcm', key, iv); c.setAAD(Buffer.from(aad)); const body = Buffer.concat([c.update(text, 'utf8'), c.final()]); return 'vault1:' + Buffer.concat([iv, body, c.getAuthTag()]).toString('base64'); };
+      const G = await signup(S, 'gala@ejemplo.test'); const H = await signup(S, 'hugo@ejemplo.test'); const I2 = await signup(S, 'ines@ejemplo.test'); const J = await signup(S, 'juan@ejemplo.test');
+      await call('POST', '/admin/team', { email: G.email, seats: 4 }, undefined, { 'x-admin-key': ADMIN });
+      await join(G, H); await join(G, I2);
+      const SP3 = (await acct(G)).team.mine.space; const t3 = (p) => '/notes/' + enc(p) + '?o=' + SP3; const aad3 = (p) => '~' + SP3 + '/' + p;
+      const VSECRET = 'ALCAUCIL-PROTEGIDO-7781'; secrets.push(VSECRET);
+      await call('PUT', t3('caja.md'), { text: 'antes ' + VSECRET }, G.s);
+      const k1 = mk(); secrets.push(k1.K.toString('base64'));
+      const tv = async (who) => (await call('GET', '/team/vault', undefined, who.s));
+      // Lo que solo hace quien administra, pedido por un miembro, por alguien de afuera, por quien administra otro equipo y sin sesión.
+      const adminOnly = (w) => [
+        ['proteger', () => call('POST', '/team/vault', k1.body, w)], ['cambiar la contraseña', () => call('PUT', '/team/vault', { salt: b(16), iters: 600000, wrapped: b(60) }, w)],
+        ['empezar a quitar', () => call('POST', '/team/vault/open', {}, w)], ['quitar', () => call('DELETE', '/team/vault', undefined, w)], ['eliminar', () => call('POST', '/team/vault/destroy', { name: G.email }, w)],
+        ['rotar', () => call('POST', '/team/vault/rotate', mk().body, w)], ['terminar de rotar', () => call('POST', '/team/vault/rotate/done', {}, w)], ['permitir la IA', () => call('PUT', '/team/vault/ai', { members: true }, w)],
+        ['descartar el aviso', () => call('DELETE', '/team/vault/gone', undefined, w)],
+      ];
+      const pre = []; for (const [what, fn] of adminOnly(H.s)) { const r = await fn(); if (r.status !== 403 || r.json.error !== 'not_admin') pre.push(what + ' ' + r.status); }
+      check('espacio protegido: un miembro no lo protege ni toca nada de la protección antes de que exista', pre.length === 0 && (await tv(G)).json.vault === null, pre);
+      const made = await call('POST', '/team/vault', k1.body, G.s);
+      await call('PUT', t3('caja.md'), { text: sealFor(k1.key, aad3('caja.md'), 'adentro ' + VSECRET), rev: 1 }, G.s);
+      const state = async () => { const v = (await tv(G)).json.vault; return v ? [v.state, v.wrapped, v.check, v.ai_members, v.gone].join('|') : 'null'; };
+      const s0 = await state();
+      const holes = [];
+      for (const [who, w, code] of [['miembro', H.s, 403], ['ajena', J.s, 404], ['sin sesión', undefined, 401], ['token de MCP', null, 401]]) {
+        const auth = w === null ? (await call('POST', '/tokens', { name: 'ia' }, G.s)).json.token : w;
+        for (const [what, fn] of adminOnly(auth)) { const r = await fn(); if (r.status !== code) holes.push(who + ': ' + what + ' ' + r.status); }
+      }
+      check('espacio protegido: proteger, cambiar la contraseña, quitar la protección, eliminar, rotar y decidir sobre la IA son de quien administra, con su sesión', made.status === 200 && holes.length === 0 && (await state()) === s0 && (await call('GET', t3('caja.md'), undefined, G.s)).json.text.startsWith('vault1:'), holes);
+      // Quien administra OTRO equipo trabaja sobre el suyo: al de Gala no lo toca.
+      await call('PUT', '/team/vault', { salt: b(16), iters: 600000, wrapped: b(60) }, D.s); await call('POST', '/team/vault/destroy', { name: G.email }, D.s); await call('POST', '/team/vault/open', {}, A.s);
+      check('espacio protegido: quien administra otro equipo no llega a este', (await state()) === s0 && (await call('GET', t3('caja.md'), undefined, G.s)).status === 200);
+      // Por las rutas de las carpetas propias tampoco: la protección del equipo no es de ninguna persona.
+      const vid3 = made.json.vault.id; const side = [];
+      for (const w of [G, H, J]) for (const [m, u, body] of [['PUT', '/vaults/' + vid3, { salt: b(16), iters: 600000, wrapped: b(60) }], ['DELETE', '/vaults/' + vid3], ['POST', '/vaults/' + vid3 + '/open', {}], ['POST', '/vaults/' + vid3 + '/destroy', { folder: '' }], ['POST', '/vaults/' + vid3 + '/unlock', { key: k1.K.toString('base64'), minutes: 0 }], ['POST', '/vaults/' + vid3 + '/lock', {}]]) { const r = await call(m, u, body, w.s); if (r.status !== 404) side.push(w.email + ' ' + m + ' ' + u + ' ' + r.status); }
+      check('espacio protegido: nadie la cambia por las rutas de las carpetas propias, ni quien administra', side.length === 0 && (await state()) === s0 && (await call('GET', '/vaults', undefined, G.s)).json.length === 0, side);
+      // La clave de respaldo es la llave escrita para una persona: no hay ruta que la entregue, y el servidor no la tiene.
+      const fish = []; for (const u of ['/team/vault/backup', '/team/vault/key', '/team/vault/recover', '/team/vault/rotate', '/team/vault/next']) { const r = await call('GET', u, undefined, H.s); if (r.status === 200) fish.push(u); }
+      const seen = JSON.stringify([(await tv(H)).json, await acct(H), (await call('GET', '/team', undefined, H.s)).json]);
+      check('espacio protegido: un miembro no tiene de dónde leer la clave de respaldo, ni usa la suya para poner otra contraseña', fish.length === 0 && !seen.includes(k1.K.toString('base64')) && !seen.includes('"gone"') && !seen.includes('"next"') && (await call('PUT', '/team/vault', { salt: b(16), iters: 600000, wrapped: b(60) }, H.s)).status === 403);
+      const out = []; for (const w of [J, X, D, M]) { const r = await tv(w); if (JSON.stringify(r.json || '').includes(k1.body.wrapped) || (r.status === 200 && r.json.vault && r.json.vault.id === vid3)) out.push(w.email); }
+      check('espacio protegido: quien no es miembro no recibe la llave envuelta', out.length === 0, out);
+      // Texto en claro en un espacio protegido, y cifrado en uno sin proteger.
+      const plainIn = [await call('PUT', t3('caja.md'), { text: 'en claro' }, H.s), await call('PUT', t3('nueva.md'), { text: 'en claro' }, G.s), await call('POST', '/rename', { from: 'caja.md', to: 'otra.md', o: SP3 }, H.s), await call('POST', '/rename', { from: 'caja.md', to: 'otra.md', o: SP3, text: 'en claro' }, H.s)];
+      const junk = [await call('PUT', t3('caja.md'), { text: 'vault1:no-es-base64!' }, H.s), await call('PUT', t3('caja.md'), { text: 'vault1:' }, H.s)];
+      const sealedOut = [await call('PUT', t('secreta.md'), { text: sealFor(k1.key, '~' + SPACE + '/secreta.md', 'x') }, B.s), await call('PUT', '/notes/' + enc('propia.md'), { text: sealFor(k1.key, 'propia.md', 'x') }, H.s)];
+      check('espacio protegido: no entra texto en claro, ni cifrado en un espacio o una carpeta sin proteger', plainIn.every((r) => r.status === 409 && r.json.error === 'vault') && junk.every((r) => r.status === 400) && sealedOut.every((r) => r.status === 409 && r.json.error === 'vault_text') && (await call('GET', t3('nueva.md'), undefined, G.s)).status === 404, [plainIn.map((r) => r.status), junk.map((r) => r.status), sealedOut.map((r) => r.json)]);
+      check('espacio protegido: la búsqueda del servidor y el MCP bloqueado no devuelven nada de adentro', (await call('GET', '/search?q=' + enc(VSECRET) + '&o=' + SP3, undefined, H.s)).json.length === 0 && (await call('GET', '/search?q=ALCAUCIL&o=' + SP3, undefined, G.s)).json.length === 0);
+      // Desbloquear para la IA: sin permiso de quien administra un miembro no puede, ni con la llave correcta.
+      const hTok = (await call('POST', '/tokens', { name: 'ia' }, H.s)).json.token; const gTok = (await call('POST', '/tokens', { name: 'ia' }, G.s)).json.token; secrets.push(hTok, gTok);
+      const key64 = k1.K.toString('base64');
+      const noAi = await call('POST', '/team/vault/unlock', { key: key64, minutes: 0 }, H.s);
+      const outAi = [await call('POST', '/team/vault/unlock', { key: key64, minutes: 0 }, J.s), await call('POST', '/team/vault/unlock', { key: key64, minutes: 0 }, D.s), await call('POST', '/team/vault/unlock', { key: key64, minutes: 0 }, hTok)];
+      const rdH = await tool(S, hTok, 'read_note', { path: '@team/caja.md' }); const wrH = await tool(S, hTok, 'write_note', { path: '@team/caja.md', text: 'pisada desde la IA' });
+      check('espacio protegido: desbloqueo para la IA sin permiso: un miembro no puede aunque tenga la llave, y nadie de afuera', noAi.status === 403 && noAi.json.error === 'ai_not_allowed' && outAi.map((r) => r.status).join() === '404,404,401' && rdH.err && wrH.err && !JSON.stringify([rdH, wrH]).includes(VSECRET) && (await call('GET', t3('caja.md'), undefined, G.s)).json.rev === 2, [noAi.json, outAi.map((r) => [r.status, r.json])]);
+      await call('POST', '/team/vault/unlock', { key: key64, minutes: 0 }, G.s);
+      const rdG = await tool(S, gTok, 'read_note', { path: '@team/caja.md' }); const rdH2 = await tool(S, hTok, 'read_note', { path: '@team/caja.md' });
+      check('espacio protegido: lo que desbloquea quien administra es para su IA, no para la de los demás', !rdG.err && String(rdG.v).includes(VSECRET) && rdH2.err && (await tv(H)).json.vault.ai === null);
+      await call('PUT', '/team/vault/ai', { members: true }, G.s); await call('POST', '/team/vault/unlock', { key: key64, minutes: 0 }, I2.s);
+      const iTok = (await call('POST', '/tokens', { name: 'ia' }, I2.s)).json.token; secrets.push(iTok);
+      const rdI = await tool(S, iTok, 'read_note', { path: '@team/caja.md' });
+      // Diez llaves equivocadas por hora y por cuenta.
+      let guess = null; for (let i = 0; i < 11; i++) guess = await call('POST', '/team/vault/unlock', { key: b(32), minutes: 0 }, H.s);
+      check('espacio protegido: adivinar la llave tiene tope', guess.status === 429 && (await tool(S, hTok, 'read_note', { path: '@team/caja.md' })).err, [guess.status, guess.json]);
+      // Sale una persona que tenía la llave abierta para su IA.
+      const drop = await call('POST', '/team/remove', { id: I2.id }, G.s);
+      await makePro(S, I2.email);
+      const iTok2 = (await call('POST', '/tokens', { name: 'ia2' }, I2.s)).json.token;
+      const after = [await tv(I2), await call('GET', t3('caja.md'), undefined, I2.s), await call('POST', '/team/vault/unlock', { key: key64, minutes: 0 }, I2.s), await call('PUT', t3('caja.md'), { text: sealFor(k1.key, aad3('caja.md'), 'del ex miembro') }, I2.s)];
+      const rdI2 = await tool(S, iTok, 'read_note', { path: '@team/caja.md' }); const rdI3 = await tool(S, iTok2, 'read_note', { path: '@team/caja.md' });
+      check('espacio protegido: al salir un miembro se cierra lo que tenía abierto para su IA, y con su llave ya no pide ni guarda nada', !rdI.err && drop.status === 200 && drop.json.team.mine.vault.gone > 0 && after.map((r) => r.status).join() === '404,403,404,403' && rdI2.err && rdI3.err && !JSON.stringify([rdI2, rdI3, after.map((r) => r.json)]).includes(VSECRET), [after.map((r) => r.status), rdI2.v, rdI3.v]);
+      // Rotar la llave: el ex miembro se llevó la anterior. Con ella no se abre nada de lo que queda, ni vale como llave del espacio.
+      const k2 = mk(); secrets.push(k2.K.toString('base64'));
+      await call('POST', '/team/vault/rotate', k2.body, G.s);
+      const midH = [await call('PUT', t3('caja.md'), { text: sealFor(k1.key, aad3('caja.md'), 'con la vieja'), rev: 2 }, H.s), await call('POST', '/rename', { from: 'caja.md', to: 'x.md', o: SP3, text: sealFor(k1.key, aad3('x.md'), 'x') }, H.s), await call('POST', '/team/vault/rotate/done', {}, H.s)];
+      const hView = (await tv(H)).json.vault;
+      await call('PUT', t3('caja.md'), { text: sealFor(k2.key, aad3('caja.md'), 'rotada ' + VSECRET), rev: 2 }, G.s);
+      const fin = await call('POST', '/team/vault/rotate/done', {}, G.s);
+      check('espacio protegido: mientras se rota la llave un miembro no guarda con la anterior, no ve la nueva y no puede dar la rotación por terminada', midH.map((r) => r.status).join() === '423,423,403' && hView.state === 'rotating' && !('next' in hView) && fin.status === 200 && fin.json.vault.check === k2.body.check, [midH.map((r) => r.json), hView]);
+      const cur = (await call('GET', t3('caja.md'), undefined, G.s)).json.text;
+      const { createDecipheriv } = await import('crypto');
+      const opens = (key) => { try { const raw = Buffer.from(cur.slice(7), 'base64'); const d = createDecipheriv('aes-256-gcm', key, raw.subarray(0, 12)); d.setAAD(Buffer.from(aad3('caja.md'))); d.setAuthTag(raw.subarray(raw.length - 16)); return Buffer.concat([d.update(raw.subarray(12, raw.length - 16)), d.final()]).toString('utf8'); } catch (e) { return null; } };
+      const stale = [await call('POST', '/team/vault/unlock', { key: key64, minutes: 0 }, G.s), await tv(I2), await call('GET', t3('caja.md'), undefined, I2.s), await call('GET', '/versions/' + enc('caja.md') + '?o=' + SP3, undefined, I2.s), await call('GET', '/trash?o=' + SP3, undefined, I2.s)];
+      check('espacio protegido: ex miembro tras rotar la llave: su llave ya no abre lo que hay, no vale para la IA, y no llega al espacio', opens(k1.key) === null && opens(k2.key) === 'rotada ' + VSECRET && stale.map((r) => r.status).join() === '403,404,403,403,403' && stale[0].json.error === 'bad_key' && (await call('GET', '/versions/' + enc('caja.md') + '?o=' + SP3, undefined, G.s)).json.length === 0, stale.map((r) => [r.status, r.json]));
+      // Los cambios sobre la protección tienen tope por equipo.
+      let burst = null; for (let i = 0; i < 45 && (!burst || burst.status !== 429); i++) burst = await call('PUT', '/team/vault/ai', { members: i % 2 === 0 }, G.s);
+      check('espacio protegido: los cambios sobre la protección tienen tope por hora', burst.status === 429 && burst.json.error === 'too_many' && burst.json.retry_after > 0, [burst.status, burst.json]);
+      const disk = S.db(); const rowsOf = disk.prepare('SELECT text FROM notes WHERE user = ?').all(SP3).map((r) => String(r.text)).join('\n'); const vrow = disk.prepare('SELECT * FROM vaults WHERE user = ?').get(SP3); disk.close();
+      check('espacio protegido: en la base quedan la sal, las vueltas, la llave envuelta y la comprobación, y ninguna llave ni texto', !rowsOf.includes(VSECRET) && vrow.folder === '' && vrow.wrapped === k2.body.wrapped && vrow.verify === k2.body.check && vrow.next === null && !JSON.stringify(vrow).includes(k2.K.toString('base64')) && !JSON.stringify(vrow).includes(key64), Object.keys(vrow));
+    }
+
     const logged = secrets.filter((x) => x && S.log().includes(x));
     check('equipo: la salida del servidor no trae texto de notas, tokens ni la clave de Paddle', logged.length === 0, logged.map((x) => String(x).slice(0, 8)));
     check('equipo: nada de esto se anotó como error del servidor, y sigue arriba', !/error 500|error no capturado|promesa sin atender/.test(S.log()) && S.alive() && (await call('GET', '/health')).status === 200, (S.log().match(/error[^\n]*/g) || []).slice(0, 4));

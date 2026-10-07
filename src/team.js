@@ -33,6 +33,28 @@
         : '<div class="lmd-plan-buy">' + btn(t.checkout, 'USD ' + cost(t.included, t.included) + ' / ' + T('mes'), 'team') + '</div>') + '</div>';
   }
 
+  // La protección del espacio: una sola contraseña para todas las notas del equipo, que pone quien administra.
+  // Las ventanas (proteger, cambiar la contraseña, rotar la llave) son las de las carpetas protegidas, en vault.js.
+  function vaultBlock(mine, admin) {
+    if (!LMD.vault.can() || !('vault' in mine)) return '';
+    const v = mine.vault; const head = '<h4>' + T('Protección del espacio') + '</h4>';
+    const btn = (kind, label, cls) => '<button type="button" class="lmd-btn' + (cls ? ' ' + cls : '') + '" data-t="' + kind + '">' + T(label) + '</button>';
+    if (!v) return admin ? head + '<p class="lmd-hint">' + T('Con una contraseña, las notas del equipo se cifran en el navegador y el servidor no las puede leer.') + '</p><div class="lmd-acct-actions">' + btn('v-protect', 'Proteger con contraseña') + '</div>' : '';
+    if (!admin) return head + '<p class="lmd-hint" data-team="vault">' + T('Las notas del equipo están protegidas con contraseña. Pedile la contraseña a quien administra el equipo.') + '</p>';
+    let out = head;
+    // Alguien que conocía la contraseña ya no está: se dice en el momento, con lo que se puede hacer.
+    if (v.gone && v.state === 'on') out += '<div class="lmd-team-gone" role="status"><p><b>' + T('Alguien salió del equipo y conocía la contraseña.') + '</b></p>' +
+      '<p class="lmd-hint">' + T('Lo que ya leyó o copió no se puede retirar. Rotar la llave conviene si pudo guardarla en su dispositivo: vuelve a cifrar todas las notas.') + '</p>' +
+      '<div class="lmd-acct-actions">' + btn('v-pass', 'Cambiar la contraseña del equipo', 'lmd-btn-fill') + btn('v-rotate', 'Rotar la llave') + '<button type="button" class="lmd-link" data-t="v-seen">' + T('Descartar') + '</button></div></div>';
+    if (v.state === 'rotating') return out + '<p class="lmd-hint">' + T('La rotación de la llave quedó a medias. Hasta terminarla, los demás miembros no pueden guardar.') + '</p><div class="lmd-acct-actions">' + btn('v-rotate', 'Terminar de rotar la llave', 'lmd-btn-fill') + '</div>';
+    if (v.state === 'opening') return out + '<p class="lmd-hint">' + T('Quitar la protección quedó a medias.') + '</p><div class="lmd-acct-actions">' + btn('v-off', 'Terminar de quitar la protección', 'lmd-btn-fill') + '</div>';
+    return out + '<p class="lmd-hint" data-team="vault">' + T('Las notas del equipo se cifran en el navegador con una sola contraseña. Los nombres de notas y carpetas siguen visibles.') + '</p>' +
+      '<p class="lmd-hint">' + T('El historial y la papelera quedan cifrados. No hay búsqueda en el servidor ni sesiones en vivo.') + '</p>' +
+      '<label class="lmd-check lmd-team-ai"><input type="checkbox" data-t="v-ai"' + (v.ai_members ? ' checked' : '') + '><span>' + T('Los miembros pueden desbloquear para su IA') + '</span></label>' +
+      '<div class="lmd-acct-actions lmd-team-vault">' + btn('v-pass', 'Cambiar la contraseña') + btn('v-backup', 'Ver la clave de respaldo') + btn('v-rotate', 'Rotar la llave') + btn('v-off', 'Quitar la protección', 'lmd-btn-danger') + '</div>' +
+      '<button type="button" class="lmd-link lmd-team-lost" data-t="v-destroy">' + T('Perdí la contraseña y la clave de respaldo') + '</button>';
+  }
+
   // Lo que queda dicho después de un cambio: se muestra una vez, en el próximo dibujo.
   let said = ''; let want = 0; let wantFor = 0;
   // Debajo de los planes: las invitaciones que esperan a esta cuenta y, si está en un equipo, el equipo.
@@ -65,6 +87,7 @@
           '<span class="lmd-team-cost">' + T('{n} lugares: USD {a} por mes', { n: want, a: cost(want, t.included) }) + '</span>' +
           '<button type="button" class="lmd-btn lmd-btn-fill" data-t="seats"' + (want === mine.seats ? ' disabled' : '') + '>' + T('Cambiar lugares') + '</button></div>' : '');
     }
+    out += vaultBlock(mine, admin);
     out += msg + '<div class="lmd-acct-actions">' + (admin ? '<button type="button" class="lmd-btn" data-t="name">' + T('Cambiar el nombre') + '</button>' +
       (a.manage ? '<a class="lmd-btn" href="' + esc(a.manage) + '" target="_blank" rel="noopener noreferrer">' + T('Administrar la suscripción') + '</a>' : '')
       : '<button type="button" class="lmd-btn" data-t="leave">' + T('Salir del equipo') + '</button>') + '</div>';
@@ -92,6 +115,12 @@
       return true;
     }
     if (kind === 'n' || kind === 'email') return true;
+    if (/^v-/.test(kind)) {
+      // Las ventanas son de vault.js: cuando algo cambia, avisa (onTeam) y la gestión se vuelve a dibujar.
+      again = async () => { await refresh(); if (box.isConnected) redraw(); };
+      try { await LMD.vault.teamDo(kind.slice(2), b.checked); } catch (err) { say(why(err)); }
+      return true;
+    }
     try {
       if (kind === 'invite') {
         const input = box.querySelector('[data-t=email]'); const mail = input.value.trim().toLowerCase();
@@ -159,7 +188,8 @@
     });
   }
 
-  function init(c) { core = c; }
+  let again = null;
+  function init(c) { core = c; LMD.vault.onTeam(() => { if (again) again(); }); }
 
   LMD.team = { init, column, section, owns, click, notice, cost };
 })();
