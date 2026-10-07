@@ -1707,3 +1707,26 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-kanban-off { display: block; margin: 6px 0 0; padding: 0; font-size: 12.5px; color: var(--fg-faint); text-align: left; }
 .lmd-kanban-off:hover { color: var(--accent); }
 @media print { .lmd-kanban-off { display: none; } }
+
+/* Espacio del equipo protegido con contraseña: su renglón en el explorador y su bloque en Ajustes, Plan. */
+.lmd-team-lock { padding: 2px 8px 6px 30px; }
+.lmd-team-lock.lmd-team-shut { color: var(--fg-muted); }
+.lmd-team-lock .lmd-vault-ico svg { width: 14px; height: 14px; }
+.lmd-team-lock .lmd-team-more { display: inline-flex; align-items: center; text-decoration: none; padding: 1px 4px; }
+.lmd-team-lock .lmd-team-more svg { width: 15px; height: 15px; }
+.lmd-team-lock .lmd-team-ai { display: inline-flex; align-items: center; gap: 4px; flex-basis: 100%; color: var(--accent); }
+.lmd-team-lock .lmd-team-ai svg { width: 13px; height: 13px; flex: none; }
+.lmd-team-gone { margin: 6px 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--accent-fill); border-radius: 8px; background: var(--bg-soft); }
+.lmd-team-gone p { margin: 0 0 6px; }
+.lmd-team-gone .lmd-acct-actions { margin-top: 8px; flex-wrap: wrap; align-items: center; }
+.lmd-team .lmd-team-ai { margin: 10px 0 4px; }
+.lmd-team .lmd-team-vault { flex-wrap: wrap; }
+.lmd-team .lmd-team-lost { display: block; margin: 10px 0 0; padding: 0; font-size: 13px; color: var(--fg-muted); text-align: left; }
+.lmd-team .lmd-team-lost:hover { color: var(--accent); }
+@media (max-width: 720px) {
+  .lmd-team-lock { padding-bottom: 8px; font-size: 12.5px; }
+  .lmd-team-lock .lmd-team-more { min-width: 32px; min-height: 32px; justify-content: center; }
+  .lmd-team .lmd-team-vault .lmd-btn, .lmd-team-gone .lmd-btn { flex: 1 1 100%; min-height: 40px; }
+  .lmd-team .lmd-team-lost { min-height: 40px; }
+}
+@media print { .lmd-team-lock { display: none !important; } }

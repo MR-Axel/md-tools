@@ -126,7 +126,9 @@
         const prefix = parts.map((p) => p + '/').join(''); const rows = []; const seen = new Set();
         // Carpetas con contraseña: una bloqueada no muestra lo que tiene adentro, ni al explorador ni a la búsqueda.
         let vaults = [];
-        if (!other) { try { vaults = await LMD.vault.load(); } catch (e) { /* sin la lista, se dibuja como siempre */ } }
+        try { vaults = await LMD.vault.load(); } catch (e) { /* sin la lista, se dibuja como siempre */ }
+        // El espacio del equipo protegido se bloquea entero: es una sola "carpeta", la raíz.
+        if (other) { if (vaults.some((v) => v.team && v.folder === '~' + other) && LMD.vault.teamShut()) return []; vaults = []; }
         const at = prefix.slice(0, -1);
         if (vaults.some((v) => (at === v.folder || at.startsWith(v.folder + '/')) && !LMD.vault.isOpen(v))) return [];
         (await LMD.cloud.list(false, other)).forEach((n) => {
@@ -1824,7 +1826,12 @@
         // Sin sesión, un renglón que invita a entrar.
         else add('cloud', { name: T('Nube'), icon: ICON.cloud }).appendChild(el('button', { type: 'button', class: 'lmd-link lmd-root-hint', text: T('Entrar para ver tus notas') }));
         // El espacio del equipo: lo que hay ahí lo leen y lo editan todos sus miembros.
-        if (LMD.cloud.signedIn() && teamUrl()) add('team', { name: LMD.cloud.teamNow().name || T('Equipo'), title: T('Notas del equipo'), icon: ICON.people, url: teamUrl(), add: true }).after(trashLink(LMD.cloud.teamNow().space));
+        if (LMD.cloud.signedIn() && teamUrl()) {
+          const list = add('team', { name: LMD.cloud.teamNow().name || T('Equipo'), title: T('Notas del equipo'), icon: ICON.people, url: teamUrl(), add: true });
+          list.after(trashLink(LMD.cloud.teamNow().space));
+          // Protegido con contraseña: el candado, el estado y sus acciones van arriba de las notas.
+          fills.push(LMD.vault.load().then(() => { const line = LMD.vault.teamLine(); if (line) list.before(line); }).catch(() => { /* sin la lista, se dibuja como siempre */ }));
+        }
       }
       // Las otras carpetas y archivos del disco que se abrieron antes: un clic los trae de vuelta.
       if (others.length) {
@@ -1931,7 +1938,8 @@
     if (!rows.length) {
       // Una raíz sin nada dice cómo empezar; una carpeta del disco, que no tiene Markdown.
       const fresh = APP && depth === 0 && sectionOf(dirUrl) !== 'disk';
-      container.appendChild(el('p', { class: 'lmd-empty', text: T(fresh ? 'Creá una nota con el botón +.' : 'Carpeta sin archivos Markdown.') }));
+      const shut = APP && depth === 0 && dirUrl === teamUrl() && LMD.vault.teamShut();
+      container.appendChild(el('p', { class: 'lmd-empty', text: T(shut ? 'Desbloqueá el espacio para ver sus notas.' : fresh ? 'Creá una nota con el botón +.' : 'Carpeta sin archivos Markdown.') }));
       return;
     }
     const here = noDoc ? '' : HERE;

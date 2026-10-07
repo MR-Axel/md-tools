@@ -1,5 +1,7 @@
 // Carpetas con contraseña de la nube: la interfaz. Proteger una carpeta, desbloquearla en esta pestaña, entrar con
 // la clave de respaldo, cambiar la contraseña, quitar la protección y desbloquearla para la IA por un tiempo.
+// El espacio de un equipo se protege entero, con una sola contraseña que pone quien lo administra: acá es una
+// carpeta protegida más (v.team), cuya "carpeta" es la raíz ~espacio. Cambia quién puede qué, y eso lo mira el servidor.
 // El cifrado está en seal.js, y lo que hace que el resto de la app lea y guarde sin enterarse, en cloud.js.
 // La contraseña y la llave nunca salen de este navegador, con una sola excepción que la persona pide y confirma:
 // desbloquear para la IA manda la llave de datos al servidor, que la guarda en memoria hasta que vence.
@@ -11,14 +13,22 @@
   let core = null;
   const who = () => LMD.cloud.email();
   const all = () => LMD.cloud.vaultsNow();
-  // La carpeta protegida que contiene a una nota propia de la nube, o nada.
-  const of = (path) => (!path || path[0] === '~' ? null : all().find((v) => path.startsWith(v.folder + '/')) || null);
+  // La carpeta protegida que contiene a una nota de la nube (propia, o del equipo si su espacio está protegido), o nada.
+  const of = (path) => (!path ? null : all().find((v) => path.startsWith(v.folder + '/')) || null);
+  // El espacio del equipo, si está protegido. Su nombre es el del equipo.
+  const teamV = () => all().find((v) => v.team) || null;
+  const teamName = () => { const t = LMD.cloud.teamNow(); return (t && t.name) || T('Equipo'); };
+  const nameOf = (v) => (v.team ? teamName() : v.folder);
+  // Lo que escribe quien administra para confirmar algo que no tiene vuelta: el nombre del equipo o, si no tiene, su correo.
+  const confirmWord = () => { const t = LMD.cloud.teamNow(); return (t && t.name) || who(); };
   const byId = (id) => all().find((v) => v.id === +id) || null;
   const isOpen = (vault) => Z.held(vault);
   const can = () => Z.supported() && LMD.cloud.vaultOk();
 
   const say = (e, fallback) => T({ offline: 'No hay conexión con el servidor.', bad_password: 'Esa contraseña no coincide.', too_many: 'Demasiados intentos. Probá de nuevo más tarde.',
-    vault_nested: 'Una carpeta protegida no puede estar dentro de otra.', mcp_needs_plan: 'Desbloquear una carpeta para la IA es parte del plan pago.' }[e && e.code] || fallback || 'No se pudo completar. Probá de nuevo.');
+    vault_nested: 'Una carpeta protegida no puede estar dentro de otra.', mcp_needs_plan: 'Desbloquear una carpeta para la IA es parte del plan pago.',
+    not_admin: 'Eso lo hace quien administra el equipo.', ai_not_allowed: 'Quien administra el equipo no habilitó desbloquear para la IA.',
+    vault_rotating: 'El equipo está cambiando su llave. Probá en un momento.', vault_exists: 'El espacio del equipo ya está protegido.' }[e && e.code] || fallback || 'No se pudo completar. Probá de nuevo.');
   const hour = (ms) => new Date(ms).toLocaleTimeString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { hour: '2-digit', minute: '2-digit' });
   // Cómo se dice el estado de una carpeta frente a la IA.
   const aiText = (v) => (!v.ai ? T('Bloqueada para la IA') : v.ai.until ? T('Abierta para la IA hasta las {a}', { a: hour(v.ai.until) }) : T('Abierta para la IA hasta que la bloquees'));
@@ -86,7 +96,10 @@
     await warm(); arm();
     if (core && core.APP) { try { await core.reloadTree(); } catch (e) { /* el explorador se redibuja en la próxima */ } }
     LMD.sync.repaintAi();
+    teamFns.forEach((fn) => { try { fn(); } catch (e) { /* quien escucha se arregla */ } });
   }
+  // Quien dibuja la gestión del equipo (Ajustes, Plan) se entera cuando cambia algo de una carpeta protegida.
+  const teamFns = [];
   // Las llaves recordadas en este dispositivo quedan abiertas desde el arranque.
   const keptSet = new Set();
   async function warm() {
@@ -103,8 +116,10 @@
 
   // ---------- Proteger una carpeta ----------
   function backupFile(folder, key) {
-    const text = 'SharpMD\n' + T('Clave de respaldo de una carpeta protegida') + '\n\n' + T('Carpeta') + ': ' + folder + '/\n' + T('Cuenta') + ': ' + who() + '\n' + T('Fecha') + ': ' + new Date().toISOString().slice(0, 10) + '\n\n' + key + '\n\n' +
-      T('Con esta clave se entra a la carpeta y se pone una contraseña nueva si la contraseña se olvida. Quien la tenga puede leer esas notas: guardala en un lugar seguro, fuera de este dispositivo.') + '\n';
+    const team = folder == null; if (team) folder = teamName();
+    const text = 'SharpMD\n' + T(team ? 'Clave de respaldo del espacio de un equipo' : 'Clave de respaldo de una carpeta protegida') + '\n\n' + (team ? T('Equipo') + ': ' + folder + '\n' : T('Carpeta') + ': ' + folder + '/\n') + T('Cuenta') + ': ' + who() + '\n' + T('Fecha') + ': ' + new Date().toISOString().slice(0, 10) + '\n\n' + key + '\n\n' +
+      T(team ? 'Con esta clave quien administra el equipo pone una contraseña nueva si la contraseña se olvida. Quien la tenga puede leer las notas del equipo: guardala en un lugar seguro, fuera de este dispositivo.'
+        : 'Con esta clave se entra a la carpeta y se pone una contraseña nueva si la contraseña se olvida. Quien la tenga puede leer esas notas: guardala en un lugar seguro, fuera de este dispositivo.') + '\n';
     const a = el('a', { download: 'sharpmd-' + T('clave-de-respaldo') + '-' + folder.replace(/[^\p{L}\p{N}_-]+/gu, '-') + '.txt' });
     a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
     a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
@@ -114,18 +129,23 @@
     catch (e) { const t = el('textarea'); t.value = text; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); } catch (x) { /* sin portapapeles */ } t.remove(); }
   }
 
+  // folder null: el espacio del equipo entero, que protege quien lo administra.
   async function protect(folder) {
-    if (all().some((v) => v.folder === folder || folder.startsWith(v.folder + '/') || v.folder.startsWith(folder + '/'))) { core.flash(T('Una carpeta protegida no puede estar dentro de otra.'), 'warn'); return; }
+    const team = folder == null;
+    if (team ? !!teamV() : all().some((v) => v.folder === folder || folder.startsWith(v.folder + '/') || v.folder.startsWith(folder + '/'))) { core.flash(T(team ? 'El espacio del equipo ya está protegido.' : 'Una carpeta protegida no puede estar dentro de otra.'), 'warn'); return; }
     if (core.dirty && !(await core.save(false))) return;
-    const title = T('Proteger "{a}" con contraseña', { a: folder });
+    const title = team ? T('Proteger el espacio de "{a}"', { a: teamName() }) : T('Proteger "{a}" con contraseña', { a: folder });
     // Primer paso: la contraseña y lo que hay que saber antes de crearla.
     const o = sheet(title,
-      '<p>' + T('Las notas de esta carpeta se cifran en este navegador antes de subir. El servidor guarda el texto cifrado y no lo puede leer.') + '</p>' +
+      '<p>' + T(team ? 'Las notas del equipo se cifran en el navegador de cada miembro antes de subir. El servidor guarda el texto cifrado y no lo puede leer.'
+        : 'Las notas de esta carpeta se cifran en este navegador antes de subir. El servidor guarda el texto cifrado y no lo puede leer.') + '</p>' +
+      (team ? '<p>' + T('Es una sola contraseña para todo el equipo. Pasásela a cada miembro por fuera de SharpMD.') + '</p>' : '') +
       '<p class="lmd-vault-warn">' + T('Sin la contraseña y sin la clave de respaldo, estas notas no se pueden recuperar. Tampoco desde SharpMD.') + '</p>' +
       field('p1', 'Contraseña', 'new-password') + meter + field('p2', 'Repetir la contraseña', 'new-password') +
       '<ul class="lmd-vault-notes"><li>' + T('Los nombres de las notas y de las carpetas no se cifran.') + '</li>' +
-        '<li>' + T('El historial anterior de estas notas se elimina del servidor.') + '</li>' +
-        '<li>' + T('En esta carpeta no hay compartir, enlaces públicos ni comentarios para la IA. Lo que ya estaba compartido deja de estarlo.') + '</li></ul>',
+        '<li>' + T(team ? 'El historial anterior y la papelera del equipo se eliminan del servidor.' : 'El historial anterior de estas notas se elimina del servidor.') + '</li>' +
+        '<li>' + T(team ? 'La IA lee las notas del equipo solo mientras alguien las desbloquee para ella.'
+          : 'En esta carpeta no hay compartir, enlaces públicos ni comentarios para la IA. Lo que ya estaba compartido deja de estarlo.') + '</li></ul>',
       cancel() + okBtn('Continuar'));
     watch(o, 'p1');
     const password = await new Promise((resolve) => {
@@ -138,15 +158,16 @@
     // Segundo paso: la clave de respaldo. No se sigue sin descargarla o copiarla.
     const K = Z.newKey(); const key = Z.backupText(K);
     const s = sheet(T('Guardá la clave de respaldo'),
-      '<p>' + T('Con esta clave se entra a la carpeta si te olvidás la contraseña. Guardala fuera de este dispositivo: no se vuelve a mostrar.') + '</p>' +
+      '<p>' + T(team ? 'Con esta clave ponés una contraseña nueva si la del equipo se olvida. Guardala fuera de este dispositivo.'
+        : 'Con esta clave se entra a la carpeta si te olvidás la contraseña. Guardala fuera de este dispositivo: no se vuelve a mostrar.') + '</p>' +
       '<div class="lmd-vault-key" data-v="key"></div>' +
       '<div class="lmd-vault-keyacts"><button type="button" class="lmd-btn" data-v="down">' + ICON.download + '<span>' + T('Descargar') + '</span></button><button type="button" class="lmd-btn" data-v="copy">' + ICON.copy + '<span>' + T('Copiar') + '</span></button></div>' +
       '<p class="lmd-hint" data-v="need">' + T('Descargala o copiala para seguir.') + '</p>' +
       '<div data-v="work" hidden>' + bar('Cifrando notas: {n} de {m}') + '</div>',
-      cancel() + okBtn('Proteger la carpeta'));
+      cancel() + okBtn(team ? 'Proteger el espacio' : 'Proteger la carpeta'));
     // Cada grupo en su casilla: bajan de renglón enteros. Al copiar o descargar van unidos con guiones.
     s.q('key').innerHTML = key.split('-').map((g) => '<span>' + g + '</span>').join(''); s.q('ok').disabled = true;
-    const saved = () => { s.q('ok').disabled = false; s.q('need').textContent = T('Clave guardada. Ya podés proteger la carpeta.'); };
+    const saved = () => { s.q('ok').disabled = false; s.q('need').textContent = T(team ? 'Clave guardada. Ya podés proteger el espacio.' : 'Clave guardada. Ya podés proteger la carpeta.'); };
     let working = false;
     s.box.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-v]'); if (working) return;
@@ -159,10 +180,10 @@
       let vault = null;
       try {
         const d = await Z.derive(K);
-        const body = Object.assign({ folder, check: d.check }, await Z.wrap(K, password));
+        const body = Object.assign(team ? { check: d.check } : { folder, check: d.check }, await Z.wrap(K, password));
         // La llave queda abierta acá antes de crear la carpeta: desde ese momento lo que se guarde ahí sale cifrado.
         Z.hold({ check: d.check }, d.key);
-        vault = await LMD.cloud.vaultCreate(body);
+        vault = team ? await LMD.cloud.teamVaultCreate(body) : await LMD.cloud.vaultCreate(body);
         K.fill(0);
         s.q('key').hidden = true; s.box.querySelector('.lmd-vault-keyacts').hidden = true; s.q('need').hidden = true; s.q('work').hidden = false;
         await LMD.cloud.sealFolder(vault, stepper(s, 'Cifrando notas: {n} de {m}'));
@@ -170,11 +191,11 @@
         const here = openIn(vault);
         await refresh();
         if (here) reopen(here);
-        core.flash(T('Carpeta protegida'));
+        core.flash(T(team ? 'Espacio del equipo protegido' : 'Carpeta protegida'));
       } catch (err) {
         working = false; s.busy(false);
         // Creada pero a medias: lo que falta se cifra al volver a abrir la carpeta, con la contraseña.
-        if (vault) { s.box.querySelector('[data-v=ok]').hidden = true; s.box.querySelector('[data-v=no]').textContent = T('Cerrar'); s.fail(T('Se cortó antes de terminar. Las notas que faltan se cifran al desbloquear la carpeta.')); refresh(); }
+        if (vault) { s.box.querySelector('[data-v=ok]').hidden = true; s.box.querySelector('[data-v=no]').textContent = T('Cerrar'); s.fail(T(team ? 'Se cortó antes de terminar. Las notas que faltan se cifran al desbloquear el espacio.' : 'Se cortó antes de terminar. Las notas que faltan se cifran al desbloquear la carpeta.')); refresh(); }
         else { await Z.forget(who(), { check: (await Z.derive(K)).check }); s.fail(say(err)); }
       }
     });
@@ -185,13 +206,22 @@
   // Pide la contraseña una vez. Devuelve true si la carpeta quedó abierta.
   function unlock(vault) {
     if (!vault) return Promise.resolve(false);
+    // A mitad de una rotación de la llave del equipo: quien administra la termina; los demás esperan.
+    if (vault.team && vault.state === 'rotating') {
+      if (vault.admin) return rotate(vault).then(() => { const now = teamV(); return !!now && isOpen(now); });
+      core.flash(T('El equipo está cambiando su llave. Probá en un momento.'), 'warn');
+      return Promise.resolve(false);
+    }
     if (isOpen(vault)) return Promise.resolve(true);
     if (asking.has(vault.id)) return asking.get(vault.id);
+    // En el equipo, la contraseña la tiene quien administra: un miembro no la recupera ni la cambia.
+    const member = vault.team && !vault.admin;
     const p = new Promise((resolve) => {
-      const o = sheet(T('Desbloquear "{a}"', { a: vault.folder }),
-        '<p>' + T('Esta carpeta está protegida con contraseña.') + '</p>' + field('p', 'Contraseña', 'current-password') +
+      const o = sheet(T('Desbloquear "{a}"', { a: nameOf(vault) }),
+        '<p>' + T(vault.team ? 'Las notas del equipo están protegidas con contraseña.' : 'Esta carpeta está protegida con contraseña.') + '</p>' +
+        (member ? '<p class="lmd-hint" data-v="ask">' + T('Pedile la contraseña a quien administra el equipo.') + '</p>' : '') + field('p', 'Contraseña', 'current-password') +
         '<label class="lmd-check"><input type="checkbox" data-v="keep"><span>' + T('Recordar en este dispositivo') + '</span></label>' +
-        '<button type="button" class="lmd-link" data-v="forgot">' + T('¿Olvidaste la contraseña?') + '</button>',
+        (member ? '' : '<button type="button" class="lmd-link" data-v="forgot">' + T('¿Olvidaste la contraseña?') + '</button>'),
         cancel() + okBtn('Desbloquear'));
       const done = (ok) => { o.close(); resolve(ok); };
       o.box.addEventListener('click', async (e) => {
@@ -225,7 +255,7 @@
   function recover(vault) {
     return new Promise((resolve) => {
       const o = sheet(T('Entrar con la clave de respaldo'),
-        '<p>' + T('Escribí la clave de respaldo de "{a}" y elegí una contraseña nueva.', { a: esc(vault.folder) }) + '</p>' +
+        '<p>' + T('Escribí la clave de respaldo de "{a}" y elegí una contraseña nueva.', { a: esc(nameOf(vault)) }) + '</p>' +
         '<label class="lmd-dlg-field"><span>' + T('Clave de respaldo') + '</span><textarea data-v="bk" rows="3" spellcheck="false" autocapitalize="characters" autocomplete="off"></textarea></label>' +
         field('p1', 'Contraseña nueva', 'new-password') + meter + field('p2', 'Repetir la contraseña', 'new-password') +
         '<button type="button" class="lmd-link" data-v="lost">' + T('No tengo la clave de respaldo') + '</button>',
@@ -242,7 +272,7 @@
         o.busy(true);
         try {
           const d = await Z.derive(K);
-          if (d.check !== vault.check) { o.busy(false); o.fail(T('Esa clave de respaldo no es la de esta carpeta.'), o.q('bk')); return; }
+          if (d.check !== vault.check) { o.busy(false); o.fail(T(vault.team ? 'Esa clave de respaldo no es la de este equipo.' : 'Esa clave de respaldo no es la de esta carpeta.'), o.q('bk')); return; }
           await LMD.cloud.vaultRewrap(vault.id, await Z.wrap(K, password));
           K.fill(0); Z.hold(vault, d.key);
           o.close(); resolve(true);
@@ -258,13 +288,14 @@
     if (openIn(vault)) { if (core.dirty && !(await core.save(false))) return; await core.close({ tree: true }); }
     await Z.forget(who(), vault);
     await refresh();
-    core.flash(T('Carpeta bloqueada'));
+    core.flash(T(vault.team ? 'Espacio del equipo bloqueado' : 'Carpeta bloqueada'));
   }
 
   function changePassword(vault) {
-    const o = sheet(T('Cambiar la contraseña de "{a}"', { a: vault.folder }),
+    const o = sheet(T('Cambiar la contraseña de "{a}"', { a: nameOf(vault) }),
       field('p0', 'Contraseña actual', 'current-password') + field('p1', 'Contraseña nueva', 'new-password') + meter + field('p2', 'Repetir la contraseña', 'new-password') +
-      '<p class="lmd-hint">' + T('La clave de respaldo sigue siendo la misma.') + '</p>',
+      '<p class="lmd-hint">' + T('La clave de respaldo sigue siendo la misma.') + '</p>' +
+      (vault.team ? '<p class="lmd-hint">' + T('Las notas no se vuelven a cifrar. Pasales la contraseña nueva a los miembros: con la anterior ya no se entra.') + '</p>' : ''),
       cancel() + okBtn('Cambiar la contraseña'));
     watch(o, 'p1');
     o.box.addEventListener('click', async (e) => {
@@ -285,9 +316,11 @@
 
   // Quitar la protección: pide la contraseña, descifra todo acá y lo vuelve a guardar en claro.
   function unprotect(vault) {
-    const o = sheet(T('Quitar la protección de "{a}"', { a: vault.folder }),
+    const o = sheet(T('Quitar la protección de "{a}"', { a: nameOf(vault) }),
       '<p>' + T('Las notas se descifran en este navegador y vuelven a guardarse como cualquier otra nota: el servidor las va a poder leer.') + '</p>' +
-      '<p>' + T('El historial cifrado de estas notas se elimina.') + '</p>' + field('p', 'Contraseña', 'current-password') +
+      '<p>' + T(vault.team ? 'El historial y la papelera cifrados del equipo se eliminan.' : 'El historial cifrado de estas notas se elimina.') + '</p>' + field('p', 'Contraseña', 'current-password') +
+      // En el equipo la decisión alcanza a todos: se confirma además escribiendo su nombre.
+      (vault.team ? '<label class="lmd-dlg-field"><span>' + T('Para confirmar, escribí el nombre del equipo: {a}', { a: esc(confirmWord()) }) + '</span><input type="text" data-v="name" autocomplete="off" spellcheck="false"></label>' : '') +
       '<div data-v="work" hidden>' + bar('Descifrando notas: {n} de {m}') + '</div>',
       cancel() + okBtn('Quitar la protección', true));
     o.box.addEventListener('click', async (e) => {
@@ -295,6 +328,7 @@
       if (e.target === o.box || (b && b.dataset.v === 'no')) { o.close(); return; }
       if (!b || b.dataset.v !== 'ok') return;
       if (!o.q('p').value) { o.fail(T('Escribí la contraseña.'), o.q('p')); return; }
+      if (vault.team && o.q('name').value.trim() !== confirmWord()) { o.fail(T('Ese no es el nombre del equipo.'), o.q('name')); return; }
       o.busy(true);
       try {
         (await openWith(vault, o.q('p').value)).fill(0);
@@ -305,7 +339,7 @@
         o.close();
         await refresh();
         if (here) reopen(here);
-        core.flash(T('La carpeta ya no está protegida'));
+        core.flash(T(vault.team ? 'El espacio del equipo ya no está protegido' : 'La carpeta ya no está protegida'));
       } catch (err) {
         o.busy(false); o.q('work').hidden = true;
         o.fail(err.code === 'bad_password' ? say(err) : T('Se cortó antes de terminar. Volvé a intentarlo para descifrar las notas que faltan.'), err.code === 'bad_password' ? o.q('p') : null);
@@ -317,25 +351,156 @@
   // Sin la contraseña y sin la clave de respaldo no hay forma de leer esas notas: lo que queda es eliminar la carpeta
   // con todo lo que tiene. No hace falta desbloquearla. Se confirma escribiendo su nombre, y no pasa por la papelera.
   function destroy(vault) {
-    const o = sheet(T('Eliminar "{a}" y sus notas', { a: vault.folder }),
-      '<p class="lmd-vault-warn">' + T('Se eliminan la carpeta y todas sus notas. No van a la papelera y no se pueden recuperar.') + '</p>' +
-      '<label class="lmd-dlg-field"><span>' + T('Para confirmar, escribí el nombre de la carpeta: {a}', { a: esc(vault.folder) }) + '</span><input type="text" data-v="name" autocomplete="off" spellcheck="false"></label>',
-      cancel() + okBtn('Eliminar la carpeta', true));
+    const team = !!vault.team; const word = team ? confirmWord() : vault.folder;
+    const o = sheet(team ? T('Eliminar las notas de "{a}"', { a: teamName() }) : T('Eliminar "{a}" y sus notas', { a: vault.folder }),
+      '<p class="lmd-vault-warn">' + T(team ? 'Se eliminan todas las notas del equipo, con su historial y su papelera. No se pueden recuperar. El espacio queda vacío y sin contraseña.'
+        : 'Se eliminan la carpeta y todas sus notas. No van a la papelera y no se pueden recuperar.') + '</p>' +
+      '<label class="lmd-dlg-field"><span>' + T(team ? 'Para confirmar, escribí el nombre del equipo: {a}' : 'Para confirmar, escribí el nombre de la carpeta: {a}', { a: esc(word) }) + '</span><input type="text" data-v="name" autocomplete="off" spellcheck="false"></label>',
+      cancel() + okBtn(team ? 'Eliminar las notas' : 'Eliminar la carpeta', true));
     o.box.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-v]');
       if (e.target === o.box || (b && b.dataset.v === 'no')) { o.close(); return; }
       if (!b || b.dataset.v !== 'ok') return;
-      if (o.q('name').value.trim() !== vault.folder) { o.fail(T('Ese no es el nombre de la carpeta.'), o.q('name')); return; }
+      if (o.q('name').value.trim() !== word) { o.fail(T(team ? 'Ese no es el nombre del equipo.' : 'Ese no es el nombre de la carpeta.'), o.q('name')); return; }
       o.busy(true);
       try {
         const here = openIn(vault);
-        await LMD.cloud.vaultDestroy(vault);
+        await LMD.cloud.vaultDestroy(team ? Object.assign({}, vault, { confirm: word }) : vault);
         o.close();
         if (here) await core.close({ replace: true, discard: true, tree: true });
         await refresh();
-        core.flash(T('Carpeta eliminada'));
+        core.flash(T(team ? 'Notas del equipo eliminadas' : 'Carpeta eliminada'));
       } catch (err) { o.busy(false); o.fail(say(err)); }
     });
+  }
+
+  // ---------- Solo en el equipo, y solo quien administra ----------
+  // La clave de respaldo es la llave de datos escrita para una persona: se vuelve a mostrar con la contraseña.
+  function showBackup(vault) {
+    const o = sheet(T('Clave de respaldo de "{a}"', { a: nameOf(vault) }),
+      '<div data-v="ask">' + field('p', 'Contraseña', 'current-password') + '</div>' +
+      '<div data-v="show" hidden><p>' + T('Con esta clave ponés una contraseña nueva si la del equipo se olvida. Guardala fuera de este dispositivo.') + '</p><div class="lmd-vault-key" data-v="key"></div>' +
+      '<div class="lmd-vault-keyacts"><button type="button" class="lmd-btn" data-v="down">' + ICON.download + '<span>' + T('Descargar') + '</span></button><button type="button" class="lmd-btn" data-v="copy">' + ICON.copy + '<span>' + T('Copiar') + '</span></button></div>' +
+      '<p class="lmd-hint">' + T('Para cambiarla hay que rotar la llave.') + '</p></div>',
+      cancel('Cerrar') + okBtn('Ver la clave'));
+    let key = '';
+    o.box.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-v]');
+      if (e.target === o.box || (b && b.dataset.v === 'no')) { key = ''; o.close(); return; }
+      if (!b) return;
+      if (b.dataset.v === 'down' && key) { backupFile(vault.team ? null : vault.folder, key); return; }
+      if (b.dataset.v === 'copy' && key) { await copyText(key); b.querySelector('span').textContent = T('Copiado'); return; }
+      if (b.dataset.v !== 'ok') return;
+      if (!o.q('p').value) { o.fail(T('Escribí la contraseña.'), o.q('p')); return; }
+      o.busy(true);
+      try {
+        const K = await openWith(vault, o.q('p').value); key = Z.backupText(K); K.fill(0);
+        o.busy(false);
+        o.q('key').innerHTML = key.split('-').map((g) => '<span>' + g + '</span>').join('');
+        o.q('ask').hidden = true; o.q('show').hidden = false; o.q('ok').hidden = true;
+      } catch (err) { o.busy(false); o.fail(say(err), o.q('p')); }
+    });
+  }
+
+  // Rotar la llave: una llave de datos nueva, con contraseña y clave de respaldo nuevas, y todas las notas vueltas a
+  // cifrar acá. Sirve cuando alguien que salió pudo quedarse con la llave: con la anterior ya no se lee lo nuevo.
+  // Si quedó a medias (vault.state rotating), se retoma con las dos contraseñas. Devuelve una promesa que se cumple
+  // al cerrar la ventana.
+  function rotate(vault) {
+    const resume = vault.state === 'rotating';
+    return new Promise((resolve) => {
+      const o = sheet(T(resume ? 'Terminar de rotar la llave de "{a}"' : 'Rotar la llave de "{a}"', { a: nameOf(vault) }),
+        (resume ? '<p>' + T('La rotación quedó a medias. Con las dos contraseñas se termina de cifrar lo que falta.') + '</p>' + field('p0', 'Contraseña anterior', 'current-password') + field('p1', 'Contraseña nueva', 'current-password')
+          : '<p>' + T('Se crea una llave nueva y todas las notas del equipo se vuelven a cifrar en este navegador. Con la llave anterior ya no se lee lo que se guarde desde ahora.') + '</p>' +
+            '<ul class="lmd-vault-notes"><li>' + T('El historial y la papelera del equipo se eliminan.') + '</li><li>' + T('Mientras dura, los demás miembros no pueden guardar.') + '</li>' +
+            '<li>' + T('Hay contraseña y clave de respaldo nuevas. Lo que alguien ya leyó o copió no se puede retirar.') + '</li></ul>' +
+            field('p0', 'Contraseña actual', 'current-password') + field('p1', 'Contraseña nueva', 'new-password') + meter + field('p2', 'Repetir la contraseña', 'new-password')) +
+        '<div data-v="keybox" hidden><p>' + T('Esta es la clave de respaldo nueva. La anterior deja de servir.') + '</p><div class="lmd-vault-key" data-v="key"></div>' +
+        '<div class="lmd-vault-keyacts"><button type="button" class="lmd-btn" data-v="down">' + ICON.download + '<span>' + T('Descargar') + '</span></button><button type="button" class="lmd-btn" data-v="copy">' + ICON.copy + '<span>' + T('Copiar') + '</span></button></div>' +
+        '<p class="lmd-hint" data-v="need">' + T('Descargala o copiala para seguir.') + '</p></div>' +
+        '<div data-v="work" hidden>' + bar('Cifrando notas: {n} de {m}') + '</div>',
+        cancel() + okBtn(resume ? 'Terminar' : 'Continuar'));
+      if (!resume) watch(o, 'p1');
+      let step = 'ask'; let K2 = null; let key = ''; let body = null; let working = false;
+      const done = () => { if (K2) K2.fill(0); o.close(); resolve(); };
+      // Con las dos llaves abiertas: el servidor pasa a rotar (si no estaba) y se vuelve a cifrar todo.
+      const run = async (target) => {
+        working = true; o.busy(true); o.fail('');
+        o.box.querySelectorAll('.lmd-dlg-field, .lmd-vault-meter, .lmd-vault-notes, [data-v=keybox]').forEach((x) => { x.hidden = true; });
+        o.q('work').hidden = false;
+        try {
+          const now = target || (await LMD.cloud.teamVaultRotate(body));
+          const bad = await LMD.cloud.rotateSpace(now, stepper(o, 'Cifrando notas: {n} de {m}'));
+          const here = openIn(vault);
+          done();
+          await refresh();
+          if (here) reopen(here);
+          core.flash(bad ? T('Llave rotada. {n} notas no se pudieron abrir y quedaron como estaban.', { n: bad }) : T('Llave rotada. Pasales la contraseña nueva a los miembros.'), bad ? 'warn' : undefined);
+        } catch (err) {
+          working = false; o.busy(false); o.q('work').hidden = true;
+          o.q('ok').hidden = true; o.q('no').textContent = T('Cerrar');
+          o.fail(['not_admin', 'too_many', 'offline'].includes(err.code) ? say(err) : T('Se cortó antes de terminar. Volvé a "Rotar la llave" para cifrar lo que falta.'));
+          refresh();
+        }
+      };
+      o.box.addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-v]'); if (working) return;
+        if (e.target === o.box || (b && b.dataset.v === 'no')) { if (step === 'key' && body) await Z.forget(who(), { check: body.check }); done(); return; }
+        if (!b) return;
+        const saved = () => { o.q('ok').disabled = false; o.q('need').textContent = T('Clave guardada. Ya podés rotar la llave.'); };
+        if (b.dataset.v === 'down') { backupFile(null, key); saved(); return; }
+        if (b.dataset.v === 'copy') { await copyText(key); b.querySelector('span').textContent = T('Copiado'); saved(); return; }
+        if (b.dataset.v !== 'ok') return;
+        if (step === 'key') return run(null);
+        if (!o.q('p0').value) { o.fail(T('Escribí la contraseña.'), o.q('p0')); return; }
+        if (resume) {
+          if (!o.q('p1').value) { o.fail(T('Escribí la contraseña.'), o.q('p1')); return; }
+          o.busy(true);
+          let at = 'p0';
+          try {
+            (await openWith(vault, o.q('p0').value)).fill(0);
+            at = 'p1'; (await openWith(vault.next, o.q('p1').value)).fill(0);
+          } catch (err) { o.busy(false); o.fail(say(err), o.q(at)); return; }
+          return run(vault);
+        }
+        const password = fresh(o, 'p1', 'p2'); if (!password) return;
+        o.busy(true);
+        try {
+          (await openWith(vault, o.q('p0').value)).fill(0);
+          K2 = Z.newKey(); key = Z.backupText(K2);
+          const d = await Z.derive(K2);
+          body = Object.assign({ check: d.check }, await Z.wrap(K2, password));
+          Z.hold({ check: d.check }, d.key);
+        } catch (err) { o.busy(false); o.fail(say(err), err.code === 'bad_password' ? o.q('p0') : null); return; }
+        // Segundo paso: la clave de respaldo nueva. No se sigue sin descargarla o copiarla.
+        step = 'key'; o.busy(false);
+        o.box.querySelectorAll('.lmd-vault-body > p, .lmd-dlg-field, .lmd-vault-meter, .lmd-vault-notes').forEach((x) => { x.hidden = true; });
+        o.q('key').innerHTML = key.split('-').map((g) => '<span>' + g + '</span>').join('');
+        o.q('keybox').hidden = false; o.q('ok').textContent = T('Rotar la llave'); o.q('ok').disabled = true;
+      });
+    });
+  }
+  // Los miembros pueden, o no, desbloquear el espacio para su IA. Apagado por defecto.
+  async function teamAi(on) {
+    try { await LMD.cloud.teamVaultAi(on); } catch (e) { core.flash(say(e), 'error'); }
+    await refresh();
+  }
+  // El aviso de que alguien salió del equipo ya se leyó.
+  async function teamSeen() { try { await LMD.cloud.teamVaultSeen(); } catch (e) { /* queda a la vista */ } await refresh(); }
+  // Lo que pide la gestión del equipo (Ajustes, Plan): con la lista al día, abre la ventana que corresponde.
+  async function teamDo(what, arg) {
+    await LMD.cloud.vaults(true);
+    const v = teamV();
+    if (what === 'protect') return protect(null);
+    if (!v) return refresh();
+    if (what === 'pass') return changePassword(v);
+    if (what === 'backup') return showBackup(v);
+    if (what === 'rotate') return rotate(v);
+    if (what === 'off') return unprotect(v);
+    if (what === 'destroy') return destroy(v);
+    if (what === 'ai') return teamAi(!!arg);
+    if (what === 'seen') return teamSeen();
+    return null;
   }
 
   // ---------- Desbloquear para la IA ----------
@@ -344,8 +509,9 @@
     // Sin la cuenta a mano (sin conexión) se sigue: si hace falta el plan pago, lo dice el servidor.
     const a = await LMD.sync.me();
     if (a && !a.mcp) { core.openPanel('plan', T('Desbloquear una carpeta para la IA es parte del plan pago.')); return; }
-    const o = sheet(T('Desbloquear "{a}" para la IA', { a: vault.folder }),
-      '<p>' + T('Mientras esté desbloqueada, el servidor puede leer y escribir las notas de esta carpeta para tu IA.') + '</p>' +
+    const o = sheet(T('Desbloquear "{a}" para la IA', { a: nameOf(vault) }),
+      '<p>' + T(vault.team ? 'Mientras esté desbloqueado, el servidor puede leer y escribir las notas del equipo para tu IA. Para la IA de los demás sigue bloqueado.'
+        : 'Mientras esté desbloqueada, el servidor puede leer y escribir las notas de esta carpeta para tu IA.') + '</p>' +
       '<p>' + T('La llave se guarda solo en la memoria del servidor y se olvida al vencer el plazo, al bloquear o si el servidor se reinicia.') + '</p>' +
       '<div class="lmd-vault-time"><span>' + T('Durante') + '</span><div class="lmd-seg" data-v="time">' + TIMES.map((t) => '<button type="button" data-min="' + t[0] + '"' + (t[0] === 60 ? ' class="lmd-on"' : '') + '>' + T(t[1]) + '</button>').join('') + '</div></div>' +
       field('p', 'Contraseña', 'current-password'),
@@ -378,6 +544,31 @@
   }
 
   // ---------- En el explorador ----------
+  // El espacio del equipo protegido: su renglón en el explorador, con el estado y las acciones. Un miembro
+  // desbloquea, bloquea y olvida; lo demás es de quien administra.
+  function teamItems() {
+    const v = teamV(); if (!v || !can()) return [];
+    if (v.state === 'rotating') return v.admin ? [['v-rotate', 'Terminar de rotar la llave…']] : [];
+    if (v.state === 'opening') return v.admin ? [['v-off', 'Terminar de quitar la protección…', true]] : [];
+    return [isOpen(v) ? ['v-lock', 'Bloquear'] : ['v-unlock', 'Desbloquear…'],
+      (v.admin || v.ai_members) && (v.ai ? ['v-ailock', 'Bloquear para la IA ahora'] : ['v-ai', 'Desbloquear para la IA…']),
+      keptSet.has(v.check) && ['v-drop', 'Olvidar en este dispositivo'], v.admin && ['v-pass', 'Cambiar la contraseña…'], v.admin && ['v-backup', 'Ver la clave de respaldo…'],
+      v.admin && ['v-rotate', 'Rotar la llave…'], v.admin && ['v-off', 'Quitar la protección…', true]].filter(Boolean);
+  }
+  const teamState = (v) => (v.state === 'rotating' ? 'Cambiando la llave' : v.state === 'opening' ? 'Quitando la protección' : isOpen(v) ? 'Protegido, abierto en esta pestaña' : 'Protegido, bloqueado');
+  // Bloqueado en esta pestaña: el explorador no lista lo que tiene.
+  const teamShut = () => { const v = teamV(); return !!v && v.state !== 'opening' && !isOpen(v); };
+  function teamLine() {
+    const v = teamV(); if (!v || !can()) return null;
+    const shut = !isOpen(v);
+    const line = el('div', { class: 'lmd-vault-line lmd-team-lock' + (shut ? ' lmd-team-shut' : '') });
+    line.append(el('span', { class: 'lmd-vault-ico' }, shut ? ICON.lock : ICON.unlock), el('span', { class: 'lmd-vault-state', text: T(teamState(v)) }));
+    if (v.state === 'on') line.appendChild(el('button', { type: 'button', class: 'lmd-link', 'data-team-vault': shut ? 'v-unlock' : 'v-lock', text: T(shut ? 'Desbloquear' : 'Bloquear') }));
+    if (teamItems().length) line.appendChild(el('button', { type: 'button', class: 'lmd-link lmd-team-more', 'data-team-vault': 'menu', title: T('Más acciones'), 'aria-label': T('Más acciones') }, ICON.more));
+    if (v.ai) line.append(el('span', { class: 'lmd-team-ai' }, ICON.spark + '<span></span>'), el('button', { type: 'button', class: 'lmd-link', 'data-vault-ailock': String(v.id), text: T('Bloquear ahora') }));
+    if (v.ai) line.querySelector('.lmd-team-ai span').textContent = aiText(v);
+    return line;
+  }
   // Lo que suma el menú de una carpeta propia de la nube. [id, texto, peligroso].
   function menu(path) {
     if (!can() || !path || path[0] === '~') return [];
@@ -398,6 +589,8 @@
     if (id === 'v-pass') return changePassword(v);
     if (id === 'v-off') return unprotect(v);
     if (id === 'v-destroy') return destroy(v);
+    if (id === 'v-backup') return showBackup(v);
+    if (id === 'v-rotate') return rotate(v);
     if (id === 'v-drop') return Z.unremember(who(), v).then(() => { core.flash(T('Este dispositivo ya no recuerda la contraseña')); return refresh(); });
     return null;
   }
@@ -427,16 +620,24 @@
 
   // ---------- En Ajustes → IA ----------
   function aiSection() {
-    const list = all().filter((v) => v.state === 'on');
+    // El espacio del equipo figura para quien lo puede desbloquear para su IA: quien administra, o un miembro si se habilitó.
+    const list = all().filter((v) => v.state === 'on' && (!v.team || v.admin || v.ai_members || v.ai));
     if (!list.length) return '';
     return '<h4>' + T('Carpetas protegidas') + '</h4>' +
-      '<ul class="lmd-tokens lmd-vault-list">' + list.map((v) => '<li' + (v.ai ? ' class="lmd-vault-on"' : '') + '><span>' + ICON.lock + '<b>' + esc(v.folder) + '/</b> · ' + esc(aiText(v)) + '</span>' +
+      '<ul class="lmd-tokens lmd-vault-list">' + list.map((v) => '<li' + (v.ai ? ' class="lmd-vault-on"' : '') + '><span>' + ICON.lock + '<b>' + (v.team ? esc(teamName()) + ' (@team/)' : esc(v.folder) + '/') + '</b> · ' + esc(aiText(v)) + '</span>' +
         (v.ai ? '<button type="button" data-vault-ailock="' + v.id + '">' + T('Bloquear ahora') + '</button>' : '<button type="button" data-vault-ai="' + v.id + '">' + T('Desbloquear para la IA') + '</button>') + '</li>').join('') + '</ul>';
   }
   // Al lado de "Crear un token": qué no alcanza un token, tenga el alcance que tenga.
   const tokenNote = () => (all().length ? '<p class="lmd-hint lmd-vault-tokens">' + T('Las carpetas protegidas no entran en ningún token, salvo mientras estén desbloqueadas para la IA.') + '</p>' : '');
   // Devuelve true si el clic era de esta sección.
   function aiClick(e) {
+    const tv = e.target.closest('[data-team-vault]');
+    if (tv) {
+      const v = teamV(); if (!v) return true;
+      if (tv.dataset.teamVault === 'menu') { const r = tv.getBoundingClientRect(); LMD.extras.menu(r.left, r.bottom + 4, teamItems(), (f) => pick(f, v.folder)); }
+      else pick(tv.dataset.teamVault, v.folder);
+      return true;
+    }
     const on = e.target.closest('[data-vault-ai]'); const off = e.target.closest('[data-vault-ailock]');
     if (on) { const v = byId(on.dataset.vaultAi); if (v) aiUnlock(v); return true; }
     if (off) { const v = byId(off.dataset.vaultAilock); if (v) aiLock(v); return true; }
@@ -461,5 +662,6 @@
 
   function init(c) { core = c; }
 
-  LMD.vault = { init, load, changed, of, isOpen, unlock, unlockFor, menu, pick, beforeMove, pinned, aiSection, tokenNote, aiClick, aiText, explain, WHY, can };
+  LMD.vault = { init, load, changed, of, isOpen, unlock, unlockFor, menu, pick, beforeMove, pinned, aiSection, tokenNote, aiClick, aiText, explain, WHY, can,
+    teamLine, teamShut, teamDo, onTeam: (fn) => { teamFns.push(fn); } };
 })();
