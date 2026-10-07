@@ -227,12 +227,14 @@
       const o = sheet(T('Entrar con la clave de respaldo'),
         '<p>' + T('Escribí la clave de respaldo de "{a}" y elegí una contraseña nueva.', { a: esc(vault.folder) }) + '</p>' +
         '<label class="lmd-dlg-field"><span>' + T('Clave de respaldo') + '</span><textarea data-v="bk" rows="3" spellcheck="false" autocapitalize="characters" autocomplete="off"></textarea></label>' +
-        field('p1', 'Contraseña nueva', 'new-password') + meter + field('p2', 'Repetir la contraseña', 'new-password'),
+        field('p1', 'Contraseña nueva', 'new-password') + meter + field('p2', 'Repetir la contraseña', 'new-password') +
+        '<button type="button" class="lmd-link" data-v="lost">' + T('No tengo la clave de respaldo') + '</button>',
         cancel() + okBtn('Cambiar la contraseña'));
       watch(o, 'p1');
       o.box.addEventListener('click', async (e) => {
         const b = e.target.closest('[data-v]');
         if (e.target === o.box || (b && b.dataset.v === 'no')) { o.close(); resolve(false); return; }
+        if (b && b.dataset.v === 'lost') { o.close(); resolve(false); destroy(vault); return; }
         if (!b || b.dataset.v !== 'ok') return;
         const K = Z.backupKey(o.q('bk').value);
         if (!K) { o.fail(T('Esa clave de respaldo no tiene la forma correcta. Son 13 grupos de 4 caracteres.'), o.q('bk')); return; }
@@ -312,6 +314,30 @@
     });
   }
 
+  // Sin la contraseña y sin la clave de respaldo no hay forma de leer esas notas: lo que queda es eliminar la carpeta
+  // con todo lo que tiene. No hace falta desbloquearla. Se confirma escribiendo su nombre, y no pasa por la papelera.
+  function destroy(vault) {
+    const o = sheet(T('Eliminar "{a}" y sus notas', { a: vault.folder }),
+      '<p class="lmd-vault-warn">' + T('Se eliminan la carpeta y todas sus notas. No van a la papelera y no se pueden recuperar.') + '</p>' +
+      '<label class="lmd-dlg-field"><span>' + T('Para confirmar, escribí el nombre de la carpeta: {a}', { a: esc(vault.folder) }) + '</span><input type="text" data-v="name" autocomplete="off" spellcheck="false"></label>',
+      cancel() + okBtn('Eliminar la carpeta', true));
+    o.box.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-v]');
+      if (e.target === o.box || (b && b.dataset.v === 'no')) { o.close(); return; }
+      if (!b || b.dataset.v !== 'ok') return;
+      if (o.q('name').value.trim() !== vault.folder) { o.fail(T('Ese no es el nombre de la carpeta.'), o.q('name')); return; }
+      o.busy(true);
+      try {
+        const here = openIn(vault);
+        await LMD.cloud.vaultDestroy(vault);
+        o.close();
+        if (here) await core.close({ replace: true, discard: true, tree: true });
+        await refresh();
+        core.flash(T('Carpeta eliminada'));
+      } catch (err) { o.busy(false); o.fail(say(err)); }
+    });
+  }
+
   // ---------- Desbloquear para la IA ----------
   const TIMES = [[15, '15 minutos'], [60, '1 hora'], [480, '8 horas'], [0, 'Hasta que la bloquee']];
   async function aiUnlock(vault) {
@@ -357,9 +383,9 @@
     if (!can() || !path || path[0] === '~') return [];
     const v = all().find((x) => x.folder === path);
     if (!v) return all().some((x) => path.startsWith(x.folder + '/') || x.folder.startsWith(path + '/')) ? [] : [['v-protect', 'Proteger con contraseña…']];
-    if (v.state === 'opening') return [['v-off', 'Terminar de quitar la protección…', true]];
+    if (v.state === 'opening') return [['v-off', 'Terminar de quitar la protección…', true], ['v-destroy', 'Eliminar la carpeta y sus notas…', true]];
     return [isOpen(v) ? ['v-lock', 'Bloquear'] : ['v-unlock', 'Desbloquear…'], v.ai ? ['v-ailock', 'Bloquear para la IA ahora'] : ['v-ai', 'Desbloquear para la IA…'],
-      keptSet.has(v.check) && ['v-drop', 'Olvidar en este dispositivo'], ['v-pass', 'Cambiar la contraseña…'], ['v-off', 'Quitar la protección…', true]].filter(Boolean);
+      keptSet.has(v.check) && ['v-drop', 'Olvidar en este dispositivo'], ['v-pass', 'Cambiar la contraseña…'], ['v-off', 'Quitar la protección…', true], ['v-destroy', 'Eliminar la carpeta y sus notas…', true]].filter(Boolean);
   }
   function pick(id, path) {
     const v = all().find((x) => x.folder === path);
@@ -371,6 +397,7 @@
     if (id === 'v-ailock') return aiLock(v);
     if (id === 'v-pass') return changePassword(v);
     if (id === 'v-off') return unprotect(v);
+    if (id === 'v-destroy') return destroy(v);
     if (id === 'v-drop') return Z.unremember(who(), v).then(() => { core.flash(T('Este dispositivo ya no recuerda la contraseña')); return refresh(); });
     return null;
   }

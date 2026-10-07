@@ -1640,6 +1640,8 @@
     return sec;
   }
 
+  // Al pie de la nube (y del equipo), la entrada a su papelera.
+  const trashLink = (owner) => el('button', { type: 'button', class: 'lmd-link lmd-trash-link', 'data-trash': owner || '' }, ICON.trash + '<span>' + T('Papelera') + '</span>');
   let treeTurn = 0;
   async function loadTree() {
     const turn = ++treeTurn;
@@ -1668,11 +1670,11 @@
       }
       add('local', { name: T('En este navegador'), icon: ICON.browser, url: VBASE + 'local/', add: true });
       if (LMD.cloud.enabled()) {
-        if (LMD.cloud.signedIn()) add('cloud', { name: T('Nube'), icon: ICON.cloud, url: VBASE + 'cloud/', add: true });
+        if (LMD.cloud.signedIn()) add('cloud', { name: T('Nube'), icon: ICON.cloud, url: VBASE + 'cloud/', add: true }).after(trashLink(''));
         // Sin sesión, un renglón que invita a entrar.
         else add('cloud', { name: T('Nube'), icon: ICON.cloud }).appendChild(el('button', { type: 'button', class: 'lmd-link lmd-root-hint', text: T('Entrar para ver tus notas') }));
         // El espacio del equipo: lo que hay ahí lo leen y lo editan todos sus miembros.
-        if (LMD.cloud.signedIn() && teamUrl()) add('team', { name: LMD.cloud.teamNow().name || T('Equipo'), title: T('Notas del equipo'), icon: ICON.people, url: teamUrl(), add: true });
+        if (LMD.cloud.signedIn() && teamUrl()) add('team', { name: LMD.cloud.teamNow().name || T('Equipo'), title: T('Notas del equipo'), icon: ICON.people, url: teamUrl(), add: true }).after(trashLink(LMD.cloud.teamNow().space));
       }
       // Las otras carpetas y archivos del disco que se abrieron antes: un clic los trae de vuelta.
       if (others.length) {
@@ -1752,6 +1754,8 @@
     const x = e.target.closest('.lmd-node-x');
     if (x) { LMD.store.handlesDelete(x.dataset.key).then(() => loadTree()); return true; }
     if (e.target.closest('.lmd-root-hint')) { LMD.sync.login(); return true; }
+    const bin = e.target.closest('[data-trash]');
+    if (bin) { LMD.extras.trash(bin.dataset.trash); return true; }
     // "Bloquear ahora" de una carpeta abierta para la IA.
     if (LMD.vault.aiClick(e)) return true;
     return false;
@@ -1798,6 +1802,8 @@
       }
       if (row.dir) {
         item.type = 'button';
+        // Una carpeta se arrastra a otra, como un archivo. En pantalla táctil se mueve desde el menú.
+        if (APP && sectionOf(dirUrl) !== 'local' && !LMD.touch.coarse()) item.draggable = true;
         const kids = el('div', { class: 'lmd-node-kids', hidden: '' });
         container.appendChild(kids);
         const open = async () => {
@@ -3392,6 +3398,8 @@
     document.title = noDoc ? 'SharpMD' : (title || 'Markdown');
     ui.main.querySelector('.lmd-docname').textContent = title;
     document.documentElement.classList.toggle('lmd-readonly', readOnly);
+    // Una nota abierta por su enlace público solo se lee: ahí no se ofrece editar, insertar ni guardar.
+    document.documentElement.classList.toggle('lmd-public', !noDoc && !!appRoot && appRoot.kind === 'pub');
     document.documentElement.classList.toggle('lmd-nodoc', noDoc);
     if (settings && !ui.status.classList.contains('lmd-flash')) ui.status.textContent = idleStatus();
   }

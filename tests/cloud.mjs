@@ -102,7 +102,9 @@ try {
   o.pideClave.push(await visitor.textContent('.lmd-dlg-err'), await visitor.locator('.markdown-body h1').count());
   await visitor.fill('.lmd-dlg input', 'manzana-42'); await visitor.keyboard.press('Enter'); await visitor.waitForSelector('.markdown-body h1');
   o.publico = [await visitor.textContent('.markdown-body h1'), await visitor.title(), await visitor.evaluate(() => document.documentElement.classList.contains('lmd-readonly'))];
-  await visitor.click('[data-act=mode-edit]'); await visitor.waitForTimeout(300);
+  // En un enlace público no se ofrece editar, insertar ni guardar; y si el clic llegara igual, no entra en edición.
+  o.publicoSinEditar = await visitor.evaluate(() => ['[data-act=mode-edit]', '[data-act=insert]', '[data-act=save]', '.lmd-modeseg'].map((s) => { const n = document.querySelector(s); return !!n && n.offsetParent === null; }).concat(document.querySelector('[data-act=view-raw]').offsetParent !== null));
+  await visitor.evaluate(() => document.querySelector('[data-act=mode-edit]').click()); await visitor.waitForTimeout(300);
   o.publicoNoEdita = await visitor.evaluate(() => !document.documentElement.classList.contains('lmd-editing'));
   await visitor.close();
 
@@ -341,6 +343,7 @@ const checks = [
   ['compartir con otra cuenta la deja en la lista', /beto@ejemplo\.test/.test(o.invitado || ''), o.invitado],
   ['crea un enlace público para la app web', o.enlace === true],
   ['la contraseña del enlace se pide en un diálogo propio, que avisa si no coincide', J(o.pideClave) === J(['Nota protegida', 'password', 'Esa contraseña no coincide.', 0]), o.pideClave],
+  ['en un enlace público no aparecen editar, insertar ni guardar', J(o.publicoSinEditar) === J([true, true, true, true, true]), o.publicoSinEditar],
   ['el enlace con contraseña abre de solo lectura', o.publico && /Suelta/.test(o.publico[0]) && o.publico[1] === 'suelta.md' && o.publico[2] === true && o.publicoNoEdita === true, o.publico],
   ['aparece en el explorador como nota de la nube', o.enInicio && /^nota-.*\.md$/.test(o.enInicio[0]) && o.enInicio[1] === 'En la nube', o.enInicio],
   ['el panel para conectar una IA da URL, token y comando', o.campos && o.campos[0] === base + '/mcp' && o.campos[1] === 'mdt_' && o.campos[2].startsWith('claude mcp add --transport http sharpmd'), o.campos],

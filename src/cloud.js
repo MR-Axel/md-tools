@@ -515,7 +515,8 @@
         // De lo propio al equipo, o al revés: son notas de dueños distintos. Se guarda en el destino y se quita el original.
         const n = await getNote(from);
         await putNote(to, n.text); await keep(to, n.text, n.text, false);
-        await api('DELETE', notePath(from)); await S.cloudDelete(email, from);
+        // La nota sigue existiendo, en otro lado: el original no pasa por la papelera.
+        await api('DELETE', notePath(from) + (a.owner ? '&' : '?') + 'forever=1'); await S.cloudDelete(email, from);
         listCache = null; delete otherLists[a.owner]; delete otherLists[b.owner];
         return { path: to };
       }
@@ -569,6 +570,31 @@
     account: () => api('GET', '/account'),
     create: (path) => putNote(path, '').then((r) => { listCache = null; delete otherLists[split(path).owner]; return r; }),
     remove: (path) => api('DELETE', notePath(path)).then(async (r) => { listCache = null; delete otherLists[split(path).owner]; await S.cloudDelete(email, path); return r; }),
+    // Papelera: lo eliminado de la nube, hasta que vence. owner es el espacio del equipo, o nada para lo propio.
+    trash: (owner) => api('GET', '/trash' + (owner ? '?o=' + owner : '')),
+    trashRestore: async (id, owner) => {
+      const at = '/trash/' + id + '/restore' + (owner ? '?o=' + owner : ''); let r;
+      try { r = await api('POST', at, {}); }
+      catch (e) {
+        // Una nota protegida que vuelve con otro nombre (el suyo está ocupado): el texto cifrado está atado a su
+        // ruta, así que se descifra con la de antes y se cifra para la nueva, acá, con la carpeta desbloqueada.
+        if (e.code !== 'trash_rekey' || !e.body) throw e;
+        const vault = (await vaultFor(e.body.path)) || (await vaults(true), await vaultFor(e.body.path));
+        const key = await keyOf(vault);
+        r = await api('POST', at, { to: e.body.to, text: await Z.seal(key, e.body.to, await Z.open(key, e.body.path, e.body.text)) });
+      }
+      listCache = null; delete otherLists[owner || ''];
+      return r;
+    },
+    trashDelete: (id, owner) => api('DELETE', '/trash/' + id + (owner ? '?o=' + owner : '')),
+    trashEmpty: (owner) => api('DELETE', '/trash' + (owner ? '?o=' + owner : '')),
+    // Elimina la cuenta en el servidor y, acá, todo lo que este navegador guardaba de ella.
+    deleteAccount: async (mail) => {
+      await api('DELETE', '/account', { email: mail });
+      for (const c of await S.cloudAll(email)) await S.cloudDelete(email, c.path);
+      try { await Z.forgetAll(email); } catch (e) { /* sin IndexedDB no había nada guardado */ }
+      session = ''; email = ''; listCache = null; vaultCache = null; setTeam(null); await remember();
+    },
     // Con folder, el token solo alcanza esa carpeta.
     newToken: (name, folder) => api('POST', '/tokens', folder ? { name, folder } : { name }),
     // Comentarios para la IA sobre una nota propia. Con all vienen también los resueltos.
@@ -612,6 +638,14 @@
     vaultRewrap: async (id, body) => { const v = await api('PUT', '/vaults/' + id, body); await vaults(true); return v; },
     // Desbloquear para la IA: la única vez que la llave de datos sale de este navegador.
     vaultAi: async (id, key, minutes) => { const v = await api('POST', '/vaults/' + id + '/unlock', { key, minutes }); await vaults(true); return v; },
+    // Elimina la carpeta protegida con sus notas, sin su llave. Las copias de este navegador se van con ella.
+    vaultDestroy: async (vault) => {
+      const r = await api('POST', '/vaults/' + vault.id + '/destroy', { folder: vault.folder });
+      for (const c of await S.cloudAll(email)) if (c.path.startsWith(vault.folder + '/')) await S.cloudDelete(email, c.path);
+      try { await Z.forget(email, vault); } catch (e) { /* no había llave guardada */ }
+      await vaults(true); listCache = null;
+      return r;
+    },
     vaultAiLock: async (id) => { const v = await api('POST', '/vaults/' + id + '/lock', {}); await vaults(true); return v; },
   };
 })();

@@ -11,11 +11,14 @@
     const back = document.activeElement;
     const box = el('div', { class: 'lmd-ask lmd-dlg' });
     box.innerHTML = '<div class="lmd-ask-card lmd-dlg-card" role="dialog" aria-modal="true"><h3></h3>' + inner +
-      '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-dlg="no"></button><button type="button" class="lmd-btn ' + (o.danger ? 'lmd-btn-danger' : 'lmd-btn-fill') + '" data-dlg="ok"></button></div></div>';
+      '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-dlg="no"></button>' + (o.alt ? '<button type="button" class="lmd-btn" data-dlg="alt"></button>' : '') + '<button type="button" class="lmd-btn ' + (o.danger ? 'lmd-btn-danger' : 'lmd-btn-fill') + '" data-dlg="ok"></button></div></div>';
     box.querySelector('.lmd-dlg-card').setAttribute('aria-label', o.title);
     box.querySelector('h3').textContent = o.title;
-    box.querySelector('[data-dlg=no]').textContent = o.cancel || T('Cancelar');
+    // cancel: false deja un solo botón, para un aviso que solo se lee.
+    if (o.cancel === false) box.querySelector('[data-dlg=no]').remove();
+    else box.querySelector('[data-dlg=no]').textContent = o.cancel || T('Cancelar');
     box.querySelector('[data-dlg=ok]').textContent = o.ok || T('Aceptar');
+    if (o.alt) box.querySelector('[data-dlg=alt]').textContent = o.alt;
     document.body.appendChild(box);
     let done = false;
     const close = (value) => {
@@ -28,12 +31,13 @@
   }
 
   // Pide un texto. validate(valor) devuelve el aviso a mostrar, o nada si sirve; puede ser asíncrona.
-  // Devuelve el texto, o null si se canceló.
+  // Con text, un párrafo arriba del campo. Devuelve el texto, o null si se canceló.
   function prompt(o) {
     return new Promise((resolve) => {
-      const f = frame(o, '<label class="lmd-dlg-field"><span></span><input type="' + (o.password ? 'password' : 'text') + '" spellcheck="false" autocomplete="off"></label><p class="lmd-dlg-err" role="alert" hidden></p>', resolve);
+      const f = frame(o, (o.text ? '<p class="lmd-dlg-text"></p>' : '') + '<label class="lmd-dlg-field"><span></span><input type="' + (o.password ? 'password' : 'text') + '" spellcheck="false" autocomplete="off"></label><p class="lmd-dlg-err" role="alert" hidden></p>', resolve);
       const input = f.box.querySelector('input'); const err = f.box.querySelector('.lmd-dlg-err'); const label = f.box.querySelector('.lmd-dlg-field span');
       label.textContent = o.label || ''; label.hidden = !o.label;
+      if (o.text) f.box.querySelector('.lmd-dlg-text').textContent = o.text;
       if (!o.label) input.setAttribute('aria-label', o.title);
       if (o.placeholder) input.placeholder = o.placeholder;
       input.value = o.value || '';
@@ -63,18 +67,20 @@
     });
   }
 
-  // Pregunta antes de hacer algo. Con danger el botón va en rojo.
+  // Pregunta antes de hacer algo. Con danger el botón va en rojo. Con alt hay un tercer botón, y devuelve 'alt' si
+  // se elige ese. Con link ({ href, text }) suma un enlace que lleva al cobro: dentro de la app de la tienda no se ve.
   function confirm(o) {
     return new Promise((resolve) => {
-      const f = frame(o, o.text ? '<p></p>' : '', resolve);
+      const f = frame(o, (o.text ? '<p></p>' : '') + (o.link ? '<p class="lmd-dlg-link" data-pay><a class="lmd-link" target="_blank" rel="noopener"></a></p>' : ''), resolve);
       if (o.text) f.box.querySelector('p').textContent = o.text;
+      if (o.link) { const a = f.box.querySelector('.lmd-dlg-link a'); a.href = o.link.href; a.textContent = o.link.text; }
       f.box.querySelector('[data-dlg=ok]').focus();
       f.box.addEventListener('keydown', (e) => {
         e.stopPropagation();
         if (e.key === 'Escape') { e.preventDefault(); f.close(false); }
       });
       f.box.addEventListener('mousedown', (e) => { if (e.target === f.box) f.close(false); });
-      f.box.addEventListener('click', (e) => { const b = e.target.closest('[data-dlg]'); if (b) f.close(b.dataset.dlg === 'ok'); });
+      f.box.addEventListener('click', (e) => { const b = e.target.closest('[data-dlg]'); if (b) f.close(b.dataset.dlg === 'alt' ? 'alt' : b.dataset.dlg === 'ok'); });
     });
   }
 

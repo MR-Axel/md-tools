@@ -1348,6 +1348,44 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 }
 @media print { .lmd-live-layer, .lmd-live-bar, .lmd-live-note, .lmd-live-chip { display: none !important; } .lmd-live-held { outline: 0; } }
 
+/* Enlace público: solo lectura, sin las acciones de edición. */
+.lmd-public .lmd-modeseg, .lmd-public .lmd-insert, .lmd-public .lmd-save { display: none !important; }
+
+/* Papelera de la nube: la entrada al pie de la raíz y la ventana con lo eliminado. */
+.lmd-trash-link { display: flex; align-items: center; gap: 6px; width: 100%; margin: 2px 0 4px; padding: 4px 10px 4px 16px; font-size: 12.5px; text-align: left; }
+.lmd-trash-link svg { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-trash-link:hover { text-decoration: none; }
+.lmd-xroot.lmd-shut > .lmd-trash-link { display: none; }
+.lmd-trash { width: min(560px, 100%); }
+.lmd-trash-list { margin: 0 0 16px; padding: 0; list-style: none; max-height: min(360px, 50vh); overflow: auto; scrollbar-width: thin; }
+.lmd-trash-list li { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.lmd-trash-name { display: flex; align-items: baseline; gap: 6px 8px; flex-wrap: wrap; flex: 1 1 200px; min-width: 0; font-size: 13.5px; }
+.lmd-trash-name svg { flex: none; align-self: center; width: 13px; height: 13px; fill: none; stroke: var(--fg-faint); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-trash-name b { min-width: 0; font-weight: 600; color: var(--fg); overflow-wrap: anywhere; }
+.lmd-trash-name small { color: var(--fg-faint); font-size: 12px; white-space: nowrap; }
+.lmd-trash-acts { display: flex; flex: none; gap: 4px; }
+.lmd-trash-acts .lmd-link { color: var(--accent); }
+.lmd-trash-acts .lmd-trash-del { color: var(--fg-faint); }
+.lmd-trash-acts .lmd-trash-del:hover { color: #dc2626; }
+.lmd-ask-card p.lmd-trash-none { margin: 4px 0 18px; }
+.lmd-ask-card.lmd-trash p.lmd-dlg-err { margin: 0 0 12px; }
+.lmd-ask-card p.lmd-dlg-text { margin: 0 0 14px; }
+.lmd-ask-card p.lmd-dlg-link { margin: -8px 0 18px; }
+.lmd-dlg-link .lmd-link { padding: 0; color: var(--accent); font-size: 13.5px; text-decoration: underline; }
+.lmd-acct-del { margin: 16px 0 0; }
+.lmd-acct-del .lmd-link { padding-left: 0; }
+.lmd-acct-del .lmd-link:hover { color: #dc2626; }
+/* Dónde cae un archivo del explorador al soltarlo en la nota: en el texto, o en un renglón propio. */
+.lmd-drop-caret { position: fixed; z-index: 60; width: 2px; border-radius: 2px; background: var(--accent-fill); pointer-events: none; }
+.lmd-drop-caret.lmd-drop-line { height: 3px; }
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  .lmd-trash-link { min-height: 40px; font-size: 14px; }
+  .lmd-trash-acts .lmd-link, .lmd-acct-del .lmd-link { min-height: 40px; padding: 0 8px; }
+  .lmd-acct-del .lmd-link { padding-left: 0; }
+  .lmd-trash-list { max-height: calc(100dvh - 260px); }
+}
+@media print { .lmd-trash-link, .lmd-drop-caret { display: none !important; } }
+
 /* Dentro de la app de la tienda (Android) no se ofrece comprar, cambiar el cobro ni donar: el plan se ve, no se vende. */
 .lmd-store-app .lmd-plan-buy, .lmd-store-app [data-pay], .lmd-store-app .lmd-ptabs-link, .lmd-store-app .lmd-plan h4 small, .lmd-store-app .lmd-team-seats, .lmd-store-app .lmd-team-cost,
 .lmd-store-app .lmd-plan a[target="_blank"], .lmd-store-app .lmd-team a[target="_blank"], .lmd-store-app .lmd-team-solo a, .lmd-store-app .lmd-paywait { display: none !important; }

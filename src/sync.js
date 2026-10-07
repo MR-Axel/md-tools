@@ -53,15 +53,39 @@
   // Abre una nota de la nube: en la app, en el lugar; sobre un archivo abierto directo, en la app.
   const openNote = (path, opt) => (core.APP ? core.open(core.urlOf(path), opt) : core.openApp(cloudHref(path) + (opt && opt.edit ? '&edit=1' : '')));
 
+  // Subir a la nube es mudar la nota: una del navegador deja de estar ahí. Con un archivo de una carpeta del disco
+  // se pregunta si se muda o si queda una copia, porque mudarlo es borrarlo del disco. Lo que no se puede quitar
+  // de donde está (un archivo suelto, uno abierto directo en el navegador, un enlace público) se sube como copia.
+  // El original se quita con la subida ya confirmada por el servidor, nunca antes.
   async function upload() {
-    if (!(await LMD.dialog.confirm({ title: T('¿Subir "{a}" a la nube?', { a: core.docName }), text: T('Queda una copia sincronizada; el archivo de acá no se toca.'), ok: T('Subir a la nube') }))) return;
+    const root = core.APP ? core.appRoot : null; const kind = root ? root.kind : ''; const here = core.HERE; const name = core.docName;
+    let move = false;
+    if (kind === 'local') {
+      if (!(await LMD.dialog.confirm({ title: T('¿Mover "{a}" a la nube?', { a: name }), text: T('Deja de estar guardada en este navegador.'), ok: T('Mover a la nube') }))) return;
+      move = true;
+    } else if (kind === 'dir') {
+      const pick = await LMD.dialog.confirm({ title: T('¿Subir "{a}" a la nube?', { a: name }), text: T('Al moverla, el archivo se elimina del disco.'), ok: T('Mover a la nube'), alt: T('Dejar una copia') });
+      if (!pick) return;
+      move = pick === true;
+    } else if (!(await LMD.dialog.confirm({ title: T('¿Subir "{a}" a la nube?', { a: name }), text: T('Queda una copia sincronizada; el archivo de acá no se toca.'), ok: T('Subir a la nube') }))) return;
+    // Lo que se muda es lo último escrito: primero se guarda donde está.
+    if (move && core.dirty && !(await core.save(false))) return;
     try {
       const taken = new Set((await LMD.cloud.list(true)).map((n) => n.path));
       const dot = core.docName.lastIndexOf('.'); const stem = dot > 0 ? core.docName.slice(0, dot) : core.docName; const ext = dot > 0 ? core.docName.slice(dot) : '.md';
       let path = stem + ext;
       for (let n = 2; n < 50 && taken.has(path); n++) path = stem + '-' + n + ext;
       await LMD.cloud.write(path, core.raw);
-      openNote(path, { tree: true });
+      let left = false;
+      if (move) {
+        try {
+          const file = decodeURIComponent(here.split('/').pop());
+          if (kind === 'local') await LMD.store.noteDelete(file);
+          else await (await core.dirHandle(new URL('.', here).href)).removeEntry(file);
+        } catch (e) { left = true; }
+      }
+      await openNote(path, move && !left ? { tree: true, replace: true, discard: true } : { tree: true });
+      if (left) core.flash(T('La nota se subió, pero el original no se pudo quitar.'), 'warn');
     } catch (e) {
       if (e.code === 'note_limit') core.openPanel('plan', T('Llegaste al límite de notas del plan gratis. El plan pago no tiene límite.'));
       else core.flash(T(e.code === 'offline' ? 'No hay conexión con el servidor.' : 'No se pudo subir la nota.'), 'error');
@@ -149,7 +173,8 @@
         const a = await fetchAccount(host);
         box.innerHTML = acctRow(T('Cuenta'), esc(a.email)) + acctRow(T('Plan'), T(a.plan === 'pro' ? 'Pago' : 'Gratis')) + acctRow(T('Notas en la nube'), quota(a)) +
           actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="open">' + T('Abrir la carpeta Nube') + '</button><button type="button" class="lmd-btn" data-c="out">' + T('Salir') + '</button>') +
-          '<p class="lmd-hint lmd-acct-msg" role="status" hidden></p>';
+          '<p class="lmd-hint lmd-acct-msg" role="status" hidden></p>' +
+          '<p class="lmd-acct-del"><button type="button" class="lmd-link" data-c="delete">' + T('Eliminar la cuenta') + '</button></p>';
       } catch (e) { if (!LMD.cloud.signedIn()) return cloudPane(box, host); box.innerHTML = offline(); }
     }
     // El correo y el código se piden acá, con el mismo formulario del inicio: no hace falta salir de la nota.
@@ -165,7 +190,43 @@
       else if (b.dataset.c === 'login') { if (host.direct) host.login(); else askLogin(); }
       else if (b.dataset.c === 'open') openCloud(Object.assign({ say: (t) => { const m = box.querySelector('.lmd-acct-msg'); if (m) { m.hidden = false; m.textContent = t; } } }, host));
       else if (b.dataset.c === 'out') { await signOut(host); cloudPane(box, host); }
+      else if (b.dataset.c === 'delete') { if (await deleteAccount()) cloudPane(box, host); }
     };
+  }
+
+  // Eliminar la cuenta: se confirma escribiendo el correo. Con un cobro en marcha el servidor no la borra: se dice
+  // qué hay que hacer antes, con el enlace para administrar la suscripción si lo hay. Devuelve true si se eliminó.
+  const BLOCKED = {
+    subscription_active: ['Primero cancelá la suscripción', 'La cuenta tiene una suscripción activa. Cancelala y después eliminá la cuenta.'],
+    team_billing_active: ['Primero cancelá la suscripción del equipo', 'Administrás un equipo con una suscripción activa. Cancelala y después eliminá la cuenta.'],
+    team_has_members: ['Tu equipo todavía tiene miembros', 'Sacalos del equipo desde Ajustes, en Plan, y después eliminá la cuenta.'],
+  };
+  async function deleteAccount() {
+    const mail = LMD.cloud.email(); let stop = null;
+    const typed = await LMD.dialog.prompt({
+      title: T('Eliminar la cuenta'), danger: true, ok: T('Eliminar la cuenta'), label: T('Para confirmar, escribí tu correo'), empty: T('Escribí tu correo.'),
+      text: T('Se borran tus notas de la nube, su historial, la papelera, lo compartido, los enlaces públicos y los tokens. No se puede deshacer.'),
+      validate: async (v) => {
+        if (v.toLowerCase() !== mail) return T('Ese no es el correo de esta cuenta.');
+        try { await LMD.cloud.deleteAccount(v); return ''; }
+        catch (e) {
+          if (BLOCKED[e.code]) { stop = e; return ''; }
+          return T(e.code === 'offline' ? 'No hay conexión con el servidor.' : e.code === 'too_many' ? 'Demasiados intentos. Probá de nuevo más tarde.' : 'No se pudo completar. Probá de nuevo.');
+        }
+      },
+    });
+    if (typed == null) return false;
+    if (stop) {
+      const why = BLOCKED[stop.code]; const manage = stop.code !== 'team_has_members' && stop.body && /^https:\/\//.test(stop.body.manage || '') ? stop.body.manage : '';
+      await LMD.dialog.confirm({ title: T(why[0]), text: T(why[1]), ok: T('Entendido'), cancel: false, link: manage ? { href: manage, text: T('Administrar la suscripción') } : null });
+      return false;
+    }
+    // Ya no hay cuenta: una nota de la nube que estuviera abierta se cierra, y el explorador queda sin la nube.
+    const open = core && core.APP && isCloud();
+    account = null; asked = false; paint();
+    if (open) await core.close({ discard: true, tree: true }); else if (core && core.APP) core.reloadTree();
+    if (core) core.flash(T('Cuenta eliminada'));
+    return true;
   }
 
   // Salir de la cuenta. Con una nota de la nube abierta, primero se sube lo pendiente y después la nota se cierra:

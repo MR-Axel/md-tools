@@ -3,7 +3,7 @@
 (function () {
   'use strict';
 
-  const { el, ICON, MD_RE } = LMD.kit;
+  const { el, ICON, MD_RE, esc } = LMD.kit;
   const T = LMD.t;
   let core = null;
 
@@ -108,12 +108,63 @@
   async function cloudRemove(url) {
     const path = core.pathOf(url);
     if (notMine(path)) return;
-    if (!(await askDelete(path.slice(ownerPre(path).length)))) return;
+    if (!(await LMD.dialog.confirm({ title: T('¿Eliminar "{a}"?', { a: path.slice(ownerPre(path).length) }), text: T('Queda 30 días en la papelera de la nube.'), ok: T('Eliminar'), danger: true }))) return;
     try {
       await LMD.cloud.remove(path);
-      if (url === core.HERE) closeGone();
+      if (url === core.HERE) await closeGone();
       else core.reloadTree();
     } catch (e) { core.flash(cloudWhy(e, 'No se pudo eliminar'), 'error'); }
+  }
+
+  // ---------- Papelera de la nube ----------
+  // Lo que se elimina de la nube queda acá hasta que vence: se restaura o se borra del todo. owner es el espacio
+  // del equipo (su papelera es de todos sus miembros), o nada para la propia.
+  async function trash(owner) {
+    const C = LMD.cloud; let rows = [];
+    try { rows = await C.trash(owner); } catch (e) { core.flash(cloudWhy(e, 'No se pudo abrir la papelera'), 'error'); return; }
+    const title = T(owner ? 'Papelera del equipo' : 'Papelera');
+    const left = (r) => { const d = Math.max(1, Math.ceil((r.expires - Date.now()) / 86400000)); return d === 1 ? T('Se borra en 1 día') : T('Se borra en {n} días', { n: d }); };
+    const box = el('div', { class: 'lmd-ask' });
+    const draw = (msg) => {
+      box.innerHTML = '<div class="lmd-ask-card lmd-trash" role="dialog" aria-label="' + esc(title) + '"><h3>' + esc(title) + '</h3>' +
+        (rows.length ? '<ul class="lmd-trash-list">' + rows.map((r) => '<li data-id="' + r.id + '"><span class="lmd-trash-name">' + (r.protected ? ICON.lock : '') + '<b>' + esc(r.path) + '</b><small>' + esc(left(r)) + '</small></span>' +
+          '<span class="lmd-trash-acts"><button type="button" class="lmd-link" data-tr="back">' + T('Restaurar') + '</button><button type="button" class="lmd-link lmd-trash-del" data-tr="del">' + T('Eliminar') + '</button></span></li>').join('') + '</ul>'
+          : '<p class="lmd-trash-none">' + T('La papelera está vacía.') + '</p>') +
+        '<p class="lmd-dlg-err" role="alert"' + (msg ? '' : ' hidden') + '>' + esc(msg || '') + '</p>' +
+        '<div class="lmd-ask-actions">' + (rows.length ? '<button type="button" class="lmd-btn" data-tr="empty">' + T('Vaciar la papelera') + '</button>' : '') + '<button type="button" class="lmd-btn lmd-btn-fill" data-tr="no" data-esc>' + T('Cerrar') + '</button></div></div>';
+    };
+    draw(); document.body.appendChild(box);
+    let busy = false;
+    box.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-tr]');
+      if (e.target === box || (b && b.dataset.tr === 'no')) { box.remove(); return; }
+      if (!b || busy) return;
+      const li = b.closest('li'); const row = li ? rows.find((r) => r.id === +li.dataset.id) : null;
+      busy = true;
+      try {
+        if (b.dataset.tr === 'back' && row) {
+          let r;
+          try { r = await C.trashRestore(row.id, owner); }
+          catch (err) {
+            // Una nota protegida que vuelve con otro nombre se cifra de nuevo: hace falta su carpeta desbloqueada.
+            if (err.code !== 'vault_locked' || !err.vault || !(await LMD.vault.unlock(err.vault))) throw err;
+            r = await C.trashRestore(row.id, owner);
+          }
+          rows = rows.filter((x) => x !== row); draw();
+          core.flash(r.path === r.from ? T('Nota restaurada') : T('Restaurada como "{a}"', { a: r.path.split('/').pop() }));
+          core.reloadTree();
+        } else if (b.dataset.tr === 'del' && row) {
+          if (await LMD.dialog.confirm({ title: T('¿Eliminar "{a}" del todo?', { a: row.path.split('/').pop() }), text: T('No se puede deshacer.'), ok: T('Eliminar'), danger: true })) { await C.trashDelete(row.id, owner); rows = rows.filter((x) => x !== row); draw(); }
+        } else if (b.dataset.tr === 'empty') {
+          if (await LMD.dialog.confirm({ title: T('¿Vaciar la papelera?'), text: T('No se puede deshacer.'), ok: T('Vaciar'), danger: true })) { await C.trashEmpty(owner); rows = []; draw(); }
+        }
+      } catch (err) {
+        // La lista se vuelve a pedir: pudo cambiar desde otra pestaña, o vencer algo mientras estaba abierta.
+        try { rows = await C.trash(owner); } catch (x) { /* queda la que había */ }
+        draw(err.code === 'not_found' ? T('Esa nota ya no está en la papelera.') : err.code === 'vault_locked' ? T('Desbloqueá la carpeta para restaurar esta nota.') : cloudWhy(err, 'No se pudo completar. Probá de nuevo.'));
+      }
+      busy = false;
+    });
   }
 
   // Carpeta nueva: en el disco se crea vacía; en la nube nace con su primera nota.
@@ -230,6 +281,36 @@
     } catch (e) { core.flash(T('No se pudo mover'), 'error'); }
   }
 
+  // Una carpeta del disco se muda copiándola entera al destino; la original se quita recién con la copia completa.
+  async function copyDir(from, to) {
+    for await (const [name, h] of from.entries()) {
+      if (h.kind === 'directory') { await copyDir(h, await to.getDirectoryHandle(name, { create: true })); continue; }
+      const w = await (await to.getFileHandle(name, { create: true })).createWritable();
+      await w.write(await h.getFile()); await w.close();
+    }
+  }
+  // Mueve una carpeta entera adentro de otra del mismo árbol, con el mismo nombre. En la nube valen las reglas de
+  // siempre: una carpeta protegida no se mueve, y lo que entra a una se cifra con la carpeta desbloqueada.
+  async function moveDir(url, dirUrl) {
+    const name = nameOf(url);
+    if (inCloud(url)) {
+      const old = core.pathOf(url); const dir = core.pathOf(dirUrl);
+      if (!notMine(old)) await cloudMove(old, (dir ? dir + '/' : '') + name, true, 'No se pudo mover');
+      return;
+    }
+    try {
+      const to = await core.dirHandle(dirUrl); const from = await core.dirHandle(parentOf(url));
+      if (await exists(to, name)) { core.flash(T('Ya hay una carpeta con ese nombre'), 'error'); return; }
+      const inside = !core.noDoc && core.HERE.startsWith(url);
+      if (inside && core.dirty && !(await core.save(false))) return;
+      const made = await to.getDirectoryHandle(name, { create: true });
+      try { await copyDir(await from.getDirectoryHandle(name), made); }
+      catch (e) { try { await to.removeEntry(name, { recursive: true }); } catch (x) { /* queda la copia a medias, y la original entera */ } throw e; }
+      await from.removeEntry(name, { recursive: true });
+      if (inside) openMoved(dirUrl + encodeURIComponent(name) + '/' + core.HERE.slice(url.length)); else core.reloadTree();
+    } catch (e) { core.flash(T('No se pudo mover'), 'error'); core.reloadTree(); }
+  }
+
   async function remove(url) {
     if (inCloud(url)) return cloudRemove(url);
     const name = nameOf(url);
@@ -322,10 +403,101 @@
   }
 
   // ---------- Arrastrar en el árbol ----------
-  // Un archivo soltado sobre una carpeta, o sobre el fondo del árbol (la raíz), se mueve ahí.
-  let dragged = ''; let dropMark = null;
+  // Un archivo o una carpeta soltados sobre una carpeta, o sobre el fondo del árbol (la raíz), se mueven ahí.
+  // Un archivo soltado adentro de la nota abierta, en edición, deja un enlace a ese archivo (noteTarget, más abajo).
+  let dragged = ''; let dropMark = null; let caret = null;
+  const isDirUrl = (url) => url.endsWith('/');
   const markDrop = (node) => { if (dropMark === node) return; if (dropMark) dropMark.classList.remove('lmd-drop'); dropMark = node; if (node) node.classList.add('lmd-drop'); };
-  const endDrag = () => { markDrop(null); dragged = ''; const n = core.ui.treeBox.querySelector('.lmd-dragging'); if (n) n.classList.remove('lmd-dragging'); };
+  const markCaret = (box) => {
+    if (!box) { if (caret) { caret.remove(); caret = null; } return; }
+    if (!caret) { caret = el('div', { class: 'lmd-drop-caret' }); document.body.appendChild(caret); }
+    caret.classList.toggle('lmd-drop-line', !!box.width);
+    caret.style.left = box.left + 'px'; caret.style.top = box.top + 'px'; caret.style.width = box.width ? box.width + 'px' : ''; caret.style.height = box.height ? box.height + 'px' : '';
+  };
+  const endDrag = () => { markDrop(null); markCaret(null); dragged = ''; const n = core.ui.treeBox.querySelector('.lmd-dragging'); if (n) n.classList.remove('lmd-dragging'); };
+  // El lugar de una carpeta que no sirve de destino: ella misma, lo que tiene adentro, o donde ya está.
+  const badDrop = (url) => url === parentOf(dragged) || (isDirUrl(dragged) && url.startsWith(dragged));
+
+  // ---------- Soltar un archivo del explorador adentro de la nota ----------
+  const IMG_RE = /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i;
+  function caretAt(x, y) {
+    if (document.caretPositionFromPoint) {
+      const p = document.caretPositionFromPoint(x, y); if (!p || !p.offsetNode) return null;
+      const r = document.createRange();
+      try { r.setStart(p.offsetNode, p.offset); } catch (e) { return null; }
+      r.collapse(true); return r;
+    }
+    return document.caretRangeFromPoint ? document.caretRangeFromPoint(x, y) : null;
+  }
+  // Dónde caería lo que se arrastra: en el punto del texto donde está el puntero ({ host, range }), en un renglón
+  // propio debajo de un bloque ({ after }) o en el código fuente ({ raw }). box es dónde dibujar la marca.
+  // Nada si no hay nota en edición, si lo arrastrado es una carpeta o la nota misma, o si es de otro lugar: una
+  // ruta relativa entre el disco, el navegador y la nube no llevaría a ningún lado.
+  function noteTarget(e) {
+    if (!dragged || isDirUrl(dragged) || !core.APP || core.noDoc || !core.editMode || core.readOnly || dragged === core.HERE || core.rootOf(dragged) !== core.rootOf(core.HERE)) return null;
+    const t = e.target; const article = core.ui.article; const rawEdit = core.ui.rawEdit;
+    if (t === rawEdit) { const b = rawEdit.getBoundingClientRect(); return { raw: true, box: { left: b.left + 8, top: Math.max(b.top, e.clientY - 9), height: 18 } }; }
+    if (!core.blocks || !t.closest || !article.contains(t)) return null;
+    const r = caretAt(e.clientX, e.clientY);
+    const n = r && (r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentNode);
+    const host = n && n.closest && n.closest('.lmd-editable');
+    if (host && article.contains(host) && !host.dataset.formula) {
+      const c = r.getClientRects()[0] || r.getBoundingClientRect(); const h = host.getBoundingClientRect();
+      return { host, range: r, box: c && c.height ? { left: c.left, top: c.top, height: c.height } : { left: h.left, top: h.top, height: Math.min(h.height, 24) } };
+    }
+    let after = null;
+    for (const child of article.children) {
+      if (child.matches('.lmd-add, .lmd-draft')) continue;
+      if (child.getBoundingClientRect().top <= e.clientY) after = child; else break;
+    }
+    const a = article.getBoundingClientRect(); const b = after ? after.getBoundingClientRect() : null;
+    return { after, box: { left: a.left, top: (b ? b.bottom : a.top) + 2, width: a.width } };
+  }
+  function dropInNote(t, url) {
+    const name = nameOf(url); const rel = core.links.rel(url); const img = IMG_RE.test(name);
+    const label = name.replace(/\.[^.]+$/, '') || name;
+    const md = img ? '![](' + rel + ')' : LMD.links.md({ href: rel, label });
+    if (t.raw) {
+      const ta = core.ui.rawEdit; ta.focus();
+      ta.setRangeText(md, ta.selectionStart, ta.selectionEnd, 'end');
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    if (!t.host || !t.host.isConnected) { LMD.write.put(t.after && t.after.isConnected ? t.after : null, [md]); return; }
+    const host = t.host; const holder = LMD.live ? LMD.live.heldBy(host) : '';
+    if (holder) { core.flash(T('{a} está escribiendo en este bloque', { a: holder }), 'warn'); return; }
+    host.focus();
+    if (host._md == null) host._md = LMD.serialize.inlineMd(host);
+    let node;
+    if (img) {
+      node = el('img', { alt: '' }); node.setAttribute('data-lmd-src', rel); node.src = url;
+      // La imagen se muestra desde la carpeta abierta; si no se puede leer, queda su ruta y se ve al redibujar.
+      (async () => { try { const h = await core.vFile(url); if (h && node.isConnected) node.src = URL.createObjectURL(await h.getFile()); } catch (e) { /* queda la ruta */ } })();
+    } else {
+      node = document.createElement('a'); node.textContent = label;
+      node.setAttribute('data-lmd-href', rel); node.href = core.toHref(url);
+    }
+    const after = document.createTextNode('\u200b'); // deja el cursor afuera del enlace; no se guarda en el archivo
+    let range = t.range;
+    if (!host.contains(range.startContainer)) { range = document.createRange(); range.selectNodeContents(host); range.collapse(false); }
+    range.insertNode(after); range.insertNode(node);
+    getSelection().collapse(after, 1);
+    host.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  function bindNoteDrop(main) {
+    main.addEventListener('dragover', (e) => {
+      const t = noteTarget(e);
+      if (!t) { markCaret(null); return; }
+      e.preventDefault(); e.dataTransfer.dropEffect = 'link'; markCaret(t.box);
+    });
+    main.addEventListener('dragleave', (e) => { if (!main.contains(e.relatedTarget)) markCaret(null); });
+    main.addEventListener('drop', (e) => {
+      const t = noteTarget(e); const url = dragged;
+      if (!t) return;
+      e.preventDefault(); endDrag();
+      try { dropInNote(t, url); } catch (err) { core.flash(T('No se pudo insertar el enlace'), 'error'); }
+    });
+  }
   // Carpeta de destino según dónde está el puntero: la carpeta misma, la que contiene al archivo de abajo, o la
   // raíz. Solo dentro de la raíz de donde salió el archivo: entre el disco, el navegador y la nube no se arrastra.
   function dropTarget(e) {
@@ -343,15 +515,18 @@
   function bindDrag(box) {
     box.addEventListener('dragstart', (e) => {
       const node = e.target.closest && e.target.closest('.lmd-node');
-      if (!node || !node.dataset.url || !canTree(node.dataset.url) || node.classList.contains('lmd-node-dir')) return;
+      if (!node || !node.dataset.url || !canTree(node.dataset.url)) return;
       dragged = node.dataset.url; node.classList.add('lmd-dragging');
-      e.dataTransfer.effectAllowed = 'move';
+      // Mover adentro del árbol, o dejar un enlace en la nota.
+      e.dataTransfer.effectAllowed = 'linkMove';
+      // Una carpeta es un botón: sin datos propios el navegador no la arrastra.
+      if (isDirUrl(dragged)) { try { e.dataTransfer.setData('text/plain', nameOf(dragged)); } catch (err) { /* arrastra igual */ } }
     });
     box.addEventListener('dragover', (e) => {
       if (!dragged) return;
       const t = dropTarget(e);
-      // Soltarlo en la carpeta donde ya está no es un destino.
-      if (!t || t.url === parentOf(dragged)) { markDrop(null); return; }
+      // Soltarlo en la carpeta donde ya está no es un destino; una carpeta tampoco va adentro de sí misma.
+      if (!t || badDrop(t.url)) { markDrop(null); return; }
       e.preventDefault(); e.dataTransfer.dropEffect = 'move'; markDrop(t.mark);
     });
     box.addEventListener('dragleave', (e) => { if (!box.contains(e.relatedTarget)) markDrop(null); });
@@ -359,8 +534,9 @@
       if (!dragged) return;
       e.preventDefault();
       const url = dragged; const t = dropTarget(e);
+      const ok = t && !badDrop(t.url);
       endDrag();
-      if (t && t.url !== parentOf(url)) moveTo(url, t.url);
+      if (ok) { if (isDirUrl(url)) moveDir(url, t.url); else moveTo(url, t.url); }
     });
     box.addEventListener('dragend', endDrag);
   }
@@ -563,6 +739,7 @@
       else createMenu(box.left, box.bottom + 6, b.classList.contains('lmd-tree-new') ? rootUrl(b) : '');
     });
     bindDrag(core.ui.paneFiles);
+    bindNoteDrop(core.ui.main);
     const label = core.ui.main.querySelector('.lmd-docname');
     // Si el nombre se puede cambiar depende de la nota abierta: se revisa cada vez que cambia.
     const paintLabel = () => { const can = canRename(); label.classList.toggle('lmd-docname-edit', can); label.title = can ? T('Doble clic o F2 para cambiar el nombre') : ''; };
@@ -601,5 +778,5 @@
     article.addEventListener('keyup', (e) => { if (/^Arrow|^Page|^Home$|^End$/.test(e.key)) centerCaret(); });
   }
 
-  LMD.extras = { init, pasteImage, exportHtml, imageDialog, imageMd, fromTemplate };
+  LMD.extras = { init, pasteImage, exportHtml, imageDialog, imageMd, fromTemplate, trash };
 })();
