@@ -653,15 +653,15 @@
             '<button type="button" role="radio" data-act="view-raw" aria-checked="false" title="' + T('Ver código fuente') + '">' + ICON.code + '</button>' +
           '</div>' +
           '<span class="lmd-sep lmd-doc-only"></span>' +
-          '<button class="lmd-icon-btn lmd-doc-only" data-act="copy-md" title="' + T('Copiar Markdown') + '">' + ICON.copy + '</button>' +
-          '<button class="lmd-icon-btn lmd-doc-only" data-act="copy-rich" title="' + T('Copiar con formato (la selección, o todo el documento)') + '">' + ICON.rich + '</button>' +
-          '<button class="lmd-icon-btn lmd-doc-only" data-act="reload" title="' + T('Recargar ahora') + '">' + ICON.reload + '</button>' +
-          '<button class="lmd-icon-btn lmd-doc-only" data-act="print" title="' + T('Imprimir o guardar PDF') + '">' + ICON.print + '</button>' +
-          '<button class="lmd-icon-btn lmd-doc-only" data-act="export-html" title="' + T('Exportar a HTML') + '">' + ICON.download + '</button>' +
+          // Copiar y exportar: un botón cada uno, y adentro qué copiar o a qué formato.
+          '<button class="lmd-icon-btn lmd-doc-only" data-act="copy" aria-haspopup="menu" aria-expanded="false" title="' + T('Copiar') + '">' + ICON.copy + '</button>' +
+          '<button class="lmd-icon-btn lmd-doc-only" data-act="export" aria-haspopup="menu" aria-expanded="false" title="' + T('Exportar') + '">' + ICON.download + '</button>' +
+          // Recargar solo sirve para lo que vive en el disco: lo demás se actualiza solo.
+          '<button class="lmd-icon-btn lmd-doc-only lmd-reload" data-act="reload" title="' + T('Recargar ahora') + '">' + ICON.reload + '</button>' +
           '<span class="lmd-sep lmd-doc-only"></span>' +
           '<button class="lmd-icon-btn" data-act="settings" title="' + T('Ajustes') + '">' + ICON.sliders + '</button>' +
           // En pantalla chica todo lo de este grupo, y la nube, se abre desde acá.
-          '<button class="lmd-icon-btn lmd-more lmd-doc-only" data-act="more" aria-haspopup="menu" title="' + T('Más acciones') + '">' + ICON.more + '</button>' +
+          '<button class="lmd-icon-btn lmd-more lmd-doc-only" data-act="more" aria-haspopup="menu" aria-expanded="false" title="' + T('Más acciones') + '">' + ICON.more + '</button>' +
         '</div>' +
       '</div>' +
       // Sin nota abierta, acá va el estado vacío: lo dibuja home.js.
@@ -670,7 +670,9 @@
       '<pre class="lmd-raw lmd-doc-only" hidden></pre>' +
       '<textarea class="lmd-raw lmd-raw-edit" spellcheck="false" hidden></textarea>' +
       // Pie: avisos a la izquierda; estado del guardado y contador a la derecha.
-      '<footer class="lmd-foot lmd-doc-only"><span class="lmd-status"></span><span class="lmd-savestate"></span><span class="lmd-count" title="' + T('Palabras y caracteres') + '"></span></footer>';
+      '<footer class="lmd-foot lmd-doc-only"><span class="lmd-status"></span><span class="lmd-savestate"></span><span class="lmd-count" title="' + T('Palabras y caracteres') + '"></span>' +
+        // Solo sobre una nota de otra persona (enlace público, compartida, sesión en vivo como invitado).
+        '<button type="button" class="lmd-link lmd-report" data-act="report" hidden>' + T('Denunciar esta nota') + '</button></footer>';
 
     ui.toTop = el('button', { class: 'lmd-to-top', title: T('Volver arriba'), hidden: '' }, ICON.up);
     ui.panel = el('div', { class: 'lmd-panel', hidden: '' });
@@ -712,6 +714,7 @@
 
     ui.home = ui.main.querySelector('.lmd-home');
     ui.more = ui.main.querySelector('.lmd-more');
+    watchBar();
     paintDoc();
     bindEvents();
     bindEditing();
@@ -739,7 +742,7 @@
   function bindEvents() {
     document.body.addEventListener('click', (e) => {
       const actEl = e.target.closest('[data-act]');
-      if (actEl) { onAction(actEl.dataset.act, actEl); return; }
+      if (actEl) { onAction(actEl.dataset.act, actEl, !e.detail); return; }
       if (e.target === ui.scrim) { setDrawer(false); return; }
       if (sideClick(e)) return;
       const img = e.target.closest('img.lmd-zoomable');
@@ -777,7 +780,7 @@
     });
 
     ui.toTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
-    document.addEventListener('mousedown', (e) => { if (moreMenu && !moreMenu.contains(e.target) && !ui.more.contains(e.target)) closeMore(); });
+    document.addEventListener('mousedown', (e) => { if (moreMenu && !moreMenu.contains(e.target) && !moreBtn.contains(e.target)) closeMore(); });
     window.addEventListener('scroll', closeMore, { passive: true });
     ui.viewer.addEventListener('click', () => { ui.viewer.hidden = true; ui.viewer.textContent = ''; });
 
@@ -792,7 +795,7 @@
     document.addEventListener('selectionchange', debounce(updateCount, 80));
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        if (moreMenu) closeMore();
+        if (moreMenu) closeMore(true);
         else if (!ui.viewer.hidden) ui.viewer.click();
         else if (!ui.panel.hidden) closePanel();
         else if (drawerOpen()) setDrawer(false);
@@ -861,43 +864,126 @@
     if (!open && ui.sidebar.contains(document.activeElement)) document.activeElement.blur(); // el teclado no queda abierto sobre un panel cerrado
   }
 
-  // Lo que en escritorio está a la vista en la barra de arriba, acá en una lista: el ícono y qué hace cada cosa.
-  let moreMenu = null;
-  function closeMore() { if (moreMenu) { moreMenu.remove(); moreMenu = null; ui.more.setAttribute('aria-expanded', 'false'); } }
-  function openMore() {
-    if (moreMenu) { closeMore(); return; }
-    LMD.write.closeMenu();
-    const md = docKind() === 'md'; const cloud = !!appRoot && appRoot.kind === 'cloud';
-    const items = [
-      !ui.sync.hidden && ['sync', (ui.sync.querySelector('svg') || { outerHTML: ICON.cloud }).outerHTML, cloud ? 'Nube: compartir, historial y más' : LMD.cloud.signedIn() ? 'Subir esta nota a la nube' : 'Entrar a la cuenta'],
-      // Con una sesión en vivo, quiénes están y cómo salir o terminarla (en pantalla chica la barra de arriba no los muestra).
-      cloud && LMD.live.active() && ['live', ICON.people, 'Colaborar en vivo'],
-      editMode && md && !rawMode && ['insert', ICON.plus, 'Insertar un bloque'],
-      rawMode ? ['view-doc', ICON.doc, 'Ver documento'] : ['view-raw', ICON.code, 'Ver código fuente'],
-      ['copy-md', ICON.copy, 'Copiar Markdown'],
-      ['copy-rich', ICON.rich, 'Copiar con formato'],
-      ['reload', ICON.reload, 'Recargar ahora'],
-      ['print', ICON.print, 'Imprimir o guardar PDF'],
-      ['export-html', ICON.download, 'Exportar a HTML'],
-      ['settings', ICON.sliders, 'Ajustes'],
-    ].filter(Boolean);
-    moreMenu = el('div', { class: 'lmd-menu lmd-menu-more', role: 'menu' });
-    moreMenu.innerHTML = '<div class="lmd-menu-list">' + items.map((i) => '<button type="button" role="menuitem" data-more="' + i[0] + '">' + i[1] + '<span>' + T(i[2]) + '</span></button>').join('') + '</div>';
-    document.body.appendChild(moreMenu);
-    const box = ui.more.getBoundingClientRect();
-    moreMenu.style.left = Math.max(8, Math.min(window.innerWidth - moreMenu.offsetWidth - 8, box.right - moreMenu.offsetWidth)) + 'px';
-    moreMenu.style.top = Math.max(8, Math.min(window.innerHeight - moreMenu.offsetHeight - 8, box.bottom + 6)) + 'px';
-    ui.more.setAttribute('aria-expanded', 'true');
-    moreMenu.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-more]'); if (!b) return;
-      closeMore();
-      onAction(b.dataset.more, ui.more);
-    });
+  // La barra de arriba cuando la ventana se achica (o la barra lateral se ensancha): sus tres grupos nunca se pisan.
+  // La grilla ya garantiza eso (ver .lmd-topbar al final de content.css); acá se decide qué se guarda cuando no
+  // entra todo. Primero se acorta el nombre, con puntos suspensivos. Si no alcanza, los íconos de la derecha, la
+  // nube e insertar pasan al menú "más" (lmd-bar-tight). Y si ni así entra, se van el nombre y el selector de
+  // vista, que también queda en "más" (lmd-bar-min). El selector de ver o editar está siempre entero.
+  function fitBar() {
+    const root = document.documentElement; const bar = ui.main.querySelector('.lmd-topbar');
+    const was = root.classList.contains('lmd-bar-tight');
+    root.classList.remove('lmd-bar-tight', 'lmd-bar-min');
+    if (LMD.touch.small() || !bar.offsetParent) { if (was) closeMore(); return; }
+    const name = bar.querySelector('.lmd-docname');
+    const over = () => bar.scrollWidth > bar.clientWidth + 1;
+    if (over() || (name.offsetParent && name.textContent && name.clientWidth < Math.min(72, name.scrollWidth))) root.classList.add('lmd-bar-tight');
+    if (over()) root.classList.add('lmd-bar-min');
+    if (was !== root.classList.contains('lmd-bar-tight')) closeMore();
+  }
+  function watchBar() {
+    const bar = ui.main.querySelector('.lmd-topbar'); let queued = false;
+    const later = () => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; fitBar(); }); };
+    if (window.ResizeObserver) new ResizeObserver(later).observe(bar);
+    // Lo que aparece o se va de la barra (guardar, la nube, quién está en vivo) y el nombre de la nota.
+    new MutationObserver(later).observe(bar, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden'] });
+    window.addEventListener('resize', later);
+    later();
   }
 
-  function onAction(act, source) {
+  // Los menús de la barra de arriba: "copiar", "exportar" y, en pantalla chica, "más". Uno solo abierto a la vez,
+  // debajo de su botón, con el mismo aspecto que los menús contextuales. items: [id, ícono, texto, atajo].
+  let moreMenu = null; let moreBtn = null;
+  function closeMore(focus) {
+    if (!moreMenu) return;
+    moreMenu.remove(); moreMenu = null; moreBtn.setAttribute('aria-expanded', 'false');
+    if (focus === true) moreBtn.focus();
+  }
+  function barMenu(btn, cls, items, keys) {
+    const again = moreMenu && moreBtn === btn && moreMenu.classList.contains(cls.split(' ').pop());
+    closeMore(); if (again) return;
+    LMD.write.closeMenu();
+    moreBtn = btn;
+    moreMenu = el('div', { class: 'lmd-menu ' + cls, role: 'menu' });
+    moreMenu.innerHTML = '<div class="lmd-menu-list">' + items.filter(Boolean).map((i) => '<button type="button" role="menuitem" data-more="' + i[0] + '">' + i[1] + '<span>' + T(i[2]) + '</span>' + (i[3] ? '<kbd>' + i[3] + '</kbd>' : '') + '</button>').join('') + '</div>';
+    document.body.appendChild(moreMenu);
+    const box = btn.getBoundingClientRect();
+    moreMenu.style.left = Math.max(8, Math.min(window.innerWidth - moreMenu.offsetWidth - 8, box.right - moreMenu.offsetWidth)) + 'px';
+    moreMenu.style.top = Math.max(8, Math.min(window.innerHeight - moreMenu.offsetHeight - 8, box.bottom + 6)) + 'px';
+    btn.setAttribute('aria-expanded', 'true');
+    moreMenu.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-more]'); if (!b) return;
+      const byKeys = !e.detail;
+      closeMore();
+      onAction(b.dataset.more, btn, byKeys);
+    });
+    // Flechas, Inicio y Fin recorren las opciones; Enter y la barra las eligen solos por ser botones.
+    moreMenu.addEventListener('keydown', (e) => {
+      const all = Array.from(moreMenu.querySelectorAll('button')); const at = all.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); all[(at + (e.key === 'ArrowDown' ? 1 : all.length - 1)) % all.length].focus(); }
+      else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); all[e.key === 'Home' ? 0 : all.length - 1].focus(); }
+      else if (e.key === 'Tab') closeMore();
+    });
+    if (keys) moreMenu.querySelector('button').focus();
+  }
+  const PRINT_KEY = /Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘P' : 'Ctrl+P';
+  const hasLink = () => !!appRoot && (appRoot.kind === 'cloud' || appRoot.kind === 'pub');
+  function openCopy(btn, keys) {
+    const md = docKind() === 'md';
+    barMenu(btn, 'lmd-menu-narrow lmd-menu-top lmd-menu-copy', [
+      ['copy-md', ICON.file, 'Markdown'],
+      md && ['copy-rich', ICON.rich, 'Texto con formato'],
+      md && ['copy-html', ICON.code, 'HTML'],
+      hasLink() && ['copy-link', ICON.link, 'Enlace a la nota'],
+    ], keys);
+  }
+  function openExport(btn, keys) {
+    const md = docKind() === 'md';
+    barMenu(btn, 'lmd-menu-narrow lmd-menu-top lmd-menu-export', [
+      ['export-pdf', ICON.doc, 'PDF'],
+      md && ['export-html', ICON.code, 'Archivo HTML'],
+      ['export-md', ICON.file, md ? 'Archivo Markdown (.md)' : 'Descargar el archivo'],
+      ['print', ICON.print, 'Imprimir', PRINT_KEY],
+    ], keys);
+  }
+  // En pantalla chica, lo que en escritorio está a la vista en la barra de arriba, acá en una lista.
+  function openMore() {
+    const md = docKind() === 'md'; const cloud = !!appRoot && appRoot.kind === 'cloud';
+    // Lo que la barra todavía muestra no se repite acá: en una ventana angosta el selector de vista sigue en su lugar.
+    const shown = (q) => !!ui.main.querySelector('.lmd-topbar ' + q).offsetParent;
+    barMenu(ui.more, 'lmd-menu-more', [
+      !ui.sync.hidden && !shown('.lmd-sync') && ['sync', (ui.sync.querySelector('svg') || { outerHTML: ICON.cloud }).outerHTML, cloud ? 'Nube: compartir, historial y más' : LMD.cloud.signedIn() ? 'Subir esta nota a la nube' : 'Entrar a la cuenta'],
+      // Con una sesión en vivo, quiénes están y cómo salir o terminarla (en pantalla chica la barra de arriba no los muestra).
+      cloud && LMD.live.active() && ['live', ICON.people, 'Colaborar en vivo'],
+      editMode && md && !rawMode && !shown('.lmd-insert') && ['insert', ICON.plus, 'Insertar un bloque'],
+      !shown('.lmd-view') && (rawMode ? ['view-doc', ICON.doc, 'Ver documento'] : ['view-raw', ICON.code, 'Ver código fuente']),
+      // Copiar y exportar abren acá mismo el menú que en escritorio cuelga de su botón.
+      ['copy', ICON.copy, 'Copiar'],
+      ['export', ICON.download, 'Exportar'],
+      diskDoc() && ['reload', ICON.reload, 'Recargar ahora'],
+      ['settings', ICON.sliders, 'Ajustes'],
+      // En pantalla chica el pie no tiene lugar para el enlace: denunciar una nota ajena va acá, al final.
+      LMD.touch.small() && APP && LMD.sync.reportRef() && ['report', ICON.flag, 'Denunciar esta nota'],
+    ]);
+  }
+  // Una nota del disco puede cambiar por fuera; las del navegador y las de la nube no se recargan a mano.
+  const diskDoc = () => !APP || !appRoot || appRoot.kind === 'dir' || appRoot.kind === 'file';
+  function downloadDoc() {
+    flushTyping();
+    const a = el('a', { download: DOC_NAME || 'nota.md' });
+    a.href = URL.createObjectURL(new Blob([raw], { type: 'text/markdown' }));
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    flash(T('Archivo descargado'));
+  }
+
+  function onAction(act, source, keys) {
     if (act === 'sidebar') { if (LMD.touch.small()) setDrawer(!drawerOpen()); else LMD.patch({ sidebarHidden: !settings.sidebarHidden }); }
     else if (act === 'more') openMore();
+    else if (act === 'copy') openCopy(source, keys);
+    else if (act === 'export') openExport(source, keys);
+    else if (act === 'copy-html') { copyText(LMD.extras.htmlOf(), source); flash(T('HTML copiado')); }
+    else if (act === 'copy-link') { copyText(location.href.split('#')[0], source); flash(T('Enlace copiado')); }
+    else if (act === 'export-pdf') window.print();
+    else if (act === 'export-md') downloadDoc();
     else if (act === 'mode-read') { if (editMode) setEditMode(false); }
     else if (act === 'mode-edit') { if (!editMode) setEditMode(true); }
     else if (act === 'save') save(true);
@@ -923,6 +1009,7 @@
     else if (act === 'go-home') { if (APP) go(''); else bg({ type: 'openApp' }); }
     else if (act === 'see-plans') openPanel('plan');
     else if (act === 'feedback') LMD.sync.feedback();
+    else if (act === 'report') LMD.sync.report();
   }
 
   // Aviso de versión nueva. El service worker decide si toca consultar GitHub según el ajuste.
@@ -1874,12 +1961,64 @@
           if (!kids.hidden && !kids.dataset.loaded) { kids.dataset.loaded = '1'; await fillDir(kids, row.url, depth + 1); }
         };
         item.addEventListener('click', open);
+        showCount(item, row.url);
         if (!shut && ((here && here.startsWith(row.url)) || openDirs.has(row.url))) open();
       } else {
         item.href = toHref(row.url);
         if (row.url === here) { item.classList.add('lmd-active'); setTimeout(() => { if (item.offsetParent) item.scrollIntoView({ block: 'nearest' }); }, 0); }
       }
     });
+  }
+
+  // ---------- Cuántas notas hay en cada carpeta ----------
+  // El número chico a la derecha de cada carpeta: sus Markdown, contando subcarpetas. En la nube sale de la lista
+  // de rutas que ya está en memoria. En el disco se recorre en segundo plano y de a una carpeta, sin frenar el
+  // dibujo del árbol: cada carpeta se lee una sola vez (lo contado se guarda hasta que el árbol cambia) y hay un
+  // tope de profundidad y de carpetas leídas. Pasado el tope el número lleva un "+". Leer una carpeta que está
+  // bajo la raíz ya permitida no pide permiso; si no se puede leer, no se muestra nada.
+  const COUNT_MAX_DEPTH = 8;
+  const COUNT_MAX_DIRS = APP ? 1500 : 300; // sobre file:// cada carpeta es un pedido al navegador
+  const dirCount = new Map(); let countReads = 0; let countQueue = Promise.resolve();
+  const clearCounts = () => { dirCount.clear(); countReads = 0; };
+  function diskCount(url, depth) {
+    if (dirCount.has(url)) return dirCount.get(url);
+    if (depth > COUNT_MAX_DEPTH || countReads >= COUNT_MAX_DIRS) return Promise.resolve({ n: 0, more: true });
+    countReads++;
+    const job = (async () => {
+      const rows = await listDir(url, true);
+      if (!rows) return { n: 0, more: false, fail: true };
+      let n = 0; let more = false;
+      for (const r of rows) {
+        if (!settings.filesShowHidden && r.name.startsWith('.')) continue;
+        if (!r.dir) { if (MD_RE.test(r.name)) n++; continue; }
+        if (SKIP_DIRS.test(r.name)) continue;
+        const sub = await diskCount(r.url, depth + 1);
+        n += sub.n; more = more || sub.more;
+      }
+      return { n, more };
+    })();
+    dirCount.set(url, job);
+    return job;
+  }
+  async function cloudCount(url) {
+    const parts = vParts(url); const other = parts.length && parts[0][0] === '~' ? parts.shift().slice(1) : '';
+    const prefix = parts.map((p) => p + '/').join('');
+    return { n: (await LMD.cloud.list(false, other)).filter((x) => x.path.startsWith(prefix) && MD_RE.test(x.path)).length, more: false };
+  }
+  function showCount(item, url) {
+    if (!APP && !isFile) return; // el listado de un servidor web no se recorre
+    const tag = el('span', { class: 'lmd-node-n', role: 'img', hidden: '' });
+    item.appendChild(tag);
+    const paint = (c) => {
+      if (!c || c.fail || !c.n) return; // una carpeta sin notas queda sin número
+      const more = c.more || c.n > 999;
+      // El número lo dibuja la hoja de estilos: el texto del renglón sigue siendo el nombre de la carpeta.
+      tag.dataset.n = c.n > 999 ? '999+' : c.n + (c.more ? '+' : '');
+      const full = T(more ? 'Más de {n} notas' : c.n === 1 ? '1 nota' : '{n} notas', { n: Math.min(c.n, 999) });
+      tag.setAttribute('aria-label', full); tag.title = full; tag.hidden = false;
+    };
+    if (APP && (rootOf(url) || {}).kind === 'cloud') cloudCount(url).then(paint, () => {});
+    else countQueue = countQueue.then(() => new Promise((resolve) => setTimeout(resolve, 0))).then(() => diskCount(url, 0)).then(paint, () => {});
   }
 
   // ---------- Búsqueda ----------
@@ -2128,7 +2267,7 @@
   let panelStale = false;
   let panelTab = 'look';
   let serverDraft = false; // "Uso mi propio servidor" prendido y la dirección todavía sin escribir
-  const PANEL_TABS = [['look', 'Apariencia', ICON.eye], ['read', 'Lectura y edición', ICON.pencil], ['plug', 'Plugins', ICON.b_code], ['cloud', 'Nube', ICON.cloud], ['ai', 'IA', ICON.spark], ['plan', 'Plan', ICON.card], ['inst', 'Instalar', ICON.download], ['adv', 'Avanzado', ICON.gear]];
+  const PANEL_TABS = [['look', 'Apariencia', ICON.eye], ['read', 'Lectura y edición', ICON.pencil], ['plug', 'Plugins', ICON.b_code], ['cloud', 'Nube', ICON.cloud], ['ai', 'IA (MCP)', ICON.spark], ['plan', 'Plan', ICON.card], ['inst', 'Instalar', ICON.download], ['adv', 'Avanzado', ICON.gear]];
   // Al cerrar Ajustes el foco vuelve a donde estaba al abrirlos.
   let panelBack = null;
   function closePanel() {
@@ -2249,6 +2388,8 @@
       login: () => { if (APP) location.href = APP_URL + '?login=1'; else bg({ type: 'openApp', query: '?login=1' }); },
       leave: () => (dirty ? save(false) : Promise.resolve(true)),
       back: location.href.split('#')[0], appUrl: APP_URL, direct: !APP,
+      // Sobre un archivo abierto directo: la app en una pestaña nueva, la web o la página de la extensión según "Abrir SharpMD en".
+      openApp: (at) => bg({ type: 'openApp', pref: true, query: at }),
       // Las personalizaciones vienen con el plan pago y se conservan.
       unlocked: (a) => { if (a.plan === 'pro' && !settings.supporter) { panelStale = true; LMD.patch({ supporter: true }); } },
     };
@@ -3000,7 +3141,7 @@
     pickTemplate: () => tools().then((ok) => (ok ? LMD.home.pickTemplate(homeCtx()) : null)),
     tools,
     showFiles,
-    reloadTree: () => { fileCache.clear(); folderIndex.clear(); wikiIndex = null; linkIndex = null; if (ui.searchInput.value.trim()) runSearch(ui.searchInput.value); const done = loadTree(); resumeCloud(); return done; },
+    reloadTree: () => { fileCache.clear(); folderIndex.clear(); clearCounts(); wikiIndex = null; linkIndex = null; if (ui.searchInput.value.trim()) runSearch(ui.searchInput.value); const done = loadTree(); resumeCloud(); return done; },
     dirHandle: async (dirUrl) => { let dir = rootOf(dirUrl).handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, ensure, isDark,
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
@@ -3411,7 +3552,7 @@
     const wasEditing = editMode;
     dropDoc();
     // Se creó, se movió o se borró un archivo: el árbol y lo que se sabía de la carpeta se vuelven a leer.
-    if (opt.tree) { fileCache.clear(); folderIndex.clear(); wikiIndex = null; linkIndex = null; }
+    if (opt.tree) { fileCache.clear(); folderIndex.clear(); clearCounts(); wikiIndex = null; linkIndex = null; }
     HERE = VBASE + f; DOC_NAME = doc ? decodeURIComponent(HERE.split('/').pop() || '') : ''; noDoc = !doc;
     appRoot = doc ? doc.root : null;
     if (doc) wantCloud = '';
@@ -3474,6 +3615,8 @@
     // Una nota abierta por su enlace público solo se lee: ahí no se ofrece editar, insertar ni guardar.
     document.documentElement.classList.toggle('lmd-public', !noDoc && !!appRoot && appRoot.kind === 'pub');
     document.documentElement.classList.toggle('lmd-nodoc', noDoc);
+    document.documentElement.classList.toggle('lmd-noreload', !diskDoc());
+    ui.main.querySelector('.lmd-report').hidden = !(APP && LMD.sync.reportRef());
     if (settings && !ui.status.classList.contains('lmd-flash')) ui.status.textContent = idleStatus();
   }
   function showEmpty(note) { ui.home.hidden = false; LMD.home.show(homeCtx(), note); unsplash(); }
@@ -3543,7 +3686,9 @@
     // Vuelta de la página de pago: Ajustes en Plan, esperando que el servidor confirme.
     if (APP && withDoc && location.hash === '#lmd-paid') { openPanel('plan'); LMD.sync.awaitPaid(); }
     // Desde la portada, el botón del plan pago llega acá: Ajustes en Plan, donde se entra a la cuenta y se paga.
-    if (APP && location.hash === '#lmd-plans') { history.replaceState(history.state, '', location.href.split('#')[0]); openPanel('plan'); }
+    // Ajustes sobre un archivo abierto directo manda igual, y también a la pestaña de IA.
+    const hashTab = APP && { '#lmd-plans': 'plan', '#lmd-ai': 'ai' }[location.hash];
+    if (hashTab) { history.replaceState(history.state, '', location.href.split('#')[0]); openPanel(hashTab); }
     updateSaveState();
     checkUpdate(false);
     if (APP) appBoot().finally(unsplash);

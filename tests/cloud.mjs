@@ -11,7 +11,7 @@ const PORT = 19000 + Math.floor(Math.random() * 900);
 const base = 'http://127.0.0.1:' + PORT;
 // El servidor se apaga y se vuelve a levantar sobre los mismos datos para probar el trabajo sin conexión.
 const startServer = async () => {
-  const s = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(PORT), DATA_DIR: data, DEV_CODES: '1', MCP_FREE: '1', SHARE_FREE: '1', PUBLIC_URL: base }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const s = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(PORT), DATA_DIR: data, DEV_CODES: '1', MCP_FREE: '1', SHARE_FREE: '1', PUBLIC_URL: base, FEEDBACK_TO: 'duenio@ejemplo.test' }, stdio: ['ignore', 'pipe', 'pipe'] });
   let log = ''; s.stdout.on('data', (d) => { log += d; }); s.stderr.on('data', (d) => { log += d; });
   for (let i = 0; i < 50 && !/puerto/.test(log); i++) await new Promise((r) => setTimeout(r, 100));
   return s;
@@ -36,7 +36,7 @@ try {
   o.sinServidor = await app.evaluate(() => document.querySelector('.lmd-home-cloud').hidden);
   await app.evaluate((url) => new Promise((resolve) => chrome.storage.local.set({ settings: { cloudUrl: url } }, resolve)), base);
   await app.goto(home); await app.waitForSelector('.lmd-home-cloud:not([hidden]) [data-cloud=ask]');
-  await app.click('[data-cloud=ask]');
+  await app.click('[data-cloud=ask]'); await app.waitForSelector('.lmd-home-card .lmd-login [data-field=email]');
   // Los topes al pedir y probar códigos: cada aviso dice cuánto esperar, y que donde ya se entró la sesión sigue.
   const post = (p, body) => fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   await app.fill('[data-field=email]', 'tope@ejemplo.test');
@@ -47,6 +47,7 @@ try {
   await app.click('[data-cloud=back]'); await app.waitForSelector('[data-field=email]'); o.topeVuelve = await app.inputValue('[data-field=email]');
   await app.click('[data-cloud=start]'); await app.waitForSelector('.lmd-home-cloud-err:not([hidden])');
   o.tope30 = await app.textContent('.lmd-home-cloud-err');
+  o.topeLugar = await app.evaluate(() => !!document.querySelector('.lmd-home-card .lmd-login .lmd-home-cloud-err:not([hidden])') && !document.querySelector('.lmd-sidebar .lmd-home-cloud-err:not([hidden])'));
   await app.fill('[data-field=email]', 'ana@ejemplo.test');
   const [started] = await Promise.all([app.waitForResponse((r) => r.url().endsWith('/auth/start')), app.click('[data-cloud=start]')]);
   const code = (await started.json()).dev_code;
@@ -106,6 +107,20 @@ try {
   o.publicoSinEditar = await visitor.evaluate(() => ['[data-act=mode-edit]', '[data-act=insert]', '[data-act=save]', '.lmd-modeseg'].map((s) => { const n = document.querySelector(s); return !!n && n.offsetParent === null; }).concat(document.querySelector('[data-act=view-raw]').offsetParent !== null));
   await visitor.evaluate(() => document.querySelector('[data-act=mode-edit]').click()); await visitor.waitForTimeout(300);
   o.publicoNoEdita = await visitor.evaluate(() => !document.documentElement.classList.contains('lmd-editing'));
+  // Denunciar: sobre una nota abierta por su enlace público hay un enlace discreto al pie; sobre una propia, no.
+  o.denunciaPropia = await app.evaluate(() => document.querySelector('.lmd-foot .lmd-report').hidden);
+  o.denunciaPie = await visitor.evaluate(() => { const b = document.querySelector('.lmd-foot .lmd-report'); return [b.hidden, b.textContent, !!b.offsetParent || getComputedStyle(b).display !== 'none', parseFloat(getComputedStyle(b).fontSize) <= 12]; });
+  await visitor.click('.lmd-foot .lmd-report'); await visitor.waitForSelector('.lmd-report-card [data-rp=text]');
+  o.denunciaVentana = [await visitor.textContent('.lmd-report-card h3'), await visitor.getAttribute('.lmd-report-card [data-rp=text]', 'placeholder'), await visitor.evaluate(() => document.activeElement.dataset.rp)];
+  await visitor.fill('.lmd-report-card [data-rp=text]', 'Tiene datos de otra persona.');
+  const [reported] = await Promise.all([visitor.waitForRequest((r) => r.url().endsWith('/feedback')), visitor.click('[data-rp=send]')]);
+  await visitor.waitForSelector('.lmd-fb-ok');
+  const sentReport = reported.postDataJSON();
+  o.denuncia = [(await reported.response()).status(), sentReport.report, sentReport.text, Object.keys(sentReport).sort().join(), JSON.stringify(sentReport).includes(o.publico[0]), shareUrl.endsWith(encodeURIComponent(sentReport.report.note))];
+  await visitor.waitForSelector('.lmd-report-card', { state: 'detached' });
+  await visitor.click('.lmd-foot .lmd-report'); await visitor.waitForSelector('.lmd-report-card [data-rp=text]');
+  const [bare] = await Promise.all([visitor.waitForRequest((r) => r.url().endsWith('/feedback')), visitor.click('[data-rp=send]')]);
+  o.denunciaSinMotivo = [(await bare.response()).status(), bare.postDataJSON().text];
   await visitor.close();
 
   // ---------- Árbol de la carpeta Nube ----------
@@ -132,6 +147,10 @@ try {
   await answer('ideas'); await menu('plan.md', 'dir');
   await Promise.all([app.waitForNavigation(), app.click('.lmd-menu [data-f=dir]')]); await opened();
   o.carpeta = [/ideas%2Fnota\.md/.test(app.url()), (await paths()).includes('proyecto/ideas/nota.md')];
+  // Cada carpeta de la nube dice cuántas notas tiene, contando subcarpetas.
+  await app.waitForFunction((sel) => [...document.querySelectorAll(sel + ' .lmd-node-dir')].some((n) => n.querySelector('.lmd-node-name').textContent === 'ideas' && n.querySelector('.lmd-node-n:not([hidden])')), CLOUD, { timeout: 8000 }).catch(() => {});
+  o.cuentaNube = [await app.evaluate((sel) => Object.fromEntries([...document.querySelectorAll(sel + ' .lmd-node-dir')].map((n) => { const c = n.querySelector('.lmd-node-n'); return [n.querySelector('.lmd-node-name').textContent, c && !c.hidden ? c.dataset.n + '|' + c.getAttribute('aria-label') : '']; })), CLOUD),
+    (await paths()).filter((p) => p.startsWith('proyecto/')).length, (await paths()).filter((p) => p.startsWith('proyecto/ideas/')).length];
 
   // Renombrar la nota abierta la deja abierta en su ruta nueva.
   await answer('proyecto/ideas/lista.md'); await menu('nota.md', 'ren');
@@ -459,6 +478,13 @@ try {
   await app.waitForSelector(CLOUD + ' .lmd-root-hint');
   o.salio = (await app.locator(CLOUD + ' .lmd-node').count()) === 0;
   o.sinCopias = await app.evaluate((who) => LMD.store.cloudAll(who).then((all) => all.length), mail);
+  // "Entrar para ver tus notas", con una nota abierta: el mismo formulario, en una ventana propia y centrada.
+  await app.evaluate(() => LMD.store.notePut('aparte.md', '# Aparte\n')); await app.goto(home + '?f=' + encodeURIComponent('local/aparte.md')); await app.waitForSelector('.markdown-body h1');
+  await app.waitForSelector(CLOUD + ' .lmd-root-hint'); await app.click(CLOUD + ' .lmd-root-hint'); await app.waitForSelector('.lmd-ask .lmd-login [data-field=email]');
+  o.entrarVentana = await app.evaluate(() => { const c = document.querySelector('.lmd-ask .lmd-login'); const r = c.getBoundingClientRect();
+    return { role: c.getAttribute('role'), centered: Math.abs((r.left + r.right) / 2 - window.innerWidth / 2) < 4, focus: document.activeElement.dataset.field, panel: document.querySelector('.lmd-panel').hidden, side: document.querySelectorAll('.lmd-sidebar [data-field]').length, send: !!c.querySelector('[data-cloud=start]') }; });
+  await app.click('.lmd-login [data-cloud=cancel]'); o.entrarVentana.cerro = (await app.locator('.lmd-login').count()) === 0;
+  await app.evaluate(() => LMD.store.noteDelete('aparte.md'));
   await app.goto(noteUrl.replace('&edit=1', '')); await app.waitForSelector('.lmd-home-msg:not([hidden])');
   o.sinSesion = await app.textContent('.lmd-home-msg');
   // Salir con una nota de la nube abierta: se cierra, en vez de quedar a la vista diciendo "guardado en la nube".
@@ -553,6 +579,12 @@ const checks = [
   ['lo que agrega la IA aparece en la app sin recargar', o.veLoDeLaIA === true],
   ['el árbol de la Nube crea una nota dentro de una carpeta', o.creada && o.creada[0] && /plan/.test(o.creada[1]) && o.creada[2], o.creada],
   ['una carpeta nueva nace con su primera nota', o.carpeta && o.carpeta[0] && o.carpeta[1], o.carpeta],
+  ['las carpetas de la nube dicen cuántas notas tienen, contando subcarpetas', o.cuentaNube && o.cuentaNube[2] >= 1 && o.cuentaNube[0].proyecto === o.cuentaNube[1] + '|' + (o.cuentaNube[1] === 1 ? '1 nota' : o.cuentaNube[1] + ' notas') && o.cuentaNube[0].ideas === o.cuentaNube[2] + '|' + (o.cuentaNube[2] === 1 ? '1 nota' : o.cuentaNube[2] + ' notas'), o.cuentaNube],
+  ['los topes de reintento se leen en el mismo formulario, en la tarjeta del inicio', o.topeLugar === true, o.topeLugar],
+  ['el enlace de la sección Nube abre el mismo formulario, en una ventana propia si hay una nota abierta', o.entrarVentana && o.entrarVentana.role === 'dialog' && o.entrarVentana.centered && o.entrarVentana.focus === 'email' && o.entrarVentana.panel && o.entrarVentana.side === 0 && o.entrarVentana.send && o.entrarVentana.cerro, o.entrarVentana],
+  ['una nota abierta por enlace público ofrece denunciarla, chico y al pie; una propia no', o.denunciaPropia === true && J(o.denunciaPie) === J([false, 'Denunciar esta nota', true, true]) && J(o.denunciaVentana) === J(['Denunciar esta nota', 'Motivo (opcional)', 'text']), [o.denunciaPropia, o.denunciaPie, o.denunciaVentana]],
+  ['la denuncia sale por el camino de los comentarios, marcada, con el enlace y sin el contenido de la nota', o.denuncia && o.denuncia[0] === 200 && o.denuncia[1].kind === 'link' && /^pub\//.test(o.denuncia[1].note) && o.denuncia[2] === 'Tiene datos de otra persona.' && o.denuncia[3] === 'context,report,text' && o.denuncia[4] === false && o.denuncia[5] === true, o.denuncia],
+  ['el motivo es opcional', o.denunciaSinMotivo && o.denunciaSinMotivo[0] === 200 && o.denunciaSinMotivo[1] === '', o.denunciaSinMotivo],
   ['renombrar la nota abierta la deja abierta en su ruta nueva', o.renombrada && o.renombrada[0] && o.renombrada[1] === 'lista.md' && /nota/.test(o.renombrada[2]) && o.renombrada[3], o.renombrada],
   ['renombrar con otra ruta mueve la nota', o.movida === true],
   ['renombrar una carpeta mueve lo que tiene adentro', o.carpetaRenombrada && o.carpetaRenombrada[0] && o.carpetaRenombrada[1], o.carpetaRenombrada],

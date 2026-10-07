@@ -62,7 +62,10 @@ await app.click('[data-act=settings]'); await app.waitForSelector('.lmd-panel-ca
 await app.click('[data-ptab=read]'); await app.click('input[data-key=focusMode]'); await app.click('input[data-key=typewriter]'); await app.waitForTimeout(500);
 o.foco = await app.evaluate(() => document.documentElement.classList.contains('lmd-focus') && document.documentElement.classList.contains('lmd-typewriter'));
 await app.click('[data-act=close-panel]');
-const [dl] = await Promise.all([app.waitForEvent('download'), app.click('[data-act=export-html]')]);
+// Recargar es para lo que vive en el disco: acá, una carpeta del disco, está a la vista.
+o.recargar = await app.evaluate(() => !!document.querySelector('[data-act=reload]').offsetParent && !document.querySelector('[data-act=copy-md], [data-act=copy-rich], [data-act=print], [data-act=export-html]'));
+await app.click('[data-act=export]'); await app.waitForSelector('.lmd-menu-export');
+const [dl] = await Promise.all([app.waitForEvent('download'), app.click('.lmd-menu-export [data-more=export-html]')]);
 const html = fs.readFileSync(await dl.path(), 'utf8');
 o.html = { name: dl.suggestedFilename(), h1: /<h1[^>]*>Doc/.test(html), limpio: !/contenteditable|data-l=|lmd-add/.test(html), math: /<math/.test(html) && !/class="katex"/.test(html), img: /src="assets\/imagen-/.test(html) };
 await app.keyboard.press('Control+s'); await app.waitForTimeout(800);
@@ -130,15 +133,25 @@ await app.evaluate(async () => {
   const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('x');
   const write = async (d, name, data) => { const h = await d.getFileHandle(name, { create: true }); const s = await h.createWritable(); await s.write(data); await s.close(); };
   await write(await dir.getDirectoryHandle('destino', { create: true }), 'ya.md', '# Ya\n');
+  await write(await dir.getDirectoryHandle('vacia', { create: true }), 'foto.bin', new Uint8Array([4]));
   const sub = await (await dir.getDirectoryHandle('carpeta')).getDirectoryHandle('sub', { create: true });
   await write(sub, 'hoja.md', '# Hoja\n'); await write(sub, 'dato.bin', new Uint8Array([1, 2, 3]));
 });
 const walk = () => app.evaluate(async () => { const out = []; const go = async (d, pre) => { for await (const [n, h] of d.entries()) { if (h.kind === 'directory') await go(h, pre + n + '/'); else out.push(pre + n); } }; await go(await (await navigator.storage.getDirectory()).getDirectoryHandle('x'), ''); return out.sort(); });
 const dirNode = (name) => app.locator('.lmd-xroot[data-root=disk] .lmd-node-dir', { hasText: name }).first();
 await app.goto(base + 'titulada.md'); await app.waitForSelector('.markdown-body h1'); await app.waitForSelector('.lmd-node-dir:has-text("destino")');
+// Cada carpeta dice cuántos Markdown tiene, contando subcarpetas. El número lo dibuja la hoja de estilos.
+const counts = () => app.evaluate(() => Object.fromEntries([...document.querySelectorAll('.lmd-xroot[data-root=disk] .lmd-node-dir')].map((n) => { const c = n.querySelector('.lmd-node-n'); return [n.querySelector('.lmd-node-name').textContent, c && !c.hidden ? c.dataset.n + '|' + c.getAttribute('aria-label') : '']; })));
+await app.waitForFunction(() => document.querySelectorAll('.lmd-xroot[data-root=disk] > .lmd-tree > .lmd-node-dir > .lmd-node-n:not([hidden])').length >= 2, null, { timeout: 8000 }).catch(() => {});
+o.cuenta = await counts(); const mdIn = async (dir) => (await walk()).filter((p) => p.startsWith(dir + '/') && /\.md$/.test(p)).length; const label = (n) => n + '|' + (n === 1 ? '1 nota' : n + ' notas');
+o.cuentaReal = [await mdIn('carpeta'), await mdIn('destino')];
+o.cuentaLugar = await app.evaluate(() => { const n = [...document.querySelectorAll('.lmd-node-dir')].find((x) => x.querySelector('.lmd-node-name').textContent === 'carpeta'); const c = n.querySelector('.lmd-node-n'); const r = c.getBoundingClientRect(); const nm = n.querySelector('.lmd-node-name').getBoundingClientRect(); const row = n.getBoundingClientRect(); const cs = getComputedStyle(c);
+  return { right: r.width > 0 && r.left >= nm.right - 1 && r.right <= row.right + 0.5, small: parseFloat(cs.fontSize) <= 12, gray: cs.color !== getComputedStyle(n).color, shown: getComputedStyle(c, '::after').content, text: n.textContent.trim(), role: c.getAttribute('role'), title: c.title }; });
 o.carpetaDisco = ['', await drag(dirNode('carpeta'), dirNode('destino'))];
 await app.waitForFunction(() => ![...document.querySelectorAll('.lmd-xroot[data-root=disk] > .lmd-tree > .lmd-node-dir')].some((n) => n.textContent.trim() === 'carpeta'));
 o.carpetaDisco.push((await walk()).filter((p) => /carpeta|destino/.test(p)));
+await app.waitForFunction(() => { const n = [...document.querySelectorAll('.lmd-xroot[data-root=disk] > .lmd-tree > .lmd-node-dir')].find((x) => x.querySelector('.lmd-node-name').textContent === 'destino'); const c = n && n.querySelector('.lmd-node-n'); return !!c && Number(c.dataset.n) > 1; }, null, { timeout: 8000 }).catch(() => {});
+o.cuentaMovida = [await counts(), await mdIn('destino')];
 // con la nota abierta adentro de la carpeta que se mueve, queda abierta en su ruta nueva
 for (const d of ['destino', 'carpeta', 'sub']) { if (!(await dirNode(d).evaluate((n) => n.classList.contains('lmd-open')))) await dirNode(d).click(); await app.waitForSelector('.lmd-node-dir.lmd-open:has-text("' + d + '")'); }
 o.carpetaEnHija = [await drag(dirNode('destino'), dirNode('sub')), await drag(dirNode('carpeta'), dirNode('destino'))]; // ni adentro de una de las suyas, ni donde ya está
@@ -199,6 +212,10 @@ o.localArrastre = [await drag(node('tercera.md'), app.locator('.lmd-xroot[data-r
 
 const J = (v) => JSON.stringify(v);
 const checks = [
+  ['cada carpeta dice cuántas notas tiene, contando subcarpetas y sin contar lo que no es Markdown; una sin notas no lleva número', o.cuenta && o.cuentaReal[0] > 1 && o.cuenta.carpeta === label(o.cuentaReal[0]) && o.cuenta.destino === '1|1 nota' && o.cuentaReal[1] === 1 && o.cuenta.vacia === '', [o.cuenta, o.cuentaReal]],
+  ['el número va chico y en gris a la derecha del nombre, con su texto completo, y el renglón sigue diciendo solo el nombre', o.cuentaLugar && o.cuentaLugar.right && o.cuentaLugar.small && o.cuentaLugar.gray && o.cuentaLugar.shown === '"' + o.cuentaReal[0] + '"' && o.cuentaLugar.text === 'carpeta' && o.cuentaLugar.role === 'img' && o.cuentaLugar.title === o.cuentaReal[0] + ' notas', o.cuentaLugar],
+  ['al mover una carpeta los números se vuelven a contar', o.cuentaMovida && o.cuentaMovida[1] === o.cuentaReal[0] + 1 && o.cuentaMovida[0].destino === label(o.cuentaMovida[1]), o.cuentaMovida],
+  ['en una carpeta del disco la barra tiene recargar, y copiar y exportar son un botón cada uno', o.recargar === true, o.recargar],
   ['arrastrar una carpeta del disco a otra la mueve entera; no adentro de una de las suyas ni donde ya está', J(o.carpetaEnHija) === J(['', '']) && o.carpetaDisco && o.carpetaDisco[1] === 'destino' && J(o.carpetaDisco[2]) === J(['destino/carpeta/dentro.md', 'destino/carpeta/movible.md', 'destino/carpeta/sub/dato.bin', 'destino/carpeta/sub/hoja.md', 'destino/ya.md']), o.carpetaDisco],
   ['mover la carpeta de la nota abierta la deja abierta en su ruta nueva', o.carpetaDiscoAbierta && o.carpetaDiscoAbierta[0] === 'raíz' && o.carpetaDiscoAbierta[1] === true && o.carpetaDiscoAbierta[2] === 'hoja.md' && J(o.carpetaDiscoAbierta[3]) === J(['carpeta/dentro.md', 'carpeta/movible.md', 'carpeta/sub/dato.bin', 'carpeta/sub/hoja.md', 'destino/ya.md']), o.carpetaDiscoAbierta],
   ['soltar una imagen del explorador en la nota la inserta como imagen', J(o.soltarImagen) === J(['cursor', 'punto.svg']) && /!\[\]\(punto\.svg\)/.test(o.soltarFuente || ''), [o.soltarImagen, o.soltarFuente]],

@@ -49,7 +49,7 @@
     await ready();
     if (!base) throw Object.assign(new Error('no_server'), { code: 'no_server' });
     // Un invitado solo habla con las rutas de su sesión: lo demás no sale de acá (y el servidor tampoco lo aceptaría).
-    if (guest && !path.startsWith('/live/')) throw Object.assign(new Error('guest'), { code: 'guest', status: 403 });
+    if (guest && !path.startsWith('/live/') && path !== '/feedback') throw Object.assign(new Error('guest'), { code: 'guest', status: 403 });
     let res;
     try {
       res = await fetch(base + path, { method, headers: Object.assign({ 'content-type': 'application/json' }, session && !OPEN_LIVE.includes(path) ? { authorization: 'Bearer ' + session } : {}), body: body === undefined ? undefined : JSON.stringify(body) });
@@ -604,6 +604,8 @@
     tokens: () => api('GET', '/tokens'),
     revoke: (id) => api('DELETE', '/tokens/' + id),
     feedback: (text, mail, context) => api('POST', '/feedback', { text, email: mail || undefined, context }),
+    // Denunciar una nota ajena: viaja qué nota es (ref), nunca su contenido.
+    report: (text, ref, context) => api('POST', '/feedback', { text, report: ref, context }),
     // Cambió la dirección del servidor en Ajustes: se vuelve a leer.
     reset: () => { loaded = null; listCache = null; vaultCache = null; },
     write: (path, text) => putNote(path, text).then((r) => { listCache = null; delete otherLists[split(path).owner]; return r; }),

@@ -130,6 +130,25 @@ try {
       await page.goto(home); await page.waitForSelector('.lmd-home [data-home=new]');
     }
 
+    // Entrar a la cuenta: la fila "Not signed in" vive en el panel deslizable; al tocarla el panel se cierra y el
+    // formulario queda a la vista, en la tarjeta del inicio.
+    if (W === 390) {
+      await page.evaluate((url) => new Promise((resolve) => chrome.storage.local.set({ settings: { cloudUrl: url } }, resolve)), base);
+      await page.goto(home); await page.waitForSelector('[data-cloud=ask]', { state: 'attached' });
+      await page.tap('[data-act=sidebar]'); await page.waitForTimeout(350);
+      const row = await page.evaluate(() => { const b = document.querySelector('.lmd-sidebar [data-cloud=ask]'); const r = b.getBoundingClientRect();
+        return { title: b.querySelector('b').textContent, sub: b.querySelector('small').textContent, h: r.height, in: r.left >= 0 && r.right <= window.innerWidth && r.bottom <= window.innerHeight, open: document.documentElement.classList.contains('lmd-side-open') }; });
+      await page.tap('[data-cloud=ask]'); await page.waitForSelector('.lmd-home-card .lmd-login [data-field=email]'); await page.waitForTimeout(350);
+      const shown = await page.evaluate(() => { const f = document.querySelector('.lmd-home-card .lmd-login'); const r = f.getBoundingClientRect(); const input = f.querySelector('input'); const i = input.getBoundingClientRect(); const go = f.querySelector('[data-cloud=start]').getBoundingClientRect();
+        return { drawer: document.documentElement.classList.contains('lmd-side-open'), in: r.left >= 0 && r.right <= window.innerWidth, input: i.height, go: go.height, font: parseFloat(getComputedStyle(input).fontSize), top: document.elementFromPoint((i.left + i.right) / 2, (i.top + i.bottom) / 2) === input, fields: document.querySelectorAll('.lmd-sidebar [data-field]').length }; });
+      check('sin sesión, el panel lateral trae la fila "Not signed in" con qué da entrar', row.title === 'Not signed in' && row.sub === 'Sign in to sync your notes' && row.h >= 44 && row.in && row.open, row);
+      check('al tocarla el panel se cierra y el formulario de entrar queda a la vista, con campos cómodos para el dedo', !shown.drawer && shown.in && shown.input >= 40 && shown.go >= 40 && shown.font >= 16 && shown.top && shown.fields === 0, shown);
+      await fits(page, 'formulario de entrar');
+      await page.tap('.lmd-login [data-cloud=cancel]');
+      check('"Cancel" lo cierra', (await page.locator('.lmd-login').count()) === 0);
+    }
+
+
     // Cuenta y notas: una en el navegador y una en la nube
     await page.evaluate(async ([url, s, m, text]) => {
       await LMD.store.notePut('groceries.md', '# Groceries\n\n- [ ] Coffee\n- [x] Bread\n');
@@ -201,10 +220,12 @@ try {
     await page.tap('[data-act=more]'); await page.waitForSelector('.lmd-menu-more');
     const more = await page.evaluate(() => { const m = document.querySelector('.lmd-menu-more'); const r = m.getBoundingClientRect(); const bs = [...m.querySelectorAll('button')];
       return { acts: bs.map((b) => b.dataset.more), icons: bs.every((b) => b.querySelector('svg') && b.querySelector('span').textContent.trim()), low: Math.min(...bs.map((b) => b.getBoundingClientRect().height)), in: r.left >= 0 && r.right <= window.innerWidth && r.bottom <= window.innerHeight, right: Math.round(window.innerWidth - r.right) }; });
-    check(tag + 'el menú "más" trae la nube, la vista de código, copiar, recargar, imprimir, descargar y ajustes', J(more.acts) === J(['sync', 'insert', 'view-raw', 'copy-md', 'copy-rich', 'reload', 'print', 'export-html', 'settings']), more.acts);
+    check(tag + 'el menú "más" trae la nube, insertar, la vista de código, copiar, exportar y ajustes, sin recargar (la nota es del navegador)', J(more.acts) === J(['sync', 'insert', 'view-raw', 'copy', 'export', 'settings']), more.acts);
     check(tag + 'cada renglón del menú lleva ícono y texto, mide 40 px o más y queda a la derecha', more.icons && more.low >= 40 && more.in && more.right <= 12, more);
     await fits(page, tag + 'editando con el menú "más" abierto');
-    const pick = async (act) => { if (!(await page.locator('.lmd-menu-more').count())) { await page.tap('[data-act=more]'); await page.waitForSelector('.lmd-menu-more'); } await page.tap('.lmd-menu-more [data-more=' + act + ']'); await page.waitForTimeout(250); };
+    // Copiar y exportar abren, desde "más", el mismo menú que en escritorio cuelga de su botón: sub es la opción de ese menú.
+    const pick = async (act, sub) => { if (!(await page.locator('.lmd-menu-more').count())) { await page.tap('[data-act=more]'); await page.waitForSelector('.lmd-menu-more'); } await page.tap('.lmd-menu-more [data-more=' + act + ']');
+      if (sub) { await page.waitForSelector('.lmd-menu-top'); await page.tap('.lmd-menu-top [data-more=' + sub + ']'); } await page.waitForTimeout(250); };
     if (W === 390) {
       await pick('view-raw');
       check('"más": ver el código fuente', await page.evaluate(() => !document.querySelector('.lmd-raw-edit').hidden && document.querySelector('.lmd-article').hidden && !document.querySelector('.lmd-menu-more')));
@@ -212,17 +233,33 @@ try {
       check('"más": con el código a la vista ofrece volver al documento', (await page.locator('.lmd-menu-more [data-more=view-doc]').count()) === 1 && (await page.locator('.lmd-menu-more [data-more=insert]').count()) === 0);
       await pick('view-doc');
       check('"más": volver al documento', await page.evaluate(() => !document.querySelector('.lmd-article').hidden));
-      await pick('copy-md');
+      await pick('copy'); await page.waitForSelector('.lmd-menu-copy');
+      const copyMenu = await page.evaluate(() => { const m = document.querySelector('.lmd-menu-copy'); const r = m.getBoundingClientRect(); const bs = [...m.querySelectorAll('button')];
+        return { acts: bs.map((b) => b.dataset.more), low: Math.min(...bs.map((b) => b.getBoundingClientRect().height)), in: r.left >= 0 && r.right <= window.innerWidth && r.bottom <= window.innerHeight, more: !!document.querySelector('.lmd-menu-more'), open: document.querySelector('[data-act=more]').getAttribute('aria-expanded') }; });
+      check('"más" > copiar: Markdown, texto con formato y HTML, en renglones de 40 px o más, sin el menú "más" detrás', J(copyMenu.acts) === J(['copy-md', 'copy-rich', 'copy-html']) && copyMenu.low >= 40 && copyMenu.in && !copyMenu.more && copyMenu.open === 'true', copyMenu);
+      await fits(page, 'menú de copiar');
+      await away(page);
+      await pick('copy', 'copy-md');
       check('"más": copiar Markdown', (await page.evaluate(() => navigator.clipboard.readText())).startsWith('# Booking app launch'));
-      await pick('copy-rich'); await page.waitForTimeout(300);
+      await pick('copy', 'copy-rich'); await page.waitForTimeout(300);
       check('"más": copiar con formato', /Booking app launch/.test(await page.evaluate(() => navigator.clipboard.readText())) && /Copied with formatting/.test(await page.textContent('.lmd-status')));
       await page.evaluate(() => { window.__printed = 0; window.print = () => { window.__printed++; }; });
-      await pick('print');
+      await pick('copy', 'copy-html'); await page.waitForTimeout(300);
+      const copied = await page.evaluate(() => navigator.clipboard.readText());
+      check('"más": copiar el HTML, sin nada de la interfaz', /^<h1[^>]*>Booking app launch/.test(copied) && !/contenteditable|data-l=|lmd-add|lmd-anchor/.test(copied) && /HTML copied/.test(await page.textContent('.lmd-status')), copied.slice(0, 200));
+      await pick('export'); await page.waitForSelector('.lmd-menu-export');
+      const exportMenu = await page.evaluate(() => [...document.querySelectorAll('.lmd-menu-export button')].map((b) => b.dataset.more + ':' + b.querySelector('span').textContent + (b.querySelector('kbd') ? ':' + b.querySelector('kbd').textContent : '')));
+      check('"más" > exportar: PDF, archivo HTML, el .md e imprimir con su atajo', J(exportMenu) === J(['export-pdf:PDF', 'export-html:HTML file', 'export-md:Markdown file (.md)', 'print:Print:Ctrl+P']), exportMenu);
+      await fits(page, 'menú de exportar');
+      await away(page);
+      await pick('export', 'print');
       check('"más": imprimir', (await page.evaluate(() => window.__printed)) === 1);
-      const [download] = await Promise.all([page.waitForEvent('download'), pick('export-html')]);
+      await pick('export', 'export-pdf');
+      check('"más": PDF sale por la impresión', (await page.evaluate(() => window.__printed)) === 2);
+      const [download] = await Promise.all([page.waitForEvent('download'), pick('export', 'export-html')]);
       check('"más": descargar como HTML', /\.html$/.test(download.suggestedFilename()), download.suggestedFilename());
-      await pick('reload'); await page.waitForTimeout(300);
-      check('"más": recargar deja la nota a la vista', (await page.locator('.markdown-body h1').count()) === 1);
+      const [plain] = await Promise.all([page.waitForEvent('download'), pick('export', 'export-md')]);
+      check('"más": descargar el .md, con el Markdown de la nota', /\.md$/.test(plain.suggestedFilename()) && fs.readFileSync(await plain.path(), 'utf8').startsWith('# Booking app launch'), plain.suggestedFilename());
       await pick('insert'); await page.waitForSelector('.lmd-menu [data-ins]');
       check('"más": insertar un bloque abre el menú de bloques', (await page.locator('.lmd-menu [data-ins]').count()) > 8);
       await away(page);
@@ -412,7 +449,7 @@ try {
     await page.tap('[data-act=mode-edit]'); await page.waitForSelector('.lmd-editable');
     await page.tap('[data-act=more]'); await page.waitForSelector('.lmd-menu-more');
     const m = await page.evaluate(() => { const r = document.querySelector('.lmd-menu-more').getBoundingClientRect(); return { in: r.top >= 0 && r.bottom <= window.innerHeight && r.right <= window.innerWidth, rows: document.querySelectorAll('.lmd-menu-more button').length, h: Math.round(r.height), screen: window.innerHeight }; });
-    check('acostado, el menú "más" queda entero dentro de la pantalla', m.in && m.rows === 8, m);
+    check('acostado, el menú "más" queda entero dentro de la pantalla', m.in && m.rows === 5, m);
     await fits(page, 'acostado, menú "más"');
     await ctx.close();
   }
@@ -525,6 +562,52 @@ try {
     await ctx.close();
   }
 
+  // ---------- La portada va guardando la app ----------
+  console.log('Portada: la app se guarda mientras se lee');
+  {
+    const src = fs.readFileSync(path.join(root, 'tools', 'landing.src.html'), 'utf8'); const built = [fs.readFileSync(path.join(root, 'index.html'), 'utf8'), fs.readFileSync(path.join(root, 'es', 'index.html'), 'utf8')];
+    const part = /<script>\s*\/\/ Mientras se lee la portada[\s\S]*?<\/script>/.exec(src);
+    check('el registro va en la fuente de la portada y en las dos páginas generadas, después del load y en reposo', !!part && /addEventListener\('load', idle\)/.test(part[0]) && /requestIdleCallback/.test(part[0]) && /saveData/.test(part[0]) && built.every((h) => /serviceWorker\.register\(root \+ 'sw\.js\?v='/.test(h)));
+    const version = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8')).version;
+    for (const rel of ['/index.html?site', '/es/index.html?site']) {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: 'en-US', serviceWorkers: 'allow' });
+      await ctx.route((url) => /(^|\.)sync\.sharpmd\.app$/.test(url.hostname), (r) => { outside.push(r.request().url()); return r.abort(); });
+      const page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
+      // Hasta el load no hay nada registrado: la portada carga sin competir con eso.
+      await page.addInitScript(() => { window.addEventListener('load', () => { navigator.serviceWorker.getRegistration().then((r) => { window.__atLoad = !!r; }); }); });
+      await page.goto(origin + rel); await page.waitForSelector('#plans .plan');
+      const reg = await page.evaluate(async () => { const r = await navigator.serviceWorker.ready; return { url: r.active.scriptURL, scope: r.scope, atLoad: window.__atLoad }; });
+      check(rel + ': la portada registra el service worker de la app, con la versión en la dirección, recién después del load', reg.url === origin + '/sw.js?v=' + version && reg.scope === origin + '/' && reg.atLoad === false, reg);
+      const kept = await page.evaluate(async () => { for (let i = 0; i < 80; i++) { for (const k of await caches.keys()) { const c = await caches.open(k); if ((await c.match('/src/app.html')) && (await c.match('/src/content.js')) && (await c.match('/src/content.css'))) return { key: k, landing: !!((await c.match('/index.html')) || (await c.match('/')) || (await c.match('/es/index.html'))) }; } await new Promise((r) => setTimeout(r, 250)); } return null; });
+      check(rel + ': mientras se lee queda guardado el esqueleto de la app, y la portada misma no', !!kept && kept.key === 'sharpmd-' + version && kept.landing === false, kept);
+      if (rel === '/index.html?site') {
+        // La primera apertura de la app sale de lo guardado: anda hasta sin red, y no vuelve a instalar otro service worker.
+        await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 10000 }).catch(() => {});
+        await page.evaluate(async () => { for (let i = 0; i < 80; i++) { const c = await caches.open((await caches.keys())[0]); if (await c.match('/icons/icon512.png')) return; await new Promise((r) => setTimeout(r, 250)); } }); // lo que se guarda después, ya activo
+        await ctx.setOffline(true);
+        await page.click('a[href$="src/app.html"]'); await page.waitForSelector('.lmd-home [data-home=new]', { timeout: 10000 }).catch(() => {});
+        check('la primera apertura de la app sale de lo guardado, sin esperar a la red', (await page.locator('.lmd-home [data-home=new]').count()) === 1 && /\/src\/app\.html/.test(page.url()), page.url());
+        await ctx.setOffline(false); await page.waitForTimeout(1500);
+        const after = await page.evaluate(async () => ({ regs: (await navigator.serviceWorker.getRegistrations()).map((r) => (r.active || r.installing || r.waiting).scriptURL), keys: await caches.keys() }));
+        check('y la app encuentra ese mismo service worker: no instala otro', J(after.regs) === J([origin + '/sw.js?v=' + version]) && J(after.keys) === J(['sharpmd-' + version]), after);
+        // La portada sigue llegando de la red: el service worker no la sirve.
+        const mark = hits.length; await page.goto(origin + '/index.html?site'); await page.waitForSelector('#plans .plan');
+        check('la portada se sigue pidiendo a la red', hits.slice(mark).includes('/index.html'), hits.slice(mark).slice(0, 4));
+      }
+      await ctx.close();
+    }
+    // Con ahorro de datos, o una red muy lenta, la portada no guarda nada.
+    for (const net of [{ saveData: true, effectiveType: '4g' }, { saveData: false, effectiveType: 'slow-2g' }]) {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: 'en-US', serviceWorkers: 'allow' });
+      const page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
+      await page.addInitScript((n) => { Object.defineProperty(Navigator.prototype, 'connection', { get: () => n, configurable: true }); }, net);
+      const mark = hits.length; await page.goto(origin + '/index.html?site'); await page.waitForSelector('#plans .plan'); await page.waitForLoadState('load'); await page.waitForTimeout(5500);
+      const none = await page.evaluate(async () => ({ regs: (await navigator.serviceWorker.getRegistrations()).length, keys: await caches.keys() }));
+      check('con ' + (net.saveData ? 'ahorro de datos' : 'una red muy lenta') + ' la portada no registra nada ni baja la app', none.regs === 0 && none.keys.length === 0 && !hits.slice(mark).some((h) => /^\/(sw\.js|manifest\.json|src\/content\.js)/.test(h)), [none, hits.slice(mark).filter((h) => /sw|manifest\.json|src\//.test(h))]);
+      await ctx.close();
+    }
+  }
+
   // ---------- En escritorio nada cambia ----------
   console.log('Escritorio');
   {
@@ -537,14 +620,95 @@ try {
       return { more: cs('.lmd-more').display, scrim: cs('.lmd-scrim').display, side: [Math.round(side.left), Math.round(side.width)], main: cs('.lmd-main').marginLeft, bar: cs('.lmd-topbar').height, barPad: [cs('.lmd-topbar').paddingLeft, cs('.lmd-topbar').paddingRight, cs('.lmd-topbar').paddingTop], foot: [cs('.lmd-foot').height, cs('.lmd-foot').left, cs('.lmd-foot').paddingLeft],
         btn: cs('.lmd-icon-btn').height, pad: cs('.lmd-article').paddingLeft, acts: [...document.querySelectorAll('.lmd-topbar [data-act]')].filter((b) => b.offsetParent).map((b) => b.dataset.act), table: cs('.markdown-body table').maxWidth, node: Math.round(document.querySelector('.lmd-node').getBoundingClientRect().height) }; });
     check('en escritorio la barra lateral sigue fija a la izquierda y el contenido a su lado', J(desk.side) === J([0, 300]) && desk.main === '300px' && desk.scrim === 'none', desk);
-    check('la barra de arriba conserva sus botones y sus medidas, sin el menú "más"', desk.more === 'none' && desk.bar === '49px' && J(desk.barPad) === J(['12px', '16px', '0px']) && desk.btn === '32px' && !desk.acts.includes('more') && ['view-doc', 'view-raw', 'copy-md', 'copy-rich', 'reload', 'print', 'export-html', 'settings'].every((a) => desk.acts.includes(a)), desk);
+    check('la barra de arriba conserva sus botones y sus medidas, sin el menú "más"', desk.more === 'none' && desk.bar === '49px' && J(desk.barPad) === J(['12px', '16px', '0px']) && desk.btn === '32px' && !desk.acts.includes('more') && ['view-doc', 'view-raw', 'copy', 'export', 'settings'].every((a) => desk.acts.includes(a)) && !desk.acts.some((a) => /^(copy-|export-|print|reload)/.test(a)), desk);
     check('el pie, el documento y el árbol miden lo de siempre', J(desk.foot) === J(['30px', '300px', '16px']) && desk.pad === '48px' && desk.table === '100%' && desk.node < 34, desk);
+    // ---------- Los menús de copiar y exportar ----------
+    await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin });
+    await page.focus('[data-act=copy]'); await page.keyboard.press('Enter'); await page.waitForSelector('.lmd-menu-copy');
+    const km = await page.evaluate(() => { const m = document.querySelector('.lmd-menu-copy'); const b = document.querySelector('[data-act=copy]'); const r = m.getBoundingClientRect(); const br = b.getBoundingClientRect();
+      return { cls: m.className, role: m.getAttribute('role'), has: b.getAttribute('aria-haspopup'), open: b.getAttribute('aria-expanded'), below: r.top >= br.bottom && r.top - br.bottom < 12 && Math.abs(r.right - br.right) < 2, focus: document.activeElement.dataset.more,
+        acts: [...m.querySelectorAll('[role=menuitem]')].map((x) => x.dataset.more + ':' + x.querySelector('span').textContent), icons: [...m.querySelectorAll('[role=menuitem]')].every((x) => x.querySelector('svg')) }; });
+    check('copiar es un solo botón con su menú: Markdown, texto con formato y HTML', J(km.acts) === J(['copy-md:Markdown', 'copy-rich:Formatted text', 'copy-html:HTML']) && km.icons, km);
+    check('el menú es el compacto de los menús contextuales, sale debajo de su botón y lo anuncia', /lmd-menu-narrow/.test(km.cls) && km.role === 'menu' && km.has === 'menu' && km.open === 'true' && km.below, km);
+    await page.keyboard.press('ArrowDown'); const k1 = await page.evaluate(() => document.activeElement.dataset.more);
+    await page.keyboard.press('ArrowUp'); await page.keyboard.press('ArrowUp'); const k2 = await page.evaluate(() => document.activeElement.dataset.more);
+    await page.keyboard.press('Home'); const k3 = await page.evaluate(() => document.activeElement.dataset.more);
+    check('con el teclado: el foco entra al menú y las flechas lo recorren, dando la vuelta', km.focus === 'copy-md' && k1 === 'copy-rich' && k2 === 'copy-html' && k3 === 'copy-md', [km.focus, k1, k2, k3]);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+    check('Escape lo cierra y devuelve el foco al botón', await page.evaluate(() => !document.querySelector('.lmd-menu-copy') && document.activeElement.dataset.act === 'copy' && document.activeElement.getAttribute('aria-expanded') === 'false'));
+    await page.keyboard.press('Enter'); await page.waitForSelector('.lmd-menu-copy'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter'); await page.waitForTimeout(400);
+    check('Enter elige: copiar con formato, como el ícono de antes', /Booking app launch/.test(await page.evaluate(() => navigator.clipboard.readText())) && /Copied with formatting/.test(await page.textContent('.lmd-status')) && !(await page.locator('.lmd-menu-copy').count()));
+    await page.click('[data-act=copy]'); await page.click('.lmd-menu-copy [data-more=copy-md]'); await page.waitForTimeout(200);
+    check('copiar el Markdown, como el ícono de antes', (await page.evaluate(() => navigator.clipboard.readText())).startsWith('# Booking app launch'));
+    await page.click('[data-act=copy]'); await page.click('.lmd-menu-copy [data-more=copy-html]'); await page.waitForTimeout(200);
+    check('copiar el HTML', /^<h1[^>]*>Booking app launch/.test(await page.evaluate(() => navigator.clipboard.readText())));
+    await page.click('[data-act=export]'); await page.waitForSelector('.lmd-menu-export');
+    const em = await page.evaluate(() => [...document.querySelectorAll('.lmd-menu-export [role=menuitem]')].map((b) => b.dataset.more + ':' + b.querySelector('span').textContent + (b.querySelector('kbd') ? ':' + b.querySelector('kbd').textContent : '')));
+    check('exportar es un solo botón con su menú: PDF, HTML, el .md e imprimir con su atajo', J(em) === J(['export-pdf:PDF', 'export-html:HTML file', 'export-md:Markdown file (.md)', 'print:Print:Ctrl+P']), em);
+    await page.click('[data-act=copy]'); await page.waitForSelector('.lmd-menu-copy');
+    check('un solo menú abierto a la vez', await page.evaluate(() => document.querySelectorAll('.lmd-menu').length === 1 && document.querySelector('[data-act=export]').getAttribute('aria-expanded') === 'false'));
+    await page.mouse.click(640, 500); await page.waitForTimeout(150);
+    check('un clic afuera lo cierra', (await page.locator('.lmd-menu').count()) === 0);
+    await page.evaluate(() => { window.__printed = 0; window.print = () => { window.__printed++; }; });
+    await page.click('[data-act=export]'); await page.click('.lmd-menu-export [data-more=export-pdf]');
+    await page.click('[data-act=export]'); await page.click('.lmd-menu-export [data-more=print]');
+    check('PDF e imprimir salen por la impresión del navegador', (await page.evaluate(() => window.__printed)) === 2);
+    const [asHtml] = await Promise.all([page.waitForEvent('download'), page.click('[data-act=export]').then(() => page.click('.lmd-menu-export [data-more=export-html]'))]);
+    const [asMd] = await Promise.all([page.waitForEvent('download'), page.click('[data-act=export]').then(() => page.click('.lmd-menu-export [data-more=export-md]'))]);
+    check('el HTML y el .md se descargan con el nombre de la nota', asHtml.suggestedFilename() === 'desk.html' && asMd.suggestedFilename() === 'desk.md' && fs.readFileSync(await asMd.path(), 'utf8').startsWith('# Booking app launch'), [asHtml.suggestedFilename(), asMd.suggestedFilename()]);
+    check('recargar no aparece en una nota del navegador', await page.evaluate(() => getComputedStyle(document.querySelector('[data-act=reload]')).display === 'none'));
     await page.fill('.lmd-search input', 'bookings'); await page.waitForSelector('.lmd-results-sum');
     const sum = await page.textContent('.lmd-results-sum');
     check('la cuenta de la búsqueda, que se arma por partes, sale en inglés', /^\d+ match(es)? in \d+ files? \(of \d+\)$/.test(sum.trim()), sum);
     await page.fill('.lmd-search input', '');
     await page.click('[data-act=sidebar]'); await page.waitForTimeout(400);
     check('y el botón de la barra lateral sigue guardando la preferencia', await page.evaluate(() => new Promise((resolve) => chrome.storage.local.get('settings', (r) => resolve(r.settings.sidebarHidden === true && document.documentElement.classList.contains('lmd-side-hidden') && !document.documentElement.classList.contains('lmd-side-open'))))));
+    // ---------- La barra de arriba a cualquier ancho ----------
+    console.log('Barra de arriba: de 320 a 1400 px');
+    const LONG = 'quarterly-planning-notes-for-the-booking-app-launch-2026-final-draft.md';
+    await page.evaluate(async ([name, text]) => { await LMD.store.notePut(name, text); }, [LONG, NOTE]);
+    await page.goto(home + '?f=' + encodeURIComponent('local/' + LONG)); await page.waitForSelector('.markdown-body h1');
+    await page.click('[data-act=mode-edit]'); await page.waitForSelector('.lmd-editable');
+    // Cada control visible de la barra: su rectángulo no pisa el de ningún otro, queda dentro de la ventana y recibe el clic.
+    const barAt = () => page.evaluate(() => {
+      const vis = (b) => !!b.offsetParent && b.getBoundingClientRect().width > 0;
+      const box = [...document.querySelectorAll('.lmd-topbar button, .lmd-topbar .lmd-docname')].filter(vis).map((b) => { const r = b.getBoundingClientRect(); return { k: b.dataset.act || 'name', l: r.left, r: r.right, t: r.top, b: r.bottom, btn: b.tagName === 'BUTTON', el: b }; });
+      const clash = []; const out = []; const dead = [];
+      box.forEach((a, i) => {
+        if (a.l < -0.5 || a.r > window.innerWidth + 0.5) out.push(a.k);
+        if (a.btn) { const hit = document.elementFromPoint((a.l + a.r) / 2, (a.t + a.b) / 2); if (!hit || !(hit === a.el || a.el.contains(hit))) dead.push(a.k); }
+        box.slice(i + 1).forEach((c) => { if (a.l < c.r - 0.5 && c.l < a.r - 0.5 && a.t < c.b - 0.5 && c.t < a.b - 0.5) clash.push(a.k + '/' + c.k); });
+      });
+      const name = document.querySelector('.lmd-docname'); const root = document.documentElement.classList;
+      return { clash, out, dead, acts: box.filter((x) => x.btn).map((x) => x.k), tight: root.contains('lmd-bar-tight'), min: root.contains('lmd-bar-min'), cut: vis(name) && name.scrollWidth > name.clientWidth, scroll: document.documentElement.scrollWidth - window.innerWidth };
+    });
+    const bars = [];
+    for (const side of [true, false]) {
+      for (const w of [1400, 1200, 1050, 960, 900, 840, 780, 740, 721, 720, 600, 480, 390, 320]) {
+        if (w <= 720 && !side) continue; // en pantalla chica la barra lateral es un panel, cerrado
+        await page.setViewportSize({ width: w, height: 800 });
+        if (w > 720 && (await page.evaluate(() => document.documentElement.classList.contains('lmd-side-hidden'))) === side) await page.click('[data-act=sidebar]');
+        await page.waitForTimeout(400);
+        bars.push(Object.assign({ w, side }, await barAt()));
+      }
+    }
+    const wide = bars.filter((b) => b.w > 720); const brief = (list) => list.map((b) => ({ w: b.w, side: b.side, clash: b.clash, out: b.out, dead: b.dead, tight: b.tight, min: b.min, acts: b.acts.join(' ') }));
+    check('a ningún ancho se pisan dos controles de la barra', bars.every((b) => !b.clash.length), brief(bars.filter((b) => b.clash.length)));
+    check('todos quedan dentro de la ventana y reciben el clic, sin scroll horizontal', bars.every((b) => !b.out.length && !b.dead.length && b.scroll <= 0), brief(bars.filter((b) => b.out.length || b.dead.length || b.scroll > 0)));
+    check('los dos selectores están siempre enteros en la barra de escritorio', wide.every((b) => ['mode-read', 'mode-edit', 'view-doc', 'view-raw'].every((a) => b.acts.includes(a)) && !b.min), brief(wide.filter((b) => b.min || !b.acts.includes('view-raw'))));
+    const roomy = bars.find((b) => b.w === 1400 && b.side); const narrow = bars.find((b) => b.w === 740 && b.side);
+    check('con lugar están copiar, exportar y ajustes a la vista, sin "más"', !roomy.tight && ['copy', 'export', 'settings', 'insert'].every((a) => roomy.acts.includes(a)) && !roomy.acts.includes('more'), brief([roomy]));
+    check('cuando no entra, los íconos de la derecha pasan a "más"', narrow.tight && narrow.acts.includes('more') && !['copy', 'export', 'settings', 'insert'].some((a) => narrow.acts.includes(a)), brief([narrow]));
+    check('antes de eso se acorta el nombre, con puntos suspensivos', wide.some((b) => b.cut && !b.tight) && [true, false].every((side) => { const row = wide.filter((b) => b.side === side); const first = row.findIndex((b) => b.tight); return first < 0 || row.slice(first).every((b) => b.tight); }), brief(wide));
+    await page.setViewportSize({ width: 740, height: 800 }); await page.waitForTimeout(400);
+    if (await page.evaluate(() => document.documentElement.classList.contains('lmd-side-hidden'))) { await page.click('[data-act=sidebar]'); await page.waitForTimeout(400); }
+    await page.click('[data-act=more]'); await page.waitForSelector('.lmd-menu-more');
+    const tightMore = await page.evaluate(() => [...document.querySelectorAll('.lmd-menu-more button')].map((b) => b.dataset.more));
+    check('ese "más" trae lo que salió de la barra, sin repetir el selector de vista que sigue a la vista', ['insert', 'copy', 'export', 'settings'].every((a) => tightMore.includes(a)) && !tightMore.includes('view-raw') && !tightMore.includes('view-doc'), tightMore);
+    await page.click('.lmd-menu-more [data-more=copy]'); await page.waitForSelector('.lmd-menu-copy'); await page.click('.lmd-menu-copy [data-more=copy-md]'); await page.waitForTimeout(200);
+    check('y desde ahí copiar sigue andando', (await page.evaluate(() => navigator.clipboard.readText())).startsWith('# Booking app launch'));
+    await page.setViewportSize({ width: 1280, height: 800 }); await page.waitForTimeout(400);
+    check('al volver a ensanchar la ventana vuelven los íconos', await page.evaluate(() => !document.documentElement.classList.contains('lmd-bar-tight') && !!document.querySelector('[data-act=copy]').offsetParent));
     await ctx.close();
   }
 

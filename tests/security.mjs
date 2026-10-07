@@ -404,6 +404,12 @@ async function serverSuite() {
     check('al cerrarse, las conexiones en vivo devuelven su lugar', reopened === 200, reopened);
     const fbIp = nextIp(); const fb = []; for (let i = 0; i < 6; i++) fb.push((await call('POST', '/feedback', { text: 'Comentario número ' + i }, undefined, from(fbIp))).status);
     check('los comentarios al dueño tienen tope por IP', fb.join() === '200,200,200,200,200,429', fb);
+    // Denunciar una nota entra por la misma ruta, sin sesión y sin motivo, y gasta del mismo tope: no es una vía aparte para inundar el correo.
+    const rpIp = nextIp(); const rp = []; for (let i = 0; i < 6; i++) rp.push((await call('POST', '/feedback', { text: '', report: { kind: 'link', note: 'pub/enlace-' + i, owner: '' } }, undefined, from(rpIp))).status);
+    const rpThenFb = (await call('POST', '/feedback', { text: 'Y ahora un comentario.' }, undefined, from(rpIp))).status;
+    const rpBad = [(await call('POST', '/feedback', { text: 'x'.repeat(4001), report: { kind: 'link', note: 'pub/a' } }, undefined, from(nextIp()))).status, (await call('POST', '/feedback', { text: '', report: 'pub/a' }, undefined, from(nextIp()))).status];
+    check('las denuncias entran sin sesión, con el mismo tope por IP que los comentarios', rp.join() === '200,200,200,200,200,429' && rpThenFb === 429, [rp, rpThenFb]);
+    check('una denuncia con el motivo demasiado largo, o que no dice qué nota es, se rechaza', rpBad.join() === '400,400', rpBad);
     for (let i = 0; i < 205; i++) await call('POST', '/comments', { path: 'ver.md', text: 'c' + i }, A.s);
     check('los comentarios abiertos tienen tope por cuenta (200)', (await call('GET', '/comments', undefined, A.s)).json.length === 200);
     check('el plan gratis frena al llegar a su límite de notas', await (async () => { const st = []; for (let i = 0; i < 5; i++) st.push((await call('PUT', '/notes/n' + i + '.md', { text: 'x' }, B.s)).status); return st.join() === '200,200,200,402,402'; })());

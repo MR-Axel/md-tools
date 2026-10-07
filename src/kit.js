@@ -49,6 +49,7 @@
     cloudAlert: '<svg viewBox="0 0 24 24"><path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96 6 6 0 0 1 11.5 1.300A3.85 3.85 0 0 1 17.5 18.500z"/><path d="M12 10.500v3.500M12 16v.200"/></svg>',
     cloudOff: '<svg viewBox="0 0 24 24"><path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96 6 6 0 0 1 11.5 1.300A3.85 3.85 0 0 1 17.5 18.500z"/><path d="M4 4l16 16"/></svg>',
     plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+    flag: '<svg viewBox="0 0 24 24"><path d="M5 21V4M5 4.5h11.5l-2 4 2 4H5"/></svg>',
     lock: '<svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.500M12 14.200v2.100"/></svg>',
     unlock: '<svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8 10.500V8a4 4 0 0 1 7.700-1.500M12 14.200v2.100"/></svg>',
     check: '<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',

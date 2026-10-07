@@ -322,7 +322,10 @@ async function feedback(req, body) {
   let user = null;
   if (req.headers.authorization) { try { user = userFrom(req, 'session'); } catch (e) { /* sesión vencida: entra como anónimo */ } }
   const text = String(body.text == null ? '' : body.text).trim();
-  if (text.length < 5 || text.length > 4000) throw new Fail(400, 'bad_text');
+  // Una denuncia ("Denunciar esta nota") entra por acá mismo, con report: dice qué nota es (el enlace público, o la
+  // ruta y la cuenta dueña), nunca su contenido. El motivo es opcional. Lleva los mismos topes que un comentario.
+  const rep = body.report && typeof body.report === 'object' ? body.report : null;
+  if ((!rep && text.length < 5) || text.length > 4000) throw new Fail(400, 'bad_text');
   const from = user ? user.email : (String(body.email || '').trim() ? cleanEmail(body.email) : '');
   const keys = ['ip:' + clientIp(req)].concat(user ? ['user:' + user.id] : []);
   keys.forEach((k) => limit('fb:' + k, FEEDBACK_MAX, HOUR, 'too_many'));
@@ -330,8 +333,9 @@ async function feedback(req, body) {
   // Del contexto solo pasan estos cuatro datos, recortados: nada de notas ni de rutas.
   const c = body.context && typeof body.context === 'object' ? body.context : {};
   const field = (v, max) => String(v == null ? '' : v).replace(/[\r\n]+/g, ' ').trim().slice(0, max) || '-';
-  const mail = { to: env.FEEDBACK_TO, subject: 'SharpMD feedback',
-    text: text + '\n\n---\nFrom: ' + (from || 'anonymous') + (user ? ' (signed in, ' + user.plan + ' plan)' : '') +
+  const mail = { to: env.FEEDBACK_TO, subject: rep ? 'SharpMD report' : 'SharpMD feedback',
+    text: (rep ? 'Reported note: ' + field(rep.note, 300) + '\nOwner: ' + field(rep.owner, 120) + '\nKind: ' + (['link', 'shared', 'live'].includes(rep.kind) ? rep.kind : '-') + '\n\n' : '') +
+      (text || '(no reason given)') + '\n\n---\nFrom: ' + (from || 'anonymous') + (user ? ' (signed in, ' + user.plan + ' plan)' : '') +
       '\nVersion: ' + field(c.version, 40) + '\nWhere: ' + (c.where === 'extension' ? 'extension' : 'web') +
       '\nBrowser: ' + field(c.browser, 300) + '\nLanguage: ' + field(c.lang, 20) + '\n' };
   if (from) mail.reply_to = from;

@@ -15,7 +15,7 @@ const sees = (page, what, ms) => page.waitForFunction((w) => document.querySelec
 const marks = (page) => page.evaluate(() => [...document.querySelectorAll('.lmd-live-mark')].filter((m) => !m.hidden).map((m) => ({ who: m.title, tag: m.textContent, editing: m.classList.contains('lmd-live-editing'), color: m.style.getPropertyValue('--lmd-live'), block: m._block.innerText.slice(0, 40), left: Math.round(m.getBoundingClientRect().left - m._block.getBoundingClientRect().left) })));
 const saved = (page) => page.waitForFunction(() => /Saved to the cloud/.test(document.querySelector('.lmd-savestate').textContent), null, { timeout: 15000 }).then(() => true, () => false);
 // El Markdown como lo tiene ese navegador: lo que copia "Copiar Markdown".
-const rawOf = async (page) => { await page.bringToFront(); await page.evaluate(() => document.querySelector('[data-act=copy-md]').click()); await sleep(120); return (await page.evaluate(() => navigator.clipboard.readText())).split(String.fromCharCode(13)).join(''); }; // Windows devuelve el portapapeles con CRLF
+const rawOf = async (page) => { await page.bringToFront(); await page.evaluate(() => { document.querySelector('[data-act=copy]').click(); document.querySelector('.lmd-menu-copy [data-more=copy-md]').click(); }); await sleep(120); return (await page.evaluate(() => navigator.clipboard.readText())).split(String.fromCharCode(13)).join(''); }; // Windows devuelve el portapapeles con CRLF
 const serverNote = async (s, p) => (await R.api('GET', '/notes/' + enc(p), undefined, s)).json;
 const overflow = (page) => page.evaluate(() => {
   const w = window.innerWidth; const bad = [];

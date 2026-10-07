@@ -737,7 +737,8 @@
     '.lmd-board{display:flex;gap:12px;align-items:flex-start;overflow-x:auto;margin:0 0 1em}.lmd-col{flex:0 0 240px;padding:10px;border:1px solid #dedbd2;border-radius:10px}.lmd-col-head{font-weight:700;margin-bottom:8px}.lmd-col-n{margin-left:6px;opacity:.55;font-weight:400}.lmd-card{padding:8px 10px;margin-bottom:6px;border:1px solid #dedbd2;border-radius:8px}.lmd-card-done{opacity:.6;text-decoration:line-through}' +
     '@media(prefers-color-scheme:dark){body{background:#121418;color:#e6e8ec}a{color:#bef264}pre,th,.lmd-box,.lmd-alert{background:#1a1d23}:not(pre)>code{background:#232730}pre,th,td,h2,hr,blockquote{border-color:#2a2e37}blockquote{color:#a0a7b4}}';
 
-  function exportHtml() {
+  // El documento como HTML limpio, sin lo que es de la interfaz: para exportarlo o copiarlo.
+  function htmlOf() {
     const copy = core.ui.article.cloneNode(true);
     copy.querySelectorAll('.lmd-anchor, .lmd-code-copy, .lmd-code-lang, .lmd-dgm-tools, .lmd-add, .lmd-draft, .lmd-draft-li, .lmd-board-edit').forEach((n) => n.remove());
     copy.querySelectorAll('[contenteditable]').forEach((n) => n.removeAttribute('contenteditable'));
@@ -746,9 +747,12 @@
     copy.querySelectorAll('.katex').forEach((k) => { const m = k.querySelector('math'); if (m) k.replaceWith(m); });
     copy.querySelectorAll('img[data-lmd-src]').forEach((i) => i.setAttribute('src', i.getAttribute('data-lmd-src')));
     copy.querySelectorAll('a[data-lmd-href]').forEach((a) => a.setAttribute('href', a.getAttribute('data-lmd-href')));
+    return copy.innerHTML.trim();
+  }
+  function exportHtml() {
     const title = (core.docName || 'documento').replace(/\.[^.]+$/, '');
     const html = '<!doctype html>\n<html lang="' + LMD.lang() + '">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>' +
-      title.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])) + '</title>\n<style>' + EXPORT_CSS + '</style>\n</head>\n<body>\n<main>\n' + copy.innerHTML + '\n</main>\n</body>\n</html>\n';
+      title.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])) + '</title>\n<style>' + EXPORT_CSS + '</style>\n</head>\n<body>\n<main>\n' + htmlOf() + '\n</main>\n</body>\n</html>\n';
     const a = el('a', { download: title + '.html' });
     a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
     a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
@@ -813,5 +817,5 @@
     article.addEventListener('keyup', (e) => { if (/^Arrow|^Page|^Home$|^End$/.test(e.key)) centerCaret(); });
   }
 
-  LMD.extras = { init, pasteImage, exportHtml, imageDialog, imageMd, fromTemplate, trash };
+  LMD.extras = { init, pasteImage, exportHtml, htmlOf, imageDialog, imageMd, fromTemplate, trash };
 })();

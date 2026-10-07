@@ -54,6 +54,26 @@ try {
   check('búsqueda en la carpeta', /coincidencia/.test(await page.textContent('.lmd-results-sum')), await page.textContent('.lmd-results-sum'));
   await page.fill('.lmd-search input', '');
 
+  // Sobre un .md abierto directo la barra es la misma: copiar y exportar en un botón cada uno, recargar a la vista
+  // (el archivo vive en el disco), y a ningún ancho se pisan dos controles.
+  const barNow = () => page.evaluate(() => {
+    const vis = (b) => !!b.offsetParent && b.getBoundingClientRect().width > 0;
+    const box = [...document.querySelectorAll('.lmd-topbar button, .lmd-topbar .lmd-docname')].filter(vis).map((b) => { const r = b.getBoundingClientRect(); return { k: b.dataset.act || 'name', l: r.left, r: r.right, t: r.top, b: r.bottom, btn: b.tagName === 'BUTTON', el: b }; });
+    const bad = [];
+    box.forEach((a, i) => {
+      if (a.l < -0.5 || a.r > window.innerWidth + 0.5) bad.push('fuera:' + a.k);
+      if (a.btn) { const hit = document.elementFromPoint((a.l + a.r) / 2, (a.t + a.b) / 2); if (!hit || !(hit === a.el || a.el.contains(hit))) bad.push('tapado:' + a.k); }
+      box.slice(i + 1).forEach((c) => { if (a.l < c.r - 0.5 && c.l < a.r - 0.5 && a.t < c.b - 0.5 && c.t < a.b - 0.5) bad.push(a.k + '/' + c.k); });
+    });
+    return { w: window.innerWidth, bad, acts: box.filter((x) => x.btn).map((x) => x.k) };
+  });
+  const full = await barNow();
+  check('sobre un archivo directo la barra tiene copiar, exportar y recargar, sin los íconos sueltos de antes', ['copy', 'export', 'reload', 'settings', 'view-raw', 'mode-edit'].every((a) => full.acts.includes(a)) && !full.acts.some((a) => /^(copy-|export-|print$)/.test(a)), full);
+  const widths = [];
+  for (const w of [1400, 1000, 860, 760, 600, 390, 320]) { await page.setViewportSize({ width: w, height: 800 }); await page.waitForTimeout(400); widths.push(await barNow()); }
+  check('y de 320 a 1400 px ningún control de la barra se pisa con otro ni queda tapado', widths.every((b) => !b.bad.length) && widths.filter((b) => b.w > 720).every((b) => ['mode-read', 'mode-edit', 'view-doc', 'view-raw'].every((a) => b.acts.includes(a))), widths.filter((b) => b.bad.length || b.w > 720).map((b) => [b.w, b.bad, b.acts.join(' ')]));
+  await page.setViewportSize({ width: 1500, height: 950 }); await page.waitForTimeout(300);
+
   await page.click('[data-act=mode-edit]'); await page.waitForTimeout(400);
   const before = await page.evaluate(() => document.querySelectorAll('.lmd-editable').length);
   check('modo edición activa los bloques', before > 10, before);
@@ -73,7 +93,7 @@ try {
     const vis = () => [...document.querySelectorAll('.lmd-panel-body > section:not([hidden]) h3')].map((h) => h.firstChild.nodeValue.trim()).join('+');
     return [...document.querySelectorAll('[data-ptab]')].map((b) => { b.click(); return b.dataset.ptab + ':' + b.textContent.trim() + '=' + vis() + (b.classList.contains('lmd-on') ? '' : ' (sin marcar)'); });
   });
-  check('los ajustes van en ocho pestañas, cada una con lo suyo', tabs.join('|') === 'look:Apariencia=Apariencia|read:Lectura y edición=Lectura+Edición+Carpeta|plug:Plugins=Plugins de Markdown|cloud:Nube=Nube|ai:IA=Conectar una IA|plan:Plan=Plan|inst:Instalar=Instalar|adv:Avanzado=CSS propio+Servidor+Actualizaciones', tabs);
+  check('los ajustes van en ocho pestañas, cada una con lo suyo', tabs.join('|') === 'look:Apariencia=Apariencia|read:Lectura y edición=Lectura+Edición+Carpeta|plug:Plugins=Plugins de Markdown|cloud:Nube=Nube|ai:IA (MCP)=Conectar una IA|plan:Plan=Plan|inst:Instalar=Instalar|adv:Avanzado=CSS propio+Servidor+Actualizaciones', tabs);
   const marks = await page.evaluate(() => ({ plugins: document.querySelectorAll('[data-tab=plug] [data-plugin]').length, other: document.querySelectorAll('[data-tab=plug] input:not([data-plugin]), [data-tab=plug] textarea, [data-tab=plug] select, [data-tab=plug] button').length, paidInPlugins: document.querySelectorAll('[data-tab=plug] .lmd-tag').length, cssTab: document.querySelector('[data-key=customCSS]').closest('section').dataset.tab, cssPaid: document.querySelector('[data-key=customCSS]').closest('section').querySelectorAll('.lmd-tag').length, reset: document.querySelector('[data-act=reset]').closest('section').dataset.tab }));
   check('Plugins trae solo los interruptores, sin marca de plan pago; el CSS propio y Restablecer van en Avanzado', marks.plugins >= 20 && marks.other === 0 && marks.paidInPlugins === 0 && marks.cssTab === 'adv' && marks.cssPaid === 1 && marks.reset === 'adv', marks);
   await page.close();

@@ -1089,6 +1089,19 @@
       "Demasiados cambios seguidos. Probá más tarde.": "Too many changes in a row. Try later.",
       "Esa invitación ya no está.": "That invitation is no longer there.",
       "Pago confirmado. Tu equipo está listo.": "Payment confirmed. Your team is ready.",
+      // Barra de arriba: los menús de copiar y exportar.
+      "Exportar": "Export", "Texto con formato": "Formatted text", "Enlace a la nota": "Link to the note",
+      "Archivo HTML": "HTML file", "Archivo Markdown (.md)": "Markdown file (.md)", "Descargar el archivo": "Download the file", "Imprimir": "Print",
+      "Archivo descargado": "File downloaded", "HTML copiado": "HTML copied", "Enlace copiado": "Link copied",
+      // Explorador: cuántas notas hay en cada carpeta.
+      "1 nota": "1 note", "{n} notas": "{n} notes", "Más de {n} notas": "More than {n} notes",
+      // Entrar a la cuenta, en el centro.
+      "Sin sesión": "Not signed in", "Entrá para sincronizar tus notas": "Sign in to sync your notes", "Entrar a tu cuenta": "Sign in to your account",
+      "Te mandamos un código al correo, sin contraseña. Con la cuenta, tus notas se sincronizan.": "We email you a code, no password. With an account, your notes sync.",
+      "IA (MCP)": "AI (MCP)",
+      // Denunciar una nota de otra persona.
+      "Denunciar esta nota": "Report this note", "Motivo (opcional)": "Reason (optional)", "Enviar denuncia": "Send report",
+      "Avisanos si esta nota tiene algo que no debería estar acá. Se envía qué nota es, no su contenido.": "Tell us if this note has something that should not be here. We receive which note it is, not its content.",
   };
   let current = 'es';
   function setLang(pref) {

@@ -148,7 +148,10 @@
   const fetchAccount = async (host) => { account = await LMD.cloud.account(); asked = true; adopt(account, true); if (host && host.unlocked) host.unlocked(account); return account; };
   const offline = () => hint(T('No hay conexión con el servidor.'));
   // Un .md abierto directo en el navegador no puede hablar con el servidor: la cuenta está en la app.
-  const direct = (host) => (host.direct ? hint(T('La cuenta se maneja desde la app de SharpMD.')) + actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="login">' + T('Abrir SharpMD') + '</button>') : '');
+  // El botón abre la app (la web o la página de la extensión, según "Abrir SharpMD en") en la pestaña de Ajustes que toca.
+  const DIRECT_AT = { cloud: '?login=1', ai: '#lmd-ai', plan: '#lmd-plans' };
+  const direct = (host, tab, soft) => (host.direct ? hint(T('La cuenta se maneja desde la app de SharpMD.')) + actions('<button type="button" class="lmd-btn' + (soft ? '' : ' lmd-btn-fill') + '" data-c="app" data-at="' + DIRECT_AT[tab] + '">' + T('Abrir SharpMD') + '</button>') : '');
+  const goApp = (host, e) => { const b = e.target.closest('[data-c=app]'); if (b) host.openApp(b.dataset.at); return !!b; };
 
   // Abre la carpeta Nube con el árbol a la vista: la nota más nueva, o la primera si todavía no hay ninguna.
   async function openCloud(host) {
@@ -166,7 +169,7 @@
   async function cloudPane(box, host) {
     await LMD.cloud.ready();
     if (!LMD.cloud.enabled()) box.innerHTML = hint(T('La nube está apagada: SharpMD funciona sin cuenta y sin sincronizar.')) + actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="on">' + T('Prender la nube') + '</button>');
-    else if (host.direct) box.innerHTML = direct(host);
+    else if (host.direct) box.innerHTML = direct(host, 'cloud');
     else if (!LMD.cloud.signedIn()) box.innerHTML = LMD.home.perks() + actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="login">' + T('Crear cuenta o entrar') + '</button>');
     else {
       try {
@@ -186,6 +189,7 @@
     if (wantLogin) { wantLogin = false; if (LMD.cloud.enabled() && !host.direct) askLogin(); }
     box.onclick = async (e) => {
       const b = e.target.closest('[data-c]'); if (!b) return;
+      if (goApp(host, e)) return;
       if (b.dataset.c === 'on') LMD.patch({ cloudUrl: '' });
       else if (b.dataset.c === 'login') { if (host.direct) host.login(); else askLogin(); }
       else if (b.dataset.c === 'open') openCloud(Object.assign({ say: (t) => { const m = box.querySelector('.lmd-acct-msg'); if (m) { m.hidden = false; m.textContent = t; } } }, host));
@@ -369,7 +373,7 @@
     // No pisa un token recién creado (no se vuelve a mostrar) ni un campo que tiene el foco.
     aiRedraw = () => { const f = document.activeElement; if (a && a.mcp && box.isConnected && box.offsetParent && !box.querySelector('.lmd-ai-new') && !(f && box.contains(f) && /^(INPUT|TEXTAREA|SELECT)$/.test(f.tagName))) draw(); };
     if (!LMD.cloud.enabled()) box.innerHTML = hint(T('La nube está apagada: sin ella no hay notas para conectar.'));
-    else if (host.direct) box.innerHTML = intro + direct(host);
+    else if (host.direct) box.innerHTML = intro + direct(host, 'ai');
     else if (!LMD.cloud.signedIn()) box.innerHTML = intro + hint(T('Entrá a tu cuenta para conectar una IA.')) + loginBtn(host);
     else {
       try {
@@ -379,7 +383,7 @@
       } catch (e) { if (!LMD.cloud.signedIn()) return aiPane(box, host); box.innerHTML = offline(); }
     }
     box.onclick = async (e) => {
-      if (LMD.vault.aiClick(e)) return;
+      if (LMD.vault.aiClick(e) || goApp(host, e)) return;
       const rm = e.target.closest('[data-rm]'); const b = e.target.closest('[data-c]'); const brief = e.target.closest('[data-brief]');
       // done: el aviso cuenta algo que salió bien, y no va en el color de los errores.
       const say = (t, done) => { const m = box.querySelector('.lmd-acct-msg'); if (m) { m.hidden = false; m.textContent = t; m.classList.toggle('lmd-acct-done', !!done); } };
@@ -440,7 +444,7 @@
     await LMD.cloud.ready();
     let a = null; let note = '';
     if (!LMD.cloud.enabled()) note = hint(T('La nube está apagada: los planes son de la cuenta de la nube.'));
-    else if (host.direct) note = direct(host);
+    else if (host.direct) note = direct(host, 'plan', true); // acá lo principal es suscribirse: esos botones van en la tarjeta del plan pago
     else if (!LMD.cloud.signedIn()) note = hint(T('Entrá a tu cuenta para pasar al plan pago.')) + loginBtn(host);
     else { try { a = await fetchAccount(host); } catch (e) { note = offline(); } }
     if (turn !== planTurn) return;
@@ -462,12 +466,15 @@
         '<div class="lmd-plan' + (own ? ' lmd-plan-on' : '') + '"><h4>' + T('Pago') + ' <small>USD 3.99 / ' + T('mes') + '</small></h4><ul><li>' + T('Notas en la nube sin límite') + '</li><li>' + T('Compartir y editar entre varios') + '</li><li>' + T('Sesiones en vivo: quien invitás entra sin cuenta') + '</li><li>' + T('Conectar una IA por MCP') + '</li><li>' + T('Historial de versiones de 30 días') + '</li><li>' + T('Colores, tipografía y CSS propio') + '</li></ul>' +
           (own ? '<p class="lmd-hint">' + T('Es tu plan actual.') + (a.manage ? ' <a href="' + esc(a.manage) + '" target="_blank" rel="noopener noreferrer">' + T('Administrar la suscripción') + '</a>' : '') + '</p>'
             : pro ? '<p class="lmd-hint">' + T('Lo tenés con el equipo.') + '</p>'
-            : a ? '<div class="lmd-plan-buy">' + btn(pay.monthly, 'USD 3.99 / ' + T('mes')) + btn(pay.yearly, 'USD 39 / ' + T('año')) + '</div>' : '') + '</div>' + teamCol + '</div>' + LMD.team.section(a);
+            : a ? '<div class="lmd-plan-buy">' + btn(pay.monthly, 'USD 3.99 / ' + T('mes')) + btn(pay.yearly, 'USD 39 / ' + T('año')) + '</div>'
+            // Sobre un archivo abierto directo se paga en la app: los mismos dos botones la abren en una pestaña nueva, ya en los planes.
+            : host.direct && LMD.cloud.enabled() ? '<div class="lmd-plan-buy">' + ['USD 3.99 / ' + T('mes'), 'USD 39 / ' + T('año')].map((label) => '<button type="button" class="lmd-btn lmd-btn-fill" data-c="app" data-at="' + DIRECT_AT.plan + '">' + label + '</button>').join('') + '</div>' : '') + '</div>' + teamCol + '</div>' + LMD.team.section(a);
     box.onclick = async (e) => {
       // Lo del equipo se atiende aparte. Se decide sin esperar nada: el enlace de pago, más abajo, frena su navegación en este mismo turno.
       if (LMD.team.owns(e, box)) { LMD.team.click(e, box, a, () => planPane(box, host)); return; }
       const b = e.target.closest('[data-c]'); const link = e.target.closest('[data-pay]');
       if (b && b.dataset.c === 'login') goLogin(host);
+      else if (goApp(host, e)) return;
       else if (b && b.dataset.c === 'recheck') awaitPaid();
       // Antes de salir a pagar se guarda lo pendiente.
       else if (link) { e.preventDefault(); try { if (link.dataset.pay === 'team') sessionStorage.setItem('lmd-pay', 'team'); else sessionStorage.removeItem('lmd-pay'); } catch (err) { /* sin sesión */ } await host.leave(); location.href = link.href; }
@@ -522,6 +529,51 @@
         if (ex.code === 'too_many') { fail(T('Llegaste al tope de envíos por ahora. Probá más tarde.')); q('send').disabled = false; }
         else if (ex.code === 'bad_email') { fail(T('Ese correo no parece válido.')); q('send').disabled = false; }
         // Sin conexión, o un servidor que no recibe comentarios: queda el correo, con lo escrito ya cargado.
+        else card('<p>' + T(ex.code === 'offline' ? 'No hay conexión con el servidor.' : 'Desde acá no se pudo enviar.') + '</p>' + mailto(text) + '<div class="lmd-ask-actions">' + close + '</div>');
+      }
+    });
+  }
+
+  // ---------- Denunciar una nota ajena ----------
+  // Para lo que escribió otra persona: una nota abierta por su enlace público, una que compartió otra cuenta, o la de
+  // una sesión en vivo a la que se entró como invitado. Sale por el mismo camino que los comentarios, marcado como
+  // denuncia, con qué nota es y, si se escribió, el motivo. El contenido de la nota no viaja.
+  function reportRef() {
+    if (!core || !core.APP || core.noDoc) return null;
+    const g = LMD.cloud.guest();
+    if (g) return { kind: 'live', note: g.who + ' ' + (g.note || ''), owner: g.by || '' };
+    const r = core.appRoot; if (!r) return null;
+    if (r.kind === 'pub') return { kind: 'link', note: new URLSearchParams(location.search).get('f') || '', owner: '' };
+    if (r.kind !== 'cloud') return null;
+    const s = LMD.cloud.split(core.cloudPath); const t = LMD.cloud.teamNow();
+    return s.owner && !(t && String(t.space) === s.owner) ? { kind: 'shared', note: s.path, owner: s.owner } : null;
+  }
+  function report() {
+    const ref = reportRef(); if (!ref) return;
+    const title = T('Denunciar esta nota');
+    const box = el('div', { class: 'lmd-ask' });
+    const close = '<button type="button" class="lmd-btn" data-rp="close" data-esc>' + T('Cerrar') + '</button>';
+    const mailto = (text) => '<p>' + T('Escribinos a {a}.', { a: '<a href="mailto:' + MAILTO + '?subject=' + encodeURIComponent('SharpMD report') + '&body=' + encodeURIComponent('Note: ' + ref.note + (ref.owner ? ' (' + ref.owner + ')' : '') + '\n\n' + (text || '')) + '">' + MAILTO + '</a>' }) + '</p>';
+    const card = (inner) => { box.innerHTML = '<div class="lmd-ask-card lmd-fb lmd-report-card" role="dialog" aria-modal="true" aria-label="' + title + '"><h3>' + title + '</h3>' + inner + '</div>'; };
+    card('<p class="lmd-hint">' + T('Avisanos si esta nota tiene algo que no debería estar acá. Se envía qué nota es, no su contenido.') + '</p>' +
+      '<textarea data-rp="text" maxlength="2000" placeholder="' + T('Motivo (opcional)') + '" aria-label="' + T('Motivo (opcional)') + '"></textarea>' +
+      '<p class="lmd-img-err" role="alert" hidden></p>' +
+      '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-rp="close" data-esc>' + T('Cancelar') + '</button><button type="button" class="lmd-btn lmd-btn-fill" data-rp="send">' + T('Enviar denuncia') + '</button></div>');
+    document.body.appendChild(box);
+    const q = (n) => box.querySelector('[data-rp=' + n + ']');
+    q('text').focus();
+    box.addEventListener('click', async (e) => {
+      if (e.target === box || e.target.closest('[data-rp=close]')) { box.remove(); return; }
+      if (!e.target.closest('[data-rp=send]')) return;
+      const err = box.querySelector('.lmd-img-err'); const text = q('text').value.trim();
+      q('send').disabled = true; err.hidden = true;
+      try {
+        await LMD.cloud.report(text, ref, { version: LMD.VERSION, where: window.__MDT_WEB ? 'web' : 'extension', browser: navigator.userAgent, lang: LMD.lang() });
+        card('<p class="lmd-fb-ok" role="status">' + ICON.check + '<span>' + T('Enviado') + '</span></p>');
+        setTimeout(() => box.remove(), 1400);
+      } catch (ex) {
+        if (ex.code === 'too_many') { err.hidden = false; err.textContent = T('Llegaste al tope de envíos por ahora. Probá más tarde.'); q('send').disabled = false; }
+        // Sin conexión, o un servidor que no recibe comentarios: queda el correo, con la nota ya indicada.
         else card('<p>' + T(ex.code === 'offline' ? 'No hay conexión con el servidor.' : 'Desde acá no se pudo enviar.') + '</p>' + mailto(text) + '<div class="lmd-ask-actions">' + close + '</div>');
       }
     });
@@ -629,11 +681,11 @@
   }
 
   // Entrar a la cuenta desde cualquier lado: Ajustes en Nube, con el correo ya pedido.
-  const login = () => { wantLogin = true; core.openPanel('cloud'); };
+  const login = () => LMD.home.login(); // el formulario de entrar, en el centro
 
   // Vuelve a leer la cuenta después de un cambio en el equipo.
   const reload = async () => { account = await LMD.cloud.account(); asked = true; adopt(account, true); paint(); return account; };
 
-  LMD.sync = { init, paint, click, panes, reload, dialog, feedback, awaitPaid, openCloud, quota, PAY, login, me, foldersOf, signOut, aiBrief, account: () => account, why: (text) => { planWhy = text || ''; },
+  LMD.sync = { init, paint, click, panes, reload, dialog, feedback, report, reportRef, awaitPaid, openCloud, quota, PAY, login, me, foldersOf, signOut, aiBrief, account: () => account, why: (text) => { planWhy = text || ''; },
     repaintAi: () => { if (aiRedraw) aiRedraw(); } };
 })();

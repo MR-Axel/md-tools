@@ -515,5 +515,27 @@
   addEventListener('scroll', function () { if (on) { on = false; peek.classList.remove('show'); } }, { passive: true });
 })();
 </script>
+<script>
+// Mientras se lee la portada, la app se va guardando: con la página ya cargada y el hilo en reposo se registra el
+// service worker de la app (el mismo, con la misma dirección, que registra src/web.js), y la primera apertura no
+// espera a la red. No sirve la portada: solo guarda lo de la app. Con ahorro de datos o una red muy lenta, nada.
+(function () {
+  if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
+  var net = navigator.connection || {};
+  if (net.saveData || /(^|-)2g$/.test(net.effectiveType || '')) return;
+  var link = document.querySelector('a[href$="src/app.html"]'); if (!link) return;
+  var root = new URL('../', link.href).href;
+  function keep() {
+    navigator.serviceWorker.getRegistration(root).then(function (had) {
+      if (had) return; // quien ya abrió la app lo tiene, y la app lo mantiene al día
+      return fetch(root + 'manifest.json', { cache: 'no-cache' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (m) {
+        if (m && m.version) return navigator.serviceWorker.register(root + 'sw.js?v=' + encodeURIComponent(m.version), { scope: root });
+      });
+    }).catch(function () { /* sin service worker la app abre igual, con conexión */ });
+  }
+  function idle() { if (window.requestIdleCallback) requestIdleCallback(keep, { timeout: 4000 }); else setTimeout(keep, 1200); }
+  if (document.readyState === 'complete') idle(); else addEventListener('load', idle);
+})();
+</script>
 </body>
 </html>

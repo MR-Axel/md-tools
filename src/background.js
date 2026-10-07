@@ -75,7 +75,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   // Pedidos de la app web, que comparte el depósito de la extensión (bridge-sw.js valida de dónde vienen).
   if (msg.type === 'bridge') return LMD.bridgeHost.onMessage(msg, sender, sendResponse);
-  if (msg.type === 'openApp') { chrome.tabs.create({ url: chrome.runtime.getURL('src/app.html') + (msg.fresh ? '?new=1' : (msg.query || '')) }); sendResponse({ ok: true }); return; }
+  if (msg.type === 'openApp') {
+    const own = chrome.runtime.getURL('src/app.html');
+    const go = (base) => chrome.tabs.create({ url: base + (msg.fresh ? '?new=1' : (msg.query || '')) });
+    // pref: donde la persona eligió abrir SharpMD (Ajustes > Instalar), la app web o la página de la extensión.
+    if (msg.pref) LMD.load().then((s) => go(s.openIn === 'ext' ? own : LMD.WEB_APP_URL), () => go(own)); else go(own);
+    sendResponse({ ok: true }); return;
+  }
   if (msg.type === 'reloadExtension') {
     // Recargar la extensión cierra sus páginas y deja huérfanas las pestañas de archivos:
     // se anotan antes, y al volver se reabren unas y se recargan las otras.

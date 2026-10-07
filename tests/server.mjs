@@ -241,6 +241,13 @@ try {
   await withMail.post('/feedback', { text: 'Escrito con la cuenta abierta.', email: 'otro@ejemplo.test' }, ls);
   const m2 = sent[sent.length - 1] || {};
   check('comentarios: con sesión, el correo es el de la cuenta', m2.reply_to === 'cuenta@ejemplo.test' && /From: cuenta@ejemplo\.test \(signed in, free plan\)/.test(m2.text || ''), m2);
+  // Denunciar una nota ajena: la misma ruta, con report. Dice qué nota es, nunca su contenido; el motivo es opcional.
+  const rp = await withMail.post('/feedback', { text: '', report: { kind: 'link', note: 'pub/abc123\r\nBcc: tercero@ejemplo.test', owner: '', body: '# contenido de la nota' }, context: { version: '2.51.0', where: 'web' } });
+  const m3 = sent[sent.length - 1] || {};
+  check('denuncia: entra sin sesión y sin motivo, con asunto propio y qué nota es en una sola línea', rp.status === 200 && m3.to === 'duenio@ejemplo.test' && m3.subject === 'SharpMD report' && /^Reported note: pub\/abc123 Bcc: tercero@ejemplo\.test\nOwner: -\nKind: link\n\n\(no reason given\)\n/.test(m3.text || '') && !/contenido de la nota/.test(JSON.stringify(m3)) && !('reply_to' in m3), [rp.json, m3]);
+  await withMail.post('/feedback', { text: 'Publica datos de otra persona.', report: { kind: 'otra-cosa', note: 'informes/plan.md', owner: '7' } }, ls);
+  const m4 = sent[sent.length - 1] || {};
+  check('denuncia: con sesión lleva el motivo, la ruta, la cuenta dueña y a quién responder', m4.subject === 'SharpMD report' && /^Reported note: informes\/plan\.md\nOwner: 7\nKind: -\n\nPublica datos de otra persona\.\n/.test(m4.text || '') && m4.reply_to === 'cuenta@ejemplo.test', m4);
   await withMail.stop(); inbox.close();
   const noFeedback = await second({});
   check('comentarios: sin FEEDBACK_TO responde 404', (await noFeedback.post('/feedback', { text: 'No debería llegar a nadie.' })).status === 404);
