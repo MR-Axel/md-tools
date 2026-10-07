@@ -14,6 +14,8 @@
 //   SHARE_FREE=1    habilita compartir también en el plan gratis
 //   CHECKOUT_MONTHLY, CHECKOUT_YEARLY   enlaces de pago que la app muestra en Ajustes → Cuenta
 //   ADMIN_KEY       clave para cambiar el plan de una cuenta desde /admin/plan
+//   PADDLE_WEBHOOK_SECRET   firma de los avisos de Paddle: con esto /paddle/webhook activa y da de baja el plan pago
+//   PORTAL_URL      dirección donde quien paga administra su suscripción
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -43,6 +45,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS shares (id INTEGER PRIMARY KEY, owner INTEGER NOT NULL, path TEXT NOT NULL, kind TEXT NOT NULL, email TEXT NOT NULL, role TEXT NOT NULL, created INTEGER NOT NULL, UNIQUE (owner, path, email));
   CREATE TABLE IF NOT EXISTS links (id INTEGER PRIMARY KEY, hash TEXT UNIQUE NOT NULL, owner INTEGER NOT NULL, path TEXT NOT NULL, pass TEXT, fails INTEGER NOT NULL DEFAULT 0, locked INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL);
 `);
+try { db.exec('ALTER TABLE users ADD COLUMN paddle_sub TEXT'); } catch (e) { /* ya estaba */ }
 const q = (sql) => db.prepare(sql);
 const now = () => Date.now();
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
@@ -122,7 +125,7 @@ function userFrom(req, kind) {
 const countNotes = (user) => q('SELECT COUNT(*) AS n FROM notes WHERE user = ?').get(user.id).n;
 const mcpAllowed = (user) => user.plan === 'pro' || !!env.MCP_FREE;
 const shareAllowed = (user) => user.plan === 'pro' || !!env.SHARE_FREE;
-const account = (user) => ({ id: user.id, share: shareAllowed(user), email: user.email, plan: user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, mcp: mcpAllowed(user), mcp_url: PUBLIC_URL + '/mcp',
+const account = (user) => ({ id: user.id, share: shareAllowed(user), email: user.email, plan: user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, mcp: mcpAllowed(user), mcp_url: PUBLIC_URL + '/mcp', manage: user.plan === 'pro' && env.PORTAL_URL ? env.PORTAL_URL : '',
   checkout: { monthly: env.CHECKOUT_MONTHLY ? env.CHECKOUT_MONTHLY + (env.CHECKOUT_MONTHLY.includes('?') ? '&' : '?') + 'email=' + encodeURIComponent(user.email) : '', yearly: env.CHECKOUT_YEARLY ? env.CHECKOUT_YEARLY + (env.CHECKOUT_YEARLY.includes('?') ? '&' : '?') + 'email=' + encodeURIComponent(user.email) : '' } });
 
 // ---------- Notas ----------
@@ -321,11 +324,50 @@ const readBody = (req) => new Promise((resolve, reject) => {
   req.on('error', reject);
 });
 
+const readRaw = (req) => new Promise((resolve, reject) => {
+  let size = 0; const chunks = [];
+  req.on('data', (c) => { size += c.length; if (size > MAX_NOTE) { reject(new Fail(413, 'too_large')); req.destroy(); } else chunks.push(c); });
+  req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+  req.on('error', reject);
+});
+
+// ---------- Paddle ----------
+// Lo único que activa o da de baja el plan pago. La firma va sobre el cuerpo tal como llegó.
+// De quién es el aviso sale de custom_data.sharpmd_email, que escribe la página de pago, o de la
+// suscripción ya guardada (las renovaciones no traen custom_data). Nunca del correo del cliente
+// de Paddle: quien paga con el correo de otro no compra para el otro.
+function paddleSigned(raw, header) {
+  const parts = Object.fromEntries(String(header || '').split(';').map((x) => x.split('=')));
+  if (!parts.ts || !parts.h1 || Math.abs(Date.now() / 1000 - +parts.ts) > 3600) return false;
+  const mine = crypto.createHmac('sha256', env.PADDLE_WEBHOOK_SECRET).update(parts.ts + ':' + raw).digest('hex');
+  const a = Buffer.from(mine); const b = Buffer.from(String(parts.h1));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+async function paddleWebhook(req) {
+  if (!env.PADDLE_WEBHOOK_SECRET) throw new Fail(404, 'no_route');
+  const raw = await readRaw(req);
+  if (!paddleSigned(raw, req.headers['paddle-signature'])) throw new Fail(401, 'bad_signature');
+  let ev; try { ev = JSON.parse(raw); } catch (e) { throw new Fail(400, 'bad_json'); }
+  const d = ev.data || {};
+  if (!/^subscription\./.test(ev.event_type || '')) return { ok: true, ignored: 'event' };
+  // La cuenta de Paddle puede vender otros productos: solo cuentan los precios marcados como de Sharpmd.
+  if (!(d.items || []).some((i) => i && i.price && i.price.custom_data && i.price.custom_data.app === 'sharpmd')) return { ok: true, ignored: 'product' };
+  const tagged = d.custom_data && d.custom_data.sharpmd_email;
+  let user = null;
+  if (tagged) { try { user = q('SELECT * FROM users WHERE email = ?').get(cleanEmail(tagged)); } catch (e) { user = null; } }
+  if (!user && d.id) user = q('SELECT * FROM users WHERE paddle_sub = ?').get(String(d.id));
+  if (!user) { console.error('paddle: aviso ' + ev.event_type + ' sin cuenta · ' + d.id); return { ok: true, ignored: 'user' }; }
+  const plan = ['active', 'trialing', 'past_due'].includes(d.status) ? 'pro' : 'free';
+  q('UPDATE users SET plan = ?, paddle_sub = ? WHERE id = ?').run(plan, String(d.id || ''), user.id);
+  return { ok: true, plan };
+}
+
 async function route(req, url) {
   const p = url.pathname; const m = req.method;
   if (p === '/health') return { ok: true };
   if (p === '/auth/start' && m === 'POST') return authStart(await readBody(req));
   if (p === '/auth/verify' && m === 'POST') return authVerify(await readBody(req));
+  if (p === '/paddle/webhook' && m === 'POST') return paddleWebhook(req);
   if (p === '/admin/plan' && m === 'POST') {
     if (!env.ADMIN_KEY || req.headers['x-admin-key'] !== env.ADMIN_KEY) throw new Fail(403, 'forbidden');
     const b = await readBody(req);
@@ -404,7 +446,7 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify(out));
   } catch (e) {
     const status = e.status || 500;
-    if (status >= 500) console.error(status === 500 ? e : 'error ' + status + ' ' + (e.code || '') + ' en ' + req.method + ' ' + url.pathname);
+    if (status >= 500) console.error(status === 500 ? e : 'error ' + status + ' ' + (e.code || '') + ' en ' + req.method + ' ' + String(req.url).split('?')[0]);
     res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ error: e.code || 'server_error', message: e.message || '' }));
   }

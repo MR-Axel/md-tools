@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sharpmd: paid plan</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="icons/icon32.png">
+<style>
+  @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
+  :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --faint: #8a909c; --line: #dedbd2; --accent: #3f6b0c; --fill: #4d7c0f; --on: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121418; --soft: #1a1d23; --fg: #e6e8ec; --muted: #a0a7b4; --faint: #737b89; --line: #2a2e37; --accent: #bef264; --fill: #bef264; --on: #14161a; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--bg); color: var(--fg); font: 16px/1.55 "MDT Inter", -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  html[data-lang="en"] [lang="es"], html[data-lang="es"] [lang="en"] { display: none !important; }
+  main { width: min(440px, 100%); padding: 30px 32px; border: 1px solid var(--line); border-radius: 16px; background: var(--soft); }
+  .brand { display: flex; align-items: center; gap: 9px; margin-bottom: 22px; font-weight: 700; color: inherit; text-decoration: none; }
+  .brand img { width: 26px; height: 26px; border-radius: 7px; }
+  h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: -0.02em; }
+  .price { margin: 0 0 4px; font-size: 32px; font-weight: 720; letter-spacing: -0.03em; }
+  .price small { font-size: 15px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+  p { margin: 0 0 14px; color: var(--muted); }
+  .who { margin: 16px 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); font-size: 14.5px; color: var(--fg); overflow-wrap: anywhere; }
+  .who small { display: block; color: var(--faint); font-size: 12.5px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; width: 100%; padding: 13px 20px; border: 1px solid var(--fill); border-radius: 999px; background: var(--fill); color: var(--on); font: inherit; font-weight: 650; text-decoration: none; cursor: pointer; }
+  .btn:hover { filter: brightness(1.06); }
+  .btn.ghost { margin-top: 10px; background: transparent; border-color: var(--line); color: var(--fg); }
+  .fine { margin: 16px 0 0; font-size: 13px; color: var(--faint); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <a class="brand" href="./?site"><img src="icons/icon48.png" alt=""><span>Sharpmd</span></a>
+
+  <section id="buy" hidden>
+    <h1><span lang="en">Paid plan</span><span lang="es">Plan pago</span></h1>
+    <p class="price"><span id="amount"></span> <small id="cycle"></small></p>
+    <p><span lang="en">Unlimited cloud notes, sharing, the MCP connection, 30 days of version history, and colors, fonts and your own CSS.</span><span lang="es">Notas en la nube sin límite, compartir, la conexión MCP, 30 días de historial, y colores, tipografías y tu propio CSS.</span></p>
+    <div class="who"><small><span lang="en">For the account</span><span lang="es">Para la cuenta</span></small><span id="email"></span></div>
+    <button type="button" class="btn" id="go"><span lang="en">Pay with card</span><span lang="es">Pagar con tarjeta</span></button>
+    <a class="btn ghost" id="other" href="#"></a>
+    <p class="fine"><span lang="en">Paddle handles the payment and the receipt. Cancel whenever you want from the link in that receipt.</span><span lang="es">El pago y el recibo los maneja Paddle. Te das de baja cuando quieras desde el enlace de ese recibo.</span></p>
+  </section>
+
+  <section id="noemail" hidden>
+    <h1><span lang="en">Open this from Sharpmd</span><span lang="es">Abrí esto desde Sharpmd</span></h1>
+    <p><span lang="en">Sign in, then go to Settings, Account and choose a plan there. That way the payment goes to your account.</span><span lang="es">Entrá a tu cuenta, andá a Ajustes, Cuenta y elegí el plan ahí. Así el pago queda en tu cuenta.</span></p>
+    <a class="btn" href="src/app.html"><span lang="en">Open the app</span><span lang="es">Abrir la app</span></a>
+  </section>
+
+  <section id="done" hidden>
+    <h1><span lang="en">Payment received</span><span lang="es">Pago recibido</span></h1>
+    <p><span lang="en">Your account moves to the paid plan in about a minute. Reopen Settings to see it.</span><span lang="es">Tu cuenta pasa al plan pago en un minuto, más o menos. Volvé a abrir Ajustes para verlo.</span></p>
+    <a class="btn" href="src/app.html"><span lang="en">Back to Sharpmd</span><span lang="es">Volver a Sharpmd</span></a>
+  </section>
+</main>
+<script src="site.js"></script>
+<script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+<script>
+// Página de pago: abre el checkout de Paddle para la cuenta que viene en la dirección.
+// El token y los precios son públicos por diseño. Quién recibe el plan lo decide custom_data.sharpmd_email.
+(function () {
+  var TOKEN = 'live_a38899cc0a5afae1c88c5a0fd60';
+  var PLANS = {
+    monthly: { price: 'pri_01m4a2ykw09jk7m71dr2a0gpng', amount: 'USD 3.99', en: 'a month', es: 'por mes' },
+    yearly: { price: 'pri_01m4a2ym1r61j0xkcvbh9xp84y', amount: 'USD 39', en: 'a year', es: 'por año' },
+  };
+  var q = new URLSearchParams(location.search);
+  var show = function (id) { document.getElementById(id).hidden = false; };
+  if (q.has('done')) { show('done'); return; }
+  var email = (q.get('email') || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { show('noemail'); return; }
+  var key = q.get('plan') === 'yearly' ? 'yearly' : 'monthly'; var plan = PLANS[key];
+  var lang = function () { return document.documentElement.getAttribute('data-lang') === 'es' ? 'es' : 'en'; };
+  document.getElementById('amount').textContent = plan.amount;
+  document.getElementById('email').textContent = email;
+  var cycle = document.getElementById('cycle'); var other = document.getElementById('other');
+  var otherKey = key === 'yearly' ? 'monthly' : 'yearly';
+  var paint = function () {
+    cycle.textContent = plan[lang()];
+    other.textContent = (lang() === 'es' ? 'Prefiero ' : 'I prefer ') + PLANS[otherKey].amount + ' ' + PLANS[otherKey][lang()];
+  };
+  other.href = 'pay.html?plan=' + otherKey + '&email=' + encodeURIComponent(email);
+  paint(); document.addEventListener('click', function (e) { if (e.target.closest && e.target.closest('[data-set]')) setTimeout(paint, 0); });
+  show('buy');
+  var ready = false;
+  var open = function () {
+    if (!window.Paddle) return;
+    if (!ready) { Paddle.Initialize({ token: TOKEN }); ready = true; }
+    Paddle.Checkout.open({
+      items: [{ priceId: plan.price, quantity: 1 }],
+      customer: { email: email },
+      customData: { sharpmd_email: email },
+      settings: { displayMode: 'overlay', theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', locale: lang(), successUrl: location.origin + location.pathname + '?done=1' },
+    });
+  };
+  document.getElementById('go').addEventListener('click', open);
+})();
+</script>
+</body>
+</html>

@@ -32,6 +32,9 @@ Then, in Sharpmd: Settings → Cloud → Sync server, and type the address (`htt
 | `FREE_NOTES` | Notes on the free plan | `10` |
 | `MCP_FREE` | `1` gives MCP access to the free plan too | off |
 | `ADMIN_KEY` | Key for `POST /admin/plan` | off |
+| `CHECKOUT_MONTHLY`, `CHECKOUT_YEARLY` | Payment links the app shows in Settings → Account. The account email is appended as `email=` | |
+| `PADDLE_WEBHOOK_SECRET` | Turns on `POST /paddle/webhook`: Paddle subscription events switch the plan | off |
+| `PORTAL_URL` | Where a subscriber manages the subscription | |
 
 Put it behind a reverse proxy with HTTPS. With Caddy:
 
