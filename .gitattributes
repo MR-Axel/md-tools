@@ -12,3 +12,11 @@ README.es.md export-ignore
 .gitattributes export-ignore
 .nojekyll export-ignore
 server/ export-ignore
+es/ export-ignore
+tools/ export-ignore
+app/ export-ignore
+pay.html export-ignore
+llms.txt export-ignore
+robots.txt export-ignore
+sitemap.xml export-ignore
+CNAME export-ignore
