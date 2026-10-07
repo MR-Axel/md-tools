@@ -2,9 +2,9 @@
 
 [English](README.md) · Español
 
-![Sharpmd](docs/reader-es.png)
+![Sharpmd](docs/store/1-reader.png)
 
-![Editando una celda de la tabla en el lugar](docs/editing-es.png)
+![Editando una celda de la tabla en el lugar](docs/store/2-editing.png)
 
 **Probala sin instalar nada: [mr-axel.github.io/sharpmd](https://mr-axel.github.io/sharpmd/)**
 
@@ -104,7 +104,7 @@ src/
   app.html        la página de Sharpmd: abrir un archivo o una carpeta y editar ahí
   popup.html/js   el encendido y el botón que abre la página de Sharpmd
 vendor/           librerías de terceros, sin modificar
-ejemplo/          documentos de prueba con todas las funciones
+examples/         documentos de prueba con todas las funciones
 tests/            prueba de punta a punta
 ```
 

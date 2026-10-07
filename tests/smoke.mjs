@@ -5,7 +5,7 @@ import { chromium } from 'playwright-core';
 import http from 'http'; import fs from 'fs'; import os from 'os'; import path from 'path'; import { fileURLToPath, pathToFileURL } from 'url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const sample = pathToFileURL(path.join(root, 'ejemplo', 'ejemplo.md')).href;
+const sample = pathToFileURL(path.join(root, 'examples', 'sample.md')).href;
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'mdtools-'));
 const results = [];
 const check = (name, ok, detail) => { results.push({ name, ok: !!ok }); console.log((ok ? '  ok   ' : '  FALLA ') + name + (ok || detail === undefined ? '' : '  -> ' + JSON.stringify(detail))); };
@@ -35,17 +35,17 @@ try {
     katex: !!document.querySelector('.katex'), outline: document.querySelectorAll('.lmd-pane-outline a').length, xss: document.title === 'XSS',
     wiki: [...document.querySelectorAll('a.lmd-wiki')].map((a) => (a.getAttribute('href') || '').split('/').pop()),
   }));
-  check('renderiza el documento', doc.title === 'ejemplo.md' && doc.h2 >= 8, doc);
+  check('renderiza el documento', doc.title === 'sample.md' && doc.h2 >= 8, doc);
   check('matemática y diagramas', doc.katex && doc.diagrams === 2, doc);
   check('índice lateral', doc.outline >= 8, doc.outline);
   const pad = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.lmd-article')).paddingTop));
   check('el documento tiene aire arriba (la hoja de estilos se lee entera)', pad >= 20, pad);
-  check('links [[wiki]] resueltos', doc.wiki[0] === 'notas.md' && doc.wiki[2] === '', doc.wiki);
+  check('links [[wiki]] resueltos', doc.wiki[0] === 'notes.md' && doc.wiki[2] === '', doc.wiki);
   check('el HTML del documento no ejecuta scripts', !doc.xss);
 
   await page.click('.lmd-tab[data-tab=files]'); await page.waitForSelector('.lmd-node');
   const tree = await page.evaluate(() => [...document.querySelectorAll('.lmd-node')].map((n) => n.textContent.trim() + (n.classList.contains('lmd-active') ? '*' : '')));
-  check('árbol de la carpeta', tree.includes('ejemplo.md*') && tree.includes('sub'), tree);
+  check('árbol de la carpeta', tree.includes('sample.md*') && tree.includes('sub'), tree);
   await page.fill('.lmd-search input', 'Sharpmd'); await page.waitForSelector('.lmd-results-sum');
   await page.waitForFunction(() => /\d/.test(document.querySelector('.lmd-results-sum').textContent), null, { timeout: 15000 });
   check('búsqueda en la carpeta', /coincidencia/.test(await page.textContent('.lmd-results-sum')), await page.textContent('.lmd-results-sum'));
@@ -59,7 +59,7 @@ try {
   await page.click('[data-act=view-raw]'); await page.waitForTimeout(300);
   const source = await page.evaluate(() => { const t = document.querySelector('.lmd-raw-edit'); return t && !t.hidden ? t.value : document.querySelector('pre.lmd-raw').textContent; });
   const changed = source.split(/\r?\n/).filter((l) => l.endsWith(' Nuevo'));
-  check('la edición vuelve al Markdown sin romper el formato', changed.length === 1 && source.includes('Texto **negrita**, *cursiva*, ~~tachado~~, ==marcado==, ++insertado++, H~2~O, x^2^'), changed);
+  check('la edición vuelve al Markdown sin romper el formato', changed.length === 1 && source.includes('Text **bold**, *italic*, ~~struck~~, ==marked==, ++inserted++, H~2~O, x^2^'), changed);
   await page.click('[data-act=view-doc]');
 
   await page.click('[data-act=settings]'); await page.waitForSelector('.lmd-panel-card');
@@ -195,7 +195,7 @@ try {
   await plain.goto(origin + '/src/app.html'); await plain.waitForSelector('.lmd-home');
   check('sin acceso a archivos no ofrece abrir carpeta', (await plain.locator('[data-home]').count()) === 2 && (await plain.locator('[data-home=dir]').count()) === 0);
   const [chooser] = await Promise.all([plain.waitForEvent('filechooser'), plain.click('[data-home=file]')]);
-  await Promise.all([plain.waitForNavigation(), chooser.setFiles(path.join(root, 'ejemplo', 'demo.md'))]);
+  await Promise.all([plain.waitForNavigation(), chooser.setFiles(path.join(root, 'examples', 'demo.md'))]);
   await plain.waitForSelector('.markdown-body h1');
   check('abre el archivo en memoria', (await plain.title()) === 'demo.md');
   await plain.click('[data-act=mode-edit]'); await plain.waitForTimeout(300);

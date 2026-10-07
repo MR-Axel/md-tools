@@ -1,132 +1,133 @@
-# Sharpmd
+<p align="center"><img src="icons/icon128.png" width="84" alt="Sharpmd"></p>
 
-English · [Español](README.es.md)
+<h1 align="center">Sharpmd</h1>
 
-**Try it without installing: [mr-axel.github.io/sharpmd](https://mr-axel.github.io/sharpmd/)**
+<p align="center">A Markdown editor and reader that runs in the browser.<br>Open a file or a whole folder and edit on the formatted text.</p>
 
-A Chrome extension to read and edit Markdown files in the browser, local (`file://`) or served over the web. No accounts, no paid plan, no data sent anywhere: everything runs on your machine.
+<p align="center">
+  <a href="https://mr-axel.github.io/sharpmd/"><strong>Website</strong></a> ·
+  <a href="https://mr-axel.github.io/sharpmd/src/app.html"><strong>Open the web app</strong></a> ·
+  <a href="#install"><strong>Install the extension</strong></a> ·
+  <a href="README.es.md">Español</a>
+</p>
 
-![Sharpmd](docs/reader.png)
+![Sharpmd showing a Markdown document with its outline](docs/store/1-reader.png)
 
-![Editing a table cell in place](docs/editing.png)
+Free and open source. No account, no tracking: files are read in your browser and never uploaded.
 
-## What it does
+## Features
 
-- **Edit in place**: switch to Edit mode and click any paragraph, heading, list item or table cell to change it. Bold, italic, strikethrough, code and links from a small toolbar or the usual shortcuts; add and remove table rows and columns; tick task boxes. The Markdown is rewritten behind the scenes, so you never see the syntax. Save with Ctrl+S, or turn on auto-save.
-- **Write new content**: Enter closes a block and opens the next one, or adds a list item. A line that starts with `#`, `-`, `1.`, `>` or `[]` turns into a heading, a list, a quote or a task as you type. Right-click (or the + button, or `/` on an empty line) inserts a paragraph, heading, list, table, code block, diagram, formula, callout, image or divider, and turns, moves, duplicates or deletes the block you clicked. Ctrl+Z undoes block operations and Ctrl+Y redoes them. Shift+right-click keeps the browser menu, for spelling.
-- **Boards**: a `kanban` block turns headings into columns and tasks into cards. Drag cards between columns, tick them, add and rename. In any other program it reads as a plain task list.
-- **Task lists** you can tick while reading; done items are struck through.
-- **Table totals**: the Σ button adds a row that sums each numeric column. A cell with `=sum`, `=avg`, `=min`, `=max`, `=count` or `=median` shows the result for its column, keeping the currency and decimal style of the numbers above.
-- **Notes in the browser**: New starts a note that saves itself in the browser, with no folder or account, and is still there when you come back. Ctrl+S turns it into a file.
-- **Diagram editor**: in Edit mode, click a Mermaid or Graphviz diagram to open it side by side with a live preview. Nine Mermaid templates to start from (flowchart, sequence, states, classes, data, Gantt, pie, mind map, timeline); a syntax error shows under the last drawing that worked. Hovering a diagram offers copy code, download SVG and enlarge.
-- **Find and replace** in the document while editing, one match or all.
-- **Focus mode and typewriter mode** (Settings → Editing): dim everything but the block you are writing, and keep the current line at mid height.
-- **Export to HTML**: one standalone file, with math as MathML.
-- **Files from the tree** (Sharpmd page): new file, rename and delete with a right-click.
-- **Paste images** (Sharpmd page): an image from the clipboard is saved to `assets/` next to the document and inserted.
-- **More than Markdown** (Sharpmd page): code and config files open highlighted and are edited as text, CSV and TSV open as a table, and images open as images.
-- **Outline** built from the document headings: collapsible tree, current section highlighted, reading progress.
-- **Folder tree**: the Markdown files next to the open document, with subfolders and a button to go up a level.
-- **Auto-reload** when the file changes on disk, keeping your scroll position.
-- **Search with two scopes**: on the Outline tab it searches the open document; on the Folder tab it searches the text of every Markdown file in the folder and its subfolders.
-- **Themes**: light, dark or automatic. Accent colors, the font and custom CSS are thank-you extras for people who support the project, unlocked on the honor system: there is no check. Everything the reader and editor do is free.
-- **Layout to taste**: centered content, content width, font size, line height and font family. Long lines in code blocks wrap, with a switch to scroll them sideways.
-- **Custom CSS** on top of the theme.
-- **Markdown plugins**, each with its own switch: code highlighting, emoji, subscript and superscript, inserted and highlighted text, abbreviations, definition lists, footnotes, task lists, GitHub-style alerts, inline table of contents (`[[toc]]`), math with KaTeX, diagrams with Mermaid and Graphviz, tables with merged cells, `::: tip` blocks, and YAML front matter shown as a card.
-- **`[[name]]` links** that open the file with that name in the folder.
-- **Reading position** remembered per file.
-- **Word counter** for the document, and words and characters for the current selection.
-- Toolbar: switch between document and source, copy the Markdown, copy with formatting, reload, print or save as PDF, settings.
-- **English and Spanish**: follows the browser language (Spanish, or English for anything else) and can be changed in Settings.
-
-| Folder search | Settings |
+| | |
 |---|---|
-| ![Folder search](docs/folder-search.png) | ![Settings](docs/settings.png) |
+| **Edit in place** | Click a paragraph, a heading, a list item or a table cell and type. The Markdown is rewritten behind it. |
+| **Formatting as you type** | `**bold**`, `*italic*` and `` `code` `` turn into formatting. A line that starts with `#`, `-`, `1.`, `>` or `[]` becomes a heading, a list, a quote or a task. |
+| **Blocks** | Right-click, the handle next to a block, the + button or `/` on an empty line: insert, turn into, move, duplicate or delete. Undo with Ctrl+Z, redo with Ctrl+Y. |
+| **Tables** | Add and remove rows and columns. A totals row sums each column, and a cell can hold `=sum`, `=avg`, `=min`, `=max`, `=count` or `=median`. |
+| **Boards** | A `kanban` block turns headings into columns and tasks into cards you can drag. Anywhere else it reads as a plain task list. |
+| **Diagrams** | Mermaid and Graphviz, with an editor that shows the drawing next to the code and nine templates. Rounded or straight shapes. |
+| **Math** | KaTeX, inline and in blocks. |
+| **Images** | Insert by address or from a file, pick a size, paste from the clipboard. |
+| **Folder** | The files next to the open document, search across all of them, `[[name]]` links, and new, rename and delete from the tree. |
+| **Outline** | Built from the headings, with the current section and reading progress. |
+| **Notes** | New starts a note that saves itself in the browser, or in a folder you choose. |
+| **Focus** | Focus mode dims everything but the block you are writing; typewriter mode keeps the line at mid height. |
+| **Export** | One standalone HTML file, or PDF through print. |
+| **More than Markdown** | Code and config files open highlighted, CSV as a table, images as images. |
+| **Yours to adjust** | Light and dark themes, width, font size, code block color, custom CSS, English and Spanish. |
+
+| Editing a table | Blocks menu |
+|---|---|
+| ![Editing a table cell in place](docs/store/2-editing.png) | ![The block menu](docs/store/3-blocks.png) |
+
+| Diagram editor | Folder search |
+|---|---|
+| ![The diagram editor with live preview](docs/store/4-diagram.png) | ![Searching every file in a folder](docs/store/6-search.png) |
+
+## Two ways to use it
+
+**On the web.** Nothing to install: [open the web app](https://mr-axel.github.io/sharpmd/src/app.html). Chrome, Edge and Brave open folders and save in place. Firefox and Safari open one file at a time, and saving downloads a copy.
+
+**As an extension.** Set Chrome as the default app for `.md` files and a double-click opens them rendered. It also renders Markdown served by any website, and it works offline.
 
 ## Install
 
-It is not on the Chrome Web Store yet. To load it from source:
+The extension is not on the Chrome Web Store yet. To load it from source:
 
 1. Download this repository (Code → Download ZIP) and unzip it, or clone it.
 2. Open `chrome://extensions`.
 3. Turn on **Developer mode** (top right).
 4. Click **Load unpacked** and pick the folder.
 5. On the Sharpmd card, open **Details** and turn on **Allow access to file URLs**. Without it, local files will not open.
-6. If you have another Markdown extension installed, disable it so they do not both act on the same file.
+6. If another Markdown extension is installed, disable it so they do not both act on the same file.
 
-Then drag any `.md` file into the browser. `ejemplo/ejemplo.md` exercises every feature.
+Then drag any `.md` file into the browser, or click the extension icon and choose **New** or **Open**. `examples/sample.md` exercises every feature.
 
-It also works in other Chromium browsers (Edge, Brave, Arc) through the same steps.
-
-## Opening files from Sharpmd itself
-
-Click the extension icon and choose **New** or **Open**. **New** starts an empty note ready to type; the first Ctrl+S asks where to save it. **Open** takes you to the Sharpmd page, where you pick a file or a folder (or drag one in) and read and edit it right there. Because you already chose the folder, saving needs no extra permission step, and the page remembers what you opened recently.
-
-Opening a `.md` directly in the browser keeps working as before. The folder tab of the sidebar has a button that takes you to this page.
-
-## Without installing anything
-
-The Sharpmd page is plain HTML and JavaScript, so it also runs served from any static host, with no extension. In Chrome, Edge, Brave and other Chromium browsers it opens files and folders and saves in place. In Firefox and Safari, which do not let a page write to disk, it opens one file at a time and saving downloads a copy. Either way nothing is uploaded: the files are read in your browser.
-
-It is published at [mr-axel.github.io/sharpmd](https://mr-axel.github.io/sharpmd/). To run your own copy, serve this folder (`npx serve .`) and open the address it prints.
+It works the same in Edge, Brave and Arc.
 
 ## Updating
 
-Chrome cannot update an extension loaded from a folder, so Sharpmd checks this repository once a day (or once a week, or never: Settings → Updates) and shows a notice in the sidebar, and in the popup of the extension icon, when there is a newer version. From there: download the ZIP, replace the extension folder with its contents and click **Apply**, which reloads the extension. If you cloned the repository, `git pull` and **Apply** is enough.
+Chrome cannot update an extension loaded from a folder, so Sharpmd checks this repository once a day (or once a week, or never: Settings → Updates) and tells you in the sidebar and in the popup when there is a newer version. Download the ZIP, replace the folder and click **Apply**. If you cloned the repository, `git pull` and **Apply** is enough.
 
 ## Shortcuts
 
 | Shortcut | Action |
 |---|---|
+| Ctrl+S | Save |
+| Ctrl+Z / Ctrl+Y | Undo and redo block operations |
+| Ctrl+B / Ctrl+I | Bold and italic |
+| Ctrl+Shift+F | Focus the search box |
 | Alt+Shift+B | Show or hide the sidebar |
 | Alt+Shift+C | Toggle centered content |
 | Alt+Shift+R | Toggle auto-reload |
 | Alt+Shift+T | Switch theme |
-| Ctrl+Shift+F | Focus the search box |
 
-Change them at `chrome://extensions/shortcuts`.
+The Alt+Shift shortcuts can be changed at `chrome://extensions/shortcuts`.
 
 ## Saving
 
-Chrome does not let an extension write to disk on its own, so the first time you save, Sharpmd asks for permission. Pick the folder the file lives in, or one that contains it: from then on every Markdown file inside saves straight to itself, and the choice is remembered across sessions. Chrome may still show a one-click confirmation the first time in each session. You can also grant a single file instead of a folder.
+A page cannot write to disk on its own, so the first time you save a file opened by double-click, Sharpmd asks you to pick its folder. From then on every Markdown file inside saves straight to itself. Files and folders opened from the Sharpmd page already carry that permission.
 
 ## Privacy
 
-Sharpmd collects nothing and sends nothing. The single network request it makes is a daily check of the version number published in this repository, so it can tell you when there is an update. You can make it weekly or turn it off in Settings. Settings and reading positions are stored locally in the browser. The broad permissions exist for one reason each: `file:///*` and `*://*/*` so it can render Markdown wherever the file lives, and `scripting` to load KaTeX, Mermaid and Graphviz only when a document uses them.
+Sharpmd collects nothing. Settings, reading positions and browser notes are stored in your browser. The only network request the extension makes is the daily check of the version number published here, which you can turn off. HTML produced from the Markdown goes through DOMPurify before it reaches the page. Details in the [privacy page](https://mr-axel.github.io/sharpmd/privacy.html).
 
-HTML produced from the Markdown goes through DOMPurify before it reaches the page.
+## Optional sync server
 
-## Project layout
+`server/` holds Sharpmd Sync: accounts, notes in the cloud and an MCP endpoint so an AI can read and write them. It is one file with no dependencies, and you can host it yourself. Sharpmd shows nothing about the cloud until a server address is set in Settings → Cloud. See [server/README.md](server/README.md).
+
+## Development
+
+There is no build step: edit and reload the extension.
 
 ```
 manifest.json
 _locales/         extension name, description and shortcut labels (en, es)
 src/
-  defaults.js     default settings, storage access and the Spanish/English dictionary
+  defaults.js     default settings, storage access and the English/Spanish dictionary
   kit.js          icons and shared helpers
   markdown.js     the parser and its plugins: [[wiki]] links, math, YAML front matter
   theme.js        light or dark theme and accent color
   serialize.js    from an edited block back to Markdown
-  store.js        file and folder permissions, kept in IndexedDB
+  store.js        file and folder permissions and browser notes, kept in IndexedDB
+  cloud.js        client for the optional sync server
   home.js         start screen of the Sharpmd page
-  write.js        new blocks, Markdown shortcuts and the right-click menu
+  write.js        new blocks, Markdown shortcuts and the block menu
   diagram.js      diagram editor with live preview
   board.js        kanban boards and table formulas
-  extras.js       files from the tree, pasted images, replace, typewriter mode, HTML export
+  extras.js       files from the tree, images, replace, typewriter mode, HTML export
   content.js      the reader: interface, outline, tree, search, editing, saving, settings
   content.css     styles and themes
   background.js   reads files and folders, lazy-loads the heavy libraries, shortcuts, update check
   web.js          stands in for the extension APIs when the page is served from a site
   app.html        the Sharpmd page: open a file or a folder and edit it there
-  popup.html/js   on/off switch and the button that opens the Sharpmd page
+  popup.html/js   the popup of the extension icon
+server/           optional sync server with MCP
 vendor/           third-party libraries, unmodified
-ejemplo/          sample documents covering every feature
-tests/            end-to-end smoke test
+examples/         sample documents covering every feature
+tests/            end-to-end tests
 ```
 
-There is no build step: edit and reload the extension.
-
-## Tests
+Tests load the extension in a Chromium and walk through every mode:
 
 ```
 cd tests
@@ -134,7 +135,7 @@ npm install
 npm test
 ```
 
-It loads the extension in a Chromium and walks through both modes: a `.md` opened directly in the browser, and the Sharpmd page with a folder. It needs a Playwright Chromium (`npx playwright install chromium`) or `CHROME_BIN` pointing at another one.
+They need a Playwright Chromium (`npx playwright install chromium`) or `CHROME_BIN` pointing at another one.
 
 ## Third-party libraries
 
@@ -155,10 +156,6 @@ All of them are vendored in `vendor/`, because Manifest V3 does not allow remote
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/surlabs)
 
 Sharpmd is free and collects no data. If it saves you time, you can [support the next tool on Ko-fi](https://ko-fi.com/surlabs).
-
-## Optional sync server
-
-`server/` holds Sharpmd Sync: accounts, notes in the cloud and an MCP endpoint so an AI can read and write them. It is one file with no dependencies, and you can host it yourself. Sharpmd shows nothing about the cloud until a server address is set in Settings → Cloud. See [server/README.md](server/README.md).
 
 ## License
 

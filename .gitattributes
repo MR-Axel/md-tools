@@ -1,7 +1,7 @@
 tests/ export-ignore
 docs/ export-ignore
 store/ export-ignore
-ejemplo/ export-ignore
+examples/ export-ignore
 .github/ export-ignore
 index.html export-ignore
 privacy.html export-ignore

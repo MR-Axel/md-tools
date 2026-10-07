@@ -94,6 +94,13 @@
     return d;
   }
 
+  function listPrefix(kind, at) {
+    const near = (dir) => { for (let i = dir < 0 ? at - 1 : at; i >= 0 && i < lines().length; i += dir) if (!blank(i)) return lines()[i]; return ''; };
+    const taken = new Set();
+    [near(-1), near(1)].forEach((line) => { const m = /^\s{0,3}([-*+])\s+(\[[ xX]\]\s+)?/.exec(line); if (m && !!m[2] !== (kind === 'task')) taken.add(m[1]); });
+    return ['-', '*', '+'].find((c) => !taken.has(c)) + ' ' + (kind === 'task' ? '[ ] ' : '');
+  }
+
   const draftText = (d) => inlineMd(d).replace(/\n+$/, '').trim();
 
   function discard(d) {
@@ -127,7 +134,8 @@
       core.insertLines(at, [m[1] + marker + m[3] + (m[4] ? '[ ] ' : '') + text.replace(/\n/g, ' ')], owners);
       kind = 'item';
     } else {
-      const prefix = KINDS[kind] || '';
+      at = lineAfter(d._anchor);
+      const prefix = kind === 'ul' || kind === 'task' ? listPrefix(kind, at) : (KINDS[kind] || '');
       const parts = text.split('\n');
       let body;
       if (kind === 'p') body = parts.map((p, i) => p.trim() + (i < parts.length - 1 ? '\\' : ''));
@@ -253,8 +261,7 @@
     if (draft) discard(draft);
     if (KINDS[what] !== undefined) { openDraft(after, what); return; }
     if (what === 'image') {
-      const url = window.prompt(T('Dirección o ruta de la imagen'), 'https://');
-      if (url) insertTemplate(after, ['![](' + url.trim() + ')']);
+      LMD.extras.imageDialog().then((img) => { if (img) insertTemplate(after, [LMD.extras.imageMd(img)]); });
       return;
     }
     const t = TEMPLATES[what];
@@ -299,7 +306,7 @@
   // ---------- Menú ----------
   const INSERTS = [
     ['p', 'Párrafo'], ['h1', 'Título 1'], ['h2', 'Título 2'], ['h3', 'Título 3'],
-    ['ul', 'Lista'], ['ol', 'Lista numerada'], ['task', 'Lista de tareas'], ['quote', 'Cita'],
+    ['ul', 'Lista con viñetas'], ['ol', 'Lista numerada'], ['task', 'Lista de tareas'], ['quote', 'Cita'],
     ['table', 'Tabla'], ['code', 'Bloque de código'], ['diagram', 'Diagrama'], ['math', 'Fórmula'],
     ['board', 'Tablero'], ['alert', 'Aviso'], ['image', 'Imagen'], ['hr', 'Separador'],
   ];
@@ -312,15 +319,15 @@
     menu = el('div', { class: 'lmd-menu', role: 'menu' });
     menu.innerHTML =
       '<p class="lmd-menu-label">' + T(block ? 'Insertar debajo' : 'Insertar') + '</p>' +
-      '<div class="lmd-menu-grid">' + INSERTS.map((i) => '<button type="button" role="menuitem" data-ins="' + i[0] + '">' + T(i[1]) + '</button>').join('') + '</div>' +
+      '<div class="lmd-menu-grid">' + INSERTS.map((i) => '<button type="button" role="menuitem" data-ins="' + i[0] + '">' + (ICON['b_' + i[0]] || '') + '<span>' + T(i[1]) + '</span></button>').join('') + '</div>' +
       (block && !draft && span(block) ?
         (plain ? '<p class="lmd-menu-label">' + T('Convertir en') + '</p><div class="lmd-menu-grid">' +
-          [['p', 'Párrafo'], ['h1', 'Título 1'], ['h2', 'Título 2'], ['h3', 'Título 3']].map((i) => '<button type="button" role="menuitem" data-conv="' + i[0] + '">' + T(i[1]) + '</button>').join('') + '</div>' : '') +
+          [['p', 'Párrafo'], ['h1', 'Título 1'], ['h2', 'Título 2'], ['h3', 'Título 3']].map((i) => '<button type="button" role="menuitem" data-conv="' + i[0] + '">' + ICON['b_' + i[0]] + '<span>' + T(i[1]) + '</span></button>').join('') + '</div>' : '') +
         '<p class="lmd-menu-label">' + T('Este bloque') + '</p><div class="lmd-menu-grid">' +
-          '<button type="button" role="menuitem" data-op="up">' + T('Subir') + '</button>' +
-          '<button type="button" role="menuitem" data-op="down">' + T('Bajar') + '</button>' +
-          '<button type="button" role="menuitem" data-op="dup">' + T('Duplicar') + '</button>' +
-          '<button type="button" role="menuitem" data-op="del" class="lmd-menu-danger">' + T('Eliminar') + '</button>' +
+          '<button type="button" role="menuitem" data-op="up">' + ICON.up + '<span>' + T('Subir') + '</span></button>' +
+          '<button type="button" role="menuitem" data-op="down">' + ICON.download + '<span>' + T('Bajar') + '</span></button>' +
+          '<button type="button" role="menuitem" data-op="dup">' + ICON.copy + '<span>' + T('Duplicar') + '</span></button>' +
+          '<button type="button" role="menuitem" data-op="del" class="lmd-menu-danger">' + ICON.trash + '<span>' + T('Eliminar') + '</span></button>' +
         '</div>' : '');
     document.body.appendChild(menu);
     const w = menu.offsetWidth; const h = menu.offsetHeight;

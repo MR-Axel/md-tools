@@ -18,6 +18,8 @@
     autosave: false,
     autosaveDelay: 2000, // ms después del último cambio
     cloudUrl: '', // servidor de sincronización propio; vacío usa el de la versión, si trae uno
+    codeColor: '', // tinte de los bloques de código; vacío = el del tema
+    diagramShape: 'round', // round | square: nodos y flechas de los diagramas de flujo
     focusMode: false, // al editar, atenúa todo menos el bloque en el que se escribe
     typewriter: false, // al editar, mantiene el renglón actual a media altura
     refreshInterval: 1000, // ms
@@ -127,6 +129,11 @@
     { name: 'Turquesa', value: '#14b8a6' },
   ];
 
+  const CODE_COLORS = [
+    { name: 'Del tema', value: '' }, { name: 'Azul', value: '#3b82f6' }, { name: 'Violeta', value: '#a855f7' }, { name: 'Verde', value: '#22c55e' },
+    { name: 'Ámbar', value: '#eab308' }, { name: 'Naranja', value: '#f97316' }, { name: 'Rosa', value: '#ec4899' },
+  ];
+
   // Tipografías que ya vienen con el sistema, cada una con su respaldo.
   const FONTS = [
     { name: 'Sharpmd (Inter)', value: '' },
@@ -228,6 +235,15 @@
       "Ya aporté": "I already supported",
       "Gracias por apoyar": "Thanks for supporting",
       "Actualizaciones": "Updates",
+      "Lista con viñetas": "Bulleted list", "Insertar imagen": "Insert image", "Dirección o ruta": "Address or path", "Elegir un archivo": "Choose a file",
+      "Descripción (para quien no ve la imagen)": "Description (for people who cannot see the image)", "Tamaño": "Size",
+      "Original": "Original", "Chica": "Small", "Mediana": "Medium", "Grande": "Large",
+      "Ese archivo no es una imagen que se pueda insertar.": "That file is not an image that can be inserted.",
+      "La imagen pesa más de 10 MB.": "The image is larger than 10 MB.",
+      "Sin una carpeta abierta la imagen va dentro del documento, y esta es muy grande para eso. Abrí la carpeta desde Sharpmd, o usá una dirección web.": "Without an open folder the image goes inside the document, and this one is too large for that. Open the folder from Sharpmd, or use a web address.",
+      "Falta la dirección o el archivo.": "The address or the file is missing.", "Esa dirección no sirve para una imagen.": "That address cannot be used for an image.",
+      "Color de los bloques de código": "Code block color", "Forma de los diagramas": "Diagram shape", "Redondeados": "Rounded", "Rectos": "Straight",
+      "Verde": "Green",
       "Nube": "Cloud", "en la nube": "in the cloud", "Guardado en la nube": "Saved to the cloud",
       "Entrá a tu cuenta para abrir las notas de la nube.": "Sign in to open your cloud notes.",
       "Llegaste al límite de notas del plan gratis. Esta no se guardó en la nube": "You reached the note limit of the free plan. This one was not saved to the cloud",
@@ -451,5 +467,5 @@
   const CLOUD_URL = '';
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
 
-  root.LMD = { SPONSOR_URL, CLOUD_URL, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
+  root.LMD = { SPONSOR_URL, CLOUD_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
 })(typeof self !== 'undefined' ? self : this);

@@ -92,6 +92,102 @@
   // ---------- Pegar imágenes ----------
   const stamp = () => { const d = new Date(); const p = (n) => String(n).padStart(2, '0'); return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()); };
 
+  const SIZES = [['', 'Original'], ['240', 'Chica'], ['480', 'Mediana'], ['720', 'Grande']];
+  // Direcciones que se aceptan para una imagen: web, ruta relativa o imagen incrustada. Nada ejecutable.
+  const safeSrc = (v) => /^https?:\/\//i.test(v) || /^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/i.test(v) || (!/^[a-z][a-z0-9+.-]*:/i.test(v) && !/[\s<>"]/.test(v));
+  // El ancho va en el texto alternativo, como en Obsidian: ![texto|480](ruta)
+  const imageMd = (img) => '![' + String(img.alt || '').replace(/[\[\]|]/g, ' ').trim() + (img.width ? '|' + img.width : '') + '](' + img.src + ')';
+
+  // Guarda una imagen al lado del documento, en assets/, y devuelve su ruta relativa.
+  async function saveImage(file) {
+    const ext = (/^image\/([a-z0-9+]+)/.exec(file.type) || [0, 'png'])[1].replace('jpeg', 'jpg').replace('svg+xml', 'svg');
+    const name = T('imagen') + '-' + stamp() + '.' + ext;
+    const dir = await (await core.dirHandle(new URL('.', core.HERE).href)).getDirectoryHandle('assets', { create: true });
+    const h = await dir.getFileHandle(name, { create: true });
+    const w = await h.createWritable(); await w.write(file); await w.close();
+    return 'assets/' + name;
+  }
+  const asDataUrl = (file) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(file); });
+
+  function imageDialog() {
+    return new Promise((resolve) => {
+      const box = el('div', { class: 'lmd-ask' });
+      box.innerHTML =
+        '<div class="lmd-ask-card lmd-img-card" role="dialog" aria-label="' + T('Insertar imagen') + '">' +
+          '<h3>' + T('Insertar imagen') + '</h3>' +
+          '<label class="lmd-row"><span>' + T('Dirección o ruta') + '</span><input type="text" data-i="src" spellcheck="false" placeholder="https://"></label>' +
+          '<div class="lmd-img-pick"><button type="button" class="lmd-btn" data-i="pick">' + ICON.b_image + '<span>' + T('Elegir un archivo') + '</span></button><span data-i="picked"></span><input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" hidden></div>' +
+          '<label class="lmd-row"><span>' + T('Descripción (para quien no ve la imagen)') + '</span><input type="text" data-i="alt"></label>' +
+          '<div class="lmd-row"><span>' + T('Tamaño') + '</span><div class="lmd-seg" data-i="size">' + SIZES.map((s, i) => '<button type="button" data-val="' + s[0] + '"' + (i ? '' : ' class="lmd-on"') + '>' + T(s[1]) + '</button>').join('') + '</div></div>' +
+          '<p class="lmd-img-err" hidden></p>' +
+          '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-i="no">' + T('Cancelar') + '</button><button type="button" class="lmd-btn lmd-btn-fill" data-i="ok">' + T('Insertar') + '</button></div>' +
+        '</div>';
+      document.body.appendChild(box);
+      const q = (name) => box.querySelector('[data-i=' + name + ']');
+      const fileInput = box.querySelector('input[type=file]'); const err = box.querySelector('.lmd-img-err');
+      let width = ''; let file = null;
+      const fail = (text) => { err.hidden = false; err.textContent = text; };
+      const close = (value) => { box.remove(); resolve(value); };
+      q('src').focus();
+      fileInput.addEventListener('change', () => {
+        file = fileInput.files[0] || null; err.hidden = true;
+        if (file && !/^image\/(png|jpeg|gif|webp|svg\+xml)$/.test(file.type)) { file = null; fail(T('Ese archivo no es una imagen que se pueda insertar.')); }
+        q('picked').textContent = file ? file.name : '';
+        if (file) q('src').value = '';
+      });
+      box.addEventListener('click', async (e) => {
+        if (e.target === box) return close(null);
+        const seg = e.target.closest('.lmd-seg button');
+        if (seg) { width = seg.dataset.val; seg.parentNode.querySelectorAll('button').forEach((b) => b.classList.toggle('lmd-on', b === seg)); return; }
+        const b = e.target.closest('[data-i]'); if (!b) return;
+        if (b.dataset.i === 'pick') return fileInput.click();
+        if (b.dataset.i === 'no') return close(null);
+        if (b.dataset.i !== 'ok') return;
+        try {
+          let src = q('src').value.trim();
+          if (file) {
+            if (file.size > 10 * 1024 * 1024) return fail(T('La imagen pesa más de 10 MB.'));
+            if (canManage()) src = await saveImage(file);
+            else if (file.type !== 'image/svg+xml' && file.size <= 400 * 1024) src = await asDataUrl(file);
+            else return fail(T('Sin una carpeta abierta la imagen va dentro del documento, y esta es muy grande para eso. Abrí la carpeta desde Sharpmd, o usá una dirección web.'));
+          }
+          if (!src) return fail(T('Falta la dirección o el archivo.'));
+          if (!safeSrc(src)) return fail(T('Esa dirección no sirve para una imagen.'));
+          close({ src, alt: q('alt').value, width });
+        } catch (ex) { fail(T('No se pudo guardar la imagen')); }
+      });
+      box.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(null); } if (e.key === 'Enter' && e.target.matches('input[type=text]')) { e.preventDefault(); q('ok').click(); } });
+    });
+  }
+
+  // Barra sobre una imagen en edición: tamaño y eliminar.
+  let imgBar = null; let imgNow = null;
+  function hideImgBar() { if (imgBar) imgBar.hidden = true; imgNow = null; }
+  function showImgBar(img) {
+    if (!imgBar) {
+      imgBar = el('div', { class: 'lmd-tablebar lmd-imgbar', hidden: '' }, SIZES.map((s) => '<button type="button" data-w="' + s[0] + '">' + T(s[1]) + '</button>').join('') + '<button type="button" data-w="del" class="lmd-menu-danger">' + T('Eliminar') + '</button>');
+      document.body.appendChild(imgBar);
+      imgBar.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const b = e.target.closest('[data-w]'); const img = imgNow; if (!b || !img) return;
+        const host = img.closest('.lmd-editable');
+        hideImgBar();
+        if (!host) return;
+        if (b.dataset.w === 'del') {
+          img.remove();
+          if (!host.textContent.trim() && !host.querySelector('img')) { LMD.write.remove(host); return; }
+        } else if (b.dataset.w) { img.dataset.lmdW = b.dataset.w; img.setAttribute('width', b.dataset.w); }
+        else { delete img.dataset.lmdW; img.removeAttribute('width'); }
+        host._md = '\u0000'; core.commitBlock(host); host._md = null; core.softRender();
+      });
+    }
+    imgNow = img;
+    const box = img.getBoundingClientRect();
+    imgBar.hidden = false;
+    imgBar.style.left = Math.max(8, box.left) + 'px';
+    imgBar.style.top = Math.max(60, box.top - 44) + 'px';
+  }
+
   // Devuelve true si se hizo cargo del pegado.
   function pasteImage(e) {
     const item = Array.from((e.clipboardData && e.clipboardData.items) || []).find((i) => i.kind === 'file' && /^image\//.test(i.type));
@@ -103,12 +199,7 @@
     const range = target && getSelection().rangeCount ? getSelection().getRangeAt(0).cloneRange() : null;
     (async () => {
       try {
-        const ext = (/^image\/([a-z0-9+]+)/.exec(file.type) || [0, 'png'])[1].replace('jpeg', 'jpg').replace('svg+xml', 'svg');
-        const name = T('imagen') + '-' + stamp() + '.' + ext;
-        const dir = await (await core.dirHandle(new URL('.', core.HERE).href)).getDirectoryHandle('assets', { create: true });
-        const h = await dir.getFileHandle(name, { create: true });
-        const w = await h.createWritable(); await w.write(file); await w.close();
-        const rel = 'assets/' + name;
+        const rel = await saveImage(file);
         if (target && range && target.isConnected) {
           const img = el('img', { alt: '', src: URL.createObjectURL(file) });
           img.setAttribute('data-lmd-src', rel);
@@ -201,10 +292,14 @@
     core.ui.replaceInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); replace(e.ctrlKey || e.metaKey); } });
 
     const article = core.ui.article;
+    // Clic en una imagen mientras se edita: barra de tamaño.
+    article.addEventListener('click', (e) => { if (core.editMode && e.target.tagName === 'IMG' && e.target.closest('.lmd-editable')) { e.preventDefault(); showImgBar(e.target); } else hideImgBar(); });
+    window.addEventListener('scroll', hideImgBar, { passive: true });
+    core.hooks.render.push(hideImgBar);
     article.addEventListener('focusin', () => setTimeout(centerCaret, 30));
     article.addEventListener('input', centerCaret);
     article.addEventListener('keyup', (e) => { if (/^Arrow|^Page|^Home$|^End$/.test(e.key)) centerCaret(); });
   }
 
-  LMD.extras = { init, pasteImage, exportHtml };
+  LMD.extras = { init, pasteImage, exportHtml, imageDialog, imageMd };
 })();

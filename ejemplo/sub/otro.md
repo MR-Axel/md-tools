@@ -1,3 +1,0 @@
-# Otro
-
-Un segundo archivo.

@@ -274,7 +274,8 @@
 .markdown-body ul, .markdown-body ol { padding-left: 1.7em; }
 .markdown-body li { margin: 0.25em 0; }
 .markdown-body li > p { margin-bottom: 0.5em; }
-.markdown-body .lmd-task-list { list-style: none; padding-left: 0.4em; }
+/* solo los ítems con casilla pierden la viñeta: una lista común pegada a una de tareas la conserva */
+.markdown-body li.lmd-task-item { list-style: none; margin-left: -1.3em; }
 .markdown-body .lmd-task { margin: 0 0.5em 0 0; transform: translateY(1px); accent-color: var(--accent); }
 .markdown-body blockquote { margin-left: 0; padding: 0.2em 1em; border-left: 3px solid var(--line); color: var(--fg-muted); }
 .markdown-body blockquote > :last-child { margin-bottom: 0; }
@@ -602,3 +603,24 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-home-cloud-field { display: flex; align-items: center; gap: 10px; margin-top: 7px; }
 .lmd-home-cloud-field span { flex: 0 0 82px; font-size: 12px; color: var(--fg-faint); }
 .lmd-home-cloud-field input { font: 12px var(--lmd-mono); }
+
+/* ---------- Íconos del menú, imágenes, color del código, forma de los diagramas ---------- */
+.lmd-menu button { display: flex; align-items: center; gap: 9px; }
+.lmd-menu button svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; opacity: 0.8; }
+.lmd-menu button svg circle { fill: currentColor; stroke: none; }
+.lmd-menu button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lmd-menu { width: 330px; }
+.lmd-img-card .lmd-row input { width: 100%; }
+.lmd-img-pick { display: flex; align-items: center; gap: 10px; margin: -2px 0 12px; color: var(--fg-muted); font-size: 13px; }
+.lmd-img-pick .lmd-btn { display: inline-flex; align-items: center; gap: 8px; }
+.lmd-img-pick svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-img-err { margin: 0 0 12px !important; color: #dc2626 !important; font-size: 13px; }
+.lmd-ask-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.lmd-editing .lmd-editable img { cursor: pointer; border-radius: 6px; }
+.lmd-editing .lmd-editable img:hover { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+.lmd-imgbar .lmd-menu-danger:hover { color: #dc2626; }
+.markdown-body img[width] { height: auto; }
+.lmd-swatch[data-code-color]:not(.lmd-swatch-auto) { background: var(--sw); }
+.lmd-code pre { background: color-mix(in srgb, var(--code-tint, transparent) 9%, var(--bg-code)); border-color: color-mix(in srgb, var(--code-tint, transparent) 40%, var(--line)); border-left: 3px solid color-mix(in srgb, var(--code-tint, var(--line)) 80%, var(--line)); }
+.markdown-body :not(pre) > code { background: color-mix(in srgb, var(--code-tint, transparent) 13%, var(--bg-code)); }
+.lmd-dgm-round .lmd-diagram svg .node rect, .lmd-dgm-round .lmd-dgm-svg svg .node rect { rx: 12px; ry: 12px; }

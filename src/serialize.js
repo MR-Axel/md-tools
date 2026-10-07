@@ -20,7 +20,7 @@
       }
       if (tag === 'BR') { out += '\n'; return; }
       if (tag === 'CODE') { out += '`' + n.textContent + '`'; return; }
-      if (tag === 'IMG') { out += '![' + (n.getAttribute('alt') || '') + '](' + (n.getAttribute('data-lmd-src') || n.getAttribute('src') || '') + ')'; return; }
+      if (tag === 'IMG') { out += '![' + (n.getAttribute('alt') || '') + (n.dataset.lmdW ? '|' + n.dataset.lmdW : '') + '](' + (n.getAttribute('data-lmd-src') || n.getAttribute('src') || '') + ')'; return; }
       const inner = inlineMd(n);
       const wrap = (mark) => { const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(inner); return m[2] ? m[1] + mark + m[2] + mark + m[3] : inner; };
       if (tag === 'STRONG' || tag === 'B') out += wrap('**');

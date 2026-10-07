@@ -246,6 +246,13 @@
 
     LMD.board.calcTables(article);
 
+    // ![texto|480](ruta): el número después de la barra es el ancho en píxeles.
+    article.querySelectorAll('img[alt]').forEach((img) => {
+      const m = /^(.*)\|(\d{2,4})$/.exec(img.getAttribute('alt'));
+      if (!m) return;
+      img.setAttribute('alt', m[1]); img.setAttribute('width', m[2]); img.dataset.lmdW = m[2];
+    });
+
     if (p.imageViewer) article.querySelectorAll('img').forEach((img) => img.classList.add('lmd-zoomable'));
 
     renderMath(article);
@@ -283,7 +290,7 @@
     const nodes = Array.from(article.querySelectorAll('pre.lmd-mermaid'));
     if (!nodes.length) return;
     if (!(await ensure('mermaid')) || !window.mermaid) return;
-    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: isDark() ? 'dark' : 'default' });
+    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: isDark() ? 'dark' : 'default', flowchart: { curve: settings.diagramShape === 'square' ? 'linear' : 'basis' } });
     for (const n of nodes) {
       const code = n.textContent;
       try {
@@ -562,7 +569,7 @@
       const tab = e.target.closest('.lmd-tab');
       if (tab) { LMD.patch({ sidebarTab: tab.dataset.tab }); return; }
       const img = e.target.closest('img.lmd-zoomable');
-      if (img && !img.closest('a')) { openViewer(img); return; }
+      if (img && !img.closest('a') && !editMode) { openViewer(img); return; }
       const res = e.target.closest('.lmd-results a');
       if (res && res.href.split('#')[0] === location.href.split('#')[0]) { e.preventDefault(); stepSearch(1); return; }
       const a = e.target.closest('.lmd-article a[href^="#"], .lmd-pane-outline a');
@@ -711,6 +718,8 @@
     if (settings.supporter && settings.fontFamily && settings.fontFamily.trim()) root.style.setProperty('--lmd-font', settings.fontFamily);
     else root.style.removeProperty('--lmd-font');
     applyAccent(root, dark);
+    root.classList.toggle('lmd-dgm-round', settings.diagramShape !== 'square');
+    if (/^#[0-9a-f]{6}$/i.test(settings.codeColor || '')) root.style.setProperty('--code-tint', settings.codeColor); else root.style.removeProperty('--code-tint');
     ui.customStyle.textContent = settings.supporter ? (settings.customCSS || '') : '';
     const foot = ui.sidebar.querySelector('.lmd-side-foot');
     if (foot) foot.lastChild.nodeValue = T(settings.supporter ? 'Gracias por apoyar' : 'Invitame un café');
@@ -1254,6 +1263,12 @@
             '<label class="lmd-row"><span>' + T('Tipografía') + (s.supporter ? '' : EXTRA) + '</span><select data-key="fontFamily"' + (s.supporter ? '' : ' disabled') + '>' + fontOptions + '</select></label>' +
             '<label class="lmd-row"><span>' + T('Tamaño de letra') + ' <output>' + s.fontSize + ' px</output></span><input type="range" min="12" max="24" step="1" data-key="fontSize" data-unit=" px" value="' + s.fontSize + '"></label>' +
             '<label class="lmd-row"><span>' + T('Interlineado') + ' <output>' + s.lineHeight + '</output></span><input type="range" min="1.2" max="2.2" step="0.05" data-key="lineHeight" data-unit="" value="' + s.lineHeight + '"></label>' +
+            '<div class="lmd-row"><span>' + T('Color de los bloques de código') + '</span><div class="lmd-swatches">' +
+              LMD.CODE_COLORS.map((c) => '<button type="button" class="lmd-swatch' + ((s.codeColor || '') === c.value ? ' lmd-on' : '') + (c.value ? '' : ' lmd-swatch-auto') + '" data-code-color="' + c.value + '" title="' + T(c.name) + '"' + (c.value ? ' style="--sw:' + c.value + '"' : '') + '></button>').join('') +
+            '</div></div>' +
+            '<div class="lmd-row"><span>' + T('Forma de los diagramas') + '</span><div class="lmd-seg" data-seg="diagramShape" role="radiogroup">' +
+              [['round', 'Redondeados'], ['square', 'Rectos']].map((o) => '<button type="button" role="radio" data-val="' + o[0] + '" aria-checked="' + ((s.diagramShape || 'round') === o[0]) + '"' + ((s.diagramShape || 'round') === o[0] ? ' class="lmd-on"' : '') + '>' + T(o[1]) + '</button>').join('') +
+            '</div></div>' +
           '</section>' +
           '<section><h3>' + T('Lectura') + '</h3>' +
             '<label class="lmd-check"><input type="checkbox" data-key="centered"' + (s.centered ? ' checked' : '') + '><span>' + T('Centrar el contenido') + '</span></label>' +
@@ -1309,7 +1324,13 @@
         LMD.patch({ [seg.dataset.seg]: b.dataset.val });
       });
     });
-    const markSwatch = (node) => ui.panel.querySelectorAll('.lmd-swatch').forEach((x) => x.classList.toggle('lmd-on', x === node));
+    const markSwatch = (node) => ui.panel.querySelectorAll('.lmd-swatch:not([data-code-color])').forEach((x) => x.classList.toggle('lmd-on', x === node));
+    ui.panel.querySelectorAll('[data-code-color]').forEach((b) => {
+      b.addEventListener('click', () => {
+        ui.panel.querySelectorAll('[data-code-color]').forEach((x) => x.classList.toggle('lmd-on', x === b));
+        LMD.patch({ codeColor: b.dataset.codeColor });
+      });
+    });
     ui.panel.querySelectorAll('[data-accent]').forEach((b) => {
       b.addEventListener('click', () => { if (!settings.supporter) return; markSwatch(b); LMD.patch({ accent: b.dataset.accent }); });
     });
@@ -1746,6 +1767,7 @@
 
   // Lo que los módulos de edición (write.js y los que siguen) necesitan del lector.
   const core = {
+    get shape() { return settings.diagramShape; },
     ui, hooks: { render: [], tree: [] }, lastBlock: null, appUrl: APP_URL,
     get blocks() { return docKind() === 'md'; },
     treeRoot: () => treeRoot,
@@ -1969,7 +1991,7 @@
   }
 
   // ---------- Arranque ----------
-  const RENDER_KEYS = ['plugins', 'theme'];
+  const RENDER_KEYS = ['plugins', 'theme', 'diagramShape'];
   const TREE_KEYS = ['filesOnlyMarkdown', 'filesShowHidden'];
 
   LMD.load().then(async (s) => {
