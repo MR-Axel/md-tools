@@ -18,6 +18,7 @@
 //   PADDLE_WEBHOOK_SECRET   firma de los avisos de Paddle: con esto /paddle/webhook activa y da de baja el plan pago
 //   PORTAL_URL      dirección donde quien paga administra su suscripción
 //   FEEDBACK_TO     correo que recibe los comentarios y reportes de error de POST /feedback. Sin esto, responde 404
+//   AUTH_PER_IP     códigos de acceso que una misma IP puede pedir por hora (20). Detrás de un proxy la IP sale de x-forwarded-for
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -33,6 +34,11 @@ const FREE_NOTES = +(env.FREE_NOTES || 10);
 const TEST_LOGIN = /^[^\s:]+@[^\s:]+:\d{6}$/.test(env.TEST_LOGIN || '') ? [env.TEST_LOGIN.split(':')[0].toLowerCase(), env.TEST_LOGIN.split(':')[1]] : null;
 const MAX_NOTE = 1024 * 1024; // 1 MB por nota
 const HISTORY_DAYS = 30;
+const SESSION_DAYS = 180; // una sesión sin uso en ese tiempo deja de servir
+const AUTH_PER_IP = +(env.AUTH_PER_IP || 20);
+// Topes por cuenta de lo que no tiene otro límite: nadie llega a estos números usando la app.
+const MAX_TOKENS = 50; const MAX_SHARES = 500; const MAX_LINKS = 200; const MAX_BATCH = 50;
+const LIVE_PER_USER = 20; const LIVE_PER_IP = 60; // conexiones abiertas de /events
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const db = new DatabaseSync(path.join(DATA_DIR, 'mdtools.db'));
@@ -51,12 +57,28 @@ db.exec(`
 try { db.exec('ALTER TABLE users ADD COLUMN paddle_sub TEXT'); } catch (e) { /* ya estaba */ }
 try { db.exec('ALTER TABLE tokens ADD COLUMN scope TEXT'); } catch (e) { /* ya estaba */ }
 db.exec("CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY, user INTEGER NOT NULL, path TEXT NOT NULL, quote TEXT NOT NULL, text TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open', reply TEXT, created INTEGER NOT NULL, done INTEGER)");
+// Cada suscripción de Paddle con su cuenta y su estado: una cuenta puede tener más de una (alguien pagó por ella).
+db.exec('CREATE TABLE IF NOT EXISTS paddle_subs (id TEXT PRIMARY KEY, user INTEGER NOT NULL, status TEXT NOT NULL, at INTEGER NOT NULL DEFAULT 0)');
+db.exec("INSERT OR IGNORE INTO paddle_subs (id, user, status, at) SELECT paddle_sub, id, CASE plan WHEN 'pro' THEN 'active' ELSE 'canceled' END, 0 FROM users WHERE paddle_sub IS NOT NULL AND paddle_sub != ''");
 const q = (sql) => db.prepare(sql);
 const now = () => Date.now();
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const random = (bytes) => crypto.randomBytes(bytes).toString('base64url');
+// Compara dos secretos sin que el tiempo de la respuesta diga cuánto coinciden.
+const same = (a, b) => crypto.timingSafeEqual(crypto.createHash('sha256').update(String(a)).digest(), crypto.createHash('sha256').update(String(b)).digest());
 
 class Fail extends Error { constructor(status, code, message) { super(message || code); this.status = status; this.code = code; } }
+
+// ---------- Topes ----------
+// Cuántas veces pasó algo (por IP, por correo o por cuenta) en la última hora o el último día. Vive en memoria:
+// al reiniciar se pierde, y alcanza. El servidor vive detrás de un proxy: la IP sale de x-forwarded-for, y de
+// ahí la última, que es la que anota el proxy (las anteriores las escribe quien llama).
+const HOUR = 3600000; const DAY = 86400000;
+const marks = new Map();
+const recent = (key, span) => (marks.get(key) || []).filter((t) => now() - t < (span || HOUR));
+const mark = (key) => marks.set(key, recent(key, DAY).concat(now()));
+const over = (key, max, span) => recent(key, span).length >= max;
+const clientIp = (req) => String(req.headers['x-forwarded-for'] || '').split(',').pop().trim() || req.socket.remoteAddress || '';
 
 // ---------- Correo ----------
 // El correo del código: inglés por defecto, español si la app lo pide. Va en HTML y en texto plano.
@@ -101,14 +123,20 @@ function validEmail(e) {
   const labels = m[2].split('.');
   return labels.length > 1 && labels.every((l) => /^[\p{L}\p{N}]([\p{L}\p{N}-]*[\p{L}\p{N}])?$/u.test(l)) && /^(\p{L}{2,}|xn--[a-z0-9-]+)$/iu.test(labels[labels.length - 1]);
 }
-const cleanEmail = (v) => { const e = String(v || '').trim().toLowerCase(); if (!validEmail(e)) throw new Fail(400, 'bad_email'); return e; };
+const cleanEmail = (v) => { const e = (typeof v === 'string' ? v : '').trim().toLowerCase(); if (!validEmail(e)) throw new Fail(400, 'bad_email'); return e; };
 
-async function authStart(body) {
-  const email = cleanEmail(body.email);
+// Pedir un código manda un correo: sin tope, el servidor serviría para llenarle la casilla a cualquiera y para
+// probar códigos sin fin (cada código nuevo trae seis intentos). Por correo: uno cada 30 segundos, 5 por hora
+// y 15 por día. Por IP: AUTH_PER_IP por hora.
+async function authStart(req, body) {
+  const email = cleanEmail(body.email); const ip = 'start:ip:' + clientIp(req); const to = 'start:mail:' + email;
   // Cuenta de prueba para quien revisa la app en una tienda: código fijo, sin correo. Es una sola cuenta, sin datos de nadie.
   const fixed = TEST_LOGIN && email === TEST_LOGIN[0] ? TEST_LOGIN[1] : '';
+  if (over(ip, AUTH_PER_IP)) throw new Fail(429, 'too_soon');
   const prev = q('SELECT sent FROM codes WHERE email = ?').get(email);
   if (!fixed && prev && now() - prev.sent < 30000) throw new Fail(429, 'too_soon');
+  if (!fixed && (over(to, 5) || over(to, 15, DAY))) throw new Fail(429, 'too_soon');
+  mark(ip); if (!fixed) mark(to);
   const code = fixed || String(crypto.randomInt(0, 1000000)).padStart(6, '0');
   q('INSERT OR REPLACE INTO codes (email, hash, expires, tries, sent) VALUES (?, ?, ?, 0, ?)').run(email, sha(email + ':' + code), now() + 15 * 60000, now());
   if (fixed) return { ok: true };
@@ -116,12 +144,15 @@ async function authStart(body) {
   return env.DEV_CODES ? { ok: true, dev_code: code } : { ok: true };
 }
 
-function authVerify(body) {
-  const email = cleanEmail(body.email);
+// Seis intentos por código. Además, los fallos se cuentan por correo (10 por hora, 30 por día) y por IP (30 por
+// hora) sin importar cuántos códigos se pidan: pedir otro código no devuelve los intentos.
+function authVerify(req, body) {
+  const email = cleanEmail(body.email); const ip = 'fail:ip:' + clientIp(req); const who = 'fail:mail:' + email;
+  if (over(who, 10) || over(who, 30, DAY) || over(ip, 30)) throw new Fail(429, 'too_many_tries');
   const row = q('SELECT * FROM codes WHERE email = ?').get(email);
   if (!row || row.expires < now()) throw new Fail(400, 'code_expired');
   if (row.tries >= 6) throw new Fail(429, 'too_many_tries');
-  if (row.hash !== sha(email + ':' + String(body.code || '').trim())) { q('UPDATE codes SET tries = tries + 1 WHERE email = ?').run(email); throw new Fail(400, 'bad_code'); }
+  if (!same(row.hash, sha(email + ':' + String(body.code == null ? '' : body.code).trim()))) { q('UPDATE codes SET tries = tries + 1 WHERE email = ?').run(email); mark(who); mark(ip); throw new Fail(400, 'bad_code'); }
   q('DELETE FROM codes WHERE email = ?').run(email);
   q('INSERT OR IGNORE INTO users (email, created) VALUES (?, ?)').run(email, now());
   const user = q('SELECT * FROM users WHERE email = ?').get(email);
@@ -134,7 +165,7 @@ function userFrom(req, kind) {
   const m = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization || '');
   if (!m) throw new Fail(401, 'no_auth');
   if (kind === 'session' && m[1].startsWith('mds_')) {
-    const s = q('SELECT user FROM sessions WHERE hash = ?').get(sha(m[1]));
+    const s = q('SELECT user FROM sessions WHERE hash = ? AND seen > ?').get(sha(m[1]), now() - SESSION_DAYS * DAY);
     if (s) { q('UPDATE sessions SET seen = ? WHERE hash = ?').run(now(), sha(m[1])); return q('SELECT * FROM users WHERE id = ?').get(s.user); }
   }
   if (kind === 'token' && m[1].startsWith('mdt_')) {
@@ -152,12 +183,8 @@ const account = (user) => ({ id: user.id, share: shareAllowed(user), email: user
 
 // ---------- Comentarios ----------
 // Lo que alguien escribe desde "Enviar comentarios" llega por correo a FEEDBACK_TO. Entra con o sin sesión.
-// Tope de cinco por hora por IP y por cuenta. El servidor vive detrás de un proxy: la IP sale de
-// x-forwarded-for, y de ahí la última, que es la que anota el proxy (las anteriores las escribe quien llama).
-const FEEDBACK_MAX = 5; const HOUR = 3600000;
-const sentBy = new Map();
-const recent = (key) => (sentBy.get(key) || []).filter((t) => now() - t < HOUR);
-const clientIp = (req) => String(req.headers['x-forwarded-for'] || '').split(',').pop().trim() || req.socket.remoteAddress || '';
+// Tope de cinco por hora por IP y por cuenta.
+const FEEDBACK_MAX = 5;
 async function feedback(req, body) {
   if (!env.FEEDBACK_TO || !(env.RESEND_API_KEY || env.MAIL_WEBHOOK || env.DEV_CODES)) throw new Fail(404, 'no_route');
   let user = null;
@@ -166,8 +193,8 @@ async function feedback(req, body) {
   if (text.length < 5 || text.length > 4000) throw new Fail(400, 'bad_text');
   const from = user ? user.email : (String(body.email || '').trim() ? cleanEmail(body.email) : '');
   const keys = ['ip:' + clientIp(req)].concat(user ? ['user:' + user.id] : []);
-  if (keys.some((k) => recent(k).length >= FEEDBACK_MAX)) throw new Fail(429, 'too_many');
-  keys.forEach((k) => sentBy.set(k, recent(k).concat(now())));
+  if (keys.some((k) => over('fb:' + k, FEEDBACK_MAX))) throw new Fail(429, 'too_many');
+  keys.forEach((k) => mark('fb:' + k));
   // Del contexto solo pasan estos cuatro datos, recortados: nada de notas ni de rutas.
   const c = body.context && typeof body.context === 'object' ? body.context : {};
   const field = (v, max) => String(v == null ? '' : v).replace(/[\r\n]+/g, ' ').trim().slice(0, max) || '-';
@@ -210,6 +237,9 @@ function deleteNote(user, p) {
   const r = q('DELETE FROM notes WHERE user = ? AND path = ?').run(user.id, cleanPath(p));
   if (!r.changes) throw new Fail(404, 'not_found');
   q('DELETE FROM comments WHERE user = ? AND path = ?').run(user.id, cleanPath(p));
+  // Los enlaces públicos y lo compartido de esa nota se van con ella: una nota nueva con el mismo nombre no nace publicada.
+  q('DELETE FROM links WHERE owner = ? AND path = ?').run(user.id, cleanPath(p));
+  q("DELETE FROM shares WHERE owner = ? AND path = ? AND kind != 'folder'").run(user.id, cleanPath(p));
   return { ok: true };
 }
 function renameNote(user, from, to) {
@@ -227,7 +257,8 @@ function renameNote(user, from, to) {
 function searchNotes(user, text) {
   const needle = String(text || '').toLowerCase(); if (!needle) return [];
   const out = [];
-  for (const n of q('SELECT path, text FROM notes WHERE user = ?').all(user.id)) {
+  // De a una nota: traerlas todas juntas ocuparía en memoria la nube entera de la cuenta.
+  for (const n of q('SELECT path, text FROM notes WHERE user = ?').iterate(user.id)) {
     const lines = n.text.split(/\r?\n/); const hits = [];
     for (let i = 0; i < lines.length && hits.length < 5; i++) if (lines[i].toLowerCase().includes(needle)) hits.push({ line: i + 1, text: lines[i].trim().slice(0, 240) });
     if (hits.length || n.path.toLowerCase().includes(needle)) out.push({ path: n.path, hits });
@@ -257,7 +288,8 @@ function sharedWith(user) {
   for (const s of q('SELECT s.owner, s.path, s.kind, s.role, u.email AS by FROM shares s JOIN users u ON u.id = s.owner WHERE s.email = ?').all(user.email)) {
     const notes = s.kind === 'folder' ? q("SELECT path, updated, LENGTH(text) AS size FROM notes WHERE user = ? AND path LIKE ? ESCAPE '!'").all(s.owner, s.path.replace(/[!%_]/g, '!$&') + '/%')
       : q('SELECT path, updated, LENGTH(text) AS size FROM notes WHERE user = ? AND path = ?').all(s.owner, s.path);
-    for (const n of notes) { const key = s.owner + ':' + n.path; if (seen.has(key)) continue; seen.add(key); out.push({ owner: s.owner, by: s.by, path: n.path, updated: n.updated, size: n.size, role: roleOn(user, s.owner, n.path) }); }
+    // LIKE no distingue mayúsculas: sin este filtro, compartir "Proy" listaría también lo de "proy".
+    for (const n of notes) { const key = s.owner + ':' + n.path; if (seen.has(key) || !covers(s, n.path)) continue; seen.add(key); out.push({ owner: s.owner, by: s.by, path: n.path, updated: n.updated, size: n.size, role: roleOn(user, s.owner, n.path) }); }
   }
   return out.sort((a, b) => b.updated - a.updated);
 }
@@ -267,6 +299,7 @@ function addShare(user, body) {
   const kind = body.kind === 'folder' ? 'folder' : 'note'; const role = body.role === 'edit' ? 'edit' : 'view';
   if (email === user.email) throw new Fail(400, 'own_email');
   if (kind === 'note' && !q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(user.id, p)) throw new Fail(404, 'not_found');
+  if (q('SELECT COUNT(*) AS n FROM shares WHERE owner = ?').get(user.id).n >= MAX_SHARES) throw new Fail(429, 'too_many');
   q('INSERT INTO shares (owner, path, kind, email, role, created) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (owner, path, email) DO UPDATE SET role = excluded.role, kind = excluded.kind').run(user.id, p, kind, email, role, now());
   return { ok: true };
 }
@@ -277,6 +310,8 @@ function addLink(user, body) {
   if (!shareAllowed(user)) throw new Fail(402, 'share_needs_plan');
   const p = cleanPath(body.path);
   if (!q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(user.id, p)) throw new Fail(404, 'not_found');
+  if (q('SELECT COUNT(*) AS n FROM links WHERE owner = ?').get(user.id).n >= MAX_LINKS) throw new Fail(429, 'too_many');
+  if (body.password != null && String(body.password).length > 200) throw new Fail(400, 'bad_password');
   const token = random(24); let pass = null;
   if (body.password) { const salt = random(12); pass = salt + ':' + passHash(body.password, salt); }
   q('INSERT INTO links (hash, owner, path, pass, created) VALUES (?, ?, ?, ?, ?)').run(sha(token), user.id, p, pass, now());
@@ -300,7 +335,8 @@ function publicNote(token, password) {
   }
   const n = q('SELECT path, text, updated FROM notes WHERE user = ? AND path = ?').get(link.owner, link.path);
   if (!n) throw new Fail(404, 'not_found');
-  return n;
+  // Hacia afuera va el nombre de la nota, no en qué carpetas la guarda su dueño.
+  return { path: n.path.split('/').pop(), text: n.text, updated: n.updated };
 }
 
 // ---------- En vivo ----------
@@ -310,19 +346,26 @@ const roomKey = (ownerId, p) => ownerId + ':' + p;
 function announce(key, event, skip) {
   const room = rooms.get(key); if (!room) return;
   const who = Array.from(new Set(Array.from(room).map((c) => c.email)));
-  for (const c of room) if (c !== skip) c.res.write('data: ' + JSON.stringify(Object.assign({ who }, event)) + '\n\n');
+  for (const c of room) if (c !== skip && !c.res.destroyed) c.res.write('data: ' + JSON.stringify(Object.assign({ who }, event)) + '\n\n');
 }
+// Cada conexión abierta ocupa memoria y un descriptor: hay un tope por cuenta y otro por IP.
+const live = new Map();
+const liveAdd = (key, d) => { const n = (live.get(key) || 0) + d; if (n > 0) live.set(key, n); else live.delete(key); };
 function listen(req, res, user, url) {
   const p = cleanPath(url.searchParams.get('path'));
   const { owner } = target(user, url, p, 'view');
   const key = roomKey(owner.id, p);
+  const mine = ['u:' + user.id, 'ip:' + clientIp(req)];
+  if ((live.get(mine[0]) || 0) >= LIVE_PER_USER || (live.get(mine[1]) || 0) >= LIVE_PER_IP) throw new Fail(429, 'too_many');
+  mine.forEach((k) => liveAdd(k, 1));
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', 'x-accel-buffering': 'no' });
+  res.on('error', () => { /* la conexión se cortó: de limpiar se ocupa close */ });
   const client = { res, email: user.email };
   if (!rooms.has(key)) rooms.set(key, new Set());
   rooms.get(key).add(client);
   announce(key, { type: 'presence' });
-  const beat = setInterval(() => res.write(': ping\n\n'), 25000);
-  req.on('close', () => { clearInterval(beat); const room = rooms.get(key); if (room) { room.delete(client); if (!room.size) rooms.delete(key); else announce(key, { type: 'presence' }); } });
+  const beat = setInterval(() => { if (!res.destroyed) res.write(': ping\n\n'); }, 25000);
+  req.on('close', () => { clearInterval(beat); mine.forEach((k) => liveAdd(k, -1)); const room = rooms.get(key); if (room) { room.delete(client); if (!room.size) rooms.delete(key); else announce(key, { type: 'presence' }); } });
 }
 
 // Comentarios para la IA: la persona marca un bloque de una nota y escribe qué quiere cambiar.
@@ -385,6 +428,7 @@ function callTool(user, name, args) {
 }
 
 function mcp(user, msg) {
+  if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } };
   const reply = (result) => ({ jsonrpc: '2.0', id: msg.id, result });
   if (msg.method === 'initialize') return reply({ protocolVersion: (msg.params && msg.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'sharpmd', version: '1.0.0' },
     instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with write_note, then resolve_comment.' });
@@ -413,60 +457,75 @@ function cors(req, res) {
     if (req.headers['access-control-request-private-network']) res.setHeader('access-control-allow-private-network', 'true');
   }
 }
-const readBody = (req) => new Promise((resolve, reject) => {
-  let size = 0; const chunks = [];
-  req.on('data', (c) => { size += c.length; if (size > MAX_NOTE * 2) { reject(new Fail(413, 'too_large')); req.destroy(); } else chunks.push(c); });
-  req.on('end', () => { try { resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}); } catch (e) { reject(new Fail(400, 'bad_json')); } });
-  req.on('error', reject);
-});
-
-const readRaw = (req) => new Promise((resolve, reject) => {
-  let size = 0; const chunks = [];
-  req.on('data', (c) => { size += c.length; if (size > MAX_NOTE) { reject(new Fail(413, 'too_large')); req.destroy(); } else chunks.push(c); });
+// El cuerpo tal como llegó, hasta max bytes. Pasado el tope se deja de guardar y se responde 413: la conexión
+// la corta quien responde, después de avisar.
+const readRaw = (req, max) => new Promise((resolve, reject) => {
+  let size = 0; let chunks = [];
+  req.on('data', (c) => { size += c.length; if (size > (max || MAX_NOTE)) { chunks = []; reject(new Fail(413, 'too_large')); } else if (chunks) chunks.push(c); });
   req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-  req.on('error', reject);
+  req.on('error', () => reject(new Fail(400, 'bad_request')));
 });
+// El cuerpo como JSON. Las rutas esperan un objeto: cualquier otra cosa (null, un número, una lista) es un pedido mal armado.
+const readAny = async (req) => { const raw = await readRaw(req, MAX_NOTE * 2); try { return raw ? JSON.parse(raw) : {}; } catch (e) { throw new Fail(400, 'bad_json'); } };
+const readBody = async (req) => { const b = await readAny(req); if (!b || typeof b !== 'object' || Array.isArray(b)) throw new Fail(400, 'bad_json'); return b; };
+// Un tramo de la dirección mal codificado es un pedido mal armado, no un error del servidor.
+const dec = (s) => { try { return decodeURIComponent(s); } catch (e) { throw new Fail(400, 'bad_path'); } };
 
 // ---------- Paddle ----------
 // Lo único que activa o da de baja el plan pago. La firma va sobre el cuerpo tal como llegó.
 // De quién es el aviso sale de custom_data.sharpmd_email, que escribe la página de pago, o de la
 // suscripción ya guardada (las renovaciones no traen custom_data). Nunca del correo del cliente
 // de Paddle: quien paga con el correo de otro no compra para el otro.
+// Un aviso vale cinco minutos desde que Paddle lo firmó: pasado eso, una copia vieja ya no entra.
+const PADDLE_ACTIVE = ['active', 'trialing', 'past_due'];
 function paddleSigned(raw, header) {
-  const parts = Object.fromEntries(String(header || '').split(';').map((x) => x.split('=')));
-  if (!parts.ts || !parts.h1 || Math.abs(Date.now() / 1000 - +parts.ts) > 3600) return false;
-  const mine = crypto.createHmac('sha256', env.PADDLE_WEBHOOK_SECRET).update(parts.ts + ':' + raw).digest('hex');
-  const a = Buffer.from(mine); const b = Buffer.from(String(parts.h1));
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  const parts = Object.fromEntries(String(header || '').split(';').map((x) => { const i = x.indexOf('='); return i < 0 ? [x, ''] : [x.slice(0, i), x.slice(i + 1)]; }));
+  if (!/^\d{1,12}$/.test(parts.ts || '') || !parts.h1 || Math.abs(Date.now() / 1000 - +parts.ts) > 300) return false;
+  return same(crypto.createHmac('sha256', env.PADDLE_WEBHOOK_SECRET).update(parts.ts + ':' + raw).digest('hex'), parts.h1);
 }
 async function paddleWebhook(req) {
   if (!env.PADDLE_WEBHOOK_SECRET) throw new Fail(404, 'no_route');
   const raw = await readRaw(req);
   if (!paddleSigned(raw, req.headers['paddle-signature'])) { if (req.headers['paddle-signature']) console.error('paddle: aviso con firma inválida, revisar PADDLE_WEBHOOK_SECRET'); throw new Fail(401, 'bad_signature'); }
   let ev; try { ev = JSON.parse(raw); } catch (e) { throw new Fail(400, 'bad_json'); }
-  const d = ev.data || {};
+  if (!ev || typeof ev !== 'object') throw new Fail(400, 'bad_json');
+  const d = ev.data && typeof ev.data === 'object' ? ev.data : {};
   if (!/^subscription\./.test(ev.event_type || '')) return { ok: true, ignored: 'event' };
   // La cuenta de Paddle puede vender otros productos: solo cuentan los precios marcados como de SharpMD.
-  if (!(d.items || []).some((i) => i && i.price && i.price.custom_data && i.price.custom_data.app === 'sharpmd')) return { ok: true, ignored: 'product' };
+  if (!(Array.isArray(d.items) ? d.items : []).some((i) => i && i.price && i.price.custom_data && i.price.custom_data.app === 'sharpmd')) return { ok: true, ignored: 'product' };
+  const id = String(d.id || ''); const at = Date.parse(ev.occurred_at) || 0;
+  // Una suscripción queda atada a la cuenta con la que se vio la primera vez. Sin eso, la cuenta sale de
+  // custom_data (lo escribe la página de pago) o de la suscripción guardada antes de que existiera esta tabla.
+  const known = id ? q('SELECT * FROM paddle_subs WHERE id = ?').get(id) : null;
   const tagged = d.custom_data && d.custom_data.sharpmd_email;
-  let user = null;
-  if (tagged) { try { user = q('SELECT * FROM users WHERE email = ?').get(cleanEmail(tagged)); } catch (e) { user = null; } }
-  if (!user && d.id) user = q('SELECT * FROM users WHERE paddle_sub = ?').get(String(d.id));
-  if (!user) { console.error('paddle: aviso ' + ev.event_type + ' sin cuenta · ' + d.id); return { ok: true, ignored: 'user' }; }
-  const plan = ['active', 'trialing', 'past_due'].includes(d.status) ? 'pro' : 'free';
-  q('UPDATE users SET plan = ?, paddle_sub = ? WHERE id = ?').run(plan, String(d.id || ''), user.id);
+  let user = known ? q('SELECT * FROM users WHERE id = ?').get(known.user) : null;
+  if (!user && tagged) { try { user = q('SELECT * FROM users WHERE email = ?').get(cleanEmail(tagged)); } catch (e) { user = null; } }
+  if (!user && id) user = q('SELECT * FROM users WHERE paddle_sub = ?').get(id);
+  if (!user || !id) { console.error('paddle: aviso ' + String(ev.event_type).slice(0, 40) + ' sin cuenta · ' + id.slice(0, 60)); return { ok: true, ignored: 'user' }; }
+  // Los avisos pueden llegar desordenados o repetidos: uno anterior al último aplicado no cambia nada.
+  if (known && at && at < known.at) return { ok: true, ignored: 'stale' };
+  const status = PADDLE_ACTIVE.includes(d.status) ? 'active' : 'ended';
+  q('INSERT INTO paddle_subs (id, user, status, at) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET status = excluded.status, at = MAX(at, excluded.at)').run(id, user.id, status, at);
+  // El plan es pago mientras quede alguna suscripción activa de la cuenta. Así, quien paga una suscripción a nombre
+  // de otra persona y después la cancela no le saca el plan que esa persona paga por su lado.
+  const other = q("SELECT id FROM paddle_subs WHERE user = ? AND status = 'active' ORDER BY at DESC LIMIT 1").get(user.id);
+  const plan = other ? 'pro' : 'free';
+  q('UPDATE users SET plan = ?, paddle_sub = ? WHERE id = ?').run(plan, other ? other.id : id, user.id);
   return { ok: true, plan };
 }
 
 async function route(req, url) {
   const p = url.pathname; const m = req.method;
   if (p === '/health') return { ok: true };
-  if (p === '/auth/start' && m === 'POST') return authStart(await readBody(req));
-  if (p === '/auth/verify' && m === 'POST') return authVerify(await readBody(req));
+  if (p === '/auth/start' && m === 'POST') return authStart(req, await readBody(req));
+  if (p === '/auth/verify' && m === 'POST') return authVerify(req, await readBody(req));
   if (p === '/paddle/webhook' && m === 'POST') return paddleWebhook(req);
   if (p === '/feedback' && m === 'POST') return feedback(req, await readBody(req));
   if (p === '/admin/plan' && m === 'POST') {
-    if (!env.ADMIN_KEY || req.headers['x-admin-key'] !== env.ADMIN_KEY) throw new Fail(403, 'forbidden');
+    // La misma respuesta sin clave configurada, sin clave en el pedido o con una equivocada. Diez fallos por hora por IP.
+    const ip = 'admin:' + clientIp(req);
+    if (over(ip, 10)) throw new Fail(429, 'too_many');
+    if (!env.ADMIN_KEY || !same(req.headers['x-admin-key'] || '', env.ADMIN_KEY)) { mark(ip); throw new Fail(403, 'forbidden'); }
     const b = await readBody(req);
     const r = q('UPDATE users SET plan = ? WHERE email = ?').run(b.plan === 'pro' ? 'pro' : 'free', cleanEmail(b.email));
     if (!r.changes) throw new Fail(404, 'not_found');
@@ -476,11 +535,13 @@ async function route(req, url) {
     if (m !== 'POST') throw new Fail(405, 'method_not_allowed');
     const user = userFrom(req, 'token');
     if (!mcpAllowed(user)) throw new Fail(402, 'mcp_needs_plan');
-    const body = await readBody(req);
+    const body = await readAny(req);
+    // Un lote largo son muchas consultas seguidas a la base, que atiende de a un pedido: tiene tope.
+    if (Array.isArray(body) && body.length > MAX_BATCH) throw new Fail(413, 'too_large');
     const out = Array.isArray(body) ? body.map((x) => mcp(user, x)).filter(Boolean) : mcp(user, body);
     return out == null || (Array.isArray(out) && !out.length) ? { __status: 202 } : out;
   }
-  if (p.startsWith('/public/') && m === 'GET') return publicNote(decodeURIComponent(p.slice(8)), req.headers['x-password']);
+  if (p.startsWith('/public/') && m === 'GET') return publicNote(dec(p.slice(8)), req.headers['x-password']);
   const user = userFrom(req, 'session');
   if (p === '/shared' && m === 'GET') return sharedWith(user);
   if (p === '/shares' && m === 'POST') return addShare(user, await readBody(req));
@@ -501,6 +562,7 @@ async function route(req, url) {
   if (p.startsWith('/comments/') && m === 'DELETE') { q('DELETE FROM comments WHERE id = ? AND user = ?').run(+p.slice(10), user.id); return { ok: true }; }
   if (p === '/tokens' && m === 'POST') {
     if (!mcpAllowed(user)) throw new Fail(402, 'mcp_needs_plan');
+    if (q('SELECT COUNT(*) AS n FROM tokens WHERE user = ?').get(user.id).n >= MAX_TOKENS) throw new Fail(429, 'too_many');
     const b = await readBody(req); const token = 'mdt_' + random(30);
     const scope = String(b.folder || '').trim() ? cleanPath(String(b.folder).replace(/\/+$/, '')) : '';
     q('INSERT INTO tokens (hash, user, name, scope, created) VALUES (?, ?, ?, ?, ?)').run(sha(token), user.id, String(b.name || 'AI').slice(0, 60), scope, now());
@@ -515,7 +577,7 @@ async function route(req, url) {
   if (p === '/search' && m === 'GET') return searchNotes(user, url.searchParams.get('q'));
   if (p === '/rename' && m === 'POST') { const b = await readBody(req); return renameNote(user, b.from, b.to); }
   if (p.startsWith('/notes/')) {
-    const note = decodeURIComponent(p.slice(7));
+    const note = dec(p.slice(7));
     const clean = cleanPath(note);
     if (m === 'GET') { const t = target(user, url, clean, 'view'); return Object.assign(readNote(t.owner, clean), { role: t.role }); }
     if (m === 'PUT') {
@@ -526,7 +588,7 @@ async function route(req, url) {
     }
     if (m === 'DELETE') return deleteNote(target(user, url, clean, 'owner').owner, clean);
   }
-  if (p.startsWith('/versions/') && m === 'GET') return q('SELECT id, saved, LENGTH(text) AS size FROM versions WHERE user = ? AND path = ? ORDER BY saved DESC LIMIT 100').all(user.id, cleanPath(decodeURIComponent(p.slice(10))));
+  if (p.startsWith('/versions/') && m === 'GET') return q('SELECT id, saved, LENGTH(text) AS size FROM versions WHERE user = ? AND path = ? ORDER BY saved DESC LIMIT 100').all(user.id, cleanPath(dec(p.slice(10))));
   if (p.startsWith('/version/') && m === 'GET') {
     const v = q('SELECT id, path, text, saved FROM versions WHERE id = ? AND user = ?').get(+p.slice(9), user.id);
     if (!v) throw new Fail(404, 'not_found');
@@ -535,7 +597,11 @@ async function route(req, url) {
   throw new Fail(404, 'no_route');
 }
 
+// En todas las respuestas: nada se guarda en caché, el navegador no adivina el tipo y no viaja la dirección de origen.
+const BASE_HEADERS = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' };
 const server = http.createServer(async (req, res) => {
+  for (const k in BASE_HEADERS) res.setHeader(k, BASE_HEADERS[k]);
+  res.setHeader('vary', 'origin');
   cors(req, res);
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
   try {
@@ -543,21 +609,33 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/events' && req.method === 'GET') { listen(req, res, userFrom(req, 'session'), url); return; }
     const out = await route(req, url);
     if (out && out.__status) { res.writeHead(out.__status); res.end(); return; }
-    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify(out));
   } catch (e) {
-    const status = e.status || 500;
-    if (status >= 500) console.error(status === 500 ? e : 'error ' + status + ' ' + (e.code || '') + ' en ' + req.method + ' ' + String(req.url).split('?')[0]);
+    const status = e instanceof Fail ? e.status : 500;
+    // De un error inesperado se anota qué fue y dónde, sin el cuerpo del pedido. Hacia afuera va solo "server_error".
+    if (status >= 500) console.error(status === 500 ? 'error 500 en ' + req.method + ' ' + String(req.url).split('?')[0].slice(0, 80) + ' · ' + String(e && e.stack || e).slice(0, 1500) : 'error ' + status + ' ' + (e.code || '') + ' en ' + req.method + ' ' + String(req.url).split('?')[0].slice(0, 80));
+    if (res.headersSent) { res.end(); return; }
+    const body = JSON.stringify(e instanceof Fail ? { error: e.code, message: e.message || '' } : { error: 'server_error', message: '' });
+    // Un cuerpo pasado de tamaño: se avisa y recién ahí se corta, para no seguir recibiendo.
+    if (status === 413) { res.writeHead(413, { 'content-type': 'application/json; charset=utf-8', connection: 'close' }); res.end(body, () => req.destroy()); return; }
     res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ error: e.code || 'server_error', message: e.message || '' }));
+    res.end(body);
   }
 });
+// Conexiones lentas: los encabezados tienen 15 segundos para llegar y el pedido entero, un minuto. /events no
+// entra en esa cuenta: lo que queda abierto ahí es la respuesta.
+server.headersTimeout = 15000; server.requestTimeout = 60000;
+// Un error que se escapa de una ruta se anota y el servicio sigue: no se cae por un pedido.
+process.on('uncaughtException', (e) => console.error('error no capturado · ' + String(e && e.stack || e).slice(0, 1500)));
+process.on('unhandledRejection', (e) => console.error('promesa sin atender · ' + String(e && e.stack || e).slice(0, 1500)));
 
-// Limpieza diaria: códigos vencidos e historial viejo.
+// Limpieza: códigos vencidos, historial viejo y sesiones sin uso, cada seis horas; los topes en memoria, cada diez minutos.
 setInterval(() => {
   q('DELETE FROM codes WHERE expires < ?').run(now());
-  q('DELETE FROM versions WHERE saved < ?').run(now() - HISTORY_DAYS * 86400000);
-  for (const k of sentBy.keys()) if (!recent(k).length) sentBy.delete(k);
-}, 6 * 3600000).unref();
+  q('DELETE FROM versions WHERE saved < ?').run(now() - HISTORY_DAYS * DAY);
+  q('DELETE FROM sessions WHERE seen < ?').run(now() - SESSION_DAYS * DAY);
+}, 6 * HOUR).unref();
+setInterval(() => { for (const k of marks.keys()) if (!recent(k, DAY).length) marks.delete(k); }, 600000).unref();
 
 server.listen(PORT, env.HOST || '127.0.0.1', () => console.log('SharpMD Sync en ' + PUBLIC_URL + ' (puerto ' + PORT + ')'));

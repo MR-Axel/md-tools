@@ -11,13 +11,21 @@
     if (!loaded) loaded = new Promise((resolve) => {
       chrome.storage.local.get('cloud', (r) => {
         const c = (r && r.cloud) || {};
-        session = c.session || ''; email = c.email || '';
-        LMD.load().then((s) => { base = String(s.cloudUrl || LMD.CLOUD_URL || '').trim().replace(/\/+$/, ''); if (/^off$/i.test(base)) base = ''; resolve(); });
+        LMD.load().then((s) => {
+          base = String(s.cloudUrl || LMD.CLOUD_URL || '').trim().replace(/\/+$/, ''); if (/^off$/i.test(base)) base = '';
+          // La sesión es del servidor que la dio: con otra dirección en Ajustes no se usa ni se manda. Queda guardada
+          // por si se vuelve a la anterior. Una guardada antes de anotar el servidor se toma como del actual.
+          const mine = !c.at || c.at === base;
+          session = mine ? c.session || '' : ''; email = mine ? c.email || '' : ''; parked = mine ? null : c;
+          if (session && !c.at) remember();
+          resolve();
+        });
       });
     });
     return loaded;
   }
-  const remember = () => new Promise((resolve) => chrome.storage.local.set({ cloud: { session, email } }, resolve));
+  let parked = null; // la sesión de otro servidor, que no se pisa mientras no se entre en este
+  const remember = () => new Promise((resolve) => chrome.storage.local.set({ cloud: !session && parked ? parked : { session, email, at: base } }, resolve));
 
   async function api(method, path, body) {
     await ready();

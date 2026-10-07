@@ -65,6 +65,8 @@
 // Página de pago: abre el checkout de Paddle para la cuenta que viene en la dirección.
 // El token y los precios son públicos por diseño. Quién recibe el plan lo decide custom_data.sharpmd_email.
 (function () {
+  // Dentro de un marco de otro sitio no hace nada: nadie cobra con esta página escondida detrás de la suya.
+  if (window.top !== window.self) return;
   var TOKEN = 'live_a38899cc0a5afae1c88c5a0fd60';
   var PLANS = {
     monthly: { price: 'pri_01m4a2ykw09jk7m71dr2a0gpng', amount: 'USD 3.99', en: 'a month', es: 'por mes' },
@@ -73,12 +75,12 @@
   var q = new URLSearchParams(location.search);
   var show = function (id) { document.getElementById(id).hidden = false; };
   // Adónde volver: la app manda su propia dirección en back. Solo vale si es de este mismo sitio o de la
-  // extensión; cualquier otra cosa se ignora, para que esta página no sirva de puente a otro sitio.
+  // extensión (y de la extensión, solo su app); cualquier otra cosa se ignora, para que esta página no sirva de puente a otro sitio.
   var back = (function () {
     var given = q.get('back');
     try {
       var u = new URL(given || '', location.href);
-      if (given && (u.origin === location.origin || u.protocol === 'chrome-extension:')) return u.href.split('#')[0];
+      if (given && (u.origin === location.origin || (u.protocol === 'chrome-extension:' && u.pathname === '/src/app.html'))) return u.href.split('#')[0];
     } catch (e) { /* dirección ilegible */ }
     return '';
   })();

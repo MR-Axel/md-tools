@@ -30,7 +30,7 @@
     if (kind === 'dot') {
       await core.ensure('graphviz');
       viz = viz || await window.Viz.instance();
-      const svg = viz.renderSVGElement(code);
+      const svg = LMD.md.safeSvg(viz.renderSVGElement(code));
       target.textContent = ''; target.appendChild(svg);
       return;
     }

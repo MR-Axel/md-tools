@@ -180,5 +180,47 @@
     return { body: text.slice(m[0].length), rows };
   }
 
-  LMD.md = { buildParser, slugify, ghSlug, splitFrontmatter, CONTAINERS, ALERTS };
+  // ---------- Lo que el documento no puede traer ----------
+  // El HTML de una nota pasa por DOMPurify. Además, de lo que escribe quien hizo la nota se saca lo que la app usa
+  // para sí: atributos data-* (los botones de la app se reconocen por ellos), clases lmd-* fuera de las que arma
+  // el propio parser, y estilos que saquen un bloque de su lugar para taparle la pantalla a la app.
+  const OWN_DATA = ['data-l', 'data-p', 'data-tex', 'data-wiki'];
+  const OWN_CLASS = /^lmd-(wiki|math|math-block|box|box-(tip|info|note|warning|danger)|box-title|kanban|mermaid|graphviz)$/;
+  const SAFE_URL = /^(https?:|mailto:|tel:|#|[^:]*$)/i;
+  let hardened = false;
+  function harden(purify) {
+    if (hardened || !purify || !purify.addHook) return;
+    hardened = true;
+    purify.addHook('uponSanitizeAttribute', (node, data) => {
+      if (/^data-/.test(data.attrName) && !OWN_DATA.includes(data.attrName)) data.keepAttr = false;
+    });
+    purify.addHook('afterSanitizeAttributes', (node) => {
+      if (!node.getAttribute) return;
+      const cls = node.getAttribute('class');
+      if (cls && /(^|\s)lmd-/.test(cls)) {
+        const keep = cls.split(/\s+/).filter((c) => !/^lmd-/.test(c) || OWN_CLASS.test(c)).join(' ');
+        if (keep) node.setAttribute('class', keep); else node.removeAttribute('class');
+      }
+      if (node.style && node.hasAttribute('style')) {
+        if (/fixed|sticky|absolute/i.test(node.style.position)) node.style.removeProperty('position');
+        if (node.style.zIndex) node.style.removeProperty('z-index');
+        if (!node.getAttribute('style')) node.removeAttribute('style');
+      }
+    });
+  }
+  // El SVG de Graphviz no pasa por DOMPurify: de sus enlaces quedan solo los que llevan a una página o a una sección.
+  function safeSvg(svg) {
+    if (!svg || !svg.querySelectorAll) return svg;
+    svg.querySelectorAll('script, foreignObject, iframe, object, embed').forEach((n) => n.remove());
+    [svg].concat(Array.from(svg.querySelectorAll('*'))).forEach((n) => {
+      Array.from(n.attributes).forEach((a) => {
+        const name = a.name.toLowerCase();
+        if (/^on/.test(name)) n.removeAttribute(a.name);
+        else if ((name === 'href' || name === 'xlink:href') && !SAFE_URL.test(a.value.trim())) n.removeAttribute(a.name);
+      });
+    });
+    return svg;
+  }
+
+  LMD.md = { buildParser, slugify, ghSlug, splitFrontmatter, CONTAINERS, ALERTS, harden, safeSvg };
 })();
