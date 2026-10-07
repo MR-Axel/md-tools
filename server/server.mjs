@@ -346,7 +346,7 @@ function paddleSigned(raw, header) {
 async function paddleWebhook(req) {
   if (!env.PADDLE_WEBHOOK_SECRET) throw new Fail(404, 'no_route');
   const raw = await readRaw(req);
-  if (!paddleSigned(raw, req.headers['paddle-signature'])) throw new Fail(401, 'bad_signature');
+  if (!paddleSigned(raw, req.headers['paddle-signature'])) { if (req.headers['paddle-signature']) console.error('paddle: aviso con firma inválida, revisar PADDLE_WEBHOOK_SECRET'); throw new Fail(401, 'bad_signature'); }
   let ev; try { ev = JSON.parse(raw); } catch (e) { throw new Fail(400, 'bad_json'); }
   const d = ev.data || {};
   if (!/^subscription\./.test(ev.event_type || '')) return { ok: true, ignored: 'event' };
