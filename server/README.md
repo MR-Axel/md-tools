@@ -38,7 +38,7 @@ Then, in SharpMD: Settings → Cloud → Sync server, and type the address (`htt
 | `PORTAL_URL` | Where a subscriber manages the subscription | |
 | `FEEDBACK_TO` | Address that receives what people send from "Send feedback" (`POST /feedback`). It goes out through the same mailer as the sign-in code. Without it the endpoint answers 404 and the app offers a `mailto:` link instead | off |
 
-Put it behind a reverse proxy with HTTPS. With Caddy:
+Put it behind a reverse proxy with HTTPS. The web app at sharpmd.app needs that: browsers do not let a public site call a server on `localhost` or on the local network without asking. The extension has no such limit, so `http://localhost:8787` works there. With Caddy:
 
 ```
 sync.example.com {

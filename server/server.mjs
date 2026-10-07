@@ -409,6 +409,8 @@ function cors(req, res) {
     res.setHeader('access-control-allow-headers', 'authorization, content-type, x-password');
     res.setHeader('access-control-allow-methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('access-control-max-age', '86400');
+    // Un servidor propio en la misma máquina o red: el navegador pregunta antes de dejar que una web pública lo llame.
+    if (req.headers['access-control-request-private-network']) res.setHeader('access-control-allow-private-network', 'true');
   }
 }
 const readBody = (req) => new Promise((resolve, reject) => {
