@@ -56,7 +56,7 @@ o.imagen = (await src()).split('\n')[2];
 o.assets = await app.evaluate(async () => { const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('x')).getDirectoryHandle('assets'); const out = []; for await (const [n] of dir.entries()) out.push(n); return out.length; });
 
 await app.click('[data-act=settings]'); await app.waitForSelector('.lmd-panel-card');
-await app.click('input[data-key=focusMode]'); await app.click('input[data-key=typewriter]'); await app.waitForTimeout(500);
+await app.click('[data-ptab=read]'); await app.click('input[data-key=focusMode]'); await app.click('input[data-key=typewriter]'); await app.waitForTimeout(500);
 o.foco = await app.evaluate(() => document.documentElement.classList.contains('lmd-focus') && document.documentElement.classList.contains('lmd-typewriter'));
 await app.click('[data-act=close-panel]');
 const [dl] = await Promise.all([app.waitForEvent('download'), app.click('[data-act=export-html]')]);
