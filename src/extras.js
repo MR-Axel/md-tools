@@ -323,13 +323,41 @@
     } catch (e) { core.flash(T('No se pudo eliminar'), 'error'); }
   }
 
+  // Una carpeta soltada en la papelera. En la nube cada nota va a la papelera de 30 días; una protegida se elimina
+  // por su propio camino, con su confirmación. En el disco no hay papelera: se confirma y se borra.
+  async function removeDir(url) {
+    const name = nameOf(url);
+    if (!inCloud(url)) {
+      if (!(await askDelete(name))) return;
+      try {
+        await (await core.dirHandle(parentOf(url))).removeEntry(name, { recursive: true });
+        if (!core.noDoc && core.HERE.startsWith(url)) closeGone(); else core.reloadTree();
+      } catch (e) { core.flash(T('No se pudo eliminar'), 'error'); core.reloadTree(); }
+      return;
+    }
+    const path = core.pathOf(url).replace(/\/$/, '');
+    if (notMine(path)) return;
+    if (LMD.vault.menu(path).some((i) => i[0] === 'v-destroy')) return LMD.vault.pick('v-destroy', path);
+    if (LMD.vault.pinned(path)) { core.flash(T('Adentro hay una carpeta protegida. Eliminala primero desde su menú.'), 'warn'); return; }
+    if (!(await LMD.dialog.confirm({ title: T('¿Eliminar la carpeta "{a}" y sus notas?', { a: name }), text: T('Quedan 30 días en la papelera de la nube.'), ok: T('Eliminar'), danger: true }))) return;
+    try {
+      const owner = LMD.cloud.split(path).owner;
+      const inside = (await LMD.cloud.list(true, owner)).map((n) => (owner ? '~' + owner + '/' : '') + n.path).filter((p) => p.startsWith(path + '/'));
+      const here = !core.noDoc && inside.includes(core.cloudPath);
+      for (const p of inside) await LMD.cloud.remove(p);
+      if (here) await closeGone(); else core.reloadTree();
+    } catch (e) { core.flash(cloudWhy(e, 'No se pudo eliminar'), 'error'); core.reloadTree(); }
+  }
+
   let menu = null;
   const closeMenu = () => { if (menu) { menu.remove(); menu = null; } };
-  // Un menú corto en un punto de la pantalla. items: [id, texto, peligroso]. onPick recibe el id elegido.
+  // El ícono de cada acción de los menús del explorador, por id.
+  const MENU_ICON = { new: 'file', tpl: 'doc', dir: 'folder', ren: 'pencil', del: 'trash', file: 'file', 'v-protect': 'lock', 'v-lock': 'lock', 'v-unlock': 'unlock', 'v-ai': 'spark', 'v-ailock': 'lock', 'v-drop': 'close', 'v-pass': 'pencil', 'v-off': 'unlock', 'v-destroy': 'trash' };
+  // Un menú corto en un punto de la pantalla. items: [id, texto, peligroso, ícono]. onPick recibe el id elegido.
   function showMenu(x, y, items, onPick) {
     closeMenu();
     menu = el('div', { class: 'lmd-menu lmd-menu-narrow', role: 'menu' });
-    menu.innerHTML = '<div class="lmd-menu-list">' + items.map((i) => '<button type="button" role="menuitem" data-f="' + i[0] + '"' + (i[2] ? ' class="lmd-menu-danger"' : '') + '>' + T(i[1]) + '</button>').join('') + '</div>';
+    menu.innerHTML = '<div class="lmd-menu-list">' + items.map((i) => '<button type="button" role="menuitem" data-f="' + i[0] + '"' + (i[2] ? ' class="lmd-menu-danger"' : '') + '>' + (ICON[i[3] || MENU_ICON[i[0]]] || '') + '<span>' + T(i[1]) + '</span></button>').join('') + '</div>';
     document.body.appendChild(menu);
     menu.style.left = Math.max(8, Math.min(window.innerWidth - menu.offsetWidth - 8, x)) + 'px';
     menu.style.top = Math.max(8, Math.min(window.innerHeight - menu.offsetHeight - 8, y)) + 'px';
@@ -373,7 +401,7 @@
   function openMenu(x, y) {
     if (!core.APP) { core.openApp(''); return; }
     if (!window.showDirectoryPicker) { core.pick('file'); return; }
-    showMenu(x, y, [['dir', 'Abrir carpeta'], ['file', 'Abrir archivo']], (f) => core.pick(f));
+    showMenu(x, y, [['dir', 'Abrir carpeta', false, 'open'], ['file', 'Abrir archivo']], (f) => core.pick(f));
   }
   const rootUrl = (node) => { const sec = node.closest('.lmd-xroot'); const list = sec && sec.querySelector('.lmd-tree'); return (list && list.dataset.url) || ''; };
 
@@ -434,7 +462,7 @@
   // Nada si no hay nota en edición, si lo arrastrado es una carpeta o la nota misma, o si es de otro lugar: una
   // ruta relativa entre el disco, el navegador y la nube no llevaría a ningún lado.
   function noteTarget(e) {
-    if (!dragged || isDirUrl(dragged) || !core.APP || core.noDoc || !core.editMode || core.readOnly || dragged === core.HERE || core.rootOf(dragged) !== core.rootOf(core.HERE)) return null;
+    if (!dragged || isDirUrl(dragged) || inLocal(dragged) || !core.APP || core.noDoc || !core.editMode || core.readOnly || dragged === core.HERE || core.rootOf(dragged) !== core.rootOf(core.HERE)) return null;
     const t = e.target; const article = core.ui.article; const rawEdit = core.ui.rawEdit;
     if (t === rawEdit) { const b = rawEdit.getBoundingClientRect(); return { raw: true, box: { left: b.left + 8, top: Math.max(b.top, e.clientY - 9), height: 18 } }; }
     if (!core.blocks || !t.closest || !article.contains(t)) return null;
@@ -501,6 +529,8 @@
   // Carpeta de destino según dónde está el puntero: la carpeta misma, la que contiene al archivo de abajo, o la
   // raíz. Solo dentro de la raíz de donde salió el archivo: entre el disco, el navegador y la nube no se arrastra.
   function dropTarget(e) {
+    // Una nota del navegador no tiene carpetas adonde ir: solo se suelta en la papelera.
+    if (inLocal(dragged)) return null;
     const sec = e.target.closest && e.target.closest('.lmd-xroot'); const top = sec ? rootUrl(sec) : '';
     if (!top || core.rootOf(top) !== core.rootOf(dragged)) return null;
     const node = e.target.closest('.lmd-node-dir');
@@ -512,10 +542,12 @@
     if (dir) return { url: dir.dataset.url, mark: dir };
     return { url: top, mark: sec };
   }
+  // La Papelera del explorador como destino: lo que se suelta ahí se elimina, igual que con "Eliminar".
+  const binOf = (e) => (e.target.closest && e.target.closest('.lmd-trash-link')) || null;
   function bindDrag(box) {
     box.addEventListener('dragstart', (e) => {
       const node = e.target.closest && e.target.closest('.lmd-node');
-      if (!node || !node.dataset.url || !canTree(node.dataset.url)) return;
+      if (!node || !node.dataset.url || !(canTree(node.dataset.url) || inLocal(node.dataset.url))) return;
       dragged = node.dataset.url; node.classList.add('lmd-dragging');
       // Mover adentro del árbol, o dejar un enlace en la nota.
       e.dataTransfer.effectAllowed = 'linkMove';
@@ -524,6 +556,8 @@
     });
     box.addEventListener('dragover', (e) => {
       if (!dragged) return;
+      const bin = binOf(e);
+      if (bin) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; markDrop(bin); return; }
       const t = dropTarget(e);
       // Soltarlo en la carpeta donde ya está no es un destino; una carpeta tampoco va adentro de sí misma.
       if (!t || badDrop(t.url)) { markDrop(null); return; }
@@ -533,9 +567,10 @@
     box.addEventListener('drop', (e) => {
       if (!dragged) return;
       e.preventDefault();
-      const url = dragged; const t = dropTarget(e);
+      const url = dragged; const bin = binOf(e); const t = bin ? null : dropTarget(e);
       const ok = t && !badDrop(t.url);
       endDrag();
+      if (bin) { if (isDirUrl(url)) removeDir(url); else remove(url); return; }
       if (ok) { if (isDirUrl(url)) moveDir(url, t.url); else moveTo(url, t.url); }
     });
     box.addEventListener('dragend', endDrag);
