@@ -188,7 +188,8 @@ try {
   const editing = () => app.evaluate(() => document.documentElement.classList.contains('lmd-editing'));
   o.soloLectura = [await editing()];
   await app.locator('.markdown-body h1').dblclick(); await app.waitForTimeout(300); o.soloLectura.push(await editing());
-  await app.locator('.markdown-body h1').click({ button: 'right' }); await app.waitForTimeout(300); o.soloLectura.push(await editing(), await app.locator('.lmd-menu').count());
+  await app.locator('.markdown-body h1').click({ button: 'right', position: { x: 20, y: 12 } }); await app.waitForTimeout(300); o.soloLectura.push(await editing(), await app.evaluate(() => [...document.querySelectorAll('.lmd-menu-read button')].map((b) => b.textContent).join('|')));
+  await app.keyboard.press('Escape');
   await app.keyboard.press('F2'); await app.dblclick('.lmd-docname'); await app.waitForTimeout(200); o.soloLectura.push(await app.locator('.lmd-docname-input').count());
   await app.evaluate(() => sessionStorage.removeItem('lmd-edit'));
   o.soloVer = [await app.evaluate(() => document.documentElement.classList.contains('lmd-readonly'))];
@@ -286,7 +287,7 @@ const checks = [
   ['renombrar desde el título deja la nota de la nube abierta con su nombre nuevo', o.tituloNube && o.tituloNube[0] && o.tituloNube[1] === 'listado.md' && o.tituloNube[2], o.tituloNube],
   ['arrastrar en el árbol de la Nube mueve la nota a la carpeta y de vuelta a la raíz', J(o.arrastreNube) === J(['archivo', true, 'raíz', true]), o.arrastreNube],
   ['arrastrar la nota abierta de la nube la deja abierta en su ruta nueva', J(o.arrastreAbiertaNube) === J(['proyecto', true, 'lista.md', true]), o.arrastreAbiertaNube],
-  ['una nota de solo lectura no entra en edición ni se renombra desde el título', J(o.soloLectura) === J([false, false, false, 0, 0]), o.soloLectura],
+  ['una nota de solo lectura no entra en edición ni se renombra desde el título, y su menú de lectura no ofrece editar', J(o.soloLectura) === J([false, false, false, 'Copiar el bloque|Copiar el enlace a esta sección', 0]), o.soloLectura],
   ['eliminar desde el árbol la saca de la nube', o.eliminada && o.eliminada[0] && J(o.eliminada[1]) === '["borrar.md"]', o.eliminada],
   ['en el límite del plan gratis no crea y invita al plan pago', o.limite && /límite de notas del plan gratis/.test(o.limite[0]) && /plan pago/.test(o.limite[0]) && !/[!¡—]/.test(o.limite[0]) && o.limite[1] === 10, o.limite],
   ['una nota compartida solo para ver no se renombra ni deja crear al lado', o.soloVer && o.soloVer[0] === true && /Solo quien creó/.test(o.soloVer[1]) && /solo lectura/.test(o.soloVer[2]) && o.soloVer[3] === 1, o.soloVer],

@@ -146,6 +146,12 @@
       core.insertLines(at, out, []);
       at += out[0] === '' && body[0] !== '' ? 1 : 0;
     }
+    if (follow === 'stay') {
+      // Hace falta ya el bloque definitivo (por ejemplo, para ponerle un enlace): se redibuja y se lo devuelve.
+      core.render();
+      const made = blockAtLine(at);
+      return made && (made.matches('.lmd-editable') ? made : made.querySelector('.lmd-editable'));
+    }
     if (!follow) {
       // El foco ya está en otro lado: no se redibuja ahora para no sacárselo.
       d.contentEditable = 'false'; d.classList.add('lmd-pending');
@@ -264,6 +270,11 @@
       LMD.extras.imageDialog().then((img) => { if (img) insertTemplate(after, [LMD.extras.imageMd(img)]); });
       return;
     }
+    if (what === 'link') {
+      // Sin un texto elegido, el enlace va en un renglón propio debajo del bloque.
+      LMD.links.dialog(null).then((link) => { if (link) insertTemplate(after, [LMD.links.md(link)]); });
+      return;
+    }
     const t = TEMPLATES[what];
     if (t) insertTemplate(after, t.body(), t.then);
   }
@@ -308,7 +319,7 @@
     ['p', 'Párrafo'], ['h1', 'Título 1'], ['h2', 'Título 2'], ['h3', 'Título 3'],
     ['ul', 'Lista con viñetas'], ['ol', 'Lista numerada'], ['task', 'Lista de tareas'], ['quote', 'Cita'],
     ['table', 'Tabla'], ['code', 'Bloque de código'], ['diagram', 'Diagrama'], ['math', 'Fórmula'],
-    ['board', 'Tablero'], ['alert', 'Aviso'], ['image', 'Imagen'], ['hr', 'Separador'],
+    ['board', 'Tablero'], ['alert', 'Aviso'], ['image', 'Imagen'], ['link', 'Enlace'], ['hr', 'Separador'],
   ];
   let menu = null;
   function closeMenu() { if (menu) { menu.remove(); menu = null; } }
@@ -345,6 +356,58 @@
     });
   }
 
+  // ---------- Menú de lectura ----------
+  // Leyendo, el clic derecho no pasa a edición: ofrece copiar, buscar o editar según haya texto elegido o no.
+  // En una nota de solo lectura no aparece lo que edita.
+  function openReadMenu(e) {
+    closeMenu();
+    const article = core.ui.article; const x = e.clientX; const y = e.clientY;
+    const sel = getSelection();
+    // Lo elegido cuenta solo si el clic cayó encima: una selección que quedó en otra parte no cambia el menú.
+    const over = sel.rangeCount && !sel.isCollapsed && article.contains(sel.anchorNode) &&
+      Array.from(sel.getRangeAt(0).getClientRects()).some((r) => x >= r.left - 2 && x <= r.right + 2 && y >= r.top - 2 && y <= r.bottom + 2);
+    const picked = over ? sel.toString().trim() : '';
+    const block = e.target === article ? blockNear(y) : topBlock(e.target);
+    const lines_ = block && span(block);
+    const h = e.target.closest('h1, h2, h3, h4, h5, h6'); const head = h && core.links.headings().find((k) => k.el === h);
+    const can = !core.readOnly; const at = { target: e.target, clientX: x, clientY: y };
+    const items = [];
+    if (picked) { items.push(['copy', ICON.copy, 'Copiar'], ['find', ICON.search, 'Buscar en la carpeta']); if (can) items.push(['edit', ICON.pencil, 'Editar acá']); }
+    else {
+      if (can) items.push(['edit', ICON.pencil, 'Editar acá']);
+      if (lines_) items.push(['block', ICON.copy, 'Copiar el bloque']);
+      if (head) items.push(['anchor', ICON.link, 'Copiar el enlace a esta sección']);
+      if (can) items.push(['insert', ICON.plus, 'Insertar debajo']);
+    }
+    if (!items.length) return false;
+    menu = el('div', { class: 'lmd-menu lmd-menu-read', role: 'menu' });
+    menu.innerHTML = '<div class="lmd-menu-list">' + items.map((i) => '<button type="button" role="menuitem" data-read="' + i[0] + '">' + i[1] + '<span>' + T(i[2]) + '</span></button>').join('') + '</div>';
+    document.body.appendChild(menu);
+    menu.style.left = Math.max(8, Math.min(window.innerWidth - menu.offsetWidth - 8, x)) + 'px';
+    // Si abajo no entra, se abre hacia arriba: no tiene que tapar lo que se acaba de elegir.
+    menu.style.top = Math.max(8, y + menu.offsetHeight + 8 > window.innerHeight ? y - menu.offsetHeight - 12 : y) + 'px';
+    menu.addEventListener('mousedown', (ev) => ev.preventDefault()); // lo elegido tiene que seguir elegido
+    menu.addEventListener('click', async (ev) => {
+      const b = ev.target.closest('button'); if (!b) return;
+      closeMenu();
+      const act = b.dataset.read;
+      if (act === 'copy') core.copy(picked);
+      else if (act === 'find') core.searchFor(picked.replace(/\s+/g, ' ').slice(0, 80));
+      else if (act === 'block') core.copy(lines().slice(lines_.s, lines_.e).join('\n'));
+      else if (act === 'anchor') core.copy(core.sectionLink(head.gh));
+      else if (act === 'edit') core.editAt(at);
+      else {
+        // Pasa a edición y abre, sobre ese mismo bloque, el menú de insertar de siempre.
+        const i = block ? Array.prototype.indexOf.call(article.children, block) : -1;
+        await core.setEditMode(true);
+        if (!core.editMode) return;
+        const found = i < 0 ? null : article.children[i];
+        openMenu(x, y, found && !found.classList.contains('lmd-add') ? found : blockNear(y));
+      }
+    });
+    return true;
+  }
+
   // Bloque más cercano a una altura de la pantalla, para cuando el clic cae en un espacio vacío.
   function blockNear(y) {
     let best = null;
@@ -358,20 +421,13 @@
   function init(c) {
     core = c;
     const article = core.ui.article;
-    article.addEventListener('contextmenu', async (e) => {
+    article.addEventListener('contextmenu', (e) => {
       // Con Shift queda el menú del navegador, que es el que corrige la ortografía.
       if (!core.blocks || e.shiftKey || e.target.closest('.lmd-src')) return;
       if (!core.editMode) {
-        // Leyendo, el clic derecho pasa a edición y abre el mismo menú sobre ese bloque.
-        // En una nota de solo lectura, y sobre un enlace o una imagen, queda el menú del navegador.
-        if (core.readOnly || e.target.closest('a, img')) return;
-        e.preventDefault();
-        const x = e.clientX; const y = e.clientY;
-        const at = e.target === article ? -1 : Array.prototype.indexOf.call(article.children, topBlock(e.target));
-        await core.setEditMode(true);
-        if (!core.editMode) return;
-        const found = at < 0 ? null : article.children[at];
-        openMenu(x, y, found && !found.classList.contains('lmd-add') ? found : blockNear(y));
+        // Leyendo sale el menú de lectura. Sobre un enlace o una imagen queda el del navegador.
+        if (e.target.closest('a, img')) return;
+        if (openReadMenu(e)) e.preventDefault();
         return;
       }
       e.preventDefault();
@@ -450,6 +506,7 @@
     init, enter, onKey, append, closeMenu,
     remove: (node) => { const b = topBlock(node); if (b) removeBlock(b); },
     blur: (d) => commitDraft(d, false),
+    settle: (d) => commitDraft(d, 'stay') || null,
     menuAt: (x, y) => openMenu(x, y, core.lastBlock && core.lastBlock.isConnected ? topBlock(core.lastBlock) : blockNear(window.innerHeight)),
   };
 })();

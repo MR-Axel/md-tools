@@ -89,6 +89,9 @@
   const acctRow = (label, value) => '<div class="lmd-acct-row"><span>' + label + '</span><b title="' + value + '">' + value + '</b></div>';
   const actions = (html) => '<div class="lmd-acct-actions">' + html + '</div>';
   const loginBtn = (host) => (host.login ? actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="login">' + T('Crear cuenta o entrar') + '</button>') : '');
+  // Se entra en Ajustes → Nube, ahí mismo. Desde IA o Plan el botón lleva a esa pestaña con el correo ya pedido.
+  let wantLogin = false;
+  const goLogin = (host) => { if (host.direct || !host.tab) host.login(); else { wantLogin = true; host.tab('cloud'); } };
   const quota = (a) => (a.limit ? T('{n} de {m}', { n: a.notes, m: a.limit }) : T('{n}, sin límite', { n: a.notes }));
   const fetchAccount = async (host) => { account = await LMD.cloud.account(); asked = true; if (host && host.unlocked) host.unlocked(account); return account; };
   const offline = () => hint(T('No hay conexión con el servidor.'));
@@ -112,7 +115,7 @@
     await LMD.cloud.ready();
     if (!LMD.cloud.enabled()) box.innerHTML = hint(T('La nube está apagada: SharpMD funciona sin cuenta y sin sincronizar.')) + actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="on">' + T('Prender la nube') + '</button>');
     else if (host.direct) box.innerHTML = direct(host);
-    else if (!LMD.cloud.signedIn()) box.innerHTML = hint(T('Guardá tus notas en la nube y abrilas desde cualquier dispositivo. Gratis hasta 10 notas.')) + loginBtn(host);
+    else if (!LMD.cloud.signedIn()) box.innerHTML = LMD.home.perks() + actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="login">' + T('Crear cuenta o entrar') + '</button>');
     else {
       try {
         const a = await fetchAccount(host);
@@ -121,10 +124,17 @@
           '<p class="lmd-hint lmd-acct-msg" role="status" hidden></p>';
       } catch (e) { if (!LMD.cloud.signedIn()) return cloudPane(box, host); box.innerHTML = offline(); }
     }
+    // El correo y el código se piden acá, con el mismo formulario del inicio: no hace falta salir de la nota.
+    const askLogin = () => {
+      const acts = box.querySelector('.lmd-acct-actions'); if (!acts || LMD.cloud.signedIn()) return;
+      const form = el('div', { class: 'lmd-signin' }); acts.replaceWith(form);
+      LMD.home.signIn(form, async () => { account = null; asked = false; paint(); await cloudPane(box, host); });
+    };
+    if (wantLogin) { wantLogin = false; if (LMD.cloud.enabled() && !host.direct) askLogin(); }
     box.onclick = async (e) => {
       const b = e.target.closest('[data-c]'); if (!b) return;
       if (b.dataset.c === 'on') LMD.patch({ cloudUrl: '' });
-      else if (b.dataset.c === 'login') host.login();
+      else if (b.dataset.c === 'login') { if (host.direct) host.login(); else askLogin(); }
       else if (b.dataset.c === 'open') openCloud(Object.assign({ say: (t) => { const m = box.querySelector('.lmd-acct-msg'); if (m) { m.hidden = false; m.textContent = t; } } }, host));
       else if (b.dataset.c === 'out') { await LMD.cloud.logout(); account = null; asked = false; paint(); cloudPane(box, host); }
     };
@@ -162,7 +172,7 @@
       try {
         if (rm) { if (window.confirm(T('¿Revocar este token? La IA que lo usa deja de entrar.'))) { await LMD.cloud.revoke(rm.dataset.rm); await draw(); } }
         else if (!b) return;
-        else if (b.dataset.c === 'login') host.login();
+        else if (b.dataset.c === 'login') goLogin(host);
         else if (b.dataset.c === 'plans') host.tab('plan');
         else if (b.dataset.c === 'token') await draw(await LMD.cloud.newToken('IA'));
         else if (b.dataset.c === 'copy') {
@@ -225,7 +235,7 @@
             : a ? '<div class="lmd-plan-buy">' + btn(pay.monthly, 'USD 3.99 / ' + T('mes')) + btn(pay.yearly, 'USD 39 / ' + T('año')) + '</div>' : '') + '</div></div>';
     box.onclick = async (e) => {
       const b = e.target.closest('[data-c]'); const link = e.target.closest('[data-pay]');
-      if (b && b.dataset.c === 'login') host.login();
+      if (b && b.dataset.c === 'login') goLogin(host);
       else if (b && b.dataset.c === 'recheck') awaitPaid();
       // Antes de salir a pagar se guarda lo pendiente.
       else if (link) { e.preventDefault(); await host.leave(); location.href = link.href; }

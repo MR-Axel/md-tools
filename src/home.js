@@ -7,6 +7,41 @@
   const T = LMD.t;
   let ctx = null; // { settings, APP_URL }, lo pasa el lector al llamar
 
+  // Qué se puede hacer sin cuenta y qué suma tenerla, en dos renglones. Lo muestran el inicio y Ajustes → Nube.
+  const perks = () => '<dl class="lmd-perks">' +
+    '<dt>' + T('Sin cuenta') + '</dt><dd>' + T('Todo el editor, tus archivos del disco y las notas guardadas en este navegador.') + '</dd>' +
+    '<dt>' + T('Con cuenta') + '</dt><dd>' + T('Notas en la nube (10 gratis). Compartir, historial y conexión con una IA en el plan pago.') + '</dd></dl>';
+
+  // Entrar a la cuenta: primero el correo, después el código que llega. Es el mismo formulario en el inicio y en Ajustes → Nube.
+  const AUTH_ERRORS = { bad_email: 'Ese correo no parece válido.', too_soon: 'Esperá unos segundos antes de pedir otro código.', bad_code: 'Ese código no coincide.', code_expired: 'El código venció. Pedí otro.', too_many_tries: 'Demasiados intentos. Pedí un código nuevo.', offline: 'No hay conexión con el servidor.', mcp_needs_plan: 'Conectar una IA es parte del plan pago.' };
+  // Antes de pedir nada al servidor: el correo bien formado y el código de seis dígitos.
+  const badMail = (v) => (!v ? 'Escribí tu correo.' : /\s/.test(v) ? 'El correo no lleva espacios.' : !validEmail(v) ? 'Ese correo no parece válido. Tiene que ser como nombre@dominio.com.' : '');
+  const badCode = (v) => (/^\d{6}$/.test(v) ? '' : 'El código son seis dígitos.');
+  function signIn(box, done, email) {
+    box.textContent = '';
+    const code = !!email;
+    if (code) box.appendChild(el('p', { text: T('Te mandamos un código a {a}.', { a: email }) }));
+    const input = code ? el('input', { type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '6', placeholder: '000000', 'data-field': 'code' })
+      : el('input', { type: 'email', autocomplete: 'email', spellcheck: 'false', placeholder: T('tu correo'), 'data-field': 'email' });
+    const go = el('button', { type: 'button', class: 'lmd-btn lmd-btn-fill', 'data-cloud': code ? 'verify' : 'start', text: T(code ? 'Entrar' : 'Enviar código') });
+    const row = el('div', { class: 'lmd-home-cloud-row' }); row.append(input, go);
+    // El aviso va pegado al campo y no borra lo escrito.
+    const err = el('p', { class: 'lmd-home-cloud-err', role: 'alert', hidden: '' });
+    box.append(row, err); input.focus();
+    const fail = (text) => { err.hidden = false; err.textContent = T(text); input.setAttribute('aria-invalid', 'true'); input.focus(); };
+    const send = async () => {
+      const v = input.value.trim(); const bad = code ? badCode(v) : badMail(v);
+      if (bad) { fail(bad); return; }
+      try {
+        if (code) { await LMD.cloud.verify(email, v); await done(); }
+        else { await LMD.cloud.start(v.toLowerCase()); signIn(box, done, v.toLowerCase()); }
+      } catch (e) { fail(AUTH_ERRORS[e && e.code] || 'No se pudo completar. Probá de nuevo.'); }
+    };
+    go.addEventListener('click', send);
+    input.addEventListener('input', () => { input.removeAttribute('aria-invalid'); err.hidden = true; });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); send(); } });
+  }
+
   // Primer Markdown de una carpeta: el README o el índice si hay, si no el primero por nombre.
   async function firstMarkdown(root) {
     const queue = [{ h: root, path: '', depth: 0 }];
@@ -104,18 +139,14 @@
 
     // Cuenta: entrar con un código al mail, ver cuántas notas hay y conectar una IA.
     const cloudBox = box.querySelector('.lmd-home-cloud');
-    const errors = { bad_email: 'Ese correo no parece válido.', too_soon: 'Esperá unos segundos antes de pedir otro código.', bad_code: 'Ese código no coincide.', code_expired: 'El código venció. Pedí otro.', too_many_tries: 'Demasiados intentos. Pedí un código nuevo.', offline: 'No hay conexión con el servidor.', mcp_needs_plan: 'Conectar una IA es parte del plan pago.' };
+    const errors = AUTH_ERRORS;
     const why = (e) => T(errors[e && e.code] || 'No se pudo completar. Probá de nuevo.');
-    // Antes de pedir nada al servidor: el correo bien formado y el código de seis dígitos.
-    const badMail = (v) => (!v ? 'Escribí tu correo.' : /\s/.test(v) ? 'El correo no lleva espacios.' : !validEmail(v) ? 'Ese correo no parece válido. Tiene que ser como nombre@dominio.com.' : '');
-    const badCode = (v) => (/^\d{6}$/.test(v) ? '' : 'El código son seis dígitos.');
     let cloudNotes = []; let cloudMore = 0;
     const paintCloud = async (step, data) => {
       await LMD.cloud.ready();
       cloudBox.hidden = !LMD.cloud.enabled();
       if (cloudBox.hidden) return;
       cloudBox.textContent = '';
-      const line = (text) => { const p = el('p', { text }); cloudBox.appendChild(p); return p; };
       const button = (label, act, fill) => el('button', { type: 'button', class: 'lmd-btn' + (fill ? ' lmd-btn-fill' : ''), 'data-cloud': act, text: label });
       const row = () => { const d = el('div', { class: 'lmd-home-cloud-row' }); cloudBox.appendChild(d); return d; };
       // El aviso va pegado al campo y no borra lo escrito.
@@ -131,14 +162,10 @@
       };
       if (!LMD.cloud.signedIn()) {
         cloudNotes = []; cloudMore = 0;
-        if (step === 'code') {
-          line(T('Te mandamos un código a {a}.', { a: data.email }));
-          const r = row(); const input = el('input', { type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '6', placeholder: '000000', 'data-field': 'code' });
-          r.append(input, button(T('Entrar'), 'verify', true)); input.dataset.email = data.email; errLine(); input.focus();
-        } else if (step === 'email') {
-          const r = row(); const input = el('input', { type: 'email', autocomplete: 'email', spellcheck: 'false', placeholder: T('tu correo'), 'data-field': 'email' });
-          r.append(input, button(T('Enviar código'), 'start', true)); errLine(); input.focus();
-        } else { const r = row(); const b = button(T('Crear cuenta o entrar'), 'ask'); b.classList.add('lmd-btn-fill'); r.append(el('span', { text: T('Guardá tus notas en la nube y abrilas desde cualquier dispositivo. Gratis hasta 10 notas.') }), b); }
+        // Sin sesión: qué anda sin cuenta y qué suma tenerla, y debajo el botón o el formulario para entrar.
+        cloudBox.innerHTML = perks();
+        if (step === 'email') { const form = el('div', { class: 'lmd-signin' }); cloudBox.appendChild(form); signIn(form, async () => { await paintCloud(); paint(); }); }
+        else row().append(button(T('Crear cuenta o entrar'), 'ask', true));
         return;
       }
       try {
@@ -171,15 +198,8 @@
       const act = b.dataset.cloud;
       try {
         if (act === 'ask') await paintCloud('email');
-        else if (act === 'start') {
-          const mail = field('email').value.trim(); const bad = badMail(mail);
-          if (bad) { fail(bad, field('email')); return; }
-          await LMD.cloud.start(mail.toLowerCase()); await paintCloud('code', { email: mail.toLowerCase() });
-        } else if (act === 'verify') {
-          const code = field('code').value.trim(); const bad = badCode(code);
-          if (bad) { fail(bad, field('code')); return; }
-          await LMD.cloud.verify(field('code').dataset.email, code); await paintCloud(); paint();
-        } else if (act === 'logout') { await LMD.cloud.logout(); await paintCloud(); paint(); }
+        else if (act === 'start' || act === 'verify') return; // los atiende el formulario
+        else if (act === 'logout') { await LMD.cloud.logout(); await paintCloud(); paint(); }
         else if (act === 'open') LMD.sync.openCloud(Object.assign({}, host, { say: (t) => fail(t) }));
         else if (act === 'ai' || act === 'plan') LMD.sync.dialog(act, host);
       } catch (err) { fail(errors[err && err.code] || 'No se pudo completar. Probá de nuevo.', field('code') || field('email')); }
@@ -189,7 +209,6 @@
       e.target.removeAttribute('aria-invalid');
       const p = cloudBox.querySelector('.lmd-home-cloud-err'); if (p) p.hidden = true;
     });
-    cloudBox.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('input')) { e.preventDefault(); const b = cloudBox.querySelector('[data-cloud=start], [data-cloud=verify]'); if (b) b.click(); } });
     // Vuelta de la página de pago hecha desde acá: el plan, en su ventana, esperando la confirmación.
     if (location.hash === '#lmd-paid') { LMD.sync.dialog('plan', host); LMD.sync.awaitPaid(); }
 
@@ -199,7 +218,8 @@
       try { await LMD.cloud.flush(); } catch (e) { /* queda en la cola */ }
       const recs = (await rootsAll()).slice(0, 8);
       const notes = (await notesAll()).slice(0, 12);
-      await paintCloud();
+      // Con ?login=1 (se llega así desde un archivo abierto directo en el navegador) el correo ya queda pedido.
+      await paintCloud(new URLSearchParams(location.search).has('login') ? 'email' : undefined);
       recent.hidden = !recs.length && !notes.length && !cloudNotes.length;
       const ul = recent.querySelector('ul'); ul.textContent = '';
       cloudNotes.slice(0, 12).forEach((n) => {
@@ -395,6 +415,7 @@
     cloudNote: () => cloudNote(),
     adopt: (c, handle) => { ctx = c; return openPicked(handle, () => {}); },
     show: (c, note) => { ctx = c; return home(note); },
+    perks, signIn,
     gate: (c, rec, mode) => { ctx = c; return gate(rec, mode); },
   };
 })();

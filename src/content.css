@@ -753,6 +753,71 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-emoji button.lmd-on small { color: var(--accent); }
 @media print { .lmd-emoji { display: none !important; } }
 
+/* ---------- Enlaces: selector, marcar en el documento y lista de [[ ---------- */
+.lmd-lk-card { width: min(540px, 100%); }
+.lmd-lk-card h3 { margin-bottom: 12px; }
+.lmd-ask-card p.lmd-lk-now { margin: -4px 0 12px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lmd-lk-now code { font: 12.5px var(--lmd-mono); color: var(--fg); }
+.lmd-lk-q { display: block; width: 100%; box-sizing: border-box; height: 36px; margin: 12px 0 8px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--fg); font: inherit; outline: none; }
+.lmd-lk-q:focus { border-color: var(--accent-fill); }
+.lmd-lk-list { height: min(300px, 42vh); overflow-y: auto; margin-bottom: 14px; padding: 4px; border: 1px solid var(--line); border-radius: 9px; }
+.lmd-lk-list[hidden] { display: none; }
+.lmd-ask-card .lmd-lk-list p.lmd-empty { margin: 0; padding: 9px 10px; font-size: 13.5px; }
+.lmd-lk-row { display: flex; align-items: center; gap: 9px; width: 100%; min-width: 0; padding: 6px 9px; border: 0; border-radius: 7px; background: transparent; color: var(--fg-muted); font: inherit; font-size: 13.8px; text-align: left; cursor: pointer; }
+.lmd-lk-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lmd-lk-row small { margin-left: auto; padding-left: 10px; flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-faint); font-size: 12px; }
+.lmd-lk-row svg, .lmd-lk-tog svg, .lmd-lk-mark svg { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-lk-row i { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--fg-faint); }
+.lmd-lk-row:hover, .lmd-lk-row.lmd-on { background: var(--accent-soft); color: var(--fg); }
+.lmd-lk-row.lmd-on { color: var(--accent); }
+.lmd-lk-row.lmd-on i { background: var(--accent-fill); }
+.lmd-lk-l1 { color: var(--fg); font-weight: 600; }
+.lmd-lk-l2 { padding-left: 25px; }
+.lmd-lk-l3 { padding-left: 41px; font-size: 13px; }
+.lmd-lk-l4 { padding-left: 57px; font-size: 13px; }
+.lmd-lk-file { display: flex; align-items: center; gap: 2px; }
+.lmd-lk-file .lmd-lk-row { flex: 1; color: var(--fg); }
+.lmd-lk-tog { flex: none; width: 26px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--fg-faint); display: grid; place-items: center; cursor: pointer; }
+.lmd-lk-tog:hover { background: var(--bg-soft); color: var(--fg); }
+.lmd-lk-tog svg { transition: transform 0.12s ease; }
+.lmd-lk-file.lmd-open .lmd-lk-tog svg { transform: rotate(90deg); }
+.lmd-lk-sub { margin-left: 28px; width: calc(100% - 28px); font-weight: 400; }
+.lmd-ask-card .lmd-lk-list p.lmd-lk-sub { padding-left: 9px; }
+.lmd-lk-actions { align-items: center; justify-content: flex-start; }
+.lmd-lk-gap { flex: 1; }
+.lmd-lk-mark { display: inline-flex; align-items: center; gap: 8px; }
+.lmd-lk-mark[hidden] { display: none; }
+.lmd-lk-actions .lmd-lk-remove { color: #dc2626; font-size: 13.5px; }
+.lmd-format-label { display: none; }
+.lmd-format-link button:not([data-fmt=link]) { display: none; }
+.lmd-format-link button { display: flex; align-items: center; gap: 7px; padding: 0 10px; }
+.lmd-format-link .lmd-format-label { display: inline; font-size: 13px; }
+/* Marcar en el documento: los títulos quedan resaltados y lo demás se apaga. */
+.lmd-pickbar { position: fixed; left: 50%; bottom: 52px; transform: translateX(-50%); z-index: 65; display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 32px); padding: 9px 10px 9px 16px; border: 1px solid var(--accent-fill); border-radius: 12px; background: var(--bg); color: var(--fg); box-shadow: var(--shadow); font: 13.5px/1.4 var(--lmd-font); }
+.lmd-pickbar .lmd-btn { padding: 5px 11px; font-size: 13px; }
+.lmd-picking .lmd-article > *:not(h1, h2, h3, h4, h5, h6) { opacity: 0.4; }
+.lmd-picking .lmd-article :is(h1, h2, h3, h4, h5, h6) { cursor: pointer; border-radius: 6px; outline: 1.5px dashed var(--accent-fill); outline-offset: 5px; }
+.lmd-picking .lmd-article :is(h1, h2, h3, h4, h5, h6):hover { background: var(--accent-soft); outline-style: solid; }
+.lmd-picking .lmd-handle, .lmd-picking .lmd-add, .lmd-picking .lmd-format { display: none !important; }
+.lmd-wikibox button svg { width: 15px; height: 15px; vertical-align: -2px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-wikibox button span { font-size: 13px; color: var(--fg-faint); }
+.lmd-wikibox button em { flex: 1; min-width: 0; font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lmd-wikibox button small { font-family: inherit; font-size: 12px; }
+@media print { .lmd-pickbar, .lmd-lk { display: none !important; } }
+.lmd-menu.lmd-menu-read { width: 262px; }
+.lmd-menu-read button svg circle { fill: none; stroke: currentColor; }
+
+/* ---------- Cuenta: qué anda sin ella, y el formulario para entrar ---------- */
+.lmd-perks { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 12px; font-size: 13px; line-height: 1.45; }
+.lmd-perks dt { color: var(--fg); font-weight: 600; white-space: nowrap; }
+.lmd-perks dd { margin: 0; color: var(--fg-muted); }
+.lmd-signin p { margin: 0 0 9px; }
+.lmd-acct .lmd-signin { margin-top: 14px; font-size: 13.5px; color: var(--fg-muted); }
+.lmd-acct .lmd-signin input { flex: 1; min-width: 0; height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--fg); font: inherit; outline: none; }
+.lmd-acct .lmd-signin input:focus { border-color: var(--accent-fill); }
+.lmd-acct .lmd-signin input[aria-invalid=true] { border-color: #dc2626; }
+.lmd-acct .lmd-signin .lmd-home-cloud-err { margin: 8px 0 0; font-size: 13px; }
+
 /* ---------- Editor de diagramas: piezas y volver atrás ---------- */
 .lmd-dgm-add { margin-top: 6px; }
 .lmd-dgm-add[hidden], .lmd-dgm-back[hidden] { display: none; }

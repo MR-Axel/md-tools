@@ -41,6 +41,7 @@
     b_board: '<svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="5" height="15" rx="1.2"/><rect x="10" y="4.5" width="5" height="10" rx="1.2"/><rect x="16.5" y="4.5" width="4" height="7" rx="1.2"/></svg>',
     b_alert: '<svg viewBox="0 0 24 24"><path d="M12 4.5 3.5 19h17z"/><path d="M12 10v4M12 16.500v.200"/></svg>',
     b_image: '<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="m4.5 17.5 5-4.5 3.5 3 2.5-2 4 3.5"/></svg>',
+    b_link: '<svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>',
     b_hr: '<svg viewBox="0 0 24 24"><path d="M4 12h16M8 7h8M8 17h8" opacity=".999"/></svg>',
     cloud: '<svg viewBox="0 0 24 24"><path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96 6 6 0 0 1 11.5 1.300A3.85 3.85 0 0 1 17.5 18.500z"/></svg>',
     cloudOk: '<svg viewBox="0 0 24 24"><path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96 6 6 0 0 1 11.5 1.300A3.85 3.85 0 0 1 17.5 18.500z"/><path d="m9.5 13.5 2 2 3.5-3.5"/></svg>',
