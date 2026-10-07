@@ -2,6 +2,6 @@
   "name": "sharpmd-tests",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node smoke.mjs && node writing.mjs && node diagrams.mjs && node extras.mjs && node data.mjs && node insert.mjs && node links.mjs && node server.mjs && node cloud.mjs && node settings.mjs && node ai.mjs && node shell.mjs && node mobile.mjs && node security.mjs" },
+  "scripts": { "test": "node smoke.mjs && node writing.mjs && node diagrams.mjs && node extras.mjs && node data.mjs && node insert.mjs && node links.mjs && node server.mjs && node cloud.mjs && node settings.mjs && node ai.mjs && node shell.mjs && node mobile.mjs && node security.mjs && node xss.mjs" },
   "devDependencies": { "playwright-core": "^1.50.0" }
 }
