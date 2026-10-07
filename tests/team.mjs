@@ -400,6 +400,40 @@ try {
   await olga.page.waitForFunction(() => !/pedro@ejemplo\.test/.test(document.querySelector('.lmd-team').innerText), null, { timeout: 10000 });
   check('y lo saca', (await acct(P)).team.mine === null && (await acct(P)).plan === 'free');
   await closePanel(olga.page);
+
+  // La papelera del equipo: lo que se elimina del espacio queda ahí, y se restaura desde el explorador.
+  await api('PUT', '/notes/' + enc('tacho.md') + '?o=' + SP, { text: '# Tacho\n' }, O.s);
+  await olga.page.goto(tUrl('plan.md')); await olga.page.waitForSelector('[data-root=team] .lmd-node:has-text("tacho.md")');
+  await olga.page.locator('[data-root=team] .lmd-node', { hasText: 'tacho.md' }).click({ button: 'right' }); await olga.page.click('.lmd-menu [data-f=del]'); await olga.page.waitForSelector('.lmd-dlg');
+  const delText = await olga.page.textContent('.lmd-dlg-card p');
+  await olga.page.click('.lmd-dlg [data-dlg=ok]');
+  await olga.page.waitForFunction(() => ![...document.querySelectorAll('[data-root=team] .lmd-node-name')].some((n) => n.textContent === 'tacho.md'));
+  await olga.page.click('[data-root=team] > .lmd-trash-link'); await olga.page.waitForSelector('.lmd-trash li');
+  const tbin = await olga.page.evaluate(() => ({ title: document.querySelector('.lmd-trash h3').textContent, rows: [...document.querySelectorAll('.lmd-trash li b')].map((b) => b.textContent), all: document.querySelector('.lmd-trash').innerText }));
+  const ownBin = (await api('GET', '/trash', undefined, O.s)).json.length;
+  check('eliminar una nota del equipo la manda a la papelera del equipo, no a la personal', /30 days/.test(delText) && tbin.title === 'Team trash' && tbin.rows.join() === 'tacho.md' && ownBin === 0, [delText, tbin, ownBin]);
+  check('los textos de la papelera no llevan signos de admiración ni rayas largas', !/[!¡—–]/.test(tbin.all + delText), tbin.all);
+  await olga.page.click('.lmd-trash [data-tr=back]');
+  await olga.page.waitForSelector('[data-root=team] .lmd-node:has-text("tacho.md")');
+  check('y desde ahí vuelve al espacio del equipo', (await api('GET', '/notes/' + enc('tacho.md') + '?o=' + SP, undefined, O.s)).json.text === '# Tacho\n' && (await api('GET', '/trash?o=' + SP, undefined, O.s)).json.length === 0);
+  await olga.page.click('.lmd-trash [data-tr=no]');
+
+  // Eliminar la cuenta con el cobro del equipo activo: no se borra, y dice qué hacer antes.
+  await olga.page.evaluate(() => document.querySelector('[data-act=settings]').click()); await olga.page.waitForSelector('.lmd-panel-card'); await olga.page.click('[data-ptab=cloud]');
+  await olga.page.waitForSelector('[data-acct=cloud] [data-c=delete]'); await olga.page.click('[data-acct=cloud] [data-c=delete]'); await olga.page.waitForSelector('.lmd-dlg input');
+  const askDel = await olga.page.evaluate(() => document.querySelector('.lmd-dlg').innerText);
+  await olga.page.fill('.lmd-dlg input', O.email); await olga.page.keyboard.press('Enter');
+  await olga.page.waitForSelector('.lmd-dlg .lmd-dlg-link a');
+  const blocked = await olga.page.evaluate(() => {
+    const d = document.querySelector('.lmd-dlg'); const link = d.querySelector('.lmd-dlg-link');
+    const out = { title: d.querySelector('h3').textContent, text: d.querySelector('p').textContent, href: link.querySelector('a').href, buttons: d.querySelectorAll('.lmd-ask-actions button').length, shown: link.offsetParent !== null, all: d.innerText };
+    document.documentElement.classList.add('lmd-store-app'); out.inStore = link.offsetParent !== null; document.documentElement.classList.remove('lmd-store-app');
+    return out;
+  });
+  check('eliminar la cuenta con el cobro del equipo activo avisa que primero se cancela, con el enlace al portal', blocked.title === 'Cancel the team subscription first' && /Cancel it, then delete the account/.test(blocked.text) && blocked.href.startsWith(PORTAL) && blocked.buttons === 1 && blocked.shown && (await acct(O)).email === O.email && (await acct(O)).team.mine.role === 'admin', blocked);
+  check('dentro de la app de la tienda ese aviso no muestra el enlace de pago', blocked.inStore === false);
+  check('los textos de eliminar la cuenta no llevan signos de admiración ni rayas largas', !/[!¡—–]/.test(askDel + blocked.all), [askDel, blocked.all]);
+  await olga.page.click('.lmd-dlg [data-dlg=ok]'); await closePanel(olga.page);
   await pedro.page.goto(R.home); await pedro.page.waitForSelector('.lmd-home'); await pedro.page.waitForTimeout(1200);
   check('a quien sacaron ya no le aparece el espacio del equipo', !(await pedro.page.$('[data-root=team]')));
   await pedro.ctx.close();
