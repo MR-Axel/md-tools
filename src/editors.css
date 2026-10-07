@@ -1,0 +1,77 @@
+/* Editores de diagramas y de fórmulas. Va después de content.css: comparte sus variables y pisa lo que
+   el editor de diagramas traía de antes. Nada depende de un ancho fijo: en pantallas angostas el código queda
+   arriba y la vista previa abajo. */
+
+/* La etiqueta de una relación (diagrama de datos) va sobre el fondo de la página: con el suyo, que es
+   semitransparente, sobre una página oscura queda gris y no se lee. */
+.lmd-diagram svg[aria-roledescription="er"] .labelBkg, .lmd-diagram svg[aria-roledescription="er"] .labelBkg .edgeLabel { background-color: var(--bg) !important; }
+
+/* ---------- Cuadro de código con números de línea ---------- */
+.lmd-ed-code { position: relative; display: flex; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-code); border-right: 1px solid var(--line); }
+.lmd-ed-gutter { flex: none; min-width: 40px; padding: 14px 0; text-align: right; font: 12px/21px var(--lmd-mono); color: var(--fg-faint); user-select: none; }
+.lmd-ed-gutter i { display: block; height: 21px; padding: 0 9px 0 6px; font-style: normal; }
+.lmd-ed-gutter i.lmd-ed-bad { color: #fff; background: #dc2626; border-radius: 0 5px 5px 0; font-weight: 700; }
+.lmd-ed-band { position: absolute; top: 0; left: 0; right: 0; height: 21px; background: rgba(220, 38, 38, 0.16); pointer-events: none; }
+.lmd-ed-band[hidden] { display: none; }
+.lmd-dgm-body .lmd-ed-code textarea { position: relative; flex: 1; min-width: 0; resize: none; border: 0; padding: 14px 16px 14px 8px; background: transparent; color: var(--fg); font: 13.5px/21px var(--lmd-mono); white-space: pre; overflow: auto; outline: none; tab-size: 2; }
+
+/* ---------- Cabecera: qué reemplaza todo (plantilla, colores) y qué suma una línea (agregar) ---------- */
+.lmd-dgm-card header { position: relative; }
+.lmd-dgm-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.lmd-dgm-top h3 { flex: 1 1 auto; margin: 0; }
+.lmd-dgm-menus { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.lmd-dgm-menus .lmd-btn { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; font-size: 13px; }
+.lmd-dgm-menus .lmd-btn[hidden] { display: none; }
+.lmd-dgm-menus .lmd-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-dgm-menus .lmd-btn[aria-expanded=true] { border-color: var(--accent-fill); color: var(--accent); }
+.lmd-dgm-menus .lmd-dgm-back { border-color: var(--accent-fill); color: var(--accent); }
+.lmd-dgm-dot { width: 12px; height: 12px; border: 2px solid var(--fg-faint); border-radius: 50%; }
+.lmd-dgm-drop { position: relative; }
+.lmd-dgm-pop { position: absolute; z-index: 5; top: calc(100% + 6px); right: 0; width: min(470px, calc(100vw - 32px)); max-height: min(64vh, 460px); overflow: auto; padding: 10px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+.lmd-dgm-pop[hidden] { display: none; }
+.lmd-dgm-pop > p { margin: 0 2px 8px; font-size: 12.5px; color: var(--fg-muted); }
+.lmd-dgm-pop > div { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.lmd-dgm-pop button { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 7px 8px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+.lmd-dgm-pop button:hover { background: var(--accent-soft); }
+.lmd-dgm-pop button.lmd-on { border-color: var(--accent-fill); }
+.lmd-dgm-tpls button svg { flex: none; width: 46px; height: 34px; padding: 3px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); fill: none; stroke: var(--fg-muted); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-dgm-tpls button span { min-width: 0; }
+.lmd-dgm-tpls button b { display: block; font-size: 13.5px; font-weight: 600; }
+.lmd-dgm-tpls button small { display: block; font-size: 12px; line-height: 1.3; color: var(--fg-faint); }
+.lmd-dgm-colors { width: min(300px, calc(100vw - 32px)); }
+.lmd-dgm-sw { flex: none; display: grid; place-items: center; width: 36px; height: 24px; border: 2px solid; border-radius: 6px; font: 600 11px var(--lmd-font); font-style: normal; }
+.lmd-dgm-sw-auto { background: var(--bg); border-color: var(--line); color: var(--fg-muted); }
+.lmd-dgm-add { display: flex; align-items: center; gap: 9px; margin-top: 10px; }
+.lmd-dgm-add > span { flex: none; font-size: 12px; color: var(--fg-faint); }
+.lmd-dgm-add > div { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
+.lmd-dgm-add button { flex: none; padding: 4px 11px 4px 8px; border: 1px dashed var(--fg-faint); border-radius: 999px; background: transparent; color: var(--fg-muted); font: inherit; font-size: 12.5px; cursor: pointer; }
+.lmd-dgm-add button::before { content: '+'; margin-right: 5px; font-weight: 700; color: var(--accent); }
+.lmd-dgm-add button:hover { border-style: solid; border-color: var(--accent-fill); color: var(--accent); }
+
+/* ---------- Errores: lo corto primero, el volcado detrás de "Ver detalle" ---------- */
+.lmd-dgm .lmd-dgm-err { margin: 0; padding: 10px 16px 12px; border-top: 1px solid #dc2626; background: rgba(220, 38, 38, 0.08); color: var(--fg); font: 13.5px/1.45 var(--lmd-font); white-space: normal; }
+.lmd-err-main, .lmd-err-hint { margin: 0; }
+.lmd-err-main b { display: inline-block; margin-right: 5px; padding: 1px 8px; border-radius: 999px; background: #dc2626; color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.lmd-err-main span { font-weight: 600; color: #dc2626; }
+.lmd-err-hint { margin-top: 3px; color: var(--fg-muted); }
+.lmd-err-main code, .lmd-err-hint code { padding: 1px 5px; border-radius: 4px; background: var(--bg-code); font: 12.5px var(--lmd-mono); white-space: pre-wrap; }
+.lmd-err-more { margin-top: 6px; font-size: 12.5px; }
+.lmd-err-more summary { width: fit-content; color: var(--fg-faint); cursor: pointer; }
+.lmd-err-more pre { margin: 6px 0 0; padding: 8px 10px; max-height: 120px; overflow: auto; border: 0; border-radius: 6px; background: var(--bg-code); color: var(--fg-muted); font: 12px/1.45 var(--lmd-mono); white-space: pre-wrap; }
+/* En el documento: el bloque que no se pudo dibujar muestra el aviso arriba del código. */
+.lmd-err-note { display: block; margin: 0 0 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line); font: 13.5px/1.45 var(--lmd-font); white-space: normal; cursor: default; }
+
+@media (max-width: 760px) {
+  .lmd-dgm { padding: 8px; }
+  .lmd-dgm-card header { padding: 10px 12px 8px; }
+  .lmd-dgm-card footer { flex-wrap: wrap; padding: 8px 12px; }
+  .lmd-dgm-card footer span, .lmd-dgm-card footer kbd { display: none; }
+  .lmd-dgm-card footer a { flex: 1 1 100%; }
+  .lmd-dgm-card footer .lmd-btn { flex: 1 1 auto; }
+  .lmd-ed-code { border-right: 0; border-bottom: 1px solid var(--line); }
+  .lmd-dgm-drop { position: static; }
+  .lmd-dgm-pop { top: auto; left: 8px; right: 8px; width: auto; margin-top: 6px; }
+  .lmd-dgm-add > div { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .lmd-dgm-add > div::-webkit-scrollbar { display: none; }
+}
+@media (max-width: 420px) { .lmd-dgm-pop > div { grid-template-columns: 1fr; } .lmd-dgm-colors > div { grid-template-columns: 1fr 1fr; } }

@@ -48,7 +48,8 @@
       "run_at": "document_end",
       "css": [
         "vendor/hljs-themes.css",
-        "src/content.css"
+        "src/content.css",
+        "src/editors.css"
       ],
       "js": [
         "src/defaults.js",

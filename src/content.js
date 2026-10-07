@@ -378,8 +378,8 @@
         if (n.hasAttribute('data-l')) box.setAttribute('data-l', n.getAttribute('data-l'));
         n.replaceWith(box);
       } catch (e) {
-        n.classList.add('lmd-mermaid-error');
-        n.title = String(e && e.message || e);
+        // El aviso corto arriba del código, y el volcado del parser detrás de "Ver detalle".
+        LMD.diagram.fail(n, 'mermaid', e);
         document.querySelectorAll('body > [id^="dlmd-mermaid-"]').forEach((x) => x.remove());
       }
     }
@@ -418,12 +418,10 @@
         const box = el('div', { class: 'lmd-diagram lmd-diagram-dot' });
         box.dataset.code = n.textContent; box.dataset.kind = 'dot';
         if (n.hasAttribute('data-l')) box.setAttribute('data-l', n.getAttribute('data-l'));
+        LMD.diagram.keepColors(svg);
         box.appendChild(svg);
         n.replaceWith(box);
-      } catch (e) {
-        n.classList.add('lmd-mermaid-error');
-        n.title = String(e && e.message || e);
-      }
+      } catch (e) { LMD.diagram.fail(n, 'dot', e); }
     }
   }
 

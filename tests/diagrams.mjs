@@ -22,7 +22,7 @@ await app.click('[data-dt=zoom]'); o.zoom = await app.evaluate(() => !document.q
 const [dl] = await Promise.all([app.waitForEvent('download'), app.click('[data-dt=svg]')]); o.svg = dl.suggestedFilename();
 await app.click('[data-act=mode-edit]'); await app.waitForTimeout(400);
 await app.click('.lmd-diagram'); await app.waitForSelector('.lmd-dgm-card'); await app.waitForSelector('.lmd-dgm-svg svg');
-await app.click('[data-tpl="1"]'); await app.waitForTimeout(1200);
+await app.click('[data-drop=tpl]'); await app.click('[data-tpl="1"]'); await app.waitForTimeout(1200);
 o.plantilla = await app.evaluate(() => ({ code: document.querySelector('.lmd-dgm textarea').value.split('\n')[0], svg: !!document.querySelector('.lmd-dgm-svg svg'), err: document.querySelector('.lmd-dgm-err').hidden }));
 await app.fill('.lmd-dgm textarea', 'graph LR\n  A --> '); await app.waitForTimeout(1200);
 o.error = await app.evaluate(() => ({ visible: !document.querySelector('.lmd-dgm-err').hidden, stale: document.querySelector('.lmd-dgm-svg').classList.contains('lmd-dgm-stale') }));
@@ -34,15 +34,15 @@ await app.locator('.lmd-article h1').click({ button: 'right' }); await app.click
 o.nuevo = await app.evaluate(() => document.querySelector('.lmd-dgm textarea').value.split('\n')[0]);
 // una plantilla no se lleva lo escrito: queda el botón para volver, y las piezas agregan una línea
 await app.fill('.lmd-dgm textarea', 'graph LR\n  Mio[Lo que escribí] --> Otro'); await app.waitForTimeout(300);
-await app.click('.lmd-dgm [data-tpl="1"]'); await app.waitForTimeout(300);
+await app.click('.lmd-dgm [data-drop=tpl]'); await app.click('.lmd-dgm [data-tpl="1"]'); await app.waitForTimeout(300);
 o.tplCambio = await app.evaluate(() => ({ texto: document.querySelector('.lmd-dgm textarea').value.includes('Lo que escribí'), volver: !document.querySelector('.lmd-dgm [data-dgm-back]').hidden }));
 await app.click('.lmd-dgm [data-dgm-back]'); await app.waitForTimeout(300);
 o.tplVolvio = await app.evaluate(() => document.querySelector('.lmd-dgm textarea').value);
 await app.click('.lmd-dgm [data-piece="1"]'); await app.waitForTimeout(300);
 o.pieza = await app.evaluate(() => document.querySelector('.lmd-dgm textarea').value);
-await app.fill('.lmd-dgm textarea', 'sequenceDiagram\n  A->>B: hola'); await app.waitForTimeout(200);
+await app.fill('.lmd-dgm textarea', 'journey\n  title Un tipo sin piezas'); await app.waitForTimeout(200);
 o.piezasOcultas = await app.evaluate(() => document.querySelector('.lmd-dgm-add').hidden);
-await app.click('.lmd-dgm [data-tpl="0"]'); await app.waitForTimeout(600);
+await app.click('.lmd-dgm [data-drop=tpl]'); await app.click('.lmd-dgm [data-tpl="0"]'); await app.waitForTimeout(600);
 await app.keyboard.press('Escape'); await app.waitForTimeout(300);
 o.cerrado = await app.evaluate(() => !document.querySelector('.lmd-dgm'));
 await app.hover('.lmd-diagram'); await app.waitForSelector('.lmd-handle:not([hidden])');
@@ -53,7 +53,7 @@ o.borrado = [antes, await app.locator('.lmd-diagram').count(), /mermaid/.test(aw
 const J = (v) => JSON.stringify(v);
 const checks = [
   ['una plantilla no borra lo escrito sin poder volver', o.tplCambio && !o.tplCambio.texto && o.tplCambio.volver && o.tplVolvio === 'graph LR\n  Mio[Lo que escribí] --> Otro', [o.tplCambio, o.tplVolvio]],
-  ['las piezas agregan una línea al diagrama de flujo y no aparecen en otros tipos', /Otro\n  Q\{Question\?\}\n$/.test(o.pieza || '') && o.piezasOcultas === true, [o.pieza, o.piezasOcultas]],
+  ['las piezas agregan una línea al diagrama de flujo y no aparecen en un tipo sin piezas', /Otro\n  Otro --> A\{¿Pregunta\?\}\n$/.test(o.pieza || '') && o.piezasOcultas === true, [o.pieza, o.piezasOcultas]],
   ['ampliar y descargar el SVG', o.zoom && o.svg === 'doc-diagrama.svg', o.svg],
   ['las plantillas se dibujan al elegirlas', o.plantilla.code === 'sequenceDiagram' && o.plantilla.svg && o.plantilla.err, o.plantilla],
   ['un error de sintaxis se muestra sin perder el último dibujo', o.error.visible && o.error.stale, o.error],
