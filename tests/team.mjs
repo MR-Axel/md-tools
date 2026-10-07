@@ -447,6 +447,50 @@ try {
   check('quien no está en un equipo ve el plan de equipo como una opción más, con su enlace de pago y la dirección a la que volver', !offer.on && offer.pay.startsWith('https://pago.ejemplo.test/pay.html?plan=team&email=' + enc(C.email) + '&back=') && offer.label === 'USD 7.98 / month' && !offer.mgmt && !offer.root, offer);
   await carla.ctx.close();
 
+  // ---------- Página de pago y portada ----------
+  console.log('Página de pago y portada');
+  const PHONE = { viewport: { width: 360, height: 740 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
+  const shop = watch(await R.open(null, PHONE));
+  // Paddle.js no se carga de verdad: un doble anota con qué se abriría el checkout.
+  await shop.ctx.route((url) => url.hostname === 'cdn.paddle.com', (r) => r.fulfill({ contentType: 'text/javascript', body: 'window.Paddle = { Initialize: function (o) { window.__init = o; }, Checkout: { open: function (o) { window.__open = o; } } };' }));
+  const sections = () => shop.page.evaluate(() => [...document.querySelectorAll('main section')].filter((s) => !s.hidden).map((s) => s.id));
+  const sideways = () => shop.page.evaluate(() => ({ over: document.documentElement.scrollWidth - innerWidth, out: [...document.querySelectorAll('main a, main button')].filter((n) => n.offsetParent).filter((n) => { const b = n.getBoundingClientRect(); return b.left < 0 || b.right > innerWidth; }).length }));
+  await shop.page.goto(R.origin + '/pay.html?plan=team&email=' + enc('ana@ejemplo.test')); await shop.page.waitForTimeout(300);
+  check('pay.html: mientras no estén cargados los precios del equipo, no ofrece pagarlo', (await sections()).join() === 'noteam' && !(await shop.page.evaluate(() => window.__open)));
+  await shop.page.goto(R.origin + '/pay.html?plan=monthly&email=' + enc('ana@ejemplo.test')); await shop.page.waitForTimeout(300);
+  check('pay.html: y el plan individual no lo menciona', (await sections()).join() === 'buy' && (await shop.page.evaluate(() => document.getElementById('team').hidden && document.getElementById('amount').textContent === 'USD 3.99')));
+  // Con los dos precios puestos en la página (acá, de prueba), el plan de equipo se arma con sus dos ítems.
+  await shop.ctx.route((url) => url.pathname === '/pay.html', async (r) => { const res = await r.fetch(); const body = (await res.text()).replace("var TEAM = { base: '', seat: ''", "var TEAM = { base: '" + BASE + "', seat: '" + SEAT + "'"); await r.fulfill({ response: res, body }); });
+  await shop.page.goto(R.origin + '/pay.html?plan=team&email=' + enc('ana@ejemplo.test')); await shop.page.waitForSelector('#buy:not([hidden])');
+  const teamPay = await shop.page.evaluate(() => ({ title: document.querySelector('#buy h1').innerText.trim(), amount: document.getElementById('amount').textContent, cycle: document.getElementById('cycle').textContent, seats: document.getElementById('seats').textContent, less: document.getElementById('less').disabled, text: document.getElementById('buy').innerText, other: document.getElementById('other').textContent }));
+  check('pay.html: el plan de equipo muestra su precio para 2 personas, mensual', teamPay.title === 'Team plan' && teamPay.amount === 'USD 7.98' && teamPay.cycle === 'a month' && teamPay.seats === '2' && teamPay.less && /USD 3 a month for each extra one/.test(teamPay.text) && /Individual plan: USD 3\.99 a month/.test(teamPay.other) && !/[!¡—–]/.test(teamPay.text), teamPay);
+  check('pay.html: entra en el ancho de un teléfono', (await sideways()).over <= 0 && (await sideways()).out === 0, await sideways());
+  await shop.page.click('#go');
+  const forTwo = await shop.page.evaluate(() => window.__open);
+  check('pay.html: para 2 personas el checkout lleva solo el precio base, a nombre de la cuenta', JSON.stringify(forTwo.items) === JSON.stringify([{ priceId: BASE, quantity: 1 }]) && forTwo.customData.sharpmd_email === 'ana@ejemplo.test' && forTwo.customer.email === 'ana@ejemplo.test', forTwo);
+  await shop.page.click('#more'); await shop.page.click('#more'); await shop.page.click('#more');
+  check('pay.html: al sumar personas el precio se actualiza', (await shop.page.textContent('#amount')) === 'USD 16.98' && (await shop.page.textContent('#seats')) === '5');
+  await shop.page.click('#go');
+  const five = await shop.page.evaluate(() => window.__open);
+  check('pay.html: y el checkout suma el precio por lugar con esa cantidad', JSON.stringify(five.items) === JSON.stringify([{ priceId: BASE, quantity: 1 }, { priceId: SEAT, quantity: 3 }]), five.items);
+  await shop.page.goto(R.origin + '/pay.html?plan=monthly&email=' + enc('ana@ejemplo.test')); await shop.page.waitForSelector('#buy:not([hidden])');
+  const cross = await shop.page.evaluate(() => ({ hidden: document.getElementById('team').hidden, href: document.getElementById('team').getAttribute('href'), text: document.getElementById('team').innerText }));
+  check('pay.html: desde el plan individual se llega al de equipo', !cross.hidden && /^pay\.html\?plan=team&email=ana%40ejemplo\.test$/.test(cross.href) && /Team plan: USD 7\.98 a month for 2 people/.test(cross.text) && (await sideways()).out === 0, cross);
+  // La portada, en inglés y en castellano, en teléfono y en escritorio.
+  const plansOf = (page) => page.evaluate(() => ({ plans: [...document.querySelectorAll('#plans .plan')].map((p) => ({ name: p.querySelector('h3').textContent, price: p.querySelector('.price').textContent.replace(/\s+/g, ' ').trim(), left: Math.round(p.getBoundingClientRect().left), top: Math.round(p.getBoundingClientRect().top), right: Math.round(p.getBoundingClientRect().right) })), over: document.documentElement.scrollWidth - innerWidth, w: innerWidth, text: document.querySelector('#plans').innerText }));
+  await shop.page.goto(R.origin + '/index.html?site'); await shop.page.waitForSelector('#plans .plan');
+  const landPhone = await plansOf(shop.page);
+  check('portada: el plan de equipo es la tercera columna, y en un teléfono las tres quedan una debajo de otra sin desbordar', landPhone.plans.length === 3 && landPhone.plans[2].name === 'Team' && landPhone.plans[2].price === 'USD 7.98 a month' && new Set(landPhone.plans.map((p) => p.left)).size === 1 && landPhone.plans.every((p) => p.right <= landPhone.w) && landPhone.over <= 0 && /2 people included, USD 3 for each extra one/.test(landPhone.text), landPhone.plans);
+  await shop.page.goto(R.origin + '/es/index.html?site'); await shop.page.waitForSelector('#plans .plan');
+  const landEs = await plansOf(shop.page);
+  check('portada en castellano: lo mismo', landEs.plans.length === 3 && landEs.plans[2].name === 'Equipo' && landEs.plans[2].price === 'USD 7.98 por mes' && landEs.over <= 0 && /2 personas incluidas, USD 3 por cada una más/.test(landEs.text) && !/[!¡—–]/.test(landEs.text), landEs.plans);
+  await shop.ctx.close();
+  const desk = await R.open(null);
+  await desk.page.goto(R.origin + '/index.html?site'); await desk.page.waitForSelector('#plans .plan');
+  const landDesk = await plansOf(desk.page);
+  check('portada en escritorio: las tres columnas en una fila', landDesk.plans.length === 3 && new Set(landDesk.plans.map((p) => p.top)).size === 1 && landDesk.over <= 0, landDesk.plans);
+  await desk.ctx.close();
+
   check('nunca se usó alert, confirm ni prompt del navegador', !natives.length, natives);
   check('Paddle solo recibió cambios de lugares, siempre con la clave', paddleCalls.every((c) => c.method === 'PATCH' && c.auth === 'Bearer ' + KEY));
   check('sin errores de página', !R.errors.length, R.errors);

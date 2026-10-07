@@ -1209,18 +1209,18 @@ function teamCut(spaceId, userId) {
   for (const [key, room] of rooms) if (key.startsWith(spaceId + ':')) for (const c of Array.from(room)) if (c.uid === userId) c.res.end();
 }
 // Crea el equipo de esa cuenta o lo vuelve a poner al día, con esa cantidad de lugares. sub es la suscripción que
-// lo paga, si hay una. Quien arma su equipo estando en otro como miembro sale del otro: es un equipo a la vez.
+// lo paga, si hay una. Quien ya es miembro de otro equipo no sale de ahí porque llegue un pago a su nombre (lo
+// pudo hacer cualquiera): no se crea nada y devuelve null. Su equipo nace cuando sale del otro.
 function teamOpen(user, seats, sub) {
   seats = Math.max(TEAM_INCLUDED, Math.min(TEAM_MAX_SEATS, seats));
   const t = q('SELECT * FROM teams WHERE owner = ?').get(user.id);
+  if (!t && teamOf(user.id)) return null;
   db.exec('BEGIN');
   try {
     if (t) {
       q("UPDATE teams SET seats = ?, sub = COALESCE(?, sub), status = 'active' WHERE id = ?").run(seats, sub || null, t.id);
       q("UPDATE users SET plan = 'pro' WHERE id = ?").run(t.space);
     } else {
-      const other = teamOf(user.id);
-      if (other) { q('DELETE FROM team_members WHERE user = ?').run(user.id); teamCut(other.space, user.id); }
       const space = Number(q("INSERT INTO users (email, plan, created) VALUES (?, 'pro', ?)").run('team:' + random(12), now()).lastInsertRowid);
       const id = Number(q("INSERT INTO teams (owner, space, seats, sub, status, created) VALUES (?, ?, ?, ?, 'active', ?)").run(user.id, space, seats, sub || null, now()).lastInsertRowid);
       q('INSERT INTO team_members (team, user, joined) VALUES (?, ?, ?)').run(id, user.id, now());
@@ -1240,6 +1240,7 @@ function teamBilled(user, sub, active, items) {
   if (active) {
     const extra = items.find((i) => i.price.id === TEAM_SEAT);
     const t = teamOpen(user, TEAM_INCLUDED + Math.max(0, Math.floor(+(extra && extra.quantity) || 0)), sub);
+    if (!t) { console.error('paddle: suscripción de equipo para una cuenta que ya está en otro equipo · ' + sub.slice(0, 60)); return { ignored: 'in_team' }; }
     return { team: t.id, seats: t.seats };
   }
   const t = q('SELECT * FROM teams WHERE owner = ?').get(user.id);
@@ -1322,6 +1323,10 @@ function teamDrop(t, userId) {
   const r = q('DELETE FROM team_members WHERE team = ? AND user = ?').run(t.id, userId);
   if (!r.changes) throw new Fail(404, 'not_found');
   teamCut(t.space, userId);
+  // Si tenía paga una suscripción de equipo que esperaba a que saliera de este, su equipo nace ahora, con los lugares
+  // que cubre el precio base. El próximo aviso de Paddle trae la cantidad real.
+  const paid = q("SELECT id FROM paddle_subs WHERE user = ? AND kind = 'team' AND status = 'active' ORDER BY at DESC LIMIT 1").get(userId);
+  if (paid) teamOpen({ id: userId }, TEAM_INCLUDED, paid.id);
   return { ok: true };
 }
 // Cambiar los lugares es cambiar la suscripción en Paddle, con prorrateo en el momento: un ítem con el precio base
@@ -1441,6 +1446,7 @@ async function route(req, url) {
       if (!Number.isInteger(b.seats) || b.seats < 0) throw new Fail(400, 'bad_seats');
       if (!b.seats) { const t = q('SELECT * FROM teams WHERE owner = ?').get(owner.id); if (!t) throw new Fail(404, 'not_found'); teamShut(t); return { ok: true }; }
       const t = teamOpen(owner, b.seats, null);
+      if (!t) throw new Fail(409, 'in_team');
       return { ok: true, team: t.id, seats: t.seats };
     }
     const r = q('UPDATE users SET plan = ? WHERE email = ?').run(b.plan === 'pro' ? 'pro' : 'free', cleanEmail(b.email));

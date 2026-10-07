@@ -38,6 +38,7 @@
 
 - Free: the whole editor, unlimited files and browser notes, 10 notes in the cloud.
 - Paid: USD 3.99 a month or USD 39 a year. Unlimited cloud notes, sharing and public links, live sessions, the MCP connection, 30 days of version history, and colors, fonts and custom CSS.
+- Team: USD 7.98 a month for 2 people, USD 3 a month for each extra one, monthly only. Every member has the paid plan while they belong to the team. Whoever pays manages it: invites by email, removes members and changes the number of seats. The team has a shared space of notes that every member reads and edits, with revisions and history. Over MCP those notes are under `@team/` for the token of each member. A person is in one team at a time, and leaving or a cancelled subscription sends them back to their own plan with their notes intact.
 
 ## Privacy
 

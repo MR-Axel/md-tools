@@ -31,7 +31,7 @@ function build(lang) {
   if (faq.length < 3) throw new Error('no se encontraron las preguntas frecuentes');
   const app = { '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'SharpMD', url: m.url, applicationCategory: 'ProductivityApplication', operatingSystem: 'Web, Chrome, Edge, Brave',
     description: m.desc, inLanguage: lang, image: SITE + '/docs/store/1-reader.png', screenshot: SITE + '/docs/store/2-editing.png', isAccessibleForFree: true,
-    offers: [{ '@type': 'Offer', name: 'Free', price: '0', priceCurrency: 'USD' }, { '@type': 'Offer', name: 'Paid', price: '3.99', priceCurrency: 'USD' }],
+    offers: [{ '@type': 'Offer', name: 'Free', price: '0', priceCurrency: 'USD' }, { '@type': 'Offer', name: 'Paid', price: '3.99', priceCurrency: 'USD' }, { '@type': 'Offer', name: 'Team', price: '7.98', priceCurrency: 'USD' }],
     license: 'https://opensource.org/licenses/MIT', codeRepository: 'https://github.com/MR-Axel/sharpmd' };
   const head = [
     '<title>' + esc(m.title) + '</title>',
