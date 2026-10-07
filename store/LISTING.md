@@ -1,9 +1,9 @@
-# Chrome Web Store: ficha de MD Tools
+# Chrome Web Store: ficha de Sharpmd
 
 Todo lo que pide el panel de desarrollador, listo para copiar. El paquete se arma con:
 
 ```
-git archive --format=zip -o dist/md-tools.zip HEAD
+git archive --format=zip -o dist/sharpmd.zip HEAD
 ```
 
 Ese ZIP deja afuera las pruebas, las capturas, la página de presentación y este archivo (ver `.gitattributes`).
@@ -12,12 +12,12 @@ Ese ZIP deja afuera las pruebas, las capturas, la página de presentación y est
 
 | Campo | Valor |
 |---|---|
-| Nombre | MD Tools: Markdown reader & editor |
+| Nombre | Sharpmd: Markdown reader & editor |
 | Categoría | Productivity → Tools (Herramientas) |
 | Idioma principal | English |
-| Sitio web | https://mr-axel.github.io/md-tools/ |
-| Política de privacidad | https://mr-axel.github.io/md-tools/privacy.html |
-| Soporte | https://github.com/MR-Axel/md-tools/issues |
+| Sitio web | https://mr-axel.github.io/sharpmd/ |
+| Política de privacidad | https://mr-axel.github.io/sharpmd/privacy.html |
+| Soporte | https://github.com/MR-Axel/sharpmd/issues |
 
 ## Descripción corta (máximo 132 caracteres)
 
@@ -29,7 +29,7 @@ El panel la toma del manifest, que ya la tiene en inglés y en español:
 ## Descripción larga (English)
 
 ```
-MD Tools opens Markdown files in the browser and lets you edit them on the formatted text.
+Sharpmd opens Markdown files in the browser and lets you edit them on the formatted text.
 
 Set Chrome as the default app for .md files and a double-click opens them with an outline, the folder they live in and search. Click the extension icon to start a new note or to open a file or a whole folder.
 
@@ -60,7 +60,7 @@ FILES
 PRIVATE BY DESIGN
 Files are read in your browser and never uploaded. There is no account, no analytics and no server.
 
-Free and open source (MIT): https://github.com/MR-Axel/md-tools
+Free and open source (MIT): https://github.com/MR-Axel/sharpmd
 
 After installing, open the extension details and turn on "Allow access to file URLs" so it can open local files.
 ```
@@ -68,7 +68,7 @@ After installing, open the extension details and turn on "Allow access to file U
 ## Descripción larga (Español)
 
 ```
-MD Tools abre archivos Markdown en el navegador y te deja editarlos sobre el texto ya formateado.
+Sharpmd abre archivos Markdown en el navegador y te deja editarlos sobre el texto ya formateado.
 
 Poné Chrome como programa por defecto para los .md y con doble clic se abren con el índice, la carpeta donde están y un buscador. Desde el ícono de la extensión arrancás una nota nueva o abrís un archivo o una carpeta entera.
 
@@ -99,7 +99,7 @@ ARCHIVOS
 PRIVACIDAD
 Los archivos se leen en tu navegador y nunca se suben. No hay cuenta, analítica ni servidor.
 
-Gratis y de código abierto (MIT): https://github.com/MR-Axel/md-tools
+Gratis y de código abierto (MIT): https://github.com/MR-Axel/sharpmd
 
 Después de instalarla, abrí los detalles de la extensión y activá "Permitir acceso a URL de archivo" para que pueda abrir archivos locales.
 ```
@@ -121,7 +121,7 @@ Capturas de 1280x800, en `docs/store/` (se regeneran con `node tests/shots.mjs`)
 **Propósito único**
 
 ```
-MD Tools renders Markdown files in the browser and lets the user edit and save them.
+Sharpmd renders Markdown files in the browser and lets the user edit and save them.
 ```
 
 **Justificación de permisos**

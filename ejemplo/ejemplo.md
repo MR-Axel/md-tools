@@ -1,11 +1,11 @@
 ---
 name: ejemplo
-description: Documento de prueba de MD Tools
+description: Documento de prueba de Sharpmd
 metadata:
   type: reference
 ---
 
-# MD Tools: documento de prueba
+# Sharpmd: documento de prueba
 
 [[toc]]
 
@@ -58,7 +58,7 @@ Código `en línea`.
 
 | Campo | Valor |
 |---|---|
-| Nombre | MD Tools |
+| Nombre | Sharpmd |
 | Precio | $0 |
 
 ## Matemática
@@ -75,7 +75,7 @@ Un precio como $5 y otro de $10 no deberían romperse.
 
 ```mermaid
 graph LR
-  A[Archivo .md] --> B{MD Tools}
+  A[Archivo .md] --> B{Sharpmd}
   B --> C[Índice]
   B --> D[Carpeta]
 ```

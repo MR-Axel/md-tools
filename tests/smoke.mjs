@@ -46,7 +46,7 @@ try {
   await page.click('.lmd-tab[data-tab=files]'); await page.waitForSelector('.lmd-node');
   const tree = await page.evaluate(() => [...document.querySelectorAll('.lmd-node')].map((n) => n.textContent.trim() + (n.classList.contains('lmd-active') ? '*' : '')));
   check('árbol de la carpeta', tree.includes('ejemplo.md*') && tree.includes('sub'), tree);
-  await page.fill('.lmd-search input', 'MD Tools'); await page.waitForSelector('.lmd-results-sum');
+  await page.fill('.lmd-search input', 'Sharpmd'); await page.waitForSelector('.lmd-results-sum');
   await page.waitForFunction(() => /\d/.test(document.querySelector('.lmd-results-sum').textContent), null, { timeout: 15000 });
   check('búsqueda en la carpeta', /coincidencia/.test(await page.textContent('.lmd-results-sum')), await page.textContent('.lmd-results-sum'));
   await page.fill('.lmd-search input', '');
@@ -67,7 +67,7 @@ try {
   check('panel de ajustes', sections.join('|') === 'Apariencia|Lectura|Edición|Carpeta|Plugins de Markdown|CSS propio|Actualizaciones|Nube', sections);
   await page.close();
 
-  console.log('Página propia de MD Tools');
+  console.log('Página propia de Sharpmd');
   const app = await ctx.newPage(); watch(app);
   await app.goto(`chrome-extension://${id}/src/app.html`); await app.waitForSelector('.lmd-home');
   check('pantalla de inicio: nuevo, abrir archivo y abrir carpeta', (await app.locator('.lmd-home-actions [data-home]').count()) === 3);

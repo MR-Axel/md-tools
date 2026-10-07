@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "MD Tools: Markdown reader & editor",
-  "version": "2.22.0",
+  "name": "Sharpmd: Markdown reader & editor",
+  "version": "2.23.0",
   "description": "__MSG_ext_desc__",
   "icons": {
     "16": "icons/icon16.png",
@@ -10,7 +10,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "MD Tools",
+    "default_title": "Sharpmd",
     "default_popup": "src/popup.html"
   },
   "background": {
@@ -124,7 +124,7 @@
     }
   },
   "default_locale": "en",
-  "short_name": "MD Tools",
+  "short_name": "Sharpmd",
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   }

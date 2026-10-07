@@ -1,5 +1,5 @@
 {
-  "name": "md-tools-tests",
+  "name": "sharpmd-tests",
   "private": true,
   "type": "module",
   "scripts": { "test": "node smoke.mjs && node writing.mjs && node diagrams.mjs && node extras.mjs && node data.mjs && node server.mjs && node cloud.mjs" },

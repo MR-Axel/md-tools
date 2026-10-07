@@ -1,12 +1,12 @@
-# MD Tools
+# Sharpmd
 
 English · [Español](README.es.md)
 
-**Try it without installing: [mr-axel.github.io/md-tools](https://mr-axel.github.io/md-tools/)**
+**Try it without installing: [mr-axel.github.io/sharpmd](https://mr-axel.github.io/sharpmd/)**
 
 A Chrome extension to read and edit Markdown files in the browser, local (`file://`) or served over the web. No accounts, no paid plan, no data sent anywhere: everything runs on your machine.
 
-![MD Tools](docs/reader.png)
+![Sharpmd](docs/reader.png)
 
 ![Editing a table cell in place](docs/editing.png)
 
@@ -22,9 +22,9 @@ A Chrome extension to read and edit Markdown files in the browser, local (`file:
 - **Find and replace** in the document while editing, one match or all.
 - **Focus mode and typewriter mode** (Settings → Editing): dim everything but the block you are writing, and keep the current line at mid height.
 - **Export to HTML**: one standalone file, with math as MathML.
-- **Files from the tree** (MD Tools page): new file, rename and delete with a right-click.
-- **Paste images** (MD Tools page): an image from the clipboard is saved to `assets/` next to the document and inserted.
-- **More than Markdown** (MD Tools page): code and config files open highlighted and are edited as text, CSV and TSV open as a table, and images open as images.
+- **Files from the tree** (Sharpmd page): new file, rename and delete with a right-click.
+- **Paste images** (Sharpmd page): an image from the clipboard is saved to `assets/` next to the document and inserted.
+- **More than Markdown** (Sharpmd page): code and config files open highlighted and are edited as text, CSV and TSV open as a table, and images open as images.
 - **Outline** built from the document headings: collapsible tree, current section highlighted, reading progress.
 - **Folder tree**: the Markdown files next to the open document, with subfolders and a button to go up a level.
 - **Auto-reload** when the file changes on disk, keeping your scroll position.
@@ -51,28 +51,28 @@ It is not on the Chrome Web Store yet. To load it from source:
 2. Open `chrome://extensions`.
 3. Turn on **Developer mode** (top right).
 4. Click **Load unpacked** and pick the folder.
-5. On the MD Tools card, open **Details** and turn on **Allow access to file URLs**. Without it, local files will not open.
+5. On the Sharpmd card, open **Details** and turn on **Allow access to file URLs**. Without it, local files will not open.
 6. If you have another Markdown extension installed, disable it so they do not both act on the same file.
 
 Then drag any `.md` file into the browser. `ejemplo/ejemplo.md` exercises every feature.
 
 It also works in other Chromium browsers (Edge, Brave, Arc) through the same steps.
 
-## Opening files from MD Tools itself
+## Opening files from Sharpmd itself
 
-Click the extension icon and choose **New** or **Open**. **New** starts an empty note ready to type; the first Ctrl+S asks where to save it. **Open** takes you to the MD Tools page, where you pick a file or a folder (or drag one in) and read and edit it right there. Because you already chose the folder, saving needs no extra permission step, and the page remembers what you opened recently.
+Click the extension icon and choose **New** or **Open**. **New** starts an empty note ready to type; the first Ctrl+S asks where to save it. **Open** takes you to the Sharpmd page, where you pick a file or a folder (or drag one in) and read and edit it right there. Because you already chose the folder, saving needs no extra permission step, and the page remembers what you opened recently.
 
 Opening a `.md` directly in the browser keeps working as before. The folder tab of the sidebar has a button that takes you to this page.
 
 ## Without installing anything
 
-The MD Tools page is plain HTML and JavaScript, so it also runs served from any static host, with no extension. In Chrome, Edge, Brave and other Chromium browsers it opens files and folders and saves in place. In Firefox and Safari, which do not let a page write to disk, it opens one file at a time and saving downloads a copy. Either way nothing is uploaded: the files are read in your browser.
+The Sharpmd page is plain HTML and JavaScript, so it also runs served from any static host, with no extension. In Chrome, Edge, Brave and other Chromium browsers it opens files and folders and saves in place. In Firefox and Safari, which do not let a page write to disk, it opens one file at a time and saving downloads a copy. Either way nothing is uploaded: the files are read in your browser.
 
-It is published at [mr-axel.github.io/md-tools](https://mr-axel.github.io/md-tools/). To run your own copy, serve this folder (`npx serve .`) and open the address it prints.
+It is published at [mr-axel.github.io/sharpmd](https://mr-axel.github.io/sharpmd/). To run your own copy, serve this folder (`npx serve .`) and open the address it prints.
 
 ## Updating
 
-Chrome cannot update an extension loaded from a folder, so MD Tools checks this repository once a day (or once a week, or never: Settings → Updates) and shows a notice in the sidebar, and in the popup of the extension icon, when there is a newer version. From there: download the ZIP, replace the extension folder with its contents and click **Apply**, which reloads the extension. If you cloned the repository, `git pull` and **Apply** is enough.
+Chrome cannot update an extension loaded from a folder, so Sharpmd checks this repository once a day (or once a week, or never: Settings → Updates) and shows a notice in the sidebar, and in the popup of the extension icon, when there is a newer version. From there: download the ZIP, replace the extension folder with its contents and click **Apply**, which reloads the extension. If you cloned the repository, `git pull` and **Apply** is enough.
 
 ## Shortcuts
 
@@ -88,11 +88,11 @@ Change them at `chrome://extensions/shortcuts`.
 
 ## Saving
 
-Chrome does not let an extension write to disk on its own, so the first time you save, MD Tools asks for permission. Pick the folder the file lives in, or one that contains it: from then on every Markdown file inside saves straight to itself, and the choice is remembered across sessions. Chrome may still show a one-click confirmation the first time in each session. You can also grant a single file instead of a folder.
+Chrome does not let an extension write to disk on its own, so the first time you save, Sharpmd asks for permission. Pick the folder the file lives in, or one that contains it: from then on every Markdown file inside saves straight to itself, and the choice is remembered across sessions. Chrome may still show a one-click confirmation the first time in each session. You can also grant a single file instead of a folder.
 
 ## Privacy
 
-MD Tools collects nothing and sends nothing. The single network request it makes is a daily check of the version number published in this repository, so it can tell you when there is an update. You can make it weekly or turn it off in Settings. Settings and reading positions are stored locally in the browser. The broad permissions exist for one reason each: `file:///*` and `*://*/*` so it can render Markdown wherever the file lives, and `scripting` to load KaTeX, Mermaid and Graphviz only when a document uses them.
+Sharpmd collects nothing and sends nothing. The single network request it makes is a daily check of the version number published in this repository, so it can tell you when there is an update. You can make it weekly or turn it off in Settings. Settings and reading positions are stored locally in the browser. The broad permissions exist for one reason each: `file:///*` and `*://*/*` so it can render Markdown wherever the file lives, and `scripting` to load KaTeX, Mermaid and Graphviz only when a document uses them.
 
 HTML produced from the Markdown goes through DOMPurify before it reaches the page.
 
@@ -108,7 +108,7 @@ src/
   theme.js        light or dark theme and accent color
   serialize.js    from an edited block back to Markdown
   store.js        file and folder permissions, kept in IndexedDB
-  home.js         start screen of the MD Tools page
+  home.js         start screen of the Sharpmd page
   write.js        new blocks, Markdown shortcuts and the right-click menu
   diagram.js      diagram editor with live preview
   board.js        kanban boards and table formulas
@@ -117,8 +117,8 @@ src/
   content.css     styles and themes
   background.js   reads files and folders, lazy-loads the heavy libraries, shortcuts, update check
   web.js          stands in for the extension APIs when the page is served from a site
-  app.html        the MD Tools page: open a file or a folder and edit it there
-  popup.html/js   on/off switch and the button that opens the MD Tools page
+  app.html        the Sharpmd page: open a file or a folder and edit it there
+  popup.html/js   on/off switch and the button that opens the Sharpmd page
 vendor/           third-party libraries, unmodified
 ejemplo/          sample documents covering every feature
 tests/            end-to-end smoke test
@@ -134,7 +134,7 @@ npm install
 npm test
 ```
 
-It loads the extension in a Chromium and walks through both modes: a `.md` opened directly in the browser, and the MD Tools page with a folder. It needs a Playwright Chromium (`npx playwright install chromium`) or `CHROME_BIN` pointing at another one.
+It loads the extension in a Chromium and walks through both modes: a `.md` opened directly in the browser, and the Sharpmd page with a folder. It needs a Playwright Chromium (`npx playwright install chromium`) or `CHROME_BIN` pointing at another one.
 
 ## Third-party libraries
 
@@ -154,11 +154,11 @@ All of them are vendored in `vendor/`, because Manifest V3 does not allow remote
 
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/surlabs)
 
-MD Tools is free and collects no data. If it saves you time, you can [support the next tool on Ko-fi](https://ko-fi.com/surlabs).
+Sharpmd is free and collects no data. If it saves you time, you can [support the next tool on Ko-fi](https://ko-fi.com/surlabs).
 
 ## Optional sync server
 
-`server/` holds MD Tools Sync: accounts, notes in the cloud and an MCP endpoint so an AI can read and write them. It is one file with no dependencies, and you can host it yourself. MD Tools shows nothing about the cloud until a server address is set in Settings → Cloud. See [server/README.md](server/README.md).
+`server/` holds Sharpmd Sync: accounts, notes in the cloud and an MCP endpoint so an AI can read and write them. It is one file with no dependencies, and you can host it yourself. Sharpmd shows nothing about the cloud until a server address is set in Settings → Cloud. See [server/README.md](server/README.md).
 
 ## License
 

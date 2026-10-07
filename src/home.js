@@ -57,13 +57,13 @@
 
   async function home(note) {
     LMD.theme.themeOnly(ctx.settings);
-    document.title = 'MD Tools';
+    document.title = 'Sharpmd';
     document.body.textContent = '';
     const box = el('main', { class: 'lmd-home' });
     box.innerHTML =
       '<div class="lmd-home-card">' +
         '<img class="lmd-home-logo" src="' + chrome.runtime.getURL('icons/icon128.png') + '" alt="">' +
-        '<h1>MD Tools</h1>' +
+        '<h1>Sharpmd</h1>' +
         '<p class="lmd-home-sub">' + T('Empezá una nota nueva, o abrí un archivo o una carpeta para leerlo y editarlo acá mismo.') + '</p>' +
         '<div class="lmd-home-actions">' +
           '<button type="button" class="lmd-btn lmd-btn-fill" data-home="new">' + ICON.plus + '<span>' + T('Nuevo archivo') + '</span></button>' +
@@ -128,7 +128,7 @@
         const r = row();
         r.append(el('span', { text: a.email + ' · ' + (a.limit ? T('{n} de {m} notas', { n: a.notes, m: a.limit }) : T('{n} notas', { n: a.notes })) }), button(T('Conectar una IA'), 'token'), button(T('Salir'), 'logout'));
         if (step === 'token') {
-          const cmd = 'claude mcp add --transport http md-tools ' + data.mcp_url + ' --header "Authorization: Bearer ' + data.token + '"';
+          const cmd = 'claude mcp add --transport http sharpmd ' + data.mcp_url + ' --header "Authorization: Bearer ' + data.token + '"';
           line(T('Copiá estos datos ahora: el token no se vuelve a mostrar.'));
           [['URL', data.mcp_url], ['Token', data.token], ['Claude Code', cmd]].forEach((pair) => {
             const f = el('label', { class: 'lmd-home-cloud-field' }); f.append(el('span', { text: pair[0] }), el('input', { type: 'text', readonly: '', value: pair[1] }));
@@ -247,7 +247,7 @@
   function gate(rec, mode) {
     return new Promise((resolve) => {
       LMD.theme.themeOnly(ctx.settings);
-      document.title = 'MD Tools';
+      document.title = 'Sharpmd';
       document.body.textContent = '';
       const box = el('main', { class: 'lmd-home' });
       box.innerHTML =

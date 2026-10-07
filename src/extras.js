@@ -97,7 +97,7 @@
     const item = Array.from((e.clipboardData && e.clipboardData.items) || []).find((i) => i.kind === 'file' && /^image\//.test(i.type));
     if (!item) return false;
     e.preventDefault();
-    if (!canManage()) { core.flash(T('Para pegar imágenes abrí la carpeta desde la página de MD Tools'), 'warn'); return true; }
+    if (!canManage()) { core.flash(T('Para pegar imágenes abrí la carpeta desde la página de Sharpmd'), 'warn'); return true; }
     const file = item.getAsFile();
     const target = e.target.closest && e.target.closest('.lmd-editable');
     const range = target && getSelection().rangeCount ? getSelection().getRangeAt(0).cloneRange() : null;

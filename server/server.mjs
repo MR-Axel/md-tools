@@ -1,4 +1,4 @@
-// MD Tools Sync: notas en la nube y servidor MCP, en un solo archivo y sin dependencias.
+// Sharpmd Sync: notas en la nube y servidor MCP, en un solo archivo y sin dependencias.
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Requiere Node 22.13 o superior (usa node:sqlite). Se configura con variables de entorno:
@@ -48,11 +48,11 @@ class Fail extends Error { constructor(status, code, message) { super(message ||
 
 // ---------- Correo ----------
 async function sendCode(email, code) {
-  const subject = 'MD Tools: ' + code;
-  const text = 'Your MD Tools code is ' + code + '. It expires in 15 minutes.\n\nTu código de MD Tools es ' + code + '. Vence en 15 minutos.';
+  const subject = 'Sharpmd: ' + code;
+  const text = 'Your Sharpmd code is ' + code + '. It expires in 15 minutes.\n\nTu código de Sharpmd es ' + code + '. Vence en 15 minutos.';
   if (env.RESEND_API_KEY) {
     const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { authorization: 'Bearer ' + env.RESEND_API_KEY, 'content-type': 'application/json' },
-      body: JSON.stringify({ from: env.MAIL_FROM || 'MD Tools <onboarding@resend.dev>', to: [email], subject, text }) });
+      body: JSON.stringify({ from: env.MAIL_FROM || 'Sharpmd <onboarding@resend.dev>', to: [email], subject, text }) });
     if (!r.ok) throw new Fail(502, 'mail_failed');
   } else if (env.MAIL_WEBHOOK) {
     const r = await fetch(env.MAIL_WEBHOOK, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ to: email, subject, text }) });
@@ -156,7 +156,7 @@ function searchNotes(user, text) {
 
 // ---------- MCP (Streamable HTTP, respuestas JSON) ----------
 const TOOLS = [
-  { name: 'list_notes', description: 'List the Markdown notes in the MD Tools cloud folder, newest first.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'list_notes', description: 'List the Markdown notes in the Sharpmd cloud folder, newest first.', inputSchema: { type: 'object', properties: {} } },
   { name: 'read_note', description: 'Read one note by its path.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path of the note, for example ideas/launch.md' } }, required: ['path'] } },
   { name: 'write_note', description: 'Create a note or replace its whole content with Markdown text.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, text: { type: 'string', description: 'Full Markdown content' } }, required: ['path', 'text'] } },
   { name: 'append_note', description: 'Append Markdown text to the end of a note, creating it if it does not exist.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, text: { type: 'string' } }, required: ['path', 'text'] } },
@@ -180,8 +180,8 @@ function callTool(user, name, args) {
 
 function mcp(user, msg) {
   const reply = (result) => ({ jsonrpc: '2.0', id: msg.id, result });
-  if (msg.method === 'initialize') return reply({ protocolVersion: (msg.params && msg.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'md-tools', version: '1.0.0' },
-    instructions: 'Notes are Markdown files in the user\'s MD Tools cloud folder. Paths look like folder/name.md.' });
+  if (msg.method === 'initialize') return reply({ protocolVersion: (msg.params && msg.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'sharpmd', version: '1.0.0' },
+    instructions: 'Notes are Markdown files in the user\'s Sharpmd cloud folder. Paths look like folder/name.md.' });
   if (msg.method === 'ping') return reply({});
   if (msg.method === 'tools/list') return reply({ tools: TOOLS });
   if (msg.method === 'tools/call') {
@@ -278,4 +278,4 @@ setInterval(() => {
   q('DELETE FROM versions WHERE saved < ?').run(now() - HISTORY_DAYS * 86400000);
 }, 6 * 3600000).unref();
 
-server.listen(PORT, env.HOST || '127.0.0.1', () => console.log('MD Tools Sync en ' + PUBLIC_URL + ' (puerto ' + PORT + ')'));
+server.listen(PORT, env.HOST || '127.0.0.1', () => console.log('Sharpmd Sync en ' + PUBLIC_URL + ' (puerto ' + PORT + ')'));

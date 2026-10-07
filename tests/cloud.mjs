@@ -69,7 +69,7 @@ const checks = [
   ['con la cuenta abierta, la nota nueva va a la nube', o.url === true],
   ['se guarda sola en la nube', /Guardado en la nube/.test(o.estado || ''), o.estado],
   ['aparece en el inicio como nota de la nube', /en la nube/.test(o.enInicio || ''), o.enInicio],
-  ['el panel para conectar una IA da URL, token y comando', o.campos && o.campos[0] === base + '/mcp' && o.campos[1] === 'mdt_' && o.campos[2].startsWith('claude mcp add --transport http md-tools'), o.campos],
+  ['el panel para conectar una IA da URL, token y comando', o.campos && o.campos[0] === base + '/mcp' && o.campos[1] === 'mdt_' && o.campos[2].startsWith('claude mcp add --transport http sharpmd'), o.campos],
   ['la IA lee por MCP lo escrito en la app', (o.leeLaIA || '').trim() === '# Plan\n\nEscrito en la app.', o.leeLaIA],
   ['lo que agrega la IA aparece en la app sin recargar', o.veLoDeLaIA === true],
   ['salir saca las notas de la nube del inicio', o.salio === true],

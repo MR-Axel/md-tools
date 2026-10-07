@@ -1,8 +1,8 @@
-# MD Tools Sync
+# Sharpmd Sync
 
-The optional server behind MD Tools: accounts, notes in the cloud and an MCP endpoint so an AI can read and write those notes. One file, no dependencies, SQLite on disk.
+The optional server behind Sharpmd: accounts, notes in the cloud and an MCP endpoint so an AI can read and write those notes. One file, no dependencies, SQLite on disk.
 
-MD Tools works without it. This is only for syncing notes between devices and connecting an AI.
+Sharpmd works without it. This is only for syncing notes between devices and connecting an AI.
 
 License: AGPL-3.0-or-later. You can run it for yourself or your team. If you offer it to others as a service, you publish your changes.
 
@@ -16,7 +16,7 @@ DEV_CODES=1 node server.mjs
 
 `DEV_CODES=1` returns the sign-in code in the response instead of mailing it. Use it only to try things out.
 
-Then, in MD Tools: Settings → Cloud → Sync server, and type the address (`http://localhost:8787`). The start screen shows a sign-in line.
+Then, in Sharpmd: Settings → Cloud → Sync server, and type the address (`http://localhost:8787`). The start screen shows a sign-in line.
 
 ## Configuration
 
@@ -75,7 +75,7 @@ MCP tools: `list_notes`, `read_note`, `write_note`, `append_note`, `search_notes
 Connecting Claude Code:
 
 ```
-claude mcp add --transport http md-tools https://sync.example.com/mcp --header "Authorization: Bearer mdt_..."
+claude mcp add --transport http sharpmd https://sync.example.com/mcp --header "Authorization: Bearer mdt_..."
 ```
 
 ## Tests

@@ -2,7 +2,7 @@
   src: url("chrome-extension://__MSG_@@extension_id__/vendor/fonts/inter.woff2") format("woff2"), url("../vendor/fonts/inter.woff2") format("woff2"); }
 @font-face { font-family: "MDT Inter"; font-style: italic; font-weight: 100 900; font-display: swap;
   src: url("chrome-extension://__MSG_@@extension_id__/vendor/fonts/inter-italic.woff2") format("woff2"), url("../vendor/fonts/inter-italic.woff2") format("woff2"); }
-/* MD Tools. Todo cuelga de .lmd-root para no tocar páginas donde la extensión no actúa. */
+/* Sharpmd. Todo cuelga de .lmd-root para no tocar páginas donde la extensión no actúa. */
 .lmd-root {
   --lmd-side-w: 300px;
   --lmd-content-w: 1040px;
@@ -219,7 +219,7 @@
 .markdown-body a.lmd-wiki-missing { color: var(--fg-faint); cursor: help; }
 @media (max-width: 1100px) { .lmd-sep { margin: 0 2px; } }
 @media (max-width: 900px) { .lmd-docname { display: none; } .lmd-topbar { gap: 6px; } }
-.lmd-tools { display: flex; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; }
+.lsharpmd { display: flex; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; }
 .lmd-top-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .lmd-top-mid { display: flex; align-items: center; gap: 6px; }
 .lmd-sep { width: 1px; height: 22px; margin: 0 6px; background: var(--line); flex: none; }

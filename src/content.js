@@ -1,4 +1,4 @@
-// MD Tools: reemplaza la vista de texto plano de un archivo Markdown por un lector completo.
+// Sharpmd: reemplaza la vista de texto plano de un archivo Markdown por un lector completo.
 (function () {
   'use strict';
 
@@ -60,7 +60,7 @@
     orphan = true;
     clearInterval(refreshTimer);
     const bar = el('div', { class: 'lmd-orphan', role: 'alert' });
-    bar.appendChild(el('span', { text: 'MD Tools se actualizó. Recargá esta pestaña para seguir. · MD Tools was updated. Reload this tab to continue.' }));
+    bar.appendChild(el('span', { text: 'Sharpmd se actualizó. Recargá esta pestaña para seguir. · Sharpmd was updated. Reload this tab to continue.' }));
     const b = el('button', { type: 'button', text: 'Recargar · Reload' });
     b.addEventListener('click', () => location.reload());
     bar.appendChild(b);
@@ -447,7 +447,7 @@
       document.head.appendChild(el('meta', { name: 'viewport', content: 'width=device-width, initial-scale=1' }));
     }
     ui.customStyle = el('style', { id: 'lmd-custom-css' });
-    // Ícono de la pestaña: el de MD Tools, para que no quede el genérico ni el de otra extensión.
+    // Ícono de la pestaña: el de Sharpmd, para que no quede el genérico ni el de otra extensión.
     document.querySelectorAll('link[rel~="icon"]').forEach((n) => n.remove());
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#1a1d23"/>' +
       '<g stroke="#bef264" stroke-width="5.5" stroke-linecap="round"><path d="M27 16 22 48M41 16 36 48M13 27h30M11 38h30"/></g>' +
@@ -490,7 +490,7 @@
           '<button class="lmd-icon-btn lmd-insert" data-act="insert" title="' + T('Insertar un bloque (también con clic derecho)') + '">' + ICON.plus + '</button>' +
           '<button class="lmd-icon-btn lmd-save" data-act="save" title="' + T('Guardar (Ctrl+S)') + '" hidden>' + ICON.save + '</button>' +
         '</div>' +
-        '<div class="lmd-tools">' +
+        '<div class="lsharpmd">' +
           '<div class="lmd-view" role="radiogroup" aria-label="' + T('Vista') + '">' +
             '<button type="button" role="radio" data-act="view-doc" class="lmd-on" aria-checked="true" title="' + T('Ver documento') + '">' + ICON.doc + '</button>' +
             '<button type="button" role="radio" data-act="view-raw" aria-checked="false" title="' + T('Ver código fuente') + '">' + ICON.code + '</button>' +
@@ -647,7 +647,7 @@
   }
 
   // Aviso de versión nueva. El service worker decide si toca consultar GitHub según el ajuste.
-  const ZIP_URL = 'https://github.com/MR-Axel/md-tools/archive/refs/heads/main.zip';
+  const ZIP_URL = 'https://github.com/MR-Axel/sharpmd/archive/refs/heads/main.zip';
   async function checkUpdate(force) {
     const say = (html, kind) => {
       const box = ui.panel.hidden ? null : ui.panel.querySelector('.lmd-update-msg');
@@ -1292,7 +1292,7 @@
             '<p class="lmd-hint">' + T('Dejalo vacío salvo que alojes tu propio servidor.') + '</p>' +
           '</section>' +
           '<section class="lmd-panel-foot"><button type="button" class="lmd-btn" data-act="reset">' + T('Restablecer todo') + '</button></section>' +
-          '<section class="lmd-support"><p class="lmd-hint">' + T('MD Tools es gratis y no junta datos. Si te sirve, podés apoyarlo.') + '</p>' +
+          '<section class="lmd-support"><p class="lmd-hint">' + T('Sharpmd es gratis y no junta datos. Si te sirve, podés apoyarlo.') + '</p>' +
             '<a class="lmd-btn lmd-btn-accent" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">♥ ' + T('Apoyar el proyecto') + '</a></section>' +
         '</div>' +
       '</div>';
@@ -1810,7 +1810,7 @@
       box.innerHTML =
         '<div class="lmd-ask-card" role="dialog" aria-label="' + T('Permiso para guardar') + '">' +
           '<h3>' + T('Permiso para guardar') + '</h3>' +
-          '<p>' + T('Chrome pide que elijas dónde puede escribir MD Tools. Elegí la carpeta de este archivo una sola vez y vas a poder guardar todo lo que haya adentro, sin que vuelva a preguntar.') + '</p>' +
+          '<p>' + T('Chrome pide que elijas dónde puede escribir Sharpmd. Elegí la carpeta de este archivo una sola vez y vas a poder guardar todo lo que haya adentro, sin que vuelva a preguntar.') + '</p>' +
           '<div class="lmd-ask-actions">' +
             '<button type="button" class="lmd-btn lmd-btn-fill" data-ask="dir">' + T('Elegir la carpeta') + '</button>' +
             '<button type="button" class="lmd-btn" data-ask="file">' + T('Solo este archivo') + '</button>' +
