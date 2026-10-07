@@ -60,7 +60,9 @@ Después alcanza con arrastrar un `.md` al navegador.
 
 ## Abrir archivos desde SharpMD
 
-Hacé clic en el ícono de la extensión y elegí **Nuevo** o **Abrir**. **Nuevo** arranca una nota vacía lista para escribir; el primer Ctrl+S pregunta dónde guardarla. **Abrir** lleva a la página de SharpMD, donde elegís un archivo o una carpeta (o los arrastrás) y los leés y editás ahí mismo. Como la carpeta ya la elegiste vos, guardar no pide ningún permiso más, y la página recuerda lo último que abriste.
+Hacé clic en el ícono de la extensión: abre SharpMD, donde empezás una nota nueva o elegís un archivo o una carpeta (o los arrastrás) y los leés y editás ahí mismo. Abre la app web, o la página de la extensión cuando no hay conexión; en Ajustes → Instalar se elige cuál. Como la carpeta ya la elegiste vos, guardar no pide ningún permiso más, y la página recuerda lo último que abriste.
+
+Con la extensión instalada, la app web y la extensión comparten un solo depósito: las mismas notas del navegador y la misma lista de archivos y carpetas abiertos de los dos lados. Una carpeta abierta de un lado figura del otro como "Reconectar": se elige una vez ahí y queda. La sesión de la nube no se comparte: cada lado entra por su cuenta.
 
 Abrir un `.md` directo en el navegador sigue funcionando igual que antes. La pestaña Carpeta de la barra lateral tiene un botón que lleva a esta página.
 
@@ -68,15 +70,15 @@ Abrir un `.md` directo en el navegador sigue funcionando igual que antes. La pes
 
 La página de SharpMD es HTML y JavaScript, así que también funciona servida desde cualquier hosting estático, sin la extensión. En Chrome, Edge, Brave y otros navegadores Chromium abre archivos y carpetas y guarda en el lugar. En Firefox y Safari, que no dejan que una página escriba en el disco, abre de a un archivo y al guardar descarga una copia. En los dos casos no se sube nada: los archivos se leen en tu navegador.
 
-Está publicada en [sharpmd.app](https://sharpmd.app/). Para correr tu propia copia, serví esta carpeta (`npx serve .`) y abrí la dirección que te muestra.
+Está publicada en [sharpmd.app](https://sharpmd.app/). Desde Ajustes → Instalar se instala como app, con ventana propia, y Windows la ofrece en "Abrir con" para los `.md`. Para correr tu propia copia, serví esta carpeta (`npx serve .`) y abrí la dirección que te muestra.
 
 La app de Android es esta misma web empaquetada (Trusted Web Activity): abre `sharpmd.app` a pantalla completa, con las mismas notas y la misma cuenta. `.well-known/assetlinks.json` lleva la huella de la llave que firma la app.
 
 ## Actualizar
 
-Chrome no puede actualizar una extensión cargada desde una carpeta, así que SharpMD mira este repositorio una vez por día (o por semana, o nunca: Ajustes → Actualizaciones) y avisa en la barra lateral, y en el popup del ícono de la extensión, cuando hay una versión más nueva. Desde ahí: descargás el ZIP, reemplazás la carpeta de la extensión con su contenido y tocás **Aplicar**, que recarga la extensión. Si clonaste el repositorio, alcanza con `git pull` y **Aplicar**.
+Chrome no puede actualizar una extensión cargada desde una carpeta, así que SharpMD mira este repositorio una vez por día (o por semana, o nunca: Ajustes → Actualizaciones) y avisa en la barra lateral cuando hay una versión más nueva. Desde ahí: descargás el ZIP, reemplazás la carpeta de la extensión con su contenido y tocás **Aplicar**, que recarga la extensión. Si clonaste el repositorio, alcanza con `git pull` y **Aplicar**.
 
-Es el único pedido de red que hace la extensión: lee el número de versión publicado y no manda ningún dato.
+Lee el número de versión publicado y no manda ningún dato. El otro pedido de red que hace la extensión es una consulta corta, al tocar su botón, para saber si la app web contesta.
 
 ## Atajos
 
@@ -102,6 +104,10 @@ src/
   theme.js        tema claro u oscuro y color de acento
   serialize.js    del bloque editado al Markdown
   store.js        permisos de archivos y carpetas, guardados en IndexedDB
+  bridge.js       un solo depósito entre la app web y la extensión: iguala los dos lados y reconecta carpetas
+  bridge-cs.js    script de contenido en la app web, que le pasa sus pedidos a la extensión
+  bridge-sw.js    el lado de la extensión del puente, y qué abre el botón de la extensión
+  install.js      Ajustes → Instalar, instalar la app, los archivos de "Abrir con", la marca de sin conexión
   home.js         pantalla de inicio de la página propia
   write.js        bloques nuevos, atajos de Markdown y menú de clic derecho
   diagram.js      editor de diagramas con vista previa en vivo
@@ -113,7 +119,6 @@ src/
   web.js          reemplaza las APIs de la extensión cuando la página se sirve desde un sitio
   storeapp.js     avisa si la página corre dentro de la app de Android
   app.html        la página de SharpMD: abrir un archivo o una carpeta y editar ahí
-  popup.html/js   el encendido y el botón que abre la página de SharpMD
 vendor/           librerías de terceros, sin modificar
 examples/         documentos de prueba con todas las funciones
 tests/            prueba de punta a punta

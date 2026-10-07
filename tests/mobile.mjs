@@ -332,7 +332,7 @@ try {
         text: tabs.every((t) => t.querySelector('span').offsetParent && t.querySelector('span').textContent.trim()), low: Math.min(...tabs.map((t) => t.getBoundingClientRect().height)), above: nav.getBoundingClientRect().bottom <= document.querySelector('.lmd-panel-body').getBoundingClientRect().top + 1 }; });
     check(tag + 'los ajustes ocupan toda la pantalla', J(panel.box) === J([0, 0, panel.screen[0], panel.screen[1]]), panel);
     check(tag + 'las pestañas van arriba en una fila que se desliza, con texto y 40 px de alto', panel.row === 1 && panel.slides && panel.text && panel.low >= 40 && panel.above, panel);
-    for (const tab of ['look', 'read', 'plug', 'cloud', 'ai', 'plan', 'adv']) {
+    for (const tab of ['look', 'read', 'plug', 'cloud', 'ai', 'plan', 'inst', 'adv']) {
       await page.tap('[data-ptab=' + tab + ']'); await page.waitForTimeout(tab === 'cloud' || tab === 'ai' || tab === 'plan' ? 700 : 200);
       const t = await page.evaluate(() => { const body = document.querySelector('.lmd-panel-body'); const on = document.querySelector('[data-ptab].lmd-on').getBoundingClientRect();
         const cols = [...body.querySelectorAll('section:not([hidden]).lmd-two, section:not([hidden]) .lmd-grid, section:not([hidden]) .lmd-plans')].map((g) => getComputedStyle(g).gridTemplateColumns.split(' ').length);

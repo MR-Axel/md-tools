@@ -67,13 +67,13 @@ try {
 
   await page.click('[data-act=settings]'); await page.waitForSelector('.lmd-panel-card');
   const sections = await page.evaluate(() => [...document.querySelectorAll('.lmd-panel h3')].map((h) => h.textContent.replace(/\s*Plan pago$/, '')));
-  check('panel de ajustes', sections.join('|') === 'Apariencia|Lectura|Edición|Carpeta|Plugins de Markdown|Nube|Conectar una IA|Plan|CSS propio|Servidor|Actualizaciones', sections);
+  check('panel de ajustes', sections.join('|') === 'Apariencia|Lectura|Edición|Carpeta|Plugins de Markdown|Nube|Conectar una IA|Plan|Instalar|CSS propio|Servidor|Actualizaciones', sections);
   // Cada pestaña muestra sus secciones y ninguna otra. Los títulos se leen de lo que está a la vista.
   const tabs = await page.evaluate(() => {
     const vis = () => [...document.querySelectorAll('.lmd-panel-body > section:not([hidden]) h3')].map((h) => h.firstChild.nodeValue.trim()).join('+');
     return [...document.querySelectorAll('[data-ptab]')].map((b) => { b.click(); return b.dataset.ptab + ':' + b.textContent.trim() + '=' + vis() + (b.classList.contains('lmd-on') ? '' : ' (sin marcar)'); });
   });
-  check('los ajustes van en siete pestañas, cada una con lo suyo', tabs.join('|') === 'look:Apariencia=Apariencia|read:Lectura y edición=Lectura+Edición+Carpeta|plug:Plugins=Plugins de Markdown|cloud:Nube=Nube|ai:IA=Conectar una IA|plan:Plan=Plan|adv:Avanzado=CSS propio+Servidor+Actualizaciones', tabs);
+  check('los ajustes van en ocho pestañas, cada una con lo suyo', tabs.join('|') === 'look:Apariencia=Apariencia|read:Lectura y edición=Lectura+Edición+Carpeta|plug:Plugins=Plugins de Markdown|cloud:Nube=Nube|ai:IA=Conectar una IA|plan:Plan=Plan|inst:Instalar=Instalar|adv:Avanzado=CSS propio+Servidor+Actualizaciones', tabs);
   const marks = await page.evaluate(() => ({ plugins: document.querySelectorAll('[data-tab=plug] [data-plugin]').length, other: document.querySelectorAll('[data-tab=plug] input:not([data-plugin]), [data-tab=plug] textarea, [data-tab=plug] select, [data-tab=plug] button').length, paidInPlugins: document.querySelectorAll('[data-tab=plug] .lmd-tag').length, cssTab: document.querySelector('[data-key=customCSS]').closest('section').dataset.tab, cssPaid: document.querySelector('[data-key=customCSS]').closest('section').querySelectorAll('.lmd-tag').length, reset: document.querySelector('[data-act=reset]').closest('section').dataset.tab }));
   check('Plugins trae solo los interruptores, sin marca de plan pago; el CSS propio y Restablecer van en Avanzado', marks.plugins >= 20 && marks.other === 0 && marks.paidInPlugins === 0 && marks.cssTab === 'adv' && marks.cssPaid === 1 && marks.reset === 'adv', marks);
   await page.close();
@@ -125,12 +125,9 @@ try {
   check('al volver, la carpeta abierta sigue en el explorador', back.head === 'notas' && back.files.includes('otro.md') && back.files.includes('README.md'), back);
   check('cada archivo dice dónde está guardado', back.where.length >= 2 && back.where.every((t) => t === 'En el disco'), back.where);
 
-  const popup = await ctx.newPage(); watch(popup);
-  await popup.goto(`chrome-extension://${id}/src/popup.html`); await popup.waitForTimeout(600);
-  check('popup: nuevo, abrir y sin interruptor', (await popup.locator('#new-file').count()) === 1 && (await popup.locator('#open-app').count()) === 1 && (await popup.locator('input').count()) === 0);
-  await popup.waitForSelector('#ver:not([hidden])', { timeout: 15000 }).catch(() => {});
-  check('popup: muestra la versión instalada', /\d+\.\d+\.\d+/.test(await popup.textContent('#ver-num')), await popup.textContent('#ver-num'));
-  await popup.close();
+  // El botón de la extensión ya no tiene popup: un clic abre SharpMD (tests/bridge.mjs prueba adónde).
+  const action = await sw.evaluate(() => ({ popup: chrome.runtime.getManifest().action.default_popup || '', listens: chrome.action.onClicked.hasListeners() }));
+  check('el botón de la extensión abre SharpMD directo, sin popup', action.popup === '' && action.listens && !fs.existsSync(path.join(root, 'src', 'popup.html')), action);
 
   console.log('Archivo nuevo');
   let fresh = await ctx.newPage(); watch(fresh);
