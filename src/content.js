@@ -1377,8 +1377,8 @@
         const btn = (url, label) => (url ? '<a class="lmd-btn lmd-btn-fill" target="_blank" rel="noopener noreferrer" href="' + esc(url) + '">' + label + '</a>' : '<button type="button" class="lmd-btn" disabled>' + label + ' · ' + T('pronto') + '</button>');
         return '<div class="lmd-plans">' +
           '<div class="lmd-plan' + (pro ? '' : ' lmd-plan-on') + '"><h4>' + T('Gratis') + '</h4><ul><li>' + T('Todo el editor') + '</li><li>' + T('Hasta 20 notas en la nube') + '</li><li>' + T('Notas en el navegador y en tu disco, sin límite') + '</li></ul></div>' +
-          '<div class="lmd-plan' + (pro ? ' lmd-plan-on' : '') + '"><h4>' + T('Pago') + ' <small>USD 3 / ' + T('mes') + '</small></h4><ul><li>' + T('Notas en la nube sin límite') + '</li><li>' + T('Compartir y editar entre varios') + '</li><li>' + T('Conectar una IA por MCP') + '</li><li>' + T('Historial de versiones de 30 días') + '</li><li>' + T('Colores, tipografía y CSS propio') + '</li></ul>' +
-            (pro ? '<p class="lmd-hint">' + T('Es tu plan actual.') + '</p>' : '<div class="lmd-plan-buy">' + btn(pay.monthly, 'USD 3 / ' + T('mes')) + btn(pay.yearly, 'USD 30 / ' + T('año')) + '</div>') + '</div></div>';
+          '<div class="lmd-plan' + (pro ? ' lmd-plan-on' : '') + '"><h4>' + T('Pago') + ' <small>USD 3.99 / ' + T('mes') + '</small></h4><ul><li>' + T('Notas en la nube sin límite') + '</li><li>' + T('Compartir y editar entre varios') + '</li><li>' + T('Conectar una IA por MCP') + '</li><li>' + T('Historial de versiones de 30 días') + '</li><li>' + T('Colores, tipografía y CSS propio') + '</li></ul>' +
+            (pro ? '<p class="lmd-hint">' + T('Es tu plan actual.') + '</p>' : '<div class="lmd-plan-buy">' + btn(pay.monthly, 'USD 3.99 / ' + T('mes')) + btn(pay.yearly, 'USD 39 / ' + T('año')) + '</div>') + '</div></div>';
       };
       if (!LMD.cloud.enabled()) { acct.innerHTML = '<p class="lmd-hint">' + T('Las cuentas y la sincronización todavía no están activas en esta versión.') + '</p>' + plans(null); return; }
       if (!LMD.cloud.signedIn()) {
