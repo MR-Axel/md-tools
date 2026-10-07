@@ -203,8 +203,8 @@
 .lmd-save { position: relative; }
 .lmd-dirty .lmd-save { color: var(--accent); }
 .lmd-dirty .lmd-save::after { content: ""; position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent-fill); }
-.lmd-editing .lmd-editable { border-radius: 4px; outline: 1px dashed transparent; outline-offset: 3px; cursor: text; transition: outline-color 0.12s; }
-.lmd-editing .lmd-editable:hover { outline-color: var(--line); }
+.lmd-editing .lmd-editable { border-radius: 4px; outline: 1px dashed transparent; outline-offset: 3px; cursor: text; }
+.lmd-editing .lmd-editable:hover { outline-color: var(--line); transition: outline-color 0.12s; }
 .lmd-editing .lmd-editable:focus { outline: 2px solid var(--accent-fill); background: var(--accent-soft); }
 .lmd-editing td.lmd-editable, .lmd-editing th.lmd-editable { outline-offset: -2px; border-radius: 0; }
 .lmd-editing .lmd-li-text { display: inline-block; min-width: 2em; }
