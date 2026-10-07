@@ -709,9 +709,6 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px 28px; align-items: start; }
 .lmd-two > h3, .lmd-two > .lmd-hint, .lmd-two > .lmd-update-msg { grid-column: 1 / -1; margin: 0; }
 .lmd-two .lmd-row, .lmd-two .lmd-check { margin-bottom: 0; }
-.lmd-pcell { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.lmd-pcell .lmd-prev-code, .lmd-pcell .lmd-prev-dgm { margin: 0; }
-.lmd-pcell .lmd-prev-dgm { flex: none; align-self: flex-start; width: 240px; max-width: 100%; height: 51px; }
 .lmd-row-line { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; align-self: end; min-height: 38px; }
 .lmd-panel-body .lmd-check { align-items: center; gap: 10px; min-height: 30px; align-self: center; }
 .lmd-panel-body .lmd-check input { appearance: none; flex: none; position: relative; width: 34px; height: 20px; margin: 0; border-radius: 999px; background: var(--line); cursor: pointer; transition: background .15s; }
@@ -733,3 +730,13 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-panel-body > section:not([hidden]) ~ section:not([hidden]) { border-top: 1px solid var(--line); }
 .lmd-panel-body > section:has(.lmd-acct) { border-top: 0 !important; border-bottom: 1px solid var(--line); }
 .lmd-panel-body > section:has(.lmd-acct) ~ .lmd-two:not([hidden]) { border-top: 0; }
+.lmd-pcol { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.lmd-preview { display: flex; flex-direction: column; gap: 16px; align-self: stretch; min-width: 0; padding: 14px 18px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-soft); overflow: hidden; }
+.lmd-preview > small { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-faint); }
+.lmd-prev-text { height: 112px; overflow: hidden; font-family: var(--lmd-font); font-size: var(--lmd-font-size); line-height: var(--lmd-line-height); color: var(--fg); }
+.lmd-prev-text b { display: block; margin-bottom: 0.25em; font-size: 1.15em; letter-spacing: -0.015em; }
+.lmd-prev-text p { margin: 0; color: var(--fg-muted); }
+.lmd-preview .lmd-prev-code { margin: 0; padding: 12px 14px; line-height: 1.6; white-space: pre; }
+.lmd-preview .lmd-prev-dgm { flex: none; align-self: center; width: 132px; height: 116px; margin: 0; }
+.lmd-preview .lmd-prev-dgm .node { fill: var(--bg); }
+.lmd-pcol .lmd-swatches { gap: 6px; }

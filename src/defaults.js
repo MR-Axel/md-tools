@@ -329,7 +329,7 @@
       "La imagen pesa más de 10 MB.": "The image is larger than 10 MB.",
       "Sin una carpeta abierta la imagen va dentro del documento, y esta es muy grande para eso. Abrí la carpeta desde Sharpmd, o usá una dirección web.": "Without an open folder the image goes inside the document, and this one is too large for that. Open the folder from Sharpmd, or use a web address.",
       "Falta la dirección o el archivo.": "The address or the file is missing.", "Esa dirección no sirve para una imagen.": "That address cannot be used for an image.",
-      "Color de los bloques de código": "Code block color", "Forma de los diagramas": "Diagram shape", "Redondeados": "Rounded", "Rectos": "Straight",
+      "Color de los bloques de código": "Code block color", "Vista previa": "Preview", "Notas de lanzamiento": "Launch notes", "Así se ve el texto de tus documentos con esta letra, este tamaño y este interlineado.": "This is how the text of your documents looks with this font, size and line height.", "Forma de los diagramas": "Diagram shape", "Redondeados": "Rounded", "Rectos": "Straight",
       "Verde": "Green",
       "Nube": "Cloud", "en la nube": "in the cloud", "Guardado en la nube": "Saved to the cloud",
       "Entrá a tu cuenta para abrir las notas de la nube.": "Sign in to open your cloud notes.",

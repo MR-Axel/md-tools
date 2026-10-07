@@ -1276,6 +1276,11 @@
     const fonts = LMD.FONTS.slice();
     if (s.fontFamily && !fonts.some((f) => f.value === s.fontFamily)) fonts.push({ name: s.fontFamily, value: s.fontFamily });
     const fontOptions = fonts.map((f) => '<option value="' + esc(f.value) + '"' + (f.value === (s.fontFamily || '') ? ' selected' : '') + '>' + esc(f.value ? f.name : T(f.name)) + '</option>').join('');
+    const PREVIEW = '<div class="lmd-preview" aria-hidden="true"><small>' + T('Vista previa') + '</small>' +
+      '<div class="lmd-prev-text"><b>' + T('Notas de lanzamiento') + '</b><p>' + T('Así se ve el texto de tus documentos con esta letra, este tamaño y este interlineado.') + '</p></div>' +
+      '<pre class="lmd-prev-code"><code><span class="k">const</span> items = [<span class="n">12</span>, <span class="n">30</span>, <span class="n">8</span>];\n<span class="k">const</span> total = <span class="f">sum</span>(items);\nconsole.<span class="f">log</span>(total);</code></pre>' +
+      '<svg class="lmd-prev-dgm" viewBox="0 0 150 132"><rect class="node" x="6" y="4" width="84" height="36"/><rect class="node" x="60" y="92" width="84" height="36"/><path class="curve" d="M48 40 C 48 70, 102 58, 102 85"/><path class="line" d="M48 40 V 64 H 102 V 85"/><path class="tip" d="M97 84 h10 l-5 8z"/><text x="48" y="27">A</text><text x="102" y="115">B</text></svg>' +
+    '</div>';
     ui.panel.innerHTML =
       '<div class="lmd-panel-card" role="dialog" aria-label="' + T('Ajustes') + '">' +
         '<header><h2>' + T('Ajustes') + '</h2><button class="lmd-icon-btn" data-act="close-panel" title="' + T('Cerrar') + '">' + ICON.close + '</button></header>' +
@@ -1290,7 +1295,7 @@
             '<div class="lmd-row"><span>' + T('Tema') + '</span><div class="lmd-seg" data-seg="theme" role="radiogroup">' +
               ['auto', 'light', 'dark'].map((t) => '<button type="button" role="radio" data-val="' + t + '" aria-checked="' + (s.theme === t) + '"' + (s.theme === t ? ' class="lmd-on"' : '') + '>' + T({ auto: 'Automático', light: 'Claro', dark: 'Oscuro' }[t]) + '</button>').join('') +
             '</div></div>' +
-            '<div class="lmd-row"><span>' + T('Color de acento') + (s.supporter ? '' : EXTRA) + '</span><div class="lmd-swatches' + (s.supporter ? '' : ' lmd-locked') + '">' +
+            '<div class="lmd-pcol"><div class="lmd-row"><span>' + T('Color de acento') + (s.supporter ? '' : EXTRA) + '</span><div class="lmd-swatches' + (s.supporter ? '' : ' lmd-locked') + '">' +
               LMD.ACCENTS.map((a) => '<button type="button" class="lmd-swatch' + ((s.accent || '') === a.value ? ' lmd-on' : '') + (a.value ? '' : ' lmd-swatch-auto') + '" data-accent="' + a.value + '" title="' + esc(T(a.name)) + '" aria-label="' + esc(T(a.name)) + '"' + (a.value ? ' style="--sw:' + a.value + '"' : '') + '></button>').join('') +
               '<label class="lmd-swatch lmd-swatch-custom' + (s.accent && !LMD.ACCENTS.some((a) => a.value === s.accent) ? ' lmd-on' : '') + '" title="' + T('Otro color') + '"><input type="color" data-accent-custom value="' + (/^#[0-9a-f]{6}$/i.test(s.accent || '') ? s.accent : '#6c7ee1') + '"></label>' +
             '</div>' + (s.supporter ? '<p class="lmd-hint">' + T('Gracias por apoyar el proyecto.') + '</p>' : '') +
@@ -1298,14 +1303,13 @@
             '<label class="lmd-row"><span>' + T('Tipografía') + (s.supporter ? '' : EXTRA) + '</span><select data-key="fontFamily"' + (s.supporter ? '' : ' disabled') + '>' + fontOptions + '</select></label>' +
             '<label class="lmd-row"><span>' + T('Tamaño de letra') + ' <output>' + s.fontSize + ' px</output></span><input type="range" min="12" max="24" step="1" data-key="fontSize" data-unit=" px" value="' + s.fontSize + '"></label>' +
             '<label class="lmd-row"><span>' + T('Interlineado') + ' <output>' + s.lineHeight + '</output></span><input type="range" min="1.2" max="2.2" step="0.05" data-key="lineHeight" data-unit="" value="' + s.lineHeight + '"></label>' +
-            '<div class="lmd-pcell"><div class="lmd-row"><span>' + T('Color de los bloques de código') + '</span><div class="lmd-swatches">' +
+            '<div class="lmd-row"><span>' + T('Color de los bloques de código') + '</span><div class="lmd-swatches">' +
               LMD.CODE_COLORS.map((c) => '<button type="button" class="lmd-swatch' + ((s.codeColor || '') === c.value ? ' lmd-on' : '') + (c.value ? '' : ' lmd-swatch-auto') + '" data-code-color="' + c.value + '" title="' + T(c.name) + '"' + (c.value ? ' style="--sw:' + c.value + '"' : '') + '></button>').join('') +
             '</div></div>' +
-            '<pre class="lmd-prev-code"><code><span class="k">const</span> total = items.<span class="f">reduce</span>((a, b) =&gt; a + b, <span class="n">0</span>);</code></pre></div>' +
-            '<div class="lmd-pcell"><div class="lmd-row"><span>' + T('Forma de los diagramas') + '</span><div class="lmd-seg" data-seg="diagramShape" role="radiogroup">' +
+            '<div class="lmd-row"><span>' + T('Forma de los diagramas') + '</span><div class="lmd-seg" data-seg="diagramShape" role="radiogroup">' +
               [['round', 'Redondeados'], ['square', 'Rectos']].map((o) => '<button type="button" role="radio" data-val="' + o[0] + '" aria-checked="' + ((s.diagramShape || 'round') === o[0]) + '"' + ((s.diagramShape || 'round') === o[0] ? ' class="lmd-on"' : '') + '>' + T(o[1]) + '</button>').join('') +
             '</div></div>' +
-            '<svg class="lmd-prev-dgm" viewBox="0 0 300 64" aria-hidden="true"><rect class="node" x="6" y="14" width="84" height="36"/><rect class="node" x="210" y="14" width="84" height="36"/><path class="curve" d="M90 32 C 130 4, 170 60, 206 32"/><path class="line" d="M90 32 L 206 32"/><path d="m199 27 8 5-8 5z" class="tip"/><text x="48" y="37">A</text><text x="252" y="37">B</text></svg></div>' +
+            '</div>' + PREVIEW +
             (s.supporter ? '' : '<div class="lmd-extra"><p>' + T('Los colores, la tipografía y el CSS propio son extras para quienes apoyan el proyecto. No se verifica: queda en tu palabra.') + '</p>' +
                 '<div class="lmd-extra-actions"><a class="lmd-btn lmd-btn-fill" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">♥ ' + T('Apoyar el proyecto') + '</a>' +
                 '<button type="button" class="lmd-btn" data-act="supporter">' + T('Ya aporté') + '</button></div></div>') +
@@ -1429,6 +1433,7 @@
           if (out) out.textContent = v + (input.dataset.unit || '');
           settings[key] = v; applySettings(); // respuesta inmediata al arrastrar
         }
+        if (key === 'fontFamily') { settings[key] = v; applySettings(); }
         commit({ [key]: v });
       });
     });
@@ -2108,6 +2113,7 @@
     buildUI();
     applySettings();
     render();
+    try { const t = sessionStorage.getItem('lmd-panel'); if (t) { sessionStorage.removeItem('lmd-panel'); panelTab = t; openPanel(); } } catch (e) {}
     updateSaveState();
     checkUpdate(false);
     // Nota de la nube: se escucha en vivo quién más está y cuándo alguien guarda.
@@ -2145,7 +2151,7 @@
       if (area !== 'local' || !changes.settings) return;
       const prev = settings;
       settings = LMD.merge(changes.settings.newValue);
-      if (settings.language !== prev.language) { location.reload(); return; }
+      if (settings.language !== prev.language) { if (!ui.panel.hidden) { try { sessionStorage.setItem('lmd-panel', panelTab); } catch (e) {} } location.reload(); return; }
       applySettings();
       if (panelStale && !ui.panel.hidden) { panelStale = false; openPanel(); }
       if (RENDER_KEYS.some((k) => JSON.stringify(prev[k]) !== JSON.stringify(settings[k]))) render();
