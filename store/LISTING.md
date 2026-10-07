@@ -8,6 +8,13 @@ git archive --format=zip -o dist/sharpmd.zip HEAD
 
 Ese ZIP deja afuera las pruebas, las capturas, la página de presentación y este archivo (ver `.gitattributes`).
 
+## Antes de enviar
+
+- El paquete se sube recién cuando esté la versión que reordena Ajustes (2.35.0). Hasta entonces `dist/sharpmd.zip` es una versión intermedia.
+- El paquete se regenera después de cada cambio: `git archive --format=zip -o dist/sharpmd.zip HEAD`.
+- El enlace al código que aparece en la descripción apunta al repo de GitHub, que hoy vive en una cuenta personal. Si eso no tiene que verse, primero se transfiere el repo a una organización y se cambia el enlace.
+- Los recibos de Paddle salen a nombre de Sur Labs, con SharpMD como producto. Está explicado en la página de ayuda.
+
 ## Qué va en cada campo del panel
 
 El formulario tiene tres pestañas. Esta es la primera, "Ficha de Chrome Web Store", en el orden en que aparecen los campos.
@@ -35,7 +42,7 @@ Todos los archivos están en `docs/store/`.
 | Imagen en mosaico promocional pequeña (440x280) | `promo-440x280.png` | |
 | Imagen en mosaico promocional con desplazamiento (1400x560) | `promo-1400x560.png` | |
 
-`5-start.png` es la pantalla de inicio: no entra en las cinco, queda de repuesto.
+El panel acepta cinco capturas como máximo y hay seis hechas. La que queda afuera es `5-start.png`, la pantalla de inicio, porque es la que menos muestra del producto. Si la querés adentro, reemplaza a `6-search.png`.
 
 Las capturas se regeneran con `node tests/shots.mjs` y los mosaicos con `node tests/promo.mjs`. Todas salen en PNG de 24 bits sin alfa, que es lo que pide el panel.
 
@@ -45,7 +52,7 @@ Las capturas se regeneran con `node tests/shots.mjs` y los mosaicos con `node te
 |---|---|
 | URL oficial | `sharpmd.app` (aparece en la lista porque el dominio está verificado en Search Console) |
 | URL de la página principal | `https://sharpmd.app/` |
-| URL de asistencia | `https://github.com/MR-Axel/sharpmd/issues` |
+| URL de asistencia | `https://sharpmd.app/support.html` |
 | Contenido para adultos | apagado |
 
 ### Las otras dos pestañas
