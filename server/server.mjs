@@ -1392,8 +1392,9 @@ const dec = (s) => { try { return decodeURIComponent(s); } catch (e) { throw new
 //     las piden con o = el número de esa cuenta, igual que lo compartido entre cuentas.
 //   - Con el cobro caído no se borra nada: las notas del equipo se siguen leyendo y editando, pero no se crean
 //     nuevas pasado el tope gratis y no se guarda historial. Es la misma regla de quien baja del plan pago.
-//   - En el espacio del equipo no hay carpetas con contraseña, enlaces públicos, compartir hacia afuera ni
-//     sesiones en vivo: esas rutas trabajan sobre las notas propias de quien llama.
+//   - En el espacio del equipo no hay enlaces públicos, compartir hacia afuera ni sesiones en vivo: esas rutas
+//     trabajan sobre las notas propias de quien llama. Tampoco carpetas con contraseña de cada miembro: el espacio
+//     se protege entero, con una sola contraseña que pone quien administra (más abajo, "Espacio del equipo protegido").
 //   - Lugares: los miembros más las invitaciones pendientes nunca superan los lugares pagos.
 const TEAM_BASE = String(env.PADDLE_TEAM_BASE || '').trim(); const TEAM_SEAT = String(env.PADDLE_TEAM_SEAT || '').trim();
 const PADDLE_API = String(env.PADDLE_API_URL || 'https://api.paddle.com').replace(/\/+$/, '');
