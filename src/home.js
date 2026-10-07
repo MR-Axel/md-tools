@@ -3,7 +3,7 @@
   'use strict';
 
   const { ICON, el, MD_RE, SKIP_DIRS } = LMD.kit;
-  const { handlesPut, handlesDelete, rootsAll } = LMD.store;
+  const { handlesPut, handlesDelete, rootsAll, notesAll, noteGet, notePut, noteDelete } = LMD.store;
   const T = LMD.t;
   let ctx = null; // { settings, APP_URL }, lo pasa el lector al llamar
 
@@ -98,8 +98,23 @@
     const recent = box.querySelector('.lmd-home-recent');
     const paint = async () => {
       const recs = (await rootsAll()).slice(0, 8);
-      recent.hidden = !recs.length;
+      const notes = (await notesAll()).slice(0, 12);
+      recent.hidden = !recs.length && !notes.length;
       const ul = recent.querySelector('ul'); ul.textContent = '';
+      notes.forEach((n) => {
+        const li = el('li');
+        const go = el('a', { class: 'lmd-home-item', href: ctx.APP_URL + '?f=' + encodeURIComponent('local/' + encodeURIComponent(n.name)) });
+        go.innerHTML = '<span class="lmd-node-ico">' + ICON.md + '</span><span class="lmd-home-name"></span><span class="lmd-home-path"></span>';
+        const first = (n.text.split('\n').find((l) => l.trim()) || '').replace(/^#+\s*/, '').slice(0, 60);
+        go.querySelector('.lmd-home-name').textContent = first || n.name;
+        go.querySelector('.lmd-home-path').textContent = T('en este navegador');
+        const del = el('button', { type: 'button', class: 'lmd-home-del', title: T('Eliminar la nota') }, ICON.close);
+        del.addEventListener('click', async () => {
+          if (n.text.trim() && !window.confirm(T('¿Eliminar "{a}"? No se puede deshacer.', { a: first || n.name }))) return;
+          await noteDelete(n.name); paint();
+        });
+        li.append(go, del); ul.appendChild(li);
+      });
       recs.forEach((r) => {
         const li = el('li');
         const go = el('a', { class: 'lmd-home-item', href: ctx.APP_URL + '?f=' + encodeURIComponent(r.last || r.id + '/') });
@@ -225,9 +240,12 @@
         } catch (e) { /* la carpeta ya no está: sigue en memoria */ }
       }
     }
-    const name = base + '.md';
-    try { sessionStorage.setItem('mdt-mem', JSON.stringify({ name, text: '', disk: '' })); } catch (e) { /* sin sesión no hay dónde guardarlo */ }
-    location.replace(ctx.APP_URL + '?f=' + encodeURIComponent('mem/' + encodeURIComponent(name)) + '&edit=1');
+    // Sin carpeta de notas, la nota queda guardada en el navegador y sigue ahí al volver.
+    let name = base + '.md';
+    for (let n = 2; n < 50 && await noteGet(name); n++) name = base + '-' + n + '.md';
+    await notePut(name, '');
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* el navegador decide */ }
+    location.replace(ctx.APP_URL + '?f=' + encodeURIComponent('local/' + encodeURIComponent(name)) + '&edit=1');
   }
 
   LMD.home = {

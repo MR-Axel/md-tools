@@ -54,5 +54,21 @@
   // Lo abierto desde la página propia: carpetas y archivos recientes, del más nuevo al más viejo.
   const rootsAll = async () => (await handlesAll()).filter((r) => r.root).sort((a, b) => (b.at || 0) - (a.at || 0));
 
-  LMD.store = { handlesAll, handlesPut, handlesDelete, canWrite, walk, rootsAll };
+  // Notas guardadas en el navegador: no necesitan carpeta ni cuenta, y siguen ahí al cerrar la pestaña.
+  const noteKey = (name) => 'note:' + name;
+  const notesAll = async () => (await handlesAll()).filter((r) => r.note).sort((a, b) => (b.at || 0) - (a.at || 0));
+  const noteGet = async (name) => (await handlesAll()).find((r) => r.note && r.name === name) || null;
+  const notePut = (name, text) => handlesPut({ key: noteKey(name), note: true, name, text, at: Date.now() });
+  const noteDelete = (name) => handlesDelete(noteKey(name));
+  // Se comporta como un archivo del disco, para que leer y guardar pasen por el mismo camino.
+  function noteHandle(name) {
+    return {
+      kind: 'file', name,
+      queryPermission: async () => 'granted',
+      getFile: async () => { const r = await noteGet(name); if (!r) throw new Error('missing'); return { text: async () => r.text, lastModified: r.at, size: r.text.length }; },
+      createWritable: async () => { let data = ''; return { write: async (t) => { data = String(t); }, close: async () => { await notePut(name, data); } }; },
+    };
+  }
+
+  LMD.store = { handlesAll, handlesPut, handlesDelete, canWrite, walk, rootsAll, notesAll, noteGet, notePut, noteDelete, noteHandle };
 })();

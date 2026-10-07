@@ -81,6 +81,7 @@
   async function vFile(url) {
     const parts = vParts(url);
     if (!appRoot || !parts.length) return null;
+    if (appRoot.kind === 'local') return parts.length === 1 ? LMD.store.noteHandle(parts[0]) : null;
     if (appRoot.kind === 'file') return parts.length === 1 && parts[0] === appRoot.handle.name ? appRoot.handle : null;
     let cur = appRoot.handle;
     for (let k = 0; k < parts.length - 1; k++) cur = await cur.getDirectoryHandle(parts[k]);
@@ -91,6 +92,7 @@
   }
   async function vList(dirUrl) {
     try {
+      if (appRoot.kind === 'local') return (await LMD.store.notesAll()).map((n) => ({ name: n.name, url: dirUrl + encodeURIComponent(n.name), dir: false }));
       if (appRoot.kind === 'file') return [{ name: appRoot.handle.name, url: dirUrl + encodeURIComponent(appRoot.handle.name), dir: false }];
       let dir = appRoot.handle;
       for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p);
@@ -571,7 +573,7 @@
         else if (!ui.panel.hidden) ui.panel.hidden = true;
         else if (ui.searchInput.value || document.activeElement === ui.searchInput) toggleSearch(false);
       }
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 's' && (editMode || dirty)) { e.preventDefault(); save(true); }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 's' && (editMode || dirty || (appRoot && appRoot.kind === 'local'))) { e.preventDefault(); save(true); }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); toggleSearch(true); }
     });
 
@@ -1441,6 +1443,8 @@
     needsRender = true;
     updateSaveState();
     clearTimeout(autosaveTimer);
+    // Las notas del navegador se guardan solas, siempre.
+    if (dirty && appRoot && appRoot.kind === 'local') { autosaveTimer = setTimeout(() => save(false), 600); return; }
     if (dirty && settings.autosave) {
       if (fileHandle) autosaveTimer = setTimeout(() => save(false), Math.max(500, settings.autosaveDelay | 0));
       else flash(T('Guardá una vez con Ctrl+S para activar el guardado automático'), 'warn');
@@ -1458,10 +1462,12 @@
     ui.main.querySelector('[data-act=mode-read]').title = T('Ver') + ' · ' + T(editMode ? 'Guardar y volver a solo lectura' : 'Estás viendo el documento');
     ui.main.querySelector('[data-act=mode-edit]').title = T('Editar') + ' · ' + T(editMode ? 'Estás editando el documento' : 'Editar el documento');
     const state = ui.main.querySelector('.lmd-savestate');
-    state.textContent = dirty ? T('Cambios sin guardar') : (editMode ? T(settings.autosave ? 'Guardado · autoguardado activo' : 'Todo guardado') : '');
+    const local = !!appRoot && appRoot.kind === 'local';
+    state.textContent = local ? T(dirty ? 'Guardando…' : 'Guardado en este navegador')
+      : (dirty ? T('Cambios sin guardar') : (editMode ? T(settings.autosave ? 'Guardado · autoguardado activo' : 'Todo guardado') : ''));
     const save = ui.main.querySelector('[data-act=save]');
-    save.hidden = !editMode && !dirty;
-    save.title = dirty ? T('Guardar (Ctrl+S). Hay cambios sin guardar') : T('Guardar (Ctrl+S)');
+    save.hidden = !local && !editMode && !dirty;
+    save.title = local ? T('Guardar como archivo en el disco (Ctrl+S)') : (dirty ? T('Guardar (Ctrl+S). Hay cambios sin guardar') : T('Guardar (Ctrl+S)'));
   }
 
   function softRender() {
@@ -1803,10 +1809,34 @@
     });
   }
 
+  // Una nota del navegador pasa a ser un archivo: se elige dónde, y desde ahí se trabaja sobre el archivo.
+  async function saveNoteToDisk() {
+    clearTimeout(autosaveTimer);
+    if (!window.showSaveFilePicker) {
+      const a = el('a', { download: DOC_NAME });
+      a.href = URL.createObjectURL(new Blob([raw], { type: 'text/markdown' }));
+      a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      flash(T('Se descargó una copia. La nota sigue guardada en este navegador'));
+      return true;
+    }
+    try {
+      const target = await window.showSaveFilePicker({ id: 'lmd-nuevo', suggestedName: DOC_NAME, types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md'] } }] });
+      const w = await target.createWritable(); await w.write(raw); await w.close();
+      await LMD.store.noteDelete(DOC_NAME);
+      diskText = raw; dirty = false; updateSaveState();
+      await LMD.home.adopt(homeCtx(), target);
+      return true;
+    } catch (e) {
+      if (!(e && e.name === 'AbortError')) flash(T('No se pudo guardar'), 'error');
+      return false;
+    }
+  }
+
   async function save(interactive) {
     const focused = document.activeElement;
     if (focused && focused.blur && (focused.isContentEditable || focused.classList.contains('lmd-src'))) focused.blur();
     if (ui.rawEdit && !ui.rawEdit.hidden) { raw = ui.rawEdit.value.replace(/\r?\n/g, eol); syncSource(); dirty = raw !== diskText; }
+    if (interactive && appRoot && appRoot.kind === 'local') return saveNoteToDisk();
     if (!dirty && fileHandle) { if (interactive) flash(T('Sin cambios para guardar')); return true; }
     try {
       if (!fileHandle) fileHandle = await storedHandle(interactive);
@@ -1841,7 +1871,7 @@
       await writable.write(raw);
       await writable.close();
       diskText = raw; dirty = false; updateSaveState();
-      flash(T('Guardado'));
+      if (interactive || !(appRoot && appRoot.kind === 'local')) flash(T('Guardado'));
       return true;
     } catch (e) {
       if (e && e.name === 'AbortError') return false;
@@ -1858,6 +1888,14 @@
     const f = params.get('f');
     if (!f) { LMD.home.show(homeCtx()); return false; }
     const id = f.split('/')[0];
+    if (id === 'local') {
+      // Nota guardada en el navegador.
+      const note = await LMD.store.noteGet(DOC_NAME);
+      if (!note) { LMD.home.show(homeCtx(), T('No se encontró "{a}".', { a: DOC_NAME })); return false; }
+      appRoot = { id, kind: 'local', name: T('En este navegador') };
+      raw = note.text; diskText = note.text;
+      return true;
+    }
     if (id === 'mem') {
       // Navegador sin acceso a archivos: el documento viaja en la sesión y se guarda descargando una copia.
       let mem = null;

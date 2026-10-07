@@ -119,19 +119,28 @@ try {
   await popup.close();
 
   console.log('Archivo nuevo');
-  const fresh = await ctx.newPage(); watch(fresh);
+  let fresh = await ctx.newPage(); watch(fresh);
   await fresh.goto(`chrome-extension://${id}/src/app.html?new=1`); await fresh.waitForSelector('.lmd-draft');
   check('arranca en edición con el cursor listo', /^nota-\d{8}-\d{4}\.md$/.test(await fresh.title()) && await fresh.evaluate(() => document.activeElement.classList.contains('lmd-draft')), await fresh.title());
   await fresh.keyboard.type('# Idea'); await fresh.keyboard.press('Enter'); await fresh.keyboard.type('Primera línea.'); await fresh.click('.lmd-foot .lmd-status', { force: true }); await fresh.waitForTimeout(600);
-  await fresh.reload(); await fresh.waitForSelector('.markdown-body h1');
-  check('recargar la pestaña no pierde la nota', (await fresh.textContent('.markdown-body h1')).startsWith('Idea'));
+  await fresh.waitForTimeout(1200);
+  check('la nota se guarda sola en el navegador', /navegador/.test(await fresh.textContent('.lmd-savestate')), await fresh.textContent('.lmd-savestate'));
+  const noteUrl = fresh.url();
+  await fresh.close();
+  const again = await ctx.newPage(); watch(again);
+  await again.goto(`chrome-extension://${id}/src/app.html`); await again.waitForSelector('.lmd-home-item');
+  check('al volver, la nota aparece en el inicio con su título', /Idea/.test(await again.textContent('.lmd-home-item')), await again.textContent('.lmd-home-item'));
+  await again.close();
+  fresh = await ctx.newPage(); watch(fresh);
+  await fresh.goto(noteUrl); await fresh.waitForSelector('.markdown-body h1');
+  check('cerrar la pestaña no pierde la nota', (await fresh.textContent('.markdown-body h1')).startsWith('Idea'));
   await fresh.evaluate(async () => {
     const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('nuevas', { create: true });
     window.showSaveFilePicker = async (o) => dir.getFileHandle(o.suggestedName, { create: true });
   });
   await Promise.all([fresh.waitForNavigation(), fresh.keyboard.press('Control+s')]); await fresh.waitForSelector('.markdown-body h1');
   const kept = await fresh.evaluate(async () => { const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('nuevas'); for await (const [, h] of dir.entries()) return (await h.getFile()).text(); });
-  check('guardar elige dónde y lo deja como archivo común', kept.trim() === '# Idea\n\nPrimera línea.' && !/f=mem/.test(fresh.url()), [kept, fresh.url().split('?')[1]]);
+  check('guardar elige dónde y lo deja como archivo común', kept.trim() === '# Idea\n\nPrimera línea.' && !/f=(mem|local)/.test(fresh.url()), [kept, fresh.url().split('?')[1]]);
   await fresh.goto(`chrome-extension://${id}/src/app.html`); await fresh.waitForSelector('.lmd-home-notes button');
   await fresh.evaluate(async () => { const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('rapidas', { create: true }); window.showDirectoryPicker = async () => dir; });
   await fresh.click('[data-home=notes]'); await fresh.waitForSelector('.lmd-home-notes b');
