@@ -190,7 +190,7 @@ try {
   await menu('diario', 'v-lock'); await app.waitForSelector(CLOUD + ' .lmd-vault-shut'); await app.waitForSelector('.lmd-home:not([hidden])');
   o.bloquear = [await shut('diario'), await app.title(), await app.evaluate(() => !document.querySelector('.lmd-home').hidden)];
   await folder('diario').click(); await app.waitForSelector(CARD + ' [data-v=p]'); await app.fill('[data-v=p]', PASS); await app.check('[data-v=keep]'); await app.click('[data-v=ok]'); await closed();
-  await app.goto(cloudUrl('diario/lunes.md')); await app.waitForSelector('.markdown-body h1:has-text("Lunes")');
+  await app.goto(cloudUrl('diario/lunes.md')); await app.waitForSelector('.markdown-body h1:has-text("Lunes")'); await app.waitForSelector(CLOUD + ' .lmd-node-vault');
   o.recuerda = [await app.locator(CARD).count(), await shut('diario'), await app.evaluate(([who, check]) => LMD.store.vkeyGet(who, check).then((k) => k && [k.type, k.extractable, k.algorithm.name, k.algorithm.length].join()), [mail, V.check]), (await menuItems('diario')).includes('v-drop')];
   await menu('diario', 'v-drop'); await said('ya no recuerda');
   o.olvida = [await app.evaluate(([who, check]) => LMD.store.vkeyGet(who, check), [mail, V.check]), await shut('diario')];

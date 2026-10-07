@@ -244,7 +244,7 @@ try {
   await app.evaluate(() => new Promise((r) => chrome.storage.local.remove('cloud', r)));
   await app.goto(home + pub.url.slice(WEB.length)); await app.waitForSelector('.lmd-article h1');
   check('el enlace público que creó la IA abre la nota sin cuenta', pub.url.startsWith(WEB + '?f=pub%2F') && /Informe/.test(await app.textContent('.lmd-article h1')));
-  await app.goto(home + link.slice(WEB.length)); await app.waitForSelector('.lmd-home [data-cloud=ask]');
+  await app.goto(home + link.slice(WEB.length)); await app.waitForSelector('.lmd-home-cloud:not([hidden]) [data-cloud=ask]');
   const door = await app.evaluate(() => ({ home: document.querySelector('.lmd-home').textContent, note: document.querySelectorAll('.lmd-article h1').length, in: LMD.cloud.signedIn() }));
   check('sin sesión, la dirección de la nota deja en el inicio y pide entrar', !door.in && door.note === 0 && /Entrá a tu cuenta para abrir las notas de la nube\./.test(door.home), door);
   await app.click('[data-cloud=ask]'); await app.fill('[data-field=email]', mail);
