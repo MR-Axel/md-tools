@@ -292,7 +292,7 @@
       "Comillas tipográficas y guiones más prolijos.": "Typographic quotes and tidier dashes.",
       "Un solo Enter corta el renglón, sin dejar una línea en blanco.": "A single Enter breaks the line, with no blank line needed.",
       "pronto": "soon", "Gratis": "Free", "Pago": "Paid", "mes": "month", "año": "year", "Plan": "Plan",
-      "Todo el editor": "The whole editor", "Hasta 10 notas en la nube": "Up to 10 notes in the cloud", "Los colores, la tipografía y el CSS propio vienen con el plan pago.": "Colors, the font and custom CSS come with the paid plan.", "Ver planes": "See plans",
+      "Todo el editor": "The whole editor", "Hasta 10 notas en la nube": "Up to 10 notes in the cloud", "Los colores, la tipografía y el CSS propio vienen con el plan pago.": "Colors, the font and custom CSS come with the paid plan.", "Ver planes": "See plans", "Qué es Sharpmd": "About Sharpmd",
       "Notas en el navegador y en tu disco, sin límite": "Notes in the browser and on your disk, no limit",
       "Notas en la nube sin límite": "Unlimited notes in the cloud", "Compartir y editar entre varios": "Share and edit together",
       "Conectar una IA por MCP": "Connect an AI over MCP", "Historial de versiones de 30 días": "30-day version history",

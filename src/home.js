@@ -77,7 +77,8 @@
         '<div class="lmd-home-cloud" hidden></div>' +
         '<p class="lmd-home-msg" role="status" hidden></p>' +
         '<div class="lmd-home-recent" hidden><h2>' + T('Recientes') + '</h2><ul></ul></div>' +
-      '</div>';
+      '</div>' +
+      (window.__MDT_WEB ? '<a class="lmd-home-coffee" href="../?site">' + T('Qué es Sharpmd') + '</a>' : '');
     document.body.appendChild(box);
     const msg = box.querySelector('.lmd-home-msg');
     const say = (text) => { msg.hidden = !text; msg.textContent = text || ''; };

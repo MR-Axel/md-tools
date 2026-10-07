@@ -3,6 +3,7 @@
 (function () {
   'use strict';
   if (window.chrome && chrome.runtime && chrome.runtime.id) return; // corre dentro de la extensión
+  try { localStorage.setItem('sharpmd:app', '1'); } catch (e) { /* sin almacenamiento */ } // la portada manda directo a la app a quien ya la usó
 
   const base = new URL('..', document.currentScript.src).href;
   const KEY = 'mdtools:';
