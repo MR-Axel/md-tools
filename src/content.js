@@ -7,6 +7,9 @@
   // y en la página propia de la extensión (app.html), donde el archivo llega por un permiso de carpeta.
   // La página propia también se puede servir desde un sitio, sin la extensión (ver web.js).
   const APP = /\/app\.html$/.test(location.pathname) && (location.protocol === 'chrome-extension:' || !!window.__MDT_WEB);
+  // La página de pago de sharpmd.app puede volver a la app de la extensión (manifest: web_accessible_resources),
+  // pero nadie la puede meter dentro de un marco: ahí no arranca.
+  if (APP && window.top !== window.self) return;
   let pre = null;
   if (!APP) {
     const type = (document.contentType || '').toLowerCase();
@@ -662,8 +665,8 @@
     }
     else if (act === 'update-later') { ui.update.hidden = true; if (ui.update.dataset.v) bg({ type: 'dismissUpdate', version: ui.update.dataset.v }); }
     else if (act === 'go-home') { if (APP) location.href = APP_URL; else bg({ type: 'openApp' }); }
-    else if (act === 'cloud-logout') LMD.cloud.logout().then(() => { panelStale = false; openPanel(); LMD.sync.paint(); });
-    else if (act === 'see-plans') { panelTab = 'acct'; openPanel(); }
+    else if (act === 'see-plans') openPanel('plan');
+    else if (act === 'feedback') LMD.sync.feedback();
   }
 
   // Aviso de versión nueva. El service worker decide si toca consultar GitHub según el ajuste.
@@ -1258,8 +1261,16 @@
   // ---------- Panel de ajustes ----------
   let panelStale = false;
   let panelTab = 'look';
-  function openPanel() {
+  let serverDraft = false; // "Uso mi propio servidor" prendido y la dirección todavía sin escribir
+  const PANEL_TABS = [['look', 'Apariencia', ICON.eye], ['read', 'Lectura y edición', ICON.pencil], ['plug', 'Plugins', ICON.b_code], ['cloud', 'Nube', ICON.cloud], ['ai', 'IA', ICON.spark], ['plan', 'Plan', ICON.card], ['adv', 'Avanzado', ICON.gear]];
+  // Con tab abre directo en esa pestaña: openPanel('plan').
+  function openPanel(tab) {
+    if (tab) panelTab = tab;
+    if (!PANEL_TABS.some((t) => t[0] === panelTab)) panelTab = 'look';
+    LMD.write.closeMenu(); // un menú de bloques abierto quedaría encima de los ajustes
     const s = settings;
+    if (ui.panel.hidden) serverDraft = false;
+    const noCloud = /^off$/i.test(s.cloudUrl || ''); const own = serverDraft || (!!s.cloudUrl && !noCloud);
     const EXTRA = ' <em class="lmd-tag">' + T('Plan pago') + '</em>';
     const plugins = Object.keys(LMD.PLUGIN_LABELS).map((k) =>
       '<label class="lmd-switch" data-tip="' + esc(T(LMD.PLUGIN_HELP[k] || '')) + '"><input type="checkbox" data-plugin="' + k + '"' + (s.plugins[k] ? ' checked' : '') + '><i></i><span>' + esc(T(LMD.PLUGIN_LABELS[k])) + '</span></label>').join('');
@@ -1275,10 +1286,11 @@
       '<div class="lmd-panel-card" role="dialog" aria-label="' + T('Ajustes') + '">' +
         '<header><h2>' + T('Ajustes') + '</h2><button class="lmd-icon-btn" data-act="close-panel" title="' + T('Cerrar') + '">' + ICON.close + '</button></header>' +
         '<nav class="lmd-ptabs" role="tablist">' +
-          [['look', 'Apariencia', ICON.eye], ['read', 'Lectura y edición', ICON.pencil], ['plug', 'Plugins', ICON.b_code], ['acct', 'Cuenta', ICON.cloud]].map((t) => '<button type="button" role="tab" data-ptab="' + t[0] + '">' + t[2] + '<span>' + T(t[1]) + '</span></button>').join('') +
+          PANEL_TABS.map((t) => '<button type="button" role="tab" data-ptab="' + t[0] + '">' + t[2] + '<span>' + T(t[1]) + '</span></button>').join('') +
+          '<button type="button" class="lmd-ptabs-foot" data-act="feedback">' + ICON.mail + '<span>' + T('Enviar comentarios') + '</span></button>' +
         '</nav>' +
         '<div class="lmd-panel-body">' +
-          '<section class="lmd-two"><h3>' + T('Apariencia') + '</h3>' +
+          '<section class="lmd-two" data-tab="look"><h3>' + T('Apariencia') + '</h3>' +
             '<div class="lmd-row"><span>' + T('Idioma') + '</span><div class="lmd-seg" data-seg="language" role="radiogroup">' +
               ['auto', 'es', 'en'].map((l) => '<button type="button" role="radio" data-val="' + l + '" aria-checked="' + (s.language === l) + '"' + (s.language === l ? ' class="lmd-on"' : '') + '>' + { auto: T('Automático'), es: 'Español', en: 'English' }[l] + '</button>').join('') +
             '</div></div>' +
@@ -1303,7 +1315,7 @@
             (s.supporter ? '' : '<div class="lmd-extra"><p>' + T('Los colores, la tipografía y el CSS propio vienen con el plan pago.') + '</p>' +
                 '<div class="lmd-extra-actions"><button type="button" class="lmd-btn lmd-btn-fill" data-act="see-plans">' + T('Ver planes') + '</button></div></div>') +
           '</section>' +
-          '<section class="lmd-two"><h3>' + T('Lectura') + '</h3>' +
+          '<section class="lmd-two" data-tab="read"><h3>' + T('Lectura') + '</h3>' +
             '<label class="lmd-check"><input type="checkbox" data-key="centered"' + (s.centered ? ' checked' : '') + '><span>' + T('Centrar el contenido') + '</span></label>' +
             '<label class="lmd-row"><span>' + T('Ancho del contenido') + ' <output>' + s.contentWidth + ' px</output></span><input type="range" min="560" max="1800" step="20" data-key="contentWidth" data-unit=" px" value="' + s.contentWidth + '"></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="wrapCode"' + (s.wrapCode ? ' checked' : '') + '><span>' + T('Ajustar las líneas largas del código') + '</span></label>' +
@@ -1311,23 +1323,33 @@
             '<label class="lmd-check"><input type="checkbox" data-key="autoRefresh"' + (s.autoRefresh ? ' checked' : '') + '><span>' + T('Recargar solo cuando el archivo cambia') + '</span></label>' +
             '<label class="lmd-row"><span>' + T('Revisar cada') + ' <output>' + s.refreshInterval + ' ms</output></span><input type="range" min="300" max="5000" step="100" data-key="refreshInterval" data-unit=" ms" value="' + s.refreshInterval + '"></label>' +
           '</section>' +
-          '<section class="lmd-two"><h3>' + T('Edición') + '</h3>' +
+          '<section class="lmd-two" data-tab="read"><h3>' + T('Edición') + '</h3>' +
             '<label class="lmd-check"><input type="checkbox" data-key="autosave"' + (s.autosave ? ' checked' : '') + '><span>' + T('Guardar solo mientras edito') + '</span></label>' +
             '<label class="lmd-row"><span>' + T('Guardar a los') + ' <output>' + s.autosaveDelay + ' ms</output></span><input type="range" min="1000" max="30000" step="500" data-key="autosaveDelay" data-unit=" ms" value="' + s.autosaveDelay + '"></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="focusMode"' + (s.focusMode ? ' checked' : '') + '><span>' + T('Modo foco: atenuar lo que no estoy escribiendo') + '</span></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="typewriter"' + (s.typewriter ? ' checked' : '') + '><span>' + T('Máquina de escribir: mantener el renglón a media altura') + '</span></label>' +
           '</section>' +
-          '<section class="lmd-two"><h3>' + T('Carpeta') + '</h3>' +
+          '<section class="lmd-two" data-tab="read"><h3>' + T('Carpeta') + '</h3>' +
             '<label class="lmd-check"><input type="checkbox" data-key="filesOnlyMarkdown"' + (s.filesOnlyMarkdown ? ' checked' : '') + '><span>' + T('Mostrar solo archivos Markdown') + '</span></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="filesShowHidden"' + (s.filesShowHidden ? ' checked' : '') + '><span>' + T('Mostrar archivos y carpetas ocultos') + '</span></label>' +
           '</section>' +
-          '<section><h3>' + T('Plugins de Markdown') + '</h3><div class="lmd-grid">' + plugins + '</div></section>' +
-          '<section><h3>' + T('CSS propio') + (s.supporter ? '' : EXTRA) + '</h3>' +
+          '<section data-tab="plug"><h3>' + T('Plugins de Markdown') + '</h3><div class="lmd-grid">' + plugins + '</div></section>' +
+          // Nube, IA y Plan los dibuja sync.js al entrar a cada pestaña, con la cuenta recién consultada.
+          '<section data-tab="cloud"><h3>' + T('Nube') + '</h3><div class="lmd-acct" data-acct="cloud"></div></section>' +
+          '<section data-tab="ai"><h3>' + T('Conectar una IA') + '</h3><div class="lmd-acct" data-acct="ai"></div></section>' +
+          '<section data-tab="plan"><h3>' + T('Plan') + '</h3><div class="lmd-acct" data-acct="plan"></div></section>' +
+          '<section data-tab="adv"><h3>' + T('CSS propio') + (s.supporter ? '' : EXTRA) + '</h3>' +
             '<textarea data-key="customCSS"' + (s.supporter ? '' : ' disabled') + ' spellcheck="false" placeholder=".markdown-body h1 { color: tomato; }">' + esc(s.customCSS) + '</textarea>' +
             '<p class="lmd-hint">' + T('Se aplica encima del tema. El documento vive dentro de .markdown-body.') + '</p>' +
           '</section>' +
+          // Vacío usa el servidor de SharpMD; una dirección, el propio; "off" deja la app sin nube.
+          '<section class="lmd-two" data-tab="adv"><h3>' + T('Servidor') + '</h3>' +
+            '<label class="lmd-check"><input type="checkbox" data-server="own"' + (own ? ' checked' : '') + '><span>' + T('Uso mi propio servidor') + '</span></label>' +
+            '<label class="lmd-check"><input type="checkbox" data-server="off"' + (noCloud ? ' checked' : '') + '><span>' + T('Usar SharpMD sin nube') + '</span></label>' +
+            '<label class="lmd-row lmd-server-url"' + (own ? '' : ' hidden') + '><span>' + T('Dirección del servidor') + '</span><input type="text" data-server="url" spellcheck="false" placeholder="https://" value="' + (own ? esc(s.cloudUrl) : '') + '"></label>' +
+          '</section>' +
           (chrome.runtime.getManifest().update_url ? '' :
-          '<section class="lmd-two"><h3>' + T('Actualizaciones') + '</h3>' +
+          '<section class="lmd-two" data-tab="adv"><h3>' + T('Actualizaciones') + '</h3>' +
             '<div class="lmd-row"><span>' + T('Buscar versiones nuevas') + '</span><div class="lmd-seg" data-seg="updateCheck" role="radiogroup">' +
               [['daily', 'Por día'], ['weekly', 'Por semana'], ['off', 'Nunca']].map((o) => '<button type="button" role="radio" data-val="' + o[0] + '" aria-checked="' + (s.updateCheck === o[0]) + '"' + (s.updateCheck === o[0] ? ' class="lmd-on"' : '') + '>' + T(o[1]) + '</button>').join('') +
             '</div></div>' +
@@ -1335,53 +1357,28 @@
             '<p class="lmd-update-msg" role="status" hidden></p>' +
             '<p class="lmd-hint">' + T('Lo único que se consulta es el número de versión publicado en GitHub. No se manda ningún dato.') + '</p>' +
           '</section>') +
-          '<section><h3>' + T('Nube') + '</h3>' +
-            '<div class="lmd-acct"></div>' +
-            '<label class="lmd-row"><span>' + T('Servidor de sincronización') + '</span><input type="text" data-key="cloudUrl" spellcheck="false" placeholder="https://" value="' + esc(s.cloudUrl || '') + '"></label>' +
-            '<p class="lmd-hint">' + T('Dejalo vacío salvo que alojes tu propio servidor.') + '</p>' +
-          '</section>' +
-          '<section class="lmd-panel-foot"><button type="button" class="lmd-btn" data-act="reset">' + T('Restablecer todo') + '</button></section>' +
+          '<section class="lmd-panel-foot" data-tab="adv"><button type="button" class="lmd-btn" data-act="reset">' + T('Restablecer todo') + '</button></section>' +
         '</div>' +
       '</div>';
     ui.panel.hidden = false;
-    // Cada sección va a una pestaña según su título.
-    const tabOf = {}; tabOf[T('Apariencia')] = 'look'; tabOf[T('Lectura')] = 'read'; tabOf[T('Edición')] = 'read'; tabOf[T('Carpeta')] = 'read'; tabOf[T('Plugins de Markdown')] = 'plug'; tabOf[T('CSS propio')] = 'plug';
-    ui.panel.querySelectorAll('.lmd-panel-body > section').forEach((sec) => {
-      const h = sec.querySelector('h3'); const name = h ? h.firstChild.nodeValue.trim() : '';
-      sec.dataset.tab = tabOf[name] || 'acct';
-    });
+    // Desde los paneles de la cuenta: cómo cambiar de pestaña, ir a entrar, y salir a pagar sin perder lo escrito.
+    const host = {
+      tab: (t) => showTab(t), login: () => onAction('go-home'), close: () => { ui.panel.hidden = true; },
+      leave: () => (dirty ? save(false) : Promise.resolve(true)),
+      back: location.href.split('#')[0], appUrl: APP_URL, direct: !APP,
+      // Las personalizaciones vienen con el plan pago y se conservan.
+      unlocked: (a) => { if (a.plan === 'pro' && !settings.supporter) { panelStale = true; LMD.patch({ supporter: true }); } },
+    };
     const showTab = (tab) => {
       panelTab = tab;
       ui.panel.querySelectorAll('[data-ptab]').forEach((b) => { b.classList.toggle('lmd-on', b.dataset.ptab === tab); b.setAttribute('aria-selected', String(b.dataset.ptab === tab)); });
       ui.panel.querySelectorAll('.lmd-panel-body > section').forEach((sec) => { sec.hidden = sec.dataset.tab !== tab; });
       ui.panel.querySelector('.lmd-panel-body').scrollTop = 0;
+      const acct = ui.panel.querySelector('[data-acct=' + tab + ']');
+      if (acct) LMD.sync.panes[tab](acct, host);
     };
     ui.panel.querySelectorAll('[data-ptab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.ptab)));
     showTab(panelTab);
-    // Cuenta: quién está conectado y con qué plan.
-    const acct = ui.panel.querySelector('.lmd-acct');
-    if (acct) LMD.cloud.ready().then(async () => {
-      const row = (label, value) => '<div class="lmd-acct-row"><span>' + label + '</span><b>' + value + '</b></div>';
-      const plans = (a) => {
-        const pro = a && a.plan === 'pro'; const pay = (a && a.checkout) || {};
-        const btn = (url, label) => (url ? '<a class="lmd-btn lmd-btn-fill" target="_blank" rel="noopener noreferrer" href="' + esc(url) + '">' + label + '</a>' : '<button type="button" class="lmd-btn" disabled>' + label + ' · ' + T('pronto') + '</button>');
-        return '<div class="lmd-plans">' +
-          '<div class="lmd-plan' + (pro ? '' : ' lmd-plan-on') + '"><h4>' + T('Gratis') + '</h4><ul><li>' + T('Todo el editor') + '</li><li>' + T('Hasta 10 notas en la nube') + '</li><li>' + T('Notas en el navegador y en tu disco, sin límite') + '</li></ul></div>' +
-          '<div class="lmd-plan' + (pro ? ' lmd-plan-on' : '') + '"><h4>' + T('Pago') + ' <small>USD 3.99 / ' + T('mes') + '</small></h4><ul><li>' + T('Notas en la nube sin límite') + '</li><li>' + T('Compartir y editar entre varios') + '</li><li>' + T('Conectar una IA por MCP') + '</li><li>' + T('Historial de versiones de 30 días') + '</li><li>' + T('Colores, tipografía y CSS propio') + '</li></ul>' +
-            (pro ? '<p class="lmd-hint">' + T('Es tu plan actual.') + (a.manage ? ' <a href="' + esc(a.manage) + '" target="_blank" rel="noopener noreferrer">' + T('Administrar la suscripción') + '</a>' : '') + '</p>' : '<div class="lmd-plan-buy">' + btn(pay.monthly, 'USD 3.99 / ' + T('mes')) + btn(pay.yearly, 'USD 39 / ' + T('año')) + '</div>') + '</div></div>';
-      };
-      if (!LMD.cloud.enabled()) { acct.innerHTML = '<p class="lmd-hint">' + T('Las cuentas y la sincronización todavía no están activas en esta versión.') + '</p>' + plans(null); return; }
-      if (!LMD.cloud.signedIn()) {
-        acct.innerHTML = '<p class="lmd-hint">' + T('Entrá a tu cuenta desde la pantalla de inicio de SharpMD.') + '</p><button type="button" class="lmd-btn lmd-btn-fill" data-act="go-home">' + T('Entrar') + '</button>' + plans(null);
-        return;
-      }
-      try {
-        const a = await LMD.cloud.account();
-        if (a.plan === 'pro' && !settings.supporter) { panelStale = true; LMD.patch({ supporter: true }); } // las personalizaciones vienen con el plan y se conservan
-        acct.innerHTML = row(T('Cuenta'), esc(a.email)) + row(T('Plan'), T(a.plan === 'pro' ? 'Pago' : 'Gratis')) + row(T('Notas en la nube'), a.limit ? T('{n} de {m}', { n: a.notes, m: a.limit }) : String(a.notes)) + plans(a) +
-          '<button type="button" class="lmd-btn" data-act="cloud-logout">' + T('Salir') + '</button>';
-      } catch (e) { acct.innerHTML = '<p class="lmd-hint">' + T('No hay conexión con el servidor.') + '</p>'; }
-    });
 
     let pending = {};
     const flush = debounce(() => { const p = pending; pending = {}; LMD.patch(p); }, 150);
@@ -1428,6 +1425,20 @@
     ui.panel.querySelectorAll('[data-plugin]').forEach((input) => {
       input.addEventListener('change', () => LMD.patch({ plugins: { [input.dataset.plugin]: input.checked } }));
     });
+    // Servidor: los dos interruptores se excluyen. La dirección se guarda al terminar de escribirla.
+    const server = (name) => ui.panel.querySelector('[data-server=' + name + ']');
+    const urlRow = ui.panel.querySelector('.lmd-server-url');
+    server('own').addEventListener('change', () => {
+      serverDraft = server('own').checked; urlRow.hidden = !serverDraft;
+      if (serverDraft) { server('off').checked = false; server('url').focus(); }
+      LMD.patch({ cloudUrl: serverDraft ? server('url').value.trim() : '' });
+    });
+    server('off').addEventListener('change', () => {
+      if (server('off').checked) { serverDraft = false; server('own').checked = false; urlRow.hidden = true; }
+      LMD.patch({ cloudUrl: server('off').checked ? 'off' : '' });
+    });
+    server('url').addEventListener('change', () => { if (server('own').checked) LMD.patch({ cloudUrl: server('url').value.trim() }); });
+    if (serverDraft && panelTab === 'adv' && !server('url').value) server('url').focus();
     ui.panel.onclick = (e) => { if (e.target === ui.panel) ui.panel.hidden = true; };
   }
 
@@ -1903,6 +1914,7 @@
     pathOf: (url) => vParts(url).join('/'),
     urlOf: (path) => VBASE + appRoot.id + '/' + path.split('/').map(encodeURIComponent).join('/'),
     openApp: (query) => bg({ type: 'openApp', query }),
+    openPanel: (tab) => openPanel(tab),
     ui, hooks: { render: [], tree: [] }, lastBlock: null, appUrl: APP_URL,
     get blocks() { return docKind() === 'md'; },
     treeRoot: () => treeRoot,
@@ -2193,7 +2205,9 @@
     buildUI();
     applySettings();
     render();
-    try { const t = sessionStorage.getItem('lmd-panel'); if (t) { sessionStorage.removeItem('lmd-panel'); panelTab = t; openPanel(); } } catch (e) {}
+    try { const t = sessionStorage.getItem('lmd-panel'); if (t) { sessionStorage.removeItem('lmd-panel'); openPanel(t); } } catch (e) {}
+    // Vuelta de la página de pago: Ajustes en Plan, esperando que el servidor confirme.
+    if (APP && location.hash === '#lmd-paid') { openPanel('plan'); LMD.sync.awaitPaid(); }
     updateSaveState();
     checkUpdate(false);
     // Nota de la nube: se escucha en vivo quién más está y cuándo alguien guarda.
@@ -2212,7 +2226,8 @@
     if (fresh) history.replaceState(null, '', location.href.replace(/[?&]edit=1/, ''));
     const blankDoc = !raw.trim();
     if (fresh || (!readOnly && docKind() === 'md' && (blankDoc || editRemembered()))) {
-      setEditMode(true).then(() => { const add = (fresh || blankDoc) && ui.article.querySelector('.lmd-add'); if (add) add.click(); });
+      // Con Ajustes abiertos (vuelta de un cambio de idioma o de un pago) el menú de insertar no se ofrece: quedaría encima.
+      setEditMode(true).then(() => { const add = (fresh || blankDoc) && ui.panel.hidden && ui.article.querySelector('.lmd-add'); if (add) add.click(); });
     }
     const fromSearch = /^#lmd-q=([^&]+)(?:&r=(.+))?$/.exec(location.hash);
     if (fromSearch) {
@@ -2238,6 +2253,8 @@
       settings = LMD.merge(changes.settings.newValue);
       if (settings.language !== prev.language) { if (!ui.panel.hidden) { try { sessionStorage.setItem('lmd-panel', panelTab); } catch (e) {} } location.reload(); return; }
       applySettings();
+      // Cambió el servidor, o se prendió o apagó la nube: la cuenta y el ícono se vuelven a leer.
+      if ((settings.cloudUrl || '') !== (prev.cloudUrl || '')) { LMD.cloud.reset(); LMD.cloud.ready().then(() => LMD.sync.paint()); panelStale = true; }
       if (panelStale && !ui.panel.hidden) { panelStale = false; openPanel(); }
       if (RENDER_KEYS.some((k) => JSON.stringify(prev[k]) !== JSON.stringify(settings[k]))) render();
       if (TREE_KEYS.some((k) => prev[k] !== settings[k]) && ui.paneFiles.dataset.loaded) loadTree();

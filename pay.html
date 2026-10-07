@@ -26,6 +26,8 @@
   .btn:hover { filter: brightness(1.06); }
   .btn.ghost { margin-top: 10px; background: transparent; border-color: var(--line); color: var(--fg); }
   .fine { margin: 16px 0 0; font-size: 13px; color: var(--faint); }
+  .back { display: block; margin-top: 14px; text-align: center; font-size: 14px; color: var(--muted); }
+  .back:hover { color: var(--accent); }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -41,18 +43,20 @@
     <button type="button" class="btn" id="go"><span lang="en">Pay with card</span><span lang="es">Pagar con tarjeta</span></button>
     <a class="btn ghost" id="other" href="#"></a>
     <p class="fine"><span lang="en">Paddle handles the payment and the receipt. Cancel whenever you want from the link in that receipt.</span><span lang="es">El pago y el recibo los maneja Paddle. Te das de baja cuando quieras desde el enlace de ese recibo.</span></p>
+    <a class="back" data-back href="src/app.html"><span lang="en">Back to SharpMD without paying</span><span lang="es">Volver a SharpMD sin pagar</span></a>
   </section>
 
   <section id="noemail" hidden>
     <h1><span lang="en">Open this from SharpMD</span><span lang="es">Abrí esto desde SharpMD</span></h1>
-    <p><span lang="en">Sign in, then go to Settings, Account and choose a plan there. That way the payment goes to your account.</span><span lang="es">Entrá a tu cuenta, andá a Ajustes, Cuenta y elegí el plan ahí. Así el pago queda en tu cuenta.</span></p>
-    <a class="btn" href="src/app.html"><span lang="en">Open the app</span><span lang="es">Abrir la app</span></a>
+    <p><span lang="en">Sign in, then go to Settings, Plan and choose a plan there. That way the payment goes to your account.</span><span lang="es">Entrá a tu cuenta, andá a Ajustes, Plan y elegí el plan ahí. Así el pago queda en tu cuenta.</span></p>
+    <a class="btn" data-back href="src/app.html"><span lang="en">Open the app</span><span lang="es">Abrir la app</span></a>
   </section>
 
   <section id="done" hidden>
     <h1><span lang="en">Payment received</span><span lang="es">Pago recibido</span></h1>
-    <p><span lang="en">Your account moves to the paid plan in about a minute. Reopen Settings to see it.</span><span lang="es">Tu cuenta pasa al plan pago en un minuto, más o menos. Volvé a abrir Ajustes para verlo.</span></p>
-    <a class="btn" href="src/app.html"><span lang="en">Back to SharpMD</span><span lang="es">Volver a SharpMD</span></a>
+    <p id="returning" hidden><span lang="en">Taking you back to SharpMD.</span><span lang="es">Te llevamos de vuelta a SharpMD.</span></p>
+    <p id="stay" hidden><span lang="en">Your account moves to the paid plan in about a minute. You can close this tab and go back to SharpMD.</span><span lang="es">Tu cuenta pasa al plan pago en un minuto, más o menos. Podés cerrar esta pestaña y volver a SharpMD.</span></p>
+    <a class="btn" data-paid href="src/app.html"><span lang="en">Back to SharpMD</span><span lang="es">Volver a SharpMD</span></a>
   </section>
 </main>
 <script src="site.js"></script>
@@ -68,7 +72,26 @@
   };
   var q = new URLSearchParams(location.search);
   var show = function (id) { document.getElementById(id).hidden = false; };
-  if (q.has('done')) { show('done'); return; }
+  // Adónde volver: la app manda su propia dirección en back. Solo vale si es de este mismo sitio o de la
+  // extensión; cualquier otra cosa se ignora, para que esta página no sirva de puente a otro sitio.
+  var back = (function () {
+    var given = q.get('back');
+    try {
+      var u = new URL(given || '', location.href);
+      if (given && (u.origin === location.origin || u.protocol === 'chrome-extension:')) return u.href.split('#')[0];
+    } catch (e) { /* dirección ilegible */ }
+    return '';
+  })();
+  var home = back || new URL('src/app.html', location.href).href;
+  var tail = back ? '&back=' + encodeURIComponent(back) : '';
+  document.querySelectorAll('[data-back]').forEach(function (a) { a.href = home; });
+  document.querySelector('[data-paid]').href = home + '#lmd-paid';
+  if (q.has('done')) {
+    // Pago hecho: de vuelta a donde estaba, con la marca que le dice a la app que espere la confirmación.
+    show('done'); show(back ? 'returning' : 'stay');
+    if (back) setTimeout(function () { location.replace(back + '#lmd-paid'); }, 1200);
+    return;
+  }
   var email = (q.get('email') || '').trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { show('noemail'); return; }
   var key = q.get('plan') === 'yearly' ? 'yearly' : 'monthly'; var plan = PLANS[key];
@@ -81,7 +104,7 @@
     cycle.textContent = plan[lang()];
     other.textContent = (lang() === 'es' ? 'Prefiero ' : 'I prefer ') + PLANS[otherKey].amount + ' ' + PLANS[otherKey][lang()];
   };
-  other.href = 'pay.html?plan=' + otherKey + '&email=' + encodeURIComponent(email);
+  other.href = 'pay.html?plan=' + otherKey + '&email=' + encodeURIComponent(email) + tail;
   paint(); document.addEventListener('click', function (e) { if (e.target.closest && e.target.closest('[data-set]')) setTimeout(paint, 0); });
   show('buy');
   var ready = false;
@@ -92,7 +115,7 @@
       items: [{ priceId: plan.price, quantity: 1 }],
       customer: { email: email },
       customData: { sharpmd_email: email },
-      settings: { displayMode: 'overlay', theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', locale: lang(), successUrl: location.origin + location.pathname + '?done=1' },
+      settings: { displayMode: 'overlay', theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', locale: lang(), successUrl: location.origin + location.pathname + '?done=1' + tail },
     });
   };
   document.getElementById('go').addEventListener('click', open);

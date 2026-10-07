@@ -245,6 +245,11 @@
     create: (path) => api('PUT', notePath(path), { text: '' }).then((r) => { listCache = null; return r; }),
     remove: (path) => api('DELETE', notePath(path)).then(async (r) => { listCache = null; await S.cloudDelete(email, path); return r; }),
     newToken: (name) => api('POST', '/tokens', { name }),
+    tokens: () => api('GET', '/tokens'),
+    revoke: (id) => api('DELETE', '/tokens/' + id),
+    feedback: (text, mail, context) => api('POST', '/feedback', { text, email: mail || undefined, context }),
+    // Cambió la dirección del servidor en Ajustes: se vuelve a leer.
+    reset: () => { loaded = null; listCache = null; },
     write: (path, text) => api('PUT', notePath(path), { text }).then((r) => { listCache = null; return r; }),
   };
 })();

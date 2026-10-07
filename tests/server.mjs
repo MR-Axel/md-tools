@@ -1,11 +1,11 @@
 // Servidor de sincronización: cuentas, notas, límites del plan gratis y MCP.
 import { spawn } from 'child_process'; import { createHmac } from 'crypto';
-import fs from 'fs'; import os from 'os'; import path from 'path'; import { fileURLToPath } from 'url';
+import fs from 'fs'; import os from 'os'; import path from 'path'; import http from 'http'; import { fileURLToPath } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'mdsync-'));
-const PORT = 18000 + Math.floor(Math.random() * 1000);
+const PORT = 18000 + Math.floor(Math.random() * 400);
 const base = 'http://127.0.0.1:' + PORT;
-const child = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(PORT), DATA_DIR: data, DEV_CODES: '1', ADMIN_KEY: 'clave-de-prueba', PADDLE_WEBHOOK_SECRET: 'firma-de-prueba', PORTAL_URL: 'https://portal.ejemplo.test', FREE_NOTES: '3', ALLOW_ORIGINS: 'https://ejemplo.test' }, stdio: ['ignore', 'pipe', 'pipe'] });
+const child = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(PORT), DATA_DIR: data, DEV_CODES: '1', ADMIN_KEY: 'clave-de-prueba', PADDLE_WEBHOOK_SECRET: 'firma-de-prueba', PORTAL_URL: 'https://portal.ejemplo.test', FREE_NOTES: '3', ALLOW_ORIGINS: 'https://ejemplo.test', FEEDBACK_TO: 'duenio@ejemplo.test' }, stdio: ['ignore', 'pipe', 'pipe'] });
 let log = ''; child.stdout.on('data', (d) => { log += d; }); child.stderr.on('data', (d) => { log += d; });
 for (let i = 0; i < 50 && !/puerto/.test(log); i++) await new Promise((r) => setTimeout(r, 100));
 
@@ -134,6 +134,55 @@ try {
   await paddle(sub('canceled'));
   check('Paddle: al cancelarse vuelve a gratis', (await call('GET', '/account', undefined, ps)).json.plan === 'free');
   check('Paddle: un aviso sin cuenta no rompe', (await paddle({ event_type: 'subscription.created', data: { id: 'sub_2', status: 'active', custom_data: { sharpmd_email: 'nadie@ejemplo.test' }, items: [{ price: { custom_data: { app: 'sharpmd' } } }] } })).json.ignored === 'user');
+  // Correo bien formado: lo que antes pasaba con cualquier cosa con una arroba y un punto
+  const mailOk = async (mail) => (await call('POST', '/auth/start', { email: mail })).status;
+  const malos = ['sin-arroba.test', 'dos@@ejemplo.test', 'con espacio@ejemplo.test', 'ana@ejemplo', 'ana@ejemplo..test', '.ana@ejemplo.test', 'ana.@ejemplo.test', 'ana@-ejemplo.test', 'ana@ejemplo.t', 'ana@ejemplo.123'];
+  const rechazos = []; for (const m of malos) rechazos.push(await mailOk(m));
+  check('rechaza los correos mal formados', rechazos.every((st) => st === 400), rechazos);
+  check('acepta correos comunes, con + y subdominios', (await mailOk('Nombre.Apellido+notas@mail.ejemplo.com.ar')) === 200 && (await mailOk('josé@añil.test')) === 200);
+
+  // Comentarios: llegan con o sin sesión, con tope por IP y por cuenta
+  const fb = (body, auth, ip) => call('POST', '/feedback', body, auth, ip ? { 'x-forwarded-for': ip } : undefined);
+  const anon = await fb({ text: 'El menú tapa los ajustes.', context: { version: '2.35.0', where: 'extension', browser: 'Chrome', lang: 'es' } }, undefined, '10.0.0.1');
+  check('comentarios: sin sesión entra, y sin correo configurado no manda nada', anon.status === 200 && anon.json.ok === true && anon.json.dev === true, anon.json);
+  check('comentarios: con sesión entra', (await fb({ text: 'Con la cuenta abierta.' }, ps, '10.0.0.2')).status === 200);
+  const corto = await fb({ text: ' abc ' }, undefined, '10.0.0.3'); const largo = await fb({ text: 'x'.repeat(4001) }, undefined, '10.0.0.3');
+  check('comentarios: el texto va de 5 a 4000 caracteres', corto.status === 400 && corto.json.error === 'bad_text' && largo.status === 400 && (await fb({ text: 'x'.repeat(4000) }, undefined, '10.0.0.3')).status === 200, [corto.json, largo.json]);
+  check('comentarios: un correo mal escrito se rechaza', (await fb({ text: 'Texto de prueba.', email: 'ana@ejemplo' }, undefined, '10.0.0.3')).json.error === 'bad_email');
+  const porIp = []; for (let i = 0; i < 6; i++) porIp.push((await fb({ text: 'Comentario ' + i + ' de la misma IP.' }, undefined, '10.0.0.9')).status);
+  check('comentarios: cinco por hora por IP', porIp.join() === '200,200,200,200,200,429' && (await fb({ text: 'Desde otra IP sigue entrando.' }, undefined, '10.0.0.10')).status === 200, porIp);
+  // La IP que cuenta es la que anota el proxy, la última: inventar las anteriores no saltea el tope.
+  check('comentarios: la IP es la última de x-forwarded-for', (await fb({ text: 'Con una IP inventada adelante.' }, undefined, '1.2.3.4, 10.0.0.9')).status === 429);
+  const porCuenta = []; for (let i = 0; i < 6; i++) porCuenta.push((await fb({ text: 'Comentario ' + i + ' de la misma cuenta.' }, ps, '10.1.0.' + i)).status);
+  check('comentarios: cinco por hora por cuenta, aunque cambie la IP', porCuenta.join() === '200,200,200,200,429,429', porCuenta);
+
+  // Con correo configurado: qué sale, a quién, y que del contexto no pase nada de más
+  const second = async (extra) => {
+    const port = PORT + 1 + Math.floor(Math.random() * 500); const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdsync-'));
+    const proc = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(port), DATA_DIR: dir, DEV_CODES: '1', ...extra }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = ''; proc.stdout.on('data', (d) => { out += d; }); proc.stderr.on('data', (d) => { out += d; });
+    for (let i = 0; i < 50 && !/puerto/.test(out); i++) await new Promise((r) => setTimeout(r, 100));
+    const post = async (url, body, auth) => { const r = await fetch('http://127.0.0.1:' + port + url, { method: 'POST', headers: { 'content-type': 'application/json', ...(auth ? { authorization: 'Bearer ' + auth } : {}) }, body: JSON.stringify(body) }); return { status: r.status, json: await r.json().catch(() => null) }; };
+    return { post, stop: async () => { proc.kill(); await new Promise((r) => setTimeout(r, 300)); fs.rmSync(dir, { recursive: true, force: true }); } };
+  };
+  const sent = [];
+  const inbox = http.createServer((req, res) => { let b = ''; req.on('data', (d) => { b += d; }); req.on('end', () => { sent.push(JSON.parse(b)); res.writeHead(200); res.end('{}'); }); });
+  await new Promise((r) => inbox.listen(0, '127.0.0.1', r));
+  const withMail = await second({ FEEDBACK_TO: 'duenio@ejemplo.test', MAIL_WEBHOOK: 'http://127.0.0.1:' + inbox.address().port });
+  const real = await withMail.post('/feedback', { text: 'Al cambiar de idioma se pisan dos ventanas.', email: 'Lectora@Ejemplo.test', context: { version: '2.35.0', where: 'web', browser: 'Mozilla/5.0 Chrome/140', lang: 'es', path: 'C:/privado/diario.md', note: '# Mi diario secreto' } });
+  const m = sent[0] || {};
+  check('comentarios: se mandan al correo configurado, con respuesta a quien escribió', real.status === 200 && !real.json.dev && m.to === 'duenio@ejemplo.test' && m.subject === 'SharpMD feedback' && m.reply_to === 'lectora@ejemplo.test', [real.json, m]);
+  check('comentarios: el cuerpo trae el texto, la versión, web o extensión, el navegador y el idioma', /^Al cambiar de idioma se pisan dos ventanas\./.test(m.text || '') && /Version: 2\.35\.0/.test(m.text) && /Where: web/.test(m.text) && /Browser: Mozilla\/5\.0 Chrome\/140/.test(m.text) && /Language: es/.test(m.text), m.text);
+  check('comentarios: ni rutas ni contenido de notas viajan en el contexto', !/privado|diario|secreto/.test(JSON.stringify(m)), m);
+  const lc = await withMail.post('/auth/start', { email: 'cuenta@ejemplo.test' }); const ls = (await withMail.post('/auth/verify', { email: 'cuenta@ejemplo.test', code: lc.json.dev_code })).json.session;
+  await withMail.post('/feedback', { text: 'Escrito con la cuenta abierta.', email: 'otro@ejemplo.test' }, ls);
+  const m2 = sent[sent.length - 1] || {};
+  check('comentarios: con sesión, el correo es el de la cuenta', m2.reply_to === 'cuenta@ejemplo.test' && /From: cuenta@ejemplo\.test \(signed in, free plan\)/.test(m2.text || ''), m2);
+  await withMail.stop(); inbox.close();
+  const noFeedback = await second({});
+  check('comentarios: sin FEEDBACK_TO responde 404', (await noFeedback.post('/feedback', { text: 'No debería llegar a nadie.' })).status === 404);
+  await noFeedback.stop();
+
   check('cerrar sesión la invalida', (await call('POST', '/auth/logout', {}, s)).status === 200 && (await call('GET', '/notes', undefined, s)).status === 401);
 } catch (e) { check('sin excepciones', false, String(e && e.stack || e)); console.log(log); }
 child.kill();

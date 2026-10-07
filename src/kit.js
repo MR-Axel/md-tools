@@ -48,6 +48,10 @@
     cloudOff: '<svg viewBox="0 0 24 24"><path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96 6 6 0 0 1 11.5 1.300A3.85 3.85 0 0 1 17.5 18.500z"/><path d="M4 4l16 16"/></svg>',
     plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
     check: '<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
+    spark: '<svg viewBox="0 0 24 24"><path d="m12 4 2 5.500 5.500 2.500-5.500 2.500-2 5.500-2-5.500L4.500 12l5.500-2.500z"/></svg>',
+    card: '<svg viewBox="0 0 24 24"><rect x="3.5" y="6" width="17" height="12" rx="2"/><path d="M3.5 10h17M7 14.500h3.500"/></svg>',
+    gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3.500v2.700M12 17.800v2.700M3.500 12h2.700M17.800 12h2.700M6 6l1.900 1.900M16.100 16.100 18 18M6 18l1.900-1.900M16.100 7.900 18 6"/></svg>',
+    mail: '<svg viewBox="0 0 24 24"><rect x="3.5" y="5.500" width="17" height="13" rx="2"/><path d="m4.500 7.500 7.500 5.500 7.500-5.500"/></svg>',
     open: '<svg viewBox="0 0 24 24"><path d="M3 18.5V6.5A1.5 1.5 0 0 1 4.5 5h4.6l2 2.2h7.4A1.5 1.5 0 0 1 20 8.7V10"/><path d="M3 18.5 5.6 11a1.5 1.5 0 0 1 1.4-1h13.2a1 1 0 0 1 .9 1.4L18.6 18a1.5 1.5 0 0 1-1.4 1H3.6"/></svg>',
     coffee: '<svg viewBox="0 0 24 24"><path d="M5 9h11v5.5a4.5 4.5 0 0 1-4.5 4.5h-2A4.5 4.5 0 0 1 5 14.5z"/><path d="M16 10.5h1.5a2.5 2.5 0 0 1 0 5H16M8 3.5v2.5M11.5 3.5v2.5"/></svg>',
   };
@@ -67,5 +71,14 @@
   const MD_RE = /\.(md|mdx|mkd|mdown|markdown)$/i;
   const SKIP_DIRS = /^(node_modules|\.git|dist|build|__pycache__)$/i;
 
-  LMD.kit = { ICON, el, esc, debounce, MD_RE, SKIP_DIRS };
+  // Un correo bien formado: sin espacios, una sola arroba, el nombre sin puntos al borde ni dobles, y un
+  // dominio de etiquetas válidas que termina en letras. Es la misma regla que aplica el servidor.
+  const validEmail = (v) => {
+    const e = String(v || ''); const m = /^([^\s@]+)@([^\s@]+)$/.exec(e);
+    if (!m || e.length > 200 || /^\.|\.$|\.\./.test(m[1]) || /[(),:;<>[\]\\"]/.test(m[1])) return false;
+    const labels = m[2].split('.');
+    return labels.length > 1 && labels.every((l) => /^[\p{L}\p{N}]([\p{L}\p{N}-]*[\p{L}\p{N}])?$/u.test(l)) && /^(\p{L}{2,}|xn--[a-z0-9-]+)$/iu.test(labels[labels.length - 1]);
+  };
+
+  LMD.kit = { ICON, el, esc, debounce, MD_RE, SKIP_DIRS, validEmail };
 })();

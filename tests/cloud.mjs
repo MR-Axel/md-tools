@@ -41,7 +41,7 @@ try {
   await app.waitForSelector('[data-field=code]'); await app.fill('[data-field=code]', '999999' === code ? '000000' : '999999'); await app.click('[data-cloud=verify]');
   await app.waitForSelector('.lmd-home-cloud-err'); o.codigoMalo = await app.textContent('.lmd-home-cloud-err');
   await app.fill('[data-field=code]', code); await app.click('[data-cloud=verify]');
-  await app.waitForSelector('[data-cloud=logout]'); o.cuenta = await app.textContent('.lmd-home-cloud-row span');
+  await app.waitForSelector('[data-cloud=logout]'); o.cuenta = [await app.textContent('.lmd-home-acct-who b'), await app.textContent('.lmd-home-acct-who small')];
 
   await Promise.all([app.waitForNavigation(), app.click('[data-home=new]')]); await app.waitForSelector('.lmd-draft');
   o.url = /f=cloud%2Fnota-/.test(app.url());
@@ -54,8 +54,9 @@ try {
 
   const page2 = await ctx.newPage(); await page2.goto(home); await page2.waitForSelector('.lmd-home-item');
   o.enInicio = await page2.textContent('.lmd-home-item');
-  await page2.click('[data-cloud=token]'); await page2.waitForSelector('.lmd-home-cloud-field input');
-  const fields = await page2.evaluate(() => [...document.querySelectorAll('.lmd-home-cloud-field input')].map((i) => i.value));
+  // "Conectar una IA" abre el mismo panel que Ajustes → IA, en una ventana: ahí se crea el token.
+  await page2.click('[data-cloud=ai]'); await page2.waitForSelector('.lmd-acct-card [data-c=token]'); await page2.click('[data-c=token]'); await page2.waitForSelector('.lmd-ai-new');
+  const fields = await page2.evaluate(() => [...document.querySelectorAll('.lmd-acct-card .lmd-field input')].map((i) => i.value));
   o.campos = [fields[0], fields[1].slice(0, 4), fields[2].slice(0, 44)];
   const token = fields[1];
   const read = await mcp(token, 'read_note', { path: notePath });
@@ -203,10 +204,12 @@ try {
   const savedToCloud = () => app.waitForFunction(() => /Guardado en la nube/.test(document.querySelector('.lmd-savestate').textContent), null, { timeout: 30000 });
   await app.goto(cloudUrl('suelta.md')); await opened();
   await stopServer();
+  let asks = 0; const countAsks = (r) => { if (r.url().endsWith('/account')) asks++; }; app.on('request', countAsks);
   await app.goto(cloudUrl('suelta.md') + '&edit=1'); await app.waitForSelector('.lmd-draft');
   o.sinConexion = [await app.textContent('.markdown-body h1'), await app.textContent('.lmd-savestate'), await app.evaluate(() => document.querySelector('.lmd-sync').className)];
   await write('Escrito sin conexión.');
   o.enCola = await queued('suelta.md', /Escrito sin conexión/);
+  await app.waitForTimeout(1000); app.off('request', countAsks); o.pedidosSinConexion = asks;
   await app.goto(home); await app.waitForSelector('.lmd-home-item');
   o.inicioSinConexion = await app.evaluate(() => [...document.querySelectorAll('.lmd-home-item')].map((a) => a.textContent).filter((t) => /suelta\.md/.test(t)));
   await app.goto(cloudUrl('relleno-que-no-esta.md')); await app.waitForSelector('.lmd-home-msg:not([hidden])');
@@ -261,7 +264,7 @@ const J = (v) => JSON.stringify(v);
 const checks = [
   ['con la nube apagada en Ajustes no aparece', o.sinServidor === true],
   ['un código equivocado avisa', /no coincide/.test(o.codigoMalo || ''), o.codigoMalo],
-  ['entrar muestra la cuenta y el cupo', /ana@ejemplo\.test · 0 de 10 notas/.test(o.cuenta || ''), o.cuenta],
+  ['entrar muestra la cuenta, el plan y el cupo', o.cuenta && o.cuenta[0] === 'ana@ejemplo.test' && /^Plan gratis · 0 de 10 notas/.test(o.cuenta[1]), o.cuenta],
   ['con la cuenta abierta, la nota nueva va a la nube', o.url === true],
   ['se guarda sola en la nube', /Guardado en la nube/.test(o.estado || ''), o.estado],
   ['el ícono de la nube marca la nota como sincronizada', /lmd-sync-ok/.test(o.icono || ''), o.icono],
@@ -289,6 +292,7 @@ const checks = [
   ['una nota compartida solo para ver no se renombra ni deja crear al lado', o.soloVer && o.soloVer[0] === true && /Solo quien creó/.test(o.soloVer[1]) && /solo lectura/.test(o.soloVer[2]) && o.soloVer[3] === 1, o.soloVer],
   ['sin conexión la nota abre desde la copia y lo marca', o.sinConexion && /Suelta/.test(o.sinConexion[0]) && /Sin conexión/.test(o.sinConexion[1]) && /lmd-sync-err/.test(o.sinConexion[2]), o.sinConexion],
   ['lo escrito sin conexión queda en la cola', o.enCola === true],
+  ['sin conexión no queda consultando la cuenta en bucle', o.pedidosSinConexion < 10, o.pedidosSinConexion],
   ['sin conexión el inicio lista las notas con copia', o.inicioSinConexion && o.inicioSinConexion.length === 1 && /copia sin conexión/.test(o.inicioSinConexion[0]), o.inicioSinConexion],
   ['sin conexión y sin copia, lo dice', /Sin conexión/.test(o.sinCopia || '') && /no tiene copia/.test(o.sinCopia || ''), o.sinCopia],
   ['al volver, lo de la cola se mezcla con lo que cambió en el servidor', o.mezclada && /Suelta cambiada/.test(o.mezclada[0]) && /^# Suelta cambiada/.test(o.mezclada[1]) && /Escrito sin conexión\./.test(o.mezclada[1]) && o.mezclada[2] === false, o.mezclada],

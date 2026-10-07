@@ -447,7 +447,7 @@
   }
 
   LMD.write = {
-    init, enter, onKey, append,
+    init, enter, onKey, append, closeMenu,
     remove: (node) => { const b = topBlock(node); if (b) removeBlock(b); },
     blur: (d) => commitDraft(d, false),
     menuAt: (x, y) => openMenu(x, y, core.lastBlock && core.lastBlock.isConnected ? topBlock(core.lastBlock) : blockNear(window.innerHeight)),
