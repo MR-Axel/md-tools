@@ -142,7 +142,7 @@ try {
   check('ninguna pestaña necesita scroll a 800 px de alto (plan gratis)', over.length === 0, over);
   await tab('cloud');
   const freeCloud = await app.evaluate(() => [...document.querySelectorAll('[data-acct=cloud] .lmd-acct-row')].map((r) => r.children[0].textContent + '=' + r.children[1].textContent).join('|') + ' / ' + [...document.querySelectorAll('[data-acct=cloud] button')].map((b) => b.textContent).join('|'));
-  check('Nube: la cuenta, el plan y cuántas notas, con abrir la carpeta y salir', freeCloud === 'Cuenta=' + mail + '|Plan=Gratis|Notas en la nube=1 de 10 / Abrir la carpeta Nube|Salir', freeCloud);
+  check('Nube: la cuenta, el plan y cuántas notas, con abrir la carpeta, salir y eliminar la cuenta', freeCloud === 'Cuenta=' + mail + '|Plan=Gratis|Notas en la nube=1 de 10 / Abrir la carpeta Nube|Salir|Eliminar la cuenta', freeCloud);
   await tab('ai');
   const freeAi = await text('[data-acct=ai]');
   await app.click('[data-acct=ai] [data-c=plans]'); await app.waitForTimeout(450);
