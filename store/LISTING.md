@@ -15,8 +15,8 @@ Ese ZIP deja afuera las pruebas, las capturas, la página de presentación y est
 | Nombre | Sharpmd: Markdown reader & editor |
 | Categoría | Productivity → Tools (Herramientas) |
 | Idioma principal | English |
-| Sitio web | https://mr-axel.github.io/sharpmd/ |
-| Política de privacidad | https://mr-axel.github.io/sharpmd/privacy.html |
+| Sitio web | https://sharpmd.app/ |
+| Política de privacidad | https://sharpmd.app/privacy.html |
 | Soporte | https://github.com/MR-Axel/sharpmd/issues |
 
 ## Descripción corta (máximo 132 caracteres)

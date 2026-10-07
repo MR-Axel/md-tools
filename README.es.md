@@ -6,7 +6,7 @@
 
 ![Editando una celda de la tabla en el lugar](docs/store/2-editing.png)
 
-**Probala sin instalar nada: [mr-axel.github.io/sharpmd](https://mr-axel.github.io/sharpmd/)**
+**Probala sin instalar nada: [sharpmd.app](https://sharpmd.app/)**
 
 Extensión de Chrome para leer y editar archivos Markdown en el navegador, locales (`file://`) o servidos por web. Sin cuentas, sin planes pagos y sin mandar datos a ningún lado: todo corre en la máquina.
 
@@ -60,7 +60,7 @@ Abrir un `.md` directo en el navegador sigue funcionando igual que antes. La pes
 
 La página de Sharpmd es HTML y JavaScript, así que también funciona servida desde cualquier hosting estático, sin la extensión. En Chrome, Edge, Brave y otros navegadores Chromium abre archivos y carpetas y guarda en el lugar. En Firefox y Safari, que no dejan que una página escriba en el disco, abre de a un archivo y al guardar descarga una copia. En los dos casos no se sube nada: los archivos se leen en tu navegador.
 
-Está publicada en [mr-axel.github.io/sharpmd](https://mr-axel.github.io/sharpmd/). Para correr tu propia copia, serví esta carpeta (`npx serve .`) y abrí la dirección que te muestra.
+Está publicada en [sharpmd.app](https://sharpmd.app/). Para correr tu propia copia, serví esta carpeta (`npx serve .`) y abrí la dirección que te muestra.
 
 ## Actualizar
 

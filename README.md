@@ -5,8 +5,8 @@
 <p align="center">A Markdown editor and reader that runs in the browser.<br>Open a file or a whole folder and edit on the formatted text.</p>
 
 <p align="center">
-  <a href="https://mr-axel.github.io/sharpmd/"><strong>Website</strong></a> ·
-  <a href="https://mr-axel.github.io/sharpmd/src/app.html"><strong>Open the web app</strong></a> ·
+  <a href="https://sharpmd.app/"><strong>Website</strong></a> ·
+  <a href="https://sharpmd.app/src/app.html"><strong>Open the web app</strong></a> ·
   <a href="#install"><strong>Install the extension</strong></a> ·
   <a href="README.es.md">Español</a>
 </p>
@@ -45,7 +45,7 @@ Free and open source. No account, no tracking: files are read in your browser an
 
 ## Two ways to use it
 
-**On the web.** Nothing to install: [open the web app](https://mr-axel.github.io/sharpmd/src/app.html). Chrome, Edge and Brave open folders and save in place. Firefox and Safari open one file at a time, and saving downloads a copy.
+**On the web.** Nothing to install: [open the web app](https://sharpmd.app/src/app.html). Chrome, Edge and Brave open folders and save in place. Firefox and Safari open one file at a time, and saving downloads a copy.
 
 **As an extension.** Set Chrome as the default app for `.md` files and a double-click opens them rendered. It also renders Markdown served by any website, and it works offline.
 
@@ -89,7 +89,7 @@ A page cannot write to disk on its own, so the first time you save a file opened
 
 ## Privacy
 
-Sharpmd collects nothing. Settings, reading positions and browser notes are stored in your browser. The only network request the extension makes is the daily check of the version number published here, which you can turn off. HTML produced from the Markdown goes through DOMPurify before it reaches the page. Details in the [privacy page](https://mr-axel.github.io/sharpmd/privacy.html).
+Sharpmd collects nothing. Settings, reading positions and browser notes are stored in your browser. The only network request the extension makes is the daily check of the version number published here, which you can turn off. HTML produced from the Markdown goes through DOMPurify before it reaches the page. Details in the [privacy page](https://sharpmd.app/privacy.html).
 
 ## Optional sync server
 

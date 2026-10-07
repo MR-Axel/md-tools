@@ -553,7 +553,7 @@
   // Servidor de sincronización de esta versión. Vacío: la nube no aparece.
   const CLOUD_URL = '';
   // Dirección pública de la app web: es la que llevan los enlaces para compartir.
-  const WEB_APP_URL = 'https://mr-axel.github.io/sharpmd/src/app.html';
+  const WEB_APP_URL = 'https://sharpmd.app/src/app.html';
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
 
   root.LMD = { PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
