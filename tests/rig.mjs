@@ -55,7 +55,7 @@ export async function rig(env, engine) {
   const open = async (who, opt) => {
     const ctx = await browser.newContext(Object.assign({ viewport: { width: 1280, height: 800 }, colorScheme: 'dark', locale: 'en-US', serviceWorkers: 'block' }, opt || {}));
     await ctx.route((url) => /(^|\.)sharpmd\.app$/.test(url.hostname), (r) => { outside.push(r.request().url()); return r.abort(); });
-    await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin }).catch(() => { /* fuera de Chromium ese permiso no existe */ });
+    if (kind === 'chromium') await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin }); // fuera de Chromium ese permiso no existe
     await ctx.addInitScript(([url, w]) => {
       try {
         if (localStorage.getItem('mdtools:settings')) return;

@@ -145,6 +145,13 @@ npm test
 
 Carga la extensión en un Chromium y recorre los dos modos: el `.md` abierto directo en el navegador y la página propia con una carpeta. Necesita un Chromium de Playwright (`npx playwright install chromium`) o la variable `CHROME_BIN` apuntando a otro.
 
+Otros dos scripts se corren a mano, fuera de `npm test`:
+
+- `BROWSER=firefox node browsers.mjs` (o `webkit`) recorre la portada y la app web en los otros motores. Se instalan una vez con `npx playwright-core install firefox webkit`.
+- `node perf.mjs` mide la carga de la app web, en frío y en caliente, con la red y la CPU limitadas. Conviene correrlo antes y después de tocar lo que carga `src/app.html`.
+
+Un script que el primer pintado no necesita no se suma a `src/app.html`: va en `LAZY_APP` (`src/content.js`) y en la lista `LATE` de `sw.js`, y sigue en `manifest.json` para la extensión.
+
 ## Librerías de terceros
 
 Todas van copiadas en `vendor/`, porque Manifest V3 no permite cargar código remoto.

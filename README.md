@@ -184,6 +184,13 @@ npm test
 
 They need a Playwright Chromium (`npx playwright install chromium`) or `CHROME_BIN` pointing at another one.
 
+Two more scripts run by hand, outside `npm test`:
+
+- `BROWSER=firefox node browsers.mjs` (or `webkit`) walks the landing page and the web app in the other engines. Install them once with `npx playwright-core install firefox webkit`.
+- `node perf.mjs` measures the web app load, cold and warm, on a throttled network and CPU. Run it before and after touching what `src/app.html` loads.
+
+A script that the first paint does not need is not added to `src/app.html`: it goes in `LAZY_APP` (`src/content.js`) and in the `LATE` list of `sw.js`, and stays in `manifest.json` for the extension.
+
 ## Third-party libraries
 
 All of them are vendored in `vendor/`, because Manifest V3 does not allow remote code.

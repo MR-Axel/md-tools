@@ -51,7 +51,7 @@
   body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.6 "MDT Inter", -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
   a { color: inherit; }
   .wrap { width: min(1120px, 100% - 40px); margin: 0 auto; }
-  nav { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  nav { position: sticky; top: 0; z-index: 5; background: var(--bg); background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
   nav .wrap { display: flex; align-items: center; gap: 22px; height: 58px; }
   .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; text-decoration: none; margin-right: auto; }
   .brand img { width: 26px; height: 26px; border-radius: 7px; }
@@ -279,7 +279,7 @@
     </div>
     <p class="under">Gratis y de código abierto. Sin cuenta obligatoria. Corre en el navegador.</p>
   </div>
-  <video class="clip" muted loop playsinline preload="none" poster="../docs/clips/edit.jpg" width="880" height="550" aria-label="SharpMD: typing on a formatted paragraph and in a table cell"><source src="../docs/clips/edit.webm" type="video/webm"><source src="../docs/clips/edit.mp4" type="video/mp4"></video>
+  <video class="clip" muted loop playsinline preload="none" poster="../docs/clips/edit.jpg" width="880" height="550" aria-label="SharpMD: typing on a formatted paragraph and in a table cell"><source src="../docs/clips/edit.mp4" type="video/mp4"><source src="../docs/clips/edit.webm" type="video/webm"></video>
 </div></header>
 
 <main id="features">
@@ -313,7 +313,7 @@
     <p>Hacés clic en un diagrama Mermaid o Graphviz y se abre con la vista previa en vivo. Arrancás de una plantilla, sumás pasos y flechas con un botón y elegís una paleta de colores.</p>
     <p>Un error se explica en palabras simples, con su línea marcada. Las fórmulas tienen un editor del mismo tipo.</p>
   </div>
-  <video class="clip" muted loop playsinline preload="none" poster="../docs/clips/diagram.jpg" width="880" height="550" aria-label="The diagram editor: a line of code is typed and the drawing adds the step"><source src="../docs/clips/diagram.webm" type="video/webm"><source src="../docs/clips/diagram.mp4" type="video/mp4"></video>
+  <video class="clip" muted loop playsinline preload="none" poster="../docs/clips/diagram.jpg" width="880" height="550" aria-label="The diagram editor: a line of code is typed and the drawing adds the step"><source src="../docs/clips/diagram.mp4" type="video/mp4"><source src="../docs/clips/diagram.webm" type="video/webm"></video>
 </div></section>
 
 <section class="band"><div class="wrap feature flip">
@@ -322,7 +322,7 @@
     <p>La barra lateral muestra los archivos que están al lado del que abriste y busca en el texto de todos a la vez. Desde ahí creás, renombrás y eliminás, y movés archivos y carpetas arrastrándolos.</p>
     <p>Soltás un archivo dentro de la nota que estás editando y queda como enlace. <code>[[nombre]]</code> abre el archivo con ese nombre.</p>
   </div>
-  <video class="clip" muted loop playsinline preload="none" poster="../docs/clips/drop.jpg" width="880" height="550" aria-label="A file dragged from the explorer into the note becomes a link"><source src="../docs/clips/drop.webm" type="video/webm"><source src="../docs/clips/drop.mp4" type="video/mp4"></video>
+  <video class="clip" muted loop playsinline preload="none" poster="../docs/clips/drop.jpg" width="880" height="550" aria-label="A file dragged from the explorer into the note becomes a link"><source src="../docs/clips/drop.mp4" type="video/mp4"><source src="../docs/clips/drop.webm" type="video/webm"></video>
 </div></section>
 
 <section class="center"><div class="wrap">
@@ -358,7 +358,7 @@
   <p class="sub">Nada va a la nube hasta que lo mandás.</p>
   <div class="cloud">
     <figure>
-      <video class="clip" muted loop playsinline preload="none" poster="../docs/clips/live.jpg" width="880" height="550" aria-label="A live session: two people write in the same note, each on a block"><source src="../docs/clips/live.webm" type="video/webm"><source src="../docs/clips/live.mp4" type="video/mp4"></video>
+      <video class="clip" muted loop playsinline preload="none" poster="../docs/clips/live.jpg" width="880" height="550" aria-label="A live session: two people write in the same note, each on a block"><source src="../docs/clips/live.mp4" type="video/mp4"><source src="../docs/clips/live.webm" type="video/webm"></video>
       <figcaption>Una sesión en vivo: dos personas en la misma nota.</figcaption>
     </figure>
     <ul class="points">

@@ -172,7 +172,7 @@
 .lmd-side-hidden .lmd-main { margin-left: 0; }
 .lmd-topbar {
   position: sticky; top: 0; z-index: 10; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 14px; height: 49px;
-  padding: 0 16px 0 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(8px);
+  padding: 0 16px 0 12px; border-bottom: 1px solid var(--line); background: var(--bg); background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(8px);
 }
 .lmd-docname { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lmd-dirty .lmd-docname::after { content: " •"; color: var(--accent); }
@@ -643,8 +643,8 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-imgbar .lmd-menu-danger:hover { color: #dc2626; }
 .markdown-body img[width] { height: auto; }
 .lmd-swatch[data-code-color]:not(.lmd-swatch-auto) { background: var(--sw); }
-.lmd-code pre { background: color-mix(in srgb, var(--code-tint, transparent) 9%, var(--bg-code)); border-color: color-mix(in srgb, var(--code-tint, transparent) 40%, var(--line)); border-left: 3px solid color-mix(in srgb, var(--code-tint, var(--line)) 80%, var(--line)); }
-.markdown-body :not(pre) > code { background: color-mix(in srgb, var(--code-tint, transparent) 13%, var(--bg-code)); }
+.lmd-code pre { background: var(--bg-code); background: color-mix(in srgb, var(--code-tint, transparent) 9%, var(--bg-code)); border-color: color-mix(in srgb, var(--code-tint, transparent) 40%, var(--line)); border-left: 3px solid color-mix(in srgb, var(--code-tint, var(--line)) 80%, var(--line)); }
+.markdown-body :not(pre) > code { background: var(--bg-code); background: color-mix(in srgb, var(--code-tint, transparent) 13%, var(--bg-code)); }
 .lmd-dgm-round .lmd-diagram svg .node rect, .lmd-dgm-round .lmd-dgm-svg svg .node rect { rx: 12px; ry: 12px; }
 
 /* ---------- Pestañas de ajustes, sincronización, historial ---------- */
