@@ -1,8 +1,8 @@
-// Idioma de la página de presentación: el del navegador, o el que se eligió la última vez.
+// Idioma de la página de presentación: inglés, o el que se eligió la última vez con el botón.
 (function () {
   var saved = null;
   try { saved = localStorage.getItem('mdtools:site-lang'); } catch (e) { /* sin almacenamiento */ }
-  var lang = saved || (/^es/i.test(navigator.language || '') ? 'es' : 'en');
+  var lang = saved === 'es' ? 'es' : 'en';
   function set(l) {
     document.documentElement.setAttribute('data-lang', l);
     document.documentElement.lang = l;
