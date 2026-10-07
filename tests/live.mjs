@@ -4,7 +4,7 @@
 // teléfono; y tres escribiendo a la vez durante treinta segundos sin perder ni duplicar nada.
 // Todo contra un servidor local.
 import { rig, tally, sleep, typeIn, leave } from './rig.mjs';
-const R = await rig({ SHARE_FREE: '1', LIVE_PEOPLE: '4' });
+const R = await rig({ SHARE_FREE: '1', LIVE_PEOPLE: '4', FEEDBACK_TO: 'duenio@ejemplo.test' });
 const { check, done } = tally();
 const enc = encodeURIComponent;
 const J = (v) => JSON.stringify(v);
@@ -113,12 +113,20 @@ try {
   await ben.page.fill('.lmd-live-card input', 'Ben'); await ben.page.keyboard.press('Enter');
   await ben.page.waitForSelector('.lmd-live-bar'); await ben.page.waitForSelector('.lmd-article .lmd-editable');
   await ben.page.waitForFunction(() => /2 people/.test(document.querySelector('.lmd-live-bar').textContent));
+  // El invitado no tiene cuenta y la nota es de otra persona: puede denunciarla desde el pie. Viaja qué sesión es, no lo escrito.
+  const benLink = await ben.page.evaluate(() => { const b = document.querySelector('.lmd-foot .lmd-report'); return [b.hidden, b.textContent, !!b.offsetParent || getComputedStyle(b).display !== 'none']; });
+  await ben.page.click('.lmd-foot .lmd-report'); await ben.page.waitForSelector('.lmd-report-card [data-rp=text]');
+  const [benSent] = await Promise.all([ben.page.waitForRequest((r) => r.url().endsWith('/feedback')), ben.page.click('.lmd-report-card [data-rp=send]')]);
+  const benBody = benSent.postDataJSON(); const benStatus = (await benSent.response()).status();
+  check('el invitado de una sesión en vivo puede denunciar la nota, sin cuenta', J(benLink) === J([false, 'Report this note', true]) && benStatus === 200 && benBody.report.kind === 'live' && /^live:/.test(benBody.report.note) && !!benBody.report.owner && !/Launch|launch plan/i.test(JSON.stringify(benBody).replace(benBody.report.note, '')), [benLink, benStatus, benBody.report]);
+  await ben.page.waitForSelector('.lmd-report-card', { state: 'detached' });
+  check('quien abrió la sesión, sobre su propia nota, no ve esa opción', await own.page.evaluate(() => document.querySelector('.lmd-foot .lmd-report').hidden));
   const in1 = await ben.page.evaluate(() => ({ bar: document.querySelector('.lmd-live-msg').textContent, btns: [...document.querySelectorAll('.lmd-live-bar button')].map((b) => b.textContent), editing: document.documentElement.classList.contains('lmd-editing'), title: document.querySelector('.lmd-docname').textContent,
     files: getComputedStyle(document.querySelector('.lmd-zone-files')).display, tree: document.querySelector('.lmd-tree-box').children.length, sync: document.querySelector('.lmd-sync').hidden, url: location.search.slice(0, 6), menu: !!document.querySelector('.lmd-menu') }));
   check('entra a la nota en edición, con una barra que dice de quién es la sesión y cuánta gente hay', in1.bar === 'Live session by Ana · 2 people' && J(in1.btns) === J(['Download a copy', 'Leave the session']) && in1.editing && in1.title === 'plan.md', in1);
   check('el invitado no ve el explorador ni el ícono de la nube', in1.files === 'none' && in1.tree === 0 && in1.sync, in1);
   check('no se le abre ningún menú ni bloque nuevo al entrar', !in1.menu && !(await ben.page.$('.lmd-draft')));
-  check('del servidor el invitado solo usó las rutas de la sesión', ben.calls.length > 3 && ben.calls.every((c) => / \/live\//.test(c)), [...new Set(ben.calls)]);
+  check('del servidor el invitado solo usó las rutas de la sesión', ben.calls.length > 3 && ben.calls.every((c) => / \/live\//.test(c) || c === 'POST /feedback'), [...new Set(ben.calls)]); // y la denuncia de más arriba, que sale por la ruta de comentarios
   await ben.page.click('[data-act=settings]'); await ben.page.waitForSelector('.lmd-panel:not([hidden])');
   check('en Ajustes no tiene cuenta, IA, plan ni servidor', J(await ben.page.evaluate(() => [...document.querySelectorAll('.lmd-panel [data-ptab]')].map((b) => b.dataset.ptab))) === J(['look', 'read', 'plug']));
   await ben.page.click('[data-act=close-panel]');
