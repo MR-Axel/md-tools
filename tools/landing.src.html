@@ -62,6 +62,13 @@
   /* Un clip: la app grabada, en bucle. Mientras no se reproduce se ve el póster. */
   .clip { display: block; width: 100%; height: auto; aspect-ratio: 8 / 5; border: 1px solid var(--line); border-radius: 12px; background: #0c0d10; box-shadow: var(--shadow); object-fit: cover; }
 
+  /* Qué se gana, en seis renglones: lo primero que se lee después del titular. */
+  .gains { padding: 0 0 84px; }
+  .six { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 44px; border-top: 1px solid var(--line); }
+  .six li { padding: 26px 0 24px; border-bottom: 1px solid var(--line); }
+  .six h3 { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .six h3::before { content: ""; flex: none; width: 7px; height: 16px; border-radius: 3px; background: var(--fill); }
+  .six p { margin: 0; color: var(--muted); font-size: 15.5px; }
   .two { display: grid; grid-template-columns: 1fr 1fr; }
   .two > div { padding: 4px 48px 4px 0; }
   .two > div + div { padding: 4px 0 4px 48px; border-left: 1px solid var(--line); }
@@ -209,6 +216,7 @@
   @media (max-width: 860px) {
     nav a.link { display: none; } section { padding: 56px 0; } .hero { padding: 44px 0 56px; }
     .hero .wrap, .feature, .feature.flip, .cloud, .ai, .asks, .two { grid-template-columns: minmax(0, 1fr); gap: 30px; }
+    .gains { padding-bottom: 56px; } .six { grid-template-columns: minmax(0, 1fr); } .six li { padding: 20px 0 18px; }
     .feature.flip > div { order: 0; } .cloud figure, .asks > div:first-child { position: static; }
     .two > div, .two > div + div { padding: 0; border: 0; } .two > div + div { padding-top: 30px; border-top: 1px solid var(--line); }
     .more { grid-template-columns: minmax(0, 1fr); gap: 30px; } .more h3, .more li { padding-left: 0; padding-right: 0; }
@@ -233,21 +241,32 @@
 
 <header class="hero" id="top"><div class="wrap">
   <div>
-    <h1><span lang="en">Read and edit Markdown in the browser.</span><span lang="es">Leé y editá Markdown en el navegador.</span></h1>
+    <h1><span lang="en">Edit Markdown without writing Markdown.</span><span lang="es">Editá Markdown sin escribir Markdown.</span></h1>
     <p class="lede">
-      <span lang="en">Open a file or a whole folder. Click a paragraph or a table cell and type on the formatted text.</span>
-      <span lang="es">Abrís un archivo o una carpeta entera. Hacés clic en un párrafo o en una celda y escribís sobre el texto ya formateado.</span>
+      <span lang="en">Click a heading, a table, a task list, a diagram or a formula and change it right there. Your files stay on your disk, and your AI can work on the same notes.</span>
+      <span lang="es">Hacés clic en un título, una tabla, una lista de tareas, un diagrama o una fórmula y lo cambiás ahí mismo. Tus archivos quedan en tu disco, y tu IA puede trabajar sobre las mismas notas.</span>
     </p>
     <div class="cta">
       <a class="btn fill" href="src/app.html"><span lang="en">Open the app</span><span lang="es">Abrir la app</span></a>
       <a class="btn" href="https://github.com/MR-Axel/sharpmd#install"><span lang="en">Get the extension</span><span lang="es">Instalar la extensión</span></a>
     </div>
-    <p class="under"><span lang="en">Free and open source. No account needed. Your files stay on your machine.</span><span lang="es">Gratis y de código abierto. Sin cuenta obligatoria. Tus archivos quedan en tu máquina.</span></p>
+    <p class="under"><span lang="en">Free and open source. No account needed. Runs in the browser.</span><span lang="es">Gratis y de código abierto. Sin cuenta obligatoria. Corre en el navegador.</span></p>
   </div>
   <video class="clip" muted loop playsinline preload="none" poster="docs/clips/edit.jpg" width="880" height="550" aria-label="SharpMD: typing on a formatted paragraph and in a table cell"><source src="docs/clips/edit.webm" type="video/webm"><source src="docs/clips/edit.mp4" type="video/mp4"></video>
 </div></header>
 
 <main id="features">
+<section class="gains"><div class="wrap">
+  <ul class="six">
+    <li><h3><span lang="en">No syntax to type</span><span lang="es">Sin escribir sintaxis</span></h3><p><span lang="en">Change headings, tables, task lists, diagrams and formulas on the formatted page, with buttons. The source is one click away.</span><span lang="es">Cambiás títulos, tablas, listas de tareas, diagramas y fórmulas sobre la página ya formateada, con botones. El código está a un clic.</span></p></li>
+    <li><h3><span lang="en">Your files, on your disk</span><span lang="es">Tus archivos, en tu disco</span></h3><p><span lang="en">Open a <code>.md</code> or a whole folder. Nothing is uploaded and there is no account to create.</span><span lang="es">Abrís un <code>.md</code> o una carpeta entera. No se sube nada ni hay que crear una cuenta.</span></p></li>
+    <li><h3><span lang="en">A cloud when you want one</span><span lang="es">Nube cuando la quieras</span></h3><p><span lang="en">The same notes on every device, sharing, and editing together live through a link.</span><span lang="es">Las mismas notas en cada dispositivo, compartir, y editar entre varios en vivo con un enlace.</span></p></li>
+    <li><h3><span lang="en">Your AI on the same notes</span><span lang="es">Tu IA sobre las mismas notas</span></h3><p><span lang="en">Over MCP it reads, writes, documents what it does and answers the comments you leave.</span><span lang="es">Por MCP lee, escribe, documenta lo que hace y responde los comentarios que le dejás.</span></p></li>
+    <li><h3><span lang="en">Private</span><span lang="es">Privado</span></h3><p><span lang="en">Folders with a password that the server cannot read, open source, and your own server if you want one.</span><span lang="es">Carpetas con contraseña que el servidor no puede leer, código abierto y servidor propio si querés.</span></p></li>
+    <li><h3><span lang="en">Web, Chrome and phone</span><span lang="es">Web, Chrome y celular</span></h3><p><span lang="en">A web app, a Chrome extension and an app on the phone. It also works without a connection.</span><span lang="es">App web, extensión de Chrome y app en el celular. También anda sin conexión.</span></p></li>
+  </ul>
+</div></section>
+
 <section class="band"><div class="wrap two">
   <div>
     <h2><span lang="en">Edit the document you are reading.</span><span lang="es">Editás el documento que estás leyendo.</span></h2>

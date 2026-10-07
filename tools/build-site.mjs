@@ -17,12 +17,12 @@ const CARD = SITE + '/docs/social-card-2.png';
 const CARD_ALT = { en: 'SharpMD, a Markdown editor for your files, your cloud and your AI', es: 'SharpMD, un editor de Markdown para tus archivos, tu nube y tu IA' };
 
 const META = {
-  en: { title: 'SharpMD: Markdown editor and reader in the browser',
-    desc: 'Free, open source Markdown editor that runs in the browser. Open a file or a folder, edit on the formatted text, draw diagrams. Optional cloud notes and MCP.',
-    og: 'Read and edit Markdown in the browser. Free and open source. Your files stay on your machine.', locale: 'en_US', url: SITE + '/' },
-  es: { title: 'SharpMD: editor y lector de Markdown en el navegador',
-    desc: 'Editor de Markdown gratis y de código abierto en el navegador. Abrís un archivo o una carpeta y editás sobre el texto ya formateado. Nube y MCP opcionales.',
-    og: 'Leé y editá Markdown en el navegador. Gratis y de código abierto. Tus archivos quedan en tu máquina.', locale: 'es_AR', url: SITE + '/es/' },
+  en: { title: 'SharpMD: Markdown editor without the syntax, in your browser',
+    desc: 'Edit Markdown on the formatted page, with no syntax to type. Your files stay on your disk. Optional cloud, live editing and MCP for your AI. Open source.',
+    og: 'Edit Markdown without writing Markdown. Your files stay on your disk, and your AI can work on the same notes.', locale: 'en_US', url: SITE + '/' },
+  es: { title: 'SharpMD: editor de Markdown sin sintaxis, en el navegador',
+    desc: 'Editás Markdown sobre la página ya formateada, sin escribir sintaxis. Tus archivos quedan en tu disco. Nube, edición en vivo y MCP para tu IA, opcionales.',
+    og: 'Editá Markdown sin escribir Markdown. Tus archivos quedan en tu disco, y tu IA puede trabajar sobre las mismas notas.', locale: 'es_AR', url: SITE + '/es/' },
 };
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 const plain = (html) => html.replace(/<[^>]+>/g, '').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();

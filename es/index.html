@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SharpMD: editor y lector de Markdown en el navegador</title>
-<meta name="description" content="Editor de Markdown gratis y de código abierto en el navegador. Abrís un archivo o una carpeta y editás sobre el texto ya formateado. Nube y MCP opcionales.">
+<title>SharpMD: editor de Markdown sin sintaxis, en el navegador</title>
+<meta name="description" content="Editás Markdown sobre la página ya formateada, sin escribir sintaxis. Tus archivos quedan en tu disco. Nube, edición en vivo y MCP para tu IA, opcionales.">
 <link rel="canonical" href="https://sharpmd.app/es/">
 <link rel="alternate" hreflang="en" href="https://sharpmd.app/">
 <link rel="alternate" hreflang="es" href="https://sharpmd.app/es/">
 <link rel="alternate" hreflang="x-default" href="https://sharpmd.app/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="SharpMD">
-<meta property="og:title" content="SharpMD: editor y lector de Markdown en el navegador">
-<meta property="og:description" content="Leé y editá Markdown en el navegador. Gratis y de código abierto. Tus archivos quedan en tu máquina.">
+<meta property="og:title" content="SharpMD: editor de Markdown sin sintaxis, en el navegador">
+<meta property="og:description" content="Editá Markdown sin escribir Markdown. Tus archivos quedan en tu disco, y tu IA puede trabajar sobre las mismas notas.">
 <meta property="og:url" content="https://sharpmd.app/es/">
 <meta property="og:locale" content="es_AR">
 <meta property="og:image" content="https://sharpmd.app/docs/social-card-2.png">
@@ -21,8 +21,8 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="SharpMD, un editor de Markdown para tus archivos, tu nube y tu IA">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="SharpMD: editor y lector de Markdown en el navegador">
-<meta name="twitter:description" content="Leé y editá Markdown en el navegador. Gratis y de código abierto. Tus archivos quedan en tu máquina.">
+<meta name="twitter:title" content="SharpMD: editor de Markdown sin sintaxis, en el navegador">
+<meta name="twitter:description" content="Editá Markdown sin escribir Markdown. Tus archivos quedan en tu disco, y tu IA puede trabajar sobre las mismas notas.">
 <meta name="twitter:image" content="https://sharpmd.app/docs/social-card-2.png">
 <meta name="twitter:image:alt" content="SharpMD, un editor de Markdown para tus archivos, tu nube y tu IA">
 <meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">
@@ -30,7 +30,7 @@
 <link rel="preload" href="../vendor/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="../docs/clips/edit.jpg" as="image">
 <link rel="icon" href="../icons/icon32.png">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"SharpMD","url":"https://sharpmd.app/es/","applicationCategory":"ProductivityApplication","operatingSystem":"Web, Chrome, Edge, Brave","description":"Editor de Markdown gratis y de código abierto en el navegador. Abrís un archivo o una carpeta y editás sobre el texto ya formateado. Nube y MCP opcionales.","inLanguage":"es","image":"https://sharpmd.app/docs/social-card-2.png","screenshot":"https://sharpmd.app/docs/store/2-editing.png","isAccessibleForFree":true,"offers":[{"@type":"Offer","name":"Free","price":"0","priceCurrency":"USD"},{"@type":"Offer","name":"Paid","price":"3.99","priceCurrency":"USD"}],"license":"https://opensource.org/licenses/MIT","codeRepository":"https://github.com/MR-Axel/sharpmd"}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"SharpMD","url":"https://sharpmd.app/es/","applicationCategory":"ProductivityApplication","operatingSystem":"Web, Chrome, Edge, Brave","description":"Editás Markdown sobre la página ya formateada, sin escribir sintaxis. Tus archivos quedan en tu disco. Nube, edición en vivo y MCP para tu IA, opcionales.","inLanguage":"es","image":"https://sharpmd.app/docs/social-card-2.png","screenshot":"https://sharpmd.app/docs/store/2-editing.png","isAccessibleForFree":true,"offers":[{"@type":"Offer","name":"Free","price":"0","priceCurrency":"USD"},{"@type":"Offer","name":"Paid","price":"3.99","priceCurrency":"USD"}],"license":"https://opensource.org/licenses/MIT","codeRepository":"https://github.com/MR-Axel/sharpmd"}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"¿SharpMD es gratis?","acceptedAnswer":{"@type":"Answer","text":"El editor es gratis y de código abierto, sin límite de archivos ni de notas guardadas en el navegador. La nube es gratis hasta 10 notas."}},{"@type":"Question","name":"¿Cómo abro un .md con doble clic?","acceptedAnswer":{"@type":"Answer","text":"Instalás la extensión, activás \"Permitir acceso a URLs de archivo\" en sus detalles, y ponés Chrome como programa por defecto para los .md."}},{"@type":"Question","name":"¿Qué Markdown soporta?","acceptedAnswer":{"@type":"Answer","text":"GitHub Flavored Markdown, más matemática con KaTeX, diagramas Mermaid y Graphviz, notas al pie, listas de tareas, avisos, listas de definición y cabecera YAML."}},{"@type":"Question","name":"¿Funciona sin conexión?","acceptedAnswer":{"@type":"Answer","text":"Sí. La extensión siempre, y la app web una vez que la abriste. Las notas de la nube que ya abriste también están, y lo que escribís se sube cuando vuelve."}},{"@type":"Question","name":"¿Pueden editar varios una nota a la vez?","acceptedAnswer":{"@type":"Answer","text":"Abrís una sesión en vivo sobre una nota de la nube y mandás el enlace. Quien lo tiene entra desde el navegador con un nombre, sin cuenta, y todos ven quién está en cada bloque mientras escriben. La terminás cuando querés, o armás un enlace nuevo para dejar afuera al anterior."}},{"@type":"Question","name":"¿El servidor puede leer mis notas?","acceptedAnswer":{"@type":"Answer","text":"Las notas de la nube se guardan cifradas en el servidor, que tiene la llave para poder compartirlas y dárselas a tu IA. Una carpeta que protegés con contraseña es distinta: se cifra en tu navegador y nadie más puede leerla. Para dejar entrar a tu IA, desbloqueás esa carpeta por un tiempo. Si perdés la contraseña y la clave de respaldo, esas notas no se pueden recuperar."}},{"@type":"Question","name":"¿Qué pasa con una nota de la nube que elimino?","acceptedAnswer":{"@type":"Answer","text":"Queda 30 días en la papelera y la podés restaurar. Mientras está ahí no aparece en las búsquedas, no se comparte y tu IA no llega a ella."}},{"@type":"Question","name":"¿Cómo llega mi IA a mis notas?","acceptedAnswer":{"@type":"Answer","text":"Creás un token en la app y agregás SharpMD como servidor MCP en Claude u otro cliente. Solo ve las notas que tenés en la nube, o una sola carpeta si limitás el token."}}]}</script>
 <script>try{localStorage.setItem("mdtools:site-lang","es");if(localStorage.getItem("sharpmd:app")&&location.search.indexOf("site")<0&&!location.hash&&document.referrer.indexOf(location.origin)!==0){var d=localStorage.getItem("lmd:dark"),c=document.documentElement.classList;c.add("go");if(d==="0"||(d!=="1"&&window.matchMedia&&!matchMedia("(prefers-color-scheme: dark)").matches))c.add("go-light");location.replace("../src/app.html")}}catch(e){}</script>
 <style>
@@ -89,6 +89,13 @@
   /* Un clip: la app grabada, en bucle. Mientras no se reproduce se ve el póster. */
   .clip { display: block; width: 100%; height: auto; aspect-ratio: 8 / 5; border: 1px solid var(--line); border-radius: 12px; background: #0c0d10; box-shadow: var(--shadow); object-fit: cover; }
 
+  /* Qué se gana, en seis renglones: lo primero que se lee después del titular. */
+  .gains { padding: 0 0 84px; }
+  .six { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 44px; border-top: 1px solid var(--line); }
+  .six li { padding: 26px 0 24px; border-bottom: 1px solid var(--line); }
+  .six h3 { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .six h3::before { content: ""; flex: none; width: 7px; height: 16px; border-radius: 3px; background: var(--fill); }
+  .six p { margin: 0; color: var(--muted); font-size: 15.5px; }
   .two { display: grid; grid-template-columns: 1fr 1fr; }
   .two > div { padding: 4px 48px 4px 0; }
   .two > div + div { padding: 4px 0 4px 48px; border-left: 1px solid var(--line); }
@@ -236,6 +243,7 @@
   @media (max-width: 860px) {
     nav a.link { display: none; } section { padding: 56px 0; } .hero { padding: 44px 0 56px; }
     .hero .wrap, .feature, .feature.flip, .cloud, .ai, .asks, .two { grid-template-columns: minmax(0, 1fr); gap: 30px; }
+    .gains { padding-bottom: 56px; } .six { grid-template-columns: minmax(0, 1fr); } .six li { padding: 20px 0 18px; }
     .feature.flip > div { order: 0; } .cloud figure, .asks > div:first-child { position: static; }
     .two > div, .two > div + div { padding: 0; border: 0; } .two > div + div { padding-top: 30px; border-top: 1px solid var(--line); }
     .more { grid-template-columns: minmax(0, 1fr); gap: 30px; } .more h3, .more li { padding-left: 0; padding-right: 0; }
@@ -260,21 +268,32 @@
 
 <header class="hero" id="top"><div class="wrap">
   <div>
-    <h1>Leé y editá Markdown en el navegador.</h1>
+    <h1>Editá Markdown sin escribir Markdown.</h1>
     <p class="lede">
       
-      Abrís un archivo o una carpeta entera. Hacés clic en un párrafo o en una celda y escribís sobre el texto ya formateado.
+      Hacés clic en un título, una tabla, una lista de tareas, un diagrama o una fórmula y lo cambiás ahí mismo. Tus archivos quedan en tu disco, y tu IA puede trabajar sobre las mismas notas.
     </p>
     <div class="cta">
       <a class="btn fill" href="../src/app.html">Abrir la app</a>
       <a class="btn" href="https://github.com/MR-Axel/sharpmd#install">Instalar la extensión</a>
     </div>
-    <p class="under">Gratis y de código abierto. Sin cuenta obligatoria. Tus archivos quedan en tu máquina.</p>
+    <p class="under">Gratis y de código abierto. Sin cuenta obligatoria. Corre en el navegador.</p>
   </div>
   <video class="clip" muted loop playsinline preload="none" poster="../docs/clips/edit.jpg" width="880" height="550" aria-label="SharpMD: typing on a formatted paragraph and in a table cell"><source src="../docs/clips/edit.webm" type="video/webm"><source src="../docs/clips/edit.mp4" type="video/mp4"></video>
 </div></header>
 
 <main id="features">
+<section class="gains"><div class="wrap">
+  <ul class="six">
+    <li><h3>Sin escribir sintaxis</h3><p>Cambiás títulos, tablas, listas de tareas, diagramas y fórmulas sobre la página ya formateada, con botones. El código está a un clic.</p></li>
+    <li><h3>Tus archivos, en tu disco</h3><p>Abrís un <code>.md</code> o una carpeta entera. No se sube nada ni hay que crear una cuenta.</p></li>
+    <li><h3>Nube cuando la quieras</h3><p>Las mismas notas en cada dispositivo, compartir, y editar entre varios en vivo con un enlace.</p></li>
+    <li><h3>Tu IA sobre las mismas notas</h3><p>Por MCP lee, escribe, documenta lo que hace y responde los comentarios que le dejás.</p></li>
+    <li><h3>Privado</h3><p>Carpetas con contraseña que el servidor no puede leer, código abierto y servidor propio si querés.</p></li>
+    <li><h3>Web, Chrome y celular</h3><p>App web, extensión de Chrome y app en el celular. También anda sin conexión.</p></li>
+  </ul>
+</div></section>
+
 <section class="band"><div class="wrap two">
   <div>
     <h2>Editás el documento que estás leyendo.</h2>

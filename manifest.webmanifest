@@ -2,7 +2,7 @@
   "id": "/src/app.html",
   "name": "SharpMD",
   "short_name": "SharpMD",
-  "description": "Read and edit Markdown notes. They stay on your device or in your account.",
+  "description": "Edit Markdown on the formatted page, with no syntax to type. Notes stay on your device or in your account.",
   "lang": "en",
   "start_url": "src/app.html",
   "scope": "src/",

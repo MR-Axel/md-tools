@@ -1,6 +1,6 @@
 # SharpMD
 
-> SharpMD is a free, open source Markdown editor and reader that runs in the browser, as a web app and as a Chrome extension. You open a .md file or a whole folder and edit on the formatted text. Cloud notes, sharing and an MCP server for AI clients are optional.
+> SharpMD is a free, open source Markdown editor that runs in the browser, as a web app, a Chrome extension and an app on the phone. You open a .md file or a whole folder from your disk and edit on the formatted page, with no syntax to type: headings, tables, task lists, diagrams and formulas change in place. Cloud notes on every device, sharing, live editing through a link and an MCP server that lets an AI work on the same notes are optional. Folders with a password are encrypted in the browser, and the sync server can be self-hosted.
 
 - Web app: https://sharpmd.app/src/app.html
 - Site: https://sharpmd.app/ (Spanish: https://sharpmd.app/es/)
