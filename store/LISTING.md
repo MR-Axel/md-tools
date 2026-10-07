@@ -8,16 +8,54 @@ git archive --format=zip -o dist/sharpmd.zip HEAD
 
 Ese ZIP deja afuera las pruebas, las capturas, la página de presentación y este archivo (ver `.gitattributes`).
 
-## Datos básicos
+## Qué va en cada campo del panel
 
-| Campo | Valor |
+El formulario tiene tres pestañas. Esta es la primera, "Ficha de Chrome Web Store", en el orden en que aparecen los campos.
+
+### Detalles del producto
+
+| Campo del panel | Qué cargar |
 |---|---|
-| Nombre | Sharpmd: Markdown reader & editor |
-| Categoría | Productivity → Tools (Herramientas) |
-| Idioma principal | English |
-| Sitio web | https://sharpmd.app/ |
-| Política de privacidad | https://sharpmd.app/privacy.html |
-| Soporte | https://github.com/MR-Axel/sharpmd/issues · hello@sharpmd.app |
+| Título y resumen | No se escriben: salen del `manifest.json` del ZIP |
+| Descripción | El bloque "Descripción larga (English)" de más abajo. El de español va al agregar el idioma Español |
+| Categoría | Herramientas |
+| Idioma | English |
+
+### Recursos gráficos
+
+Todos los archivos están en `docs/store/`.
+
+| Campo del panel | Archivo | Nota |
+|---|---|---|
+| Icono de Chrome Web Store | ya cargado | sale del ZIP (`icons/icon128.png`) |
+| Vídeo promocional localizado | vacío | solo acepta un enlace de YouTube; el video existe pero no está subido |
+| Capturas de pantalla localizadas | vacío | son para una ficha por idioma; con las globales alcanza |
+| Vídeo promocional global | vacío | igual que arriba |
+| **Capturas de pantalla globales** (obligatorio, hasta 5) | `1-reader.png`, `2-editing.png`, `3-blocks.png`, `4-diagram.png`, `6-search.png` | en ese orden; la primera es la que se ve en los resultados |
+| Imagen en mosaico promocional pequeña (440x280) | `promo-440x280.png` | |
+| Imagen en mosaico promocional con desplazamiento (1400x560) | `promo-1400x560.png` | |
+
+`5-start.png` es la pantalla de inicio: no entra en las cinco, queda de repuesto.
+
+Las capturas se regeneran con `node tests/shots.mjs` y los mosaicos con `node tests/promo.mjs`. Todas salen en PNG de 24 bits sin alfa, que es lo que pide el panel.
+
+### Campos adicionales
+
+| Campo del panel | Qué cargar |
+|---|---|
+| URL oficial | `sharpmd.app` (aparece en la lista porque el dominio está verificado en Search Console) |
+| URL de la página principal | `https://sharpmd.app/` |
+| URL de asistencia | `https://github.com/MR-Axel/sharpmd/issues` |
+| Contenido para adultos | apagado |
+
+### Las otras dos pestañas
+
+| Pestaña | Qué cargar |
+|---|---|
+| Privacidad | Propósito único, justificación de cada permiso, código remoto y uso de datos: todo está en "Pestaña de privacidad", más abajo. URL de la política: `https://sharpmd.app/privacy.html` |
+| Distribución | Gratis, todas las regiones, visibilidad pública |
+
+En la cuenta del editor (no en la ficha) va el correo de contacto, `hello@sharpmd.app`, y la declaración de operador.
 
 ## Descripción corta (máximo 132 caracteres)
 
@@ -119,18 +157,6 @@ Gratis y de código abierto (MIT): https://github.com/MR-Axel/sharpmd
 
 Después de instalarla, abrí los detalles de la extensión y activá "Permitir acceso a URL de archivo" para que pueda abrir archivos locales.
 ```
-
-## Imágenes
-
-Capturas de 1280x800, en `docs/store/` (se regeneran con `node tests/shots.mjs`):
-
-1. `1-reader.png`: documento con índice
-2. `2-editing.png`: celda de tabla en edición
-3. `3-blocks.png`: menú de bloques
-4. `4-diagram.png`: editor de diagramas
-5. `6-search.png`: búsqueda en la carpeta
-
-Ícono de 128x128: `icons/icon128.png`. El mosaico promocional chico (440x280) es opcional y no está hecho.
 
 ## Pestaña de privacidad
 
