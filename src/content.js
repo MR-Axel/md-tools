@@ -593,6 +593,8 @@
           '<button class="lmd-icon-btn lmd-doc-only" data-act="export-html" title="' + T('Exportar a HTML') + '">' + ICON.download + '</button>' +
           '<span class="lmd-sep lmd-doc-only"></span>' +
           '<button class="lmd-icon-btn" data-act="settings" title="' + T('Ajustes') + '">' + ICON.sliders + '</button>' +
+          // En pantalla chica todo lo de este grupo, y la nube, se abre desde acá.
+          '<button class="lmd-icon-btn lmd-more lmd-doc-only" data-act="more" aria-haspopup="menu" title="' + T('Más acciones') + '">' + ICON.more + '</button>' +
         '</div>' +
       '</div>' +
       // Sin nota abierta, acá va el estado vacío: lo dibuja home.js.
@@ -620,7 +622,9 @@
       '<button type="button" data-top="col-">− ' + T('Columna') + '</button>' +
       '<button type="button" data-top="total" title="' + T('Agregar una fila que suma cada columna') + '">Σ ' + T('Totales') + '</button>');
 
-    document.body.append(ui.sidebar, ui.main, ui.toTop, ui.panel, ui.viewer, ui.format, ui.tableBar);
+    // En pantalla chica la barra lateral se abre encima del contenido; esto oscurece lo que queda detrás.
+    ui.scrim = el('div', { class: 'lmd-scrim' });
+    document.body.append(ui.sidebar, ui.scrim, ui.main, ui.toTop, ui.panel, ui.viewer, ui.format, ui.tableBar);
 
     ui.article = ui.main.querySelector('.lmd-article');
     ui.rawPre = ui.main.querySelector('pre.lmd-raw');
@@ -638,9 +642,14 @@
     ui.searchCount = ui.searchBox.querySelector('.lmd-search-count');
 
     ui.home = ui.main.querySelector('.lmd-home');
+    ui.more = ui.main.querySelector('.lmd-more');
     paintDoc();
     bindEvents();
     bindEditing();
+    LMD.touch.init();
+    // Mantener apretado: leyendo abre el menú de lectura; editando, el dedo quieto elige texto, como en cualquier editor.
+    LMD.touch.longPress(ui.article, () => !editMode);
+    LMD.touch.longPress(ui.treeBox);
     LMD.write.init(core);
     LMD.links.init(core);
     LMD.diagram.init(core);
@@ -656,13 +665,14 @@
     document.body.addEventListener('click', (e) => {
       const actEl = e.target.closest('[data-act]');
       if (actEl) { onAction(actEl.dataset.act, actEl); return; }
+      if (e.target === ui.scrim) { setDrawer(false); return; }
       if (sideClick(e)) return;
       const img = e.target.closest('img.lmd-zoomable');
       if (img && !img.closest('a') && !editMode) { openViewer(img); return; }
       const plain = !(e.ctrlKey || e.metaKey || e.shiftKey);
-      if (e.target.closest('.lmd-res-doc')) { stepSearch(1); return; }
+      if (e.target.closest('.lmd-res-doc')) { stepSearch(1); setDrawer(false); return; }
       const res = e.target.closest('.lmd-results a');
-      if (res && res.href.split('#')[0] === location.href.split('#')[0]) { e.preventDefault(); stepSearch(1); return; }
+      if (res && res.href.split('#')[0] === location.href.split('#')[0]) { e.preventDefault(); stepSearch(1); setDrawer(false); return; }
       // Un archivo del árbol, un resultado de búsqueda o un reciente: se abre sin recargar la página.
       const nav = e.target.closest('a.lmd-node, .lmd-results a');
       if (nav && inApp(nav)) { if (plain) { e.preventDefault(); openDoc(nav.href); } return; }
@@ -672,6 +682,8 @@
       const editing = editMode && !!a.closest('.lmd-editable');
       if (editing && !(e.ctrlKey || e.metaKey)) return;
       const href = a.getAttribute('href');
+      // Elegir una sección en el índice deja ver a dónde se fue.
+      if (a.closest('.lmd-pane-outline')) setDrawer(false);
       if (href[0] === '#') {
         // Un enlace escrito como en GitHub (con acentos o mayúsculas) llega igual al título, que acá lleva el ancla sin acentos.
         const frag = unesc(href.slice(1));
@@ -690,6 +702,8 @@
     });
 
     ui.toTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    document.addEventListener('mousedown', (e) => { if (moreMenu && !moreMenu.contains(e.target) && !ui.more.contains(e.target)) closeMore(); });
+    window.addEventListener('scroll', closeMore, { passive: true });
     ui.viewer.addEventListener('click', () => { ui.viewer.hidden = true; ui.viewer.textContent = ''; });
 
     // El índice se recalcula a lo sumo una vez por cuadro, no en cada evento de scroll.
@@ -703,8 +717,10 @@
     document.addEventListener('selectionchange', debounce(updateCount, 80));
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        if (!ui.viewer.hidden) ui.viewer.click();
+        if (moreMenu) closeMore();
+        else if (!ui.viewer.hidden) ui.viewer.click();
         else if (!ui.panel.hidden) ui.panel.hidden = true;
+        else if (drawerOpen()) setDrawer(false);
         else if (ui.searchInput.value || document.activeElement === ui.searchInput) toggleSearch(false);
       }
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 's' && (editMode || dirty || (appRoot && appRoot.kind === 'local'))) { e.preventDefault(); save(true); }
@@ -759,8 +775,52 @@
     });
   }
 
+  // ---------- Pantalla chica: la barra lateral como panel y el menú "más" ----------
+  // En pantalla chica la barra lateral arranca cerrada y se abre encima del contenido, sin correrlo. Que esté
+  // abierta o cerrada ahí no se guarda: lo recordado (sidebarHidden) es lo del escritorio.
+  const drawerOpen = () => document.documentElement.classList.contains('lmd-side-open');
+  function setDrawer(open) {
+    open = !!open && LMD.touch.small();
+    document.documentElement.classList.toggle('lmd-side-open', open);
+    ui.main.querySelector('[data-act=sidebar]').setAttribute('aria-expanded', String(open));
+    if (!open && ui.sidebar.contains(document.activeElement)) document.activeElement.blur(); // el teclado no queda abierto sobre un panel cerrado
+  }
+
+  // Lo que en escritorio está a la vista en la barra de arriba, acá en una lista: el ícono y qué hace cada cosa.
+  let moreMenu = null;
+  function closeMore() { if (moreMenu) { moreMenu.remove(); moreMenu = null; ui.more.setAttribute('aria-expanded', 'false'); } }
+  function openMore() {
+    if (moreMenu) { closeMore(); return; }
+    LMD.write.closeMenu();
+    const md = docKind() === 'md'; const cloud = !!appRoot && appRoot.kind === 'cloud';
+    const items = [
+      !ui.sync.hidden && ['sync', (ui.sync.querySelector('svg') || { outerHTML: ICON.cloud }).outerHTML, cloud ? 'Nube: compartir, historial y más' : LMD.cloud.signedIn() ? 'Subir esta nota a la nube' : 'Entrar a la cuenta'],
+      editMode && md && !rawMode && ['insert', ICON.plus, 'Insertar un bloque'],
+      rawMode ? ['view-doc', ICON.doc, 'Ver documento'] : ['view-raw', ICON.code, 'Ver código fuente'],
+      ['copy-md', ICON.copy, 'Copiar Markdown'],
+      ['copy-rich', ICON.rich, 'Copiar con formato'],
+      ['reload', ICON.reload, 'Recargar ahora'],
+      ['print', ICON.print, 'Imprimir o guardar PDF'],
+      ['export-html', ICON.download, 'Exportar a HTML'],
+      ['settings', ICON.sliders, 'Ajustes'],
+    ].filter(Boolean);
+    moreMenu = el('div', { class: 'lmd-menu lmd-menu-more', role: 'menu' });
+    moreMenu.innerHTML = '<div class="lmd-menu-list">' + items.map((i) => '<button type="button" role="menuitem" data-more="' + i[0] + '">' + i[1] + '<span>' + T(i[2]) + '</span></button>').join('') + '</div>';
+    document.body.appendChild(moreMenu);
+    const box = ui.more.getBoundingClientRect();
+    moreMenu.style.left = Math.max(8, Math.min(window.innerWidth - moreMenu.offsetWidth - 8, box.right - moreMenu.offsetWidth)) + 'px';
+    moreMenu.style.top = Math.max(8, Math.min(window.innerHeight - moreMenu.offsetHeight - 8, box.bottom + 6)) + 'px';
+    ui.more.setAttribute('aria-expanded', 'true');
+    moreMenu.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-more]'); if (!b) return;
+      closeMore();
+      onAction(b.dataset.more, ui.more);
+    });
+  }
+
   function onAction(act, source) {
-    if (act === 'sidebar') LMD.patch({ sidebarHidden: !settings.sidebarHidden });
+    if (act === 'sidebar') { if (LMD.touch.small()) setDrawer(!drawerOpen()); else LMD.patch({ sidebarHidden: !settings.sidebarHidden }); }
+    else if (act === 'more') openMore();
     else if (act === 'mode-read') { if (editMode) setEditMode(false); }
     else if (act === 'mode-edit') { if (!editMode) setEditMode(true); }
     else if (act === 'save') save(true);
@@ -850,6 +910,7 @@
     if (settings.supporter && settings.fontFamily && settings.fontFamily.trim()) root.style.setProperty('--lmd-font', settings.fontFamily);
     else root.style.removeProperty('--lmd-font');
     applyAccent(root, dark);
+    const bar = document.querySelector('meta[name=theme-color]'); if (bar) bar.content = dark ? '#121418' : '#fbfaf7';
     root.classList.toggle('lmd-dgm-round', settings.diagramShape !== 'square');
     if (/^#[0-9a-f]{6}$/i.test(settings.codeColor || '')) root.style.setProperty('--code-tint', settings.codeColor); else root.style.removeProperty('--code-tint');
     ui.customStyle.textContent = settings.supporter ? (settings.customCSS || '') : '';
@@ -1384,7 +1445,7 @@
   // El buscador está siempre a la vista: "abrir" es darle foco y "cerrar" es vaciarlo.
   function toggleSearch(show) {
     if (show) {
-      if (settings.sidebarHidden) LMD.patch({ sidebarHidden: false });
+      if (LMD.touch.small()) setDrawer(true); else if (settings.sidebarHidden) LMD.patch({ sidebarHidden: false });
       ui.searchInput.focus(); ui.searchInput.select();
       if (ui.searchInput.value) runSearch(ui.searchInput.value);
     } else { ui.searchInput.value = ''; ui.searchInput.blur(); runSearch(''); }
@@ -1731,6 +1792,8 @@
     const showTab = (tab) => {
       panelTab = tab;
       ui.panel.querySelectorAll('[data-ptab]').forEach((b) => { b.classList.toggle('lmd-on', b.dataset.ptab === tab); b.setAttribute('aria-selected', String(b.dataset.ptab === tab)); });
+      // En pantalla chica las pestañas son una fila que se desliza: la elegida queda a la vista.
+      const on = ui.panel.querySelector('[data-ptab].lmd-on'); if (on && LMD.touch.small()) on.scrollIntoView({ block: 'nearest', inline: 'center' });
       ui.panel.querySelectorAll('.lmd-panel-body > section').forEach((sec) => { sec.hidden = sec.dataset.tab !== tab; });
       ui.panel.querySelector('.lmd-panel-body').scrollTop = 0;
       const acct = ui.panel.querySelector('[data-acct=' + tab + ']');
@@ -1990,6 +2053,7 @@
     if (on && docKind() === 'image') { flash(T('Las imágenes no se editan acá'), 'warn'); return; }
     if (on && docKind() !== 'md') rawMode = true;
     editMode = on;
+    if (!on) { ui.format.hidden = true; ui.tableBar.hidden = true; } // sin edición no hay nada que formatear
     rememberEdit(on);
     updateSaveState();
     render();
@@ -2135,10 +2199,12 @@
     const host = at && at.closest('.lmd-editable');
     // Con el cursor apoyado en un enlace, sin seleccionar nada, la barra ofrece solo editarlo.
     const link = host && sel.isCollapsed ? at.closest('a:not(.lmd-wiki)') : null;
-    if (!editMode || !host || core.hold || (sel.isCollapsed && !(link && host.contains(link)))) { ui.format.hidden = true; return; }
+    if (!editMode || !host || core.hold || (sel.isCollapsed && !(link && host.contains(link)))) { ui.format.hidden = true; LMD.touch.dock(); return; }
     const rect = (link || sel.getRangeAt(0)).getBoundingClientRect();
     ui.format.classList.toggle('lmd-format-link', !!link);
     ui.format.hidden = false;
+    // Con el dedo va pegada al borde de abajo de lo que se ve: arriba quedaría tapada por el menú de selección del sistema.
+    if (LMD.touch.dock()) return;
     ui.format.style.top = Math.max(8, rect.top - 42) + 'px';
     ui.format.style.left = Math.max(8, link ? Math.min(window.innerWidth - ui.format.offsetWidth - 8, rect.left) : Math.min(window.innerWidth - 230, rect.left + rect.width / 2 - 105)) + 'px';
   }
@@ -2201,7 +2267,7 @@
       if (node && node.dataset.formula) node.textContent = node.dataset.formula;
       if (node) { node._md = inlineMd(node); core.lastBlock = node; }
       ui.tableBar.hidden = !(node && node.classList.contains('lmd-cell'));
-      if (!ui.tableBar.hidden) {
+      if (!ui.tableBar.hidden && !LMD.touch.dock()) {
         const box = node.closest('table').getBoundingClientRect();
         // Al costado de la tabla si hay lugar; si no, debajo. Arriba taparía el título de la sección.
         const ancho = ui.tableBar.offsetWidth || 300;
@@ -2591,7 +2657,7 @@
     undoStack.length = 0; redoStack.length = 0; collapsed.clear(); spyPin = null; present = [];
     pendingCell = null; fileHandle = null; stashed = null; opened = null; diskStamp = ''; cloudPoll = 0; cloudState = 'ok';
     needsRender = false; core.lastBlock = null; core.hold = false;
-    LMD.write.closeMenu();
+    LMD.write.closeMenu(); closeMore(); setDrawer(false);
     document.querySelectorAll('.lmd-menu, .lmd-ask').forEach((n) => n.remove());
     ui.viewer.hidden = true; ui.viewer.textContent = ''; ui.format.hidden = true; ui.tableBar.hidden = true;
     clearSearch();

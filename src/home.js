@@ -395,7 +395,9 @@
         if (!shown.length) list.appendChild(el('p', { class: 'lmd-empty', text: T('Ninguna plantilla coincide.') }));
         select(shown.includes(at) ? at : (shown[0] || ''));
       };
-      draw(); input.focus();
+      // Con el dedo el filtro no toma el foco solo: el teclado taparía la lista.
+      const focus = () => { if (!LMD.touch.coarse()) input.focus(); };
+      draw(); focus();
       input.addEventListener('input', draw);
       box.addEventListener('keydown', (e) => {
         e.stopPropagation(); // los atajos del documento no corren con el selector abierto
@@ -409,7 +411,7 @@
       box.addEventListener('mousedown', (e) => { if (e.target === box) close(null); });
       box.addEventListener('click', (e) => {
         const row = e.target.closest('[data-id]'); const b = e.target.closest('[data-tpl]');
-        if (row) { select(row.dataset.id); input.focus(); }
+        if (row) { select(row.dataset.id); focus(); }
         else if (b) close(b.dataset.tpl === 'ok' && at ? LMD.templates.get(at) : null);
       });
       list.addEventListener('dblclick', (e) => { const row = e.target.closest('[data-id]'); if (row) close(LMD.templates.get(row.dataset.id)); });

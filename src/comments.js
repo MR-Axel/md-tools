@@ -50,6 +50,8 @@
     if (pop && pop._kind === 'view') closePop();
     const open = opened();
     if (cur) cur.items.forEach((c) => { c.block = null; });
+    // En pantalla chica el texto llega al borde: el bloque marcado le deja lugar a su marca (lmd-cm-has).
+    core.ui.article.querySelectorAll('.lmd-cm-has').forEach((n) => n.classList.remove('lmd-cm-has'));
     if (!open.length || mode() !== 'on') return;
     const keys = blocks().map((b) => [b, key(textOf(b))]);
     const by = new Map();
@@ -61,7 +63,7 @@
     });
     by.forEach((list, block) => {
       const b = el('button', { type: 'button', class: 'lmd-cm-mark', title: list.length > 1 ? T('{n} comentarios para la IA', { n: list.length }) : T('Comentario para la IA') }, ICON.comment + (list.length > 1 ? '<b>' + list.length + '</b>' : ''));
-      b._block = block; b._list = list;
+      b._block = block; b._list = list; block.classList.add('lmd-cm-has');
       layer.appendChild(b);
     });
     place();

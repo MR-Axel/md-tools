@@ -74,7 +74,7 @@
     document.body.appendChild(menu);
     const box = btn.getBoundingClientRect();
     menu.style.left = Math.max(8, Math.min(window.innerWidth - menu.offsetWidth - 8, box.left)) + 'px';
-    menu.style.top = (box.bottom + 8) + 'px';
+    menu.style.top = Math.max(8, Math.min(window.innerHeight - menu.offsetHeight - 8, box.bottom + 8)) + 'px';
     menu.addEventListener('click', (e) => {
       const b = e.target.closest('[data-s]'); if (!b) return;
       closeMenu();
