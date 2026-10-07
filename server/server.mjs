@@ -26,6 +26,15 @@
 //   LIVE_PEOPLE     personas por sesión en vivo, contando a quien la abrió (12)
 //   LIVE_IDLE_MS    cuánto dura una sesión en vivo sin nadie conectado (12 horas)
 //   LIVE_GUEST_MS   cuánto conserva su lugar un invitado sin conexión (2 minutos)
+//   PADDLE_TEAM_BASE, PADDLE_TEAM_SEAT   ids de los dos precios del plan de equipo en Paddle: el base (cubre 2 personas)
+//                   y el de cada lugar adicional. Con ellos el aviso de Paddle reconoce la suscripción de un equipo
+//   PADDLE_API_KEY  clave de la API de Paddle: con ella el servidor cambia la cantidad de lugares de un equipo.
+//                   Sin estas tres (y PADDLE_WEBHOOK_SECRET) el plan de equipo queda apagado y la app no lo ofrece
+//   PADDLE_API_URL  dirección de la API de Paddle (https://api.paddle.com; la de pruebas es https://sandbox-api.paddle.com)
+//   CHECKOUT_TEAM   enlace de pago del plan de equipo que la app muestra en Ajustes → Plan
+//   TEAM_MAX_SEATS  lugares que puede tener un equipo como máximo (50)
+//   TEAM_INVITES_DAY  invitaciones que un equipo puede mandar por día (20)
+//   APP_URL         dirección de la app a la que lleva el correo de invitación (https://sharpmd.app/src/app.html)
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -268,7 +277,7 @@ function authVerify(req, body) {
   const user = q('SELECT * FROM users WHERE email = ?').get(email);
   const session = 'mds_' + random(32);
   q('INSERT INTO sessions (hash, user, created, seen) VALUES (?, ?, ?, ?)').run(sha(session), user.id, now(), now());
-  return { session, account: account(user) };
+  return { session, account: account(userById(user.id)) };
 }
 
 function userFrom(req, kind) {
@@ -276,11 +285,11 @@ function userFrom(req, kind) {
   if (!m) throw new Fail(401, 'no_auth');
   if (kind === 'session' && m[1].startsWith('mds_')) {
     const s = q('SELECT user FROM sessions WHERE hash = ? AND seen > ?').get(sha(m[1]), now() - SESSION_DAYS * DAY);
-    if (s) { q('UPDATE sessions SET seen = ? WHERE hash = ?').run(now(), sha(m[1])); return q('SELECT * FROM users WHERE id = ?').get(s.user); }
+    if (s) { q('UPDATE sessions SET seen = ? WHERE hash = ?').run(now(), sha(m[1])); return userById(s.user); }
   }
   if (kind === 'token' && m[1].startsWith('mdt_')) {
     const t = q('SELECT id, user, scope FROM tokens WHERE hash = ?').get(sha(m[1]));
-    if (t) { q('UPDATE tokens SET used = ? WHERE id = ?').run(now(), t.id); const u = q('SELECT * FROM users WHERE id = ?').get(t.user); if (u) u.scope = t.scope || ''; return u; }
+    if (t) { q('UPDATE tokens SET used = ? WHERE id = ?').run(now(), t.id); const u = userById(t.user); if (u) u.scope = t.scope || ''; return u; }
   }
   throw new Fail(401, 'bad_auth');
 }
@@ -288,8 +297,11 @@ function userFrom(req, kind) {
 const countNotes = (user) => q('SELECT COUNT(*) AS n FROM notes WHERE user = ?').get(user.id).n;
 const mcpAllowed = (user) => user.plan === 'pro' || !!env.MCP_FREE;
 const shareAllowed = (user) => user.plan === 'pro' || !!env.SHARE_FREE;
-const account = (user) => ({ id: user.id, share: shareAllowed(user), live: user.plan === 'pro' || !!env.LIVE_FREE, email: user.email, plan: user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, mcp: mcpAllowed(user), mcp_url: PUBLIC_URL + '/mcp', manage: user.plan === 'pro' && env.PORTAL_URL ? env.PORTAL_URL : '',
-  checkout: { monthly: env.CHECKOUT_MONTHLY ? env.CHECKOUT_MONTHLY + (env.CHECKOUT_MONTHLY.includes('?') ? '&' : '?') + 'email=' + encodeURIComponent(user.email) : '', yearly: env.CHECKOUT_YEARLY ? env.CHECKOUT_YEARLY + (env.CHECKOUT_YEARLY.includes('?') ? '&' : '?') + 'email=' + encodeURIComponent(user.email) : '' } });
+// plan es el que vale ahora; own_plan, el que la cuenta paga por su lado (un miembro de un equipo puede tener los dos).
+// Administra una suscripción quien la paga: la propia, o la del equipo si es quien lo administra.
+const account = (user) => ({ id: user.id, share: shareAllowed(user), live: user.plan === 'pro' || !!env.LIVE_FREE, email: user.email, plan: user.plan, own_plan: user.own || user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, mcp: mcpAllowed(user), mcp_url: PUBLIC_URL + '/mcp',
+  manage: ((user.own || user.plan) === 'pro' || (user.team && user.team.owner === user.id && user.team.sub)) && env.PORTAL_URL ? env.PORTAL_URL : '',
+  checkout: { monthly: withEmail(env.CHECKOUT_MONTHLY, user), yearly: withEmail(env.CHECKOUT_YEARLY, user) }, team: teamView(user) });
 
 // ---------- Comentarios ----------
 // Lo que alguien escribe desde "Enviar comentarios" llega por correo a FEEDBACK_TO. Entra con o sin sesión.
@@ -472,7 +484,10 @@ function writeNote(user, p, text, base) {
   const row = q('SELECT text, e, v, size, rev, updated FROM notes WHERE user = ? AND path = ?').get(user.id, p);
   const prev = row ? { text: unseal(row.text, row.e, 'notes.text') } : null;
   if (row && base != null && base !== row.rev) throw new Fail(409, 'rev_conflict', '', { text: prev.text, rev: row.rev, updated: row.updated });
-  if (!prev && user.plan !== 'pro' && countNotes(user) >= FREE_NOTES) throw new Fail(402, 'note_limit', 'The free plan holds ' + FREE_NOTES + ' notes');
+  if (!prev && user.plan !== 'pro' && countNotes(user) >= FREE_NOTES) {
+    if (user.email.startsWith('team:')) throw new Fail(402, 'team_ended', 'This team is no longer on the paid plan: its notes can still be read and edited, but no new ones can be added');
+    throw new Fail(402, 'note_limit', 'The free plan holds ' + FREE_NOTES + ' notes');
+  }
   // El historial es del plan pago: se guarda la versión anterior si cambió y pasó más de un minuto. Al cifrar una
   // nota (o al descifrarla) la versión anterior no se guarda: sería dejar el texto en claro, o uno que ya nadie abre.
   if (prev && user.plan === 'pro' && prev.text !== text && row.v === kind.v) {
@@ -562,6 +577,8 @@ function searchNotes(user, text, reach) {
 const covers = (share, p) => (share.kind === 'folder' ? p.startsWith(share.path + '/') : p === share.path);
 function roleOn(user, ownerId, p) {
   if (ownerId === user.id) return 'owner';
+  // El espacio del equipo: cualquier miembro lee, edita, mueve y elimina sus notas.
+  if (user.team && user.team.space === ownerId) return 'team';
   // Lo que está en una carpeta con contraseña no se comparte: ni por haberla compartido antes, ni por una carpeta de más arriba.
   if (vaultOf(ownerId, p)) return null;
   const hit = q('SELECT path, kind, role FROM shares WHERE owner = ? AND email = ?').all(ownerId, user.email).filter((s) => covers(s, p));
@@ -572,8 +589,8 @@ function roleOn(user, ownerId, p) {
 function target(user, url, p, need) {
   const ownerId = +(url.searchParams.get('o') || user.id);
   const role = roleOn(user, ownerId, p);
-  if (!role || (need === 'edit' && role === 'view') || (need === 'owner' && role !== 'owner')) throw new Fail(403, 'no_access');
-  return { owner: ownerId === user.id ? user : q('SELECT * FROM users WHERE id = ?').get(ownerId), role };
+  if (!role || (need === 'edit' && role === 'view') || (need === 'owner' && role !== 'owner' && role !== 'team')) throw new Fail(403, 'no_access');
+  return { owner: ownerId === user.id ? user : userById(ownerId), role };
 }
 function sharedWith(user) {
   const out = []; const seen = new Set();
@@ -818,7 +835,7 @@ function liveBySecret(req, secret, ticket) {
   const fits = (v) => typeof v === 'string' && v.length >= 20 && v.length <= 100;
   const row = fits(ticket) ? q('SELECT l.* FROM live_tickets t JOIN lives l ON l.id = t.live WHERE t.hash = ?').get(sha(ticket))
     : fits(secret) ? q('SELECT * FROM lives WHERE hash = ?').get(sha(secret)) : null;
-  const owner = row && q('SELECT * FROM users WHERE id = ?').get(row.owner);
+  const owner = row && userById(row.owner);
   if (row && (liveStale(row) || !owner || !liveAllowed(owner))) liveEnd(row, liveStale(row) ? 'expired' : 'closed');
   else if (row) return { row, owner };
   // El mismo aviso para un secreto que nunca existió y para una sesión que ya terminó. Veinte fallos por hora por red.
@@ -903,7 +920,7 @@ function guestFrom(req) {
   const hit = passes.get(sha(m[1]));
   const row = hit && q('SELECT * FROM lives WHERE id = ?').get(hit.live);
   const g = row && memOf(row).guests.get(hit.gid);
-  const owner = g && q('SELECT * FROM users WHERE id = ?').get(row.owner);
+  const owner = g && userById(row.owner);
   if (!owner) throw new Fail(401, 'bad_auth');
   if (!liveAllowed(owner)) { liveEnd(row, 'closed'); throw new Fail(401, 'bad_auth'); }
   g.at = now();
@@ -1017,45 +1034,58 @@ function vaultGate(user, p) {
 function callTool(user, name, args) {
   args = args || {};
   const vaults = vaultsOf(user.id);
-  const tag = (p) => { const v = vaults.find((x) => p === x.folder || inside(p, x.folder)); return v ? { protected: true, locked: !aiReach(user, v) } : {}; };
-  const mine = () => listNotes(user).filter((n) => within(user, n.path));
+  // El espacio del equipo, si la cuenta está en uno: sus notas figuran bajo @team/ y se leen y escriben como las
+  // demás. El alcance del token se mira sobre la ruta entera, con @team/ incluido: un token limitado a una carpeta
+  // propia no ve el equipo, y uno limitado a @team o a @team/algo ve solo eso.
+  const space = user.team ? userById(user.team.space) : null;
+  const teamPath = (p) => !!space && (p === TEAM_PRE.slice(0, -1) || p.startsWith(TEAM_PRE));
+  // at: de quién es la nota de esa ruta y cómo se llama ahí. full es la ruta como la ve la IA.
+  const at = (raw) => { const full = scoped(user, raw); return teamPath(full) && full.length > TEAM_PRE.length ? { who: space, p: cleanPath(full.slice(TEAM_PRE.length)), full } : { who: user, p: full, full }; };
+  const tag = (p) => { if (teamPath(p)) return { team: true }; const v = vaults.find((x) => p === x.folder || inside(p, x.folder)); return v ? { protected: true, locked: !aiReach(user, v) } : {}; };
+  const mine = () => listNotes(user).filter((n) => !teamPath(n.path)).concat(space ? listNotes(space).map((n) => ({ path: TEAM_PRE + n.path, updated: n.updated, size: n.size })) : [])
+    .filter((n) => within(user, n.path)).sort((a, b) => b.updated - a.updated);
   if (name === 'list_notes') return mine().filter((n) => inFolder(n.path, args.folder && cleanPath(args.folder))).map((n) => Object.assign({ path: n.path, updated: new Date(n.updated).toISOString(), size: n.size }, tag(n.path)));
   if (name === 'list_folders') {
     const count = new Map();
     for (const n of mine()) { const parts = n.path.split('/'); for (let i = 1; i < parts.length; i++) { const f = parts.slice(0, i).join('/'); count.set(f, (count.get(f) || 0) + 1); } }
     // Una carpeta con contraseña figura aunque esté vacía.
     for (const v of vaults) if (within(user, v.folder) && !count.has(v.folder)) count.set(v.folder, 0);
+    // La del equipo también, para que la IA sepa que existe.
+    if (space && within(user, TEAM_PRE.slice(0, -1)) && !count.has(TEAM_PRE.slice(0, -1))) count.set(TEAM_PRE.slice(0, -1), 0);
     return [...count].sort((a, b) => a[0].localeCompare(b[0])).map(([folder, notes]) => Object.assign({ folder, notes }, tag(folder)));
   }
   // Dentro de una carpeta desbloqueada para la IA se lee descifrando y se escribe cifrando, con el mismo formato
   // que usa el navegador. Una nota que el navegador todavía no cifró no se entrega.
-  const read = (p, key) => {
-    const n = readNote(user, p);
+  const read = (a, key) => {
+    const n = readNote(a.who, a.p);
     if (!key) return n.text;
     if (!n.text.startsWith(VAULT)) throw new Fail(423, 'vault_locked', 'This note is still being encrypted by SharpMD. Try again in a moment.');
-    return vaultOpen(key, p, n.text);
+    return vaultOpen(key, a.p, n.text);
   };
+  // En el espacio del equipo no hay carpetas con contraseña.
+  const gate = (a) => (a.who === user ? vaultGate(user, a.p) : null);
   // La IA guarda sobre la revisión que hay en ese momento: lee y escribe sin soltar el hilo, así que no pisa un
   // guardado que entró en el medio ni se cruza con otro. Quien tiene la nota abierta se entera al instante.
-  const revOf = (p) => { const at = q('SELECT rev FROM notes WHERE user = ? AND path = ?').get(user.id, p); return at ? at.rev : null; };
-  const write = (p, key, text, base) => {
+  const revOf = (a) => { const now_ = q('SELECT rev FROM notes WHERE user = ? AND path = ?').get(a.who.id, a.p); return now_ ? now_.rev : null; };
+  const write = (a, key, text, base) => {
     text = String(text == null ? '' : text);
     if (key && Buffer.byteLength(text) > MAX_NOTE) throw new Fail(413, 'too_large');
-    const saved = writeNote(user, p, key ? vaultSeal(key, p, text) : text, base === undefined ? revOf(p) : base);
-    tellSaved(user.id, p, saved, { by: 'mcp' }, text);
+    const saved = writeNote(a.who, a.p, key ? vaultSeal(key, a.p, text) : text, base === undefined ? revOf(a) : base);
+    tellSaved(a.who.id, a.p, saved, { by: 'mcp' }, text);
     return saved;
   };
-  if (name === 'read_note') { const p = scoped(user, args.path); return read(p, vaultGate(user, p)); }
-  if (name === 'write_note') { const p = scoped(user, args.path); const r = write(p, vaultGate(user, p), args.text); return 'Saved ' + r.path + ' (' + String(args.text == null ? '' : args.text).length + ' characters).'; }
+  if (name === 'read_note') { const a = at(args.path); return read(a, gate(a)); }
+  if (name === 'write_note') { const a = at(args.path); write(a, gate(a), args.text); return 'Saved ' + a.full + ' (' + String(args.text == null ? '' : args.text).length + ' characters).'; }
   if (name === 'append_note') {
     // Lo que se lee y lo que se escribe son de la misma revisión: si no coincidiera, no se agrega sobre un texto viejo.
-    const p = scoped(user, args.path); const key = vaultGate(user, p); let prev = ''; const base = revOf(p);
-    try { prev = read(p, key); } catch (e) { if (e.code !== 'not_found') throw e; }
-    const r = write(p, key, prev + (prev && !prev.endsWith('\n') ? '\n' : '') + (prev ? '\n' : '') + String(args.text || ''), base);
-    return 'Appended to ' + r.path + '.';
+    const a = at(args.path); const key = gate(a); let prev = ''; const base = revOf(a);
+    try { prev = read(a, key); } catch (e) { if (e.code !== 'not_found') throw e; }
+    write(a, key, prev + (prev && !prev.endsWith('\n') ? '\n' : '') + (prev ? '\n' : '') + String(args.text || ''), base);
+    return 'Appended to ' + a.full + '.';
   }
   if (name === 'search_notes') {
-    const results = searchNotes(user, args.query, (v) => aiReach(user, v)).filter((r) => within(user, r.path));
+    const results = searchNotes(user, args.query, (v) => aiReach(user, v)).filter((r) => !teamPath(r.path))
+      .concat(space ? searchNotes(space, args.query).map((r) => Object.assign(r, { path: TEAM_PRE + r.path })) : []).filter((r) => within(user, r.path)).slice(0, 30);
     // Si quedó alguna carpeta bloqueada al alcance del token, se dice: lo que hay adentro no se buscó.
     const shut = vaults.filter((v) => !aiReach(user, v) && (within(user, v.folder) || inside(user.scope, v.folder) || user.scope === v.folder)).map((v) => v.folder);
     return shut.length ? { results, locked_folders: shut, note: 'The notes inside locked folders were not searched. ' + LOCKED(shut[0]) } : results;
@@ -1077,7 +1107,7 @@ function mcp(user, msg) {
   if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } };
   const reply = (result) => ({ jsonrpc: '2.0', id: msg.id, result });
   if (msg.method === 'initialize') return reply({ protocolVersion: (msg.params && msg.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'sharpmd', version: '1.0.0' },
-    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with write_note, then resolve_comment. A folder marked as protected and locked is encrypted with a password: you cannot read it until the person unlocks it for the AI from SharpMD.' });
+    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with write_note, then resolve_comment. A folder marked as protected and locked is encrypted with a password: you cannot read it until the person unlocks it for the AI from SharpMD. If the person belongs to a team, the notes the team shares are under @team/ and every member can read and edit them.' });
   if (msg.method === 'ping') return reply({});
   if (msg.method === 'tools/list') return reply({ tools: TOOLS });
   if (msg.method === 'tools/call') {
@@ -1118,6 +1148,230 @@ const readBody = async (req) => { const b = await readAny(req); if (!b || typeof
 // Un tramo de la dirección mal codificado es un pedido mal armado, no un error del servidor.
 const dec = (s) => { try { return decodeURIComponent(s); } catch (e) { throw new Fail(400, 'bad_path'); } };
 
+// ---------- Equipos ----------
+// Un equipo es de quien lo paga: esa cuenta lo administra (invita, saca gente, cambia la cantidad de lugares) y
+// ocupa uno de los lugares. Los demás entran con su cuenta de siempre, aceptando una invitación que llega al
+// correo con el que entran. Mientras el equipo está al día, sus miembros tienen el plan pago; al salir, o si el
+// cobro se cae, cada uno vuelve a su plan propio y conserva sus notas.
+//   - Una cuenta está en un solo equipo a la vez.
+//   - El espacio del equipo: sus notas no son de ninguna persona. Se guardan a nombre de una cuenta interna del
+//     equipo (su correo es team:..., que no es un correo: nadie puede entrar con ella ni compartirle nada), así
+//     que tienen revisión, historial, avisos en vivo y cifrado en reposo como cualquier otra nota. Los miembros
+//     las piden con o = el número de esa cuenta, igual que lo compartido entre cuentas.
+//   - Con el cobro caído no se borra nada: las notas del equipo se siguen leyendo y editando, pero no se crean
+//     nuevas pasado el tope gratis y no se guarda historial. Es la misma regla de quien baja del plan pago.
+//   - En el espacio del equipo no hay carpetas con contraseña, enlaces públicos, compartir hacia afuera ni
+//     sesiones en vivo: esas rutas trabajan sobre las notas propias de quien llama.
+//   - Lugares: los miembros más las invitaciones pendientes nunca superan los lugares pagos.
+const TEAM_BASE = String(env.PADDLE_TEAM_BASE || '').trim(); const TEAM_SEAT = String(env.PADDLE_TEAM_SEAT || '').trim();
+const PADDLE_API = String(env.PADDLE_API_URL || 'https://api.paddle.com').replace(/\/+$/, '');
+// El plan de equipo se ofrece solo con todo lo que hace falta para cobrarlo y para cambiar los lugares.
+const TEAM_BILLING = !!(env.PADDLE_WEBHOOK_SECRET && TEAM_BASE && TEAM_SEAT && env.PADDLE_API_KEY);
+const TEAM_INCLUDED = 2; // personas que cubre el precio base
+const TEAM_MAX_SEATS = Math.max(TEAM_INCLUDED, +(env.TEAM_MAX_SEATS || 50));
+const TEAM_INVITES_DAY = +(env.TEAM_INVITES_DAY || 20); // invitaciones que un equipo manda por día
+const TEAM_PRE = '@team/'; // bajo qué carpeta ve la IA las notas del equipo
+const APP_URL = String(env.APP_URL || 'https://sharpmd.app/src/app.html');
+db.exec("CREATE TABLE IF NOT EXISTS teams (id INTEGER PRIMARY KEY, owner INTEGER UNIQUE NOT NULL, space INTEGER UNIQUE NOT NULL, name TEXT NOT NULL DEFAULT '', seats INTEGER NOT NULL, sub TEXT, status TEXT NOT NULL DEFAULT 'active', created INTEGER NOT NULL)");
+db.exec('CREATE TABLE IF NOT EXISTS team_members (team INTEGER NOT NULL, user INTEGER PRIMARY KEY, joined INTEGER NOT NULL)');
+db.exec('CREATE TABLE IF NOT EXISTS team_invites (id INTEGER PRIMARY KEY, team INTEGER NOT NULL, email TEXT NOT NULL, created INTEGER NOT NULL, UNIQUE (team, email))');
+// kind: 'solo' la suscripción individual, 'team' la de un equipo. Se decide la primera vez que se ve la suscripción.
+try { db.exec("ALTER TABLE paddle_subs ADD COLUMN kind TEXT NOT NULL DEFAULT 'solo'"); } catch (e) { /* ya estaba */ }
+
+const teamOf = (userId) => q('SELECT t.* FROM team_members m JOIN teams t ON t.id = m.team WHERE m.user = ?').get(userId) || null;
+// La cuenta tal como la usa el resto del servidor: plan es el que vale ahora (pago si lo paga ella o si está en un
+// equipo al día), own el que paga por su lado y team su equipo. Toda cuenta que se lee para decidir algo sale de acá.
+function userById(id) {
+  const u = q('SELECT * FROM users WHERE id = ?').get(id); if (!u) return u;
+  u.own = u.plan; u.team = teamOf(u.id);
+  if (u.team && u.team.status === 'active') u.plan = 'pro';
+  return u;
+}
+const withEmail = (link, user) => (link ? link + (link.includes('?') ? '&' : '?') + 'email=' + encodeURIComponent(user.email) : '');
+// Lugares ocupados: los miembros y las invitaciones que todavía nadie respondió.
+const teamUsed = (t) => q('SELECT COUNT(*) AS n FROM team_members WHERE team = ?').get(t.id).n + q('SELECT COUNT(*) AS n FROM team_invites WHERE team = ?').get(t.id).n;
+// Lo que la app sabe del equipo. Un miembro ve quiénes están (sus correos, nada más de nadie); las invitaciones
+// pendientes y el cobro, solo quien administra. invites son las invitaciones que esperan a esta cuenta.
+function teamView(user) {
+  const t = user.team || null;
+  const invites = q("SELECT i.id, t.name, u.email AS by FROM team_invites i JOIN teams t ON t.id = i.team JOIN users u ON u.id = t.owner WHERE i.email = ? AND t.status = 'active' ORDER BY i.created").all(user.email);
+  const out = { enabled: TEAM_BILLING, checkout: TEAM_BILLING ? withEmail(env.CHECKOUT_TEAM, user) : '', included: TEAM_INCLUDED, max: TEAM_MAX_SEATS, mine: null, invites };
+  if (!t) return out;
+  const admin = t.owner === user.id;
+  const members = q('SELECT u.id, u.email FROM team_members m JOIN users u ON u.id = m.user WHERE m.team = ? ORDER BY m.joined, u.id').all(t.id).map((x) => ({ id: x.id, email: x.email, admin: x.id === t.owner }));
+  // solo: además paga un plan individual por su lado. La app le avisa que sigue activo y cómo darlo de baja.
+  out.mine = { id: t.id, name: t.name, role: admin ? 'admin' : 'member', active: t.status === 'active', space: t.space, seats: t.seats, used: teamUsed(t), members, solo: user.own === 'pro' };
+  if (admin) { out.mine.pending = q('SELECT id, email, created FROM team_invites WHERE team = ? ORDER BY created').all(t.id); out.mine.billing = TEAM_BILLING && !!t.sub; }
+  return out;
+}
+// Quien deja de ser miembro deja de escuchar las notas del equipo en el acto.
+function teamCut(spaceId, userId) {
+  for (const [key, room] of rooms) if (key.startsWith(spaceId + ':')) for (const c of Array.from(room)) if (c.uid === userId) c.res.end();
+}
+// Crea el equipo de esa cuenta o lo vuelve a poner al día, con esa cantidad de lugares. sub es la suscripción que
+// lo paga, si hay una. Quien arma su equipo estando en otro como miembro sale del otro: es un equipo a la vez.
+function teamOpen(user, seats, sub) {
+  seats = Math.max(TEAM_INCLUDED, Math.min(TEAM_MAX_SEATS, seats));
+  const t = q('SELECT * FROM teams WHERE owner = ?').get(user.id);
+  db.exec('BEGIN');
+  try {
+    if (t) {
+      q("UPDATE teams SET seats = ?, sub = COALESCE(?, sub), status = 'active' WHERE id = ?").run(seats, sub || null, t.id);
+      q("UPDATE users SET plan = 'pro' WHERE id = ?").run(t.space);
+    } else {
+      const other = teamOf(user.id);
+      if (other) { q('DELETE FROM team_members WHERE user = ?').run(user.id); teamCut(other.space, user.id); }
+      const space = Number(q("INSERT INTO users (email, plan, created) VALUES (?, 'pro', ?)").run('team:' + random(12), now()).lastInsertRowid);
+      const id = Number(q("INSERT INTO teams (owner, space, seats, sub, status, created) VALUES (?, ?, ?, ?, 'active', ?)").run(user.id, space, seats, sub || null, now()).lastInsertRowid);
+      q('INSERT INTO team_members (team, user, joined) VALUES (?, ?, ?)').run(id, user.id, now());
+    }
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  return q('SELECT * FROM teams WHERE owner = ?').get(user.id);
+}
+// El cobro se cayó: el equipo queda, con su gente y sus notas, pero ya no da el plan pago.
+function teamShut(t) {
+  q("UPDATE teams SET status = 'ended' WHERE id = ?").run(t.id);
+  q("UPDATE users SET plan = 'free' WHERE id = ?").run(t.space);
+}
+// Un aviso de Paddle sobre la suscripción de un equipo. Los lugares salen de la suscripción: los que cubre el
+// precio base más la cantidad del precio por lugar adicional.
+function teamBilled(user, sub, active, items) {
+  if (active) {
+    const extra = items.find((i) => i.price.id === TEAM_SEAT);
+    const t = teamOpen(user, TEAM_INCLUDED + Math.max(0, Math.floor(+(extra && extra.quantity) || 0)), sub);
+    return { team: t.id, seats: t.seats };
+  }
+  const t = q('SELECT * FROM teams WHERE owner = ?').get(user.id);
+  if (!t || t.sub !== sub) return { ignored: 'team' };
+  // Si la cuenta tiene otra suscripción de equipo activa, el equipo sigue con esa.
+  const other = q("SELECT id FROM paddle_subs WHERE user = ? AND kind = 'team' AND status = 'active' ORDER BY at DESC LIMIT 1").get(user.id);
+  if (other) { q('UPDATE teams SET sub = ? WHERE id = ?').run(other.id, t.id); return { team: t.id }; }
+  teamShut(t);
+  return { team: t.id, ended: true };
+}
+
+function adminTeam(user) {
+  const t = user.team;
+  if (!t) throw new Fail(404, 'no_team');
+  if (t.owner !== user.id) throw new Fail(403, 'not_admin');
+  return t;
+}
+// El correo de la invitación, con el mismo aspecto que el del código. Es el mismo tenga o no cuenta quien lo
+// recibe: dice quién invita y que se entra con ese correo. Lo que escribe una persona (el nombre del equipo) va escapado.
+const html = (s) => String(s).replace(/[&<>"']/g, (c) => '&#' + c.charCodeAt(0) + ';');
+const INVITE = {
+  en: { subject: (by) => by + ' invited you to a team on SharpMD', lead: (by, team) => '<b>' + by + '</b> invited you to ' + (team ? 'the team <b>' + team + '</b>' : 'their team') + ' on SharpMD.', go: 'Open SharpMD',
+    note: 'Sign in with this email address and you will see the invitation, to accept or decline. If you do not know who sent it, you can ignore this email.',
+    text: (by, team) => by + ' invited you to ' + (team ? 'the team "' + team + '"' : 'their team') + ' on SharpMD.\n\nOpen ' + APP_URL + ' and sign in with this email address: you will see the invitation, to accept or decline.\n\nIf you do not know who sent it, you can ignore this email.' },
+  es: { subject: (by) => by + ' te invitó a un equipo en SharpMD', lead: (by, team) => '<b>' + by + '</b> te invitó ' + (team ? 'al equipo <b>' + team + '</b>' : 'a su equipo') + ' en SharpMD.', go: 'Abrir SharpMD',
+    note: 'Entrá con este correo y vas a ver la invitación, para aceptarla o rechazarla. Si no sabés quién la mandó, podés ignorar este correo.',
+    text: (by, team) => by + ' te invitó ' + (team ? 'al equipo "' + team + '"' : 'a su equipo') + ' en SharpMD.\n\nAbrí ' + APP_URL + ' y entrá con este correo: vas a ver la invitación, para aceptarla o rechazarla.\n\nSi no sabés quién la mandó, podés ignorar este correo.' },
+};
+const inviteHtml = (m, by, team) => '<!doctype html><html><body style="margin:0;padding:32px 16px;background:#f4f3ee;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1d2026">' +
+  '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">' +
+  '<table role="presentation" width="420" cellpadding="0" cellspacing="0" style="max-width:420px;width:100%;background:#ffffff;border:1px solid #dedbd2;border-radius:14px">' +
+  '<tr><td style="padding:28px 32px 8px;font-size:17px;font-weight:700;letter-spacing:-0.01em"><span style="color:#4d7c0f">#</span> SharpMD</td></tr>' +
+  '<tr><td style="padding:8px 32px 0;font-size:15px;line-height:1.5;color:#1d2026;overflow-wrap:anywhere">' + m.lead(html(by), html(team)) + '</td></tr>' +
+  '<tr><td style="padding:18px 32px 6px"><a href="' + html(APP_URL) + '" style="display:inline-block;padding:12px 22px;border-radius:999px;background:#4d7c0f;color:#ffffff;font-size:15px;font-weight:650;text-decoration:none">' + m.go + '</a></td></tr>' +
+  '<tr><td style="padding:12px 32px 28px;font-size:13.5px;line-height:1.5;color:#8a909c">' + m.note + '</td></tr>' +
+  '</table><div style="padding-top:14px;font-size:12px;color:#8a909c">sharpmd.app</div></td></tr></table></body></html>';
+
+// Mientras se cambia la cantidad de lugares en Paddle no entra nadie: si no, podría quedar más gente que lugares.
+const seatBusy = new Set();
+// Invitar manda un correo a una dirección cualquiera: tiene tope por equipo y por día, y otro por destinatario
+// (tres por día, entre todos los equipos), para que no sirva para llenarle la casilla a nadie. La respuesta es la
+// misma tenga o no cuenta esa dirección.
+async function teamInvite(user, body) {
+  const t = adminTeam(user);
+  if (t.status !== 'active') throw new Fail(402, 'team_ended');
+  if (seatBusy.has(t.id)) throw new Fail(409, 'team_busy');
+  const email = cleanEmail(body.email);
+  if (email === user.email) throw new Fail(400, 'own_email');
+  if (q('SELECT 1 FROM team_members m JOIN users u ON u.id = m.user WHERE m.team = ? AND u.email = ?').get(t.id, email)) throw new Fail(409, 'already_member');
+  const had = q('SELECT id FROM team_invites WHERE team = ? AND email = ?').get(t.id, email);
+  if (!had && teamUsed(t) >= t.seats) throw new Fail(409, 'team_full');
+  const day = 'tinv:team:' + t.id; const to = 'tinv:to:' + email;
+  limit(day, TEAM_INVITES_DAY, DAY, 'invite_day'); limit(to, 3, DAY, 'invite_mail_day');
+  mark(day); mark(to);
+  if (!had) q('INSERT INTO team_invites (team, email, created) VALUES (?, ?, ?)').run(t.id, email, now());
+  const m = INVITE[body.lang === 'es' ? 'es' : 'en'];
+  // Sin correo configurado la invitación igual queda: aparece al entrar a la app con esa cuenta.
+  try { await sendMail({ to: email, subject: m.subject(user.email), text: m.text(user.email, t.name), html: inviteHtml(m, user.email, t.name) }); }
+  catch (e) { if (!had) q('DELETE FROM team_invites WHERE team = ? AND email = ?').run(t.id, email); throw e; }
+  return { ok: true };
+}
+// Aceptar: la invitación es para el correo con el que se entró (ya comprobado con el código). Nadie queda sumado
+// sin aceptar, y quien ya está en un equipo tiene que salir primero.
+function teamAccept(user, id) {
+  const inv = q('SELECT * FROM team_invites WHERE id = ? AND email = ?').get(+id, user.email);
+  if (!inv) throw new Fail(404, 'not_found');
+  const t = q('SELECT * FROM teams WHERE id = ?').get(inv.team);
+  if (!t || t.status !== 'active') throw new Fail(409, 'team_ended');
+  if (user.team) throw new Fail(409, 'in_team');
+  if (seatBusy.has(t.id)) throw new Fail(409, 'team_busy');
+  // La invitación ya ocupaba un lugar; solo falta si los lugares bajaron desde entonces.
+  if (q('SELECT COUNT(*) AS n FROM team_members WHERE team = ?').get(t.id).n >= t.seats) throw new Fail(409, 'team_full');
+  q('INSERT INTO team_members (team, user, joined) VALUES (?, ?, ?)').run(t.id, user.id, now());
+  q('DELETE FROM team_invites WHERE id = ?').run(inv.id);
+  return { ok: true };
+}
+// Sacar a alguien o salir: deja de ser miembro. Sus notas propias no se tocan y las del equipo quedan en el equipo.
+function teamDrop(t, userId) {
+  if (userId === t.owner) throw new Fail(409, 'owner_stays');
+  const r = q('DELETE FROM team_members WHERE team = ? AND user = ?').run(t.id, userId);
+  if (!r.changes) throw new Fail(404, 'not_found');
+  teamCut(t.space, userId);
+  return { ok: true };
+}
+// Cambiar los lugares es cambiar la suscripción en Paddle, con prorrateo en el momento: un ítem con el precio base
+// y, si hay más de los que cubre, otro con el precio por lugar y esa cantidad. Nunca menos que los ocupados.
+async function teamSeats(user, body) {
+  const t = adminTeam(user); const n = body.seats;
+  if (!Number.isInteger(n) || n < TEAM_INCLUDED || n > TEAM_MAX_SEATS) throw new Fail(400, 'bad_seats');
+  if (t.status !== 'active') throw new Fail(402, 'team_ended');
+  if (!TEAM_BILLING || !t.sub) throw new Fail(409, 'no_billing');
+  if (n < teamUsed(t)) throw new Fail(409, 'seats_in_use', '', { used: teamUsed(t) });
+  if (n === t.seats) return { ok: true, seats: n };
+  if (seatBusy.has(t.id)) throw new Fail(409, 'team_busy');
+  limit('tseat:' + t.id, 10, HOUR, 'too_many'); mark('tseat:' + t.id);
+  seatBusy.add(t.id);
+  try {
+    const items = [{ price_id: TEAM_BASE, quantity: 1 }].concat(n > TEAM_INCLUDED ? [{ price_id: TEAM_SEAT, quantity: n - TEAM_INCLUDED }] : []);
+    let r = null;
+    try { r = await fetch(PADDLE_API + '/subscriptions/' + encodeURIComponent(t.sub), { method: 'PATCH', headers: { authorization: 'Bearer ' + env.PADDLE_API_KEY, 'content-type': 'application/json' }, body: JSON.stringify({ items, proration_billing_mode: 'prorated_immediately' }), signal: AbortSignal.timeout(15000) }); }
+    catch (e) { r = null; }
+    if (!r || !r.ok) { console.error('paddle: no se pudo cambiar la cantidad de lugares · ' + (r ? r.status : 'sin respuesta')); throw new Fail(502, 'billing_failed'); }
+    q('UPDATE teams SET seats = ? WHERE id = ?').run(n, t.id);
+  } finally { seatBusy.delete(t.id); }
+  return { ok: true, seats: n };
+}
+// Las rutas del equipo. Cada una mira en el servidor si quien llama es miembro y con qué papel; después de un
+// cambio vuelve el equipo como quedó.
+async function teamRoute(user, p, m, req) {
+  const after = (r) => Object.assign(r, { team: teamView(userById(user.id)) });
+  if (p === '/team' && m === 'GET') return teamView(user);
+  if (p === '/team' && m === 'PUT') {
+    const t = adminTeam(user); const b = await readBody(req);
+    q('UPDATE teams SET name = ? WHERE id = ?').run(String(b.name == null ? '' : b.name).trim() ? cleanName(b.name) : '', t.id);
+    return after({ ok: true });
+  }
+  if (p === '/team/invite' && m === 'POST') return after(await teamInvite(user, await readBody(req)));
+  if (p.startsWith('/team/invites/') && m === 'DELETE') { const t = adminTeam(user); q('DELETE FROM team_invites WHERE id = ? AND team = ?').run(+p.slice(14), t.id); return after({ ok: true }); }
+  if (p === '/team/accept' && m === 'POST') return after(teamAccept(user, (await readBody(req)).id));
+  if (p === '/team/decline' && m === 'POST') { q('DELETE FROM team_invites WHERE id = ? AND email = ?').run(+(await readBody(req)).id, user.email); return after({ ok: true }); }
+  if (p === '/team/remove' && m === 'POST') { const t = adminTeam(user); return after(teamDrop(t, +(await readBody(req)).id)); }
+  if (p === '/team/leave' && m === 'POST') { if (!user.team) throw new Fail(404, 'no_team'); return after(teamDrop(user.team, user.id)); }
+  if (p === '/team/seats' && m === 'POST') return after(await teamSeats(user, await readBody(req)));
+  throw new Fail(404, 'no_route');
+}
+// De quién son las notas de un pedido que trae o: propias, o del espacio del equipo de quien llama.
+function spaceOf(user, o) {
+  if (o == null || o === '' || +o === user.id) return user;
+  if (user.team && +o === user.team.space) return userById(user.team.space);
+  throw new Fail(403, 'no_access');
+}
+
 // ---------- Paddle ----------
 // Lo único que activa o da de baja el plan pago. La firma va sobre el cuerpo tal como llegó.
 // De quién es el aviso sale de custom_data.sharpmd_email, que escribe la página de pago, o de la
@@ -1139,7 +1393,9 @@ async function paddleWebhook(req) {
   const d = ev.data && typeof ev.data === 'object' ? ev.data : {};
   if (!/^subscription\./.test(ev.event_type || '')) return { ok: true, ignored: 'event' };
   // La cuenta de Paddle puede vender otros productos: solo cuentan los precios marcados como de SharpMD.
-  if (!(Array.isArray(d.items) ? d.items : []).some((i) => i && i.price && i.price.custom_data && i.price.custom_data.app === 'sharpmd')) return { ok: true, ignored: 'product' };
+  // Los dos precios del plan de equipo cuentan por su id, lleven o no esa marca.
+  const items = (Array.isArray(d.items) ? d.items : []).filter((i) => i && i.price && typeof i.price === 'object');
+  if (!items.some((i) => (i.price.custom_data && i.price.custom_data.app === 'sharpmd') || (TEAM_BASE && (i.price.id === TEAM_BASE || i.price.id === TEAM_SEAT)))) return { ok: true, ignored: 'product' };
   const id = String(d.id || ''); const at = Date.parse(ev.occurred_at) || 0;
   // Una suscripción queda atada a la cuenta con la que se vio la primera vez. Sin eso, la cuenta sale de
   // custom_data (lo escribe la página de pago) o de la suscripción guardada antes de que existiera esta tabla.
@@ -1152,10 +1408,14 @@ async function paddleWebhook(req) {
   // Los avisos pueden llegar desordenados o repetidos: uno anterior al último aplicado no cambia nada.
   if (known && at && at < known.at) return { ok: true, ignored: 'stale' };
   const status = PADDLE_ACTIVE.includes(d.status) ? 'active' : 'ended';
-  q('INSERT INTO paddle_subs (id, user, status, at) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET status = excluded.status, at = MAX(at, excluded.at)').run(id, user.id, status, at);
+  // De equipo es la suscripción que trae el precio base del equipo. Como la cuenta, se decide la primera vez que se la ve.
+  const kind = known ? known.kind : (TEAM_BASE && items.some((i) => i.price.id === TEAM_BASE) ? 'team' : 'solo');
+  q('INSERT INTO paddle_subs (id, user, status, at, kind) VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET status = excluded.status, at = MAX(at, excluded.at)').run(id, user.id, status, at, kind);
+  // La suscripción de un equipo no toca el plan propio de la cuenta: da el plan pago a sus miembros mientras esté al día.
+  if (kind === 'team') return Object.assign({ ok: true }, teamBilled(user, id, status === 'active', items));
   // El plan es pago mientras quede alguna suscripción activa de la cuenta. Así, quien paga una suscripción a nombre
   // de otra persona y después la cancela no le saca el plan que esa persona paga por su lado.
-  const other = q("SELECT id FROM paddle_subs WHERE user = ? AND status = 'active' ORDER BY at DESC LIMIT 1").get(user.id);
+  const other = q("SELECT id FROM paddle_subs WHERE user = ? AND status = 'active' AND kind != 'team' ORDER BY at DESC LIMIT 1").get(user.id);
   const plan = other ? 'pro' : 'free';
   q('UPDATE users SET plan = ?, paddle_sub = ? WHERE id = ?').run(plan, other ? other.id : id, user.id);
   return { ok: true, plan };
@@ -1168,12 +1428,21 @@ async function route(req, url) {
   if (p === '/auth/verify' && m === 'POST') return authVerify(req, await readBody(req));
   if (p === '/paddle/webhook' && m === 'POST') return paddleWebhook(req);
   if (p === '/feedback' && m === 'POST') return feedback(req, await readBody(req));
-  if (p === '/admin/plan' && m === 'POST') {
+  if ((p === '/admin/plan' || p === '/admin/team') && m === 'POST') {
     // La misma respuesta sin clave configurada, sin clave en el pedido o con una equivocada. Diez fallos por hora por IP.
     const ip = 'admin:' + clientIp(req);
     limit(ip, 10, HOUR, 'too_many');
     if (!env.ADMIN_KEY || !same(req.headers['x-admin-key'] || '', env.ADMIN_KEY)) { mark(ip); throw new Fail(403, 'forbidden'); }
     const b = await readBody(req);
+    if (p === '/admin/team') {
+      // Un equipo armado a mano, sin cobro: para quien aloja su propio servidor. seats: 0 lo deja sin plan pago.
+      const owner = q('SELECT * FROM users WHERE email = ?').get(cleanEmail(b.email));
+      if (!owner) throw new Fail(404, 'not_found');
+      if (!Number.isInteger(b.seats) || b.seats < 0) throw new Fail(400, 'bad_seats');
+      if (!b.seats) { const t = q('SELECT * FROM teams WHERE owner = ?').get(owner.id); if (!t) throw new Fail(404, 'not_found'); teamShut(t); return { ok: true }; }
+      const t = teamOpen(owner, b.seats, null);
+      return { ok: true, team: t.id, seats: t.seats };
+    }
     const r = q('UPDATE users SET plan = ? WHERE email = ?').run(b.plan === 'pro' ? 'pro' : 'free', cleanEmail(b.email));
     if (!r.changes) throw new Fail(404, 'not_found');
     return { ok: true };
@@ -1206,6 +1475,7 @@ async function route(req, url) {
     if (p === '/live/kick' && m === 'POST') return liveKick(row, body.id);
     if (p === '/live/presence' && m === 'POST') return livePresence(row, memOf(row).owner, 'o', body);
   }
+  if (p === '/team' || p.startsWith('/team/')) return teamRoute(user, p, m, req);
   if (p === '/shared' && m === 'GET') return sharedWith(user);
   if (p === '/shares' && m === 'POST') return addShare(user, await readBody(req));
   if (p === '/shares' && m === 'GET') {
@@ -1247,10 +1517,12 @@ async function route(req, url) {
   if (p === '/notes' && m === 'GET') {
     const oid = +(url.searchParams.get('o') || user.id);
     if (oid === user.id) return listNotes(user).map((n) => (n.v ? n : { path: n.path, updated: n.updated, size: n.size }));
+    if (user.team && oid === user.team.space) return listNotes({ id: oid }).map((n) => ({ path: n.path, updated: n.updated, size: n.size }));
     return sharedWith(user).filter((n) => n.owner === oid).map((n) => ({ path: n.path, updated: n.updated, size: n.size }));
   }
-  if (p === '/search' && m === 'GET') return searchNotes(user, url.searchParams.get('q'));
-  if (p === '/rename' && m === 'POST') { const b = await readBody(req); return renameNote(user, b.from, b.to, b); }
+  // Con o, estas cuatro trabajan sobre el espacio del equipo de quien llama. Cualquier otro o se rechaza.
+  if (p === '/search' && m === 'GET') return searchNotes(spaceOf(user, url.searchParams.get('o')), url.searchParams.get('q'));
+  if (p === '/rename' && m === 'POST') { const b = await readBody(req); return renameNote(spaceOf(user, b.o), b.from, b.to, b); }
   if (p.startsWith('/notes/')) {
     const note = dec(p.slice(7));
     const clean = cleanPath(note);
@@ -1264,9 +1536,9 @@ async function route(req, url) {
     }
     if (m === 'DELETE') return deleteNote(target(user, url, clean, 'owner').owner, clean);
   }
-  if (p.startsWith('/versions/') && m === 'GET') return q('SELECT id, saved, size FROM versions WHERE user = ? AND path = ? ORDER BY saved DESC LIMIT 100').all(user.id, cleanPath(dec(p.slice(10))));
+  if (p.startsWith('/versions/') && m === 'GET') return q('SELECT id, saved, size FROM versions WHERE user = ? AND path = ? ORDER BY saved DESC LIMIT 100').all(spaceOf(user, url.searchParams.get('o')).id, cleanPath(dec(p.slice(10))));
   if (p.startsWith('/version/') && m === 'GET') {
-    const v = q('SELECT id, path, text, saved, e, aad FROM versions WHERE id = ? AND user = ?').get(+p.slice(9), user.id);
+    const v = q('SELECT id, path, text, saved, e, aad FROM versions WHERE id = ? AND user = ?').get(+p.slice(9), spaceOf(user, url.searchParams.get('o')).id);
     if (!v) throw new Fail(404, 'not_found');
     // aad: en una versión cifrada desde el navegador, la ruta con la que se cifró (la nota pudo cambiar de nombre).
     return Object.assign({ id: v.id, path: v.path, text: unseal(v.text, v.e, 'versions.text'), saved: v.saved }, v.aad ? { aad: v.aad } : {});

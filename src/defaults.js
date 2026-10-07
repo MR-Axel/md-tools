@@ -960,6 +960,63 @@
       "Otra persona cambió el mismo bloque a la vez.": "Someone else changed the same block at the same time.",
       "Quedó su versión. La tuya no se perdió.": "Their version was kept. Yours was not lost.",
       "Copiar lo mío": "Copy mine",
+      // Plan de equipo
+      "Guardar": "Save",
+      "En el equipo": "In the team",
+      "Notas del equipo": "Team notes",
+      "Todo lo del plan pago para cada persona": "Everything in the paid plan for each person",
+      "{n} personas incluidas, USD {a} por cada una más": "{n} people included, USD {a} for each extra one",
+      "Un espacio compartido para las notas del equipo": "A shared space for the team notes",
+      "El plan del equipo venció. Las notas siguen ahí.": "The team plan has ended. The notes are still there.",
+      "El plan del equipo venció. No se pueden sumar notas nuevas.": "The team plan has ended. New notes cannot be added.",
+      "El plan del equipo venció.": "The team plan has ended.",
+      "Lo tenés con el equipo.": "You have it through the team.",
+      "Tu equipo": "Your team",
+      "Invitaciones": "Invitations",
+      "Invitaciones pendientes": "Pending invitations",
+      "Administra {a}": "Managed by {a}",
+      "administra": "admin",
+      "Unirme": "Join",
+      "Rechazar": "Decline",
+      "Invitar": "Invite",
+      "correo de la persona": "the person's email",
+      "Lugares": "Seats",
+      "{n} de {m} ocupados": "{n} of {m} taken",
+      "Menos lugares": "Fewer seats",
+      "Más lugares": "More seats",
+      "{n} lugares: USD {a} por mes": "{n} seats: USD {a} a month",
+      "Cambiar lugares": "Change seats",
+      "¿Pasar a {n} lugares?": "Change to {n} seats?",
+      "Quedan USD {a} por mes. La diferencia se cobra o se acredita ahora.": "It comes to USD {a} a month. The difference is charged or credited now.",
+      "Lugares cambiados.": "Seats changed.",
+      "Cambiar el nombre": "Change the name",
+      "Nombre del equipo": "Team name",
+      "Hasta 40 caracteres.": "Up to 40 characters.",
+      "Salir del equipo": "Leave the team",
+      "¿Salir del equipo?": "Leave the team?",
+      "Volvés a tu plan y conservás tus notas. Las del equipo quedan en el equipo.": "You go back to your own plan and keep your notes. The team notes stay with the team.",
+      "¿Sacar a {a} del equipo?": "Remove {a} from the team?",
+      "Conserva sus notas. Las del equipo quedan en el equipo.": "They keep their notes. The team notes stay with the team.",
+      "{a} te invitó a su equipo": "{a} invited you to their team",
+      "{a} te invitó al equipo {b}": "{a} invited you to the team {b}",
+      "Con el equipo tenés el plan pago y las notas compartidas.": "With the team you get the paid plan and the shared notes.",
+      "Tu suscripción individual sigue activa.": "Your individual subscription is still active.",
+      "Tu suscripción individual sigue activa. La podés dar de baja desde Ajustes, Plan.": "Your individual subscription is still active. You can cancel it from Settings, Plan.",
+      "Darla de baja": "Cancel it",
+      "Para aceptar, salí primero de tu equipo.": "To accept, leave your team first.",
+      "Ya estás en el equipo.": "You are in the team now.",
+      "Invitación enviada.": "Invitation sent.",
+      "No quedan lugares. Sumá uno para invitar.": "No seats left. Add one to invite.",
+      "Esa persona ya está en el equipo.": "That person is already in the team.",
+      "Llegaste al tope de invitaciones por hoy.": "You reached the limit of invitations for today.",
+      "Esa dirección ya recibió varias invitaciones hoy. Probá mañana.": "That address already got several invitations today. Try tomorrow.",
+      "Hay más personas e invitaciones que esos lugares.": "There are more people and invitations than that many seats.",
+      "No se pudo cambiar el cobro. Probá de nuevo.": "The billing could not be changed. Try again.",
+      "Se están cambiando los lugares. Probá en un momento.": "The seats are being changed. Try in a moment.",
+      "No se pudo mandar el correo. Probá de nuevo.": "The email could not be sent. Try again.",
+      "Demasiados cambios seguidos. Probá más tarde.": "Too many changes in a row. Try later.",
+      "Esa invitación ya no está.": "That invitation is no longer there.",
+      "Pago confirmado. Tu equipo está listo.": "Payment confirmed. Your team is ready.",
   };
   let current = 'es';
   function setLang(pref) {
@@ -986,7 +1043,7 @@
   const WEB_APP_URL = 'https://sharpmd.app/src/app.html';
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.45.0';
+  const VERSION = '2.46.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
 })(typeof self !== 'undefined' ? self : this);

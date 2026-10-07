@@ -677,6 +677,21 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-plan h4 { margin: 0 0 8px; font-size: 15px; } .lmd-plan h4 small { font-weight: 500; color: var(--fg-muted); }
 .lmd-plan ul { margin: 0; padding-left: 1.1em; color: var(--fg-muted); font-size: 13px; line-height: 1.6; }
 .lmd-plan-buy { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; } .lmd-plan-buy .lmd-btn { padding: 6px 11px; font-size: 12.5px; text-decoration: none; }
+/* Plan de equipo: la tercera columna, y debajo la gestión (miembros, invitaciones, lugares). */
+.lmd-plans-3 { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.lmd-team h4 { margin: 18px 0 6px; font-size: 14px; } .lmd-team h4 small { font-weight: 500; color: var(--fg-muted); overflow-wrap: anywhere; }
+.lmd-team-list { max-height: 190px; }
+.lmd-team-list li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.lmd-team-acts { display: flex; flex: none; gap: 12px; }
+.lmd-team-invite { margin: 12px 0 4px; }
+.lmd-team-invite input { flex: 1; min-width: 0; height: 36px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--fg); font: inherit; font-size: 14px; outline: none; }
+.lmd-team-invite input:focus { border-color: var(--accent-fill); }
+.lmd-team-seats { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 4px; }
+.lmd-team-seats [data-t=less], .lmd-team-seats [data-t=more] { flex: none; width: 36px; padding-left: 0; padding-right: 0; justify-content: center; }
+.lmd-team-seats b { min-width: 2ch; text-align: center; }
+.lmd-team-cost { flex: 1 1 150px; color: var(--fg-muted); font-size: 13px; }
+.lmd-team .lmd-acct-actions a.lmd-btn { text-decoration: none; }
+.lmd-acct .lmd-team-solo a { color: inherit; }
 .lmd-btn:disabled { opacity: 0.55; cursor: default; }
 
 .lmd-panel-body { display: flex; flex-direction: column; }
@@ -1134,6 +1149,11 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
   .lmd-acct-row, .lmd-tokens li { align-items: center; min-height: 40px; }
   .lmd-pick { flex-wrap: wrap; }
   .lmd-pick select { flex: 1 1 100%; }
+  .lmd-team-invite input { flex: 1 1 100%; height: 40px; font-size: 16px; }
+  .lmd-team-invite .lmd-btn, .lmd-team-seats .lmd-btn { min-height: 40px; }
+  .lmd-team-seats [data-t=less], .lmd-team-seats [data-t=more] { width: 44px; }
+  .lmd-team-seats [data-t=seats] { flex: 1 1 100%; }
+  .lmd-team-list li button { min-height: 40px; }
 
   /* Diálogos y selectores: arriba, donde el teclado no los tapa, y nunca más altos que lo que se ve. */
   .lmd-ask { align-items: start; padding: max(12px, 5vh, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)); bottom: var(--lmd-kb, 0px); }

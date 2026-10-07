@@ -18,6 +18,7 @@
           const mine = !c.at || c.at === base;
           session = mine ? c.session || '' : ''; email = mine ? c.email || '' : ''; parked = mine ? null : c;
           if (session && !c.at) remember();
+          team = session && mine && c.team && c.team.space ? { space: String(c.team.space), name: c.team.name || '' } : null;
           resolve();
         });
       });
@@ -25,11 +26,23 @@
     return loaded;
   }
   let parked = null; // la sesión de otro servidor, que no se pisa mientras no se entre en este
+  // El equipo de la cuenta: { space, name }. space es el número con el que se piden sus notas, que acá llevan rutas
+  // ~space/..., como las que comparte otra cuenta. Se guarda lo último que se supo para dibujar el explorador sin
+  // esperar al servidor, también sin conexión. setTeam devuelve si cambió.
+  let team = null; const teamFns = [];
+  function setTeam(mine) {
+    const next = mine && mine.space ? { space: String(mine.space), name: mine.name || '' } : null;
+    if ((team ? team.space + '|' + team.name : '') === (next ? next.space + '|' + next.name : '')) return false;
+    team = next; if (team) delete otherLists[team.space];
+    remember();
+    return true;
+  }
+  const isTeam = (p) => !!team && String(p || '').startsWith('~' + team.space + '/');
   // Quien entró por el enlace de una sesión en vivo, sin cuenta: { secret, name, id, color, by, note, who, ended }.
   // Mientras dure, session es su pase y email un nombre interno para la copia local. Nada de eso se guarda como
   // cuenta: si en este navegador había una sesión propia, sigue guardada tal cual y vuelve al recargar sin el enlace.
   let guest = null;
-  const remember = () => (guest ? Promise.resolve() : new Promise((resolve) => chrome.storage.local.set({ cloud: !session && parked ? parked : { session, email, at: base } }, resolve)));
+  const remember = () => (guest ? Promise.resolve() : new Promise((resolve) => chrome.storage.local.set({ cloud: !session && parked ? parked : Object.assign({ session, email, at: base }, team ? { team } : {}) }, resolve)));
   const OPEN_LIVE = ['/live/look', '/live/join']; // se piden con el secreto del enlace, sin pase ni cuenta
 
   async function api(method, path, body, again) {
@@ -111,7 +124,14 @@
     if (owner) {
       const c = otherLists[owner];
       if (!fresh && c && Date.now() - c.at < 5000) return c.rows;
-      const rows = await api('GET', '/notes?o=' + owner); otherLists[owner] = { rows, at: Date.now() };
+      let rows;
+      try { rows = await api('GET', '/notes?o=' + owner); }
+      catch (e) {
+        // El servidor ya no deja ver el espacio del equipo: lo sacaron, o el equipo ya no existe. Se avisa para que la cuenta se vuelva a leer.
+        if (e.status === 403 && team && String(owner) === team.space) { setTeam(null); teamFns.forEach((fn) => { try { fn(); } catch (x) { /* quien escucha se arregla */ } }); }
+        throw e;
+      }
+      otherLists[owner] = { rows, at: Date.now() };
       return rows;
     }
     if (!fresh && listCache && Date.now() - listAt < 5000) return listCache;
@@ -490,6 +510,22 @@
     // Dentro, hacia o desde una carpeta protegida, mover es volver a cifrar: el texto cifrado está atado a su ruta.
     // El servidor recibe el texto que corresponde a la ruta nueva, y lo que se leyó (updated) para no pisar un cambio.
     rename: async (from, to) => {
+      const a = split(from); const b = split(to);
+      if (a.owner !== b.owner) {
+        // De lo propio al equipo, o al revés: son notas de dueños distintos. Se guarda en el destino y se quita el original.
+        const n = await getNote(from);
+        await putNote(to, n.text); await keep(to, n.text, n.text, false);
+        await api('DELETE', notePath(from)); await S.cloudDelete(email, from);
+        listCache = null; delete otherLists[a.owner]; delete otherLists[b.owner];
+        return { path: to };
+      }
+      if (a.owner) {
+        const r = await api('POST', '/rename', { from: a.path, to: b.path, o: +a.owner });
+        delete otherLists[a.owner];
+        const copy = await copyOf(from); await S.cloudDelete(email, from);
+        if (copy) await keep(to, copy.text, copy.base, copy.pending, copy.role);
+        return r;
+      }
       const crossing = (await vaultFor(from)) || (await vaultFor(to));
       let r;
       if (!crossing) r = await api('POST', '/rename', { from, to });
@@ -528,11 +564,11 @@
       try { await api('POST', '/auth/logout', {}); } catch (e) { /* igual se cierra acá */ }
       for (const c of await S.cloudAll(email)) if (!c.pending) await S.cloudDelete(email, c.path);
       await Z.forgetAll(email);
-      session = ''; email = ''; listCache = null; vaultCache = null; await remember();
+      session = ''; email = ''; listCache = null; vaultCache = null; setTeam(null); await remember();
     },
     account: () => api('GET', '/account'),
-    create: (path) => putNote(path, '').then((r) => { listCache = null; return r; }),
-    remove: (path) => api('DELETE', notePath(path)).then(async (r) => { listCache = null; await S.cloudDelete(email, path); return r; }),
+    create: (path) => putNote(path, '').then((r) => { listCache = null; delete otherLists[split(path).owner]; return r; }),
+    remove: (path) => api('DELETE', notePath(path)).then(async (r) => { listCache = null; delete otherLists[split(path).owner]; await S.cloudDelete(email, path); return r; }),
     // Con folder, el token solo alcanza esa carpeta.
     newToken: (name, folder) => api('POST', '/tokens', folder ? { name, folder } : { name }),
     // Comentarios para la IA sobre una nota propia. Con all vienen también los resueltos.
@@ -544,12 +580,27 @@
     feedback: (text, mail, context) => api('POST', '/feedback', { text, email: mail || undefined, context }),
     // Cambió la dirección del servidor en Ajustes: se vuelve a leer.
     reset: () => { loaded = null; listCache = null; vaultCache = null; },
-    write: (path, text) => putNote(path, text).then((r) => { listCache = null; return r; }),
+    write: (path, text) => putNote(path, text).then((r) => { listCache = null; delete otherLists[split(path).owner]; return r; }),
     // Una versión del historial, en claro. Las de una nota protegida están cifradas con la ruta que tenía entonces.
     version: async (id, path) => {
-      const v = await api('GET', '/version/' + id);
+      const v = await api('GET', '/version/' + id + (isTeam(path) ? '?o=' + team.space : ''));
       if (Z.sealed(v.text)) v.text = await Z.open(await keyOf(await vaultFor(path)), v.aad || v.path, v.text);
       return v;
+    },
+    // El historial de una nota. El de una nota del equipo se pide al espacio del equipo.
+    versions: (path) => (isTeam(path) ? api('GET', '/versions/' + encodeURIComponent(split(path).path) + '?o=' + team.space) : api('GET', '/versions/' + encodeURIComponent(path))),
+    // Equipo. team() es lo último que se supo ({ space, name } o null); las llamadas devuelven el equipo como quedó.
+    setTeam, isTeam, teamNow: () => team, onTeamLost: (fn) => { teamFns.push(fn); },
+    team: {
+      get: () => api('GET', '/team'),
+      invite: (mail) => api('POST', '/team/invite', { email: mail, lang: LMD.lang() }),
+      uninvite: (id) => api('DELETE', '/team/invites/' + id),
+      accept: (id) => api('POST', '/team/accept', { id }),
+      decline: (id) => api('POST', '/team/decline', { id }),
+      remove: (id) => api('POST', '/team/remove', { id }),
+      leave: () => api('POST', '/team/leave', {}),
+      seats: (n) => api('POST', '/team/seats', { seats: n }),
+      rename: (name) => api('PUT', '/team', { name }),
     },
     // Carpetas con contraseña.
     vaults, vaultFor, sealFolder, openFolder,
