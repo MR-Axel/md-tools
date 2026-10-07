@@ -1,7 +1,8 @@
 // Las herramientas de Ajustes > Herramientas que vienen apagadas: cada una se prende y se apaga, apagada no deja
 // nada en la interfaz ni carga su archivo, y su recorrido de punta a punta. También en pantalla chica.
 //   BROWSER=firefox node tools.mjs      BROWSER=webkit node tools.mjs      (sin BROWSER: chromium)
-//   ONLY=present node tools.mjs         (una sola herramienta)
+//   ONLY=present node tools.mjs         (una sola herramienta: present, daily, docx o linkmap)
+//   KEEP_DOCX=C:\tmp\prueba.docx ONLY=docx node tools.mjs      (deja el .docx generado para abrirlo a mano)
 import { rig, tally, sleep } from './rig.mjs';
 import { chromium } from 'playwright-core';
 import zlib from 'zlib'; import fs from 'fs'; import os from 'os'; import path from 'path';
@@ -319,6 +320,137 @@ await suite('daily', async () => {
     await page.tap('.lmd-daily-day[data-day="2026-11-02"]'); await opened(page, '2026-11-02.md');
     check('tocar un día crea su nota', (await saved(page, '2026-11-02.md')).startsWith('# Lunes, 2 de noviembre de 2026'));
     check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
+    await ctx.close();
+  });
+});
+
+// ---------- Exportar a Word ----------
+// El zip se abre acá, a mano: firma, directorio central, cada entrada descomprimida y su CRC32.
+function unzip(buf) {
+  let end = buf.length - 22; while (end >= 0 && buf.readUInt32LE(end) !== 0x06054b50) end--;
+  if (end < 0) throw new Error('sin fin de directorio central');
+  const count = buf.readUInt16LE(end + 10); let at = buf.readUInt32LE(end + 16); const files = []; const bad = [];
+  for (let i = 0; i < count; i++) {
+    if (buf.readUInt32LE(at) !== 0x02014b50) throw new Error('entrada ' + i + ' sin firma');
+    const method = buf.readUInt16LE(at + 10); const crc = buf.readUInt32LE(at + 16); const csize = buf.readUInt32LE(at + 20); const usize = buf.readUInt32LE(at + 24);
+    const nlen = buf.readUInt16LE(at + 28); const elen = buf.readUInt16LE(at + 30); const clen = buf.readUInt16LE(at + 32); const off = buf.readUInt32LE(at + 42);
+    const name = buf.slice(at + 46, at + 46 + nlen).toString('utf8');
+    if (buf.readUInt32LE(off) !== 0x04034b50) bad.push(name + ': cabecera local');
+    const start = off + 30 + buf.readUInt16LE(off + 26) + buf.readUInt16LE(off + 28); const raw = buf.slice(start, start + csize);
+    let data = raw;
+    try { if (method === 8) data = zlib.inflateRawSync(raw); else if (method !== 0) bad.push(name + ': método ' + method); } catch (e) { bad.push(name + ': no descomprime'); }
+    if (data.length !== usize) bad.push(name + ': tamaño'); if ((zlib.crc32(data) >>> 0) !== crc) bad.push(name + ': crc');
+    if (buf.readUInt32LE(off + 14) !== crc || buf.readUInt32LE(off + 18) !== csize) bad.push(name + ': la cabecera local no coincide');
+    files.push({ name, method, data });
+    at += 46 + nlen + elen + clen;
+  }
+  return { files, bad, get: (n) => { const f = files.find((x) => x.name === n); return f ? f.data.toString('utf8') : ''; } };
+}
+const PNG_1PX = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+const WORD_MD = ['---', 'title: Informe de prueba', '---', '# Título uno', '', 'Texto **negrita** *cursiva* ~~tachado~~ `codigo()` [enlace](https://example.com/a?b=1&c=2) $x^2$ ==marcado== H~2~O y x^2^ con nota[^1] y [sección](#seccion-dos).', '',
+  '- uno', '  - dos', '    1. tres', '    2. cuatro', '- [x] hecha', '- [ ] pendiente', '', '5. cinco', '6. seis', '', '> Una cita con **fuerza**.', '', '> [!WARNING]', '> Cuidado con 1 < 2 & aquello.', '',
+  '```js', 'const a = 1;', '\tif (a < 2) { b(); }', '```', '', '| Nombre | Monto |', '|:--|--:|', '| Ana | 10 |', '| Luis | 20 |', '', '$$', 'E=mc^2', '$$', '',
+  '```mermaid', 'graph LR; A-->B;', '```', '', '```dot', 'digraph { a -> b }', '```', '', '![un punto](' + PNG_1PX + ')', '', '![no se lee](http://127.0.0.1:9/falta.png)', '', '---', '',
+  '## Sección dos', '', '### Nivel tres', '', '#### Nivel cuatro', '', '##### Nivel cinco', '', '###### Nivel seis', '', 'Término', ': Su definición', '', '```kanban', '## Por hacer', '- tarjeta uno', '## Hecho', '- tarjeta dos', '```', '',
+  '[^1]: El texto de la nota al pie.', ''].join('\n');
+const runsWith = (xml, text) => { const out = []; const re = /<w:r>(?:<w:rPr>(.*?)<\/w:rPr>)?((?:<w:t[^>]*>[^<]*<\/w:t>|<w:br\/>|<w:tab\/>)+)<\/w:r>/g; let m; while ((m = re.exec(xml))) if (m[2].includes('>' + text + '<')) out.push(m[1] || ''); return out; };
+const paraWith = (xml, text) => { const ps = xml.split('<w:p>').slice(1).map((p) => p.split('</w:p>')[0]); const plain = (p) => p.replace(/<[^>]+>/g, '').replace(/[☐☒]/g, '').trim(); return ps.find((p) => plain(p) === text) || ps.find((p) => plain(p).includes(text)) || ''; };
+const wellFormed = (page, parts) => page.evaluate((list) => list.filter((p) => { const d = new DOMParser().parseFromString(p.xml, 'application/xml'); return !!d.querySelector('parsererror') || !d.documentElement; }).map((p) => p.name), parts);
+async function download(page, act) { const [d] = await Promise.all([page.waitForEvent('download'), act()]); const file = path.join(os.tmpdir(), 'docx-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)); await d.saveAs(file); const buf = fs.readFileSync(file); fs.rmSync(file, { force: true }); return { name: d.suggestedFilename(), buf }; }
+
+await suite('docx', async () => {
+  await step('Word: apagada no deja nada', async () => {
+    const { ctx, page } = await open();
+    await note(page, 'informe.md', WORD_MD);
+    check('apagada: Exportar no la ofrece y su archivo no se cargó', !(await menuItems(page, 'export')).includes('export-docx') && await page.evaluate(() => !LMD.docx) && await scripts(page, 'docx.js') === 0);
+    await toolsTab(page);
+    check('su tarjeta está en Herramientas, apagada', await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=docx]'); return !!c && c.querySelector('b').textContent === 'Export to Word' && !c.querySelector('input').checked; }));
+    await flip(page, 'docx'); await until(() => page.evaluate(() => !!LMD.docx));
+    await page.click('.lmd-tl-card[data-tool=docx] .lmd-tl-more'); await page.waitForSelector('[data-docx=go]');
+    check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
+    await closePanel(page);
+    const items = await menuItems(page, 'export');
+    check('prendida: "Word (.docx)" en el menú Exportar', items.includes('export-docx') && await scripts(page, 'docx.js') === 1, items);
+    await toolsTab(page); await flip(page, 'docx'); await closePanel(page);
+    check('apagarla saca la opción', !(await menuItems(page, 'export')).includes('export-docx'));
+    await ctx.close();
+  });
+
+  await step('Word: el archivo', async () => {
+    const { ctx, page } = await open({ tools: { docx: true } });
+    await note(page, 'informe.md', WORD_MD);
+    await until(() => page.evaluate(() => document.querySelectorAll('.lmd-diagram svg').length === 2), 12000);
+    check('el CRC32 propio da el valor conocido', await page.evaluate(() => LMD.docx.crc32(new TextEncoder().encode('123456789')) === 0xCBF43926));
+    const got = await download(page, async () => { await page.click('.lmd-topbar [data-act=export]'); await page.click('.lmd-menu [data-more=export-docx]'); });
+    check('se descarga con el nombre de la nota y se avisa', got.name === 'informe.docx' && /Word document downloaded/.test(await flashText(page)), got.name);
+    // KEEP_DOCX=ruta deja el archivo ahí, para abrirlo a mano en Word o LibreOffice.
+    if (process.env.KEEP_DOCX) fs.writeFileSync(process.env.KEEP_DOCX, got.buf);
+    const z = unzip(got.buf);
+    const names = z.files.map((f) => f.name);
+    check('es un zip válido: cada entrada descomprime y su CRC32 coincide', z.bad.length === 0 && got.buf.readUInt32LE(0) === 0x04034b50, z.bad);
+    const need = ['[Content_Types].xml', '_rels/.rels', 'word/document.xml', 'word/_rels/document.xml.rels', 'word/styles.xml', 'word/numbering.xml', 'word/settings.xml', 'word/footnotes.xml', 'docProps/core.xml', 'docProps/app.xml'];
+    check('trae las partes de un documento de Word, con los tipos de contenido primero', names[0] === '[Content_Types].xml' && need.every((n) => names.includes(n)), names);
+    const xmls = z.files.filter((f) => /\.(xml|rels)$/.test(f.name)).map((f) => ({ name: f.name, xml: f.data.toString('utf8') }));
+    check('todos los XML están bien formados', xmls.length === 10 && (await wellFormed(page, xmls)).length === 0, await wellFormed(page, xmls));
+    const doc = z.get('word/document.xml'); const rels = z.get('word/_rels/document.xml.rels'); const styles = z.get('word/styles.xml'); const types = z.get('[Content_Types].xml');
+    check('la raíz es un documento de WordprocessingML y los tipos lo declaran', /^<\?xml[^>]*\?>\s*<w:document xmlns:w="http:\/\/schemas\.openxmlformats\.org\/wordprocessingml\/2006\/main"/.test(doc) && types.includes('PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"') && z.get('_rels/.rels').includes('Target="word/document.xml"'));
+    const heads = [1, 2, 3, 4, 5, 6].map((n) => (doc.match(new RegExp('<w:pStyle w:val="Heading' + n + '"/>', 'g')) || []).length);
+    check('los títulos usan los estilos Heading 1 a 6, definidos con su nivel de esquema', J(heads) === J([1, 1, 1, 1, 1, 1]) && [1, 2, 3, 4, 5, 6].every((n) => styles.includes('w:styleId="Heading' + n + '"><w:name w:val="heading ' + n + '"/>') && styles.includes('<w:outlineLvl w:val="' + (n - 1) + '"/>')) && paraWith(doc, 'Título uno').includes('Heading1'), heads);
+    check('negrita, cursiva, tachado y código en línea', runsWith(doc, 'negrita')[0] === '<w:b/><w:bCs/>' && runsWith(doc, 'cursiva')[0] === '<w:i/><w:iCs/>' && runsWith(doc, 'tachado')[0] === '<w:strike/>' && runsWith(doc, 'codigo()')[0] === '<w:rStyle w:val="CodeChar"/>' && /w:styleId="CodeChar".*?Consolas/.test(styles), [runsWith(doc, 'negrita'), runsWith(doc, 'codigo()')]);
+    check('resaltado, subíndice y superíndice', runsWith(doc, 'marcado')[0] === '<w:highlight w:val="yellow"/>' && runsWith(doc, '2').some((r) => r.includes('subscript')) && runsWith(doc, '2').some((r) => r.includes('superscript')));
+    const link = /<w:hyperlink r:id="(rId\d+)" w:history="1"><w:r><w:rPr><w:rStyle w:val="Hyperlink"\/><\/w:rPr><w:t xml:space="preserve">enlace<\/w:t>/.exec(doc);
+    check('el enlace es un hipervínculo con su destino en las relaciones', !!link && rels.includes('Id="' + link[1] + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com/a?b=1&amp;c=2" TargetMode="External"'), link && link[1]);
+    const anchor = /<w:hyperlink w:anchor="(lmd_\d+)"[^>]*>.*?sección<\/w:t>/.exec(doc);
+    check('el enlace a una sección salta al marcador de ese título', !!anchor && paraWith(doc, 'Sección dos').includes('w:name="' + anchor[1] + '"'), anchor && anchor[1]);
+    const num = (t) => (/<w:numPr><w:ilvl w:val="(\d)"\/><w:numId w:val="(\d+)"\/><\/w:numPr>/.exec(paraWith(doc, t)) || []).slice(1).join(':');
+    const numbering = z.get('word/numbering.xml');
+    check('listas con viñetas y numeradas, anidadas por nivel', num('uno') === '0:1' && num('dos') === '1:1' && num('tres') === '2:2' && num('cuatro') === '2:2' && num('cinco') === '0:3' && num('seis') === '0:3', [num('uno'), num('dos'), num('tres'), num('cinco')]);
+    check('la numeración define viñetas y números, y una lista que arranca en 5 arranca en 5', /w:abstractNumId="0".*?w:numFmt w:val="bullet"/.test(numbering) && /w:abstractNumId="1".*?w:numFmt w:val="decimal"/.test(numbering) && numbering.includes('<w:num w:numId="3"><w:abstractNumId w:val="1"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="5"/>') && numbering.includes('<w:num w:numId="2"><w:abstractNumId w:val="1"/><w:lvlOverride w:ilvl="2"><w:startOverride w:val="1"/>'));
+    check('las tareas llevan una casilla, tildada o no', /<w14:checked w14:val="1"\/>/.test(paraWith(doc, 'hecha')) && /<w14:checked w14:val="0"\/>/.test(paraWith(doc, 'pendiente')) && !paraWith(doc, 'hecha').includes('<w:numPr>') && doc.includes('mc:Ignorable="w14"'));
+    check('la cita y el aviso usan el estilo de cita, con lo raro escapado', paraWith(doc, 'Una cita con').includes('<w:pStyle w:val="Quote"/>') && runsWith(doc, 'fuerza')[0] === '<w:b/><w:bCs/>' && paraWith(doc, 'Cuidado con').includes('Quote') && doc.includes('Cuidado con 1 &lt; 2 &amp; aquello.') && paraWith(doc, 'Warning').includes('<w:b/>'));
+    check('el bloque de código va renglón por renglón, monoespaciado y con su tabulación', paraWith(doc, 'const a = 1;').includes('<w:pStyle w:val="Code"/>') && /<w:pStyle w:val="Code"\/>.*?<w:tab\/><w:t xml:space="preserve">if \(a &lt; 2\) \{ b\(\); \}<\/w:t>/.test(doc) && /w:styleId="Code">.*?Consolas/.test(styles) && !doc.includes('hljs'));
+    const tbl = (/<w:tbl>.*?<\/w:tbl>/.exec(doc) || [''])[0];
+    check('la tabla: fila de encabezado que se repite, celdas y alineación', (tbl.match(/<w:tr>/g) || []).length === 3 && (tbl.match(/<w:tblHeader\/>/g) || []).length === 1 && (tbl.match(/<w:tc>/g) || []).length === 6 && (tbl.match(/<w:gridCol /g) || []).length === 2 && /<w:tblHeader\/>.*?<w:b\/><w:bCs\/><\/w:rPr><w:t xml:space="preserve">Nombre/.test(tbl) && (tbl.match(/<w:jc w:val="right"\/>/g) || []).length === 3 && tbl.includes('>Luis<') && tbl.includes('<w:tblStyle w:val="TableGrid"/>'), tbl.slice(0, 300));
+    check('las fórmulas van como texto LaTeX', runsWith(doc, 'x^2').length === 1 && runsWith(doc, 'E=mc^2')[0].includes('CodeChar') && paraWith(doc, 'E=mc^2').includes('<w:jc w:val="center"/>'));
+    const media = z.files.filter((f) => f.name.startsWith('word/media/'));
+    const embeds = [...doc.matchAll(/<a:blip r:embed="(rId\d+)"\/>/g)].map((m) => m[1]);
+    const isPng = (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47;
+    check('las imágenes van incrustadas: la de la nota y los dos diagramas, como PNG', media.length === 3 && embeds.length === 3 && media.every((m) => isPng(m.data) && m.method === 0) && embeds.every((id) => new RegExp('Id="' + id + '" Type="[^"]*/image" Target="media/image\\d\\.png"').test(rels)) && types.includes('<Default Extension="png" ContentType="image/png"/>'), { media: media.map((m) => m.name), embeds });
+    check('cada imagen dice su tamaño y su texto alternativo', (doc.match(/<wp:extent cx="\d+" cy="\d+"\/>/g) || []).length === 3 && doc.includes('descr="un punto"') && !/cx="0"|cy="0"/.test(doc.replace(/<a:off[^>]*>/g, '')));
+    check('la imagen que no se puede leer deja su texto alternativo', runsWith(doc, '[no se lee]').length === 1);
+    check('el separador es una línea', /<w:pBdr><w:bottom w:val="single"/.test(doc));
+    const fn = z.get('word/footnotes.xml');
+    check('la nota al pie es una nota al pie de Word', (doc.match(/<w:footnoteReference w:id="1"\/>/g) || []).length === 1 && /<w:footnote w:id="1">.*?<w:footnoteRef\/>.*?El texto de la nota al pie\.<\/w:t>/.test(fn) && fn.includes('w:type="separator" w:id="-1"') && !doc.includes('El texto de la nota al pie') && !fn.includes('↩') && rels.includes('Target="footnotes.xml"') && z.get('word/settings.xml').includes('<w:footnotePr>'));
+    check('la lista de definiciones y el tablero llegan como texto', runsWith(doc, 'Término')[0] === '<w:b/><w:bCs/>' && paraWith(doc, 'Su definición').includes('<w:ind w:left="720"/>') && runsWith(doc, 'Por hacer')[0] === '<w:b/><w:bCs/>' && paraWith(doc, 'tarjeta uno').includes('w14:checkbox'));
+    check('los metadatos llevan el título y nada personal', z.get('docProps/core.xml').includes('<dc:title>Informe de prueba</dc:title>') && !/creator|lastModifiedBy/.test(z.get('docProps/core.xml')) && z.get('docProps/app.xml').includes('<Application>SharpMD</Application>'));
+    check('lo de la interfaz no pasa al documento', !/Copy|title: |Informe de prueba/.test(doc.replace(/<[^>]+>/g, ' ')) && doc.includes('<w:sectPr><w:pgSz'));
+    const ids = [...doc.matchAll(/r:(?:id|embed)="(rId\d+)"/g)].map((m) => m[1]); const relTargets = [...rels.matchAll(/Target="([^"]+)"(?! TargetMode)/g)].map((m) => m[1]);
+    check('cada relación usada existe, y cada parte relacionada está en el zip', ids.length >= 4 && ids.every((id) => rels.includes('Id="' + id + '"')) && relTargets.every((t) => names.includes('word/' + t)), relTargets);
+    const pIds = [...doc.matchAll(/<wp:docPr id="(\d+)"/g)].map((m) => m[1]); const bIds = [...doc.matchAll(/<w:bookmarkStart w:id="(\d+)"/g)].map((m) => m[1]);
+    check('los identificadores de imágenes y marcadores no se repiten', new Set(pIds).size === pIds.length && new Set(bIds).size === bIds.length && bIds.length === 6);
+    // Sin CompressionStream el zip va sin comprimir, y sigue siendo válido.
+    const plain = Buffer.from(await page.evaluate(async () => { const cs = window.CompressionStream; window.CompressionStream = undefined; try { return Array.from(await LMD.docx.bytes()); } finally { window.CompressionStream = cs; } }));
+    const z2 = unzip(plain);
+    check('sin compresión en el navegador el zip sale sin comprimir y válido', z2.bad.length === 0 && z2.files.every((f) => f.method === 0) && z2.get('word/document.xml') === doc && plain.length > got.buf.length, z2.bad);
+    check('con compresión, los XML van comprimidos', ENGINE !== 'chromium' || z.files.filter((f) => /\.xml$/.test(f.name) && f.data.length > 400).every((f) => f.method === 8));
+    // En edición no se cuela nada de lo editable.
+    await page.goto(noteUrl('informe.md', true)); await page.waitForSelector('.lmd-editing .lmd-article'); await until(() => page.evaluate(() => document.querySelectorAll('.lmd-diagram svg').length === 2), 12000);
+    const edit = unzip(Buffer.from(await page.evaluate(async () => Array.from(await LMD.docx.bytes())))).get('word/document.xml');
+    check('en edición sale el mismo documento', edit.replace(/rId\d+/g, '') === doc.replace(/rId\d+/g, ''), [edit.length, doc.length]);
+    // Una nota vacía también da un documento que abre.
+    await put(page, 'vacia.md', '');
+    await page.goto(noteUrl('vacia.md')); await page.waitForSelector('.lmd-article'); await sleep(400);
+    const empty = unzip(Buffer.from(await page.evaluate(async () => Array.from(await LMD.docx.bytes()))));
+    check('una nota vacía da un documento válido, con un párrafo', empty.bad.length === 0 && empty.get('word/document.xml').includes('<w:body><w:p/><w:sectPr>') && (await wellFormed(page, [{ name: 'd', xml: empty.get('word/document.xml') }])).length === 0);
+    await ctx.close();
+  });
+
+  await step('Word: pantalla chica', async () => {
+    const { ctx, page } = await open({ tools: { docx: true }, ctx: SMALL });
+    await note(page, 'corta.md', '# Corta\n\nUn párrafo.\n');
+    const got = await download(page, async () => { await page.click('.lmd-topbar [data-act=more]'); await page.click('.lmd-menu [data-more=export]'); await page.click('.lmd-menu [data-more=export-docx]'); });
+    const z = unzip(got.buf);
+    check('desde "más" > Exportar se descarga un .docx válido', got.name === 'corta.docx' && z.bad.length === 0 && z.get('word/document.xml').includes('>Un párrafo.<') && z.get('docProps/core.xml').includes('<dc:title>Corta</dc:title>'));
     await ctx.close();
   });
 });

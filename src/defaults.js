@@ -1146,6 +1146,10 @@
       "En una plantilla propia, {{fecha}} se cambia por la fecha del día.": "In your own template, {{date}} becomes the date of the day.",
       "Sin conexión. La nota del día quedó en este navegador.": "Offline. The daily note was saved in this browser.", "Falta el permiso para escribir en la carpeta de las notas diarias.": "Permission to write to the daily notes folder is missing.",
       "No se pudo abrir la nota del día. Probá de nuevo.": "Could not open the daily note. Try again.", "La nota diaria se usa desde la app.": "The daily note works from the app.",
+      // Exportar a Word (docx.js)
+      "Exportar a Word": "Export to Word", "Suma la opción Word (.docx) al menú Exportar. El archivo se arma en el navegador.": "Adds a Word (.docx) option to the Export menu. The file is built in the browser.",
+      "Documento de Word descargado": "Word document downloaded", "No se pudo armar el documento de Word.": "Could not build the Word document.", "Exportar esta nota": "Export this note", "documento": "document",
+      "Está en el menú Exportar de la barra de arriba. Las fórmulas van como texto LaTeX y los diagramas como imagen.": "It is in the Export menu of the top bar. Formulas go as LaTeX text and diagrams as images.",
       // Leer en voz alta (speak.js)
       "Leer en voz alta": "Read aloud", "Lee la nota con la voz del dispositivo y marca por dónde va.": "Reads the note with the device voice and marks where it is.",
       "Este navegador no tiene voces para leer.": "This browser has no voices to read with.", "Este navegador no tiene voces instaladas para leer.": "This browser has no voices installed to read with.",

@@ -142,4 +142,6 @@
     icon: svg('<rect x="3.500" y="4.500" width="17" height="11.500" rx="1.500"/><path d="M12 16v3.500M8.500 19.500h7M10.500 8v4.500l3.800-2.250z"/>') });
   register({ id: 'daily', name: 'Nota diaria', about: 'Un botón y un atajo abren la nota de hoy. Un calendario lleva a los otros días.', defaultOn: false, lazy: 'daily', module: () => LMD.daily,
     icon: svg('<rect x="4" y="5.500" width="16" height="14.500" rx="2"/><path d="M4 10h16M8.500 3.500v4M15.500 3.500v4M9 14.500l2.200 2.200 4-4.400"/>') });
+  register({ id: 'docx', name: 'Exportar a Word', about: 'Suma la opción Word (.docx) al menú Exportar. El archivo se arma en el navegador.', defaultOn: false, lazy: 'docx', module: () => LMD.docx,
+    icon: svg('<path d="M6.500 3.500h8l4 4v13h-12z"/><path d="M14.500 3.500v4h4M8.800 11.500l1.300 5.500 1.900-4.200 1.900 4.200 1.300-5.500"/>') });
 })();
