@@ -56,6 +56,8 @@
     if (folder) name += '/' + T('nota') + '.md'; else if (!/\.[A-Za-z0-9]+$/.test(name)) name += '.md';
     const dir = core.pathOf(dirUrl); const path = (dir ? dir + '/' : '') + name; const s = LMD.cloud.split(path);
     try {
+      // Dentro de una carpeta protegida la nota nace cifrada: hace falta tenerla desbloqueada.
+      if (!(await LMD.vault.unlockFor(path))) return;
       const all = await LMD.cloud.list(true, s.owner);
       if (folder && all.some((n) => n.path.startsWith(s.path.slice(0, s.path.lastIndexOf('/') + 1)))) { core.flash(T('Ya hay una carpeta con ese nombre'), 'error'); return; }
       if (all.some((n) => n.path === s.path || n.path.startsWith(s.path + '/'))) { core.flash(T('Ya hay un archivo con ese nombre'), 'error'); return; }
@@ -83,6 +85,10 @@
       const all = (await LMD.cloud.list(true)).map((n) => n.path);
       const moves = isDir ? all.filter((p) => p.startsWith(old + '/')).map((p) => [p, to + p.slice(old.length)]) : [[old, to]];
       if (moves.some((m) => all.includes(m[1]) && !moves.some((x) => x[0] === m[1]))) { core.flash(T('Ya hay un archivo con ese nombre'), 'error'); return; }
+      // Una carpeta protegida no cambia de nombre ni de lugar: sus notas están cifradas con la ruta que tienen.
+      if (isDir && LMD.vault.pinned(old)) { core.flash(T('Una carpeta protegida no se renombra ni se mueve. Quitale la protección primero.'), 'warn'); return; }
+      // Lo que entra o sale de una carpeta protegida se cifra o se descifra al moverlo, con la carpeta desbloqueada.
+      if (!(await LMD.vault.beforeMove(moves))) return;
       // La nota abierta se guarda antes de moverla, y después se reabre en su ruta nueva.
       const here = moves.find((m) => m[0] === core.cloudPath);
       if (here && core.dirty && !(await core.save(false))) return;
@@ -123,6 +129,7 @@
     try {
       if (inCloud(dirUrl)) {
         const dir = core.pathOf(dirUrl); const pre = dir ? dir + '/' : ''; const s = LMD.cloud.split(pre + 'x');
+        if (!(await LMD.vault.unlockFor(pre + 'x'))) return false;
         const all = new Set((await LMD.cloud.list(true, s.owner)).map((n) => n.path)); const inner = s.path.slice(0, -1);
         const path = pre + await free((name) => all.has(inner + name));
         await LMD.cloud.write(path, given.text);
@@ -247,14 +254,17 @@
   function treeMenu(x, y, node) {
     const url = node.dataset.url; const isDir = node.classList.contains('lmd-node-dir'); const cloud = inCloud(url); const local = inLocal(url);
     const at = isDir ? url : parentOf(url);
+    // Una carpeta propia de la nube suma lo de las carpetas con contraseña: proteger, desbloquear, abrir para la IA.
+    const folder = isDir && cloud ? core.pathOf(url) : '';
     showMenu(x, y, [
       !local && ['new', isDir ? 'Nuevo archivo acá' : 'Nuevo archivo'],
       !local && ['tpl', 'Desde una plantilla…'],
       !local && ['dir', 'Nueva carpeta'],
       (!isDir || cloud) && ['ren', 'Renombrar'],
       !isDir && ['del', 'Eliminar', true],
-    ].filter(Boolean), (f) => {
-      if (f === 'new') newFile(at);
+    ].concat(folder ? LMD.vault.menu(folder) : []).filter(Boolean), (f) => {
+      if (/^v-/.test(f)) LMD.vault.pick(f, folder);
+      else if (f === 'new') newFile(at);
       else if (f === 'tpl') fromTemplate(at);
       else if (f === 'dir') newFolder(at);
       else if (f === 'ren') rename(url, isDir);
@@ -317,7 +327,10 @@
     const node = e.target.closest('.lmd-node-dir');
     if (node) return { url: node.dataset.url, mark: node };
     const kids = e.target.closest('.lmd-node-kids');
-    if (kids) return { url: kids.previousElementSibling.dataset.url, mark: kids.previousElementSibling };
+    // La carpeta de esos hijos: el nodo de más arriba (entre los dos puede haber el renglón de estado de una carpeta protegida).
+    let dir = kids && kids.previousElementSibling;
+    while (dir && !dir.classList.contains('lmd-node-dir')) dir = dir.previousElementSibling;
+    if (dir) return { url: dir.dataset.url, mark: dir };
     return { url: top, mark: sec };
   }
   function bindDrag(box) {

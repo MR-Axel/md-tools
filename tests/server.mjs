@@ -20,7 +20,9 @@ console.log('Servidor de sincronización');
 try {
   const start = await call('POST', '/auth/start', { email: 'Ana@Ejemplo.test' });
   check('pide el código de acceso', start.status === 200 && /^\d{6}$/.test(start.json.dev_code), start.json);
-  check('no deja pedir dos códigos seguidos', (await call('POST', '/auth/start', { email: 'ana@ejemplo.test' })).status === 429);
+  const gap = await call('POST', '/auth/start', { email: 'ana@ejemplo.test' });
+  check('no deja pedir dos códigos seguidos', gap.status === 429);
+  check('el tope dice cuál es y cuántos segundos faltan, en el cuerpo y en la cabecera', gap.json.error === 'code_gap' && gap.json.retry_after >= 1 && gap.json.retry_after <= 30 && gap.headers.get('retry-after') === String(gap.json.retry_after), [gap.json, gap.headers.get('retry-after')]);
   check('rechaza un código equivocado', (await call('POST', '/auth/verify', { email: 'ana@ejemplo.test', code: '000000' + '' })).status === 400 || start.json.dev_code === '000000');
   const login = await call('POST', '/auth/verify', { email: 'ana@ejemplo.test', code: start.json.dev_code });
   const s = login.json.session;
@@ -103,7 +105,8 @@ try {
   check('rechaza una contraseña equivocada', (await call('GET', '/public/' + locked.json.token, undefined, undefined, { 'x-password': 'pera' })).status === 403);
   check('y abre con la correcta', (await call('GET', '/public/' + locked.json.token, undefined, undefined, { 'x-password': 'manzana-42' })).json.text.includes('Segunda parte.'));
   for (let i = 0; i < 10; i++) await call('GET', '/public/' + locked.json.token, undefined, undefined, { 'x-password': 'no' + i });
-  check('diez intentos fallidos bloquean el enlace', (await call('GET', '/public/' + locked.json.token, undefined, undefined, { 'x-password': 'manzana-42' })).status === 429);
+  const blocked = await call('GET', '/public/' + locked.json.token, undefined, undefined, { 'x-password': 'manzana-42' });
+  check('diez intentos fallidos bloquean el enlace, y dice cuánto falta', blocked.status === 429 && blocked.json.error === 'locked' && blocked.json.retry_after > 590 && blocked.json.retry_after <= 600, blocked.json);
   check('un enlace inventado no existe', (await call('GET', '/public/abcdef')).status === 404);
 
   const pre = await fetch(base + '/notes', { method: 'OPTIONS', headers: { origin: 'https://ejemplo.test', 'access-control-request-method': 'GET' } });
@@ -216,6 +219,102 @@ try {
   const noFeedback = await second({});
   check('comentarios: sin FEEDBACK_TO responde 404', (await noFeedback.post('/feedback', { text: 'No debería llegar a nadie.' })).status === 404);
   await noFeedback.stop();
+
+  // Otro servidor sobre una carpeta que se conserva entre arranques, con pedidos que pueden llevar cabeceras.
+  const boot = async (dir, extra) => {
+    const port = 21000 + Math.floor(Math.random() * 3000);
+    const proc = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, DATA_KEY: '', PORT: String(port), DATA_DIR: dir, DEV_CODES: '1', ADMIN_KEY: 'clave-de-prueba', ...extra }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = ''; proc.stdout.on('data', (d) => { out += d; }); proc.stderr.on('data', (d) => { out += d; });
+    let code = null; const exited = new Promise((r) => proc.once('exit', (c) => { code = c; r(c); }));
+    for (let i = 0; i < 80 && !/puerto/.test(out) && code === null; i++) await new Promise((r) => setTimeout(r, 100));
+    const ask = async (method, url, body, auth, more) => {
+      const r = await fetch('http://127.0.0.1:' + port + url, { method, headers: { 'content-type': 'application/json', ...(auth ? { authorization: 'Bearer ' + auth } : {}), ...(more || {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+      return { status: r.status, json: await r.json().catch(() => null), headers: r.headers };
+    };
+    const enter = async (mail, pro) => { const c = await ask('POST', '/auth/start', { email: mail }); const s = (await ask('POST', '/auth/verify', { email: mail, code: c.json.dev_code })).json.session; if (pro) await ask('POST', '/admin/plan', { email: mail, plan: 'pro' }, undefined, { 'x-admin-key': 'clave-de-prueba' }); return s; };
+    return { ask, enter, log: () => out, up: () => /puerto/.test(out), exited, stop: async () => { proc.kill(); await exited; await new Promise((r) => setTimeout(r, 150)); } };
+  };
+  const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'mdsync-'));
+  const wipe = (dir) => fs.rmSync(dir, { recursive: true, force: true });
+
+  // ---------- Topes: cada uno responde con su código y con la espera ----------
+  const limDir = tmp();
+  const topes = await boot(limDir, { AUTH_PER_IP: '3', TEST_LOGIN: 'revision@ejemplo.test:246810' });
+  const from = (ip) => ({ 'x-forwarded-for': ip });
+  const waits = (r, code, max) => r.status === 429 && r.json.error === code && r.json.retry_after >= 1 && r.json.retry_after <= max && r.headers.get('retry-after') === String(r.json.retry_after);
+  // Por correo: cinco códigos por hora. Entrar borra el código pedido, así que el de 30 segundos no se cruza.
+  for (let i = 0; i < 5; i++) { const c = await topes.ask('POST', '/auth/start', { email: 'hora@ejemplo.test' }, undefined, from('10.2.0.' + i)); await topes.ask('POST', '/auth/verify', { email: 'hora@ejemplo.test', code: c.json.dev_code }, undefined, from('10.2.0.' + i)); }
+  const porHora = await topes.ask('POST', '/auth/start', { email: 'hora@ejemplo.test' }, undefined, from('10.2.0.9'));
+  check('topes: cinco códigos por hora por correo, con su código y su espera', waits(porHora, 'code_mail_hour', 3600) && porHora.json.retry_after > 3500, porHora.json);
+  for (let i = 0; i < 3; i++) await topes.ask('POST', '/auth/start', { email: 'red' + i + '@ejemplo.test' }, undefined, from('10.3.0.1'));
+  const porRed = await topes.ask('POST', '/auth/start', { email: 'red9@ejemplo.test' }, undefined, from('10.3.0.1'));
+  check('topes: el de pedidos por red tiene otro código', waits(porRed, 'code_ip_hour', 3600), porRed.json);
+  await topes.ask('POST', '/auth/start', { email: 'gastado@ejemplo.test' }, undefined, from('10.4.0.1'));
+  for (let i = 0; i < 6; i++) await topes.ask('POST', '/auth/verify', { email: 'gastado@ejemplo.test', code: 'no' }, undefined, from('10.4.1.' + i));
+  const gastado = await topes.ask('POST', '/auth/verify', { email: 'gastado@ejemplo.test', code: 'no' }, undefined, from('10.4.1.9'));
+  check('topes: un código con seis intentos queda gastado, sin espera: hay que pedir otro', gastado.status === 429 && gastado.json.error === 'tries_code' && gastado.json.retry_after === undefined && !gastado.headers.get('retry-after'), gastado.json);
+  // La cuenta de prueba pide código sin la espera de 30 segundos: sirve para llegar a los diez fallos por correo.
+  for (let k = 0; k < 2; k++) { await topes.ask('POST', '/auth/start', { email: 'revision@ejemplo.test' }, undefined, from('10.5.0.' + k)); for (let i = 0; i < 5; i++) await topes.ask('POST', '/auth/verify', { email: 'revision@ejemplo.test', code: '000000' }, undefined, from('10.5.' + (k + 1) + '.' + i)); }
+  const porCorreo = await topes.ask('POST', '/auth/verify', { email: 'revision@ejemplo.test', code: '246810' }, undefined, from('10.5.9.9'));
+  check('topes: diez códigos equivocados por hora por correo', waits(porCorreo, 'tries_mail_hour', 3600), porCorreo.json);
+  for (let k = 0; k < 5; k++) { await topes.ask('POST', '/auth/start', { email: 'mal' + k + '@ejemplo.test' }, undefined, from('10.6.0.' + k)); for (let i = 0; i < 6; i++) await topes.ask('POST', '/auth/verify', { email: 'mal' + k + '@ejemplo.test', code: 'no' }, undefined, from('10.6.9.9')); }
+  await topes.ask('POST', '/auth/start', { email: 'mal9@ejemplo.test' }, undefined, from('10.6.0.9'));
+  const porRedMal = await topes.ask('POST', '/auth/verify', { email: 'mal9@ejemplo.test', code: 'no' }, undefined, from('10.6.9.9'));
+  check('topes: treinta códigos equivocados por hora por red', waits(porRedMal, 'tries_ip_hour', 3600), porRedMal.json);
+  await topes.stop(); wipe(limDir);
+
+  // ---------- Cifrado en reposo (DATA_KEY) ----------
+  // Lo que hay en el disco: el archivo de la base y su WAL, tal como los vería quien se lleva un respaldo.
+  const onDisk = (dir, word) => fs.readdirSync(dir).some((f) => fs.readFileSync(path.join(dir, f)).includes(Buffer.from(word)));
+  const K1 = Buffer.alloc(32, 7).toString('base64'); const K2 = Buffer.alloc(32, 9).toString('base64');
+  const encDir = tmp();
+  let srv = await boot(encDir, {});
+  let es = await srv.enter('cifra@ejemplo.test', true);
+  await srv.ask('PUT', '/notes/' + encodeURIComponent('diario/lunes.md'), { text: '# Lunes\n\nremolacha-uno en claro.' }, es);
+  await srv.ask('PUT', '/notes/' + encodeURIComponent('diario/lunes.md'), { text: '# Lunes\n\nremolacha-dos en claro, más larga.' }, es);
+  await srv.ask('POST', '/comments', { path: 'diario/lunes.md', quote: 'remolacha-cita', text: 'remolacha-pedido' }, es);
+  const encTok = (await srv.ask('POST', '/tokens', { name: 'ia' }, es)).json.token;
+  const encLink = (await srv.ask('POST', '/links', { path: 'diario/lunes.md' }, es)).json.token;
+  await srv.stop();
+  check('sin DATA_KEY todo sigue en claro en el disco', ['remolacha-uno', 'remolacha-dos', 'remolacha-cita', 'remolacha-pedido'].every((w) => onDisk(encDir, w)));
+  srv = await boot(encDir, { DATA_KEY: K1 });
+  check('con DATA_KEY arranca y cifra lo que estaba en claro', srv.up() && /se cifraron 3 filas/.test(srv.log()), srv.log());
+  const encTool = async (name, args) => (await srv.ask('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, encTok)).json.result.content[0].text;
+  const whole = async () => {
+    const list = (await srv.ask('GET', '/notes', undefined, es)).json; const note = (await srv.ask('GET', '/notes/' + encodeURIComponent('diario/lunes.md'), undefined, es)).json;
+    const vers = (await srv.ask('GET', '/versions/' + encodeURIComponent('diario/lunes.md'), undefined, es)).json; const ver = (await srv.ask('GET', '/version/' + vers[0].id, undefined, es)).json;
+    const coms = (await srv.ask('GET', '/comments?path=' + encodeURIComponent('diario/lunes.md') + '&all=1', undefined, es)).json;
+    return { size: list.find((n) => n.path === 'diario/lunes.md').size, text: note.text, vsize: vers[0].size, vtext: ver.text, quote: coms[0].quote, com: coms[0].text, reply: coms[0].reply,
+      search: (await srv.ask('GET', '/search?q=remolacha-dos', undefined, es)).json.map((r) => r.path + ':' + r.hits.length).join(), mcp: await encTool('read_note', { path: 'diario/lunes.md' }),
+      found: /diario\/lunes\.md/.test(await encTool('search_notes', { query: 'remolacha-dos' })), pub: (await srv.ask('GET', '/public/' + encLink)).json.text };
+  };
+  const T2 = '# Lunes\n\nremolacha-dos en claro, más larga.'; const T1 = '# Lunes\n\nremolacha-uno en claro.';
+  const sameAll = (w) => w.text === T2 && w.size === T2.length && w.vtext === T1 && w.vsize === T1.length && w.quote === 'remolacha-cita' && w.com === 'remolacha-pedido' && w.search === 'diario/lunes.md:1' && w.mcp === T2 && w.found && w.pub === T2;
+  let w = await whole();
+  check('cifrado: notas, historial, comentarios, búsqueda, MCP, enlace público y tamaños responden igual', sameAll(w), w);
+  const comId = (await srv.ask('GET', '/comments', undefined, es)).json[0].id;
+  await encTool('resolve_comment', { id: comId, reply: 'remolacha-respuesta' });
+  await srv.ask('PUT', '/notes/nueva.md', { text: 'remolacha-nueva, escrita ya con la clave.' }, es);
+  await srv.ask('PUT', '/notes/nueva.md', { text: 'remolacha-nueva, segunda versión.' }, es);
+  const grande = await srv.ask('PUT', '/notes/grande.md', { text: 'ñ'.repeat(524289) }, es);
+  check('cifrado: el límite de 1 MB se mide sobre el texto en claro', grande.status === 413 && (await srv.ask('PUT', '/notes/justa.md', { text: 'a'.repeat(1024 * 1024) }, es)).status === 200, grande.json);
+  await srv.stop();
+  check('cifrado: en el disco no queda nada legible, ni lo migrado ni lo nuevo', !['remolacha-uno', 'remolacha-dos', 'remolacha-cita', 'remolacha-pedido', 'remolacha-respuesta', 'remolacha-nueva'].some((x) => onDisk(encDir, x)) && onDisk(encDir, 'enc1:'));
+  srv = await boot(encDir, { DATA_KEY: K1 });
+  w = await whole();
+  const reply = (await srv.ask('GET', '/comments?path=' + encodeURIComponent('diario/lunes.md') + '&all=1', undefined, es)).json[0].reply;
+  check('cifrado: la migración es idempotente, al volver a arrancar no toca nada y todo se lee', srv.up() && !/se cifraron/.test(srv.log()) && sameAll(w) && reply === 'remolacha-respuesta' && (await srv.ask('GET', '/notes/nueva.md', undefined, es)).json.text === 'remolacha-nueva, segunda versión.', [srv.log(), w, reply]);
+  await srv.stop();
+  const before = fs.readFileSync(path.join(encDir, 'mdtools.db'));
+  const refuses = async (extra, re) => { const s = await boot(encDir, extra); const code = await Promise.race([s.exited, new Promise((r) => setTimeout(() => r('sigue'), 4000))]); if (code === 'sigue') await s.stop(); return code === 1 && !s.up() && re.test(s.log()) ? true : [code, s.log()]; };
+  const sinClave = await refuses({}, /falta DATA_KEY/); const otraClave = await refuses({ DATA_KEY: K2 }, /no es la clave/); const malFormada = await refuses({ DATA_KEY: 'corta' }, /32 bytes/);
+  check('cifrado: sin la clave el servidor no arranca y lo dice', sinClave === true, sinClave);
+  check('cifrado: con otra clave tampoco arranca', otraClave === true, otraClave);
+  check('cifrado: una clave mal formada se rechaza al arrancar', malFormada === true, malFormada);
+  check('cifrado: los arranques rechazados no tocan la base', fs.readFileSync(path.join(encDir, 'mdtools.db')).equals(before));
+  srv = await boot(encDir, { DATA_KEY: K1 });
+  check('cifrado: con la clave original vuelve a andar', srv.up() && (await srv.ask('GET', '/notes/nueva.md', undefined, es)).json.text === 'remolacha-nueva, segunda versión.');
+  await srv.stop(); wipe(encDir);
 
   check('cerrar sesión la invalida', (await call('POST', '/auth/logout', {}, s)).status === 200 && (await call('GET', '/notes', undefined, s)).status === 401);
 } catch (e) { check('sin excepciones', false, String(e && e.stack || e)); console.log(log); }

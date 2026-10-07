@@ -32,7 +32,7 @@
 
   <div lang="en">
     <h1>Privacy</h1>
-    <p class="date">Last updated: October 6, 2026</p>
+    <p class="date">Last updated: October 7, 2026</p>
     <p>SharpMD works without an account and has no analytics. Cloud notes are optional, and they are the only thing that leaves your machine.</p>
     <h2>Your files</h2>
     <p>The files you open are read by your browser, on your machine. They are never uploaded. When you save, the browser writes to the file or folder you picked.</p>
@@ -41,11 +41,16 @@
     <h2>Cloud notes, if you sign in</h2>
     <p>The sync server stores your email address, the notes you send to the cloud and, on the paid plan, their previous versions for 30 days. Sign-in codes, sessions and AI tokens are stored as hashes.</p>
     <ul>
-      <li>Cloud notes are not end-to-end encrypted. The server has to read them to share them and to serve your AI over MCP.</li>
+      <li>The server stores the text of your notes, of their previous versions and of the comments you leave for the AI encrypted (AES-256-GCM). That protects the database and its backups. It is not end-to-end encryption: the running server holds the key, because it has to read notes to share them and to serve your AI over MCP.</li>
+      <li>A folder you protect with a password is end-to-end encrypted. Its notes are encrypted in your browser before they are uploaded, with a key that only your password or your backup key opens. The server stores the encrypted text and cannot read it. The password and the key do not leave your browser.</li>
+      <li>What the server still sees of a protected folder: the names of its notes and folders, their size and when they changed. Those notes cannot be shared, have no public links, take no comments for the AI and are left out of the server search.</li>
+      <li>Without the password and without the backup key, the notes of a protected folder cannot be recovered. SharpMD cannot recover them either.</li>
+      <li>If you unlock a protected folder for your AI, your browser sends the key of that folder to the server. The server keeps it in memory only, for the time you chose (15 minutes, 1 hour, 8 hours, or until you lock it), and meanwhile it can read and write the notes of that folder to serve your AI. Locking the folder, the time running out or a server restart erases the key. It is never written to disk.</li>
       <li>A note you share is visible to the accounts you share it with. A public link shows it to anyone who has the link, and the password if you set one.</li>
       <li>The sign-in code is sent by email through Resend, which receives your address to deliver it.</li>
       <li>Payments are handled by Paddle, the merchant of record. SharpMD never sees your card: it only learns that the subscription for your account is active or has ended.</li>
-      <li>A copy of each cloud note you open is kept in your browser, so it opens without a connection. Signing out removes those copies, except edits that have not been uploaded yet.</li>
+      <li>A copy of each cloud note you open is kept in your browser, so it opens without a connection. The copy of a note in a protected folder is kept encrypted. Signing out removes those copies, except edits that have not been uploaded yet.</li>
+      <li>"Remember on this device" keeps the key of a protected folder in your browser, in a form that cannot be exported. "Forget on this device", locking the folder or signing out removes it.</li>
       <li>Deleting a note removes it from the server. To delete the whole account, write to <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a> from the account's email.</li>
     </ul>
     <h2>Network requests</h2>
@@ -67,7 +72,7 @@
 
   <div lang="es">
     <h1>Privacidad</h1>
-    <p class="date">Última actualización: 6 de octubre de 2026</p>
+    <p class="date">Última actualización: 7 de octubre de 2026</p>
     <p>SharpMD funciona sin cuenta y no tiene analítica. Las notas en la nube son opcionales, y son lo único que sale de tu máquina.</p>
     <h2>Tus archivos</h2>
     <p>Los archivos que abrís los lee tu navegador, en tu máquina. Nunca se suben. Al guardar, el navegador escribe en el archivo o la carpeta que elegiste.</p>
@@ -76,10 +81,16 @@
     <h2>Notas en la nube, si entrás con tu cuenta</h2>
     <p>El servidor de sincronización guarda tu correo, las notas que mandás a la nube y, en el plan pago, sus versiones anteriores durante 30 días. Los códigos de acceso, las sesiones y los tokens para la IA se guardan como hashes.</p>
     <ul>
-      <li>Las notas de la nube no van cifradas de punta a punta. El servidor tiene que leerlas para compartirlas y para dárselas a tu IA por MCP.</li>
+      <li>El servidor guarda cifrado (AES-256-GCM) el texto de tus notas, de sus versiones anteriores y de los comentarios que le dejás a la IA. Eso protege la base y sus respaldos. No es cifrado de punta a punta: el servidor en marcha tiene la clave, porque tiene que leer las notas para compartirlas y para dárselas a tu IA por MCP.</li>
+      <li>Una carpeta que protegés con contraseña va cifrada de punta a punta. Sus notas se cifran en tu navegador antes de subir, con una llave que solo abren tu contraseña o tu clave de respaldo. El servidor guarda el texto cifrado y no lo puede leer. La contraseña y la llave no salen de tu navegador.</li>
+      <li>Lo que el servidor sigue viendo de una carpeta protegida: los nombres de sus notas y carpetas, cuánto pesan y cuándo cambiaron. Esas notas no se comparten, no tienen enlaces públicos, no llevan comentarios para la IA y quedan fuera de la búsqueda del servidor.</li>
+      <li>Sin la contraseña y sin la clave de respaldo, las notas de una carpeta protegida no se pueden recuperar. SharpMD tampoco puede.</li>
+      <li>Si desbloqueás una carpeta protegida para tu IA, tu navegador le manda al servidor la llave de esa carpeta. El servidor la guarda solo en memoria, por el tiempo que elegiste (15 minutos, 1 hora, 8 horas, o hasta que la bloquees), y mientras tanto puede leer y escribir las notas de esa carpeta para tu IA. Bloquear la carpeta, vencer el plazo o reiniciar el servidor borran la llave. Nunca se escribe en el disco.</li>
       <li>Una nota compartida la ven las cuentas con las que la compartís. Un enlace público se la muestra a quien tenga el enlace, y la contraseña si le pusiste una.</li>
       <li>El código de acceso llega por correo a través de Resend, que recibe tu dirección para entregarlo.</li>
       <li>Los pagos los maneja Paddle, que es quien vende. SharpMD nunca ve tu tarjeta: solo se entera de que la suscripción de tu cuenta está activa o terminó.</li>
+      <li>De cada nota de la nube que abrís queda una copia en tu navegador, para abrirla sin conexión. La copia de una nota de una carpeta protegida queda cifrada. Al salir de la cuenta esas copias se borran, salvo lo escrito que todavía no se subió.</li>
+      <li>"Recordar en este dispositivo" guarda la llave de una carpeta protegida en tu navegador, de una forma que no se puede exportar. "Olvidar en este dispositivo", bloquear la carpeta o salir de la cuenta la borran.</li>
       <li>Al eliminar una nota se borra del servidor. Para borrar la cuenta entera, escribí a <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a> desde el correo de la cuenta.</li>
     </ul>
     <h2>Pedidos de red</h2>

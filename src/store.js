@@ -87,5 +87,15 @@
   const cloudPut = (who, path, rec) => handlesPut(Object.assign({}, rec, { key: cloudKey(who, path), cloud: true, who, path, at: Date.now() }));
   const cloudDelete = (who, path) => handlesDelete(cloudKey(who, path));
 
-  LMD.store = { handlesAll, handlesPut, handlesDelete, canWrite, walk, rootsAll, notesAll, noteGet, notePut, noteDelete, noteHandle, cloudAll, cloudGet, cloudPut, cloudDelete };
+  // Carpetas con contraseña de la nube. Lo que el servidor sabe de cada una (para poder abrirlas sin conexión) y,
+  // si la persona eligió "Recordar en este dispositivo", la llave de cifrado: una CryptoKey que no se puede exportar.
+  const vaultsGet = async (who) => { const r = await handlesGet('vaults:' + who); return r ? r.list : null; };
+  const vaultsPut = (who, list) => handlesPut({ key: 'vaults:' + who, vaults: true, who, list });
+  const vkeyKey = (who, check) => 'vkey:' + who + ':' + check;
+  const vkeyGet = async (who, check) => { const r = await handlesGet(vkeyKey(who, check)); return r ? r.cryptoKey : null; };
+  const vkeyPut = (who, check, cryptoKey) => handlesPut({ key: vkeyKey(who, check), vkey: true, who, cryptoKey });
+  const vkeyDelete = (who, check) => handlesDelete(vkeyKey(who, check));
+  const vkeyClear = async (who) => { for (const r of await handlesAll()) if ((r.vkey || r.vaults) && r.who === who) await handlesDelete(r.key); };
+
+  LMD.store = { handlesAll, handlesPut, handlesDelete, canWrite, walk, rootsAll, notesAll, noteGet, notePut, noteDelete, noteHandle, cloudAll, cloudGet, cloudPut, cloudDelete, vaultsGet, vaultsPut, vkeyGet, vkeyPut, vkeyDelete, vkeyClear };
 })();

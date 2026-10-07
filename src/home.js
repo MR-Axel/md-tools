@@ -15,18 +15,34 @@
     '<dt>' + T('Con cuenta') + '</dt><dd>' + T('Notas en la nube (10 gratis). Compartir, historial y conexión con una IA en el plan pago.') + '</dd></dl>';
 
   // Entrar a la cuenta: primero el correo, después el código que llega. Es el mismo formulario en el inicio y en Ajustes → Nube.
-  // Lo que contesta el servidor al pedir o probar un código. Los topes (429) llegan con dos códigos nada más:
-  // too_soon al pedir (uno cada 30 segundos, 5 por hora y 15 por día por correo, 20 por hora por red) y
-  // too_many_tries al probar (6 intentos por código, 10 por hora y 30 por día por correo, 30 por hora por red).
-  // Ninguno cierra las sesiones que ya están abiertas, y se dice.
+  // Lo que contesta el servidor al pedir o probar un código. Cada tope (429) llega con su código y con los segundos
+  // que faltan (retry_after): al pedir, code_gap (uno cada 30 segundos), code_mail_hour y code_mail_day (5 por hora
+  // y 15 por día por correo) y code_ip_hour (20 por hora por red); al probar, tries_code (6 intentos por código),
+  // tries_mail_hour y tries_mail_day (10 por hora y 30 por día por correo) y tries_ip_hour (30 por hora por red).
+  // Un servidor propio sin actualizar contesta con los dos códigos de antes, too_soon y too_many_tries, sin la
+  // espera: para esos queda el aviso general. Ningún tope cierra las sesiones que ya están abiertas, y se dice.
   const KEEPS = 'Donde ya entraste, la sesión sigue abierta.';
   const AUTH_ERRORS = { bad_email: 'Ese correo no parece válido.', bad_code: 'Ese código no coincide.', code_expired: 'El código venció. Pedí otro.', offline: 'No hay conexión con el servidor.',
     mail_failed: 'No se pudo enviar el correo. Probá de nuevo en unos minutos.', mcp_needs_plan: 'Conectar una IA es parte del plan pago.' };
   // Cuándo se pidió el último código para cada correo desde esta pestaña: con eso se sabe si el tope es el de 30 segundos.
   const asked = {};
   const CODE_GAP = 30000;
+  // La espera como se dice: segundos, minutos u horas, redondeado para arriba.
+  const waitText = (s) => (s < 90 ? T(s === 1 ? '1 segundo' : '{n} segundos', { n: s }) : s < 5400 ? T('{n} minutos', { n: Math.ceil(s / 60) }) : T('{n} horas', { n: Math.ceil(s / 3600) }));
+  const LIMITS = {
+    code_mail_hour: 'Se pidieron demasiados códigos para este correo. Probá de nuevo en {a}.', code_mail_day: 'Se pidieron demasiados códigos para este correo. Probá de nuevo en {a}.',
+    code_ip_hour: 'Se pidieron demasiados códigos desde esta red. Probá de nuevo en {a}.',
+    tries_mail_hour: 'Demasiados códigos equivocados para este correo. Probá de nuevo en {a}.', tries_mail_day: 'Demasiados códigos equivocados para este correo. Probá de nuevo en {a}.',
+    tries_ip_hour: 'Demasiados códigos equivocados desde esta red. Probá de nuevo en {a}.',
+  };
   function authWhy(e, mail) {
-    const code = e && e.code;
+    const code = e && e.code; const retry = (e && e.retry) || 0;
+    if (code === 'code_gap' && retry) return T('Recién pediste un código. Esperá {n} segundos para pedir otro.', { n: retry });
+    if (code === 'tries_code') return T('Ese código se probó demasiadas veces y ya no sirve. Pedí uno nuevo.') + ' ' + T(KEEPS);
+    if (LIMITS[code] && retry) return T(LIMITS[code], { a: waitText(retry) }) + ' ' + T(KEEPS);
+    // Lo que sigue es para un servidor que todavía no manda la espera.
+    if (code === 'code_gap' || /^code_/.test(code || '')) return authWhy({ code: 'too_soon' }, mail);
+    if (/^tries_/.test(code || '')) return authWhy({ code: 'too_many_tries' }, mail);
     if (code === 'too_soon') {
       const left = Math.ceil((CODE_GAP - (Date.now() - (asked[mail] || 0))) / 1000);
       if (left > 0) return T('Recién pediste un código. Esperá {n} segundos para pedir otro.', { n: left });
@@ -467,7 +483,7 @@
     say: (text) => { if (sayNow) sayNow(text); },
     pick: (c, what) => { ctx = c; return pick(what, c.say); },
     pickTemplate: (c) => { ctx = c; return pickTemplate(); },
-    perks, signIn,
+    perks, signIn, waitText,
     gate: (c, rec, mode) => { ctx = c; return gate(rec, mode); },
   };
 })();
