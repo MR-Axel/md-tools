@@ -1755,7 +1755,7 @@
     if (x) { LMD.store.handlesDelete(x.dataset.key).then(() => loadTree()); return true; }
     if (e.target.closest('.lmd-root-hint')) { LMD.sync.login(); return true; }
     const bin = e.target.closest('[data-trash]');
-    if (bin) { LMD.extras.trash(bin.dataset.trash); return true; }
+    if (bin) { setDrawer(false); LMD.extras.trash(bin.dataset.trash); return true; }
     // "Bloquear ahora" de una carpeta abierta para la IA.
     if (LMD.vault.aiClick(e)) return true;
     return false;

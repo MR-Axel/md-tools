@@ -213,7 +213,7 @@ try {
       check('"más": insertar un bloque abre el menú de bloques', (await page.locator('.lmd-menu [data-ins]').count()) > 8);
       await away(page);
       await pick('sync'); await page.waitForSelector('.lmd-dlg-card');
-      check('"más": la nube ofrece subir una nota que no está en la nube', /Upload/.test(await page.textContent('.lmd-dlg-card h3')));
+      check('"más": la nube ofrece mover a la nube una nota del navegador', /^Move ".+" to the cloud\?$/.test(await page.textContent('.lmd-dlg-card h3')), await page.textContent('.lmd-dlg-card h3'));
       await page.tap('[data-dlg=no]');
     }
 
@@ -305,6 +305,24 @@ try {
       card = await inCard('.lmd-share');
       check('compartir entra en la pantalla', card.in && !card.cut.length, card);
       await fits(page, 'compartir'); await page.tap('[data-sh=close]');
+    }
+
+    // ---------- Papelera de la nube ----------
+    if (W === 390) {
+      const OLD = 'work/an-old-note-with-a-rather-long-name-for-a-phone.md';
+      await api('PUT', '/notes/' + encodeURIComponent(OLD), { text: '# Old\n' }, session); await api('DELETE', '/notes/' + encodeURIComponent(OLD), undefined, session);
+      await page.tap('[data-act=sidebar]'); await page.waitForTimeout(350);
+      const bin = page.locator('.lmd-xroot[data-root=cloud] > .lmd-trash-link'); await bin.scrollIntoViewIfNeeded();
+      const binBox = await bin.boundingBox();
+      await bin.tap(); await page.waitForSelector('.lmd-trash li'); await page.waitForTimeout(350);
+      card = await inCard('.lmd-trash');
+      const taps = await page.evaluate(() => [...document.querySelectorAll('.lmd-trash-acts button, .lmd-trash .lmd-ask-actions button')].map((b) => Math.round(b.getBoundingClientRect().height)));
+      check('la papelera se abre desde el explorador, cierra la barra y entra en la pantalla, con botones para el dedo', binBox.height >= 40 && !(await drawer()).open && card.in && !card.cut.length && taps.length === 4 && Math.min(...taps) >= 40, [binBox, card, taps]);
+      await fits(page, 'papelera');
+      await page.tap('.lmd-trash [data-tr=back]'); await page.waitForSelector('.lmd-trash-none');
+      check('y restaura con un toque', (await api('GET', '/notes/' + encodeURIComponent(OLD), undefined, session)).status === 200);
+      await page.tap('.lmd-trash [data-tr=no]');
+      await api('DELETE', '/notes/' + encodeURIComponent(OLD) + '?forever=1', undefined, session);
     }
 
     // ---------- Ajustes ----------
