@@ -20,3 +20,4 @@ llms.txt export-ignore
 robots.txt export-ignore
 sitemap.xml export-ignore
 CNAME export-ignore
+support.html export-ignore
