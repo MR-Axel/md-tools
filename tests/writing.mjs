@@ -205,6 +205,15 @@ await app.locator('.lmd-article ol > li > .lmd-li-text').first().click(); await 
 o.vaciosEscritos = (await src()).split('\n').filter((l) => /^(- |\d+\. )/.test(l));
 await app.locator('.lmd-article th.lmd-cell', { hasText: 'A' }).click(); await app.keyboard.press('Tab'); await app.keyboard.type('Z'); await app.keyboard.press('Shift+Tab'); await app.keyboard.type('Y'); await out();
 o.tabCeldas = (await src()).split('\n').find((l) => /^\| [A-Z] /.test(l));
+// Cerrar la pestaña sin esperar la pausa: lo escrito pasa al Markdown en ese momento y el navegador avisa.
+await app.locator('.lmd-article p.lmd-editable', { hasText: 'Texto fijo' }).click(); await app.keyboard.press('End'); await app.keyboard.type(' sin pausa');
+o.alCerrar = await app.evaluate(() => { const e = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(e); return [e.defaultPrevented, document.activeElement.isContentEditable]; });
+o.alCerrarFuente = (await src()).split('\n')[2];
+// Enter en un ítem vacío al final de una lista: el párrafo nuevo se abre afuera de la lista.
+await app.locator('.lmd-article ol > li > .lmd-li-text').first().click(); await app.keyboard.press('End'); await app.keyboard.press('Enter'); await app.keyboard.press('Enter');
+o.fueraDeLista = await app.evaluate(() => { const d = document.activeElement; return [d.classList.contains('lmd-draft'), d.parentNode === document.querySelector('.lmd-article'), d.previousElementSibling && d.previousElementSibling.tagName]; });
+await app.keyboard.type('después de la lista'); await out();
+o.fueraFuente = (await src()).split('\n').filter((l, i, all) => /^1\. /.test(l) || /después/.test(l));
 await app.click('[data-act=mode-read]'); await app.waitForTimeout(500);
 o.vaciosLeyendo = await app.evaluate(() => [document.querySelectorAll('.lmd-article li.lmd-task-item > input.lmd-task').length, /\[ \]/.test(document.querySelector('.lmd-article').textContent)]);
 
@@ -242,6 +251,8 @@ const checks = [
   ['Escape en una celda también, y Ctrl+Z trae de vuelta lo escrito', J(o.escCelda) === J(['| A | B |', '| 1 | 2 |']) && o.escDeshacer === true, [o.escCelda, o.escDeshacer]],
   ['escribir en una tarea, una viñeta y un número vacíos deja el Markdown bien armado', J(o.vaciosEscritos) === J(['- [ ] comprar pan', '- [ ] y leche', '- [ ]', '- uno', '1. primero']), o.vaciosEscritos],
   ['Tab pasa a la celda de al lado con su contenido elegido', o.tabCeldas === '| Y | Z |', o.tabCeldas],
+  ['al cerrar sin esperar la pausa, lo escrito cuenta como cambio sin guardar y el navegador avisa', J(o.alCerrar) === J([true, true]) && o.alCerrarFuente === 'Texto fijo del párrafo. sin pausa', [o.alCerrar, o.alCerrarFuente]],
+  ['Enter en un ítem vacío al final de la lista abre el párrafo afuera, donde queda', J(o.fueraDeLista) === J([true, true, 'OL']) && J(o.fueraFuente) === J(['1. primero', 'después de la lista']), [o.fueraDeLista, o.fueraFuente]],
   ['leyendo, las tareas vacías siguen siendo casillas', J(o.vaciosLeyendo) === J([3, false]), o.vaciosLeyendo],
   ['sin errores de JavaScript', errors.length === 0, errors],
 ];

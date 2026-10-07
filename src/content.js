@@ -2973,6 +2973,11 @@
       if (settings.language !== prev.language) { if (!ui.panel.hidden) { try { sessionStorage.setItem('lmd-panel', panelTab); } catch (e) {} } location.reload(); return; }
       applySettings();
       // Cambió el servidor, o se prendió o apagó la nube: la cuenta y el ícono se vuelven a leer.
+      // Una nota de la nube que estaba abierta era del servidor anterior: lo sin subir queda en la cola y la nota se cierra.
+      if ((settings.cloudUrl || '') !== (prev.cloudUrl || '') && APP && appRoot && appRoot.kind === 'cloud') {
+        if (dirty) LMD.cloud.stash(vParts(HERE).join('/'), raw, diskText).catch(() => {});
+        go('', { discard: true, tree: true });
+      }
       if ((settings.cloudUrl || '') !== (prev.cloudUrl || '')) { LMD.cloud.reset(); LMD.cloud.ready().then(() => { LMD.sync.paint(); if (APP) core.reloadTree(); }); panelStale = true; }
       if (panelStale && !ui.panel.hidden) { panelStale = false; openPanel(); }
       if (RENDER_KEYS.some((k) => JSON.stringify(prev[k]) !== JSON.stringify(settings[k]))) render();

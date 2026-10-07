@@ -168,7 +168,8 @@
       discard(d);
       // Enter en un ítem vacío sale de la lista.
       // El párrafo va justo después de ese ítem, aunque la lista siga más abajo.
-      if (follow && li) openDraft(li, 'p');
+      // Si era el último de una lista suelta en el documento, el párrafo se abre ya afuera, donde va a quedar.
+      if (follow && li) { const list = li.parentNode; openDraft(list && list.parentNode === core.ui.article && !li.nextElementSibling ? list : li, 'p'); }
       else if (follow) openDraft(anchor, 'p');
       return;
     }

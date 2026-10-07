@@ -328,6 +328,12 @@ try {
   await app.click('[data-fb=close]');
 
   console.log('Servidor propio y nube apagada');
+  // Apagar la nube con una nota de la nube abierta: la nota se cierra, en vez de quedar diciendo "guardado en la nube".
+  await app.goto(cloudUrl('proyectos/plan.md')); await app.waitForSelector('.markdown-body h1');
+  const setCloud = (v) => app.evaluate((u) => new Promise((r) => chrome.storage.local.get('settings', (x) => chrome.storage.local.set({ settings: Object.assign({}, x.settings, { cloudUrl: u }) }, r))), v);
+  await setCloud('off'); await app.waitForFunction(() => document.title === 'SharpMD', null, { timeout: 5000 }).catch(() => {});
+  check('apagar la nube con una nota de la nube abierta la cierra', (await app.title()) === 'SharpMD' && !/[?&]f=/.test(app.url()), [await app.title(), app.url()]);
+  await setCloud(base); await app.waitForTimeout(600);
   await app.goto(cloudUrl('proyectos/plan.md')); await app.waitForSelector('.markdown-body h1'); await openSettings('cloud');
   await app.waitForSelector('[data-acct=cloud] [data-c=out]'); await app.click('[data-acct=cloud] [data-c=out]'); await app.waitForSelector('[data-acct=cloud] [data-c=login]');
   check('Nube: salir deja la invitación a entrar', /Crear cuenta o entrar/.test(await text('[data-acct=cloud]')) && !(await stored('cloud')).session);

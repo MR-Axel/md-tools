@@ -1087,6 +1087,10 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
   .lmd-row select, .lmd-row input[type=text] { min-height: 40px; font-size: 16px; }
   .lmd-dlg-field input, .lmd-lk-q, .lmd-share input[type=email], .lmd-share input[type=text], .lmd-share select, .lmd-home-cloud input, .lmd-acct .lmd-signin input, .lmd-pick select { height: 40px; font-size: 16px; }
   .lmd-field input { height: 40px; }
+  /* El comando largo usa todo el ancho, debajo de su nombre y su botón de copiar. */
+  .lmd-field-long { flex-wrap: wrap; }
+  .lmd-field-long span { flex: 1; padding-top: 0; }
+  .lmd-field-long textarea { order: 3; flex: 1 1 100%; }
   .lmd-fb textarea, .lmd-fb input[type=email], .lmd-cm-pop textarea, .lmd-docname-input { font-size: 16px; }
   .lmd-docname-input { height: 36px; }
   .lmd-share li button, .lmd-tokens li button, .lmd-cm-meta .lmd-link, .lmd-cm-foot .lmd-link, .lmd-field .lmd-link, .lmd-home-acct .lmd-link { min-height: 40px; }
