@@ -102,27 +102,41 @@ try {
   const box = await app.evaluate(() => {
     const q = (s) => document.querySelector('.lmd-sidebar > .lmd-home-cloud ' + s); const b = q('.lmd-home-acct-who b'); const side = document.querySelector('.lmd-sidebar').getBoundingClientRect(); const row = q('.lmd-home-acct').getBoundingClientRect();
     return { email: b.textContent, sub: q('.lmd-home-acct-who small').textContent, oneLine: b.getBoundingClientRect().height < 26 && row.height < 52, cut: b.scrollWidth > b.clientWidth, title: b.title,
-      inside: row.right <= side.right && row.left >= side.left, atFoot: Math.abs(side.bottom - row.bottom) < 16, shut: q('[data-cloud=menu]').getAttribute('aria-expanded'), early: document.querySelectorAll('[data-cloud=open], [data-cloud=logout]').length };
+      inside: row.right <= side.right && row.left >= side.left, atFoot: Math.abs(side.bottom - row.bottom) < 16, shut: q('[data-cloud=menu]').getAttribute('aria-expanded'), early: document.querySelectorAll('[data-cloud=settings], [data-cloud=logout]').length };
   });
   await app.click('[data-cloud=menu]');
   const menu = await app.evaluate(() => { const m = document.querySelector('.lmd-side-acct .lmd-menu'); const r = m.getBoundingClientRect(); const row = document.querySelector('.lmd-home-acct').getBoundingClientRect();
-    return { acts: [...m.querySelectorAll('[data-cloud]')].map((x) => x.dataset.cloud), labels: [...m.querySelectorAll('[data-cloud]')].map((x) => x.textContent.trim()), above: r.bottom <= row.top && r.top >= 0, open: document.querySelector('[data-cloud=menu]').getAttribute('aria-expanded') }; });
+    return { acts: [...m.querySelectorAll('[data-cloud]')].map((x) => x.dataset.cloud), labels: [...m.querySelectorAll('[data-cloud]')].map((x) => x.textContent.trim()),
+      order: [...m.querySelector('.lmd-menu-list').children].map((x) => (x.tagName === 'HR' ? '-' : x.dataset.cloud + (x.classList.contains('lmd-menu-sub') ? '>' : ''))).join(' '), icons: Object.fromEntries([...m.querySelectorAll('[data-cloud]')].map((x) => [x.dataset.cloud, x.querySelector('svg').outerHTML])),
+      inset: m.querySelector('[data-cloud=plan] svg').getBoundingClientRect().left - m.querySelector('[data-cloud=settings] svg').getBoundingClientRect().left, rowH: Math.round(m.querySelector('[data-cloud=plan]').getBoundingClientRect().height), above: r.bottom <= row.top && r.top >= 0, open: document.querySelector('[data-cloud=menu]').getAttribute('aria-expanded') }; });
   await app.keyboard.press('Escape');
   const shutAgain = await app.evaluate(() => [document.querySelectorAll('.lmd-side-acct .lmd-menu').length, document.querySelector('[data-cloud=menu]').getAttribute('aria-expanded'), document.activeElement.dataset.cloud]);
   check('conectado: correo, plan y notas', box.email === mail && /^Plan gratis · 0 de 10 notas/.test(box.sub), box);
   check('la cuenta es una fila fija al pie de la barra lateral, y un correo largo no la parte en dos renglones', box.oneLine && box.inside && box.atFoot && box.title === mail, box);
-  check('las acciones de la cuenta están en un menú que abre hacia arriba: abrir la nube, ver planes, conectar una IA y salir', box.shut === 'false' && box.early === 0 && menu.acts.join() === 'open,plan,ai,logout' && menu.labels.join() === 'Abrir la nube,Ver planes,Conectar una IA,Salir' && menu.above && menu.open === 'true', [box, menu]);
+  check('las acciones de la cuenta están en un menú que abre hacia arriba: Ajustes, sus pestañas Plan e IA como atajos, y Salir aparte', box.shut === 'false' && box.early === 0 && menu.acts.join() === 'settings,plan,ai,logout' && menu.labels.join() === 'Ajustes,Plan,IA,Salir' && menu.order === 'settings plan> ai> - logout' && menu.above && menu.open === 'true', [box, menu.acts, menu.labels, menu.order]);
+  check('el menú es compacto, con un ícono por renglón, y los atajos van un paso adentro', Object.values(menu.icons).every((s) => /^<svg/.test(s)) && menu.inset >= 16 && menu.rowH <= 32, [menu.inset, menu.rowH]);
   check('Escape cierra el menú de la cuenta y deja el foco en la fila', shutAgain[0] === 0 && shutAgain[1] === 'false' && shutAgain[2] === 'menu', shutAgain);
   await app.click('[data-cloud=menu]');
 
-  await Promise.all([app.waitForNavigation(), app.click('[data-cloud=open]')]); await app.waitForSelector('.lmd-draft'); await app.waitForSelector('.lmd-xroot[data-root=cloud] .lmd-node.lmd-active');
+  // "Ajustes" abre Ajustes en la pestaña de la nube; los atajos llevan el nombre y el ícono de su pestaña.
+  await app.click('[data-cloud=settings]'); await app.waitForSelector('.lmd-panel-card [data-acct=cloud] [data-c=open]');
+  const tabs = await app.evaluate(() => ({ on: document.querySelector('.lmd-panel-card [data-ptab].lmd-on').dataset.ptab, menu: document.querySelectorAll('.lmd-side-acct .lmd-menu').length,
+    plan: [document.querySelector('[data-ptab=plan] svg').outerHTML, document.querySelector('[data-ptab=plan]').textContent.trim()], ai: [document.querySelector('[data-ptab=ai] svg').outerHTML, document.querySelector('[data-ptab=ai]').textContent.trim()], gear: document.querySelector('[data-act=settings] svg').outerHTML }));
+  check('"Ajustes" del menú de la cuenta abre Ajustes en la pestaña Nube y cierra el menú', tabs.on === 'cloud' && tabs.menu === 0, tabs.on);
+  check('cada atajo lleva el mismo nombre y el mismo ícono que su pestaña, y Ajustes el del botón de arriba', tabs.plan[0] === menu.icons.plan && tabs.plan[1] === 'Plan' && tabs.ai[0] === menu.icons.ai && tabs.ai[1] === 'IA' && tabs.gear === menu.icons.settings, [tabs.plan[1], tabs.ai[1]]);
+  await app.keyboard.press('Escape'); await app.waitForSelector('.lmd-panel-card', { state: 'hidden' });
+  await app.click('[data-cloud=menu]'); await app.click('[data-cloud=plan]'); await app.waitForSelector('.lmd-acct-card, .lmd-panel-card [data-ptab=plan].lmd-on');
+  check('el atajo Plan abre los planes', await app.waitForSelector('.lmd-acct-card .lmd-plans', { timeout: 8000 }).then(() => true, () => false));
+  await app.keyboard.press('Escape'); await app.waitForSelector('.lmd-acct-card', { state: 'detached' });
+  await app.click('[data-cloud=menu]'); await app.click('[data-cloud=settings]'); await app.waitForSelector('.lmd-panel-card [data-acct=cloud] [data-c=open]');
+  await Promise.all([app.waitForNavigation(), app.click('.lmd-panel-card [data-acct=cloud] [data-c=open]')]); await app.waitForSelector('.lmd-draft'); await app.waitForSelector('.lmd-xroot[data-root=cloud] .lmd-node.lmd-active');
   const firstNote = (await api('GET', '/notes', undefined, session)).json.map((n) => n.path);
   const empty = await app.evaluate(() => ({ url: location.search, tree: [...document.querySelectorAll('.lmd-xroot[data-root=cloud] .lmd-node')].map((n) => n.textContent.trim() + (n.classList.contains('lmd-active') ? '*' : '')), shown: !document.querySelector('.lmd-pane-files').hidden && document.querySelector('.lmd-pane-files').getBoundingClientRect().width > 100 }));
-  check('sin notas, "Abrir la nube" abre la carpeta con la primera lista para escribir', firstNote.length === 1 && /^nota-.*\.md$/.test(firstNote[0]) && /f=cloud%2Fnota-/.test(empty.url) && empty.shown && empty.tree.length === 1 && empty.tree[0] === firstNote[0] + '*', [firstNote, empty]);
+  check('sin notas, "Abrir la carpeta Nube" de Ajustes abre la carpeta con la primera lista para escribir', firstNote.length === 1 && /^nota-.*\.md$/.test(firstNote[0]) && /f=cloud%2Fnota-/.test(empty.url) && empty.shown && empty.tree.length === 1 && empty.tree[0] === firstNote[0] + '*', [firstNote, empty]);
 
   console.log('Idioma: Ajustes sin el menú de insertar encima');
   await app.waitForSelector('.lmd-menu');
-  await app.evaluate(() => document.querySelector('[data-act=settings]').click()); await app.waitForSelector('.lmd-panel-card');
+  await app.evaluate(() => document.querySelector('[data-act=settings]').click()); await app.waitForSelector('.lmd-panel-card'); await app.click('[data-ptab=look]'); // Ajustes recuerda la última pestaña, que fue la de la nube
   check('abrir Ajustes cierra el menú de bloques', (await app.locator('.lmd-menu').count()) === 0);
   await Promise.all([app.waitForNavigation(), app.click('.lmd-seg[data-seg=language] button[data-val=en]')]);
   await app.waitForSelector('.lmd-panel-card'); await app.waitForSelector('html.lmd-editing'); await app.waitForTimeout(900);
@@ -320,8 +334,9 @@ try {
   await app.locator('.lmd-xroot[data-root=cloud] .lmd-node-dir', { hasText: 'relleno' }).click(); await app.waitForSelector('.lmd-xroot[data-root=cloud] .lmd-node-kids .lmd-node');
   check('una carpeta de la nube se despliega con todas sus notas', (await app.locator('.lmd-xroot[data-root=cloud] .lmd-node-kids a.lmd-node').count()) === 10);
   await app.click('[data-cloud=menu]'); const proMenu = await app.evaluate(() => [...document.querySelectorAll('.lmd-side-acct .lmd-menu [data-cloud]')].map((x) => x.dataset.cloud));
-  check('con plan pago el menú de la cuenta no ofrece ver planes', proMenu.join() === 'open,ai,logout', proMenu);
-  await Promise.all([app.waitForNavigation(), app.click('[data-cloud=open]')]); await app.waitForSelector('.markdown-body h1'); await app.waitForSelector('.lmd-pane-files .lmd-node.lmd-active');
+  check('con plan pago el menú de la cuenta es el mismo: Ajustes, Plan, IA y Salir', proMenu.join() === 'settings,plan,ai,logout', proMenu);
+  await app.click('[data-cloud=settings]'); await app.waitForSelector('.lmd-panel-card [data-acct=cloud] [data-c=open]');
+  await Promise.all([app.waitForNavigation(), app.click('.lmd-panel-card [data-acct=cloud] [data-c=open]')]); await app.waitForSelector('.markdown-body h1'); await app.waitForSelector('.lmd-pane-files .lmd-node.lmd-active');
   const footOpen = await app.evaluate(() => { const b = document.querySelector('.lmd-sidebar > .lmd-side-acct [data-cloud=menu]'); return !!b && b.offsetWidth > 0 && document.querySelector('.lmd-home').hidden; });
   check('con una nota abierta la cuenta sigue al pie de la barra lateral', footOpen);
   const tree = await app.evaluate(() => ({ url: location.search, active: document.querySelector('.lmd-node.lmd-active').textContent.trim(), files: document.querySelector('.lmd-pane-files').getBoundingClientRect().height > 60 }));

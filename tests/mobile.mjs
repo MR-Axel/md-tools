@@ -156,7 +156,7 @@ try {
     await page.tap('.lmd-sidebar [data-cloud=menu]'); await page.waitForSelector('.lmd-side-acct .lmd-menu');
     const acctMenu = await page.evaluate(() => { const side = document.querySelector('.lmd-sidebar').getBoundingClientRect(); const m = document.querySelector('.lmd-side-acct .lmd-menu').getBoundingClientRect();
       return { inside: m.left >= side.left && m.right <= side.right && m.top >= 0, acts: [...document.querySelectorAll('.lmd-side-acct .lmd-menu [data-cloud]')].map((x) => x.dataset.cloud), low: Math.min(...[...document.querySelectorAll('.lmd-side-acct .lmd-menu button')].map((x) => x.getBoundingClientRect().height)) }; });
-    check(tag + 'su menú abre dentro del panel, con renglones de 44 px', acctMenu.inside && acctMenu.acts.includes('logout') && acctMenu.acts.includes('ai') && acctMenu.low >= 44, acctMenu);
+    check(tag + 'su menú abre dentro del panel, con renglones de 44 px', acctMenu.inside && acctMenu.acts.join() === 'settings,plan,ai,logout' && acctMenu.low >= 44, acctMenu);
     await fits(page, tag + 'barra lateral abierta, con el menú de la cuenta');
     await page.tap('.lmd-sidebar [data-cloud=menu]'); await page.waitForSelector('.lmd-side-acct .lmd-menu', { state: 'detached' });
     await fits(page, tag + 'barra lateral abierta');

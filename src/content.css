@@ -1432,6 +1432,10 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 /* Los menús de lista (explorador, lectura, nube, "más"): el ancho de lo que dicen, renglones bajos. */
 .lmd-menu.lmd-menu-narrow, .lmd-menu.lmd-menu-read, .lmd-menu.lmd-menu-more { width: max-content; min-width: 168px; max-width: min(320px, calc(100vw - 16px)); padding: 5px; border-radius: 9px; font-size: 13px; }
 .lmd-menu-list { gap: 1px; }
+/* El menú de la cuenta: igual de compacto. Los atajos a pestañas de Ajustes van un paso adentro, y Salir, aparte. */
+.lmd-menu.lmd-menu-acct { padding: 5px; border-radius: 9px; font-size: 13px; }
+.lmd-menu-list .lmd-menu-sep { height: 0; margin: 4px 3px; border: 0; border-top: 1px solid var(--line); }
+.lmd-menu-list button.lmd-menu-sub { padding-left: 31px; }
 .lmd-menu-list button { gap: 8px; padding: 5px 10px 5px 8px; }
 .lmd-menu-list button svg { width: 15px; height: 15px; }
 .lmd-menu button.lmd-menu-danger, .lmd-menu button.lmd-menu-danger svg { color: var(--danger, #dc2626); opacity: 1; }
@@ -1441,6 +1445,8 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 /* Con el dedo, cada renglón conserva su alto. */
 @media (max-width: 720px), (pointer: coarse) {
   .lmd-menu.lmd-menu-narrow, .lmd-menu.lmd-menu-read, .lmd-menu.lmd-menu-more { min-width: 200px; font-size: 14.5px; }
+  .lmd-menu.lmd-menu-acct { font-size: 14.5px; }
+  .lmd-menu-list button.lmd-menu-sub { padding-left: 37px; }
   .lmd-menu button { min-height: 42px; }
   .lmd-menu-list button { padding: 7px 12px 7px 10px; }
   .lmd-menu-list button svg { width: 17px; height: 17px; }
