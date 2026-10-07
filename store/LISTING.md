@@ -58,7 +58,7 @@ FILES
 • Export to a single HTML file, or to PDF through print
 
 PRIVATE BY DESIGN
-Files are read in your browser and never uploaded. There is no account, no analytics and no server.
+Files are read in your browser and never uploaded. No analytics. Cloud notes are optional: a note reaches the server only when you send it there.
 
 Free and open source (MIT): https://github.com/MR-Axel/sharpmd
 
@@ -97,7 +97,7 @@ ARCHIVOS
 • Exporta a un solo archivo HTML, o a PDF desde imprimir
 
 PRIVACIDAD
-Los archivos se leen en tu navegador y nunca se suben. No hay cuenta, analítica ni servidor.
+Los archivos se leen en tu navegador y nunca se suben. Sin analítica. Las notas en la nube son opcionales: una nota llega al servidor solo cuando la mandás.
 
 Gratis y de código abierto (MIT): https://github.com/MR-Axel/sharpmd
 
@@ -134,7 +134,7 @@ Sharpmd renders Markdown files in the browser and lets the user edit and save th
 
 **¿Usa código remoto?** No. Todas las librerías van dentro del paquete.
 
-**Uso de datos:** no marcar ninguna categoría. Tildar las tres declaraciones: no se venden datos, no se usan para fines ajenos al propósito, no se usan para determinar solvencia.
+**Uso de datos:** con la nube prendida hay que marcar dos categorías, porque quien entra con su cuenta deja su correo y las notas que manda: "Información de identificación personal" (el correo) y "Contenido del sitio web" (el texto de las notas en la nube). Sin cuenta no sale nada. Tildar las tres declaraciones: no se venden datos, no se usan para fines ajenos al propósito, no se usan para determinar solvencia.
 
 ## Lo que hay que saber antes de enviar
 

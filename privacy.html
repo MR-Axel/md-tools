@@ -33,15 +33,24 @@
   <div lang="en">
     <h1>Privacy</h1>
     <p class="date">Last updated: October 6, 2026</p>
-    <p>Sharpmd collects no data. It has no account, no analytics and no server of its own.</p>
+    <p>Sharpmd works without an account and has no analytics. Cloud notes are optional, and they are the only thing that leaves your machine.</p>
     <h2>Your files</h2>
     <p>The files you open are read by your browser, on your machine. They are never uploaded. When you save, the browser writes to the file or folder you picked.</p>
     <h2>What is stored, and where</h2>
     <p>Settings, reading positions and the list of recently opened folders are stored in your browser, on your device. Clearing the site or extension data removes them.</p>
+    <h2>Cloud notes, if you sign in</h2>
+    <p>The sync server stores your email address, the notes you send to the cloud and, on the paid plan, their previous versions for 30 days. Sign-in codes, sessions and AI tokens are stored as hashes.</p>
+    <ul>
+      <li>Cloud notes are not end-to-end encrypted. The server has to read them to share them and to serve your AI over MCP.</li>
+      <li>A note you share is visible to the accounts you share it with. A public link shows it to anyone who has the link, and the password if you set one.</li>
+      <li>The sign-in code is sent by email through Resend, which receives your address to deliver it.</li>
+      <li>Deleting a note removes it from the server. To delete the whole account, open an issue on GitHub and you will be asked to confirm from the account's email.</li>
+    </ul>
     <h2>Network requests</h2>
     <ul>
       <li>The extension installed from its ZIP checks once a day the version number published on GitHub, to tell you when there is an update. It sends no data, and you can make it weekly or turn it off in Settings. The Chrome Web Store version does not make this request.</li>
       <li>Images that a document links from the web are loaded from where the document points.</li>
+      <li>With cloud notes in use, the app talks to <code>sync.sharpmd.app</code>.</li>
       <li>The web version is a static page hosted on GitHub Pages. GitHub, as the host, may log the address of the visitor like any web server.</li>
     </ul>
     <h2>Permissions of the extension</h2>
@@ -57,15 +66,24 @@
   <div lang="es">
     <h1>Privacidad</h1>
     <p class="date">Última actualización: 6 de octubre de 2026</p>
-    <p>Sharpmd no junta datos. No tiene cuenta, analítica ni servidor propio.</p>
+    <p>Sharpmd funciona sin cuenta y no tiene analítica. Las notas en la nube son opcionales, y son lo único que sale de tu máquina.</p>
     <h2>Tus archivos</h2>
     <p>Los archivos que abrís los lee tu navegador, en tu máquina. Nunca se suben. Al guardar, el navegador escribe en el archivo o la carpeta que elegiste.</p>
     <h2>Qué se guarda y dónde</h2>
     <p>Los ajustes, la posición de lectura y la lista de carpetas recientes se guardan en tu navegador, en tu dispositivo. Si borrás los datos del sitio o de la extensión, se van.</p>
+    <h2>Notas en la nube, si entrás con tu cuenta</h2>
+    <p>El servidor de sincronización guarda tu correo, las notas que mandás a la nube y, en el plan pago, sus versiones anteriores durante 30 días. Los códigos de acceso, las sesiones y los tokens para la IA se guardan como hashes.</p>
+    <ul>
+      <li>Las notas de la nube no van cifradas de punta a punta. El servidor tiene que leerlas para compartirlas y para dárselas a tu IA por MCP.</li>
+      <li>Una nota compartida la ven las cuentas con las que la compartís. Un enlace público se la muestra a quien tenga el enlace, y la contraseña si le pusiste una.</li>
+      <li>El código de acceso llega por correo a través de Resend, que recibe tu dirección para entregarlo.</li>
+      <li>Al eliminar una nota se borra del servidor. Para borrar la cuenta entera, abrí un issue en GitHub y se te va a pedir que confirmes desde el correo de la cuenta.</li>
+    </ul>
     <h2>Pedidos de red</h2>
     <ul>
       <li>La extensión instalada desde el ZIP mira una vez por día el número de versión publicado en GitHub, para avisarte cuando hay una actualización. No manda ningún dato, y desde Ajustes lo podés pasar a semanal o apagar. La versión de la tienda de Chrome no hace este pedido.</li>
       <li>Las imágenes que un documento enlaza desde la web se cargan desde donde apunta el documento.</li>
+      <li>Con las notas en la nube en uso, la app habla con <code>sync.sharpmd.app</code>.</li>
       <li>La versión web es una página estática alojada en GitHub Pages. GitHub, como alojamiento, puede registrar la dirección de quien la visita, como cualquier servidor web.</li>
     </ul>
     <h2>Permisos de la extensión</h2>

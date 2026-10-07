@@ -136,9 +136,11 @@ Todas van copiadas en `vendor/`, porque Manifest V3 no permite cargar código re
 
 El HTML que sale del Markdown pasa por DOMPurify antes de entrar a la página.
 
-## Servidor de sincronización, opcional
+## Notas en la nube y servidor de sincronización
 
-En `server/` está Sharpmd Sync: cuentas, notas en la nube y un servidor MCP para que una IA las lea y las escriba. Es un solo archivo, sin dependencias, y lo podés alojar vos. Sharpmd no muestra nada de la nube hasta que se carga la dirección de un servidor en Ajustes → Nube. El detalle está en [server/README.md](server/README.md).
+En `server/` está Sharpmd Sync: cuentas, notas en la nube y un servidor MCP para que una IA las lea y las escriba. Entrás desde la pantalla de inicio con un código que llega a tu correo. El plan gratis guarda 10 notas en la nube; el pago (USD 3,99 por mes o USD 39 por año) no tiene límite y suma compartir, la conexión MCP, 30 días de historial y las opciones de apariencia.
+
+El servidor es un solo archivo, sin dependencias, y lo podés alojar vos: cargás su dirección en Ajustes → Cuenta, o escribís `off` ahí para usar Sharpmd sin nada de nube. El detalle está en [server/README.md](server/README.md).
 
 La app es MIT. El servidor de `server/` es AGPL-3.0 o posterior.
 
@@ -146,4 +148,4 @@ La app es MIT. El servidor de `server/` es AGPL-3.0 o posterior.
 
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/surlabs)
 
-Sharpmd es gratis y no junta datos. Si te ahorra tiempo, podés [bancar la próxima herramienta en Ko-fi](https://ko-fi.com/surlabs).
+El editor es gratis y no tiene analítica. Si te ahorra tiempo, podés [bancar la próxima herramienta en Ko-fi](https://ko-fi.com/surlabs).

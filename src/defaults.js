@@ -17,7 +17,7 @@
     wrapCode: true, // las líneas largas de los bloques de código bajan de renglón
     autosave: false,
     autosaveDelay: 2000, // ms después del último cambio
-    cloudUrl: '', // servidor de sincronización propio; vacío usa el de la versión, si trae uno
+    cloudUrl: '', // servidor de sincronización propio; vacío usa el de la versión, "off" deja la app sin nube
     codeColor: '', // tinte de los bloques de código; vacío = el del tema
     diagramShape: 'round', // round | square: nodos y flechas de los diagramas de flujo
     focusMode: false, // al editar, atenúa todo menos el bloque en el que se escribe
@@ -551,7 +551,7 @@
   const lang = () => current;
 
   // Servidor de sincronización de esta versión. Vacío: la nube no aparece.
-  const CLOUD_URL = '';
+  const CLOUD_URL = 'https://sync.sharpmd.app';
   // Dirección pública de la app web: es la que llevan los enlaces para compartir.
   const WEB_APP_URL = 'https://sharpmd.app/src/app.html';
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';

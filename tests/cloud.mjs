@@ -22,6 +22,8 @@ const mcp = (token, name, args) => fetch(base + '/mcp', { method: 'POST', header
 
 try {
   await app.goto(home); await app.waitForSelector('.lmd-home');
+  await app.evaluate(() => new Promise((resolve) => chrome.storage.local.set({ settings: { cloudUrl: 'off' } }, resolve)));
+  await app.goto(home); await app.waitForSelector('.lmd-home');
   o.sinServidor = await app.evaluate(() => document.querySelector('.lmd-home-cloud').hidden);
   await app.evaluate((url) => new Promise((resolve) => chrome.storage.local.set({ settings: { cloudUrl: url } }, resolve)), base);
   await app.goto(home); await app.waitForSelector('.lmd-home-cloud:not([hidden]) [data-cloud=ask]');
@@ -86,7 +88,7 @@ try {
 
 const J = (v) => JSON.stringify(v);
 const checks = [
-  ['sin servidor configurado la nube no aparece', o.sinServidor === true],
+  ['con la nube apagada en Ajustes no aparece', o.sinServidor === true],
   ['un código equivocado avisa', /no coincide/.test(o.codigoMalo || ''), o.codigoMalo],
   ['entrar muestra la cuenta y el cupo', /ana@ejemplo\.test · 0 de 10 notas/.test(o.cuenta || ''), o.cuenta],
   ['con la cuenta abierta, la nota nueva va a la nube', o.url === true],

@@ -89,11 +89,13 @@ A page cannot write to disk on its own, so the first time you save a file opened
 
 ## Privacy
 
-Sharpmd collects nothing. Settings, reading positions and browser notes are stored in your browser. The only network request the extension makes is the daily check of the version number published here, which you can turn off. HTML produced from the Markdown goes through DOMPurify before it reaches the page. Details in the [privacy page](https://sharpmd.app/privacy.html).
+No analytics. Settings, reading positions and browser notes are stored in your browser. Files you open are never uploaded. Cloud notes are optional: a note reaches the sync server only when you send it there. Apart from that, the only network request the extension makes is the daily check of the version number published here, which you can turn off. HTML produced from the Markdown goes through DOMPurify before it reaches the page. Details in the [privacy page](https://sharpmd.app/privacy.html).
 
-## Optional sync server
+## Cloud notes and the sync server
 
-`server/` holds Sharpmd Sync: accounts, notes in the cloud and an MCP endpoint so an AI can read and write them. It is one file with no dependencies, and you can host it yourself. Sharpmd shows nothing about the cloud until a server address is set in Settings → Cloud. See [server/README.md](server/README.md).
+`server/` holds Sharpmd Sync: accounts, notes in the cloud and an MCP endpoint so an AI can read and write them. Sign in from the start screen with a code sent to your email. The free plan holds 10 cloud notes; the paid plan (USD 3.99 a month or USD 39 a year) has no limit and adds sharing, the MCP connection, 30 days of version history and the appearance options.
+
+The server is one file with no dependencies, and you can host it yourself: set its address in Settings → Account, or type `off` there to use Sharpmd with no cloud at all. See [server/README.md](server/README.md).
 
 ## Development
 
@@ -155,7 +157,7 @@ All of them are vendored in `vendor/`, because Manifest V3 does not allow remote
 
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/surlabs)
 
-Sharpmd is free and collects no data. If it saves you time, you can [support the next tool on Ko-fi](https://ko-fi.com/surlabs).
+The editor is free and has no analytics. If it saves you time, you can [support the next tool on Ko-fi](https://ko-fi.com/surlabs).
 
 ## License
 

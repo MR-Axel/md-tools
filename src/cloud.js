@@ -12,7 +12,7 @@
       chrome.storage.local.get('cloud', (r) => {
         const c = (r && r.cloud) || {};
         session = c.session || ''; email = c.email || '';
-        LMD.load().then((s) => { base = String(s.cloudUrl || LMD.CLOUD_URL || '').replace(/\/+$/, ''); resolve(); });
+        LMD.load().then((s) => { base = String(s.cloudUrl || LMD.CLOUD_URL || '').trim().replace(/\/+$/, ''); if (/^off$/i.test(base)) base = ''; resolve(); });
       });
     });
     return loaded;
