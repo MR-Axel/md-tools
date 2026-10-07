@@ -300,7 +300,6 @@
     table: { body: () => ['| ' + T('Columna') + ' 1 | ' + T('Columna') + ' 2 |', '| --- | --- |', '|  |  |'], then: (top) => { const c = top.querySelector('th'); if (c) { c.focus(); getSelection().selectAllChildren(c); } } },
     code: { body: () => ['```', '', '```'], then: (top) => core.editCode(top) },
     diagram: { body: () => ['```mermaid', 'graph LR', '  A[' + T('Inicio') + '] --> B[' + T('Fin') + ']', '```'], then: (top) => { if (LMD.diagram) LMD.diagram.edit(top.matches('.lmd-diagram, pre.lmd-mermaid') ? top : top.querySelector('.lmd-diagram, pre.lmd-mermaid')); } },
-    math: { body: () => ['$$', 'E = mc^2', '$$'] },
     alert: { body: () => ['> [!NOTE]', '> ' + T('Texto del aviso')], then: (top) => { const p = top.querySelector('.lmd-editable'); if (p) { p.focus(); getSelection().selectAllChildren(p); } } },
     hr: { body: () => ['---'] },
     board: { body: () => ['```kanban', '## ' + T('Por hacer'), '- [ ] ' + T('Primera tarjeta'), '', '## ' + T('En curso'), '', '## ' + T('Hecho'), '```'] },
@@ -318,6 +317,8 @@
       LMD.links.dialog(null).then((link) => { if (link) insertTemplate(after, [LMD.links.md(link)]); });
       return;
     }
+    // Una fórmula no se inserta con un ejemplo: abre su editor, y recién se escribe al aplicar.
+    if (what === 'math') { LMD.formula.create(after); return; }
     const t = TEMPLATES[what];
     if (t) insertTemplate(after, t.body(), t.then);
   }
@@ -376,7 +377,7 @@
     menu = el('div', { class: 'lmd-menu', role: 'menu' });
     menu.innerHTML =
       '<p class="lmd-menu-label">' + T(block ? 'Insertar debajo' : 'Insertar') + '</p>' +
-      '<div class="lmd-menu-grid">' + INSERTS.map((i) => '<button type="button" role="menuitem" data-ins="' + i[0] + '">' + (ICON['b_' + i[0]] || '') + '<span>' + T(i[1]) + '</span></button>').join('') + '</div>' +
+      '<div class="lmd-menu-grid">' + INSERTS.filter((i) => i[0] !== 'math' || core.settings.plugins.katex).map((i) => '<button type="button" role="menuitem" data-ins="' + i[0] + '">' + (ICON['b_' + i[0]] || '') + '<span>' + T(i[1]) + '</span></button>').join('') + '</div>' +
       (block && !draft && span(block) ?
         (plain ? '<p class="lmd-menu-label">' + T('Convertir en') + '</p><div class="lmd-menu-grid">' +
           [['p', 'Párrafo'], ['h1', 'Título 1'], ['h2', 'Título 2'], ['h3', 'Título 3']].map((i) => '<button type="button" role="menuitem" data-conv="' + i[0] + '">' + ICON['b_' + i[0]] + '<span>' + T(i[1]) + '</span></button>').join('') + '</div>' : '') +
@@ -557,6 +558,7 @@
     remove: (node) => { const b = topBlock(node); if (b) removeBlock(b); },
     blur: (d) => commitDraft(d, false),
     sync: syncDraft,
+    put: (after, body) => insertTemplate(after, body),
     drop: (d) => { d._done = true; unplace(d); },
     settle: (d) => commitDraft(d, 'stay') || null,
     menuAt: (x, y) => openMenu(x, y, core.lastBlock && core.lastBlock.isConnected ? topBlock(core.lastBlock) : blockNear(window.innerHeight)),

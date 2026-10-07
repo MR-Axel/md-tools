@@ -356,9 +356,10 @@
     if (!nodes.length) return;
     if (!(await ensure('katex')) || !window.katex) return;
     nodes.forEach((n) => {
+      // Una fórmula con error no muestra el mensaje crudo de KaTeX: queda el código, con un aviso corto.
       try {
-        katex.render(n.getAttribute('data-tex'), n, { displayMode: n.classList.contains('lmd-math-block'), throwOnError: false });
-      } catch (e) { n.textContent = n.getAttribute('data-tex'); }
+        katex.render(n.getAttribute('data-tex'), n, { displayMode: n.classList.contains('lmd-math-block'), throwOnError: true });
+      } catch (e) { LMD.formula.fail(n, e); }
     });
   }
 
@@ -642,6 +643,7 @@
     LMD.write.init(core);
     LMD.links.init(core);
     LMD.diagram.init(core);
+    LMD.formula.init(core);
     LMD.extras.init(core);
     LMD.board.init(core);
     ui.sync = ui.main.querySelector('.lmd-sync');
