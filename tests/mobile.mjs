@@ -344,6 +344,8 @@ try {
       await page.tap('[data-ptab=ai]'); await page.waitForSelector('[data-acct=ai] [data-c=token]'); await page.tap('[data-acct=ai] [data-c=token]'); await page.waitForSelector('.lmd-ai-new');
       const cmd = await page.evaluate(() => { const t = document.querySelector('[data-acct=ai] .lmd-field-long textarea'); const r = t.getBoundingClientRect(); return { cut: t.scrollWidth > t.clientWidth + 1 || t.scrollHeight > t.clientHeight + 2, inside: r.left >= 0 && r.right <= window.innerWidth, whole: /--header "Authorization: Bearer mdt_\S+"$/.test(t.value), name: document.querySelector('.lmd-tokens li span').textContent.split(' · ')[0] }; });
       check(tag + 'el comando para conectar la IA se ve entero, y el token se llama "AI"', !cmd.cut && cmd.inside && cmd.whole && cmd.name === 'AI', cmd);
+      const tk = await page.evaluate(() => { const box = (n) => { const r = n.getBoundingClientRect(); return { in: r.left >= 0 && r.right <= window.innerWidth + 1, h: Math.round(r.height) }; }; return { brief: box(document.querySelector('[data-acct=ai] [data-c=brief]')), row: [...document.querySelector('.lmd-tokens li').querySelectorAll('button')].map(box), share: box(document.querySelector('[data-acct=ai] .lmd-tok-share')) }; });
+      check(tag + 'copiar las instrucciones, las acciones de cada token y el permiso de compartir entran en la pantalla y se pueden tocar', tk.brief.in && tk.brief.h >= 40 && tk.row.length === 2 && tk.row.every((b) => b.in && b.h >= 40) && tk.share.in, tk);
       await fits(page, tag + 'ajustes, IA con un token recién creado');
     }
     await page.tap('[data-act=close-panel]');

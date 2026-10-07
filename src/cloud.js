@@ -595,8 +595,8 @@
       try { await Z.forgetAll(email); } catch (e) { /* sin IndexedDB no había nada guardado */ }
       session = ''; email = ''; listCache = null; vaultCache = null; setTeam(null); await remember();
     },
-    // Con folder, el token solo alcanza esa carpeta.
-    newToken: (name, folder) => api('POST', '/tokens', folder ? { name, folder } : { name }),
+    // Con folder, el token solo alcanza esa carpeta. Con share, puede compartir notas y crear enlaces públicos.
+    newToken: (name, folder, share) => api('POST', '/tokens', Object.assign({ name }, folder ? { folder } : {}, share ? { share: true } : {})),
     // Comentarios para la IA sobre una nota propia. Con all vienen también los resueltos.
     comments: (p, all) => api('GET', '/comments?path=' + encodeURIComponent(p) + (all ? '&all=1' : '')),
     comment: (p, quote, text) => api('POST', '/comments', { path: p, quote, text }),

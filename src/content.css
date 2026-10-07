@@ -1389,3 +1389,11 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 /* Dentro de la app de la tienda (Android) no se ofrece comprar, cambiar el cobro ni donar: el plan se ve, no se vende. */
 .lmd-store-app .lmd-plan-buy, .lmd-store-app [data-pay], .lmd-store-app .lmd-ptabs-link, .lmd-store-app .lmd-plan h4 small, .lmd-store-app .lmd-team-seats, .lmd-store-app .lmd-team-cost,
 .lmd-store-app .lmd-plan a[target="_blank"], .lmd-store-app .lmd-team a[target="_blank"], .lmd-store-app .lmd-team-solo a, .lmd-store-app .lmd-paywait { display: none !important; }
+
+/* Ajustes > IA: cada token lleva dos acciones (copiar las instrucciones y revocar) y, al crearlo, el permiso de compartir. */
+.lmd-tokens li span { flex: 1; min-width: 0; }
+.lmd-tokens li button { flex: none; }
+.lmd-tokens li .lmd-tok-brief { color: var(--accent); }
+.lmd-tokens li .lmd-tok-brief:hover { color: var(--accent); text-decoration: underline; }
+.lmd-acct .lmd-tok-share { margin: 10px 0 0; font-size: 13px; color: var(--fg); }
+.lmd-acct > .lmd-acct-msg.lmd-acct-done { color: var(--fg-muted); }

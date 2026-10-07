@@ -182,7 +182,9 @@ try {
   await sleep(200);
   check('MCP: escribe en ella sobre la revisión actual, y quien la tiene abierta se entera', !mw.isError && afterAi.rev === 3 && afterAi.text.endsWith('de beto\n\nde la IA') && /"type":"saved","by":"mcp"/.test(evB.text), [mw, afterAi, evB.text.slice(-200)]);
   evB.stop();
-  check('MCP: crea una nota nueva en el equipo', !(await tool(tb, 'write_note', { path: '@team/ia/nueva.md', text: 'hola equipo' })).isError && (await api('GET', tnote('ia/nueva.md'), undefined, A.s)).json.text === 'hola equipo');
+  const tw = await tool(tb, 'write_note', { path: '@team/ia/nueva.md', text: 'hola equipo' });
+  check('MCP: crea una nota nueva en el equipo', !tw.isError && (await api('GET', tnote('ia/nueva.md'), undefined, A.s)).json.text === 'hola equipo');
+  check('MCP: y devuelve la dirección de esa nota en el espacio del equipo, sobre APP_URL', text(tw).endsWith(' Open it: https://app.ejemplo.test/?f=' + enc('cloud/~' + SPACE + '/ia/nueva.md')), text(tw));
   check('MCP: la búsqueda trae lo del equipo con su ruta', JSON.parse(text(await tool(tb, 'search_notes', { query: 'hola equipo' }))).some((r) => r.path === '@team/ia/nueva.md'));
   const tScoped = await tok(B, 'proy');
   check('MCP: un token limitado a una carpeta propia no ve ni toca el equipo', !JSON.parse(text(await tool(tScoped, 'list_notes'))).some((n) => n.path.startsWith('@team/')) && (await tool(tScoped, 'read_note', { path: '@team/plan.md' })).isError === true && (await tool(tScoped, 'write_note', { path: '@team/x.md', text: 'x' })).isError === true && (await api('GET', tnote('x.md'), undefined, A.s)).status === 404);

@@ -2936,7 +2936,7 @@
     pick: (what) => LMD.home.pick(homeCtx(), what),
     pickTemplate: () => LMD.home.pickTemplate(homeCtx()),
     showFiles,
-    reloadTree: () => { fileCache.clear(); folderIndex.clear(); wikiIndex = null; linkIndex = null; if (ui.searchInput.value.trim()) runSearch(ui.searchInput.value); return loadTree(); },
+    reloadTree: () => { fileCache.clear(); folderIndex.clear(); wikiIndex = null; linkIndex = null; if (ui.searchInput.value.trim()) runSearch(ui.searchInput.value); const done = loadTree(); resumeCloud(); return done; },
     dirHandle: async (dirUrl) => { let dir = rootOf(dirUrl).handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, ensure, isDark,
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
@@ -3211,6 +3211,10 @@
 
   // Lee lo que hace falta para abrir f sin tocar la nota que está a la vista: si falla, todo sigue como estaba.
   // Devuelve { root, raw, disk, ... } o { fail: aviso }.
+  // Una nota de la nube que se quiso abrir sin sesión (por ejemplo, desde el enlace que devuelve la IA): se abre
+  // apenas la persona entra, si mientras tanto no abrió otra cosa.
+  let wantCloud = '';
+  const resumeCloud = () => { if (!wantCloud || !noDoc || !LMD.cloud.signedIn()) return; const f = wantCloud; wantCloud = ''; go(f); };
   async function loadDoc(f) {
     const url = VBASE + f; const id = f.split('/')[0]; const name = decodeURIComponent(url.split('/').pop() || '');
     const fail = (text) => ({ fail: text });
@@ -3224,6 +3228,7 @@
         if (why === 'vault_locked' && await LMD.vault.unlockFor(path)) { why = ''; try { got = await LMD.cloud.open(path); } catch (e) { why = e && e.code; } }
       }
       if (!got && (why === 'vault_locked' || why === 'vault_unreadable')) return fail(T(why === 'vault_locked' ? '"{a}" está en una carpeta protegida. Desbloqueala para abrirla.' : '"{a}" no se pudo descifrar con la llave de su carpeta.', { a: name }));
+      if (!got && !LMD.cloud.signedIn()) wantCloud = f;
       if (!got) return fail(T(!LMD.cloud.signedIn() ? 'Entrá a tu cuenta para abrir las notas de la nube.' : why === 'offline' ? 'Sin conexión, y "{a}" no tiene copia en este navegador.' : 'No se encontró "{a}".', { a: name }));
       return { root: roots.cloud, raw: got.text, disk: got.base, rev: got.rev, opened: got, readOnly: LMD.cloud.roleOf(path) === 'view' };
     }
@@ -3342,6 +3347,7 @@
     if (opt.tree) { fileCache.clear(); folderIndex.clear(); wikiIndex = null; linkIndex = null; }
     HERE = VBASE + f; DOC_NAME = doc ? decodeURIComponent(HERE.split('/').pop() || '') : ''; noDoc = !doc;
     appRoot = doc ? doc.root : null;
+    if (doc) wantCloud = '';
     if (doc) roots[appRoot.id] = appRoot;
     raw = doc ? doc.raw : ''; diskText = doc ? doc.disk : ''; dirty = raw !== diskText;
     diskRev = doc && doc.rev != null ? doc.rev : null;

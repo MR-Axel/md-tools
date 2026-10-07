@@ -198,7 +198,60 @@ try {
   const inside = JSON.parse((await mcp(scoped, 'list_notes')).content[0].text).map((n) => n.path);
   const out = await mcp(scoped, 'read_note', { path: 'proyecto/plan.md' });
   check('ese token solo ve su carpeta', J(inside) === J(['proyecto/docs/notas.md']) && out.isError === true && /only reaches the folder proyecto\/docs\//.test(out.content[0].text), [inside, out]);
+  console.log('Instrucciones para la IA');
+  // Lo que se copia se junta acá: el portapapeles de verdad no hace falta para saber qué texto salió.
+  await app.evaluate(() => { window.__copied = []; Object.defineProperty(navigator.clipboard, 'writeText', { configurable: true, value: async (t) => { window.__copied.push(t); } }); });
+  const copied = () => app.evaluate(() => window.__copied[window.__copied.length - 1] || '');
+  const english = (t) => /^You are being connected to SharpMD/.test(t) && !/[áéíóúñ¿¡]/i.test(t) && !/\b(para|notas|carpeta|compartir|enlace|token recién)\b/i.test(t);
+  const sober = (t) => !/[!¡—–]/.test(t);
+  await app.locator('.lmd-tokens li', { hasText: 'Carpeta proyecto/docs/' }).locator('[data-brief]').click();
+  await app.waitForFunction(() => window.__copied.length === 1);
+  const old = await copied(); const oldSay = await app.textContent('[data-acct=ai] .lmd-acct-msg');
+  check('de un token viejo, las instrucciones salen en inglés con la app en español, con la URL del servidor y un marcador en lugar del token', (await app.evaluate(() => LMD.lang())) === 'es' && english(old) && sober(old) && old.includes('- URL: ' + base + '/mcp') && old.includes('- Header: Authorization: Bearer PASTE_YOUR_TOKEN') && !/mdt_/.test(old), old.slice(0, 400));
+  check('dicen a qué carpeta alcanza el token, y que para compartir hay que pedírselo a la persona', old.includes('This token only reaches the folder proyecto/docs/.') && /This token cannot share notes or create public links\. If I want that, tell me to do it from the SharpMD app/.test(old) && !/share_note|create_public_link/.test(old), old.slice(-900));
+  check('y la interfaz avisa que falta poner el token', /Reemplazá PASTE_YOUR_TOKEN por tu token/.test(oldSay) && plain(oldSay), oldSay);
+
+  const box0 = await app.evaluate(() => { const c = document.querySelector('[data-acct=ai] [data-c=share]'); return { off: !c.checked, label: c.closest('label').textContent }; });
+  await app.selectOption('[data-c=folder]', ''); await app.check('[data-acct=ai] [data-c=share]'); await app.click('[data-acct=ai] [data-c=token]'); await app.waitForSelector('.lmd-ai-new');
+  const fresh = await app.evaluate(() => ({ token: [...document.querySelectorAll('[data-acct=ai] .lmd-field')].find((f) => f.querySelector('span').textContent === 'Token').querySelector('input').value, button: document.querySelector('[data-acct=ai] [data-c=brief]').textContent,
+    rows: [...document.querySelectorAll('.lmd-tokens li span')].map((s) => s.textContent), reset: !document.querySelector('[data-acct=ai] [data-c=share]').checked, acts: [...document.querySelector('.lmd-tokens li').querySelectorAll('button')].map((b) => b.textContent) }));
+  check('el permiso de compartir se elige al crear el token, apagado por defecto, y la lista lo muestra', box0.off && box0.label === 'Puede compartir y crear enlaces' && fresh.rows.length === 4 && / · puede compartir$/.test(fresh.rows[0]) && fresh.rows.slice(1).every((r) => !/puede compartir/.test(r)) && fresh.reset && J(fresh.acts) === J(['Instrucciones', 'Revocar']), [box0, fresh.rows, fresh.acts]);
+  await app.click('[data-acct=ai] [data-c=brief]'); await app.waitForFunction(() => window.__copied.length === 2);
+  const msg = await copied(); let block = {}; try { block = JSON.parse((/\x60\x60\x60json\n([\s\S]*?)\n\x60\x60\x60/.exec(msg) || [])[1]); } catch (e) { /* queda vacío y la prueba falla */ }
+  check('con el token recién creado, el botón copia el mensaje listo: URL, cabecera, comando de Claude Code y bloque mcpServers', fresh.button === 'Copiar instrucciones para tu IA' && english(msg) && sober(msg) && !msg.includes('PASTE_YOUR_TOKEN') && msg.includes('- URL: ' + base + '/mcp') && msg.includes('- Header: Authorization: Bearer ' + fresh.token) && msg.includes('claude mcp add --transport http sharpmd ' + base + '/mcp --header "Authorization: Bearer ' + fresh.token + '"') && !!block.mcpServers && block.mcpServers.sharpmd.url === base + '/mcp' && block.mcpServers.sharpmd.headers.Authorization === 'Bearer ' + fresh.token && !/only reaches the folder/.test(msg), [msg.slice(0, 300), block]);
+  const promised = ['list_notes', 'append_note', 'read_note', 'write_note', 'list_comments', 'resolve_comment', '\x60\x60\x60mermaid', 'Tables to compare', 'Task lists', 'LaTeX', 'language name', 'frontmatter', 'One note per topic', 'local .md file', 'Who should it be shared with', 'public link', 'password', 'Give me that link', 'SharpMD extension', 'https://sharpmd.app/src/app.html'].filter((x) => !msg.includes(x));
+  check('el mensaje dice para qué usarlo, cómo escribir, qué preguntar antes y qué entregar al terminar', promised.length === 0, promised);
+  check('y con el permiso, que puede compartir y crear enlaces solo cuando se lo piden', /share_note/.test(msg) && /create_public_link/.test(msg) && /only when I ask/.test(msg) && !/cannot share/.test(msg));
+  await app.locator('.lmd-tokens li').first().locator('[data-brief]').click(); await app.waitForFunction(() => window.__copied.length === 3);
+  const again = await copied(); const saySent = await app.textContent('[data-acct=ai] .lmd-acct-msg');
+  check('desde la lista, mientras ese token sigue a la vista, sale igual', again === msg && saySent === 'Instrucciones copiadas. Pegalas en tu IA.', saySent);
+  const own = await app.evaluate(() => LMD.sync.aiBrief({ url: 'https://notas.ejemplo.test/mcp', token: 'mdt_EXAMPLE', scope: '', share: false }));
+  check('con un servidor propio, el mensaje lleva la dirección de ese servidor', own.includes('- URL: https://notas.ejemplo.test/mcp') && own.includes('"url": "https://notas.ejemplo.test/mcp"') && own.includes('sharpmd https://notas.ejemplo.test/mcp --header "Authorization: Bearer mdt_EXAMPLE"') && !own.includes('sync.sharpmd.app') && !own.includes(base), own.slice(0, 300));
+  const toolNames = (await fetch(base + '/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + fresh.token }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) }).then((r) => r.json())).result.tools.map((x) => x.name);
+  const scopedNames = (await fetch(base + '/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + scoped }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) }).then((r) => r.json())).result.tools.map((x) => x.name);
+  check('el token creado con el permiso tiene las herramientas de compartir; el otro, no', toolNames.includes('share_note') && toolNames.includes('create_public_link') && !scopedNames.some((x) => /share|link/.test(x)), [toolNames, scopedNames]);
+
+  console.log('El enlace que devuelve la IA');
+  const WEB = 'https://sharpmd.app/src/app.html';
+  const wrote = (await mcp(fresh.token, 'write_note', { path: 'proyecto/informe final.md', text: '# Informe\n\nListo para leer.\n' })).content[0].text;
+  const link = (/Open it: (\S+)$/.exec(wrote) || [])[1] || '';
+  check('write_note devuelve la dirección para abrir la nota, con el formato de la app', link === WEB + '?f=' + encodeURIComponent('cloud/proyecto/' + encodeURIComponent('informe final.md')) && home + link.slice(WEB.length) === cloudUrl('proyecto/informe final.md'), wrote);
+  const pub = JSON.parse((await mcp(fresh.token, 'create_public_link', { path: 'proyecto/informe final.md' })).content[0].text);
   await app.click('[data-act=close-panel]');
+  await app.goto(home + link.slice(WEB.length)); await app.waitForSelector('.lmd-article h1');
+  check('con la sesión iniciada, esa dirección abre la nota', /Informe/.test(await app.textContent('.lmd-article h1')) && /Listo para leer/.test(await app.textContent('.lmd-article')));
+  // Sin sesión: queda en el inicio, que pide entrar; al entrar, se abre la nota que se había pedido.
+  await app.evaluate(() => new Promise((r) => chrome.storage.local.remove('cloud', r)));
+  await app.goto(home + pub.url.slice(WEB.length)); await app.waitForSelector('.lmd-article h1');
+  check('el enlace público que creó la IA abre la nota sin cuenta', pub.url.startsWith(WEB + '?f=pub%2F') && /Informe/.test(await app.textContent('.lmd-article h1')));
+  await app.goto(home + link.slice(WEB.length)); await app.waitForSelector('.lmd-home [data-cloud=ask]');
+  const door = await app.evaluate(() => ({ home: document.querySelector('.lmd-home').textContent, note: document.querySelectorAll('.lmd-article h1').length, in: LMD.cloud.signedIn() }));
+  check('sin sesión, la dirección de la nota deja en el inicio y pide entrar', !door.in && door.note === 0 && /Entrá a tu cuenta para abrir las notas de la nube\./.test(door.home), door);
+  await app.click('[data-cloud=ask]'); await app.fill('[data-field=email]', mail);
+  const [started] = await Promise.all([app.waitForResponse((r) => r.url().endsWith('/auth/start')), app.click('[data-cloud=start]')]);
+  await app.waitForSelector('[data-field=code]'); await app.fill('[data-field=code]', (await started.json()).dev_code); await app.click('[data-cloud=verify]');
+  const back = await app.waitForSelector('.lmd-article h1', { timeout: 15000 }).then(() => true, () => false);
+  check('y al entrar, se abre la nota que se había pedido', back && /Informe/.test(await app.textContent('.lmd-article h1')) && new URL(app.url()).searchParams.get('f') === 'cloud/proyecto/informe%20final.md', app.url());
 
   check('nada usó prompt, alert ni confirm del navegador', natives.length === 0, natives);
   check('nada salió hacia el servidor de producción', outside.length === 0, outside);

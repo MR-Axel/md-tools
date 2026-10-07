@@ -245,6 +245,88 @@
     return [...all].sort((x, y) => x.localeCompare(y));
   };
 
+  // El mensaje que la persona pega en su IA para conectarla y decirle cómo documentar acá. Va siempre en inglés,
+  // en cualquier idioma de la app: lo lee una IA. Es el único lugar donde está ese texto.
+  // o: { url, token, scope, share }. Sin token (uno viejo, que ya no se muestra) lleva el marcador AI_TOKEN_MARK.
+  const AI_TOKEN_MARK = 'PASTE_YOUR_TOKEN';
+  function aiBrief(o) {
+    const url = String(o.url || ''); const token = o.token || AI_TOKEN_MARK; const scope = String(o.scope || '').replace(/\/+$/, '');
+    const fence = '\x60\x60\x60';
+    return [
+      'You are being connected to SharpMD, a Markdown notes app. Use it to keep me informed in documents I can read in my browser.',
+      '',
+      '## Connect',
+      '',
+      'SharpMD has an MCP server (Streamable HTTP).',
+      '',
+      '- URL: ' + url,
+      '- Header: Authorization: Bearer ' + token,
+      '',
+      'If you can add MCP servers yourself, do it now. If you cannot, tell me exactly what to paste and where.',
+      '',
+      'Claude Code:',
+      '',
+      fence,
+      'claude mcp add --transport http sharpmd ' + url + ' --header "Authorization: Bearer ' + token + '"',
+      fence,
+      '',
+      'Clients that read an mcpServers block (Cursor, a .mcp.json file and others):',
+      '',
+      fence + 'json',
+      JSON.stringify({ mcpServers: { sharpmd: { type: 'http', url, headers: { Authorization: 'Bearer ' + token } } } }, null, 2),
+      fence,
+      '',
+      'Apps where connectors are added from a settings screen (Claude Desktop, ChatGPT and others): add a custom MCP server with that URL and that header.',
+      '',
+      'Once it is connected, call list_notes and tell me what you see, so we both know it works.',
+      'Treat the token as a secret: keep it out of notes, commits and logs.',
+    ].concat(scope ? ['This token only reaches the folder ' + scope + '/. Keep every path inside it: anything outside is rejected.'] : [], [
+      '',
+      '## What to use it for',
+      '',
+      '- Keep a record of your work as you go: what changed, progress, decisions and why, open questions, what is left to do. I read it to follow along without asking.',
+      '- When I ask you to explain a situation, write a document for it: context, what you found, the options and your recommendation.',
+      '',
+      '## How to write',
+      '',
+      'Write for a person who reads fast.',
+      '',
+      '- Open with a short summary, then use clear headings.',
+      '- Tables to compare options. Task lists (- [ ] and - [x]) for pending and done work.',
+      '- Mermaid diagrams for flows and architecture, in a ' + fence + 'mermaid code block.',
+      '- Formulas in LaTeX: $inline$ or $$block$$.',
+      '- Code blocks with the language name.',
+      '- A short frontmatter (title, date, status) when it helps.',
+      '- One note per topic, with tidy file and folder names, for example ' + (scope ? scope + '/decisions.md and ' + scope + '/log.md' : 'project/decisions.md and project/log.md. A top-level folder is usually a project') + '.',
+      '- For a log, add dated entries with append_note. Do not rewrite the whole note.',
+      '- Call read_note before you replace a note with write_note, so nothing that is there gets lost.',
+      '- I can leave comments for you on a note. Call list_comments before editing, make each change, then close it with resolve_comment and a short reply.',
+      '',
+      '## Before you create a document',
+      '',
+      'If what I asked does not make it clear, ask me first:',
+      '',
+      '1. Should it go to my SharpMD cloud, or stay as a local .md file?',
+      '2. Who should it be shared with?',
+      '3. Does it need a public link, and should that link have a password?',
+      '',
+      o.share
+        ? 'This token can share. share_note shares a note or a folder with another SharpMD account by email, to view or to edit. create_public_link returns a read-only link, with a password if I ask for one. Do either only when I ask, and tell me what you shared and with whom. unshare_note and revoke_public_link undo it.'
+        : 'This token cannot share notes or create public links. If I want that, tell me to do it from the SharpMD app: open the note, then Share in its cloud menu.',
+      '',
+      '## When you finish',
+      '',
+      '- write_note, append_note and move_note return a link that opens the note in the SharpMD web app. Give me that link.',
+      '- If the document stayed as a local .md file, tell me its full path. I can open it in my browser with the SharpMD extension, or drag it into ' + LMD.WEB_APP_URL,
+    ]).join('\n') + '\n';
+  }
+  // Copia un texto largo al portapapeles; si el navegador no deja, con el método de antes.
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); return; } catch (e) { /* sin permiso: se copia desde un campo */ }
+    const t = document.createElement('textarea'); t.value = text; t.setAttribute('readonly', ''); t.style.cssText = 'position:fixed;left:-999px;top:0;opacity:0';
+    document.body.appendChild(t); t.select(); try { document.execCommand('copy'); } catch (e) { /* no se pudo */ } t.remove();
+  }
+
   let aiRedraw = null;
   async function aiPane(box, host) {
     await LMD.cloud.ready();
@@ -255,21 +337,30 @@
     // Un token creado sin nombre lleva el de siempre ("IA" o "AI", según el idioma en que se creó): se muestra en el idioma de ahora.
     const tokenName = (n) => (/^(IA|AI)$/.test(n || '') ? T('IA') : n);
     const day = (ms) => new Date(ms).toLocaleDateString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { day: 'numeric', month: 'short' });
-    let a = null;
-    const draw = async (made) => {
-      let list = []; let folders = [];
+    let a = null; let tokens = [];
+    // El token recién creado sigue a la vista hasta salir de este panel o revocarlo: el servidor no lo vuelve a dar.
+    let shown = null;
+    const draw = async (fresh) => {
+      if (fresh) shown = fresh;
+      const made = shown; let list = []; let folders = [];
       try { list = await LMD.cloud.tokens(); } catch (e) { /* sin la lista, igual se puede crear uno */ }
       try { folders = foldersOf(await LMD.cloud.list(true)); } catch (e) { /* sin carpetas, el token alcanza todo */ }
       try { await LMD.vault.load(); } catch (e) { /* sin la lista de carpetas protegidas, el resto se dibuja igual */ }
+      tokens = list;
       const kept = (box.querySelector('[data-c=folder]') || {}).value || '';
+      // El permiso de compartir vuelve a quedar apagado después de crear un token.
+      const keptShare = !fresh && !!(box.querySelector('[data-c=share]') || {}).checked;
       box.innerHTML = intro + field('URL', a.mcp_url) +
         (made ? '<p class="lmd-ai-new">' + T('Copiá estos datos ahora: el token no se vuelve a mostrar.') + '</p>' + field('Token', made.token) +
-          longField('Claude Code', 'claude mcp add --transport http sharpmd ' + made.mcp_url + ' --header "Authorization: Bearer ' + made.token + '"') : '') +
+          longField('Claude Code', 'claude mcp add --transport http sharpmd ' + made.mcp_url + ' --header "Authorization: Bearer ' + made.token + '"') +
+          actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="brief">' + T('Copiar instrucciones para tu IA') + '</button>') + hint(T('Un mensaje para pegar en tu IA: cómo conectarse y cómo documentar acá.')) : '') +
         '<h4>' + T('Tokens') + '</h4>' +
-        (list.length ? '<ul class="lmd-tokens">' + list.map((t) => '<li><span>' + esc(tokenName(t.name)) + ' · ' + (t.scope ? T('Carpeta {a}', { a: esc(t.scope) + '/' }) : T('Todas las notas')) + ' · ' + T('creado el {a}', { a: day(t.created) }) + ' · ' + (t.used ? T('usado el {a}', { a: day(t.used) }) : T('sin usar')) + '</span><button type="button" data-rm="' + t.id + '">' + T('Revocar') + '</button></li>').join('') + '</ul>' : hint(T('Todavía no hay tokens.'))) +
+        (list.length ? '<ul class="lmd-tokens">' + list.map((t) => '<li><span>' + esc(tokenName(t.name)) + ' · ' + (t.scope ? T('Carpeta {a}', { a: esc(t.scope) + '/' }) : T('Todas las notas')) + ' · ' + T('creado el {a}', { a: day(t.created) }) + ' · ' + (t.used ? T('usado el {a}', { a: day(t.used) }) : T('sin usar')) + (t.share ? ' · ' + T('puede compartir') : '') + '</span><button type="button" class="lmd-tok-brief" data-brief="' + t.id + '" title="' + T('Copiar instrucciones para tu IA') + '">' + T('Instrucciones') + '</button><button type="button" data-rm="' + t.id + '">' + T('Revocar') + '</button></li>').join('') + '</ul>' : hint(T('Todavía no hay tokens.'))) +
         // Un token puede alcanzar toda la nube o una sola carpeta, que suele ser un proyecto.
         (folders.length ? '<label class="lmd-pick"><span>' + T('Carpeta') + '</span><select data-c="folder"><option value="">' + T('Todas las notas') + '</option>' +
           folders.map((d) => '<option value="' + esc(d) + '"' + (d === kept ? ' selected' : '') + '>' + esc(d) + '/</option>').join('') + '</select></label>' : '') +
+        // Compartir hacia afuera es un permiso aparte, apagado si no se pide.
+        '<label class="lmd-check lmd-tok-share"><input type="checkbox" data-c="share"' + (keptShare ? ' checked' : '') + '><span>' + T('Puede compartir y crear enlaces') + '</span></label>' +
         actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="token">' + T('Crear un token') + '</button>') + LMD.vault.tokenNote() + '<p class="lmd-hint lmd-acct-msg" role="status" hidden></p>' +
         // Carpetas con contraseña: cuáles puede leer la IA ahora, hasta cuándo, y cómo abrirlas o cerrarlas.
         LMD.vault.aiSection();
@@ -289,14 +380,22 @@
     }
     box.onclick = async (e) => {
       if (LMD.vault.aiClick(e)) return;
-      const rm = e.target.closest('[data-rm]'); const b = e.target.closest('[data-c]');
-      const say = (t) => { const m = box.querySelector('.lmd-acct-msg'); if (m) { m.hidden = false; m.textContent = t; } };
+      const rm = e.target.closest('[data-rm]'); const b = e.target.closest('[data-c]'); const brief = e.target.closest('[data-brief]');
+      // done: el aviso cuenta algo que salió bien, y no va en el color de los errores.
+      const say = (t, done) => { const m = box.querySelector('.lmd-acct-msg'); if (m) { m.hidden = false; m.textContent = t; m.classList.toggle('lmd-acct-done', !!done); } };
       try {
-        if (rm) { if (await LMD.dialog.confirm({ title: T('¿Revocar este token?'), text: T('La IA que lo usa deja de entrar.'), ok: T('Revocar'), danger: true })) { await LMD.cloud.revoke(rm.dataset.rm); await draw(); } }
+        if (rm) { if (await LMD.dialog.confirm({ title: T('¿Revocar este token?'), text: T('La IA que lo usa deja de entrar.'), ok: T('Revocar'), danger: true })) { await LMD.cloud.revoke(rm.dataset.rm); if (shown && String(shown.id) === rm.dataset.rm) shown = null; await draw(); } }
+        else if (brief || (b && b.dataset.c === 'brief')) {
+          // Con el token a la vista el mensaje sale listo; de uno viejo sale con el marcador, y se dice.
+          const t = brief ? tokens.find((x) => String(x.id) === brief.dataset.brief) : shown; if (!t) return;
+          const live = shown && String(shown.id) === String(t.id);
+          await copyText(aiBrief({ url: a.mcp_url, token: live ? shown.token : '', scope: t.scope, share: t.share }));
+          say(live ? T('Instrucciones copiadas. Pegalas en tu IA.') : T('Instrucciones copiadas. Reemplazá {a} por tu token, que ya no se muestra.', { a: AI_TOKEN_MARK }), true);
+        }
         else if (!b) return;
         else if (b.dataset.c === 'login') goLogin(host);
         else if (b.dataset.c === 'plans') host.tab('plan');
-        else if (b.dataset.c === 'token') await draw(await LMD.cloud.newToken(T('IA'), (box.querySelector('[data-c=folder]') || {}).value || ''));
+        else if (b.dataset.c === 'token') await draw(await LMD.cloud.newToken(T('IA'), (box.querySelector('[data-c=folder]') || {}).value || '', !!(box.querySelector('[data-c=share]') || {}).checked));
         else if (b.dataset.c === 'copy') {
           const input = b.parentNode.querySelector('input, textarea'); input.select();
           try { await navigator.clipboard.writeText(input.value); } catch (err) { document.execCommand('copy'); }
@@ -535,6 +634,6 @@
   // Vuelve a leer la cuenta después de un cambio en el equipo.
   const reload = async () => { account = await LMD.cloud.account(); asked = true; adopt(account, true); paint(); return account; };
 
-  LMD.sync = { init, paint, click, panes, reload, dialog, feedback, awaitPaid, openCloud, quota, PAY, login, me, foldersOf, signOut, account: () => account, why: (text) => { planWhy = text || ''; },
+  LMD.sync = { init, paint, click, panes, reload, dialog, feedback, awaitPaid, openCloud, quota, PAY, login, me, foldersOf, signOut, aiBrief, account: () => account, why: (text) => { planWhy = text || ''; },
     repaintAi: () => { if (aiRedraw) aiRedraw(); } };
 })();

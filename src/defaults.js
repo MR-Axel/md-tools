@@ -413,6 +413,7 @@
       "Una IA que hable MCP, como Claude, lee y escribe tus notas de la nube.": "An AI that speaks MCP, like Claude, reads and writes your cloud notes.",
       "Tokens": "Tokens", "creado el {a}": "created {a}", "usado el {a}": "used {a}", "sin usar": "never used", "Todavía no hay tokens.": "No tokens yet.",
       "Crear un token": "Create a token", "Revocar": "Revoke", "Copiado": "Copied",
+      "Copiar instrucciones para tu IA": "Copy instructions for your AI", "Un mensaje para pegar en tu IA: cómo conectarse y cómo documentar acá.": "A message to paste into your AI: how to connect and how to document here.", "Instrucciones": "Instructions", "Puede compartir y crear enlaces": "Can share and create links", "puede compartir": "can share", "Instrucciones copiadas. Pegalas en tu IA.": "Instructions copied. Paste them into your AI.", "Instrucciones copiadas. Reemplazá {a} por tu token, que ya no se muestra.": "Instructions copied. Replace {a} with your token, which is no longer shown.",
       "La nube está apagada: sin ella no hay notas para conectar.": "The cloud is off: without it there are no notes to connect.",
       "Entrá a tu cuenta para conectar una IA.": "Sign in to connect an AI.", "Entrá a tu cuenta para pasar al plan pago.": "Sign in to move to the paid plan.",
       "La nube está apagada: los planes son de la cuenta de la nube.": "The cloud is off: plans belong to the cloud account.",
@@ -1085,7 +1086,7 @@
   const WEB_APP_URL = 'https://sharpmd.app/src/app.html';
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.47.0';
+  const VERSION = '2.49.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
 })(typeof self !== 'undefined' ? self : this);
