@@ -626,6 +626,7 @@
     LMD.board.init(core);
     ui.sync = ui.main.querySelector('.lmd-sync');
     LMD.sync.init(core);
+    LMD.comments.init(core);
     document.documentElement.dataset.lmdFs = String(!!window.showOpenFilePicker && window.isSecureContext);
   }
 
@@ -1360,9 +1361,10 @@
   let panelTab = 'look';
   let serverDraft = false; // "Uso mi propio servidor" prendido y la dirección todavía sin escribir
   const PANEL_TABS = [['look', 'Apariencia', ICON.eye], ['read', 'Lectura y edición', ICON.pencil], ['plug', 'Plugins', ICON.b_code], ['cloud', 'Nube', ICON.cloud], ['ai', 'IA', ICON.spark], ['plan', 'Plan', ICON.card], ['adv', 'Avanzado', ICON.gear]];
-  // Con tab abre directo en esa pestaña: openPanel('plan').
-  function openPanel(tab) {
+  // Con tab abre directo en esa pestaña: openPanel('plan'). why es una línea que dice por qué se llegó a Plan.
+  function openPanel(tab, why) {
     if (tab) panelTab = tab;
+    LMD.sync.why(why);
     if (!PANEL_TABS.some((t) => t[0] === panelTab)) panelTab = 'look';
     LMD.write.closeMenu(); // un menú de bloques abierto quedaría encima de los ajustes
     const s = settings;
@@ -1385,6 +1387,8 @@
         '<nav class="lmd-ptabs" role="tablist">' +
           PANEL_TABS.map((t) => '<button type="button" role="tab" data-ptab="' + t[0] + '">' + t[2] + '<span>' + T(t[1]) + '</span></button>').join('') +
           '<button type="button" class="lmd-ptabs-foot" data-act="feedback">' + ICON.mail + '<span>' + T('Enviar comentarios') + '</span></button>' +
+          '<a class="lmd-ptabs-link" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">' + ICON.coffee + '<span>' + T('Apoyar el proyecto') + '</span></a>' +
+          '<small class="lmd-ptabs-ver">SharpMD ' + LMD.VERSION + '</small>' +
         '</nav>' +
         '<div class="lmd-panel-body">' +
           '<section class="lmd-two" data-tab="look"><h3>' + T('Apariencia') + '</h3>' +
@@ -1450,7 +1454,7 @@
             '<div class="lmd-row"><span>' + T('Buscar versiones nuevas') + '</span><div class="lmd-seg" data-seg="updateCheck" role="radiogroup">' +
               [['daily', 'Por día'], ['weekly', 'Por semana'], ['off', 'Nunca']].map((o) => '<button type="button" role="radio" data-val="' + o[0] + '" aria-checked="' + (s.updateCheck === o[0]) + '"' + (s.updateCheck === o[0] ? ' class="lmd-on"' : '') + '>' + T(o[1]) + '</button>').join('') +
             '</div></div>' +
-            '<div class="lmd-row lmd-row-line"><span>' + T('Versión instalada: {v}', { v: chrome.runtime.getManifest().version }) + '</span><button type="button" class="lmd-btn" data-act="check-update">' + T('Buscar ahora') + '</button></div>' +
+            '<div class="lmd-row lmd-row-line"><span>' + T('Versión instalada: {v}', { v: LMD.VERSION }) + '</span><button type="button" class="lmd-btn" data-act="check-update">' + T('Buscar ahora') + '</button></div>' +
             '<p class="lmd-update-msg" role="status" hidden></p>' +
             '<p class="lmd-hint">' + T('Lo único que se consulta es el número de versión publicado en GitHub. No se manda ningún dato.') + '</p>' +
           '</section>') +
@@ -2017,7 +2021,7 @@
     pathOf: (url) => vParts(url).join('/'),
     urlOf: (path) => VBASE + appRoot.id + '/' + path.split('/').map(encodeURIComponent).join('/'),
     openApp: (query) => bg({ type: 'openApp', query }),
-    openPanel: (tab) => openPanel(tab),
+    openPanel: (tab, why) => openPanel(tab, why),
     ui, hooks: { render: [], tree: [] }, lastBlock: null, appUrl: APP_URL, hold: false,
     editAt: (e) => editAt(e), copy: (text) => { copyText(text); flash(T('Copiado')); }, searchFor, sectionLink,
     links: { headings: () => anchorsOf(spyHeadings), headingsIn, files: linkFiles, read: readDoc, rel: relLink, find: findAnchor, same: sameUrl },
@@ -2322,8 +2326,12 @@
       LMD.cloud.events(vParts(HERE).join('/'), (ev) => {
         present = ev.who || [];
         if (ev.type === 'saved' && ev.by !== LMD.cloud.email()) { cloudPoll = 0; checkForChanges(false); }
+        // Un comentario resuelto suele venir con la nota cambiada: primero se relee la nota y después los comentarios.
+        if (ev.type === 'comments') { cloudPoll = 0; checkForChanges(false).then(() => LMD.comments.onEvent(ev)); }
         LMD.sync.paint();
       });
+      // Comentarios para la IA de esta nota. Al pasar a otra nota: LMD.comments.detach() y attach() de nuevo.
+      LMD.comments.attach(vParts(HERE).join('/'));
     }
     // Un archivo recién creado, o uno vacío, arranca listo para escribir. Si la pestaña venía en
     // edición, vuelve en edición. Lo de solo lectura y lo que no es Markdown abre leyendo.

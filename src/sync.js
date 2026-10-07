@@ -8,14 +8,17 @@
   const T = LMD.t;
   let core = null; let account = null; let asked = false;
 
-  async function loadAccount() {
+  let loading = null;
+  function loadAccount() {
     // Sobre un archivo abierto directo en el navegador no se consulta: ahí el servidor no responde (CORS).
-    if (asked || !LMD.cloud.signedIn() || !core.APP) return;
+    if (asked || !LMD.cloud.signedIn() || !core.APP) return loading || Promise.resolve();
     asked = true;
     // Si falla no se repinta: repintar volvería a consultar y quedaría pidiendo en bucle mientras no haya conexión.
-    try { account = await LMD.cloud.account(); } catch (e) { account = null; asked = false; return; }
-    paint();
+    loading = (async () => { try { account = await LMD.cloud.account(); } catch (e) { account = null; asked = false; return; } paint(); })();
+    return loading;
   }
+  // La cuenta, esperando la consulta si todavía está en camino. null sin sesión o sin conexión.
+  const me = async () => { await LMD.cloud.ready(); await loadAccount(); return account; };
 
   const isCloud = () => !!core.appRoot && core.appRoot.kind === 'cloud';
 
@@ -59,11 +62,13 @@
   function openMenu(btn) {
     closeMenu();
     const pro = !!account && account.plan === 'pro';
+    const notes = LMD.comments.mode(); // '' no se ofrece, 'plan' hace falta el plan pago, 'on' disponible
     menu = el('div', { class: 'lmd-menu lmd-menu-narrow', role: 'menu' });
     menu.innerHTML = '<div class="lmd-menu-list">' +
       (core.readOnly ? '' : '<button type="button" role="menuitem" data-s="share"' + (account && account.share && !mine().owner ? '' : ' class="lmd-locked"') + '>' + ICON.link + '<span>' + T('Compartir') + '</span></button>') +
       '<button type="button" role="menuitem" data-s="history"' + (pro ? '' : ' class="lmd-locked"') + '>' + ICON.reload + '<span>' + T('Historial de versiones') + '</span></button>' +
       '<button type="button" role="menuitem" data-s="ai"' + (account && account.mcp ? '' : ' class="lmd-locked"') + '>' + ICON.link + '<span>' + T('Conectar una IA') + '</span></button>' +
+      (notes ? '<button type="button" role="menuitem" data-s="comments"' + (notes === 'on' ? '' : ' class="lmd-locked"') + '>' + ICON.comment + '<span>' + T('Comentarios para la IA') + '</span>' + (LMD.comments.count() ? '<b class="lmd-menu-n">' + LMD.comments.count() + '</b>' : '') + '</button>' : '') +
       (account ? '<p class="lmd-menu-label">' + esc(account.email) + ' · ' + T(pro ? 'Plan pago' : 'Plan gratis') + '</p>' : '') + '</div>';
     document.body.appendChild(menu);
     const box = btn.getBoundingClientRect();
@@ -74,6 +79,7 @@
       closeMenu();
       // Conectar una IA vive en Ajustes: ahí se crea el token o, en el plan gratis, se ve qué hace falta.
       if (b.dataset.s === 'ai') { core.openPanel('ai'); return; }
+      if (b.dataset.s === 'comments') { LMD.comments.list(); return; } // sin plan, lleva a Ajustes → Plan
       if (b.classList.contains('lmd-locked')) {
         core.flash(T(mine().owner ? 'Solo quien creó la nota puede hacer eso.' : b.dataset.s === 'history' ? 'El historial de versiones es parte del plan pago.' : 'Compartir es parte del plan pago.'), 'warn');
         return;
@@ -140,6 +146,13 @@
     };
   }
 
+  // Carpetas de la nube, con las de adentro: salen de las rutas de las notas.
+  const foldersOf = (rows) => {
+    const all = new Set();
+    rows.forEach((n) => { const parts = n.path.split('/'); for (let i = 1; i < parts.length; i++) all.add(parts.slice(0, i).join('/')); });
+    return [...all].sort((x, y) => x.localeCompare(y));
+  };
+
   async function aiPane(box, host) {
     await LMD.cloud.ready();
     const intro = hint(T('Una IA que hable MCP, como Claude, lee y escribe tus notas de la nube.'));
@@ -147,13 +160,18 @@
     const day = (ms) => new Date(ms).toLocaleDateString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { day: 'numeric', month: 'short' });
     let a = null;
     const draw = async (made) => {
-      let list = [];
+      let list = []; let folders = [];
       try { list = await LMD.cloud.tokens(); } catch (e) { /* sin la lista, igual se puede crear uno */ }
+      try { folders = foldersOf(await LMD.cloud.list(true)); } catch (e) { /* sin carpetas, el token alcanza todo */ }
+      const kept = (box.querySelector('[data-c=folder]') || {}).value || '';
       box.innerHTML = intro + field('URL', a.mcp_url) +
         (made ? '<p class="lmd-ai-new">' + T('Copiá estos datos ahora: el token no se vuelve a mostrar.') + '</p>' + field('Token', made.token) +
           field('Claude Code', 'claude mcp add --transport http sharpmd ' + made.mcp_url + ' --header "Authorization: Bearer ' + made.token + '"') : '') +
         '<h4>' + T('Tokens') + '</h4>' +
-        (list.length ? '<ul class="lmd-tokens">' + list.map((t) => '<li><span>' + esc(t.name) + ' · ' + T('creado el {a}', { a: day(t.created) }) + ' · ' + (t.used ? T('usado el {a}', { a: day(t.used) }) : T('sin usar')) + '</span><button type="button" data-rm="' + t.id + '">' + T('Revocar') + '</button></li>').join('') + '</ul>' : hint(T('Todavía no hay tokens.'))) +
+        (list.length ? '<ul class="lmd-tokens">' + list.map((t) => '<li><span>' + esc(t.name) + ' · ' + (t.scope ? T('Carpeta {a}', { a: esc(t.scope) + '/' }) : T('Todas las notas')) + ' · ' + T('creado el {a}', { a: day(t.created) }) + ' · ' + (t.used ? T('usado el {a}', { a: day(t.used) }) : T('sin usar')) + '</span><button type="button" data-rm="' + t.id + '">' + T('Revocar') + '</button></li>').join('') + '</ul>' : hint(T('Todavía no hay tokens.'))) +
+        // Un token puede alcanzar toda la nube o una sola carpeta, que suele ser un proyecto.
+        (folders.length ? '<label class="lmd-pick"><span>' + T('Carpeta') + '</span><select data-c="folder"><option value="">' + T('Todas las notas') + '</option>' +
+          folders.map((d) => '<option value="' + esc(d) + '"' + (d === kept ? ' selected' : '') + '>' + esc(d) + '/</option>').join('') + '</select></label>' : '') +
         actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="token">' + T('Crear un token') + '</button>') + '<p class="lmd-hint lmd-acct-msg" role="status" hidden></p>';
     };
     if (!LMD.cloud.enabled()) box.innerHTML = hint(T('La nube está apagada: sin ella no hay notas para conectar.'));
@@ -174,7 +192,7 @@
         else if (!b) return;
         else if (b.dataset.c === 'login') goLogin(host);
         else if (b.dataset.c === 'plans') host.tab('plan');
-        else if (b.dataset.c === 'token') await draw(await LMD.cloud.newToken('IA'));
+        else if (b.dataset.c === 'token') await draw(await LMD.cloud.newToken('IA', (box.querySelector('[data-c=folder]') || {}).value || ''));
         else if (b.dataset.c === 'copy') {
           const input = b.parentNode.querySelector('input'); input.select();
           try { await navigator.clipboard.writeText(input.value); } catch (err) { document.execCommand('copy'); }
@@ -189,6 +207,7 @@
   // segundos hasta que el plan cambia. Pasado el tope se dice, sin dar el pago por perdido.
   const PAY = { every: 3000, max: 120000 };
   let wait = null; let planBox = null; let planHost = null; let planTurn = 0;
+  let planWhy = ''; // por qué se abrió Plan (por ejemplo, al querer comentar en el plan gratis); lo pone openPanel
   function awaitPaid() {
     if (wait) clearTimeout(wait.timer);
     const mine = wait = { state: 'wait', until: Date.now() + PAY.max, timer: null };
@@ -220,6 +239,7 @@
     else { try { a = await fetchAccount(host); } catch (e) { note = offline(); } }
     if (turn !== planTurn) return;
     const pro = !!a && a.plan === 'pro'; const pay = (a && a.checkout) || {};
+    if (planWhy && !pro) note = '<p class="lmd-plan-why" role="status">' + esc(planWhy) + '</p>' + note;
     // El pago se hace en esta misma pestaña: el enlace lleva en back la dirección a la que volver.
     const payUrl = (url) => url + (url.includes('?') ? '&' : '?') + 'back=' + encodeURIComponent(host.back);
     const btn = (url, label) => (url ? '<a class="lmd-btn lmd-btn-fill" data-pay href="' + esc(payUrl(url)) + '">' + label + '</a>' : '<button type="button" class="lmd-btn" disabled>' + label + ' · ' + T('pronto') + '</button>');
@@ -283,7 +303,7 @@
       if (mail && !LMD.kit.validEmail(mail)) { fail(T('Ese correo no parece válido.')); q('email').focus(); return; }
       q('send').disabled = true; err.hidden = true;
       try {
-        await LMD.cloud.feedback(text, mail, { version: chrome.runtime.getManifest().version, where: window.__MDT_WEB ? 'web' : 'extension', browser: navigator.userAgent, lang: LMD.lang() });
+        await LMD.cloud.feedback(text, mail, { version: LMD.VERSION, where: window.__MDT_WEB ? 'web' : 'extension', browser: navigator.userAgent, lang: LMD.lang() });
         card('<p class="lmd-fb-ok" role="status">' + ICON.check + '<span>' + T('Enviado') + '</span></p>');
         setTimeout(() => box.remove(), 1400);
       } catch (ex) {
@@ -383,5 +403,5 @@
     LMD.cloud.ready().then(paint);
   }
 
-  LMD.sync = { init, paint, click, panes, dialog, feedback, awaitPaid, openCloud, quota, PAY };
+  LMD.sync = { init, paint, click, panes, dialog, feedback, awaitPaid, openCloud, quota, PAY, me, foldersOf, account: () => account, why: (text) => { planWhy = text || ''; } };
 })();

@@ -875,6 +875,59 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 button.lmd-home-coffee { border: 0; background: none; padding: 0; font: inherit; font-size: 13.5px; cursor: pointer; }
 button.lmd-home-item { width: 100%; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
 
+/* ---------- Comentarios para la IA ---------- */
+.lmd-main { position: relative; }
+.lmd-cm-layer { position: absolute; left: 0; top: 0; z-index: 5; }
+.lmd-cm-layer[hidden] { display: none; }
+.lmd-cm-mark { position: absolute; display: flex; align-items: center; justify-content: center; gap: 3px; min-width: 26px; height: 24px; padding: 0 6px; border: 0; border-radius: 7px; background: var(--accent-soft); color: var(--accent); font: 700 11px/1 var(--lmd-font); cursor: pointer; }
+.lmd-cm-mark svg, .lmd-cm-pop h4 svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-cm-mark:hover { background: var(--accent-fill); color: var(--accent-fg); }
+.lmd-cm-pop { position: absolute; z-index: 62; box-sizing: border-box; width: 340px; max-width: calc(100vw - 16px); padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); font: 13.5px/1.45 var(--lmd-font); color: var(--fg); }
+.lmd-cm-pop h4 { display: flex; align-items: center; gap: 7px; margin: 0 0 9px; font-size: 12px; font-weight: 600; color: var(--fg-muted); }
+.lmd-cm-pop blockquote, .lmd-cm-quote { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; margin: 0 0 9px; padding: 0 0 0 10px; border: 0; border-left: 2px solid var(--line); background: none; color: var(--fg-muted); font: inherit; font-size: 12.5px; line-height: 1.45; text-align: left; overflow-wrap: anywhere; }
+.lmd-cm-pop textarea { display: block; box-sizing: border-box; width: 100%; min-height: 76px; margin: 0 0 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--fg); font: inherit; outline: none; resize: vertical; }
+.lmd-cm-pop textarea:focus { border-color: var(--accent-fill); outline: none; }
+.lmd-cm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.lmd-cm-item + .lmd-cm-item { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.lmd-cm-text { margin: 0; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; }
+.lmd-cm-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
+.lmd-cm-meta small { color: var(--fg-faint); font-size: 12px; }
+.lmd-cm-meta .lmd-link { flex: none; padding: 2px 0; }
+.lmd-cm-meta .lmd-link:hover { color: #dc2626; }
+.lmd-cm-foot { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
+.lmd-cm-foot .lmd-link { padding: 2px 0; color: var(--accent); }
+.lmd-cm-card { width: min(560px, 100%); }
+.lmd-ask-card.lmd-cm-card > .lmd-hint { margin: 0 0 14px; }
+.lmd-cm-list { max-height: min(440px, 58vh); margin: 0 -6px 16px 0; padding-right: 6px; overflow: auto; scrollbar-width: thin; }
+.lmd-cm-list h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-faint); }
+.lmd-cm-list h4 small { margin-left: 4px; font-size: 12px; letter-spacing: 0; color: var(--fg-faint); font-weight: 500; }
+.lmd-cm-list ul { margin: 0 0 18px; padding: 0; list-style: none; }
+.lmd-cm-list ul:last-child { margin-bottom: 0; }
+.lmd-cm-list li { padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-soft); }
+.lmd-cm-list li + li { margin-top: 8px; padding-top: 11px; }
+.lmd-cm-list .lmd-cm-quote { width: 100%; margin-bottom: 7px; }
+button.lmd-cm-quote { cursor: pointer; }
+button.lmd-cm-quote:hover { border-left-color: var(--accent-fill); color: var(--fg); }
+.lmd-ask-card p.lmd-cm-text { margin: 0; color: var(--fg); }
+.lmd-ask-card p.lmd-cm-reply { margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--accent-soft); color: var(--fg); font-size: 13.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.lmd-cm-reply b { display: block; margin-bottom: 2px; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent); }
+.lmd-ask-card p.lmd-cm-none { margin: 0; }
+.lmd-cm-here { border-radius: 6px; outline: 2px solid var(--accent-fill); outline-offset: 6px; }
+.lmd-menu-grid .lmd-menu-wide { grid-column: 1 / -1; }
+.lmd-menu-n { flex: none; margin-left: auto; min-width: 17px; padding: 0 5px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font: 700 11px/17px var(--lmd-font); text-align: center; }
+@media print { .lmd-cm-layer, .lmd-cm-pop { display: none !important; } }
+/* Ajustes: carpeta del token, por qué se llegó a Plan, y el pie de la barra de pestañas */
+.lmd-pick { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+.lmd-pick span { flex: 0 0 86px; font-size: 12.5px; color: var(--fg-muted); }
+.lmd-pick select { flex: 0 1 300px; min-width: 0; height: 34px; padding: 0 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--fg); font: inherit; font-size: 13px; outline: none; }
+.lmd-pick select:focus { border-color: var(--accent-fill); }
+.lmd-acct .lmd-plan-why { margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--accent-fill); border-radius: 10px; background: var(--accent-soft); color: var(--fg); font-size: 13.5px; }
+.lmd-ptabs .lmd-ptabs-link { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px; border-radius: 9px; color: var(--fg-faint); font-size: 13.5px; font-weight: 500; text-decoration: none; }
+.lmd-ptabs-link svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-ptabs .lmd-ptabs-link:hover { color: var(--accent); background: var(--bg-soft); }
+.lmd-ptabs-ver { padding: 8px 12px 0; color: var(--fg-faint); font-size: 11.5px; white-space: nowrap; }
+@media (max-width: 720px) { .lmd-ptabs-link span { display: none; } .lmd-ptabs .lmd-ptabs-link { height: 38px; } .lmd-ptabs-ver { margin-left: auto; padding: 0 8px; align-self: center; } }
+
 /* ---------- Antes de dibujar ---------- */
 /* Al abrir o recargar un .md, el navegador muestra el texto crudo hasta que el lector lo reemplaza.
    Se oculta ese instante. Si el lector no llegara a arrancar, a los dos segundos vuelve a verse. */

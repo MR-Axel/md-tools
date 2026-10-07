@@ -244,7 +244,12 @@
     account: () => api('GET', '/account'),
     create: (path) => api('PUT', notePath(path), { text: '' }).then((r) => { listCache = null; return r; }),
     remove: (path) => api('DELETE', notePath(path)).then(async (r) => { listCache = null; await S.cloudDelete(email, path); return r; }),
-    newToken: (name) => api('POST', '/tokens', { name }),
+    // Con folder, el token solo alcanza esa carpeta.
+    newToken: (name, folder) => api('POST', '/tokens', folder ? { name, folder } : { name }),
+    // Comentarios para la IA sobre una nota propia. Con all vienen también los resueltos.
+    comments: (p, all) => api('GET', '/comments?path=' + encodeURIComponent(p) + (all ? '&all=1' : '')),
+    comment: (p, quote, text) => api('POST', '/comments', { path: p, quote, text }),
+    uncomment: (id) => api('DELETE', '/comments/' + id),
     tokens: () => api('GET', '/tokens'),
     revoke: (id) => api('DELETE', '/tokens/' + id),
     feedback: (text, mail, context) => api('POST', '/feedback', { text, email: mail || undefined, context }),
