@@ -1,19 +1,31 @@
 <!doctype html>
-<html lang="en" data-lang="en">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sharpmd: Markdown editor and reader in the browser, free and open source</title>
 <meta name="description" content="Free, open source Markdown editor and reader that runs in the browser. Open a .md file or a whole folder, edit on the formatted text, draw Mermaid diagrams. Optional cloud notes, sharing and an MCP connection for your AI.">
-<meta property="og:title" content="Sharpmd">
-<meta property="og:description" content="Read and edit Markdown in the browser. Free and open source. Your files stay on your machine.">
-<meta property="og:image" content="https://sharpmd.app/docs/store/1-reader.png">
-<meta property="og:type" content="website">
-<script>try{if(localStorage.getItem("sharpmd:app")&&location.search.indexOf("site")<0&&!location.hash&&document.referrer.indexOf(location.origin)!==0)location.replace("src/app.html")}catch(e){}</script>
 <link rel="canonical" href="https://sharpmd.app/">
+<link rel="alternate" hreflang="en" href="https://sharpmd.app/">
+<link rel="alternate" hreflang="es" href="https://sharpmd.app/es/">
+<link rel="alternate" hreflang="x-default" href="https://sharpmd.app/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Sharpmd">
+<meta property="og:title" content="Sharpmd: Markdown editor and reader in the browser, free and open source">
+<meta property="og:description" content="Read and edit Markdown in the browser. Free and open source. Your files stay on your machine.">
 <meta property="og:url" content="https://sharpmd.app/">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://sharpmd.app/docs/store/1-reader.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="800">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<link rel="preload" href="vendor/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="icon" href="icons/icon32.png">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Sharpmd","applicationCategory":"ProductivityApplication","operatingSystem":"Web, Chrome, Edge, Brave","description":"Markdown editor and reader that runs in the browser: outline, folder search, in-place editing, Mermaid diagrams, kanban boards and table totals.","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"license":"https://opensource.org/licenses/MIT","codeRepository":"https://github.com/MR-Axel/sharpmd"}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Sharpmd","url":"https://sharpmd.app/","applicationCategory":"ProductivityApplication","operatingSystem":"Web, Chrome, Edge, Brave","description":"Free, open source Markdown editor and reader that runs in the browser. Open a .md file or a whole folder, edit on the formatted text, draw Mermaid diagrams. Optional cloud notes, sharing and an MCP connection for your AI.","inLanguage":"en","image":"https://sharpmd.app/docs/store/1-reader.png","screenshot":"https://sharpmd.app/docs/store/2-editing.png","isAccessibleForFree":true,"offers":[{"@type":"Offer","name":"Free","price":"0","priceCurrency":"USD"},{"@type":"Offer","name":"Paid","price":"3.99","priceCurrency":"USD"}],"license":"https://opensource.org/licenses/MIT","codeRepository":"https://github.com/MR-Axel/sharpmd"}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Is Sharpmd free?","acceptedAnswer":{"@type":"Answer","text":"The editor is free and open source, with no limit on files or on notes kept in the browser. Cloud notes are free up to 10."}},{"@type":"Question","name":"How do I open a .md file with a double-click?","acceptedAnswer":{"@type":"Answer","text":"Install the extension, turn on \"Allow access to file URLs\" in its details, and set Chrome as the default app for .md files."}},{"@type":"Question","name":"Which Markdown does it support?","acceptedAnswer":{"@type":"Answer","text":"GitHub Flavored Markdown, plus KaTeX math, Mermaid and Graphviz diagrams, footnotes, task lists, callouts, definition lists and YAML front matter."}},{"@type":"Question","name":"Does it work without a connection?","acceptedAnswer":{"@type":"Answer","text":"The extension does. Cloud notes you have already opened also open offline, and what you write uploads when the connection is back."}},{"@type":"Question","name":"How does my AI get to my notes?","acceptedAnswer":{"@type":"Answer","text":"You create a token in the app and add Sharpmd as an MCP server in Claude or another client. It only sees the notes you keep in the cloud."}}]}</script>
+<script>try{localStorage.setItem("mdtools:site-lang","en");if(localStorage.getItem("sharpmd:app")&&location.search.indexOf("site")<0&&!location.hash&&document.referrer.indexOf(location.origin)!==0)location.replace("src/app.html")}catch(e){}</script>
 <style>
   @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
   :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --faint: #8a909c; --line: #dedbd2; --accent: #3f6b0c; --fill: #4d7c0f; --on: #fff; --shadow: 0 24px 60px rgba(30, 32, 38, .16); }
@@ -21,7 +33,6 @@
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.6 "MDT Inter", -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
-  html[data-lang="en"] [lang="es"], html[data-lang="es"] [lang="en"] { display: none !important; }
   a { color: inherit; }
   .wrap { width: min(1120px, 100% - 40px); margin: 0 auto; }
   nav { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
@@ -31,8 +42,8 @@
   nav a.link { color: var(--muted); text-decoration: none; font-size: 14.5px; }
   nav a.link:hover { color: var(--fg); }
   .lang { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); }
-  .lang button { height: 26px; padding: 0 11px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
-  html[data-lang="en"] .lang [data-set="en"], html[data-lang="es"] .lang [data-set="es"] { background: var(--fill); color: var(--on); }
+  .lang a { display: grid; place-items: center; height: 26px; padding: 0 11px; border-radius: 999px; color: var(--muted); font-size: 12.5px; font-weight: 600; text-decoration: none; }
+  .lang a.on { background: var(--fill); color: var(--on); }
   header.hero { padding: 84px 0 54px; text-align: center; }
   h1 { margin: 0 auto 18px; max-width: 15em; font-size: clamp(38px, 6vw, 66px); line-height: 1.05; letter-spacing: -0.035em; font-weight: 720; }
   .lede { margin: 0 auto 30px; max-width: 34em; color: var(--muted); font-size: clamp(17px, 2vw, 20px); }
@@ -94,6 +105,13 @@
   .plan ul { margin: 0; padding: 0; list-style: none; }
   .plan li { display: flex; gap: 10px; padding: 6px 0; color: var(--fg); font-size: 15.5px; }
   .plan li svg { flex: none; width: 18px; height: 18px; margin-top: 3px; fill: none; stroke: var(--accent); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .faq { border-bottom: 1px solid var(--line); }
+  .faq summary { padding: 18px 0; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: "+"; color: var(--faint); font-weight: 400; }
+  .faq[open] summary::after { content: "\2212"; }
+  .faq p { margin: 0 0 20px; max-width: 44em; color: var(--muted); }
+  .faqs { max-width: 820px; margin-top: 18px; border-top: 1px solid var(--line); }
   footer { padding: 30px 0 46px; border-top: 1px solid var(--line); color: var(--faint); font-size: 14px; }
   footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 22px; }
   footer a { color: var(--muted); }
@@ -103,135 +121,146 @@
 <body>
 <nav><div class="wrap">
   <a class="brand" href="#top"><img src="icons/icon48.png" alt=""><span>Sharpmd</span></a>
-  <a class="link" href="#features"><span lang="en">Features</span><span lang="es">Funciones</span></a>
-  <a class="link" href="#cloud"><span lang="en">Cloud and AI</span><span lang="es">Nube e IA</span></a>
-  <a class="link" href="#plans"><span lang="en">Plans</span><span lang="es">Planes</span></a>
-  <a class="link" href="#use"><span lang="en">Web, extension, server</span><span lang="es">Web, extensión, servidor</span></a>
-  <a class="link" href="privacy.html"><span lang="en">Privacy</span><span lang="es">Privacidad</span></a>
+  <a class="link" href="#features">Features</a>
+  <a class="link" href="#cloud">Cloud and AI</a>
+  <a class="link" href="#plans">Plans</a>
+  <a class="link" href="#use">Web, extension, server</a>
+  <a class="link" href="#faq">Questions</a>
+  <a class="link" href="privacy.html">Privacy</a>
   <a class="link" href="https://github.com/MR-Axel/sharpmd">GitHub</a>
-  <div class="lang"><button type="button" data-set="en">EN</button><button type="button" data-set="es">ES</button></div>
+  <div class="lang"><a href="./?site" class="on" aria-current="true" hreflang="en">EN</a><a href="es/?site" hreflang="es">ES</a></div>
 </div></nav>
 
 <header class="hero" id="top"><div class="wrap">
-  <h1><span lang="en">Read and edit Markdown in the browser.</span><span lang="es">Leé y editá Markdown en el navegador.</span></h1>
+  <h1>Read and edit Markdown in the browser.</h1>
   <p class="lede">
-    <span lang="en">Open a file or a whole folder. Click a paragraph or a table cell and type on the formatted text.</span>
-    <span lang="es">Abrís un archivo o una carpeta entera. Hacés clic en un párrafo o en una celda y escribís sobre el texto ya formateado.</span>
+    Open a file or a whole folder. Click a paragraph or a table cell and type on the formatted text.
+    
   </p>
   <div class="cta">
-    <a class="btn fill" href="src/app.html"><span lang="en">Open the app</span><span lang="es">Abrir la app</span></a>
-    <a class="btn" href="https://github.com/MR-Axel/sharpmd#install"><span lang="en">Get the extension</span><span lang="es">Instalar la extensión</span></a>
-    <a class="btn" href="https://github.com/MR-Axel/sharpmd"><span lang="en">Source on GitHub</span><span lang="es">Código en GitHub</span></a>
+    <a class="btn fill" href="src/app.html">Open the app</a>
+    <a class="btn" href="https://github.com/MR-Axel/sharpmd#install">Get the extension</a>
+    <a class="btn" href="https://github.com/MR-Axel/sharpmd">Source on GitHub</a>
   </div>
-  <p class="under"><span lang="en">Free and open source. No account needed. Your files stay on your machine.</span><span lang="es">Gratis y de código abierto. Sin cuenta obligatoria. Tus archivos quedan en tu máquina.</span></p>
-  <img class="shot" src="docs/store/1-reader.png" width="1280" height="800" alt="Sharpmd showing a Markdown document with its outline">
+  <p class="under">Free and open source. No account needed. Your files stay on your machine.</p>
+  <img class="shot" src="docs/store/1-reader.png" width="1280" height="800" fetchpriority="high" decoding="async" alt="Sharpmd showing a Markdown document with its outline">
 </div></header>
 
 <main id="features">
 <section><div class="wrap feature">
   <div>
-    <h2><span lang="en">Edit the document you are reading.</span><span lang="es">Editás el documento que estás leyendo.</span></h2>
-    <p><span lang="en">Click a paragraph, a heading, a list item or a table cell and type. The Markdown is rewritten behind it, block by block.</span><span lang="es">Hacés clic en un párrafo, un título, un ítem o una celda y escribís. El Markdown se reescribe por detrás, bloque por bloque.</span></p>
-    <p><span lang="en">Type <code>**bold**</code> or <code>`code`</code> and the marks turn into formatting. Start a line with <code>#</code>, <code>-</code> or <code>&gt;</code> and it becomes a heading, a list or a quote.</span><span lang="es">Escribís <code>**negrita**</code> o <code>`código`</code> y los signos se vuelven formato. Si la línea empieza con <code>#</code>, <code>-</code> o <code>&gt;</code>, pasa a ser título, lista o cita.</span></p>
+    <h2>Edit the document you are reading.</h2>
+    <p>Click a paragraph, a heading, a list item or a table cell and type. The Markdown is rewritten behind it, block by block.</p>
+    <p>Type <code>**bold**</code> or <code>`code`</code> and the marks turn into formatting. Start a line with <code>#</code>, <code>-</code> or <code>&gt;</code> and it becomes a heading, a list or a quote.</p>
   </div>
   <img class="shot" src="docs/store/2-editing.png" width="1280" height="800" loading="lazy" alt="Editing a table cell in place">
 </div></section>
 
 <section class="band"><div class="wrap feature flip">
   <div>
-    <h2><span lang="en">Right-click a block.</span><span lang="es">Clic derecho sobre un bloque.</span></h2>
-    <p><span lang="en">Insert a table, a code block, a diagram, a formula or a callout below it. Turn it into a heading, move it, duplicate it or delete it.</span><span lang="es">Insertás debajo una tabla, un bloque de código, un diagrama, una fórmula o un aviso. Lo convertís en título, lo movés, lo duplicás o lo eliminás.</span></p>
-    <p><span lang="en"><kbd>Ctrl</kbd> <kbd>Z</kbd> undoes it and <kbd>Ctrl</kbd> <kbd>Y</kbd> brings it back.</span><span lang="es"><kbd>Ctrl</kbd> <kbd>Z</kbd> lo deshace y <kbd>Ctrl</kbd> <kbd>Y</kbd> lo rehace.</span></p>
+    <h2>Right-click a block.</h2>
+    <p>Insert a table, a code block, a diagram, a formula or a callout below it. Turn it into a heading, move it, duplicate it or delete it.</p>
+    <p><kbd>Ctrl</kbd> <kbd>Z</kbd> undoes it and <kbd>Ctrl</kbd> <kbd>Y</kbd> brings it back.</p>
   </div>
   <img class="shot" src="docs/store/3-blocks.png" width="1280" height="800" loading="lazy" alt="The block menu">
 </div></section>
 
 <section><div class="wrap feature">
   <div>
-    <h2><span lang="en">Diagrams with the drawing next to the code.</span><span lang="es">Diagramas con el dibujo al lado del código.</span></h2>
-    <p><span lang="en">Click a Mermaid or Graphviz diagram and it opens with a live preview. Nine templates to start from. A syntax error shows under the last drawing that worked.</span><span lang="es">Hacés clic en un diagrama Mermaid o Graphviz y se abre con la vista previa en vivo. Hay nueve plantillas para arrancar. Un error de sintaxis aparece debajo del último dibujo que salió bien.</span></p>
+    <h2>Diagrams with the drawing next to the code.</h2>
+    <p>Click a Mermaid or Graphviz diagram and it opens with a live preview. Nine templates to start from. A syntax error shows under the last drawing that worked.</p>
   </div>
   <img class="shot" src="docs/store/4-diagram.png" width="1280" height="800" loading="lazy" alt="The diagram editor with live preview">
 </div></section>
 
 <section class="band"><div class="wrap feature flip">
   <div>
-    <h2><span lang="en">The whole folder, searchable.</span><span lang="es">La carpeta entera, con búsqueda.</span></h2>
-    <p><span lang="en">The sidebar lists the files next to the one you opened and searches the text of all of them at once. Create, rename and delete files from there.</span><span lang="es">La barra lateral muestra los archivos que están al lado del que abriste y busca en el texto de todos a la vez. Desde ahí creás, renombrás y eliminás archivos.</span></p>
-    <p><span lang="en"><code>[[name]]</code> links open the file with that name.</span><span lang="es">Los links <code>[[nombre]]</code> abren el archivo con ese nombre.</span></p>
+    <h2>The whole folder, searchable.</h2>
+    <p>The sidebar lists the files next to the one you opened and searches the text of all of them at once. Create, rename and delete files from there.</p>
+    <p><code>[[name]]</code> links open the file with that name.</p>
   </div>
   <img class="shot" src="docs/store/6-search.png" width="1280" height="800" loading="lazy" alt="Searching every file in a folder">
 </div></section>
 
 <section><div class="wrap">
-  <h2><span lang="en">Also in there</span><span lang="es">También trae</span></h2>
+  <h2>Also in there</h2>
   <div class="grid">
-    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14M9 5v14M15 5c0 9 1 12 4 13"/></svg></span><div><b><span lang="en">Math</span><span lang="es">Matemática</span></b><span><span lang="en">KaTeX, inline and in blocks.</span><span lang="es">KaTeX, en línea y en bloque.</span></span></div></div>
-    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.5 10h17M3.5 14.5h17M9.5 5v14"/></svg></span><div><b><span lang="en">Tables</span><span lang="es">Tablas</span></b><span><span lang="en">Add and remove rows and columns with a button.</span><span lang="es">Agregás y quitás filas y columnas con un botón.</span></span></div></div>
-    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m5 18 5-5 3.5 3.5 2.5-2.5 3.5 3.5"/></svg></span><div><b><span lang="en">Pasted images</span><span lang="es">Imágenes pegadas</span></b><span><span lang="en">Saved to <code>assets/</code> next to the document.</span><span lang="es">Se guardan en <code>assets/</code>, al lado del documento.</span></span></div></div>
-    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg></span><div><b><span lang="en">Find and replace</span><span lang="es">Buscar y reemplazar</span></b><span><span lang="en">One match or all of them.</span><span lang="es">De a una coincidencia o todas.</span></span></div></div>
-    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15"/></svg></span><div><b><span lang="en">Focus and typewriter modes</span><span lang="es">Modo foco y máquina de escribir</span></b><span><span lang="en">Dim the rest and keep the line at mid height.</span><span lang="es">Atenúa el resto y deja el renglón a media altura.</span></span></div></div>
-    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></svg></span><div><b><span lang="en">Export</span><span lang="es">Exportar</span></b><span><span lang="en">One HTML file, or PDF through print.</span><span lang="es">Un solo archivo HTML, o PDF desde imprimir.</span></span></div></div>
-    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8.5 8-4 4 4 4M15.5 8l4 4-4 4M13.5 5.5l-3 13"/></svg></span><div><b><span lang="en">More than Markdown</span><span lang="es">No solo Markdown</span></b><span><span lang="en">Code highlighted, CSV as a table, images as images.</span><span lang="es">Código resaltado, CSV como tabla, imágenes como imágenes.</span></span></div></div>
-    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h8l4 4V19a1.5 1.5 0 0 1-1.5 1.5H6.5A1.5 1.5 0 0 1 5 19V5a1.5 1.5 0 0 1 1.5-1.5z"/><path d="M12 10v6M9 13h6"/></svg></span><div><b><span lang="en">Quick notes</span><span lang="es">Notas rápidas</span></b><span><span lang="en">New opens an empty note, saved to the folder you chose.</span><span lang="es">Nuevo abre una nota vacía, guardada en la carpeta que elegiste.</span></span></div></div>
-    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 14.5c1.8 2.2 5.2 2.2 7 0M9 9.8v.4M15 9.8v.4"/></svg></span><div><b><span lang="en">Emoji</span><span lang="es">Emojis</span></b><span><span lang="en">Type <code>:</code> and pick from the list.</span><span lang="es">Escribís <code>:</code> y elegís de la lista.</span></span></div></div>
-    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.8 2.6 14.2 0 17M12 3.5c-2.6 2.8-2.6 14.2 0 17"/></svg></span><div><b><span lang="en">English and Spanish</span><span lang="es">Inglés y español</span></b><span><span lang="en">Switch in Settings.</span><span lang="es">Se cambia en Ajustes.</span></span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14M9 5v14M15 5c0 9 1 12 4 13"/></svg></span><div><b>Math</b><span>KaTeX, inline and in blocks.</span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.5 10h17M3.5 14.5h17M9.5 5v14"/></svg></span><div><b>Tables</b><span>Add and remove rows and columns with a button.</span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m5 18 5-5 3.5 3.5 2.5-2.5 3.5 3.5"/></svg></span><div><b>Pasted images</b><span>Saved to <code>assets/</code> next to the document.</span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg></span><div><b>Find and replace</b><span>One match or all of them.</span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15"/></svg></span><div><b>Focus and typewriter modes</b><span>Dim the rest and keep the line at mid height.</span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></svg></span><div><b>Export</b><span>One HTML file, or PDF through print.</span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8.5 8-4 4 4 4M15.5 8l4 4-4 4M13.5 5.5l-3 13"/></svg></span><div><b>More than Markdown</b><span>Code highlighted, CSV as a table, images as images.</span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h8l4 4V19a1.5 1.5 0 0 1-1.5 1.5H6.5A1.5 1.5 0 0 1 5 19V5a1.5 1.5 0 0 1 1.5-1.5z"/><path d="M12 10v6M9 13h6"/></svg></span><div><b>Quick notes</b><span>New opens an empty note, saved to the folder you chose.</span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 14.5c1.8 2.2 5.2 2.2 7 0M9 9.8v.4M15 9.8v.4"/></svg></span><div><b>Emoji</b><span>Type <code>:</code> and pick from the list.</span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.8 2.6 14.2 0 17M12 3.5c-2.6 2.8-2.6 14.2 0 17"/></svg></span><div><b>English and Spanish</b><span>Switch in Settings.</span></div></div>
   </div>
 </div></section>
 
 <section class="band" id="cloud"><div class="wrap">
-  <h2><span lang="en">Cloud notes, sharing and a connection for your AI</span><span lang="es">Notas en la nube, compartir y una conexión para tu IA</span><span class="soon"><span lang="en">Soon</span><span lang="es">Pronto</span></span></h2>
-  <p class="sub"><span lang="en">Nothing goes to the cloud until you send it. Files on your disk and notes in the browser stay where they are.</span><span lang="es">Nada va a la nube hasta que lo mandás. Los archivos de tu disco y las notas del navegador se quedan donde están.</span></p>
+  <h2>Cloud notes, sharing and a connection for your AI<span class="soon">Soon</span></h2>
+  <p class="sub">Nothing goes to the cloud until you send it. Files on your disk and notes in the browser stay where they are.</p>
   <div class="three">
-    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5a4 4 0 0 1-.6-7.95 5.5 5.5 0 0 1 10.7-1.1A4.5 4.5 0 0 1 17 18.5z"/></svg></span><h3><span lang="en">The same notes on every device</span><span lang="es">Las mismas notas en cada dispositivo</span></h3><p><span lang="en">Sign in with a six-digit code sent to your email. One click sends a note to the cloud, and it saves itself from then on.</span><span lang="es">Entrás con un código de seis dígitos que llega a tu correo. Con un clic mandás una nota a la nube, y desde ahí se guarda sola.</span></p></div>
-    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="3"/><path d="M2.5 19c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5"/><path d="M17.5 8v6M14.5 11h6"/></svg></span><h3><span lang="en">Share a note or a folder</span><span lang="es">Compartí una nota o una carpeta</span></h3><p><span lang="en">With another account, to read or to edit. You see who else has it open, and edits to different parts are merged. Or make a read-only public link with a password.</span><span lang="es">Con otra cuenta, para ver o para editar. Ves quién más la tiene abierta, y lo que cada uno cambia en partes distintas se junta. O armás un enlace público de solo lectura con contraseña.</span></p></div>
-    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 13.9 9l5.6 2-5.6 2L12 18.5 10.1 13l-5.6-2 5.6-2z"/><path d="M19 3.5v3M17.5 5h3"/></svg></span><h3><span lang="en">Let your AI read and write them</span><span lang="es">Que tu IA las lea y las escriba</span></h3><p><span lang="en">An MCP endpoint with five tools: list, read, write, append and search. Works with Claude and any other MCP client, with a token you create.</span><span lang="es">Un servidor MCP con cinco herramientas: listar, leer, escribir, agregar y buscar. Funciona con Claude y con cualquier otro cliente MCP, con un token que creás vos.</span></p></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5a4 4 0 0 1-.6-7.95 5.5 5.5 0 0 1 10.7-1.1A4.5 4.5 0 0 1 17 18.5z"/></svg></span><h3>The same notes on every device</h3><p>Sign in with a six-digit code sent to your email. One click sends a note to the cloud, and it saves itself from then on.</p></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="3"/><path d="M2.5 19c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5"/><path d="M17.5 8v6M14.5 11h6"/></svg></span><h3>Share a note or a folder</h3><p>With another account, to read or to edit. You see who else has it open, and edits to different parts are merged. Or make a read-only public link with a password.</p></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 13.9 9l5.6 2-5.6 2L12 18.5 10.1 13l-5.6-2 5.6-2z"/><path d="M19 3.5v3M17.5 5h3"/></svg></span><h3>Let your AI read and write them</h3><p>An MCP endpoint with five tools: list, read, write, append and search. Works with Claude and any other MCP client, with a token you create.</p></div>
   </div>
   <pre class="term"><i>$</i> claude mcp add --transport http sharpmd https://sync.sharpmd.app/mcp \
     --header "Authorization: Bearer mdt_..."</pre>
 </div></section>
 
 <section id="plans"><div class="wrap">
-  <h2><span lang="en">Plans</span><span lang="es">Planes</span></h2>
+  <h2>Plans</h2>
   <div class="plans">
-    <div class="plan"><h3><span lang="en">Free</span><span lang="es">Gratis</span></h3><p class="price">USD 0</p><p class="alt"></p><ul>
-      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span><span lang="en">The whole editor</span><span lang="es">Todo el editor</span></span></li>
-      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span><span lang="en">Files and browser notes, no limit</span><span lang="es">Archivos y notas del navegador, sin límite</span></span></li>
-      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span><span lang="en">10 notes in the cloud</span><span lang="es">10 notas en la nube</span></span></li>
+    <div class="plan"><h3>Free</h3><p class="price">USD 0</p><p class="alt"></p><ul>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>The whole editor</span></li>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Files and browser notes, no limit</span></li>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>10 notes in the cloud</span></li>
     </ul></div>
-    <div class="plan paid"><h3><span lang="en">Paid</span><span lang="es">Pago</span></h3><p class="price">USD 3.99 <small><span lang="en">a month</span><span lang="es">por mes</span></small></p><p class="alt"><span lang="en">or USD 39 a year</span><span lang="es">o USD 39 por año</span></p><ul>
-      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span><span lang="en">Unlimited notes in the cloud</span><span lang="es">Notas en la nube sin límite</span></span></li>
-      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span><span lang="en">Sharing and public links</span><span lang="es">Compartir y enlaces públicos</span></span></li>
-      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span><span lang="en">The MCP connection for your AI</span><span lang="es">La conexión MCP para tu IA</span></span></li>
-      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span><span lang="en">30 days of version history</span><span lang="es">Historial de versiones de 30 días</span></span></li>
-      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span><span lang="en">Colors, fonts and your own CSS</span><span lang="es">Colores, tipografías y tu propio CSS</span></span></li>
+    <div class="plan paid"><h3>Paid</h3><p class="price">USD 3.99 <small>a month</small></p><p class="alt">or USD 39 a year</p><ul>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Unlimited notes in the cloud</span></li>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Sharing and public links</span></li>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>The MCP connection for your AI</span></li>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>30 days of version history</span></li>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Colors, fonts and your own CSS</span></li>
     </ul></div>
   </div>
 </div></section>
 
 <section class="band" id="use"><div class="wrap">
-  <h2><span lang="en">Three pieces, all open source</span><span lang="es">Tres piezas, todas de código abierto</span></h2>
+  <h2>Three pieces, all open source</h2>
   <div class="three">
-    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.5 9.5h17M7 7.3h.01M9.5 7.3h.01"/></svg></span><h3><span lang="en">The web app</span><span lang="es">La app web</span></h3><p><span lang="en">Nothing to install. Chrome, Edge and Brave open folders and save in place. Firefox and Safari open one file at a time and saving downloads a copy.</span><span lang="es">Nada que instalar. Chrome, Edge y Brave abren carpetas y guardan en el lugar. Firefox y Safari abren de a un archivo y al guardar descargan una copia.</span></p><a class="btn fill" href="src/app.html"><span lang="en">Open the app</span><span lang="es">Abrir la app</span></a></div>
-    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 4.5h2a1.75 1.75 0 1 1 3.5 0h2A1.5 1.5 0 0 1 18.5 6v2a1.75 1.75 0 1 0 0 3.5v2a1.5 1.5 0 0 1-1.5 1.5h-2a1.75 1.75 0 1 0-3.5 0h-2A1.5 1.5 0 0 1 8 13.5v-2a1.75 1.75 0 1 1 0-3.5V6a1.5 1.5 0 0 1 1.5-1.5z" transform="translate(-1.2 2.5)"/></svg></span><h3><span lang="en">The extension</span><span lang="es">La extensión</span></h3><p><span lang="en">Works without a connection. Set Chrome as the default app for <code>.md</code> files and a double-click opens them rendered. It also renders Markdown served by a website.</span><span lang="es">Funciona sin conexión. Ponés Chrome como programa por defecto para los <code>.md</code> y con doble clic se abren ya formateados. También formatea el Markdown que sirve un sitio web.</span></p><a class="btn" href="https://github.com/MR-Axel/sharpmd#install"><span lang="en">Get the extension</span><span lang="es">Instalar la extensión</span></a></div>
-    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/><path d="M7.5 7.5h.01M7.5 16.5h.01M11 7.5h5M11 16.5h5"/></svg></span><h3><span lang="en">The sync server</span><span lang="es">El servidor de sincronización</span></h3><p><span lang="en">What cloud notes and the AI connection run on: one Node file with SQLite, under AGPL. Run your own and point the app at it in Settings.</span><span lang="es">Sobre esto corren las notas en la nube y la conexión con la IA: un archivo de Node con SQLite, con licencia AGPL. Levantás el tuyo y lo cargás en Ajustes.</span></p><a class="btn" href="https://github.com/MR-Axel/sharpmd/tree/main/server"><span lang="en">Server source</span><span lang="es">Código del servidor</span></a></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.5 9.5h17M7 7.3h.01M9.5 7.3h.01"/></svg></span><h3>The web app</h3><p>Nothing to install. Chrome, Edge and Brave open folders and save in place. Firefox and Safari open one file at a time and saving downloads a copy.</p><a class="btn fill" href="src/app.html">Open the app</a></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 4.5h2a1.75 1.75 0 1 1 3.5 0h2A1.5 1.5 0 0 1 18.5 6v2a1.75 1.75 0 1 0 0 3.5v2a1.5 1.5 0 0 1-1.5 1.5h-2a1.75 1.75 0 1 0-3.5 0h-2A1.5 1.5 0 0 1 8 13.5v-2a1.75 1.75 0 1 1 0-3.5V6a1.5 1.5 0 0 1 1.5-1.5z" transform="translate(-1.2 2.5)"/></svg></span><h3>The extension</h3><p>Works without a connection. Set Chrome as the default app for <code>.md</code> files and a double-click opens them rendered. It also renders Markdown served by a website.</p><a class="btn" href="https://github.com/MR-Axel/sharpmd#install">Get the extension</a></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/><path d="M7.5 7.5h.01M7.5 16.5h.01M11 7.5h5M11 16.5h5"/></svg></span><h3>The sync server</h3><p>What cloud notes and the AI connection run on: one Node file with SQLite, under AGPL. Run your own and point the app at it in Settings.</p><a class="btn" href="https://github.com/MR-Axel/sharpmd/tree/main/server">Server source</a></div>
   </div>
-  <p class="note"><span lang="en">The web app and the extension each keep their own browser notes. Cloud notes are the same in both.</span><span lang="es">La app web y la extensión guardan cada una sus notas del navegador. Las notas de la nube son las mismas en las dos.</span></p>
+  <p class="note">The web app and the extension each keep their own browser notes. Cloud notes are the same in both.</p>
+</div></section>
+
+<section id="faq"><div class="wrap">
+  <h2>Questions</h2>
+  <div class="faqs">
+    <details class="faq"><summary>Is Sharpmd free?</summary><p>The editor is free and open source, with no limit on files or on notes kept in the browser. Cloud notes are free up to 10.</p></details>
+    <details class="faq"><summary>How do I open a .md file with a double-click?</summary><p>Install the extension, turn on "Allow access to file URLs" in its details, and set Chrome as the default app for <code>.md</code> files.</p></details>
+    <details class="faq"><summary>Which Markdown does it support?</summary><p>GitHub Flavored Markdown, plus KaTeX math, Mermaid and Graphviz diagrams, footnotes, task lists, callouts, definition lists and YAML front matter.</p></details>
+    <details class="faq"><summary>Does it work without a connection?</summary><p>The extension does. Cloud notes you have already opened also open offline, and what you write uploads when the connection is back.</p></details>
+    <details class="faq"><summary>How does my AI get to my notes?</summary><p>You create a token in the app and add Sharpmd as an MCP server in Claude or another client. It only sees the notes you keep in the cloud.</p></details>
+  </div>
 </div></section>
 
 <section class="plain"><div class="wrap">
-  <h2><span lang="en">Your files are read in your browser.</span><span lang="es">Tus archivos se leen en tu navegador.</span></h2>
-  <p><span lang="en">No analytics. A note reaches the sync server only when you send it to the cloud. <a href="privacy.html">Privacy</a> has the detail, and the code is on <a href="https://github.com/MR-Axel/sharpmd">GitHub</a>: the app under MIT, the server under AGPL.</span><span lang="es">Sin analítica. Una nota llega al servidor solo cuando la mandás a la nube. El detalle está en <a href="privacy.html">Privacidad</a>, y el código en <a href="https://github.com/MR-Axel/sharpmd">GitHub</a>: la app con licencia MIT, el servidor con AGPL.</span></p>
-  <div class="cta" style="margin-top:26px"><a class="btn" href="https://ko-fi.com/surlabs" target="_blank" rel="noopener noreferrer"><span lang="en">Buy me a coffee</span><span lang="es">Invitame un café</span></a></div>
+  <h2>Your files are read in your browser.</h2>
+  <p>No analytics. A note reaches the sync server only when you send it to the cloud. <a href="privacy.html">Privacy</a> has the detail, and the code is on <a href="https://github.com/MR-Axel/sharpmd">GitHub</a>: the app under MIT, the server under AGPL.</p>
+  <div class="cta" style="margin-top:26px"><a class="btn" href="https://ko-fi.com/surlabs" target="_blank" rel="noopener noreferrer">Buy me a coffee</a></div>
 </div></section>
 </main>
 
 <footer><div class="wrap">
   <span>Sharpmd · MIT</span>
   <a href="https://github.com/MR-Axel/sharpmd">GitHub</a>
-  <a href="privacy.html"><span lang="en">Privacy</span><span lang="es">Privacidad</span></a>
-  <a href="https://axelrosso.com"><span lang="en">More tools</span><span lang="es">Más herramientas</span></a>
+  <a href="privacy.html">Privacy</a>
+  <a href="https://axelrosso.com">More tools</a>
 </div></footer>
-<script src="site.js"></script>
 </body>
 </html>

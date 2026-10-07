@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sharpmd: editor y lector de Markdown en el navegador, gratis y de código abierto</title>
+<meta name="description" content="Editor y lector de Markdown gratis y de código abierto que corre en el navegador. Abrís un .md o una carpeta entera, editás sobre el texto ya formateado y dibujás diagramas Mermaid. Notas en la nube opcionales, compartir y conexión MCP para tu IA.">
+<link rel="canonical" href="https://sharpmd.app/es/">
+<link rel="alternate" hreflang="en" href="https://sharpmd.app/">
+<link rel="alternate" hreflang="es" href="https://sharpmd.app/es/">
+<link rel="alternate" hreflang="x-default" href="https://sharpmd.app/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Sharpmd">
+<meta property="og:title" content="Sharpmd: editor y lector de Markdown en el navegador, gratis y de código abierto">
+<meta property="og:description" content="Leé y editá Markdown en el navegador. Gratis y de código abierto. Tus archivos quedan en tu máquina.">
+<meta property="og:url" content="https://sharpmd.app/es/">
+<meta property="og:locale" content="es_AR">
+<meta property="og:image" content="https://sharpmd.app/docs/store/1-reader.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="800">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<link rel="preload" href="../vendor/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="icon" href="../icons/icon32.png">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Sharpmd","url":"https://sharpmd.app/es/","applicationCategory":"ProductivityApplication","operatingSystem":"Web, Chrome, Edge, Brave","description":"Editor y lector de Markdown gratis y de código abierto que corre en el navegador. Abrís un .md o una carpeta entera, editás sobre el texto ya formateado y dibujás diagramas Mermaid. Notas en la nube opcionales, compartir y conexión MCP para tu IA.","inLanguage":"es","image":"https://sharpmd.app/docs/store/1-reader.png","screenshot":"https://sharpmd.app/docs/store/2-editing.png","isAccessibleForFree":true,"offers":[{"@type":"Offer","name":"Free","price":"0","priceCurrency":"USD"},{"@type":"Offer","name":"Paid","price":"3.99","priceCurrency":"USD"}],"license":"https://opensource.org/licenses/MIT","codeRepository":"https://github.com/MR-Axel/sharpmd"}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"¿Sharpmd es gratis?","acceptedAnswer":{"@type":"Answer","text":"El editor es gratis y de código abierto, sin límite de archivos ni de notas guardadas en el navegador. La nube es gratis hasta 10 notas."}},{"@type":"Question","name":"¿Cómo abro un .md con doble clic?","acceptedAnswer":{"@type":"Answer","text":"Instalás la extensión, activás \"Permitir acceso a URLs de archivo\" en sus detalles, y ponés Chrome como programa por defecto para los .md."}},{"@type":"Question","name":"¿Qué Markdown soporta?","acceptedAnswer":{"@type":"Answer","text":"GitHub Flavored Markdown, más matemática con KaTeX, diagramas Mermaid y Graphviz, notas al pie, listas de tareas, avisos, listas de definición y cabecera YAML."}},{"@type":"Question","name":"¿Funciona sin conexión?","acceptedAnswer":{"@type":"Answer","text":"La extensión, sí. Las notas de la nube que ya abriste también se abren sin conexión, y lo que escribís se sube cuando vuelve."}},{"@type":"Question","name":"¿Cómo llega mi IA a mis notas?","acceptedAnswer":{"@type":"Answer","text":"Creás un token en la app y agregás Sharpmd como servidor MCP en Claude u otro cliente. Solo ve las notas que tenés en la nube."}}]}</script>
+<script>try{localStorage.setItem("mdtools:site-lang","es");if(localStorage.getItem("sharpmd:app")&&location.search.indexOf("site")<0&&!location.hash&&document.referrer.indexOf(location.origin)!==0)location.replace("../src/app.html")}catch(e){}</script>
+<style>
+  @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("../vendor/fonts/inter.woff2") format("woff2"); }
+  :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --faint: #8a909c; --line: #dedbd2; --accent: #3f6b0c; --fill: #4d7c0f; --on: #fff; --shadow: 0 24px 60px rgba(30, 32, 38, .16); }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121418; --soft: #1a1d23; --fg: #e6e8ec; --muted: #a0a7b4; --faint: #737b89; --line: #2a2e37; --accent: #bef264; --fill: #bef264; --on: #14161a; --shadow: 0 24px 70px rgba(0, 0, 0, .55); } }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.6 "MDT Inter", -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+  .wrap { width: min(1120px, 100% - 40px); margin: 0 auto; }
+  nav { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  nav .wrap { display: flex; align-items: center; gap: 22px; height: 58px; }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; text-decoration: none; margin-right: auto; }
+  .brand img { width: 26px; height: 26px; border-radius: 7px; }
+  nav a.link { color: var(--muted); text-decoration: none; font-size: 14.5px; }
+  nav a.link:hover { color: var(--fg); }
+  .lang { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); }
+  .lang a { display: grid; place-items: center; height: 26px; padding: 0 11px; border-radius: 999px; color: var(--muted); font-size: 12.5px; font-weight: 600; text-decoration: none; }
+  .lang a.on { background: var(--fill); color: var(--on); }
+  header.hero { padding: 84px 0 54px; text-align: center; }
+  h1 { margin: 0 auto 18px; max-width: 15em; font-size: clamp(38px, 6vw, 66px); line-height: 1.05; letter-spacing: -0.035em; font-weight: 720; }
+  .lede { margin: 0 auto 30px; max-width: 34em; color: var(--muted); font-size: clamp(17px, 2vw, 20px); }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+  .btn { display: inline-flex; align-items: center; gap: 9px; padding: 13px 22px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); color: var(--fg); font-weight: 650; text-decoration: none; }
+  .btn:hover { border-color: var(--muted); }
+  .btn.fill { background: var(--fill); border-color: var(--fill); color: var(--on); }
+  .btn.fill:hover { filter: brightness(1.06); }
+  .under { margin: 18px 0 0; color: var(--faint); font-size: 14px; }
+  .shot { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+  .hero .shot { margin-top: 54px; }
+  section { padding: 76px 0; }
+  .feature { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 8fr); gap: 54px; align-items: center; }
+  .feature.flip { grid-template-columns: minmax(0, 8fr) minmax(0, 5fr); }
+  .feature.flip > div { order: 2; }
+  h2 { margin: 0 0 14px; font-size: clamp(27px, 3.4vw, 38px); line-height: 1.14; letter-spacing: -0.028em; font-weight: 700; }
+  .feature p, .ways p, .plain p { margin: 0 0 12px; color: var(--muted); }
+  kbd { padding: 1px 7px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; background: var(--soft); font: 0.85em ui-monospace, Consolas, monospace; color: var(--fg); }
+  code { padding: 1px 6px; border-radius: 5px; background: var(--soft); font: 0.88em ui-monospace, Consolas, monospace; color: var(--fg); }
+  .band { background: var(--soft); border-block: 1px solid var(--line); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 30px; }
+  .card { padding: 18px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+  .card b { display: block; margin-bottom: 4px; }
+  .card span { color: var(--muted); font-size: 15px; }
+  .ways { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; margin-top: 30px; }
+  .ways .card { padding: 26px 26px 24px; }
+  .ways h3 { margin: 0 0 8px; font-size: 20px; letter-spacing: -0.015em; }
+  .ways .btn { margin-top: 10px; padding: 10px 18px; font-size: 15px; }
+  .plain { text-align: center; }
+  .plain p { max-width: 36em; margin-inline: auto; }
+  .hero { position: relative; overflow: hidden; }
+  .hero::before { content: ""; position: absolute; inset: auto 0 -10% 0; height: 70%; background: radial-gradient(60% 60% at 50% 60%, color-mix(in srgb, var(--fill) 16%, transparent), transparent 70%); pointer-events: none; }
+  .hero .wrap { position: relative; }
+  .ic { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: color-mix(in srgb, var(--fill) 14%, var(--soft)); color: var(--accent); }
+  .ic svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .grid { grid-template-columns: repeat(auto-fit, minmax(196px, 1fr)); }
+  .grid .card .ic { margin-bottom: 14px; }
+  .card .ic { color: var(--accent); }
+  .card b span, .card h3 span, .card .btn span { color: inherit; }
+  section[id], header[id] { scroll-margin-top: 58px; }
+  .sub { margin: 0 0 6px; max-width: 40em; color: var(--muted); }
+  .three { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-top: 30px; }
+  .three .card { padding: 24px 24px 22px; }
+  .three h3 { margin: 16px 0 8px; font-size: 19px; letter-spacing: -0.015em; }
+  .three p { margin: 0 0 12px; color: var(--muted); font-size: 15.5px; }
+  .three .btn { margin-top: 6px; padding: 10px 18px; font-size: 15px; }
+  .term { margin: 26px 0 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); font: 13.5px/1.6 ui-monospace, Consolas, monospace; color: var(--fg); overflow-x: auto; white-space: pre; }
+  .term i { font-style: normal; color: var(--accent); }
+  .note { margin: 18px 0 0; color: var(--faint); font-size: 14.5px; }
+  .soon { display: none; margin-left: 10px; padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--fill) 16%, var(--soft)); color: var(--accent); font-size: 12px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; vertical-align: 6px; }
+  html[data-cloud="soon"] .soon { display: inline-block; }
+  .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; margin-top: 30px; max-width: 860px; }
+  .plan { padding: 26px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); }
+  .plan.paid { border-color: var(--fill); box-shadow: 0 0 0 3px color-mix(in srgb, var(--fill) 14%, transparent); }
+  .plan h3 { margin: 0; font-size: 17px; color: var(--muted); font-weight: 600; }
+  .plan .price { margin: 6px 0 2px; font-size: 34px; font-weight: 720; letter-spacing: -0.03em; }
+  .plan .price small { font-size: 15px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+  .plan .alt { margin: 0 0 16px; color: var(--faint); font-size: 14px; min-height: 1.4em; }
+  .plan ul { margin: 0; padding: 0; list-style: none; }
+  .plan li { display: flex; gap: 10px; padding: 6px 0; color: var(--fg); font-size: 15.5px; }
+  .plan li svg { flex: none; width: 18px; height: 18px; margin-top: 3px; fill: none; stroke: var(--accent); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .faq { border-bottom: 1px solid var(--line); }
+  .faq summary { padding: 18px 0; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: "+"; color: var(--faint); font-weight: 400; }
+  .faq[open] summary::after { content: "\2212"; }
+  .faq p { margin: 0 0 20px; max-width: 44em; color: var(--muted); }
+  .faqs { max-width: 820px; margin-top: 18px; border-top: 1px solid var(--line); }
+  footer { padding: 30px 0 46px; border-top: 1px solid var(--line); color: var(--faint); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+  footer a { color: var(--muted); }
+  @media (max-width: 860px) { .feature { grid-template-columns: 1fr; gap: 26px; } .feature.flip > div { order: 0; } nav a.link { display: none; } section { padding: 54px 0; } header.hero { padding-top: 56px; } }
+</style>
+</head>
+<body>
+<nav><div class="wrap">
+  <a class="brand" href="#top"><img src="../icons/icon48.png" alt=""><span>Sharpmd</span></a>
+  <a class="link" href="#features">Funciones</a>
+  <a class="link" href="#cloud">Nube e IA</a>
+  <a class="link" href="#plans">Planes</a>
+  <a class="link" href="#use">Web, extensión, servidor</a>
+  <a class="link" href="#faq">Preguntas</a>
+  <a class="link" href="../privacy.html">Privacidad</a>
+  <a class="link" href="https://github.com/MR-Axel/sharpmd">GitHub</a>
+  <div class="lang"><a href="../?site" hreflang="en">EN</a><a href="./?site" class="on" aria-current="true" hreflang="es">ES</a></div>
+</div></nav>
+
+<header class="hero" id="top"><div class="wrap">
+  <h1>Leé y editá Markdown en el navegador.</h1>
+  <p class="lede">
+    
+    Abrís un archivo o una carpeta entera. Hacés clic en un párrafo o en una celda y escribís sobre el texto ya formateado.
+  </p>
+  <div class="cta">
+    <a class="btn fill" href="../src/app.html">Abrir la app</a>
+    <a class="btn" href="https://github.com/MR-Axel/sharpmd#install">Instalar la extensión</a>
+    <a class="btn" href="https://github.com/MR-Axel/sharpmd">Código en GitHub</a>
+  </div>
+  <p class="under">Gratis y de código abierto. Sin cuenta obligatoria. Tus archivos quedan en tu máquina.</p>
+  <img class="shot" src="../docs/store/1-reader.png" width="1280" height="800" fetchpriority="high" decoding="async" alt="Sharpmd showing a Markdown document with its outline">
+</div></header>
+
+<main id="features">
+<section><div class="wrap feature">
+  <div>
+    <h2>Editás el documento que estás leyendo.</h2>
+    <p>Hacés clic en un párrafo, un título, un ítem o una celda y escribís. El Markdown se reescribe por detrás, bloque por bloque.</p>
+    <p>Escribís <code>**negrita**</code> o <code>`código`</code> y los signos se vuelven formato. Si la línea empieza con <code>#</code>, <code>-</code> o <code>&gt;</code>, pasa a ser título, lista o cita.</p>
+  </div>
+  <img class="shot" src="../docs/store/2-editing.png" width="1280" height="800" loading="lazy" alt="Editing a table cell in place">
+</div></section>
+
+<section class="band"><div class="wrap feature flip">
+  <div>
+    <h2>Clic derecho sobre un bloque.</h2>
+    <p>Insertás debajo una tabla, un bloque de código, un diagrama, una fórmula o un aviso. Lo convertís en título, lo movés, lo duplicás o lo eliminás.</p>
+    <p><kbd>Ctrl</kbd> <kbd>Z</kbd> lo deshace y <kbd>Ctrl</kbd> <kbd>Y</kbd> lo rehace.</p>
+  </div>
+  <img class="shot" src="../docs/store/3-blocks.png" width="1280" height="800" loading="lazy" alt="The block menu">
+</div></section>
+
+<section><div class="wrap feature">
+  <div>
+    <h2>Diagramas con el dibujo al lado del código.</h2>
+    <p>Hacés clic en un diagrama Mermaid o Graphviz y se abre con la vista previa en vivo. Hay nueve plantillas para arrancar. Un error de sintaxis aparece debajo del último dibujo que salió bien.</p>
+  </div>
+  <img class="shot" src="../docs/store/4-diagram.png" width="1280" height="800" loading="lazy" alt="The diagram editor with live preview">
+</div></section>
+
+<section class="band"><div class="wrap feature flip">
+  <div>
+    <h2>La carpeta entera, con búsqueda.</h2>
+    <p>La barra lateral muestra los archivos que están al lado del que abriste y busca en el texto de todos a la vez. Desde ahí creás, renombrás y eliminás archivos.</p>
+    <p>Los links <code>[[nombre]]</code> abren el archivo con ese nombre.</p>
+  </div>
+  <img class="shot" src="../docs/store/6-search.png" width="1280" height="800" loading="lazy" alt="Searching every file in a folder">
+</div></section>
+
+<section><div class="wrap">
+  <h2>También trae</h2>
+  <div class="grid">
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14M9 5v14M15 5c0 9 1 12 4 13"/></svg></span><div><b>Matemática</b><span>KaTeX, en línea y en bloque.</span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.5 10h17M3.5 14.5h17M9.5 5v14"/></svg></span><div><b>Tablas</b><span>Agregás y quitás filas y columnas con un botón.</span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m5 18 5-5 3.5 3.5 2.5-2.5 3.5 3.5"/></svg></span><div><b>Imágenes pegadas</b><span>Se guardan en <code>assets/</code>, al lado del documento.</span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg></span><div><b>Buscar y reemplazar</b><span>De a una coincidencia o todas.</span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15"/></svg></span><div><b>Modo foco y máquina de escribir</b><span>Atenúa el resto y deja el renglón a media altura.</span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></svg></span><div><b>Exportar</b><span>Un solo archivo HTML, o PDF desde imprimir.</span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8.5 8-4 4 4 4M15.5 8l4 4-4 4M13.5 5.5l-3 13"/></svg></span><div><b>No solo Markdown</b><span>Código resaltado, CSV como tabla, imágenes como imágenes.</span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h8l4 4V19a1.5 1.5 0 0 1-1.5 1.5H6.5A1.5 1.5 0 0 1 5 19V5a1.5 1.5 0 0 1 1.5-1.5z"/><path d="M12 10v6M9 13h6"/></svg></span><div><b>Notas rápidas</b><span>Nuevo abre una nota vacía, guardada en la carpeta que elegiste.</span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 14.5c1.8 2.2 5.2 2.2 7 0M9 9.8v.4M15 9.8v.4"/></svg></span><div><b>Emojis</b><span>Escribís <code>:</code> y elegís de la lista.</span></div></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.8 2.6 14.2 0 17M12 3.5c-2.6 2.8-2.6 14.2 0 17"/></svg></span><div><b>Inglés y español</b><span>Se cambia en Ajustes.</span></div></div>
+  </div>
+</div></section>
+
+<section class="band" id="cloud"><div class="wrap">
+  <h2>Notas en la nube, compartir y una conexión para tu IA<span class="soon">Pronto</span></h2>
+  <p class="sub">Nada va a la nube hasta que lo mandás. Los archivos de tu disco y las notas del navegador se quedan donde están.</p>
+  <div class="three">
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5a4 4 0 0 1-.6-7.95 5.5 5.5 0 0 1 10.7-1.1A4.5 4.5 0 0 1 17 18.5z"/></svg></span><h3>Las mismas notas en cada dispositivo</h3><p>Entrás con un código de seis dígitos que llega a tu correo. Con un clic mandás una nota a la nube, y desde ahí se guarda sola.</p></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="3"/><path d="M2.5 19c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5"/><path d="M17.5 8v6M14.5 11h6"/></svg></span><h3>Compartí una nota o una carpeta</h3><p>Con otra cuenta, para ver o para editar. Ves quién más la tiene abierta, y lo que cada uno cambia en partes distintas se junta. O armás un enlace público de solo lectura con contraseña.</p></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 13.9 9l5.6 2-5.6 2L12 18.5 10.1 13l-5.6-2 5.6-2z"/><path d="M19 3.5v3M17.5 5h3"/></svg></span><h3>Que tu IA las lea y las escriba</h3><p>Un servidor MCP con cinco herramientas: listar, leer, escribir, agregar y buscar. Funciona con Claude y con cualquier otro cliente MCP, con un token que creás vos.</p></div>
+  </div>
+  <pre class="term"><i>$</i> claude mcp add --transport http sharpmd https://sync.sharpmd.app/mcp \
+    --header "Authorization: Bearer mdt_..."</pre>
+</div></section>
+
+<section id="plans"><div class="wrap">
+  <h2>Planes</h2>
+  <div class="plans">
+    <div class="plan"><h3>Gratis</h3><p class="price">USD 0</p><p class="alt"></p><ul>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Todo el editor</span></li>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Archivos y notas del navegador, sin límite</span></li>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>10 notas en la nube</span></li>
+    </ul></div>
+    <div class="plan paid"><h3>Pago</h3><p class="price">USD 3.99 <small>por mes</small></p><p class="alt">o USD 39 por año</p><ul>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Notas en la nube sin límite</span></li>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Compartir y enlaces públicos</span></li>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>La conexión MCP para tu IA</span></li>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Historial de versiones de 30 días</span></li>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Colores, tipografías y tu propio CSS</span></li>
+    </ul></div>
+  </div>
+</div></section>
+
+<section class="band" id="use"><div class="wrap">
+  <h2>Tres piezas, todas de código abierto</h2>
+  <div class="three">
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.5 9.5h17M7 7.3h.01M9.5 7.3h.01"/></svg></span><h3>La app web</h3><p>Nada que instalar. Chrome, Edge y Brave abren carpetas y guardan en el lugar. Firefox y Safari abren de a un archivo y al guardar descargan una copia.</p><a class="btn fill" href="../src/app.html">Abrir la app</a></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 4.5h2a1.75 1.75 0 1 1 3.5 0h2A1.5 1.5 0 0 1 18.5 6v2a1.75 1.75 0 1 0 0 3.5v2a1.5 1.5 0 0 1-1.5 1.5h-2a1.75 1.75 0 1 0-3.5 0h-2A1.5 1.5 0 0 1 8 13.5v-2a1.75 1.75 0 1 1 0-3.5V6a1.5 1.5 0 0 1 1.5-1.5z" transform="translate(-1.2 2.5)"/></svg></span><h3>La extensión</h3><p>Funciona sin conexión. Ponés Chrome como programa por defecto para los <code>.md</code> y con doble clic se abren ya formateados. También formatea el Markdown que sirve un sitio web.</p><a class="btn" href="https://github.com/MR-Axel/sharpmd#install">Instalar la extensión</a></div>
+    <div class="card"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/><path d="M7.5 7.5h.01M7.5 16.5h.01M11 7.5h5M11 16.5h5"/></svg></span><h3>El servidor de sincronización</h3><p>Sobre esto corren las notas en la nube y la conexión con la IA: un archivo de Node con SQLite, con licencia AGPL. Levantás el tuyo y lo cargás en Ajustes.</p><a class="btn" href="https://github.com/MR-Axel/sharpmd/tree/main/server">Código del servidor</a></div>
+  </div>
+  <p class="note">La app web y la extensión guardan cada una sus notas del navegador. Las notas de la nube son las mismas en las dos.</p>
+</div></section>
+
+<section id="faq"><div class="wrap">
+  <h2>Preguntas</h2>
+  <div class="faqs">
+    <details class="faq"><summary>¿Sharpmd es gratis?</summary><p>El editor es gratis y de código abierto, sin límite de archivos ni de notas guardadas en el navegador. La nube es gratis hasta 10 notas.</p></details>
+    <details class="faq"><summary>¿Cómo abro un .md con doble clic?</summary><p>Instalás la extensión, activás "Permitir acceso a URLs de archivo" en sus detalles, y ponés Chrome como programa por defecto para los <code>.md</code>.</p></details>
+    <details class="faq"><summary>¿Qué Markdown soporta?</summary><p>GitHub Flavored Markdown, más matemática con KaTeX, diagramas Mermaid y Graphviz, notas al pie, listas de tareas, avisos, listas de definición y cabecera YAML.</p></details>
+    <details class="faq"><summary>¿Funciona sin conexión?</summary><p>La extensión, sí. Las notas de la nube que ya abriste también se abren sin conexión, y lo que escribís se sube cuando vuelve.</p></details>
+    <details class="faq"><summary>¿Cómo llega mi IA a mis notas?</summary><p>Creás un token en la app y agregás Sharpmd como servidor MCP en Claude u otro cliente. Solo ve las notas que tenés en la nube.</p></details>
+  </div>
+</div></section>
+
+<section class="plain"><div class="wrap">
+  <h2>Tus archivos se leen en tu navegador.</h2>
+  <p>Sin analítica. Una nota llega al servidor solo cuando la mandás a la nube. El detalle está en <a href="../privacy.html">Privacidad</a>, y el código en <a href="https://github.com/MR-Axel/sharpmd">GitHub</a>: la app con licencia MIT, el servidor con AGPL.</p>
+  <div class="cta" style="margin-top:26px"><a class="btn" href="https://ko-fi.com/surlabs" target="_blank" rel="noopener noreferrer">Invitame un café</a></div>
+</div></section>
+</main>
+
+<footer><div class="wrap">
+  <span>Sharpmd · MIT</span>
+  <a href="https://github.com/MR-Axel/sharpmd">GitHub</a>
+  <a href="../privacy.html">Privacidad</a>
+  <a href="https://axelrosso.com">Más herramientas</a>
+</div></footer>
+</body>
+</html>

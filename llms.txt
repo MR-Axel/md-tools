@@ -1,0 +1,41 @@
+# Sharpmd
+
+> Sharpmd is a free, open source Markdown editor and reader that runs in the browser, as a web app and as a Chrome extension. You open a .md file or a whole folder and edit on the formatted text. Cloud notes, sharing and an MCP server for AI clients are optional.
+
+- Web app: https://sharpmd.app/src/app.html
+- Site: https://sharpmd.app/ (Spanish: https://sharpmd.app/es/)
+- Source code: https://github.com/MR-Axel/sharpmd (app under MIT, sync server under AGPL-3.0)
+- Contact: hello@sharpmd.app
+
+## What it does
+
+- Edits Markdown in place: click a paragraph, a heading, a list item or a table cell and type. The Markdown source is rewritten block by block.
+- Reads GitHub Flavored Markdown plus KaTeX math, Mermaid and Graphviz diagrams, footnotes, task lists, callouts, definition lists and YAML front matter.
+- Opens a whole folder: file tree, search across every file, `[[name]]` links, create, rename, move and delete.
+- Block menu on right-click: insert a table, code block, diagram, formula or callout; turn into, move, duplicate, delete.
+- Tables with totals and formulas (`=sum`, `=avg`, `=min`, `=max`, `=count`, `=median`), kanban boards from task lists, pasted images saved next to the document.
+- Exports one standalone HTML file, or PDF through print.
+- Interface in English and Spanish.
+
+## Where it runs
+
+- Web app: nothing to install. Chrome, Edge and Brave open folders and save in place. Firefox and Safari open one file at a time and saving downloads a copy.
+- Chrome extension: works without a connection and opens local .md files with a double-click once Chrome is the default app for them.
+- Sync server: one Node file with SQLite. It can be self-hosted; the app takes its address in Settings.
+
+## Cloud notes and AI
+
+- Sign-in is a six-digit code sent by email, with no password.
+- A note reaches the server only when the user sends it to the cloud. Files opened from disk are never uploaded.
+- Cloud notes can be shared with another account, to read or to edit, or through a read-only public link with an optional password.
+- MCP endpoint over Streamable HTTP at https://sync.sharpmd.app/mcp with five tools: `list_notes`, `read_note`, `write_note`, `append_note`, `search_notes`. Authentication is a bearer token the user creates in the app.
+- Cloud notes are not end-to-end encrypted, because the server has to read them to share them and to serve MCP.
+
+## Plans
+
+- Free: the whole editor, unlimited files and browser notes, 10 notes in the cloud.
+- Paid: USD 3.99 a month or USD 39 a year. Unlimited cloud notes, sharing and public links, the MCP connection, 30 days of version history, and colors, fonts and custom CSS.
+
+## Privacy
+
+- No analytics. Details: https://sharpmd.app/privacy.html

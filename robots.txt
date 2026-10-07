@@ -1,4 +1,7 @@
 User-agent: *
 Allow: /
+Disallow: /tools/
+Disallow: /tests/
+Disallow: /pay.html
 
 Sitemap: https://sharpmd.app/sitemap.xml

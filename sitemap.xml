@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://sharpmd.app/</loc></url>
-  <url><loc>https://sharpmd.app/src/app.html</loc></url>
-  <url><loc>https://sharpmd.app/privacy.html</loc></url>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url><loc>https://sharpmd.app/</loc><lastmod>2026-10-07</lastmod><xhtml:link rel="alternate" hreflang="en" href="https://sharpmd.app/"/><xhtml:link rel="alternate" hreflang="es" href="https://sharpmd.app/es/"/></url>
+  <url><loc>https://sharpmd.app/es/</loc><lastmod>2026-10-07</lastmod><xhtml:link rel="alternate" hreflang="en" href="https://sharpmd.app/"/><xhtml:link rel="alternate" hreflang="es" href="https://sharpmd.app/es/"/></url>
+  <url><loc>https://sharpmd.app/privacy.html</loc><lastmod>2026-10-07</lastmod></url>
 </urlset>

@@ -103,6 +103,8 @@ The server is one file with no dependencies, and you can host it yourself: set i
 
 ## Development
 
+The app has no build step. The landing page is the one exception: `index.html`, `es/index.html` and `sitemap.xml` are generated from `tools/landing.src.html`, so each language is served as its own page. Edit the source, run `node tools/build-site.mjs` and commit the result.
+
 There is no build step: edit and reload the extension.
 
 ```
