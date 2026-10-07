@@ -25,19 +25,32 @@
     return loaded;
   }
   let parked = null; // la sesión de otro servidor, que no se pisa mientras no se entre en este
-  const remember = () => new Promise((resolve) => chrome.storage.local.set({ cloud: !session && parked ? parked : { session, email, at: base } }, resolve));
+  // Quien entró por el enlace de una sesión en vivo, sin cuenta: { secret, name, id, color, by, note, who, ended }.
+  // Mientras dure, session es su pase y email un nombre interno para la copia local. Nada de eso se guarda como
+  // cuenta: si en este navegador había una sesión propia, sigue guardada tal cual y vuelve al recargar sin el enlace.
+  let guest = null;
+  const remember = () => (guest ? Promise.resolve() : new Promise((resolve) => chrome.storage.local.set({ cloud: !session && parked ? parked : { session, email, at: base } }, resolve)));
+  const OPEN_LIVE = ['/live/look', '/live/join']; // se piden con el secreto del enlace, sin pase ni cuenta
 
-  async function api(method, path, body) {
+  async function api(method, path, body, again) {
     await ready();
     if (!base) throw Object.assign(new Error('no_server'), { code: 'no_server' });
+    // Un invitado solo habla con las rutas de su sesión: lo demás no sale de acá (y el servidor tampoco lo aceptaría).
+    if (guest && !path.startsWith('/live/')) throw Object.assign(new Error('guest'), { code: 'guest', status: 403 });
     let res;
     try {
-      res = await fetch(base + path, { method, headers: Object.assign({ 'content-type': 'application/json' }, session ? { authorization: 'Bearer ' + session } : {}), body: body === undefined ? undefined : JSON.stringify(body) });
+      res = await fetch(base + path, { method, headers: Object.assign({ 'content-type': 'application/json' }, session && !OPEN_LIVE.includes(path) ? { authorization: 'Bearer ' + session } : {}), body: body === undefined ? undefined : JSON.stringify(body) });
     } catch (e) { throw Object.assign(new Error('offline'), { code: 'offline' }); }
     let json = null;
     try { json = await res.json(); } catch (e) { /* respuesta sin cuerpo */ }
     if (!res.ok) {
-      if (res.status === 401 && session) { session = ''; await remember(); }
+      if (res.status === 401 && guest && !OPEN_LIVE.includes(path)) {
+        // El pase dejó de servir. Si la sesión sigue abierta (el servidor se reinició, o pasó un rato largo sin
+        // conexión) se vuelve a entrar con el enlace y el pedido sale de nuevo. Si no, la sesión terminó.
+        if (!again && !guest.ended && await rejoin()) return api(method, path, body, true);
+        throw Object.assign(new Error('live_ended'), { code: 'live_ended', status: 401 });
+      }
+      if (res.status === 401 && session && !guest) { session = ''; await remember(); }
       // retry: los segundos que faltan cuando el servidor frenó por un tope (del cuerpo o de la cabecera Retry-After).
       const retry = +((json && json.retry_after) || res.headers.get('retry-after') || 0) || 0;
       throw Object.assign(new Error((json && json.error) || 'failed'), { code: (json && json.error) || 'failed', status: res.status, retry, body: json });
@@ -45,12 +58,56 @@
     return json;
   }
 
+  // ---------- Invitado de una sesión en vivo ----------
+  const liveTag = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
+  const guestFns = [];
+  const tellGuest = (what) => guestFns.forEach((fn) => { try { fn(what); } catch (e) { /* quien escucha se arregla */ } });
+  // El pase queda en la pestaña (sessionStorage): recargar no crea otro invitado, y cerrar la pestaña lo olvida.
+  // ticket es la contraseña de reingreso que da el servidor al entrar: con ella se vuelve aunque el enlace haya cambiado.
+  function adopt(secret, r) {
+    const ticket = r.ticket || (guest && guest.ticket) || '';
+    guest = { secret, ticket, name: r.name, id: r.you, color: r.color, by: r.by, note: r.note.name, max: r.max, who: 'live:' + liveTag(secret), people: r.people || [], ended: '' };
+    session = r.pass; email = guest.who; listCache = null; vaultCache = []; vaultAt = Date.now();
+    try { sessionStorage.setItem('lmd-live', JSON.stringify({ secret, ticket, pass: r.pass, name: r.name, you: r.you, color: r.color, by: r.by, max: r.max, note: { name: r.note.name } })); } catch (e) { /* sin sesión: al recargar se vuelve a pedir el nombre */ }
+    return guest;
+  }
+  let rejoining = null;
+  function rejoin() {
+    if (!rejoining) rejoining = (async () => {
+      try { adopt(guest.secret, await api('POST', '/live/join', guest.ticket ? { ticket: guest.ticket, name: guest.name } : { secret: guest.secret, name: guest.name })); tellGuest('rejoined'); return true; }
+      catch (e) {
+        if (e.code === 'offline') throw e;
+        guest.ended = e.code === 'live_full' ? 'full' : 'gone'; tellGuest('ended');
+        return false;
+      } finally { setTimeout(() => { rejoining = null; }, 0); }
+    })();
+    return rejoining;
+  }
+  // Tras recargar la pestaña: el mismo pase, si todavía sirve (si no, api() vuelve a entrar con el mismo nombre).
+  async function resumeGuest(secret) {
+    let kept = null;
+    try { kept = JSON.parse(sessionStorage.getItem('lmd-live') || 'null'); } catch (e) { /* sin sesión */ }
+    if (!kept || kept.secret !== secret || !kept.pass) return null;
+    await ready();
+    adopt(secret, kept);
+    try { await api('GET', '/live/note'); return guest; }
+    catch (e) { if (e.code === 'offline') return guest; guest = null; session = ''; email = ''; loaded = null; await ready(); throw e; }
+  }
+  async function leaveGuest() {
+    if (!guest) return;
+    try { if (!guest.ended) await api('POST', '/live/leave', {}); } catch (e) { /* igual se sale */ }
+    try { sessionStorage.removeItem('lmd-live'); } catch (e) { /* sin sesión */ }
+    for (const c of await S.cloudAll(guest.who)) await S.cloudDelete(guest.who, c.path);
+  }
+
   // Una ruta que empieza con ~12/ es una nota de otra cuenta (la 12) que nos compartieron.
   const split = (p) => { const m = /^~(\d+)\/(.*)$/.exec(p); return m ? { owner: m[1], path: m[2] } : { owner: '', path: p }; };
-  const notePath = (p) => { const s = split(p); return '/notes/' + s.path.split('/').map(encodeURIComponent).join('%2F') + (s.owner ? '?o=' + s.owner : ''); };
+  // Para un invitado hay una sola nota, la de la sesión: cualquier otra ruta no existe.
+  const notePath = (p) => { if (guest) return p === guest.note ? '/live/note' : '/live/none'; const s = split(p); return '/notes/' + s.path.split('/').map(encodeURIComponent).join('%2F') + (s.owner ? '?o=' + s.owner : ''); };
 
   const otherLists = {};
   async function list(fresh, owner) {
+    if (guest) return owner ? [] : [{ path: guest.note, updated: 0, size: 0 }];
     if (owner) {
       const c = otherLists[owner];
       if (!fresh && c && Date.now() - c.at < 5000) return c.rows;
@@ -81,7 +138,7 @@
   let vaultCache = null; let vaultAt = 0; let vaultOk = true;
   async function vaults(fresh) {
     await ready();
-    if (!base || !session) return [];
+    if (!base || !session || guest) return [];
     if (!fresh && vaultCache && Date.now() - vaultAt < 30000) return vaultCache;
     try { vaultCache = await api('GET', '/vaults'); vaultAt = Date.now(); vaultOk = true; S.vaultsPut(email, vaultCache); }
     catch (e) {
@@ -121,7 +178,7 @@
         return await send();
       }
     } catch (e) {
-      if (e.code === 'rev_conflict' && e.body) { e.theirs = await plain(path, String(e.body.text == null ? '' : e.body.text)); e.rev = e.body.rev; }
+      if (e.code === 'rev_conflict' && e.body) { e.theirs = await plain(path, String(e.body.text == null ? '' : e.body.text)); e.rev = e.body.rev; e.pid = e.body.pid || ''; }
       throw e;
     }
   }
@@ -302,15 +359,23 @@
   }
 
   // Escucha una nota: avisa cuando otro la guarda y quién más la tiene abierta. Se reconecta sola.
-  function events(p, onEvent) {
+  // Además de lo que manda el servidor, avisa { type: 'link', up } cuando la escucha se abre o se corta.
+  // quick() dice si hay una sesión en vivo en curso: ahí se reconecta enseguida en vez de esperar cinco segundos.
+  function events(p, onEvent, quick) {
     let stop = false; let ctrl = null;
+    // Un error de quien escucha no corta la escucha, pero tampoco se esconde: queda en la consola.
+    const tell = (ev) => { try { onEvent(ev); } catch (e) { console.error(e); } };
     const run = async () => {
       while (!stop) {
+        let up = false;
         try {
           await ready();
           const s = split(p); ctrl = new AbortController();
-          const res = await fetch(base + '/events?path=' + encodeURIComponent(s.path) + (s.owner ? '&o=' + s.owner : ''), { headers: { authorization: 'Bearer ' + session }, signal: ctrl.signal });
+          const res = await fetch(base + (guest ? '/live/events' : '/events?path=' + encodeURIComponent(s.path) + (s.owner ? '&o=' + s.owner : '')), { headers: { authorization: 'Bearer ' + session }, signal: ctrl.signal });
+          // El pase de un invitado dejó de servir: se vuelve a entrar con el enlace, o la sesión terminó y no se insiste.
+          if (res.status === 401 && guest && !(await rejoin())) { stop = true; break; }
           if (!res.ok || !res.body) throw new Error('events');
+          up = true; if (!stop) tell({ type: 'link', up: true });
           const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
           for (;;) {
             const r = await reader.read(); if (r.done) break;
@@ -323,7 +388,9 @@
             }
           }
         } catch (e) { /* sin conexión: se reintenta */ }
-        if (!stop) await new Promise((r) => setTimeout(r, 5000));
+        if (stop) break;
+        tell({ type: 'link', up: false, was: up });
+        await new Promise((r) => setTimeout(r, guest || (quick && quick()) ? 1500 : 5000));
       }
     };
     run();
@@ -396,10 +463,28 @@
   }
 
   LMD.cloud = {
-    ready, api, list: listOr, handle, events, split, merge3, merge, settle, open, hold, flush, kept,
+    ready, api, list: listOr, handle, events, split, merge3, merge, hunks, settle, open, hold, flush, kept,
     read: (p) => getNote(p),
+    // Sesión en vivo. De un lado, quien entra por el enlace (mirar, entrar, retomar tras recargar, salir); del otro,
+    // quien la abre sobre una nota propia (abrir, ver quiénes están, cambiar el enlace, sacar a alguien, terminarla).
+    // at() dice en qué bloque se está, para los dos.
+    guest: () => guest,
+    onGuest: (fn) => { guestFns.push(fn); },
+    live: {
+      look: (secret) => api('POST', '/live/look', { secret }),
+      join: async (secret, name) => adopt(secret, await api('POST', '/live/join', { secret, name })),
+      resume: resumeGuest, leave: leaveGuest,
+      status: (p) => api('GET', '/live?path=' + encodeURIComponent(p)),
+      open: (p, name) => api('POST', '/live', { path: p, name }),
+      close: (p) => api('DELETE', '/live?path=' + encodeURIComponent(p)),
+      rotate: (p) => api('POST', '/live/rotate', { path: p }),
+      kick: (p, id) => api('POST', '/live/kick', { path: p, id }),
+      at: (p, body) => api('POST', '/live/presence', guest ? body : Object.assign({ path: p }, body)),
+    },
     // Guarda la nota abierta sobre la revisión que tiene como base. Sale con rev_conflict si otro guardó antes.
     save: async (p, text, rev) => { const r = await putNote(p, text, rev); listCache = null; await keep(p, text, text, false); return r; },
+    // Lo de acá ya es lo mismo que hay en el servidor: la copia local deja de estar pendiente.
+    settled: (p, text) => keep(p, text, text, false),
     // Antes de subir, lo escrito queda guardado acá como pendiente: si no hay conexión, espera en la cola.
     stash: (p, text, was) => keep(p, text, was, true),
     // Dentro, hacia o desde una carpeta protegida, mover es volver a cifrar: el texto cifrado está atado a su ruta.

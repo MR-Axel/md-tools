@@ -72,7 +72,7 @@ export function tally() {
 // Escribe al final de un párrafo que ya existe (el que contiene has) y deja el cursor ahí.
 export async function typeIn(page, has, text, delay) {
   await page.locator('.lmd-article .lmd-editable', { hasText: has }).first().click();
-  await page.keyboard.press('End');
+  await page.keyboard.press('Control+End'); // el final del bloque, no el del renglón
   await page.keyboard.type(text, { delay: delay == null ? 15 : delay });
 }
 // Saca el foco del bloque sin tocar otro bloque.

@@ -1247,3 +1247,83 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
   .lmd-vault-list li { flex-wrap: wrap; }
 }
 @media print { .lmd-vault-line { display: none !important; } }
+
+/* ---------- Sesión en vivo ---------- */
+/* Arriba: que la nota está en vivo y quiénes están. El color de cada persona llega en --lmd-live. */
+.lmd-live-chip { display: inline-flex; align-items: center; gap: 7px; flex: none; height: 30px; padding: 0 8px 0 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg-soft); color: var(--fg); font: 600 12.5px/1 var(--lmd-font); cursor: pointer; }
+.lmd-live-chip[hidden] { display: none; }
+.lmd-live-chip:hover { border-color: var(--fg-faint); }
+.lmd-live-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #30a46c; box-shadow: 0 0 0 3px color-mix(in srgb, #30a46c 25%, transparent); }
+.lmd-live-avs { display: inline-flex; }
+.lmd-live-av { display: inline-grid; place-items: center; flex: none; width: 22px; height: 22px; margin-left: -6px; border: 2px solid var(--bg-soft); border-radius: 50%; background: var(--lmd-live, var(--fg-faint)); color: #fff; font: 700 10px/1 var(--lmd-font); }
+.lmd-live-avs .lmd-live-av:first-child { margin-left: 0; }
+.lmd-live-av.lmd-live-more { background: var(--line); color: var(--fg); }
+.lmd-live-n { display: none; }
+/* Para el invitado: de quién es la sesión, cuánta gente hay, si se cortó, y cómo salir. */
+.lmd-live-bar { position: sticky; top: calc(49px + env(safe-area-inset-top, 0px)); z-index: 9; display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 5px 16px; border-bottom: 1px solid var(--line); background: var(--bg-side); color: var(--fg-muted); font-size: 13px; line-height: 1.35; }
+.lmd-live-msg { flex: 1; min-width: 0; }
+.lmd-live-bar .lmd-btn { flex: none; padding: 4px 11px; font-size: 12.5px; }
+.lmd-live-down, .lmd-live-over { color: var(--fg); }
+.lmd-live-down .lmd-live-dot { background: #f5b83d; box-shadow: 0 0 0 3px color-mix(in srgb, #f5b83d 25%, transparent); }
+.lmd-live-over .lmd-live-dot { background: var(--fg-faint); box-shadow: none; }
+/* Quien entró por el enlace ve solo la nota: sin explorador ni cuenta. */
+.lmd-guest .lmd-zone-files, .lmd-guest .lmd-split, .lmd-guest .lmd-update { display: none !important; }
+.lmd-guest .lmd-zone-outline { flex: 1 1 auto !important; height: auto !important; }
+/* Al margen de cada bloque, quién está ahí. Tocar la marca muestra el nombre. */
+.lmd-live-layer { position: absolute; left: 0; top: 0; z-index: 4; }
+.lmd-live-layer[hidden] { display: none; }
+.lmd-live-mark { position: absolute; width: 13px; padding: 0; border: 0; background: none; cursor: pointer; }
+.lmd-live-mark::before { content: ""; position: absolute; left: 5px; top: 1px; bottom: 1px; width: 3px; border-radius: 2px; background: var(--lmd-live); }
+.lmd-live-tag { position: absolute; left: 5px; bottom: 100%; max-width: min(60vw, 320px); margin-bottom: 1px; padding: 2px 7px; overflow: hidden; border-radius: 6px 6px 6px 0; background: var(--lmd-live); color: #fff; font: 600 11px/1.35 var(--lmd-font); white-space: nowrap; text-overflow: ellipsis; opacity: 0; pointer-events: none; transition: opacity 0.12s ease; }
+.lmd-live-mark:hover .lmd-live-tag, .lmd-live-mark:focus-visible .lmd-live-tag, .lmd-live-show .lmd-live-tag, .lmd-live-editing .lmd-live-tag { opacity: 1; }
+.lmd-live-mark:hover, .lmd-live-show { z-index: 1; }
+/* El bloque que otro está escribiendo: no se entra a editarlo hasta que lo suelte. */
+.lmd-live-held { border-radius: 3px; outline: 1.5px solid color-mix(in srgb, var(--lmd-live) 65%, transparent); outline-offset: 3px; cursor: not-allowed; }
+/* Llegó un cambio de otra persona: el bloque se enciende un momento con su color. */
+.lmd-live-flash { animation: lmd-live-flash 1.4s ease-out; }
+@keyframes lmd-live-flash {
+  from { background-color: color-mix(in srgb, var(--lmd-live) 28%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--lmd-live) 28%, transparent); }
+  to { background-color: transparent; box-shadow: 0 0 0 4px transparent; }
+}
+@media (prefers-reduced-motion: reduce) { .lmd-live-flash { animation-duration: 0.01s; } }
+/* Dos tocaron lo mismo: el aviso con lo propio para copiar. */
+.lmd-live-note { position: fixed; left: 50%; bottom: 46px; z-index: 70; display: flex; align-items: center; gap: 12px; width: max-content; max-width: min(640px, calc(100vw - 24px)); padding: 10px 8px 10px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--fg); box-shadow: var(--shadow); font-size: 13.5px; line-height: 1.4; transform: translateX(-50%); }
+.lmd-live-note p { flex: 1; min-width: 0; margin: 0; }
+.lmd-live-note .lmd-btn { flex: none; }
+.lmd-live-x { display: grid; place-items: center; flex: none; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--fg-faint); cursor: pointer; }
+.lmd-live-x:hover { background: var(--bg-soft); color: var(--fg); }
+.lmd-live-x svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+/* El cuadro de la sesión y el de entrada. */
+.lmd-live-card { width: min(520px, 100%); }
+.lmd-ask-card.lmd-live-card p { margin: 0 0 14px; }
+.lmd-ask-card.lmd-live-card p.lmd-hint { margin: 6px 0 12px; color: var(--fg-faint); }
+.lmd-ask-card.lmd-live-card p.lmd-live-lead { color: var(--fg); overflow-wrap: anywhere; }
+.lmd-ask-card.lmd-live-card p.lmd-dlg-err { margin: 0 0 12px; }
+.lmd-live-card .lmd-dlg-field { margin-bottom: 4px; }
+.lmd-live-card h4 { margin: 16px 0 6px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-faint); }
+.lmd-live-link { margin-top: 0; }
+.lmd-live-link span { flex-basis: auto; }
+.lmd-live-people { max-height: 232px; margin: 0 0 14px; padding: 0; overflow: auto; list-style: none; }
+.lmd-live-people li { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 14px; }
+.lmd-live-people .lmd-live-av { width: 26px; height: 26px; margin-left: 0; border: 0; font-size: 11px; }
+.lmd-live-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lmd-live-people li button { flex: none; padding: 6px 4px; border: 0; background: none; color: var(--fg-faint); font: inherit; font-size: 12.5px; cursor: pointer; }
+.lmd-live-people li button:hover { color: #dc2626; }
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  /* Arriba queda el punto con cuántos son; los nombres están en el cuadro de la sesión. */
+  .lmd-live-chip { height: 34px; padding: 0 9px; gap: 6px; }
+  .lmd-live-word, .lmd-live-avs { display: none; }
+  .lmd-live-n { display: inline; }
+  .lmd-live-bar { flex-wrap: wrap; gap: 6px 8px; padding: 6px max(12px, env(safe-area-inset-right, 0px)) 6px max(12px, env(safe-area-inset-left, 0px)); }
+  .lmd-live-msg { flex: 1 1 calc(100% - 24px); }
+  .lmd-live-bar .lmd-btn { flex: 1 1 0; min-height: 40px; }
+  .lmd-live-mark { width: 16px; }
+  .lmd-live-note { bottom: calc(40px + env(safe-area-inset-bottom, 0px)); flex-wrap: wrap; width: auto; }
+  .lmd-live-note p { flex: 1 1 100%; }
+  .lmd-live-note .lmd-btn { flex: 1; min-height: 40px; }
+  .lmd-live-x { width: 40px; height: 40px; }
+  .lmd-live-card .lmd-ask-actions .lmd-btn { flex: 1 1 auto; min-height: 40px; }
+  .lmd-live-people li button { min-height: 40px; padding: 6px 8px; }
+  .lmd-live-card .lmd-dlg-field input, .lmd-live-link input { height: 40px; font-size: 16px; }
+}
+@media print { .lmd-live-layer, .lmd-live-bar, .lmd-live-note, .lmd-live-chip { display: none !important; } .lmd-live-held { outline: 0; } }

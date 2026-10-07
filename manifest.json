@@ -75,6 +75,7 @@
         "src/sync.js",
         "src/comments.js",
         "src/vault.js",
+        "src/live.js",
         "vendor/markdown-it.min.js",
         "vendor/markdown-it-emoji.min.js",
         "vendor/markdown-it-sub.min.js",
