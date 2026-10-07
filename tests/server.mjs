@@ -5,7 +5,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'mdsync-'));
 const PORT = 18000 + Math.floor(Math.random() * 400);
 const base = 'http://127.0.0.1:' + PORT;
-const child = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(PORT), DATA_DIR: data, DEV_CODES: '1', ADMIN_KEY: 'clave-de-prueba', PADDLE_WEBHOOK_SECRET: 'firma-de-prueba', PORTAL_URL: 'https://portal.ejemplo.test', FREE_NOTES: '3', ALLOW_ORIGINS: 'https://ejemplo.test', FEEDBACK_TO: 'duenio@ejemplo.test' }, stdio: ['ignore', 'pipe', 'pipe'] });
+const child = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(PORT), DATA_DIR: data, DEV_CODES: '1', ADMIN_KEY: 'clave-de-prueba', TEST_LOGIN: 'revision@ejemplo.test:246810', PADDLE_WEBHOOK_SECRET: 'firma-de-prueba', PORTAL_URL: 'https://portal.ejemplo.test', FREE_NOTES: '3', ALLOW_ORIGINS: 'https://ejemplo.test', FEEDBACK_TO: 'duenio@ejemplo.test' }, stdio: ['ignore', 'pipe', 'pipe'] });
 let log = ''; child.stdout.on('data', (d) => { log += d; }); child.stderr.on('data', (d) => { log += d; });
 for (let i = 0; i < 50 && !/puerto/.test(log); i++) await new Promise((r) => setTimeout(r, 100));
 
@@ -119,6 +119,13 @@ try {
   await call('POST', '/rename', { from: 'viejo.md', to: 'nuevo.md' }, rs);
   const rcomp = (await call('GET', '/shares?path=nuevo.md', undefined, rs)).json; const rver = (await call('GET', '/versions/nuevo.md', undefined, rs)).json;
   check('renombrar lleva consigo lo compartido y el historial', JSON.stringify(rcomp).includes('pago@ejemplo.test') && Array.isArray(rver) && rver.length >= 1, [rcomp, rver]);
+  // Cuenta de prueba con código fijo
+  const tl = await call('POST', '/auth/start', { email: 'revision@ejemplo.test' });
+  check('la cuenta de prueba no devuelve ni manda código', tl.status === 200 && !tl.json.dev_code, tl.json);
+  check('la cuenta de prueba no entra con otro código', (await call('POST', '/auth/verify', { email: 'revision@ejemplo.test', code: '000000' })).status === 400);
+  check('la cuenta de prueba entra con el código fijo', !!(await call('POST', '/auth/verify', { email: 'revision@ejemplo.test', code: '246810' })).json.session);
+  await call('POST', '/auth/start', { email: 'otra@ejemplo.test' });
+  check('el código fijo no sirve para otra cuenta', (await call('POST', '/auth/verify', { email: 'otra@ejemplo.test', code: '246810' })).status === 400);
   // Paddle: solo un aviso firmado, de un precio de SharpMD, cambia el plan
   const paddle = async (ev, secret) => { const raw = JSON.stringify(ev); const ts = Math.floor(Date.now() / 1000); const h1 = createHmac('sha256', secret || 'firma-de-prueba').update(ts + ':' + raw).digest('hex'); const r = await fetch(base + '/paddle/webhook', { method: 'POST', headers: { 'content-type': 'application/json', 'paddle-signature': 'ts=' + ts + ';h1=' + h1 }, body: raw }); return { status: r.status, json: await r.json().catch(() => null) }; };
   const pc = await call('POST', '/auth/start', { email: 'pago@ejemplo.test' }); const ps = (await call('POST', '/auth/verify', { email: 'pago@ejemplo.test', code: pc.json.dev_code })).json.session;

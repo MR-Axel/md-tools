@@ -32,6 +32,7 @@ Then, in SharpMD: Settings → Cloud → Sync server, and type the address (`htt
 | `FREE_NOTES` | Notes on the free plan | `10` |
 | `MCP_FREE` | `1` gives MCP access to the free plan too | off |
 | `ADMIN_KEY` | Key for `POST /admin/plan` | off |
+| `TEST_LOGIN` | `email:123456`. That one account signs in with the fixed code and gets no email. For store reviewers | off |
 | `CHECKOUT_MONTHLY`, `CHECKOUT_YEARLY` | Payment links the app shows in Settings → Plan. The account email is appended as `email=`, and the app adds `back=` with the address to return to | |
 | `PADDLE_WEBHOOK_SECRET` | Turns on `POST /paddle/webhook`: Paddle subscription events switch the plan | off |
 | `PORTAL_URL` | Where a subscriber manages the subscription | |

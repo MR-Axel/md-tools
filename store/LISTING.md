@@ -243,15 +243,30 @@ https://sharpmd.app/privacy.html
 
 ## Instrucciones de la prueba
 
-Usuario y contraseña quedan vacíos: no hay contraseña. En las instrucciones adicionales:
+Hay una cuenta de prueba con plan pago para quien revisa. Entra con un código fijo y no manda ningún correo.
+
+| Campo del panel | Qué cargar |
+|---|---|
+| Nombre de usuario | `review@sharpmd.app` |
+| Contraseña | el código de seis dígitos. No está en este repo, que es público: está en `~/.sharpmd/store-review.txt` (y en el servidor, en `TEST_LOGIN`) |
+
+En las instrucciones adicionales, reemplazando `CODE` por ese mismo código:
 
 ```
 The extension works without an account. To test it: open the extension details and turn on "Allow access to file URLs", then open any local .md file in Chrome, or click the extension icon and choose "New file".
 
-Cloud notes are optional. Sign-in has no password: the user types an email address on the start screen and receives a six-digit code by email. Any email address you control works, and no payment is needed: the free plan includes 10 cloud notes.
+Cloud notes are optional and sign-in has no password: the user types an email address on the start screen and receives a six-digit code by email.
+
+For this review there is a test account on the paid plan that does not need a mailbox:
+1. Click the extension icon, then "Open" to reach the start screen.
+2. Click "Sign up or sign in" and type review@sharpmd.app
+3. Type the code CODE (it is fixed for this account; no email is sent).
+The account has two sample cloud notes. With a note open, Settings > Cloud, AI and Plan show the paid features: sharing, version history and the MCP connection.
 
 The paid plan is bought on https://sharpmd.app through Paddle and is not required to use the extension.
 ```
+
+Si el código se filtra, se cambia en el servidor (`TEST_LOGIN` en el archivo de entorno) y se actualiza acá en el panel.
 
 ## Lo que hay que saber antes de enviar
 

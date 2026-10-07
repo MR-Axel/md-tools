@@ -14,6 +14,7 @@
 //   SHARE_FREE=1    habilita compartir también en el plan gratis
 //   CHECKOUT_MONTHLY, CHECKOUT_YEARLY   enlaces de pago que la app muestra en Ajustes → Plan
 //   ADMIN_KEY       clave para cambiar el plan de una cuenta desde /admin/plan
+//   TEST_LOGIN      correo:123456 de una cuenta de prueba que entra con ese código fijo, sin correo (para revisiones de tienda)
 //   PADDLE_WEBHOOK_SECRET   firma de los avisos de Paddle: con esto /paddle/webhook activa y da de baja el plan pago
 //   PORTAL_URL      dirección donde quien paga administra su suscripción
 //   FEEDBACK_TO     correo que recibe los comentarios y reportes de error de POST /feedback. Sin esto, responde 404
@@ -29,6 +30,7 @@ const DATA_DIR = env.DATA_DIR || path.join(process.cwd(), 'data');
 const PUBLIC_URL = (env.PUBLIC_URL || 'http://localhost:' + PORT).replace(/\/$/, '');
 const ORIGINS = (env.ALLOW_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
 const FREE_NOTES = +(env.FREE_NOTES || 10);
+const TEST_LOGIN = /^[^\s:]+@[^\s:]+:\d{6}$/.test(env.TEST_LOGIN || '') ? [env.TEST_LOGIN.split(':')[0].toLowerCase(), env.TEST_LOGIN.split(':')[1]] : null;
 const MAX_NOTE = 1024 * 1024; // 1 MB por nota
 const HISTORY_DAYS = 30;
 
@@ -101,10 +103,13 @@ const cleanEmail = (v) => { const e = String(v || '').trim().toLowerCase(); if (
 
 async function authStart(body) {
   const email = cleanEmail(body.email);
+  // Cuenta de prueba para quien revisa la app en una tienda: código fijo, sin correo. Es una sola cuenta, sin datos de nadie.
+  const fixed = TEST_LOGIN && email === TEST_LOGIN[0] ? TEST_LOGIN[1] : '';
   const prev = q('SELECT sent FROM codes WHERE email = ?').get(email);
-  if (prev && now() - prev.sent < 30000) throw new Fail(429, 'too_soon');
-  const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+  if (!fixed && prev && now() - prev.sent < 30000) throw new Fail(429, 'too_soon');
+  const code = fixed || String(crypto.randomInt(0, 1000000)).padStart(6, '0');
   q('INSERT OR REPLACE INTO codes (email, hash, expires, tries, sent) VALUES (?, ?, ?, 0, ?)').run(email, sha(email + ':' + code), now() + 15 * 60000, now());
+  if (fixed) return { ok: true };
   await sendCode(email, code, body.lang);
   return env.DEV_CODES ? { ok: true, dev_code: code } : { ok: true };
 }
