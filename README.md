@@ -24,19 +24,21 @@ Free and open source. No account, no tracking: files are read in your browser an
 | **Blocks** | Right-click, the handle next to a block, the + button or `/` on an empty line: insert, turn into, move, duplicate or delete. Undo with Ctrl+Z, redo with Ctrl+Y. |
 | **Tables** | Add and remove rows and columns. A totals row sums each column, and a cell can hold `=sum`, `=avg`, `=min`, `=max`, `=count` or `=median`. |
 | **Boards** | A `kanban` block turns headings into columns and tasks into cards you can drag. Anywhere else it reads as a plain task list. |
-| **Diagrams** | Mermaid and Graphviz, with an editor that shows the drawing next to the code and nine templates. Rounded or straight shapes. |
-| **Math** | KaTeX, inline and in blocks. |
+| **Diagrams** | Mermaid and Graphviz, with an editor that shows the drawing next to the code: templates, pieces to add with a button, color palettes, and errors explained with their line marked. |
+| **Math** | KaTeX, inline and in blocks, with an editor that previews as you type. |
 | **Images** | Insert by address or from a file, pick a size, paste from the clipboard. |
-| **Folder** | The files next to the open document, search across all of them, `[[name]]` links, and new, rename and delete from the tree. |
+| **Files** | The outline on top and the explorer below, with the folder on disk, the notes kept in the browser and the cloud. Search across all of them, create from a template, rename, move by dragging, delete. |
+| **Links** | Ctrl+K links to a section of the note, to another file or to one of its sections, picked from a list. `[[name]]` works too. |
 | **Outline** | Built from the headings, with the current section and reading progress. |
-| **Notes** | New starts a note that saves itself in the browser, or in a folder you choose. |
+| **Notes** | New starts a note that saves itself in the browser, or in a folder you choose. 26 templates to start from. |
 | **Emoji** | Type `:` and pick from the list. |
 | **Focus** | Focus mode dims everything but the block you are writing; typewriter mode keeps the line at mid height. |
 | **Export** | One standalone HTML file, or PDF through print. |
 | **More than Markdown** | Code and config files open highlighted, CSV as a table, images as images. |
 | **Cloud notes** | Optional. Sign in with a code sent to your email, send a note to the cloud and open it on any device, also without a connection. |
 | **Sharing** | A note or a folder with another account, to read or to edit, or a read-only public link with a password. |
-| **AI over MCP** | Claude or any MCP client can list, read, write, append to and search your cloud notes. |
+| **AI over MCP** | Claude or any MCP client can list, read, write, append to and search your cloud notes. A token can be limited to one folder, and a comment on a block tells the AI what to change. |
+| **Phone** | The same app on a small screen, and the web app opens without a connection. |
 | **Yours to adjust** | Light and dark themes, width, font size, code block color, custom CSS, English and Spanish. |
 
 | Editing a table | Blocks menu |
@@ -105,8 +107,6 @@ The server is one file with no dependencies, and you can host it yourself: set i
 
 The app has no build step. The landing page is the one exception: `index.html`, `es/index.html` and `sitemap.xml` are generated from `tools/landing.src.html`, so each language is served as its own page. Edit the source, run `node tools/build-site.mjs` and commit the result.
 
-There is no build step: edit and reload the extension.
-
 ```
 manifest.json
 _locales/         extension name, description and shortcut labels (en, es)
@@ -118,18 +118,30 @@ src/
   serialize.js    from an edited block back to Markdown
   store.js        file and folder permissions and browser notes, kept in IndexedDB
   cloud.js        client for the optional sync server
-  home.js         start screen of the SharpMD page
+  home.js         the empty state of the app and the sign-in form
   write.js        new blocks, Markdown shortcuts and the block menu
-  diagram.js      diagram editor with live preview
+  diagram.js      diagram editor: live preview, pieces, templates, palettes, readable errors
+  formula.js      formula editor with live preview
+  links.js        link picker for sections, other files and web addresses
+  comments.js     comments left on a block for the AI
+  templates.js    note templates, in English and Spanish
+  emoji.js        emoji list while typing
+  dialog.js       the app's own prompt and confirm dialogs
+  touch.js        touch editing and the small-screen layout
+  sync.js         cloud icon, sharing, history, tokens and plans
   board.js        kanban boards and table formulas
   extras.js       files from the tree, images, replace, typewriter mode, HTML export
   content.js      the reader: interface, outline, tree, search, editing, saving, settings
   content.css     styles and themes
+  editors.css     styles of the diagram and formula editors
   background.js   reads files and folders, lazy-loads the heavy libraries, shortcuts, update check
   web.js          stands in for the extension APIs when the page is served from a site
-  app.html        the SharpMD page: open a file or a folder and edit it there
+  boot.js         paints the theme background before anything else loads
+  app.html        the app: sidebar with the outline and the files, and the note in the center
   popup.html/js   the popup of the extension icon
 server/           optional sync server with MCP
+sw.js             offline cache of the web app
+tools/            generator of the landing page
 vendor/           third-party libraries, unmodified
 examples/         sample documents covering every feature
 tests/            end-to-end tests
