@@ -96,6 +96,36 @@ try {
     check(tag + 'sin nota, arriba quedan la barra lateral y los ajustes', J(empty.bar) === J(['sidebar', 'settings']), empty.bar);
     await fits(page, tag + 'estado vacío');
 
+    if (W === 390) {
+      // ---------- Textos del inicio en teléfono, y el atrás del sistema ----------
+      const homeText = await page.evaluate(() => document.querySelector('.lmd-home-card').innerText);
+      check(tag + 'el inicio no habla de arrastrar ni de "la izquierda"', !/drag/i.test(homeText) && !/on the left/i.test(homeText) && /Start a new note or open one you already have\./.test(homeText), homeText);
+      check(tag + 'en la web no aparece el aviso de versión nueva', await page.evaluate(() => document.querySelector('.lmd-update').hidden));
+      const layers = () => page.evaluate(() => ({ drawer: document.documentElement.classList.contains('lmd-side-open'), panel: !document.querySelector('.lmd-panel').hidden, ask: document.querySelectorAll('.lmd-ask').length, url: location.href }));
+      const at = page.url();
+      await page.tap('[data-act=sidebar]'); await page.waitForTimeout(300);
+      const d1 = await layers(); await page.goBack(); await page.waitForTimeout(400); const d2 = await layers();
+      check(tag + 'atrás con la barra lateral abierta la cierra y no sale de la página', d1.drawer && !d2.drawer && d2.url === at, [d1, d2]);
+      await page.tap('[data-act=settings]'); await page.waitForTimeout(300);
+      const p1 = await layers(); await page.goBack(); await page.waitForTimeout(400); const p2 = await layers();
+      check(tag + 'atrás con Ajustes abiertos los cierra', p1.panel && !p2.panel && p2.url === at, [p1, p2]);
+      await page.tap('[data-home=tpl]'); await page.waitForSelector('.lmd-tpl'); await page.waitForTimeout(200);
+      await page.goBack(); await page.waitForTimeout(400); const t2 = await layers();
+      check(tag + 'atrás con un diálogo abierto lo cierra', t2.ask === 0 && t2.url === at, t2);
+      // Lo abierto se cerró de otra forma: abrir una nota no suma una entrada de más, y un solo atrás vuelve al inicio.
+      await page.tap('[data-act=sidebar]'); await page.waitForTimeout(300); await page.touchscreen.tap(W - 12, 400); await page.waitForTimeout(300);
+      const before = await page.evaluate(() => history.length);
+      await page.tap('[data-home=new]'); await page.waitForSelector('.lmd-draft');
+      const after = await page.evaluate(() => [history.length, !!(history.state && history.state.lmdLayer)]);
+      check(tag + 'abrir una nota reemplaza la entrada que dejó la barra lateral', after[0] === before && after[1] === false, [before, after]);
+      const tapHint = await page.evaluate(() => document.querySelector('.lmd-status').textContent);
+      check(tag + 'el aviso de edición habla de tocar, no de hacer clic', /tap/.test(tapHint) && !/click/.test(tapHint), tapHint);
+      await page.goBack(); await page.waitForSelector('.lmd-home:not([hidden]) [data-home=new]'); await page.waitForTimeout(300);
+      check(tag + 'y atrás vuelve al inicio de una sola vez', !/[?&]f=/.test(page.url()), page.url());
+      await page.evaluate(async () => { for (const n of await LMD.store.notesAll()) await LMD.store.noteDelete(n.name); sessionStorage.removeItem('lmd-edit'); });
+      await page.goto(home); await page.waitForSelector('.lmd-home [data-home=new]');
+    }
+
     // Cuenta y notas: una en el navegador y una en la nube
     await page.evaluate(async ([url, s, m, text]) => {
       await LMD.store.notePut('groceries.md', '# Groceries\n\n- [ ] Coffee\n- [x] Bread\n');
@@ -291,6 +321,12 @@ try {
         return { wide: body.scrollWidth - body.clientWidth, cols, tab: on.left >= 0 && on.right <= window.innerWidth, cut: [...body.querySelectorAll('section:not([hidden]) *')].filter((n) => n.offsetParent && n.getBoundingClientRect().right > window.innerWidth + 1).length }; });
       check(tag + 'ajustes, pestaña ' + tab + ': una columna, sin cortes y con la pestaña a la vista', t.wide <= 0 && t.cols.every((n) => n === 1) && t.tab && !t.cut, t);
       await fits(page, tag + 'ajustes, pestaña ' + tab);
+    }
+    if (W === 390) {
+      await page.tap('[data-ptab=ai]'); await page.waitForSelector('[data-acct=ai] [data-c=token]'); await page.tap('[data-acct=ai] [data-c=token]'); await page.waitForSelector('.lmd-ai-new');
+      const cmd = await page.evaluate(() => { const t = document.querySelector('[data-acct=ai] .lmd-field-long textarea'); const r = t.getBoundingClientRect(); return { cut: t.scrollWidth > t.clientWidth + 1 || t.scrollHeight > t.clientHeight + 2, inside: r.left >= 0 && r.right <= window.innerWidth, whole: /--header "Authorization: Bearer mdt_\S+"$/.test(t.value), name: document.querySelector('.lmd-tokens li span').textContent.split(' · ')[0] }; });
+      check(tag + 'el comando para conectar la IA se ve entero, y el token se llama "AI"', !cmd.cut && cmd.inside && cmd.whole && cmd.name === 'AI', cmd);
+      await fits(page, tag + 'ajustes, IA con un token recién creado');
     }
     await page.tap('[data-act=close-panel]');
     check(tag + 'la cruz cierra los ajustes', await page.evaluate(() => document.querySelector('.lmd-panel').hidden));

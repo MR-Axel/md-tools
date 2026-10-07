@@ -285,7 +285,7 @@
       "Colores, tipografía y CSS propio": "Colors, typeface and custom CSS", "Es tu plan actual.": "This is your current plan.",
       "Notas en la nube": "Notes in the cloud", "{n} de {m}": "{n} of {m}",
       "Compartido": "Shared",
-      "Demasiados intentos. Probá de nuevo en unos minutos.": "Too many tries. Try again in a few minutes.", "Ese enlace ya no existe.": "That link no longer exists.",
+      "Ese enlace ya no existe.": "That link no longer exists.",
       "Esta nota es de solo lectura": "This note is read-only", "Se sumaron los cambios de otra persona": "Someone else's changes were merged in",
       "También acá: {a}": "Also here: {a}", "Compartir": "Share", "Solo quien creó la nota puede hacer eso.": "Only the person who created the note can do that.",
       "Compartir es parte del plan pago.": "Sharing is part of the paid plan.", "Con otra cuenta": "With another account",
@@ -323,9 +323,25 @@
       "Entrá a tu cuenta para abrir las notas de la nube.": "Sign in to open your cloud notes.",
       "Llegaste al límite de notas del plan gratis. Esta no se guardó en la nube": "You reached the note limit of the free plan. This one was not saved to the cloud",
       "Sin conexión. Se guarda cuando vuelva": "Offline. It will save when the connection is back",
-      "Ese correo no parece válido.": "That email does not look valid.", "Esperá unos segundos antes de pedir otro código.": "Wait a few seconds before asking for another code.",
+      "Ese correo no parece válido.": "That email does not look valid.", "Recién pediste un código. Esperá {n} segundos para pedir otro.": "You just asked for a code. Wait {n} seconds to ask for another.",
+      "Se pidieron demasiados códigos. Si recién pediste uno, esperá 30 segundos; si no, probá de nuevo en una hora.": "Too many codes were requested. If you just asked for one, wait 30 seconds. If not, try again in an hour.",
+      "Demasiados códigos equivocados. Pedí un código nuevo; si tampoco entra, probá de nuevo en una hora.": "Too many wrong codes. Ask for a new code. If that one fails too, try again in an hour.",
+      "Donde ya entraste, la sesión sigue abierta.": "Devices that are already signed in stay signed in.",
+      "No se pudo enviar el correo. Probá de nuevo en unos minutos.": "The email could not be sent. Try again in a few minutes.",
+      "Código de seis dígitos": "Six-digit code", "Cambiar el correo o pedir otro código": "Change the email or get a new code",
+      "Este navegador no deja escribir sobre el archivo: al guardar se descarga una copia.": "This browser cannot write to the file: saving downloads a copy.",
+      "Demasiadas contraseñas equivocadas. Probá de nuevo en 10 minutos.": "Too many wrong passwords. Try again in 10 minutes.",
+      "Fórmula en línea": "Inline formula", "Elegí solo texto para hacer una fórmula.": "Select plain text only to make a formula.",
+      "Versión nueva: {v}": "New version: {v}",
+      "Empezá una nota nueva o abrí una que ya tengas.": "Start a new note or open one you already have.",
+      "Modo edición: tocá un texto para cambiarlo": "Edit mode: tap any text to change it",
+      "El plan gratis llega a 10 notas en la nube. Esta quedó guardada en este navegador.": "The free plan holds 10 cloud notes. This one is saved in this browser.",
+      "Llegaste al tope de tokens. Revocá uno para crear otro.": "You reached the token limit. Revoke one to create another.",
+      "Llegaste al tope de lo que se puede compartir. Quitá algo para sumar más.": "You reached the sharing limit. Remove something to add more.",
+      "Esta nota ya no está en la nube.": "This note is no longer in the cloud.",
+      "Copiá el enlace ahora: no se vuelve a mostrar.": "Copy the link now: it is not shown again.",
       "Ese código no coincide.": "That code does not match.", "El código venció. Pedí otro.": "The code expired. Ask for another one.",
-      "Demasiados intentos. Pedí un código nuevo.": "Too many tries. Ask for a new code.", "No hay conexión con el servidor.": "Cannot reach the server.",
+      "No hay conexión con el servidor.": "Cannot reach the server.",
       "Conectar una IA es parte del plan pago.": "Connecting an AI is part of the paid plan.", "No se pudo completar. Probá de nuevo.": "Could not complete it. Try again.",
       "Te mandamos un código a {a}.": "We sent a code to {a}.", "Entrar": "Sign in", "tu correo": "your email", "Enviar código": "Send code",
       "Conectar una IA": "Connect an AI", "Salir": "Sign out",
@@ -854,7 +870,7 @@
   const WEB_APP_URL = 'https://sharpmd.app/src/app.html';
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.42.0';
+  const VERSION = '2.43.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
 })(typeof self !== 'undefined' ? self : this);

@@ -54,7 +54,8 @@
       await LMD.cloud.write(path, core.raw);
       openNote(path, { tree: true });
     } catch (e) {
-      core.flash(T(e.code === 'note_limit' ? 'Llegaste al límite de notas del plan gratis.' : e.code === 'offline' ? 'No hay conexión con el servidor.' : 'No se pudo subir la nota.'), 'error');
+      if (e.code === 'note_limit') core.openPanel('plan', T('Llegaste al límite de notas del plan gratis. El plan pago no tiene límite.'));
+      else core.flash(T(e.code === 'offline' ? 'No hay conexión con el servidor.' : 'No se pudo subir la nota.'), 'error');
     }
   }
 
@@ -82,7 +83,8 @@
       if (b.dataset.s === 'ai') { core.openPanel('ai'); return; }
       if (b.dataset.s === 'comments') { LMD.comments.list(); return; } // sin plan, lleva a Ajustes → Plan
       if (b.classList.contains('lmd-locked')) {
-        core.flash(T(mine().owner ? 'Solo quien creó la nota puede hacer eso.' : b.dataset.s === 'history' ? 'El historial de versiones es parte del plan pago.' : 'Compartir es parte del plan pago.'), 'warn');
+        if (mine().owner) core.flash(T('Solo quien creó la nota puede hacer eso.'), 'warn');
+        else core.openPanel('plan', T(b.dataset.s === 'history' ? 'El historial de versiones es parte del plan pago.' : 'Compartir es parte del plan pago.'));
         return;
       }
       if (b.dataset.s === 'history') history(); else share();
@@ -143,8 +145,17 @@
       if (b.dataset.c === 'on') LMD.patch({ cloudUrl: '' });
       else if (b.dataset.c === 'login') { if (host.direct) host.login(); else askLogin(); }
       else if (b.dataset.c === 'open') openCloud(Object.assign({ say: (t) => { const m = box.querySelector('.lmd-acct-msg'); if (m) { m.hidden = false; m.textContent = t; } } }, host));
-      else if (b.dataset.c === 'out') { await LMD.cloud.logout(); account = null; asked = false; paint(); if (core.APP) core.reloadTree(); cloudPane(box, host); }
+      else if (b.dataset.c === 'out') { await signOut(host); cloudPane(box, host); }
     };
+  }
+
+  // Salir de la cuenta. Con una nota de la nube abierta, primero se sube lo pendiente y después la nota se cierra:
+  // sin sesión no se puede leer ni guardar, y dejarla a la vista diría "guardado en la nube" sin que sea cierto.
+  async function signOut(host) {
+    const open = core && core.APP && isCloud();
+    if (open && host && host.leave) { try { await host.leave(); } catch (e) { /* lo que no subió queda en la cola */ } }
+    await LMD.cloud.logout(); account = null; asked = false; paint();
+    if (open) await core.close({ discard: true, tree: true }); else if (core && core.APP) core.reloadTree();
   }
 
   // Carpetas de la nube, con las de adentro: salen de las rutas de las notas.
@@ -158,6 +169,10 @@
     await LMD.cloud.ready();
     const intro = hint(T('Una IA que hable MCP, como Claude, lee y escribe tus notas de la nube.'));
     const field = (label, value) => '<div class="lmd-field"><span>' + label + '</span><input type="text" readonly value="' + esc(value) + '"><button type="button" class="lmd-link" data-c="copy">' + T('Copiar') + '</button></div>';
+    // El comando es largo: va en un cuadro de varios renglones, entero a la vista, con su botón de copiar.
+    const longField = (label, value) => '<div class="lmd-field lmd-field-long"><span>' + label + '</span><textarea readonly rows="3" spellcheck="false" aria-label="' + label + '">' + esc(value) + '</textarea><button type="button" class="lmd-link" data-c="copy">' + T('Copiar') + '</button></div>';
+    // Un token creado sin nombre lleva el de siempre ("IA" o "AI", según el idioma en que se creó): se muestra en el idioma de ahora.
+    const tokenName = (n) => (/^(IA|AI)$/.test(n || '') ? T('IA') : n);
     const day = (ms) => new Date(ms).toLocaleDateString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { day: 'numeric', month: 'short' });
     let a = null;
     const draw = async (made) => {
@@ -167,9 +182,9 @@
       const kept = (box.querySelector('[data-c=folder]') || {}).value || '';
       box.innerHTML = intro + field('URL', a.mcp_url) +
         (made ? '<p class="lmd-ai-new">' + T('Copiá estos datos ahora: el token no se vuelve a mostrar.') + '</p>' + field('Token', made.token) +
-          field('Claude Code', 'claude mcp add --transport http sharpmd ' + made.mcp_url + ' --header "Authorization: Bearer ' + made.token + '"') : '') +
+          longField('Claude Code', 'claude mcp add --transport http sharpmd ' + made.mcp_url + ' --header "Authorization: Bearer ' + made.token + '"') : '') +
         '<h4>' + T('Tokens') + '</h4>' +
-        (list.length ? '<ul class="lmd-tokens">' + list.map((t) => '<li><span>' + esc(t.name) + ' · ' + (t.scope ? T('Carpeta {a}', { a: esc(t.scope) + '/' }) : T('Todas las notas')) + ' · ' + T('creado el {a}', { a: day(t.created) }) + ' · ' + (t.used ? T('usado el {a}', { a: day(t.used) }) : T('sin usar')) + '</span><button type="button" data-rm="' + t.id + '">' + T('Revocar') + '</button></li>').join('') + '</ul>' : hint(T('Todavía no hay tokens.'))) +
+        (list.length ? '<ul class="lmd-tokens">' + list.map((t) => '<li><span>' + esc(tokenName(t.name)) + ' · ' + (t.scope ? T('Carpeta {a}', { a: esc(t.scope) + '/' }) : T('Todas las notas')) + ' · ' + T('creado el {a}', { a: day(t.created) }) + ' · ' + (t.used ? T('usado el {a}', { a: day(t.used) }) : T('sin usar')) + '</span><button type="button" data-rm="' + t.id + '">' + T('Revocar') + '</button></li>').join('') + '</ul>' : hint(T('Todavía no hay tokens.'))) +
         // Un token puede alcanzar toda la nube o una sola carpeta, que suele ser un proyecto.
         (folders.length ? '<label class="lmd-pick"><span>' + T('Carpeta') + '</span><select data-c="folder"><option value="">' + T('Todas las notas') + '</option>' +
           folders.map((d) => '<option value="' + esc(d) + '"' + (d === kept ? ' selected' : '') + '>' + esc(d) + '/</option>').join('') + '</select></label>' : '') +
@@ -193,15 +208,15 @@
         else if (!b) return;
         else if (b.dataset.c === 'login') goLogin(host);
         else if (b.dataset.c === 'plans') host.tab('plan');
-        else if (b.dataset.c === 'token') await draw(await LMD.cloud.newToken('IA', (box.querySelector('[data-c=folder]') || {}).value || ''));
+        else if (b.dataset.c === 'token') await draw(await LMD.cloud.newToken(T('IA'), (box.querySelector('[data-c=folder]') || {}).value || ''));
         else if (b.dataset.c === 'copy') {
-          const input = b.parentNode.querySelector('input'); input.select();
+          const input = b.parentNode.querySelector('input, textarea'); input.select();
           try { await navigator.clipboard.writeText(input.value); } catch (err) { document.execCommand('copy'); }
           b.textContent = T('Copiado'); setTimeout(() => { b.textContent = T('Copiar'); }, 1500);
         }
-      } catch (err) { say(T(err.code === 'offline' ? 'No hay conexión con el servidor.' : err.code === 'mcp_needs_plan' ? 'Conectar una IA es parte del plan pago.' : 'No se pudo completar. Probá de nuevo.')); }
+      } catch (err) { say(T(err.code === 'offline' ? 'No hay conexión con el servidor.' : err.code === 'mcp_needs_plan' ? 'Conectar una IA es parte del plan pago.' : err.code === 'too_many' ? 'Llegaste al tope de tokens. Revocá uno para crear otro.' : 'No se pudo completar. Probá de nuevo.')); }
     };
-    box.onfocusin = (e) => { if (e.target.matches('input[readonly]')) e.target.select(); };
+    box.onfocusin = (e) => { if (e.target.matches('input[readonly], textarea[readonly]')) e.target.select(); };
   }
 
   // Volver del pago: Paddle avisa al servidor por su cuenta, así que se consulta la cuenta cada pocos
@@ -269,7 +284,7 @@
     const box = el('div', { class: 'lmd-ask' });
     const title = T(kind === 'ai' ? 'Conectar una IA' : 'Plan');
     box.innerHTML = '<div class="lmd-ask-card lmd-acct-card" role="dialog" aria-label="' + title + '"><h3>' + title + '</h3><div class="lmd-acct"></div>' +
-      '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-d="close">' + T('Cerrar') + '</button></div></div>';
+      '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-d="close" data-esc>' + T('Cerrar') + '</button></div></div>';
     document.body.appendChild(box);
     const shut = () => { box.remove(); if (host.closed) host.closed(); };
     panes[kind](box.querySelector('.lmd-acct'), Object.assign({}, host, { tab: (t) => { box.remove(); dialog(t, host); }, close: shut }));
@@ -284,14 +299,14 @@
     await LMD.cloud.ready();
     const box = el('div', { class: 'lmd-ask' });
     const mailto = (text) => '<p>' + T('Escribinos a {a}.', { a: '<a href="mailto:' + MAILTO + '?subject=' + encodeURIComponent('SharpMD feedback') + (text ? '&body=' + encodeURIComponent(text) : '') + '">' + MAILTO + '</a>' }) + '</p>';
-    const close = '<button type="button" class="lmd-btn" data-fb="close">' + T('Cerrar') + '</button>';
+    const close = '<button type="button" class="lmd-btn" data-fb="close" data-esc>' + T('Cerrar') + '</button>';
     const card = (inner) => { box.innerHTML = '<div class="lmd-ask-card lmd-fb" role="dialog" aria-label="' + T('Enviar comentarios') + '"><h3>' + T('Enviar comentarios') + '</h3>' + inner + '</div>'; };
     // Con la nube apagada, o sobre un archivo abierto directo en el navegador, no hay servidor al que mandar: queda el correo.
     if (!LMD.cloud.enabled() || (core && !core.APP)) card(mailto('') + '<div class="lmd-ask-actions">' + close + '</div>');
     else card('<textarea data-fb="text" maxlength="4000" placeholder="' + T('Qué pasó, o qué te gustaría que cambie') + '"></textarea>' +
       (LMD.cloud.signedIn() ? '' : '<input type="email" data-fb="email" placeholder="' + T('tu correo, si querés respuesta (opcional)') + '">') +
       '<p class="lmd-img-err" role="alert" hidden></p>' +
-      '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-fb="close">' + T('Cancelar') + '</button><button type="button" class="lmd-btn lmd-btn-fill" data-fb="send">' + T('Enviar') + '</button></div>');
+      '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-fb="close" data-esc>' + T('Cancelar') + '</button><button type="button" class="lmd-btn lmd-btn-fill" data-fb="send">' + T('Enviar') + '</button></div>');
     document.body.appendChild(box);
     const q = (n) => box.querySelector('[data-fb=' + n + ']');
     if (q('text')) q('text').focus();
@@ -332,18 +347,21 @@
       '<h4>' + T('Con un enlace de solo lectura') + '</h4>' +
       '<div class="lmd-share-row"><input type="text" data-sh="pass" placeholder="' + T('contraseña (opcional)') + '"><button type="button" class="lmd-btn" data-sh="link">' + T('Crear enlace') + '</button></div>' +
       '<ul data-sh="links"></ul>' +
-      '<p class="lmd-img-err" hidden></p>' +
-      '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-sh="close">' + T('Cerrar') + '</button></div></div>';
+      '<p class="lmd-hint" data-sh="linknote" hidden>' + T('Copiá el enlace ahora: no se vuelve a mostrar.') + '</p>' +
+      '<p class="lmd-img-err" role="alert" hidden></p>' +
+      '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-sh="close" data-esc>' + T('Cerrar') + '</button></div></div>';
     document.body.appendChild(box);
     const q = (n) => box.querySelector('[data-sh=' + n + ']'); const err = box.querySelector('.lmd-img-err');
-    const fail = (e) => { err.hidden = false; err.textContent = T({ bad_email: 'Ese correo no parece válido.', own_email: 'Ese es tu propio correo.', offline: 'No hay conexión con el servidor.', share_needs_plan: 'Compartir es parte del plan pago.' }[e && e.code] || 'No se pudo completar. Probá de nuevo.'); };
+    const fail = (e) => { err.hidden = false; err.textContent = T({ bad_email: 'Ese correo no parece válido.', own_email: 'Ese es tu propio correo.', offline: 'No hay conexión con el servidor.', share_needs_plan: 'Compartir es parte del plan pago.', too_many: 'Llegaste al tope de lo que se puede compartir. Quitá algo para sumar más.', not_found: 'Esta nota ya no está en la nube.' }[e && e.code] || 'No se pudo completar. Probá de nuevo.'); };
     const made = {}; // enlaces creados en esta ventana: el token solo se conoce al crearlo
     const draw = async () => {
       try {
         const all = await LMD.cloud.api('GET', '/shares');
         const people = all.people.filter((s) => s.path === path || (s.kind === 'folder' && path.startsWith(s.path + '/')));
         q('people').innerHTML = people.map((s) => '<li><span>' + esc(s.email) + ' · ' + T(s.role === 'edit' ? 'Puede editar' : 'Solo ver') + (s.kind === 'folder' ? ' · ' + esc(s.path) + '/' : '') + '</span><button type="button" data-rm="s' + s.id + '">' + T('Quitar') + '</button></li>').join('');
-        q('links').innerHTML = all.links.filter((l) => l.path === path).map((l) => '<li>' + (made[l.id] ? '<input type="text" readonly value="' + esc(made[l.id]) + '">' : '<span>' + T(l.protected ? 'Enlace con contraseña' : 'Enlace abierto') + '</span>') + '<button type="button" data-rm="l' + l.id + '">' + T('Quitar') + '</button></li>').join('');
+        const fresh = all.links.some((l) => l.path === path && made[l.id]);
+        q('linknote').hidden = !fresh;
+        q('links').innerHTML = all.links.filter((l) => l.path === path).map((l) => '<li' + (made[l.id] ? ' class="lmd-share-new"' : '') + '>' + (made[l.id] ? '<input type="text" readonly aria-label="' + T('Enlace') + '" value="' + esc(made[l.id]) + '"><button type="button" class="lmd-link" data-sh="copy">' + T('Copiar') + '</button>' : '<span>' + T(l.protected ? 'Enlace con contraseña' : 'Enlace abierto') + '</span>') + '<button type="button" data-rm="l' + l.id + '">' + T('Quitar') + '</button></li>').join('');
       } catch (e) { fail(e); }
     };
     draw();
@@ -351,6 +369,13 @@
       if (e.target === box || e.target.closest('[data-sh=close]')) { box.remove(); return; }
       err.hidden = true;
       try {
+        const copy = e.target.closest('[data-sh=copy]');
+        if (copy) {
+          const input = copy.parentNode.querySelector('input'); input.select();
+          try { await navigator.clipboard.writeText(input.value); } catch (ex) { document.execCommand('copy'); }
+          copy.textContent = T('Copiado'); setTimeout(() => { if (copy.isConnected) copy.textContent = T('Copiar'); }, 1500);
+          return;
+        }
         const rm = e.target.closest('[data-rm]');
         if (rm) { if (rm.dataset.rm[0] === 's') await LMD.cloud.unshare(rm.dataset.rm.slice(1)); else await LMD.cloud.unlink(rm.dataset.rm.slice(1)); return draw(); }
         if (e.target.closest('[data-sh=invite]')) {
@@ -375,10 +400,11 @@
     try { list = await LMD.cloud.api('GET', '/versions/' + encodeURIComponent(core.cloudPath)); } catch (e) { core.flash(T('No hay conexión con el servidor.'), 'error'); return; }
     const box = el('div', { class: 'lmd-ask' });
     const fmt = (ms) => new Date(ms).toLocaleString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { dateStyle: 'medium', timeStyle: 'short' });
+    const weight = (n) => (n < 1024 ? n + ' B' : (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB');
     box.innerHTML = '<div class="lmd-ask-card lmd-hist" role="dialog" aria-label="' + T('Historial de versiones') + '"><h3>' + T('Historial de versiones') + '</h3>' +
-      (list.length ? '<div class="lmd-hist-body"><ul>' + list.map((v) => '<li><button type="button" data-v="' + v.id + '">' + esc(fmt(v.saved)) + '<small>' + v.size + '</small></button></li>').join('') + '</ul><pre></pre></div>'
+      (list.length ? '<div class="lmd-hist-body"><ul>' + list.map((v) => '<li><button type="button" data-v="' + v.id + '">' + esc(fmt(v.saved)) + '<small>' + weight(v.size) + '</small></button></li>').join('') + '</ul><pre></pre></div>'
         : '<p>' + T('Todavía no hay versiones anteriores de esta nota.') + '</p>') +
-      '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-h="no">' + T('Cerrar') + '</button><button type="button" class="lmd-btn lmd-btn-fill" data-h="ok" disabled>' + T('Restaurar esta versión') + '</button></div></div>';
+      '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-h="no" data-esc>' + T('Cerrar') + '</button><button type="button" class="lmd-btn lmd-btn-fill" data-h="ok" disabled>' + T('Restaurar esta versión') + '</button></div></div>';
     document.body.appendChild(box);
     let chosen = null;
     box.addEventListener('click', async (e) => {
@@ -407,5 +433,5 @@
   // Entrar a la cuenta desde cualquier lado: Ajustes en Nube, con el correo ya pedido.
   const login = () => { wantLogin = true; core.openPanel('cloud'); };
 
-  LMD.sync = { init, paint, click, panes, dialog, feedback, awaitPaid, openCloud, quota, PAY, login, me, foldersOf, account: () => account, why: (text) => { planWhy = text || ''; } };
+  LMD.sync = { init, paint, click, panes, dialog, feedback, awaitPaid, openCloud, quota, PAY, login, me, foldersOf, signOut, account: () => account, why: (text) => { planWhy = text || ''; } };
 })();

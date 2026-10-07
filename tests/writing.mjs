@@ -178,6 +178,36 @@ o.pausaCursor = await app.evaluate(() => document.activeElement.textContent.slic
 await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(700);
 o.pausaFinal = String(await src()).includes('sigo escribiendo y más');
 
+// ---------- Escape vuelve a lo que había, ítems vacíos que se pueden escribir, y Tab en las tablas ----------
+await app.evaluate(async () => {
+  const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('w');
+  const h = await dir.getFileHandle('pulido.md', { create: true }); const s = await h.createWritable();
+  await s.write('# Pulido\n\nTexto fijo del párrafo.\n\n## Tareas\n- [ ]\n- [ ]\n\n## Lista\n-\n\n## Pasos\n1.\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n'); await s.close();
+});
+await app.goto(docUrl.replace('doc.md', 'pulido.md')); await ready();
+if (!(await app.evaluate(() => document.documentElement.classList.contains('lmd-editing')))) { await app.click('[data-act=mode-edit]'); await app.waitForTimeout(300); }
+const out = async () => { await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(700); };
+o.vacios = await app.evaluate(() => ({ casillas: document.querySelectorAll('.lmd-article li.lmd-task-item > input.lmd-task').length, crudo: /\[ \]/.test(document.querySelector('.lmd-article').textContent), lugares: [...document.querySelectorAll('.lmd-article li > .lmd-li-text')].map((s) => [s.isContentEditable, s.dataset.ph, s.getBoundingClientRect().width > 40]) }));
+await app.locator('.lmd-article p.lmd-editable', { hasText: 'Texto fijo' }).click(); await app.keyboard.press('End'); await app.keyboard.type(' agregado'); await app.waitForTimeout(1700);
+o.escAntes = String(await app.evaluate(() => LMD && document.querySelector('.lmd-savestate').textContent)) + '|' + (await app.evaluate(() => document.activeElement.textContent));
+o.escFuenteAntes = await app.evaluate(async () => (await (await (await (await navigator.storage.getDirectory()).getDirectoryHandle('w')).getFileHandle('pulido.md')).getFile()).text()).then((t) => t.includes('agregado'));
+await app.keyboard.press('Escape'); await app.waitForTimeout(600);
+o.escDespues = [(await src()).split('\n')[2], await app.evaluate(() => !!document.activeElement.closest('.lmd-article'))];
+await app.locator('.lmd-article td.lmd-cell', { hasText: '1' }).click(); await app.keyboard.type('X'); await app.waitForTimeout(1700); await app.keyboard.press('Escape'); await app.waitForTimeout(600);
+o.escCelda = (await src()).split('\n').filter((l) => /^\| \w/.test(l) && !/---/.test(l));
+await app.keyboard.press('Control+z'); await app.waitForTimeout(400);
+o.escDeshacer = (await src()).split('\n').some((l) => /X/.test(l) && /^\|/.test(l));
+await app.keyboard.press('Control+y'); await app.waitForTimeout(400);
+const places = app.locator('.lmd-article li > .lmd-li-text');
+await places.nth(0).click(); await app.keyboard.type('comprar pan'); await app.keyboard.press('Enter'); await app.keyboard.type('y leche'); await out();
+await app.locator('.lmd-article li > .lmd-li-text[data-ph]').nth(1).click(); await app.keyboard.type('uno'); await out();
+await app.locator('.lmd-article ol > li > .lmd-li-text').first().click(); await app.keyboard.type('primero'); await out();
+o.vaciosEscritos = (await src()).split('\n').filter((l) => /^(- |\d+\. )/.test(l));
+await app.locator('.lmd-article th.lmd-cell', { hasText: 'A' }).click(); await app.keyboard.press('Tab'); await app.keyboard.type('Z'); await app.keyboard.press('Shift+Tab'); await app.keyboard.type('Y'); await out();
+o.tabCeldas = (await src()).split('\n').find((l) => /^\| [A-Z] /.test(l));
+await app.click('[data-act=mode-read]'); await app.waitForTimeout(500);
+o.vaciosLeyendo = await app.evaluate(() => [document.querySelectorAll('.lmd-article li.lmd-task-item > input.lmd-task').length, /\[ \]/.test(document.querySelector('.lmd-article').textContent)]);
+
 const checks = [
   ['Enter crea párrafos, títulos y listas', J(o.escribir) === J(['# Doc', '', 'Primer párrafo.', '', 'Segundo párrafo', '', '## Sub', '', '- uno', '- dos', '', 'fin', '', '- alfa', '- beta', '', 'Último párrafo.', '']), o.escribir],
   ['Enter en un ítem agrega otro y en un párrafo lo parte', J(o.lista.slice(13)) === J(['- alfa', '- alfa bis', '- beta', '', 'Último', '', 'párrafo.', '']), o.lista],
@@ -206,6 +236,13 @@ const checks = [
   ['una nota vacía abre en edición con el cursor listo', J(o.vacia) === J([true, true]), o.vacia],
   ['en la nota vacía el clic derecho inserta el primer bloque', J(o.vaciaMenu) === J(['Insertar']) && o.vaciaEscrita.trim() === '# Primero', [o.vaciaMenu, o.vaciaEscrita]],
   ['escribir y hacer una pausa no saca el cursor del bloque, y el texto queda', o.pausa.enfocado && o.pausa.texto === ' sigo escribiendo' && o.pausaCursor === ' sigo escribiendo y más' && o.pausaFinal, [o.pausa, o.pausaCursor, o.pausaFinal]],
+  ['una tarea vacía se ve como casilla, y los ítems vacíos tienen dónde escribir', o.vacios.casillas === 2 && !o.vacios.crudo && o.vacios.lugares.length === 4 && o.vacios.lugares.every((x) => x[0] && x[1] && x[2]), o.vacios],
+  ['lo escrito en un párrafo pasa al archivo tras la pausa, con el cursor todavía ahí', /agregado$/.test(o.escAntes) && o.escFuenteAntes === false, [o.escAntes, o.escFuenteAntes]],
+  ['Escape en un párrafo vuelve al texto que tenía al entrar', J(o.escDespues) === J(['Texto fijo del párrafo.', false]), o.escDespues],
+  ['Escape en una celda también, y Ctrl+Z trae de vuelta lo escrito', J(o.escCelda) === J(['| A | B |', '| 1 | 2 |']) && o.escDeshacer === true, [o.escCelda, o.escDeshacer]],
+  ['escribir en una tarea, una viñeta y un número vacíos deja el Markdown bien armado', J(o.vaciosEscritos) === J(['- [ ] comprar pan', '- [ ] y leche', '- [ ]', '- uno', '1. primero']), o.vaciosEscritos],
+  ['Tab pasa a la celda de al lado con su contenido elegido', o.tabCeldas === '| Y | Z |', o.tabCeldas],
+  ['leyendo, las tareas vacías siguen siendo casillas', J(o.vaciosLeyendo) === J([3, false]), o.vaciosLeyendo],
   ['sin errores de JavaScript', errors.length === 0, errors],
 ];
 console.log('Escritura');

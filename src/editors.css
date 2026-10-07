@@ -111,7 +111,7 @@
 .lmd-fxi-err { margin-top: 4px; padding: 7px 10px; border-radius: 8px; background: rgba(220, 38, 38, 0.08); font-size: 13px; }
 .lmd-fxi-err[hidden] { display: none; }
 .lmd-fxi .lmd-fx-tabs { margin-top: 6px; }
-.lmd-fxi .lmd-fx-keys { max-height: 104px; overflow-y: auto; }
+.lmd-fxi .lmd-fx-keys { max-height: 112px; overflow-y: auto; scrollbar-width: thin; }
 .lmd-fxi .lmd-fx-keys button { min-width: 34px; height: 34px; padding: 0 7px; }
 .lmd-fxi-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
 .lmd-fxi-actions span { flex: 1; }

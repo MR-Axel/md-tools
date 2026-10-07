@@ -313,6 +313,56 @@ try {
   check('en src no queda ningún prompt, alert ni confirm del navegador', natives.length === 0, natives);
   check('y ninguno se abrió durante la prueba', J(await app.evaluate(() => window.__native)) === '[]');
 
+  console.log('Pulido');
+  // Aviso de versión nueva: un renglón con sus acciones, y el cómo al pasar el mouse.
+  await app.evaluate(() => new Promise((r) => chrome.storage.local.set({ update: { latest: '99.0.0', checkedAt: Date.now() } }, r)));
+  await app.goto(home); await app.waitForSelector('.lmd-update:not([hidden])');
+  const up = await app.evaluate(() => { const u = document.querySelector('.lmd-update'); return { h: Math.round(u.getBoundingClientRect().height), text: u.querySelector('.lmd-update-text').textContent, acts: [...u.querySelectorAll('a, button')].map((b) => b.dataset.act || 'zip'), blocks: u.querySelectorAll('p, strong').length, how: u.title, wide: u.scrollWidth > u.clientWidth + 1 }; });
+  check('el aviso de versión nueva es un renglón con sus acciones', up.h <= 32 && up.text === 'Versión nueva: 99.0.0' && J(up.acts) === J(['zip', 'update-apply', 'update-later']) && up.blocks === 0 && /git pull/.test(up.how) && !up.wide, up);
+  await app.click('[data-act=update-later]'); await app.waitForTimeout(400);
+  check('"Ahora no" lo saca y queda anotado', (await app.evaluate(() => document.querySelector('.lmd-update').hidden)) && (await app.evaluate(() => new Promise((r) => chrome.storage.local.get('update', (x) => r(x.update.dismissed))))) === '99.0.0');
+
+  // El pie nombra la recarga automática solo donde hay un archivo que otro programa puede cambiar.
+  await app.click('[data-home=new]'); await app.waitForSelector('.lmd-draft'); await app.waitForTimeout(2300);
+  const footLocal = await app.textContent('.lmd-status');
+  await app.goto(base + 'README.md'); await app.waitForSelector('.markdown-body h1'); await app.waitForTimeout(2300);
+  const footDisk = await app.textContent('.lmd-status');
+  check('el pie dice "recarga automática" en un archivo del disco y no en una nota del navegador', footLocal === '' && footDisk === 'Recarga automática activa', [footLocal, footDisk]);
+
+  // La barra de la tabla no se monta sobre el pie ni sobre la celda que se escribe.
+  await app.evaluate(() => LMD.store.notePut('tabla.md', '# Tabla\n\n' + 'Relleno.\n\n'.repeat(30) + '| ' + Array.from({ length: 10 }, (_, i) => 'Columna bien larga número ' + (i + 1)).join(' | ') + ' |\n|' + ' --- |'.repeat(10) + '\n' + Array.from({ length: 6 }, (_, r) => '| ' + Array.from({ length: 10 }, (_, i) => 'f' + r + 'c' + i).join(' | ') + ' |').join('\n') + '\n\n' + 'Más relleno.\n\n'.repeat(30)));
+  await app.goto(home + '?f=' + encodeURIComponent('local/tabla.md')); await app.waitForSelector('.markdown-body table');
+  if (!(await app.evaluate(() => document.documentElement.classList.contains('lmd-editing')))) { await app.click('[data-act=mode-edit]'); await app.waitForTimeout(300); }
+  await app.evaluate(() => { const cell = [...document.querySelectorAll('.lmd-article td.lmd-cell')].find((c) => c.textContent === 'f5c0'); const foot = document.querySelector('.lmd-foot').getBoundingClientRect(); window.scrollBy(0, cell.getBoundingClientRect().bottom - (foot.top - 10)); });
+  await app.waitForTimeout(300);
+  await app.locator('.lmd-article td.lmd-cell', { hasText: 'f5c0' }).click(); await app.waitForTimeout(300);
+  const measure = () => app.evaluate(() => { const b = document.querySelector('.lmd-tablebar'); const r = b.getBoundingClientRect(); const f = document.querySelector('.lmd-foot').getBoundingClientRect(); const c = document.activeElement.getBoundingClientRect(); const t = document.querySelector('.lmd-topbar').getBoundingClientRect();
+    return { shown: !b.hidden, foot: r.bottom <= f.top, top: r.top >= t.bottom, cell: r.bottom <= c.top || r.top >= c.bottom || r.right <= c.left || r.left >= c.right, inside: r.left >= 0 && r.right <= innerWidth, at: [Math.round(r.top), Math.round(r.bottom), Math.round(f.top), Math.round(c.top), Math.round(c.bottom)] }; });
+  const low = await measure();
+  check('con la celda cerca del borde de abajo, la barra de la tabla no pisa el pie ni la celda', low.shown && low.foot && low.top && low.cell && low.inside, low);
+  await app.mouse.wheel(0, -160); await app.waitForTimeout(400);
+  const moved = await measure();
+  check('al mover la página la barra acompaña a la tabla', moved.shown && moved.foot && moved.top && moved.cell && moved.at[0] !== low.at[0], [low.at, moved.at]);
+  await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(500);
+
+  // Ventanas: el foco entra, Tab no se sale, Escape cierra y el foco vuelve a donde estaba.
+  await app.focus('[data-act=settings]'); await app.keyboard.press('Enter'); await app.waitForSelector('.lmd-panel-card');
+  const inPanel = () => app.evaluate(() => !!document.activeElement.closest('.lmd-panel'));
+  const entered = await inPanel(); let stayed = true;
+  for (let i = 0; i < 45; i++) { await app.keyboard.press(i % 9 === 8 ? 'Shift+Tab' : 'Tab'); if (!(await inPanel())) stayed = false; }
+  await app.keyboard.press('Escape'); await app.waitForTimeout(200);
+  const back = await app.evaluate(() => [document.querySelector('.lmd-panel').hidden, document.activeElement.dataset.act, document.querySelector('.lmd-panel-card').getAttribute('aria-modal')]);
+  check('Ajustes: el foco entra, Tab no se sale, y Escape cierra y lo devuelve al botón', entered && stayed && J(back) === J([true, 'settings', 'true']), [entered, stayed, back]);
+  await app.goto(home); await app.waitForSelector('.lmd-home [data-home=feedback]');
+  await app.focus('[data-home=feedback]'); await app.keyboard.press('Enter'); await app.waitForSelector('.lmd-fb'); await app.waitForTimeout(200);
+  const fb = await app.evaluate(() => [document.querySelector('.lmd-fb').getAttribute('aria-modal'), !!document.activeElement.closest('.lmd-fb')]);
+  await app.keyboard.press('Tab'); await app.keyboard.press('Tab'); const fbStays = await app.evaluate(() => !!document.activeElement.closest('.lmd-fb'));
+  await app.keyboard.press('Escape'); await app.waitForTimeout(200);
+  const fbGone = await app.evaluate(() => [!document.querySelector('.lmd-fb'), document.activeElement.dataset.home]);
+  check('una ventana armada a mano (comentarios) cumple lo mismo', J(fb) === J(['true', true]) && fbStays && J(fbGone) === J([true, 'feedback']), [fb, fbStays, fbGone]);
+  const labels = await app.evaluate(() => [document.querySelector('.lmd-o-tog, .lmd-anchor') ? 1 : 0, [...document.querySelectorAll('.lmd-top-right, .lmd-topbar .lmd-top-right')].length]);
+  check('la barra de arriba lleva su clase con el prefijo de siempre', labels[1] >= 1 && !(await app.evaluate(() => document.querySelector('.lsharpmd'))), labels);
+
   check('sin errores de JavaScript', errors.length === 0, errors);
 } catch (e) { check('sin excepciones en la prueba', false, String(e && e.stack || e).slice(0, 700)); }
 

@@ -36,7 +36,18 @@ try {
   o.sinServidor = await app.evaluate(() => document.querySelector('.lmd-home-cloud').hidden);
   await app.evaluate((url) => new Promise((resolve) => chrome.storage.local.set({ settings: { cloudUrl: url } }, resolve)), base);
   await app.goto(home); await app.waitForSelector('.lmd-home-cloud:not([hidden]) [data-cloud=ask]');
-  await app.click('[data-cloud=ask]'); await app.fill('[data-field=email]', 'ana@ejemplo.test');
+  await app.click('[data-cloud=ask]');
+  // Los topes al pedir y probar códigos: cada aviso dice cuánto esperar, y que donde ya se entró la sesión sigue.
+  const post = (p, body) => fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  await app.fill('[data-field=email]', 'tope@ejemplo.test');
+  await Promise.all([app.waitForResponse((r) => r.url().endsWith('/auth/start')), app.click('[data-cloud=start]')]); await app.waitForSelector('[data-field=code]');
+  for (let i = 0; i < 6; i++) await post('/auth/verify', { email: 'tope@ejemplo.test', code: 'no' });
+  await app.fill('[data-field=code]', '123123'); await app.click('[data-cloud=verify]'); await app.waitForSelector('.lmd-home-cloud-err:not([hidden])');
+  o.topeIntentos = await app.textContent('.lmd-home-cloud-err');
+  await app.click('[data-cloud=back]'); await app.waitForSelector('[data-field=email]'); o.topeVuelve = await app.inputValue('[data-field=email]');
+  await app.click('[data-cloud=start]'); await app.waitForSelector('.lmd-home-cloud-err:not([hidden])');
+  o.tope30 = await app.textContent('.lmd-home-cloud-err');
+  await app.fill('[data-field=email]', 'ana@ejemplo.test');
   const [started] = await Promise.all([app.waitForResponse((r) => r.url().endsWith('/auth/start')), app.click('[data-cloud=start]')]);
   const code = (await started.json()).dev_code;
   await app.waitForSelector('[data-field=code]'); await app.fill('[data-field=code]', '999999' === code ? '000000' : '999999'); await app.click('[data-cloud=verify]');
@@ -57,7 +68,7 @@ try {
   o.enInicio = await page2.evaluate(() => { const n = document.querySelector('.lmd-xroot[data-root=cloud] a.lmd-node'); return [n.textContent.trim(), n.querySelector('.lmd-node-where').title]; });
   // "Conectar una IA" abre el mismo panel que Ajustes → IA, en una ventana: ahí se crea el token.
   await page2.click('[data-cloud=ai]'); await page2.waitForSelector('.lmd-acct-card [data-c=token]'); await page2.click('[data-c=token]'); await page2.waitForSelector('.lmd-ai-new');
-  const fields = await page2.evaluate(() => [...document.querySelectorAll('.lmd-acct-card .lmd-field input')].map((i) => i.value));
+  const fields = await page2.evaluate(() => [...document.querySelectorAll('.lmd-acct-card .lmd-field input, .lmd-acct-card .lmd-field textarea')].map((i) => i.value));
   o.campos = [fields[0], fields[1].slice(0, 4), fields[2].slice(0, 44)];
   const token = fields[1];
   const read = await mcp(token, 'read_note', { path: notePath });
@@ -188,11 +199,16 @@ try {
   // Plan gratis: con diez notas, la undécima no se crea y el aviso invita al plan pago.
   const before = await paths();
   for (let i = before.length; i < 10; i++) await api('PUT', '/notes/relleno-' + i + '.md', { text: 'x' }, session);
+  // El aviso sale en Ajustes → Plan, como todo lo que es del plan pago: dice por qué y ahí están los planes.
+  const why = async (re) => {
+    await app.waitForFunction((r) => { const p = document.querySelector('.lmd-plan-why'); return !!p && new RegExp(r).test(p.textContent) && !document.querySelector('.lmd-panel').hidden; }, re, { timeout: 8000 });
+    const t = (await app.textContent('.lmd-plan-why')) + '|' + (await app.evaluate(() => document.querySelector('[data-ptab].lmd-on').dataset.ptab));
+    await app.click('[data-act=close-panel]'); await app.waitForTimeout(200); return t;
+  };
   await answer('once.md'); await create();
-  o.limite = [await said('límite'), (await paths()).length];
-  await app.waitForFunction(() => !/límite/.test(document.querySelector('.lmd-foot .lmd-status').textContent), null, { timeout: 8000 });
+  o.limite = [await why('límite'), (await paths()).length];
   await app.click(CLOUD + ' .lmd-tree-new'); await app.click('.lmd-menu [data-f=tpl]'); await app.waitForSelector('.lmd-tpl-card'); await app.keyboard.press('Enter');
-  o.limitePlantilla = [await said('límite'), (await paths()).length];
+  o.limitePlantilla = [await why('límite'), (await paths()).length];
   for (let i = before.length; i < 10; i++) await api('DELETE', '/notes/relleno-' + i + '.md', undefined, session);
 
   // Una nota compartida solo para ver: ni renombrar ni crear al lado.
@@ -279,6 +295,23 @@ try {
   o.sinCopias = await app.evaluate((who) => LMD.store.cloudAll(who).then((all) => all.length), mail);
   await app.goto(noteUrl.replace('&edit=1', '')); await app.waitForSelector('.lmd-home-msg:not([hidden])');
   o.sinSesion = await app.textContent('.lmd-home-msg');
+  // Salir con una nota de la nube abierta: se cierra, en vez de quedar a la vista diciendo "guardado en la nube".
+  await app.goto(home); await app.waitForSelector('[data-cloud=ask]'); await app.click('[data-cloud=ask]'); await app.fill('[data-field=email]', 'ana@ejemplo.test');
+  const [again] = await Promise.all([app.waitForResponse((r) => r.url().endsWith('/auth/start')), app.click('[data-cloud=start]')]);
+  await app.waitForSelector('[data-field=code]'); await app.fill('[data-field=code]', (await again.json()).dev_code); await app.click('[data-cloud=verify]'); await app.waitForSelector('[data-cloud=logout]');
+  await Promise.all([app.waitForNavigation(), app.click('[data-home=new]')]); await app.waitForSelector('.lmd-draft');
+  await app.keyboard.type('# Para salir'); await app.click('.lmd-foot .lmd-status', { force: true });
+  await app.waitForFunction(() => /nube/.test(document.querySelector('.lmd-savestate').textContent), null, { timeout: 8000 });
+  const wasCloud = /f=cloud/.test(app.url());
+  await app.click('[data-act=settings]'); await app.waitForSelector('.lmd-panel-card'); await app.click('[data-ptab=cloud]'); await app.waitForSelector('[data-acct=cloud] [data-c=out]'); await app.click('[data-acct=cloud] [data-c=out]');
+  await app.waitForSelector('[data-acct=cloud] [data-c=login]'); await app.waitForTimeout(400);
+  o.salirConNota = [wasCloud, await app.title(), /[?&]f=/.test(app.url()), await app.evaluate(() => !document.querySelector('.lmd-home').hidden)];
+  await app.keyboard.press('Escape');
+  // El tope por red (20 pedidos por hora): el aviso general, con las dos esperas posibles.
+  for (let i = 0; i < 20; i++) await post('/auth/start', { email: 'red' + i + '@ejemplo.test' });
+  await app.goto(home); await app.waitForSelector('[data-cloud=ask]'); await app.click('[data-cloud=ask]'); await app.fill('[data-field=email]', 'nueva@ejemplo.test'); await app.click('[data-cloud=start]');
+  await app.waitForSelector('.lmd-home-cloud-err:not([hidden])');
+  o.topeRed = await app.textContent('.lmd-home-cloud-err');
   o.nativos = await app.evaluate(() => window.__native);
 } catch (e) { o.excepcion = String(e && e.stack || e).slice(0, 600); }
 
@@ -328,6 +361,11 @@ const checks = [
   ['salir saca las notas de la nube del explorador y deja la invitación a entrar', o.salio === true],
   ['salir borra las copias locales de la cuenta', o.sinCopias === 0, o.sinCopias],
   ['sin sesión no se abre una nota de la nube', /Entrá a tu cuenta/.test(o.sinSesion || ''), o.sinSesion],
+  ['demasiados códigos equivocados: dice qué hacer, cuánto esperar y que lo ya abierto sigue', o.topeIntentos === 'Demasiados códigos equivocados. Pedí un código nuevo; si tampoco entra, probá de nuevo en una hora. Donde ya entraste, la sesión sigue abierta.', o.topeIntentos],
+  ['desde el código se vuelve al correo, que queda escrito', o.topeVuelve === 'tope@ejemplo.test', o.topeVuelve],
+  ['pedir otro código enseguida dice cuántos segundos faltan', /^Recién pediste un código\. Esperá (30|2\d) segundos para pedir otro\.$/.test(o.tope30 || ''), o.tope30],
+  ['el tope por hora dice las dos esperas y que las sesiones abiertas siguen', o.topeRed === 'Se pidieron demasiados códigos. Si recién pediste uno, esperá 30 segundos; si no, probá de nuevo en una hora. Donde ya entraste, la sesión sigue abierta.', o.topeRed],
+  ['salir con una nota de la nube abierta la cierra', J(o.salirConNota) === J([true, 'SharpMD', false, true]), o.salirConNota],
   ['sin errores, y sin cuadros nativos del navegador', errors.length === 0 && !o.excepcion && J(o.nativos) === '[]', [errors, o.excepcion, o.nativos]],
 ];
 console.log('Nube y MCP');

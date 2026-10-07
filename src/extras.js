@@ -36,6 +36,8 @@
   };
   const cloudWhy = (e, fallback) => T({ offline: 'No hay conexión con el servidor.', note_limit: 'Llegaste al límite de notas del plan gratis. El plan pago no tiene límite.',
     no_access: 'Esta carpeta es de solo lectura', exists: 'Ya hay un archivo con ese nombre', bad_path: 'Ese nombre tiene caracteres que no se pueden usar' }[e && e.code] || fallback);
+  // Al querer crear una nota de más en el plan gratis se abre Plan con el motivo, como con todo lo que es del plan pago.
+  const cloudFail = (e, fallback) => { if (e && e.code === 'note_limit') core.openPanel('plan', cloudWhy(e)); else core.flash(cloudWhy(e, fallback), 'error'); };
   // Renombrar y eliminar son de quien creó la nota: lo compartido se puede leer o editar, no mover.
   const notMine = (path) => { if (!LMD.cloud.split(path).owner) return false; core.flash(T('Solo quien creó la nota puede hacer eso.'), 'warn'); return true; };
 
@@ -60,7 +62,7 @@
       const file = name.split('/').pop();
       await LMD.cloud.write(path, MD_RE.test(file) ? '# ' + file.replace(/\.[^.]+$/, '') + '\n' : '');
       openNew(core.urlOf(path));
-    } catch (e) { core.flash(cloudWhy(e, 'No se pudo crear el archivo'), 'error'); }
+    } catch (e) { cloudFail(e, 'No se pudo crear el archivo'); }
   }
 
   // given es el nombre ya escrito en el título de arriba: vale dentro de la carpeta donde está la nota.
@@ -131,7 +133,7 @@
       const h = await dir.getFileHandle(name, { create: true });
       const w = await h.createWritable(); await w.write(given.text); await w.close();
       return core.open(dirUrl + encodeURIComponent(name), { tree: true, edit: 'doc' });
-    } catch (e) { core.flash(cloudWhy(e, 'No se pudo crear el archivo'), 'error'); }
+    } catch (e) { cloudFail(e, 'No se pudo crear el archivo'); }
   }
   // Elegir una plantilla y crear la nota: en dirUrl, o donde van las notas nuevas si no se dice dónde.
   async function fromTemplate(dirUrl) {
