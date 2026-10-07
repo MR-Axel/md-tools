@@ -38,7 +38,9 @@
     try { json = await res.json(); } catch (e) { /* respuesta sin cuerpo */ }
     if (!res.ok) {
       if (res.status === 401 && session) { session = ''; await remember(); }
-      throw Object.assign(new Error((json && json.error) || 'failed'), { code: (json && json.error) || 'failed', status: res.status });
+      // retry: los segundos que faltan cuando el servidor frenó por un tope (del cuerpo o de la cabecera Retry-After).
+      const retry = +((json && json.retry_after) || res.headers.get('retry-after') || 0) || 0;
+      throw Object.assign(new Error((json && json.error) || 'failed'), { code: (json && json.error) || 'failed', status: res.status, retry });
     }
     return json;
   }
@@ -240,7 +242,7 @@
       try { res = await fetch(base + '/public/' + encodeURIComponent(token), { headers: password ? { 'x-password': password } : {} }); }
       catch (e) { throw Object.assign(new Error('offline'), { code: 'offline' }); }
       const json = await res.json().catch(() => null);
-      if (!res.ok) throw Object.assign(new Error((json && json.error) || 'failed'), { code: (json && json.error) || 'failed' });
+      if (!res.ok) throw Object.assign(new Error((json && json.error) || 'failed'), { code: (json && json.error) || 'failed', retry: +((json && json.retry_after) || 0) || 0 });
       return json;
     },
     enabled: () => !!base,

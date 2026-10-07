@@ -2750,7 +2750,7 @@
       // Enlace público de solo lectura; si tiene contraseña, se pide.
       await LMD.cloud.ready();
       const token = vParts(url).join('/');
-      const why = (e) => T(e.code === 'locked' ? 'Demasiadas contraseñas equivocadas. Probá de nuevo en 10 minutos.' : e.code === 'offline' ? 'No hay conexión con el servidor.' : 'Ese enlace ya no existe.');
+      const why = (e) => (e.code === 'locked' && e.retry ? T('Demasiadas contraseñas equivocadas. Probá de nuevo en {a}.', { a: LMD.home.waitText(e.retry) }) : T(e.code === 'locked' ? 'Demasiadas contraseñas equivocadas. Probá de nuevo en 10 minutos.' : e.code === 'offline' ? 'No hay conexión con el servidor.' : 'Ese enlace ya no existe.'));
       let n = null; let stop = '';
       try { n = await LMD.cloud.publicNote(token, ''); }
       catch (e) {

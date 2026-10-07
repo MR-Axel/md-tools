@@ -19,6 +19,8 @@
 //   PORTAL_URL      dirección donde quien paga administra su suscripción
 //   FEEDBACK_TO     correo que recibe los comentarios y reportes de error de POST /feedback. Sin esto, responde 404
 //   AUTH_PER_IP     códigos de acceso que una misma IP puede pedir por hora (20). Detrás de un proxy la IP sale de x-forwarded-for
+//   DATA_KEY        32 bytes en base64: con ella, el texto de las notas, del historial y de los comentarios se guarda cifrado
+//                   (AES-256-GCM). Protege el archivo de la base y sus respaldos. Perderla es perder esos datos
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -60,6 +62,13 @@ db.exec("CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY, user INTEG
 // Cada suscripción de Paddle con su cuenta y su estado: una cuenta puede tener más de una (alguien pagó por ella).
 db.exec('CREATE TABLE IF NOT EXISTS paddle_subs (id TEXT PRIMARY KEY, user INTEGER NOT NULL, status TEXT NOT NULL, at INTEGER NOT NULL DEFAULT 0)');
 db.exec("INSERT OR IGNORE INTO paddle_subs (id, user, status, at) SELECT paddle_sub, id, CASE plan WHEN 'pro' THEN 'active' ELSE 'canceled' END, 0 FROM users WHERE paddle_sub IS NOT NULL AND paddle_sub != ''");
+// Tamaño del texto en claro (LENGTH(text) deja de servir con el texto cifrado) y marca de fila cifrada.
+for (const sql of ['ALTER TABLE notes ADD COLUMN size INTEGER', 'ALTER TABLE notes ADD COLUMN e INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE versions ADD COLUMN size INTEGER',
+  'ALTER TABLE versions ADD COLUMN e INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE comments ADD COLUMN e INTEGER NOT NULL DEFAULT 0']) { try { db.exec(sql); } catch (e) { /* ya estaba */ } }
+db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+// Las filas sin tamaño son anteriores a esta columna y están en claro: se mide de una vez, sin traerlas a memoria.
+db.exec('UPDATE notes SET size = LENGTH(text) WHERE size IS NULL AND e = 0');
+db.exec('UPDATE versions SET size = LENGTH(text) WHERE size IS NULL AND e = 0');
 const q = (sql) => db.prepare(sql);
 const now = () => Date.now();
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
@@ -67,7 +76,77 @@ const random = (bytes) => crypto.randomBytes(bytes).toString('base64url');
 // Compara dos secretos sin que el tiempo de la respuesta diga cuánto coinciden.
 const same = (a, b) => crypto.timingSafeEqual(crypto.createHash('sha256').update(String(a)).digest(), crypto.createHash('sha256').update(String(b)).digest());
 
-class Fail extends Error { constructor(status, code, message) { super(message || code); this.status = status; this.code = code; } }
+// extra viaja en el cuerpo de la respuesta: por ejemplo retry_after, los segundos que faltan en un tope.
+class Fail extends Error { constructor(status, code, message, extra) { super(message || code); this.status = status; this.code = code; this.extra = extra || null; } }
+
+// ---------- Cifrado en reposo ----------
+// Con DATA_KEY, el texto de las notas, del historial y de los comentarios se guarda cifrado con AES-256-GCM:
+// un nonce aleatorio de 96 bits por valor, y como dato asociado la columna a la que pertenece, para que un valor
+// no se pueda pasar de una columna a otra. GCM además detecta cualquier cambio en lo guardado.
+// Protege el archivo de la base y sus respaldos; no protege de quien entra al servidor en marcha, que tiene la clave.
+// Sin DATA_KEY todo queda en claro, como siempre.
+const ENC = 'enc1:';
+// El aviso sale entero antes de terminar: escribir en el descriptor no espera a nadie.
+const fatal = (text) => { fs.writeSync(2, text + '\n'); process.exit(1); };
+const DATA_KEY = (() => {
+  const raw = String(env.DATA_KEY || '').trim(); if (!raw) return null;
+  const key = /^[A-Za-z0-9+/_-]+=*$/.test(raw) ? Buffer.from(raw.replace(/-/g, '+').replace(/_/g, '/'), 'base64') : Buffer.alloc(0);
+  if (key.length !== 32) fatal('DATA_KEY no sirve: tienen que ser 32 bytes en base64. El servidor no arranca. Para generar una: openssl rand -base64 32');
+  return key;
+})();
+const SEALED = DATA_KEY ? 1 : 0;
+function seal(text, column) {
+  if (!DATA_KEY || text == null) return text;
+  const iv = crypto.randomBytes(12); const c = crypto.createCipheriv('aes-256-gcm', DATA_KEY, iv); c.setAAD(Buffer.from(column));
+  const body = Buffer.concat([c.update(String(text), 'utf8'), c.final()]);
+  return ENC + Buffer.concat([iv, body, c.getAuthTag()]).toString('base64');
+}
+// e es la marca de la fila: 1 si se guardó cifrada. Una fila cifrada que no abre es un error, nunca un texto vacío.
+function unseal(stored, e, column) {
+  if (!e || stored == null) return stored;
+  if (!DATA_KEY || !String(stored).startsWith(ENC)) throw new Error('fila cifrada sin clave');
+  const raw = Buffer.from(String(stored).slice(ENC.length), 'base64');
+  const d = crypto.createDecipheriv('aes-256-gcm', DATA_KEY, raw.subarray(0, 12)); d.setAAD(Buffer.from(column)); d.setAuthTag(raw.subarray(raw.length - 16));
+  return Buffer.concat([d.update(raw.subarray(12, raw.length - 16)), d.final()]).toString('utf8');
+}
+// Al arrancar. La base anota, cifrada, una frase fija: con eso se sabe si la clave de ahora es la misma de antes.
+// Con datos cifrados y sin clave, o con otra clave, el servidor no arranca: nunca escribe en claro sobre una base
+// cifrada ni devuelve texto ilegible.
+const SEAL_TABLES = [['notes', ['text']], ['versions', ['text']], ['comments', ['quote', 'text', 'reply']]];
+(() => {
+  const PROOF = 'sharpmd-data-key';
+  const proof = q("SELECT value FROM meta WHERE key = 'data_key'").get();
+  const anySealed = SEAL_TABLES.some(([t]) => q('SELECT 1 FROM ' + t + ' WHERE e = 1 LIMIT 1').get());
+  if (!DATA_KEY) {
+    if (proof || anySealed) fatal('Esta base tiene datos cifrados y falta DATA_KEY. El servidor no arranca: sin la clave no puede leerlos, y no va a escribir en claro encima. Poné la misma DATA_KEY con la que se cifró.');
+    return;
+  }
+  if (proof) {
+    let ok = false; try { ok = unseal(proof.value, 1, 'meta') === PROOF; } catch (e) { ok = false; }
+    if (!ok) fatal('DATA_KEY no es la clave con la que se cifró esta base. El servidor no arranca: con otra clave no puede leer los datos. Poné la clave original.');
+  } else {
+    if (anySealed) fatal('Esta base tiene datos cifrados pero no la marca de su clave. El servidor no arranca. Restaurá la base desde un respaldo completo.');
+    q("INSERT INTO meta (key, value) VALUES ('data_key', ?)").run(seal(PROOF, 'meta'));
+  }
+  // Lo que estaba en claro se cifra por tandas de 50 filas, cada una en su transacción: si se corta, la próxima
+  // vez sigue con las que faltan (las ya cifradas llevan e = 1 y no se vuelven a tocar).
+  let total = 0;
+  for (const [table, cols] of SEAL_TABLES) {
+    for (;;) {
+      const rows = q('SELECT rowid AS rid, ' + cols.join(', ') + ' FROM ' + table + ' WHERE e = 0 LIMIT 50').all();
+      if (!rows.length) break;
+      db.exec('BEGIN');
+      try {
+        const up = q('UPDATE ' + table + ' SET ' + cols.map((c) => c + ' = ?').join(', ') + ', e = 1 WHERE rowid = ? AND e = 0');
+        for (const r of rows) up.run(...cols.map((c) => seal(r[c], table + '.' + c)), r.rid);
+        db.exec('COMMIT');
+      } catch (e) { db.exec('ROLLBACK'); throw e; }
+      total += rows.length;
+    }
+  }
+  // SQLite no borra lo que pisa: el texto viejo quedaría en páginas libres y en el WAL. Se reescribe el archivo.
+  if (total) { db.exec('VACUUM'); db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); console.log('DATA_KEY: se cifraron ' + total + ' filas que estaban en claro'); }
+})();
 
 // ---------- Topes ----------
 // Cuántas veces pasó algo (por IP, por correo o por cuenta) en la última hora o el último día. Vive en memoria:
@@ -78,6 +157,10 @@ const marks = new Map();
 const recent = (key, span) => (marks.get(key) || []).filter((t) => now() - t < (span || HOUR));
 const mark = (key) => marks.set(key, recent(key, DAY).concat(now()));
 const over = (key, max, span) => recent(key, span).length >= max;
+// Segundos que faltan para que un tope afloje: cuando salga de la ventana la marca que lo llenó. 0 si no está lleno.
+const waitFor = (key, max, span) => { const r = recent(key, span); return r.length < max ? 0 : Math.max(1, Math.ceil(((span || HOUR) - (now() - r[r.length - max])) / 1000)); };
+// Corta con 429, el código propio de ese tope y cuánto falta (retry_after en el cuerpo y cabecera Retry-After).
+const limit = (key, max, span, code) => { const s = waitFor(key, max, span); if (s) throw new Fail(429, code, '', { retry_after: s }); };
 const clientIp = (req) => String(req.headers['x-forwarded-for'] || '').split(',').pop().trim() || req.socket.remoteAddress || '';
 
 // ---------- Correo ----------
@@ -127,15 +210,16 @@ const cleanEmail = (v) => { const e = (typeof v === 'string' ? v : '').trim().to
 
 // Pedir un código manda un correo: sin tope, el servidor serviría para llenarle la casilla a cualquiera y para
 // probar códigos sin fin (cada código nuevo trae seis intentos). Por correo: uno cada 30 segundos, 5 por hora
-// y 15 por día. Por IP: AUTH_PER_IP por hora.
+// y 15 por día. Por IP: AUTH_PER_IP por hora. Cada tope responde con su código (code_gap, code_mail_hour,
+// code_mail_day, code_ip_hour) y con los segundos que faltan. Antes los cuatro respondían too_soon.
 async function authStart(req, body) {
   const email = cleanEmail(body.email); const ip = 'start:ip:' + clientIp(req); const to = 'start:mail:' + email;
   // Cuenta de prueba para quien revisa la app en una tienda: código fijo, sin correo. Es una sola cuenta, sin datos de nadie.
   const fixed = TEST_LOGIN && email === TEST_LOGIN[0] ? TEST_LOGIN[1] : '';
-  if (over(ip, AUTH_PER_IP)) throw new Fail(429, 'too_soon');
+  limit(ip, AUTH_PER_IP, HOUR, 'code_ip_hour');
   const prev = q('SELECT sent FROM codes WHERE email = ?').get(email);
-  if (!fixed && prev && now() - prev.sent < 30000) throw new Fail(429, 'too_soon');
-  if (!fixed && (over(to, 5) || over(to, 15, DAY))) throw new Fail(429, 'too_soon');
+  if (!fixed && prev && now() - prev.sent < 30000) throw new Fail(429, 'code_gap', '', { retry_after: Math.max(1, Math.ceil((30000 - (now() - prev.sent)) / 1000)) });
+  if (!fixed) { limit(to, 5, HOUR, 'code_mail_hour'); limit(to, 15, DAY, 'code_mail_day'); }
   mark(ip); if (!fixed) mark(to);
   const code = fixed || String(crypto.randomInt(0, 1000000)).padStart(6, '0');
   q('INSERT OR REPLACE INTO codes (email, hash, expires, tries, sent) VALUES (?, ?, ?, 0, ?)').run(email, sha(email + ':' + code), now() + 15 * 60000, now());
@@ -145,13 +229,15 @@ async function authStart(req, body) {
 }
 
 // Seis intentos por código. Además, los fallos se cuentan por correo (10 por hora, 30 por día) y por IP (30 por
-// hora) sin importar cuántos códigos se pidan: pedir otro código no devuelve los intentos.
+// hora) sin importar cuántos códigos se pidan: pedir otro código no devuelve los intentos. Cada tope tiene su
+// código (tries_mail_hour, tries_mail_day, tries_ip_hour, tries_code). Antes los cuatro respondían too_many_tries.
+// tries_code no trae espera: ese código ya no sirve y hay que pedir otro.
 function authVerify(req, body) {
   const email = cleanEmail(body.email); const ip = 'fail:ip:' + clientIp(req); const who = 'fail:mail:' + email;
-  if (over(who, 10) || over(who, 30, DAY) || over(ip, 30)) throw new Fail(429, 'too_many_tries');
+  limit(who, 10, HOUR, 'tries_mail_hour'); limit(who, 30, DAY, 'tries_mail_day'); limit(ip, 30, HOUR, 'tries_ip_hour');
   const row = q('SELECT * FROM codes WHERE email = ?').get(email);
   if (!row || row.expires < now()) throw new Fail(400, 'code_expired');
-  if (row.tries >= 6) throw new Fail(429, 'too_many_tries');
+  if (row.tries >= 6) throw new Fail(429, 'tries_code');
   if (!same(row.hash, sha(email + ':' + String(body.code == null ? '' : body.code).trim()))) { q('UPDATE codes SET tries = tries + 1 WHERE email = ?').run(email); mark(who); mark(ip); throw new Fail(400, 'bad_code'); }
   q('DELETE FROM codes WHERE email = ?').run(email);
   q('INSERT OR IGNORE INTO users (email, created) VALUES (?, ?)').run(email, now());
@@ -193,7 +279,7 @@ async function feedback(req, body) {
   if (text.length < 5 || text.length > 4000) throw new Fail(400, 'bad_text');
   const from = user ? user.email : (String(body.email || '').trim() ? cleanEmail(body.email) : '');
   const keys = ['ip:' + clientIp(req)].concat(user ? ['user:' + user.id] : []);
-  if (keys.some((k) => over('fb:' + k, FEEDBACK_MAX))) throw new Fail(429, 'too_many');
+  keys.forEach((k) => limit('fb:' + k, FEEDBACK_MAX, HOUR, 'too_many'));
   keys.forEach((k) => mark('fb:' + k));
   // Del contexto solo pasan estos cuatro datos, recortados: nada de notas ni de rutas.
   const c = body.context && typeof body.context === 'object' ? body.context : {};
@@ -214,23 +300,24 @@ function cleanPath(v) {
   if (!p || p.length > 300 || p.split('/').some((s) => !s || s === '.' || s === '..') || /[\x00-\x1f]/.test(p)) throw new Fail(400, 'bad_path');
   return p;
 }
-const listNotes = (user) => q('SELECT path, updated, LENGTH(text) AS size FROM notes WHERE user = ? ORDER BY updated DESC').all(user.id);
+const listNotes = (user) => q('SELECT path, updated, size FROM notes WHERE user = ? ORDER BY updated DESC').all(user.id);
 function readNote(user, p) {
-  const n = q('SELECT path, text, updated FROM notes WHERE user = ? AND path = ?').get(user.id, cleanPath(p));
+  const n = q('SELECT path, text, updated, e FROM notes WHERE user = ? AND path = ?').get(user.id, cleanPath(p));
   if (!n) throw new Fail(404, 'not_found');
-  return n;
+  return { path: n.path, text: unseal(n.text, n.e, 'notes.text'), updated: n.updated };
 }
 function writeNote(user, p, text) {
   p = cleanPath(p); text = String(text == null ? '' : text);
   if (Buffer.byteLength(text) > MAX_NOTE) throw new Fail(413, 'too_large');
-  const prev = q('SELECT text FROM notes WHERE user = ? AND path = ?').get(user.id, p);
+  const row = q('SELECT text, e FROM notes WHERE user = ? AND path = ?').get(user.id, p);
+  const prev = row ? { text: unseal(row.text, row.e, 'notes.text') } : null;
   if (!prev && user.plan !== 'pro' && countNotes(user) >= FREE_NOTES) throw new Fail(402, 'note_limit', 'The free plan holds ' + FREE_NOTES + ' notes');
   // El historial es del plan pago: se guarda la versión anterior si cambió y pasó más de un minuto.
   if (prev && user.plan === 'pro' && prev.text !== text) {
     const last = q('SELECT saved FROM versions WHERE user = ? AND path = ? ORDER BY saved DESC LIMIT 1').get(user.id, p);
-    if (!last || now() - last.saved > 60000) q('INSERT INTO versions (user, path, text, saved) VALUES (?, ?, ?, ?)').run(user.id, p, prev.text, now());
+    if (!last || now() - last.saved > 60000) q('INSERT INTO versions (user, path, text, saved, size, e) VALUES (?, ?, ?, ?, ?, ?)').run(user.id, p, seal(prev.text, 'versions.text'), now(), prev.text.length, SEALED);
   }
-  q('INSERT INTO notes (user, path, text, updated) VALUES (?, ?, ?, ?) ON CONFLICT (user, path) DO UPDATE SET text = excluded.text, updated = excluded.updated').run(user.id, p, text, now());
+  q('INSERT INTO notes (user, path, text, updated, size, e) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (user, path) DO UPDATE SET text = excluded.text, updated = excluded.updated, size = excluded.size, e = excluded.e').run(user.id, p, seal(text, 'notes.text'), now(), text.length, SEALED);
   return { path: p, updated: now(), size: text.length };
 }
 function deleteNote(user, p) {
@@ -258,8 +345,8 @@ function searchNotes(user, text) {
   const needle = String(text || '').toLowerCase(); if (!needle) return [];
   const out = [];
   // De a una nota: traerlas todas juntas ocuparía en memoria la nube entera de la cuenta.
-  for (const n of q('SELECT path, text FROM notes WHERE user = ?').iterate(user.id)) {
-    const lines = n.text.split(/\r?\n/); const hits = [];
+  for (const n of q('SELECT path, text, e FROM notes WHERE user = ?').iterate(user.id)) {
+    const lines = unseal(n.text, n.e, 'notes.text').split(/\r?\n/); const hits = [];
     for (let i = 0; i < lines.length && hits.length < 5; i++) if (lines[i].toLowerCase().includes(needle)) hits.push({ line: i + 1, text: lines[i].trim().slice(0, 240) });
     if (hits.length || n.path.toLowerCase().includes(needle)) out.push({ path: n.path, hits });
     if (out.length >= 30) break;
@@ -286,8 +373,8 @@ function target(user, url, p, need) {
 function sharedWith(user) {
   const out = []; const seen = new Set();
   for (const s of q('SELECT s.owner, s.path, s.kind, s.role, u.email AS by FROM shares s JOIN users u ON u.id = s.owner WHERE s.email = ?').all(user.email)) {
-    const notes = s.kind === 'folder' ? q("SELECT path, updated, LENGTH(text) AS size FROM notes WHERE user = ? AND path LIKE ? ESCAPE '!'").all(s.owner, s.path.replace(/[!%_]/g, '!$&') + '/%')
-      : q('SELECT path, updated, LENGTH(text) AS size FROM notes WHERE user = ? AND path = ?').all(s.owner, s.path);
+    const notes = s.kind === 'folder' ? q("SELECT path, updated, size FROM notes WHERE user = ? AND path LIKE ? ESCAPE '!'").all(s.owner, s.path.replace(/[!%_]/g, '!$&') + '/%')
+      : q('SELECT path, updated, size FROM notes WHERE user = ? AND path = ?').all(s.owner, s.path);
     // LIKE no distingue mayúsculas: sin este filtro, compartir "Proy" listaría también lo de "proy".
     for (const n of notes) { const key = s.owner + ':' + n.path; if (seen.has(key) || !covers(s, n.path)) continue; seen.add(key); out.push({ owner: s.owner, by: s.by, path: n.path, updated: n.updated, size: n.size, role: roleOn(user, s.owner, n.path) }); }
   }
@@ -321,7 +408,7 @@ function publicNote(token, password) {
   const link = q('SELECT * FROM links WHERE hash = ?').get(sha(String(token)));
   if (!link) throw new Fail(404, 'not_found');
   if (link.pass) {
-    if (link.locked > now()) throw new Fail(429, 'locked');
+    if (link.locked > now()) throw new Fail(429, 'locked', '', { retry_after: Math.ceil((link.locked - now()) / 1000) });
     if (!password) throw new Fail(401, 'need_password');
     const [salt, hash] = link.pass.split(':');
     const given = Buffer.from(passHash(password, salt), 'hex');
@@ -333,10 +420,10 @@ function publicNote(token, password) {
     }
     if (link.fails) q('UPDATE links SET fails = 0 WHERE id = ?').run(link.id);
   }
-  const n = q('SELECT path, text, updated FROM notes WHERE user = ? AND path = ?').get(link.owner, link.path);
+  const n = q('SELECT path, text, updated, e FROM notes WHERE user = ? AND path = ?').get(link.owner, link.path);
   if (!n) throw new Fail(404, 'not_found');
   // Hacia afuera va el nombre de la nota, no en qué carpetas la guarda su dueño.
-  return { path: n.path.split('/').pop(), text: n.text, updated: n.updated };
+  return { path: n.path.split('/').pop(), text: unseal(n.text, n.e, 'notes.text'), updated: n.updated };
 }
 
 // ---------- En vivo ----------
@@ -376,10 +463,11 @@ function addComment(user, body) {
   const text = String(body.text == null ? '' : body.text).trim(); const quote = String(body.quote == null ? '' : body.quote).trim().slice(0, 2000);
   if (!text || text.length > 2000) throw new Fail(400, 'bad_text');
   if (q("SELECT COUNT(*) AS n FROM comments WHERE user = ? AND status = 'open'").get(user.id).n >= 200) throw new Fail(429, 'too_many');
-  const r = q('INSERT INTO comments (user, path, quote, text, created) VALUES (?, ?, ?, ?, ?)').run(user.id, p, quote, text, now());
+  const r = q('INSERT INTO comments (user, path, quote, text, created, e) VALUES (?, ?, ?, ?, ?, ?)').run(user.id, p, seal(quote, 'comments.quote'), seal(text, 'comments.text'), now(), SEALED);
   return { id: Number(r.lastInsertRowid), path: p, quote, text, status: 'open', created: now() };
 }
-const listComments = (user, p, all) => q('SELECT id, path, quote, text, status, reply, created, done FROM comments WHERE user = ?' + (p ? ' AND path = ?' : '') + (all ? '' : " AND status = 'open'") + ' ORDER BY created').all(...(p ? [user.id, cleanPath(p)] : [user.id]));
+const listComments = (user, p, all) => q('SELECT id, path, quote, text, status, reply, created, done, e FROM comments WHERE user = ?' + (p ? ' AND path = ?' : '') + (all ? '' : " AND status = 'open'") + ' ORDER BY created').all(...(p ? [user.id, cleanPath(p)] : [user.id]))
+  .map((c) => ({ id: c.id, path: c.path, quote: unseal(c.quote, c.e, 'comments.quote'), text: unseal(c.text, c.e, 'comments.text'), status: c.status, reply: unseal(c.reply, c.e, 'comments.reply'), created: c.created, done: c.done }));
 
 // Un token puede estar limitado a una carpeta: fuera de ella no ve ni escribe nada.
 const within = (user, p) => !user.scope || p === user.scope || p.startsWith(user.scope + '/');
@@ -418,9 +506,11 @@ function callTool(user, name, args) {
   if (name === 'search_notes') return searchNotes(user, args.query).filter((r) => within(user, r.path));
   if (name === 'list_comments') return listComments(user, args.path ? scoped(user, args.path) : '', false).filter((c) => within(user, c.path)).map((c) => ({ id: c.id, path: c.path, quote: c.quote, comment: c.text, created: new Date(c.created).toISOString() }));
   if (name === 'resolve_comment') {
-    const c = q('SELECT id, path FROM comments WHERE id = ? AND user = ?').get(+args.id, user.id);
+    const c = q('SELECT id, path, e FROM comments WHERE id = ? AND user = ?').get(+args.id, user.id);
     if (!c || !within(user, c.path)) throw new Fail(404, 'not_found');
-    q("UPDATE comments SET status = 'done', reply = ?, done = ? WHERE id = ?").run(String(args.reply || '').slice(0, 1000), now(), c.id);
+    // La respuesta se guarda como el resto de la fila: cifrada si la fila lo está.
+    const reply = String(args.reply || '').slice(0, 1000);
+    q("UPDATE comments SET status = 'done', reply = ?, done = ? WHERE id = ?").run(c.e ? seal(reply, 'comments.reply') : reply, now(), c.id);
     announce(roomKey(user.id, c.path), { type: 'comments' });
     return 'Comment ' + c.id + ' marked as done.';
   }
@@ -453,6 +543,7 @@ function cors(req, res) {
     res.setHeader('access-control-allow-headers', 'authorization, content-type, x-password');
     res.setHeader('access-control-allow-methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('access-control-max-age', '86400');
+    res.setHeader('access-control-expose-headers', 'retry-after');
     // Un servidor propio en la misma máquina o red: el navegador pregunta antes de dejar que una web pública lo llame.
     if (req.headers['access-control-request-private-network']) res.setHeader('access-control-allow-private-network', 'true');
   }
@@ -524,7 +615,7 @@ async function route(req, url) {
   if (p === '/admin/plan' && m === 'POST') {
     // La misma respuesta sin clave configurada, sin clave en el pedido o con una equivocada. Diez fallos por hora por IP.
     const ip = 'admin:' + clientIp(req);
-    if (over(ip, 10)) throw new Fail(429, 'too_many');
+    limit(ip, 10, HOUR, 'too_many');
     if (!env.ADMIN_KEY || !same(req.headers['x-admin-key'] || '', env.ADMIN_KEY)) { mark(ip); throw new Fail(403, 'forbidden'); }
     const b = await readBody(req);
     const r = q('UPDATE users SET plan = ? WHERE email = ?').run(b.plan === 'pro' ? 'pro' : 'free', cleanEmail(b.email));
@@ -588,11 +679,11 @@ async function route(req, url) {
     }
     if (m === 'DELETE') return deleteNote(target(user, url, clean, 'owner').owner, clean);
   }
-  if (p.startsWith('/versions/') && m === 'GET') return q('SELECT id, saved, LENGTH(text) AS size FROM versions WHERE user = ? AND path = ? ORDER BY saved DESC LIMIT 100').all(user.id, cleanPath(dec(p.slice(10))));
+  if (p.startsWith('/versions/') && m === 'GET') return q('SELECT id, saved, size FROM versions WHERE user = ? AND path = ? ORDER BY saved DESC LIMIT 100').all(user.id, cleanPath(dec(p.slice(10))));
   if (p.startsWith('/version/') && m === 'GET') {
-    const v = q('SELECT id, path, text, saved FROM versions WHERE id = ? AND user = ?').get(+p.slice(9), user.id);
+    const v = q('SELECT id, path, text, saved, e FROM versions WHERE id = ? AND user = ?').get(+p.slice(9), user.id);
     if (!v) throw new Fail(404, 'not_found');
-    return v;
+    return { id: v.id, path: v.path, text: unseal(v.text, v.e, 'versions.text'), saved: v.saved };
   }
   throw new Fail(404, 'no_route');
 }
@@ -616,7 +707,8 @@ const server = http.createServer(async (req, res) => {
     // De un error inesperado se anota qué fue y dónde, sin el cuerpo del pedido. Hacia afuera va solo "server_error".
     if (status >= 500) console.error(status === 500 ? 'error 500 en ' + req.method + ' ' + String(req.url).split('?')[0].slice(0, 80) + ' · ' + String(e && e.stack || e).slice(0, 1500) : 'error ' + status + ' ' + (e.code || '') + ' en ' + req.method + ' ' + String(req.url).split('?')[0].slice(0, 80));
     if (res.headersSent) { res.end(); return; }
-    const body = JSON.stringify(e instanceof Fail ? { error: e.code, message: e.message || '' } : { error: 'server_error', message: '' });
+    const body = JSON.stringify(e instanceof Fail ? Object.assign({ error: e.code, message: e.message || '' }, e.extra) : { error: 'server_error', message: '' });
+    if (e instanceof Fail && e.extra && e.extra.retry_after) res.setHeader('retry-after', String(e.extra.retry_after));
     // Un cuerpo pasado de tamaño: se avisa y recién ahí se corta, para no seguir recibiendo.
     if (status === 413) { res.writeHead(413, { 'content-type': 'application/json; charset=utf-8', connection: 'close' }); res.end(body, () => req.destroy()); return; }
     res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });

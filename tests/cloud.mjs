@@ -312,6 +312,18 @@ try {
   await app.goto(home); await app.waitForSelector('[data-cloud=ask]'); await app.click('[data-cloud=ask]'); await app.fill('[data-field=email]', 'nueva@ejemplo.test'); await app.click('[data-cloud=start]');
   await app.waitForSelector('.lmd-home-cloud-err:not([hidden])');
   o.topeRed = await app.textContent('.lmd-home-cloud-err');
+  // Un servidor propio sin actualizar contesta con los códigos de antes y sin la espera.
+  const old = async (codeName, sel, fill) => {
+    const fake = (route) => route.fulfill({ status: 429, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ error: codeName, message: '' }) });
+    await ctx.route(base + '/auth/**', fake);
+    await app.goto(home); await app.waitForSelector('[data-cloud=ask]'); await app.click('[data-cloud=ask]'); await app.fill('[data-field=email]', 'vieja@ejemplo.test');
+    if (fill) { await ctx.unroute(base + '/auth/**', fake); await ctx.route(base + '/auth/start', (route) => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"ok":true}' })); await app.click('[data-cloud=start]'); await app.waitForSelector('[data-field=code]'); await ctx.route(base + '/auth/verify', fake); await app.fill('[data-field=code]', '123456'); }
+    await app.click(sel); await app.waitForSelector('.lmd-home-cloud-err:not([hidden])');
+    const text = await app.textContent('.lmd-home-cloud-err');
+    await ctx.unroute(base + '/auth/**'); await ctx.unroute(base + '/auth/start'); await ctx.unroute(base + '/auth/verify');
+    return text;
+  };
+  o.topesViejos = [await old('too_soon', '[data-cloud=start]', false), await old('too_many_tries', '[data-cloud=verify]', true)];
   o.nativos = await app.evaluate(() => window.__native);
 } catch (e) { o.excepcion = String(e && e.stack || e).slice(0, 600); }
 
@@ -361,10 +373,11 @@ const checks = [
   ['salir saca las notas de la nube del explorador y deja la invitación a entrar', o.salio === true],
   ['salir borra las copias locales de la cuenta', o.sinCopias === 0, o.sinCopias],
   ['sin sesión no se abre una nota de la nube', /Entrá a tu cuenta/.test(o.sinSesion || ''), o.sinSesion],
-  ['demasiados códigos equivocados: dice qué hacer, cuánto esperar y que lo ya abierto sigue', o.topeIntentos === 'Demasiados códigos equivocados. Pedí un código nuevo; si tampoco entra, probá de nuevo en una hora. Donde ya entraste, la sesión sigue abierta.', o.topeIntentos],
+  ['un código con seis intentos equivocados: dice que ya no sirve, qué hacer y que lo ya abierto sigue', o.topeIntentos === 'Ese código se probó demasiadas veces y ya no sirve. Pedí uno nuevo. Donde ya entraste, la sesión sigue abierta.', o.topeIntentos],
   ['desde el código se vuelve al correo, que queda escrito', o.topeVuelve === 'tope@ejemplo.test', o.topeVuelve],
   ['pedir otro código enseguida dice cuántos segundos faltan', /^Recién pediste un código\. Esperá (30|2\d) segundos para pedir otro\.$/.test(o.tope30 || ''), o.tope30],
-  ['el tope por hora dice las dos esperas y que las sesiones abiertas siguen', o.topeRed === 'Se pidieron demasiados códigos. Si recién pediste uno, esperá 30 segundos; si no, probá de nuevo en una hora. Donde ya entraste, la sesión sigue abierta.', o.topeRed],
+  ['el tope por red dice la espera real y que las sesiones abiertas siguen', /^Se pidieron demasiados códigos desde esta red\. Probá de nuevo en (4\d|5\d|60) minutos\. Donde ya entraste, la sesión sigue abierta\.$/.test(o.topeRed || ''), o.topeRed],
+  ['un servidor sin actualizar (too_soon, too_many_tries, sin espera) sigue teniendo su aviso', J(o.topesViejos) === J(['Se pidieron demasiados códigos. Si recién pediste uno, esperá 30 segundos; si no, probá de nuevo en una hora. Donde ya entraste, la sesión sigue abierta.', 'Demasiados códigos equivocados. Pedí un código nuevo; si tampoco entra, probá de nuevo en una hora. Donde ya entraste, la sesión sigue abierta.']), o.topesViejos],
   ['salir con una nota de la nube abierta la cierra', J(o.salirConNota) === J([true, 'SharpMD', false, true]), o.salirConNota],
   ['sin errores, y sin cuadros nativos del navegador', errors.length === 0 && !o.excepcion && J(o.nativos) === '[]', [errors, o.excepcion, o.nativos]],
 ];

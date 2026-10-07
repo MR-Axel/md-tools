@@ -38,6 +38,7 @@ Then, in SharpMD: Settings → Cloud → Sync server, and type the address (`htt
 | `PORTAL_URL` | Where a subscriber manages the subscription | |
 | `FEEDBACK_TO` | Address that receives what people send from "Send feedback" (`POST /feedback`). It goes out through the same mailer as the sign-in code. Without it the endpoint answers 404 and the app offers a `mailto:` link instead | off |
 | `AUTH_PER_IP` | Sign-in codes one IP address may request per hour. Each email is also limited to 5 codes an hour and 15 a day, and wrong codes to 10 an hour per email and 30 per IP. Behind a proxy the IP is the last entry of `x-forwarded-for`: check that your proxy sets it, or every visitor shares one allowance | `20` |
+| `DATA_KEY` | 32 bytes in base64. Turns on encryption at rest: see below | off |
 
 Put it behind a reverse proxy with HTTPS. The web app at sharpmd.app needs that: browsers do not let a public site call a server on `localhost` or on the local network without asking. The extension has no such limit, so `http://localhost:8787` works there. With Caddy:
 
@@ -59,6 +60,34 @@ curl -X POST https://sync.example.com/admin/plan -H "x-admin-key: $ADMIN_KEY" \
 Email, notes and their previous versions (paid plan, 30 days), and hashes of sign-in codes, sessions and tokens. Sessions and tokens are stored hashed: the server cannot show a token again after creating it.
 
 Notes are not end-to-end encrypted. The MCP endpoint has to read them to serve an AI.
+
+## Encryption at rest
+
+Set `DATA_KEY` and the server stores the text of notes, of their previous versions and of comments (quote, text and reply) encrypted with AES-256-GCM, one random nonce per value. Stored values start with `enc1:`. Without the variable everything stays in plain text, as before: it is your server and your choice.
+
+What it protects: the database file and every copy of it. A stolen disk, a leaked backup or a snapshot is unreadable without the key.
+
+What it does not protect: a running server. The key is in the memory of the process and in its environment, so whoever gets into the machine while it runs can read the notes. Paths, emails, dates and sizes are not encrypted either.
+
+Generate a key:
+
+```
+openssl rand -base64 32
+```
+
+Losing the key is losing the data. There is no recovery and no second key. Keep a copy somewhere that is not the server and is not next to the backups: a backup stored with its key protects nothing.
+
+Turning it on with data already in the database, in this order:
+
+1. Stop the server and copy the whole `DATA_DIR` folder (`mdtools.db`, plus `mdtools.db-wal` and `mdtools.db-shm` if they are there). That copy is in plain text: once you have checked that everything works, delete it or keep it somewhere safe.
+2. Generate the key with the command above.
+3. Save the key outside the server, for example in a password manager. Do this before the next step.
+4. Set `DATA_KEY` in the environment of the service and start it. On start it encrypts the rows that were in plain text, in batches, and rewrites the file so the old text does not stay in free pages. The log says `DATA_KEY: se cifraron N filas que estaban en claro`. If it is interrupted, the next start continues where it stopped.
+5. Check: open a note in the app, search for a word and open the history of a note. Then look for a word you know is in a note inside the file, and expect no match: `grep -c "that word" data/mdtools.db`.
+
+From then on the server needs the same key every time. If the database has encrypted rows and `DATA_KEY` is missing or is a different key, the server prints why and does not start. It never writes plain text over an encrypted database and never returns unreadable text.
+
+There is no command to change the key or to go back to plain text. To do either, restore the plain copy from step 1, or export the notes and load them into a new database.
 
 ## API
 
