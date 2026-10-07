@@ -23,7 +23,7 @@
     let icon = ICON.cloudOff; let cls = 'lmd-sync-off'; let title;
     if (isCloud()) {
       const state = core.cloudState;
-      if (state === 'error') { icon = ICON.cloudAlert; cls = 'lmd-sync-err'; title = T('Sin conexión: los cambios no se están guardando en la nube'); }
+      if (state === 'error') { icon = ICON.cloudAlert; cls = 'lmd-sync-err'; title = T('Sin conexión: los cambios quedan en este navegador y se suben al volver'); }
       else if (state === 'saving') { icon = ICON.cloud; cls = 'lmd-sync-busy'; title = T('Guardando en la nube…'); }
       else { icon = ICON.cloudOk; cls = 'lmd-sync-ok'; title = T('Sincronizado con la nube'); }
     } else title = LMD.cloud.signedIn() ? T('Esta nota no está en la nube. Clic para subirla') : T('Sincronización apagada. Clic para entrar a tu cuenta');

@@ -163,6 +163,10 @@ function renameNote(user, from, to) {
   if (q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(user.id, to)) throw new Fail(409, 'exists');
   const r = q('UPDATE notes SET path = ?, updated = ? WHERE user = ? AND path = ?').run(to, now(), user.id, from);
   if (!r.changes) throw new Fail(404, 'not_found');
+  // El historial, lo compartido y los enlaces públicos siguen a la nota.
+  q('UPDATE versions SET path = ? WHERE user = ? AND path = ?').run(to, user.id, from);
+  q("UPDATE OR REPLACE shares SET path = ? WHERE owner = ? AND path = ? AND kind != 'folder'").run(to, user.id, from);
+  q('UPDATE links SET path = ? WHERE owner = ? AND path = ?').run(to, user.id, from);
   return { path: to };
 }
 function searchNotes(user, text) {
