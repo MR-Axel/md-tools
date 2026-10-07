@@ -20,14 +20,20 @@
   // En la app los archivos no tienen URL real: se les da una virtual para poder resolver rutas relativas.
   const VBASE = 'https://lmd.local/';
   const APP_URL = APP ? location.origin + location.pathname : '';
-  const HERE = APP ? VBASE + (new URLSearchParams(location.search).get('f') || '') : location.href.split('#')[0].split('?')[0];
-  const DOC_NAME = decodeURIComponent(HERE.split('/').pop() || '');
+  // En la app el documento cambia sin recargar la página: HERE y DOC_NAME siguen a la nota abierta.
+  // Sin nota abierta (noDoc) el centro muestra el estado vacío y HERE queda en la base.
+  let HERE = APP ? VBASE : location.href.split('#')[0].split('?')[0];
+  let DOC_NAME = APP ? '' : decodeURIComponent(HERE.split('/').pop() || '');
+  let noDoc = APP;
   const toHref = (url) => {
     if (!APP || !url.startsWith(VBASE)) return url;
     const i = url.indexOf('#');
     return APP_URL + '?f=' + encodeURIComponent((i < 0 ? url : url.slice(0, i)).slice(VBASE.length)) + (i < 0 ? '' : url.slice(i));
   };
-  let appRoot = null; // lo abierto en la app: { id, kind: 'dir' | 'file', name, handle }
+  let appRoot = null; // la raíz de la nota abierta en la app: { id, kind: 'dir' | 'file' | 'local' | 'cloud' | 'pub', name, handle }
+  // Las raíces que se conocen, por id: el primer tramo de la ruta virtual dice de cuál es cada archivo.
+  const roots = {};
+  const rootOf = (url) => roots[url.slice(VBASE.length).split('#')[0].split('/')[0]] || null;
 
   let raw = APP ? '' : pre.textContent;
   let settings = null;
@@ -53,7 +59,8 @@
   };
   const isDark = () => LMD.theme.isDark(settings);
   const applyAccent = (root, dark) => LMD.theme.applyAccent(root, dark, settings);
-  const homeCtx = () => ({ settings, APP_URL });
+  // Lo que el estado vacío (home.js) necesita del lector: dónde dibujarse y cómo abrir una nota sin recargar.
+  const homeCtx = () => ({ settings, APP_URL, box: ui.home, open: (f, opt) => go(f, opt), refresh: () => core.reloadTree() });
   // Si la extensión se recargó o se actualizó, esta pestaña queda desconectada de ella: no puede
   // releer el archivo ni la carpeta. Se detecta y se avisa, en vez de fallar en silencio.
   let orphan = false;
@@ -82,13 +89,13 @@
   // ---------- Archivos de la app ----------
   const vParts = (url) => url.slice(VBASE.length).split('#')[0].split('/').filter(Boolean).map(decodeURIComponent).slice(1);
   async function vFile(url) {
-    const parts = vParts(url);
-    if (!appRoot || !parts.length) return null;
-    if (appRoot.kind === 'local') return parts.length === 1 ? LMD.store.noteHandle(parts[0]) : null;
-    if (appRoot.kind === 'cloud') return LMD.cloud.handle(parts.join('/'));
-    if (appRoot.kind === 'pub') return { kind: 'file', name: appRoot.title, getFile: async () => ({ text: async () => appRoot.text, lastModified: 0, size: appRoot.text.length }) };
-    if (appRoot.kind === 'file') return parts.length === 1 && parts[0] === appRoot.handle.name ? appRoot.handle : null;
-    let cur = appRoot.handle;
+    const parts = vParts(url); const root = rootOf(url);
+    if (!root || !parts.length) return null;
+    if (root.kind === 'local') return parts.length === 1 ? LMD.store.noteHandle(parts[0]) : null;
+    if (root.kind === 'cloud') return LMD.cloud.handle(parts.join('/'));
+    if (root.kind === 'pub') return { kind: 'file', name: root.title, getFile: async () => ({ text: async () => root.text, lastModified: 0, size: root.text.length }) };
+    if (root.kind === 'file') return parts.length === 1 && parts[0] === root.handle.name ? root.handle : null;
+    let cur = root.handle;
     for (let k = 0; k < parts.length - 1; k++) cur = await cur.getDirectoryHandle(parts[k]);
     return cur.getFileHandle(parts[parts.length - 1]);
   }
@@ -97,8 +104,9 @@
   }
   async function vList(dirUrl) {
     try {
-      if (appRoot.kind === 'pub') return [];
-      if (appRoot.kind === 'cloud') {
+      const root = rootOf(dirUrl);
+      if (!root || root.kind === 'pub') return [];
+      if (root.kind === 'cloud') {
         // La nube guarda rutas completas: las carpetas se deducen de ellas.
         const parts = vParts(dirUrl); const other = parts.length && parts[0][0] === '~' ? parts.shift().slice(1) : '';
         const prefix = parts.map((p) => p + '/').join(''); const rows = []; const seen = new Set();
@@ -111,9 +119,9 @@
         });
         return rows;
       }
-      if (appRoot.kind === 'local') return (await LMD.store.notesAll()).map((n) => ({ name: n.name, url: dirUrl + encodeURIComponent(n.name), dir: false }));
-      if (appRoot.kind === 'file') return [{ name: appRoot.handle.name, url: dirUrl + encodeURIComponent(appRoot.handle.name), dir: false }];
-      let dir = appRoot.handle;
+      if (root.kind === 'local') return (await LMD.store.notesAll()).map((n) => ({ name: n.name, url: dirUrl + encodeURIComponent(n.name), dir: false }));
+      if (root.kind === 'file') return [{ name: root.handle.name, url: dirUrl + encodeURIComponent(root.handle.name), dir: false }];
+      let dir = root.handle;
       for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p);
       const rows = [];
       for await (const [name, h] of dir.entries()) rows.push({ name, url: dirUrl + encodeURIComponent(name) + (h.kind === 'directory' ? '/' : ''), dir: h.kind === 'directory' });
@@ -246,7 +254,7 @@
         const src = img.getAttribute('src');
         if (!relative(src)) return;
         img.setAttribute('data-lmd-src', src);
-        try { const h = await vFile(new URL(src, HERE).href); if (h) img.src = URL.createObjectURL(await h.getFile()); } catch (e) { /* no está en la carpeta */ }
+        try { const h = await vFile(new URL(src, HERE).href); if (h) { const blob = URL.createObjectURL(await h.getFile()); blobUrls.push(blob); img.src = blob; } } catch (e) { /* no está en la carpeta */ }
       });
     }
 
@@ -305,9 +313,10 @@
     if (!cached || !linkIndex || linkIndex.root !== root || Date.now() - linkIndex.at > 20000) {
       const files = await collectFiles(root);
       if (files == null) return null;
-      linkIndex = { root, at: Date.now(), files: files.filter((f) => !sameUrl(f.url, HERE)) };
+      linkIndex = { root, at: Date.now(), files };
     }
-    return linkIndex.files;
+    // La lista sirve para varias notas de la misma raíz: la abierta se saca al devolverla.
+    return linkIndex.files.filter((f) => !sameUrl(f.url, HERE));
   }
   const readDoc = async (url) => { if (APP) return vText(url); const r = await bg({ type: 'fetchText', url }); return r && r.ok ? r.text : null; };
   // Ruta de un archivo relativa a este documento, lista para un enlace: los espacios y los paréntesis van codificados.
@@ -319,15 +328,13 @@
     return /^[^/]*:/.test(out) ? './' + out : out;
   }
   const noSection = (frag) => flash(T('No se encontró la sección "{a}".', { a: frag }), 'warn');
-  // Abre otro archivo de la app. Antes mira que exista: si no, avisa y se queda donde está.
-  async function openDoc(href) {
+  // Un enlace de la app (app.html?f=...) lleva a otra nota sin recargar la página.
+  const inApp = (a) => APP && !!a.href && a.href.split('#')[0].split('?')[0] === APP_URL && a.target !== '_blank';
+  // Abre otro archivo de la app. Si no existe, go() avisa y se queda donde está.
+  function openDoc(href, opt) {
     const u = new URL(href); const f = u.searchParams.get('f') || ''; const target = VBASE + f; const frag = unesc(u.hash.slice(1));
-    if (sameUrl(target, HERE)) { const t = findAnchor(frag); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); else if (frag) noSection(frag); return; }
-    let ok = false;
-    // Sin conexión no se puede saber: se abre igual, que la nube tiene su copia en este navegador.
-    try { const h = await vFile(target); ok = !!h && !!(await h.getFile()); } catch (e) { ok = !!e && e.code === 'offline'; }
-    if (!ok) { flash(T('No se encontró "{a}".', { a: unesc(f.split('/').pop() || '') }), 'error'); return; }
-    location.href = href;
+    if (!noDoc && sameUrl(target, HERE)) { const t = findAnchor(frag); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); else if (frag) noSection(frag); return Promise.resolve(true); }
+    return go(f, Object.assign({ hash: u.hash }, opt));
   }
 
   async function ensure(what) {
@@ -547,11 +554,11 @@
       '<div class="lmd-topbar">' +
         '<div class="lmd-top-left">' +
           '<button class="lmd-icon-btn" data-act="sidebar" title="' + T('Barra lateral (Alt+Shift+B)') + '">' + ICON.side + '</button>' +
-          '<span class="lmd-docname"></span>' +
-          '<button class="lmd-icon-btn lmd-sync" data-act="sync" hidden></button>' +
+          '<span class="lmd-docname lmd-doc-only"></span>' +
+          '<button class="lmd-icon-btn lmd-sync lmd-doc-only" data-act="sync" hidden></button>' +
         '</div>' +
         // Al centro, lo que cambia el modo de trabajo: ver o editar, insertar y guardar.
-        '<div class="lmd-top-mid">' +
+        '<div class="lmd-top-mid lmd-doc-only">' +
           '<div class="lmd-modeseg" role="radiogroup" aria-label="' + T('Modo') + '">' +
             '<button type="button" role="radio" data-act="mode-read" aria-checked="true" class="lmd-on" aria-label="' + T('Ver') + '">' + ICON.eye + '</button>' +
             '<button type="button" role="radio" data-act="mode-edit" aria-checked="false" aria-label="' + T('Editar') + '">' + ICON.pencil + '</button>' +
@@ -560,25 +567,27 @@
           '<button class="lmd-icon-btn lmd-save" data-act="save" title="' + T('Guardar (Ctrl+S)') + '" hidden>' + ICON.save + '</button>' +
         '</div>' +
         '<div class="lsharpmd">' +
-          '<div class="lmd-view" role="radiogroup" aria-label="' + T('Vista') + '">' +
+          '<div class="lmd-view lmd-doc-only" role="radiogroup" aria-label="' + T('Vista') + '">' +
             '<button type="button" role="radio" data-act="view-doc" class="lmd-on" aria-checked="true" title="' + T('Ver documento') + '">' + ICON.doc + '</button>' +
             '<button type="button" role="radio" data-act="view-raw" aria-checked="false" title="' + T('Ver código fuente') + '">' + ICON.code + '</button>' +
           '</div>' +
-          '<span class="lmd-sep"></span>' +
-          '<button class="lmd-icon-btn" data-act="copy-md" title="' + T('Copiar Markdown') + '">' + ICON.copy + '</button>' +
-          '<button class="lmd-icon-btn" data-act="copy-rich" title="' + T('Copiar con formato (la selección, o todo el documento)') + '">' + ICON.rich + '</button>' +
-          '<button class="lmd-icon-btn" data-act="reload" title="' + T('Recargar ahora') + '">' + ICON.reload + '</button>' +
-          '<button class="lmd-icon-btn" data-act="print" title="' + T('Imprimir o guardar PDF') + '">' + ICON.print + '</button>' +
-          '<button class="lmd-icon-btn" data-act="export-html" title="' + T('Exportar a HTML') + '">' + ICON.download + '</button>' +
-          '<span class="lmd-sep"></span>' +
+          '<span class="lmd-sep lmd-doc-only"></span>' +
+          '<button class="lmd-icon-btn lmd-doc-only" data-act="copy-md" title="' + T('Copiar Markdown') + '">' + ICON.copy + '</button>' +
+          '<button class="lmd-icon-btn lmd-doc-only" data-act="copy-rich" title="' + T('Copiar con formato (la selección, o todo el documento)') + '">' + ICON.rich + '</button>' +
+          '<button class="lmd-icon-btn lmd-doc-only" data-act="reload" title="' + T('Recargar ahora') + '">' + ICON.reload + '</button>' +
+          '<button class="lmd-icon-btn lmd-doc-only" data-act="print" title="' + T('Imprimir o guardar PDF') + '">' + ICON.print + '</button>' +
+          '<button class="lmd-icon-btn lmd-doc-only" data-act="export-html" title="' + T('Exportar a HTML') + '">' + ICON.download + '</button>' +
+          '<span class="lmd-sep lmd-doc-only"></span>' +
           '<button class="lmd-icon-btn" data-act="settings" title="' + T('Ajustes') + '">' + ICON.sliders + '</button>' +
         '</div>' +
       '</div>' +
+      // Sin nota abierta, acá va el estado vacío: lo dibuja home.js.
+      '<section class="lmd-home" hidden></section>' +
       '<article class="lmd-article markdown-body"></article>' +
-      '<pre class="lmd-raw" hidden></pre>' +
+      '<pre class="lmd-raw lmd-doc-only" hidden></pre>' +
       '<textarea class="lmd-raw lmd-raw-edit" spellcheck="false" hidden></textarea>' +
       // Pie: avisos a la izquierda; estado del guardado y contador a la derecha.
-      '<footer class="lmd-foot"><span class="lmd-status"></span><span class="lmd-savestate"></span><span class="lmd-count" title="' + T('Palabras y caracteres') + '"></span></footer>';
+      '<footer class="lmd-foot lmd-doc-only"><span class="lmd-status"></span><span class="lmd-savestate"></span><span class="lmd-count" title="' + T('Palabras y caracteres') + '"></span></footer>';
 
     ui.toTop = el('button', { class: 'lmd-to-top', title: T('Volver arriba'), hidden: '' }, ICON.up);
     ui.panel = el('div', { class: 'lmd-panel', hidden: '' });
@@ -613,10 +622,8 @@
     ui.searchInput = ui.searchBox.querySelector('input');
     ui.searchCount = ui.searchBox.querySelector('.lmd-search-count');
 
-    document.title = DOC_NAME || 'Markdown';
-    ui.main.querySelector('.lmd-docname').textContent = (appRoot && appRoot.title) || DOC_NAME;
-    if (appRoot && appRoot.title) document.title = appRoot.title;
-    document.documentElement.classList.toggle('lmd-readonly', readOnly);
+    ui.home = ui.main.querySelector('.lmd-home');
+    paintDoc();
     bindEvents();
     bindEditing();
     LMD.write.init(core);
@@ -637,8 +644,12 @@
       if (tab) { LMD.patch({ sidebarTab: tab.dataset.tab }); return; }
       const img = e.target.closest('img.lmd-zoomable');
       if (img && !img.closest('a') && !editMode) { openViewer(img); return; }
+      const plain = !(e.ctrlKey || e.metaKey || e.shiftKey);
       const res = e.target.closest('.lmd-results a');
       if (res && res.href.split('#')[0] === location.href.split('#')[0]) { e.preventDefault(); stepSearch(1); return; }
+      // Un archivo del árbol, un resultado de búsqueda o un reciente: se abre sin recargar la página.
+      const nav = e.target.closest('a.lmd-node, .lmd-results a, .lmd-home a');
+      if (nav && inApp(nav)) { if (plain) { e.preventDefault(); openDoc(nav.href); } return; }
       const a = e.target.closest('.lmd-article a[href], .lmd-pane-outline a');
       if (!a) return;
       // Editando, el clic sobre un enlace pone el cursor; para seguirlo va con Ctrl.
@@ -658,7 +669,7 @@
         e.preventDefault(); openDoc(a.href);
       } else if (editing) {
         e.preventDefault();
-        if (/^https?:/i.test(href) && a.host !== location.host) window.open(a.href, '_blank', 'noopener'); else location.href = a.href;
+        if (/^https?:/i.test(href) && a.host !== location.host) window.open(a.href, '_blank', 'noopener'); else if (inApp(a)) openDoc(a.href); else location.href = a.href;
       }
     });
 
@@ -713,6 +724,12 @@
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       if (settings.theme === 'auto') { applySettings(); render(); }
     });
+    // Atrás y adelante del navegador: la dirección ya cambió, falta traer la nota que le toca.
+    if (APP) window.addEventListener('popstate', () => {
+      const f = new URLSearchParams(location.search).get('f') || '';
+      if (noDoc ? !f : VBASE + f === HERE) { const frag = unesc(location.hash.slice(1)); const t = frag && !/^lmd-/.test(frag) ? findAnchor(frag) : null; if (t) t.scrollIntoView(); return; }
+      go(f, { pop: true, hash: location.hash });
+    });
   }
 
   function onAction(act, source) {
@@ -738,7 +755,7 @@
       (dirty ? save(true) : Promise.resolve(true)).then((ok) => { if (ok || !dirty) bg({ type: 'reloadExtension' }); });
     }
     else if (act === 'update-later') { ui.update.hidden = true; if (ui.update.dataset.v) bg({ type: 'dismissUpdate', version: ui.update.dataset.v }); }
-    else if (act === 'go-home') { if (APP) location.href = APP_URL; else bg({ type: 'openApp' }); }
+    else if (act === 'go-home') { if (APP) go(''); else bg({ type: 'openApp' }); }
     else if (act === 'see-plans') openPanel('plan');
     else if (act === 'feedback') LMD.sync.feedback();
   }
@@ -868,6 +885,7 @@
   }
 
   function render() {
+    if (noDoc) { ui.article.textContent = ''; spyHeadings = []; ui.paneOutline.textContent = ''; ui.progress = null; needsRender = false; return; }
     const md = buildParser();
     const kind = docKind();
     const fm = kind !== 'md' ? { body: asMarkdown(kind), rows: null } : (settings.plugins.frontmatter ? splitFrontmatter(raw) : { body: raw, rows: null });
@@ -1001,7 +1019,7 @@
   const merge3 = LMD.cloud.merge3;
   async function readCurrent() {
     // La nube se consulta cada diez segundos: alcanza para ver lo que escribió una IA sin martillar el servidor.
-    polled = true;
+    polled = true; const seq = docSeq;
     if (APP && appRoot && appRoot.kind === 'cloud') { if (Date.now() - cloudPoll < (cloudState === 'error' ? 5000 : 10000)) { polled = false; return diskText; } cloudPoll = Date.now(); }
     if (APP) {
       // Con el permiso de la carpeta alcanza con mirar fecha y tamaño: el archivo se lee solo si cambió.
@@ -1010,7 +1028,7 @@
         const stamp = file.lastModified + ':' + file.size;
         if (stamp === diskStamp) return diskText;
         const text = await file.text();
-        diskStamp = stamp;
+        if (seq === docSeq) diskStamp = stamp;
         return text;
       } catch (e) { return null; }
     }
@@ -1026,10 +1044,12 @@
 
   let checking = false;
   async function checkForChanges(manual) {
-    if (checking) return;
+    if (checking || noDoc) return;
     checking = true;
+    const seq = docSeq;
     try {
       const text = await readCurrent();
+      if (seq !== docSeq) return; // mientras se leía, se pasó a otra nota
       // En una nota de la nube, no poder leer es estar sin conexión; volver a leer es haberla recuperado.
       if (appRoot && appRoot.kind === 'cloud') { const was = cloudState; if (text == null) cloudState = 'error'; else if (polled && cloudState === 'error' && !dirty) cloudState = 'ok'; if (was !== cloudState) updateSaveState(); }
       if (text == null) {
@@ -1052,6 +1072,8 @@
   let flashTimer = null;
   // Aviso corto en la barra. Los errores van en rojo y duran más.
   function flash(msg, kind) {
+    // Sin nota abierta no hay pie donde mostrarlo: los avisos que importan van al estado vacío.
+    if (noDoc) { if (kind && !ui.home.hidden) LMD.home.say(msg); return; }
     ui.status.textContent = msg;
     ui.status.classList.add('lmd-flash');
     ui.status.classList.toggle('lmd-error', kind === 'error');
@@ -1095,17 +1117,19 @@
     return all ? rows : visibleRows(rows);
   }
 
-  let treeRoot = new URL('.', HERE).href;
+  let treeRoot = APP ? '' : new URL('.', HERE).href;
 
   async function loadTree() {
     ui.paneFiles.dataset.loaded = '1';
     ui.treeBox.textContent = '';
+    if (!treeRoot) return; // todavía no se abrió nada
     const head = el('div', { class: 'lmd-tree-head' });
     const upBtn = el('button', { class: 'lmd-tree-up', title: T('Subir a la carpeta superior'), type: 'button' }, ICON.up);
-    const atTop = APP && appRoot && treeRoot === VBASE + appRoot.id + '/';
-    const label = el('span', { class: 'lmd-tree-path', text: atTop ? appRoot.name : decodeURIComponent(treeRoot.replace(/\/$/, '').split('/').pop() || treeRoot), title: APP ? (appRoot ? appRoot.name : '') : decodeURIComponent(treeRoot) });
+    const top = APP ? rootOf(treeRoot) : null;
+    const atTop = !!top && treeRoot === VBASE + top.id + '/';
+    const label = el('span', { class: 'lmd-tree-path', text: atTop ? top.name : decodeURIComponent(treeRoot.replace(/\/$/, '').split('/').pop() || treeRoot), title: APP ? (top ? top.name : '') : decodeURIComponent(treeRoot) });
     const openBtn = el('button', { class: 'lmd-tree-up lmd-tree-open', title: T('Abrir otro archivo o carpeta'), type: 'button' }, ICON.open);
-    openBtn.addEventListener('click', () => { if (APP) location.href = APP_URL; else bg({ type: 'openApp' }); });
+    openBtn.addEventListener('click', () => { if (APP) go(''); else bg({ type: 'openApp' }); });
     head.append(upBtn, label, openBtn);
     core.hooks.tree.forEach((fn) => fn(head));
     if (atTop) upBtn.style.display = 'none';
@@ -1117,6 +1141,19 @@
     const list = el('div', { class: 'lmd-tree' });
     ui.treeBox.append(head, list);
     await fillDir(list, treeRoot, 0);
+  }
+  // Marca en el árbol la nota abierta. Devuelve false si no está a la vista.
+  function markActive() {
+    let hit = null;
+    ui.treeBox.querySelectorAll('.lmd-node').forEach((n) => { const on = !noDoc && n.dataset.url === HERE; n.classList.toggle('lmd-active', on); if (on) hit = n; });
+    if (hit) hit.scrollIntoView({ block: 'nearest' });
+    return !!hit;
+  }
+  // Al cambiar de nota el árbol sigue a su carpeta, como cuando cada nota era una página.
+  function syncTree(fresh) {
+    const want = noDoc ? treeRoot : new URL('.', HERE).href;
+    if (want !== treeRoot) { treeRoot = want; folderIndex = null; fresh = true; }
+    if (ui.paneFiles.dataset.loaded && (fresh || !markActive()) && !(noDoc && !fresh)) loadTree();
   }
 
   async function fillDir(container, dirUrl, depth) {
@@ -1132,7 +1169,7 @@
       return;
     }
     if (!rows.length) { container.appendChild(el('p', { class: 'lmd-empty', text: T('Carpeta sin archivos Markdown.') })); return; }
-    const here = HERE;
+    const here = noDoc ? '' : HERE;
     rows.forEach((row) => {
       const item = el(row.dir ? 'button' : 'a', { class: 'lmd-node' + (row.dir ? ' lmd-node-dir' : ''), title: row.name });
       item.style.paddingLeft = (10 + depth * 14) + 'px';
@@ -1152,7 +1189,7 @@
           if (!kids.hidden && !kids.dataset.loaded) { kids.dataset.loaded = '1'; await fillDir(kids, row.url, depth + 1); }
         };
         item.addEventListener('click', open);
-        if (here.startsWith(row.url)) open();
+        if (here && here.startsWith(row.url)) open();
       } else {
         item.href = toHref(row.url);
         if (row.url === here) { item.classList.add('lmd-active'); setTimeout(() => item.scrollIntoView({ block: 'nearest' }), 0); }
@@ -2015,16 +2052,21 @@
     save: (interactive) => save(interactive),
     setEditMode: (on) => setEditMode(on),
     pathOf: (url) => vParts(url).join('/'),
-    urlOf: (path) => VBASE + appRoot.id + '/' + path.split('/').map(encodeURIComponent).join('/'),
+    urlOf: (path) => VBASE + 'cloud/' + path.split('/').map(encodeURIComponent).join('/'),
+    rootOf,
+    // Abrir otra nota (por su dirección virtual) o quedarse sin ninguna, sin recargar la página.
+    open: (url, opt) => go(url.slice(VBASE.length), opt),
+    close: (opt) => go('', opt),
+    get HERE() { return HERE; }, get docName() { return DOC_NAME; }, get noDoc() { return noDoc; },
     openApp: (query) => bg({ type: 'openApp', query }),
     openPanel: (tab) => openPanel(tab),
-    ui, hooks: { render: [], tree: [] }, lastBlock: null, appUrl: APP_URL, hold: false,
+    ui, hooks: { render: [], tree: [], doc: [] }, lastBlock: null, appUrl: APP_URL, hold: false,
     editAt: (e) => editAt(e), copy: (text) => { copyText(text); flash(T('Copiado')); }, searchFor, sectionLink,
     links: { headings: () => anchorsOf(spyHeadings), headingsIn, files: linkFiles, read: readDoc, rel: relLink, find: findAnchor, same: sameUrl },
     get blocks() { return docKind() === 'md'; },
     treeRoot: () => treeRoot,
-    reloadTree: () => { fileCache.clear(); folderIndex = null; wikiIndex = null; return loadTree(); },
-    dirHandle: async (dirUrl) => { let dir = appRoot.handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, HERE, docName: DOC_NAME, ensure, isDark,
+    reloadTree: () => { fileCache.clear(); folderIndex = null; wikiIndex = null; linkIndex = null; return loadTree(); },
+    dirHandle: async (dirUrl) => { let dir = rootOf(dirUrl).handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, ensure, isDark,
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
     rangeOf, render, softRender, flash, insertLines, spliceLines, commitBlock, undo, redo, editCode, vFile, toHref,
@@ -2161,13 +2203,15 @@
   }
 
   async function save(interactive) {
+    if (noDoc) return true;
+    const seq = docSeq;
     const focused = document.activeElement;
     if (focused && focused.blur && (focused.isContentEditable || focused.classList.contains('lmd-src'))) focused.blur();
     if (ui.rawEdit && !ui.rawEdit.hidden) { raw = ui.rawEdit.value.replace(/\r?\n/g, eol); syncSource(); dirty = raw !== diskText; }
     if (interactive && appRoot && appRoot.kind === 'local') return saveNoteToDisk();
     if (!dirty && fileHandle) { if (interactive) flash(T('Sin cambios para guardar')); return true; }
     try {
-      if (!fileHandle) fileHandle = await storedHandle(interactive);
+      if (!fileHandle) { const found = await storedHandle(interactive); if (seq !== docSeq) return false; fileHandle = found; }
       if (!fileHandle) {
         if (!interactive) return false;
         if (appRoot && appRoot.id === 'mem' && window.showSaveFilePicker) {
@@ -2192,7 +2236,9 @@
           }
           return false;
         }
-        fileHandle = await askForAccess();
+        const given = await askForAccess();
+        if (seq !== docSeq) return false;
+        fileHandle = given;
         if (!fileHandle) return false;
       }
       if (appRoot && appRoot.kind === 'cloud') {
@@ -2203,12 +2249,14 @@
       const writable = await fileHandle.createWritable();
       await writable.write(raw);
       await writable.close();
+      if (seq !== docSeq) return true;
+      fileCache.delete(HERE); // la búsqueda en la carpeta vuelve a leerlo
       cloudState = 'ok';
       diskText = raw; dirty = false; updateSaveState();
       if (interactive || !(appRoot && (appRoot.kind === 'local' || appRoot.kind === 'cloud'))) flash(T('Guardado'));
       return true;
     } catch (e) {
-      if (e && e.name === 'AbortError') return false;
+      if (seq !== docSeq || (e && e.name === 'AbortError')) return false;
       if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) fileHandle = null;
       if (e && e.code === 'note_limit') flash(T('Llegaste al límite de notas del plan gratis. Esta no se guardó en la nube'), 'error');
       else if (e && e.code === 'offline') {
@@ -2221,123 +2269,200 @@
     }
   }
 
-  // ---------- Arranque de la página propia ----------
+  // ---------- Abrir una nota sin recargar la página ----------
   let opened = null; // cómo se abrió la nota de la nube: del servidor, de la copia local, o mezclada
-  async function appBoot() {
-    const params = new URLSearchParams(location.search);
-    if (params.has('new')) { LMD.home.create(homeCtx()); return false; }
-    const f = params.get('f');
-    if (!f) { LMD.home.show(homeCtx()); return false; }
-    const id = f.split('/')[0];
+  let navSeq = 0; // cada pedido de cambio de nota; el que queda viejo se descarta
+  let docSeq = 0; // cada nota abierta; lo que llega tarde de la anterior no toca a la nueva
+  let stopEvents = null; let unhold = null;
+  const blobUrls = [];
+  const hrefOf = (f, hash) => APP_URL + (f ? '?f=' + encodeURIComponent(f) : '') + (hash && !/^#lmd-/.test(hash) ? hash : '');
+
+  // Lee lo que hace falta para abrir f sin tocar la nota que está a la vista: si falla, todo sigue como estaba.
+  // Devuelve { root, raw, disk, ... } o { fail: aviso }.
+  async function loadDoc(f) {
+    const url = VBASE + f; const id = f.split('/')[0]; const name = decodeURIComponent(url.split('/').pop() || '');
+    const fail = (text) => ({ fail: text });
     if (id === 'cloud') {
       await LMD.cloud.ready();
-      appRoot = { id, kind: 'cloud', name: T('Nube') };
-      const path = vParts(HERE).join('/'); let why = '';
+      const path = vParts(url).join('/'); let got = null; let why = '';
       // Sin conexión se abre la copia guardada en este navegador, con lo que haya quedado sin subir.
-      if (LMD.cloud.signedIn()) { try { opened = await LMD.cloud.open(path); } catch (e) { why = e && e.code; } }
-      if (!opened) {
-        appRoot = null;
-        LMD.home.show(homeCtx(), T(!LMD.cloud.signedIn() ? 'Entrá a tu cuenta para abrir las notas de la nube.' : why === 'offline' ? 'Sin conexión, y "{a}" no tiene copia en este navegador.' : 'No se encontró "{a}".', { a: DOC_NAME }));
-        return false;
-      }
-      raw = opened.text; diskText = opened.base; dirty = raw !== diskText;
-      if (opened.offline) cloudState = 'error';
-      readOnly = LMD.cloud.roleOf(path) === 'view';
-      LMD.cloud.hold(path); LMD.cloud.flush();
-      return true;
+      if (LMD.cloud.signedIn()) { try { got = await LMD.cloud.open(path); } catch (e) { why = e && e.code; } }
+      if (!got) return fail(T(!LMD.cloud.signedIn() ? 'Entrá a tu cuenta para abrir las notas de la nube.' : why === 'offline' ? 'Sin conexión, y "{a}" no tiene copia en este navegador.' : 'No se encontró "{a}".', { a: name }));
+      return { root: roots.cloud, raw: got.text, disk: got.base, opened: got, readOnly: LMD.cloud.roleOf(path) === 'view' };
     }
     if (id === 'pub') {
       // Enlace público de solo lectura; si tiene contraseña, se pide.
       await LMD.cloud.ready();
-      const token = vParts(HERE).join('/'); let password = '';
+      const token = vParts(url).join('/'); let password = '';
       for (let tries = 0; tries < 6; tries++) {
         try {
           const n = await LMD.cloud.publicNote(token, password);
-          appRoot = { id, kind: 'pub', name: T('Compartido'), title: n.path.split('/').pop(), text: n.text };
-          raw = n.text; diskText = n.text; readOnly = true;
-          return true;
+          return { root: { id, kind: 'pub', name: T('Compartido'), title: n.path.split('/').pop(), text: n.text }, raw: n.text, disk: n.text, readOnly: true };
         } catch (e) {
           if (e.code === 'need_password' || e.code === 'bad_password') {
             password = window.prompt(T(e.code === 'bad_password' ? 'Esa contraseña no coincide. Probá de nuevo:' : 'Esta nota está protegida. Contraseña:')) || '';
             if (!password) break;
-          } else { LMD.home.show(homeCtx(), T(e.code === 'locked' ? 'Demasiados intentos. Probá de nuevo en unos minutos.' : 'Ese enlace ya no existe.')); return false; }
+          } else return fail(T(e.code === 'locked' ? 'Demasiados intentos. Probá de nuevo en unos minutos.' : 'Ese enlace ya no existe.'));
         }
       }
-      LMD.home.show(homeCtx());
-      return false;
+      return fail('');
     }
     if (id === 'local') {
       // Nota guardada en el navegador.
-      const note = await LMD.store.noteGet(DOC_NAME);
-      if (!note) { LMD.home.show(homeCtx(), T('No se encontró "{a}".', { a: DOC_NAME })); return false; }
-      appRoot = { id, kind: 'local', name: T('En este navegador') };
-      raw = note.text; diskText = note.text;
-      return true;
+      const note = await LMD.store.noteGet(name);
+      if (!note) return fail(T('No se encontró "{a}".', { a: name }));
+      return { root: roots.local, raw: note.text, disk: note.text };
     }
     if (id === 'mem') {
       // Navegador sin acceso a archivos: el documento viaja en la sesión y se guarda descargando una copia.
       let mem = null;
       try { mem = JSON.parse(sessionStorage.getItem('mdt-mem') || 'null'); } catch (e) { /* sesión vacía */ }
-      if (!mem || mem.name !== DOC_NAME) { LMD.home.show(homeCtx()); return false; }
-      appRoot = { id, kind: 'file', name: mem.name, handle: { kind: 'file', name: mem.name, getFile: async () => ({ text: async () => mem.text, lastModified: 0, size: mem.text.length }) } };
+      if (!mem || mem.name !== name) return fail('');
       // disk es lo último que quedó guardado; un archivo nuevo todavía no tiene nada en el disco.
-      raw = mem.text; diskText = mem.disk != null ? mem.disk : mem.text;
-      dirty = raw !== diskText;
-      return true;
+      return { root: { id, kind: 'file', name: mem.name, handle: { kind: 'file', name: mem.name, getFile: async () => ({ text: async () => mem.text, lastModified: 0, size: mem.text.length }) } },
+        raw: mem.text, disk: mem.disk != null ? mem.disk : mem.text };
     }
-    const rec = (await handlesAll()).find((r) => r.root && r.id === id);
-    if (!rec) { LMD.home.show(homeCtx(), T('Ese acceso ya no está guardado. Abrí el archivo o la carpeta de nuevo.')); return false; }
+    const rec = (roots[id] && roots[id].root ? roots[id] : null) || (await handlesAll()).find((r) => r.root && r.id === id);
+    if (!rec) return fail(T('Ese acceso ya no está guardado. Abrí el archivo o la carpeta de nuevo.'));
     const mode = rec.kind === 'dir' ? 'readwrite' : 'read';
     let ok = false;
     try { ok = (await rec.handle.queryPermission({ mode })) === 'granted'; } catch (e) { /* se pide abajo */ }
-    if (!ok && !(await LMD.home.gate(homeCtx(), rec, mode))) { LMD.home.show(homeCtx()); return false; }
-    appRoot = rec;
-    const text = await vText(HERE);
-    if (text == null) { LMD.home.show(homeCtx(), T('No se encontró "{a}".', { a: DOC_NAME })); return false; }
-    raw = text; diskText = text;
-    rec.last = f; rec.at = Date.now(); handlesPut(rec);
-    return true;
+    // Con un clic de por medio Chrome deja pedirlo ahí mismo; al arrancar hace falta el botón de la tarjeta.
+    if (!ok) { try { ok = (await rec.handle.requestPermission({ mode })) === 'granted'; } catch (e) { /* hace falta un clic */ } }
+    if (!ok && noDoc) ok = await LMD.home.gate(homeCtx(), rec, mode);
+    if (!ok) return fail(noDoc ? '' : T('Falta el permiso para abrir "{a}".', { a: rec.name }));
+    roots[id] = rec;
+    const text = await vText(url);
+    if (text == null) return fail(T('No se encontró "{a}".', { a: name }));
+    return { root: rec, raw: text, disk: text };
   }
 
-  // ---------- Arranque ----------
-  const RENDER_KEYS = ['plugins', 'theme', 'diagramShape'];
-  const TREE_KEYS = ['filesOnlyMarkdown', 'filesShowHidden'];
+  // Antes de salir de una nota se guarda lo pendiente. Devuelve false si la persona prefiere quedarse.
+  async function leaveDoc() {
+    if (noDoc) return true;
+    const a = document.activeElement;
+    if (a && a.blur && (a.isContentEditable || a.classList.contains('lmd-src'))) a.blur();
+    if (ui.rawEdit && !ui.rawEdit.hidden) { raw = ui.rawEdit.value.replace(/\r?\n/g, eol); syncSource(); dirty = raw !== diskText; }
+    if (!dirty) return true;
+    if (await save(false) || !dirty) return true;
+    // Sin conexión, lo escrito en una nota de la nube ya quedó en la cola y sube solo al volver.
+    if (appRoot.kind === 'cloud' && stashed === raw) return true;
+    // Falta el permiso para escribir: se pide, que acá hay un clic de por medio.
+    if (appRoot.id !== 'mem' && (await save(true) || !dirty)) return true;
+    return LMD.dialog.confirm({ title: T('Cambios sin guardar'), text: T('No se pudieron guardar los cambios de "{a}".', { a: DOC_NAME }), ok: T('Salir sin guardar'), danger: true });
+  }
 
-  LMD.load().then(async (s) => {
-    settings = s;
-    LMD.setLang(settings.language);
-    if (APP) { if (!(await appBoot())) return; }
-    buildUI();
-    applySettings();
-    render();
-    try { const t = sessionStorage.getItem('lmd-panel'); if (t) { sessionStorage.removeItem('lmd-panel'); openPanel(t); } } catch (e) {}
-    // Vuelta de la página de pago: Ajustes en Plan, esperando que el servidor confirme.
-    if (APP && location.hash === '#lmd-paid') { openPanel('plan'); LMD.sync.awaitPaid(); }
-    updateSaveState();
-    checkUpdate(false);
-    // Nota de la nube: se escucha en vivo quién más está y cuándo alguien guarda.
-    if (appRoot && appRoot.kind === 'cloud') {
-      if (opened.offline) flash(T('Sin conexión. Esta es la copia guardada en este navegador'), 'warn'); else offlineNote(opened);
-      if (dirty) markDirty(); // lo que quedó sin subir sale ahora, o apenas vuelva la conexión
-      LMD.cloud.events(vParts(HERE).join('/'), (ev) => {
-        present = ev.who || [];
-        if (ev.type === 'saved' && ev.by !== LMD.cloud.email()) { cloudPoll = 0; checkForChanges(false); }
-        LMD.sync.paint();
-      });
+  // Suelta todo lo que era de la nota anterior: temporizadores, la escucha de la nube, imágenes y menús abiertos.
+  function dropDoc() {
+    docSeq++;
+    clearTimeout(autosaveTimer); clearTimeout(softTimer);
+    if (stopEvents) { stopEvents(); stopEvents = null; }
+    if (unhold) { unhold(); unhold = null; LMD.cloud.flush(); }
+    blobUrls.splice(0).forEach((u) => URL.revokeObjectURL(u));
+    if (!noDoc) fileCache.delete(HERE);
+    undoStack.length = 0; redoStack.length = 0; collapsed.clear(); spyPin = null; present = [];
+    pendingCell = null; fileHandle = null; stashed = null; opened = null; diskStamp = ''; cloudPoll = 0; cloudState = 'ok';
+    needsRender = false; core.lastBlock = null; core.hold = false;
+    LMD.write.closeMenu();
+    document.querySelectorAll('.lmd-menu, .lmd-ask').forEach((n) => n.remove());
+    ui.viewer.hidden = true; ui.viewer.textContent = ''; ui.format.hidden = true; ui.tableBar.hidden = true;
+    clearSearch();
+  }
+
+  // Cambia la nota abierta en el lugar. f vacío deja la app sin nota, con el estado vacío en el centro.
+  // opt: edit (abre en edición), replace (no suma una entrada al historial), pop (viene de atrás o adelante),
+  // discard (la nota ya no existe: no se guarda al salir), hash (sección o búsqueda a la que ir), note (aviso para el estado vacío).
+  async function go(f, opt) {
+    opt = opt || {};
+    const seq = ++navSeq;
+    try {
+      if (!opt.discard && !(await leaveDoc())) { if (opt.pop) history.pushState(null, '', hrefOf(HERE.slice(VBASE.length))); return false; }
+      if (seq !== navSeq) return false;
+      const doc = f ? await loadDoc(f) : null;
+      if (seq !== navSeq) return false;
+      if (doc && doc.fail != null) {
+        // No se pudo abrir: con una nota a la vista se avisa y queda esa; si no, lo dice el estado vacío.
+        if (!noDoc && !opt.pop) { if (doc.fail) flash(doc.fail, 'error'); return false; }
+        setDoc('', null, Object.assign({}, opt, { note: doc.fail, replace: !opt.pop }));
+        return false;
+      }
+      setDoc(f, doc, opt);
+      return true;
+    } catch (e) {
+      // Algo inesperado: queda el camino de siempre, la página entera.
+      if (f && !opt.boot) location.href = hrefOf(f, opt.hash); else if (noDoc) showEmpty(T('No se pudo abrir. Probá de nuevo.'));
+      return false;
     }
-    // Un archivo recién creado, o uno vacío, arranca listo para escribir. Si la pestaña venía en
-    // edición, vuelve en edición. Lo de solo lectura y lo que no es Markdown abre leyendo.
-    const fresh = APP && new URLSearchParams(location.search).has('edit');
-    if (fresh) history.replaceState(null, '', location.href.replace(/[?&]edit=1/, ''));
-    const blankDoc = !raw.trim();
-    if (fresh || (!readOnly && docKind() === 'md' && (blankDoc || editRemembered()))) {
+  }
+
+  function setDoc(f, doc, opt) {
+    const wasEditing = editMode;
+    dropDoc();
+    // Se creó, se movió o se borró un archivo: el árbol y lo que se sabía de la carpeta se vuelven a leer.
+    if (opt.tree) { fileCache.clear(); folderIndex = null; wikiIndex = null; linkIndex = null; }
+    HERE = VBASE + f; DOC_NAME = doc ? decodeURIComponent(HERE.split('/').pop() || '') : ''; noDoc = !doc;
+    appRoot = doc ? doc.root : null;
+    if (doc) roots[appRoot.id] = appRoot;
+    raw = doc ? doc.raw : ''; diskText = doc ? doc.disk : ''; dirty = raw !== diskText;
+    readOnly = !!(doc && doc.readOnly); opened = (doc && doc.opened) || null;
+    rawMode = false; editMode = false;
+    if (!opt.pop) {
+      // La marca de la vuelta del pago se queda hasta que el servidor confirma: la limpia quien espera.
+      const href = hrefOf(f, opt.hash) + (opt.boot && location.hash === '#lmd-paid' ? '#lmd-paid' : '');
+      if (opt.replace || opt.boot) history.replaceState(null, '', href); else if (href !== location.href) history.pushState(null, '', href);
+    }
+    if (doc && appRoot.root) { appRoot.last = f; appRoot.at = Date.now(); handlesPut(appRoot); }
+    paintDoc();
+    syncTree(opt.tree);
+    if (noDoc) { render(); applyRawMode(); updateSaveState(); window.scrollTo(0, 0); showEmpty(opt.note); }
+    else {
+      ui.home.hidden = true;
+      if (appRoot.kind === 'cloud') {
+        // Nota de la nube: se escucha en vivo quién más está y cuándo alguien guarda.
+        const path = vParts(HERE).join('/'); const mine = docSeq;
+        if (opened.offline) { cloudState = 'error'; flash(T('Sin conexión. Esta es la copia guardada en este navegador'), 'warn'); } else offlineNote(opened);
+        if (dirty) markDirty(); // lo que quedó sin subir sale ahora, o apenas vuelva la conexión
+        unhold = LMD.cloud.hold(path); LMD.cloud.flush();
+        stopEvents = LMD.cloud.events(path, (ev) => {
+          if (mine !== docSeq) return;
+          present = ev.who || [];
+          if (ev.type === 'saved' && ev.by !== LMD.cloud.email()) { cloudPoll = 0; checkForChanges(false); }
+          LMD.sync.paint();
+        });
+      }
+      afterOpen({ edit: opt.edit, editing: wasEditing, hash: opt.hash });
+    }
+    core.hooks.doc.forEach((fn) => fn());
+  }
+
+  // Título, nombre y clases que dependen de la nota abierta.
+  function paintDoc() {
+    const title = (appRoot && appRoot.title) || DOC_NAME;
+    document.title = noDoc ? 'SharpMD' : (title || 'Markdown');
+    ui.main.querySelector('.lmd-docname').textContent = title;
+    document.documentElement.classList.toggle('lmd-readonly', readOnly);
+    document.documentElement.classList.toggle('lmd-nodoc', noDoc);
+  }
+  function showEmpty(note) { ui.home.hidden = false; LMD.home.show(homeCtx(), note); }
+
+  // Dibuja la nota recién abierta y la deja donde corresponde: en edición si toca, y en la sección o búsqueda pedida.
+  function afterOpen(opt) {
+    updateSaveState();
+    render();
+    applyRawMode();
+    window.scrollTo(0, 0);
+    // Un archivo recién creado, o uno vacío, arranca listo para escribir. Si se venía editando, sigue en
+    // edición. Lo de solo lectura y lo que no es Markdown abre leyendo.
+    const fresh = !!opt.edit; const blankDoc = !raw.trim();
+    if (fresh || (!readOnly && docKind() === 'md' && (blankDoc || opt.editing || editRemembered()))) {
       // Con Ajustes abiertos (vuelta de un cambio de idioma o de un pago) el menú de insertar no se ofrece: quedaría encima.
       setEditMode(true).then(() => { const add = (fresh || blankDoc) && ui.panel.hidden && ui.article.querySelector('.lmd-add'); if (add) add.click(); });
     }
-    const fromSearch = /^#lmd-q=([^&]+)(?:&r=(.+))?$/.exec(location.hash);
+    const hash = opt.hash || '';
+    const fromSearch = /^#lmd-q=([^&]+)(?:&r=(.+))?$/.exec(hash);
     if (fromSearch) {
       // Se llegó desde un resultado de búsqueda en la carpeta: se repite la búsqueda acá.
-      history.replaceState(null, '', location.href.split('#')[0]);
+      if (!APP) history.replaceState(null, '', location.href.split('#')[0]);
       if (fromSearch[2]) {
         const root = decodeURIComponent(fromSearch[2]);
         if (HERE.startsWith(root) && root !== treeRoot) {
@@ -2347,11 +2472,40 @@
       }
       ui.searchInput.value = decodeURIComponent(fromSearch[1]);
       runSearch(ui.searchInput.value, true);
-    } else if (location.hash && !/^#lmd-/.test(location.hash)) {
+    } else if (hash && !/^#lmd-/.test(hash)) {
       // Se llegó por un enlace a una sección: si no existe, se avisa en vez de quedar arriba sin decir nada.
-      const frag = unesc(location.hash.slice(1)); const t = findAnchor(frag);
+      const frag = unesc(hash.slice(1)); const t = findAnchor(frag);
       if (t) t.scrollIntoView(); else noSection(frag);
     } else restorePosition();
+  }
+
+  // ---------- Arranque de la página propia ----------
+  async function appBoot() {
+    const params = new URLSearchParams(location.search);
+    // Desde el popup: una nota nueva, sin pasar por el estado vacío.
+    if (params.has('new')) { LMD.home.create(homeCtx(), { replace: true }); return; }
+    const f = params.get('f');
+    if (!f) { showEmpty(); return; }
+    await go(f, { boot: true, edit: params.has('edit'), hash: location.hash });
+  }
+
+  // ---------- Arranque ----------
+  const RENDER_KEYS = ['plugins', 'theme', 'diagramShape'];
+  const TREE_KEYS = ['filesOnlyMarkdown', 'filesShowHidden'];
+
+  LMD.load().then(async (s) => {
+    settings = s;
+    LMD.setLang(settings.language);
+    if (APP) { roots.local = { id: 'local', kind: 'local', name: T('En este navegador') }; roots.cloud = { id: 'cloud', kind: 'cloud', name: T('Nube') }; }
+    buildUI();
+    applySettings();
+    const withDoc = !APP || new URLSearchParams(location.search).has('f');
+    try { const t = sessionStorage.getItem('lmd-panel'); if (t) { sessionStorage.removeItem('lmd-panel'); openPanel(t); } } catch (e) {}
+    // Vuelta de la página de pago: Ajustes en Plan, esperando que el servidor confirme.
+    if (APP && withDoc && location.hash === '#lmd-paid') { openPanel('plan'); LMD.sync.awaitPaid(); }
+    updateSaveState();
+    checkUpdate(false);
+    if (APP) appBoot(); else afterOpen({ hash: location.hash });
 
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local' || !changes.settings) return;

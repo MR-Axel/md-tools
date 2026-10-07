@@ -31,7 +31,7 @@ try {
   const page = await ctx.newPage(); watch(page);
   await page.goto(sample); await page.waitForSelector('.markdown-body h1', { timeout: 15000 }); await page.waitForTimeout(4000);
   const doc = await page.evaluate(() => ({
-    title: document.title, h2: document.querySelectorAll('.markdown-body h2').length, diagrams: document.querySelectorAll('.lmd-diagram svg').length,
+    title: document.title, h2: document.querySelectorAll('.markdown-body h2').length, diagrams: document.querySelectorAll('.lmd-diagram > svg').length,
     katex: !!document.querySelector('.katex'), outline: document.querySelectorAll('.lmd-pane-outline a').length, xss: document.title === 'XSS',
     wiki: [...document.querySelectorAll('a.lmd-wiki')].map((a) => (a.getAttribute('href') || '').split('/').pop()),
   }));
@@ -94,7 +94,7 @@ try {
   await app.waitForSelector('.markdown-body h1'); await app.waitForTimeout(4000);
   const opened = await app.evaluate(() => ({
     title: document.title, links: [...document.querySelectorAll('.markdown-body p a')].map((a) => new URL(a.href).search),
-    img: document.querySelector('.markdown-body img').naturalWidth, katex: !!document.querySelector('.katex'), diagrams: document.querySelectorAll('.lmd-diagram svg').length,
+    img: document.querySelector('.markdown-body img').naturalWidth, katex: !!document.querySelector('.katex'), diagrams: document.querySelectorAll('.lmd-diagram > svg').length,
   }));
   check('abre el README de la carpeta', opened.title === 'README.md', opened.title);
   check('links relativos y [[wiki]] pasan por la app', opened.links.length === 2 && opened.links.every((l) => l.startsWith('?f=')) && /sub%2Ftercero\.md$/.test(opened.links[1]), opened.links);
@@ -185,7 +185,7 @@ try {
   });
   await Promise.all([web.waitForNavigation(), web.click('[data-home=dir]')]);
   await web.waitForSelector('.markdown-body h1'); await web.waitForTimeout(3500);
-  const w1 = await web.evaluate(() => ({ title: document.title, katex: !!document.querySelector('.katex'), diagrams: document.querySelectorAll('.lmd-diagram svg').length, updates: [...document.querySelectorAll('.lmd-update')].every((n) => n.hidden) }));
+  const w1 = await web.evaluate(() => ({ title: document.title, katex: !!document.querySelector('.katex'), diagrams: document.querySelectorAll('.lmd-diagram > svg').length, updates: [...document.querySelectorAll('.lmd-update')].every((n) => n.hidden) }));
   check('lee una carpeta desde la web', w1.title === 'nota.md' && w1.katex && w1.diagrams === 1, w1);
   await web.click('[data-act=mode-edit]'); await web.waitForTimeout(300);
   await web.locator('.lmd-article p.lmd-editable').first().click(); await web.keyboard.press('End'); await web.keyboard.type(' Editado.'); await web.keyboard.press('Enter'); await web.waitForTimeout(300);

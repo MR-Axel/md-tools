@@ -592,6 +592,11 @@
       "Falta un permiso para abrir archivos locales.": "A permission is missing to open local files.",
       "En los detalles de la extensión, activá \"Permitir acceso a URL de archivo\".": "In the extension details, turn on \"Allow access to file URLs\".",
       "Abrir los detalles": "Open details",
+      "Falta el permiso para abrir \"{a}\".": "Permission to open \"{a}\" is missing.",
+      "No se pudieron guardar los cambios de \"{a}\".": "The changes to \"{a}\" could not be saved.",
+      "Salir sin guardar": "Leave without saving",
+      "Aceptar": "OK",
+      "Escribí un nombre.": "Type a name.",
   };
   let current = 'es';
   function setLang(pref) {

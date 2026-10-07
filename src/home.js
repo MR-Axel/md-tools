@@ -1,11 +1,13 @@
-// Pantalla de inicio de la página propia: abrir un archivo o una carpeta, arrastrar, y los recientes.
+// Estado vacío de la app: lo que se ve en el centro cuando no hay ninguna nota abierta. Desde acá se
+// empieza una nota, se abre un archivo o una carpeta (también arrastrándolos) y se entra a la cuenta.
 (function () {
   'use strict';
 
   const { ICON, el, MD_RE, SKIP_DIRS, validEmail } = LMD.kit;
   const { handlesPut, handlesDelete, rootsAll, notesAll, noteGet, notePut, noteDelete } = LMD.store;
   const T = LMD.t;
-  let ctx = null; // { settings, APP_URL }, lo pasa el lector al llamar
+  let ctx = null; // { settings, APP_URL, box, open(f, opt), refresh() }, lo pasa el lector al llamar
+  let sayNow = null; // cómo mostrar un aviso en el estado vacío que está a la vista
 
   // Qué se puede hacer sin cuenta y qué suma tenerla, en dos renglones. Lo muestran el inicio y Ajustes → Nube.
   const perks = () => '<dl class="lmd-perks">' +
@@ -63,7 +65,7 @@
     return null;
   }
 
-  async function openPicked(handle, say) {
+  async function openPicked(handle, say, opt) {
     let rec = null;
     for (const r of await rootsAll()) {
       try { if (await r.handle.isSameEntry(handle)) { rec = r; break; } } catch (e) { /* permiso vencido */ }
@@ -78,7 +80,7 @@
     }
     rec.last = rec.id + '/' + path;
     await handlesPut(rec);
-    location.href = ctx.APP_URL + '?f=' + encodeURIComponent(rec.last);
+    return ctx.open(rec.last, opt);
   }
 
   // Sin File System Access (Firefox, Safari) el archivo se lee una vez y se guarda en la sesión.
@@ -87,14 +89,12 @@
     if (!file) return;
     try { sessionStorage.setItem('mdt-mem', JSON.stringify({ name: file.name, text: await file.text() })); }
     catch (e) { say(T('No se pudo abrir. Probá de nuevo.')); return; }
-    location.href = ctx.APP_URL + '?f=' + encodeURIComponent('mem/' + encodeURIComponent(file.name));
+    ctx.open('mem/' + encodeURIComponent(file.name));
   }
 
+  let dropBound = false;
   async function home(note) {
-    LMD.theme.themeOnly(ctx.settings);
-    document.title = 'SharpMD';
-    document.body.textContent = '';
-    const box = el('main', { class: 'lmd-home' });
+    const box = ctx.box;
     box.innerHTML =
       '<div class="lmd-home-card">' +
         '<img class="lmd-home-logo" src="' + chrome.runtime.getURL('icons/icon128.png') + '" alt="">' +
@@ -115,9 +115,9 @@
       '</div>' +
       '<div class="lmd-home-foot"><button type="button" class="lmd-home-coffee" data-home="feedback">' + T('Enviar comentarios') + '</button>' +
         (window.__MDT_WEB ? '<a class="lmd-home-coffee" href="../?site">' + T('Qué es SharpMD') + '</a>' : '') + '</div>';
-    document.body.appendChild(box);
     const msg = box.querySelector('.lmd-home-msg');
     const say = (text) => { msg.hidden = !text; msg.textContent = text || ''; };
+    sayNow = say;
     if (note) say(note);
     // Lo que los paneles de la cuenta necesitan saber del inicio: adónde vuelve el pago y qué repintar al cerrar.
     const host = {
@@ -275,7 +275,7 @@
     };
     paint();
 
-    box.addEventListener('click', async (e) => {
+    box.onclick = async (e) => {
       const b = e.target.closest('[data-home]'); if (!b) return;
       say('');
       if (b.dataset.home === 'feedback') { LMD.sync.feedback(); return; }
@@ -300,26 +300,30 @@
       } catch (err) {
         if (!(err && err.name === 'AbortError')) say(T('No se pudo abrir. Probá de nuevo.'));
       }
-    });
+    };
     // Soltar un archivo o una carpeta: se toma su permiso en vez de dejar que Chrome navegue.
-    window.addEventListener('dragover', (e) => { e.preventDefault(); box.classList.add('lmd-drop'); });
+    // Vale mientras el estado vacío está a la vista; con una nota abierta, arrastrar es cosa del editor.
+    if (dropBound) return;
+    dropBound = true;
+    const shown = (e) => !box.hidden && Array.from((e.dataTransfer && e.dataTransfer.types) || []).includes('Files');
+    window.addEventListener('dragover', (e) => { if (!shown(e)) return; e.preventDefault(); box.classList.add('lmd-drop'); });
     window.addEventListener('dragleave', (e) => { if (!e.relatedTarget) box.classList.remove('lmd-drop'); });
     window.addEventListener('drop', async (e) => {
+      if (!shown(e)) return;
       e.preventDefault(); box.classList.remove('lmd-drop');
+      const tell = (text) => { if (sayNow) sayNow(text); };
       const item = Array.from(e.dataTransfer.items || []).find((i) => i.kind === 'file');
       if (!item) return;
-      if (!canPick() || !item.getAsFileSystemHandle) { openInMemory(item.getAsFile(), say); return; }
-      try { await openPicked(await item.getAsFileSystemHandle(), say); } catch (err) { say(T('No se pudo abrir. Probá de nuevo.')); }
+      if (!canPick() || !item.getAsFileSystemHandle) { openInMemory(item.getAsFile(), tell); return; }
+      try { await openPicked(await item.getAsFileSystemHandle(), tell); } catch (err) { tell(T('No se pudo abrir. Probá de nuevo.')); }
     });
   }
 
   // Al volver otro día Chrome pide confirmar el acceso, y eso necesita un clic.
   function gate(rec, mode) {
     return new Promise((resolve) => {
-      LMD.theme.themeOnly(ctx.settings);
-      document.title = 'SharpMD';
-      document.body.textContent = '';
-      const box = el('main', { class: 'lmd-home' });
+      const box = ctx.box;
+      box.hidden = false; box.onclick = null; sayNow = null;
       box.innerHTML =
         '<div class="lmd-home-card">' +
           '<img class="lmd-home-logo" src="' + chrome.runtime.getURL('icons/icon128.png') + '" alt="">' +
@@ -327,16 +331,15 @@
           '<p class="lmd-home-sub">' + T('Chrome pide que confirmes el acceso antes de seguir.') + '</p>' +
           '<div class="lmd-home-actions">' +
             '<button type="button" class="lmd-btn lmd-btn-fill" data-gate="ok"><span>' + T('Continuar') + '</span></button>' +
-            '<button type="button" class="lmd-btn" data-gate="no"><span>' + T('Volver al inicio') + '</span></button>' +
+            '<button type="button" class="lmd-btn" data-gate="no"><span>' + T('Cancelar') + '</span></button>' +
           '</div>' +
         '</div>';
       box.querySelector('h1').textContent = rec.name;
-      document.body.appendChild(box);
-      box.addEventListener('click', async (e) => {
+      box.onclick = async (e) => {
         const b = e.target.closest('[data-gate]'); if (!b) return;
         if (b.dataset.gate === 'no') return resolve(false);
         try { if ((await rec.handle.requestPermission({ mode })) === 'granted') resolve(true); } catch (err) { resolve(false); }
-      });
+      };
     });
   }
 
@@ -370,7 +373,8 @@
     return file;
   }
 
-  async function create() {
+  async function create(opt) {
+    const how = { edit: true, replace: !!(opt && opt.replace) };
     const base = stamp();
     const folder = window.showDirectoryPicker ? await notesFolder() : null;
     if (folder) {
@@ -388,8 +392,7 @@
           const w = await h.createWritable(); await w.write(''); await w.close();
           folder.last = folder.id + '/' + encodeURIComponent(file); folder.at = Date.now();
           await handlesPut(folder);
-          location.replace(ctx.APP_URL + '?f=' + encodeURIComponent(folder.last) + '&edit=1');
-          return;
+          return ctx.open(folder.last, how);
         } catch (e) { /* la carpeta ya no está: sigue en memoria */ }
       }
     }
@@ -398,8 +401,7 @@
     if (LMD.cloud.signedIn()) {
       try {
         const file = await cloudNote(base);
-        location.replace(ctx.APP_URL + '?f=' + encodeURIComponent('cloud/' + encodeURIComponent(file)) + '&edit=1');
-        return;
+        return ctx.open('cloud/' + encodeURIComponent(file), how);
       } catch (e) { /* sin conexión o sin lugar: sigue en el navegador */ }
     }
     // Sin carpeta de notas, la nota queda guardada en el navegador y sigue ahí al volver.
@@ -407,14 +409,16 @@
     for (let n = 2; n < 50 && await noteGet(name); n++) name = base + '-' + n + '.md';
     await notePut(name, '');
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* el navegador decide */ }
-    location.replace(ctx.APP_URL + '?f=' + encodeURIComponent('local/' + encodeURIComponent(name)) + '&edit=1');
+    return ctx.open('local/' + encodeURIComponent(name), how);
   }
 
   LMD.home = {
-    create: (c) => { ctx = c; create(); },
+    create: (c, opt) => { ctx = c; return create(opt); },
     cloudNote: () => cloudNote(),
-    adopt: (c, handle) => { ctx = c; return openPicked(handle, () => {}); },
+    // Un archivo recién guardado pasa a ser la nota abierta: reemplaza en el historial a la que era.
+    adopt: (c, handle) => { ctx = c; return openPicked(handle, () => {}, { replace: true }); },
     show: (c, note) => { ctx = c; return home(note); },
+    say: (text) => { if (sayNow) sayNow(text); },
     perks, signIn,
     gate: (c, rec, mode) => { ctx = c; return gate(rec, mode); },
   };

@@ -439,7 +439,7 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-tree-path { flex: 1; min-width: 0; }
 .lmd-tree-open { flex: none; }
 .lmd-heart svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; display: block; }
-.lmd-home { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 40px 20px; background: var(--bg); color: var(--fg); font: 15px/1.5 var(--lmd-font); box-sizing: border-box; }
+.lmd-home { min-height: calc(100vh - 49px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 40px 20px; background: var(--bg); color: var(--fg); font: 15px/1.5 var(--lmd-font); box-sizing: border-box; }
 .lmd-home * { box-sizing: border-box; }
 .lmd-home-card { width: min(520px, 100%); padding: 34px 32px 28px; border: 1px solid var(--line); border-radius: 16px; background: var(--bg-soft); text-align: center; transition: border-color .15s; }
 .lmd-home.lmd-drop .lmd-home-card { border-color: var(--accent-fill); border-style: dashed; }
@@ -881,3 +881,18 @@ button.lmd-home-item { width: 100%; border: 0; background: none; font: inherit; 
 html:not(.lmd-root) { color-scheme: light dark; background: Canvas; }
 html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lmd-raw-back 0s linear 2s forwards; }
 @keyframes lmd-raw-back { to { visibility: visible; } }
+
+/* ---------- Una sola pantalla: sin nota abierta, el centro muestra el estado vacío ---------- */
+.lmd-nodoc .lmd-doc-only, .lmd-nodoc .lmd-article, .lmd-nodoc .lmd-to-top { display: none !important; }
+/* ---------- Diálogos propios: un campo o una confirmación ---------- */
+.lmd-dlg-card { width: min(420px, 100%); }
+.lmd-dlg-card h3 { margin-bottom: 12px; overflow-wrap: anywhere; }
+.lmd-dlg-field { display: block; margin: 0 0 14px; }
+.lmd-dlg-field span { display: block; margin-bottom: 6px; font-size: 13px; color: var(--fg-muted); }
+.lmd-dlg-field input { display: block; width: 100%; height: 36px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--fg); font: inherit; outline: none; }
+.lmd-dlg-field input:focus { border-color: var(--accent-fill); }
+.lmd-dlg-field input[aria-invalid=true] { border-color: #dc2626; }
+.lmd-ask-card p.lmd-dlg-err { margin: -6px 0 14px; color: #dc2626; font-size: 13px; }
+.lmd-btn-danger { background: #dc2626; border-color: #dc2626; color: #fff; font-weight: 600; }
+.lmd-btn-danger:hover { background: #b91c1c; border-color: #b91c1c; }
+.lmd-topbar > .lsharpmd { grid-column: 3; }

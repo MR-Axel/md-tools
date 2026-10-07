@@ -38,7 +38,8 @@
   }
 
   const cloudHref = (path) => '?f=' + encodeURIComponent('cloud/' + path.split('/').map(encodeURIComponent).join('/'));
-  const goApp = (query) => { if (core.APP) location.href = core.appUrl + query; else core.openApp(query); };
+  // Abre una nota de la nube: en la app, en el lugar; sobre un archivo abierto directo, en la app.
+  const openNote = (path, opt) => (core.APP ? core.open(core.urlOf(path), opt) : core.openApp(cloudHref(path) + (opt && opt.edit ? '&edit=1' : '')));
 
   async function upload() {
     if (!window.confirm(T('¿Subir "{a}" a la nube? Queda una copia sincronizada; el archivo de acá no se toca.', { a: core.docName }))) return;
@@ -48,7 +49,7 @@
       let path = stem + ext;
       for (let n = 2; n < 50 && taken.has(path); n++) path = stem + '-' + n + ext;
       await LMD.cloud.write(path, core.raw);
-      goApp(cloudHref(path));
+      openNote(path, { tree: true });
     } catch (e) {
       core.flash(T(e.code === 'note_limit' ? 'Llegaste al límite de notas del plan gratis.' : e.code === 'offline' ? 'No hay conexión con el servidor.' : 'No se pudo subir la nota.'), 'error');
     }
@@ -105,9 +106,9 @@
       if (core && isCloud()) { host.close(); return; }
       const rows = await LMD.cloud.list(true);
       const made = rows.length ? null : await LMD.home.cloudNote();
-      await host.leave();
-      const query = cloudHref(made || rows[0].path) + (made ? '&edit=1' : '');
-      if (core && !core.APP) core.openApp(query); else location.href = host.appUrl + query;
+      if (!core.APP) await host.leave();
+      host.close();
+      await openNote(made || rows[0].path, { edit: !!made, tree: true });
     } catch (e) { if (host.say) host.say(T(e.code === 'offline' ? 'No hay conexión con el servidor.' : 'No se pudo completar. Probá de nuevo.')); }
   }
 
@@ -374,7 +375,7 @@
 
   function click(btn) {
     if (isCloud()) { openMenu(btn); return; }
-    if (LMD.cloud.signedIn()) upload(); else goApp('');
+    if (LMD.cloud.signedIn()) upload(); else if (core.APP) core.openPanel('cloud'); else core.openApp('');
   }
 
   function init(c) {

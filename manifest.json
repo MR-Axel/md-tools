@@ -53,6 +53,7 @@
       "js": [
         "src/defaults.js",
         "src/kit.js",
+        "src/dialog.js",
         "src/markdown.js",
         "src/theme.js",
         "src/serialize.js",
