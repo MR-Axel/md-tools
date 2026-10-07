@@ -64,7 +64,7 @@ try {
 
   await page.click('[data-act=settings]'); await page.waitForSelector('.lmd-panel-card');
   const sections = await page.evaluate(() => [...document.querySelectorAll('.lmd-panel h3')].map((h) => h.textContent.replace(/\s*Extra$/, '')));
-  check('panel de ajustes', sections.join('|') === 'Apariencia|Lectura|Edición|Carpeta|Plugins de Markdown|CSS propio|Actualizaciones', sections);
+  check('panel de ajustes', sections.join('|') === 'Apariencia|Lectura|Edición|Carpeta|Plugins de Markdown|CSS propio|Actualizaciones|Nube', sections);
   await page.close();
 
   console.log('Página propia de MD Tools');

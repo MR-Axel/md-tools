@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MD Tools: Markdown reader & editor",
-  "version": "2.21.0",
+  "version": "2.22.0",
   "description": "__MSG_ext_desc__",
   "icons": {
     "16": "icons/icon16.png",
@@ -49,6 +49,7 @@
         "src/theme.js",
         "src/serialize.js",
         "src/store.js",
+        "src/cloud.js",
         "src/home.js",
         "src/write.js",
         "src/diagram.js",

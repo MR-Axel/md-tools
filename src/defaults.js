@@ -17,6 +17,7 @@
     wrapCode: true, // las líneas largas de los bloques de código bajan de renglón
     autosave: false,
     autosaveDelay: 2000, // ms después del último cambio
+    cloudUrl: '', // servidor de sincronización propio; vacío usa el de la versión, si trae uno
     focusMode: false, // al editar, atenúa todo menos el bloque en el que se escribe
     typewriter: false, // al editar, mantiene el renglón actual a media altura
     refreshInterval: 1000, // ms
@@ -227,6 +228,19 @@
       "Ya aporté": "I already supported",
       "Gracias por apoyar": "Thanks for supporting",
       "Actualizaciones": "Updates",
+      "Nube": "Cloud", "en la nube": "in the cloud", "Guardado en la nube": "Saved to the cloud",
+      "Entrá a tu cuenta para abrir las notas de la nube.": "Sign in to open your cloud notes.",
+      "Llegaste al límite de notas del plan gratis. Esta no se guardó en la nube": "You reached the note limit of the free plan. This one was not saved to the cloud",
+      "Sin conexión. Se guarda cuando vuelva": "Offline. It will save when the connection is back",
+      "Ese correo no parece válido.": "That email does not look valid.", "Esperá unos segundos antes de pedir otro código.": "Wait a few seconds before asking for another code.",
+      "Ese código no coincide.": "That code does not match.", "El código venció. Pedí otro.": "The code expired. Ask for another one.",
+      "Demasiados intentos. Pedí un código nuevo.": "Too many tries. Ask for a new code.", "No hay conexión con el servidor.": "Cannot reach the server.",
+      "Conectar una IA es parte del plan pago.": "Connecting an AI is part of the paid plan.", "No se pudo completar. Probá de nuevo.": "Could not complete it. Try again.",
+      "Te mandamos un código a {a}.": "We sent a code to {a}.", "Entrar": "Sign in", "tu correo": "your email", "Enviar código": "Send code",
+      "Tus notas en todos tus dispositivos.": "Your notes on all your devices.", "{n} de {m} notas": "{n} of {m} notes", "{n} notas": "{n} notes",
+      "Conectar una IA": "Connect an AI", "Salir": "Sign out",
+      "Copiá estos datos ahora: el token no se vuelve a mostrar.": "Copy these now: the token is not shown again.",
+      "Servidor de sincronización": "Sync server", "Dejalo vacío salvo que alojes tu propio servidor.": "Leave it empty unless you host your own server.",
       "Tablero": "Board", "Por hacer": "To do", "En curso": "In progress", "Hecho": "Done", "Primera tarjeta": "First card",
       "Tarjeta": "Card", "Tarjeta nueva": "New card", "Eliminar la tarjeta": "Delete the card", "Eliminar la columna": "Delete the column",
       "¿Eliminar la columna \"{a}\" con sus tarjetas?": "Delete the column \"{a}\" and its cards?",
@@ -433,7 +447,9 @@
   }
   const lang = () => current;
 
+  // Servidor de sincronización de esta versión. Vacío: la nube no aparece.
+  const CLOUD_URL = '';
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
 
-  root.LMD = { SPONSOR_URL, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
+  root.LMD = { SPONSOR_URL, CLOUD_URL, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
 })(typeof self !== 'undefined' ? self : this);

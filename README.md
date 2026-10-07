@@ -156,6 +156,10 @@ All of them are vendored in `vendor/`, because Manifest V3 does not allow remote
 
 MD Tools is free and collects no data. If it saves you time, you can [support the next tool on Ko-fi](https://ko-fi.com/surlabs).
 
+## Optional sync server
+
+`server/` holds MD Tools Sync: accounts, notes in the cloud and an MCP endpoint so an AI can read and write them. It is one file with no dependencies, and you can host it yourself. MD Tools shows nothing about the cloud until a server address is set in Settings → Cloud. See [server/README.md](server/README.md).
+
 ## License
 
-MIT. See [LICENSE](LICENSE).
+The app is MIT. See [LICENSE](LICENSE). The sync server in `server/` is AGPL-3.0-or-later.

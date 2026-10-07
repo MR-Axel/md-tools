@@ -82,6 +82,7 @@
     const parts = vParts(url);
     if (!appRoot || !parts.length) return null;
     if (appRoot.kind === 'local') return parts.length === 1 ? LMD.store.noteHandle(parts[0]) : null;
+    if (appRoot.kind === 'cloud') return LMD.cloud.handle(parts.join('/'));
     if (appRoot.kind === 'file') return parts.length === 1 && parts[0] === appRoot.handle.name ? appRoot.handle : null;
     let cur = appRoot.handle;
     for (let k = 0; k < parts.length - 1; k++) cur = await cur.getDirectoryHandle(parts[k]);
@@ -92,6 +93,18 @@
   }
   async function vList(dirUrl) {
     try {
+      if (appRoot.kind === 'cloud') {
+        // La nube guarda rutas completas: las carpetas se deducen de ellas.
+        const prefix = vParts(dirUrl).map((p) => p + '/').join(''); const rows = []; const seen = new Set();
+        (await LMD.cloud.list()).forEach((n) => {
+          if (!n.path.startsWith(prefix)) return;
+          const rest = n.path.slice(prefix.length); const cut = rest.indexOf('/');
+          const name = cut < 0 ? rest : rest.slice(0, cut);
+          if (seen.has(name)) return; seen.add(name);
+          rows.push({ name, url: dirUrl + encodeURIComponent(name) + (cut < 0 ? '' : '/'), dir: cut >= 0 });
+        });
+        return rows;
+      }
       if (appRoot.kind === 'local') return (await LMD.store.notesAll()).map((n) => ({ name: n.name, url: dirUrl + encodeURIComponent(n.name), dir: false }));
       if (appRoot.kind === 'file') return [{ name: appRoot.handle.name, url: dirUrl + encodeURIComponent(appRoot.handle.name), dir: false }];
       let dir = appRoot.handle;
@@ -881,8 +894,10 @@
     refreshTimer = setInterval(() => { if (!document.hidden) checkForChanges(false); }, Math.max(300, settings.refreshInterval | 0));
   }
 
-  let diskStamp = '';
+  let diskStamp = ''; let cloudPoll = 0;
   async function readCurrent() {
+    // La nube se consulta cada diez segundos: alcanza para ver lo que escribió una IA sin martillar el servidor.
+    if (APP && appRoot && appRoot.kind === 'cloud') { if (Date.now() - cloudPoll < 10000) return diskText; cloudPoll = Date.now(); }
     if (APP) {
       // Con el permiso de la carpeta alcanza con mirar fecha y tamaño: el archivo se lee solo si cambió.
       try {
@@ -1272,6 +1287,10 @@
             '<p class="lmd-update-msg" role="status" hidden></p>' +
             '<p class="lmd-hint">' + T('Lo único que se consulta es el número de versión publicado en GitHub. No se manda ningún dato.') + '</p>' +
           '</section>') +
+          '<section><h3>' + T('Nube') + '</h3>' +
+            '<label class="lmd-row"><span>' + T('Servidor de sincronización') + '</span><input type="text" data-key="cloudUrl" spellcheck="false" placeholder="https://" value="' + esc(s.cloudUrl || '') + '"></label>' +
+            '<p class="lmd-hint">' + T('Dejalo vacío salvo que alojes tu propio servidor.') + '</p>' +
+          '</section>' +
           '<section class="lmd-panel-foot"><button type="button" class="lmd-btn" data-act="reset">' + T('Restablecer todo') + '</button></section>' +
           '<section class="lmd-support"><p class="lmd-hint">' + T('MD Tools es gratis y no junta datos. Si te sirve, podés apoyarlo.') + '</p>' +
             '<a class="lmd-btn lmd-btn-accent" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">♥ ' + T('Apoyar el proyecto') + '</a></section>' +
@@ -1449,6 +1468,7 @@
     clearTimeout(autosaveTimer);
     // Las notas del navegador se guardan solas, siempre.
     if (dirty && appRoot && appRoot.kind === 'local') { autosaveTimer = setTimeout(() => save(false), 600); return; }
+    if (dirty && appRoot && appRoot.kind === 'cloud') { autosaveTimer = setTimeout(() => save(false), 1500); return; }
     if (dirty && settings.autosave) {
       if (fileHandle) autosaveTimer = setTimeout(() => save(false), Math.max(500, settings.autosaveDelay | 0));
       else flash(T('Guardá una vez con Ctrl+S para activar el guardado automático'), 'warn');
@@ -1467,7 +1487,8 @@
     ui.main.querySelector('[data-act=mode-edit]').title = T('Editar') + ' · ' + T(editMode ? 'Estás editando el documento' : 'Editar el documento');
     const state = ui.main.querySelector('.lmd-savestate');
     const local = !!appRoot && appRoot.kind === 'local';
-    state.textContent = local ? T(dirty ? 'Guardando…' : 'Guardado en este navegador')
+    const cloud = !!appRoot && appRoot.kind === 'cloud';
+    state.textContent = cloud ? T(dirty ? 'Guardando…' : 'Guardado en la nube') : local ? T(dirty ? 'Guardando…' : 'Guardado en este navegador')
       : (dirty ? T('Cambios sin guardar') : (editMode ? T(settings.autosave ? 'Guardado · autoguardado activo' : 'Todo guardado') : ''));
     const save = ui.main.querySelector('[data-act=save]');
     save.hidden = !local && !editMode && !dirty;
@@ -1887,12 +1908,14 @@
       await writable.write(raw);
       await writable.close();
       diskText = raw; dirty = false; updateSaveState();
-      if (interactive || !(appRoot && appRoot.kind === 'local')) flash(T('Guardado'));
+      if (interactive || !(appRoot && (appRoot.kind === 'local' || appRoot.kind === 'cloud'))) flash(T('Guardado'));
       return true;
     } catch (e) {
       if (e && e.name === 'AbortError') return false;
       if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) fileHandle = null;
-      flash(T('No se pudo guardar'), 'error');
+      if (e && e.code === 'note_limit') flash(T('Llegaste al límite de notas del plan gratis. Esta no se guardó en la nube'), 'error');
+      else if (e && e.code === 'offline') flash(T('Sin conexión. Se guarda cuando vuelva'), 'warn');
+      else flash(T('No se pudo guardar'), 'error');
       return false;
     }
   }
@@ -1904,6 +1927,14 @@
     const f = params.get('f');
     if (!f) { LMD.home.show(homeCtx()); return false; }
     const id = f.split('/')[0];
+    if (id === 'cloud') {
+      await LMD.cloud.ready();
+      appRoot = { id, kind: 'cloud', name: T('Nube') };
+      const text = LMD.cloud.signedIn() ? await vText(HERE) : null;
+      if (text == null) { appRoot = null; LMD.home.show(homeCtx(), T(LMD.cloud.signedIn() ? 'No se encontró "{a}".' : 'Entrá a tu cuenta para abrir las notas de la nube.', { a: DOC_NAME })); return false; }
+      raw = text; diskText = text;
+      return true;
+    }
     if (id === 'local') {
       // Nota guardada en el navegador.
       const note = await LMD.store.noteGet(DOC_NAME);

@@ -136,6 +136,12 @@ Todas van copiadas en `vendor/`, porque Manifest V3 no permite cargar código re
 
 El HTML que sale del Markdown pasa por DOMPurify antes de entrar a la página.
 
+## Servidor de sincronización, opcional
+
+En `server/` está MD Tools Sync: cuentas, notas en la nube y un servidor MCP para que una IA las lea y las escriba. Es un solo archivo, sin dependencias, y lo podés alojar vos. MD Tools no muestra nada de la nube hasta que se carga la dirección de un servidor en Ajustes → Nube. El detalle está en [server/README.md](server/README.md).
+
+La app es MIT. El servidor de `server/` es AGPL-3.0 o posterior.
+
 ## Apoyar
 
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/surlabs)

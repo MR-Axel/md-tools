@@ -74,6 +74,7 @@
           ? T('También podés arrastrar un archivo o una carpeta a esta ventana.')
           : T('También podés arrastrar un archivo a esta ventana. Este navegador no deja escribir sobre el archivo: al guardar se descarga una copia.')) + '</p>' +
         (window.showDirectoryPicker ? '<p class="lmd-home-notes"></p>' : '') +
+        '<div class="lmd-home-cloud" hidden></div>' +
         '<p class="lmd-home-msg" role="status" hidden></p>' +
         '<div class="lmd-home-recent" hidden><h2>' + T('Recientes') + '</h2><ul></ul></div>' +
       '</div>' +
@@ -95,12 +96,85 @@
     };
     paintNotes();
 
+    // Cuenta: entrar con un código al mail, ver cuántas notas hay y conectar una IA.
+    const cloudBox = box.querySelector('.lmd-home-cloud');
+    const errors = { bad_email: 'Ese correo no parece válido.', too_soon: 'Esperá unos segundos antes de pedir otro código.', bad_code: 'Ese código no coincide.', code_expired: 'El código venció. Pedí otro.', too_many_tries: 'Demasiados intentos. Pedí un código nuevo.', offline: 'No hay conexión con el servidor.', mcp_needs_plan: 'Conectar una IA es parte del plan pago.' };
+    const why = (e) => T(errors[e && e.code] || 'No se pudo completar. Probá de nuevo.');
+    let cloudNotes = [];
+    const paintCloud = async (step, data) => {
+      await LMD.cloud.ready();
+      cloudBox.hidden = !LMD.cloud.enabled();
+      if (cloudBox.hidden) return;
+      cloudBox.textContent = '';
+      const line = (text) => { const p = el('p', { text }); cloudBox.appendChild(p); return p; };
+      const button = (label, act, fill) => el('button', { type: 'button', class: 'lmd-btn' + (fill ? ' lmd-btn-fill' : ''), 'data-cloud': act, text: label });
+      const row = () => { const d = el('div', { class: 'lmd-home-cloud-row' }); cloudBox.appendChild(d); return d; };
+      if (data && data.error) cloudBox.appendChild(el('p', { class: 'lmd-home-cloud-err', text: data.error }));
+      if (!LMD.cloud.signedIn()) {
+        cloudNotes = [];
+        if (step === 'code') {
+          line(T('Te mandamos un código a {a}.', { a: data.email }));
+          const r = row(); const input = el('input', { type: 'text', inputmode: 'numeric', maxlength: '6', placeholder: '000000', 'data-field': 'code' });
+          r.append(input, button(T('Entrar'), 'verify', true)); input.dataset.email = data.email; input.focus();
+        } else if (step === 'email') {
+          const r = row(); const input = el('input', { type: 'email', placeholder: T('tu correo'), 'data-field': 'email' });
+          r.append(input, button(T('Enviar código'), 'start', true)); input.focus();
+        } else { const r = row(); r.append(el('span', { text: T('Tus notas en todos tus dispositivos.') }), button(T('Entrar'), 'ask')); }
+        return;
+      }
+      try {
+        const a = await LMD.cloud.account();
+        cloudNotes = await LMD.cloud.list(true);
+        const r = row();
+        r.append(el('span', { text: a.email + ' · ' + (a.limit ? T('{n} de {m} notas', { n: a.notes, m: a.limit }) : T('{n} notas', { n: a.notes })) }), button(T('Conectar una IA'), 'token'), button(T('Salir'), 'logout'));
+        if (step === 'token') {
+          const cmd = 'claude mcp add --transport http md-tools ' + data.mcp_url + ' --header "Authorization: Bearer ' + data.token + '"';
+          line(T('Copiá estos datos ahora: el token no se vuelve a mostrar.'));
+          [['URL', data.mcp_url], ['Token', data.token], ['Claude Code', cmd]].forEach((pair) => {
+            const f = el('label', { class: 'lmd-home-cloud-field' }); f.append(el('span', { text: pair[0] }), el('input', { type: 'text', readonly: '', value: pair[1] }));
+            f.querySelector('input').addEventListener('focus', (ev) => ev.target.select());
+            cloudBox.appendChild(f);
+          });
+        }
+      } catch (e) { if (!LMD.cloud.signedIn()) return paintCloud(); line(why(e)); }
+    };
+    cloudBox.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-cloud]'); if (!b) return;
+      const field = (name) => cloudBox.querySelector('[data-field=' + name + ']');
+      try {
+        if (b.dataset.cloud === 'ask') await paintCloud('email');
+        else if (b.dataset.cloud === 'start') { const mail = field('email').value.trim(); await LMD.cloud.start(mail); await paintCloud('code', { email: mail }); }
+        else if (b.dataset.cloud === 'verify') { await LMD.cloud.verify(field('code').dataset.email, field('code').value); await paintCloud(); paint(); }
+        else if (b.dataset.cloud === 'logout') { await LMD.cloud.logout(); await paintCloud(); paint(); }
+        else if (b.dataset.cloud === 'token') await paintCloud('token', await LMD.cloud.newToken('IA'));
+      } catch (err) {
+        const f = field('code'); const m = field('email');
+        await paintCloud(f ? 'code' : (m ? 'email' : ''), { email: f ? f.dataset.email : '', error: why(err) });
+      }
+    });
+    cloudBox.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('input')) { e.preventDefault(); const b = cloudBox.querySelector('[data-cloud=start], [data-cloud=verify]'); if (b) b.click(); } });
+
     const recent = box.querySelector('.lmd-home-recent');
     const paint = async () => {
       const recs = (await rootsAll()).slice(0, 8);
       const notes = (await notesAll()).slice(0, 12);
-      recent.hidden = !recs.length && !notes.length;
+      await paintCloud();
+      recent.hidden = !recs.length && !notes.length && !cloudNotes.length;
       const ul = recent.querySelector('ul'); ul.textContent = '';
+      cloudNotes.slice(0, 12).forEach((n) => {
+        const li = el('li');
+        const go = el('a', { class: 'lmd-home-item', href: ctx.APP_URL + '?f=' + encodeURIComponent('cloud/' + n.path.split('/').map(encodeURIComponent).join('/')) });
+        go.innerHTML = '<span class="lmd-node-ico">' + ICON.md + '</span><span class="lmd-home-name"></span><span class="lmd-home-path"></span>';
+        go.querySelector('.lmd-home-name').textContent = n.path;
+        go.querySelector('.lmd-home-path').textContent = T('en la nube');
+        const del = el('button', { type: 'button', class: 'lmd-home-del', title: T('Eliminar la nota') }, ICON.close);
+        del.addEventListener('click', async () => {
+          if (!window.confirm(T('¿Eliminar "{a}"? No se puede deshacer.', { a: n.path }))) return;
+          try { await LMD.cloud.remove(n.path); } catch (e) { /* queda en la lista */ }
+          paint();
+        });
+        li.append(go, del); ul.appendChild(li);
+      });
       notes.forEach((n) => {
         const li = el('li');
         const go = el('a', { class: 'lmd-home-item', href: ctx.APP_URL + '?f=' + encodeURIComponent('local/' + encodeURIComponent(n.name)) });
@@ -239,6 +313,18 @@
           return;
         } catch (e) { /* la carpeta ya no está: sigue en memoria */ }
       }
+    }
+    // Con la cuenta abierta, la nota nueva va a la nube.
+    await LMD.cloud.ready();
+    if (LMD.cloud.signedIn()) {
+      try {
+        const taken = new Set((await LMD.cloud.list(true)).map((n) => n.path));
+        let file = base + '.md';
+        for (let n = 2; n < 50 && taken.has(file); n++) file = base + '-' + n + '.md';
+        await LMD.cloud.create(file);
+        location.replace(ctx.APP_URL + '?f=' + encodeURIComponent('cloud/' + encodeURIComponent(file)) + '&edit=1');
+        return;
+      } catch (e) { /* sin conexión o sin lugar: sigue en el navegador */ }
     }
     // Sin carpeta de notas, la nota queda guardada en el navegador y sigue ahí al volver.
     let name = base + '.md';
