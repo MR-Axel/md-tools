@@ -30,9 +30,13 @@ Free and open source. No account, no tracking: files are read in your browser an
 | **Folder** | The files next to the open document, search across all of them, `[[name]]` links, and new, rename and delete from the tree. |
 | **Outline** | Built from the headings, with the current section and reading progress. |
 | **Notes** | New starts a note that saves itself in the browser, or in a folder you choose. |
+| **Emoji** | Type `:` and pick from the list. |
 | **Focus** | Focus mode dims everything but the block you are writing; typewriter mode keeps the line at mid height. |
 | **Export** | One standalone HTML file, or PDF through print. |
 | **More than Markdown** | Code and config files open highlighted, CSV as a table, images as images. |
+| **Cloud notes** | Optional. Sign in with a code sent to your email, send a note to the cloud and open it on any device, also without a connection. |
+| **Sharing** | A note or a folder with another account, to read or to edit, or a read-only public link with a password. |
+| **AI over MCP** | Claude or any MCP client can list, read, write, append to and search your cloud notes. |
 | **Yours to adjust** | Light and dark themes, width, font size, code block color, custom CSS, English and Spanish. |
 
 | Editing a table | Blocks menu |

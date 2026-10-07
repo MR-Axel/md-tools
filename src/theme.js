@@ -15,6 +15,7 @@
   }
 
   function applyAccent(root, dark, settings) {
+    try { localStorage.setItem('lmd:dark', dark ? '1' : '0'); } catch (e) { /* sin almacenamiento */ } // lo lee boot.js en la próxima carga
     const hex = settings.supporter && /^#[0-9a-f]{6}$/i.test(settings.accent || '') ? settings.accent : '';
     const props = ['--accent', '--accent-soft', '--accent-fg', '--accent-fill'];
     if (!hex) { props.forEach((p) => root.style.removeProperty(p)); return; }

@@ -17,7 +17,7 @@ Ese ZIP deja afuera las pruebas, las capturas, la página de presentación y est
 | Idioma principal | English |
 | Sitio web | https://sharpmd.app/ |
 | Política de privacidad | https://sharpmd.app/privacy.html |
-| Soporte | https://github.com/MR-Axel/sharpmd/issues |
+| Soporte | https://github.com/MR-Axel/sharpmd/issues · hello@sharpmd.app |
 
 ## Descripción corta (máximo 132 caracteres)
 
@@ -48,6 +48,7 @@ EDIT
 • Right-click a block to insert, turn into, move, duplicate or delete
 • Diagram editor with live preview and nine templates
 • Find and replace, undo and redo for block operations
+• Type : to pick an emoji from a list
 • Focus mode and typewriter mode
 • Save with Ctrl+S, or turn on auto-save
 
@@ -56,6 +57,13 @@ FILES
 • Paste an image and it is saved next to the document
 • Code and config files open highlighted, CSV opens as a table
 • Export to a single HTML file, or to PDF through print
+
+CLOUD AND AI (OPTIONAL)
+• Sign in with a code sent to your email and send a note to the cloud with one click
+• Cloud notes open on any device, and without a connection once you have opened them
+• Share a note or a folder with another account, or make a read-only public link
+• Connect Claude or any MCP client so your AI can read and write your cloud notes
+• Free up to 10 cloud notes. The paid plan (USD 3.99 a month or USD 39 a year) has no limit and adds sharing, the MCP connection, version history and the appearance options
 
 PRIVATE BY DESIGN
 Files are read in your browser and never uploaded. No analytics. Cloud notes are optional: a note reaches the server only when you send it there.
@@ -87,6 +95,7 @@ EDITAR
 • Clic derecho sobre un bloque para insertar, convertir, mover, duplicar o eliminar
 • Editor de diagramas con vista previa en vivo y nueve plantillas
 • Buscar y reemplazar, deshacer y rehacer
+• Escribís : y elegís un emoji de la lista
 • Modo foco y máquina de escribir
 • Guardás con Ctrl+S, o activás el guardado automático
 
@@ -95,6 +104,13 @@ ARCHIVOS
 • Pegás una imagen y queda guardada al lado del documento
 • El código y los archivos de configuración se ven resaltados, y los CSV como tabla
 • Exporta a un solo archivo HTML, o a PDF desde imprimir
+
+NUBE E IA (OPCIONAL)
+• Entrás con un código que llega a tu correo y mandás una nota a la nube con un clic
+• Las notas de la nube se abren en cualquier dispositivo, y sin conexión una vez que las abriste
+• Compartís una nota o una carpeta con otra cuenta, o armás un enlace público de solo lectura
+• Conectás Claude o cualquier cliente MCP para que tu IA lea y escriba tus notas de la nube
+• Gratis hasta 10 notas en la nube. El plan pago (USD 3,99 por mes o USD 39 por año) no tiene límite y suma compartir, la conexión MCP, el historial de versiones y las opciones de apariencia
 
 PRIVACIDAD
 Los archivos se leen en tu navegador y nunca se suben. Sin analítica. Las notas en la nube son opcionales: una nota llega al servidor solo cuando la mandás.

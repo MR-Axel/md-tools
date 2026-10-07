@@ -17,6 +17,9 @@ Extensión de Chrome para leer y editar archivos Markdown en el navegador, local
 - **Tableros**: un bloque `kanban` convierte los títulos en columnas y las tareas en tarjetas. Arrastrás tarjetas entre columnas, las tildás, agregás y renombrás. En cualquier otro programa se lee como una lista de tareas común.
 - **Listas de tareas** que se tildan también leyendo; las hechas quedan tachadas.
 - **Totales en tablas**: el botón Σ agrega una fila que suma cada columna con números. Una celda con `=sum`, `=avg`, `=min`, `=max`, `=count` o `=median` muestra el resultado de su columna, con la misma moneda y el mismo formato de decimales que los números de arriba.
+- **Notas en la nube**, opcionales: entrás con un código que llega a tu correo, mandás una nota a la nube y la abrís en cualquier dispositivo, también sin conexión. Se comparten con otra cuenta o con un enlace público de solo lectura.
+- **IA por MCP**: Claude o cualquier cliente MCP puede listar, leer, escribir, agregar y buscar en tus notas de la nube.
+- **Emojis**: escribís `:` y elegís de la lista.
 - **Notas en el navegador**: Nuevo arranca una nota que se guarda sola en el navegador, sin carpeta ni cuenta, y sigue ahí cuando volvés. Ctrl+S la convierte en archivo.
 - **Editor de diagramas**: en modo Editar, un clic sobre un diagrama Mermaid o Graphviz lo abre con el código a un lado y la vista previa en vivo al otro. Nueve plantillas de Mermaid para arrancar (flujo, secuencia, estados, clases, datos, Gantt, torta, mapa mental, línea de tiempo); un error de sintaxis se muestra debajo del último dibujo que salió bien. Al pasar el mouse por un diagrama: copiar el código, bajar el SVG y ampliarlo.
 - **Buscar y reemplazar** en el documento mientras editás, de a una coincidencia o todas.
