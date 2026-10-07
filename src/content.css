@@ -624,3 +624,25 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-code pre { background: color-mix(in srgb, var(--code-tint, transparent) 9%, var(--bg-code)); border-color: color-mix(in srgb, var(--code-tint, transparent) 40%, var(--line)); border-left: 3px solid color-mix(in srgb, var(--code-tint, var(--line)) 80%, var(--line)); }
 .markdown-body :not(pre) > code { background: color-mix(in srgb, var(--code-tint, transparent) 13%, var(--bg-code)); }
 .lmd-dgm-round .lmd-diagram svg .node rect, .lmd-dgm-round .lmd-dgm-svg svg .node rect { rx: 12px; ry: 12px; }
+
+/* ---------- Pestañas de ajustes, sincronización, historial ---------- */
+.lmd-ptabs { display: flex; gap: 2px; margin: 12px 18px 6px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg-soft); }
+.lmd-ptabs button { flex: 1; height: 30px; padding: 0 6px; border: 0; border-radius: 999px; background: transparent; color: var(--fg-muted); font: inherit; font-size: 12.5px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.lmd-ptabs button:hover { color: var(--fg); }
+.lmd-ptabs button.lmd-on { background: var(--accent-fill); color: var(--accent-fg); }
+.lmd-panel-body > section[hidden] { display: none; }
+.lmd-sync { width: 28px; height: 28px; }
+.lmd-sync svg { width: 17px; height: 17px; }
+.lmd-sync-ok { color: var(--accent); }
+.lmd-sync-off { color: var(--fg-faint); }
+.lmd-sync-err { color: #dc2626; }
+.lmd-sync-busy svg { animation: lmd-pulse 1s ease-in-out infinite; }
+@keyframes lmd-pulse { 50% { opacity: 0.35; } }
+.lmd-menu .lmd-locked { color: var(--fg-faint); text-decoration: line-through; }
+.lmd-hist { width: min(820px, 100%); }
+.lmd-hist-body { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px; height: min(420px, 60vh); margin-bottom: 16px; }
+.lmd-hist-body ul { margin: 0; padding: 0; list-style: none; overflow: auto; }
+.lmd-hist-body li button { display: flex; justify-content: space-between; gap: 8px; width: 100%; padding: 8px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--fg); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.lmd-hist-body li button:hover, .lmd-hist-body li button.lmd-on { background: var(--accent-soft); color: var(--accent); }
+.lmd-hist-body small { color: var(--fg-faint); }
+.lmd-hist-body pre { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-code); font: 12.5px/1.5 var(--lmd-mono); white-space: pre-wrap; overflow: auto; }

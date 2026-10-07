@@ -39,6 +39,7 @@ try {
   await app.waitForFunction(() => /Guardando/.test(document.querySelector('.lmd-savestate').textContent), null, { timeout: 4000 }).catch(() => {});
   await app.waitForFunction(() => /nube/.test(document.querySelector('.lmd-savestate').textContent), null, { timeout: 8000 });
   o.estado = await app.textContent('.lmd-savestate');
+  o.icono = await app.evaluate(() => document.querySelector('.lmd-sync').className);
   const noteUrl = app.url(); const notePath = decodeURIComponent(decodeURIComponent(noteUrl.split('f=cloud%2F')[1].split('&')[0]));
 
   const page2 = await ctx.newPage(); await page2.goto(home); await page2.waitForSelector('.lmd-home-item');
@@ -55,8 +56,16 @@ try {
   await app.waitForFunction(() => /Agregado por la IA/.test(document.querySelector('.markdown-body').textContent), null, { timeout: 20000 });
   o.veLoDeLaIA = true;
 
+  await app.evaluate(() => LMD.store.notePut('suelta.md', '# Suelta\n\nNota del navegador.'));
+  await app.goto(home + '?f=' + encodeURIComponent('local/suelta.md')); await app.waitForSelector('.lmd-sync:not([hidden])');
+  o.iconoFuera = await app.evaluate(() => document.querySelector('.lmd-sync').className);
+  await Promise.all([app.waitForNavigation(), app.click('.lmd-sync')]); await app.waitForSelector('.markdown-body h1');
+  o.subida = [/f=cloud%2Fsuelta\.md/.test(app.url()), await app.textContent('.markdown-body h1')];
+  await app.click('.lmd-sync'); await app.waitForSelector('.lmd-menu [data-s=history]');
+  o.historialBloqueado = await app.evaluate(() => document.querySelector('.lmd-menu [data-s=history]').classList.contains('lmd-locked'));
+  await app.keyboard.press('Escape'); await app.mouse.click(700, 500);
   await app.goto(home); await app.waitForSelector('[data-cloud=logout]'); await app.click('[data-cloud=logout]'); await app.waitForSelector('[data-cloud=ask]');
-  o.salio = (await app.locator('.lmd-home-item').count()) === 0;
+  o.salio = (await app.locator('.lmd-home-item', { hasText: 'en la nube' }).count()) === 0;
   await app.goto(noteUrl.replace('&edit=1', '')); await app.waitForSelector('.lmd-home-msg:not([hidden])');
   o.sinSesion = await app.textContent('.lmd-home-msg');
 } catch (e) { o.excepcion = String(e && e.stack || e).slice(0, 600); }
@@ -68,6 +77,10 @@ const checks = [
   ['entrar muestra la cuenta y el cupo', /ana@ejemplo\.test · 0 de 20 notas/.test(o.cuenta || ''), o.cuenta],
   ['con la cuenta abierta, la nota nueva va a la nube', o.url === true],
   ['se guarda sola en la nube', /Guardado en la nube/.test(o.estado || ''), o.estado],
+  ['el ícono de la nube marca la nota como sincronizada', /lmd-sync-ok/.test(o.icono || ''), o.icono],
+  ['en una nota del navegador el ícono aparece apagado', /lmd-sync-off/.test(o.iconoFuera || ''), o.iconoFuera],
+  ['un clic la sube a la nube', o.subida && o.subida[0] && /Suelta/.test(o.subida[1]), o.subida],
+  ['el historial figura bloqueado en el plan gratis', o.historialBloqueado === true],
   ['aparece en el inicio como nota de la nube', /en la nube/.test(o.enInicio || ''), o.enInicio],
   ['el panel para conectar una IA da URL, token y comando', o.campos && o.campos[0] === base + '/mcp' && o.campos[1] === 'mdt_' && o.campos[2].startsWith('claude mcp add --transport http sharpmd'), o.campos],
   ['la IA lee por MCP lo escrito en la app', (o.leeLaIA || '').trim() === '# Plan\n\nEscrito en la app.', o.leeLaIA],

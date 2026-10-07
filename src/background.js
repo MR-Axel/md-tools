@@ -73,7 +73,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     chrome.storage.local.get('update').then((r) => chrome.storage.local.set({ update: Object.assign({}, r.update, { dismissed: msg.version }) })).then(() => sendResponse({ ok: true }));
     return true;
   }
-  if (msg.type === 'openApp') { chrome.tabs.create({ url: chrome.runtime.getURL('src/app.html') + (msg.fresh ? '?new=1' : '') }); sendResponse({ ok: true }); return; }
+  if (msg.type === 'openApp') { chrome.tabs.create({ url: chrome.runtime.getURL('src/app.html') + (msg.fresh ? '?new=1' : (msg.query || '')) }); sendResponse({ ok: true }); return; }
   if (msg.type === 'reloadExtension') { sendResponse({ ok: true }); setTimeout(() => chrome.runtime.reload(), 150); return; }
   if (msg.type === 'fetchText') {
     fetchText(msg.url)

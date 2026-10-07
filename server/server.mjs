@@ -253,6 +253,11 @@ async function route(req, url) {
     if (m === 'DELETE') return deleteNote(user, note);
   }
   if (p.startsWith('/versions/') && m === 'GET') return q('SELECT id, saved, LENGTH(text) AS size FROM versions WHERE user = ? AND path = ? ORDER BY saved DESC LIMIT 100').all(user.id, cleanPath(decodeURIComponent(p.slice(10))));
+  if (p.startsWith('/version/') && m === 'GET') {
+    const v = q('SELECT id, path, text, saved FROM versions WHERE id = ? AND user = ?').get(+p.slice(9), user.id);
+    if (!v) throw new Fail(404, 'not_found');
+    return v;
+  }
   throw new Fail(404, 'no_route');
 }
 

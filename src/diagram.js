@@ -17,7 +17,7 @@
     [T('Datos'), 'erDiagram\n  CLIENTE ||--o{ PEDIDO : hace\n  PEDIDO ||--|{ ITEM : contiene\n  CLIENTE {\n    string nombre\n    string email\n  }'],
     ['Gantt', 'gantt\n  title ' + T('Plan') + '\n  dateFormat YYYY-MM-DD\n  section ' + T('Diseño') + '\n  ' + T('Prototipo') + ' :a1, 2026-01-05, 7d\n  section ' + T('Desarrollo') + '\n  ' + T('Primera versión') + ' :after a1, 14d'],
     [T('Torta'), 'pie title ' + T('Reparto') + '\n  "A" : 45\n  "B" : 30\n  "C" : 25'],
-    [T('Mapa mental'), 'mindmap\n  root((' + T('Tema') + '))\n    ' + T('Idea') + ' 1\n      ' + T('Detalle') + '\n    ' + T('Idea') + ' 2\n    ' + T('Idea') + ' 3'],
+    [T('Mapa mental'), 'mindmap\n  root((' + T('Tema central') + '))\n    ' + T('Idea') + ' 1\n      ' + T('Detalle') + '\n    ' + T('Idea') + ' 2\n    ' + T('Idea') + ' 3'],
     [T('Línea de tiempo'), 'timeline\n  title ' + T('Historia') + '\n  2024 : ' + T('Idea') + '\n  2025 : ' + T('Primera versión') + '\n  2026 : ' + T('Lanzamiento')],
   ];
 

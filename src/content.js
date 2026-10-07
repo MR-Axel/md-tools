@@ -487,6 +487,7 @@
         '<div class="lmd-top-left">' +
           '<button class="lmd-icon-btn" data-act="sidebar" title="' + T('Barra lateral (Alt+Shift+B)') + '">' + ICON.side + '</button>' +
           '<span class="lmd-docname"></span>' +
+          '<button class="lmd-icon-btn lmd-sync" data-act="sync" hidden></button>' +
         '</div>' +
         // Al centro, lo que cambia el modo de trabajo: ver o editar, insertar y guardar.
         '<div class="lmd-top-mid">' +
@@ -559,6 +560,8 @@
     LMD.diagram.init(core);
     LMD.extras.init(core);
     LMD.board.init(core);
+    ui.sync = ui.main.querySelector('.lmd-sync');
+    LMD.sync.init(core);
     document.documentElement.dataset.lmdFs = String(!!window.showOpenFilePicker && window.isSecureContext);
   }
 
@@ -636,6 +639,7 @@
     else if (act === 'mode-read') { if (editMode) setEditMode(false); }
     else if (act === 'mode-edit') { if (!editMode) setEditMode(true); }
     else if (act === 'save') save(true);
+    else if (act === 'sync') LMD.sync.click(source);
     else if (act === 'insert') { const box = source.getBoundingClientRect(); LMD.write.menuAt(box.left - 120, box.bottom + 8); }
     else if (act === 'view-doc') { rawMode = false; applyRawMode(); }
     else if (act === 'view-raw') { rawMode = true; applyRawMode(); }
@@ -903,7 +907,7 @@
     refreshTimer = setInterval(() => { if (!document.hidden) checkForChanges(false); }, Math.max(300, settings.refreshInterval | 0));
   }
 
-  let diskStamp = ''; let cloudPoll = 0;
+  let diskStamp = ''; let cloudPoll = 0; let cloudState = 'ok';
   async function readCurrent() {
     // La nube se consulta cada diez segundos: alcanza para ver lo que escribió una IA sin martillar el servidor.
     if (APP && appRoot && appRoot.kind === 'cloud') { if (Date.now() - cloudPoll < 10000) return diskText; cloudPoll = Date.now(); }
@@ -934,6 +938,8 @@
     checking = true;
     try {
       const text = await readCurrent();
+      // En una nota de la nube, no poder leer es estar sin conexión; volver a leer es haberla recuperado.
+      if (appRoot && appRoot.kind === 'cloud') { const was = cloudState; if (text == null) cloudState = 'error'; else if (cloudState === 'error' && !dirty) cloudState = 'ok'; if (was !== cloudState) updateSaveState(); }
       if (text == null) {
         if (manual) flash(T('No se pudo releer el archivo. Recargá la pestaña con F5'), 'error');
       } else if (text !== diskText) {
@@ -1232,6 +1238,7 @@
 
   // ---------- Panel de ajustes ----------
   let panelStale = false;
+  let panelTab = 'look';
   function openPanel() {
     const s = settings;
     const EXTRA = ' <em class="lmd-tag">' + T('Extra') + '</em>';
@@ -1243,6 +1250,9 @@
     ui.panel.innerHTML =
       '<div class="lmd-panel-card" role="dialog" aria-label="' + T('Ajustes') + '">' +
         '<header><h2>' + T('Ajustes') + '</h2><button class="lmd-icon-btn" data-act="close-panel" title="' + T('Cerrar') + '">' + ICON.close + '</button></header>' +
+        '<nav class="lmd-ptabs" role="tablist">' +
+          [['look', 'Apariencia'], ['read', 'Lectura y edición'], ['plug', 'Plugins'], ['acct', 'Cuenta']].map((t) => '<button type="button" role="tab" data-ptab="' + t[0] + '">' + T(t[1]) + '</button>').join('') +
+        '</nav>' +
         '<div class="lmd-panel-body">' +
           '<section><h3>' + T('Apariencia') + '</h3>' +
             '<div class="lmd-row"><span>' + T('Idioma') + '</span><div class="lmd-seg" data-seg="language" role="radiogroup">' +
@@ -1303,6 +1313,7 @@
             '<p class="lmd-hint">' + T('Lo único que se consulta es el número de versión publicado en GitHub. No se manda ningún dato.') + '</p>' +
           '</section>') +
           '<section><h3>' + T('Nube') + '</h3>' +
+            '<p class="lmd-acct lmd-hint"></p>' +
             '<label class="lmd-row"><span>' + T('Servidor de sincronización') + '</span><input type="text" data-key="cloudUrl" spellcheck="false" placeholder="https://" value="' + esc(s.cloudUrl || '') + '"></label>' +
             '<p class="lmd-hint">' + T('Dejalo vacío salvo que alojes tu propio servidor.') + '</p>' +
           '</section>' +
@@ -1312,6 +1323,28 @@
         '</div>' +
       '</div>';
     ui.panel.hidden = false;
+    // Cada sección va a una pestaña según su título.
+    const tabOf = {}; tabOf[T('Apariencia')] = 'look'; tabOf[T('Lectura')] = 'read'; tabOf[T('Edición')] = 'read'; tabOf[T('Carpeta')] = 'read'; tabOf[T('Plugins de Markdown')] = 'plug'; tabOf[T('CSS propio')] = 'plug';
+    ui.panel.querySelectorAll('.lmd-panel-body > section').forEach((sec) => {
+      const h = sec.querySelector('h3'); const name = h ? h.firstChild.nodeValue.trim() : '';
+      sec.dataset.tab = tabOf[name] || 'acct';
+    });
+    const showTab = (tab) => {
+      panelTab = tab;
+      ui.panel.querySelectorAll('[data-ptab]').forEach((b) => { b.classList.toggle('lmd-on', b.dataset.ptab === tab); b.setAttribute('aria-selected', String(b.dataset.ptab === tab)); });
+      ui.panel.querySelectorAll('.lmd-panel-body > section').forEach((sec) => { sec.hidden = sec.dataset.tab !== tab; });
+      ui.panel.querySelector('.lmd-panel-body').scrollTop = 0;
+    };
+    ui.panel.querySelectorAll('[data-ptab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.ptab)));
+    showTab(panelTab);
+    // Cuenta: quién está conectado y con qué plan.
+    const acct = ui.panel.querySelector('.lmd-acct');
+    if (acct) LMD.cloud.ready().then(async () => {
+      if (!LMD.cloud.enabled()) { acct.textContent = T('La sincronización se activa cuando hay un servidor configurado.'); return; }
+      if (!LMD.cloud.signedIn()) { acct.textContent = T('Entrá a tu cuenta desde la pantalla de inicio de Sharpmd.'); return; }
+      try { const a = await LMD.cloud.account(); acct.textContent = a.email + ' · ' + T(a.plan === 'pro' ? 'Plan pago' : 'Plan gratis') + ' · ' + (a.limit ? T('{n} de {m} notas', { n: a.notes, m: a.limit }) : T('{n} notas', { n: a.notes })); }
+      catch (e) { acct.textContent = T('No hay conexión con el servidor.'); }
+    });
 
     let pending = {};
     const flush = debounce(() => { const p = pending; pending = {}; LMD.patch(p); }, 150);
@@ -1489,7 +1522,7 @@
     clearTimeout(autosaveTimer);
     // Las notas del navegador se guardan solas, siempre.
     if (dirty && appRoot && appRoot.kind === 'local') { autosaveTimer = setTimeout(() => save(false), 600); return; }
-    if (dirty && appRoot && appRoot.kind === 'cloud') { autosaveTimer = setTimeout(() => save(false), 1500); return; }
+    if (dirty && appRoot && appRoot.kind === 'cloud') { if (cloudState !== 'error') cloudState = 'saving'; autosaveTimer = setTimeout(() => save(false), 1500); return; }
     if (dirty && settings.autosave) {
       if (fileHandle) autosaveTimer = setTimeout(() => save(false), Math.max(500, settings.autosaveDelay | 0));
       else flash(T('Guardá una vez con Ctrl+S para activar el guardado automático'), 'warn');
@@ -1497,6 +1530,7 @@
   }
 
   function updateSaveState() {
+    if (LMD.sync) LMD.sync.paint();
     const root = document.documentElement;
     root.classList.toggle('lmd-dirty', dirty);
     root.classList.toggle('lmd-editing', editMode);
@@ -1509,7 +1543,7 @@
     const state = ui.main.querySelector('.lmd-savestate');
     const local = !!appRoot && appRoot.kind === 'local';
     const cloud = !!appRoot && appRoot.kind === 'cloud';
-    state.textContent = cloud ? T(dirty ? 'Guardando…' : 'Guardado en la nube') : local ? T(dirty ? 'Guardando…' : 'Guardado en este navegador')
+    state.textContent = cloud ? T(cloudState === 'error' ? 'Sin conexión' : dirty ? 'Guardando…' : 'Guardado en la nube') : local ? T(dirty ? 'Guardando…' : 'Guardado en este navegador')
       : (dirty ? T('Cambios sin guardar') : (editMode ? T(settings.autosave ? 'Guardado · autoguardado activo' : 'Todo guardado') : ''));
     const save = ui.main.querySelector('[data-act=save]');
     save.hidden = !local && !editMode && !dirty;
@@ -1768,6 +1802,9 @@
   // Lo que los módulos de edición (write.js y los que siguen) necesitan del lector.
   const core = {
     get shape() { return settings.diagramShape; },
+    get cloudState() { return cloudState; },
+    get cloudPath() { return vParts(HERE).join('/'); },
+    openApp: (query) => bg({ type: 'openApp', query }),
     ui, hooks: { render: [], tree: [] }, lastBlock: null, appUrl: APP_URL,
     get blocks() { return docKind() === 'md'; },
     treeRoot: () => treeRoot,
@@ -1929,6 +1966,7 @@
       const writable = await fileHandle.createWritable();
       await writable.write(raw);
       await writable.close();
+      cloudState = 'ok';
       diskText = raw; dirty = false; updateSaveState();
       if (interactive || !(appRoot && (appRoot.kind === 'local' || appRoot.kind === 'cloud'))) flash(T('Guardado'));
       return true;
@@ -1936,7 +1974,7 @@
       if (e && e.name === 'AbortError') return false;
       if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) fileHandle = null;
       if (e && e.code === 'note_limit') flash(T('Llegaste al límite de notas del plan gratis. Esta no se guardó en la nube'), 'error');
-      else if (e && e.code === 'offline') flash(T('Sin conexión. Se guarda cuando vuelva'), 'warn');
+      else if (e && e.code === 'offline') { cloudState = 'error'; updateSaveState(); flash(T('Sin conexión. Se guarda cuando vuelva'), 'warn'); autosaveTimer = setTimeout(() => save(false), 8000); }
       else flash(T('No se pudo guardar'), 'error');
       return false;
     }

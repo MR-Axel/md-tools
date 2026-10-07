@@ -65,6 +65,7 @@ try {
   check('MCP: un error vuelve como error de la herramienta', bad.json.result.isError === true, bad.json);
   const vers = await call('GET', '/versions/' + encodeURIComponent('ia/resumen.md'), undefined, s);
   check('guarda historial en el plan pago', vers.json.length === 1, vers.json);
+  check('devuelve el texto de una versión anterior', (await call('GET', '/version/' + vers.json[0].id, undefined, s)).json.text === '# Resumen\n\nEscrito por la IA.');
 
   const pre = await fetch(base + '/notes', { method: 'OPTIONS', headers: { origin: 'https://ejemplo.test', 'access-control-request-method': 'GET' } });
   const ext = await fetch(base + '/health', { headers: { origin: 'chrome-extension://abcdefghijklmnop' } });

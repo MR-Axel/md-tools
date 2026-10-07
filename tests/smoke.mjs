@@ -65,6 +65,8 @@ try {
   await page.click('[data-act=settings]'); await page.waitForSelector('.lmd-panel-card');
   const sections = await page.evaluate(() => [...document.querySelectorAll('.lmd-panel h3')].map((h) => h.textContent.replace(/\s*Extra$/, '')));
   check('panel de ajustes', sections.join('|') === 'Apariencia|Lectura|Edición|Carpeta|Plugins de Markdown|CSS propio|Actualizaciones|Nube', sections);
+  const tabs = await page.evaluate(() => { const vis = () => [...document.querySelectorAll('.lmd-panel-body > section:not([hidden]) h3')].map((h) => h.firstChild.nodeValue.trim()); const a = vis(); document.querySelector('[data-ptab=acct]').click(); return [document.querySelectorAll('[data-ptab]').length, a, vis()]; });
+  check('los ajustes van en cuatro pestañas', tabs[0] === 4 && tabs[1].join() === 'Apariencia' && tabs[2].includes('Actualizaciones') && tabs[2].includes('Nube'), tabs);
   await page.close();
 
   console.log('Página propia de Sharpmd');

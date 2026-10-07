@@ -65,5 +65,6 @@
     create: (path) => api('PUT', notePath(path), { text: '' }).then((r) => { listCache = null; return r; }),
     remove: (path) => api('DELETE', notePath(path)).then((r) => { listCache = null; return r; }),
     newToken: (name) => api('POST', '/tokens', { name }),
+    write: (path, text) => api('PUT', notePath(path), { text }).then((r) => { listCache = null; return r; }),
   };
 })();
