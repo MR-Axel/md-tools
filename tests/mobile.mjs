@@ -386,9 +386,11 @@ try {
     for (const tab of ['look', 'read', 'plug', 'cloud', 'ai', 'plan', 'inst', 'adv']) {
       await page.tap('[data-ptab=' + tab + ']'); await page.waitForTimeout(tab === 'cloud' || tab === 'ai' || tab === 'plan' ? 700 : 200);
       const t = await page.evaluate(() => { const body = document.querySelector('.lmd-panel-body'); const on = document.querySelector('[data-ptab].lmd-on').getBoundingClientRect();
-        const cols = [...body.querySelectorAll('section:not([hidden]).lmd-two, section:not([hidden]) .lmd-grid, section:not([hidden]) .lmd-plans')].map((g) => getComputedStyle(g).gridTemplateColumns.split(' ').length);
+        const cols = [...body.querySelectorAll('section:not([hidden]).lmd-two, section:not([hidden]) .lmd-grid, section:not([hidden]) .lmd-plans, section:not([hidden]) .lmd-sec ul')].map((g) => getComputedStyle(g).gridTemplateColumns.split(' ').length);
         return { wide: body.scrollWidth - body.clientWidth, cols, tab: on.left >= 0 && on.right <= window.innerWidth, cut: [...body.querySelectorAll('section:not([hidden]) *')].filter((n) => n.offsetParent && n.getBoundingClientRect().right > window.innerWidth + 1).length }; });
       check(tag + 'ajustes, pestaña ' + tab + ': una columna, sin cortes y con la pestaña a la vista', t.wide <= 0 && t.cols.every((n) => n === 1) && t.tab && !t.cut, t);
+      if (tab === 'cloud') { const sec = await page.evaluate(() => { const s = document.querySelector('[data-acct=cloud] .lmd-sec'); return s ? { rows: s.querySelectorAll('[data-sec-row]').length, wide: s.scrollWidth - s.clientWidth, right: Math.round(s.getBoundingClientRect().right), screen: window.innerWidth } : null; });
+        check(tag + 'el bloque de seguridad de la nube entra en la pantalla, sin scroll horizontal', !!sec && sec.rows === 4 && sec.wide <= 0 && sec.right <= sec.screen, sec); }
       await fits(page, tag + 'ajustes, pestaña ' + tab);
     }
     if (W === 390) {

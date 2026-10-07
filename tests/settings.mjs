@@ -179,7 +179,7 @@ try {
   check('ninguna pestaña necesita scroll a 800 px de alto (plan gratis)', over.length === 0, over);
   await tab('cloud');
   const freeCloud = await app.evaluate(() => [...document.querySelectorAll('[data-acct=cloud] .lmd-acct-row')].map((r) => r.children[0].textContent + '=' + r.children[1].textContent).join('|') + ' / ' + [...document.querySelectorAll('[data-acct=cloud] button')].map((b) => b.textContent).join('|'));
-  check('Nube: la cuenta, el plan y cuántas notas, con abrir la carpeta, salir y eliminar la cuenta', freeCloud === 'Cuenta=' + mail + '|Plan=Gratis|Notas en la nube=1 de 10 / Abrir la carpeta Nube|Salir|Eliminar la cuenta', freeCloud);
+  check('Nube: la cuenta, el plan y cuántas notas, con abrir la carpeta, salir y eliminar la cuenta', freeCloud === 'Cuenta=' + mail + '|Plan=Gratis|Notas en la nube=1 de 10 / Abrir la carpeta Nube|Salir|Proteger una carpeta|Eliminar la cuenta', freeCloud);
   await tab('ai');
   const freeAi = await text('[data-acct=ai]');
   await app.click('[data-acct=ai] [data-c=plans]'); await app.waitForTimeout(450);
@@ -410,7 +410,7 @@ try {
   check('Nube: salir deja la invitación a entrar', /Crear cuenta o entrar/.test(await text('[data-acct=cloud]')) && !(await stored('cloud')).session);
   check('salir con la nota de la nube abierta la cierra: detrás queda el inicio', (await app.title()) === 'SharpMD' && !/[?&]f=/.test(app.url()) && !(await app.evaluate(() => document.querySelector('.lmd-home').hidden)), [await app.title(), app.url()]);
   const perksNube = await app.evaluate(() => [...document.querySelectorAll('[data-acct=cloud] .lmd-perks dt, [data-acct=cloud] .lmd-perks dd')].map((n) => n.textContent));
-  check('Nube sin sesión: dos renglones dicen qué anda sin cuenta y qué suma tenerla', claro(perksNube) && (await app.locator('[data-acct=cloud] p').count()) === 0, perksNube);
+  check('Nube sin sesión: dos renglones dicen qué anda sin cuenta y qué suma tenerla', claro(perksNube) && (await app.locator('[data-acct=cloud] > p').count()) === 0, perksNube);
   await tab('plan');
   check('Plan sin sesión: las tarjetas, sin botones de pago', (await app.locator('[data-acct=plan] .lmd-plan').count()) === 2 && (await app.locator('[data-acct=plan] [data-pay]').count()) === 0 && /Entrá a tu cuenta/.test(await text('[data-acct=plan]')));
   // El botón de entrar no saca de la nota: lleva a Nube y pide ahí el correo y el código.
@@ -430,6 +430,92 @@ try {
   await app.click('[data-acct=cloud] [data-c=login]'); await app.waitForSelector('[data-acct=cloud] [data-field=email]');
   check('el botón de Nube pide el correo en el lugar', (await app.evaluate(() => document.activeElement.dataset.field)) === 'email' && app.url() === notaAbierta);
   await tab('plan'); await tab('cloud'); await app.waitForSelector('[data-acct=cloud] [data-c=login]');
+  console.log('Seguridad de la nube');
+  // El bloque de Ajustes → Nube: qué se cifra, dónde y quién tiene la llave. Se ve igual sin sesión y con ella.
+  const secOf = () => app.evaluate(() => {
+    const s = document.querySelector('[data-acct=cloud] .lmd-sec'); if (!s) return null;
+    const above = document.querySelector('[data-acct=cloud] .lmd-acct-actions, [data-acct=cloud] .lmd-signin');
+    return { title: s.querySelector('h4').textContent, rows: [...s.querySelectorAll('[data-sec-row]')].map((li) => li.dataset.secRow + ':' + li.querySelector('b').textContent).join('|'), icons: s.querySelectorAll('.lmd-sec-ico svg').length,
+      text: s.textContent, act: (s.querySelector('[data-c=protect]') || {}).textContent || '', href: s.querySelector('.lmd-sec-foot a').href, link: s.querySelector('.lmd-sec-foot a').textContent,
+      below: !!above && s.getBoundingClientRect().top >= above.getBoundingClientRect().bottom, count: (s.querySelector('.lmd-sec-count') || {}).textContent || '',
+      pick: [...s.querySelectorAll('[data-c=protect-at]')].map((b) => b.dataset.f), msg: (s.querySelector('p.lmd-sec-pick') || {}).textContent || '', wide: s.scrollWidth - s.clientWidth };
+  });
+  const limpio = (t) => !!t && !/[!¡—–]/.test(t) && !/end-to-end|extremo a extremo|militar|inviolable|100%/i.test(t);
+  const ROWS = 'notes:Notas en la nube|vaults:Carpetas protegidas|signin:Entrar sin contraseña|open:Sin analítica y con código abierto';
+  const fuera = await secOf();
+  check('sin sesión, Nube muestra el bloque de seguridad debajo del botón de entrar: cuatro renglones con ícono', !!fuera && fuera.title === 'Seguridad' && fuera.rows === ROWS && fuera.icons === 4 && fuera.below && fuera.wide <= 0, fuera);
+  check('dice qué lee el servidor y qué no, cada cosa en su renglón, sin signos de admiración ni rayas', limpio(fuera.text) && /Ni el servidor puede leerlas\./.test(fuera.text) && /para compartirlas y atender a tu IA\./.test(fuera.text) && /En el plan gratis y en el pago/.test(fuera.text) && /AES-256-GCM · PBKDF2/.test(fuera.text) && /no se pueden recuperar\./.test(fuera.text), fuera.text);
+  check('con un servidor propio no promete un cifrado que depende de quien lo instaló', /En un servidor propio/.test(fuera.text) && !/Viajan cifradas/.test(fuera.text), fuera.text);
+  check('"Cómo funciona" lleva a las notas en la nube de la página de privacidad', fuera.link === 'Cómo funciona' && fuera.href === SITE + '/privacy.html#cloud-notes' && /<h2 id="cloud-notes">/.test(fs.readFileSync(path.join(root, 'privacy.html'), 'utf8')), [fuera.link, fuera.href]);
+  // Con el servidor de SharpMD, y en los dos idiomas.
+  const lit = await app.evaluate(() => {
+    const plain = (h) => { const d = document.createElement('div'); d.innerHTML = h; return d.textContent; };
+    const es = plain(LMD.sync.security({ can: true, count: 2 })); LMD.setLang('en');
+    const en = plain(LMD.sync.security({ can: true, count: 2 })); const en1 = plain(LMD.sync.security({ count: 1 })); const enOwn = plain(LMD.sync.security({ own: true })); LMD.setLang('es');
+    return { es, en, en1, enOwn };
+  });
+  check('en español: las notas comunes viajan y se guardan cifradas, y el servidor tiene la llave', limpio(lit.es) && /Viajan cifradas y se guardan cifradas en el servidor\. El servidor tiene la llave, para poder compartirlas y atender a tu IA\./.test(lit.es) && /HTTPS · AES-256-GCM/.test(lit.es) && /Tenés 2 carpetas protegidas\./.test(lit.es) && /Proteger una carpeta/.test(lit.es), lit.es);
+  check('en inglés dice lo mismo, sin español suelto', limpio(lit.en) && !/[áéíóúñ]/i.test(lit.en + lit.en1 + lit.enOwn) && /^Security/.test(lit.en) && /Cloud notes|Notes in the cloud/.test(lit.en) && /Encrypted in transit and on the server\. The server holds the key, so it can share them and serve your AI\./.test(lit.en) &&
+    /Protected folders/.test(lit.en) && /Encrypted on your device with your password\. Not even the server can read them\./.test(lit.en) && /On the free and paid plans/.test(lit.en) && /You have 2 protected folders\./.test(lit.en) && /Protect a folder/.test(lit.en) && /How it works/.test(lit.en) && /one-time code/.test(lit.en) && /App MIT · Server AGPL/.test(lit.en), lit.en);
+  check('una sola carpeta va en singular, y sin poder proteger no se ofrece la acción', /You have 1 protected folder\./.test(lit.en1) && !/Protect a folder/.test(lit.en1) && /On your own server/.test(lit.enOwn) && limpio(lit.enOwn), [lit.en1, lit.enOwn]);
+  check('sin sesión no hay cantidad de carpetas, y la acción está', fuera.count === '' && fuera.act === 'Proteger una carpeta', fuera);
+  await app.click('[data-acct=cloud] [data-c=protect]'); await app.waitForSelector('[data-acct=cloud] [data-field=email]');
+  const pideEntrar = await secOf();
+  check('sin sesión, "Proteger una carpeta" pide entrar ahí mismo, con el bloque a la vista debajo del formulario', !!pideEntrar && pideEntrar.rows === ROWS && pideEntrar.below, pideEntrar);
+  await app.fill('[data-acct=cloud] [data-field=email]', 'segura@ejemplo.test');
+  const [pedidoSeg] = await Promise.all([app.waitForResponse((r) => r.url().endsWith('/auth/start')), app.click('[data-acct=cloud] [data-cloud=start]')]);
+  await app.waitForSelector('[data-acct=cloud] [data-field=code]'); await app.fill('[data-acct=cloud] [data-field=code]', (await pedidoSeg.json()).dev_code); await app.keyboard.press('Enter');
+  await app.waitForSelector('[data-acct=cloud] [data-c=out]'); await app.waitForSelector('[data-acct=cloud] .lmd-sec [data-c=protect]');
+  const dentro = await secOf();
+  const orden = await app.evaluate(() => { const q = (s) => document.querySelector('[data-acct=cloud] ' + s).getBoundingClientRect(); return q('.lmd-sec').top >= q('.lmd-acct-actions').bottom && q('.lmd-acct-del').top >= q('.lmd-sec').bottom; });
+  check('con sesión, el mismo bloque va debajo de los datos de la cuenta y antes de eliminarla', !!dentro && dentro.rows === ROWS && dentro.count === '' && orden && limpio(dentro.text), dentro);
+  const segSession = (await stored('cloud')).session;
+
+  // La primera nota que va a la nube: la pregunta suma una línea que lleva a este bloque.
+  await app.evaluate(() => LMD.store.notePut('primera.md', '# Primera\n\nNota del navegador.'));
+  await app.goto(home + '?f=' + encodeURIComponent('local/primera.md')); await app.waitForSelector('.lmd-sync:not([hidden])');
+  await app.evaluate(() => { window.__manual = true; });
+  const antes = sent.length;
+  await app.click('.lmd-sync'); await app.waitForSelector('.lmd-dlg .lmd-dlg-more');
+  const aviso = await app.evaluate(() => ({ link: document.querySelector('.lmd-dlg-more button').textContent, text: document.querySelector('.lmd-dlg').textContent }));
+  await app.click('.lmd-dlg-more [data-dlg-more]'); await app.waitForSelector('.lmd-panel-card [data-acct=cloud] .lmd-sec');
+  check('al mandar la primera nota a la nube, la pregunta enlaza a la seguridad de la nube y no sube nada por ir a mirarla', aviso.link === 'Seguridad de la nube' && limpio(aviso.text) && (await app.locator('.lmd-dlg').count()) === 0 && (await app.evaluate(() => document.querySelector('[data-ptab].lmd-on').dataset.ptab)) === 'cloud' && !sent.slice(antes).some((x) => /^PUT \/notes/.test(x)), [aviso, sent.slice(antes)]);
+  check('con el servidor de SharpMD esa línea dice cómo queda guardada', (await app.evaluate(() => LMD.t('Viaja cifrada y se guarda cifrada en el servidor.'))) === 'Viaja cifrada y se guarda cifrada en el servidor.' && (await app.evaluate(() => { LMD.setLang('en'); const t = LMD.t('Viaja cifrada y se guarda cifrada en el servidor.') + '|' + LMD.t('Seguridad de la nube'); LMD.setLang('es'); return t; })) === 'It is encrypted in transit and on the server.|Cloud security');
+
+  // Proteger una carpeta desde el bloque: sin carpetas lo explica, con varias se elige, con una sola va directo.
+  await app.waitForSelector('[data-acct=cloud] .lmd-sec [data-c=protect]'); await app.click('[data-acct=cloud] [data-c=protect]'); await app.waitForSelector('[data-acct=cloud] p.lmd-sec-pick');
+  const sinCarpetas = await secOf();
+  check('sin carpetas en la nube, "Proteger una carpeta" dice en una línea cómo se hace', /Primero creá una carpeta en la Nube\./.test(sinCarpetas.msg) && limpio(sinCarpetas.msg) && (await app.locator('.lmd-vault-card').count()) === 0, sinCarpetas.msg);
+  await api('PUT', '/notes/' + encodeURIComponent('alfa/uno.md'), { text: '# Uno' }, segSession); await api('PUT', '/notes/' + encodeURIComponent('beta/dos.md'), { text: '# Dos' }, segSession);
+  await tab('plan'); await tab('cloud'); await app.waitForSelector('[data-acct=cloud] .lmd-sec [data-c=protect]'); await app.waitForTimeout(500);
+  await app.click('[data-acct=cloud] [data-c=protect]'); await app.waitForSelector('[data-acct=cloud] [data-c=protect-at]');
+  const elige = await secOf();
+  check('con varias carpetas se elige cuál', elige.pick.join() === 'alfa,beta' && /Elegí la carpeta/.test(elige.text), elige.pick);
+  await app.click('[data-acct=cloud] [data-c=protect-at][data-f=alfa]'); await app.waitForSelector('.lmd-vault-card [data-v=p1]');
+  const hoja = await app.textContent('.lmd-vault-card h3');
+  await app.fill('[data-v=p1]', 'caballo correcto batería grapa'); await app.fill('[data-v=p2]', 'caballo correcto batería grapa'); await app.keyboard.press('Enter'); await app.waitForSelector('.lmd-vault-key');
+  await Promise.all([app.waitForEvent('download'), app.click('[data-v=down]')]);
+  await app.click('[data-v=ok]'); await app.waitForSelector('.lmd-vault-card', { state: 'detached', timeout: 30000 });
+  await app.waitForSelector('[data-acct=cloud] .lmd-sec-count');
+  const conUna = await secOf();
+  const guardado = await api('GET', '/notes/' + encodeURIComponent('alfa/uno.md'), undefined, segSession);
+  check('la acción abre el mismo flujo que el menú de la carpeta y la deja protegida', /Proteger "alfa" con contraseña/.test(hoja) && /^vault1:/.test((guardado.json || {}).text || ''), [hoja, guardado.status]);
+  check('con carpetas protegidas, el bloque dice cuántas', conUna.count === 'Tenés 1 carpeta protegida.' && conUna.pick.length === 0, conUna.count);
+  await app.click('[data-acct=cloud] [data-c=protect]'); await app.waitForSelector('.lmd-vault-card [data-v=p1]');
+  const directo = await app.textContent('.lmd-vault-card h3');
+  await app.click('.lmd-vault-card [data-v=no]'); await app.waitForSelector('.lmd-vault-card', { state: 'detached' });
+  check('con una sola carpeta sin proteger va directo a ella', /Proteger "beta" con contraseña/.test(directo), directo);
+  await tab('plan'); await app.waitForSelector('[data-acct=plan] .lmd-plan');
+  const planes = await app.evaluate(() => [...document.querySelectorAll('[data-acct=plan] .lmd-plans > .lmd-plan')].slice(0, 2).map((p) => [...p.querySelectorAll('li')].filter((li) => li.textContent === 'Carpetas protegidas').length));
+  check('Plan: las carpetas protegidas figuran en el gratis y en el pago, con el nombre del resto de la app', planes.join() === '1,1', planes);
+  // Ya con notas en la nube, la pregunta de subir no repite la línea.
+  await app.click('[data-act=close-panel]'); await app.waitForFunction(() => document.querySelector('.lmd-panel').hidden);
+  await app.click('.lmd-sync'); await app.waitForSelector('.lmd-dlg');
+  const segunda = await app.locator('.lmd-dlg .lmd-dlg-more').count();
+  await app.click('.lmd-dlg [data-dlg=no]'); await app.waitForSelector('.lmd-dlg', { state: 'detached' });
+  check('con notas ya en la nube, la pregunta no repite la línea', segunda === 0, segunda);
+  await app.evaluate(() => { window.__manual = false; });
+  await openSettings('cloud'); await app.waitForSelector('[data-acct=cloud] [data-c=out]'); await app.click('[data-acct=cloud] [data-c=out]'); await app.waitForSelector('[data-acct=cloud] [data-c=login]');
   // Desde la portada, el botón del plan pago abre la app con Ajustes en Plan.
   const dePortada = await ctx.newPage(); await dePortada.goto(home + '#lmd-plans'); await dePortada.waitForSelector('.lmd-panel .lmd-plans');
   check('app.html#lmd-plans abre Ajustes en Plan y limpia la dirección', (await dePortada.evaluate(() => document.querySelector('[data-ptab].lmd-on').dataset.ptab)) === 'plan' && !/#/.test(dePortada.url()) && !(await dePortada.evaluate(() => document.querySelector('.lmd-home').hidden)), dePortada.url());

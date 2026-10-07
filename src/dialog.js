@@ -69,9 +69,12 @@
 
   // Pregunta antes de hacer algo. Con danger el botón va en rojo. Con alt hay un tercer botón, y devuelve 'alt' si
   // se elige ese. Con link ({ href, text }) suma un enlace que lleva al cobro: dentro de la app de la tienda no se ve.
+  // Con more ({ text, link, go }) suma una línea con un enlace que cierra la pregunta y llama a go.
   function confirm(o) {
     return new Promise((resolve) => {
-      const f = frame(o, (o.text ? '<p></p>' : '') + (o.link ? '<p class="lmd-dlg-link" data-pay><a class="lmd-link" target="_blank" rel="noopener"></a></p>' : ''), resolve);
+      const f = frame(o, (o.text ? '<p></p>' : '') + (o.link ? '<p class="lmd-dlg-link" data-pay><a class="lmd-link" target="_blank" rel="noopener"></a></p>' : '') +
+        (o.more ? '<p class="lmd-dlg-more"><span></span> <button type="button" class="lmd-link" data-dlg-more></button></p>' : ''), resolve);
+      if (o.more) { const m = f.box.querySelector('.lmd-dlg-more'); m.querySelector('span').textContent = o.more.text || ''; m.querySelector('button').textContent = o.more.link; }
       if (o.text) f.box.querySelector('p').textContent = o.text;
       if (o.link) { const a = f.box.querySelector('.lmd-dlg-link a'); a.href = o.link.href; a.textContent = o.link.text; }
       f.box.querySelector('[data-dlg=ok]').focus();
@@ -80,7 +83,10 @@
         if (e.key === 'Escape') { e.preventDefault(); f.close(false); }
       });
       f.box.addEventListener('mousedown', (e) => { if (e.target === f.box) f.close(false); });
-      f.box.addEventListener('click', (e) => { const b = e.target.closest('[data-dlg]'); if (b) f.close(b.dataset.dlg === 'alt' ? 'alt' : b.dataset.dlg === 'ok'); });
+      f.box.addEventListener('click', (e) => {
+        if (o.more && e.target.closest('[data-dlg-more]')) { f.close(false); o.more.go(); return; }
+        const b = e.target.closest('[data-dlg]'); if (b) f.close(b.dataset.dlg === 'alt' ? 'alt' : b.dataset.dlg === 'ok');
+      });
     });
   }
 

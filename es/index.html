@@ -289,7 +289,7 @@
     <li><h3>Tus archivos, en tu disco</h3><p>Abrís un <code>.md</code> o una carpeta entera. No se sube nada ni hay que crear una cuenta.</p></li>
     <li><h3>Nube cuando la quieras</h3><p>Las mismas notas en cada dispositivo, compartir, y editar entre varios en vivo con un enlace.</p></li>
     <li><h3>Tu IA sobre las mismas notas</h3><p>Por MCP lee, escribe, documenta lo que hace y responde los comentarios que le dejás.</p></li>
-    <li><h3>Privado</h3><p>Carpetas con contraseña que el servidor no puede leer, código abierto y servidor propio si querés.</p></li>
+    <li><h3>Privado</h3><p>Carpetas protegidas que el servidor no puede leer, código abierto y servidor propio si querés.</p></li>
     <li><h3>Web, Chrome y celular</h3><p>App web, extensión de Chrome y app en el celular. También anda sin conexión.</p></li>
   </ul>
 </div></section>
@@ -367,7 +367,7 @@
       <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5a4 4 0 0 1-.6-7.95 5.5 5.5 0 0 1 10.7-1.1A4.5 4.5 0 0 1 17 18.5z"/></svg></span><div><h3>Las mismas notas en cada dispositivo</h3><p>Entrás con un código de seis dígitos que llega a tu correo. Con un clic mandás una nota a la nube, y desde ahí se guarda sola.</p></div></li>
       <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8.5" cy="9" r="3"/><path d="M3 19c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5"/><circle cx="16.8" cy="9.8" r="2.3"/><path d="M16.5 14.6c2.3 0 4 1.4 4.5 3.9"/></svg></span><div><h3>Sesiones en vivo por enlace</h3><p>Abrís una sesión sobre una nota y mandás el enlace. Quien lo tiene entra desde el navegador con un nombre, sin cuenta, y todos ven quién está en cada bloque.</p></div></li>
       <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></span><div><h3>Compartí una nota o una carpeta</h3><p>Con otra cuenta, para ver o para editar. O un enlace público de solo lectura con contraseña.</p></div></li>
-      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg></span><div><h3>Carpetas con contraseña</h3><p>Sus notas se cifran en tu navegador, y el servidor guarda texto que no puede leer.</p></div></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg></span><div><h3>Carpetas protegidas</h3><p>Sus notas se cifran en tu navegador con tu contraseña, y el servidor guarda texto que no puede leer.</p></div></li>
       <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l.8 12h8.4L17 7"/></svg></span><div><h3>Papelera de 30 días</h3><p>Una nota eliminada espera ahí, y la podés restaurar.</p></div></li>
     </ul>
   </div>
@@ -378,7 +378,7 @@
       <ul>
         <li>Un comentario sobre un párrafo le dice a la IA qué cambiar.</li>
         <li>Un token puede quedar limitado a una carpeta.</li>
-        <li>Una carpeta con contraseña se le abre a la IA por el tiempo que elijas.</li>
+        <li>Una carpeta protegida se le abre a la IA por el tiempo que elijas.</li>
       </ul>
     </div>
     <div class="term"><div class="bar"><i></i><i></i><i></i></div><pre><i>$</i> claude mcp add --transport http sharpmd \
@@ -398,7 +398,7 @@
       <li><span>Todo el editor</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span>Archivos y notas del navegador</span><em>Sin límite</em></li>
       <li><span>Notas en la nube</span><em>10</em></li>
-      <li><span>Carpetas con contraseña</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span>Carpetas protegidas</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span>Papelera de 30 días</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li class="no"><span>Compartir y enlaces públicos</span><i class="sr">no incluido</i></li>
       <li class="no"><span>Sesiones en vivo por enlace</span><i class="sr">no incluido</i></li>
@@ -412,7 +412,7 @@
       <li><span>Todo el editor</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span>Archivos y notas del navegador</span><em>Sin límite</em></li>
       <li><span>Notas en la nube</span><em>Sin límite</em></li>
-      <li><span>Carpetas con contraseña</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span>Carpetas protegidas</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span>Papelera de 30 días</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span>Compartir y enlaces públicos</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span>Sesiones en vivo por enlace</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>

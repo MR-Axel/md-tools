@@ -63,6 +63,8 @@
     browser: '<svg viewBox="0 0 24 24"><rect x="3.500" y="5" width="17" height="14" rx="2"/><path d="M3.500 9.500h17M6.500 7.300h.200M9 7.300h.200"/></svg>',
     clock: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7.500V12l3 2"/></svg>',
     people: '<svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="3.2"/><path d="M3.500 19a5.500 5.500 0 0 1 11 0"/><circle cx="16.800" cy="9.800" r="2.500"/><path d="M16.500 14.700a4.500 4.500 0 0 1 4 4.300"/></svg>',
+    key: '<svg viewBox="0 0 24 24"><circle cx="8" cy="15.5" r="4"/><path d="m11 12.5 8.5-8.5M15.5 8l2.5 2.5M18 5.5 20 7.5"/></svg>',
+    shield: '<svg viewBox="0 0 24 24"><path d="M12 3.5 5 6v5.5c0 4.3 2.9 7.3 7 9 4.1-1.7 7-4.7 7-9V6z"/><path d="m9 12 2.2 2.2 3.8-4"/></svg>',
     coffee: '<svg viewBox="0 0 24 24"><path d="M5 9h11v5.5a4.5 4.5 0 0 1-4.5 4.5h-2A4.5 4.5 0 0 1 5 14.5z"/><path d="M16 10.5h1.5a2.5 2.5 0 0 1 0 5H16M8 3.5v2.5M11.5 3.5v2.5"/></svg>',
   };
 

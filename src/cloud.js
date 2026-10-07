@@ -636,6 +636,8 @@
     // Lo último que se supo, sin esperar: para dibujar. vaultOk dice si el servidor las tiene (uno propio sin actualizar, no).
     vaultsNow: () => vaultCache || [],
     vaultOk: () => vaultOk,
+    // Un servidor que no es el de SharpMD: cómo cifra depende de quien lo instaló.
+    own: () => !!base && base !== String(LMD.CLOUD_URL || '').trim().replace(/\/+$/, ''),
     vaultCreate: async (body) => { const v = await api('POST', '/vaults', body); await vaults(true); listCache = null; return v; },
     vaultRewrap: async (id, body) => { const v = await api('PUT', '/vaults/' + id, body); await vaults(true); return v; },
     // Desbloquear para la IA: la única vez que la llave de datos sale de este navegador.
