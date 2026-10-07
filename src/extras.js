@@ -7,7 +7,9 @@
   const T = LMD.t;
   let core = null;
 
-  const canManage = () => core.APP && core.appRoot && core.appRoot.kind === 'dir';
+  // De qué raíz es un archivo lo dice su dirección: carpeta del disco, navegador o nube. Sin dirección, la nota abierta.
+  const kindOf = (url) => { const r = core.APP ? core.rootOf(url || core.HERE) : null; return r ? r.kind : ''; };
+  const canManage = (url) => kindOf(url) === 'dir';
   const nameOf = (url) => decodeURIComponent(url.replace(/\/$/, '').split('/').pop());
   const parentOf = (url) => new URL(url.endsWith('/') ? '..' : '.', url).href;
 
@@ -20,10 +22,14 @@
   // ---------- Archivos de la nube ----------
   // En la nube una carpeta es solo el comienzo de la ruta: "proyecto/plan.md" la crea al crear la nota,
   // y renombrar con otra ruta es mover.
-  const inCloud = () => core.APP && !!core.appRoot && core.appRoot.kind === 'cloud';
-  const canTree = () => canManage() || inCloud();
+  const inCloud = (url) => kindOf(url) === 'cloud';
+  const canTree = (url) => canManage(url) || inCloud(url);
   // Las notas del navegador no tienen carpetas: se renombran y se eliminan, no se mueven.
-  const inLocal = () => core.APP && !!core.appRoot && core.appRoot.kind === 'local';
+  const inLocal = (url) => kindOf(url) === 'local';
+  // Abrir sin recargar la página. Lo que se movió o se borró ya no vive en su dirección vieja: no se guarda al salir.
+  const openNew = (url) => core.open(url, { tree: true });
+  const openMoved = (url) => core.open(url, { replace: true, discard: true, tree: true });
+  const closeGone = () => core.close({ replace: true, discard: true, tree: true });
   const cloudName = (v) => {
     const parts = String(v || '').replace(/\\/g, '/').split('/').map((s) => s.trim()).filter(Boolean);
     return parts.length && !parts.some((s) => /[:*?"<>|\x00-\x1f]/.test(s) || /^\.\.?$/.test(s) || s[0] === '~') ? parts.join('/') : '';
@@ -33,11 +39,17 @@
   // Renombrar y eliminar son de quien creó la nota: lo compartido se puede leer o editar, no mover.
   const notMine = (path) => { if (!LMD.cloud.split(path).owner) return false; core.flash(T('Solo quien creó la nota puede hacer eso.'), 'warn'); return true; };
 
+  // Los nombres se piden en un diálogo propio, que avisa ahí mismo si el nombre no sirve.
+  const BAD_NAME = 'Ese nombre tiene caracteres que no se pueden usar';
+  const badName = (v) => (/[\\/:*?"<>|]/.test(v) || /^\.\.?$/.test(v) ? T(BAD_NAME) : '');
+  const badPath = (v) => (cloudName(v) ? '' : T(BAD_NAME));
+  const askName = (title, value, validate, ok, label) => LMD.dialog.prompt({ title: T(title), value, validate, ok: T(ok), label: label ? T(label) : '', stem: true });
+  const askDelete = (name) => LMD.dialog.confirm({ title: T('¿Eliminar "{a}"?', { a: name }), text: T('No se puede deshacer.'), ok: T('Eliminar'), danger: true });
+
   async function cloudNew(dirUrl, folder) {
-    const typed = window.prompt(T(folder ? 'Nombre de la carpeta nueva' : 'Nombre del archivo nuevo'), folder ? T('carpeta') : T('nota') + '.md');
-    if (!typed || !typed.trim()) return;
+    const typed = await askName(folder ? 'Nombre de la carpeta nueva' : 'Nombre del archivo nuevo', folder ? T('carpeta') : T('nota') + '.md', badPath, 'Crear');
+    if (!typed) return;
     let name = cloudName(typed);
-    if (!name) { core.flash(T('Ese nombre tiene caracteres que no se pueden usar'), 'error'); return; }
     // Una carpeta existe mientras tenga algo adentro: nace con su primera nota.
     if (folder) name += '/' + T('nota') + '.md'; else if (!/\.[A-Za-z0-9]+$/.test(name)) name += '.md';
     const dir = core.pathOf(dirUrl); const path = (dir ? dir + '/' : '') + name; const s = LMD.cloud.split(path);
@@ -47,7 +59,7 @@
       if (all.some((n) => n.path === s.path || n.path.startsWith(s.path + '/'))) { core.flash(T('Ya hay un archivo con ese nombre'), 'error'); return; }
       const file = name.split('/').pop();
       await LMD.cloud.write(path, MD_RE.test(file) ? '# ' + file.replace(/\.[^.]+$/, '') + '\n' : '');
-      location.href = core.toHref(core.urlOf(path));
+      openNew(core.urlOf(path));
     } catch (e) { core.flash(cloudWhy(e, 'No se pudo crear el archivo'), 'error'); }
   }
 
@@ -55,7 +67,7 @@
   async function cloudRename(url, isDir, given) {
     const old = core.pathOf(url);
     if (notMine(old)) return;
-    const typed = given != null ? old.slice(0, old.lastIndexOf('/') + 1) + given : window.prompt(T('Nombre nuevo. Con "/" se mueve a una carpeta'), old);
+    const typed = given != null ? old.slice(0, old.lastIndexOf('/') + 1) + given : await askName('Renombrar', old, badPath, 'Renombrar', 'Con "/" se mueve a una carpeta');
     if (!typed || !typed.trim()) return;
     let to = cloudName(typed);
     if (!to) { core.flash(T('Ese nombre tiene caracteres que no se pueden usar'), 'error'); return; }
@@ -73,7 +85,7 @@
       const here = moves.find((m) => m[0] === core.cloudPath);
       if (here && core.dirty && !(await core.save(false))) return;
       for (const m of moves) await LMD.cloud.rename(m[0], m[1]);
-      if (here) location.href = core.toHref(core.urlOf(here[1]));
+      if (here) openMoved(core.urlOf(here[1]));
       else core.reloadTree();
     } catch (e) { core.flash(cloudWhy(e, fallback), 'error'); if (isDir) core.reloadTree(); }
   }
@@ -81,19 +93,62 @@
   async function cloudRemove(url) {
     const path = core.pathOf(url);
     if (notMine(path)) return;
-    if (!window.confirm(T('¿Eliminar "{a}"? No se puede deshacer.', { a: path }))) return;
+    if (!(await askDelete(path))) return;
     try {
       await LMD.cloud.remove(path);
-      if (url === core.HERE) location.href = core.appUrl;
+      if (url === core.HERE) closeGone();
       else core.reloadTree();
     } catch (e) { core.flash(cloudWhy(e, 'No se pudo eliminar'), 'error'); }
   }
 
-  async function newFile(dirUrl) {
-    if (inCloud()) return cloudNew(dirUrl, false);
-    let name = (window.prompt(T('Nombre del archivo nuevo'), T('nota') + '.md') || '').trim();
+  // Carpeta nueva: en el disco se crea vacía; en la nube nace con su primera nota.
+  async function newFolder(dirUrl) {
+    if (inCloud(dirUrl)) return cloudNew(dirUrl, true);
+    const name = await askName('Nombre de la carpeta nueva', T('carpeta'), badName, 'Crear');
     if (!name) return;
-    if (/[\\/:*?"<>|]/.test(name)) { core.flash(T('Ese nombre tiene caracteres que no se pueden usar'), 'error'); return; }
+    try {
+      const dir = await core.dirHandle(dirUrl);
+      if (await exists(dir, name)) { core.flash(T('Ya hay una carpeta con ese nombre'), 'error'); return; }
+      await dir.getDirectoryHandle(name, { create: true });
+      core.reloadTree();
+    } catch (e) { core.flash(T('No se pudo crear la carpeta'), 'error'); }
+  }
+
+  // Una nota que ya trae nombre y contenido (de una plantilla), dentro de una carpeta del disco o de la nube.
+  // El nombre no pisa a otro: si está tomado, suma un número.
+  async function newFrom(dirUrl, given) {
+    const free = async (taken) => { let name = given.name + '.md'; for (let n = 2; n < 50 && await taken(name); n++) name = given.name + '-' + n + '.md'; return name; };
+    try {
+      if (inCloud(dirUrl)) {
+        const dir = core.pathOf(dirUrl); const pre = dir ? dir + '/' : ''; const s = LMD.cloud.split(pre + 'x');
+        const all = new Set((await LMD.cloud.list(true, s.owner)).map((n) => n.path)); const inner = s.path.slice(0, -1);
+        const path = pre + await free((name) => all.has(inner + name));
+        await LMD.cloud.write(path, given.text);
+        return core.open(core.urlOf(path), { tree: true, edit: 'doc' });
+      }
+      const dir = await core.dirHandle(dirUrl);
+      const name = await free((n) => exists(dir, n));
+      const h = await dir.getFileHandle(name, { create: true });
+      const w = await h.createWritable(); await w.write(given.text); await w.close();
+      return core.open(dirUrl + encodeURIComponent(name), { tree: true, edit: 'doc' });
+    } catch (e) { core.flash(cloudWhy(e, 'No se pudo crear el archivo'), 'error'); }
+  }
+  // Elegir una plantilla y crear la nota: en dirUrl, o donde van las notas nuevas si no se dice dónde.
+  async function fromTemplate(dirUrl) {
+    const t = await core.pickTemplate();
+    if (!t) return;
+    const given = { name: t.file, text: t.text };
+    if (!dirUrl) return core.newNote(Object.assign({ strict: true }, given));
+    return newFile(dirUrl, given);
+  }
+
+  async function newFile(dirUrl, given) {
+    // Las notas del navegador no piden nombre: nacen con la fecha y se listan por su primer renglón.
+    if (inLocal(dirUrl)) return core.newNote(Object.assign({ target: 'local' }, given));
+    if (given) return newFrom(dirUrl, given);
+    if (inCloud(dirUrl)) return cloudNew(dirUrl, false);
+    let name = await askName('Nombre del archivo nuevo', T('nota') + '.md', badName, 'Crear');
+    if (!name) return;
     if (!/\.[A-Za-z0-9]+$/.test(name)) name += '.md';
     try {
       const dir = await core.dirHandle(dirUrl);
@@ -102,7 +157,7 @@
       const w = await h.createWritable();
       await w.write(MD_RE.test(name) ? '# ' + name.replace(/\.[^.]+$/, '') + '\n' : '');
       await w.close();
-      location.href = core.toHref(dirUrl + encodeURIComponent(name));
+      openNew(dirUrl + encodeURIComponent(name));
     } catch (e) { core.flash(T('No se pudo crear el archivo'), 'error'); }
   }
 
@@ -116,19 +171,19 @@
   }
   // El archivo abierto se guarda antes de tocarlo, y después se reabre en su ruta nueva.
   const saved = async (url) => url !== core.HERE || !core.dirty || core.save(false);
-  const reopen = (url, to) => { if (url === core.HERE) location.href = core.toHref(to); else core.reloadTree(); };
+  const reopen = (url, to) => { if (url === core.HERE) openMoved(to); else core.reloadTree(); };
 
   // typed es el nombre ya escrito en el título de arriba; sin él, se pregunta.
   async function rename(url, isDir, typed) {
-    if (inCloud()) return cloudRename(url, isDir, typed);
+    if (inCloud(url)) return cloudRename(url, isDir, typed);
     const old = nameOf(url);
-    let name = (typed != null ? typed : window.prompt(T('Nombre nuevo'), old) || '').trim();
+    let name = (typed != null ? typed : await askName('Renombrar', old, badName, 'Renombrar') || '').trim();
     if (!name || name === old) return;
     if (/[\\/:*?"<>|]/.test(name)) { core.flash(T('Ese nombre tiene caracteres que no se pueden usar'), 'error'); return; }
     if (!/\.[A-Za-z0-9]+$/.test(name)) name += (/\.[^.]+$/.exec(old) || ['.md'])[0];
     const dirUrl = parentOf(url);
     try {
-      if (inLocal()) {
+      if (inLocal(url)) {
         if (await LMD.store.noteGet(name)) { core.flash(T('Ya hay un archivo con ese nombre'), 'error'); return; }
         if (!(await saved(url))) return;
         await LMD.store.notePut(name, (await LMD.store.noteGet(old)).text); await LMD.store.noteDelete(old);
@@ -145,7 +200,7 @@
   // Mueve un archivo a otra carpeta del árbol, con el mismo nombre.
   async function moveTo(url, dirUrl) {
     const name = nameOf(url);
-    if (inCloud()) {
+    if (inCloud(url)) {
       const old = core.pathOf(url); const dir = core.pathOf(dirUrl);
       if (!notMine(old)) await cloudMove(old, (dir ? dir + '/' : '') + name, false, 'No se pudo mover');
       return;
@@ -160,44 +215,71 @@
   }
 
   async function remove(url) {
-    if (inCloud()) return cloudRemove(url);
+    if (inCloud(url)) return cloudRemove(url);
     const name = nameOf(url);
-    if (!window.confirm(T('¿Eliminar "{a}"? No se puede deshacer.', { a: name }))) return;
+    if (!(await askDelete(name))) return;
     try {
-      if (inLocal()) await LMD.store.noteDelete(name);
+      if (inLocal(url)) await LMD.store.noteDelete(name);
       else await (await core.dirHandle(parentOf(url))).removeEntry(name);
-      if (url === core.HERE) location.href = core.appUrl;
+      if (url === core.HERE) closeGone();
       else core.reloadTree();
     } catch (e) { core.flash(T('No se pudo eliminar'), 'error'); }
   }
 
   let menu = null;
   const closeMenu = () => { if (menu) { menu.remove(); menu = null; } };
-  function treeMenu(x, y, node) {
+  // Un menú corto en un punto de la pantalla. items: [id, texto, peligroso]. onPick recibe el id elegido.
+  function showMenu(x, y, items, onPick) {
     closeMenu();
-    const url = node.dataset.url; const isDir = node.classList.contains('lmd-node-dir'); const cloud = inCloud();
     menu = el('div', { class: 'lmd-menu lmd-menu-narrow', role: 'menu' });
-    menu.innerHTML = '<div class="lmd-menu-list">' +
-      (inLocal() ? '' : '<button type="button" role="menuitem" data-f="new">' + T(isDir ? 'Nuevo archivo acá' : 'Nuevo archivo') + '</button>') +
-      (cloud ? '<button type="button" role="menuitem" data-f="dir">' + T('Nueva carpeta') + '</button>' : '') +
-      (isDir && !cloud ? '' : '<button type="button" role="menuitem" data-f="ren">' + T('Renombrar') + '</button>') +
-      (isDir ? '' : '<button type="button" role="menuitem" data-f="del" class="lmd-menu-danger">' + T('Eliminar') + '</button>') + '</div>';
+    menu.innerHTML = '<div class="lmd-menu-list">' + items.map((i) => '<button type="button" role="menuitem" data-f="' + i[0] + '"' + (i[2] ? ' class="lmd-menu-danger"' : '') + '>' + T(i[1]) + '</button>').join('') + '</div>';
     document.body.appendChild(menu);
-    menu.style.left = Math.min(window.innerWidth - menu.offsetWidth - 8, x) + 'px';
+    menu.style.left = Math.max(8, Math.min(window.innerWidth - menu.offsetWidth - 8, x)) + 'px';
     menu.style.top = Math.min(window.innerHeight - menu.offsetHeight - 8, y) + 'px';
     menu.addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       closeMenu();
-      if (b.dataset.f === 'new') newFile(isDir ? url : parentOf(url));
-      else if (b.dataset.f === 'dir') cloudNew(isDir ? url : parentOf(url), true);
-      else if (b.dataset.f === 'ren') rename(url, isDir);
+      onPick(b.dataset.f);
+    });
+  }
+  function treeMenu(x, y, node) {
+    const url = node.dataset.url; const isDir = node.classList.contains('lmd-node-dir'); const cloud = inCloud(url); const local = inLocal(url);
+    const at = isDir ? url : parentOf(url);
+    showMenu(x, y, [
+      !local && ['new', isDir ? 'Nuevo archivo acá' : 'Nuevo archivo'],
+      !local && ['tpl', 'Desde una plantilla…'],
+      !local && ['dir', 'Nueva carpeta'],
+      (!isDir || cloud) && ['ren', 'Renombrar'],
+      !isDir && ['del', 'Eliminar', true],
+    ].filter(Boolean), (f) => {
+      if (f === 'new') newFile(at);
+      else if (f === 'tpl') fromTemplate(at);
+      else if (f === 'dir') newFolder(at);
+      else if (f === 'ren') rename(url, isDir);
       else remove(url);
     });
   }
+  // Crear: desde la cabecera del explorador (sin dirUrl: donde van las notas nuevas) o dentro de una raíz.
+  function createMenu(x, y, dirUrl) {
+    const folderAt = dirUrl ? (canTree(dirUrl) ? dirUrl : '') : (core.diskDir() || (LMD.cloud.signedIn() ? core.urlOf('') : ''));
+    showMenu(x, y, [['new', 'Nota en blanco'], ['tpl', 'Desde una plantilla…'], folderAt && ['dir', 'Carpeta']].filter(Boolean), (f) => {
+      if (f === 'dir') newFolder(folderAt);
+      else if (f === 'tpl') fromTemplate(dirUrl);
+      else if (dirUrl) newFile(dirUrl);
+      else core.newNote();
+    });
+  }
+  // Abrir otra carpeta u otro archivo del disco, sin salir de la nota. Sobre un .md abierto directo, eso es abrir la app.
+  function openMenu(x, y) {
+    if (!core.APP) { core.openApp(''); return; }
+    if (!window.showDirectoryPicker) { core.pick('file'); return; }
+    showMenu(x, y, [['dir', 'Abrir carpeta'], ['file', 'Abrir archivo']], (f) => core.pick(f));
+  }
+  const rootUrl = (node) => { const sec = node.closest('.lmd-xroot'); const list = sec && sec.querySelector('.lmd-tree'); return (list && list.dataset.url) || ''; };
 
   // ---------- Renombrar desde el título ----------
   // El nombre de la barra de arriba se vuelve un campo: Enter confirma, Escape cancela.
-  const canRename = () => !core.readOnly && (canTree() || inLocal());
+  const canRename = () => !core.noDoc && !core.readOnly && (canTree() || inLocal());
   function editTitle() {
     const label = core.ui.main.querySelector('.lmd-docname');
     if (!canRename() || label.querySelector('input')) return;
@@ -225,18 +307,21 @@
   let dragged = ''; let dropMark = null;
   const markDrop = (node) => { if (dropMark === node) return; if (dropMark) dropMark.classList.remove('lmd-drop'); dropMark = node; if (node) node.classList.add('lmd-drop'); };
   const endDrag = () => { markDrop(null); dragged = ''; const n = core.ui.treeBox.querySelector('.lmd-dragging'); if (n) n.classList.remove('lmd-dragging'); };
-  // Carpeta de destino según dónde está el puntero: la carpeta misma, la que contiene al archivo de abajo, o la raíz.
+  // Carpeta de destino según dónde está el puntero: la carpeta misma, la que contiene al archivo de abajo, o la
+  // raíz. Solo dentro de la raíz de donde salió el archivo: entre el disco, el navegador y la nube no se arrastra.
   function dropTarget(e) {
-    const node = e.target.closest && e.target.closest('.lmd-node-dir');
+    const sec = e.target.closest && e.target.closest('.lmd-xroot'); const top = sec ? rootUrl(sec) : '';
+    if (!top || core.rootOf(top) !== core.rootOf(dragged)) return null;
+    const node = e.target.closest('.lmd-node-dir');
     if (node) return { url: node.dataset.url, mark: node };
-    const kids = e.target.closest && e.target.closest('.lmd-node-kids');
+    const kids = e.target.closest('.lmd-node-kids');
     if (kids) return { url: kids.previousElementSibling.dataset.url, mark: kids.previousElementSibling };
-    return { url: core.treeRoot(), mark: core.ui.treeBox };
+    return { url: top, mark: sec };
   }
   function bindDrag(box) {
     box.addEventListener('dragstart', (e) => {
       const node = e.target.closest && e.target.closest('.lmd-node');
-      if (!canTree() || !node || !node.dataset.url || node.classList.contains('lmd-node-dir')) return;
+      if (!node || !node.dataset.url || !canTree(node.dataset.url) || node.classList.contains('lmd-node-dir')) return;
       dragged = node.dataset.url; node.classList.add('lmd-dragging');
       e.dataTransfer.effectAllowed = 'move';
     });
@@ -244,7 +329,7 @@
       if (!dragged) return;
       const t = dropTarget(e);
       // Soltarlo en la carpeta donde ya está no es un destino.
-      if (t.url === parentOf(dragged)) { markDrop(null); return; }
+      if (!t || t.url === parentOf(dragged)) { markDrop(null); return; }
       e.preventDefault(); e.dataTransfer.dropEffect = 'move'; markDrop(t.mark);
     });
     box.addEventListener('dragleave', (e) => { if (!box.contains(e.relatedTarget)) markDrop(null); });
@@ -253,7 +338,7 @@
       e.preventDefault();
       const url = dragged; const t = dropTarget(e);
       endDrag();
-      if (t.url !== parentOf(url)) moveTo(url, t.url);
+      if (t && t.url !== parentOf(url)) moveTo(url, t.url);
     });
     box.addEventListener('dragend', endDrag);
   }
@@ -439,18 +524,25 @@
     // Árbol: clic derecho sobre un archivo o carpeta, y botón de archivo nuevo en la cabecera.
     core.ui.treeBox.addEventListener('contextmenu', (e) => {
       const node = e.target.closest('.lmd-node');
-      if (!node || !(canTree() || inLocal()) || !node.dataset.url) return;
-      e.preventDefault(); treeMenu(e.clientX, e.clientY, node);
+      // Sobre un archivo o una carpeta, sus acciones; sobre el resto de una raíz, crear ahí.
+      const at = node ? node.dataset.url : rootUrl(e.target);
+      if (!at || !(canTree(at) || inLocal(at))) return;
+      e.preventDefault();
+      if (node) treeMenu(e.clientX, e.clientY, node); else createMenu(e.clientX, e.clientY, at);
+    });
+    // Los botones de la cabecera del explorador y el "+" de cada raíz.
+    core.ui.sidebar.addEventListener('click', (e) => {
+      const b = e.target.closest('.lmd-tree-new, .lmd-tree-add, .lmd-tree-open'); if (!b) return;
+      const box = b.getBoundingClientRect();
+      if (b.classList.contains('lmd-tree-open')) openMenu(box.left, box.bottom + 6);
+      else createMenu(box.left, box.bottom + 6, b.classList.contains('lmd-tree-new') ? rootUrl(b) : '');
     });
     bindDrag(core.ui.paneFiles);
     const label = core.ui.main.querySelector('.lmd-docname');
-    if (canRename()) { label.classList.add('lmd-docname-edit'); label.title = T('Doble clic o F2 para cambiar el nombre'); }
+    // Si el nombre se puede cambiar depende de la nota abierta: se revisa cada vez que cambia.
+    const paintLabel = () => { const can = canRename(); label.classList.toggle('lmd-docname-edit', can); label.title = can ? T('Doble clic o F2 para cambiar el nombre') : ''; };
+    paintLabel(); core.hooks.doc.push(paintLabel);
     label.addEventListener('dblclick', editTitle);
-    core.ui.treeBox.addEventListener('click', (e) => { if (e.target.closest('.lmd-tree-new')) newFile(core.treeRoot()); });
-    core.hooks.tree.push((head) => {
-      if (!canTree()) return;
-      head.insertBefore(el('button', { class: 'lmd-tree-up lmd-tree-new', type: 'button', title: T('Archivo nuevo en esta carpeta') }, ICON.plus), head.lastChild);
-    });
     document.addEventListener('mousedown', (e) => { if (menu && !menu.contains(e.target)) closeMenu(); });
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeMenu();
@@ -459,7 +551,8 @@
       const t = e.target; const node = t && t.closest && t.closest('.lmd-tree-box .lmd-node');
       if (node) {
         const isDir = node.classList.contains('lmd-node-dir');
-        if ((canTree() || inLocal()) && node.dataset.url && (!isDir || inCloud())) { e.preventDefault(); rename(node.dataset.url, isDir); }
+        const at = node.dataset.url;
+        if (at && (canTree(at) || inLocal(at)) && (!isDir || inCloud(at))) { e.preventDefault(); rename(at, isDir); }
       } else if (!(t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) && canRename()) { e.preventDefault(); editTitle(); }
     });
 
@@ -483,5 +576,5 @@
     article.addEventListener('keyup', (e) => { if (/^Arrow|^Page|^Home$|^End$/.test(e.key)) centerCaret(); });
   }
 
-  LMD.extras = { init, pasteImage, exportHtml, imageDialog, imageMd };
+  LMD.extras = { init, pasteImage, exportHtml, imageDialog, imageMd, fromTemplate };
 })();

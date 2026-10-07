@@ -2,6 +2,7 @@
 // el árbol de la carpeta Nube (crear, renombrar, mover, eliminar, límite) y el trabajo sin conexión.
 // Todo contra un servidor local: la nube de verdad queda apagada con cloudUrl 'off' antes de apuntar acá.
 import { chromium } from 'playwright-core';
+import { autoDialogs } from './dialogs.mjs';
 import { spawn } from 'child_process';
 import fs from 'fs'; import os from 'os'; import path from 'path'; import { fileURLToPath } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -23,7 +24,7 @@ const ctx = await chromium.launchPersistentContext(profile, { headless: false, e
   args: [`--disable-extensions-except=${root}`, `--load-extension=${root}`, '--headless=new', '--disable-features=DisableLoadExtensionCommandLineSwitch', '--lang=es-AR'] });
 const sw = ctx.serviceWorkers()[0] || await ctx.waitForEvent('serviceworker'); const id = new URL(sw.url()).host;
 const app = await ctx.newPage(); const errors = []; app.on('pageerror', (e) => errors.push(e.message));
-await app.addInitScript(() => { window.confirm = () => true; window.prompt = () => window.__answer || null; });
+await app.addInitScript(autoDialogs);
 const home = `chrome-extension://${id}/src/app.html`;
 const o = {};
 const mcp = (token, name, args) => fetch(base + '/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) }).then((r) => r.json());
@@ -52,8 +53,8 @@ try {
   o.icono = await app.evaluate(() => document.querySelector('.lmd-sync').className);
   const noteUrl = app.url(); const notePath = decodeURIComponent(decodeURIComponent(noteUrl.split('f=cloud%2F')[1].split('&')[0]));
 
-  const page2 = await ctx.newPage(); await page2.goto(home); await page2.waitForSelector('.lmd-home-item');
-  o.enInicio = await page2.textContent('.lmd-home-item');
+  const page2 = await ctx.newPage(); await page2.goto(home); await page2.waitForSelector('.lmd-xroot[data-root=cloud] a.lmd-node');
+  o.enInicio = await page2.evaluate(() => { const n = document.querySelector('.lmd-xroot[data-root=cloud] a.lmd-node'); return [n.textContent.trim(), n.querySelector('.lmd-node-where').title]; });
   // "Conectar una IA" abre el mismo panel que Ajustes → IA, en una ventana: ahí se crea el token.
   await page2.click('[data-cloud=ai]'); await page2.waitForSelector('.lmd-acct-card [data-c=token]'); await page2.click('[data-c=token]'); await page2.waitForSelector('.lmd-ai-new');
   const fields = await page2.evaluate(() => [...document.querySelectorAll('.lmd-acct-card .lmd-field input')].map((i) => i.value));
@@ -83,8 +84,12 @@ try {
   o.enlace = /app\.html\?f=pub%2F/.test(shareUrl);
   await app.click('[data-sh=close]');
   const visitor = await ctx.newPage();
-  await visitor.addInitScript(() => { let n = 0; window.prompt = () => (n++ ? 'manzana-42' : 'equivocada'); });
-  await visitor.goto(home + '?' + shareUrl.split('?')[1]); await visitor.waitForSelector('.markdown-body h1');
+  // La contraseña se pide en un diálogo propio: una equivocada se avisa ahí mismo y deja corregirla.
+  await visitor.goto(home + '?' + shareUrl.split('?')[1]); await visitor.waitForSelector('.lmd-dlg input[type=password]');
+  o.pideClave = [await visitor.textContent('.lmd-dlg h3'), await visitor.evaluate(() => document.activeElement.type)];
+  await visitor.keyboard.type('equivocada'); await visitor.keyboard.press('Enter'); await visitor.waitForSelector('.lmd-dlg-err:not([hidden])');
+  o.pideClave.push(await visitor.textContent('.lmd-dlg-err'), await visitor.locator('.markdown-body h1').count());
+  await visitor.fill('.lmd-dlg input', 'manzana-42'); await visitor.keyboard.press('Enter'); await visitor.waitForSelector('.markdown-body h1');
   o.publico = [await visitor.textContent('.markdown-body h1'), await visitor.title(), await visitor.evaluate(() => document.documentElement.classList.contains('lmd-readonly'))];
   await visitor.click('[data-act=mode-edit]'); await visitor.waitForTimeout(300);
   o.publicoNoEdita = await visitor.evaluate(() => !document.documentElement.classList.contains('lmd-editing'));
@@ -99,12 +104,16 @@ try {
   const answer = (v) => app.evaluate((x) => { window.__answer = x; }, v);
   const cloudUrl = (p) => home + '?f=' + encodeURIComponent('cloud/' + p.split('/').map(encodeURIComponent).join('/'));
   const said = async (re) => { await app.waitForFunction((r) => new RegExp(r).test(document.querySelector('.lmd-foot .lmd-status').textContent), re, { timeout: 8000 }); return app.textContent('.lmd-foot .lmd-status'); };
-  const menu = async (name, act) => { await app.locator('.lmd-node', { hasText: name }).first().click({ button: 'right' }); await app.waitForSelector('.lmd-menu [data-f=' + act + ']'); };
+  // Todo esto pasa en la raíz Nube del explorador: en las otras raíces puede haber notas con el mismo nombre.
+  const CLOUD = '.lmd-xroot[data-root=cloud]';
+  const menu = async (name, act) => { await app.locator(CLOUD + ' .lmd-node', { hasText: name }).first().click({ button: 'right' }); await app.waitForSelector('.lmd-menu [data-f=' + act + ']'); };
+  const create = async () => { await app.click(CLOUD + ' .lmd-tree-new'); await app.click('.lmd-menu [data-f=new]'); };
+  const top = () => app.evaluate((sel) => [...document.querySelectorAll(sel + ' > .lmd-tree > .lmd-node')].map((n) => n.textContent.trim()), CLOUD);
   const opened = async () => { await app.waitForSelector('.markdown-body h1'); await app.waitForSelector('.lmd-node'); };
 
-  await app.click('.lmd-tab[data-tab=files]'); await app.waitForSelector('.lmd-node');
+  await app.waitForSelector(CLOUD + ' .lmd-node');
   await answer('proyecto/plan.md');
-  await Promise.all([app.waitForNavigation(), app.click('.lmd-tree-new')]); await opened();
+  await Promise.all([app.waitForNavigation(), create()]); await opened();
   o.creada = [/f=cloud%2Fproyecto%2Fplan\.md/.test(app.url()), await app.textContent('.markdown-body h1'), (await paths()).includes('proyecto/plan.md')];
 
   await answer('ideas'); await menu('plan.md', 'dir');
@@ -118,13 +127,13 @@ try {
   o.renombrada = [/ideas%2Flista\.md/.test(app.url()), await app.title(), await app.textContent('.markdown-body h1'), now.includes('proyecto/ideas/lista.md') && !now.includes('proyecto/ideas/nota.md')];
 
   // Mover una nota que no está abierta, y renombrar la carpeta de la que sí.
-  await app.click('.lmd-tree-head .lmd-tree-up:not(.lmd-tree-new):not(.lmd-tree-open)'); await app.waitForSelector('.lmd-node-dir');
+  await app.waitForSelector(CLOUD + ' .lmd-node-dir.lmd-open');
   await answer('archivo/plan.md'); await menu('plan.md', 'ren'); await app.click('.lmd-menu [data-f=ren]');
   for (let i = 0; i < 40 && !(await paths()).includes('archivo/plan.md'); i++) await app.waitForTimeout(150);
   now = await paths();
   o.movida = now.includes('archivo/plan.md') && !now.includes('proyecto/plan.md');
   await app.waitForSelector('.lmd-node-dir');
-  await answer('proyecto/borradores'); await app.locator('.lmd-node-dir', { hasText: 'ideas' }).click({ button: 'right' });
+  await answer('proyecto/borradores'); await app.locator(CLOUD + ' .lmd-node-dir', { hasText: 'ideas' }).click({ button: 'right' });
   await Promise.all([app.waitForNavigation(), app.click('.lmd-menu [data-f=ren]')]); await opened();
   o.carpetaRenombrada = [/borradores%2Flista\.md/.test(app.url()), (await paths()).includes('proyecto/borradores/lista.md')];
 
@@ -136,8 +145,7 @@ try {
   await retitle('lista.md');
 
   // Arrastrar en el árbol: a una carpeta, de vuelta a la raíz, y la nota abierta.
-  const up = '.lmd-tree-head .lmd-tree-up:not(.lmd-tree-new):not(.lmd-tree-open)';
-  const node = (name) => app.locator('.lmd-node', { hasText: name }).first();
+  const node = (name) => app.locator(CLOUD + ' .lmd-node', { hasText: name }).first();
   const drag = async (from, to) => {
     await from.hover(); await app.mouse.down(); await to.hover(); await to.hover();
     const marked = await app.evaluate(() => { const m = document.querySelector('.lmd-drop'); return !m ? '' : m.dataset.url ? decodeURIComponent(m.dataset.url.replace(/\/$/, '').split('/').pop()) : 'raíz'; });
@@ -145,17 +153,17 @@ try {
     return marked;
   };
   const until = async (fn) => { for (let i = 0; i < 40 && !fn(await paths()); i++) await app.waitForTimeout(150); return paths(); };
-  await app.click(up); await app.waitForSelector('.lmd-node-dir.lmd-open'); await app.click(up); await app.waitForSelector('.lmd-node-kids .lmd-node.lmd-active');
+  await app.waitForSelector(CLOUD + ' .lmd-node-kids .lmd-node.lmd-active');
   o.arrastreNube = [await drag(node('suelta.md'), node('archivo'))];
   now = await until((p) => p.includes('archivo/suelta.md'));
   o.arrastreNube.push(now.includes('archivo/suelta.md') && !now.includes('suelta.md'));
-  await app.waitForFunction(() => ![...document.querySelectorAll('.lmd-tree > .lmd-node')].some((n) => n.textContent.trim() === 'suelta.md'));
+  for (let i = 0; i < 40 && (await top()).includes('suelta.md'); i++) await app.waitForTimeout(150);
   await node('archivo').click(); await app.waitForSelector('.lmd-node-kids .lmd-node:has-text("suelta.md")');
-  o.arrastreNube.push(await drag(node('suelta.md'), app.locator('.lmd-tree-head')));
+  o.arrastreNube.push(await drag(node('suelta.md'), app.locator(CLOUD + ' .lmd-tree-head')));
   now = await until((p) => p.includes('suelta.md'));
   o.arrastreNube.push(now.includes('suelta.md') && !now.includes('archivo/suelta.md'));
-  await app.waitForFunction(() => [...document.querySelectorAll('.lmd-tree > .lmd-node')].some((n) => n.textContent.trim() === 'suelta.md'));
-  await app.waitForSelector('.lmd-node-kids .lmd-node.lmd-active');
+  for (let i = 0; i < 40 && !(await top()).includes('suelta.md'); i++) await app.waitForTimeout(150);
+  await app.waitForSelector(CLOUD + ' .lmd-node-kids .lmd-node.lmd-active');
   const [, marked] = await Promise.all([app.waitForNavigation(), drag(node('lista.md'), node('proyecto'))]); await opened();
   now = await paths();
   o.arrastreAbiertaNube = [marked, /f=cloud%2Fproyecto%2Flista\.md/.test(app.url()), await app.title(), now.includes('proyecto/lista.md') && !now.includes('proyecto/borradores/lista.md')];
@@ -163,17 +171,28 @@ try {
   await Promise.all([app.waitForNavigation(), app.click('.lmd-menu [data-f=ren]')]); await opened();
 
   await answer('borrar.md');
-  await Promise.all([app.waitForNavigation(), app.click('.lmd-tree-new')]); await opened();
+  await Promise.all([app.waitForNavigation(), create()]); await opened();
+  await app.waitForSelector(CLOUD + ' .lmd-node:has-text("lista.md")'); // las carpetas que estaban desplegadas siguen así
   await menu('lista.md', 'del'); await app.click('.lmd-menu [data-f=del]');
   for (let i = 0; i < 40 && (await paths()).includes('proyecto/borradores/lista.md'); i++) await app.waitForTimeout(150);
-  await app.waitForFunction(() => document.querySelectorAll('.lmd-node').length === 1);
-  o.eliminada = [!(await paths()).includes('proyecto/borradores/lista.md'), await app.evaluate(() => [...document.querySelectorAll('.lmd-node')].map((n) => n.textContent.trim()))];
+  await app.waitForFunction((sel) => ![...document.querySelectorAll(sel + ' .lmd-node')].some((n) => n.textContent.trim() === 'lista.md'), CLOUD);
+  o.eliminada = [!(await paths()).includes('proyecto/borradores/lista.md'), await top(), await app.title()];
+
+  // Desde una plantilla, dentro de la raíz Nube: la nota nace ahí con su contenido.
+  await app.click(CLOUD + ' .lmd-tree-new'); await app.click('.lmd-menu [data-f=tpl]'); await app.waitForSelector('.lmd-tpl-card');
+  const tpl = await app.evaluate(() => LMD.templates.get(document.querySelector('.lmd-tpl-list .lmd-on').dataset.id));
+  await Promise.all([app.waitForNavigation(), app.keyboard.press('Enter')]); await opened();
+  o.plantilla = [(await paths()).includes(tpl.file + '.md'), (await serverText(tpl.file + '.md')) === tpl.text, await app.title(), await app.evaluate(() => document.documentElement.classList.contains('lmd-editing'))];
+  await app.click('[data-act=mode-read]'); await app.waitForTimeout(200);
 
   // Plan gratis: con diez notas, la undécima no se crea y el aviso invita al plan pago.
   const before = await paths();
   for (let i = before.length; i < 10; i++) await api('PUT', '/notes/relleno-' + i + '.md', { text: 'x' }, session);
-  await answer('once.md'); await app.click('.lmd-tree-new');
+  await answer('once.md'); await create();
   o.limite = [await said('límite'), (await paths()).length];
+  await app.waitForFunction(() => !/límite/.test(document.querySelector('.lmd-foot .lmd-status').textContent), null, { timeout: 8000 });
+  await app.click(CLOUD + ' .lmd-tree-new'); await app.click('.lmd-menu [data-f=tpl]'); await app.waitForSelector('.lmd-tpl-card'); await app.keyboard.press('Enter');
+  o.limitePlantilla = [await said('límite'), (await paths()).length];
   for (let i = before.length; i < 10; i++) await api('DELETE', '/notes/relleno-' + i + '.md', undefined, session);
 
   // Una nota compartida solo para ver: ni renombrar ni crear al lado.
@@ -195,7 +214,7 @@ try {
   o.soloVer = [await app.evaluate(() => document.documentElement.classList.contains('lmd-readonly'))];
   await answer('otra.md'); await menu('de-beto.md', 'ren'); await app.click('.lmd-menu [data-f=ren]');
   o.soloVer.push(await said('Solo quien'));
-  await app.click('.lmd-tree-new');
+  await menu('de-beto.md', 'new'); await app.click('.lmd-menu [data-f=new]');
   o.soloVer.push(await said('solo lectura'), (await api('GET', '/notes', undefined, beto)).length);
 
   // ---------- Sin conexión ----------
@@ -211,8 +230,8 @@ try {
   await write('Escrito sin conexión.');
   o.enCola = await queued('suelta.md', /Escrito sin conexión/);
   await app.waitForTimeout(1000); app.off('request', countAsks); o.pedidosSinConexion = asks;
-  await app.goto(home); await app.waitForSelector('.lmd-home-item');
-  o.inicioSinConexion = await app.evaluate(() => [...document.querySelectorAll('.lmd-home-item')].map((a) => a.textContent).filter((t) => /suelta\.md/.test(t)));
+  await app.goto(home); await app.waitForSelector(CLOUD + ' a.lmd-node'); await app.waitForSelector('.lmd-home-acct-who small');
+  o.inicioSinConexion = [await app.evaluate((sel) => [...document.querySelectorAll(sel + ' a.lmd-node')].map((a) => a.textContent.trim()).filter((t) => /suelta\.md/.test(t)), CLOUD), await app.textContent('.lmd-home-acct-who small')];
   await app.goto(cloudUrl('relleno-que-no-esta.md')); await app.waitForSelector('.lmd-home-msg:not([hidden])');
   o.sinCopia = await app.textContent('.lmd-home-msg');
 
@@ -245,20 +264,22 @@ try {
   // La cola de notas que no están abiertas se sube desde el inicio. Si las dos ediciones se pisan,
   // gana el servidor y lo escrito acá queda aparte, como nota del navegador.
   const was = await serverText('suelta.md');
-  await app.goto(home); await app.waitForSelector('.lmd-home-item');
+  await app.goto(home); await app.waitForSelector('.lmd-home [data-cloud=logout]');
   await app.evaluate(([who, text]) => Promise.all([
     LMD.store.cloudPut(who, 'suelta.md', { text: text.replace('Nota del navegador.', 'Nota editada sin conexión.'), base: text, pending: true, role: 'owner' }),
     LMD.store.cloudPut(who, 'archivo/plan.md', { text: '# plan\n\nAgregado sin conexión.\n', base: '# plan\n', pending: true, role: 'owner' }),
   ]), [mail, was]);
   await api('PUT', '/notes/suelta.md', { text: was.replace('Nota del navegador.', 'Nota editada en otro lado.') }, session);
-  await app.goto(home); await app.waitForSelector('.lmd-home-item');
+  await app.goto(home); await app.waitForSelector('.lmd-home [data-cloud=logout]');
   for (let i = 0; i < 40 && ((await copy('suelta.md')) || {}).pending; i++) await app.waitForTimeout(150);
   o.cola = [await serverText('archivo/plan.md'), await serverText('suelta.md'), (await copy('suelta.md')).pending, await app.evaluate(() => LMD.store.noteGet('suelta (sin conexión).md').then((n) => n && n.text))];
   await app.goto(home); await app.waitForSelector('[data-cloud=logout]'); await app.click('[data-cloud=logout]'); await app.waitForSelector('[data-cloud=ask]');
-  o.salio = (await app.locator('.lmd-home-item', { hasText: 'en la nube' }).count()) === 0;
+  await app.waitForSelector(CLOUD + ' .lmd-root-hint');
+  o.salio = (await app.locator(CLOUD + ' .lmd-node').count()) === 0;
   o.sinCopias = await app.evaluate((who) => LMD.store.cloudAll(who).then((all) => all.length), mail);
   await app.goto(noteUrl.replace('&edit=1', '')); await app.waitForSelector('.lmd-home-msg:not([hidden])');
   o.sinSesion = await app.textContent('.lmd-home-msg');
+  o.nativos = await app.evaluate(() => window.__native);
 } catch (e) { o.excepcion = String(e && e.stack || e).slice(0, 600); }
 
 const J = (v) => JSON.stringify(v);
@@ -274,8 +295,9 @@ const checks = [
   ['el historial figura bloqueado en el plan gratis', o.historialBloqueado === true],
   ['compartir con otra cuenta la deja en la lista', /beto@ejemplo\.test/.test(o.invitado || ''), o.invitado],
   ['crea un enlace público para la app web', o.enlace === true],
+  ['la contraseña del enlace se pide en un diálogo propio, que avisa si no coincide', J(o.pideClave) === J(['Nota protegida', 'password', 'Esa contraseña no coincide.', 0]), o.pideClave],
   ['el enlace con contraseña abre de solo lectura', o.publico && /Suelta/.test(o.publico[0]) && o.publico[1] === 'suelta.md' && o.publico[2] === true && o.publicoNoEdita === true, o.publico],
-  ['aparece en el inicio como nota de la nube', /en la nube/.test(o.enInicio || ''), o.enInicio],
+  ['aparece en el explorador como nota de la nube', o.enInicio && /^nota-.*\.md$/.test(o.enInicio[0]) && o.enInicio[1] === 'En la nube', o.enInicio],
   ['el panel para conectar una IA da URL, token y comando', o.campos && o.campos[0] === base + '/mcp' && o.campos[1] === 'mdt_' && o.campos[2].startsWith('claude mcp add --transport http sharpmd'), o.campos],
   ['la IA lee por MCP lo escrito en la app', (o.leeLaIA || '').trim() === '# Plan\n\nEscrito en la app.', o.leeLaIA],
   ['lo que agrega la IA aparece en la app sin recargar', o.veLoDeLaIA === true],
@@ -288,23 +310,25 @@ const checks = [
   ['arrastrar en el árbol de la Nube mueve la nota a la carpeta y de vuelta a la raíz', J(o.arrastreNube) === J(['archivo', true, 'raíz', true]), o.arrastreNube],
   ['arrastrar la nota abierta de la nube la deja abierta en su ruta nueva', J(o.arrastreAbiertaNube) === J(['proyecto', true, 'lista.md', true]), o.arrastreAbiertaNube],
   ['una nota de solo lectura no entra en edición ni se renombra desde el título, y su menú de lectura no ofrece editar', J(o.soloLectura) === J([false, false, false, 'Copiar el bloque|Copiar el enlace a esta sección', 0]), o.soloLectura],
-  ['eliminar desde el árbol la saca de la nube', o.eliminada && o.eliminada[0] && J(o.eliminada[1]) === '["borrar.md"]', o.eliminada],
+  ['eliminar desde el árbol la saca de la nube y deja abierta la nota que estaba', o.eliminada && o.eliminada[0] && o.eliminada[1].includes('borrar.md') && o.eliminada[2] === 'borrar.md', o.eliminada],
   ['en el límite del plan gratis no crea y invita al plan pago', o.limite && /límite de notas del plan gratis/.test(o.limite[0]) && /plan pago/.test(o.limite[0]) && !/[!¡—]/.test(o.limite[0]) && o.limite[1] === 10, o.limite],
+  ['una plantilla elegida en la raíz Nube crea la nota en la nube y la abre en edición', o.plantilla && o.plantilla[0] && o.plantilla[1] && /^daily-\d{4}-\d{2}-\d{2}\.md$/.test(o.plantilla[2]) && o.plantilla[3], o.plantilla],
+  ['en el límite, una plantilla tampoco se crea y sale el mismo aviso', o.limitePlantilla && /límite de notas del plan gratis/.test(o.limitePlantilla[0]) && /plan pago/.test(o.limitePlantilla[0]) && o.limitePlantilla[1] === 10, o.limitePlantilla],
   ['una nota compartida solo para ver no se renombra ni deja crear al lado', o.soloVer && o.soloVer[0] === true && /Solo quien creó/.test(o.soloVer[1]) && /solo lectura/.test(o.soloVer[2]) && o.soloVer[3] === 1, o.soloVer],
   ['sin conexión la nota abre desde la copia y lo marca', o.sinConexion && /Suelta/.test(o.sinConexion[0]) && /Sin conexión/.test(o.sinConexion[1]) && /lmd-sync-err/.test(o.sinConexion[2]), o.sinConexion],
   ['lo escrito sin conexión queda en la cola', o.enCola === true],
   ['sin conexión no queda consultando la cuenta en bucle', o.pedidosSinConexion < 10, o.pedidosSinConexion],
-  ['sin conexión el inicio lista las notas con copia', o.inicioSinConexion && o.inicioSinConexion.length === 1 && /copia sin conexión/.test(o.inicioSinConexion[0]), o.inicioSinConexion],
+  ['sin conexión el explorador lista las notas con copia, y la cuenta lo dice', o.inicioSinConexion && o.inicioSinConexion[0].length === 1 && /No hay conexión/.test(o.inicioSinConexion[1]), o.inicioSinConexion],
   ['sin conexión y sin copia, lo dice', /Sin conexión/.test(o.sinCopia || '') && /no tiene copia/.test(o.sinCopia || ''), o.sinCopia],
   ['al volver, lo de la cola se mezcla con lo que cambió en el servidor', o.mezclada && /Suelta cambiada/.test(o.mezclada[0]) && /^# Suelta cambiada/.test(o.mezclada[1]) && /Escrito sin conexión\./.test(o.mezclada[1]) && o.mezclada[2] === false, o.mezclada],
   ['con la nota abierta durante el corte, sube sola al volver', o.enCola2 && o.enCola2[0] === true && /Sin conexión/.test(o.enCola2[1]) && o.subioSola && /Segunda sin conexión\./.test(o.subioSola[0]) && /Escrito sin conexión\./.test(o.subioSola[0]) && o.subioSola[1] === false && /lmd-sync-ok/.test(o.subioSola[2]), [o.enCola2, o.subioSola]],
   ['si la nota cambió en el servidor durante el corte, se mezcla en vez de pisar', o.enCola3 === true && o.mezclaAbierta && /^# Suelta otra vez/.test(o.mezclaAbierta[0]) && /Tercera sin conexión\./.test(o.mezclaAbierta[0]) && /Segunda sin conexión\./.test(o.mezclaAbierta[0]) && /Suelta otra vez/.test(o.mezclaAbierta[1]), [o.enCola3, o.mezclaAbierta]],
   ['la cola de notas cerradas se sube desde el inicio', o.cola && /Agregado sin conexión/.test(o.cola[0]), o.cola],
   ['si las dos ediciones se pisan no se pierde ninguna', o.cola && /editada en otro lado/.test(o.cola[1]) && !/editada sin conexión/.test(o.cola[1]) && o.cola[2] === false && /editada sin conexión/.test(o.cola[3] || ''), o.cola],
-  ['salir saca las notas de la nube del inicio', o.salio === true],
+  ['salir saca las notas de la nube del explorador y deja la invitación a entrar', o.salio === true],
   ['salir borra las copias locales de la cuenta', o.sinCopias === 0, o.sinCopias],
   ['sin sesión no se abre una nota de la nube', /Entrá a tu cuenta/.test(o.sinSesion || ''), o.sinSesion],
-  ['sin errores', errors.length === 0 && !o.excepcion, [errors, o.excepcion]],
+  ['sin errores, y sin cuadros nativos del navegador', errors.length === 0 && !o.excepcion && J(o.nativos) === '[]', [errors, o.excepcion, o.nativos]],
 ];
 console.log('Nube y MCP');
 checks.forEach(([name, ok, detail]) => console.log((ok ? '  ok   ' : '  FALLA ') + name + (ok || detail === undefined ? '' : '  -> ' + J(detail))));

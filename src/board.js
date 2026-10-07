@@ -92,8 +92,10 @@
       else if (t.closest('.lmd-col-add')) { cols.push({ title: T('Columna') + ' ' + (cols.length + 1), cards: [] }); write(w.board); }
       else if (t.closest('.lmd-card-del')) { cols[w.ci].cards.splice(w.ki, 1); write(w.board); }
       else if (t.closest('.lmd-col-del')) {
-        if (cols[w.ci].cards.length && !window.confirm(T('¿Eliminar la columna "{a}" con sus tarjetas?', { a: cols[w.ci].title }))) return;
-        cols.splice(w.ci, 1); write(w.board);
+        // Una columna con tarjetas se confirma antes: se van con ella.
+        const drop = () => { cols.splice(w.ci, 1); write(w.board); };
+        if (!cols[w.ci].cards.length) drop();
+        else LMD.dialog.confirm({ title: T('¿Eliminar la columna "{a}"?', { a: cols[w.ci].title }), text: T('Se eliminan también sus tarjetas.'), ok: T('Eliminar'), danger: true }).then((yes) => { if (yes) drop(); });
       } else if (core.editMode && t.closest('.lmd-card-text') && t.closest('.lmd-card-text').contentEditable !== 'plaintext-only') startEdit(t.closest('.lmd-card-text'));
       else if (core.editMode && t.closest('.lmd-col-title') && t.closest('.lmd-col-title').contentEditable !== 'plaintext-only') { const s = t.closest('.lmd-col-title'); s.contentEditable = 'plaintext-only'; s.focus(); getSelection().selectAllChildren(s); }
     });

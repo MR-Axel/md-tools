@@ -2,6 +2,7 @@
 // Todo contra un servidor local. sharpmd.app (la página de pago) se sirve desde esta carpeta y Paddle es un doble:
 // nada sale a la red, y si algo intentara llegar al servidor de producción la prueba lo cuenta como falla.
 import { chromium } from 'playwright-core';
+import { autoDialogs } from './dialogs.mjs';
 import { spawn } from 'child_process';
 import fs from 'fs'; import os from 'os'; import path from 'path'; import { fileURLToPath, pathToFileURL } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -29,7 +30,7 @@ await ctx.route('https://cdn.paddle.com/**', (r) => r.fulfill({ status: 200, con
 await ctx.route((url) => /(^|\.)(sync\.sharpmd\.app|evil\.example|ejemplo\.test)$/.test(url.hostname), (r) => { outside.push(r.request().url()); return r.abort(); });
 
 const app = await ctx.newPage(); const errors = []; app.on('pageerror', (e) => errors.push(e.message));
-await app.addInitScript(() => { window.confirm = () => true; });
+await app.addInitScript(autoDialogs);
 const sent = []; app.on('request', (r) => { if (r.url().startsWith(base)) sent.push(r.method() + ' ' + new URL(r.url()).pathname); });
 const home = `chrome-extension://${id}/src/app.html`;
 const mail = 'maria.fernandez.lopez.de.la.torre@estudio-ejemplo.com';
@@ -105,9 +106,9 @@ try {
   check('un correo largo no parte la caja en dos renglones', box.oneLine && box.inside && box.title === mail, box);
   check('"Abrir la nube" es la acción principal, "Conectar una IA" la secundaria y "Salir" un enlace', /lmd-btn-fill/.test(box.open) && box.first === 'open' && /lmd-btn/.test(box.ai) && !/lmd-btn-fill/.test(box.ai) && box.out === 'lmd-link', box);
 
-  await Promise.all([app.waitForNavigation(), app.click('[data-cloud=open]')]); await app.waitForSelector('.lmd-draft');
+  await Promise.all([app.waitForNavigation(), app.click('[data-cloud=open]')]); await app.waitForSelector('.lmd-draft'); await app.waitForSelector('.lmd-xroot[data-root=cloud] .lmd-node.lmd-active');
   const firstNote = (await api('GET', '/notes', undefined, session)).json.map((n) => n.path);
-  const empty = await app.evaluate(() => ({ url: location.search, tree: [...document.querySelectorAll('.lmd-pane-files .lmd-node')].map((n) => n.textContent.trim() + (n.classList.contains('lmd-active') ? '*' : '')), shown: !document.querySelector('.lmd-pane-files').hidden && document.querySelector('.lmd-pane-files').getBoundingClientRect().width > 100 }));
+  const empty = await app.evaluate(() => ({ url: location.search, tree: [...document.querySelectorAll('.lmd-xroot[data-root=cloud] .lmd-node')].map((n) => n.textContent.trim() + (n.classList.contains('lmd-active') ? '*' : '')), shown: !document.querySelector('.lmd-pane-files').hidden && document.querySelector('.lmd-pane-files').getBoundingClientRect().width > 100 }));
   check('sin notas, "Abrir la nube" abre la carpeta con la primera lista para escribir', firstNote.length === 1 && /^nota-.*\.md$/.test(firstNote[0]) && /f=cloud%2Fnota-/.test(empty.url) && empty.shown && empty.tree.length === 1 && empty.tree[0] === firstNote[0] + '*', [firstNote, empty]);
 
   console.log('Idioma: Ajustes sin el menú de insertar encima');
@@ -301,19 +302,24 @@ try {
   console.log('Inicio con notas');
   for (let i = 0; i < 10; i++) await api('PUT', '/notes/' + encodeURIComponent('relleno/nota-' + i + '.md'), { text: 'x' }, session);
   await api('PUT', '/notes/' + encodeURIComponent('proyectos/nueva.md'), { text: '# La última que toqué\n' }, session);
-  await app.goto(home); await app.waitForSelector('.lmd-home-item');
-  const recent = await app.evaluate(() => ({ sub: document.querySelector('.lmd-home-acct-who small').textContent, plans: document.querySelectorAll('.lmd-home-cloud [data-cloud=plan]').length, items: [...document.querySelectorAll('.lmd-home-recent li')].map((li) => li.textContent.trim()) }));
+  await app.goto(home); await app.waitForSelector('.lmd-xroot[data-root=cloud] .lmd-node-dir'); await app.waitForSelector('.lmd-home-acct-who small');
+  const recent = await app.evaluate(() => ({ sub: document.querySelector('.lmd-home-acct-who small').textContent, plans: document.querySelectorAll('.lmd-home-cloud [data-cloud=plan]').length, old: document.querySelectorAll('.lmd-home-recent, .lmd-home-item').length,
+    top: [...document.querySelectorAll('.lmd-xroot[data-root=cloud] > .lmd-tree > .lmd-node')].map((n) => n.textContent.trim() + (n.classList.contains('lmd-node-dir') ? '/' : '')) }));
   check('con plan pago el inicio dice cuántas notas y "sin límite"', recent.sub === 'Plan pago · 14 notas, sin límite' && recent.plans === 0, recent.sub);
-  check('las notas de la nube aparecen en Recientes, la más nueva primero, con su carpeta', /^proyectos\/nueva\.md/.test(recent.items[0]) && recent.items.filter((t) => /en la nube$/.test(t)).length === 12, recent.items);
-  check('si no entran todas, una fila lleva al árbol completo', recent.items.some((t) => t === 'Ver las 14 notas de la nube'), recent.items);
-  await Promise.all([app.waitForNavigation(), app.click('.lmd-home-all')]); await app.waitForSelector('.markdown-body h1'); await app.waitForSelector('.lmd-pane-files .lmd-node.lmd-active');
-  const tree = await app.evaluate(() => ({ url: location.search, active: document.querySelector('.lmd-node.lmd-active').textContent.trim(), files: !document.querySelector('.lmd-pane-files').hidden }));
+  check('las notas de la nube están en el explorador, con sus carpetas primero', recent.top.slice(0, 3).join() === 'archivo/,proyectos/,relleno/' && recent.top.length > 3, recent.top);
+  check('el centro ya no repite la lista de recientes', recent.old === 0, recent.old);
+  await app.locator('.lmd-xroot[data-root=cloud] .lmd-node-dir', { hasText: 'relleno' }).click(); await app.waitForSelector('.lmd-xroot[data-root=cloud] .lmd-node-kids .lmd-node');
+  check('una carpeta de la nube se despliega con todas sus notas', (await app.locator('.lmd-xroot[data-root=cloud] .lmd-node-kids a.lmd-node').count()) === 10);
+  await Promise.all([app.waitForNavigation(), app.click('[data-cloud=open]')]); await app.waitForSelector('.markdown-body h1'); await app.waitForSelector('.lmd-pane-files .lmd-node.lmd-active');
+  const tree = await app.evaluate(() => ({ url: location.search, active: document.querySelector('.lmd-node.lmd-active').textContent.trim(), files: document.querySelector('.lmd-pane-files').getBoundingClientRect().height > 60 }));
   check('"Abrir la nube" lleva a la nota más nueva con el árbol a la vista', /f=cloud%2Fproyectos%2Fnueva\.md/.test(tree.url) && tree.active === 'nueva.md' && tree.files, tree);
-  await app.click('.lmd-tree-head .lmd-tree-up:not(.lmd-tree-new):not(.lmd-tree-open)'); await app.waitForSelector('.lmd-node-dir');
-  const folders = await app.evaluate(() => [...document.querySelectorAll('.lmd-tree > .lmd-node-dir')].map((n) => n.textContent.trim()));
+  const folders = await app.evaluate(() => [...document.querySelectorAll('.lmd-xroot[data-root=cloud] > .lmd-tree > .lmd-node-dir')].map((n) => n.textContent.trim()));
   check('desde ahí se ven todas las carpetas', folders.join() === 'archivo,proyectos,relleno', folders);
+  // Con la raíz Nube plegada, "Abrir la carpeta Nube" la vuelve a desplegar.
+  await app.click('.lmd-xroot[data-root=cloud] .lmd-root-tog'); await app.waitForSelector('.lmd-xroot[data-root=cloud].lmd-shut');
   await openSettings('cloud'); await app.waitForSelector('[data-acct=cloud] [data-c=open]'); await app.click('[data-acct=cloud] [data-c=open]'); await app.waitForFunction(() => document.querySelector('.lmd-panel').hidden);
-  check('en una nota de la nube, "Abrir la carpeta Nube" cierra Ajustes y deja el árbol', (await stored('settings')).sidebarTab === 'files');
+  await app.waitForSelector('.lmd-xroot[data-root=cloud]:not(.lmd-shut) .lmd-node.lmd-active');
+  check('en una nota de la nube, "Abrir la carpeta Nube" cierra Ajustes y deja el árbol', !((await stored('side')).shut || {}).cloud);
   await app.goto(home); await app.waitForSelector('[data-cloud=ai]'); await app.click('[data-cloud=ai]'); await app.waitForSelector('.lmd-acct-card [data-c=token]');
   check('"Conectar una IA" del inicio abre el mismo panel', (await app.evaluate(() => document.querySelector('.lmd-acct-card').getAttribute('aria-label') + '|' + document.querySelector('.lmd-acct-card .lmd-field input').value)) === 'Conectar una IA|' + base + '/mcp');
   await app.click('[data-d=close]');

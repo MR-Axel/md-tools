@@ -98,6 +98,7 @@
 `# Reunión:
 
 **Fecha:** {{date}}
+
 **Participantes:**
 
 ## Temas
@@ -114,6 +115,7 @@
 `# Meeting:
 
 **Date:** {{date}}
+
 **Attendees:**
 
 ## Topics
@@ -150,6 +152,7 @@
 `# Título
 
 **Autor:**
+
 **Leído:** {{date}}
 
 ## De qué trata
@@ -166,6 +169,7 @@
 `# Title
 
 **Author:**
+
 **Read:** {{date}}
 
 ## What it is about
@@ -481,6 +485,7 @@ gantt
 `# Incidente del {{date}}
 
 **Qué vio la gente:**
+
 **Cuánto duró:**
 
 ## Línea de tiempo
@@ -498,6 +503,7 @@ gantt
 `# Incident, {{date}}
 
 **What people saw:**
+
 **How long it lasted:**
 
 ## Timeline
@@ -553,6 +559,7 @@ gantt
 `# Error:
 
 **Dónde:**
+
 **Versión:**
 
 ## Pasos
@@ -568,6 +575,7 @@ gantt
 `# Bug:
 
 **Where:**
+
 **Version:**
 
 ## Steps

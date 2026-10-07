@@ -24,7 +24,6 @@
     typewriter: false, // al editar, mantiene el renglón actual a media altura
     refreshInterval: 1000, // ms
     sidebarHidden: false,
-    sidebarTab: 'outline', // outline | files
     sidebarWidth: 300,
     filesOnlyMarkdown: true,
     filesShowHidden: false,
@@ -605,6 +604,58 @@
       "La IA resolvió un comentario": "The AI resolved a comment", "La IA resolvió {n} comentarios": "The AI resolved {n} comments",
       "Ir a esa parte de la nota": "Go to that part of the note", "Ese texto ya no está en la nota": "That text is no longer in the note",
       "Todas las notas": "All notes", "Carpeta {a}": "Folder {a}",
+      "Falta el permiso para abrir \"{a}\".": "Permission to open \"{a}\" is missing.",
+      "No se pudieron guardar los cambios de \"{a}\".": "The changes to \"{a}\" could not be saved.",
+      "Salir sin guardar": "Leave without saving",
+      "Aceptar": "OK",
+      "Escribí un nombre.": "Type a name.",
+      "Arrastrar para cambiar el alto": "Drag to resize",
+      "Crear": "Create",
+      "Crear acá": "Create here",
+      "Abrir otra carpeta o archivo": "Open another folder or file",
+      "Buscar en la nota y en los archivos": "Search this note and your files",
+      "En el disco": "On disk",
+      "En la nube": "In the cloud",
+      "Entrar para ver tus notas": "Sign in to see your notes",
+      "No se pudo leer esta carpeta.": "This folder could not be read.",
+      "Creá una nota con el botón +.": "Create a note with the + button.",
+      "En esta nota": "In this note",
+      "Buscando en los archivos…": "Searching your files…",
+      "Nota en blanco": "Blank note",
+      "Nueva nota": "New note",
+      "Nombre de la nota nueva": "Name of the new note",
+      "Elegí una nota de la izquierda o empezá una nueva.": "Pick a note on the left or start a new one.",
+      "No se pudo crear la carpeta": "The folder could not be created",
+      "Día a día": "Day to day",
+      "Proyectos": "Projects",
+      "Equipo": "Team",
+      "Producto y desarrollo": "Product and development",
+      "Personal": "Personal",
+      "Desde una plantilla": "From a template",
+      "Desde una plantilla…": "From a template…",
+      "Filtrar plantillas": "Filter templates",
+      "Crear nota": "Create note",
+      "Ninguna plantilla coincide.": "No template matches.",
+      "¿Eliminar \"{a}\"?": "Delete \"{a}\"?",
+      "No se puede deshacer.": "This cannot be undone.",
+      "Con \"/\" se mueve a una carpeta": "Use \"/\" to move it into a folder",
+      "¿Subir \"{a}\" a la nube?": "Upload \"{a}\" to the cloud?",
+      "Queda una copia sincronizada; el archivo de acá no se toca.": "A synced copy is kept; the file here is left untouched.",
+      "Subir a la nube": "Upload",
+      "¿Revocar este token?": "Revoke this token?",
+      "La IA que lo usa deja de entrar.": "The AI using it loses access.",
+      "¿Eliminar la columna \"{a}\"?": "Delete the column \"{a}\"?",
+      "Se eliminan también sus tarjetas.": "Its cards are deleted too.",
+      "El contenido no coincide": "The content does not match",
+      "En esa carpeta hay un archivo con el mismo nombre, pero su contenido no coincide con el que tenés abierto.": "That folder has a file with the same name, but its content does not match the one you have open.",
+      "Guardar sobre ese archivo": "Save over that file",
+      "Elegiste otro archivo": "You picked another file",
+      "Elegiste \"{a}\" y el documento abierto es \"{b}\".": "You picked \"{a}\" and the open document is \"{b}\".",
+      "Guardar sobre el archivo elegido": "Save over the picked file",
+      "Nota protegida": "Protected note",
+      "Contraseña": "Password",
+      "Escribí la contraseña.": "Type the password.",
+      "Esa contraseña no coincide.": "That password does not match.",
   };
   let current = 'es';
   function setLang(pref) {
@@ -631,7 +682,7 @@
   const WEB_APP_URL = 'https://sharpmd.app/src/app.html';
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.37.0';
+  const VERSION = '2.38.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
 })(typeof self !== 'undefined' ? self : this);

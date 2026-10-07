@@ -138,7 +138,7 @@ o.menuSeleccion = [await opciones(), await app.evaluate(() => getSelection().toS
 await app.click('.lmd-menu-read [data-read=copy]'); await app.waitForTimeout(150);
 o.copiaSeleccion = await clip();
 await elegir(); await app.click('.lmd-menu-read [data-read=find]'); await app.waitForSelector('.lmd-res-file');
-o.buscar = [await app.inputValue('.lmd-search input'), await app.evaluate(() => document.querySelector('.lmd-tab[data-tab=files]').classList.contains('lmd-active')), await app.locator('.lmd-res-file').count(), await editing()];
+o.buscar = [await app.inputValue('.lmd-search input'), await app.evaluate(() => !document.querySelector('.lmd-results').hidden && document.querySelector('.lmd-results').getBoundingClientRect().height > 20), await app.locator('.lmd-res-file').count(), await editing()];
 await app.fill('.lmd-search input', ''); await app.waitForTimeout(300);
 await elegir(); await app.click('.lmd-menu-read [data-read=edit]'); await app.waitForTimeout(400);
 o.editarAca = [await editing(), await app.evaluate(() => document.activeElement.textContent)];

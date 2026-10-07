@@ -1,11 +1,13 @@
-// Pantalla de inicio de la página propia: abrir un archivo o una carpeta, arrastrar, y los recientes.
+// Estado vacío de la app: lo que se ve en el centro cuando no hay ninguna nota abierta. Desde acá se
+// empieza una nota, se abre un archivo o una carpeta (también arrastrándolos) y se entra a la cuenta.
 (function () {
   'use strict';
 
   const { ICON, el, MD_RE, SKIP_DIRS, validEmail } = LMD.kit;
   const { handlesPut, handlesDelete, rootsAll, notesAll, noteGet, notePut, noteDelete } = LMD.store;
   const T = LMD.t;
-  let ctx = null; // { settings, APP_URL }, lo pasa el lector al llamar
+  let ctx = null; // { settings, APP_URL, box, open(f, opt), refresh(), say(texto) }, lo pasa el lector al llamar
+  let sayNow = null; // cómo mostrar un aviso en el estado vacío que está a la vista
 
   // Qué se puede hacer sin cuenta y qué suma tenerla, en dos renglones. Lo muestran el inicio y Ajustes → Nube.
   const perks = () => '<dl class="lmd-perks">' +
@@ -63,7 +65,7 @@
     return null;
   }
 
-  async function openPicked(handle, say) {
+  async function openPicked(handle, say, opt) {
     let rec = null;
     for (const r of await rootsAll()) {
       try { if (await r.handle.isSameEntry(handle)) { rec = r; break; } } catch (e) { /* permiso vencido */ }
@@ -78,7 +80,7 @@
     }
     rec.last = rec.id + '/' + path;
     await handlesPut(rec);
-    location.href = ctx.APP_URL + '?f=' + encodeURIComponent(rec.last);
+    return ctx.open(rec.last, opt);
   }
 
   // Sin File System Access (Firefox, Safari) el archivo se lee una vez y se guarda en la sesión.
@@ -87,21 +89,39 @@
     if (!file) return;
     try { sessionStorage.setItem('mdt-mem', JSON.stringify({ name: file.name, text: await file.text() })); }
     catch (e) { say(T('No se pudo abrir. Probá de nuevo.')); return; }
-    location.href = ctx.APP_URL + '?f=' + encodeURIComponent('mem/' + encodeURIComponent(file.name));
+    ctx.open('mem/' + encodeURIComponent(file.name));
   }
 
+  // Elegir un archivo o una carpeta del disco. Lo usan el estado vacío y la cabecera del explorador.
+  async function pick(what, say) {
+    try {
+      if (!canPick()) {
+        const input = el('input', { type: 'file', accept: '.md,.markdown,.mdx,.mkd,.mdown,.txt' });
+        input.addEventListener('change', () => openInMemory(input.files[0], say));
+        input.click();
+        return;
+      }
+      if (what === 'dir') await openPicked(await window.showDirectoryPicker({ id: 'lmd-abrir-carpeta', mode: 'readwrite' }), say);
+      else {
+        const picked = await window.showOpenFilePicker({ id: 'lmd-abrir', multiple: false,
+          types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.mkd', '.mdown'] } }] });
+        await openPicked(picked[0], say);
+      }
+    } catch (err) {
+      if (!(err && err.name === 'AbortError')) say(T('No se pudo abrir. Probá de nuevo.'));
+    }
+  }
+
+  let dropBound = false;
   async function home(note) {
-    LMD.theme.themeOnly(ctx.settings);
-    document.title = 'SharpMD';
-    document.body.textContent = '';
-    const box = el('main', { class: 'lmd-home' });
+    const box = ctx.box;
     box.innerHTML =
       '<div class="lmd-home-card">' +
         '<img class="lmd-home-logo" src="' + chrome.runtime.getURL('icons/icon128.png') + '" alt="">' +
-        '<h1>SharpMD</h1>' +
-        '<p class="lmd-home-sub">' + T('Empezá una nota nueva, o abrí un archivo o una carpeta para leerlo y editarlo acá mismo.') + '</p>' +
+        '<p class="lmd-home-sub">' + T('Elegí una nota de la izquierda o empezá una nueva.') + '</p>' +
         '<div class="lmd-home-actions">' +
-          '<button type="button" class="lmd-btn lmd-btn-fill" data-home="new">' + ICON.plus + '<span>' + T('Nuevo archivo') + '</span></button>' +
+          '<button type="button" class="lmd-btn lmd-btn-fill" data-home="new">' + ICON.plus + '<span>' + T('Nueva nota') + '</span></button>' +
+          '<button type="button" class="lmd-btn" data-home="tpl">' + ICON.doc + '<span>' + T('Desde una plantilla') + '</span></button>' +
           '<button type="button" class="lmd-btn" data-home="file">' + ICON.file + '<span>' + T('Abrir archivo') + '</span></button>' +
           (window.showDirectoryPicker ? '<button type="button" class="lmd-btn" data-home="dir">' + ICON.folder + '<span>' + T('Abrir carpeta') + '</span></button>' : '') +
         '</div>' +
@@ -111,17 +131,16 @@
         (window.showDirectoryPicker ? '<p class="lmd-home-notes"></p>' : '') +
         '<div class="lmd-home-cloud" hidden></div>' +
         '<p class="lmd-home-msg" role="status" hidden></p>' +
-        '<div class="lmd-home-recent" hidden><h2>' + T('Recientes') + '</h2><ul></ul></div>' +
       '</div>' +
       '<div class="lmd-home-foot"><button type="button" class="lmd-home-coffee" data-home="feedback">' + T('Enviar comentarios') + '</button>' +
         (window.__MDT_WEB ? '<a class="lmd-home-coffee" href="../?site">' + T('Qué es SharpMD') + '</a>' : '') + '</div>';
-    document.body.appendChild(box);
     const msg = box.querySelector('.lmd-home-msg');
     const say = (text) => { msg.hidden = !text; msg.textContent = text || ''; };
+    sayNow = say;
     if (note) say(note);
     // Lo que los paneles de la cuenta necesitan saber del inicio: adónde vuelve el pago y qué repintar al cerrar.
     const host = {
-      leave: async () => true, back: location.href.split('#')[0], appUrl: ctx.APP_URL, close: () => {}, closed: () => paint(), say,
+      leave: async () => true, back: location.href.split('#')[0], appUrl: ctx.APP_URL, close: () => {}, closed: () => paintCloud(), say,
       unlocked: (a) => { if (a.plan === 'pro' && !ctx.settings.supporter) { ctx.settings.supporter = true; LMD.patch({ supporter: true }); } },
     };
 
@@ -141,7 +160,6 @@
     const cloudBox = box.querySelector('.lmd-home-cloud');
     const errors = AUTH_ERRORS;
     const why = (e) => T(errors[e && e.code] || 'No se pudo completar. Probá de nuevo.');
-    let cloudNotes = []; let cloudMore = 0;
     const paintCloud = async (step, data) => {
       await LMD.cloud.ready();
       cloudBox.hidden = !LMD.cloud.enabled();
@@ -161,20 +179,15 @@
         cloudBox.appendChild(head);
       };
       if (!LMD.cloud.signedIn()) {
-        cloudNotes = []; cloudMore = 0;
         // Sin sesión: qué anda sin cuenta y qué suma tenerla, y debajo el botón o el formulario para entrar.
         cloudBox.innerHTML = perks();
-        if (step === 'email') { const form = el('div', { class: 'lmd-signin' }); cloudBox.appendChild(form); signIn(form, async () => { await paintCloud(); paint(); }); }
+        if (step === 'email') { const form = el('div', { class: 'lmd-signin' }); cloudBox.appendChild(form); signIn(form, async () => { await paintCloud(); ctx.refresh(); }); }
         else row().append(button(T('Crear cuenta o entrar'), 'ask', true));
         return;
       }
       try {
         const a = await LMD.cloud.account();
         host.unlocked(a);
-        cloudNotes = await LMD.cloud.list(true);
-        try { cloudNotes = cloudNotes.concat((await LMD.cloud.shared()).map((n) => ({ path: '~' + n.owner + '/' + n.path, by: n.by, shown: n.path, updated: n.updated }))); } catch (e) { /* sin compartidas */ }
-        cloudNotes.sort((x, y) => (y.updated || 0) - (x.updated || 0)); // las más nuevas primero, propias o compartidas
-        cloudMore = cloudNotes.length;
         const pro = a.plan === 'pro';
         who(T(pro ? 'Plan pago' : 'Plan gratis') + ' · ' + (a.limit ? T('{n} de {m} notas', { n: a.notes, m: a.limit }) : T(a.notes === 1 ? '1 nota, sin límite' : '{n} notas, sin límite', { n: a.notes })), !pro);
         row().append(button(T('Abrir la nube'), 'open', true), button(T('Conectar una IA'), 'ai'));
@@ -182,9 +195,6 @@
       } catch (e) {
         if (!LMD.cloud.signedIn()) return paintCloud();
         who(why(e));
-        // Sin conexión se listan las notas que tienen copia en este navegador: son las que se pueden abrir.
-        if (e.code === 'offline') cloudNotes = (await LMD.cloud.kept()).sort((a, b) => b.updated - a.updated).map((n) => ({ path: n.path, shown: LMD.cloud.split(n.path).path, off: true }));
-        cloudMore = 0;
       }
     };
     cloudBox.addEventListener('click', async (e) => {
@@ -199,7 +209,7 @@
       try {
         if (act === 'ask') await paintCloud('email');
         else if (act === 'start' || act === 'verify') return; // los atiende el formulario
-        else if (act === 'logout') { await LMD.cloud.logout(); await paintCloud(); paint(); }
+        else if (act === 'logout') { await LMD.cloud.logout(); await paintCloud(); ctx.refresh(); }
         else if (act === 'open') LMD.sync.openCloud(Object.assign({}, host, { say: (t) => fail(t) }));
         else if (act === 'ai' || act === 'plan') LMD.sync.dialog(act, host);
       } catch (err) { fail(errors[err && err.code] || 'No se pudo completar. Probá de nuevo.', field('code') || field('email')); }
@@ -212,114 +222,45 @@
     // Vuelta de la página de pago hecha desde acá: el plan, en su ventana, esperando la confirmación.
     if (location.hash === '#lmd-paid') { LMD.sync.dialog('plan', host); LMD.sync.awaitPaid(); }
 
-    const recent = box.querySelector('.lmd-home-recent');
-    const paint = async () => {
-      // Lo escrito sin conexión en notas que ya no están abiertas se sube antes de listar.
-      try { await LMD.cloud.flush(); } catch (e) { /* queda en la cola */ }
-      const recs = (await rootsAll()).slice(0, 8);
-      const notes = (await notesAll()).slice(0, 12);
-      // Con ?login=1 (se llega así desde un archivo abierto directo en el navegador) el correo ya queda pedido.
-      await paintCloud(new URLSearchParams(location.search).has('login') ? 'email' : undefined);
-      recent.hidden = !recs.length && !notes.length && !cloudNotes.length;
-      const ul = recent.querySelector('ul'); ul.textContent = '';
-      cloudNotes.slice(0, 12).forEach((n) => {
-        const li = el('li');
-        const go = el('a', { class: 'lmd-home-item', href: ctx.APP_URL + '?f=' + encodeURIComponent('cloud/' + n.path.split('/').map(encodeURIComponent).join('/')) });
-        go.innerHTML = '<span class="lmd-node-ico">' + ICON.md + '</span><span class="lmd-home-name"></span><span class="lmd-home-path"></span>';
-        go.querySelector('.lmd-home-name').textContent = n.shown || n.path;
-        go.querySelector('.lmd-home-path').textContent = n.by ? T('de {a}', { a: n.by }) : T(n.off ? 'copia sin conexión' : 'en la nube');
-        const del = el('button', { type: 'button', class: 'lmd-home-del', title: T('Eliminar la nota') }, ICON.close);
-        if (n.by || n.off) del.hidden = true;
-        del.addEventListener('click', async () => {
-          if (!window.confirm(T('¿Eliminar "{a}"? No se puede deshacer.', { a: n.path }))) return;
-          try { await LMD.cloud.remove(n.path); } catch (e) { /* queda en la lista */ }
-          paint();
-        });
-        li.append(go, del); ul.appendChild(li);
-      });
-      // Acá entran las doce más nuevas; el resto, con sus carpetas, está en el árbol de la nube.
-      if (cloudMore > 12) {
-        const li = el('li'); const all = el('button', { type: 'button', class: 'lmd-home-item lmd-home-all' }, '<span class="lmd-node-ico">' + ICON.cloud + '</span><span class="lmd-home-name"></span>');
-        all.querySelector('.lmd-home-name').textContent = T('Ver las {n} notas de la nube', { n: cloudMore });
-        all.addEventListener('click', () => LMD.sync.openCloud(host));
-        li.appendChild(all); ul.appendChild(li);
-      }
-      notes.forEach((n) => {
-        const li = el('li');
-        const go = el('a', { class: 'lmd-home-item', href: ctx.APP_URL + '?f=' + encodeURIComponent('local/' + encodeURIComponent(n.name)) });
-        go.innerHTML = '<span class="lmd-node-ico">' + ICON.md + '</span><span class="lmd-home-name"></span><span class="lmd-home-path"></span>';
-        const first = (n.text.split('\n').find((l) => l.trim()) || '').replace(/^#+\s*/, '').slice(0, 60);
-        go.querySelector('.lmd-home-name').textContent = first || n.name;
-        go.querySelector('.lmd-home-path').textContent = T('en este navegador');
-        const del = el('button', { type: 'button', class: 'lmd-home-del', title: T('Eliminar la nota') }, ICON.close);
-        del.addEventListener('click', async () => {
-          if (n.text.trim() && !window.confirm(T('¿Eliminar "{a}"? No se puede deshacer.', { a: first || n.name }))) return;
-          await noteDelete(n.name); paint();
-        });
-        li.append(go, del); ul.appendChild(li);
-      });
-      recs.forEach((r) => {
-        const li = el('li');
-        const go = el('a', { class: 'lmd-home-item', href: ctx.APP_URL + '?f=' + encodeURIComponent(r.last || r.id + '/') });
-        const lastName = decodeURIComponent((r.last || '').split('/').slice(1).join('/'));
-        go.innerHTML = '<span class="lmd-node-ico">' + (r.kind === 'dir' ? ICON.folder : ICON.md) + '</span><span class="lmd-home-name"></span><span class="lmd-home-path"></span>';
-        go.querySelector('.lmd-home-name').textContent = r.name;
-        go.querySelector('.lmd-home-path').textContent = r.kind === 'dir' ? lastName : '';
-        const del = el('button', { type: 'button', class: 'lmd-home-del', title: T('Quitar de la lista') }, ICON.close);
-        del.addEventListener('click', async () => {
-          await handlesDelete(r.key);
-          paint();
-        });
-        li.append(go, del); ul.appendChild(li);
-      });
-    };
-    paint();
+    // Lo escrito sin conexión en notas que ya no están abiertas se sube al entrar. Con ?login=1 (se llega
+    // así desde un archivo abierto directo en el navegador) el correo ya queda pedido.
+    LMD.cloud.flush().catch(() => {}).then(() => paintCloud(new URLSearchParams(location.search).has('login') ? 'email' : undefined));
 
-    box.addEventListener('click', async (e) => {
+    box.onclick = async (e) => {
       const b = e.target.closest('[data-home]'); if (!b) return;
       say('');
       if (b.dataset.home === 'feedback') { LMD.sync.feedback(); return; }
       if (b.dataset.home === 'new') { create(); return; }
+      if (b.dataset.home === 'tpl') { ctx.template(); return; }
       if (b.dataset.home === 'notes') {
-        try { await chooseNotesFolder(); paintNotes(); paint(); } catch (err) { if (!(err && err.name === 'AbortError')) say(T('No se pudo abrir. Probá de nuevo.')); }
+        try { await chooseNotesFolder(); paintNotes(); ctx.refresh(); } catch (err) { if (!(err && err.name === 'AbortError')) say(T('No se pudo abrir. Probá de nuevo.')); }
         return;
       }
-      try {
-        if (!canPick()) {
-          const input = el('input', { type: 'file', accept: '.md,.markdown,.mdx,.mkd,.mdown,.txt' });
-          input.addEventListener('change', () => openInMemory(input.files[0], say));
-          input.click();
-          return;
-        }
-        if (b.dataset.home === 'dir') await openPicked(await window.showDirectoryPicker({ id: 'lmd-abrir-carpeta', mode: 'readwrite' }), say);
-        else {
-          const picked = await window.showOpenFilePicker({ id: 'lmd-abrir', multiple: false,
-            types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.mkd', '.mdown'] } }] });
-          await openPicked(picked[0], say);
-        }
-      } catch (err) {
-        if (!(err && err.name === 'AbortError')) say(T('No se pudo abrir. Probá de nuevo.'));
-      }
-    });
+      pick(b.dataset.home, say);
+    };
     // Soltar un archivo o una carpeta: se toma su permiso en vez de dejar que Chrome navegue.
-    window.addEventListener('dragover', (e) => { e.preventDefault(); box.classList.add('lmd-drop'); });
+    // Vale mientras el estado vacío está a la vista; con una nota abierta, arrastrar es cosa del editor.
+    if (dropBound) return;
+    dropBound = true;
+    const shown = (e) => !box.hidden && Array.from((e.dataTransfer && e.dataTransfer.types) || []).includes('Files');
+    window.addEventListener('dragover', (e) => { if (!shown(e)) return; e.preventDefault(); box.classList.add('lmd-drop'); });
     window.addEventListener('dragleave', (e) => { if (!e.relatedTarget) box.classList.remove('lmd-drop'); });
     window.addEventListener('drop', async (e) => {
+      if (!shown(e)) return;
       e.preventDefault(); box.classList.remove('lmd-drop');
+      const tell = (text) => { if (sayNow) sayNow(text); };
       const item = Array.from(e.dataTransfer.items || []).find((i) => i.kind === 'file');
       if (!item) return;
-      if (!canPick() || !item.getAsFileSystemHandle) { openInMemory(item.getAsFile(), say); return; }
-      try { await openPicked(await item.getAsFileSystemHandle(), say); } catch (err) { say(T('No se pudo abrir. Probá de nuevo.')); }
+      if (!canPick() || !item.getAsFileSystemHandle) { openInMemory(item.getAsFile(), tell); return; }
+      try { await openPicked(await item.getAsFileSystemHandle(), tell); } catch (err) { tell(T('No se pudo abrir. Probá de nuevo.')); }
     });
   }
 
   // Al volver otro día Chrome pide confirmar el acceso, y eso necesita un clic.
   function gate(rec, mode) {
     return new Promise((resolve) => {
-      LMD.theme.themeOnly(ctx.settings);
-      document.title = 'SharpMD';
-      document.body.textContent = '';
-      const box = el('main', { class: 'lmd-home' });
+      const box = ctx.box;
+      box.hidden = false; box.onclick = null; sayNow = null;
       box.innerHTML =
         '<div class="lmd-home-card">' +
           '<img class="lmd-home-logo" src="' + chrome.runtime.getURL('icons/icon128.png') + '" alt="">' +
@@ -327,16 +268,15 @@
           '<p class="lmd-home-sub">' + T('Chrome pide que confirmes el acceso antes de seguir.') + '</p>' +
           '<div class="lmd-home-actions">' +
             '<button type="button" class="lmd-btn lmd-btn-fill" data-gate="ok"><span>' + T('Continuar') + '</span></button>' +
-            '<button type="button" class="lmd-btn" data-gate="no"><span>' + T('Volver al inicio') + '</span></button>' +
+            '<button type="button" class="lmd-btn" data-gate="no"><span>' + T('Cancelar') + '</span></button>' +
           '</div>' +
         '</div>';
       box.querySelector('h1').textContent = rec.name;
-      document.body.appendChild(box);
-      box.addEventListener('click', async (e) => {
+      box.onclick = async (e) => {
         const b = e.target.closest('[data-gate]'); if (!b) return;
         if (b.dataset.gate === 'no') return resolve(false);
         try { if ((await rec.handle.requestPermission({ mode })) === 'granted') resolve(true); } catch (err) { resolve(false); }
-      });
+      };
     });
   }
 
@@ -362,22 +302,27 @@
   // nace en memoria y se elige dónde guardarlo al primer Ctrl+S.
   const stamp = () => { const d = new Date(); const p = (n) => String(n).padStart(2, '0'); return T('nota') + '-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()); };
   // Nota nueva en la nube, con un nombre que no pise a otra. Devuelve su ruta.
-  async function cloudNote(base) {
+  async function cloudNote(base, text) {
     const taken = new Set((await LMD.cloud.list(true)).map((n) => n.path));
     let file = (base || stamp()) + '.md';
     for (let n = 2; n < 50 && taken.has(file); n++) file = (base || stamp()) + '-' + n + '.md';
-    await LMD.cloud.create(file);
+    if (text) await LMD.cloud.write(file, text); else await LMD.cloud.create(file);
     return file;
   }
 
-  async function create() {
-    const base = stamp();
-    const folder = window.showDirectoryPicker ? await notesFolder() : null;
+  // Nota nueva. Va a la carpeta de notas si hay una; si no, a la nube con la cuenta abierta; si no, al navegador.
+  // opt: name y text (para arrancar con contenido), target 'local' (siempre al navegador) y replace.
+  async function create(opt) {
+    opt = opt || {};
+    // Una nota que nace con contenido abre en edición, sin el bloque nuevo que se le ofrece a una vacía.
+    const how = { edit: opt.text ? 'doc' : true, replace: !!opt.replace, tree: true };
+    const base = opt.name || stamp(); const text = opt.text || '';
+    const folder = opt.target !== 'local' && window.showDirectoryPicker ? await notesFolder() : null;
     if (folder) {
       let ok = false;
       try { ok = (await folder.handle.queryPermission({ mode: 'readwrite' })) === 'granted'; } catch (e) { /* se pide abajo */ }
       if (!ok) { try { ok = (await folder.handle.requestPermission({ mode: 'readwrite' })) === 'granted'; } catch (e) { /* hace falta un clic */ } }
-      if (!ok) ok = await gate(folder, 'readwrite');
+      if (!ok && !ctx.box.hidden) ok = await gate(folder, 'readwrite');
       if (ok) {
         try {
           let file = base + '.md';
@@ -385,36 +330,101 @@
             try { await folder.handle.getFileHandle(file); file = base + '-' + n + '.md'; } catch (e) { break; }
           }
           const h = await folder.handle.getFileHandle(file, { create: true });
-          const w = await h.createWritable(); await w.write(''); await w.close();
+          const w = await h.createWritable(); await w.write(text); await w.close();
           folder.last = folder.id + '/' + encodeURIComponent(file); folder.at = Date.now();
           await handlesPut(folder);
-          location.replace(ctx.APP_URL + '?f=' + encodeURIComponent(folder.last) + '&edit=1');
-          return;
+          return ctx.open(folder.last, how);
         } catch (e) { /* la carpeta ya no está: sigue en memoria */ }
       }
     }
     // Con la cuenta abierta, la nota nueva va a la nube.
     await LMD.cloud.ready();
-    if (LMD.cloud.signedIn()) {
+    if (opt.target !== 'local' && LMD.cloud.signedIn()) {
       try {
-        const file = await cloudNote(base);
-        location.replace(ctx.APP_URL + '?f=' + encodeURIComponent('cloud/' + encodeURIComponent(file)) + '&edit=1');
-        return;
-      } catch (e) { /* sin conexión o sin lugar: sigue en el navegador */ }
+        const file = await cloudNote(base, text);
+        return ctx.open('cloud/' + encodeURIComponent(file), how);
+      } catch (e) {
+        // Desde una plantilla se eligió crearla ahí: en el límite del plan gratis se dice, en vez de mandarla a otro lado.
+        if (opt.strict && e && e.code === 'note_limit') { ctx.say(T('Llegaste al límite de notas del plan gratis. El plan pago no tiene límite.')); return false; }
+        /* sin conexión: sigue en el navegador */
+      }
     }
     // Sin carpeta de notas, la nota queda guardada en el navegador y sigue ahí al volver.
     let name = base + '.md';
     for (let n = 2; n < 50 && await noteGet(name); n++) name = base + '-' + n + '.md';
-    await notePut(name, '');
+    await notePut(name, text);
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* el navegador decide */ }
-    location.replace(ctx.APP_URL + '?f=' + encodeURIComponent('local/' + encodeURIComponent(name)) + '&edit=1');
+    return ctx.open('local/' + encodeURIComponent(name), how);
+  }
+
+  // ---------- Desde una plantilla ----------
+  // Los grupos con sus plantillas a la izquierda y, a la derecha, cómo queda la elegida. Se filtra escribiendo,
+  // las flechas recorren la lista y Enter crea. Devuelve { file, text } o null.
+  const plain = (s) => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  function pickTemplate() {
+    return new Promise((resolve) => {
+      const all = LMD.templates.list(); const groups = LMD.templates.groups();
+      const title = T('Desde una plantilla');
+      const box = el('div', { class: 'lmd-ask lmd-tpl' });
+      box.innerHTML = '<div class="lmd-ask-card lmd-tpl-card" role="dialog" aria-modal="true" aria-label="' + title + '"><h3>' + title + '</h3>' +
+        '<div class="lmd-tpl-body"><div class="lmd-tpl-side">' +
+          '<input type="search" class="lmd-lk-q" spellcheck="false" placeholder="' + T('Filtrar plantillas') + '" aria-label="' + T('Filtrar plantillas') + '">' +
+          '<div class="lmd-tpl-list" role="listbox" aria-label="' + title + '"></div></div>' +
+        '<div class="lmd-tpl-prev markdown-body"></div></div>' +
+        '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-tpl="no">' + T('Cancelar') + '</button><button type="button" class="lmd-btn lmd-btn-fill" data-tpl="ok">' + T('Crear nota') + '</button></div></div>';
+      document.body.appendChild(box);
+      const input = box.querySelector('input'); const list = box.querySelector('.lmd-tpl-list'); const prev = box.querySelector('.lmd-tpl-prev'); const ok = box.querySelector('[data-tpl=ok]');
+      let shown = []; let at = ''; let done = false;
+      const close = (value) => { if (done) return; done = true; box.remove(); resolve(value); };
+      const select = (id) => {
+        at = id;
+        list.querySelectorAll('[data-id]').forEach((b) => { const on = b.dataset.id === id; b.classList.toggle('lmd-on', on); b.setAttribute('aria-selected', String(on)); if (on) b.scrollIntoView({ block: 'nearest' }); });
+        const t = id ? LMD.templates.get(id) : null;
+        prev.innerHTML = t ? ctx.preview(t.text) : '';
+        prev.scrollTop = 0; ok.disabled = !t;
+      };
+      const draw = () => {
+        const q = plain(input.value.trim());
+        list.textContent = ''; shown = [];
+        groups.forEach((g) => {
+          const rows = all.filter((t) => t.group === g.id && (!q || plain(t.name).includes(q) || plain(g.name).includes(q)));
+          if (!rows.length) return;
+          list.appendChild(el('p', { class: 'lmd-menu-label', text: g.name }));
+          rows.forEach((t) => { list.appendChild(el('button', { type: 'button', class: 'lmd-lk-row', role: 'option', 'data-id': t.id, text: t.name })); shown.push(t.id); });
+        });
+        if (!shown.length) list.appendChild(el('p', { class: 'lmd-empty', text: T('Ninguna plantilla coincide.') }));
+        select(shown.includes(at) ? at : (shown[0] || ''));
+      };
+      draw(); input.focus();
+      input.addEventListener('input', draw);
+      box.addEventListener('keydown', (e) => {
+        e.stopPropagation(); // los atajos del documento no corren con el selector abierto
+        if (e.key === 'Escape') { e.preventDefault(); close(null); }
+        else if (e.key === 'Enter') { e.preventDefault(); if (at) close(LMD.templates.get(at)); }
+        else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (shown.length) select(shown[(shown.indexOf(at) + (e.key === 'ArrowDown' ? 1 : shown.length - 1)) % shown.length]);
+        }
+      });
+      box.addEventListener('mousedown', (e) => { if (e.target === box) close(null); });
+      box.addEventListener('click', (e) => {
+        const row = e.target.closest('[data-id]'); const b = e.target.closest('[data-tpl]');
+        if (row) { select(row.dataset.id); input.focus(); }
+        else if (b) close(b.dataset.tpl === 'ok' && at ? LMD.templates.get(at) : null);
+      });
+      list.addEventListener('dblclick', (e) => { const row = e.target.closest('[data-id]'); if (row) close(LMD.templates.get(row.dataset.id)); });
+    });
   }
 
   LMD.home = {
-    create: (c) => { ctx = c; create(); },
+    create: (c, opt) => { ctx = c; return create(opt); },
     cloudNote: () => cloudNote(),
-    adopt: (c, handle) => { ctx = c; return openPicked(handle, () => {}); },
+    // Un archivo recién guardado pasa a ser la nota abierta: reemplaza en el historial a la que era.
+    adopt: (c, handle) => { ctx = c; return openPicked(handle, () => {}, { replace: true }); },
     show: (c, note) => { ctx = c; return home(note); },
+    say: (text) => { if (sayNow) sayNow(text); },
+    pick: (c, what) => { ctx = c; return pick(what, c.say); },
+    pickTemplate: (c) => { ctx = c; return pickTemplate(); },
     perks, signIn,
     gate: (c, rec, mode) => { ctx = c; return gate(rec, mode); },
   };

@@ -74,7 +74,12 @@
   // Una pestaña con la nota abierta sostiene 'lmd-open' mientras viva: de subir lo suyo se ocupa ella.
   const lockName = (kind, path) => 'lmd-' + kind + ':' + email + ':' + path;
   const locked = (path, fn) => (navigator.locks ? navigator.locks.request(lockName('sync', path), fn) : fn());
-  const hold = (path) => { if (navigator.locks) navigator.locks.request(lockName('open', path), () => new Promise(() => {})); };
+  // Devuelve cómo soltarla: al pasar a otra nota sin recargar la página, esta deja de estar abierta.
+  const hold = (path) => {
+    let release = () => {};
+    if (navigator.locks) navigator.locks.request(lockName('open', path), () => new Promise((resolve) => { release = resolve; }));
+    return () => release();
+  };
 
   // Junta dos ediciones de la misma nota si tocaron partes distintas. Devuelve null si se pisan.
   function merge3(base, mine, theirs) {

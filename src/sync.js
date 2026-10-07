@@ -41,17 +41,18 @@
   }
 
   const cloudHref = (path) => '?f=' + encodeURIComponent('cloud/' + path.split('/').map(encodeURIComponent).join('/'));
-  const goApp = (query) => { if (core.APP) location.href = core.appUrl + query; else core.openApp(query); };
+  // Abre una nota de la nube: en la app, en el lugar; sobre un archivo abierto directo, en la app.
+  const openNote = (path, opt) => (core.APP ? core.open(core.urlOf(path), opt) : core.openApp(cloudHref(path) + (opt && opt.edit ? '&edit=1' : '')));
 
   async function upload() {
-    if (!window.confirm(T('¿Subir "{a}" a la nube? Queda una copia sincronizada; el archivo de acá no se toca.', { a: core.docName }))) return;
+    if (!(await LMD.dialog.confirm({ title: T('¿Subir "{a}" a la nube?', { a: core.docName }), text: T('Queda una copia sincronizada; el archivo de acá no se toca.'), ok: T('Subir a la nube') }))) return;
     try {
       const taken = new Set((await LMD.cloud.list(true)).map((n) => n.path));
       const dot = core.docName.lastIndexOf('.'); const stem = dot > 0 ? core.docName.slice(0, dot) : core.docName; const ext = dot > 0 ? core.docName.slice(dot) : '.md';
       let path = stem + ext;
       for (let n = 2; n < 50 && taken.has(path); n++) path = stem + '-' + n + ext;
       await LMD.cloud.write(path, core.raw);
-      goApp(cloudHref(path));
+      openNote(path, { tree: true });
     } catch (e) {
       core.flash(T(e.code === 'note_limit' ? 'Llegaste al límite de notas del plan gratis.' : e.code === 'offline' ? 'No hay conexión con el servidor.' : 'No se pudo subir la nota.'), 'error');
     }
@@ -107,13 +108,13 @@
   // Abre la carpeta Nube con el árbol a la vista: la nota más nueva, o la primera si todavía no hay ninguna.
   async function openCloud(host) {
     try {
-      await LMD.patch({ sidebarTab: 'files', sidebarHidden: false });
+      core.showFiles('cloud');
       if (core && isCloud()) { host.close(); return; }
       const rows = await LMD.cloud.list(true);
       const made = rows.length ? null : await LMD.home.cloudNote();
-      await host.leave();
-      const query = cloudHref(made || rows[0].path) + (made ? '&edit=1' : '');
-      if (core && !core.APP) core.openApp(query); else location.href = host.appUrl + query;
+      if (!core.APP) await host.leave();
+      host.close();
+      await openNote(made || rows[0].path, { edit: !!made, tree: true });
     } catch (e) { if (host.say) host.say(T(e.code === 'offline' ? 'No hay conexión con el servidor.' : 'No se pudo completar. Probá de nuevo.')); }
   }
 
@@ -134,7 +135,7 @@
     const askLogin = () => {
       const acts = box.querySelector('.lmd-acct-actions'); if (!acts || LMD.cloud.signedIn()) return;
       const form = el('div', { class: 'lmd-signin' }); acts.replaceWith(form);
-      LMD.home.signIn(form, async () => { account = null; asked = false; paint(); await cloudPane(box, host); });
+      LMD.home.signIn(form, async () => { account = null; asked = false; paint(); if (core.APP) core.reloadTree(); await cloudPane(box, host); });
     };
     if (wantLogin) { wantLogin = false; if (LMD.cloud.enabled() && !host.direct) askLogin(); }
     box.onclick = async (e) => {
@@ -142,7 +143,7 @@
       if (b.dataset.c === 'on') LMD.patch({ cloudUrl: '' });
       else if (b.dataset.c === 'login') { if (host.direct) host.login(); else askLogin(); }
       else if (b.dataset.c === 'open') openCloud(Object.assign({ say: (t) => { const m = box.querySelector('.lmd-acct-msg'); if (m) { m.hidden = false; m.textContent = t; } } }, host));
-      else if (b.dataset.c === 'out') { await LMD.cloud.logout(); account = null; asked = false; paint(); cloudPane(box, host); }
+      else if (b.dataset.c === 'out') { await LMD.cloud.logout(); account = null; asked = false; paint(); if (core.APP) core.reloadTree(); cloudPane(box, host); }
     };
   }
 
@@ -188,7 +189,7 @@
       const rm = e.target.closest('[data-rm]'); const b = e.target.closest('[data-c]');
       const say = (t) => { const m = box.querySelector('.lmd-acct-msg'); if (m) { m.hidden = false; m.textContent = t; } };
       try {
-        if (rm) { if (window.confirm(T('¿Revocar este token? La IA que lo usa deja de entrar.'))) { await LMD.cloud.revoke(rm.dataset.rm); await draw(); } }
+        if (rm) { if (await LMD.dialog.confirm({ title: T('¿Revocar este token?'), text: T('La IA que lo usa deja de entrar.'), ok: T('Revocar'), danger: true })) { await LMD.cloud.revoke(rm.dataset.rm); await draw(); } }
         else if (!b) return;
         else if (b.dataset.c === 'login') goLogin(host);
         else if (b.dataset.c === 'plans') host.tab('plan');
@@ -394,7 +395,7 @@
 
   function click(btn) {
     if (isCloud()) { openMenu(btn); return; }
-    if (LMD.cloud.signedIn()) upload(); else goApp('');
+    if (LMD.cloud.signedIn()) upload(); else if (core.APP) core.openPanel('cloud'); else core.openApp('');
   }
 
   function init(c) {
@@ -403,5 +404,8 @@
     LMD.cloud.ready().then(paint);
   }
 
-  LMD.sync = { init, paint, click, panes, dialog, feedback, awaitPaid, openCloud, quota, PAY, me, foldersOf, account: () => account, why: (text) => { planWhy = text || ''; } };
+  // Entrar a la cuenta desde cualquier lado: Ajustes en Nube, con el correo ya pedido.
+  const login = () => { wantLogin = true; core.openPanel('cloud'); };
+
+  LMD.sync = { init, paint, click, panes, dialog, feedback, awaitPaid, openCloud, quota, PAY, login, me, foldersOf, account: () => account, why: (text) => { planWhy = text || ''; } };
 })();

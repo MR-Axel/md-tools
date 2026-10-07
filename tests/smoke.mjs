@@ -31,7 +31,7 @@ try {
   const page = await ctx.newPage(); watch(page);
   await page.goto(sample); await page.waitForSelector('.markdown-body h1', { timeout: 15000 }); await page.waitForTimeout(4000);
   const doc = await page.evaluate(() => ({
-    title: document.title, h2: document.querySelectorAll('.markdown-body h2').length, diagrams: document.querySelectorAll('.lmd-diagram svg').length,
+    title: document.title, h2: document.querySelectorAll('.markdown-body h2').length, diagrams: document.querySelectorAll('.lmd-diagram > svg').length,
     katex: !!document.querySelector('.katex'), outline: document.querySelectorAll('.lmd-pane-outline a').length, xss: document.title === 'XSS',
     wiki: [...document.querySelectorAll('a.lmd-wiki')].map((a) => (a.getAttribute('href') || '').split('/').pop()),
   }));
@@ -43,9 +43,12 @@ try {
   check('links [[wiki]] resueltos', doc.wiki[0] === 'notes.md' && doc.wiki[2] === '', doc.wiki);
   check('el HTML del documento no ejecuta scripts', !doc.xss);
 
-  await page.click('.lmd-tab[data-tab=files]'); await page.waitForSelector('.lmd-node');
+  await page.waitForSelector('.lmd-node');
   const tree = await page.evaluate(() => [...document.querySelectorAll('.lmd-node')].map((n) => n.textContent.trim() + (n.classList.contains('lmd-active') ? '*' : '')));
   check('árbol de la carpeta', tree.includes('sample.md*') && tree.includes('sub'), tree);
+  // El ejemplo vive dentro del repositorio: el árbol arranca en su raíz (donde está .git), con examples desplegada.
+  const repo = await page.evaluate(() => ({ head: document.querySelector('.lmd-xroot[data-root=disk] .lmd-tree-path').textContent, top: [...document.querySelectorAll('.lmd-xroot > .lmd-tree > .lmd-node')].map((n) => n.textContent.trim()), open: [...document.querySelectorAll('.lmd-node-dir.lmd-open')].map((n) => n.textContent.trim()), where: document.querySelector('.lmd-node.lmd-active .lmd-node-where').title }));
+  check('sobre un archivo del disco el árbol sube hasta la raíz del repositorio', repo.head === path.basename(root) && repo.top.includes('examples') && repo.top.includes('README.md') && repo.open.includes('examples') && repo.where === 'En el disco', repo);
   await page.fill('.lmd-search input', 'SharpMD'); await page.waitForSelector('.lmd-results-sum');
   await page.waitForFunction(() => /\d/.test(document.querySelector('.lmd-results-sum').textContent), null, { timeout: 15000 });
   check('búsqueda en la carpeta', /coincidencia/.test(await page.textContent('.lmd-results-sum')), await page.textContent('.lmd-results-sum'));
@@ -78,7 +81,7 @@ try {
   console.log('Página propia de SharpMD');
   const app = await ctx.newPage(); watch(app);
   await app.goto(`chrome-extension://${id}/src/app.html`); await app.waitForSelector('.lmd-home');
-  check('pantalla de inicio: nuevo, abrir archivo y abrir carpeta', (await app.locator('.lmd-home-actions [data-home]').count()) === 3);
+  check('centro sin nota: nueva nota, desde una plantilla, abrir archivo y abrir carpeta', (await app.evaluate(() => [...document.querySelectorAll('.lmd-home-actions [data-home]')].map((x) => x.dataset.home).join())) === 'new,tpl,file,dir');
   // Carpeta de prueba en el almacenamiento privado del origen; el selector de Windows no se puede automatizar.
   await app.evaluate(async () => {
     const base = await navigator.storage.getDirectory();
@@ -94,14 +97,14 @@ try {
   await app.waitForSelector('.markdown-body h1'); await app.waitForTimeout(4000);
   const opened = await app.evaluate(() => ({
     title: document.title, links: [...document.querySelectorAll('.markdown-body p a')].map((a) => new URL(a.href).search),
-    img: document.querySelector('.markdown-body img').naturalWidth, katex: !!document.querySelector('.katex'), diagrams: document.querySelectorAll('.lmd-diagram svg').length,
+    img: document.querySelector('.markdown-body img').naturalWidth, katex: !!document.querySelector('.katex'), diagrams: document.querySelectorAll('.lmd-diagram > svg').length,
   }));
   check('abre el README de la carpeta', opened.title === 'README.md', opened.title);
   check('links relativos y [[wiki]] pasan por la app', opened.links.length === 2 && opened.links.every((l) => l.startsWith('?f=')) && /sub%2Ftercero\.md$/.test(opened.links[1]), opened.links);
   check('imágenes relativas', opened.img === 40, opened.img);
   check('matemática y diagramas en la app', opened.katex && opened.diagrams === 2, opened);
 
-  await app.click('.lmd-tab[data-tab=files]'); await app.waitForSelector('.lmd-node');
+  await app.waitForSelector('.lmd-node');
   await app.fill('.lmd-search input', 'zanahoria');
   await app.waitForFunction(() => /\d/.test((document.querySelector('.lmd-results-sum') || {}).textContent || ''), null, { timeout: 15000 });
   check('búsqueda en la carpeta de la app', (await app.locator('.lmd-res-file').count()) === 2);
@@ -116,8 +119,11 @@ try {
   await app.click('[data-act=mode-read]'); await app.waitForTimeout(300);
   await Promise.all([app.waitForNavigation(), app.click('.lmd-node:has-text("otro.md")')]); await app.waitForSelector('.markdown-body h1');
   check('navega a otro archivo', (await app.title()) === 'otro.md');
-  await Promise.all([app.waitForNavigation(), app.click('.lmd-tree-open')]); await app.waitForSelector('.lmd-home-item');
-  check('recientes', /notas/.test(await app.textContent('.lmd-home-item')));
+  // Al volver a la app sin nota, la carpeta que se venía usando sigue en el explorador, con sus archivos.
+  await app.goto(`chrome-extension://${id}/src/app.html`); await app.waitForSelector('.lmd-home [data-home=new]'); await app.waitForSelector('.lmd-xroot[data-root=disk] .lmd-node');
+  const back = await app.evaluate(() => ({ head: document.querySelector('.lmd-xroot[data-root=disk] .lmd-tree-path').textContent, files: [...document.querySelectorAll('.lmd-xroot[data-root=disk] .lmd-tree > .lmd-node')].map((n) => n.textContent.trim()), where: [...document.querySelectorAll('.lmd-xroot[data-root=disk] a.lmd-node .lmd-node-where')].map((w) => w.title) }));
+  check('al volver, la carpeta abierta sigue en el explorador', back.head === 'notas' && back.files.includes('otro.md') && back.files.includes('README.md'), back);
+  check('cada archivo dice dónde está guardado', back.where.length >= 2 && back.where.every((t) => t === 'En el disco'), back.where);
 
   const popup = await ctx.newPage(); watch(popup);
   await popup.goto(`chrome-extension://${id}/src/popup.html`); await popup.waitForTimeout(600);
@@ -136,8 +142,9 @@ try {
   const noteUrl = fresh.url();
   await fresh.close();
   const again = await ctx.newPage(); watch(again);
-  await again.goto(`chrome-extension://${id}/src/app.html`); await again.waitForSelector('.lmd-home-item');
-  check('al volver, la nota aparece en el inicio con su título', /Idea/.test(await again.textContent('.lmd-home-item')), await again.textContent('.lmd-home-item'));
+  await again.goto(`chrome-extension://${id}/src/app.html`); await again.waitForSelector('.lmd-xroot[data-root=local] .lmd-node');
+  const listed = await again.evaluate(() => { const n = document.querySelector('.lmd-xroot[data-root=local] .lmd-node'); return [n.textContent.trim(), n.title, n.querySelector('.lmd-node-where').title]; });
+  check('al volver, la nota aparece en el explorador con su título', listed[0] === 'Idea' && /^nota-\d{8}-\d{4}\.md$/.test(listed[1]) && listed[2] === 'En este navegador', listed);
   await again.close();
   fresh = await ctx.newPage(); watch(fresh);
   await fresh.goto(noteUrl); await fresh.waitForSelector('.markdown-body h1');
@@ -176,7 +183,7 @@ try {
   check('la raíz es la página de presentación y lleva a la app', (await web.locator('a.btn.fill[href="src/app.html"]').count()) >= 1 && (await web.locator('img.shot').count()) >= 4);
   await web.goto(origin + '/privacy.html'); check('página de privacidad', /Privac/.test(await web.textContent('h1:visible')));
   await web.goto(origin + '/src/app.html'); await web.waitForSelector('.lmd-home');
-  check('la app web muestra la pantalla de inicio', (await web.locator('.lmd-home-actions [data-home]').count()) === 3);
+  check('la app web muestra el centro con sus cuatro acciones', (await web.locator('.lmd-home-actions [data-home]').count()) === 4);
   await web.evaluate(async () => {
     const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('web', { create: true });
     const h = await dir.getFileHandle('nota.md', { create: true }); const w = await h.createWritable();
@@ -185,7 +192,7 @@ try {
   });
   await Promise.all([web.waitForNavigation(), web.click('[data-home=dir]')]);
   await web.waitForSelector('.markdown-body h1'); await web.waitForTimeout(3500);
-  const w1 = await web.evaluate(() => ({ title: document.title, katex: !!document.querySelector('.katex'), diagrams: document.querySelectorAll('.lmd-diagram svg').length, updates: [...document.querySelectorAll('.lmd-update')].every((n) => n.hidden) }));
+  const w1 = await web.evaluate(() => ({ title: document.title, katex: !!document.querySelector('.katex'), diagrams: document.querySelectorAll('.lmd-diagram > svg').length, updates: [...document.querySelectorAll('.lmd-update')].every((n) => n.hidden) }));
   check('lee una carpeta desde la web', w1.title === 'nota.md' && w1.katex && w1.diagrams === 1, w1);
   await web.click('[data-act=mode-edit]'); await web.waitForTimeout(300);
   await web.locator('.lmd-article p.lmd-editable').first().click(); await web.keyboard.press('End'); await web.keyboard.type(' Editado.'); await web.keyboard.press('Enter'); await web.waitForTimeout(300);
@@ -201,7 +208,7 @@ try {
   const plain = await ctx.newPage(); watch(plain);
   await plain.addInitScript(() => { delete window.showOpenFilePicker; delete window.showDirectoryPicker; Object.defineProperty(window, 'showOpenFilePicker', { value: undefined }); Object.defineProperty(window, 'showDirectoryPicker', { value: undefined }); Object.defineProperty(window, 'showSaveFilePicker', { value: undefined }); });
   await plain.goto(origin + '/src/app.html'); await plain.waitForSelector('.lmd-home');
-  check('sin acceso a archivos no ofrece abrir carpeta', (await plain.locator('.lmd-home-actions [data-home]').count()) === 2 && (await plain.locator('[data-home=dir]').count()) === 0);
+  check('sin acceso a archivos no ofrece abrir carpeta', (await plain.locator('.lmd-home-actions [data-home]').count()) === 3 && (await plain.locator('[data-home=dir]').count()) === 0);
   const [chooser] = await Promise.all([plain.waitForEvent('filechooser'), plain.click('[data-home=file]')]);
   await Promise.all([plain.waitForNavigation(), chooser.setFiles(path.join(root, 'examples', 'demo.md'))]);
   await plain.waitForSelector('.markdown-body h1');
