@@ -1733,3 +1733,60 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
   .lmd-sec-act .lmd-link { min-height: 40px; }
   .lmd-sec-pick .lmd-btn { min-height: 40px; }
 }
+
+/* ---------- Herramienta: modo presentación (present.js) ---------- */
+.lmd-pres { position: fixed; inset: 0; z-index: 90; background: var(--bg); color: var(--fg); font-family: var(--lmd-font); overflow: hidden; outline: none; touch-action: pan-y; }
+.lmd-pres * { box-sizing: border-box; }
+.lmd-presenting, .lmd-presenting body { overflow: hidden !important; }
+.lmd-pres-stage { position: absolute; inset: 0; overflow: hidden; }
+.lmd-pres-slide { position: absolute; left: 50%; top: 50%; display: flex; flex-direction: column; justify-content: center; padding: 56px 72px; font-size: 26px; line-height: 1.45; transform-origin: center; color: var(--fg); text-align: left; }
+.lmd-pres-slide > * { flex: none; max-width: 100%; }
+.lmd-pres-slide > :first-child { margin-top: 0; } .lmd-pres-slide > :last-child { margin-bottom: 0; }
+.lmd-pres-slide h1 { font-size: 2em; border: 0; padding: 0; margin: 0 0 0.5em; }
+.lmd-pres-slide h2 { font-size: 1.6em; border: 0; padding: 0; margin: 0 0 0.6em; }
+.lmd-pres-slide img { max-height: calc(var(--lmd-pres-h, 630px) * 0.7); width: auto; object-fit: contain; }
+.lmd-pres-slide svg { max-width: 100%; height: auto; }
+.lmd-pres-slide table { width: auto; max-width: 100%; }
+.lmd-pres-slide pre { font-size: 0.72em; }
+.lmd-pres-cover { align-items: center; text-align: center; }
+.lmd-pres-cover h1 { font-size: 2.7em; } .lmd-pres-cover h2 { font-size: 2.1em; }
+.lmd-pres-cover p { color: var(--fg-muted); }
+.lmd-pres-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: transparent; pointer-events: none; }
+.lmd-pres-progress i { display: block; height: 100%; background: var(--accent-fill, var(--accent)); opacity: 0.75; transition: width .18s ease-out; }
+.lmd-pres-bar { position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center; gap: 2px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-soft); box-shadow: var(--shadow); transition: opacity .2s; }
+.lmd-pres-bar .lmd-icon-btn[aria-pressed=true] { background: var(--accent-soft); color: var(--accent); }
+.lmd-pres-bar .lmd-icon-btn:disabled { opacity: 0.35; cursor: default; }
+.lmd-pres-bar [data-pres=notes]:not(.lmd-pres-has) { opacity: 0.45; }
+.lmd-pres-count { min-width: 54px; text-align: center; font-size: 12.5px; color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+.lmd-pres-gap { width: 1px; height: 18px; margin: 0 4px; background: var(--line); }
+@media (hover: hover) and (pointer: fine) { .lmd-pres-idle .lmd-pres-bar:not(:hover):not(:focus-within) { opacity: 0; } .lmd-pres-idle { cursor: none; } }
+.lmd-pres-notes { position: absolute; left: 14px; bottom: 14px; max-width: min(46vw, 560px); max-height: 30vh; overflow: auto; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-soft); color: var(--fg); font-size: 14px; line-height: 1.5; white-space: pre-wrap; box-shadow: var(--shadow); }
+.lmd-pres-notes[hidden], .lmd-pres-grid[hidden], .lmd-pres-laser[hidden] { display: none; }
+.lmd-pres-laser { position: absolute; left: -9px; top: -9px; width: 18px; height: 18px; border-radius: 50%; background: #ff2d2d; box-shadow: 0 0 0 4px rgba(255, 45, 45, 0.28), 0 0 18px 6px rgba(255, 45, 45, 0.5); pointer-events: none; z-index: 3; }
+.lmd-pres-lasing, .lmd-pres-lasing .lmd-pres-stage * { cursor: none; }
+.lmd-pres-grid { position: absolute; inset: 0; z-index: 2; overflow: auto; padding: 28px 28px 84px; background: var(--bg-side); display: flex; flex-wrap: wrap; align-content: flex-start; justify-content: center; gap: 18px; }
+.lmd-pres-thumb { position: relative; padding: 0; border: 2px solid var(--line); border-radius: 10px; background: var(--bg); overflow: hidden; cursor: pointer; font: inherit; color: inherit; }
+.lmd-pres-thumb.lmd-on { border-color: var(--accent); }
+.lmd-pres-thumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lmd-pres-thumb-win { position: relative; display: block; overflow: hidden; pointer-events: none; }
+.lmd-pres-thumb-n { position: absolute; left: 6px; bottom: 5px; padding: 0 6px; border-radius: 6px; background: var(--bg-soft); color: var(--fg-muted); font-size: 11.5px; line-height: 18px; }
+.lmd-pres-over .lmd-pres-bar { z-index: 4; opacity: 1; }
+@media (max-width: 760px) {
+  .lmd-pres-slide { padding: 34px 30px; font-size: 24px; }
+  .lmd-pres-bar { left: 8px; right: 8px; bottom: max(8px, env(safe-area-inset-bottom, 0px)); justify-content: space-between; gap: 0; }
+  .lmd-pres-bar [data-pres=laser], .lmd-pres-gap { display: none; }
+  .lmd-pres-notes { left: 8px; right: 8px; bottom: 64px; max-width: none; }
+  .lmd-pres-grid { padding: 14px 10px 84px; gap: 10px; }
+}
+/* El PDF de las diapositivas: fuera de la impresión la copia se mide pero no se ve. */
+.lmd-pres-print { position: absolute; left: 0; top: 0; width: 1280px; visibility: hidden; pointer-events: none; z-index: -1; }
+.lmd-pres-page { position: relative; width: 1280px; height: 720px; overflow: hidden; background: var(--bg); }
+@media print {
+  .lmd-pres { display: none !important; }
+  .lmd-pres-printing body > :not(.lmd-pres-print) { display: none !important; }
+  .lmd-pres-printing .lmd-pres-print { position: static; visibility: visible; }
+  .lmd-pres-printing, .lmd-pres-printing body { background: var(--bg) !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; height: auto !important; }
+  .lmd-pres-page { break-after: page; page-break-after: always; break-inside: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .lmd-pres-page:last-child { break-after: auto; page-break-after: auto; }
+}
+@media not print { .lmd-pres-print { height: 0; overflow: hidden; } }

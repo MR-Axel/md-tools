@@ -1129,6 +1129,13 @@
       "Herramientas": "Tools", "Prendé el Tablero kanban en Ajustes > Herramientas para verlo como tablero": "Turn on Kanban board in Settings > Tools to see it as a board", "Opciones": "Options",
       "Funciones que se suman a la app. Cada una se prende acá.": "Features added to the app. Turn each one on here.",
       "Tablero kanban": "Kanban board", "Un bloque kanban se ve como un tablero con columnas y tarjetas que se arrastran.": "A kanban block shows as a board with columns and cards you can drag.",
+      // Modo presentación (present.js)
+      "Modo presentación": "Presentation mode", "La nota como diapositivas a pantalla completa, una por título.": "The note as full screen slides, one per heading.",
+      "No hay nada para presentar.": "There is nothing to present.", "Presentación": "Presentation", "Presentar": "Present", "Presentar esta nota": "Present this note",
+      "Anterior": "Previous", "Siguiente": "Next", "Vista general": "Overview", "Puntero láser": "Laser pointer", "Notas del orador": "Speaker notes",
+      "Pantalla completa": "Full screen", "Diapositivas en PDF": "Slides as PDF", "Salir de la presentación": "Exit presentation", "Atajo: {a}.": "Shortcut: {a}.",
+      "Una diapositiva por cada título de nivel 1 o 2. Un separador (---) también corta. Una cita [!NOTE] es una nota del orador y no se proyecta.": "One slide per level 1 or 2 heading. A divider (---) also splits. A [!NOTE] quote is a speaker note and is not projected.",
+      "Teclas: flechas o espacio para avanzar, Inicio y Fin, O vista general, F pantalla completa, L puntero, N notas, P PDF, Escape para salir.": "Keys: arrows or space to advance, Home and End, O overview, F full screen, L pointer, N notes, P PDF, Escape to exit.",
       // Leer en voz alta (speak.js)
       "Leer en voz alta": "Read aloud", "Lee la nota con la voz del dispositivo y marca por dónde va.": "Reads the note with the device voice and marks where it is.",
       "Este navegador no tiene voces para leer.": "This browser has no voices to read with.", "Este navegador no tiene voces instaladas para leer.": "This browser has no voices installed to read with.",

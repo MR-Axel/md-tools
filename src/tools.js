@@ -138,4 +138,6 @@
   const redraw = (c, sel) => { if (c && c.ui && c.ui.article && c.ui.article.querySelector(sel) && c.render) c.render(); };
   register({ id: 'kanban', name: 'Tablero kanban', about: 'Un bloque kanban se ve como un tablero con columnas y tarjetas que se arrastran.', icon: LMD.kit.ICON.b_board, defaultOn: true,
     enable: (c) => redraw(c, '.lmd-kanban-off'), disable: (c) => redraw(c, '.lmd-board') });
+  register({ id: 'present', name: 'Modo presentación', about: 'La nota como diapositivas a pantalla completa, una por título.', defaultOn: false, lazy: 'present', module: () => LMD.present,
+    icon: svg('<rect x="3.500" y="4.500" width="17" height="11.500" rx="1.500"/><path d="M12 16v3.500M8.500 19.500h7M10.500 8v4.500l3.800-2.250z"/>') });
 })();
