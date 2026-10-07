@@ -19,6 +19,7 @@
 //   PORTAL_URL      dirección donde quien paga administra su suscripción
 //   FEEDBACK_TO     correo que recibe los comentarios y reportes de error de POST /feedback. Sin esto, responde 404
 //   AUTH_PER_IP     códigos de acceso que una misma IP puede pedir por hora (20). Detrás de un proxy la IP sale de x-forwarded-for
+//   VAULT_MINUTE_MS solo para pruebas: cuántos milisegundos dura un minuto de una carpeta desbloqueada para la IA (60000)
 //   DATA_KEY        32 bytes en base64: con ella, el texto de las notas, del historial y de los comentarios se guarda cifrado
 //                   (AES-256-GCM). Protege el archivo de la base y sus respaldos. Perderla es perder esos datos
 import http from 'node:http';
@@ -41,11 +42,14 @@ const AUTH_PER_IP = +(env.AUTH_PER_IP || 20);
 // Topes por cuenta de lo que no tiene otro límite: nadie llega a estos números usando la app.
 const MAX_TOKENS = 50; const MAX_SHARES = 500; const MAX_LINKS = 200; const MAX_BATCH = 50;
 const LIVE_PER_USER = 20; const LIVE_PER_IP = 60; // conexiones abiertas de /events
+// Cuánto dura un "minuto" de una carpeta desbloqueada para la IA. Solo las pruebas lo acortan, para ver vencer el plazo.
+const VAULT_MINUTE_MS = +(env.VAULT_MINUTE_MS || 60000);
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const db = new DatabaseSync(path.join(DATA_DIR, 'mdtools.db'));
 db.exec(`
   PRAGMA journal_mode = WAL;
+  PRAGMA secure_delete = ON;
   CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, plan TEXT NOT NULL DEFAULT 'free', created INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS codes (email TEXT PRIMARY KEY, hash TEXT NOT NULL, expires INTEGER NOT NULL, tries INTEGER NOT NULL DEFAULT 0, sent INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS sessions (hash TEXT PRIMARY KEY, user INTEGER NOT NULL, created INTEGER NOT NULL, seen INTEGER NOT NULL);
@@ -64,8 +68,13 @@ db.exec('CREATE TABLE IF NOT EXISTS paddle_subs (id TEXT PRIMARY KEY, user INTEG
 db.exec("INSERT OR IGNORE INTO paddle_subs (id, user, status, at) SELECT paddle_sub, id, CASE plan WHEN 'pro' THEN 'active' ELSE 'canceled' END, 0 FROM users WHERE paddle_sub IS NOT NULL AND paddle_sub != ''");
 // Tamaño del texto en claro (LENGTH(text) deja de servir con el texto cifrado) y marca de fila cifrada.
 for (const sql of ['ALTER TABLE notes ADD COLUMN size INTEGER', 'ALTER TABLE notes ADD COLUMN e INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE versions ADD COLUMN size INTEGER',
-  'ALTER TABLE versions ADD COLUMN e INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE comments ADD COLUMN e INTEGER NOT NULL DEFAULT 0']) { try { db.exec(sql); } catch (e) { /* ya estaba */ } }
+  'ALTER TABLE versions ADD COLUMN e INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE comments ADD COLUMN e INTEGER NOT NULL DEFAULT 0',
+  // v: el texto de la nota llegó cifrado desde el navegador (carpeta con contraseña). aad: la ruta a la que quedó atada una versión cifrada.
+  'ALTER TABLE notes ADD COLUMN v INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE versions ADD COLUMN aad TEXT']) { try { db.exec(sql); } catch (e) { /* ya estaba */ } }
 db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+// Carpetas con contraseña. De cada una se guarda con qué se envolvió su llave (sal, vueltas y la llave envuelta) y un
+// valor para comprobar la llave. Nunca la contraseña ni la llave. state: 'on', o 'opening' mientras se le quita la protección.
+db.exec("CREATE TABLE IF NOT EXISTS vaults (id INTEGER PRIMARY KEY, user INTEGER NOT NULL, folder TEXT NOT NULL, salt TEXT NOT NULL, iters INTEGER NOT NULL, wrapped TEXT NOT NULL, verify TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'on', created INTEGER NOT NULL, UNIQUE (user, folder))");
 // Las filas sin tamaño son anteriores a esta columna y están en claro: se mide de una vez, sin traerlas a memoria.
 db.exec('UPDATE notes SET size = LENGTH(text) WHERE size IS NULL AND e = 0');
 db.exec('UPDATE versions SET size = LENGTH(text) WHERE size IS NULL AND e = 0');
@@ -294,13 +303,140 @@ async function feedback(req, body) {
   return { ok: true };
 }
 
+// ---------- Bóvedas: carpetas con contraseña ----------
+// El navegador cifra cada nota de la carpeta antes de subirla y el servidor guarda ese texto tal como llega
+// (empieza con vault1:). La llave nace y vive en el navegador: acá no llega la contraseña, y la llave solo cuando la
+// persona desbloquea la carpeta para la IA, y entonces queda en memoria, nunca en el disco ni en el registro.
+//   - Llave de datos K: 32 bytes al azar. De K salen, con HKDF-SHA-256, la llave de cifrado y el valor de comprobación.
+//   - Cada nota: AES-256-GCM, nonce al azar de 96 bits, y la ruta de la nota como dato asociado: un texto cifrado
+//     puesto en otra ruta no abre.
+//   - La contraseña envuelve a K en el navegador (PBKDF2-SHA-256 y AES-GCM). Acá solo se guarda el resultado.
+// Los nombres de las notas y de las carpetas no se cifran.
+const VAULT = 'vault1:';
+const VAULT_ENC = 'sharpmd vault enc v1'; const VAULT_CHECK = 'sharpmd vault check v1';
+const MAX_VAULTS = 50; const VAULT_MINUTES = [15, 60, 480, 0]; // 0: hasta que se bloquee o se reinicie el servidor
+const inside = (p, folder) => p.startsWith(folder + '/');
+const vaultsOf = (userId) => q('SELECT * FROM vaults WHERE user = ?').all(userId);
+const vaultOf = (userId, p) => vaultsOf(userId).find((v) => inside(p, v.folder)) || null;
+const UNDER = 'substr(path, 1, length(?)) = ?'; // todo lo que está dentro de una carpeta, distinguiendo mayúsculas
+// Base64 de exactamente esa cantidad de bytes, o null.
+const b64 = (v, bytes) => { if (typeof v !== 'string' || !/^[A-Za-z0-9+/]+=*$/.test(v)) return null; const b = Buffer.from(v, 'base64'); return b.length === bytes ? b : null; };
+const hk = (key, info) => Buffer.from(crypto.hkdfSync('sha256', key, Buffer.alloc(0), info, 32));
+// El mismo formato que arma el navegador: vault1: + base64(nonce de 12 bytes | texto cifrado | etiqueta de 16 bytes).
+function vaultSeal(key, p, text) {
+  const iv = crypto.randomBytes(12); const c = crypto.createCipheriv('aes-256-gcm', key, iv); c.setAAD(Buffer.from(p, 'utf8'));
+  const body = Buffer.concat([c.update(String(text), 'utf8'), c.final()]);
+  return VAULT + Buffer.concat([iv, body, c.getAuthTag()]).toString('base64');
+}
+function vaultOpen(key, p, stored) {
+  try {
+    const raw = Buffer.from(String(stored).slice(VAULT.length), 'base64');
+    const d = crypto.createDecipheriv('aes-256-gcm', key, raw.subarray(0, 12)); d.setAAD(Buffer.from(p, 'utf8')); d.setAuthTag(raw.subarray(raw.length - 16));
+    return Buffer.concat([d.update(raw.subarray(12, raw.length - 16)), d.final()]).toString('utf8');
+  } catch (e) { throw new Fail(409, 'vault_unreadable', 'This note could not be decrypted with the key of its folder'); }
+}
+// Una nota pasó de estar en claro a estar cifrada. SQLite pone en cero lo que borra (secure_delete), pero el texto
+// viejo sigue en el WAL hasta que se vacía: se vacía ahora, para que no quede en el disco ni en un respaldo.
+const scrub = () => { try { db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch (e) { /* se vacía en la próxima */ } };
+// Qué texto acepta una ruta: dentro de una carpeta con contraseña solo cifrado, y fuera nunca. Devuelve si es
+// cifrado y cuánto pesa en claro (del cifrado se sabe por su largo: sobran el nonce y la etiqueta, 28 bytes).
+function checkText(userId, p, text) {
+  const sealedIn = text.startsWith(VAULT); const vault = vaultOf(userId, p);
+  if (vault && vault.state === 'on' && !sealedIn) throw new Fail(409, 'vault', 'This folder is protected with a password: its notes must arrive encrypted');
+  if (!sealedIn) { if (Buffer.byteLength(text) > MAX_NOTE) throw new Fail(413, 'too_large'); return { v: 0, size: text.length }; }
+  if (!vault || vault.state !== 'on') throw new Fail(409, 'vault_text', 'Encrypted text only goes inside a folder protected with a password');
+  const body = text.slice(VAULT.length); const size = /^[A-Za-z0-9+/]+=*$/.test(body) ? Buffer.from(body, 'base64').length - 28 : -1;
+  if (size < 0) throw new Fail(400, 'bad_vault_text');
+  if (size > MAX_NOTE) throw new Fail(413, 'too_large');
+  return { v: 1, size };
+}
+
+// Desbloqueada para la IA: la llave de cifrado de la carpeta, solo en memoria y con vencimiento. Bloquear a mano,
+// vencer el plazo o reiniciar el servidor la olvidan. No se guarda K, sino la llave que sale de ella.
+const aiKeys = new Map(); // id de la bóveda → { key, until, timer }
+function aiForget(vault, tell) {
+  const k = aiKeys.get(vault.id); if (!k) return;
+  clearTimeout(k.timer); k.key.fill(0); aiKeys.delete(vault.id);
+  if (tell) announceUser(vault.user, { type: 'vault' });
+}
+const aiKey = (vault) => { const k = aiKeys.get(vault.id); if (!k) return null; if (k.until && k.until <= now()) { aiForget(vault, true); return null; } return k; };
+const vaultView = (v) => { const k = aiKey(v); return { id: v.id, folder: v.folder, salt: v.salt, iters: v.iters, wrapped: v.wrapped, check: v.verify, state: v.state, created: v.created, ai: k ? { until: k.until } : null }; };
+// Al proteger una carpeta se va lo que quedaba en claro o abierto hacia afuera: el historial, los comentarios para
+// la IA (citan el texto), los enlaces públicos y lo compartido.
+function vaultPurge(userId, folder) {
+  const pre = folder + '/';
+  q('DELETE FROM versions WHERE user = ? AND ' + UNDER).run(userId, pre, pre);
+  q('DELETE FROM comments WHERE user = ? AND ' + UNDER).run(userId, pre, pre);
+  q('DELETE FROM links WHERE owner = ? AND ' + UNDER).run(userId, pre, pre);
+  q('DELETE FROM shares WHERE owner = ? AND (path = ? OR ' + UNDER + ')').run(userId, folder, pre, pre);
+}
+function vaultCreate(user, body) {
+  const folder = cleanPath(String(body.folder || '').replace(/\/+$/, ''));
+  if (folder[0] === '~') throw new Fail(400, 'bad_path');
+  const all = vaultsOf(user.id);
+  if (all.length >= MAX_VAULTS) throw new Fail(429, 'too_many');
+  // Una carpeta es bóveda con todo lo que tiene adentro: no va una dentro de otra.
+  if (all.some((v) => v.folder === folder || inside(folder, v.folder) || inside(v.folder, folder))) throw new Fail(409, 'vault_nested', 'Protected folders cannot be nested');
+  const iters = +body.iters;
+  if (!b64(body.salt, 16) || !b64(body.wrapped, 60) || !b64(body.check, 32) || !Number.isInteger(iters) || iters < 100000 || iters > 10000000) throw new Fail(400, 'bad_vault');
+  q('INSERT INTO vaults (user, folder, salt, iters, wrapped, verify, created) VALUES (?, ?, ?, ?, ?, ?, ?)').run(user.id, folder, body.salt, iters, body.wrapped, body.check, now());
+  vaultPurge(user.id, folder);
+  announceUser(user.id, { type: 'vault' });
+  return vaultView(q('SELECT * FROM vaults WHERE user = ? AND folder = ?').get(user.id, folder));
+}
+// Cambiar la contraseña es volver a envolver la misma llave: las notas no se tocan.
+function vaultRewrap(user, v, body) {
+  const iters = +body.iters;
+  if (!b64(body.salt, 16) || !b64(body.wrapped, 60) || !Number.isInteger(iters) || iters < 100000 || iters > 10000000) throw new Fail(400, 'bad_vault');
+  q('UPDATE vaults SET salt = ?, iters = ?, wrapped = ? WHERE id = ?').run(body.salt, iters, body.wrapped, v.id);
+  announceUser(user.id, { type: 'vault' });
+  return vaultView(q('SELECT * FROM vaults WHERE id = ?').get(v.id));
+}
+// Quitar la protección: primero pasa a 'opening' (la carpeta vuelve a aceptar texto en claro y el navegador
+// descifra y vuelve a guardar cada nota) y recién sin notas cifradas adentro se borra.
+function vaultOpening(user, v) {
+  aiForget(v, false);
+  q("UPDATE vaults SET state = 'opening' WHERE id = ?").run(v.id);
+  announceUser(user.id, { type: 'vault' });
+  return vaultView(q('SELECT * FROM vaults WHERE id = ?').get(v.id));
+}
+function vaultRemove(user, v) {
+  const pre = v.folder + '/';
+  if (q('SELECT 1 FROM notes WHERE user = ? AND v = 1 AND ' + UNDER + ' LIMIT 1').get(user.id, pre, pre)) throw new Fail(409, 'vault_not_empty', 'There are still encrypted notes in this folder');
+  aiForget(v, false);
+  q('DELETE FROM versions WHERE user = ? AND ' + UNDER).run(user.id, pre, pre); // el historial cifrado ya no tendría llave
+  q('DELETE FROM vaults WHERE id = ?').run(v.id);
+  announceUser(user.id, { type: 'vault' });
+  return { ok: true };
+}
+// Desbloquear para la IA: llega la llave de datos, se comprueba contra el valor guardado y queda en memoria.
+// Es parte del MCP: plan pago. Diez llaves equivocadas por hora por cuenta.
+function vaultUnlock(user, v, body) {
+  if (!mcpAllowed(user)) throw new Fail(402, 'mcp_needs_plan');
+  if (v.state !== 'on') throw new Fail(409, 'vault', 'This folder is having its protection removed');
+  const minutes = +body.minutes;
+  if (!VAULT_MINUTES.includes(minutes)) throw new Fail(400, 'bad_minutes');
+  limit('vkey:' + user.id, 10, HOUR, 'too_many');
+  const K = b64(body.key, 32);
+  if (!K || !crypto.timingSafeEqual(hk(K, VAULT_CHECK), Buffer.from(v.verify, 'base64'))) { if (K) K.fill(0); mark('vkey:' + user.id); throw new Fail(403, 'bad_key'); }
+  aiForget(v, false);
+  const rec = { key: hk(K, VAULT_ENC), until: minutes ? now() + minutes * VAULT_MINUTE_MS : 0, timer: null };
+  K.fill(0);
+  if (minutes) { rec.timer = setTimeout(() => aiForget(v, true), minutes * VAULT_MINUTE_MS); rec.timer.unref(); }
+  aiKeys.set(v.id, rec);
+  announceUser(user.id, { type: 'vault' });
+  return vaultView(v);
+}
+
 // ---------- Notas ----------
 function cleanPath(v) {
   const p = String(v || '').replace(/\\/g, '/').replace(/^\/+/, '').trim();
   if (!p || p.length > 300 || p.split('/').some((s) => !s || s === '.' || s === '..') || /[\x00-\x1f]/.test(p)) throw new Fail(400, 'bad_path');
   return p;
 }
-const listNotes = (user) => q('SELECT path, updated, size FROM notes WHERE user = ? ORDER BY updated DESC').all(user.id);
+// v marca las notas cuyo texto está cifrado desde el navegador. Dentro de una carpeta con contraseña, una sin esa
+// marca todavía está en claro: el navegador la cifra apenas tiene la llave.
+const listNotes = (user) => q('SELECT path, updated, size, v FROM notes WHERE user = ? ORDER BY updated DESC').all(user.id);
 function readNote(user, p) {
   const n = q('SELECT path, text, updated, e FROM notes WHERE user = ? AND path = ?').get(user.id, cleanPath(p));
   if (!n) throw new Fail(404, 'not_found');
@@ -308,17 +444,19 @@ function readNote(user, p) {
 }
 function writeNote(user, p, text) {
   p = cleanPath(p); text = String(text == null ? '' : text);
-  if (Buffer.byteLength(text) > MAX_NOTE) throw new Fail(413, 'too_large');
-  const row = q('SELECT text, e FROM notes WHERE user = ? AND path = ?').get(user.id, p);
+  const kind = checkText(user.id, p, text);
+  const row = q('SELECT text, e, v, size FROM notes WHERE user = ? AND path = ?').get(user.id, p);
   const prev = row ? { text: unseal(row.text, row.e, 'notes.text') } : null;
   if (!prev && user.plan !== 'pro' && countNotes(user) >= FREE_NOTES) throw new Fail(402, 'note_limit', 'The free plan holds ' + FREE_NOTES + ' notes');
-  // El historial es del plan pago: se guarda la versión anterior si cambió y pasó más de un minuto.
-  if (prev && user.plan === 'pro' && prev.text !== text) {
+  // El historial es del plan pago: se guarda la versión anterior si cambió y pasó más de un minuto. Al cifrar una
+  // nota (o al descifrarla) la versión anterior no se guarda: sería dejar el texto en claro, o uno que ya nadie abre.
+  if (prev && user.plan === 'pro' && prev.text !== text && row.v === kind.v) {
     const last = q('SELECT saved FROM versions WHERE user = ? AND path = ? ORDER BY saved DESC LIMIT 1').get(user.id, p);
-    if (!last || now() - last.saved > 60000) q('INSERT INTO versions (user, path, text, saved, size, e) VALUES (?, ?, ?, ?, ?, ?)').run(user.id, p, seal(prev.text, 'versions.text'), now(), prev.text.length, SEALED);
+    if (!last || now() - last.saved > 60000) q('INSERT INTO versions (user, path, text, saved, size, e, aad) VALUES (?, ?, ?, ?, ?, ?, ?)').run(user.id, p, seal(prev.text, 'versions.text'), now(), row.size == null ? prev.text.length : row.size, SEALED, row.v ? p : null);
   }
-  q('INSERT INTO notes (user, path, text, updated, size, e) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (user, path) DO UPDATE SET text = excluded.text, updated = excluded.updated, size = excluded.size, e = excluded.e').run(user.id, p, seal(text, 'notes.text'), now(), text.length, SEALED);
-  return { path: p, updated: now(), size: text.length };
+  q('INSERT INTO notes (user, path, text, updated, size, e, v) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (user, path) DO UPDATE SET text = excluded.text, updated = excluded.updated, size = excluded.size, e = excluded.e, v = excluded.v').run(user.id, p, seal(text, 'notes.text'), now(), kind.size, SEALED, kind.v);
+  if (row && !row.v && kind.v) scrub();
+  return { path: p, updated: now(), size: kind.size };
 }
 function deleteNote(user, p) {
   const r = q('DELETE FROM notes WHERE user = ? AND path = ?').run(user.id, cleanPath(p));
@@ -329,11 +467,33 @@ function deleteNote(user, p) {
   q("DELETE FROM shares WHERE owner = ? AND path = ? AND kind != 'folder'").run(user.id, cleanPath(p));
   return { ok: true };
 }
-function renameNote(user, from, to) {
+function renameNote(user, from, to, body) {
   from = cleanPath(from); to = cleanPath(to);
   if (q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(user.id, to)) throw new Fail(409, 'exists');
-  const r = q('UPDATE notes SET path = ?, updated = ? WHERE user = ? AND path = ?').run(to, now(), user.id, from);
-  if (!r.changes) throw new Fail(404, 'not_found');
+  const row = q('SELECT v, updated FROM notes WHERE user = ? AND path = ?').get(user.id, from);
+  if (!row) throw new Fail(404, 'not_found');
+  const vf = vaultOf(user.id, from); const vt = vaultOf(user.id, to);
+  if (row.v || vf || vt) {
+    // Entra, sale o se mueve dentro de una carpeta con contraseña: el texto cifrado está atado a su ruta, así que
+    // el navegador manda el texto que corresponde a la ruta nueva (cifrado para adentro, en claro para afuera).
+    // updated es lo que leyó: si la nota cambió mientras tanto, no se pisa.
+    if (!body || body.text == null) throw new Fail(409, 'vault', 'Moving a note into, out of or inside a protected folder needs its text again');
+    if (body.updated != null && +body.updated !== row.updated) throw new Fail(409, 'changed');
+    const text = String(body.text); const kind = checkText(user.id, to, text);
+    q('UPDATE notes SET path = ?, text = ?, size = ?, e = ?, v = ?, updated = ? WHERE user = ? AND path = ?').run(to, seal(text, 'notes.text'), kind.size, SEALED, kind.v, now(), user.id, from);
+    if (!row.v && kind.v) scrub();
+    // Dentro de la misma carpeta el historial sigue a la nota (cada versión recuerda la ruta con la que se cifró).
+    // Al entrar o salir se elimina: quedaría en claro, o cifrado con una llave que la nota ya no usa.
+    if (vf && vt && vf.id === vt.id) q('UPDATE versions SET path = ? WHERE user = ? AND path = ?').run(to, user.id, from);
+    else q('DELETE FROM versions WHERE user = ? AND path = ?').run(user.id, from);
+    if (vt) {
+      q('DELETE FROM comments WHERE user = ? AND path = ?').run(user.id, from);
+      q('DELETE FROM links WHERE owner = ? AND path = ?').run(user.id, from);
+      q("DELETE FROM shares WHERE owner = ? AND path = ? AND kind != 'folder'").run(user.id, from);
+    }
+    return { path: to };
+  }
+  q('UPDATE notes SET path = ?, updated = ? WHERE user = ? AND path = ?').run(to, now(), user.id, from);
   // El historial, lo compartido y los enlaces públicos siguen a la nota.
   q('UPDATE versions SET path = ? WHERE user = ? AND path = ?').run(to, user.id, from);
   q("UPDATE OR REPLACE shares SET path = ? WHERE owner = ? AND path = ? AND kind != 'folder'").run(to, user.id, from);
@@ -341,14 +501,24 @@ function renameNote(user, from, to) {
   q('UPDATE comments SET path = ? WHERE user = ? AND path = ?').run(to, user.id, from);
   return { path: to };
 }
-function searchNotes(user, text) {
+// reach(bóveda) da la llave con la que se puede leer esa carpeta, o nada. Sin reach (la búsqueda de la app) las
+// notas de las carpetas con contraseña quedan afuera. Con reach (la IA), las de una carpeta bloqueada aparecen
+// solo si coincide el nombre, marcadas como bloqueadas y sin texto.
+function searchNotes(user, text, reach) {
   const needle = String(text || '').toLowerCase(); if (!needle) return [];
-  const out = [];
+  const out = []; const vaults = vaultsOf(user.id);
   // De a una nota: traerlas todas juntas ocuparía en memoria la nube entera de la cuenta.
-  for (const n of q('SELECT path, text, e FROM notes WHERE user = ?').iterate(user.id)) {
-    const lines = unseal(n.text, n.e, 'notes.text').split(/\r?\n/); const hits = [];
-    for (let i = 0; i < lines.length && hits.length < 5; i++) if (lines[i].toLowerCase().includes(needle)) hits.push({ line: i + 1, text: lines[i].trim().slice(0, 240) });
-    if (hits.length || n.path.toLowerCase().includes(needle)) out.push({ path: n.path, hits });
+  for (const n of q('SELECT path, text, e, v FROM notes WHERE user = ?').iterate(user.id)) {
+    const vault = vaults.find((x) => inside(n.path, x.folder)); let body = null;
+    if (!vault && !n.v) body = unseal(n.text, n.e, 'notes.text');
+    else {
+      if (!reach) continue;
+      const key = vault && n.v ? reach(vault) : null;
+      if (key) { try { body = vaultOpen(key, n.path, unseal(n.text, n.e, 'notes.text')); } catch (e) { body = null; } }
+    }
+    const hits = [];
+    if (body != null) { const lines = body.split(/\r?\n/); for (let i = 0; i < lines.length && hits.length < 5; i++) if (lines[i].toLowerCase().includes(needle)) hits.push({ line: i + 1, text: lines[i].trim().slice(0, 240) }); }
+    if (hits.length || n.path.toLowerCase().includes(needle)) out.push(body == null ? { path: n.path, hits, locked: true } : { path: n.path, hits });
     if (out.length >= 30) break;
   }
   return out;
@@ -359,6 +529,8 @@ function searchNotes(user, text) {
 const covers = (share, p) => (share.kind === 'folder' ? p.startsWith(share.path + '/') : p === share.path);
 function roleOn(user, ownerId, p) {
   if (ownerId === user.id) return 'owner';
+  // Lo que está en una carpeta con contraseña no se comparte: ni por haberla compartido antes, ni por una carpeta de más arriba.
+  if (vaultOf(ownerId, p)) return null;
   const hit = q('SELECT path, kind, role FROM shares WHERE owner = ? AND email = ?').all(ownerId, user.email).filter((s) => covers(s, p));
   if (!hit.length) return null;
   return hit.some((s) => s.role === 'edit') ? 'edit' : 'view';
@@ -376,7 +548,7 @@ function sharedWith(user) {
     const notes = s.kind === 'folder' ? q("SELECT path, updated, size FROM notes WHERE user = ? AND path LIKE ? ESCAPE '!'").all(s.owner, s.path.replace(/[!%_]/g, '!$&') + '/%')
       : q('SELECT path, updated, size FROM notes WHERE user = ? AND path = ?').all(s.owner, s.path);
     // LIKE no distingue mayúsculas: sin este filtro, compartir "Proy" listaría también lo de "proy".
-    for (const n of notes) { const key = s.owner + ':' + n.path; if (seen.has(key) || !covers(s, n.path)) continue; seen.add(key); out.push({ owner: s.owner, by: s.by, path: n.path, updated: n.updated, size: n.size, role: roleOn(user, s.owner, n.path) }); }
+    for (const n of notes) { const key = s.owner + ':' + n.path; if (seen.has(key) || !covers(s, n.path) || vaultOf(s.owner, n.path)) continue; seen.add(key); out.push({ owner: s.owner, by: s.by, path: n.path, updated: n.updated, size: n.size, role: roleOn(user, s.owner, n.path) }); }
   }
   return out.sort((a, b) => b.updated - a.updated);
 }
@@ -385,6 +557,7 @@ function addShare(user, body) {
   const p = cleanPath(body.path); const email = cleanEmail(body.email);
   const kind = body.kind === 'folder' ? 'folder' : 'note'; const role = body.role === 'edit' ? 'edit' : 'view';
   if (email === user.email) throw new Fail(400, 'own_email');
+  if (vaultsOf(user.id).some((v) => p === v.folder || inside(p, v.folder))) throw new Fail(409, 'vault', 'A folder protected with a password cannot be shared');
   if (kind === 'note' && !q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(user.id, p)) throw new Fail(404, 'not_found');
   if (q('SELECT COUNT(*) AS n FROM shares WHERE owner = ?').get(user.id).n >= MAX_SHARES) throw new Fail(429, 'too_many');
   q('INSERT INTO shares (owner, path, kind, email, role, created) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (owner, path, email) DO UPDATE SET role = excluded.role, kind = excluded.kind').run(user.id, p, kind, email, role, now());
@@ -396,6 +569,7 @@ const passHash = (pass, salt) => crypto.scryptSync(String(pass), salt, 32).toStr
 function addLink(user, body) {
   if (!shareAllowed(user)) throw new Fail(402, 'share_needs_plan');
   const p = cleanPath(body.path);
+  if (vaultOf(user.id, p)) throw new Fail(409, 'vault', 'A note in a folder protected with a password cannot have a public link');
   if (!q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(user.id, p)) throw new Fail(404, 'not_found');
   if (q('SELECT COUNT(*) AS n FROM links WHERE owner = ?').get(user.id).n >= MAX_LINKS) throw new Fail(429, 'too_many');
   if (body.password != null && String(body.password).length > 200) throw new Fail(400, 'bad_password');
@@ -420,8 +594,9 @@ function publicNote(token, password) {
     }
     if (link.fails) q('UPDATE links SET fails = 0 WHERE id = ?').run(link.id);
   }
-  const n = q('SELECT path, text, updated, e FROM notes WHERE user = ? AND path = ?').get(link.owner, link.path);
-  if (!n) throw new Fail(404, 'not_found');
+  const n = q('SELECT path, text, updated, e, v FROM notes WHERE user = ? AND path = ?').get(link.owner, link.path);
+  // Un enlace nunca muestra una nota de una carpeta con contraseña, ni siquiera su texto cifrado.
+  if (!n || n.v || vaultOf(link.owner, link.path)) throw new Fail(404, 'not_found');
   // Hacia afuera va el nombre de la nota, no en qué carpetas la guarda su dueño.
   return { path: n.path.split('/').pop(), text: unseal(n.text, n.e, 'notes.text'), updated: n.updated };
 }
@@ -435,6 +610,8 @@ function announce(key, event, skip) {
   const who = Array.from(new Set(Array.from(room).map((c) => c.email)));
   for (const c of room) if (c !== skip && !c.res.destroyed) c.res.write('data: ' + JSON.stringify(Object.assign({ who }, event)) + '\n\n');
 }
+// Un aviso para todas las notas abiertas de una cuenta: por ejemplo, que cambió el estado de una carpeta con contraseña.
+function announceUser(userId, event) { for (const key of rooms.keys()) if (key.startsWith(userId + ':')) announce(key, event); }
 // Cada conexión abierta ocupa memoria y un descriptor: hay un tope por cuenta y otro por IP.
 const live = new Map();
 const liveAdd = (key, d) => { const n = (live.get(key) || 0) + d; if (n > 0) live.set(key, n); else live.delete(key); };
@@ -459,7 +636,10 @@ function listen(req, res, user, url) {
 // Quedan pendientes hasta que la IA los lee con list_comments y los cierra con resolve_comment.
 function addComment(user, body) {
   if (!mcpAllowed(user)) throw new Fail(402, 'mcp_needs_plan');
-  const p = cleanPath(body.path); readNote(user, p);
+  const p = cleanPath(body.path);
+  // Un comentario cita el texto de la nota: en una carpeta con contraseña quedaría en claro en el servidor.
+  if (vaultOf(user.id, p)) throw new Fail(409, 'vault', 'Notes in a folder protected with a password do not take comments for the AI');
+  readNote(user, p);
   const text = String(body.text == null ? '' : body.text).trim(); const quote = String(body.quote == null ? '' : body.quote).trim().slice(0, 2000);
   if (!text || text.length > 2000) throw new Fail(400, 'bad_text');
   if (q("SELECT COUNT(*) AS n FROM comments WHERE user = ? AND status = 'open'").get(user.id).n >= 200) throw new Fail(429, 'too_many');
@@ -486,24 +666,59 @@ const TOOLS = [
   { name: 'resolve_comment', description: 'Mark a comment as done after making the change it asks for with write_note. Add a short reply saying what you changed.', inputSchema: { type: 'object', properties: { id: { type: 'number' }, reply: { type: 'string', description: 'One or two sentences on what was changed' } }, required: ['id'] } },
 ];
 
+// Lo que la IA lee cuando pide algo de una carpeta bloqueada: qué pasa y cómo lo resuelve la persona.
+const LOCKED = (folder) => 'The folder "' + folder + '" is protected with a password and is locked, so its notes cannot be read, searched or changed right now. The person can unlock it for the AI from SharpMD: right-click the folder, then "Unlock for the AI". Ask them to do that, then try again.';
+// La llave con la que este token puede usar una carpeta con contraseña, o null. Hace falta que la persona la haya
+// desbloqueado para la IA y que la carpeta entera esté dentro del alcance del token.
+const aiReach = (user, vault) => { const k = vault.state === 'on' && within(user, vault.folder) ? aiKey(vault) : null; return k ? k.key : null; };
+// Para una ruta: null si no está en una carpeta con contraseña, la llave si está desbloqueada, o el aviso para la IA.
+function vaultGate(user, p) {
+  const vault = vaultOf(user.id, p); if (!vault) return null;
+  const key = aiReach(user, vault);
+  if (!key) throw new Fail(423, 'vault_locked', LOCKED(vault.folder));
+  return key;
+}
+
 function callTool(user, name, args) {
   args = args || {};
+  const vaults = vaultsOf(user.id);
+  const tag = (p) => { const v = vaults.find((x) => p === x.folder || inside(p, x.folder)); return v ? { protected: true, locked: !aiReach(user, v) } : {}; };
   const mine = () => listNotes(user).filter((n) => within(user, n.path));
-  if (name === 'list_notes') return mine().filter((n) => inFolder(n.path, args.folder && cleanPath(args.folder))).map((n) => ({ path: n.path, updated: new Date(n.updated).toISOString(), size: n.size }));
+  if (name === 'list_notes') return mine().filter((n) => inFolder(n.path, args.folder && cleanPath(args.folder))).map((n) => Object.assign({ path: n.path, updated: new Date(n.updated).toISOString(), size: n.size }, tag(n.path)));
   if (name === 'list_folders') {
     const count = new Map();
     for (const n of mine()) { const parts = n.path.split('/'); for (let i = 1; i < parts.length; i++) { const f = parts.slice(0, i).join('/'); count.set(f, (count.get(f) || 0) + 1); } }
-    return [...count].sort((a, b) => a[0].localeCompare(b[0])).map(([folder, notes]) => ({ folder, notes }));
+    // Una carpeta con contraseña figura aunque esté vacía.
+    for (const v of vaults) if (within(user, v.folder) && !count.has(v.folder)) count.set(v.folder, 0);
+    return [...count].sort((a, b) => a[0].localeCompare(b[0])).map(([folder, notes]) => Object.assign({ folder, notes }, tag(folder)));
   }
-  if (name === 'read_note') return readNote(user, scoped(user, args.path)).text;
-  if (name === 'write_note') { const r = writeNote(user, scoped(user, args.path), args.text); return 'Saved ' + r.path + ' (' + r.size + ' characters).'; }
+  // Dentro de una carpeta desbloqueada para la IA se lee descifrando y se escribe cifrando, con el mismo formato
+  // que usa el navegador. Una nota que el navegador todavía no cifró no se entrega.
+  const read = (p, key) => {
+    const n = readNote(user, p);
+    if (!key) return n.text;
+    if (!n.text.startsWith(VAULT)) throw new Fail(423, 'vault_locked', 'This note is still being encrypted by SharpMD. Try again in a moment.');
+    return vaultOpen(key, p, n.text);
+  };
+  const write = (p, key, text) => {
+    text = String(text == null ? '' : text);
+    if (key && Buffer.byteLength(text) > MAX_NOTE) throw new Fail(413, 'too_large');
+    return writeNote(user, p, key ? vaultSeal(key, p, text) : text);
+  };
+  if (name === 'read_note') { const p = scoped(user, args.path); return read(p, vaultGate(user, p)); }
+  if (name === 'write_note') { const p = scoped(user, args.path); const r = write(p, vaultGate(user, p), args.text); return 'Saved ' + r.path + ' (' + String(args.text == null ? '' : args.text).length + ' characters).'; }
   if (name === 'append_note') {
-    const p = scoped(user, args.path); let prev = '';
-    try { prev = readNote(user, p).text; } catch (e) { if (e.code !== 'not_found') throw e; }
-    const r = writeNote(user, p, prev + (prev && !prev.endsWith('\n') ? '\n' : '') + (prev ? '\n' : '') + String(args.text || ''));
+    const p = scoped(user, args.path); const key = vaultGate(user, p); let prev = '';
+    try { prev = read(p, key); } catch (e) { if (e.code !== 'not_found') throw e; }
+    const r = write(p, key, prev + (prev && !prev.endsWith('\n') ? '\n' : '') + (prev ? '\n' : '') + String(args.text || ''));
     return 'Appended to ' + r.path + '.';
   }
-  if (name === 'search_notes') return searchNotes(user, args.query).filter((r) => within(user, r.path));
+  if (name === 'search_notes') {
+    const results = searchNotes(user, args.query, (v) => aiReach(user, v)).filter((r) => within(user, r.path));
+    // Si quedó alguna carpeta bloqueada al alcance del token, se dice: lo que hay adentro no se buscó.
+    const shut = vaults.filter((v) => !aiReach(user, v) && (within(user, v.folder) || inside(user.scope, v.folder) || user.scope === v.folder)).map((v) => v.folder);
+    return shut.length ? { results, locked_folders: shut, note: 'The notes inside locked folders were not searched. ' + LOCKED(shut[0]) } : results;
+  }
   if (name === 'list_comments') return listComments(user, args.path ? scoped(user, args.path) : '', false).filter((c) => within(user, c.path)).map((c) => ({ id: c.id, path: c.path, quote: c.quote, comment: c.text, created: new Date(c.created).toISOString() }));
   if (name === 'resolve_comment') {
     const c = q('SELECT id, path, e FROM comments WHERE id = ? AND user = ?').get(+args.id, user.id);
@@ -521,7 +736,7 @@ function mcp(user, msg) {
   if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } };
   const reply = (result) => ({ jsonrpc: '2.0', id: msg.id, result });
   if (msg.method === 'initialize') return reply({ protocolVersion: (msg.params && msg.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'sharpmd', version: '1.0.0' },
-    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with write_note, then resolve_comment.' });
+    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with write_note, then resolve_comment. A folder marked as protected and locked is encrypted with a password: you cannot read it until the person unlocks it for the AI from SharpMD.' });
   if (msg.method === 'ping') return reply({});
   if (msg.method === 'tools/list') return reply({ tools: TOOLS });
   if (msg.method === 'tools/call') {
@@ -646,6 +861,18 @@ async function route(req, url) {
   if (p === '/links' && m === 'POST') return addLink(user, await readBody(req));
   if (p.startsWith('/links/') && m === 'DELETE') { q('DELETE FROM links WHERE id = ? AND owner = ?').run(+p.slice(7), user.id); return { ok: true }; }
   if (p === '/account' && m === 'GET') return account(user);
+  if (p === '/vaults' && m === 'GET') return vaultsOf(user.id).map(vaultView);
+  if (p === '/vaults' && m === 'POST') return vaultCreate(user, await readBody(req));
+  const vm = /^\/vaults\/(\d+)(?:\/(unlock|lock|open))?$/.exec(p);
+  if (vm) {
+    const v = q('SELECT * FROM vaults WHERE id = ? AND user = ?').get(+vm[1], user.id);
+    if (!v) throw new Fail(404, 'not_found');
+    if (!vm[2] && m === 'PUT') return vaultRewrap(user, v, await readBody(req));
+    if (!vm[2] && m === 'DELETE') return vaultRemove(user, v);
+    if (vm[2] === 'unlock' && m === 'POST') return vaultUnlock(user, v, await readBody(req));
+    if (vm[2] === 'lock' && m === 'POST') { aiForget(v, true); return vaultView(v); }
+    if (vm[2] === 'open' && m === 'POST') return vaultOpening(user, v);
+  }
   if (p === '/auth/logout' && m === 'POST') { q('DELETE FROM sessions WHERE hash = ?').run(sha(req.headers.authorization.split(/\s+/)[1])); return { ok: true }; }
   if (p === '/tokens' && m === 'GET') return q('SELECT id, name, scope, created, used FROM tokens WHERE user = ? ORDER BY created DESC').all(user.id);
   if (p === '/comments' && m === 'GET') return listComments(user, url.searchParams.get('path') || '', url.searchParams.get('all') === '1');
@@ -662,11 +889,11 @@ async function route(req, url) {
   if (p.startsWith('/tokens/') && m === 'DELETE') { q('DELETE FROM tokens WHERE id = ? AND user = ?').run(+p.slice(8), user.id); return { ok: true }; }
   if (p === '/notes' && m === 'GET') {
     const oid = +(url.searchParams.get('o') || user.id);
-    if (oid === user.id) return listNotes(user);
+    if (oid === user.id) return listNotes(user).map((n) => (n.v ? n : { path: n.path, updated: n.updated, size: n.size }));
     return sharedWith(user).filter((n) => n.owner === oid).map((n) => ({ path: n.path, updated: n.updated, size: n.size }));
   }
   if (p === '/search' && m === 'GET') return searchNotes(user, url.searchParams.get('q'));
-  if (p === '/rename' && m === 'POST') { const b = await readBody(req); return renameNote(user, b.from, b.to); }
+  if (p === '/rename' && m === 'POST') { const b = await readBody(req); return renameNote(user, b.from, b.to, b); }
   if (p.startsWith('/notes/')) {
     const note = dec(p.slice(7));
     const clean = cleanPath(note);
@@ -681,9 +908,10 @@ async function route(req, url) {
   }
   if (p.startsWith('/versions/') && m === 'GET') return q('SELECT id, saved, size FROM versions WHERE user = ? AND path = ? ORDER BY saved DESC LIMIT 100').all(user.id, cleanPath(dec(p.slice(10))));
   if (p.startsWith('/version/') && m === 'GET') {
-    const v = q('SELECT id, path, text, saved, e FROM versions WHERE id = ? AND user = ?').get(+p.slice(9), user.id);
+    const v = q('SELECT id, path, text, saved, e, aad FROM versions WHERE id = ? AND user = ?').get(+p.slice(9), user.id);
     if (!v) throw new Fail(404, 'not_found');
-    return { id: v.id, path: v.path, text: unseal(v.text, v.e, 'versions.text'), saved: v.saved };
+    // aad: en una versión cifrada desde el navegador, la ruta con la que se cifró (la nota pudo cambiar de nombre).
+    return Object.assign({ id: v.id, path: v.path, text: unseal(v.text, v.e, 'versions.text'), saved: v.saved }, v.aad ? { aad: v.aad } : {});
   }
   throw new Fail(404, 'no_route');
 }

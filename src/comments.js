@@ -16,6 +16,7 @@
   // '' no se ofrece (no es una nota propia de la nube, o no se sabe el plan), 'plan' falta el plan pago, 'on' anda.
   function mode() {
     if (!cur || !core.blocks) return '';
+    if (cur.vault) return 'vault'; // carpeta protegida: el servidor no puede leer la nota, así que no hay comentarios
     const a = LMD.sync.account();
     return a ? (a.mcp ? 'on' : 'plan') : '';
   }
@@ -98,6 +99,7 @@
   // ---------- Dejar un comentario ----------
   function compose(block, picked) {
     const m = mode(); if (!m) return;
+    if (m === 'vault') { LMD.vault.explain(); return; }
     if (m === 'plan') { needsPlan(); return; }
     const mine = cur;
     // Se cita lo elegido; sin nada elegido, el bloque, recortado.
@@ -169,6 +171,7 @@
   function closeList() { if (dlg) { dlg.remove(); dlg = null; } }
   function list() {
     const m = mode(); if (!m) return;
+    if (m === 'vault') { LMD.vault.explain(); return; }
     if (m === 'plan') { needsPlan(); return; }
     closePop(); closeList();
     const title = T('Comentarios para la IA');
@@ -213,7 +216,7 @@
     detach();
     const root = core.appRoot;
     if (!root || root.kind !== 'cloud' || !path || LMD.cloud.split(path).owner) return Promise.resolve();
-    const mine = cur = { path, items: [] };
+    const mine = cur = { path, items: [], vault: !!LMD.vault.of(path) };
     return LMD.sync.me().then(() => (cur === mine ? load() : null));
   }
   // Suelta todo lo de la nota en curso: marcas, cuadros abiertos y la lista en memoria.

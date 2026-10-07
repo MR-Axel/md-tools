@@ -114,6 +114,11 @@
         // La nube guarda rutas completas: las carpetas se deducen de ellas.
         const parts = vParts(dirUrl); const other = parts.length && parts[0][0] === '~' ? parts.shift().slice(1) : '';
         const prefix = parts.map((p) => p + '/').join(''); const rows = []; const seen = new Set();
+        // Carpetas con contraseña: una bloqueada no muestra lo que tiene adentro, ni al explorador ni a la búsqueda.
+        let vaults = [];
+        if (!other) { try { vaults = await LMD.vault.load(); } catch (e) { /* sin la lista, se dibuja como siempre */ } }
+        const at = prefix.slice(0, -1);
+        if (vaults.some((v) => (at === v.folder || at.startsWith(v.folder + '/')) && !LMD.vault.isOpen(v))) return [];
         (await LMD.cloud.list(false, other)).forEach((n) => {
           if (!n.path.startsWith(prefix)) return;
           const rest = n.path.slice(prefix.length); const cut = rest.indexOf('/');
@@ -121,6 +126,13 @@
           if (seen.has(name)) return; seen.add(name);
           rows.push({ name, url: dirUrl + encodeURIComponent(name) + (cut < 0 ? '' : '/'), dir: cut >= 0 });
         });
+        // Una carpeta protegida figura aunque esté vacía, y lleva su estado para dibujar el candado.
+        vaults.forEach((v) => {
+          if (!(v.folder + '/').startsWith(prefix)) return;
+          const name = v.folder.slice(prefix.length).split('/')[0];
+          if (name && !seen.has(name)) { seen.add(name); rows.push({ name, url: dirUrl + encodeURIComponent(name) + '/', dir: true }); }
+        });
+        rows.forEach((r) => { if (r.dir) r.vault = vaults.find((v) => v.folder === prefix + r.name) || null; });
         // Arriba de todo, una carpeta por cada persona que compartió notas con esta cuenta.
         if (!parts.length && !other) {
           try { (await LMD.cloud.shared()).forEach((n) => { if (seen.has('~' + n.owner)) return; seen.add('~' + n.owner); rows.push({ name: '~' + n.owner, label: n.by, url: dirUrl + '~' + n.owner + '/', dir: true }); }); } catch (e) { /* sin compartidas */ }
@@ -664,6 +676,7 @@
     ui.sync = ui.main.querySelector('.lmd-sync');
     LMD.sync.init(core);
     LMD.comments.init(core);
+    LMD.vault.init(core);
     document.documentElement.dataset.lmdFs = String(!!window.showOpenFilePicker && window.isSecureContext);
   }
 
@@ -1397,6 +1410,8 @@
     const x = e.target.closest('.lmd-node-x');
     if (x) { LMD.store.handlesDelete(x.dataset.key).then(() => loadTree()); return true; }
     if (e.target.closest('.lmd-root-hint')) { LMD.sync.login(); return true; }
+    // "Bloquear ahora" de una carpeta abierta para la IA.
+    if (LMD.vault.aiClick(e)) return true;
     return false;
   }
 
@@ -1421,26 +1436,38 @@
     }
     const here = noDoc ? '' : HERE;
     rows.forEach((row) => {
-      const item = el(row.dir ? 'button' : 'a', { class: 'lmd-node' + (row.dir ? ' lmd-node-dir' : ''), title: row.label && row.dir ? row.label : row.name });
+      // Carpeta con contraseña: candado cerrado si está bloqueada en esta pestaña, abierto si no.
+      const vault = row.vault || null; const shut = !!vault && !LMD.vault.isOpen(vault);
+      const item = el(row.dir ? 'button' : 'a', { class: 'lmd-node' + (row.dir ? ' lmd-node-dir' : '') + (vault ? ' lmd-node-vault' + (shut ? ' lmd-vault-shut' : '') : ''), title: row.label && row.dir ? row.label : row.name });
       item.style.paddingLeft = (10 + depth * 14) + 'px';
       item.dataset.url = row.url;
       const md = MD_RE.test(row.name);
-      item.innerHTML = (row.dir ? '<span class="lmd-node-chev">' + ICON.chevron + '</span>' : '<span class="lmd-node-ico">' + (md ? ICON.md : ICON.file) + '</span>') +
+      item.innerHTML = (row.dir ? '<span class="lmd-node-chev">' + ICON.chevron + '</span>' + (vault ? '<span class="lmd-node-lock" title="' + T(shut ? 'Carpeta protegida, bloqueada' : 'Carpeta protegida, desbloqueada en esta pestaña') + '">' + (shut ? ICON.lock : ICON.unlock) + '</span>' : '')
+        : '<span class="lmd-node-ico">' + (md ? ICON.md : ICON.file) + '</span>') +
         '<span class="lmd-node-name"></span>' + (!row.dir && where ? '<span class="lmd-node-where" title="' + T(where[1]) + '">' + ICON[where[0]] + '</span>' : '');
       item.querySelector('.lmd-node-name').textContent = row.label || row.name;
       container.appendChild(item);
+      // Abierta para la IA: se dice hasta cuándo, con el botón para bloquearla ya.
+      if (vault && vault.ai) {
+        const line = el('div', { class: 'lmd-vault-line' });
+        line.style.paddingLeft = (32 + depth * 14) + 'px';
+        line.append(el('span', { class: 'lmd-vault-ico' }, ICON.spark), el('span', { class: 'lmd-vault-state', text: LMD.vault.aiText(vault) }), el('button', { type: 'button', class: 'lmd-link', 'data-vault-ailock': String(vault.id), text: T('Bloquear ahora') }));
+        container.appendChild(line);
+      }
       if (row.dir) {
         item.type = 'button';
         const kids = el('div', { class: 'lmd-node-kids', hidden: '' });
         container.appendChild(kids);
         const open = async () => {
+          // Bloqueada: al abrirla pide la contraseña una vez. Al desbloquearse el explorador se redibuja con ella desplegada.
+          if (shut) { openDirs.add(row.url); if (!(await LMD.vault.unlock(vault))) openDirs.delete(row.url); return; }
           kids.hidden = !kids.hidden;
           item.classList.toggle('lmd-open', !kids.hidden);
           if (kids.hidden) openDirs.delete(row.url); else openDirs.add(row.url);
           if (!kids.hidden && !kids.dataset.loaded) { kids.dataset.loaded = '1'; await fillDir(kids, row.url, depth + 1); }
         };
         item.addEventListener('click', open);
-        if ((here && here.startsWith(row.url)) || openDirs.has(row.url)) open();
+        if (!shut && ((here && here.startsWith(row.url)) || openDirs.has(row.url))) open();
       } else {
         item.href = toHref(row.url);
         if (row.url === here) { item.classList.add('lmd-active'); setTimeout(() => { if (item.offsetParent) item.scrollIntoView({ block: 'nearest' }); }, 0); }
@@ -2715,6 +2742,12 @@
       if (seq !== docSeq || (e && e.name === 'AbortError')) return false;
       if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) fileHandle = null;
       if (e && e.code === 'note_limit') flash(T('Llegaste al límite de notas del plan gratis. Esta no se guardó en la nube'), 'error');
+      // La carpeta se bloqueó (o se protegió desde otra pestaña) con la nota abierta: lo escrito sigue acá, y se
+      // guarda cifrado apenas se desbloquea.
+      else if (e && e.code === 'vault_locked') {
+        flash(T('La carpeta está bloqueada. Desbloqueala para guardar.'), 'warn');
+        if (interactive) LMD.vault.unlockFor(vParts(HERE).join('/')).then((ok) => { if (ok && seq === docSeq) save(false); });
+      }
       else if (e && e.code === 'offline') {
         // El aviso sale una vez; después se reintenta en silencio hasta que vuelva.
         if (cloudState !== 'error' || interactive) flash(T('Sin conexión. Se guarda cuando vuelva'), 'warn');
@@ -2742,7 +2775,12 @@
       await LMD.cloud.ready();
       const path = vParts(url).join('/'); let got = null; let why = '';
       // Sin conexión se abre la copia guardada en este navegador, con lo que haya quedado sin subir.
-      if (LMD.cloud.signedIn()) { try { got = await LMD.cloud.open(path); } catch (e) { why = e && e.code; } }
+      if (LMD.cloud.signedIn()) {
+        try { got = await LMD.cloud.open(path); } catch (e) { why = e && e.code; }
+        // En una carpeta protegida y bloqueada: se pide la contraseña y, si entra, se abre.
+        if (why === 'vault_locked' && await LMD.vault.unlockFor(path)) { why = ''; try { got = await LMD.cloud.open(path); } catch (e) { why = e && e.code; } }
+      }
+      if (!got && (why === 'vault_locked' || why === 'vault_unreadable')) return fail(T(why === 'vault_locked' ? '"{a}" está en una carpeta protegida. Desbloqueala para abrirla.' : '"{a}" no se pudo descifrar con la llave de su carpeta.', { a: name }));
       if (!got) return fail(T(!LMD.cloud.signedIn() ? 'Entrá a tu cuenta para abrir las notas de la nube.' : why === 'offline' ? 'Sin conexión, y "{a}" no tiene copia en este navegador.' : 'No se encontró "{a}".', { a: name }));
       return { root: roots.cloud, raw: got.text, disk: got.base, opened: got, readOnly: LMD.cloud.roleOf(path) === 'view' };
     }
@@ -2883,6 +2921,8 @@
           if (mine !== docSeq) return;
           present = ev.who || [];
           if (ev.type === 'saved' && ev.by !== LMD.cloud.email()) { cloudPoll = 0; checkForChanges(false); }
+          // Cambió el estado de una carpeta protegida (se abrió o se cerró para la IA, venció el plazo, otra pestaña).
+          if (ev.type === 'vault') LMD.vault.changed();
           if (ev.type === 'comments' && LMD.comments) { cloudPoll = 0; checkForChanges(false).then(() => { if (mine === docSeq) LMD.comments.onEvent(ev); }); }
           LMD.sync.paint();
         });

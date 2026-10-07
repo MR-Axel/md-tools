@@ -1178,3 +1178,72 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
   .lmd-sidebar, .lmd-side-open .lmd-sidebar { transition: none; }
 }
 @media print { .lmd-scrim { display: none !important; } }
+
+/* ---------- Carpetas con contraseña ---------- */
+/* En el explorador: el candado al lado de la carpeta y, si está abierta para la IA, un renglón que lo dice. */
+.lmd-node-lock { flex: none; display: inline-flex; color: var(--accent); }
+.lmd-vault-shut .lmd-node-lock { color: var(--fg-faint); }
+.lmd-node-lock svg { width: 14px; height: 14px; }
+.lmd-vault-line { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 6px; padding: 0 8px 4px 32px; font-size: 12px; line-height: 1.35; color: var(--accent); }
+.lmd-vault-ico { flex: none; display: inline-flex; }
+.lmd-vault-ico svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-vault-state { min-width: 0; overflow-wrap: anywhere; }
+.lmd-vault-line .lmd-link { padding: 1px 2px; font-size: 12px; text-decoration: underline; }
+/* Las ventanas: proteger, desbloquear, clave de respaldo, abrir para la IA. */
+.lmd-vault-card { width: min(460px, 100%); }
+.lmd-vault-card h3 { margin-bottom: 12px; overflow-wrap: anywhere; }
+.lmd-vault-body > p { margin: 0 0 12px; }
+.lmd-ask-card p.lmd-vault-warn { padding: 10px 12px; border: 1px solid color-mix(in srgb, #dc2626 45%, var(--line)); border-radius: 9px; background: color-mix(in srgb, #dc2626 9%, transparent); color: var(--fg); font-weight: 600; }
+.lmd-vault-notes { margin: 0 0 16px; padding-left: 18px; font-size: 13px; color: var(--fg-muted); }
+.lmd-vault-notes li { margin: 0 0 4px; }
+.lmd-vault .lmd-dlg-field { margin-bottom: 12px; }
+.lmd-vault .lmd-dlg-field textarea { display: block; width: 100%; padding: 8px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--fg); font: 13.5px/1.5 ui-monospace, Consolas, Menlo, monospace; letter-spacing: .04em; resize: vertical; outline: none; }
+.lmd-vault .lmd-dlg-field textarea:focus { border-color: var(--accent-fill); }
+.lmd-vault .lmd-dlg-field textarea[aria-invalid=true] { border-color: #dc2626; }
+.lmd-vault .lmd-check { margin: 0 0 6px; font-size: 13.5px; color: var(--fg-muted); }
+.lmd-vault .lmd-link { padding-left: 0; }
+.lmd-vault .lmd-hint { margin: 0 0 14px; }
+.lmd-vault .lmd-ask-actions { margin-top: 16px; }
+.lmd-ask-card.lmd-vault-card p.lmd-dlg-err { margin: 6px 0 0; }
+/* Fortaleza de la contraseña: tres tramos que se van llenando. */
+.lmd-vault-meter { display: flex; align-items: center; gap: 4px; height: 16px; margin: -4px 0 12px; }
+.lmd-vault-meter i { flex: 0 0 34px; height: 4px; border-radius: 2px; background: var(--line); }
+.lmd-vault-meter span { margin-left: 6px; font-size: 12px; color: var(--fg-faint); }
+.lmd-vault-meter[data-s="0"] span { color: #dc2626; }
+.lmd-vault-meter[data-s="1"] i:nth-child(1) { background: #dc2626; }
+.lmd-vault-meter[data-s="2"] i:nth-child(-n+2) { background: #d97706; }
+.lmd-vault-meter[data-s="3"] i { background: var(--accent-fill); }
+/* La clave de respaldo: en grupos de cuatro, que bajan de renglón enteros. */
+.lmd-vault-key { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; margin: 0 0 12px; padding: 14px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-soft); color: var(--fg); font: 600 15px/1.4 ui-monospace, Consolas, Menlo, monospace; letter-spacing: .06em; user-select: all; }
+.lmd-vault-keyacts { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
+.lmd-vault-keyacts .lmd-btn { display: inline-flex; align-items: center; gap: 6px; }
+.lmd-vault-keyacts svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-ask-card p.lmd-vault-step { margin: 0 0 8px; color: var(--fg); }
+.lmd-vault-bar { height: 6px; margin: 0 0 4px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.lmd-vault-bar i { display: block; width: 0; height: 100%; background: var(--accent-fill); transition: width .2s ease; }
+.lmd-vault-time { margin: 0 0 14px; }
+.lmd-vault-time > span { display: block; margin-bottom: 6px; font-size: 13px; color: var(--fg-muted); }
+.lmd-vault-time .lmd-seg { flex-wrap: wrap; border-radius: 12px; }
+.lmd-vault-time .lmd-seg button { flex: 1 1 auto; padding: 0 12px; white-space: nowrap; border-radius: 9px; }
+/* En el menú de la nube de una nota protegida, y en Ajustes → IA. */
+.lmd-menu-note { display: flex; gap: 8px; max-width: 260px; margin: 6px 6px 4px; font-size: 12.5px; line-height: 1.4; color: var(--fg-muted); }
+.lmd-menu-note svg { flex: none; width: 14px; height: 14px; margin-top: 2px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-acct .lmd-vault-list { max-height: none; }
+.lmd-vault-list li span { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; min-width: 0; overflow-wrap: anywhere; }
+.lmd-vault-list li svg { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-vault-list li b { color: var(--fg); font-weight: 600; }
+.lmd-vault-list li.lmd-vault-on span { color: var(--accent); }
+.lmd-vault-list li button { flex: none; color: var(--fg-muted); text-decoration: underline; }
+.lmd-vault-list li button:hover { color: var(--fg); }
+.lmd-acct .lmd-vault-list + .lmd-hint { margin-top: 8px; }
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  .lmd-vault-line { padding-bottom: 6px; font-size: 12.5px; }
+  .lmd-vault-line .lmd-link { min-height: 32px; padding: 4px 6px; }
+  .lmd-vault .lmd-dlg-field textarea { font-size: 16px; }
+  .lmd-vault-key { font-size: 14px; letter-spacing: .03em; }
+  .lmd-vault-keyacts .lmd-btn { flex: 1 1 auto; justify-content: center; }
+  .lmd-vault-time .lmd-seg button { flex: 1 1 40%; }
+  .lmd-vault .lmd-link { min-height: 40px; }
+  .lmd-vault-list li { flex-wrap: wrap; }
+}
+@media print { .lmd-vault-line { display: none !important; } }
