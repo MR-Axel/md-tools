@@ -29,8 +29,8 @@ const SHELL = [
 // Lo que la app pide después del primer pintado o cuando el documento lo necesita (ver LAZY_APP en src/content.js).
 // Se guarda con el service worker ya activo, de a uno, para no competir con la primera carga.
 const LATE = [
-  'src/emoji-data.js', 'src/emoji.js', 'src/templates.js', 'src/diagram.js', 'src/formula.js',
-  'src/speak.js', 'src/voice.js', 'src/dictate.js',
+  'src/emoji-data.js', 'src/emoji.js', 'src/community.js', 'src/templates.js', 'src/diagram.js', 'src/formula.js',
+  'src/speak.js', 'src/voice.js', 'src/dictate.js', 'src/gallery.js',
   'vendor/highlight.min.js', 'vendor/markdown-it-emoji.min.js',
   'vendor/fonts/inter-italic.woff2',
   'vendor/katex/katex.min.js', 'vendor/katex/katex.min.css',

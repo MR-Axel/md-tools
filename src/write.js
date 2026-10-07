@@ -379,7 +379,7 @@
     menu = el('div', { class: 'lmd-menu', role: 'menu' });
     menu.innerHTML =
       '<p class="lmd-menu-label">' + T(block ? 'Insertar debajo' : 'Insertar') + '</p>' +
-      '<div class="lmd-menu-grid">' + INSERTS.filter((i) => i[0] !== 'math' || core.settings.plugins.katex).map((i) => '<button type="button" role="menuitem" data-ins="' + i[0] + '">' + (ICON['b_' + i[0]] || '') + '<span>' + T(i[1]) + '</span></button>').join('') + '</div>' +
+      '<div class="lmd-menu-grid">' + INSERTS.filter((i) => (i[0] !== 'math' || core.settings.plugins.katex) && (i[0] !== 'board' || LMD.tools.isOn('kanban'))).map((i) => '<button type="button" role="menuitem" data-ins="' + i[0] + '">' + (ICON['b_' + i[0]] || '') + '<span>' + T(i[1]) + '</span></button>').join('') + '</div>' +
       (block && !draft && span(block) ?
         (plain ? '<p class="lmd-menu-label">' + T('Convertir en') + '</p><div class="lmd-menu-grid">' +
           [['p', 'Párrafo'], ['h1', 'Título 1'], ['h2', 'Título 2'], ['h3', 'Título 3']].map((i) => '<button type="button" role="menuitem" data-conv="' + i[0] + '">' + ICON['b_' + i[0]] + '<span>' + T(i[1]) + '</span></button>').join('') + '</div>' : '') +

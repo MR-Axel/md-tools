@@ -169,12 +169,15 @@
     // Lo que el primer pintado no necesita. En la app se pide aparte; sobre un .md (script de contenido) ya viene con el resto.
     hljs: { js: ['vendor/highlight.min.js'] },
     emoji: { js: ['vendor/markdown-it-emoji.min.js'] },
-    tools: { js: ['src/emoji-data.js', 'src/emoji.js', 'src/templates.js', 'src/diagram.js', 'src/formula.js'] },
+    tools: { js: ['src/emoji-data.js', 'src/emoji.js', 'src/community.js', 'src/templates.js', 'src/diagram.js', 'src/formula.js'] },
     // Las herramientas de Ajustes > Herramientas (tools.js): cada una se pide recién cuando está prendida.
     speak: { js: ['src/speak.js'] },
     dictate: { js: ['src/voice.js', 'src/dictate.js'] },
+    // La galería de la comunidad, en Ajustes > Herramientas: se pide al abrir esa pestaña.
+    gallery: { js: ['src/gallery.js'] },
   };
-  const LAZY_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, tools: () => !!(LMD.diagram && LMD.formula && LMD.templates) };
+  const LAZY_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, tools: () => !!(LMD.diagram && LMD.formula && LMD.templates && LMD.community) };
+  LAZY_HAVE.gallery = () => !!LMD.gallery;
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
   async function appLazy(what) {
     const spec = LAZY_APP[what];
@@ -511,7 +514,7 @@
     const box = el('div');
     if (sel && !sel.isCollapsed && ui.article.contains(sel.anchorNode)) box.appendChild(sel.getRangeAt(0).cloneContents());
     else box.innerHTML = ui.article.innerHTML;
-    box.querySelectorAll('.lmd-anchor, .lmd-code-copy, .lmd-code-lang, .lmd-front').forEach((n) => n.remove());
+    box.querySelectorAll('.lmd-anchor, .lmd-code-copy, .lmd-code-lang, .lmd-kanban-off, .lmd-front').forEach((n) => n.remove());
     box.querySelectorAll('table').forEach((t) => { t.setAttribute('style', 'border-collapse:collapse'); });
     box.querySelectorAll('th, td').forEach((c) => c.setAttribute('style', 'border:1px solid #c9c9c9;padding:6px 10px;vertical-align:top'));
     box.querySelectorAll('pre').forEach((p) => p.setAttribute('style', 'font-family:Consolas,monospace;background:#f3f3f3;padding:10px;white-space:pre-wrap'));
@@ -3156,6 +3159,8 @@
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
     rangeOf, render, softRender, flash, insertLines, spliceLines, replaceLines, commitBlock, undo, redo, editCode, vFile, toHref,
     inline: (text) => DOMPurify.sanitize(buildParser().renderInline(text)),
+    // Un Markdown cualquiera, dibujado con el mismo saneado que una nota (la vista previa de una plantilla).
+    preview: (text) => homeCtx().preview(text),
     setRaw(text) { pushUndo(); raw = text; syncSource(); markDirty(); render(); },
   };
 

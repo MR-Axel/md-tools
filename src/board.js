@@ -230,7 +230,16 @@
   function init(c) {
     core = c;
     bind(core.ui.article);
-    core.hooks.render.push(() => core.ui.article.querySelectorAll('pre.lmd-kanban').forEach(build));
+    core.hooks.render.push(() => {
+      core.ui.article.querySelectorAll('pre.lmd-kanban').forEach(build);
+      // Con la herramienta apagada el bloque queda como código, con una línea que lleva a prenderla.
+      if (LMD.tools && !LMD.tools.isOn('kanban')) core.ui.article.querySelectorAll('pre > code.language-kanban, pre > code.language-tablero, pre > code.language-board').forEach((code) => {
+        const box = code.closest('.lmd-code') || code.parentNode; if (box.querySelector('.lmd-kanban-off')) return;
+        const b = el('button', { type: 'button', class: 'lmd-link lmd-kanban-off', contenteditable: 'false', text: T('Prendé el Tablero kanban en Ajustes > Herramientas para verlo como tablero') });
+        b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); core.openPanel('tools'); });
+        box.appendChild(b);
+      });
+    });
   }
 
   LMD.board = { init, calcTables, totalsRow, formulaOf };

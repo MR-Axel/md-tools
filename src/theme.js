@@ -16,6 +16,9 @@
 
   function applyAccent(root, dark, settings) {
     try { localStorage.setItem('lmd:dark', dark ? '1' : '0'); } catch (e) { /* sin almacenamiento */ } // lo lee boot.js en la próxima carga
+    // Fondo de la página: uno para el tema claro y otro para el oscuro. Solo vale un color que deje leer el texto.
+    const paper = settings.supporter ? String(settings[dark ? 'paperDark' : 'paperLight'] || '') : '';
+    if (/^#[0-9a-f]{6}$/i.test(paper) && (dark ? luminance(paper) <= 0.08 : luminance(paper) >= 0.7)) root.style.setProperty('--bg', paper); else root.style.removeProperty('--bg');
     const hex = settings.supporter && /^#[0-9a-f]{6}$/i.test(settings.accent || '') ? settings.accent : '';
     const props = ['--accent', '--accent-soft', '--accent-fg', '--accent-fill'];
     if (!hex) { props.forEach((p) => root.style.removeProperty(p)); return; }

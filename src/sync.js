@@ -548,14 +548,16 @@
     const s = LMD.cloud.split(core.cloudPath); const t = LMD.cloud.teamNow();
     return s.owner && !(t && String(t.space) === s.owner) ? { kind: 'shared', note: s.path, owner: s.owner } : null;
   }
-  function report() {
-    const ref = reportRef(); if (!ref) return;
-    const title = T('Denunciar esta nota');
+  // Con given se denuncia otra cosa: un aporte de la galería de la comunidad ({ kind: 'gallery', note, owner }).
+  function report(given) {
+    const ref = given && given.kind === 'gallery' ? given : reportRef(); if (!ref) return;
+    const gal = ref.kind === 'gallery';
+    const title = T(gal ? 'Denunciar este aporte' : 'Denunciar esta nota');
     const box = el('div', { class: 'lmd-ask' });
     const close = '<button type="button" class="lmd-btn" data-rp="close" data-esc>' + T('Cerrar') + '</button>';
     const mailto = (text) => '<p>' + T('Escribinos a {a}.', { a: '<a href="mailto:' + MAILTO + '?subject=' + encodeURIComponent('SharpMD report') + '&body=' + encodeURIComponent('Note: ' + ref.note + (ref.owner ? ' (' + ref.owner + ')' : '') + '\n\n' + (text || '')) + '">' + MAILTO + '</a>' }) + '</p>';
     const card = (inner) => { box.innerHTML = '<div class="lmd-ask-card lmd-fb lmd-report-card" role="dialog" aria-modal="true" aria-label="' + title + '"><h3>' + title + '</h3>' + inner + '</div>'; };
-    card('<p class="lmd-hint">' + T('Avisanos si esta nota tiene algo que no debería estar acá. Se envía qué nota es, no su contenido.') + '</p>' +
+    card('<p class="lmd-hint">' + T(gal ? 'Avisanos si este aporte tiene algo que no debería estar acá.' : 'Avisanos si esta nota tiene algo que no debería estar acá. Se envía qué nota es, no su contenido.') + '</p>' +
       '<textarea data-rp="text" maxlength="2000" placeholder="' + T('Motivo (opcional)') + '" aria-label="' + T('Motivo (opcional)') + '"></textarea>' +
       '<p class="lmd-img-err" role="alert" hidden></p>' +
       '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-rp="close" data-esc>' + T('Cancelar') + '</button><button type="button" class="lmd-btn lmd-btn-fill" data-rp="send">' + T('Enviar denuncia') + '</button></div>');

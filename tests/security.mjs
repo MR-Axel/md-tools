@@ -1,7 +1,7 @@
 // Seguridad: un caso por cada control del servidor, de la página de pago y de la app.
 // Todo corre contra un servidor local con claves inventadas y contra la extensión cargada en un Chromium:
 // ningún pedido sale a sync.sharpmd.app ni a sharpmd.app (lo que apunte ahí se corta y se anota como falla).
-// SHARPMD_SERVER apunta a otro server.mjs, para comparar contra una versión anterior. SEC_ONLY=server|app|live|team corre una parte.
+// SHARPMD_SERVER apunta a otro server.mjs, para comparar contra una versión anterior. SEC_ONLY=server|app|live|team|gallery corre una parte.
 import { spawn } from 'child_process'; import { createHmac, createHash } from 'crypto'; import { DatabaseSync } from 'node:sqlite';
 import fs from 'fs'; import os from 'os'; import path from 'path'; import http from 'http'; import net from 'net'; import { fileURLToPath, pathToFileURL } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -1095,6 +1095,185 @@ async function teamSuite() {
   await S.stop(); fakePaddle.close(); fakeMail.close();
 }
 if (!ONLY || ONLY === 'team') await teamSuite();
+
+// ---------- Galería de la comunidad y alias de Gmail ----------
+async function gallerySuite() {
+  console.log('Seguridad de la galería de la comunidad');
+  const mails = [];
+  const fakeMail = http.createServer((req, res) => { let raw = ''; req.on('data', (c) => { raw += c; }); req.on('end', () => { try { const m = JSON.parse(raw); if (m.to === 'revisa@ejemplo.test') mails.push(m); } catch (e) { /* cuerpo raro */ } res.writeHead(200, { 'content-type': 'application/json' }); res.end('{}'); }); });
+  await new Promise((r) => fakeMail.listen(0, '127.0.0.1', r));
+  const KEY = Buffer.alloc(32, 7).toString('base64');
+  const S = await boot({ ADMIN_KEY: ADMIN, FEEDBACK_TO: 'revisa@ejemplo.test', MAIL_WEBHOOK: 'http://127.0.0.1:' + fakeMail.address().port, DATA_KEY: KEY, AUTH_PER_IP: '100' });
+  const { call } = S; const adminH = { 'x-admin-key': ADMIN };
+  try {
+    const ana = await signup(S, 'ana-galeria@ejemplo.test'); const leo = await signup(S, 'leo-galeria@ejemplo.test');
+    const SECRET_TEXT = 'zanahoria-secreta-de-la-plantilla';
+    const tpl = (over) => Object.assign({ type: 'template', name: 'Plantilla de prueba', about: 'Para probar', lang: 'es', author: 'Ana', data: { text: '# Hola\n\n' + SECRET_TEXT + '\n' } }, over || {});
+    const theme = (data, over) => Object.assign({ type: 'theme', name: 'Tema de prueba', about: '', lang: 'es', author: 'Ana', data }, over || {});
+    const COLORS = { fill: '#dbeafe', text: '#1e3a8a', border: '#3b82f6', line: '#437ad3', second: '#e0e7ff', third: '#cffafe' };
+    const pal = (colors, over) => Object.assign({ type: 'palette', name: 'Paleta de prueba', about: '', lang: 'es', author: 'Ana', data: { colors } }, over || {});
+    const post = (body, who, ip) => call('POST', '/gallery', body, who === undefined ? ana.s : who, from(ip || nextIp()));
+    const linkOf = (act) => { const m = new RegExp((act === 'approve' ? 'Approve' : 'Reject') + ': (\\S+)').exec(mails[mails.length - 1].text); return new URL(m[1]); };
+    const getPage = (u) => fetch(S.base + u.pathname + u.search, { headers: from(nextIp()) }).then(async (r) => ({ status: r.status, text: await r.text() }));
+    const postForm = (u, extra, ip) => fetch(S.base + u.pathname, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', ...from(ip || nextIp()) }, body: new URLSearchParams(Object.assign(Object.fromEntries(u.searchParams), extra || {})) }).then(async (r) => ({ status: r.status, text: await r.text() }));
+    const live = async () => (await call('GET', '/gallery', undefined, undefined, from(nextIp()))).json;
+    const sign = (id, act, exp, nonce, key) => createHmac('sha256', key || ADMIN).update(['gallery-review', id, act, exp, nonce].join('|')).digest('base64url');
+
+    // Envío
+    check('galería: enviar sin sesión responde 401', (await post(tpl(), null)).status === 401 && (await post(tpl(), 'mds_inventada')).status === 401);
+    await makePro(S, ana.email);
+    const tok = (await call('POST', '/tokens', { name: 'ia' }, ana.s)).json.token;
+    check('galería: un token de IA no envía aportes', !!tok && (await post(tpl(), tok)).status === 401);
+    const BAD = [
+      ['una clave de más arriba', Object.assign(tpl(), { html: '<b>x</b>' }), 'bad_schema'],
+      ['un tipo que no existe', tpl({ type: 'tool' }), 'bad_type'],
+      ['código como tipo', tpl({ type: 'script' }), 'bad_type'],
+      ['plantilla con una clave de más', tpl({ data: { text: '# x', css: 'body{}' } }), 'bad_data'],
+      ['plantilla que no es texto', tpl({ data: { text: ['# x'] } }), 'bad_data'],
+      ['plantilla vacía', tpl({ data: { text: '  \n ' } }), 'bad_data'],
+      ['datos que no son un objeto', tpl({ data: '# x' }), 'bad_data'],
+      ['tema con CSS libre', theme({ accent: '#112233', css: 'body{background:url(https://x.invalid/a)}' }), 'bad_data'],
+      ['tema con una clave que no está en la lista', theme({ background: '#ffffff' }), 'bad_data'],
+      ['tema vacío', theme({}), 'bad_data'],
+      ['color con nombre', theme({ accent: 'red' }), 'bad_data'],
+      ['color corto', theme({ accent: '#fff' }), 'bad_data'],
+      ['color con url()', theme({ accent: 'url(https://x.invalid/a.png)' }), 'bad_data'],
+      ['color con algo pegado', theme({ accent: '#112233;background:url(//x.invalid)' }), 'bad_data'],
+      ['color con expresión', theme({ codeColor: 'var(--x)' }), 'bad_data'],
+      ['color que no es texto', theme({ accent: 1122867 }), 'bad_data'],
+      ['tipografía fuera de la lista', theme({ font: 'Comic Sans MS' }), 'bad_data'],
+      ['tipografía con CSS', theme({ font: 'Arial; } body { display: none' }), 'bad_data'],
+      ['tipografía remota', theme({ font: 'url(https://x.invalid/f.woff2)' }), 'bad_data'],
+      ['fondo claro que no es claro', theme({ paperLight: '#101010' }), 'bad_data'],
+      ['fondo oscuro que no es oscuro', theme({ paperDark: '#fafafa' }), 'bad_data'],
+      ['modo que no existe', theme({ mode: 'sepia' }), 'bad_data'],
+      ['forma que no existe', theme({ diagramShape: 'star' }), 'bad_data'],
+      ['paleta sin un color', pal({ fill: '#dbeafe', text: '#1e3a8a', border: '#3b82f6', line: '#437ad3', second: '#e0e7ff' }), 'bad_data'],
+      ['paleta con un color de más', pal(Object.assign({ extra: '#000000' }, COLORS)), 'bad_data'],
+      ['paleta con un color mal escrito', pal(Object.assign({}, COLORS, { line: 'javascript:alert(1)' })), 'bad_data'],
+      ['paleta como lista', pal(['#dbeafe']), 'bad_data'],
+      ['nombre largo', tpl({ name: 'n'.repeat(61) }), 'bad_name'],
+      ['nombre corto', tpl({ name: 'ab' }), 'bad_name'],
+      ['nombre que no es texto', tpl({ name: { toString: 1 } }), 'bad_name'],
+      ['descripción larga', tpl({ about: 'd'.repeat(161) }), 'bad_about'],
+      ['idioma mal escrito', tpl({ lang: 'english' }), 'bad_lang'],
+      ['un correo como nombre público', tpl({ author: 'ana-galeria@ejemplo.test' }), 'bad_author'],
+      ['nombre público vacío', tpl({ author: ' ' }), 'bad_author'],
+    ];
+    const wrong = [];
+    for (const [name, body, code] of BAD) { const r = await post(body); if (r.status !== 400 || r.json.error !== code) wrong.push([name, r.status, r.json && r.json.error]); }
+    check('galería: lo que no calza con el esquema se rechaza entero (' + BAD.length + ' casos: claves de más, CSS, url(), colores y tipografías fuera de lista)', wrong.length === 0, wrong);
+    const big = await post(tpl({ data: { text: '# x\n' + 'a'.repeat(20 * 1024) } }));
+    check('galería: una plantilla de más de 20 KB responde 413', big.status === 413 && big.json.error === 'too_large', [big.status, big.json]);
+    check('galería: nada de lo rechazado quedó guardado ni gastó el cupo del día', (await call('GET', '/gallery/mine', undefined, ana.s)).json.length === 0);
+
+    const hostile = await post(tpl({ name: 'Plan‮ <script>alert(1)</script>', author: '<img src=x onerror=alert(1)>', about: 'linea\nuna "comilla" \u0007' }));
+    const row = () => { const db = S.db(); const r = db.prepare('SELECT * FROM gallery WHERE id = ?').get(hostile.json.id); db.close(); return r; };
+    check('galería: el nombre y el autor quedan en una línea, sin marcas que den vuelta el texto', hostile.status === 200 && hostile.json.name === 'Plan <script>alert(1)</script>' && !/[‮\n\u0007]/.test(JSON.stringify(hostile.json)), hostile.json);
+    const stored = row(); const fileBytes = fs.readFileSync(path.join(S.dir, 'mdtools.db')).toString('latin1') + (fs.existsSync(path.join(S.dir, 'mdtools.db-wal')) ? fs.readFileSync(path.join(S.dir, 'mdtools.db-wal')).toString('latin1') : '');
+    check('galería: con DATA_KEY el aporte pendiente se guarda cifrado en reposo', stored.e === 1 && ['name', 'about', 'author', 'data', 'reason'].every((c) => String(stored[c]).startsWith('enc1:')) && !fileBytes.includes(SECRET_TEXT) && !fileBytes.includes('onerror=alert'), [stored.e, String(stored.name).slice(0, 12)]);
+    check('galería: el correo de revisión salió con los dos enlaces, y ninguno trae la clave de administración', mails.length === 1 && /Approve: http/.test(mails[0].text) && /Reject: http/.test(mails[0].text) && !mails[0].text.includes(ADMIN), mails.length);
+
+    // Enlaces firmados
+    const ok = linkOf('approve'); const no = linkOf('reject'); const id = hostile.json.id; const nonce = stored.nonce;
+    const seen = await getPage(ok);
+    check('galería: la página de revisión muestra el aporte como texto, sin scripts', seen.status === 200 && !/<script|<img/i.test(seen.text) && seen.text.includes('&lt;script&gt;') && seen.text.includes('&lt;img src=x onerror=alert(1)&gt;'), seen.text.slice(0, 200));
+    for (let i = 0; i < 5; i++) await getPage(ok);
+    check('galería: abrir el enlace muchas veces (un lector de correo que lo precarga) no aprueba nada', row().status === 'pending' && (await live()).items.length === 0);
+    const swap = (u, k, v) => { const c = new URL(u); c.searchParams.set(k, v); return c; };
+    const forged = [
+      ['la firma de aprobar usada para rechazar', swap(ok, 'act', 'reject')],
+      ['la firma de rechazar usada para aprobar', swap(no, 'act', 'approve')],
+      ['otro aporte', swap(ok, 'id', String(id + 1))],
+      ['el vencimiento estirado', swap(ok, 'exp', String(+ok.searchParams.get('exp') + 1000))],
+      ['la firma cambiada', swap(ok, 'sig', ok.searchParams.get('sig').slice(0, -2) + 'AA')],
+      ['sin firma', swap(ok, 'sig', '')],
+      ['una acción que no existe', swap(ok, 'act', 'remove')],
+      ['firmado con otra clave', swap(ok, 'sig', sign(id, 'approve', ok.searchParams.get('exp'), nonce, 'otra-clave'))],
+      ['firmado sin el valor del aporte', swap(ok, 'sig', sign(id, 'approve', ok.searchParams.get('exp'), ''))],
+      ['bien firmado pero vencido', (() => { const exp = String(Date.now() - 1000); return swap(swap(ok, 'exp', exp), 'sig', sign(id, 'approve', exp, nonce)); })()],
+    ];
+    const passed = [];
+    for (const [name, u] of forged) { const g = await getPage(u); const p = await postForm(u); if (g.status !== 403 || p.status !== 403) passed.push([name, g.status, p.status]); }
+    check('galería: un enlace manipulado o vencido no pasa, ni al abrirlo ni al confirmar (' + forged.length + ' casos)', passed.length === 0 && row().status === 'pending', passed);
+    check('galería: confirmar sin enlace no aprueba nada', (await fetch(S.base + '/gallery/review', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', ...from(nextIp()) }, body: 'id=' + id + '&act=approve' })).status === 403 && row().status === 'pending');
+    const done = await postForm(ok);
+    check('galería: el enlace bueno, confirmado, aprueba', done.status === 200 && row().status === 'approved' && row().nonce === '' && (await live()).items.length === 1);
+    const again = await postForm(ok); const late = await postForm(no, { reason: 'tarde' }); const lateGet = await getPage(no);
+    check('galería: un enlace ya usado no sirve, y el de rechazar tampoco después de aprobar', again.status === 403 && late.status === 403 && lateGet.status === 403 && row().status === 'approved', [again.status, late.status, lateGet.status]);
+    const ip = nextIp(); let last = null; for (let i = 0; i < 22; i++) last = await postForm(swap(ok, 'sig', 'x' + i), null, ip);
+    check('galería: los intentos con enlaces que no sirven tienen tope por IP', last.status === 429);
+
+    // Administración
+    const second = await post(pal(COLORS));
+    const noKey = [await call('GET', '/admin/gallery', undefined, undefined, from(nextIp())), await call('POST', '/admin/gallery', { id: second.json.id, action: 'approve' }, undefined, from(nextIp())),
+      await call('POST', '/admin/gallery', { id: second.json.id, action: 'approve' }, ana.s, from(nextIp())), await call('POST', '/admin/gallery', { id: second.json.id, action: 'approve' }, undefined, { 'x-admin-key': 'otra', ...from(nextIp()) })];
+    check('galería: aprobar sin la clave de administración responde 403, también con una sesión', noKey.every((r) => r.status === 403) && (await live()).items.length === 1, noKey.map((r) => r.status));
+    check('galería: con la clave, una acción que no existe o un aporte que no existe no hacen nada', (await call('POST', '/admin/gallery', { id: second.json.id, action: 'publish' }, undefined, adminH)).status === 400 && (await call('POST', '/admin/gallery', { id: 99999, action: 'approve' }, undefined, adminH)).status === 404 && (await call('POST', '/admin/gallery', { id: '1 OR 1=1', action: 'approve' }, undefined, adminH)).status === 404);
+    await call('POST', '/admin/gallery', { id: second.json.id, action: 'approve' }, undefined, adminH);
+
+    // Lo público no trae la cuenta
+    const pub = await live(); const one = await call('GET', '/gallery/' + id, undefined, undefined, from(nextIp()));
+    const leak = JSON.stringify([pub, one.json]);
+    check('galería: ni la lista pública ni un aporte traen el correo o el número de la cuenta', pub.items.length === 2 && !/ejemplo\.test|@|"user"|"account"|"email"|"nonce"|"reason"/.test(leak) && pub.items.every((x) => Object.keys(x).every((k) => ['id', 'type', 'name', 'about', 'lang', 'author', 'adds', 'at', 'data', 'size'].includes(k))), leak.slice(0, 400));
+    check('galería: cada cuenta ve solo sus aportes', (await call('GET', '/gallery/mine', undefined, leo.s)).json.length === 0 && (await call('GET', '/gallery/mine')).status === 401 && !/ejemplo\.test|nonce/.test(JSON.stringify((await call('GET', '/gallery/mine', undefined, ana.s)).json)));
+    check('galería: otra cuenta no retira un aporte ajeno, y sin sesión tampoco', (await call('DELETE', '/gallery/' + id, undefined, leo.s)).status === 404 && (await call('DELETE', '/gallery/' + id)).status === 401 && (await live()).items.length === 2);
+
+    // Topes
+    for (let i = 0; i < 3; i++) await post(pal(COLORS, { name: 'Paleta ' + i }));
+    const sixth = await post(pal(COLORS, { name: 'La sexta' }));
+    check('galería: seis envíos en un día de la misma cuenta no pasan, aunque cambie de IP', sixth.status === 429 && sixth.json.error === 'too_many' && sixth.json.retry_after > 0, [sixth.status, sixth.json]);
+    const addIp = nextIp(); let adds = null; for (let i = 0; i < 3; i++) adds = await call('POST', '/gallery/' + id + '/add', undefined, undefined, from(addIp));
+    let flood = null; for (let i = 0; i < 62; i++) flood = await call('POST', '/gallery/' + second.json.id + '/add', undefined, undefined, from(addIp));
+    check('galería: el contador no se infla desde una IP, y los pedidos de sumar tienen tope', adds.json.adds === 1 && flood.status === 429 && (await call('GET', '/gallery/' + second.json.id, undefined, undefined, from(nextIp()))).json.adds === 1, [adds.json, flood.status]);
+    const reqIp = nextIp(); let many = null; for (let i = 0; i < 305; i++) many = await call('GET', '/gallery', undefined, undefined, from(reqIp));
+    check('galería: la lista pública tiene tope de pedidos por IP', many.status === 429 && many.json.error === 'too_many');
+    check('galería: una denuncia de un aporte entra por /feedback marcada como tal', (await call('POST', '/feedback', { text: '', report: { kind: 'gallery', note: '#' + id + ' template', owner: 'Ana' } }, undefined, from(nextIp()))).status === 200 && /Kind: gallery/.test(mails[mails.length - 1].text));
+
+    // Borrar la cuenta se lleva sus aportes
+    await call('DELETE', '/account', { email: ana.email }, ana.s, from(nextIp()));
+    const dbAfter = S.db(); const left = dbAfter.prepare('SELECT COUNT(*) AS n FROM gallery').get().n; dbAfter.close();
+    check('galería: al eliminar la cuenta sus aportes salen de la galería y de la base', (await live()).items.length === 0 && left === 0, left);
+
+    // Alias de Gmail
+    const g1 = await signup(S, 'j.perez+notas@gmail.com'); const g2 = await signup(S, 'jperez@gmail.com'); const g3 = await signup(S, 'J.P.E.R.E.Z+otra@googlemail.com');
+    const acc = (await call('GET', '/account', undefined, g3.s)).json;
+    check('alias de Gmail: con puntos, con + o con googlemail se entra a la misma cuenta, que conserva su correo', g1.id === g2.id && g2.id === g3.id && acc.email === 'j.perez+notas@gmail.com', [g1.id, g2.id, g3.id, acc.email]);
+    const o1 = await signup(S, 'j.perez@ejemplo.test'); const o2 = await signup(S, 'jperez@ejemplo.test'); const o3 = await signup(S, 'jperez+x@ejemplo.test');
+    check('alias de Gmail: en otros dominios cada dirección es su cuenta', new Set([o1.id, o2.id, o3.id, g1.id]).size === 4, [o1.id, o2.id, o3.id]);
+    const dbw = S.db(); dbw.exec("INSERT INTO users (email, mkey, created) VALUES ('m.lopez@gmail.com', 'mlopez@gmail.com', 1)"); dbw.exec("INSERT INTO users (email, created) VALUES ('mlopez@gmail.com', 2)");
+    const ids = dbw.prepare("SELECT id, email FROM users WHERE email LIKE '%lopez@gmail.com' ORDER BY id").all(); dbw.close();
+    const d1 = await signup(S, 'm.lopez@gmail.com'); const d2 = await signup(S, 'mlopez@gmail.com'); const d3 = await signup(S, 'ml.opez+z@gmail.com');
+    check('alias de Gmail: dos cuentas que ya existían siguen entrando cada una a la suya', d1.id === ids[0].id && d2.id === ids[1].id && d1.id !== d2.id && d3.id === ids[0].id, [ids, d1.id, d2.id, d3.id]);
+    let capped = null; for (let i = 0; i < 6; i++) capped = await call('POST', '/auth/start', { email: 'tope.gmail+' + i + '@gmail.com' }, undefined, from(nextIp()));
+    check('alias de Gmail: los alias no multiplican los códigos que se le mandan a una casilla', capped.status === 429 && capped.json.error === 'code_mail_hour', [capped.status, capped.json]);
+    // Seis intentos por código: con dos alias serían doce. El tope por casilla (diez por hora) corta en el undécimo.
+    let tries = null; let n = 0;
+    for (let a = 0; a < 2; a++) {
+      const mailA = 'fuerza.bruta+' + a + '@gmail.com'; const stA = await call('POST', '/auth/start', { email: mailA }, undefined, from(nextIp())); const wrongCode = stA.json.dev_code === '000000' ? '111111' : '000000';
+      for (let i = 0; i < 6 && n < 11; i++, n++) tries = await call('POST', '/auth/verify', { email: mailA, code: wrongCode }, undefined, from(nextIp()));
+    }
+    const st = await call('POST', '/auth/start', { email: 'otro.buzon@gmail.com' }, undefined, from(nextIp()));
+    check('alias de Gmail: tampoco los intentos de adivinar un código', n === 11 && tries.status === 429 && tries.json.error === 'tries_mail_hour', [tries.status, tries.json]);
+    check('alias de Gmail: el código vale para la dirección que lo pidió, no para otro alias', (await call('POST', '/auth/verify', { email: 'otrobuzon@gmail.com', code: st.json.dev_code }, undefined, from(nextIp()))).status === 400 && (await call('POST', '/auth/verify', { email: 'otro.buzon@gmail.com', code: st.json.dev_code }, undefined, from(nextIp()))).status === 200);
+
+    const sigs = [ok.searchParams.get('sig'), no.searchParams.get('sig'), nonce, KEY];
+    check('galería: la salida del servidor no trae firmas, la clave de datos ni el texto de un aporte', !sigs.some((x) => x && S.log().includes(x)) && !S.log().includes(SECRET_TEXT));
+    check('galería: nada de esto se anotó como error del servidor, y sigue arriba', !/error 500|error no capturado|promesa sin atender/.test(S.log()) && S.alive() && (await call('GET', '/health')).status === 200, (S.log().match(/error[^\n]*/g) || []).slice(0, 3));
+  } catch (e) { check('galería: sin excepciones en la prueba', false, String(e && e.stack || e)); console.log(S.log().slice(-2000)); }
+  await S.stop(); fakeMail.close();
+
+  // Sin clave de administración nadie puede revisar: el servidor no recibe aportes, y la lista pública sigue respondiendo.
+  const P = await boot({});
+  try {
+    const u = await signup(P, 'sin-clave@ejemplo.test');
+    const r = await P.call('POST', '/gallery', { type: 'palette', name: 'Paleta', about: '', lang: 'es', author: 'Ana', data: { colors: { fill: '#dbeafe', text: '#1e3a8a', border: '#3b82f6', line: '#437ad3', second: '#e0e7ff', third: '#cffafe' } } }, u.s);
+    const l = await P.call('GET', '/gallery');
+    check('galería: sin ADMIN_KEY no se reciben aportes y un enlace no vale nada', r.status === 404 && l.status === 200 && l.json.open === false && (await fetch(P.base + '/gallery/review?id=1&act=approve&exp=' + (Date.now() + 9999) + '&sig=' + createHmac('sha256', 'undefined').update('gallery-review|1|approve|x|').digest('base64url'))).status === 403, [r.status, l.json]);
+  } catch (e) { check('galería sin clave: sin excepciones en la prueba', false, String(e && e.stack || e)); }
+  await P.stop();
+}
+if (!ONLY || ONLY === 'gallery') await gallerySuite();
 
 const failed = results.filter((r) => !r.ok);
 console.log('\n' + (results.length - failed.length) + ' de ' + results.length + ' pruebas pasaron');

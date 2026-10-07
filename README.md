@@ -48,6 +48,7 @@ Free and open source. No tracking: files are read in your browser and never uplo
 | **Live sessions** | Open a session on a cloud note and send the link. Guests join from the browser with a name, without an account, and everyone edits at once. |
 | **AI over MCP** | Claude or any MCP client can list, read, write, append to, move and search your cloud notes, and read their history. Each write returns a link that opens the note in the app. A token can be limited to one folder, and only a token created with the sharing permission can share notes or create public links. A comment on a block tells the AI what to change, and Settings has a ready message to paste into your AI. |
 | **Read aloud** | A tool you turn on in Settings → Tools. Reads the whole note, from a block or the selection, with the voices of your device. It marks the block it is reading and announces code and diagrams instead of reading them. |
+| **Community** | In Settings → Tools: templates, themes and diagram palettes shared by people, each one reviewed before it is published. Add one and it works offline; share the open note as a template, your theme or a palette. Content only, never code. |
 | **Dictation** | Also in Settings → Tools. Write by speaking, in English or Spanish, with spoken commands for punctuation, headings, lists, tasks and formatting. "Formula … end formula" builds LaTeX and "flowchart … end diagram" builds a Mermaid flowchart, both drawn while you speak. It uses the speech recognition of the browser, on the device when the browser offers it. |
 | **Phone** | The same app on a small screen, and the web app opens without a connection. |
 | **Yours to adjust** | Light and dark themes, width, font size, code block color, custom CSS, English and Spanish. |
@@ -145,6 +146,8 @@ src/
   bridge-sw.js    the extension side of the bridge, and what the extension button opens
   install.js      Settings → Install, installing the app, files from "Open with", the offline mark
   tools.js        Settings → Tools: the registry of tools and their switches
+  community.js    what was added from the community gallery, and the rule that validates a contribution
+  gallery.js      Settings → Tools → Community: browse, preview, add and share
   speak.js        tool: read aloud with the device voices
   voice.js        the dictation grammar: text commands, formulas and flowcharts, per language
   dictate.js      tool: dictation, the microphone button and the listening indicator
@@ -197,7 +200,7 @@ Two more scripts run by hand, outside `npm test`:
 - `BROWSER=firefox node browsers.mjs` (or `webkit`) walks the landing page and the web app in the other engines. Install them once with `npx playwright-core install firefox webkit`.
 - `node perf.mjs` measures the web app load, cold and warm, on a throttled network and CPU. Run it before and after touching what `src/app.html` loads.
 
-A tool for Settings → Tools is one file plus one `LMD.tools.register({ id, name, about, icon, defaultOn, lazy, module })` line in `src/tools.js`. Its file is requested only while the tool is on. The dictation phrases are tables in `src/voice.js`, one per language, and `LMD.voice.parse(text, mode, lang)` is a pure function that `tests/voice.mjs` exercises without a microphone.
+The kanban board is one of those tools: on by default, and when it is off a kanban block shows as a code block and the note is not changed. A tool for Settings → Tools is one file plus one `LMD.tools.register({ id, name, about, icon, defaultOn, lazy, module })` line in `src/tools.js`. Its file is requested only while the tool is on. The dictation phrases are tables in `src/voice.js`, one per language, and `LMD.voice.parse(text, mode, lang)` is a pure function that `tests/voice.mjs` exercises without a microphone.
 
 A script that the first paint does not need is not added to `src/app.html`: it goes in `LAZY_APP` (`src/content.js`) and in the `LATE` list of `sw.js`, and stays in `manifest.json` for the extension.
 
