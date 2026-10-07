@@ -67,10 +67,14 @@ db.exec("CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY, user INTEG
 db.exec('CREATE TABLE IF NOT EXISTS paddle_subs (id TEXT PRIMARY KEY, user INTEGER NOT NULL, status TEXT NOT NULL, at INTEGER NOT NULL DEFAULT 0)');
 db.exec("INSERT OR IGNORE INTO paddle_subs (id, user, status, at) SELECT paddle_sub, id, CASE plan WHEN 'pro' THEN 'active' ELSE 'canceled' END, 0 FROM users WHERE paddle_sub IS NOT NULL AND paddle_sub != ''");
 // Tamaño del texto en claro (LENGTH(text) deja de servir con el texto cifrado) y marca de fila cifrada.
-for (const sql of ['ALTER TABLE notes ADD COLUMN size INTEGER', 'ALTER TABLE notes ADD COLUMN e INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE versions ADD COLUMN size INTEGER',
-  'ALTER TABLE versions ADD COLUMN e INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE comments ADD COLUMN e INTEGER NOT NULL DEFAULT 0',
-  // v: el texto de la nota llegó cifrado desde el navegador (carpeta con contraseña). aad: la ruta a la que quedó atada una versión cifrada.
-  'ALTER TABLE notes ADD COLUMN v INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE versions ADD COLUMN aad TEXT']) { try { db.exec(sql); } catch (e) { /* ya estaba */ } }
+try { db.exec('ALTER TABLE notes ADD COLUMN size INTEGER'); } catch (e) { /* ya estaba */ }
+try { db.exec('ALTER TABLE notes ADD COLUMN e INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* ya estaba */ }
+try { db.exec('ALTER TABLE versions ADD COLUMN size INTEGER'); } catch (e) { /* ya estaba */ }
+try { db.exec('ALTER TABLE versions ADD COLUMN e INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* ya estaba */ }
+try { db.exec('ALTER TABLE comments ADD COLUMN e INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* ya estaba */ }
+// v: el texto de la nota llegó cifrado desde el navegador (carpeta con contraseña). aad: la ruta a la que quedó atada una versión cifrada.
+try { db.exec('ALTER TABLE notes ADD COLUMN v INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* ya estaba */ }
+try { db.exec('ALTER TABLE versions ADD COLUMN aad TEXT'); } catch (e) { /* ya estaba */ }
 db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
 // Carpetas con contraseña. De cada una se guarda con qué se envolvió su llave (sal, vueltas y la llave envuelta) y un
 // valor para comprobar la llave. Nunca la contraseña ni la llave. state: 'on', o 'opening' mientras se le quita la protección.
@@ -121,11 +125,16 @@ function unseal(stored, e, column) {
 // Al arrancar. La base anota, cifrada, una frase fija: con eso se sabe si la clave de ahora es la misma de antes.
 // Con datos cifrados y sin clave, o con otra clave, el servidor no arranca: nunca escribe en claro sobre una base
 // cifrada ni devuelve texto ilegible.
-const SEAL_TABLES = [['notes', ['text']], ['versions', ['text']], ['comments', ['quote', 'text', 'reply']]];
+// Por tabla: cómo traer una tanda de filas en claro, cómo guardarlas cifradas y qué columnas llevan texto.
+const SEAL_JOBS = [
+  { name: 'notes', cols: ['text'], any: 'SELECT 1 FROM notes WHERE e = 1 LIMIT 1', pick: 'SELECT rowid AS rid, text FROM notes WHERE e = 0 LIMIT 50', put: 'UPDATE notes SET text = ?, e = 1 WHERE rowid = ? AND e = 0' },
+  { name: 'versions', cols: ['text'], any: 'SELECT 1 FROM versions WHERE e = 1 LIMIT 1', pick: 'SELECT rowid AS rid, text FROM versions WHERE e = 0 LIMIT 50', put: 'UPDATE versions SET text = ?, e = 1 WHERE rowid = ? AND e = 0' },
+  { name: 'comments', cols: ['quote', 'text', 'reply'], any: 'SELECT 1 FROM comments WHERE e = 1 LIMIT 1', pick: 'SELECT rowid AS rid, quote, text, reply FROM comments WHERE e = 0 LIMIT 50', put: 'UPDATE comments SET quote = ?, text = ?, reply = ?, e = 1 WHERE rowid = ? AND e = 0' },
+];
 (() => {
   const PROOF = 'sharpmd-data-key';
   const proof = q("SELECT value FROM meta WHERE key = 'data_key'").get();
-  const anySealed = SEAL_TABLES.some(([t]) => q('SELECT 1 FROM ' + t + ' WHERE e = 1 LIMIT 1').get());
+  const anySealed = SEAL_JOBS.some((job) => q(job.any).get());
   if (!DATA_KEY) {
     if (proof || anySealed) fatal('Esta base tiene datos cifrados y falta DATA_KEY. El servidor no arranca: sin la clave no puede leerlos, y no va a escribir en claro encima. Poné la misma DATA_KEY con la que se cifró.');
     return;
@@ -140,14 +149,14 @@ const SEAL_TABLES = [['notes', ['text']], ['versions', ['text']], ['comments', [
   // Lo que estaba en claro se cifra por tandas de 50 filas, cada una en su transacción: si se corta, la próxima
   // vez sigue con las que faltan (las ya cifradas llevan e = 1 y no se vuelven a tocar).
   let total = 0;
-  for (const [table, cols] of SEAL_TABLES) {
+  for (const job of SEAL_JOBS) {
     for (;;) {
-      const rows = q('SELECT rowid AS rid, ' + cols.join(', ') + ' FROM ' + table + ' WHERE e = 0 LIMIT 50').all();
+      const rows = q(job.pick).all();
       if (!rows.length) break;
       db.exec('BEGIN');
       try {
-        const up = q('UPDATE ' + table + ' SET ' + cols.map((c) => c + ' = ?').join(', ') + ', e = 1 WHERE rowid = ? AND e = 0');
-        for (const r of rows) up.run(...cols.map((c) => seal(r[c], table + '.' + c)), r.rid);
+        const up = q(job.put);
+        for (const r of rows) up.run(...job.cols.map((c) => seal(r[c], job.name + '.' + c)), r.rid);
         db.exec('COMMIT');
       } catch (e) { db.exec('ROLLBACK'); throw e; }
       total += rows.length;
@@ -318,7 +327,8 @@ const MAX_VAULTS = 50; const VAULT_MINUTES = [15, 60, 480, 0]; // 0: hasta que s
 const inside = (p, folder) => p.startsWith(folder + '/');
 const vaultsOf = (userId) => q('SELECT * FROM vaults WHERE user = ?').all(userId);
 const vaultOf = (userId, p) => vaultsOf(userId).find((v) => inside(p, v.folder)) || null;
-const UNDER = 'substr(path, 1, length(?)) = ?'; // todo lo que está dentro de una carpeta, distinguiendo mayúsculas
+// "Todo lo que está dentro de una carpeta" se pregunta con substr(path, 1, length(?)) = ?, pasando dos veces la
+// carpeta con su barra: compara exacto, distinguiendo mayúsculas (LIKE no las distingue).
 // Base64 de exactamente esa cantidad de bytes, o null.
 const b64 = (v, bytes) => { if (typeof v !== 'string' || !/^[A-Za-z0-9+/]+=*$/.test(v)) return null; const b = Buffer.from(v, 'base64'); return b.length === bytes ? b : null; };
 const hk = (key, info) => Buffer.from(crypto.hkdfSync('sha256', key, Buffer.alloc(0), info, 32));
@@ -365,10 +375,10 @@ const vaultView = (v) => { const k = aiKey(v); return { id: v.id, folder: v.fold
 // la IA (citan el texto), los enlaces públicos y lo compartido.
 function vaultPurge(userId, folder) {
   const pre = folder + '/';
-  q('DELETE FROM versions WHERE user = ? AND ' + UNDER).run(userId, pre, pre);
-  q('DELETE FROM comments WHERE user = ? AND ' + UNDER).run(userId, pre, pre);
-  q('DELETE FROM links WHERE owner = ? AND ' + UNDER).run(userId, pre, pre);
-  q('DELETE FROM shares WHERE owner = ? AND (path = ? OR ' + UNDER + ')').run(userId, folder, pre, pre);
+  q('DELETE FROM versions WHERE user = ? AND substr(path, 1, length(?)) = ?').run(userId, pre, pre);
+  q('DELETE FROM comments WHERE user = ? AND substr(path, 1, length(?)) = ?').run(userId, pre, pre);
+  q('DELETE FROM links WHERE owner = ? AND substr(path, 1, length(?)) = ?').run(userId, pre, pre);
+  q('DELETE FROM shares WHERE owner = ? AND (path = ? OR substr(path, 1, length(?)) = ?)').run(userId, folder, pre, pre);
 }
 function vaultCreate(user, body) {
   const folder = cleanPath(String(body.folder || '').replace(/\/+$/, ''));
@@ -402,9 +412,9 @@ function vaultOpening(user, v) {
 }
 function vaultRemove(user, v) {
   const pre = v.folder + '/';
-  if (q('SELECT 1 FROM notes WHERE user = ? AND v = 1 AND ' + UNDER + ' LIMIT 1').get(user.id, pre, pre)) throw new Fail(409, 'vault_not_empty', 'There are still encrypted notes in this folder');
+  if (q('SELECT 1 FROM notes WHERE user = ? AND v = 1 AND substr(path, 1, length(?)) = ? LIMIT 1').get(user.id, pre, pre)) throw new Fail(409, 'vault_not_empty', 'There are still encrypted notes in this folder');
   aiForget(v, false);
-  q('DELETE FROM versions WHERE user = ? AND ' + UNDER).run(user.id, pre, pre); // el historial cifrado ya no tendría llave
+  q('DELETE FROM versions WHERE user = ? AND substr(path, 1, length(?)) = ?').run(user.id, pre, pre); // el historial cifrado ya no tendría llave
   q('DELETE FROM vaults WHERE id = ?').run(v.id);
   announceUser(user.id, { type: 'vault' });
   return { ok: true };

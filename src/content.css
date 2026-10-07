@@ -1235,7 +1235,7 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-vault-list li.lmd-vault-on span { color: var(--accent); }
 .lmd-vault-list li button { flex: none; color: var(--fg-muted); text-decoration: underline; }
 .lmd-vault-list li button:hover { color: var(--fg); }
-.lmd-acct .lmd-vault-list + .lmd-hint { margin-top: 8px; }
+.lmd-acct .lmd-vault-tokens { margin: 10px 0 0; }
 @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
   .lmd-vault-line { padding-bottom: 6px; font-size: 12.5px; }
   .lmd-vault-line .lmd-link { min-height: 32px; padding: 4px 6px; }

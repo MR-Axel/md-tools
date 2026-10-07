@@ -315,8 +315,9 @@
   // ---------- Desbloquear para la IA ----------
   const TIMES = [[15, '15 minutos'], [60, '1 hora'], [480, '8 horas'], [0, 'Hasta que la bloquee']];
   async function aiUnlock(vault) {
+    // Sin la cuenta a mano (sin conexión) se sigue: si hace falta el plan pago, lo dice el servidor.
     const a = await LMD.sync.me();
-    if (!a || !a.mcp) { core.openPanel('plan', T('Desbloquear una carpeta para la IA es parte del plan pago.')); return; }
+    if (a && !a.mcp) { core.openPanel('plan', T('Desbloquear una carpeta para la IA es parte del plan pago.')); return; }
     const o = sheet(T('Desbloquear "{a}" para la IA', { a: vault.folder }),
       '<p>' + T('Mientras esté desbloqueada, el servidor puede leer y escribir las notas de esta carpeta para tu IA.') + '</p>' +
       '<p>' + T('La llave se guarda solo en la memoria del servidor y se olvida al vencer el plazo, al bloquear o si el servidor se reinicia.') + '</p>' +
@@ -403,9 +404,10 @@
     if (!list.length) return '';
     return '<h4>' + T('Carpetas protegidas') + '</h4>' +
       '<ul class="lmd-tokens lmd-vault-list">' + list.map((v) => '<li' + (v.ai ? ' class="lmd-vault-on"' : '') + '><span>' + ICON.lock + '<b>' + esc(v.folder) + '/</b> · ' + esc(aiText(v)) + '</span>' +
-        (v.ai ? '<button type="button" data-vault-ailock="' + v.id + '">' + T('Bloquear ahora') + '</button>' : '<button type="button" data-vault-ai="' + v.id + '">' + T('Desbloquear para la IA') + '</button>') + '</li>').join('') + '</ul>' +
-      '<p class="lmd-hint">' + T('Las carpetas protegidas no entran en ningún token, salvo mientras estén desbloqueadas para la IA.') + '</p>';
+        (v.ai ? '<button type="button" data-vault-ailock="' + v.id + '">' + T('Bloquear ahora') + '</button>' : '<button type="button" data-vault-ai="' + v.id + '">' + T('Desbloquear para la IA') + '</button>') + '</li>').join('') + '</ul>';
   }
+  // Al lado de "Crear un token": qué no alcanza un token, tenga el alcance que tenga.
+  const tokenNote = () => (all().length ? '<p class="lmd-hint lmd-vault-tokens">' + T('Las carpetas protegidas no entran en ningún token, salvo mientras estén desbloqueadas para la IA.') + '</p>' : '');
   // Devuelve true si el clic era de esta sección.
   function aiClick(e) {
     const on = e.target.closest('[data-vault-ai]'); const off = e.target.closest('[data-vault-ailock]');
@@ -432,5 +434,5 @@
 
   function init(c) { core = c; }
 
-  LMD.vault = { init, load, changed, of, isOpen, unlock, unlockFor, menu, pick, beforeMove, pinned, aiSection, aiClick, aiText, explain, WHY, can };
+  LMD.vault = { init, load, changed, of, isOpen, unlock, unlockFor, menu, pick, beforeMove, pinned, aiSection, tokenNote, aiClick, aiText, explain, WHY, can };
 })();

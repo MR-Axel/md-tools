@@ -180,7 +180,7 @@ try {
   await app.goto(cloudUrl('diario/lunes.md')); await app.waitForSelector(CARD + ' [data-v=p]'); await app.fill('[data-v=p]', PASS); await app.click('[data-v=ok]'); await app.waitForSelector('.markdown-body h1:has-text("Lunes")');
   o.iaEscribe = await app.evaluate(() => /Agregado por la IA\./.test(document.querySelector('.markdown-body').textContent));
   await app.click('[data-act=settings]'); await app.waitForSelector('.lmd-panel-card'); await app.click('[data-ptab=ai]'); await app.waitForSelector('.lmd-vault-list li');
-  o.ajustes = [await app.textContent('.lmd-vault-list li span'), await app.textContent('.lmd-vault-list li button'), await app.textContent('.lmd-vault-list + .lmd-hint')];
+  o.ajustes = [await app.textContent('.lmd-vault-list li span'), await app.textContent('.lmd-vault-list li button'), await app.textContent('.lmd-vault-tokens')];
   await app.click('.lmd-vault-list [data-vault-ailock]');
   await app.waitForFunction(() => /Bloqueada para la IA/.test((document.querySelector('.lmd-vault-list li span') || {}).textContent || ''), null, { timeout: 10000 });
   o.ajustes.push(await app.textContent('.lmd-vault-list li span'), await app.textContent('.lmd-vault-list li button'), (await vaults())[0].ai, (await mcp('read_note', { path: 'diario/lunes.md' })).err, await app.locator(CLOUD + ' .lmd-vault-line').count());
