@@ -5,6 +5,10 @@
   const INLINE_OK = new Set(['STRONG', 'B', 'EM', 'I', 'DEL', 'S', 'STRIKE', 'MARK', 'INS', 'SUB', 'SUP', 'CODE', 'BR', 'A', 'IMG', 'ABBR', 'INPUT', 'SPAN', 'U', 'FONT']);
   const escText = (t) => t.replace(/\u200b/g, '').replace(/\u00a0/g, ' ').replace(/([\\`*])/g, '\\$1').replace(/</g, '\\<');
 
+  // Un destino interno (otro archivo, una sección) se escribe con sus acentos, no con %C3%B3: así se lee en cualquier lado.
+  const niceHref = (href) => (/^([a-z][a-z0-9+.-]*:|\/\/)/i.test(href) ? href
+    : href.replace(/(?:%[89A-F][0-9A-F])+/gi, (m) => { try { const t = decodeURIComponent(m); return /[\s\u0000-\u001f]/.test(t) ? m : t; } catch (e) { return m; } }));
+
   // HTML de un bloque editado -> Markdown en línea.
   function inlineMd(rootNode) {
     let out = '';
@@ -31,7 +35,7 @@
       else if (tag === 'SUB') out += wrap('~');
       else if (tag === 'SUP') out += wrap('^');
       else if (tag === 'A') {
-        const href = n.getAttribute('data-lmd-href') || n.getAttribute('href') || ''; const text = n.textContent;
+        const href = niceHref(n.getAttribute('data-lmd-href') || n.getAttribute('href') || ''); const text = n.textContent;
         out += (!href || href === text || href === 'mailto:' + text || href === 'http://' + text) ? escText(text) : '[' + inner + '](' + href + ')';
       } else out += inner;
     });
@@ -49,5 +53,5 @@
     return true;
   }
 
-  LMD.serialize = { inlineMd, roundTrips, escText };
+  LMD.serialize = { inlineMd, roundTrips, escText, niceHref };
 })();

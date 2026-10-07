@@ -55,7 +55,7 @@ o.recto = await app.evaluate(() => !document.documentElement.classList.contains(
 
 const J = (v) => JSON.stringify(v);
 const checks = [
-  ['cada opción del menú tiene su ícono', o.iconos[0] === 16 && o.iconos[1] === 16, o.iconos],
+  ['cada opción del menú tiene su ícono', o.iconos[0] === 17 && o.iconos[1] === 17, o.iconos],
   ['una lista con viñetas al lado de una de tareas queda aparte', J(o.vinetas) === J(['- [ ] Tarea uno', '', '* Una viñeta', '']), o.vinetas],
   ['y conserva sus viñetas', J(o.estilos) === J(['none', 'disc']), o.estilos],
   ['rechaza una dirección que no es de imagen', /no sirve/.test(o.rechazo || ''), o.rechazo],

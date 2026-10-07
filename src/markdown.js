@@ -155,6 +155,16 @@
     return slug;
   }
 
+  // El ancla que arma GitHub para un título: minúsculas, sin signos, cada espacio un guion, y los acentos quedan.
+  // Es la que se escribe en los enlaces, para que el archivo se lea igual allá.
+  function ghSlug(text, used) {
+    const base = text.trim().toLowerCase().replace(/[^\p{L}\p{M}\p{N}\s_-]/gu, '').replace(/\s/g, '-');
+    let slug = base; let n = 1;
+    while (used.has(slug)) slug = base + '-' + n++;
+    used.add(slug);
+    return slug;
+  }
+
   // Cabecera YAML (--- ... ---) al inicio del archivo: se saca del cuerpo y se muestra como ficha.
   function splitFrontmatter(text) {
     const m = /^\uFEFF?---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(\r?\n|$)/.exec(text);
@@ -170,5 +180,5 @@
     return { body: text.slice(m[0].length), rows };
   }
 
-  LMD.md = { buildParser, slugify, splitFrontmatter, CONTAINERS, ALERTS };
+  LMD.md = { buildParser, slugify, ghSlug, splitFrontmatter, CONTAINERS, ALERTS };
 })();

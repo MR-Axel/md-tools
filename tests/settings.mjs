@@ -44,6 +44,9 @@ const openSettings = async (t) => { await app.click('[data-act=settings]'); awai
 const TABS = ['look', 'read', 'plug', 'cloud', 'ai', 'plan', 'adv'];
 // Ninguna pestaña puede necesitar scroll con la ventana a 800 px de alto.
 const overflow = async () => { const out = []; for (const t of TABS) { await tab(t); const m = await app.evaluate(() => { const b = document.querySelector('.lmd-panel-body'); return b.scrollHeight - b.clientHeight; }); if (m > 0) out.push(t + ' +' + m); } return out; };
+// Los dos renglones que dicen qué anda sin cuenta y qué suma tenerla: sin signos de admiración ni rayas largas.
+const perks = () => app.evaluate(() => [...document.querySelectorAll('.lmd-perks dt, .lmd-perks dd')].filter((n) => n.offsetWidth > 0).map((n) => n.textContent));
+const claro = (p) => p.length === 4 && p[0] === 'Sin cuenta' && /editor/.test(p[1]) && /disco/.test(p[1]) && /navegador/.test(p[1]) && p[2] === 'Con cuenta' && /nube \(10 gratis\)/.test(p[3]) && /Compartir, historial/.test(p[3]) && /IA en el plan pago/.test(p[3]) && !/[!¡—]/.test(p.join(''));
 const text = (sel) => app.evaluate((s) => { const n = document.querySelector(s); return n ? n.textContent.trim() : null; }, sel);
 
 try {
@@ -61,6 +64,8 @@ try {
 
   console.log('Inicio: entrar');
   const err = () => app.evaluate(() => { const p = document.querySelector('.lmd-home-cloud-err'); const i = document.querySelector('.lmd-home-cloud [data-field]'); return [p && !p.hidden ? p.textContent : '', i.getAttribute('aria-invalid'), p && p.previousElementSibling === i.parentNode]; });
+  const perksInicio = await perks();
+  check('inicio sin sesión: dos renglones dicen qué anda sin cuenta y qué suma tenerla', claro(perksInicio) && (await app.locator('.lmd-home-cloud p').count()) === 0 && (await app.locator('.lmd-home-cloud [data-cloud=ask]').count()) === 1, perksInicio);
   await app.click('[data-cloud=ask]');
   const bad = {};
   for (const v of ['', 'ana', 'ana@ejemplo', 'ana@ejemplo..test', 'ana.@ejemplo.test', 'ana garcia@ejemplo.test']) { await app.fill('[data-field=email]', v); await app.click('[data-cloud=start]'); await app.waitForTimeout(120); bad[v] = await err(); }
@@ -184,7 +189,7 @@ try {
   check('y no le piden nada al servidor', asked.length === 0, asked.slice(0, 5));
   const [opened] = await Promise.all([ctx.waitForEvent('page'), file.click('[data-acct=plan] [data-c=login]')]);
   await opened.waitForSelector('.lmd-home');
-  check('"Abrir SharpMD" abre la app', opened.url().startsWith(home), opened.url());
+  check('"Abrir SharpMD" abre la app, lista para entrar', opened.url() === home + '?login=1', opened.url());
   await opened.close();
   await file.click('[data-act=feedback]'); await file.waitForSelector('.lmd-fb a');
   check('los comentarios ofrecen el correo', /^mailto:hello@sharpmd\.app/.test(await file.evaluate(() => document.querySelector('.lmd-fb a').href)) && (await file.locator('.lmd-fb textarea').count()) === 0);
@@ -311,8 +316,30 @@ try {
   await app.goto(cloudUrl('proyectos/plan.md')); await app.waitForSelector('.markdown-body h1'); await openSettings('cloud');
   await app.waitForSelector('[data-acct=cloud] [data-c=out]'); await app.click('[data-acct=cloud] [data-c=out]'); await app.waitForSelector('[data-acct=cloud] [data-c=login]');
   check('Nube: salir deja la invitación a entrar', /Crear cuenta o entrar/.test(await text('[data-acct=cloud]')) && !(await stored('cloud')).session);
+  const perksNube = await perks();
+  check('Nube sin sesión: dos renglones dicen qué anda sin cuenta y qué suma tenerla', claro(perksNube) && (await app.locator('[data-acct=cloud] p').count()) === 0, perksNube);
   await tab('plan');
   check('Plan sin sesión: las tarjetas, sin botones de pago', (await app.locator('[data-acct=plan] .lmd-plan').count()) === 2 && (await app.locator('[data-acct=plan] [data-pay]').count()) === 0 && /Entrá a tu cuenta/.test(await text('[data-acct=plan]')));
+  // El botón de entrar no saca de la nota: lleva a Nube y pide ahí el correo y el código.
+  const notaAbierta = app.url();
+  await app.click('[data-acct=plan] [data-c=login]'); await app.waitForSelector('[data-acct=cloud] [data-field=email]');
+  const pide = await app.evaluate(() => ({ tab: document.querySelector('[data-ptab].lmd-on').dataset.ptab, foco: document.activeElement.dataset.field, perks: document.querySelectorAll('[data-acct=cloud] .lmd-perks').length }));
+  check('desde Plan, "Crear cuenta o entrar" lleva a Nube con el correo ya pedido, sin salir de la nota', pide.tab === 'cloud' && pide.foco === 'email' && pide.perks === 1 && app.url() === notaAbierta, pide);
+  await app.fill('[data-acct=cloud] [data-field=email]', 'sin arroba'); await app.keyboard.press('Enter'); await app.waitForSelector('[data-acct=cloud] .lmd-home-cloud-err:not([hidden])');
+  const malCorreo = await text('[data-acct=cloud] .lmd-home-cloud-err');
+  await app.fill('[data-acct=cloud] [data-field=email]', 'nueva@ejemplo.test');
+  const [pedido] = await Promise.all([app.waitForResponse((r) => r.url().endsWith('/auth/start')), app.click('[data-acct=cloud] [data-cloud=start]')]);
+  await app.waitForSelector('[data-acct=cloud] [data-field=code]'); await app.fill('[data-acct=cloud] [data-field=code]', (await pedido.json()).dev_code); await app.keyboard.press('Enter');
+  await app.waitForSelector('[data-acct=cloud] [data-c=out]');
+  const adentro = await text('[data-acct=cloud]');
+  check('en Ajustes → Nube se entra ahí mismo, con el correo y el código', /no lleva espacios/.test(malCorreo || '') && /nueva@ejemplo\.test/.test(adentro) && (await stored('cloud')).session && app.url() === notaAbierta && !(await app.evaluate(() => document.querySelector('.lmd-panel').hidden)), [malCorreo, adentro]);
+  await app.click('[data-acct=cloud] [data-c=out]'); await app.waitForSelector('[data-acct=cloud] [data-c=login]');
+  await app.click('[data-acct=cloud] [data-c=login]'); await app.waitForSelector('[data-acct=cloud] [data-field=email]');
+  check('el botón de Nube pide el correo en el lugar', (await app.evaluate(() => document.activeElement.dataset.field)) === 'email' && app.url() === notaAbierta);
+  await tab('plan'); await tab('cloud'); await app.waitForSelector('[data-acct=cloud] [data-c=login]');
+  const conLogin = await ctx.newPage(); await conLogin.goto(home + '?login=1'); await conLogin.waitForSelector('.lmd-home-cloud [data-field=email]');
+  check('el inicio abierto con ?login=1 ya pide el correo', (await conLogin.evaluate(() => document.activeElement.dataset.field)) === 'email' && (await conLogin.locator('.lmd-perks').count()) === 1);
+  await conLogin.close();
   await tab('adv');
   const sw1 = () => app.evaluate(() => ({ own: document.querySelector('[data-server=own]').checked, off: document.querySelector('[data-server=off]').checked, shown: !document.querySelector('.lmd-server-url').hidden && document.querySelector('.lmd-server-url').getBoundingClientRect().height > 0, url: document.querySelector('[data-server=url]').value }));
   const toggle = async (name) => { await app.locator('label.lmd-check', { has: app.locator('[data-server=' + name + ']') }).click(); await app.waitForTimeout(500); };

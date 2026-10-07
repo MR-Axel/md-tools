@@ -41,7 +41,7 @@
 
   const T = (text, vars) => LMD.t(text, vars);
   const { ICON, el, esc, debounce, MD_RE, SKIP_DIRS } = LMD.kit;
-  const { slugify, splitFrontmatter, ALERTS } = LMD.md;
+  const { slugify, ghSlug, splitFrontmatter, ALERTS } = LMD.md;
   const { inlineMd, roundTrips } = LMD.serialize;
   const { handlesAll, handlesPut, canWrite, walk } = LMD.store;
   // El parser se arma una vez y se reutiliza mientras no cambien los plugins ni el idioma.
@@ -272,6 +272,62 @@
     const c = h.cloneNode(true);
     c.querySelectorAll('.lmd-anchor').forEach((a) => a.remove());
     return c.textContent.trim();
+  }
+
+  // ---------- Enlaces internos ----------
+  // Cada título tiene dos anclas: la propia (sin acentos) y la que arma GitHub (con acentos), que es la que se
+  // escribe en los enlaces. Al navegar valen las dos.
+  function anchorsOf(headings) {
+    const used = new Set();
+    return headings.map((h) => { const text = headingText(h); return { el: h, id: h.id, level: +h.tagName[1], text, gh: ghSlug(text, used) || h.id }; });
+  }
+  const unesc = (s) => { try { return decodeURIComponent(s); } catch (e) { return s; } };
+  function findAnchor(frag) {
+    const direct = frag && document.getElementById(frag);
+    if (direct || !frag) return direct || null;
+    const list = anchorsOf(spyHeadings); const low = frag.toLowerCase(); const plain = slugify(frag.replace(/-/g, ' '), new Set());
+    const hit = list.find((x) => x.gh === low) || list.find((x) => x.id === plain);
+    return hit ? hit.el : null;
+  }
+  // Los títulos de otro archivo, con las mismas anclas que tendría abierto. El documento se arma aparte: no carga imágenes.
+  function headingsIn(text) {
+    const body = settings.plugins.frontmatter ? splitFrontmatter(text).body : text;
+    const doc = new DOMParser().parseFromString(DOMPurify.sanitize(buildParser().render(body), { ADD_ATTR: ['target', 'data-tex'], FORBID_TAGS: ['style', 'form'] }), 'text/html');
+    const used = new Set(); const hs = Array.from(doc.body.querySelectorAll('h1,h2,h3,h4,h5,h6'));
+    hs.forEach((h) => { h.id = slugify(h.textContent, used); });
+    return anchorsOf(hs).map((x) => ({ id: x.id, level: x.level, text: x.text, gh: x.gh }));
+  }
+  const sameUrl = (a, b) => unesc(a.split('#')[0]) === unesc(b.split('#')[0]);
+  // Los Markdown que se pueden enlazar: en la app, todo lo abierto; sobre un archivo suelto, la carpeta del árbol.
+  let linkIndex = null;
+  async function linkFiles(cached) {
+    const root = APP && appRoot ? VBASE + appRoot.id + '/' : treeRoot;
+    if (!cached || !linkIndex || linkIndex.root !== root || Date.now() - linkIndex.at > 20000) {
+      const files = await collectFiles(root);
+      if (files == null) return null;
+      linkIndex = { root, at: Date.now(), files: files.filter((f) => !sameUrl(f.url, HERE)) };
+    }
+    return linkIndex.files;
+  }
+  const readDoc = async (url) => { if (APP) return vText(url); const r = await bg({ type: 'fetchText', url }); return r && r.ok ? r.text : null; };
+  // Ruta de un archivo relativa a este documento, lista para un enlace: los espacios y los paréntesis van codificados.
+  const linkSeg = (s) => s.replace(/[\s()<>[\]#?%"\\]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'));
+  function relLink(url) {
+    const a = HERE.split('/').map(unesc); const b = url.split('#')[0].split('/').map(unesc); a.pop();
+    let i = 0; while (i < a.length && i < b.length - 1 && a[i] === b[i]) i++;
+    const out = '../'.repeat(a.length - i) + b.slice(i).map(linkSeg).join('/');
+    return /^[^/]*:/.test(out) ? './' + out : out;
+  }
+  const noSection = (frag) => flash(T('No se encontró la sección "{a}".', { a: frag }), 'warn');
+  // Abre otro archivo de la app. Antes mira que exista: si no, avisa y se queda donde está.
+  async function openDoc(href) {
+    const u = new URL(href); const f = u.searchParams.get('f') || ''; const target = VBASE + f; const frag = unesc(u.hash.slice(1));
+    if (sameUrl(target, HERE)) { const t = findAnchor(frag); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); else if (frag) noSection(frag); return; }
+    let ok = false;
+    // Sin conexión no se puede saber: se abre igual, que la nube tiene su copia en este navegador.
+    try { const h = await vFile(target); ok = !!h && !!(await h.getFile()); } catch (e) { ok = !!e && e.code === 'offline'; }
+    if (!ok) { flash(T('No se encontró "{a}".', { a: unesc(f.split('/').pop() || '') }), 'error'); return; }
+    location.href = href;
   }
 
   async function ensure(what) {
@@ -532,7 +588,7 @@
       '<button type="button" data-fmt="italic" title="' + T('Cursiva (Ctrl+I)') + '"><i>I</i></button>' +
       '<button type="button" data-fmt="strike" title="' + T('Tachado') + '"><s>S</s></button>' +
       '<button type="button" data-fmt="code" title="' + T('Código') + '">' + ICON.code + '</button>' +
-      '<button type="button" data-fmt="link" title="' + T('Enlace') + '">' + ICON.link + '</button>' +
+      '<button type="button" data-fmt="link" title="' + T('Enlace (Ctrl+K)') + '">' + ICON.link + '<span class="lmd-format-label">' + T('Editar el enlace') + '</span></button>' +
       '<button type="button" data-fmt="clear" title="' + T('Quitar formato') + '">' + ICON.close + '</button>');
     ui.tableBar = el('div', { class: 'lmd-tablebar', hidden: '' },
       '<button type="button" data-top="row+">+ ' + T('Fila') + '</button>' +
@@ -564,6 +620,7 @@
     bindEvents();
     bindEditing();
     LMD.write.init(core);
+    LMD.links.init(core);
     LMD.diagram.init(core);
     LMD.extras.init(core);
     LMD.board.init(core);
@@ -582,12 +639,26 @@
       if (img && !img.closest('a') && !editMode) { openViewer(img); return; }
       const res = e.target.closest('.lmd-results a');
       if (res && res.href.split('#')[0] === location.href.split('#')[0]) { e.preventDefault(); stepSearch(1); return; }
-      const a = e.target.closest('.lmd-article a[href^="#"], .lmd-pane-outline a');
-      if (a) {
+      const a = e.target.closest('.lmd-article a[href], .lmd-pane-outline a');
+      if (!a) return;
+      // Editando, el clic sobre un enlace pone el cursor; para seguirlo va con Ctrl.
+      const editing = editMode && !!a.closest('.lmd-editable');
+      if (editing && !(e.ctrlKey || e.metaKey)) return;
+      const href = a.getAttribute('href');
+      if (href[0] === '#') {
         // Un enlace escrito como en GitHub (con acentos o mayúsculas) llega igual al título, que acá lleva el ancla sin acentos.
-        const frag = decodeURIComponent(a.getAttribute('href').slice(1));
-        const target = document.getElementById(frag) || document.getElementById(slugify(frag.replace(/-/g, ' '), new Set()));
-        if (target) { e.preventDefault(); spyPin = a.closest('.lmd-pane-outline') ? target.id : null; target.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', '#' + target.id); }
+        const frag = unesc(href.slice(1));
+        const target = findAnchor(frag);
+        e.preventDefault();
+        if (target) { spyPin = a.closest('.lmd-pane-outline') ? target.id : null; target.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', '#' + target.id); }
+        else if (frag) noSection(frag); else window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else if (APP && (a.hasAttribute('data-lmd-href') || a.classList.contains('lmd-wiki'))) {
+        // Otro archivo de la carpeta. Leyendo, Ctrl o Shift lo abren aparte, como cualquier enlace.
+        if (!editing && (e.ctrlKey || e.metaKey || e.shiftKey)) return;
+        e.preventDefault(); openDoc(a.href);
+      } else if (editing) {
+        e.preventDefault();
+        if (/^https?:/i.test(href) && a.host !== location.host) window.open(a.href, '_blank', 'noopener'); else location.href = a.href;
       }
     });
 
@@ -611,6 +682,7 @@
       }
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 's' && (editMode || dirty || (appRoot && appRoot.kind === 'local'))) { e.preventDefault(); save(true); }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); toggleSearch(true); }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k' && editMode && !rawMode && docKind() === 'md') { e.preventDefault(); LMD.links.open(); }
     });
 
     ui.searchInput.addEventListener('input', debounce(() => runSearch(ui.searchInput.value), 180));
@@ -1256,6 +1328,21 @@
     });
   }
 
+  // Busca un texto en toda la carpeta, con el buscador de siempre.
+  function searchFor(q) {
+    ui.searchInput.value = q;
+    if (settings.sidebarTab === 'files') runSearch(q);
+    // Al cambiar de pestaña, applySettings repite la búsqueda con lo que quedó escrito.
+    if (settings.sidebarHidden || settings.sidebarTab !== 'files') LMD.patch({ sidebarHidden: false, sidebarTab: 'files' });
+  }
+  // Enlace a una sección para pegar en otro lado: la dirección completa si el documento tiene una pública
+  // (un .md abierto desde la web, o una nota compartida por enlace); si no, solo el ancla.
+  function sectionLink(anchor) {
+    if (!APP) return /^https?:$/.test(location.protocol) ? location.href.split('#')[0] + '#' + anchor : '#' + anchor;
+    if (appRoot && appRoot.kind === 'pub') return LMD.WEB_APP_URL + '?f=' + encodeURIComponent(HERE.slice(VBASE.length)) + '#' + anchor;
+    return '#' + anchor;
+  }
+
   // ---------- Visor de imágenes ----------
   function openViewer(img) {
     ui.viewer.textContent = '';
@@ -1373,7 +1460,9 @@
     ui.panel.hidden = false;
     // Desde los paneles de la cuenta: cómo cambiar de pestaña, ir a entrar, y salir a pagar sin perder lo escrito.
     const host = {
-      tab: (t) => showTab(t), login: () => onAction('go-home'), close: () => { ui.panel.hidden = true; },
+      tab: (t) => showTab(t), close: () => { ui.panel.hidden = true; },
+      // En la app se entra en Ajustes → Nube. Sobre un archivo abierto directo, se abre la app con el correo ya pedido.
+      login: () => { if (APP) location.href = APP_URL + '?login=1'; else bg({ type: 'openApp', query: '?login=1' }); },
       leave: () => (dirty ? save(false) : Promise.resolve(true)),
       back: location.href.split('#')[0], appUrl: APP_URL, direct: !APP,
       // Las personalizaciones vienen con el plan pago y se conservan.
@@ -1622,7 +1711,8 @@
     clearTimeout(softTimer);
     softTimer = setTimeout(() => {
       const a = document.activeElement;
-      if (!needsRender || (a && (a.isContentEditable || a.classList.contains('lmd-src')))) return;
+      // Con el selector de enlaces abierto tampoco: el bloque donde va el enlace tiene que seguir ahí.
+      if (!needsRender || core.hold || (a && (a.isContentEditable || a.classList.contains('lmd-src')))) return;
       render();
     }, 350);
   }
@@ -1781,12 +1871,16 @@
   // Barra de formato sobre la selección.
   function formatBar() {
     const sel = getSelection();
-    const host = sel.rangeCount && !sel.isCollapsed && sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentNode).closest('.lmd-editable');
-    if (!editMode || !host) { ui.format.hidden = true; return; }
-    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    const at = sel.rangeCount && sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentNode);
+    const host = at && at.closest('.lmd-editable');
+    // Con el cursor apoyado en un enlace, sin seleccionar nada, la barra ofrece solo editarlo.
+    const link = host && sel.isCollapsed ? at.closest('a:not(.lmd-wiki)') : null;
+    if (!editMode || !host || core.hold || (sel.isCollapsed && !(link && host.contains(link)))) { ui.format.hidden = true; return; }
+    const rect = (link || sel.getRangeAt(0)).getBoundingClientRect();
+    ui.format.classList.toggle('lmd-format-link', !!link);
     ui.format.hidden = false;
     ui.format.style.top = Math.max(8, rect.top - 42) + 'px';
-    ui.format.style.left = Math.max(8, Math.min(window.innerWidth - 230, rect.left + rect.width / 2 - 105)) + 'px';
+    ui.format.style.left = Math.max(8, link ? Math.min(window.innerWidth - ui.format.offsetWidth - 8, rect.left) : Math.min(window.innerWidth - 230, rect.left + rect.width / 2 - 105)) + 'px';
   }
 
   function applyFormat(kind) {
@@ -1800,8 +1894,7 @@
       const range = sel.getRangeAt(0); range.deleteContents(); range.insertNode(code);
       sel.selectAllChildren(code);
     } else if (kind === 'link') {
-      const url = window.prompt(T('Dirección del enlace'), 'https://');
-      if (url) document.execCommand('createLink', false, url);
+      LMD.links.open();
     } else if (kind === 'clear') { document.execCommand('removeFormat'); document.execCommand('unlink'); }
   }
 
@@ -1819,7 +1912,7 @@
   // Doble clic leyendo: pasa a edición con el cursor donde se hizo. Lo que ya responde al clic queda como está.
   const NO_DBL = 'a, img, button, input, .lmd-code, .lmd-diagram, pre.lmd-mermaid, pre.lmd-graphviz, .lmd-board, .lmd-math, .lmd-toc, .lmd-front';
   async function editAt(e) {
-    if (readOnly || docKind() !== 'md' || e.target.closest(NO_DBL)) return;
+    if (readOnly || docKind() !== 'md') return;
     const cell = e.target.closest('td, th'); const table = cell && cell.closest('table[data-l]');
     const block = e.target.closest('[data-l]');
     const host = table ? cell : block;
@@ -1892,7 +1985,7 @@
     // Las tareas se tildan también leyendo; el cambio queda sin guardar hasta Ctrl+S (o se guarda solo, si está activado).
     ui.article.addEventListener('change', (e) => { if (docKind() === 'md' && e.target.matches && e.target.matches('input.lmd-task')) toggleTask(e.target); });
     ui.article.addEventListener('dblclick', (e) => {
-      if (!editMode) { editAt(e); return; }
+      if (!editMode) { if (!e.target.closest(NO_DBL)) editAt(e); return; }
       const box = e.target.closest('.lmd-code');
       if (box) editCode(box);
     });
@@ -1925,7 +2018,9 @@
     urlOf: (path) => VBASE + appRoot.id + '/' + path.split('/').map(encodeURIComponent).join('/'),
     openApp: (query) => bg({ type: 'openApp', query }),
     openPanel: (tab) => openPanel(tab),
-    ui, hooks: { render: [], tree: [] }, lastBlock: null, appUrl: APP_URL,
+    ui, hooks: { render: [], tree: [] }, lastBlock: null, appUrl: APP_URL, hold: false,
+    editAt: (e) => editAt(e), copy: (text) => { copyText(text); flash(T('Copiado')); }, searchFor, sectionLink,
+    links: { headings: () => anchorsOf(spyHeadings), headingsIn, files: linkFiles, read: readDoc, rel: relLink, find: findAnchor, same: sameUrl },
     get blocks() { return docKind() === 'md'; },
     treeRoot: () => treeRoot,
     reloadTree: () => { fileCache.clear(); folderIndex = null; wikiIndex = null; return loadTree(); },
@@ -2252,9 +2347,10 @@
       }
       ui.searchInput.value = decodeURIComponent(fromSearch[1]);
       runSearch(ui.searchInput.value, true);
-    } else if (location.hash) {
-      const t = document.getElementById(decodeURIComponent(location.hash.slice(1)));
-      if (t) t.scrollIntoView();
+    } else if (location.hash && !/^#lmd-/.test(location.hash)) {
+      // Se llegó por un enlace a una sección: si no existe, se avisa en vez de quedar arriba sin decir nada.
+      const frag = unesc(location.hash.slice(1)); const t = findAnchor(frag);
+      if (t) t.scrollIntoView(); else noSection(frag);
     } else restorePosition();
 
     chrome.storage.onChanged.addListener((changes, area) => {

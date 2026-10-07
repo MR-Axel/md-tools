@@ -77,6 +77,7 @@ await app.evaluate(async () => {
   const write = async (name, data) => { const h = await dir.getFileHandle(name, { create: true }); const s = await h.createWritable(); await s.write(data); await s.close(); };
   await write('lee.md', '# Lee\n\nUn [enlace](https://example.com) acá.\n\n```js\nlet a = 1;\n```\n\n- [ ] tarea\n\nPárrafo final para editar con calma.\n');
   await write('vacia.md', '');
+  await write('secciones.md', '# Doc\n\n## Sección dos\n\nTexto.\n\n### Sección tres\n\n- ítem uno\n- ítem dos\n\n1. Paso con **negrita**\n\n| A | B |\n| --- | --- |\n| celda uno | celda dos |\n');
 });
 // recargar, o pasar a otra nota, no saca de edición
 await app.keyboard.press('Control+s'); await app.waitForTimeout(900);
@@ -102,19 +103,63 @@ o.doble = await app.evaluate(() => { const a = document.activeElement; const s =
 // ya editando, el doble clic selecciona la palabra como siempre
 await app.locator('.markdown-body p.lmd-editable', { hasText: 'Párrafo final' }).dblclick({ position: { x: 30, y: 10 } }); await app.waitForTimeout(150);
 o.doblePalabra = await app.evaluate(() => getSelection().toString().trim());
-// clic derecho leyendo: con Shift queda el menú del navegador; sin Shift pasa a edición y abre el menú del bloque
+// clic derecho leyendo: con Shift y sobre un enlace queda el menú del navegador; en lo demás sale el menú de lectura, sin pasar a edición
 await app.click('[data-act=mode-read]'); await app.waitForTimeout(300);
+await app.evaluate(() => { navigator.clipboard.writeText = async (t) => { window.__clip = t; }; });
+const clip = () => app.evaluate(() => window.__clip);
+const opciones = () => app.evaluate(() => [...document.querySelectorAll('.lmd-menu-read button')].map((n) => n.textContent));
 await app.locator('.markdown-body h1').click({ button: 'right', modifiers: ['Shift'] }); await app.waitForTimeout(300);
 o.derechoShift = [await editing(), await app.locator('.lmd-menu').count()];
+await app.evaluate(() => getSelection().removeAllRanges()); // el clic con Shift extiende la selección
 await app.locator('.markdown-body a[href^="https"]').click({ button: 'right' }); await app.waitForTimeout(300);
 o.derechoEnlace = [await editing(), await app.locator('.lmd-menu').count()];
-await app.locator('.markdown-body h1').click({ button: 'right' }); await app.waitForSelector('.lmd-menu');
+// sobre un título: editar, copiar el bloque, copiar el enlace a la sección e insertar debajo
+await app.locator('.markdown-body h1').click({ button: 'right', position: { x: 20, y: 12 } }); await app.waitForSelector('.lmd-menu-read');
+o.menuTitulo = [await editing(), await opciones()];
+await app.keyboard.press('Escape'); await app.waitForTimeout(150);
+o.menuEscape = await app.locator('.lmd-menu').count();
+await app.locator('.markdown-body h1').click({ button: 'right', position: { x: 20, y: 12 } }); await app.waitForSelector('.lmd-menu-read');
+await app.mouse.click(900, 700); await app.waitForTimeout(150);
+o.menuAfuera = await app.locator('.lmd-menu').count();
+await app.locator('.markdown-body h1').click({ button: 'right', position: { x: 20, y: 12 } }); await app.click('.lmd-menu-read [data-read=anchor]'); await app.waitForTimeout(150);
+o.copiaAncla = [await clip(), await app.textContent('.lmd-status')];
+// sobre un bloque sin nada elegido: se copia su Markdown, tal como está en el archivo
+await app.locator('.markdown-body p', { hasText: 'enlace' }).click({ button: 'right', position: { x: 4, y: 8 } }); await app.waitForSelector('.lmd-menu-read');
+o.menuBloque = await opciones();
+await app.click('.lmd-menu-read [data-read=block]'); await app.waitForTimeout(150);
+o.copiaBloque = await clip();
+// con texto elegido: copiar, buscar en la carpeta y editar acá
+const elegir = async () => { const box = await app.evaluate(() => {
+  const p = [...document.querySelectorAll('.markdown-body p')].find((n) => n.textContent.includes('Párrafo final')); const t = p.firstChild; const i = t.nodeValue.indexOf('editar con calma');
+  const r = document.createRange(); r.setStart(t, i); r.setEnd(t, i + 16); const s = getSelection(); s.removeAllRanges(); s.addRange(r); const b = r.getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2];
+}); await app.mouse.click(box[0], box[1], { button: 'right' }); await app.waitForSelector('.lmd-menu-read'); };
+await elegir();
+o.menuSeleccion = [await opciones(), await app.evaluate(() => getSelection().toString())];
+await app.click('.lmd-menu-read [data-read=copy]'); await app.waitForTimeout(150);
+o.copiaSeleccion = await clip();
+await elegir(); await app.click('.lmd-menu-read [data-read=find]'); await app.waitForSelector('.lmd-res-file');
+o.buscar = [await app.inputValue('.lmd-search input'), await app.evaluate(() => document.querySelector('.lmd-tab[data-tab=files]').classList.contains('lmd-active')), await app.locator('.lmd-res-file').count(), await editing()];
+await app.fill('.lmd-search input', ''); await app.waitForTimeout(300);
+await elegir(); await app.click('.lmd-menu-read [data-read=edit]'); await app.waitForTimeout(400);
+o.editarAca = [await editing(), await app.evaluate(() => document.activeElement.textContent)];
+await app.click('[data-act=mode-read]'); await app.waitForTimeout(300);
+// "Insertar debajo" pasa a edición y abre el menú de bloques de siempre
+await app.locator('.markdown-body h1').click({ button: 'right', position: { x: 20, y: 12 } }); await app.click('.lmd-menu-read [data-read=insert]'); await app.waitForSelector('.lmd-menu [data-ins]');
 o.derecho = [await editing(), await app.evaluate(() => [...document.querySelectorAll('.lmd-menu-label')].map((n) => n.textContent))];
 await app.click('.lmd-menu [data-ins=hr]'); await app.waitForTimeout(400);
 o.derechoInserta = (await src()).split('\n').slice(0, 4);
 await app.keyboard.press('Control+s'); await app.waitForTimeout(900);
-// una nota vacía abre lista para escribir, y el clic derecho inserta el primer bloque
+// doble clic leyendo sobre un título de sección, un ítem de lista y una celda: entra a edición con el cursor ahí
 await app.click('[data-act=mode-read]'); await app.waitForTimeout(300);
+await app.goto(docUrl.replace('doc.md', 'secciones.md')); await ready();
+o.dobleSecciones = [];
+for (const [sel, texto] of [['h2', 'Sección dos'], ['h3', 'Sección tres'], ['li', 'ítem dos'], ['ol li', 'Paso con negrita'], ['td', 'celda dos'], ['h1', 'Doc']]) {
+  const antes = await editing();
+  await app.locator('.markdown-body ' + sel, { hasText: texto }).dblclick({ position: { x: 14, y: 9 } }); await app.waitForTimeout(350);
+  o.dobleSecciones.push(await app.evaluate(([a, s]) => { const e = document.activeElement; return a + '>' + document.documentElement.classList.contains('lmd-editing') + ':' + e.textContent + ':' + e.isContentEditable + ':' + !!e.closest(s); }, [antes, sel.split(' ').pop()]));
+  await app.click('[data-act=mode-read]'); await app.waitForTimeout(300);
+}
+// una nota vacía abre lista para escribir, y el clic derecho inserta el primer bloque
 await app.goto(docUrl.replace('doc.md', 'vacia.md')); await app.waitForSelector('.lmd-draft');
 o.vacia = [await editing(), await app.evaluate(() => document.activeElement.classList.contains('lmd-draft'))];
 await app.keyboard.press('Escape'); await app.waitForTimeout(200);
@@ -141,7 +186,14 @@ const checks = [
   ['doble clic leyendo pasa a edición con el cursor en ese bloque', o.doble[0] === true && o.doble[1] === 'Párrafo final para editar con calma.' && o.doble[2] === true && o.doble[3] > 5 && o.doble[3] < 30, o.doble],
   ['editando, el doble clic sigue seleccionando la palabra', o.doblePalabra === 'Párrafo', o.doblePalabra],
   ['clic derecho leyendo: con Shift y sobre un enlace queda el menú del navegador', J(o.derechoShift) === J([false, 0]) && J(o.derechoEnlace) === J([false, 0]), [o.derechoShift, o.derechoEnlace]],
-  ['clic derecho leyendo pasa a edición y abre el menú del bloque', o.derecho[0] === true && J(o.derecho[1]) === J(['Insertar debajo', 'Convertir en', 'Este bloque']) && J(o.derechoInserta) === J(['# Lee', '', '---', '']), [o.derecho, o.derechoInserta]],
+  ['clic derecho leyendo sobre un título: menú de lectura, sin pasar a edición', J(o.menuTitulo) === J([false, ['Editar acá', 'Copiar el bloque', 'Copiar el enlace a esta sección', 'Insertar debajo']]), o.menuTitulo],
+  ['el menú de lectura se cierra con Escape y con un clic afuera', o.menuEscape === 0 && o.menuAfuera === 0, [o.menuEscape, o.menuAfuera]],
+  ['"Copiar el enlace a esta sección" copia el ancla y "Copiar el bloque" su Markdown', J(o.copiaAncla) === J(['#lee', 'Copiado']) && J(o.menuBloque) === J(['Editar acá', 'Copiar el bloque', 'Insertar debajo']) && o.copiaBloque === 'Un [enlace](https://example.com) acá.', [o.copiaAncla, o.menuBloque, o.copiaBloque]],
+  ['con texto elegido el menú ofrece copiar, buscar en la carpeta y editar, y no suelta la selección', J(o.menuSeleccion) === J([['Copiar', 'Buscar en la carpeta', 'Editar acá'], 'editar con calma']) && o.copiaSeleccion === 'editar con calma', [o.menuSeleccion, o.copiaSeleccion]],
+  ['"Buscar en la carpeta" usa el buscador con ese texto', J(o.buscar) === J(['editar con calma', true, 1, false]), o.buscar],
+  ['"Editar acá" pasa a edición con el cursor en ese bloque', J(o.editarAca) === J([true, 'Párrafo final para editar con calma.']), o.editarAca],
+  ['"Insertar debajo" pasa a edición y abre el menú del bloque', o.derecho[0] === true && J(o.derecho[1]) === J(['Insertar debajo', 'Convertir en', 'Este bloque']) && J(o.derechoInserta) === J(['# Lee', '', '---', '']), [o.derecho, o.derechoInserta]],
+  ['doble clic leyendo sobre títulos de sección, ítems de lista y celdas entra a edición ahí', J(o.dobleSecciones) === J(['false>true:Sección dos:true:true', 'false>true:Sección tres:true:true', 'false>true:ítem dos:true:true', 'false>true:Paso con negrita:true:true', 'false>true:celda dos:true:true', 'false>true:Doc:true:true']), o.dobleSecciones],
   ['una nota vacía abre en edición con el cursor listo', J(o.vacia) === J([true, true]), o.vacia],
   ['en la nota vacía el clic derecho inserta el primer bloque', J(o.vaciaMenu) === J(['Insertar']) && o.vaciaEscrita.trim() === '# Primero', [o.vaciaMenu, o.vaciaEscrita]],
   ['sin errores de JavaScript', errors.length === 0, errors],
