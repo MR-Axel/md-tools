@@ -39,6 +39,8 @@ Gratis y de código abierto. Sin seguimiento: los archivos se leen en tu navegad
 - **Buscar y reemplazar** en el documento mientras editás, de a una coincidencia o todas.
 - **Modo foco y máquina de escribir** (Ajustes → Edición): atenúa todo menos el bloque que estás escribiendo, y mantiene el renglón actual a media altura.
 - **Exportar a HTML**: un solo archivo, con la matemática en MathML.
+- **Leer en voz alta** (Ajustes → Herramientas): lee la nota entera, desde un bloque o lo elegido, con las voces de tu dispositivo. Marca el bloque que va leyendo y anuncia el código y los diagramas en vez de leerlos. Atajo: Alt+Shift+S.
+- **Dictado** (Ajustes → Herramientas): escribís hablando, en español o en inglés, con órdenes para puntuar, poner títulos, listas, tareas y formato. "Fórmula … fin fórmula" arma LaTeX y "diagrama de flujo … fin diagrama" arma un diagrama de Mermaid, los dos a la vista mientras hablás. Usa el reconocimiento de voz del navegador, en el dispositivo cuando el navegador lo ofrece. Atajo: Alt+Shift+D.
 - **Archivos desde el árbol** (página de SharpMD): archivo nuevo, renombrar y eliminar con clic derecho. Los archivos y las carpetas enteras se mueven arrastrándolos, y un archivo soltado adentro de la nota que estás editando queda como enlace (o como imagen) en ese punto.
 - **Pegar imágenes** (página de SharpMD): una imagen del portapapeles se guarda en `assets/`, al lado del documento, y queda insertada.
 - **No solo Markdown** (página de SharpMD): los archivos de código y configuración se ven resaltados y se editan como texto, los CSV y TSV se ven como tabla, y las imágenes como imágenes.
@@ -97,6 +99,8 @@ Lee el número de versión publicado y no manda ningún dato. El otro pedido de 
 | Alt+Shift+C | Centrar o no el contenido |
 | Alt+Shift+R | Activar o desactivar la recarga automática |
 | Alt+Shift+T | Cambiar el tema |
+| Alt+Shift+S | Leer en voz alta: empezar, pausar y seguir (con la herramienta prendida) |
+| Alt+Shift+D | Dictado: empezar y cortar (con la herramienta prendida) |
 | Ctrl+Shift+F | Buscar en el documento |
 
 Se cambian en `chrome://extensions/shortcuts`.
@@ -117,6 +121,10 @@ src/
   bridge-cs.js    script de contenido en la app web, que le pasa sus pedidos a la extensión
   bridge-sw.js    el lado de la extensión del puente, y qué abre el botón de la extensión
   install.js      Ajustes → Instalar, instalar la app, los archivos de "Abrir con", la marca de sin conexión
+  tools.js        Ajustes → Herramientas: el registro de herramientas y sus interruptores
+  speak.js        herramienta: leer en voz alta con las voces del dispositivo
+  voice.js        la gramática del dictado: órdenes de texto, fórmulas y diagramas, por idioma
+  dictate.js      herramienta: dictado, el botón del micrófono y el indicador de escucha
   home.js         pantalla de inicio de la página propia
   write.js        bloques nuevos, atajos de Markdown y menú de clic derecho
   diagram.js      editor de diagramas con vista previa en vivo

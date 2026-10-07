@@ -164,7 +164,7 @@ try {
         return { tab, on: document.querySelector('.lmd-panel-card [data-ptab].lmd-on').dataset.ptab, shown: shown.length, own: shown.every((s) => s.dataset.tab === tab), out, inView: card.left >= 0 && card.right <= window.innerWidth + 1 && card.bottom <= window.innerHeight + 1 }; }, t));
       if (t === 'look' || t === 'plan' || t === 'inst') await shot(page, 'app-ajustes-' + t);
     }
-    check('las ocho pestañas de Ajustes abren, cada una con lo suyo y sin salirse de la tarjeta', tabs.length === 8 && rows.every((r) => r.on === r.tab && r.shown > 0 && r.own && r.out === 0 && r.inView), rows.filter((r) => !(r.on === r.tab && r.shown > 0 && r.own && r.out === 0 && r.inView)));
+    check('las nueve pestañas de Ajustes abren, cada una con lo suyo y sin salirse de la tarjeta', tabs.length === 9 && rows.every((r) => r.on === r.tab && r.shown > 0 && r.own && r.out === 0 && r.inView), rows.filter((r) => !(r.on === r.tab && r.shown > 0 && r.own && r.out === 0 && r.inView)));
     // Un cambio de apariencia se aplica en el momento.
     await page.click('.lmd-panel-card [data-ptab=look]');
     const themed = await page.evaluate(async () => { const b = document.querySelector('.lmd-seg[data-seg=theme] button[data-val=light]'); if (!b) return 'sin botón'; b.click(); await new Promise((r) => setTimeout(r, 400)); const bg = getComputedStyle(document.body).backgroundColor; document.querySelector('.lmd-seg[data-seg=theme] button[data-val=dark]').click(); await new Promise((r) => setTimeout(r, 300)); return bg; });

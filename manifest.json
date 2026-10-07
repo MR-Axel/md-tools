@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SharpMD: Markdown reader & editor",
-  "version": "2.52.0",
+  "version": "2.53.0",
   "description": "__MSG_ext_desc__",
   "icons": {
     "16": "icons/icon16.png",
@@ -87,6 +87,10 @@
         "src/live.js",
         "src/team.js",
         "src/install.js",
+        "src/tools.js",
+        "src/speak.js",
+        "src/voice.js",
+        "src/dictate.js",
         "vendor/markdown-it.min.js",
         "vendor/markdown-it-emoji.min.js",
         "vendor/markdown-it-sub.min.js",
