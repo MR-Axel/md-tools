@@ -74,9 +74,12 @@
   // Después de aceptar, salir o que lo saquen cambia lo que la cuenta puede hacer: se vuelve a pedir y se redibuja.
   const refresh = async () => { try { await LMD.sync.reload(); } catch (e) { /* sin conexión: queda lo que había */ } };
 
-  // Los clics de la gestión dentro de Plan. Devuelve true si el clic era de acá. redraw vuelve a dibujar el panel.
+  // Si un clic dentro de Plan es de la gestión del equipo.
+  const owns = (e, box) => { const b = e.target.closest && e.target.closest('[data-t]'); return !!b && box.contains(b) && !!b.closest('.lmd-team'); };
+  // Los clics de la gestión dentro de Plan. redraw vuelve a dibujar el panel.
   async function click(e, box, a, redraw) {
-    const b = e.target.closest('[data-t]'); if (!b || !box.contains(b) || !b.closest('.lmd-team')) return false;
+    if (!owns(e, box)) return false;
+    const b = e.target.closest('[data-t]');
     const mine = a && a.team && a.team.mine; const C = LMD.cloud.team; const kind = b.dataset.t;
     const say = (text) => { const m = box.querySelector('.lmd-team-msg'); if (m) { m.hidden = false; m.textContent = text; } };
     const seats = box.querySelector('.lmd-team-seats');
@@ -158,5 +161,5 @@
 
   function init(c) { core = c; }
 
-  LMD.team = { init, column, section, click, notice, cost };
+  LMD.team = { init, column, section, owns, click, notice, cost };
 })();

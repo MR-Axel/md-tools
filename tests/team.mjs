@@ -445,6 +445,18 @@ try {
   await openPlan(carla.page);
   const offer = await carla.page.evaluate(() => { const b = document.querySelector('.lmd-panel [data-acct=plan]'); const t = b.querySelector('.lmd-plan-team'); return { on: t.classList.contains('lmd-plan-on'), pay: (t.querySelector('[data-pay=team]') || {}).href || '', label: (t.querySelector('[data-pay=team]') || {}).textContent, mgmt: !!b.querySelector('.lmd-team'), root: !!document.querySelector('[data-root=team]') }; });
   check('quien no está en un equipo ve el plan de equipo como una opción más, con su enlace de pago y la dirección a la que volver', !offer.on && offer.pay.startsWith('https://pago.ejemplo.test/pay.html?plan=team&email=' + enc(C.email) + '&back=') && offer.label === 'USD 7.98 / month' && !offer.mgmt && !offer.root, offer);
+  // Sale a pagar y vuelve: la app espera a que el equipo exista (lo crea el aviso de Paddle) y recién ahí lo confirma.
+  await carla.ctx.route((url) => url.hostname === 'pago.ejemplo.test', (r) => r.fulfill({ contentType: 'text/html', body: '<p>pago</p>' }));
+  await carla.page.click('.lmd-plan-team [data-pay=team]'); await carla.page.waitForURL(/pago\.ejemplo\.test/);
+  const went = new URL(carla.page.url());
+  check('el botón lleva a la página de pago del equipo, con el correo de la cuenta y la vuelta a la nota', went.searchParams.get('plan') === 'team' && went.searchParams.get('email') === C.email && went.searchParams.get('back').startsWith(R.home), carla.page.url());
+  await carla.page.goto(R.noteUrl('suya.md') + '#lmd-paid'); await carla.page.waitForSelector('.lmd-paywait');
+  check('al volver del pago espera la confirmación', /Waiting for the payment confirmation/.test(await carla.page.textContent('.lmd-paywait')) && !(await carla.page.$('[data-root=team]')));
+  await teamSub('sub_eq_c', 'active', C.email, 0);
+  await carla.page.waitForSelector('.lmd-paywait-done', { timeout: 20000 });
+  await carla.page.waitForSelector('[data-root=team]');
+  const paid = await carla.page.evaluate(() => ({ msg: document.querySelector('.lmd-paywait').innerText.trim(), on: !!document.querySelector('.lmd-plan-team.lmd-plan-on'), team: document.querySelector('.lmd-team') ? document.querySelector('.lmd-team').innerText : '' }));
+  check('cuando llega el aviso de Paddle confirma el pago y aparece el equipo, con su gestión y su espacio', paid.msg === 'Payment confirmed. Your team is ready.' && paid.on && /carla@ejemplo\.test · admin/.test(paid.team) && /1 of 2 taken/.test(paid.team), paid);
   await carla.ctx.close();
 
   // ---------- Página de pago y portada ----------

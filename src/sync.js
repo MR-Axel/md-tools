@@ -304,7 +304,8 @@
             : pro ? '<p class="lmd-hint">' + T('Lo tenés con el equipo.') + '</p>'
             : a ? '<div class="lmd-plan-buy">' + btn(pay.monthly, 'USD 3.99 / ' + T('mes')) + btn(pay.yearly, 'USD 39 / ' + T('año')) + '</div>' : '') + '</div>' + teamCol + '</div>' + LMD.team.section(a);
     box.onclick = async (e) => {
-      if (await LMD.team.click(e, box, a, () => planPane(box, host))) return;
+      // Lo del equipo se atiende aparte. Se decide sin esperar nada: el enlace de pago, más abajo, frena su navegación en este mismo turno.
+      if (LMD.team.owns(e, box)) { LMD.team.click(e, box, a, () => planPane(box, host)); return; }
       const b = e.target.closest('[data-c]'); const link = e.target.closest('[data-pay]');
       if (b && b.dataset.c === 'login') goLogin(host);
       else if (b && b.dataset.c === 'recheck') awaitPaid();
