@@ -51,15 +51,29 @@ const random = (bytes) => crypto.randomBytes(bytes).toString('base64url');
 class Fail extends Error { constructor(status, code, message) { super(message || code); this.status = status; this.code = code; } }
 
 // ---------- Correo ----------
-async function sendCode(email, code) {
-  const subject = 'Sharpmd: ' + code;
-  const text = 'Your Sharpmd code is ' + code + '. It expires in 15 minutes.\n\nTu código de Sharpmd es ' + code + '. Vence en 15 minutos.';
+// El correo del código: inglés por defecto, español si la app lo pide. Va en HTML y en texto plano.
+const MAIL = {
+  en: { subject: 'Your Sharpmd code: ', lead: 'Your sign-in code', note: 'It expires in 15 minutes. If you did not ask for it, you can ignore this email.', text: (c) => 'Your Sharpmd code is ' + c + '. It expires in 15 minutes.\n\nIf you did not ask for it, you can ignore this email.' },
+  es: { subject: 'Tu código de Sharpmd: ', lead: 'Tu código para entrar', note: 'Vence en 15 minutos. Si no lo pediste, podés ignorar este correo.', text: (c) => 'Tu código de Sharpmd es ' + c + '. Vence en 15 minutos.\n\nSi no lo pediste, podés ignorar este correo.' },
+};
+const mailHtml = (m, code) => '<!doctype html><html><body style="margin:0;padding:32px 16px;background:#f4f3ee;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1d2026">' +
+  '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">' +
+  '<table role="presentation" width="420" cellpadding="0" cellspacing="0" style="max-width:420px;width:100%;background:#ffffff;border:1px solid #dedbd2;border-radius:14px">' +
+  '<tr><td style="padding:28px 32px 8px;font-size:17px;font-weight:700;letter-spacing:-0.01em"><span style="color:#4d7c0f">#</span> Sharpmd</td></tr>' +
+  '<tr><td style="padding:8px 32px 0;font-size:15px;color:#5c6370">' + m.lead + '</td></tr>' +
+  '<tr><td style="padding:14px 32px 6px"><div style="padding:16px 0;border-radius:10px;background:#f1efe9;text-align:center;font:700 32px/1 ui-monospace,Consolas,Menlo,monospace;letter-spacing:0.28em;color:#1d2026">' + code + '</div></td></tr>' +
+  '<tr><td style="padding:12px 32px 28px;font-size:13.5px;line-height:1.5;color:#8a909c">' + m.note + '</td></tr>' +
+  '</table><div style="padding-top:14px;font-size:12px;color:#8a909c">sharpmd.app</div></td></tr></table></body></html>';
+
+async function sendCode(email, code, lang) {
+  const m = MAIL[lang === 'es' ? 'es' : 'en'];
+  const subject = m.subject + code; const text = m.text(code); const html = mailHtml(m, code);
   if (env.RESEND_API_KEY) {
     const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { authorization: 'Bearer ' + env.RESEND_API_KEY, 'content-type': 'application/json' },
-      body: JSON.stringify({ from: env.MAIL_FROM || 'Sharpmd <onboarding@resend.dev>', to: [email], subject, text }) });
+      body: JSON.stringify({ from: env.MAIL_FROM || 'Sharpmd <onboarding@resend.dev>', to: [email], subject, text, html }) });
     if (!r.ok) throw new Fail(502, 'mail_failed');
   } else if (env.MAIL_WEBHOOK) {
-    const r = await fetch(env.MAIL_WEBHOOK, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ to: email, subject, text }) });
+    const r = await fetch(env.MAIL_WEBHOOK, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ to: email, subject, text, html }) });
     if (!r.ok) throw new Fail(502, 'mail_failed');
   } else if (!env.DEV_CODES) throw new Fail(500, 'mail_not_configured');
 }
@@ -73,7 +87,7 @@ async function authStart(body) {
   if (prev && now() - prev.sent < 30000) throw new Fail(429, 'too_soon');
   const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
   q('INSERT OR REPLACE INTO codes (email, hash, expires, tries, sent) VALUES (?, ?, ?, 0, ?)').run(email, sha(email + ':' + code), now() + 15 * 60000, now());
-  await sendCode(email, code);
+  await sendCode(email, code, body.lang);
   return env.DEV_CODES ? { ok: true, dev_code: code } : { ok: true };
 }
 

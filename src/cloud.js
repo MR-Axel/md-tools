@@ -114,7 +114,7 @@
     enabled: () => !!base,
     signedIn: () => !!session,
     email: () => email,
-    start: (mail) => api('POST', '/auth/start', { email: mail }),
+    start: (mail) => api('POST', '/auth/start', { email: mail, lang: LMD.lang() }),
     verify: async (mail, code) => { const r = await api('POST', '/auth/verify', { email: mail, code }); session = r.session; email = r.account.email; await remember(); return r.account; },
     logout: async () => { try { await api('POST', '/auth/logout', {}); } catch (e) { /* igual se cierra acá */ } session = ''; email = ''; listCache = null; await remember(); },
     account: () => api('GET', '/account'),

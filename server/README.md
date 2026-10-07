@@ -28,7 +28,7 @@ Then, in Sharpmd: Settings → Cloud → Sync server, and type the address (`htt
 | `PUBLIC_URL` | Public address, shown to the user when connecting an AI | `http://localhost:PORT` |
 | `ALLOW_ORIGINS` | Web origins allowed to call the API, comma separated. Browser extensions are always allowed | none |
 | `RESEND_API_KEY`, `MAIL_FROM` | Send the sign-in code through Resend | |
-| `MAIL_WEBHOOK` | Or post `{ to, subject, text }` to your own mailer | |
+| `MAIL_WEBHOOK` | Or post `{ to, subject, text, html }` to your own mailer | |
 | `FREE_NOTES` | Notes on the free plan | `10` |
 | `MCP_FREE` | `1` gives MCP access to the free plan too | off |
 | `ADMIN_KEY` | Key for `POST /admin/plan` | off |
@@ -60,7 +60,7 @@ Sign-in is a six-digit code sent by mail, no passwords.
 
 | Call | What it does |
 |---|---|
-| `POST /auth/start` `{ email }` | Sends the code |
+| `POST /auth/start` `{ email, lang }` | Sends the code, in English or with `lang: "es"` in Spanish |
 | `POST /auth/verify` `{ email, code }` | Returns `{ session, account }` |
 | `GET /account` | Plan, note count and limit |
 | `GET /notes` | List |
