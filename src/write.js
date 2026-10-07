@@ -358,9 +358,22 @@
   function init(c) {
     core = c;
     const article = core.ui.article;
-    article.addEventListener('contextmenu', (e) => {
+    article.addEventListener('contextmenu', async (e) => {
       // Con Shift queda el menú del navegador, que es el que corrige la ortografía.
-      if (!core.editMode || !core.blocks || e.shiftKey || e.target.closest('.lmd-src')) return;
+      if (!core.blocks || e.shiftKey || e.target.closest('.lmd-src')) return;
+      if (!core.editMode) {
+        // Leyendo, el clic derecho pasa a edición y abre el mismo menú sobre ese bloque.
+        // En una nota de solo lectura, y sobre un enlace o una imagen, queda el menú del navegador.
+        if (core.readOnly || e.target.closest('a, img')) return;
+        e.preventDefault();
+        const x = e.clientX; const y = e.clientY;
+        const at = e.target === article ? -1 : Array.prototype.indexOf.call(article.children, topBlock(e.target));
+        await core.setEditMode(true);
+        if (!core.editMode) return;
+        const found = at < 0 ? null : article.children[at];
+        openMenu(x, y, found && !found.classList.contains('lmd-add') ? found : blockNear(y));
+        return;
+      }
       e.preventDefault();
       const active = document.activeElement;
       if (active && active.blur && active.isContentEditable) active.blur();

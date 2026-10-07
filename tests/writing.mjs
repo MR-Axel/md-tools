@@ -68,6 +68,62 @@ await app.keyboard.type(' 10:30'); await app.waitForTimeout(200);
 o.emojiHora = await app.evaluate(() => { const b = document.querySelector('.lmd-emoji'); return !b || b.hidden; });
 await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(500);
 
+// ---------- Entrar y quedarse en edición ----------
+const editing = () => app.evaluate(() => document.documentElement.classList.contains('lmd-editing'));
+const ready = async () => { await app.waitForSelector('.markdown-body h1'); await app.waitForTimeout(300); };
+const docUrl = app.url();
+await app.evaluate(async () => {
+  const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('w');
+  const write = async (name, data) => { const h = await dir.getFileHandle(name, { create: true }); const s = await h.createWritable(); await s.write(data); await s.close(); };
+  await write('lee.md', '# Lee\n\nUn [enlace](https://example.com) acá.\n\n```js\nlet a = 1;\n```\n\n- [ ] tarea\n\nPárrafo final para editar con calma.\n');
+  await write('vacia.md', '');
+});
+// recargar, o pasar a otra nota, no saca de edición
+await app.keyboard.press('Control+s'); await app.waitForTimeout(900);
+await app.reload(); await ready();
+o.recarga = await editing();
+await app.goto(docUrl.replace('doc.md', 'lee.md')); await ready();
+o.otraNota = await editing();
+// pasada la media hora abre leyendo, y volver a lectura a mano también se respeta
+await app.evaluate(() => sessionStorage.setItem('lmd-edit', String(Date.now() - 31 * 60 * 1000)));
+await app.reload(); await ready();
+o.vencido = !(await editing());
+await app.click('[data-act=mode-edit]'); await app.waitForTimeout(200); await app.click('[data-act=mode-read]'); await app.waitForTimeout(300);
+await app.reload(); await ready();
+o.aLectura = !(await editing());
+// doble clic: no se dispara sobre un enlace, un bloque de código ni una casilla; sobre el texto entra con el cursor ahí
+o.dobleNo = await app.evaluate(() => ['.markdown-body a[href^="https"]', '.markdown-body .lmd-code code', '.markdown-body input.lmd-task'].map((q) => {
+  document.querySelector(q).dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+  return document.documentElement.classList.contains('lmd-editing');
+}));
+await app.locator('.markdown-body p', { hasText: 'Párrafo final' }).dblclick({ position: { x: 120, y: 10 } }); await app.waitForTimeout(300);
+o.doble = await app.evaluate(() => { const a = document.activeElement; const s = getSelection(); const r = document.createRange(); r.selectNodeContents(a); r.setEnd(s.anchorNode, s.anchorOffset);
+  return [document.documentElement.classList.contains('lmd-editing'), a.textContent, s.isCollapsed, r.toString().length]; });
+// ya editando, el doble clic selecciona la palabra como siempre
+await app.locator('.markdown-body p.lmd-editable', { hasText: 'Párrafo final' }).dblclick({ position: { x: 30, y: 10 } }); await app.waitForTimeout(150);
+o.doblePalabra = await app.evaluate(() => getSelection().toString().trim());
+// clic derecho leyendo: con Shift queda el menú del navegador; sin Shift pasa a edición y abre el menú del bloque
+await app.click('[data-act=mode-read]'); await app.waitForTimeout(300);
+await app.locator('.markdown-body h1').click({ button: 'right', modifiers: ['Shift'] }); await app.waitForTimeout(300);
+o.derechoShift = [await editing(), await app.locator('.lmd-menu').count()];
+await app.locator('.markdown-body a[href^="https"]').click({ button: 'right' }); await app.waitForTimeout(300);
+o.derechoEnlace = [await editing(), await app.locator('.lmd-menu').count()];
+await app.locator('.markdown-body h1').click({ button: 'right' }); await app.waitForSelector('.lmd-menu');
+o.derecho = [await editing(), await app.evaluate(() => [...document.querySelectorAll('.lmd-menu-label')].map((n) => n.textContent))];
+await app.click('.lmd-menu [data-ins=hr]'); await app.waitForTimeout(400);
+o.derechoInserta = (await src()).split('\n').slice(0, 4);
+await app.keyboard.press('Control+s'); await app.waitForTimeout(900);
+// una nota vacía abre lista para escribir, y el clic derecho inserta el primer bloque
+await app.click('[data-act=mode-read]'); await app.waitForTimeout(300);
+await app.goto(docUrl.replace('doc.md', 'vacia.md')); await app.waitForSelector('.lmd-draft');
+o.vacia = [await editing(), await app.evaluate(() => document.activeElement.classList.contains('lmd-draft'))];
+await app.keyboard.press('Escape'); await app.waitForTimeout(200);
+await app.locator('.lmd-article').click({ button: 'right', position: { x: 200, y: 8 } }); await app.waitForSelector('.lmd-menu');
+o.vaciaMenu = await app.evaluate(() => [...document.querySelectorAll('.lmd-menu-label')].map((n) => n.textContent));
+await app.click('.lmd-menu [data-ins=h1]'); await app.keyboard.type('Primero'); await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(700);
+o.vaciaEscrita = await src();
+await app.keyboard.press('Control+s'); await app.waitForTimeout(900);
+
 const checks = [
   ['Enter crea párrafos, títulos y listas', J(o.escribir) === J(['# Doc', '', 'Primer párrafo.', '', 'Segundo párrafo', '', '## Sub', '', '- uno', '- dos', '', 'fin', '', '- alfa', '- beta', '', 'Último párrafo.', '']), o.escribir],
   ['Enter en un ítem agrega otro y en un párrafo lo parte', J(o.lista.slice(13)) === J(['- alfa', '- alfa bis', '- beta', '', 'Último', '', 'párrafo.', '']), o.lista],
@@ -79,6 +135,15 @@ const checks = [
   ['la barra / inserta al final', J(o.final) === J(['párrafo.', '', '---', '']), o.final],
   ['lo escrito se guarda igual que se ve', o.guardado],
   ['":" despliega emojis y Enter inserta el elegido', o.emojiLista === ':rocket:' && o.emoji[0] === 0x1F680 && o.emoji[1] && o.emojiSinBloque && o.emojiHora, [o.emojiLista, o.emoji, o.emojiSinBloque, o.emojiHora]],
+  ['recargar no saca del modo edición, y pasar a otra nota tampoco', o.recarga === true && o.otraNota === true, [o.recarga, o.otraNota]],
+  ['pasada la media hora, o al volver a lectura, abre leyendo', o.vencido === true && o.aLectura === true, [o.vencido, o.aLectura]],
+  ['el doble clic no se dispara sobre enlaces, código ni casillas', J(o.dobleNo) === J([false, false, false]), o.dobleNo],
+  ['doble clic leyendo pasa a edición con el cursor en ese bloque', o.doble[0] === true && o.doble[1] === 'Párrafo final para editar con calma.' && o.doble[2] === true && o.doble[3] > 5 && o.doble[3] < 30, o.doble],
+  ['editando, el doble clic sigue seleccionando la palabra', o.doblePalabra === 'Párrafo', o.doblePalabra],
+  ['clic derecho leyendo: con Shift y sobre un enlace queda el menú del navegador', J(o.derechoShift) === J([false, 0]) && J(o.derechoEnlace) === J([false, 0]), [o.derechoShift, o.derechoEnlace]],
+  ['clic derecho leyendo pasa a edición y abre el menú del bloque', o.derecho[0] === true && J(o.derecho[1]) === J(['Insertar debajo', 'Convertir en', 'Este bloque']) && J(o.derechoInserta) === J(['# Lee', '', '---', '']), [o.derecho, o.derechoInserta]],
+  ['una nota vacía abre en edición con el cursor listo', J(o.vacia) === J([true, true]), o.vacia],
+  ['en la nota vacía el clic derecho inserta el primer bloque', J(o.vaciaMenu) === J(['Insertar']) && o.vaciaEscrita.trim() === '# Primero', [o.vaciaMenu, o.vaciaEscrita]],
   ['sin errores de JavaScript', errors.length === 0, errors],
 ];
 console.log('Escritura');

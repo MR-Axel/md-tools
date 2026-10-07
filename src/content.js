@@ -1556,6 +1556,7 @@
     // Un documento en memoria se va guardando en la sesión, para que recargar la pestaña no lo pierda.
     if (appRoot && appRoot.id === 'mem') { try { sessionStorage.setItem('mdt-mem', JSON.stringify({ name: DOC_NAME, text: raw, disk: diskText })); } catch (e) { /* demasiado grande */ } }
     needsRender = true;
+    if (editMode) rememberEdit(true);
     updateSaveState();
     clearTimeout(autosaveTimer);
     // Las notas del navegador se guardan solas, siempre.
@@ -1588,6 +1589,14 @@
     save.title = local ? T('Guardar como archivo en el disco (Ctrl+S)') : (dirty ? T('Guardar (Ctrl+S). Hay cambios sin guardar') : T('Guardar (Ctrl+S)'));
   }
 
+  // El modo edición se recuerda por pestaña: recargar o pasar a otra nota no lo saca mientras se siga
+  // editando. La marca vence sola a la media hora del último cambio.
+  const EDIT_KEY = 'lmd-edit'; const EDIT_TTL = 30 * 60 * 1000;
+  function rememberEdit(on) {
+    try { if (on) sessionStorage.setItem(EDIT_KEY, String(Date.now())); else sessionStorage.removeItem(EDIT_KEY); } catch (e) { /* sin sesión */ }
+  }
+  const editRemembered = () => { try { const t = +sessionStorage.getItem(EDIT_KEY); return t > 0 && Date.now() - t < EDIT_TTL; } catch (e) { return false; } };
+
   function softRender() {
     clearTimeout(softTimer);
     softTimer = setTimeout(() => {
@@ -1610,6 +1619,7 @@
     if (on && docKind() === 'image') { flash(T('Las imágenes no se editan acá'), 'warn'); return; }
     if (on && docKind() !== 'md') rawMode = true;
     editMode = on;
+    rememberEdit(on);
     updateSaveState();
     render();
     applyRawMode();
@@ -1774,6 +1784,43 @@
     } else if (kind === 'clear') { document.execCommand('removeFormat'); document.execCommand('unlink'); }
   }
 
+  // Deja el cursor en un bloque a tantos caracteres del comienzo; sin posición, al final.
+  function caretAt(node, offset) {
+    node.focus();
+    const sel = getSelection();
+    if (offset >= 0) {
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT); let n; let left = offset;
+      while ((n = walker.nextNode())) { if (left <= n.nodeValue.length) { sel.collapse(n, left); return; } left -= n.nodeValue.length; }
+    }
+    sel.selectAllChildren(node); sel.collapseToEnd();
+  }
+
+  // Doble clic leyendo: pasa a edición con el cursor donde se hizo. Lo que ya responde al clic queda como está.
+  const NO_DBL = 'a, img, button, input, .lmd-code, .lmd-diagram, pre.lmd-mermaid, pre.lmd-graphviz, .lmd-board, .lmd-math, .lmd-toc, .lmd-front';
+  async function editAt(e) {
+    if (readOnly || docKind() !== 'md' || e.target.closest(NO_DBL)) return;
+    const cell = e.target.closest('td, th'); const table = cell && cell.closest('table[data-l]');
+    const block = e.target.closest('[data-l]');
+    const host = table ? cell : block;
+    // En una lista compacta el texto editable lleva el rango del párrafo, que el <li> guarda en data-p.
+    const key = table ? table.getAttribute('data-l') : block && (block.tagName === 'LI' && block.getAttribute('data-p') || block.getAttribute('data-l'));
+    const where = table ? [cell.parentNode.rowIndex, cell.cellIndex] : null;
+    let offset = -1;
+    const at = document.caretRangeFromPoint ? document.caretRangeFromPoint(e.clientX, e.clientY) : null;
+    if (at && host && host.contains(at.startContainer)) { const r = document.createRange(); r.selectNodeContents(host); r.setEnd(at.startContainer, at.startOffset); offset = r.toString().length; }
+    await setEditMode(true);
+    if (!editMode) return;
+    // El mismo bloque, ya editable; si no lo es, el primero editable que tenga adentro.
+    let node = null; let exact = true;
+    if (where) { const made = ui.article.querySelector('table[data-l="' + key + '"]'); node = made && made.rows[where[0]] && made.rows[where[0]].cells[where[1]]; }
+    else if (key) {
+      node = ui.article.querySelector('.lmd-editable[data-l="' + key + '"]');
+      if (!node) { const made = ui.article.querySelector('[data-l="' + key + '"]'); node = made && made.querySelector('.lmd-editable'); exact = false; }
+    }
+    if (node && node.isContentEditable) caretAt(node, exact ? offset : -1);
+    else if (!raw.trim()) { const add = ui.article.querySelector('.lmd-add'); if (add) add.click(); }
+  }
+
   function bindEditing() {
     ui.article.addEventListener('focusin', (e) => {
       const node = e.target.closest && e.target.closest('.lmd-editable');
@@ -1824,7 +1871,7 @@
     // Las tareas se tildan también leyendo; el cambio queda sin guardar hasta Ctrl+S (o se guarda solo, si está activado).
     ui.article.addEventListener('change', (e) => { if (docKind() === 'md' && e.target.matches && e.target.matches('input.lmd-task')) toggleTask(e.target); });
     ui.article.addEventListener('dblclick', (e) => {
-      if (!editMode) return;
+      if (!editMode) { editAt(e); return; }
       const box = e.target.closest('.lmd-code');
       if (box) editCode(box);
     });
@@ -1852,6 +1899,7 @@
     get cloudPath() { return vParts(HERE).join('/'); },
     get dirty() { return dirty; },
     save: (interactive) => save(interactive),
+    setEditMode: (on) => setEditMode(on),
     pathOf: (url) => vParts(url).join('/'),
     urlOf: (path) => VBASE + appRoot.id + '/' + path.split('/').map(encodeURIComponent).join('/'),
     openApp: (query) => bg({ type: 'openApp', query }),
@@ -2158,10 +2206,13 @@
         LMD.sync.paint();
       });
     }
-    // Un archivo recién creado arranca listo para escribir.
-    if (APP && new URLSearchParams(location.search).has('edit')) {
-      history.replaceState(null, '', location.href.replace(/[?&]edit=1/, ''));
-      setEditMode(true).then(() => { const add = ui.article.querySelector('.lmd-add'); if (add) add.click(); });
+    // Un archivo recién creado, o uno vacío, arranca listo para escribir. Si la pestaña venía en
+    // edición, vuelve en edición. Lo de solo lectura y lo que no es Markdown abre leyendo.
+    const fresh = APP && new URLSearchParams(location.search).has('edit');
+    if (fresh) history.replaceState(null, '', location.href.replace(/[?&]edit=1/, ''));
+    const blankDoc = !raw.trim();
+    if (fresh || (!readOnly && docKind() === 'md' && (blankDoc || editRemembered()))) {
+      setEditMode(true).then(() => { const add = (fresh || blankDoc) && ui.article.querySelector('.lmd-add'); if (add) add.click(); });
     }
     const fromSearch = /^#lmd-q=([^&]+)(?:&r=(.+))?$/.exec(location.hash);
     if (fromSearch) {
