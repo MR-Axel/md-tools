@@ -774,10 +774,16 @@ What it does, in one sentence.
   const today = () => { const d = new Date(); const p = (n) => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); };
   const fill = (text) => text.replace(/\{\{date\}\}/g, today());
 
+  // Las que se sumaron de la comunidad (community.js) van en su grupo, con el id c:número. Son texto: el nombre se
+  // muestra como texto y el Markdown pasa por el mismo saneado que cualquier nota.
+  const extra = () => (LMD.community ? LMD.community.templates() : []);
   LMD.templates = {
-    groups: () => GROUPS.map((g) => ({ id: g[0], name: LMD.t(g[1]) })),
-    list: () => LIST.map((t) => ({ id: t[0], group: t[1], name: LMD.lang() === 'es' ? t[2] : t[3] })),
+    groups: () => GROUPS.map((g) => ({ id: g[0], name: LMD.t(g[1]) })).concat(extra().length ? [{ id: 'community', name: LMD.t('Comunidad') }] : []),
+    list: () => LIST.map((t) => ({ id: t[0], group: t[1], name: LMD.lang() === 'es' ? t[2] : t[3] })).concat(extra().map((t) => ({ id: 'c:' + t.id, group: 'community', name: t.name, community: t.id }))),
     // Devuelve el texto y el nombre de archivo sugerido (sin extensión) de una plantilla.
-    get: (id) => { const t = LIST.find((x) => x[0] === id); return t ? { file: fill(t[4]), text: fill(LMD.lang() === 'es' ? t[5] : t[6]) } : null; },
+    get: (id) => {
+      if (String(id).startsWith('c:')) { const c = extra().find((x) => 'c:' + x.id === id); return c ? { file: c.file, text: fill(c.text) } : null; }
+      const t = LIST.find((x) => x[0] === id); return t ? { file: fill(t[4]), text: fill(LMD.lang() === 'es' ? t[5] : t[6]) } : null;
+    },
   };
 })();

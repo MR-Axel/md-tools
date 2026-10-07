@@ -465,6 +465,20 @@ try {
   check('eliminar la cuenta: tiene tope de pedidos', capped.status === 429 && capped.json.error === 'too_many' && capped.json.retry_after > 0, capped.json);
   }
 
+  // Alias de Gmail: una sola cuenta para la misma casilla
+  {
+    const enter = async (email, ip) => { const h = { 'x-forwarded-for': ip }; const st = await call('POST', '/auth/start', { email }, undefined, h); const v = await call('POST', '/auth/verify', { email, code: st.json.dev_code }, undefined, h); return { status: v.status, s: v.json.session, acc: v.json.account }; };
+    const a = await enter('Maria.Gomez+trabajo@gmail.com', '10.8.0.1'); const b = await enter('mariagomez@gmail.com', '10.8.0.2'); const c = await enter('m.a.r.i.a.gomez+otra+mas@googlemail.com', '10.8.0.3');
+    check('alias de Gmail: la cuenta se crea con el correo tal como se escribió', a.status === 200 && a.acc.email === 'maria.gomez+trabajo@gmail.com', a.acc);
+    check('alias de Gmail: sin puntos, con otro + o con googlemail.com entra a la misma cuenta, que conserva su correo', b.acc.id === a.acc.id && c.acc.id === a.acc.id && b.acc.email === a.acc.email && c.acc.email === a.acc.email, [a.acc.id, b.acc.id, c.acc.id, c.acc.email]);
+    await call('PUT', '/notes/alias.md', { text: '# Alias' }, a.s);
+    check('alias de Gmail: las notas son las mismas entrando con cualquiera', (await call('GET', '/notes/alias.md', undefined, c.s)).json.text === '# Alias');
+    const d = await enter('maria.gomez@ejemplo.test', '10.8.0.4'); const e = await enter('mariagomez@ejemplo.test', '10.8.0.5'); const f = await enter('mariagomez+x@ejemplo.test', '10.8.0.6');
+    check('alias de Gmail: fuera de gmail.com y googlemail.com no se toca nada', new Set([a.acc.id, d.acc.id, e.acc.id, f.acc.id]).size === 4 && f.acc.email === 'mariagomez+x@ejemplo.test', [d.acc.id, e.acc.id, f.acc.id]);
+    const g = await enter('otragmail@gmail.com', '10.8.0.7');
+    check('alias de Gmail: otra casilla de Gmail es otra cuenta', g.acc.id !== a.acc.id && g.acc.email === 'otragmail@gmail.com');
+  }
+
   check('cerrar sesión la invalida', (await call('POST', '/auth/logout', {}, s)).status === 200 && (await call('GET', '/notes', undefined, s)).status === 401);
 } catch (e) { check('sin excepciones', false, String(e && e.stack || e)); console.log(log); }
 child.kill();

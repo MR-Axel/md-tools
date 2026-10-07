@@ -280,9 +280,9 @@ try {
     await page.click('[data-ptab=tools]'); await page.waitForSelector('.lmd-tl-card');
     const cards = await page.evaluate(() => [...document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card')].map((c) => ({ id: c.dataset.tool, name: c.querySelector('b').textContent, about: c.querySelector('p').textContent.length > 20, icon: !!c.querySelector('.lmd-tl-ico svg'),
       sw: c.querySelector('input[type=checkbox]') ? (c.querySelector('input').checked ? 'on' : 'off') : 'none', tag: (c.querySelector('.lmd-tag') || {}).textContent || '', opts: !!c.querySelector('.lmd-tl-more:not([hidden])') })));
-    check('tres tarjetas: leer en voz alta y dictado apagadas, el tablero fijo y sin interruptor', J(cards) === J([
+    check('tres tarjetas con interruptor: leer en voz alta y dictado apagadas, el tablero prendido', J(cards) === J([
       { id: 'speak', name: 'Read aloud', about: true, icon: true, sw: 'off', tag: '', opts: false }, { id: 'dictate', name: 'Dictation', about: true, icon: true, sw: 'off', tag: '', opts: false },
-      { id: 'board', name: 'Kanban board', about: true, icon: true, sw: 'none', tag: 'Built in', opts: false }]), cards);
+      { id: 'kanban', name: 'Kanban board', about: true, icon: true, sw: 'on', tag: '', opts: false }]), cards);
     check('la sección de Plugins sigue siendo otra, con sus interruptores', await page.evaluate(() => document.querySelectorAll('section[data-tab=plug] [data-plugin]').length > 20 && !document.querySelector('section[data-tab=plug] .lmd-tl-card')));
     check('el lugar para la lista de la comunidad está, vacío y sin nada a la vista', await page.evaluate(() => { const c = document.querySelector('[data-tools-community]'); return !!c && c.hidden && !c.children.length && LMD.tools.community.length === 0; }));
     const texts = await page.evaluate(() => document.querySelector('section[data-tab=tools]').innerText);
@@ -757,6 +757,34 @@ try {
     await page.tap('.lmd-tl-card[data-tool=dictate] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-opts [data-dct=lang]');
     const pane = await page.evaluate(() => { const card = document.querySelector('.lmd-panel-card').getBoundingClientRect(); return [...document.querySelectorAll('section[data-tab=tools] *')].filter((n) => n.offsetParent && n.getBoundingClientRect().right > card.right + 1).length; });
     check('la pestaña Tools y sus opciones no se salen de la pantalla', pane === 0 && (await fits()) <= 0, [pane, await fits()]);
+    check('sin errores de página', R.errors.length === 0, R.errors);
+    await ctx.close();
+  });
+
+  // ---------- El tablero kanban como herramienta ----------
+  await step('Tablero kanban: se apaga y se vuelve a prender', async () => {
+    const { ctx, page } = await open();
+    const MD = '# Plan\n\n```kanban\n## To do\n- [ ] First\n\n## Done\n- [x] Second\n```\n\nEnd.\n';
+    await note(page, 'board.md', MD, true);
+    const look = () => page.evaluate(() => ({ board: document.querySelectorAll('.lmd-article .lmd-board .lmd-col').length, code: (document.querySelector('.lmd-article pre > code.language-kanban') || {}).textContent || '', hint: (document.querySelector('.lmd-article .lmd-kanban-off') || {}).textContent || '' }));
+    const inserts = async () => { await page.click('.lmd-article h1', { button: 'right' }); await page.waitForSelector('.lmd-menu [data-ins]'); const list = await page.evaluate(() => [...document.querySelectorAll('.lmd-menu [data-ins]')].map((b) => b.dataset.ins)); await page.evaluate(() => LMD.write.closeMenu()); return list; };
+    const toggle = async () => { await page.click('[data-act=settings]'); await page.waitForSelector('.lmd-panel-card'); await page.click('[data-ptab=tools]'); await page.waitForSelector('.lmd-tl-card[data-tool=kanban]'); await page.click('.lmd-tl-card[data-tool=kanban] .lmd-switch'); await sleep(400); await page.click('[data-act=close-panel]'); await sleep(200); };
+    const on0 = await look(); const menu0 = await inserts();
+    check('prendido por defecto: el bloque es un tablero y el menú ofrece insertar uno', on0.board === 2 && !on0.code && !on0.hint && menu0.includes('board') && (await stored(page, 'settings')).tools.kanban === undefined, [on0, menu0]);
+    await toggle();
+    const off = await look(); const menu1 = await inserts();
+    check('apagado: el bloque se ve como código, con una línea que dice cómo verlo como tablero', off.board === 0 && off.code.includes('## To do') && off.code.includes('- [x] Second') && off.hint === 'Turn on Kanban board in Settings > Tools to see it as a board', off);
+    check('apagado: el menú de insertar ya no ofrece el tablero, y lo demás sigue', !menu1.includes('board') && menu1.includes('table') && menu1.length === menu0.length - 1, menu1);
+    check('apagar no toca la nota, y queda guardado en los ajustes', (await saved(page, 'board.md')) === MD && (await stored(page, 'settings')).tools.kanban === false, await saved(page, 'board.md'));
+    await page.reload(); await page.waitForSelector('.lmd-article .lmd-kanban-off');
+    const again = await look();
+    check('apagado: al recargar sigue como código', again.board === 0 && again.code.includes('## To do') && !!again.hint, again);
+    await page.click('.lmd-article .lmd-kanban-off'); await page.waitForSelector('.lmd-panel-card .lmd-tl-card[data-tool=kanban]');
+    const tab = await page.evaluate(() => (document.querySelector('.lmd-panel [data-ptab].lmd-on') || {}).dataset.ptab);
+    await page.click('.lmd-tl-card[data-tool=kanban] .lmd-switch'); await sleep(400); await page.click('[data-act=close-panel]'); await sleep(200);
+    const on1 = await look(); const menu2 = await inserts();
+    check('la línea lleva a la pestaña Tools', tab === 'tools', tab);
+    check('vuelto a prender: el tablero vuelve, la línea se va y el menú lo ofrece otra vez', on1.board === 2 && !on1.code && !on1.hint && menu2.includes('board') && (await saved(page, 'board.md')) === MD, [on1, menu2]);
     check('sin errores de página', R.errors.length === 0, R.errors);
     await ctx.close();
   });

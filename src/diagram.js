@@ -251,6 +251,8 @@
     ['Gris', '#e2e8f0', '#1e293b', '#64748b', '#6d7d95', '#f1f5f9', '#e5e7eb'],
     ['Tinta', '#334155', '#f8fafc', '#94a3b8', '#6d7d95', '#475569', '#64748b'],
   ];
+  // Las de la casa y, después, las que se sumaron de la comunidad (community.js): seis colores ya validados como #rrggbb.
+  const pals = () => PALETTES.concat(LMD.community ? LMD.community.palettes().map((p) => [p.name, p.colors.fill, p.colors.text, p.colors.border, p.colors.line, p.colors.second, p.colors.third, true]) : []);
   const themeVars = (p) => ({
     primaryColor: p[1], primaryTextColor: p[2], primaryBorderColor: p[3], lineColor: p[4], secondaryColor: p[5], tertiaryColor: p[6],
     textColor: p[4], titleColor: p[4], classText: p[2], edgeLabelBackground: p[1], noteBkgColor: p[5], noteTextColor: p[2], noteBorderColor: p[3],
@@ -269,11 +271,11 @@
     let fill = '';
     if (kind === 'dot') { const m = DOT_NODE.exec(code); fill = m ? m[1] : ''; }
     else { const v = readInit(code).cfg.themeVariables; fill = (v && v.primaryColor) || ''; }
-    return PALETTES.findIndex((p) => p[1].toLowerCase() === String(fill).toLowerCase());
+    return pals().findIndex((p) => p[1].toLowerCase() === String(fill).toLowerCase());
   }
   // El código con la paleta i puesta; con -1 se quita y vuelve a los colores por defecto.
   function withPalette(kind, code, i) {
-    const p = PALETTES[i];
+    const p = pals()[i];
     if (kind === 'dot') {
       const bare = code.replace(DOT_NODE, '').replace(DOT_EDGE, '');
       const at = bare.indexOf('{'); if (!p || at === -1) return bare;
@@ -484,7 +486,7 @@
             '<div class="lmd-dgm-drop"><button type="button" class="lmd-btn" data-drop="colors" aria-haspopup="true" aria-expanded="false"><span class="lmd-dgm-dot"></span>' + T('Colores') + '</button>' +
               '<div class="lmd-dgm-pop lmd-dgm-colors" hidden><p>' + T('Pinta todo el diagrama. Queda escrito en el bloque.') + '</p><div>' +
                 '<button type="button" data-pal="-1"><i class="lmd-dgm-sw lmd-dgm-sw-auto">Aa</i><span>' + T('Por defecto') + '</span></button>' +
-                PALETTES.map((p, i) => '<button type="button" data-pal="' + i + '"><i class="lmd-dgm-sw" style="background:' + p[1] + ';border-color:' + p[3] + ';color:' + p[2] + '">Aa</i><span>' + T(p[0]) + '</span></button>').join('') +
+                pals().map((p, i) => '<button type="button" data-pal="' + i + '"><i class="lmd-dgm-sw" style="background:' + LMD.kit.esc(p[1]) + ';border-color:' + LMD.kit.esc(p[3]) + ';color:' + LMD.kit.esc(p[2]) + '">Aa</i><span>' + LMD.kit.esc(p[7] ? p[0] : T(p[0])) + '</span></button>').join('') +
               '</div></div></div>' +
             (kind === 'dot' ? '' : '<div class="lmd-dgm-drop"><button type="button" class="lmd-btn" data-drop="tpl" aria-haspopup="true" aria-expanded="false">' + ICON.doc + T('Insertar plantilla') + '</button>' +
               '<div class="lmd-dgm-pop lmd-dgm-tpls" hidden><p>' + T('Elegí un tipo. Reemplaza todo el diagrama.') + '</p><div>' +
@@ -528,7 +530,7 @@
       const type = typeOf(kind, ta.value);
       const pal = paletteOf(kind, ta.value);
       modal.querySelectorAll('[data-pal]').forEach((b) => b.classList.toggle('lmd-on', +b.dataset.pal === pal));
-      const dot = modal.querySelector('.lmd-dgm-dot'); const p = PALETTES[pal];
+      const dot = modal.querySelector('.lmd-dgm-dot'); const p = pals()[pal];
       dot.style.background = p ? p[1] : ''; dot.style.borderColor = p ? p[3] : '';
       if (type === shown) return;
       shown = type;

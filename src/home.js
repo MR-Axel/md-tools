@@ -485,8 +485,8 @@
   // las flechas recorren la lista y Enter crea. Devuelve { file, text } o null.
   const plain = (s) => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   function pickTemplate() {
-    return new Promise((resolve) => {
-      const all = LMD.templates.list(); const groups = LMD.templates.groups();
+    return (LMD.community ? LMD.community.ready() : Promise.resolve()).then(() => new Promise((resolve) => {
+      let all = LMD.templates.list(); let groups = LMD.templates.groups();
       const title = T('Desde una plantilla');
       const box = el('div', { class: 'lmd-ask lmd-tpl' });
       box.innerHTML = '<div class="lmd-ask-card lmd-tpl-card" role="dialog" aria-modal="true" aria-label="' + title + '"><h3>' + title + '</h3>' +
@@ -494,7 +494,7 @@
           '<input type="search" class="lmd-lk-q" spellcheck="false" placeholder="' + T('Filtrar plantillas') + '" aria-label="' + T('Filtrar plantillas') + '">' +
           '<div class="lmd-tpl-list" role="listbox" aria-label="' + title + '"></div></div>' +
         '<div class="lmd-tpl-prev markdown-body"></div></div>' +
-        '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-tpl="no">' + T('Cancelar') + '</button><button type="button" class="lmd-btn lmd-btn-fill" data-tpl="ok">' + T('Crear nota') + '</button></div></div>';
+        '<div class="lmd-ask-actions"><button type="button" class="lmd-link lmd-tpl-rm" data-tpl="rm" hidden>' + T('Quitar de mis plantillas') + '</button><button type="button" class="lmd-btn" data-tpl="no">' + T('Cancelar') + '</button><button type="button" class="lmd-btn lmd-btn-fill" data-tpl="ok">' + T('Crear nota') + '</button></div></div>';
       document.body.appendChild(box);
       const input = box.querySelector('input'); const list = box.querySelector('.lmd-tpl-list'); const prev = box.querySelector('.lmd-tpl-prev'); const ok = box.querySelector('[data-tpl=ok]');
       let shown = []; let at = ''; let done = false;
@@ -505,6 +505,7 @@
         const t = id ? LMD.templates.get(id) : null;
         prev.innerHTML = t ? ctx.preview(t.text) : '';
         prev.scrollTop = 0; ok.disabled = !t;
+        box.querySelector('[data-tpl=rm]').hidden = !String(id).startsWith('c:');
       };
       const draw = () => {
         const q = plain(input.value.trim());
@@ -535,10 +536,12 @@
       box.addEventListener('click', (e) => {
         const row = e.target.closest('[data-id]'); const b = e.target.closest('[data-tpl]');
         if (row) { select(row.dataset.id); focus(); }
+        // Una plantilla de la comunidad se puede quitar de las propias desde acá.
+        else if (b && b.dataset.tpl === 'rm') { if (at.startsWith('c:')) LMD.community.remove('template', +at.slice(2)).then(() => { all = LMD.templates.list(); groups = LMD.templates.groups(); draw(); }); }
         else if (b) close(b.dataset.tpl === 'ok' && at ? LMD.templates.get(at) : null);
       });
       list.addEventListener('dblclick', (e) => { const row = e.target.closest('[data-id]'); if (row) close(LMD.templates.get(row.dataset.id)); });
-    });
+    }));
   }
 
   LMD.home = {

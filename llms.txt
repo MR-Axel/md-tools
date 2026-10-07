@@ -17,6 +17,7 @@
 - Exports one standalone HTML file, or PDF through print.
 - Read aloud (a tool turned on in Settings > Tools): reads the note, from a block or the selection, with the voices of the device. Code and diagrams are announced, not read.
 - Dictation (a tool turned on in Settings > Tools): speech to text in English and Spanish with spoken commands for punctuation, headings, lists, tasks and formatting, a formula mode that produces LaTeX and a flowchart mode that produces Mermaid. It uses the speech recognition of the browser, on the device when available; SharpMD never receives audio.
+- Community gallery (Settings > Tools): templates, themes and diagram palettes shared by people and reviewed before they are published. Declarative content only, never code. What is added is stored on the device and works offline. Sharing needs an account; the public list (GET /gallery on the sync server) needs none.
 - Interface in English and Spanish.
 
 ## Where it runs

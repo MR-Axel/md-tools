@@ -37,6 +37,8 @@
 //   APP_URL         dirección de la app: a ella llevan el correo de invitación y los enlaces que el MCP devuelve
 //                   para abrir una nota (https://sharpmd.app/src/app.html)
 //   TRASH_DAYS      días que una nota eliminada queda en la papelera antes de borrarse del todo (30)
+//   GALLERY_NOTIFY_URL  opcional: cada aporte nuevo a la galería manda acá un POST con { text } (una línea corta, sin
+//                   enlaces ni correos). La galería recibe aportes solo con ADMIN_KEY puesta: hace falta quien los revise
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -113,6 +115,17 @@ const random = (bytes) => crypto.randomBytes(bytes).toString('base64url');
 // Compara dos secretos sin que el tiempo de la respuesta diga cuánto coinciden.
 const same = (a, b) => crypto.timingSafeEqual(crypto.createHash('sha256').update(String(a)).digest(), crypto.createHash('sha256').update(String(b)).digest());
 
+// Gmail entrega en la misma casilla con o sin puntos y con cualquier cosa después de un +: para esos dos dominios, y
+// solo para esos, la cuenta se busca por esta forma. El correo guardado de cada cuenta no cambia.
+const mailKey = (email) => { const m = /^([^@]+)@(gmail\.com|googlemail\.com)$/.exec(email); const local = m ? m[1].split('+')[0].replace(/\./g, '') : ''; return local ? local + '@gmail.com' : email; };
+try { db.exec('ALTER TABLE users ADD COLUMN mkey TEXT'); } catch (e) { /* ya estaba */ }
+for (const u of q('SELECT id, email FROM users WHERE mkey IS NULL').all()) q('UPDATE users SET mkey = ? WHERE id = ?').run(mailKey(u.email), u.id);
+db.exec('CREATE INDEX IF NOT EXISTS users_mkey ON users (mkey)');
+// Galería de la comunidad: aportes declarativos (plantillas, temas, paletas). status: pending | approved | rejected | removed.
+// nonce: lo que ata los enlaces de revisión del correo a este aporte; se vacía al decidir, y con eso dejan de servir.
+db.exec("CREATE TABLE IF NOT EXISTS gallery (id INTEGER PRIMARY KEY, user INTEGER NOT NULL, type TEXT NOT NULL, name TEXT NOT NULL, about TEXT NOT NULL, lang TEXT NOT NULL, author TEXT NOT NULL, data TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '', e INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'pending', adds INTEGER NOT NULL DEFAULT 0, nonce TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL, decided INTEGER)");
+db.exec('CREATE INDEX IF NOT EXISTS gallery_status ON gallery (status)');
+
 // extra viaja en el cuerpo de la respuesta: por ejemplo retry_after, los segundos que faltan en un tope.
 class Fail extends Error { constructor(status, code, message, extra) { super(message || code); this.status = status; this.code = code; this.extra = extra || null; } }
 
@@ -154,6 +167,7 @@ const SEAL_JOBS = [
   { name: 'notes', cols: ['text'], any: 'SELECT 1 FROM notes WHERE e = 1 LIMIT 1', pick: 'SELECT rowid AS rid, text FROM notes WHERE e = 0 LIMIT 50', put: 'UPDATE notes SET text = ?, e = 1 WHERE rowid = ? AND e = 0' },
   { name: 'versions', cols: ['text'], any: 'SELECT 1 FROM versions WHERE e = 1 LIMIT 1', pick: 'SELECT rowid AS rid, text FROM versions WHERE e = 0 LIMIT 50', put: 'UPDATE versions SET text = ?, e = 1 WHERE rowid = ? AND e = 0' },
   { name: 'trash', cols: ['text'], any: 'SELECT 1 FROM trash WHERE e = 1 LIMIT 1', pick: 'SELECT rowid AS rid, text FROM trash WHERE e = 0 LIMIT 50', put: 'UPDATE trash SET text = ?, e = 1 WHERE rowid = ? AND e = 0' },
+  { name: 'gallery', cols: ['name', 'about', 'author', 'data', 'reason'], any: 'SELECT 1 FROM gallery WHERE e = 1 LIMIT 1', pick: 'SELECT rowid AS rid, name, about, author, data, reason FROM gallery WHERE e = 0 LIMIT 50', put: 'UPDATE gallery SET name = ?, about = ?, author = ?, data = ?, reason = ?, e = 1 WHERE rowid = ? AND e = 0' },
   { name: 'comments', cols: ['quote', 'text', 'reply'], any: 'SELECT 1 FROM comments WHERE e = 1 LIMIT 1', pick: 'SELECT rowid AS rid, quote, text, reply FROM comments WHERE e = 0 LIMIT 50', put: 'UPDATE comments SET quote = ?, text = ?, reply = ?, e = 1 WHERE rowid = ? AND e = 0' },
 ];
 (() => {
@@ -256,7 +270,7 @@ const cleanEmail = (v) => { const e = (typeof v === 'string' ? v : '').trim().to
 // y 15 por día. Por IP: AUTH_PER_IP por hora. Cada tope responde con su código (code_gap, code_mail_hour,
 // code_mail_day, code_ip_hour) y con los segundos que faltan. Antes los cuatro respondían too_soon.
 async function authStart(req, body) {
-  const email = cleanEmail(body.email); const ip = 'start:ip:' + clientIp(req); const to = 'start:mail:' + email;
+  const email = cleanEmail(body.email); const ip = 'start:ip:' + clientIp(req); const to = 'start:mail:' + mailKey(email);
   // Cuenta de prueba para quien revisa la app en una tienda: código fijo, sin correo. Es una sola cuenta, sin datos de nadie.
   const fixed = TEST_LOGIN && email === TEST_LOGIN[0] ? TEST_LOGIN[1] : '';
   limit(ip, AUTH_PER_IP, HOUR, 'code_ip_hour');
@@ -276,15 +290,17 @@ async function authStart(req, body) {
 // código (tries_mail_hour, tries_mail_day, tries_ip_hour, tries_code). Antes los cuatro respondían too_many_tries.
 // tries_code no trae espera: ese código ya no sirve y hay que pedir otro.
 function authVerify(req, body) {
-  const email = cleanEmail(body.email); const ip = 'fail:ip:' + clientIp(req); const who = 'fail:mail:' + email;
+  const email = cleanEmail(body.email); const ip = 'fail:ip:' + clientIp(req); const who = 'fail:mail:' + mailKey(email);
   limit(who, 10, HOUR, 'tries_mail_hour'); limit(who, 30, DAY, 'tries_mail_day'); limit(ip, 30, HOUR, 'tries_ip_hour');
   const row = q('SELECT * FROM codes WHERE email = ?').get(email);
   if (!row || row.expires < now()) throw new Fail(400, 'code_expired');
   if (row.tries >= 6) throw new Fail(429, 'tries_code');
   if (!same(row.hash, sha(email + ':' + String(body.code == null ? '' : body.code).trim()))) { q('UPDATE codes SET tries = tries + 1 WHERE email = ?').run(email); mark(who); mark(ip); throw new Fail(400, 'bad_code'); }
   q('DELETE FROM codes WHERE email = ?').run(email);
-  q('INSERT OR IGNORE INTO users (email, created) VALUES (?, ?)').run(email, now());
-  const user = q('SELECT * FROM users WHERE email = ?').get(email);
+  // La cuenta: la de ese correo tal cual, y si no, la que coincide al sacarle los alias de Gmail (la más vieja, si
+  // hubiera más de una de antes). Dos cuentas que ya existían siguen entrando cada una con su correo.
+  let user = q('SELECT * FROM users WHERE email = ?').get(email) || q('SELECT * FROM users WHERE mkey = ? ORDER BY id LIMIT 1').get(mailKey(email));
+  if (!user) { q('INSERT OR IGNORE INTO users (email, mkey, created) VALUES (?, ?, ?)').run(email, mailKey(email), now()); user = q('SELECT * FROM users WHERE email = ?').get(email); }
   const session = 'mds_' + random(32);
   q('INSERT INTO sessions (hash, user, created, seen) VALUES (?, ?, ?, ?)').run(sha(session), user.id, now(), now());
   return { session, account: account(userById(user.id)) };
@@ -334,7 +350,7 @@ async function feedback(req, body) {
   const c = body.context && typeof body.context === 'object' ? body.context : {};
   const field = (v, max) => String(v == null ? '' : v).replace(/[\r\n]+/g, ' ').trim().slice(0, max) || '-';
   const mail = { to: env.FEEDBACK_TO, subject: rep ? 'SharpMD report' : 'SharpMD feedback',
-    text: (rep ? 'Reported note: ' + field(rep.note, 300) + '\nOwner: ' + field(rep.owner, 120) + '\nKind: ' + (['link', 'shared', 'live'].includes(rep.kind) ? rep.kind : '-') + '\n\n' : '') +
+    text: (rep ? 'Reported note: ' + field(rep.note, 300) + '\nOwner: ' + field(rep.owner, 120) + '\nKind: ' + (['link', 'shared', 'live', 'gallery'].includes(rep.kind) ? rep.kind : '-') + '\n\n' : '') +
       (text || '(no reason given)') + '\n\n---\nFrom: ' + (from || 'anonymous') + (user ? ' (signed in, ' + user.plan + ' plan)' : '') +
       '\nVersion: ' + field(c.version, 40) + '\nWhere: ' + (c.where === 'extension' ? 'extension' : 'web') +
       '\nBrowser: ' + field(c.browser, 300) + '\nLanguage: ' + field(c.lang, 20) + '\n' };
@@ -1570,7 +1586,7 @@ function spaceOf(user, o) {
 // Un miembro sale de su equipo y las notas del equipo quedan en el equipo.
 const ACCOUNT_DELETES = 5; // pedidos por hora, por IP y por cuenta
 // Todo lo que cuelga de una cuenta, tabla por tabla. La cuenta misma va al final.
-const ACCOUNT_ROWS = ['DELETE FROM notes WHERE user = ?', 'DELETE FROM versions WHERE user = ?', 'DELETE FROM trash WHERE user = ?', 'DELETE FROM comments WHERE user = ?', 'DELETE FROM tokens WHERE user = ?',
+const ACCOUNT_ROWS = ['DELETE FROM notes WHERE user = ?', 'DELETE FROM versions WHERE user = ?', 'DELETE FROM trash WHERE user = ?', 'DELETE FROM comments WHERE user = ?', 'DELETE FROM gallery WHERE user = ?', 'DELETE FROM tokens WHERE user = ?',
   'DELETE FROM sessions WHERE user = ?', 'DELETE FROM vaults WHERE user = ?', 'DELETE FROM paddle_subs WHERE user = ?', 'DELETE FROM shares WHERE owner = ?', 'DELETE FROM links WHERE owner = ?', 'DELETE FROM lives WHERE owner = ?',
   'DELETE FROM users WHERE id = ?'];
 function accountDelete(req, user, body) {
@@ -1602,7 +1618,7 @@ function accountDelete(req, user, body) {
     q('DELETE FROM live_tickets WHERE live NOT IN (SELECT id FROM lives)').run();
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
-  scrub();
+  scrub(); galleryFresh();
   // Las pestañas que seguían escuchando notas de la cuenta (o del equipo que se fue con ella) se cortan.
   for (const [key, room] of rooms) for (const c of Array.from(room)) if (c.uid === user.id || ids.some((id) => key.startsWith(id + ':'))) c.res.end();
   return { ok: true };
@@ -1657,6 +1673,205 @@ async function paddleWebhook(req) {
   return { ok: true, plan };
 }
 
+// ---------- Galería de la comunidad ----------
+// Aportes de la gente, que quedan a la vista de todos recién cuando quien administra el servidor los aprueba.
+// Son datos, nunca código: una plantilla es Markdown (la app lo pasa por el mismo saneado que cualquier nota), un
+// tema es un puñado de valores de una lista cerrada, y una paleta son seis colores. Acá no entra CSS, ni una
+// dirección, ni nada que la app pueda cargar o ejecutar: lo que no calza con el esquema se rechaza entero.
+//   { type, name, about, lang, author, data }
+//   template  data: { text }                      hasta 20 KB
+//   theme     data: { mode, accent, paperLight, paperDark, font, codeColor, diagramShape }   todas opcionales, al menos una
+//   palette   data: { colors: { fill, text, border, line, second, third } }
+// author es el nombre que eligió quien aporta. El correo de la cuenta no sale nunca por las rutas públicas.
+// Cada aporte nuevo manda un correo a FEEDBACK_TO con dos enlaces firmados (HMAC con ADMIN_KEY sobre el aporte, la
+// acción, el vencimiento y un valor propio de ese aporte). Abrir un enlace solo muestra una página: decide el botón,
+// que manda un POST. Decidido el aporte, los dos enlaces dejan de servir.
+const GALLERY_TYPES = ['template', 'theme', 'palette'];
+const GALLERY_FONTS = ['Inter', 'System', 'Arial', 'Calibri', 'Verdana', 'Trebuchet MS', 'Georgia', 'Cambria', 'Palatino', 'Times New Roman', 'Consolas', 'Courier New'];
+const GALLERY_THEME = ['mode', 'accent', 'paperLight', 'paperDark', 'font', 'codeColor', 'diagramShape'];
+const GALLERY_COLORS = ['fill', 'text', 'border', 'line', 'second', 'third'];
+const GALLERY_HEX = /^#[0-9a-f]{6}$/i;
+const MAX_TEMPLATE = 20 * 1024; const GALLERY_DAY = 5; const GALLERY_PAGE = 24; const GALLERY_MINE = 30;
+const GALLERY_LINK_MS = 14 * DAY;
+const galleryOn = () => !!env.ADMIN_KEY;
+// Una línea de texto: sin caracteres de control ni marcas que den vuelta el texto. Se muestra siempre como texto.
+const galLine = (v) => (typeof v === 'string' ? v : '').replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ').replace(/\s+/g, ' ').trim();
+const galOnly = (o, keys) => !!o && typeof o === 'object' && !Array.isArray(o) && Object.keys(o).every((k) => keys.includes(k));
+const galLum = (hex) => { const n = parseInt(hex.slice(1), 16); const ch = [n >> 16 & 255, n >> 8 & 255, n & 255].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2]; };
+function galleryData(type, d) {
+  const bad = () => new Fail(400, 'bad_data');
+  const hex = (v) => { if (typeof v !== 'string' || !GALLERY_HEX.test(v)) throw bad(); return v.toLowerCase(); };
+  if (type === 'template') {
+    if (!galOnly(d, ['text']) || typeof d.text !== 'string') throw bad();
+    const text = d.text.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '');
+    if (!text.trim() || text.startsWith(VAULT)) throw bad();
+    if (Buffer.byteLength(text) > MAX_TEMPLATE) throw new Fail(413, 'too_large');
+    return { text };
+  }
+  if (type === 'theme') {
+    if (!galOnly(d, GALLERY_THEME) || !Object.keys(d).length) throw bad();
+    const out = {};
+    if ('mode' in d) { if (!['auto', 'light', 'dark'].includes(d.mode)) throw bad(); out.mode = d.mode; }
+    if ('accent' in d) out.accent = hex(d.accent);
+    if ('codeColor' in d) out.codeColor = hex(d.codeColor);
+    // El fondo va por tema: uno claro para el tema claro y uno oscuro para el oscuro, así el texto siempre se lee.
+    if ('paperLight' in d) { out.paperLight = hex(d.paperLight); if (galLum(out.paperLight) < 0.7) throw bad(); }
+    if ('paperDark' in d) { out.paperDark = hex(d.paperDark); if (galLum(out.paperDark) > 0.08) throw bad(); }
+    if ('font' in d) { if (!GALLERY_FONTS.includes(d.font)) throw bad(); out.font = d.font; }
+    if ('diagramShape' in d) { if (!['round', 'square'].includes(d.diagramShape)) throw bad(); out.diagramShape = d.diagramShape; }
+    return out;
+  }
+  if (!galOnly(d, ['colors']) || !galOnly(d.colors, GALLERY_COLORS) || Object.keys(d.colors).length !== GALLERY_COLORS.length) throw bad();
+  const colors = {}; GALLERY_COLORS.forEach((k) => { colors[k] = hex(d.colors[k]); });
+  return { colors };
+}
+function galleryClean(body) {
+  if (!galOnly(body, ['type', 'name', 'about', 'lang', 'author', 'data'])) throw new Fail(400, 'bad_schema');
+  if (!GALLERY_TYPES.includes(body.type)) throw new Fail(400, 'bad_type');
+  const name = galLine(body.name); if (name.length < 3 || name.length > 60) throw new Fail(400, 'bad_name');
+  const about = galLine(body.about); if (about.length > 160 || (body.about != null && typeof body.about !== 'string')) throw new Fail(400, 'bad_about');
+  if (typeof body.lang !== 'string' || !/^[a-z]{2}$/.test(body.lang)) throw new Fail(400, 'bad_lang');
+  // El nombre a mostrar nunca es un correo.
+  const author = galLine(body.author); if (author.length < 2 || author.length > 40 || author.includes('@')) throw new Fail(400, 'bad_author');
+  return { type: body.type, name, about, lang: body.lang, author, data: galleryData(body.type, body.data) };
+}
+
+const galSeal = (item) => ['name', 'about', 'author', 'data', 'reason'].map((c) => seal(c === 'data' ? JSON.stringify(item.data) : item[c] || '', 'gallery.' + c));
+function galleryOpen(row) {
+  const col = (c) => unseal(row[c], row.e, 'gallery.' + c);
+  return { id: row.id, user: row.user, type: row.type, name: col('name'), about: col('about'), lang: row.lang, author: col('author'), data: JSON.parse(col('data')), reason: col('reason') || '', status: row.status, adds: row.adds, created: row.created, decided: row.decided, nonce: row.nonce };
+}
+const galleryGet = (id) => { const row = Number.isInteger(id) && id > 0 ? q('SELECT * FROM gallery WHERE id = ?').get(id) : null; return row ? galleryOpen(row) : null; };
+// Lo que ve cualquiera: ni la cuenta ni su correo. En la lista, una plantilla va sin su texto (se pide de a una).
+const galleryPublic = (it, full) => Object.assign({ id: it.id, type: it.type, name: it.name, about: it.about, lang: it.lang, author: it.author, adds: it.adds, at: it.decided || it.created },
+  it.type === 'template' && !full ? { size: it.data.text.length } : { data: it.data });
+const galleryOwn = (it) => ({ id: it.id, type: it.type, name: it.name, about: it.about, lang: it.lang, author: it.author, status: it.status, reason: it.status === 'pending' || it.status === 'approved' ? '' : it.reason, adds: it.adds, created: it.created });
+// Lo aprobado, ya abierto, en memoria: la lista pública no toca la base en cada pedido.
+let galleryCache = null;
+const galleryFresh = () => { galleryCache = null; };
+const galleryLive = () => { if (!galleryCache) galleryCache = q("SELECT * FROM gallery WHERE status = 'approved'").all().map(galleryOpen); return galleryCache; };
+
+function galleryList(url) {
+  const type = url.searchParams.get('type') || ''; const lang = url.searchParams.get('lang') || '';
+  const text = (url.searchParams.get('q') || '').trim().toLowerCase().slice(0, 60);
+  let rows = galleryLive().filter((it) => (!type || it.type === type) && (!lang || it.lang === lang) && (!text || (it.name + '\n' + it.about + '\n' + it.author).toLowerCase().includes(text)));
+  rows = rows.slice().sort(url.searchParams.get('sort') === 'new' ? (a, b) => b.decided - a.decided : (a, b) => b.adds - a.adds || b.decided - a.decided);
+  const pages = Math.max(1, Math.ceil(rows.length / GALLERY_PAGE)); const page = Math.min(pages, Math.max(1, parseInt(url.searchParams.get('page'), 10) || 1));
+  return { items: rows.slice((page - 1) * GALLERY_PAGE, page * GALLERY_PAGE).map((it) => galleryPublic(it)), total: rows.length, page, pages, open: galleryOn(), __cache: 'public, max-age=60' };
+}
+
+// Los enlaces del correo. La firma cubre el aporte, la acción, el vencimiento y el valor propio del aporte.
+const gallerySig = (id, act, exp, nonce) => crypto.createHmac('sha256', String(env.ADMIN_KEY)).update(['gallery-review', id, act, exp, nonce].join('|')).digest('base64url');
+const galleryLink = (it, act) => { const exp = now() + GALLERY_LINK_MS; return PUBLIC_URL + '/gallery/review?id=' + it.id + '&act=' + act + '&exp=' + exp + '&sig=' + gallerySig(it.id, act, exp, it.nonce); };
+// Un enlace sirve si la firma es de este servidor, no venció y el aporte sigue pendiente. Todo lo demás falla igual.
+function galleryTicket(get) {
+  const id = parseInt(get('id'), 10); const act = get('act'); const exp = parseInt(get('exp'), 10); const sig = String(get('sig') || '');
+  const it = galleryOn() && (act === 'approve' || act === 'reject') && exp > now() ? galleryGet(id) : null;
+  if (!it || it.status !== 'pending' || !it.nonce || !same(sig, gallerySig(id, act, exp, it.nonce))) return null;
+  return { it, act, exp, sig };
+}
+function galleryDecide(it, status, reason) {
+  const why = status === 'approved' ? '' : galLine(reason).slice(0, 300);
+  q("UPDATE gallery SET status = ?, reason = ?, decided = ?, nonce = '' WHERE id = ?").run(status, seal(why, 'gallery.reason'), now(), it.id);
+  galleryFresh();
+  return { ok: true, id: it.id, status };
+}
+
+const hEsc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const galleryText = (it) => (it.type === 'template' ? it.data.text : JSON.stringify(it.data, null, 2));
+// Los colores de un tema o de una paleta, para verlos en la página de revisión. Ya pasaron por el esquema.
+const gallerySwatches = (it) => { const d = it.type === 'palette' ? it.data.colors : it.type === 'theme' ? it.data : {}; return Object.keys(d).filter((k) => GALLERY_HEX.test(d[k])).map((k) => '<span class="sw"><i style="background:' + d[k] + '"></i>' + hEsc(k) + '</span>').join(''); };
+const galleryPage = (title, inner, status) => ({ __status: status || 200, __html: '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>' + hEsc(title) + '</title><style>' +
+  'body{margin:0;padding:24px 16px;background:#f4f3ee;font:15px/1.5 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1d2026}main{max-width:640px;margin:0 auto;background:#fff;border:1px solid #dedbd2;border-radius:14px;padding:24px}' +
+  'h1{font-size:18px;margin:0 0 14px}h1 b{color:#4d7c0f}dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0 0 14px}dt{color:#5c6370}dd{margin:0;overflow-wrap:anywhere}' +
+  'pre{background:#f1efe9;border-radius:10px;padding:14px;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.5 ui-monospace,Consolas,Menlo,monospace;max-height:60vh;overflow:auto}' +
+  '.sw{display:inline-flex;align-items:center;gap:6px;margin:0 12px 8px 0;font-size:13px;color:#5c6370}.sw i{width:22px;height:22px;border-radius:6px;border:1px solid #dedbd2}' +
+  'textarea{display:block;width:100%;box-sizing:border-box;min-height:70px;margin:6px 0 14px;padding:8px;border:1px solid #dedbd2;border-radius:8px;font:inherit}' +
+  'button{font:600 15px/1 inherit;padding:12px 20px;border:0;border-radius:10px;color:#fff;background:#4d7c0f;cursor:pointer}button.no{background:#b42318}p{margin:0 0 12px}.muted{color:#5c6370;font-size:13px}' +
+  '</style></head><body><main><h1><b>#</b> SharpMD gallery</h1>' + inner + '</main></body></html>' });
+const galleryGone = () => galleryPage('SharpMD gallery', '<p>This link no longer works. It was already used, it expired, or the contribution was withdrawn.</p>', 403);
+function galleryReviewPage(t) {
+  const it = t.it; const owner = userById(it.user);
+  return galleryPage((t.act === 'approve' ? 'Approve' : 'Reject') + ' · ' + it.name,
+    '<dl><dt>Type</dt><dd>' + hEsc(it.type) + '</dd><dt>Name</dt><dd>' + hEsc(it.name) + '</dd><dt>About</dt><dd>' + hEsc(it.about || '-') + '</dd><dt>Language</dt><dd>' + hEsc(it.lang) + '</dd>' +
+    '<dt>Shown author</dt><dd>' + hEsc(it.author) + '</dd><dt>Account</dt><dd>' + hEsc(owner ? owner.email : '-') + '</dd></dl>' +
+    '<div>' + gallerySwatches(it) + '</div><pre>' + hEsc(galleryText(it)) + '</pre>' +
+    '<form method="post" action="/gallery/review"><input type="hidden" name="id" value="' + it.id + '"><input type="hidden" name="act" value="' + t.act + '"><input type="hidden" name="exp" value="' + t.exp + '"><input type="hidden" name="sig" value="' + hEsc(t.sig) + '">' +
+    (t.act === 'reject' ? '<label>Reason (optional, the sender sees it)<textarea name="reason" maxlength="300"></textarea></label><button class="no" type="submit">Reject</button>'
+      : '<p class="muted">Once approved it is public for everyone, under the shown author.</p><button type="submit">Approve and publish</button>') + '</form>');
+}
+
+function galleryNotify(text) {
+  const url = String(env.GALLERY_NOTIFY_URL || '').trim(); if (!/^https?:\/\//i.test(url)) return;
+  fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }), signal: AbortSignal.timeout(5000) }).catch(() => { /* el aviso es de cortesía: el aporte ya quedó guardado */ });
+}
+async function gallerySubmit(req, user, body) {
+  if (!galleryOn()) throw new Fail(404, 'no_route');
+  const item = galleryClean(body);
+  const keys = [['gal:user:' + user.id, GALLERY_DAY], ['gal:ip:' + clientIp(req), GALLERY_DAY * 4]];
+  keys.forEach((k) => limit(k[0], k[1], DAY, 'too_many'));
+  if (q('SELECT COUNT(*) AS n FROM gallery WHERE user = ?').get(user.id).n >= GALLERY_MINE) throw new Fail(409, 'gallery_full');
+  keys.forEach((k) => mark(k[0]));
+  const sealed = galSeal(item);
+  const id = Number(q("INSERT INTO gallery (user, type, name, about, lang, author, data, reason, e, status, nonce, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)").run(user.id, item.type, sealed[0], sealed[1], item.lang, sealed[2], sealed[3], sealed[4], SEALED, random(18), now()).lastInsertRowid);
+  const it = galleryGet(id);
+  if (env.FEEDBACK_TO) {
+    const mail = { to: env.FEEDBACK_TO, reply_to: user.email, subject: 'SharpMD gallery: ' + it.type + ' "' + it.name + '"',
+      text: 'New contribution to the gallery, waiting for review.\n\nType: ' + it.type + '\nName: ' + it.name + '\nAbout: ' + (it.about || '-') + '\nLanguage: ' + it.lang + '\nShown author: ' + it.author +
+        '\nAccount: ' + user.email + ' (' + user.plan + ' plan)\nId: ' + it.id + '\n\nApprove: ' + galleryLink(it, 'approve') + '\nReject: ' + galleryLink(it, 'reject') +
+        '\n\nEach link opens a page that asks to confirm. They work once and expire in 14 days.\n\n--- content ---\n' + galleryText(it) + '\n' };
+    // Si el correo no sale, el aporte queda pendiente igual: se ve con GET /admin/gallery.
+    try { await sendMail(mail); } catch (e) { console.error('galería: no salió el correo de revisión del aporte ' + it.id); }
+  }
+  galleryNotify('SharpMD gallery: new ' + it.type + ' waiting for review (' + it.name.slice(0, 60) + ')');
+  return galleryOwn(it);
+}
+
+// Sumar un aporte: cuenta una vez por IP y por día para cada aporte. El número es anónimo: no se guarda quién.
+function galleryAdd(req, id) {
+  const it = galleryLive().find((x) => x.id === id); if (!it) throw new Fail(404, 'not_found');
+  const ip = clientIp(req); const all = 'galadd:ip:' + ip; const one = 'galadd:' + id + ':' + ip;
+  limit(all, 60, HOUR, 'too_many'); mark(all);
+  if (!over(one, 1, DAY)) { mark(one); q('UPDATE gallery SET adds = adds + 1 WHERE id = ?').run(id); it.adds += 1; }
+  return { ok: true, adds: it.adds };
+}
+
+// Las rutas de la galería. Las públicas primero; las que siguen piden sesión.
+async function galleryRoute(req, url, p, m) {
+  const ip = clientIp(req); const num = /^\/gallery\/(\d{1,12})(\/add)?$/.exec(p);
+  rate('gal:req:' + ip, 300, 60000, 'too_many');
+  if (p === '/gallery' && m === 'GET') return galleryList(url);
+  if (p === '/gallery/review' && (m === 'GET' || m === 'POST')) {
+    // Los intentos con un enlace que no sirve tienen tope por IP, como la clave de administración.
+    const key = 'galrev:' + ip; if (over(key, 20, HOUR)) return galleryPage('SharpMD gallery', '<p>Too many attempts. Try again later.</p>', 429);
+    const form = m === 'POST' ? new URLSearchParams(await readRaw(req, 8192)) : url.searchParams;
+    const t = galleryTicket((k) => form.get(k));
+    if (!t) { mark(key); return galleryGone(); }
+    if (m === 'GET') return galleryReviewPage(t);
+    galleryDecide(t.it, t.act === 'approve' ? 'approved' : 'rejected', form.get('reason'));
+    return galleryPage('SharpMD gallery', '<p>' + (t.act === 'approve' ? 'Approved. It is now public in the gallery.' : 'Rejected. The sender sees it in the app.') + '</p><p class="muted">' + hEsc(t.it.name) + '</p>');
+  }
+  if (num && !num[2] && m === 'GET') { const it = galleryLive().find((x) => x.id === +num[1]); if (!it) throw new Fail(404, 'not_found'); return Object.assign(galleryPublic(it, true), { __cache: 'public, max-age=60' }); }
+  if (num && num[2] && m === 'POST') return galleryAdd(req, +num[1]);
+  const user = userFrom(req, 'session');
+  if (p === '/gallery' && m === 'POST') return gallerySubmit(req, user, await readBody(req));
+  if (p === '/gallery/mine' && m === 'GET') return q('SELECT * FROM gallery WHERE user = ? ORDER BY created DESC LIMIT ?').all(user.id, GALLERY_MINE).map((r) => galleryOwn(galleryOpen(r)));
+  // Retirar un aporte propio, esté como esté: se borra del todo.
+  if (num && !num[2] && m === 'DELETE') { const r = q('DELETE FROM gallery WHERE id = ? AND user = ?').run(+num[1], user.id); if (!r.changes) throw new Fail(404, 'not_found'); galleryFresh(); return { ok: true }; }
+  return null;
+}
+// Con la clave de administración: ver lo que espera (o lo de otro estado), aprobar, rechazar y retirar algo ya publicado.
+function galleryAdmin(m, url, body) {
+  if (m === 'GET') {
+    const status = ['pending', 'approved', 'rejected', 'removed'].includes(url.searchParams.get('status')) ? url.searchParams.get('status') : 'pending';
+    return q('SELECT * FROM gallery WHERE status = ? ORDER BY created DESC LIMIT 200').all(status).map((r) => { const it = galleryOpen(r); const owner = userById(it.user); return Object.assign(galleryOwn(it), { reason: it.reason, data: it.data, account: owner ? owner.email : '' }); });
+  }
+  if (m !== 'POST') throw new Fail(405, 'method_not_allowed');
+  const it = galleryGet(body.id); if (!it) throw new Fail(404, 'not_found');
+  const next = { approve: 'approved', reject: 'rejected', remove: 'removed' }[body.action]; if (!next) throw new Fail(400, 'bad_action');
+  return galleryDecide(it, next, body.reason);
+}
+
 async function route(req, url) {
   const p = url.pathname; const m = req.method;
   if (p === '/health') return { ok: true };
@@ -1664,11 +1879,12 @@ async function route(req, url) {
   if (p === '/auth/verify' && m === 'POST') return authVerify(req, await readBody(req));
   if (p === '/paddle/webhook' && m === 'POST') return paddleWebhook(req);
   if (p === '/feedback' && m === 'POST') return feedback(req, await readBody(req));
-  if ((p === '/admin/plan' || p === '/admin/team') && m === 'POST') {
+  if (((p === '/admin/plan' || p === '/admin/team') && m === 'POST') || p === '/admin/gallery') {
     // La misma respuesta sin clave configurada, sin clave en el pedido o con una equivocada. Diez fallos por hora por IP.
     const ip = 'admin:' + clientIp(req);
     limit(ip, 10, HOUR, 'too_many');
     if (!env.ADMIN_KEY || !same(req.headers['x-admin-key'] || '', env.ADMIN_KEY)) { mark(ip); throw new Fail(403, 'forbidden'); }
+    if (p === '/admin/gallery') return galleryAdmin(m, url, m === 'POST' ? await readBody(req) : {});
     const b = await readBody(req);
     if (p === '/admin/team') {
       // Un equipo armado a mano, sin cobro: para quien aloja su propio servidor. seats: 0 lo deja sin plan pago.
@@ -1694,6 +1910,7 @@ async function route(req, url) {
     const out = Array.isArray(body) ? body.map((x) => mcp(user, x)).filter(Boolean) : mcp(user, body);
     return out == null || (Array.isArray(out) && !out.length) ? { __status: 202 } : out;
   }
+  if (p === '/gallery' || p.startsWith('/gallery/')) { const out = await galleryRoute(req, url, p, m); if (out) return out; }
   if (p.startsWith('/public/') && m === 'GET') return publicNote(dec(p.slice(8)), req.headers['x-password']);
   // Sesión en vivo, del lado de quien entra por el enlace: mirar, entrar, y lo que alcanza un pase de invitado.
   if (p === '/live/look' && m === 'POST') return liveLook(req, await readBody(req));
@@ -1795,7 +2012,10 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/events' && req.method === 'GET') { listen(req, res, userFrom(req, 'session'), url); return; }
     if (url.pathname === '/live/events' && req.method === 'GET') { listenGuest(req, res); return; }
     const out = await route(req, url);
+    // La página de revisión de la galería: HTML sin scripts, que no se puede enmarcar ni mandar su formulario a otro lado.
+    if (out && out.__html !== undefined) { res.writeHead(out.__status || 200, { 'content-type': 'text/html; charset=utf-8', 'x-frame-options': 'DENY', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" }); res.end(out.__html); return; }
     if (out && out.__status) { res.writeHead(out.__status); res.end(); return; }
+    if (out && out.__cache) { res.setHeader('cache-control', out.__cache); delete out.__cache; }
     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify(out));
   } catch (e) {

@@ -6,6 +6,8 @@
     theme: 'auto', // auto | light | dark
     accent: '', // vacío = color del tema; si no, un hex (#rrggbb)
     supporter: false, // personalizaciones desbloqueadas: vienen con el plan pago y se conservan
+    paperLight: '', // fondo de la página en el tema claro (#rrggbb); lo pone un tema de la comunidad. Vacío = el del tema
+    paperDark: '', // lo mismo para el tema oscuro
     centered: true,
     contentWidth: 1040, // px
     fontSize: 16, // px
@@ -1106,7 +1108,7 @@
       "Denunciar esta nota": "Report this note", "Motivo (opcional)": "Reason (optional)", "Enviar denuncia": "Send report",
       "Avisanos si esta nota tiene algo que no debería estar acá. Se envía qué nota es, no su contenido.": "Tell us if this note has something that should not be here. We receive which note it is, not its content.",
       // Ajustes > Herramientas (tools.js)
-      "Herramientas": "Tools", "Incluida": "Built in", "Opciones": "Options",
+      "Herramientas": "Tools", "Prendé el Tablero kanban en Ajustes > Herramientas para verlo como tablero": "Turn on Kanban board in Settings > Tools to see it as a board", "Opciones": "Options",
       "Funciones que se suman a la app. Cada una se prende acá.": "Features added to the app. Turn each one on here.",
       "Tablero kanban": "Kanban board", "Un bloque kanban se ve como un tablero con columnas y tarjetas que se arrastran.": "A kanban block shows as a board with columns and cards you can drag.",
       // Leer en voz alta (speak.js)
@@ -1139,6 +1141,38 @@
       "El navegador puede enviar el audio a su proveedor para transcribirlo. SharpMD no recibe ni guarda audio.": "The browser may send the audio to its provider to transcribe it. SharpMD does not receive or store audio.",
       "El navegador está descargando el reconocimiento de voz.": "The browser is downloading speech recognition.",
       "Atajo: Alt+Shift+D, o el micrófono al lado del bloque que estás escribiendo.": "Shortcut: Alt+Shift+D, or the microphone next to the block you are writing.",
+      "Comunidad": "Community", "Plantillas, temas y paletas que comparte la gente. Cada aporte se revisa antes de publicarse.": "Templates, themes and palettes shared by people. Each one is reviewed before it is published.",
+      "Compartí el tuyo": "Share yours", "Todo": "All",
+      "Temas": "Themes", "Paletas": "Palettes",
+      "Plantilla": "Template", "Paleta": "Palette",
+      "Buscar en la comunidad": "Search the community", "por {a}": "by {a}",
+      "Agregado {n} veces": "Added {n} times", "Agregado": "Added",
+      "Denunciar": "Report", "Volver al anterior": "Back to previous",
+      "Ver más": "Show more", "Tema aplicado": "Theme applied",
+      "Tema de la comunidad puesto: {a}": "Community theme in use: {a}", "Todavía no hay aportes.": "No contributions yet.",
+      "Ningún aporte coincide.": "No contribution matches.", "Todavía no agregaste nada.": "You have not added anything yet.",
+      "No hay conexión con la galería. Acá está lo que ya agregaste.": "The gallery cannot be reached. This is what you already added.", "No hay un servidor configurado. Acá está lo que ya agregaste.": "No server is set up. This is what you already added.",
+      "No se pudo traer el aporte. Probá de nuevo.": "Could not load the contribution. Try again.", "Tus aportes": "Your contributions",
+      "En revisión": "In review", "No publicado": "Not published",
+      "Retirado": "Removed", "Retirar": "Withdraw",
+      "¿Retirar este aporte?": "Withdraw this contribution?", "Deja de estar en la galería.": "It leaves the gallery.",
+      "Compartir con la comunidad": "Share with the community", "Esta nota, como plantilla": "This note, as a template",
+      "Mi tema actual": "My current theme", "Una paleta de diagramas": "A diagram palette",
+      "Descripción corta": "Short description", "Tu nombre público": "Your public name",
+      "Así se va a publicar": "This is what gets published", "Va a revisión. Si se aprueba, queda público con el nombre que elegiste.": "It goes to review. If approved, it is public under the name you chose.",
+      "Enviar a revisión": "Send for review", "Enviado. El estado aparece en Tus aportes.": "Sent. Its status shows under Your contributions.",
+      "Entrá a tu cuenta para compartir.": "Sign in to share.", "La plantilla supera los 20 KB.": "The template is over 20 KB.",
+      "El nombre va de 3 a 60 caracteres.": "The name takes 3 to 60 characters.", "Escribí un nombre público de 2 a 40 caracteres, sin arroba.": "Write a public name of 2 to 40 characters, without an at sign.",
+      "Llegaste al tope de envíos por hoy.": "You reached the limit of submissions for today.", "Llegaste al tope de aportes. Retirá alguno para enviar otro.": "You reached the limit of contributions. Withdraw one to send another.",
+      "Este servidor no recibe aportes.": "This server does not take contributions.", "No se pudo enviar. Revisá los datos.": "Could not send it. Check the details.",
+      "Tu tema no tiene cambios para compartir.": "Your theme has no changes to share.", "No hay nada para compartir.": "There is nothing to share.",
+      "Relleno": "Fill", "Borde": "Border",
+      "Línea": "Line", "Segundo relleno": "Second fill",
+      "Tercer relleno": "Third fill", "Fondo claro": "Light background",
+      "Fondo oscuro": "Dark background", "Título de ejemplo": "Sample heading",
+      "Un párrafo con": "A paragraph with", "un enlace": "a link",
+      "Botón": "Button", "Quitar de mis plantillas": "Remove from my templates",
+      "Denunciar este aporte": "Report this contribution", "Avisanos si este aporte tiene algo que no debería estar acá.": "Tell us if this contribution has something that should not be here.",
   };
   let current = 'es';
   function setLang(pref) {

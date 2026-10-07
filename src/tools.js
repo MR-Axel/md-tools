@@ -24,7 +24,7 @@
 
   // register({ id, name, about, icon, defaultOn, enable(core), disable(core), settings?(caja) })
   //   lazy + module: el archivo se pide con core.ensure(lazy) y module() devuelve { enable, disable, settings }.
-  //   fixed: siempre prendida, sin interruptor.   available(): '' si se puede usar acá, o la línea que dice por qué no.
+  //   available(): '' si se puede usar acá, o la línea que dice por qué no.
   function register(tool) {
     if (!tool || !tool.id || tools.some((t) => t.id === tool.id)) return;
     tools.push(tool);
@@ -35,7 +35,6 @@
   const reason = (tool) => (tool.available ? tool.available() || '' : '');
   const isOn = (id) => {
     const tool = tools.find((t) => t.id === id); if (!tool) return false;
-    if (tool.fixed) return true;
     const saved = state()[id];
     return (typeof saved === 'boolean' ? saved : !!tool.defaultOn) && !reason(tool);
   };
@@ -64,7 +63,7 @@
   }
   // Deja andando lo que está prendido y apaga lo que no.
   function apply() {
-    tools.forEach((tool) => { if (tool.fixed) return; if (isOn(tool.id)) start(tool); else stop(tool); });
+    tools.forEach((tool) => { if (isOn(tool.id)) start(tool); else stop(tool); });
   }
   function set(id, on) {
     const partial = {}; partial[id] = !!on;
@@ -78,6 +77,8 @@
     core = c;
     chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes.settings) setTimeout(apply, 0); });
     apply();
+    // Una herramienta que ya viene cargada y está apagada deshace lo que se haya dibujado antes de saberlo.
+    tools.forEach((tool) => { if (!tool.lazy && tool.disable && !isOn(tool.id)) tool.disable(core); });
   }
 
   // ---------- La pestaña de Ajustes ----------
@@ -86,8 +87,7 @@
     return '<div class="lmd-tl-card' + (why ? ' lmd-tl-off' : '') + '" data-tool="' + esc(tool.id) + '">' +
       '<span class="lmd-tl-ico" aria-hidden="true">' + (tool.icon || ICON.tools) + '</span>' +
       '<div class="lmd-tl-main"><b>' + esc(T(tool.name)) + '</b><p>' + esc(T(tool.about)) + '</p>' + (why ? '<p class="lmd-tl-why">' + esc(why) + '</p>' : '') + '</div>' +
-      (tool.fixed ? '<em class="lmd-tag">' + esc(T('Incluida')) + '</em>'
-        : '<label class="lmd-switch"><input type="checkbox" data-tool-on="' + esc(tool.id) + '" aria-label="' + esc(T(tool.name)) + '"' + (on ? ' checked' : '') + (why ? ' disabled' : '') + '><i></i></label>') +
+      ('<label class="lmd-switch"><input type="checkbox" data-tool-on="' + esc(tool.id) + '" aria-label="' + esc(T(tool.name)) + '"' + (on ? ' checked' : '') + (why ? ' disabled' : '') + '><i></i></label>') +
       (tool.settings || tool.lazy ? '<button type="button" class="lmd-link lmd-tl-more" data-tool-opts="' + esc(tool.id) + '" aria-expanded="false"' + (on ? '' : ' hidden') + '>' + esc(T('Opciones')) + '</button><div class="lmd-tl-opts" hidden></div>' : '') +
     '</div>';
   }
@@ -95,7 +95,11 @@
   function pane(box) {
     box.innerHTML = '<p class="lmd-hint lmd-tl-lead">' + esc(T('Funciones que se suman a la app. Cada una se prende acá.')) + '</p>' +
       '<div class="lmd-tl-list">' + tools.map(card).join('') + '</div>' +
-      '<div class="lmd-tl-list" data-tools-community hidden>' + community.map(card).join('') + '</div>';
+      '<div class="lmd-tl-list" data-tools-community hidden>' + community.map(card).join('') + '</div>' +
+      '<div class="lmd-gal" data-gallery></div>';
+    // La galería de la comunidad (gallery.js): contenido que comparte la gente, nunca código. Se pide recién acá.
+    const gal = box.querySelector('[data-gallery]');
+    Promise.all([core.ensure('tools'), core.ensure('gallery')]).then((ok) => { if (ok[0] && ok[1] && gal.isConnected) LMD.gallery.pane(gal, core); });
     box.querySelectorAll('[data-tool-on]').forEach((input) => input.addEventListener('change', () => {
       set(input.dataset.toolOn, input.checked);
       const more = input.closest('.lmd-tl-card').querySelector('.lmd-tl-more');
@@ -129,5 +133,9 @@
       return T('Este navegador no reconoce voz. Funciona en Chrome, Edge y Safari.');
     },
   });
-  register({ id: 'board', name: 'Tablero kanban', about: 'Un bloque kanban se ve como un tablero con columnas y tarjetas que se arrastran.', icon: LMD.kit.ICON.b_board, fixed: true });
+  // El tablero ya viene con la app (board.js) y arranca prendido. Apagado, un bloque kanban se ve como código y no
+  // se ofrece insertar uno; el bloque de la nota no cambia. Al cambiar el interruptor la nota abierta se redibuja.
+  const redraw = (c, sel) => { if (c && c.ui && c.ui.article && c.ui.article.querySelector(sel) && c.render) c.render(); };
+  register({ id: 'kanban', name: 'Tablero kanban', about: 'Un bloque kanban se ve como un tablero con columnas y tarjetas que se arrastran.', icon: LMD.kit.ICON.b_board, defaultOn: true,
+    enable: (c) => redraw(c, '.lmd-kanban-off'), disable: (c) => redraw(c, '.lmd-board') });
 })();

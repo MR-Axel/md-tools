@@ -31,13 +31,14 @@ Then, in SharpMD: Settings → Cloud → Sync server, and type the address (`htt
 | `MAIL_WEBHOOK` | Or post `{ to, subject, text, html }` to your own mailer | |
 | `FREE_NOTES` | Notes on the free plan | `10` |
 | `MCP_FREE` | `1` gives MCP access to the free plan too | off |
-| `ADMIN_KEY` | Key for `POST /admin/plan` and `POST /admin/team` | off |
+| `ADMIN_KEY` | Key for `POST /admin/plan`, `POST /admin/team` and `/admin/gallery`. It also signs the review links of the community gallery: without it the gallery takes no contributions | off |
 | `TEST_LOGIN` | `email:123456`. That one account signs in with the fixed code and gets no email. For store reviewers | off |
 | `CHECKOUT_MONTHLY`, `CHECKOUT_YEARLY` | Payment links the app shows in Settings → Plan. The account email is appended as `email=`, and the app adds `back=` with the address to return to | |
 | `PADDLE_WEBHOOK_SECRET` | Turns on `POST /paddle/webhook`: Paddle subscription events switch the plan | off |
 | `PORTAL_URL` | Where a subscriber manages the subscription | |
 | `PADDLE_TEAM_BASE`, `PADDLE_TEAM_SEAT`, `PADDLE_API_KEY`, `CHECKOUT_TEAM` | The team plan: see "Teams" below | off |
 | `FEEDBACK_TO` | Address that receives what people send from "Send feedback" (`POST /feedback`). It goes out through the same mailer as the sign-in code. Without it the endpoint answers 404 and the app offers a `mailto:` link instead | off |
+| `GALLERY_NOTIFY_URL` | Optional hook for the community gallery: every new contribution posts `{ "text": "..." }` there, one short line with the type and the name, no links and no addresses. Point it at anything that takes a JSON POST | off |
 | `AUTH_PER_IP` | Sign-in codes one IP address may request per hour. Each email is also limited to 5 codes an hour and 15 a day, and wrong codes to 10 an hour per email and 30 per IP. Behind a proxy the IP is the last entry of `x-forwarded-for`: check that your proxy sets it, or every visitor shares one allowance | `20` |
 | `DATA_KEY` | 32 bytes in base64. Turns on encryption at rest: see below | off |
 | `VAULT_MINUTE_MS` | Tests only: how many milliseconds a minute lasts for a folder unlocked for the AI. Leave it alone in production | `60000` |
@@ -60,6 +61,8 @@ curl -X POST https://sync.example.com/admin/plan -H "x-admin-key: $ADMIN_KEY" \
 ## What it stores
 
 Email, notes, their previous versions (paid plan, 30 days), deleted notes while they are in the trash (30 days), and hashes of sign-in codes, sessions and tokens. Sessions and tokens are stored hashed: the server cannot show a token again after creating it. Of a live session it stores the note, the name its owner chose and the hash of the link's secret; the guests live in memory only (see "Live sessions"). Of a team it stores its name, the accounts that belong to it, the invitations that are waiting (the invited email address, until it is accepted, declined or removed) and the id of the subscription that pays for it (see "Teams").
+
+Of a contribution to the community gallery it stores the type, the name, the description, the language, the public name its sender chose, the content, the account that sent it, its state and how many times it was added (a number, not who). See "Community gallery".
 
 Notes are not end-to-end encrypted by default: the MCP endpoint has to read them to serve an AI, and sharing has to hand them to another account. There are two layers on top of that, and they are independent:
 
@@ -153,6 +156,11 @@ Sign-in is a six-digit code sent by mail, no passwords.
 | `GET` / `POST /comments`, `DELETE /comments/{id}` | Comments left on a note for the AI: `{ path, quote, text }` |
 | `GET /tokens`, `DELETE /tokens/{id}` | List the tokens (with `scope` and `share`) and revoke one |
 | `POST /feedback` `{ text, email?, context? }` | Mails the text to `FEEDBACK_TO`, with or without a session. 5 to 4000 characters, five an hour per IP and per account. Behind a proxy the IP is the last entry of `x-forwarded-for` |
+| `GET /gallery?type=&q=&lang=&sort=&page=` | Public, no session: the approved contributions. See "Community gallery" |
+| `GET /gallery/{id}`, `POST /gallery/{id}/add` | Public: one approved contribution in full, and the anonymous "added" counter |
+| `POST /gallery`, `GET /gallery/mine`, `DELETE /gallery/{id}` | With a session: send a contribution, see the state of your own, withdraw one |
+| `GET` / `POST /gallery/review` | The page behind the signed links of the review email |
+| `GET` / `POST /admin/gallery` | With `x-admin-key`: list, approve, reject, remove |
 | `POST /mcp` | MCP over Streamable HTTP, with `Authorization: Bearer mdt_...` |
 
 MCP tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`, `move_note`, `note_history`.
@@ -192,9 +200,50 @@ A protected note that has to come back under another name cannot be renamed by t
 
 Each account keeps up to 300 notes in the trash; past that the oldest go.
 
+### Gmail aliases
+
+For `@gmail.com` and `@googlemail.com`, and only for those, signing in ignores the dots of the local part and whatever follows a `+`: `j.doe+notes@gmail.com`, `jdoe@gmail.com` and `jdoe@googlemail.com` are one account. The account keeps the address it was created with, and the code goes to the address the person typed. An address that matches an existing account exactly always signs in to that account, so two accounts that already existed before this rule keep working, each with its own address; a new alias of both goes to the older one. The limits on codes and on wrong codes count per mailbox, not per alias. Sharing and team invitations still match the address of the account as stored.
+
+### Community gallery
+
+People send templates, themes and diagram palettes; whoever runs the server approves or rejects each one; what is approved is public. A contribution is data, never code: anything outside the schema below is rejected whole (`400`), and the app checks it again before using it.
+
+```json
+{ "type": "template", "name": "Weekly review", "about": "What went well and what comes next", "lang": "en",
+  "author": "Ana P.", "data": { "text": "# Weekly review {{date}}\n\n## Went well\n" } }
+```
+
+| Field | Rule |
+|---|---|
+| `type` | `template`, `theme` or `palette` |
+| `name` | 3 to 60 characters, one line |
+| `about` | Up to 160 characters, one line. May be empty |
+| `lang` | Two lowercase letters: `en`, `es` |
+| `author` | The public name the sender chose, 2 to 40 characters. Never an email address: an `@` is rejected |
+| `data` of a `template` | `{ text }`: Markdown, up to 20 KB (`413 too_large`). `{{date}}` becomes the date when a note is created from it. The app renders it through the same sanitizer as any note |
+| `data` of a `theme` | Any of `mode` (`auto`, `light`, `dark`), `accent`, `codeColor`, `paperLight`, `paperDark` (colors as `#rrggbb`), `font` (one of `Inter`, `System`, `Arial`, `Calibri`, `Verdana`, `Trebuchet MS`, `Georgia`, `Cambria`, `Palatino`, `Times New Roman`, `Consolas`, `Courier New`) and `diagramShape` (`round`, `square`). At least one. `paperLight` has to be a light color and `paperDark` a dark one, so the text stays readable. No CSS, no `url()`, no other key |
+| `data` of a `palette` | `{ colors: { fill, text, border, line, second, third } }`, the six of them, each `#rrggbb` |
+
+Errors: `bad_schema` (a key that is not in the list), `bad_type`, `bad_name`, `bad_about`, `bad_lang`, `bad_author`, `bad_data`. Names lose control characters and marks that flip the text direction, and are always shown as text.
+
+| Call | What it does |
+|---|---|
+| `POST /gallery` | With a session of any plan. Stores the contribution as `pending` and answers `{ id, type, name, about, lang, author, status, reason, adds, created }`. Five a day per account (`429 too_many`), 30 kept per account (`409 gallery_full`). `404 no_route` without `ADMIN_KEY` |
+| `GET /gallery/mine` | The contributions of the account with their `status`: `pending`, `approved`, `rejected` or `removed`, and the `reason` when one was written |
+| `DELETE /gallery/{id}` | Withdraws one of your own, in any state. It is deleted |
+| `GET /gallery` | Public. `{ items, total, page, pages, open }`, 24 per page, `sort=popular` (default, by times added) or `sort=new`. `type`, `lang` and `q` (name, description and author) filter. Each item is `{ id, type, name, about, lang, author, adds, at, data }`; a template comes with `size` instead of `data`. No account, no email. `open` says whether the server takes contributions. Cached for a minute (`cache-control: public, max-age=60`) |
+| `GET /gallery/{id}` | Public. One approved contribution with its `data` |
+| `POST /gallery/{id}/add` | Public. Counts that the contribution was added: once per IP and contribution a day, 60 requests an hour per IP. It stores a number, not who |
+| `GET /admin/gallery?status=` | With `x-admin-key`. The contributions in that state (`pending` by default), with `data` and the `account` that sent each |
+| `POST /admin/gallery` `{ id, action, reason? }` | With `x-admin-key`. `action` is `approve`, `reject` or `remove` (takes down one that was approved). The sender sees the state and the reason |
+
+Review by email: each new contribution mails `FEEDBACK_TO` its type, name, shown author, the account that sent it, the content as text and two links, approve and reject. A link is signed with HMAC-SHA-256 keyed with `ADMIN_KEY` over the contribution, the action, the expiry (14 days) and a value kept with that contribution. Opening it (`GET /gallery/review`) only shows a page with the contribution and a button; the decision is the `POST` that button sends, so a mail reader that preloads links approves nothing. Rejecting takes an optional reason. Once decided, or withdrawn, both links stop working. Bad links are limited to 20 an hour per IP. The page has no scripts and cannot be framed. Without `FEEDBACK_TO` or a mailer the contribution still waits in `GET /admin/gallery`.
+
+Reports go through `POST /feedback` with `report: { kind: "gallery", note, owner }`. With `DATA_KEY`, the name, description, author, content and reason of every contribution are encrypted at rest like the notes. Every route here has a request limit: 300 a minute per IP across `/gallery`.
+
 ### Deleting an account
 
-`DELETE /account` with the session and `{ email }`, the email of that same account, deletes it: its notes, version history, trash, comments, tokens, sessions, shares in both directions, public links, protected folders, live sessions, pending team invitations to that email and the record of its ended subscriptions. Open connections are closed. Five requests an hour per IP and per account.
+`DELETE /account` with the session and `{ email }`, the email of that same account, deletes it: its notes, version history, trash, comments, contributions to the community gallery, tokens, sessions, shares in both directions, public links, protected folders, live sessions, pending team invitations to that email and the record of its ended subscriptions. Open connections are closed. Five requests an hour per IP and per account.
 
 It refuses while money is still being charged, with `409` and a `manage` field holding `PORTAL_URL`:
 

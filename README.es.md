@@ -40,6 +40,7 @@ Gratis y de código abierto. Sin seguimiento: los archivos se leen en tu navegad
 - **Modo foco y máquina de escribir** (Ajustes → Edición): atenúa todo menos el bloque que estás escribiendo, y mantiene el renglón actual a media altura.
 - **Exportar a HTML**: un solo archivo, con la matemática en MathML.
 - **Leer en voz alta** (Ajustes → Herramientas): lee la nota entera, desde un bloque o lo elegido, con las voces de tu dispositivo. Marca el bloque que va leyendo y anuncia el código y los diagramas en vez de leerlos. Atajo: Alt+Shift+S.
+- **Comunidad** (Ajustes → Herramientas): plantillas, temas y paletas de diagramas que comparte la gente, cada una revisada antes de publicarse. Lo que agregás funciona sin conexión, y podés compartir la nota abierta como plantilla, tu tema o una paleta. Solo contenido, nunca código.
 - **Dictado** (Ajustes → Herramientas): escribís hablando, en español o en inglés, con órdenes para puntuar, poner títulos, listas, tareas y formato. "Fórmula … fin fórmula" arma LaTeX y "diagrama de flujo … fin diagrama" arma un diagrama de Mermaid, los dos a la vista mientras hablás. Usa el reconocimiento de voz del navegador, en el dispositivo cuando el navegador lo ofrece. Atajo: Alt+Shift+D.
 - **Archivos desde el árbol** (página de SharpMD): archivo nuevo, renombrar y eliminar con clic derecho. Los archivos y las carpetas enteras se mueven arrastrándolos, y un archivo soltado adentro de la nota que estás editando queda como enlace (o como imagen) en ese punto.
 - **Pegar imágenes** (página de SharpMD): una imagen del portapapeles se guarda en `assets/`, al lado del documento, y queda insertada.
@@ -122,6 +123,8 @@ src/
   bridge-sw.js    el lado de la extensión del puente, y qué abre el botón de la extensión
   install.js      Ajustes → Instalar, instalar la app, los archivos de "Abrir con", la marca de sin conexión
   tools.js        Ajustes → Herramientas: el registro de herramientas y sus interruptores
+  community.js    lo agregado de la galería de la comunidad y la regla que valida un aporte
+  gallery.js      Ajustes → Herramientas → Comunidad: ver, probar, agregar y compartir
   speak.js        herramienta: leer en voz alta con las voces del dispositivo
   voice.js        la gramática del dictado: órdenes de texto, fórmulas y diagramas, por idioma
   dictate.js      herramienta: dictado, el botón del micrófono y el indicador de escucha
