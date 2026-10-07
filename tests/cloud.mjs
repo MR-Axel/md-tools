@@ -235,6 +235,139 @@ try {
   await menu('de-beto.md', 'new'); await app.click('.lmd-menu [data-f=new]');
   o.soloVer.push(await said('solo lectura'), (await api('GET', '/notes', undefined, beto)).length);
 
+  // ---------- Papelera ----------
+  // Los diálogos se contestan a mano en este tramo: hay que leer lo que dicen y elegir entre tres botones.
+  const manual = (on) => app.evaluate((v) => { window.__manual = v; }, on);
+  const put = (p, text) => api('PUT', '/notes/' + encodeURIComponent(p), { text }, session);
+  const gone = (p) => api('DELETE', '/notes/' + encodeURIComponent(p) + '?forever=1', undefined, session);
+  const bin = () => api('GET', '/trash', undefined, session);
+  const until2 = async (fn) => { for (let i = 0; i < 50; i++) { if (await fn()) return true; await app.waitForTimeout(150); } return false; };
+  await api('DELETE', '/trash', undefined, session);
+  const roomBefore = (await paths()).length;
+  await put('tirar.md', '# Tirar\n\nrabanito'); await put('queda.md', '# Queda\n\nUn renglón para soltar cosas.');
+  await app.goto(cloudUrl('queda.md')); await opened(); await manual(true);
+  await menu('tirar.md', 'del'); await app.click('.lmd-menu [data-f=del]'); await app.waitForSelector('.lmd-dlg');
+  o.papeleraAviso = await app.textContent('.lmd-dlg-card p');
+  await app.click('.lmd-dlg [data-dlg=ok]');
+  await until2(async () => !(await paths()).includes('tirar.md'));
+  await app.waitForFunction((sel) => ![...document.querySelectorAll(sel + ' .lmd-node')].some((n) => n.textContent.trim() === 'tirar.md'), CLOUD);
+  const row = (name) => app.locator('.lmd-trash li').filter({ has: app.locator('b', { hasText: new RegExp('^' + name.replace(/[.()]/g, '\\$&') + '$') }) });
+  const openBin = async () => { await app.click(CLOUD + ' > .lmd-trash-link'); await app.waitForSelector('.lmd-trash'); };
+  await openBin(); await app.waitForSelector('.lmd-trash li');
+  o.papelera = [await app.textContent(CLOUD + ' > .lmd-trash-link'), await app.textContent('.lmd-trash h3'), await row('tirar.md').count(), await row('tirar.md').locator('small').textContent(), !(await paths()).includes('tirar.md')];
+  await row('tirar.md').locator('[data-tr=back]').click();
+  await app.waitForFunction(() => !document.querySelector('.lmd-trash li'));
+  await app.waitForSelector(CLOUD + ' .lmd-node:has-text("tirar.md")');
+  o.restaurada = [await app.textContent('.lmd-trash-none'), (await paths()).includes('tirar.md'), await serverText('tirar.md'), await said('restaurada'), (await bin()).length];
+  await app.click('.lmd-trash [data-tr=no]');
+  // Con el nombre ocupado vuelve con otro nombre.
+  await api('DELETE', '/notes/tirar.md', undefined, session); await put('tirar.md', 'la nueva');
+  await openBin(); await row('tirar.md').locator('[data-tr=back]').click();
+  o.restauradaOtra = [await said('Restaurada como'), (await paths()).includes('tirar (2).md'), await serverText('tirar (2).md'), await serverText('tirar.md')];
+  await app.click('.lmd-trash [data-tr=no]');
+  // Eliminar del todo y vaciar, cada uno con su confirmación.
+  await api('DELETE', '/notes/' + encodeURIComponent('tirar (2).md'), undefined, session); await api('DELETE', '/notes/tirar.md', undefined, session);
+  await openBin(); await app.waitForSelector('.lmd-trash li');
+  await row('tirar.md').locator('[data-tr=del]').click(); await app.waitForSelector('.lmd-dlg');
+  o.borrarDelTodo = [await app.textContent('.lmd-dlg h3'), await app.evaluate(() => document.querySelector('.lmd-dlg [data-dlg=ok]').classList.contains('lmd-btn-danger'))];
+  await app.click('.lmd-dlg [data-dlg=no]'); await app.waitForTimeout(150); o.borrarDelTodo.push((await bin()).length);
+  await row('tirar.md').locator('[data-tr=del]').click(); await app.waitForSelector('.lmd-dlg'); await app.click('.lmd-dlg [data-dlg=ok]');
+  await app.waitForFunction(() => document.querySelectorAll('.lmd-trash li').length === 1);
+  o.borrarDelTodo.push((await bin()).map((x) => x.path).join());
+  await app.click('.lmd-trash [data-tr=empty]'); await app.waitForSelector('.lmd-dlg'); await app.click('.lmd-dlg [data-dlg=ok]');
+  await app.waitForSelector('.lmd-trash-none');
+  o.vaciada = [(await bin()).length, await app.locator('.lmd-trash [data-tr=empty]').count()];
+  await app.click('.lmd-trash [data-tr=no]');
+
+  // ---------- Arrastrar carpetas, y soltar un archivo adentro de la nota ----------
+  await put('mover/adentro/uno.md', '# Uno\n'); await put('destino/dos.md', '# Dos\n\nTexto.'); await put('tirar.md', '# Tirar\n');
+  await app.goto(cloudUrl('queda.md')); await opened(); await manual(true);
+  const dirNode = (name) => app.locator(CLOUD + ' .lmd-node-dir', { hasText: name }).first();
+  o.carpetaMarca = await drag(dirNode('mover'), dirNode('destino'));
+  await until2(async () => (await paths()).includes('destino/mover/adentro/uno.md'));
+  now = await paths();
+  o.carpetaMovida = [now.includes('destino/mover/adentro/uno.md'), now.includes('mover/adentro/uno.md'), now.includes('destino/dos.md')];
+  // Una carpeta no se suelta adentro de sí misma ni de una de las suyas.
+  await app.waitForSelector(CLOUD + ' .lmd-node-dir:has-text("destino")');
+  await dirNode('destino').click(); await app.waitForSelector(CLOUD + ' .lmd-node-kids .lmd-node-dir:has-text("mover")');
+  await dirNode('mover').click(); await app.waitForSelector(CLOUD + ' .lmd-node-kids .lmd-node-dir:has-text("adentro")');
+  o.carpetaEnSi = [await drag(dirNode('destino'), dirNode('adentro')), await drag(dirNode('mover'), dirNode('mover')), await drag(dirNode('mover'), dirNode('destino'))];
+  await app.waitForTimeout(400);
+  o.carpetaEnSi.push((await paths()).includes('destino/mover/adentro/uno.md'));
+  // Con la nota abierta adentro de la carpeta que se mueve, queda abierta en su ruta nueva.
+  await app.goto(cloudUrl('destino/mover/adentro/uno.md')); await opened();
+  await app.waitForSelector(CLOUD + ' .lmd-node-kids .lmd-node-dir:has-text("mover")');
+  const [, toRoot] = await Promise.all([app.waitForNavigation(), drag(dirNode('mover'), app.locator(CLOUD + ' .lmd-tree-head'))]); await opened();
+  now = await paths();
+  o.carpetaAbierta = [toRoot, /f=cloud%2Fmover%2Fadentro%2Funo\.md/.test(app.url()), now.includes('mover/adentro/uno.md') && !now.includes('destino/mover/adentro/uno.md')];
+
+  // Soltar un archivo del explorador en la nota: en lectura nada; en edición, un enlace donde cae.
+  const dropOn = async (from, to) => {
+    await from.hover(); await app.mouse.down(); await to.hover(); await to.hover();
+    const mark = await app.evaluate(() => { const c = document.querySelector('.lmd-drop-caret'); return c ? (c.classList.contains('lmd-drop-line') ? 'renglón' : 'cursor') : ''; });
+    await app.mouse.up();
+    return mark;
+  };
+  await app.goto(cloudUrl('destino/dos.md')); await opened();
+  o.soltarLeyendo = [await dropOn(node('tirar.md'), app.locator('.markdown-body p').first()), await serverText('destino/dos.md')];
+  await app.waitForTimeout(300); o.soltarLeyendo.push(/dos\.md/.test(app.url()));
+  await app.click('[data-act=mode-edit]'); await app.waitForSelector('.markdown-body p.lmd-editable');
+  o.soltarMarca = await dropOn(node('tirar.md'), app.locator('.markdown-body p.lmd-editable').first());
+  await until2(async () => /\]\(\.\.\/tirar\.md\)/.test(await serverText('destino/dos.md')));
+  o.soltar = [await serverText('destino/dos.md'), await app.evaluate(() => { const a = document.querySelector('.markdown-body p a'); return a ? a.textContent + '|' + a.getAttribute('data-lmd-href') : ''; }), await app.evaluate(() => document.querySelectorAll('.lmd-drop-caret').length), /dos\.md/.test(app.url())];
+  // Una carpeta no se suelta en la nota, y la nota abierta no se enlaza a sí misma.
+  o.soltarNo = [await dropOn(dirNode('mover'), app.locator('.markdown-body p.lmd-editable').first()), await dropOn(node('dos.md'), app.locator('.markdown-body p.lmd-editable').first())];
+  // En el código fuente cae como Markdown.
+  await app.click('[data-act=view-raw]'); await app.waitForSelector('.lmd-raw-edit:not([hidden])');
+  await app.evaluate(() => { const t = document.querySelector('.lmd-raw-edit'); t.focus(); t.setSelectionRange(t.value.length, t.value.length); });
+  o.soltarFuente = [await dropOn(node('queda.md'), app.locator('.lmd-raw-edit'))];
+  await until2(async () => /\]\(\.\.\/queda\.md\)/.test(await serverText('destino/dos.md')));
+  o.soltarFuente.push((await serverText('destino/dos.md')).endsWith('[queda](../queda.md)'));
+  await app.click('[data-act=view-doc]'); await app.click('[data-act=mode-read]'); await app.waitForTimeout(200);
+
+  // ---------- Subir a la nube es mover ----------
+  // Una nota del navegador: se muda, y deja de estar en el navegador.
+  for (const p of ['tirar.md', 'queda.md', 'mover/adentro/uno.md', 'destino/dos.md']) await gone(p); // el plan gratis tiene diez lugares
+  await app.evaluate(() => LMD.store.notePut('del-navegador.md', '# Del navegador\n\nrepollo'));
+  await app.goto(home + '?f=' + encodeURIComponent('local/del-navegador.md')); await opened(); await manual(true);
+  await app.click('[data-act=sync]'); await app.waitForSelector('.lmd-dlg');
+  o.subirLocal = [await app.textContent('.lmd-dlg h3'), await app.textContent('.lmd-dlg-card p'), await app.locator('.lmd-dlg [data-dlg=alt]').count()];
+  await app.click('.lmd-dlg [data-dlg=no]'); await app.waitForTimeout(200);
+  o.subirLocal.push(!!(await app.evaluate(() => LMD.store.noteGet('del-navegador.md'))), (await paths()).includes('del-navegador.md'));
+  await app.click('[data-act=sync]'); await app.waitForSelector('.lmd-dlg');
+  await Promise.all([app.waitForNavigation(), app.click('.lmd-dlg [data-dlg=ok]')]); await opened();
+  o.subirLocal.push(/f=cloud%2Fdel-navegador\.md/.test(app.url()), await serverText('del-navegador.md'), await app.evaluate(() => LMD.store.noteGet('del-navegador.md').then((n) => !n)));
+  // Un archivo de una carpeta del disco: se pregunta si se muda o si queda una copia.
+  await app.goto(home); await app.waitForSelector('[data-home=dir]'); await manual(true);
+  await app.evaluate(async () => {
+    const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('subir', { create: true });
+    for (const name of ['copia.md', 'mudada.md', 'otra.md']) { const w = await (await dir.getFileHandle(name, { create: true })).createWritable(); await w.write('# ' + name + '\n\nacelga'); await w.close(); }
+    window.showDirectoryPicker = async () => dir;
+  });
+  const inDisk = () => app.evaluate(async () => { const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('subir'); const out = []; for await (const [n] of dir.entries()) out.push(n); return out.sort().join(); });
+  await Promise.all([app.waitForNavigation(), app.click('[data-home=dir]')]); await opened();
+  const diskAt = app.url().replace(/(copia|mudada|otra)\.md$/, '');
+  await app.goto(diskAt + 'copia.md'); await opened(); await manual(true);
+  await app.click('[data-act=sync]'); await app.waitForSelector('.lmd-dlg');
+  o.subirDisco = [await app.textContent('.lmd-dlg-card p'), await app.evaluate(() => [...document.querySelectorAll('.lmd-dlg .lmd-ask-actions button')].map((b) => b.textContent).join('|'))];
+  await Promise.all([app.waitForNavigation(), app.click('.lmd-dlg [data-dlg=alt]')]); await opened();
+  o.subirDisco.push(/f=cloud%2Fcopia\.md/.test(app.url()), await inDisk(), (await serverText('copia.md')).includes('acelga'));
+  await app.goto(diskAt + 'mudada.md'); await opened(); await manual(true);
+  await app.click('[data-act=sync]'); await app.waitForSelector('.lmd-dlg');
+  await Promise.all([app.waitForNavigation(), app.click('.lmd-dlg [data-dlg=ok]')]); await opened();
+  o.subirDisco.push(/f=cloud%2Fmudada\.md/.test(app.url()), await inDisk(), (await serverText('mudada.md')).includes('acelga'));
+  // Si la subida falla, el original no se toca.
+  await app.goto(diskAt + 'otra.md'); await opened(); await manual(true);
+  const failPut = (route) => (route.request().method() === 'PUT' ? route.fulfill({ status: 500, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"error":"server_error"}' }) : route.continue());
+  await ctx.route(base + '/notes/**', failPut);
+  await app.click('[data-act=sync]'); await app.waitForSelector('.lmd-dlg'); await app.click('.lmd-dlg [data-dlg=ok]');
+  o.subirFalla = [await said('No se pudo subir'), await inDisk(), (await paths()).includes('otra.md')];
+  await ctx.unroute(base + '/notes/**', failPut);
+  await manual(false);
+  for (const p of ['tirar.md', 'queda.md', 'mover/adentro/uno.md', 'destino/dos.md', 'del-navegador.md', 'copia.md', 'mudada.md']) await gone(p);
+  await api('DELETE', '/trash', undefined, session);
+  o.sobras = (await paths()).length - roomBefore;
+
   // ---------- Sin conexión ----------
   const copy = (p) => app.evaluate(([who, note]) => LMD.store.cloudGet(who, note), [mail, p]);
   const queued = async (p, re) => { for (let i = 0; i < 60; i++) { const c = await copy(p); if (c && c.pending && re.test(c.text)) return true; await app.waitForTimeout(200); } return false; };
@@ -309,6 +442,24 @@ try {
   await app.waitForSelector('[data-acct=cloud] [data-c=login]'); await app.waitForTimeout(400);
   o.salirConNota = [wasCloud, await app.title(), /[?&]f=/.test(app.url()), await app.evaluate(() => !document.querySelector('.lmd-home').hidden)];
   await app.keyboard.press('Escape');
+  // Eliminar la cuenta desde Ajustes: se confirma escribiendo el correo, y no queda nada de ella acá ni en el servidor.
+  await app.goto(home); await app.waitForSelector('[data-cloud=ask]'); await app.click('[data-cloud=ask]'); await app.fill('[data-field=email]', 'chau@ejemplo.test');
+  const [byeCode] = await Promise.all([app.waitForResponse((r) => r.url().endsWith('/auth/start')), app.click('[data-cloud=start]')]);
+  await app.waitForSelector('[data-field=code]'); await app.fill('[data-field=code]', (await byeCode.json()).dev_code); await app.click('[data-cloud=verify]'); await app.waitForSelector('[data-cloud=logout]');
+  const chau = await app.evaluate(() => new Promise((resolve) => chrome.storage.local.get('cloud', (r) => resolve(r.cloud.session))));
+  await api('PUT', '/notes/mia.md', { text: '# Mía\n' }, chau);
+  await app.goto(cloudUrl('mia.md')); await opened();
+  await app.evaluate(() => { window.__manual = true; });
+  await app.click('[data-act=settings]'); await app.waitForSelector('.lmd-panel-card'); await app.click('[data-ptab=cloud]'); await app.waitForSelector('[data-acct=cloud] [data-c=delete]'); await app.click('[data-acct=cloud] [data-c=delete]');
+  await app.waitForSelector('.lmd-dlg input');
+  o.borrarCuenta = [await app.textContent('.lmd-dlg h3'), await app.textContent('.lmd-dlg .lmd-dlg-text'), await app.evaluate(() => document.querySelector('.lmd-dlg [data-dlg=ok]').classList.contains('lmd-btn-danger'))];
+  await app.fill('.lmd-dlg input', 'otra@ejemplo.test'); await app.keyboard.press('Enter'); await app.waitForSelector('.lmd-dlg-err:not([hidden])');
+  o.borrarCuenta.push(await app.textContent('.lmd-dlg-err'), (await api('GET', '/account', undefined, chau)).email);
+  await app.fill('.lmd-dlg input', 'Chau@ejemplo.test'); await app.keyboard.press('Enter');
+  await app.waitForSelector('[data-acct=cloud] [data-c=login]'); await app.waitForTimeout(400);
+  o.borrarCuenta.push((await api('GET', '/account', undefined, chau)).error, await app.evaluate(() => new Promise((resolve) => chrome.storage.local.get('cloud', (r) => resolve(r.cloud.session || '')))), await app.evaluate(() => !document.querySelector('.lmd-home').hidden), /[?&]f=/.test(app.url()),
+    await app.evaluate((who) => LMD.store.cloudAll(who).then((all) => all.length), 'chau@ejemplo.test'), await app.locator(CLOUD + ' .lmd-trash-link').count());
+  await app.evaluate(() => { window.__manual = false; }); await app.keyboard.press('Escape');
   // El tope por red (20 pedidos por hora): el aviso general, con las dos esperas posibles.
   for (let i = 0; i < 20; i++) await post('/auth/start', { email: 'red' + i + '@ejemplo.test' });
   await app.goto(home); await app.waitForSelector('[data-cloud=ask]'); await app.click('[data-cloud=ask]'); await app.fill('[data-field=email]', 'nueva@ejemplo.test'); await app.click('[data-cloud=start]');
@@ -344,6 +495,23 @@ const checks = [
   ['crea un enlace público para la app web', o.enlace === true],
   ['la contraseña del enlace se pide en un diálogo propio, que avisa si no coincide', J(o.pideClave) === J(['Nota protegida', 'password', 'Esa contraseña no coincide.', 0]), o.pideClave],
   ['en un enlace público no aparecen editar, insertar ni guardar', J(o.publicoSinEditar) === J([true, true, true, true, true]), o.publicoSinEditar],
+  ['eliminar la cuenta desde Ajustes pide el correo, y con otro correo no borra', o.borrarCuenta && o.borrarCuenta[0] === 'Eliminar la cuenta' && /No se puede deshacer/.test(o.borrarCuenta[1]) && o.borrarCuenta[2] === true && /no es el correo/.test(o.borrarCuenta[3]) && o.borrarCuenta[4] === 'chau@ejemplo.test', o.borrarCuenta],
+  ['con el correo propio la cuenta se elimina: sin sesión, sin copias, la nota abierta se cierra y la nube queda sin entrar', o.borrarCuenta && J(o.borrarCuenta.slice(5)) === J(['bad_auth', '', true, false, 0, 0]), o.borrarCuenta],
+  ['eliminar una nota de la nube avisa que va a la papelera, y la papelera la lista con su plazo', /30 días/.test(o.papeleraAviso || '') && J(o.papelera) === J(['Papelera', 'Papelera', 1, 'Se borra en 30 días', true]), [o.papeleraAviso, o.papelera]],
+  ['restaurar desde la papelera devuelve la nota y la muestra en el explorador', o.restaurada && /vacía/.test(o.restaurada[0]) && o.restaurada[1] === true && o.restaurada[2] === '# Tirar\n\nrabanito' && /restaurada/.test(o.restaurada[3]) && o.restaurada[4] === 0, o.restaurada],
+  ['si el nombre está ocupado, la nota se restaura con otro nombre', o.restauradaOtra && /tirar \(2\)\.md/.test(o.restauradaOtra[0]) && o.restauradaOtra[1] === true && o.restauradaOtra[2] === '# Tirar\n\nrabanito' && o.restauradaOtra[3] === 'la nueva', o.restauradaOtra],
+  ['eliminar del todo pide confirmación y saca solo esa nota', o.borrarDelTodo && /del todo/.test(o.borrarDelTodo[0]) && o.borrarDelTodo[1] === true && o.borrarDelTodo[2] === 2 && o.borrarDelTodo[3] === 'tirar (2).md', o.borrarDelTodo],
+  ['vaciar la papelera la deja sin nada', J(o.vaciada) === J([0, 0]), o.vaciada],
+  ['arrastrar una carpeta de la nube a otra la mueve con todo lo que tiene', o.carpetaMarca === 'destino' && J(o.carpetaMovida) === J([true, false, true]), [o.carpetaMarca, o.carpetaMovida]],
+  ['una carpeta no se suelta adentro de sí misma, de una hija ni donde ya está', J(o.carpetaEnSi) === J(['', '', '', true]), o.carpetaEnSi],
+  ['mover la carpeta de la nota abierta la deja abierta en su ruta nueva', J(o.carpetaAbierta) === J(['raíz', true, true]), o.carpetaAbierta],
+  ['soltar un archivo en la nota en modo lectura no hace nada', J(o.soltarLeyendo) === J(['', '# Dos\n\nTexto.', true]), o.soltarLeyendo],
+  ['soltar un archivo en la nota en edición deja un enlace relativo donde cae, y muestra dónde', o.soltarMarca === 'cursor' && o.soltar && /\[tirar\]\(\.\.\/tirar\.md\)/.test(o.soltar[0]) && /^# Dos\n\nT.*exto\.?/s.test(o.soltar[0]) && o.soltar[1] === 'tirar|../tirar.md' && o.soltar[2] === 0 && o.soltar[3] === true, [o.soltarMarca, o.soltar]],
+  ['una carpeta o la nota misma no se sueltan en la nota', J(o.soltarNo) === J(['', '']), o.soltarNo],
+  ['en el código fuente, lo soltado entra como Markdown', J(o.soltarFuente) === J(['cursor', true]), o.soltarFuente],
+  ['subir una nota del navegador la mueve: cancelar no toca nada, aceptar la saca del navegador', o.subirLocal && /Mover/.test(o.subirLocal[0]) && /navegador/.test(o.subirLocal[1]) && J(o.subirLocal.slice(2)) === J([0, true, false, true, '# Del navegador\n\nrepollo', true]), o.subirLocal],
+  ['subir un archivo del disco pregunta: con una copia el archivo queda, al mover se quita', o.subirDisco && /disco/.test(o.subirDisco[0]) && o.subirDisco[1] === 'Cancelar|Dejar una copia|Mover a la nube' && J(o.subirDisco.slice(2)) === J([true, 'copia.md,mudada.md,otra.md', true, true, 'copia.md,otra.md', true]), o.subirDisco],
+  ['si la subida falla, el original no se toca', o.subirFalla && /No se pudo subir/.test(o.subirFalla[0]) && o.subirFalla[1] === 'copia.md,otra.md' && o.subirFalla[2] === false && o.sobras === 0, [o.subirFalla, o.sobras]],
   ['el enlace con contraseña abre de solo lectura', o.publico && /Suelta/.test(o.publico[0]) && o.publico[1] === 'suelta.md' && o.publico[2] === true && o.publicoNoEdita === true, o.publico],
   ['aparece en el explorador como nota de la nube', o.enInicio && /^nota-.*\.md$/.test(o.enInicio[0]) && o.enInicio[1] === 'En la nube', o.enInicio],
   ['el panel para conectar una IA da URL, token y comando', o.campos && o.campos[0] === base + '/mcp' && o.campos[1] === 'mdt_' && o.campos[2].startsWith('claude mcp add --transport http sharpmd'), o.campos],
