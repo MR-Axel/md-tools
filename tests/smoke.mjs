@@ -64,9 +64,15 @@ try {
 
   await page.click('[data-act=settings]'); await page.waitForSelector('.lmd-panel-card');
   const sections = await page.evaluate(() => [...document.querySelectorAll('.lmd-panel h3')].map((h) => h.textContent.replace(/\s*Plan pago$/, '')));
-  check('panel de ajustes', sections.join('|') === 'Apariencia|Lectura|Edición|Carpeta|Plugins de Markdown|CSS propio|Actualizaciones|Nube', sections);
-  const tabs = await page.evaluate(() => { const vis = () => [...document.querySelectorAll('.lmd-panel-body > section:not([hidden]) h3')].map((h) => h.firstChild.nodeValue.trim()); const a = vis(); document.querySelector('[data-ptab=acct]').click(); return [document.querySelectorAll('[data-ptab]').length, a, vis()]; });
-  check('los ajustes van en cuatro pestañas', tabs[0] === 4 && tabs[1].join() === 'Apariencia' && tabs[2].includes('Actualizaciones') && tabs[2].includes('Nube'), tabs);
+  check('panel de ajustes', sections.join('|') === 'Apariencia|Lectura|Edición|Carpeta|Plugins de Markdown|Nube|Conectar una IA|Plan|CSS propio|Servidor|Actualizaciones', sections);
+  // Cada pestaña muestra sus secciones y ninguna otra. Los títulos se leen de lo que está a la vista.
+  const tabs = await page.evaluate(() => {
+    const vis = () => [...document.querySelectorAll('.lmd-panel-body > section:not([hidden]) h3')].map((h) => h.firstChild.nodeValue.trim()).join('+');
+    return [...document.querySelectorAll('[data-ptab]')].map((b) => { b.click(); return b.dataset.ptab + ':' + b.textContent.trim() + '=' + vis() + (b.classList.contains('lmd-on') ? '' : ' (sin marcar)'); });
+  });
+  check('los ajustes van en siete pestañas, cada una con lo suyo', tabs.join('|') === 'look:Apariencia=Apariencia|read:Lectura y edición=Lectura+Edición+Carpeta|plug:Plugins=Plugins de Markdown|cloud:Nube=Nube|ai:IA=Conectar una IA|plan:Plan=Plan|adv:Avanzado=CSS propio+Servidor+Actualizaciones', tabs);
+  const marks = await page.evaluate(() => ({ plugins: document.querySelectorAll('[data-tab=plug] [data-plugin]').length, other: document.querySelectorAll('[data-tab=plug] input:not([data-plugin]), [data-tab=plug] textarea, [data-tab=plug] select, [data-tab=plug] button').length, paidInPlugins: document.querySelectorAll('[data-tab=plug] .lmd-tag').length, cssTab: document.querySelector('[data-key=customCSS]').closest('section').dataset.tab, cssPaid: document.querySelector('[data-key=customCSS]').closest('section').querySelectorAll('.lmd-tag').length, reset: document.querySelector('[data-act=reset]').closest('section').dataset.tab }));
+  check('Plugins trae solo los interruptores, sin marca de plan pago; el CSS propio y Restablecer van en Avanzado', marks.plugins >= 20 && marks.other === 0 && marks.paidInPlugins === 0 && marks.cssTab === 'adv' && marks.cssPaid === 1 && marks.reset === 'adv', marks);
   await page.close();
 
   console.log('Página propia de SharpMD');
@@ -195,7 +201,7 @@ try {
   const plain = await ctx.newPage(); watch(plain);
   await plain.addInitScript(() => { delete window.showOpenFilePicker; delete window.showDirectoryPicker; Object.defineProperty(window, 'showOpenFilePicker', { value: undefined }); Object.defineProperty(window, 'showDirectoryPicker', { value: undefined }); Object.defineProperty(window, 'showSaveFilePicker', { value: undefined }); });
   await plain.goto(origin + '/src/app.html'); await plain.waitForSelector('.lmd-home');
-  check('sin acceso a archivos no ofrece abrir carpeta', (await plain.locator('[data-home]').count()) === 2 && (await plain.locator('[data-home=dir]').count()) === 0);
+  check('sin acceso a archivos no ofrece abrir carpeta', (await plain.locator('.lmd-home-actions [data-home]').count()) === 2 && (await plain.locator('[data-home=dir]').count()) === 0);
   const [chooser] = await Promise.all([plain.waitForEvent('filechooser'), plain.click('[data-home=file]')]);
   await Promise.all([plain.waitForNavigation(), chooser.setFiles(path.join(root, 'examples', 'demo.md'))]);
   await plain.waitForSelector('.markdown-body h1');

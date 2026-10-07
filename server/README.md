@@ -32,9 +32,10 @@ Then, in SharpMD: Settings → Cloud → Sync server, and type the address (`htt
 | `FREE_NOTES` | Notes on the free plan | `10` |
 | `MCP_FREE` | `1` gives MCP access to the free plan too | off |
 | `ADMIN_KEY` | Key for `POST /admin/plan` | off |
-| `CHECKOUT_MONTHLY`, `CHECKOUT_YEARLY` | Payment links the app shows in Settings → Account. The account email is appended as `email=` | |
+| `CHECKOUT_MONTHLY`, `CHECKOUT_YEARLY` | Payment links the app shows in Settings → Plan. The account email is appended as `email=`, and the app adds `back=` with the address to return to | |
 | `PADDLE_WEBHOOK_SECRET` | Turns on `POST /paddle/webhook`: Paddle subscription events switch the plan | off |
 | `PORTAL_URL` | Where a subscriber manages the subscription | |
+| `FEEDBACK_TO` | Address that receives what people send from "Send feedback" (`POST /feedback`). It goes out through the same mailer as the sign-in code. Without it the endpoint answers 404 and the app offers a `mailto:` link instead | off |
 
 Put it behind a reverse proxy with HTTPS. With Caddy:
 
@@ -71,6 +72,8 @@ Sign-in is a six-digit code sent by mail, no passwords.
 | `POST /rename` `{ from, to }` | Rename |
 | `GET /search?q=` | Search the text of every note |
 | `POST /tokens` `{ name }` | Creates a token for MCP, shown once |
+| `GET /tokens`, `DELETE /tokens/{id}` | List the tokens and revoke one |
+| `POST /feedback` `{ text, email?, context? }` | Mails the text to `FEEDBACK_TO`, with or without a session. 5 to 4000 characters, five an hour per IP and per account. Behind a proxy the IP is the last entry of `x-forwarded-for` |
 | `POST /mcp` | MCP over Streamable HTTP, with `Authorization: Bearer mdt_...` |
 
 MCP tools: `list_notes`, `read_note`, `write_note`, `append_note`, `search_notes`.

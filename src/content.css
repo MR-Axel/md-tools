@@ -704,7 +704,6 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 @media (max-width: 720px) { .lmd-plans, .lmd-grid { grid-template-columns: 1fr; } }
 
 .lmd-panel-body { display: flex; flex-direction: column; }
-.lmd-panel-body > section:has(.lmd-acct) { order: -1; }
 
 /* ---------- Ajustes: dos columnas, cada pestaña entra sin scroll ---------- */
 .lmd-panel-card { width: min(1000px, 100%); height: min(740px, 100%); }
@@ -733,8 +732,6 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-two > .lmd-extra p { flex: 1; min-width: 240px; margin: 0; }
 .lmd-panel-body section { border-bottom: 0; }
 .lmd-panel-body > section:not([hidden]) ~ section:not([hidden]) { border-top: 1px solid var(--line); }
-.lmd-panel-body > section:has(.lmd-acct) { border-top: 0 !important; border-bottom: 1px solid var(--line); }
-.lmd-panel-body > section:has(.lmd-acct) ~ .lmd-two:not([hidden]) { border-top: 0; }
 .lmd-pcol { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .lmd-preview { display: flex; flex-direction: column; gap: 16px; align-self: stretch; min-width: 0; padding: 14px 18px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-soft); overflow: hidden; }
 .lmd-preview > small { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-faint); }
@@ -760,3 +757,55 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-dgm-add { margin-top: 6px; }
 .lmd-dgm-add[hidden], .lmd-dgm-back[hidden] { display: none; }
 .lmd-dgm-tpl .lmd-dgm-back { margin-left: 8px; border-color: var(--accent-fill); color: var(--accent); }
+/* ---------- Ajustes: Nube, IA, Plan y Avanzado. Comentarios. Cuenta en el inicio ---------- */
+.lmd-ptabs .lmd-ptabs-foot { margin-top: auto; color: var(--fg-faint); font-weight: 500; }
+.lmd-row[hidden] { display: none; }
+.lmd-two > .lmd-server-url { grid-column: 1 / -1; }
+.lmd-acct-row span { flex: none; }
+.lmd-acct-row b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lmd-acct-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.lmd-acct > .lmd-hint { margin: 0 0 10px; font-size: 13.5px; color: var(--fg-muted); }
+.lmd-acct > .lmd-acct-msg { margin: 10px 0 0; color: #dc2626; }
+.lmd-acct > h4 { margin: 18px 0 4px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-faint); }
+.lmd-acct a:not(.lmd-btn), .lmd-fb a { color: var(--accent); }
+.lmd-field { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.lmd-field span { flex: 0 0 86px; font-size: 12.5px; color: var(--fg-muted); }
+.lmd-field input { flex: 1; min-width: 0; box-sizing: border-box; height: 34px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--fg); font: 12px var(--lmd-mono); outline: none; }
+.lmd-field input:focus { border-color: var(--accent-fill); }
+.lmd-field .lmd-link { flex: none; min-width: 58px; padding: 5px 0; color: var(--accent); text-align: right; }
+.lmd-acct .lmd-ai-new { margin: 16px 0 0; color: var(--fg); font-size: 13px; }
+.lmd-tokens { margin: 0; padding: 0; list-style: none; max-height: 132px; overflow: auto; scrollbar-width: thin; }
+.lmd-tokens li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--fg-muted); }
+.lmd-tokens li button { border: 0; background: none; color: var(--fg-faint); font: inherit; font-size: 12.5px; cursor: pointer; }
+.lmd-tokens li button:hover { color: #dc2626; }
+.lmd-acct .lmd-paywait { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-soft); color: var(--fg); font-size: 13.5px; }
+.lmd-paywait span { flex: 1; }
+.lmd-paywait::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-fill); }
+.lmd-paywait-wait::before { animation: lmd-pulse 1s ease-in-out infinite; }
+.lmd-paywait-late::before { background: #d97706; }
+.lmd-acct .lmd-paywait-done { border-color: var(--accent-fill); background: var(--accent-soft); }
+.lmd-paywait .lmd-link { flex: none; padding: 0; color: var(--accent); font-size: 13px; }
+.lmd-plan .lmd-hint { margin-top: 10px; }
+.lmd-ask { font-family: var(--lmd-font); color: var(--fg); }
+.lmd-acct-card { width: min(620px, 100%); box-sizing: border-box; }
+.lmd-acct-card .lmd-acct { margin: 8px 0 18px; }
+.lmd-acct-card .lmd-plans { margin-bottom: 0; }
+.lmd-fb { box-sizing: border-box; }
+.lmd-fb textarea, .lmd-fb input[type=email] { display: block; box-sizing: border-box; width: 100%; margin: 0 0 10px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-soft); color: var(--fg); font: inherit; font-size: 14px; outline: none; }
+.lmd-fb textarea { min-height: 130px; margin-top: 6px; resize: vertical; }
+.lmd-fb textarea:focus, .lmd-fb input[type=email]:focus { border-color: var(--accent-fill); }
+.lmd-fb .lmd-fb-ok { display: flex; align-items: center; gap: 10px; margin: 8px 0 2px; color: var(--fg); font-weight: 600; }
+.lmd-fb-ok svg { width: 20px; height: 20px; flex: none; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-home-acct { display: flex; align-items: center; gap: 11px; margin-bottom: 12px; }
+.lmd-home-acct-ico { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
+.lmd-home-acct-who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.lmd-home-acct-who b { color: var(--fg); font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lmd-home-acct-who small { font-size: 12.5px; color: var(--fg-muted); }
+.lmd-home-acct .lmd-link { flex: none; }
+.lmd-home-acct-who .lmd-link { padding: 0; color: var(--accent); font-size: 12.5px; }
+.lmd-home-cloud .lmd-home-cloud-err { margin: 8px 0 0; font-size: 13px; }
+.lmd-home-cloud-err[hidden] { display: none; }
+.lmd-home-cloud input[aria-invalid=true] { border-color: #dc2626; }
+.lmd-home-foot { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 20px; }
+button.lmd-home-coffee { border: 0; background: none; padding: 0; font: inherit; font-size: 13.5px; cursor: pointer; }
+button.lmd-home-item { width: 100%; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }

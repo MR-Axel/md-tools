@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const { ICON, el, MD_RE, SKIP_DIRS } = LMD.kit;
+  const { ICON, el, MD_RE, SKIP_DIRS, validEmail } = LMD.kit;
   const { handlesPut, handlesDelete, rootsAll, notesAll, noteGet, notePut, noteDelete } = LMD.store;
   const T = LMD.t;
   let ctx = null; // { settings, APP_URL }, lo pasa el lector al llamar
@@ -78,11 +78,17 @@
         '<p class="lmd-home-msg" role="status" hidden></p>' +
         '<div class="lmd-home-recent" hidden><h2>' + T('Recientes') + '</h2><ul></ul></div>' +
       '</div>' +
-      (window.__MDT_WEB ? '<a class="lmd-home-coffee" href="../?site">' + T('Qué es SharpMD') + '</a>' : '');
+      '<div class="lmd-home-foot"><button type="button" class="lmd-home-coffee" data-home="feedback">' + T('Enviar comentarios') + '</button>' +
+        (window.__MDT_WEB ? '<a class="lmd-home-coffee" href="../?site">' + T('Qué es SharpMD') + '</a>' : '') + '</div>';
     document.body.appendChild(box);
     const msg = box.querySelector('.lmd-home-msg');
     const say = (text) => { msg.hidden = !text; msg.textContent = text || ''; };
     if (note) say(note);
+    // Lo que los paneles de la cuenta necesitan saber del inicio: adónde vuelve el pago y qué repintar al cerrar.
+    const host = {
+      leave: async () => true, back: location.href.split('#')[0], appUrl: ctx.APP_URL, close: () => {}, closed: () => paint(), say,
+      unlocked: (a) => { if (a.plan === 'pro' && !ctx.settings.supporter) { ctx.settings.supporter = true; LMD.patch({ supporter: true }); } },
+    };
 
     const notesLine = box.querySelector('.lmd-home-notes');
     const paintNotes = async () => {
@@ -100,7 +106,10 @@
     const cloudBox = box.querySelector('.lmd-home-cloud');
     const errors = { bad_email: 'Ese correo no parece válido.', too_soon: 'Esperá unos segundos antes de pedir otro código.', bad_code: 'Ese código no coincide.', code_expired: 'El código venció. Pedí otro.', too_many_tries: 'Demasiados intentos. Pedí un código nuevo.', offline: 'No hay conexión con el servidor.', mcp_needs_plan: 'Conectar una IA es parte del plan pago.' };
     const why = (e) => T(errors[e && e.code] || 'No se pudo completar. Probá de nuevo.');
-    let cloudNotes = [];
+    // Antes de pedir nada al servidor: el correo bien formado y el código de seis dígitos.
+    const badMail = (v) => (!v ? 'Escribí tu correo.' : /\s/.test(v) ? 'El correo no lleva espacios.' : !validEmail(v) ? 'Ese correo no parece válido. Tiene que ser como nombre@dominio.com.' : '');
+    const badCode = (v) => (/^\d{6}$/.test(v) ? '' : 'El código son seis dígitos.');
+    let cloudNotes = []; let cloudMore = 0;
     const paintCloud = async (step, data) => {
       await LMD.cloud.ready();
       cloudBox.hidden = !LMD.cloud.enabled();
@@ -109,56 +118,80 @@
       const line = (text) => { const p = el('p', { text }); cloudBox.appendChild(p); return p; };
       const button = (label, act, fill) => el('button', { type: 'button', class: 'lmd-btn' + (fill ? ' lmd-btn-fill' : ''), 'data-cloud': act, text: label });
       const row = () => { const d = el('div', { class: 'lmd-home-cloud-row' }); cloudBox.appendChild(d); return d; };
-      if (data && data.error) cloudBox.appendChild(el('p', { class: 'lmd-home-cloud-err', text: data.error }));
+      // El aviso va pegado al campo y no borra lo escrito.
+      const errLine = () => cloudBox.appendChild(el('p', { class: 'lmd-home-cloud-err', role: 'alert', hidden: '' }));
+      // Quién está conectado: el correo en un renglón que no se parte, y debajo el plan y las notas.
+      const who = (sub, plans) => {
+        const head = el('div', { class: 'lmd-home-acct' }, '<span class="lmd-home-acct-ico">' + ICON.cloudOk + '</span><div class="lmd-home-acct-who"><b></b><small></small></div>');
+        head.querySelector('b').textContent = LMD.cloud.email(); head.querySelector('b').title = LMD.cloud.email();
+        head.querySelector('small').textContent = sub;
+        if (plans) head.querySelector('small').append(' · ', el('button', { type: 'button', class: 'lmd-link', 'data-cloud': 'plan', text: T('Ver planes') }));
+        head.appendChild(el('button', { type: 'button', class: 'lmd-link', 'data-cloud': 'logout', text: T('Salir') }));
+        cloudBox.appendChild(head);
+      };
       if (!LMD.cloud.signedIn()) {
-        cloudNotes = [];
+        cloudNotes = []; cloudMore = 0;
         if (step === 'code') {
           line(T('Te mandamos un código a {a}.', { a: data.email }));
-          const r = row(); const input = el('input', { type: 'text', inputmode: 'numeric', maxlength: '6', placeholder: '000000', 'data-field': 'code' });
-          r.append(input, button(T('Entrar'), 'verify', true)); input.dataset.email = data.email; input.focus();
+          const r = row(); const input = el('input', { type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '6', placeholder: '000000', 'data-field': 'code' });
+          r.append(input, button(T('Entrar'), 'verify', true)); input.dataset.email = data.email; errLine(); input.focus();
         } else if (step === 'email') {
-          const r = row(); const input = el('input', { type: 'email', placeholder: T('tu correo'), 'data-field': 'email' });
-          r.append(input, button(T('Enviar código'), 'start', true)); input.focus();
+          const r = row(); const input = el('input', { type: 'email', autocomplete: 'email', spellcheck: 'false', placeholder: T('tu correo'), 'data-field': 'email' });
+          r.append(input, button(T('Enviar código'), 'start', true)); errLine(); input.focus();
         } else { const r = row(); const b = button(T('Crear cuenta o entrar'), 'ask'); b.classList.add('lmd-btn-fill'); r.append(el('span', { text: T('Guardá tus notas en la nube y abrilas desde cualquier dispositivo. Gratis hasta 10 notas.') }), b); }
         return;
       }
       try {
         const a = await LMD.cloud.account();
+        host.unlocked(a);
         cloudNotes = await LMD.cloud.list(true);
-        try { cloudNotes = cloudNotes.concat((await LMD.cloud.shared()).map((n) => ({ path: '~' + n.owner + '/' + n.path, by: n.by, shown: n.path }))); } catch (e) { /* sin compartidas */ }
-        const r = row();
-        r.append(el('span', { text: a.email + ' · ' + (a.limit ? T('{n} de {m} notas', { n: a.notes, m: a.limit }) : T('{n} notas', { n: a.notes })) }), button(T('Conectar una IA'), 'token'), button(T('Salir'), 'logout'));
-        if (step === 'token') {
-          const cmd = 'claude mcp add --transport http sharpmd ' + data.mcp_url + ' --header "Authorization: Bearer ' + data.token + '"';
-          line(T('Copiá estos datos ahora: el token no se vuelve a mostrar.'));
-          [['URL', data.mcp_url], ['Token', data.token], ['Claude Code', cmd]].forEach((pair) => {
-            const f = el('label', { class: 'lmd-home-cloud-field' }); f.append(el('span', { text: pair[0] }), el('input', { type: 'text', readonly: '', value: pair[1] }));
-            f.querySelector('input').addEventListener('focus', (ev) => ev.target.select());
-            cloudBox.appendChild(f);
-          });
-        }
+        try { cloudNotes = cloudNotes.concat((await LMD.cloud.shared()).map((n) => ({ path: '~' + n.owner + '/' + n.path, by: n.by, shown: n.path, updated: n.updated }))); } catch (e) { /* sin compartidas */ }
+        cloudNotes.sort((x, y) => (y.updated || 0) - (x.updated || 0)); // las más nuevas primero, propias o compartidas
+        cloudMore = cloudNotes.length;
+        const pro = a.plan === 'pro';
+        who(T(pro ? 'Plan pago' : 'Plan gratis') + ' · ' + (a.limit ? T('{n} de {m} notas', { n: a.notes, m: a.limit }) : T(a.notes === 1 ? '1 nota, sin límite' : '{n} notas, sin límite', { n: a.notes })), !pro);
+        row().append(button(T('Abrir la nube'), 'open', true), button(T('Conectar una IA'), 'ai'));
+        errLine();
       } catch (e) {
         if (!LMD.cloud.signedIn()) return paintCloud();
-        line(why(e));
+        who(why(e));
         // Sin conexión se listan las notas que tienen copia en este navegador: son las que se pueden abrir.
         if (e.code === 'offline') cloudNotes = (await LMD.cloud.kept()).sort((a, b) => b.updated - a.updated).map((n) => ({ path: n.path, shown: LMD.cloud.split(n.path).path, off: true }));
+        cloudMore = 0;
       }
     };
     cloudBox.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-cloud]'); if (!b) return;
       const field = (name) => cloudBox.querySelector('[data-field=' + name + ']');
+      const fail = (text, input) => {
+        const p = cloudBox.querySelector('.lmd-home-cloud-err');
+        if (p) { p.hidden = false; p.textContent = T(text); }
+        if (input) { input.setAttribute('aria-invalid', 'true'); input.focus(); }
+      };
+      const act = b.dataset.cloud;
       try {
-        if (b.dataset.cloud === 'ask') await paintCloud('email');
-        else if (b.dataset.cloud === 'start') { const mail = field('email').value.trim(); await LMD.cloud.start(mail); await paintCloud('code', { email: mail }); }
-        else if (b.dataset.cloud === 'verify') { await LMD.cloud.verify(field('code').dataset.email, field('code').value); await paintCloud(); paint(); }
-        else if (b.dataset.cloud === 'logout') { await LMD.cloud.logout(); await paintCloud(); paint(); }
-        else if (b.dataset.cloud === 'token') await paintCloud('token', await LMD.cloud.newToken('IA'));
-      } catch (err) {
-        const f = field('code'); const m = field('email');
-        await paintCloud(f ? 'code' : (m ? 'email' : ''), { email: f ? f.dataset.email : '', error: why(err) });
-      }
+        if (act === 'ask') await paintCloud('email');
+        else if (act === 'start') {
+          const mail = field('email').value.trim(); const bad = badMail(mail);
+          if (bad) { fail(bad, field('email')); return; }
+          await LMD.cloud.start(mail.toLowerCase()); await paintCloud('code', { email: mail.toLowerCase() });
+        } else if (act === 'verify') {
+          const code = field('code').value.trim(); const bad = badCode(code);
+          if (bad) { fail(bad, field('code')); return; }
+          await LMD.cloud.verify(field('code').dataset.email, code); await paintCloud(); paint();
+        } else if (act === 'logout') { await LMD.cloud.logout(); await paintCloud(); paint(); }
+        else if (act === 'open') LMD.sync.openCloud(Object.assign({}, host, { say: (t) => fail(t) }));
+        else if (act === 'ai' || act === 'plan') LMD.sync.dialog(act, host);
+      } catch (err) { fail(errors[err && err.code] || 'No se pudo completar. Probá de nuevo.', field('code') || field('email')); }
+    });
+    cloudBox.addEventListener('input', (e) => {
+      if (!e.target.matches('[data-field]')) return;
+      e.target.removeAttribute('aria-invalid');
+      const p = cloudBox.querySelector('.lmd-home-cloud-err'); if (p) p.hidden = true;
     });
     cloudBox.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('input')) { e.preventDefault(); const b = cloudBox.querySelector('[data-cloud=start], [data-cloud=verify]'); if (b) b.click(); } });
+    // Vuelta de la página de pago hecha desde acá: el plan, en su ventana, esperando la confirmación.
+    if (location.hash === '#lmd-paid') { LMD.sync.dialog('plan', host); LMD.sync.awaitPaid(); }
 
     const recent = box.querySelector('.lmd-home-recent');
     const paint = async () => {
@@ -184,6 +217,13 @@
         });
         li.append(go, del); ul.appendChild(li);
       });
+      // Acá entran las doce más nuevas; el resto, con sus carpetas, está en el árbol de la nube.
+      if (cloudMore > 12) {
+        const li = el('li'); const all = el('button', { type: 'button', class: 'lmd-home-item lmd-home-all' }, '<span class="lmd-node-ico">' + ICON.cloud + '</span><span class="lmd-home-name"></span>');
+        all.querySelector('.lmd-home-name').textContent = T('Ver las {n} notas de la nube', { n: cloudMore });
+        all.addEventListener('click', () => LMD.sync.openCloud(host));
+        li.appendChild(all); ul.appendChild(li);
+      }
       notes.forEach((n) => {
         const li = el('li');
         const go = el('a', { class: 'lmd-home-item', href: ctx.APP_URL + '?f=' + encodeURIComponent('local/' + encodeURIComponent(n.name)) });
@@ -218,6 +258,7 @@
     box.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-home]'); if (!b) return;
       say('');
+      if (b.dataset.home === 'feedback') { LMD.sync.feedback(); return; }
       if (b.dataset.home === 'new') { create(); return; }
       if (b.dataset.home === 'notes') {
         try { await chooseNotesFolder(); paintNotes(); paint(); } catch (err) { if (!(err && err.name === 'AbortError')) say(T('No se pudo abrir. Probá de nuevo.')); }
@@ -299,9 +340,18 @@
 
   // Archivo nuevo. Con carpeta de notas se crea ahí y queda guardado desde el arranque; sin ella
   // nace en memoria y se elige dónde guardarlo al primer Ctrl+S.
+  const stamp = () => { const d = new Date(); const p = (n) => String(n).padStart(2, '0'); return T('nota') + '-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()); };
+  // Nota nueva en la nube, con un nombre que no pise a otra. Devuelve su ruta.
+  async function cloudNote(base) {
+    const taken = new Set((await LMD.cloud.list(true)).map((n) => n.path));
+    let file = (base || stamp()) + '.md';
+    for (let n = 2; n < 50 && taken.has(file); n++) file = (base || stamp()) + '-' + n + '.md';
+    await LMD.cloud.create(file);
+    return file;
+  }
+
   async function create() {
-    const d = new Date(); const p = (n) => String(n).padStart(2, '0');
-    const base = T('nota') + '-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes());
+    const base = stamp();
     const folder = window.showDirectoryPicker ? await notesFolder() : null;
     if (folder) {
       let ok = false;
@@ -327,10 +377,7 @@
     await LMD.cloud.ready();
     if (LMD.cloud.signedIn()) {
       try {
-        const taken = new Set((await LMD.cloud.list(true)).map((n) => n.path));
-        let file = base + '.md';
-        for (let n = 2; n < 50 && taken.has(file); n++) file = base + '-' + n + '.md';
-        await LMD.cloud.create(file);
+        const file = await cloudNote(base);
         location.replace(ctx.APP_URL + '?f=' + encodeURIComponent('cloud/' + encodeURIComponent(file)) + '&edit=1');
         return;
       } catch (e) { /* sin conexión o sin lugar: sigue en el navegador */ }
@@ -345,6 +392,7 @@
 
   LMD.home = {
     create: (c) => { ctx = c; create(); },
+    cloudNote: () => cloudNote(),
     adopt: (c, handle) => { ctx = c; return openPicked(handle, () => {}); },
     show: (c, note) => { ctx = c; return home(note); },
     gate: (c, rec, mode) => { ctx = c; return gate(rec, mode); },

@@ -12,10 +12,11 @@
 //   FREE_NOTES      notas del plan gratis (10)
 //   MCP_FREE=1      habilita el MCP también en el plan gratis
 //   SHARE_FREE=1    habilita compartir también en el plan gratis
-//   CHECKOUT_MONTHLY, CHECKOUT_YEARLY   enlaces de pago que la app muestra en Ajustes → Cuenta
+//   CHECKOUT_MONTHLY, CHECKOUT_YEARLY   enlaces de pago que la app muestra en Ajustes → Plan
 //   ADMIN_KEY       clave para cambiar el plan de una cuenta desde /admin/plan
 //   PADDLE_WEBHOOK_SECRET   firma de los avisos de Paddle: con esto /paddle/webhook activa y da de baja el plan pago
 //   PORTAL_URL      dirección donde quien paga administra su suscripción
+//   FEEDBACK_TO     correo que recibe los comentarios y reportes de error de POST /feedback. Sin esto, responde 404
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -68,21 +69,35 @@ const mailHtml = (m, code) => '<!doctype html><html><body style="margin:0;paddin
   '<tr><td style="padding:12px 32px 28px;font-size:13.5px;line-height:1.5;color:#8a909c">' + m.note + '</td></tr>' +
   '</table><div style="padding-top:14px;font-size:12px;color:#8a909c">sharpmd.app</div></td></tr></table></body></html>';
 
-async function sendCode(email, code, lang) {
-  const m = MAIL[lang === 'es' ? 'es' : 'en'];
-  const subject = m.subject + code; const text = m.text(code); const html = mailHtml(m, code);
+// Sale por Resend o por el webhook propio. Devuelve false si no hay con qué mandar.
+async function sendMail(mail) {
   if (env.RESEND_API_KEY) {
     const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { authorization: 'Bearer ' + env.RESEND_API_KEY, 'content-type': 'application/json' },
-      body: JSON.stringify({ from: env.MAIL_FROM || 'SharpMD <onboarding@resend.dev>', to: [email], subject, text, html }) });
+      body: JSON.stringify(Object.assign({ from: env.MAIL_FROM || 'SharpMD <onboarding@resend.dev>' }, mail, { to: [mail.to] })) });
     if (!r.ok) throw new Fail(502, 'mail_failed');
   } else if (env.MAIL_WEBHOOK) {
-    const r = await fetch(env.MAIL_WEBHOOK, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ to: email, subject, text, html }) });
+    const r = await fetch(env.MAIL_WEBHOOK, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(mail) });
     if (!r.ok) throw new Fail(502, 'mail_failed');
-  } else if (!env.DEV_CODES) throw new Fail(500, 'mail_not_configured');
+  } else return false;
+  return true;
+}
+
+async function sendCode(email, code, lang) {
+  const m = MAIL[lang === 'es' ? 'es' : 'en'];
+  const sent = await sendMail({ to: email, subject: m.subject + code, text: m.text(code), html: mailHtml(m, code) });
+  if (!sent && !env.DEV_CODES) throw new Fail(500, 'mail_not_configured');
 }
 
 // ---------- Cuentas ----------
-const cleanEmail = (v) => { const e = String(v || '').trim().toLowerCase(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) || e.length > 200) throw new Fail(400, 'bad_email'); return e; };
+// Un correo bien formado: sin espacios, una sola arroba, el nombre sin puntos al borde ni dobles, y un
+// dominio de etiquetas válidas que termina en letras. La app usa la misma regla antes de pedir el código.
+function validEmail(e) {
+  const m = /^([^\s@]+)@([^\s@]+)$/.exec(e);
+  if (!m || e.length > 200 || /^\.|\.$|\.\./.test(m[1]) || /[(),:;<>[\]\\"]/.test(m[1])) return false;
+  const labels = m[2].split('.');
+  return labels.length > 1 && labels.every((l) => /^[\p{L}\p{N}]([\p{L}\p{N}-]*[\p{L}\p{N}])?$/u.test(l)) && /^(\p{L}{2,}|xn--[a-z0-9-]+)$/iu.test(labels[labels.length - 1]);
+}
+const cleanEmail = (v) => { const e = String(v || '').trim().toLowerCase(); if (!validEmail(e)) throw new Fail(400, 'bad_email'); return e; };
 
 async function authStart(body) {
   const email = cleanEmail(body.email);
@@ -127,6 +142,37 @@ const mcpAllowed = (user) => user.plan === 'pro' || !!env.MCP_FREE;
 const shareAllowed = (user) => user.plan === 'pro' || !!env.SHARE_FREE;
 const account = (user) => ({ id: user.id, share: shareAllowed(user), email: user.email, plan: user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, mcp: mcpAllowed(user), mcp_url: PUBLIC_URL + '/mcp', manage: user.plan === 'pro' && env.PORTAL_URL ? env.PORTAL_URL : '',
   checkout: { monthly: env.CHECKOUT_MONTHLY ? env.CHECKOUT_MONTHLY + (env.CHECKOUT_MONTHLY.includes('?') ? '&' : '?') + 'email=' + encodeURIComponent(user.email) : '', yearly: env.CHECKOUT_YEARLY ? env.CHECKOUT_YEARLY + (env.CHECKOUT_YEARLY.includes('?') ? '&' : '?') + 'email=' + encodeURIComponent(user.email) : '' } });
+
+// ---------- Comentarios ----------
+// Lo que alguien escribe desde "Enviar comentarios" llega por correo a FEEDBACK_TO. Entra con o sin sesión.
+// Tope de cinco por hora por IP y por cuenta. El servidor vive detrás de un proxy: la IP sale de
+// x-forwarded-for, y de ahí la última, que es la que anota el proxy (las anteriores las escribe quien llama).
+const FEEDBACK_MAX = 5; const HOUR = 3600000;
+const sentBy = new Map();
+const recent = (key) => (sentBy.get(key) || []).filter((t) => now() - t < HOUR);
+const clientIp = (req) => String(req.headers['x-forwarded-for'] || '').split(',').pop().trim() || req.socket.remoteAddress || '';
+async function feedback(req, body) {
+  if (!env.FEEDBACK_TO || !(env.RESEND_API_KEY || env.MAIL_WEBHOOK || env.DEV_CODES)) throw new Fail(404, 'no_route');
+  let user = null;
+  if (req.headers.authorization) { try { user = userFrom(req, 'session'); } catch (e) { /* sesión vencida: entra como anónimo */ } }
+  const text = String(body.text == null ? '' : body.text).trim();
+  if (text.length < 5 || text.length > 4000) throw new Fail(400, 'bad_text');
+  const from = user ? user.email : (String(body.email || '').trim() ? cleanEmail(body.email) : '');
+  const keys = ['ip:' + clientIp(req)].concat(user ? ['user:' + user.id] : []);
+  if (keys.some((k) => recent(k).length >= FEEDBACK_MAX)) throw new Fail(429, 'too_many');
+  keys.forEach((k) => sentBy.set(k, recent(k).concat(now())));
+  // Del contexto solo pasan estos cuatro datos, recortados: nada de notas ni de rutas.
+  const c = body.context && typeof body.context === 'object' ? body.context : {};
+  const field = (v, max) => String(v == null ? '' : v).replace(/[\r\n]+/g, ' ').trim().slice(0, max) || '-';
+  const mail = { to: env.FEEDBACK_TO, subject: 'SharpMD feedback',
+    text: text + '\n\n---\nFrom: ' + (from || 'anonymous') + (user ? ' (signed in, ' + user.plan + ' plan)' : '') +
+      '\nVersion: ' + field(c.version, 40) + '\nWhere: ' + (c.where === 'extension' ? 'extension' : 'web') +
+      '\nBrowser: ' + field(c.browser, 300) + '\nLanguage: ' + field(c.lang, 20) + '\n' };
+  if (from) mail.reply_to = from;
+  // Sin correo configurado y en modo de prueba no sale nada: alcanza para probar la app.
+  if (!(await sendMail(mail))) return { ok: true, dev: true };
+  return { ok: true };
+}
 
 // ---------- Notas ----------
 function cleanPath(v) {
@@ -372,6 +418,7 @@ async function route(req, url) {
   if (p === '/auth/start' && m === 'POST') return authStart(await readBody(req));
   if (p === '/auth/verify' && m === 'POST') return authVerify(await readBody(req));
   if (p === '/paddle/webhook' && m === 'POST') return paddleWebhook(req);
+  if (p === '/feedback' && m === 'POST') return feedback(req, await readBody(req));
   if (p === '/admin/plan' && m === 'POST') {
     if (!env.ADMIN_KEY || req.headers['x-admin-key'] !== env.ADMIN_KEY) throw new Fail(403, 'forbidden');
     const b = await readBody(req);
@@ -460,6 +507,7 @@ const server = http.createServer(async (req, res) => {
 setInterval(() => {
   q('DELETE FROM codes WHERE expires < ?').run(now());
   q('DELETE FROM versions WHERE saved < ?').run(now() - HISTORY_DAYS * 86400000);
+  for (const k of sentBy.keys()) if (!recent(k).length) sentBy.delete(k);
 }, 6 * 3600000).unref();
 
 server.listen(PORT, env.HOST || '127.0.0.1', () => console.log('SharpMD Sync en ' + PUBLIC_URL + ' (puerto ' + PORT + ')'));
