@@ -44,6 +44,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
+// Lo que usan las automatizaciones (webhooks salientes): ver el bloque AUTOMATIZACIONES.
+import https from 'node:https';
+import dns from 'node:dns';
+import net from 'node:net';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 const env = process.env;
 const PORT = +(env.PORT || 8787);
@@ -311,11 +316,11 @@ function userFrom(req, kind) {
   if (!m) throw new Fail(401, 'no_auth');
   if (kind === 'session' && m[1].startsWith('mds_')) {
     const s = q('SELECT user FROM sessions WHERE hash = ? AND seen > ?').get(sha(m[1]), now() - SESSION_DAYS * DAY);
-    if (s) { q('UPDATE sessions SET seen = ? WHERE hash = ?').run(now(), sha(m[1])); return userById(s.user); }
+    if (s) { q('UPDATE sessions SET seen = ? WHERE hash = ?').run(now(), sha(m[1])); return ctxSet('user', userById(s.user)); }
   }
   if (kind === 'token' && m[1].startsWith('mdt_')) {
     const t = q('SELECT id, user, scope, share FROM tokens WHERE hash = ?').get(sha(m[1]));
-    if (t) { q('UPDATE tokens SET used = ? WHERE id = ?').run(now(), t.id); const u = userById(t.user); if (u) { u.scope = t.scope || ''; u.canShare = !!t.share; } return u; }
+    if (t) { q('UPDATE tokens SET used = ? WHERE id = ?').run(now(), t.id); const u = userById(t.user); if (u) { u.scope = t.scope || ''; u.canShare = !!t.share; u.tokenId = t.id; } return ctxSet('user', u); }
   }
   throw new Fail(401, 'bad_auth');
 }
@@ -560,6 +565,7 @@ function writeNote(user, p, text, base) {
   const saved = { path: p, updated: at, size: kind.size, rev };
   // prev no viaja en la respuesta: lo usa quien llama para avisar el cambio a los que tienen la nota abierta.
   Object.defineProperty(saved, 'prev', { value: prev ? prev.text : null, enumerable: false });
+  autoNoteSaved(user, p, prev ? prev.text : null, text, saved, kind.v); // automatizaciones: eventos de la nota y de sus tarjetas
   return saved;
 }
 // Eliminar manda la nota a la papelera, donde queda TRASH_DAYS días: se guarda como estaba (una nota de una
@@ -587,6 +593,7 @@ function deleteNote(user, p, forever) {
   // Los enlaces públicos y lo compartido de esa nota se van con ella: una nota nueva con el mismo nombre no nace publicada.
   q('DELETE FROM links WHERE owner = ? AND path = ?').run(user.id, cleanPath(p));
   q("DELETE FROM shares WHERE owner = ? AND path = ? AND kind != 'folder'").run(user.id, cleanPath(p));
+  if (!row.v && !vault) autoEmit(user, 'note.deleted', p, { trash: keep });
   return { ok: true, trash: keep };
 }
 
@@ -628,6 +635,7 @@ function trashRestore(owner, id, body) {
     q('DELETE FROM trash WHERE id = ?').run(row.id);
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
+  if (!kind.v) autoEmit(owner, 'note.restored', to, { rev, size: kind.size });
   return { path: to, from: row.path, updated: at, size: kind.size, rev };
 }
 function trashRoute(user, p, m, url, body) {
@@ -674,6 +682,7 @@ function renameNote(user, from, to, body) {
   q("UPDATE OR REPLACE shares SET path = ? WHERE owner = ? AND path = ? AND kind != 'folder'").run(to, user.id, from);
   q('UPDATE links SET path = ? WHERE owner = ? AND path = ?').run(to, user.id, from);
   q('UPDATE comments SET path = ? WHERE user = ? AND path = ?').run(to, user.id, from);
+  autoNoteMoved(user, from, to);
   return { path: to };
 }
 // reach(bóveda) da la llave con la que se puede leer esa carpeta, o nada. Sin reach (la búsqueda de la app) las
@@ -1129,6 +1138,7 @@ function addComment(user, body) {
   if (!text || text.length > 2000) throw new Fail(400, 'bad_text');
   if (q("SELECT COUNT(*) AS n FROM comments WHERE user = ? AND status = 'open'").get(user.id).n >= 200) throw new Fail(429, 'too_many');
   const r = q('INSERT INTO comments (user, path, quote, text, created, e) VALUES (?, ?, ?, ?, ?, ?)').run(user.id, p, seal(quote, 'comments.quote'), seal(text, 'comments.text'), now(), SEALED);
+  autoEmit(user, 'comment.created', p, { comment: { id: Number(r.lastInsertRowid), text, quote: quote.slice(0, 280) } });
   return { id: Number(r.lastInsertRowid), path: p, quote, text, status: 'open', created: now() };
 }
 const listComments = (user, p, all) => q('SELECT id, path, quote, text, status, reply, created, done, e FROM comments WHERE user = ?' + (p ? ' AND path = ?' : '') + (all ? '' : " AND status = 'open'") + ' ORDER BY created').all(...(p ? [user.id, cleanPath(p)] : [user.id]))
@@ -1175,8 +1185,9 @@ function vaultGate(user, p) {
   return key;
 }
 
-function callTool(user, name, args) {
-  args = args || {};
+// opt.raw: quien llama es la API REST (ver apiTool), que quiere datos en vez de la frase que lee una IA.
+function callTool(user, name, args, opt) {
+  args = args || {}; opt = opt || {};
   const vaults = vaultsOf(user.id);
   // El espacio del equipo, si la cuenta está en uno: sus notas figuran bajo @team/ y se leen y escriben como las
   // demás. El alcance del token se mira sobre la ruta entera, con @team/ incluido: un token limitado a una carpeta
@@ -1221,6 +1232,7 @@ function callTool(user, name, args) {
   // La dirección para abrir esa nota en la app, con el mismo formato que usa la app al navegar.
   const appLink = (f) => APP_URL + '?f=' + encodeURIComponent(f);
   const openUrl = (a) => appLink('cloud/' + (a.who === user ? '' : '~' + a.who.id + '/') + a.p.split('/').map(encodeURIComponent).join('/'));
+  if (opt.raw) { const out = apiTool(name, args, { user, at, gate, read, write, revOf, openUrl, mcp: (n, x) => callTool(user, n, x) }); if (out !== undefined) return out; }
   if (name === 'read_note') { const a = at(args.path); return read(a, gate(a)); }
   if (name === 'write_note') { const a = at(args.path); write(a, gate(a), args.text); return 'Saved ' + a.full + ' (' + String(args.text == null ? '' : args.text).length + ' characters). Open it: ' + openUrl(a); }
   if (name === 'append_note') {
@@ -1245,6 +1257,7 @@ function callTool(user, name, args) {
     const reply = String(args.reply || '').slice(0, 1000);
     q("UPDATE comments SET status = 'done', reply = ?, done = ? WHERE id = ?").run(c.e ? seal(reply, 'comments.reply') : reply, now(), c.id);
     announce(roomKey(user.id, c.path), { type: 'comments' });
+    autoEmit(user, 'comment.resolved', c.path, { comment: { id: c.id, reply } });
     return 'Comment ' + c.id + ' marked as done.';
   }
   if (name === 'move_note') {
@@ -1321,6 +1334,7 @@ function mcp(user, msg) {
 
 // ---------- HTTP ----------
 function cors(req, res) {
+  if (autoCors(req, res)) return;
   const origin = req.headers.origin;
   if (origin && (/^(chrome|moz)-extension:\/\//.test(origin) || ORIGINS.includes(origin) || ORIGINS.includes('*'))) {
     res.setHeader('access-control-allow-origin', origin);
@@ -1872,9 +1886,763 @@ function galleryAdmin(m, url, body) {
   return galleryDecide(it, next, body.reason);
 }
 
+// ====================================================================================================================
+// AUTOMATIZACIONES
+// Para conectar SharpMD con flujos de afuera (Make, n8n, Activepieces, Zapier, Slack). Cuatro piezas:
+//   1. Tableros con atributos: cada tarjeta de un bloque kanban tiene id, fechas y atributos propios.
+//   2. Webhooks salientes: lo que pasa con una nota o con una tarjeta sale, firmado, a una dirección https.
+//   3. Direcciones de entrada: una dirección secreta que agrega texto a una nota, crea una nota o una tarjeta.
+//   4. API REST con token, bajo /api/v1, que comparte sus reglas con las herramientas del MCP.
+// Las cuatro son del plan pago (como el MCP). Las notas de una carpeta protegida quedan afuera: no generan
+// eventos, no reciben entradas y la API las trata como el MCP (solo con la carpeta desbloqueada para la IA).
+// Variables:
+//   WEBHOOK_ALLOW_PRIVATE=1  deja mandar webhooks a destinos http o de red privada. Solo para pruebas o un servidor
+//                            propio dentro de una red de confianza: con esto el servidor puede llamar a cualquier
+//                            dirección interna que alguien con cuenta le pida
+//   WEBHOOK_RETRY_MS         esperas entre reintentos, en milisegundos y separadas por coma (60000,300000,900000,2400000:
+//                            cinco intentos en una hora)
+//   WEBHOOK_MAX_FAILS        intentos fallidos seguidos que desactivan un webhook (15)
+//   WEBHOOK_TIMEOUT_MS       cuánto espera cada entrega (8000)
+//   WEBHOOK_UPDATE_WAIT_MS   cuánto espera note.updated para juntar los guardados seguidos de una misma nota (10000)
+//   API_PER_MINUTE           pedidos por minuto de cada token en /api/v1 (120)
+//   INBOX_PER_MINUTE         pedidos por minuto de cada dirección de entrada (60)
+// ====================================================================================================================
+
+// ---------- Quién hace el pedido ----------
+// Cada pedido lleva su contexto: la cuenta que llamó y por dónde (app, api, mcp, inbox). Con eso un evento dice quién
+// lo causó sin que las funciones de las notas tengan que recibirlo.
+const reqCtx = new AsyncLocalStorage();
+const ctxSet = (k, v) => { const st = reqCtx.getStore(); if (st) st[k] = v; return v; };
+const isoNow = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+const iso = (ms) => new Date(ms).toISOString().replace(/\.\d+Z$/, 'Z');
+
+// ---------- Tableros: el mismo formato que lee y escribe src/board.js ----------
+// Un tablero es un bloque ```kanban. Cada título es una columna y cada tarea una tarjeta. Al final de la tarjeta
+// puede haber un grupo entre llaves con sus atributos: {due=2026-10-20 owner="Ana Paz" id=c8k2m9xq created=… updated=…}.
+// id, created y updated los pone el programa; el resto es de la persona. Antes de la primera columna, un renglón
+// solo con llaves configura el tablero: {show=due,owner priority=low|medium|high estimate=number}.
+// Lo que no se entiende se deja como texto: una tarjeta sin llaves es una tarjeta sin atributos.
+const KB_NAMES = /^(kanban|tablero|board)$/i;
+const KB_KEY = /^[\p{L}_][\p{L}\p{N}_.-]{0,39}$/u;
+const KB_RESERVED = new Set(['id', 'created', 'updated', 'show']);
+const KB_ALPHA = 'abcdefghijkmnpqrstuvwxyz23456789';
+const kbId = () => { let s = ''; for (const b of crypto.randomBytes(8)) s += KB_ALPHA[b % 32]; return s; };
+function kbPairs(inner) {
+  const re = /\s*([\p{L}_][\p{L}\p{N}_.-]{0,39})=(?:"((?:[^"\\]|\\.)*)"|([^\s"]*))(?=\s|$)/uy; const out = []; let at = 0; let m;
+  while ((m = re.exec(inner))) { out.push([m[1], m[2] !== undefined ? m[2].replace(/\\(.)/g, '$1') : m[3]]); at = re.lastIndex; }
+  return out.length && !inner.slice(at).trim() ? out : null;
+}
+function kbSplit(raw) {
+  const m = /^(.*\S)\s*\{([^{}]*)\}\s*$/.exec(raw); const pairs = m && kbPairs(m[2]);
+  return pairs ? { text: m[1].trim(), pairs } : { text: raw, pairs: [] };
+}
+const kbVal = (v) => { v = String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); return /^[^\s"{}=\\]+$/.test(v) ? v : '"' + v.replace(/[{}]/g, (c) => (c === '{' ? '(' : ')')).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'; };
+const kbType = (v) => (/^(text|date|number)$/.test(v) ? { type: v } : { type: 'select', options: v.split('|').map((s) => s.trim()).filter(Boolean) });
+function kbParse(lines) {
+  const board = { show: [], fields: {}, columns: [] }; let cur = null;
+  for (const raw of lines) {
+    const line = raw.replace(/\r$/, '');
+    const h = /^\s{0,3}#{1,6}\s+(.*)$/.exec(line);
+    if (h) { cur = { title: h[1].trim(), cards: [] }; board.columns.push(cur); continue; }
+    const c = /^\s*[-*+]\s+(?:\[([ xX])\]\s+)?(.*)$/.exec(line);
+    if (!c) {
+      const cfg = !cur && /^\s*\{([^{}]*)\}\s*$/.exec(line); const pairs = cfg && kbPairs(cfg[1]);
+      if (pairs) for (const [k, v] of pairs) { if (k === 'show') board.show = v.split(',').map((s) => s.trim()).filter(Boolean); else if (!KB_RESERVED.has(k)) board.fields[k] = kbType(v); }
+      continue;
+    }
+    if (!c[2].trim()) continue;
+    if (!cur) { cur = { title: 'To do', cards: [] }; board.columns.push(cur); }
+    const s = kbSplit(c[2].trim()); const card = { id: '', text: s.text, done: !!c[1] && c[1] !== ' ', created: '', updated: '', attrs: {} };
+    for (const [k, v] of s.pairs) { if (k === 'id') card.id = v; else if (k === 'created') card.created = v; else if (k === 'updated') card.updated = v; else if (k !== 'show') card.attrs[k] = v; }
+    cur.cards.push(card);
+  }
+  return board;
+}
+function kbCardLine(card) {
+  const pairs = Object.keys(card.attrs).map((k) => k + '=' + kbVal(card.attrs[k]));
+  if (card.id) pairs.push('id=' + kbVal(card.id)); if (card.created) pairs.push('created=' + kbVal(card.created)); if (card.updated) pairs.push('updated=' + kbVal(card.updated));
+  return '- [' + (card.done ? 'x' : ' ') + '] ' + card.text.replace(/\s*\n\s*/g, ' ').trim() + (pairs.length ? ' {' + pairs.join(' ') + '}' : '');
+}
+function kbWrite(board) {
+  const out = []; const cfg = [];
+  if (board.show.length) cfg.push('show=' + kbVal(board.show.join(',')));
+  for (const k of Object.keys(board.fields)) { const f = board.fields[k]; cfg.push(k + '=' + kbVal(f.type === 'select' ? f.options.join('|') : f.type)); }
+  if (cfg.length) out.push('{' + cfg.join(' ') + '}');
+  board.columns.forEach((col, i) => {
+    if (i) out.push('');
+    out.push('## ' + (col.title.trim() || 'Column'));
+    for (const card of col.cards) if (card.text.trim()) out.push(kbCardLine(card));
+  });
+  return out;
+}
+// Los bloques kanban de un texto: dónde empieza y termina cada uno (renglones de las cercas) y su tablero.
+function kbBlocks(text) {
+  const eol = /\r\n/.test(text) ? '\r\n' : '\n'; const lines = String(text).split(/\r?\n/); const blocks = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^ {0,3}(`{3,}|~{3,})\s*([^`\s]*)[^`]*$/.exec(lines[i]); if (!m) continue;
+    const close = new RegExp('^ {0,3}' + m[1][0] + '{' + m[1].length + ',}\\s*$'); let j = i + 1;
+    while (j < lines.length && !close.test(lines[j])) j++;
+    if (KB_NAMES.test(m[2])) blocks.push({ from: i, to: j, board: kbParse(lines.slice(i + 1, j)) });
+    i = j;
+  }
+  return { lines, eol, blocks };
+}
+const kbHas = (text) => /(^|\n) {0,3}(`{3,}|~{3,})\s*(kanban|tablero|board)\b/i.test(text);
+// Las tarjetas sin id reciben uno y su fecha de creación. Devuelve si cambió algo.
+function kbStamp(board, at) { let n = 0; for (const col of board.columns) for (const c of col.cards) if (!c.id) { c.id = kbId(); if (!c.created) c.created = at; n++; } return n; }
+const kbCard = (card, column, ref) => Object.assign({ id: card.id || null }, ref ? { ref } : {}, { title: card.text, column, done: card.done, created: card.created || null, updated: card.updated || card.created || null, attrs: Object.assign({}, card.attrs) });
+const kbView = (text) => kbBlocks(text).blocks.map((b, bi) => ({ index: bi, show: b.board.show, fields: b.board.fields,
+  columns: b.board.columns.map((col, ci) => ({ title: col.title, cards: col.cards.map((c, ki) => kbCard(c, col.title, bi + '.' + ci + '.' + ki)) })) }));
+// Todas las tarjetas de un texto, en fila: de qué tablero y columna es cada una.
+function kbFlat(text) {
+  const out = [];
+  kbBlocks(text).blocks.forEach((b, bi) => b.board.columns.forEach((col, ci) => col.cards.forEach((card, ki) => out.push({ card, bi, ci, ki, column: col.title, titles: b.board.columns.map((x) => x.title) }))));
+  return out;
+}
+// Qué pasó con las tarjetas entre dos versiones de una nota. Se emparejan por id; las que no tienen id (un tablero
+// viejo, o uno escrito a mano) por su texto, y si tampoco, por su lugar.
+function kbDiff(before, after) {
+  const a = kbFlat(before); const b = kbFlat(after); const pair = new Map(); const taken = new Set();
+  const match = (same) => { for (const x of a) { if (pair.has(x)) continue; const y = b.find((n) => !taken.has(n) && same(x, n)); if (y) { pair.set(x, y); taken.add(y); } } };
+  match((x, y) => x.card.id && x.card.id === y.card.id);
+  match((x, y) => !x.card.id && x.card.text === y.card.text && x.bi === y.bi && x.ci === y.ci);
+  match((x, y) => !x.card.id && x.card.text === y.card.text);
+  match((x, y) => !x.card.id && x.bi === y.bi && x.ci === y.ci && x.ki === y.ki);
+  const events = [];
+  for (const y of b) if (!taken.has(y)) events.push({ type: 'card.created', data: { card: kbCard(y.card, y.column), board: y.bi } });
+  for (const x of a) {
+    const y = pair.get(x);
+    if (!y) { events.push({ type: 'card.deleted', data: { card: kbCard(x.card, x.column), board: x.bi } }); continue; }
+    const card = kbCard(y.card, y.column);
+    // Una columna a la que le cambiaron el nombre no mueve sus tarjetas.
+    const renamed = x.ci === y.ci && x.bi === y.bi && !y.titles.includes(x.column);
+    if (x.column !== y.column && !renamed) events.push({ type: 'card.moved', data: { card, from: x.column, to: y.column, board: y.bi } });
+    if (!x.card.done && y.card.done) events.push({ type: 'card.done', data: { card, board: y.bi } });
+    const changes = {};
+    if (x.card.text !== y.card.text) changes.title = { from: x.card.text, to: y.card.text };
+    if (x.card.done && !y.card.done) changes.done = { from: true, to: false };
+    for (const k of new Set(Object.keys(x.card.attrs).concat(Object.keys(y.card.attrs)))) { const from = k in x.card.attrs ? x.card.attrs[k] : null; const to = k in y.card.attrs ? y.card.attrs[k] : null; if (from !== to) changes[k] = { from, to }; }
+    if (Object.keys(changes).length) events.push({ type: 'card.updated', data: { card, changes, board: y.bi } });
+  }
+  return events;
+}
+// Reescribe un tablero dentro del texto de la nota.
+function kbSave(parsed, block) { const body = kbWrite(block.board); return parsed.lines.slice(0, block.from + 1).concat(body, parsed.lines.slice(block.to)).join(parsed.eol); }
+const kbText = (v, max, code) => { const s = String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); if (!s || s.length > max) throw new Fail(400, code); return s; };
+function kbAttrs(card, attrs) {
+  if (attrs == null) return;
+  if (typeof attrs !== 'object' || Array.isArray(attrs)) throw new Fail(400, 'bad_attrs', 'attrs is an object of key and value');
+  for (const k of Object.keys(attrs)) {
+    if (!KB_KEY.test(k) || KB_RESERVED.has(k)) throw new Fail(400, 'bad_attr_key', 'Attribute keys start with a letter, have no spaces and are not id, created, updated or show: ' + k.slice(0, 40));
+    const v = attrs[k];
+    if (v == null || v === '') { delete card.attrs[k]; continue; }
+    if (typeof v === 'object') throw new Fail(400, 'bad_attrs', 'Attribute values are text, numbers or true/false');
+    card.attrs[k] = String(v).replace(/\s+/g, ' ').trim().slice(0, 500);
+  }
+  if (Object.keys(card.attrs).length > 30) throw new Fail(400, 'too_many_attrs', 'A card holds up to 30 attributes');
+}
+const kbColumn = (board, title, make) => { const t = kbText(title, 120, 'bad_column'); let col = board.columns.find((c) => c.title === t) || board.columns.find((c) => c.title.toLowerCase() === t.toLowerCase()); if (!col && make) { col = { title: t, cards: [] }; board.columns.push(col); } if (!col) throw new Fail(404, 'column_not_found', 'There is no column called ' + t); return col; };
+// Una operación sobre las tarjetas de una nota. Devuelve el texto nuevo y la tarjeta tocada. op: create, update, delete.
+function kbApply(text, op, args) {
+  const parsed = kbBlocks(text); const at = isoNow();
+  if (!parsed.blocks.length) throw new Fail(404, 'no_board', 'This note has no kanban board');
+  if (op === 'create') {
+    const bi = args.board == null ? 0 : +args.board; const block = parsed.blocks[bi];
+    if (!block) throw new Fail(404, 'no_board', 'This note has no board number ' + args.board);
+    const col = args.column == null || args.column === '' ? block.board.columns[0] || kbColumn(block.board, 'To do', true) : kbColumn(block.board, args.column, true);
+    const card = { id: kbId(), text: kbText(args.title, 500, 'bad_title'), done: args.done === true, created: at, updated: at, attrs: {} };
+    kbAttrs(card, args.attrs);
+    if (args.position === 'top') col.cards.unshift(card); else col.cards.push(card);
+    kbStamp(block.board, at);
+    return { text: kbSave(parsed, block), card: kbCard(card, col.title), board: bi };
+  }
+  const want = String(args.id == null ? '' : args.id); const ref = /^(\d+)\.(\d+)\.(\d+)$/.exec(want); let hit = null;
+  parsed.blocks.forEach((block, bi) => block.board.columns.forEach((col, ci) => col.cards.forEach((card, ki) => { if (!hit && want && (card.id === want || (ref && +ref[1] === bi && +ref[2] === ci && +ref[3] === ki))) hit = { block, bi, col, ki, card }; })));
+  if (!hit) throw new Fail(404, 'card_not_found', 'There is no card with that id in this note');
+  const { block, card } = hit; let col = hit.col;
+  if (op === 'delete') { col.cards.splice(hit.ki, 1); kbStamp(block.board, at); return { text: kbSave(parsed, block), card: kbCard(card, col.title), board: hit.bi }; }
+  const was = JSON.stringify([card.text, card.done, card.attrs, col.title]);
+  if (args.title != null) card.text = kbText(args.title, 500, 'bad_title');
+  if (args.done != null) card.done = args.done === true || args.done === 'true' || args.done === 1;
+  kbAttrs(card, args.attrs);
+  if (args.column != null && args.column !== '') {
+    const to = kbColumn(block.board, args.column, true);
+    if (to !== col || args.position) { col.cards.splice(col.cards.indexOf(card), 1); if (args.position === 'top') to.cards.unshift(card); else to.cards.push(card); col = to; }
+  }
+  kbStamp(block.board, at);
+  if (JSON.stringify([card.text, card.done, card.attrs, col.title]) !== was) card.updated = at;
+  return { text: kbSave(parsed, block), card: kbCard(card, col.title), board: hit.bi };
+}
+
+// ---------- Eventos ----------
+const EVENT_TYPES = ['note.created', 'note.updated', 'note.deleted', 'note.restored', 'note.moved', 'comment.created', 'comment.resolved', 'card.created', 'card.moved', 'card.updated', 'card.done', 'card.deleted'];
+const HOOK_FORMATS = ['json', 'slack', 'discord'];
+const MAX_HOOKS = 20; const MAX_INBOXES = 20; const HOOK_LOG = 50; const HOOK_TEXT_MAX = 64 * 1024; const HOOK_QUEUE = 300; const CARD_EVENTS_MAX = 50;
+const HOOK_PRIVATE = env.WEBHOOK_ALLOW_PRIVATE === '1';
+const HOOK_RETRY = String(env.WEBHOOK_RETRY_MS || '60000,300000,900000,2400000').split(',').map((s) => +s).filter((n) => n >= 0);
+const HOOK_MAX_FAILS = Math.max(1, +(env.WEBHOOK_MAX_FAILS || 15));
+const HOOK_TIMEOUT = Math.max(200, +(env.WEBHOOK_TIMEOUT_MS || 8000));
+const HOOK_UPDATE_WAIT = Math.max(0, +(env.WEBHOOK_UPDATE_WAIT_MS == null ? 10000 : env.WEBHOOK_UPDATE_WAIT_MS));
+const API_PER_MIN = Math.max(1, +(env.API_PER_MINUTE || 120)); const IN_PER_MIN = Math.max(1, +(env.INBOX_PER_MINUTE || 60)); const IN_PER_DAY = 5000; const IN_MAX = 64 * 1024;
+// url y secret van cifrados en reposo con DATA_KEY, como el texto de las notas: la dirección de un webhook de Slack
+// es una credencial, y el secreto tiene que poder leerse para firmar (por eso no se guarda como hash).
+// off: '' prendido, 'user' pausado por la persona, 'failed' desactivado por fallos seguidos.
+db.exec("CREATE TABLE IF NOT EXISTS hooks (id INTEGER PRIMARY KEY, user INTEGER NOT NULL, maker INTEGER NOT NULL, name TEXT NOT NULL DEFAULT '', url TEXT NOT NULL, secret TEXT NOT NULL, e INTEGER NOT NULL DEFAULT 0, host TEXT NOT NULL DEFAULT '', scope_kind TEXT NOT NULL DEFAULT 'all', scope_path TEXT NOT NULL DEFAULT '', events TEXT NOT NULL, format TEXT NOT NULL DEFAULT 'json', body INTEGER NOT NULL DEFAULT 0, lang TEXT NOT NULL DEFAULT 'en', off TEXT NOT NULL DEFAULT '', fails INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL, last INTEGER, last_code INTEGER)");
+db.exec('CREATE INDEX IF NOT EXISTS hooks_user ON hooks (user)');
+// La cola de entregas y, a la vez, su registro. Entregada o vencida, de una entrega queda el tipo de evento, la ruta
+// de la nota, el estado, el código de la respuesta y cuánto tardó: el cuerpo se borra.
+db.exec("CREATE TABLE IF NOT EXISTS hook_jobs (id INTEGER PRIMARY KEY, hook INTEGER NOT NULL, event TEXT NOT NULL, type TEXT NOT NULL, path TEXT NOT NULL DEFAULT '', body TEXT, e INTEGER NOT NULL DEFAULT 0, attempt INTEGER NOT NULL DEFAULT 0, next INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending', code INTEGER, ms INTEGER, err TEXT, created INTEGER NOT NULL, done INTEGER)");
+db.exec('CREATE INDEX IF NOT EXISTS hook_jobs_due ON hook_jobs (status, next)');
+db.exec('CREATE INDEX IF NOT EXISTS hook_jobs_hook ON hook_jobs (hook, id)');
+// Direcciones de entrada. Del secreto se guarda el hash y sus últimos caracteres, para reconocerla en la lista.
+// kind: 'append' agrega a una nota, 'create' crea una nota en una carpeta, 'card' crea una tarjeta en un tablero.
+db.exec("CREATE TABLE IF NOT EXISTS inboxes (id INTEGER PRIMARY KEY, user INTEGER NOT NULL, maker INTEGER NOT NULL, hash TEXT UNIQUE NOT NULL, hint TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT 'append', path TEXT NOT NULL DEFAULT '', tpl TEXT NOT NULL DEFAULT '', col TEXT NOT NULL DEFAULT '', allow_get INTEGER NOT NULL DEFAULT 0, tz TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL, used INTEGER, n INTEGER NOT NULL DEFAULT 0)");
+db.exec('CREATE INDEX IF NOT EXISTS inboxes_user ON inboxes (user)');
+ACCOUNT_ROWS.unshift('DELETE FROM hook_jobs WHERE hook IN (SELECT id FROM hooks WHERE user = ?)', 'DELETE FROM hooks WHERE user = ?', 'DELETE FROM inboxes WHERE user = ?');
+// El identificador de la cuenta que viaja en los eventos: opaco y estable, nunca el correo ni el número interno.
+const AUTO_SALT = (() => { const row = q("SELECT value FROM meta WHERE key = 'auto_salt'").get(); if (row) return row.value; const v = random(24); q("INSERT INTO meta (key, value) VALUES ('auto_salt', ?)").run(v); return v; })();
+const autoAcct = (id) => 'acc_' + sha(AUTO_SALT + ':' + id).slice(0, 20);
+const autoAllowed = (owner) => !!owner && mcpAllowed(owner);
+const isSpace = (owner) => String(owner.email || '').startsWith('team:');
+// Cómo se llama un miembro en un evento: lo que va antes de la arroba de su correo, que es como lo ve su equipo.
+// La dirección entera no viaja nunca.
+const memberName = (u) => String(u.email || '').split('@')[0].split('+')[0].slice(0, 40);
+function autoActor(owner) {
+  const st = reqCtx.getStore() || {}; const u = st.user; const via = st.via || (u && u.tokenId ? 'mcp' : 'app');
+  if (u && u.id !== owner.id && u.team && u.team.space === owner.id) return { type: 'member', name: memberName(u), via };
+  return { type: via };
+}
+const autoUrl = (owner, p) => APP_URL + '?f=' + encodeURIComponent('cloud/' + (isSpace(owner) ? '~' + owner.id + '/' : '') + p.split('/').map(encodeURIComponent).join('/'));
+const autoNoteRef = (owner, p) => ({ path: (isSpace(owner) ? TEAM_PRE : '') + p, name: p.split('/').pop(), url: autoUrl(owner, p), space: isSpace(owner) ? 'team' : 'own' });
+const hookCovers = (h, p) => h.scope_kind === 'all' || (h.scope_kind === 'folder' ? p.startsWith(h.scope_path + '/') : p === h.scope_path);
+
+// Una línea legible por evento, para Slack y Discord. link arma el enlace a la nota como lo pide cada uno.
+const AUTO_WORDS = {
+  en: { 'note.created': 'Note created: {note}', 'note.updated': 'Note updated: {note}', 'note.deleted': 'Note deleted: {path}', 'note.restored': 'Note restored: {note}', 'note.moved': 'Note moved from {from} to {note}',
+    'comment.created': 'New comment on {note}: "{text}"', 'comment.resolved': 'Comment resolved on {note}', 'card.created': 'Card "{title}" added to {column} in {note}', 'card.moved': 'Card "{title}" moved from {from} to {to} in {note}',
+    'card.updated': 'Card "{title}" updated in {note}: {changes}', 'card.done': 'Card "{title}" done in {note}', 'card.deleted': 'Card "{title}" removed from {note}', ping: 'SharpMD test: this automation works', by: ' by {name}', none: 'empty' },
+  es: { 'note.created': 'Nota creada: {note}', 'note.updated': 'Nota actualizada: {note}', 'note.deleted': 'Nota eliminada: {path}', 'note.restored': 'Nota restaurada: {note}', 'note.moved': 'Nota movida de {from} a {note}',
+    'comment.created': 'Comentario nuevo en {note}: "{text}"', 'comment.resolved': 'Comentario resuelto en {note}', 'card.created': 'Tarjeta "{title}" agregada a {column} en {note}', 'card.moved': 'Tarjeta "{title}" pasó de {from} a {to} en {note}',
+    'card.updated': 'Tarjeta "{title}" actualizada en {note}: {changes}', 'card.done': 'Tarjeta "{title}" hecha en {note}', 'card.deleted': 'Tarjeta "{title}" quitada de {note}', ping: 'Prueba de SharpMD: esta automatización funciona', by: ' por {name}', none: 'vacío' },
+};
+function autoLine(ev, lang, clean, link) {
+  const w = AUTO_WORDS[lang === 'es' ? 'es' : 'en']; const d = ev.data || {}; const card = d.card || {};
+  const short = (v) => clean(String(v == null ? '' : v).replace(/\s+/g, ' ').slice(0, 200));
+  const vals = { note: ev.note ? link(ev.note.url, clean(ev.note.path)) : '', path: ev.note ? clean(ev.note.path) : '', title: short(card.title), column: short(card.column), from: short(d.from), to: short(d.to), text: short(d.comment && d.comment.text),
+    changes: d.changes ? Object.keys(d.changes).slice(0, 6).map((k) => short(k) + ' ' + (d.changes[k].from == null ? w.none : short(d.changes[k].from)) + ' → ' + (d.changes[k].to == null ? w.none : short(d.changes[k].to))).join(', ') : '' };
+  const fill = (s, o) => s.replace(/\{(\w+)\}/g, (m, k) => (o[k] == null ? '' : o[k]));
+  return fill(w[ev.type] || ev.type, vals) + (ev.actor && ev.actor.type === 'member' && ev.actor.name ? fill(w.by, { name: clean(ev.actor.name) }) : '');
+}
+const slackClean = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const discordClean = (s) => s.replace(/([\\*_~`|>\[\]()@#])/g, '\\$1');
+function hookBody(hook, ev) {
+  if (hook.format === 'slack') return JSON.stringify({ text: autoLine(ev, hook.lang, slackClean, (url, text) => '<' + url + '|' + text + '>') });
+  if (hook.format === 'discord') return JSON.stringify({ content: autoLine(ev, hook.lang, discordClean, (url, text) => '[' + text + '](' + url + ')').slice(0, 1900), allowed_mentions: { parse: [] } });
+  return JSON.stringify(ev);
+}
+// Deja el evento en la cola de cada webhook de esa cuenta que lo mira. text: el contenido de la nota, para los que lo
+// pidieron. Nunca corta lo que la llamó: si algo falla acá, la nota ya quedó guardada.
+function autoEmit(owner, type, p, data, opt) {
+  try {
+    if (!owner || !type) return;
+    const hooks = q("SELECT * FROM hooks WHERE user = ? AND off = ''").all(owner.id).filter((h) => (hookCovers(h, p) || (opt && opt.from && hookCovers(h, opt.from))) && JSON.parse(h.events).includes(type));
+    if (!hooks.length || !autoAllowed(owner)) return;
+    // Lo que está en una carpeta protegida no genera eventos.
+    if (vaultOf(owner.id, p) || (opt && opt.from && vaultOf(owner.id, opt.from))) return;
+    const at = now(); const ev = { id: 'evt_' + random(15), type, created: iso(at), account: autoAcct(owner.id), note: autoNoteRef(owner, p), actor: autoActor(owner), data: data || {} };
+    for (const h of hooks) {
+      let one = ev;
+      if (opt && opt.text != null && h.body && h.format === 'json') { const cut = Buffer.byteLength(opt.text) > HOOK_TEXT_MAX; one = Object.assign({}, ev, { data: Object.assign({}, ev.data, { text: cut ? Buffer.from(opt.text).subarray(0, HOOK_TEXT_MAX).toString('utf8') : opt.text, truncated: cut }) }); }
+      const body = seal(hookBody(h, one), 'hook_jobs.body');
+      // Los guardados seguidos de una nota salen como un solo note.updated, con lo último.
+      const wait = type === 'note.updated' ? HOOK_UPDATE_WAIT : 0;
+      const same = wait ? q("SELECT id FROM hook_jobs WHERE hook = ? AND type = 'note.updated' AND path = ? AND status = 'pending' AND attempt = 0").get(h.id, p) : null;
+      if (same && !autoRunning.has(same.id)) { q('UPDATE hook_jobs SET body = ?, e = ?, event = ?, next = ? WHERE id = ?').run(body, SEALED, ev.id, at + wait, same.id); setTimeout(autoPump, wait + 20).unref(); continue; }
+      if (q("SELECT COUNT(*) AS n FROM hook_jobs WHERE hook = ? AND status = 'pending'").get(h.id).n >= HOOK_QUEUE) continue;
+      q('INSERT INTO hook_jobs (hook, event, type, path, body, e, next, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(h.id, ev.id, type, p, body, SEALED, at + wait, at);
+      if (wait) setTimeout(autoPump, wait + 20).unref();
+    }
+    setImmediate(autoPump);
+  } catch (e) { console.error('automatizaciones: no se pudo anotar el evento ' + type + ' · ' + String(e && e.stack || e).slice(0, 600)); }
+}
+// Una nota se guardó. prev es el texto que había (null si la nota es nueva); v, si el texto llegó cifrado desde el navegador.
+function autoNoteSaved(owner, p, prev, text, saved, v) {
+  if (v || text.startsWith(VAULT) || (prev != null && prev.startsWith(VAULT)) || prev === text) return;
+  const data = { rev: saved.rev, size: saved.size, updated: iso(saved.updated) };
+  autoEmit(owner, prev == null ? 'note.created' : 'note.updated', p, data, { text });
+  if (prev == null || (!kbHas(prev) && !kbHas(text))) return;
+  let events = [];
+  try { events = kbDiff(prev, text); } catch (e) { return; }
+  for (const ev of events.slice(0, CARD_EVENTS_MAX)) autoEmit(owner, ev.type, p, Object.assign(ev.data, { rev: saved.rev }));
+}
+function autoNoteMoved(owner, from, to) {
+  // Lo que apuntaba a esa nota (un webhook de una sola nota, una dirección de entrada) la sigue.
+  try { q("UPDATE hooks SET scope_path = ? WHERE user = ? AND scope_kind = 'note' AND scope_path = ?").run(to, owner.id, from); q("UPDATE inboxes SET path = ? WHERE user = ? AND kind != 'create' AND path = ?").run(to, owner.id, from); } catch (e) { /* el evento sale igual */ }
+  autoEmit(owner, 'note.moved', to, { from: (isSpace(owner) ? TEAM_PRE : '') + from, to: (isSpace(owner) ? TEAM_PRE : '') + to }, { from });
+}
+
+// ---------- Destinos: nada de red privada ----------
+// Un webhook hace que el servidor llame a una dirección que eligió otra persona. Sin cuidado, eso sirve para llegar
+// a lo que solo el servidor ve: su propia máquina, la red interna, el servicio de metadatos de la nube. Por eso:
+// solo https, sin usuario ni contraseña en la dirección; el nombre se resuelve y todas sus direcciones tienen que
+// ser públicas; la conexión se hace a esa misma dirección ya comprobada (no se vuelve a resolver); no se siguen
+// redirecciones; hay tiempo límite y la respuesta se corta pasado un tope. Se comprueba al crear y en cada entrega.
+function ip4Private(a, b, c) {
+  return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) ||
+    (a === 192 && b === 0 && (c === 0 || c === 2)) || (a === 198 && (b === 18 || b === 19)) || (a === 198 && b === 51 && c === 100) || (a === 203 && b === 0 && c === 113);
+}
+// Las ocho palabras de una dirección IPv6, o null si no se entiende.
+function ip6Words(ip) {
+  let s = String(ip).split('%')[0].toLowerCase();
+  const v4 = /^(.*:)(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s);
+  if (v4) { const n = v4.slice(2).map(Number); if (n.some((x) => x > 255)) return null; s = v4[1] + ((n[0] << 8) | n[1]).toString(16) + ':' + ((n[2] << 8) | n[3]).toString(16); }
+  const halves = s.split('::'); if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(':') : []; const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  const gap = 8 - head.length - tail.length;
+  if (halves.length === 1 ? head.length !== 8 : gap < 1) return null;
+  const words = head.concat(Array(halves.length === 2 ? gap : 0).fill('0'), tail);
+  if (words.some((w) => !/^[0-9a-f]{1,4}$/.test(w))) return null;
+  return words.map((w) => parseInt(w, 16));
+}
+function ipPrivate(ip) {
+  const kind = net.isIP(String(ip).split('%')[0]);
+  if (kind === 4) { const n = ip.split('.').map(Number); return ip4Private(n[0], n[1], n[2]); }
+  if (kind !== 6) return true; // lo que no se entiende, no pasa
+  const w = ip6Words(ip); if (!w) return true;
+  const v4 = (hi, lo) => ip4Private(hi >> 8, hi & 255, lo >> 8);
+  if (w.slice(0, 5).every((x) => x === 0) && (w[5] === 0xffff || w[5] === 0)) return w[5] === 0 ? true : v4(w[6], w[7]); // ::, ::1, ::a.b.c.d y ::ffff:a.b.c.d
+  if (w[0] === 0x64 && w[1] === 0xff9b) return w[2] === 0 && w[3] === 0 && w[4] === 0 && w[5] === 0 ? v4(w[6], w[7]) : true; // NAT64
+  if (w[0] === 0x2002) return v4(w[1], w[2]); // 6to4
+  if (w[0] === 0x2001 && (w[1] === 0 || w[1] === 0xdb8)) return true; // Teredo y documentación
+  if (w[0] === 0x100 && w[1] === 0) return true; // descarte
+  return (w[0] & 0xfe00) === 0xfc00 || (w[0] & 0xffc0) === 0xfe80 || (w[0] & 0xffc0) === 0xfec0 || (w[0] & 0xff00) === 0xff00 || w[0] === 0;
+}
+const NO_DEST = (why) => new Fail(400, 'bad_destination', why);
+// Lo que se puede saber sin resolver el nombre. Devuelve la dirección ya leída.
+function hookUrl(raw) {
+  let u; try { u = new URL(String(raw || '').trim()); } catch (e) { throw NO_DEST('That is not a web address'); }
+  if (String(raw).length > 2000) throw NO_DEST('That address is too long');
+  if (u.username || u.password) throw NO_DEST('The address cannot carry a user or a password');
+  if (u.protocol !== 'https:' && !(HOOK_PRIVATE && u.protocol === 'http:')) throw NO_DEST('The address has to start with https://');
+  const host = u.hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
+  if (!host) throw NO_DEST('That is not a web address');
+  if (HOOK_PRIVATE) return { u, host };
+  if (u.port && +u.port !== 443 && +u.port < 1024) throw NO_DEST('That port is not allowed');
+  if (net.isIP(host) ? ipPrivate(host) : (!host.includes('.') || /(^|\.)(localhost|local|localdomain|internal|intranet|lan|home|corp|test|invalid|example|onion)$/.test(host))) throw NO_DEST('That address points to a private network');
+  return { u, host };
+}
+async function hookTarget(raw) {
+  const { u, host } = hookUrl(raw);
+  if (net.isIP(host)) return { u, host, ip: host, family: net.isIP(host) };
+  let all = [];
+  try { all = await dns.promises.lookup(host, { all: true, verbatim: true }); } catch (e) { throw new Fail(400, 'dns_failed', 'That name does not resolve'); }
+  if (!all.length) throw new Fail(400, 'dns_failed', 'That name does not resolve');
+  if (!HOOK_PRIVATE && all.some((a) => ipPrivate(a.address))) throw NO_DEST('That address points to a private network');
+  const pick = all.find((a) => a.family === 4) || all[0];
+  return { u, host, ip: pick.address, family: pick.family };
+}
+// Manda el cuerpo y devuelve { code, ms, err }. No tira: una entrega fallida es un resultado.
+async function hookPost(raw, body, headers) {
+  const t0 = now(); let t;
+  try { t = await hookTarget(raw); } catch (e) { return { code: 0, ms: now() - t0, err: e.code === 'dns_failed' ? 'dns_failed' : 'blocked_destination' }; }
+  return new Promise((resolve) => {
+    let settled = false; let req = null;
+    const end = (code, err) => { if (settled) return; settled = true; clearTimeout(timer); resolve({ code, ms: now() - t0, err: err || '' }); if (req) req.destroy(); };
+    const timer = setTimeout(() => end(0, 'timeout'), HOOK_TIMEOUT);
+    try {
+      const lib = t.u.protocol === 'https:' ? https : http;
+      req = lib.request({ protocol: t.u.protocol, hostname: t.host, port: t.u.port || (t.u.protocol === 'https:' ? 443 : 80), path: t.u.pathname + t.u.search, method: 'POST', agent: false,
+        servername: t.u.protocol === 'https:' && !net.isIP(t.host) ? t.host : undefined,
+        // La conexión va a la dirección que ya se comprobó: el nombre no se vuelve a resolver.
+        lookup: (h, o, cb) => { if (typeof o === 'function') { cb = o; o = {}; } if (o && o.all) cb(null, [{ address: t.ip, family: t.family }]); else cb(null, t.ip, t.family); },
+        headers: Object.assign({ 'content-type': 'application/json; charset=utf-8', 'content-length': Buffer.byteLength(body), 'user-agent': 'SharpMD-Webhooks/1 (+https://sharpmd.app/api.html)', accept: '*/*' }, headers) });
+      req.on('response', (res) => {
+        const code = res.statusCode || 0; let seen = 0;
+        // La respuesta no se guarda: se lee hasta un tope y se suelta.
+        res.on('data', (c) => { seen += c.length; if (seen > 16384) end(code, code >= 200 && code < 300 ? '' : code >= 300 && code < 400 ? 'redirect' : 'http_' + code); });
+        res.on('end', () => end(code, code >= 200 && code < 300 ? '' : code >= 300 && code < 400 ? 'redirect' : 'http_' + code));
+        res.on('error', () => end(code, code >= 200 && code < 300 ? '' : 'http_' + code));
+      });
+      req.on('error', (e) => end(0, /certificate|self.signed|CERT|TLS|SSL/i.test(String(e && (e.code || e.message))) ? 'tls' : 'connection'));
+      req.end(body);
+    } catch (e) { end(0, 'connection'); }
+  });
+}
+// t=<segundos>,v1=<HMAC-SHA-256 en hexadecimal de "<t>.<cuerpo>" con el secreto del webhook>. Quien recibe rehace la
+// cuenta y descarta lo que traiga una marca de tiempo vieja: así un pedido copiado no sirve más tarde.
+const hookSign = (secret, body, at) => { const t = Math.floor((at || now()) / 1000); return 't=' + t + ',v1=' + crypto.createHmac('sha256', secret).update(t + '.' + body).digest('hex'); };
+const hookHeaders = (hook, job, body) => ({ 'x-sharpmd-event': job.type, 'x-sharpmd-delivery': job.event, 'x-sharpmd-signature': hookSign(unseal(hook.secret, hook.e, 'hooks.secret'), body) });
+
+// ---------- La cola ----------
+const autoRunning = new Set(); const AUTO_PARALLEL = 4;
+function autoPump() {
+  if (autoRunning.size >= AUTO_PARALLEL) return;
+  let due = [];
+  try { due = q("SELECT * FROM hook_jobs WHERE status = 'pending' AND next <= ? ORDER BY next, id LIMIT 20").all(now()); } catch (e) { return; }
+  for (const job of due) {
+    if (autoRunning.size >= AUTO_PARALLEL) break;
+    if (autoRunning.has(job.id)) continue;
+    autoRunning.add(job.id);
+    autoDeliver(job).catch((e) => console.error('automatizaciones: entrega · ' + String(e && e.stack || e).slice(0, 600))).finally(() => { autoRunning.delete(job.id); setImmediate(autoPump); });
+  }
+}
+const jobClose = (job, status, r) => q('UPDATE hook_jobs SET status = ?, body = NULL, e = 0, code = ?, ms = ?, err = ?, done = ?, attempt = ? WHERE id = ?').run(status, r.code || 0, r.ms || 0, r.err || '', now(), job.attempt, job.id);
+async function autoDeliver(job) {
+  const hook = q('SELECT * FROM hooks WHERE id = ?').get(job.hook);
+  if (!hook || hook.off) { jobClose(job, 'canceled', {}); return; }
+  const body = unseal(job.body, job.e, 'hook_jobs.body');
+  const r = await hookPost(unseal(hook.url, hook.e, 'hooks.url'), body, hookHeaders(hook, job, body));
+  job.attempt++;
+  const ok = !r.err && r.code >= 200 && r.code < 300;
+  // La cuenta de fallos se lleva en la base: dos entregas del mismo webhook pueden terminar a la vez.
+  q('UPDATE hooks SET last = ?, last_code = ?, fails = CASE WHEN ? THEN 0 ELSE fails + 1 END WHERE id = ?').run(now(), r.code || 0, ok ? 1 : 0, hook.id);
+  const fails = (q('SELECT fails FROM hooks WHERE id = ?').get(hook.id) || { fails: 0 }).fails;
+  if (ok) jobClose(job, 'ok', r);
+  else if (fails >= HOOK_MAX_FAILS) {
+    // Muchos fallos seguidos: el webhook se desactiva y lo que tenía en cola no sale. La app lo muestra y deja volver a prenderlo.
+    jobClose(job, 'failed', r);
+    q("UPDATE hooks SET off = 'failed' WHERE id = ?").run(hook.id);
+    q("UPDATE hook_jobs SET status = 'canceled', body = NULL, e = 0, done = ? WHERE hook = ? AND status = 'pending'").run(now(), hook.id);
+  } else if (job.attempt > HOOK_RETRY.length) jobClose(job, 'failed', r);
+  else {
+    const wait = HOOK_RETRY[job.attempt - 1];
+    q('UPDATE hook_jobs SET attempt = ?, next = ?, code = ?, ms = ?, err = ? WHERE id = ?').run(job.attempt, now() + wait, r.code || 0, r.ms || 0, r.err || '', job.id);
+    setTimeout(autoPump, wait + 20).unref();
+  }
+  q('DELETE FROM hook_jobs WHERE hook = ? AND status != ? AND id NOT IN (SELECT id FROM hook_jobs WHERE hook = ? AND status != ? ORDER BY id DESC LIMIT ?)').run(hook.id, 'pending', hook.id, 'pending', HOOK_LOG);
+}
+setInterval(autoPump, 5000).unref();
+setInterval(() => { try { q("DELETE FROM hook_jobs WHERE status != 'pending' AND created < ?").run(now() - 30 * DAY); q('DELETE FROM hook_jobs WHERE hook NOT IN (SELECT id FROM hooks)').run(); } catch (e) { /* en la próxima */ } }, 6 * HOUR).unref();
+setImmediate(autoPump); // lo que quedó en cola antes de un reinicio sale al arrancar
+
+// ---------- Automatizaciones: lo que maneja la app, con la sesión de la cuenta ----------
+// Las de una cuenta las maneja esa cuenta. Las del espacio de un equipo (o = el número del espacio), quien lo administra.
+function autoOwner(user, o) {
+  if (o == null || o === '' || +o === user.id) return user;
+  if (user.team && +o === user.team.space) { if (user.team.owner !== user.id) throw new Fail(403, 'team_admin_only', 'Only the team admin manages the automations of the team space'); return userById(user.team.space); }
+  throw new Fail(403, 'no_access');
+}
+const autoNeedsPlan = (owner) => { if (!autoAllowed(owner)) throw new Fail(402, 'automation_needs_plan', 'Automations are part of the paid plan'); };
+const hookMask = (url) => { try { const u = new URL(url); const tail = (u.pathname + u.search).replace(/\/+$/, ''); return u.protocol + '//' + u.host + (tail.length > 6 ? '/…' + tail.slice(-4) : tail); } catch (e) { return ''; } };
+const hookView = (h) => ({ id: h.id, name: h.name, destination: hookMask(unseal(h.url, h.e, 'hooks.url')), scope: { kind: h.scope_kind, path: h.scope_path }, events: JSON.parse(h.events), format: h.format, include_text: !!h.body, lang: h.lang,
+  state: h.off === 'failed' ? 'failed' : h.off ? 'paused' : 'on', created: h.created, last: h.last ? { at: h.last, code: h.last_code || 0, ok: (h.last_code || 0) >= 200 && (h.last_code || 0) < 300 } : null });
+const inboxView = (r) => ({ id: r.id, name: r.name, kind: r.kind, path: r.path, template: r.tpl, column: r.col, allow_get: !!r.allow_get, hint: r.hint, created: r.created, used: r.used || null, count: r.n });
+// A qué mira un webhook: toda la cuenta, una carpeta o una nota. Nada que esté dentro de una carpeta protegida.
+function autoScope(owner, raw) {
+  const kind = raw && ['all', 'folder', 'note'].includes(raw.kind) ? raw.kind : 'all';
+  if (kind === 'all') return { kind, path: '' };
+  const p = cleanPath(String(raw.path || '').replace(/\/+$/, ''));
+  if (vaultsOf(owner.id).some((v) => p === v.folder || inside(p, v.folder))) throw new Fail(409, 'vault', 'A protected folder cannot be automated: the server cannot read its notes');
+  return { kind, path: p };
+}
+function hookFields(owner, b, was) {
+  const out = {};
+  if (b.name !== undefined || !was) out.name = autoName(b.name);
+  if (b.scope !== undefined || !was) { const s = autoScope(owner, b.scope); out.scope_kind = s.kind; out.scope_path = s.path; }
+  if (b.events !== undefined || !was) { const ev = Array.isArray(b.events) ? Array.from(new Set(b.events.filter((x) => EVENT_TYPES.includes(x)))) : []; if (!ev.length) throw new Fail(400, 'bad_events', 'Pick at least one event'); out.events = JSON.stringify(ev); }
+  if (b.format !== undefined || !was) out.format = HOOK_FORMATS.includes(b.format) ? b.format : 'json';
+  if (b.include_text !== undefined || !was) out.body = b.include_text === true ? 1 : 0;
+  if (b.lang !== undefined || !was) out.lang = b.lang === 'es' ? 'es' : 'en';
+  if (b.url !== undefined || !was) { const { u, host } = hookUrl(b.url); out.url = seal(u.href, 'hooks.url'); out.host = host; }
+  if (b.on !== undefined && was) { out.off = b.on === false ? 'user' : ''; if (b.on !== false) out.fails = 0; }
+  return out;
+}
+function inboxFields(owner, b, was) {
+  const out = {};
+  if (b.name !== undefined || !was) out.name = autoName(b.name);
+  const kind = was ? was.kind : ['append', 'create', 'card'].includes(b.kind) ? b.kind : 'append';
+  if (!was) out.kind = kind;
+  if (b.path !== undefined || !was) {
+    // 'create' apunta a una carpeta (vacío: la raíz); las otras dos, a una nota.
+    const raw = String(b.path || '').replace(/\/+$/, ''); const p = kind === 'create' && !raw ? '' : cleanPath(raw);
+    if (p && vaultsOf(owner.id).some((v) => p === v.folder || inside(p, v.folder))) throw new Fail(409, 'vault', 'A protected folder cannot receive entries: its notes are encrypted in the browser');
+    out.path = p;
+  }
+  if (b.template !== undefined || !was) { out.tpl = String(b.template || '').replace(/\r\n/g, '\n').slice(0, 2000); }
+  if (b.column !== undefined || !was) out.col = String(b.column || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (b.allow_get !== undefined || !was) out.allow_get = b.allow_get === true ? 1 : 0;
+  if (b.tz !== undefined || !was) { let tz = String(b.tz || '').slice(0, 60); try { if (tz) new Intl.DateTimeFormat('en', { timeZone: tz }); } catch (e) { tz = ''; } out.tz = tz; }
+  return out;
+}
+const autoName = (v) => String(v == null ? '' : v).replace(/[\x00-\x1f\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+const sqlSet = (o) => Object.keys(o).map((k) => k + ' = ?').join(', ');
+async function autoRoute(req, user, p, m, url) {
+  const body = m === 'POST' || m === 'PUT' ? await readBody(req) : {};
+  const owner = autoOwner(user, m === 'GET' || m === 'DELETE' ? url.searchParams.get('o') : body.o);
+  if (p === '/automations' && m === 'GET') {
+    return { allowed: autoAllowed(owner), events: EVENT_TYPES, formats: HOOK_FORMATS, api_url: PUBLIC_URL + '/api/v1', inbox_url: PUBLIC_URL + '/in/', limits: { hooks: MAX_HOOKS, inboxes: MAX_INBOXES },
+      hooks: q('SELECT * FROM hooks WHERE user = ? ORDER BY id').all(owner.id).map(hookView), inboxes: q('SELECT * FROM inboxes WHERE user = ? ORDER BY id').all(owner.id).map(inboxView) };
+  }
+  if (p === '/automations/hooks' && m === 'POST') {
+    autoNeedsPlan(owner);
+    if (q('SELECT COUNT(*) AS n FROM hooks WHERE user = ?').get(owner.id).n >= MAX_HOOKS) throw new Fail(429, 'too_many');
+    const f = hookFields(owner, body, null); const secret = 'whsec_' + random(32);
+    const r = q('INSERT INTO hooks (user, maker, name, url, secret, e, host, scope_kind, scope_path, events, format, body, lang, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(owner.id, user.id, f.name, f.url, seal(secret, 'hooks.secret'), SEALED, f.host, f.scope_kind, f.scope_path, f.events, f.format, f.body, f.lang, now());
+    return { hook: hookView(q('SELECT * FROM hooks WHERE id = ?').get(Number(r.lastInsertRowid))), secret };
+  }
+  const hm = /^\/automations\/hooks\/(\d+)(?:\/(test|secret|deliveries))?$/.exec(p);
+  if (hm) {
+    const hook = q('SELECT * FROM hooks WHERE id = ? AND user = ?').get(+hm[1], owner.id);
+    if (!hook) throw new Fail(404, 'not_found');
+    if (!hm[2] && m === 'DELETE') { q('DELETE FROM hook_jobs WHERE hook = ?').run(hook.id); q('DELETE FROM hooks WHERE id = ?').run(hook.id); return { ok: true }; }
+    if (hm[2] === 'deliveries' && m === 'GET') return q('SELECT id, type, path, status, attempt, code, ms, err, created, done FROM hook_jobs WHERE hook = ? ORDER BY id DESC LIMIT ?').all(hook.id, HOOK_LOG)
+      .map((j) => ({ id: j.id, type: j.type, path: j.path, status: j.status, attempts: j.attempt, code: j.code || 0, ms: j.ms || 0, error: j.err || '', created: j.created, done: j.done || null }));
+    autoNeedsPlan(owner);
+    if (!hm[2] && m === 'PUT') {
+      const f = hookFields(owner, body, hook);
+      // Una fila cifrada con otra marca: la dirección nueva y el secreto de antes tienen que quedar con la misma.
+      if (f.url !== undefined && hook.e !== SEALED) { f.secret = seal(unseal(hook.secret, hook.e, 'hooks.secret'), 'hooks.secret'); f.e = SEALED; }
+      if (Object.keys(f).length) q('UPDATE hooks SET ' + sqlSet(f) + ' WHERE id = ?').run(...Object.values(f), hook.id);
+      return { hook: hookView(q('SELECT * FROM hooks WHERE id = ?').get(hook.id)) };
+    }
+    if (hm[2] === 'secret' && m === 'POST') {
+      const secret = 'whsec_' + random(32);
+      q('UPDATE hooks SET secret = ?, url = ?, e = ? WHERE id = ?').run(seal(secret, 'hooks.secret'), seal(unseal(hook.url, hook.e, 'hooks.url'), 'hooks.url'), SEALED, hook.id);
+      return { secret };
+    }
+    if (hm[2] === 'test' && m === 'POST') {
+      rate('hooktest:' + user.id, 10, 60000, 'too_many');
+      const ev = { id: 'evt_' + random(15), type: 'ping', created: isoNow(), account: autoAcct(owner.id), note: null, actor: { type: 'app' }, data: { message: 'This is a test from SharpMD' } };
+      const text = hookBody(hook, ev); const job = { type: 'ping', event: ev.id };
+      const r = await hookPost(unseal(hook.url, hook.e, 'hooks.url'), text, hookHeaders(hook, job, text));
+      const ok = !r.err && r.code >= 200 && r.code < 300;
+      q("INSERT INTO hook_jobs (hook, event, type, path, body, attempt, next, status, code, ms, err, created, done) VALUES (?, ?, 'ping', '', NULL, 1, ?, ?, ?, ?, ?, ?, ?)").run(hook.id, ev.id, now(), ok ? 'ok' : 'failed', r.code || 0, r.ms || 0, r.err || '', now(), now());
+      q('UPDATE hooks SET last = ?, last_code = ? WHERE id = ?').run(now(), r.code || 0, hook.id);
+      return { ok, code: r.code || 0, ms: r.ms || 0, error: r.err || '' };
+    }
+  }
+  if (p === '/automations/inboxes' && m === 'POST') {
+    autoNeedsPlan(owner);
+    if (q('SELECT COUNT(*) AS n FROM inboxes WHERE user = ?').get(owner.id).n >= MAX_INBOXES) throw new Fail(429, 'too_many');
+    const f = inboxFields(owner, body, null); const secret = 'mdi_' + random(32);
+    const r = q('INSERT INTO inboxes (user, maker, hash, hint, name, kind, path, tpl, col, allow_get, tz, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(owner.id, user.id, sha(secret), secret.slice(-4), f.name, f.kind, f.path, f.tpl, f.col, f.allow_get, f.tz, now());
+    return { inbox: inboxView(q('SELECT * FROM inboxes WHERE id = ?').get(Number(r.lastInsertRowid))), url: PUBLIC_URL + '/in/' + secret };
+  }
+  const im = /^\/automations\/inboxes\/(\d+)(?:\/(secret))?$/.exec(p);
+  if (im) {
+    const row = q('SELECT * FROM inboxes WHERE id = ? AND user = ?').get(+im[1], owner.id);
+    if (!row) throw new Fail(404, 'not_found');
+    if (!im[2] && m === 'DELETE') { q('DELETE FROM inboxes WHERE id = ?').run(row.id); return { ok: true }; }
+    autoNeedsPlan(owner);
+    if (!im[2] && m === 'PUT') { const f = inboxFields(owner, body, row); if (Object.keys(f).length) q('UPDATE inboxes SET ' + sqlSet(f) + ' WHERE id = ?').run(...Object.values(f), row.id); return { inbox: inboxView(q('SELECT * FROM inboxes WHERE id = ?').get(row.id)) }; }
+    // Una dirección nueva: la de antes deja de servir en el acto.
+    if (im[2] === 'secret' && m === 'POST') { const secret = 'mdi_' + random(32); q('UPDATE inboxes SET hash = ?, hint = ? WHERE id = ?').run(sha(secret), secret.slice(-4), row.id); return { url: PUBLIC_URL + '/in/' + secret }; }
+  }
+  throw new Fail(404, 'no_route');
+}
+
+// ---------- Direcciones de entrada ----------
+// POST /in/<secreto> agrega lo que llega a una nota, crea una nota o crea una tarjeta. Quien tiene la dirección
+// puede escribir ahí y nada más: no lee, no lista y la respuesta no trae nada de la nota.
+const inClean = (s) => String(s == null ? '' : s).replace(/\r\n?/g, '\n').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
+const inScalar = (v) => v == null || ['string', 'number', 'boolean'].includes(typeof v);
+function inMultipart(raw, type) {
+  const bm = /boundary=(?:"([^"]+)"|([^;\s]+))/i.exec(type); if (!bm) throw new Fail(400, 'bad_form');
+  const out = {};
+  for (const part of raw.split('--' + (bm[1] || bm[2])).slice(1)) {
+    const cut = part.indexOf('\r\n\r\n'); if (cut < 0) continue;
+    const head = part.slice(0, cut); const name = /name="([^"]*)"/i.exec(head);
+    // Los archivos no se reciben: se saltean.
+    if (!name || /filename=/i.test(head)) continue;
+    out[name[1]] = part.slice(cut + 4).replace(/\r\n$/, '');
+  }
+  return out;
+}
+async function inFields(req) {
+  const type = String(req.headers['content-type'] || '').toLowerCase(); const raw = await readRaw(req, IN_MAX);
+  if (type.includes('json')) {
+    let v; try { v = raw.trim() ? JSON.parse(raw) : {}; } catch (e) { throw new Fail(400, 'bad_json'); }
+    if (typeof v === 'string') return { fields: { text: v }, shape: 'text' };
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return { fields: { text: '```json\n' + JSON.stringify(v, null, 2) + '\n```' }, shape: 'text' };
+    return { fields: v, shape: 'table' };
+  }
+  if (type.includes('x-www-form-urlencoded')) return { fields: Object.fromEntries(new URLSearchParams(raw)), shape: 'list' };
+  if (type.includes('multipart/form-data')) return { fields: inMultipart(raw, String(req.headers['content-type'])), shape: 'list' };
+  return { fields: { text: raw }, shape: 'text' };
+}
+// Lo que llegó, como Markdown: el campo text si vino; si no, los campos como tabla (JSON) o como lista (formulario),
+// y si alguno es una estructura, el JSON entero en un bloque de código.
+function inText(fields, shape) {
+  if (typeof fields.text === 'string' && fields.text.trim()) return inClean(fields.text).trim();
+  const keys = Object.keys(fields).filter((k) => k !== 'text' && k !== 'title').slice(0, 60);
+  if (!keys.length) return '';
+  if (!keys.every((k) => inScalar(fields[k]))) return '```json\n' + JSON.stringify(Object.fromEntries(keys.map((k) => [k, fields[k]])), null, 2).replace(/```/g, '` ` `') + '\n```';
+  const cell = (v) => inClean(v).replace(/\n+/g, ' ').trim();
+  if (shape === 'table') return '| Field | Value |\n| --- | --- |\n' + keys.map((k) => '| ' + cell(k).replace(/\|/g, '\\|') + ' | ' + cell(fields[k]).replace(/\|/g, '\\|') + ' |').join('\n');
+  return keys.map((k) => '- **' + cell(k) + '**: ' + cell(fields[k])).join('\n');
+}
+function inClock(tz) {
+  const d = new Date(); let parts = null;
+  try { parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(d).map((x) => [x.type, x.value])); } catch (e) { parts = null; }
+  const date = parts ? parts.year + '-' + parts.month + '-' + parts.day : d.toISOString().slice(0, 10); const time = parts ? parts.hour + ':' + parts.minute : d.toISOString().slice(11, 16);
+  return { date, time, datetime: isoNow() };
+}
+// Agregar al final: un renglón de lista o de tabla sigue pegado al anterior; lo demás va en un párrafo aparte.
+function inAppend(prev, add) {
+  if (!prev.trim()) return add + '\n';
+  const kind = (line) => (/^\s*([-*+]|\d+[.)])\s/.test(line) ? 'li' : /^\s*\|/.test(line) ? 'row' : '');
+  const lines = prev.replace(/\s+$/, '').split('\n'); const k = kind(add.split('\n')[0]);
+  return prev.replace(/\s+$/, '') + (k && k === kind(lines[lines.length - 1]) ? '\n' : '\n\n') + add + '\n';
+}
+async function inboxRoute(req, url, p, m) {
+  const bad = 'in:bad:' + clientIp(req);
+  limit(bad, 30, HOUR, 'too_many');
+  const secret = p.slice(4);
+  const row = /^mdi_[A-Za-z0-9_-]{20,80}$/.test(secret) ? q('SELECT * FROM inboxes WHERE hash = ?').get(sha(secret)) : null;
+  if (!row) { mark(bad); throw new Fail(404, 'not_found'); }
+  if (m !== 'POST' && !(m === 'GET' && row.allow_get)) throw new Fail(405, 'method_not_allowed');
+  rate('in:' + row.id, IN_PER_MIN, 60000, 'rate_limited'); limit('in:day:' + row.id, IN_PER_DAY, DAY, 'rate_limited'); mark('in:day:' + row.id);
+  const got = m === 'GET' ? { fields: Object.fromEntries(url.searchParams), shape: 'list' } : await inFields(req);
+  const owner = userById(row.user);
+  if (!autoAllowed(owner)) throw new Fail(402, 'automation_needs_plan', 'Automations are part of the paid plan');
+  ctxSet('via', 'inbox'); ctxSet('user', null);
+  const fields = got.fields; const text = inText(fields, got.shape); const title = inScalar(fields.title) ? inClean(fields.title).replace(/\s+/g, ' ').trim().slice(0, 120) : '';
+  if (!text && !title) throw new Fail(400, 'empty', 'Nothing to add: send a text field or a body');
+  const clock = inClock(row.tz);
+  const vars = Object.assign({}, Object.fromEntries(Object.keys(fields).filter((k) => inScalar(fields[k])).map((k) => [k.toLowerCase(), inClean(fields[k])])), { text: text || title, title, date: clock.date, time: clock.time, datetime: clock.datetime });
+  const piece = (row.tpl ? row.tpl.replace(/\{\{\s*([^{}\s]+)\s*\}\}/g, (all, k) => (vars[k.toLowerCase()] == null ? '' : vars[k.toLowerCase()])) : text || title).trim();
+  if (!piece) throw new Fail(400, 'empty', 'Nothing to add: send a text field or a body');
+  const write = (path, next) => { const saved = writeNote(owner, path, next, null); tellSaved(owner.id, path, saved, { by: 'inbox' }, next); return saved; };
+  const current = (path) => { const n = q('SELECT text, e, v FROM notes WHERE user = ? AND path = ?').get(owner.id, path); if (n && n.v) throw new Fail(409, 'vault'); return n ? unseal(n.text, n.e, 'notes.text') : null; };
+  if (row.path && vaultOf(owner.id, row.path + (row.kind === 'create' ? '/x' : ''))) throw new Fail(409, 'vault', 'This entry points to a protected folder');
+  let made = {};
+  if (row.kind === 'create') {
+    // El nombre: el campo title si vino, o la fecha y la hora. Si ya hay una nota con ese nombre, lleva un número.
+    const stem = (title || clock.date + ' ' + clock.time.replace(':', '')).replace(/[\\/:*?"<>|#^[\]\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').replace(/^\.+/, '').trim().slice(0, 100) || clock.date;
+    let path = cleanPath((row.path ? row.path + '/' : '') + stem + '.md');
+    if (q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(owner.id, path)) path = freePath(owner.id, path);
+    write(path, piece + '\n');
+  } else if (row.kind === 'card') {
+    const prev = current(row.path) || '';
+    const base = kbHas(prev) ? prev : inAppend(prev, '```kanban\n## ' + (row.col || 'To do') + '\n```');
+    const attrs = {};
+    for (const k of Object.keys(fields)) if (k !== 'text' && k !== 'title' && KB_KEY.test(k) && !KB_RESERVED.has(k) && inScalar(fields[k]) && String(fields[k] == null ? '' : fields[k]).trim() && Object.keys(attrs).length < 12) attrs[k] = fields[k];
+    const out = kbApply(base, 'create', { column: row.col || null, title: (title || piece.split('\n')[0]).replace(/^[-*+]\s+(\[[ xX]\]\s+)?/, '').slice(0, 300), attrs });
+    write(row.path, out.text); made = { id: out.card.id };
+  } else write(row.path, inAppend(current(row.path) || '', piece));
+  q('UPDATE inboxes SET used = ?, n = n + 1 WHERE id = ?').run(now(), row.id);
+  return Object.assign({ ok: true }, made);
+}
+
+// ---------- API REST ----------
+// /api/v1, con un token mdt_ en Authorization: Bearer. Es otra puerta a lo mismo que ofrece el MCP: cada pedido
+// termina en callTool, así que el alcance del token, el permiso de compartir, el espacio del equipo bajo @team/ y
+// las carpetas protegidas valen igual. Respuestas: { ok: true, data } o { ok: false, error: { code, message } }.
+const OPENAPI = (() => { try { const doc = JSON.parse(fs.readFileSync(new URL('./openapi.json', import.meta.url), 'utf8')); doc.servers = [{ url: PUBLIC_URL }]; return doc; } catch (e) { return null; } })();
+const API_WORDS = { not_found: 'There is nothing at that path', no_auth: 'Send the token in the Authorization header: Bearer mdt_…', bad_auth: 'That token is not valid', bad_path: 'That path is not valid', bad_json: 'The body is not valid JSON', bad_rev: 'rev is a whole number',
+  rev_conflict: 'The note changed since that revision: read it again and retry', too_large: 'That is too large', rate_limited: 'Too many requests: wait and retry', no_route: 'There is no such endpoint', method_not_allowed: 'That method is not allowed here', bad_text: 'The text is missing or too long',
+  note_limit: 'The plan of this account does not hold more notes', exists: 'There is already a note at that path', bad_title: 'The title is missing or too long', bad_column: 'The column name is missing or too long', server_error: 'Something failed on the server' };
+// El cuerpo de un error de la API. El texto de la nota que acompaña a un rev_conflict no viaja.
+function apiError(e) {
+  const known = e instanceof Fail; const code = known ? e.code : 'server_error'; const extra = Object.assign({}, known ? e.extra : null); delete extra.text;
+  return { ok: false, error: Object.assign({ code, message: (known && e.message && e.message !== e.code ? e.message : '') || API_WORDS[code] || '' }, extra) };
+}
+// Lo que la API suma a las herramientas del MCP, y las mismas con la respuesta en datos. k trae las piezas de
+// callTool (cómo ubicar una ruta, abrir una carpeta protegida, leer y escribir): las reglas son las de ahí.
+function apiTool(name, args, k) {
+  const meta = (a) => { const n = q('SELECT rev, updated, size FROM notes WHERE user = ? AND path = ?').get(a.who.id, a.p); return { path: a.full, rev: n ? n.rev : null, updated: n ? iso(n.updated) : null, size: n ? n.size : null, url: k.openUrl(a) }; };
+  const base = (a) => (args.rev == null ? k.revOf(a) : cleanRev(args.rev));
+  if (name === 'read_note') { const a = k.at(args.path); const text = k.read(a, k.gate(a)); return Object.assign({ text }, meta(a)); }
+  if (name === 'write_note') {
+    if (typeof args.text !== 'string') throw new Fail(400, 'bad_text', 'text is the Markdown content of the note');
+    const a = k.at(args.path); const key = k.gate(a); const fresh = k.revOf(a) == null;
+    k.write(a, key, args.text, args.rev == null ? undefined : cleanRev(args.rev));
+    return Object.assign({ created: fresh }, meta(a));
+  }
+  if (name === 'append_note') { if (typeof args.text !== 'string' || !args.text) throw new Fail(400, 'bad_text', 'text is what to add at the end of the note'); k.mcp('append_note', args); return meta(k.at(args.path)); }
+  if (name === 'move_note') { k.mcp('move_note', args); return Object.assign({ from: k.at(args.from).full }, meta(k.at(args.to))); }
+  if (name === 'delete_note') { const a = k.at(args.path); k.gate(a); const out = deleteNote(a.who, a.p); return { path: a.full, trash: out.trash }; }
+  if (name === 'add_comment') {
+    const a = k.at(args.path);
+    if (a.who !== k.user) throw new Fail(409, 'team', 'Comments for the AI work on your own notes, not on the team space');
+    const c = addComment(k.user, { path: a.p, quote: args.quote, text: args.text }); announce(roomKey(k.user.id, c.path), { type: 'comments' });
+    return { id: c.id, path: c.path, quote: c.quote, comment: c.text, created: iso(c.created) };
+  }
+  if (name === 'resolve_comment') { k.mcp('resolve_comment', args); return { id: +args.id, status: 'done' }; }
+  if (name === 'boards') { const a = k.at(args.path); const text = k.read(a, k.gate(a)); return Object.assign({ boards: kbView(text) }, meta(a)); }
+  if (name === 'card_create' || name === 'card_update' || name === 'card_delete') {
+    // Leer, cambiar y escribir sobre la misma revisión: si la nota cambió en el medio, no se pisa.
+    const a = k.at(args.path); const key = k.gate(a); const rev = base(a); const text = k.read(a, key);
+    const out = kbApply(text, name.slice(5), args);
+    k.write(a, key, out.text, rev);
+    return Object.assign({ card: out.card, board: out.board }, meta(a));
+  }
+  return undefined;
+}
+async function apiRoute(req, url, p, m) {
+  const r = p.slice(7) || '/';
+  if (r === '/openapi.json' && m === 'GET') { if (!OPENAPI) throw new Fail(404, 'not_found'); return Object.assign({ __cache: 'public, max-age=300' }, OPENAPI); }
+  const user = userFrom(req, 'token');
+  if (!mcpAllowed(user)) throw new Fail(402, 'api_needs_plan', 'The API is part of the paid plan');
+  rate('api:' + user.tokenId, API_PER_MIN, 60000, 'rate_limited');
+  ctxSet('via', 'api');
+  const qs = url.searchParams; const body = m === 'GET' || m === 'DELETE' ? {} : await readBody(req);
+  const arg = (key) => (body[key] !== undefined ? body[key] : qs.has(key) ? qs.get(key) : undefined);
+  const call = (name, args) => callTool(user, name, args, { raw: true });
+  const ok = (data, more) => Object.assign({ ok: true, data }, more);
+  const num = (v) => (v == null || v === '' ? undefined : Number.isInteger(+v) ? +v : NaN);
+  if (r === '/me' && m === 'GET') return ok({ account: autoAcct(user.id), plan: user.plan, scope: user.scope || null, can_share: !!user.canShare, team: !!user.team, limits: { requests_per_minute: API_PER_MIN } });
+  if (r === '/notes' && m === 'GET') {
+    const all = call('list_notes', { folder: qs.get('folder') || undefined });
+    const size = Math.min(200, Math.max(1, +(qs.get('limit') || 50) || 50)); let from = 0;
+    if (qs.get('cursor')) { from = +Buffer.from(qs.get('cursor'), 'base64url').toString('utf8'); if (!Number.isInteger(from) || from < 0) throw new Fail(400, 'bad_cursor', 'That cursor is not valid'); }
+    return ok(all.slice(from, from + size), { total: all.length, next_cursor: from + size < all.length ? Buffer.from(String(from + size)).toString('base64url') : null });
+  }
+  if (r === '/folders' && m === 'GET') return ok(call('list_folders', {}));
+  if (r === '/search' && m === 'GET') { const out = call('search_notes', { query: qs.get('q') || '' }); return Array.isArray(out) ? ok(out) : ok(out.results, { locked_folders: out.locked_folders }); }
+  if (r === '/note') {
+    if (m === 'GET') return ok(call('read_note', { path: qs.get('path') }));
+    if (m === 'PUT' || m === 'POST') return ok(call('write_note', { path: arg('path'), text: body.text, rev: body.rev }));
+    if (m === 'DELETE') return ok(call('delete_note', { path: qs.get('path') }));
+  }
+  if (r === '/note/append' && m === 'POST') return ok(call('append_note', { path: arg('path'), text: body.text }));
+  if (r === '/note/move' && m === 'POST') return ok(call('move_note', { from: body.from, to: body.to }));
+  if (r === '/history' && m === 'GET') { const v = num(qs.get('version')); const out = call('note_history', { path: qs.get('path'), version: v }); return ok(v == null ? out : { path: qs.get('path'), version: v, text: out }); }
+  if (r === '/comments' && m === 'GET') return ok(call('list_comments', { path: qs.get('path') || undefined }));
+  if (r === '/comments' && m === 'POST') return ok(call('add_comment', { path: body.path, quote: body.quote, text: body.text }));
+  const cm = /^\/comments\/(\d+)\/resolve$/.exec(r);
+  if (cm && m === 'POST') return ok(call('resolve_comment', { id: +cm[1], reply: body.reply }));
+  if (r === '/boards' && m === 'GET') return ok(call('boards', { path: qs.get('path') }));
+  if (r === '/boards/cards' && m === 'POST') return ok(call('card_create', { path: arg('path'), board: num(body.board), column: body.column, title: body.title, attrs: body.attrs, done: body.done, position: body.position, rev: body.rev }));
+  const km = /^\/boards\/cards\/([^/]{1,80})(?:\/(move|done))?$/.exec(r);
+  if (km) {
+    const id = dec(km[1]); const path = arg('path');
+    if (!km[2] && (m === 'PATCH' || m === 'PUT')) return ok(call('card_update', { path, id, title: body.title, column: body.column, done: body.done, attrs: body.attrs, position: body.position, rev: body.rev }));
+    if (!km[2] && m === 'DELETE') return ok(call('card_delete', { path, id, rev: num(qs.get('rev')) }));
+    if (km[2] === 'move' && m === 'POST') { if (body.column == null || body.column === '') throw new Fail(400, 'bad_column'); return ok(call('card_update', { path, id, column: body.column, position: body.position, rev: body.rev })); }
+    if (km[2] === 'done' && m === 'POST') return ok(call('card_update', { path, id, done: body.done == null ? true : body.done, rev: body.rev }));
+  }
+  // Compartir: solo con un token que tenga ese permiso (lo comprueba callTool).
+  if (r === '/shares' && m === 'GET') return ok(call('list_shares', { path: qs.get('path') || undefined }));
+  if (r === '/shares' && m === 'POST') return ok({ message: call('share_note', { path: body.path, email: body.email, role: body.role }) });
+  if (r === '/shares' && m === 'DELETE') return ok({ message: call('unshare_note', { path: qs.get('path'), email: qs.get('email') }) });
+  if (r === '/links' && m === 'POST') return ok(call('create_public_link', { path: body.path, password: body.password }));
+  if (r === '/links' && m === 'DELETE') return ok({ message: call('revoke_public_link', { id: num(qs.get('id')), path: qs.get('path') || undefined }) });
+  throw new Fail(404, 'no_route');
+}
+// /api/v1 y /in no usan cookies ni la sesión de la app: se pueden llamar desde cualquier origen. Lo que abre la
+// puerta es el token o el secreto de la dirección, que viajan en el pedido.
+function autoCors(req, res) {
+  const p = String(req.url || '');
+  if (!p.startsWith('/api/v1/') && !p.startsWith('/in/')) return false;
+  res.setHeader('access-control-allow-origin', '*');
+  res.setHeader('access-control-allow-headers', 'authorization, content-type');
+  res.setHeader('access-control-allow-methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('access-control-max-age', '86400');
+  res.setHeader('access-control-expose-headers', 'retry-after');
+  return true;
+}
+// ====================================================================================================================
+// Fin de AUTOMATIZACIONES
+// ====================================================================================================================
+
 async function route(req, url) {
   const p = url.pathname; const m = req.method;
   if (p === '/health') return { ok: true };
+  // Automatizaciones: la API con token y las direcciones de entrada.
+  if (p.startsWith('/api/v1/')) return apiRoute(req, url, p, m);
+  if (p.startsWith('/in/')) return inboxRoute(req, url, p, m);
   if (p === '/auth/start' && m === 'POST') return authStart(req, await readBody(req));
   if (p === '/auth/verify' && m === 'POST') return authVerify(req, await readBody(req));
   if (p === '/paddle/webhook' && m === 'POST') return paddleWebhook(req);
@@ -1930,6 +2698,7 @@ async function route(req, url) {
     if (p === '/live/presence' && m === 'POST') return livePresence(row, memOf(row).owner, 'o', body);
   }
   if (p === '/team' || p.startsWith('/team/')) return teamRoute(user, p, m, req);
+  if (p === '/automations' || p.startsWith('/automations/')) return autoRoute(req, user, p, m, url);
   if (p === '/shared' && m === 'GET') return sharedWith(user);
   if (p === '/shares' && m === 'POST') return addShare(user, await readBody(req));
   if (p === '/shares' && m === 'GET') return sharesOf(user, url.searchParams.get('path'));
@@ -2011,7 +2780,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     if (url.pathname === '/events' && req.method === 'GET') { listen(req, res, userFrom(req, 'session'), url); return; }
     if (url.pathname === '/live/events' && req.method === 'GET') { listenGuest(req, res); return; }
-    const out = await route(req, url);
+    const out = await reqCtx.run({ user: null, via: '' }, () => route(req, url));
     // La página de revisión de la galería: HTML sin scripts, que no se puede enmarcar ni mandar su formulario a otro lado.
     if (out && out.__html !== undefined) { res.writeHead(out.__status || 200, { 'content-type': 'text/html; charset=utf-8', 'x-frame-options': 'DENY', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" }); res.end(out.__html); return; }
     if (out && out.__status) { res.writeHead(out.__status); res.end(); return; }
@@ -2023,7 +2792,7 @@ const server = http.createServer(async (req, res) => {
     // De un error inesperado se anota qué fue y dónde, sin el cuerpo del pedido. Hacia afuera va solo "server_error".
     if (status >= 500) console.error(status === 500 ? 'error 500 en ' + req.method + ' ' + String(req.url).split('?')[0].slice(0, 80) + ' · ' + String(e && e.stack || e).slice(0, 1500) : 'error ' + status + ' ' + (e.code || '') + ' en ' + req.method + ' ' + String(req.url).split('?')[0].slice(0, 80));
     if (res.headersSent) { res.end(); return; }
-    const body = JSON.stringify(e instanceof Fail ? Object.assign({ error: e.code, message: e.message || '' }, e.extra) : { error: 'server_error', message: '' });
+    const body = JSON.stringify(String(req.url).startsWith('/api/v1/') ? apiError(e) : e instanceof Fail ? Object.assign({ error: e.code, message: e.message || '' }, e.extra) : { error: 'server_error', message: '' });
     if (e instanceof Fail && e.extra && e.extra.retry_after) res.setHeader('retry-after', String(e.extra.retry_after));
     // Un cuerpo pasado de tamaño: se avisa y recién ahí se corta, para no seguir recibiendo.
     if (status === 413) { res.writeHead(413, { 'content-type': 'application/json; charset=utf-8', connection: 'close' }); res.end(body, () => req.destroy()); return; }
