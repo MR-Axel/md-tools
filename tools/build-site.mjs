@@ -17,10 +17,10 @@ const CARD = SITE + '/docs/social-card-2.png';
 const CARD_ALT = { en: 'SharpMD, a Markdown editor for your files, your cloud and your AI', es: 'SharpMD, un editor de Markdown para tus archivos, tu nube y tu IA' };
 
 const META = {
-  en: { title: 'SharpMD: Markdown editor without the syntax, in your browser',
+  en: { title: 'SharpMD: Markdown editor without the syntax',
     desc: 'Edit Markdown on the formatted page, with no syntax to type. Your files stay on your disk. Optional cloud, live editing and MCP for your AI. Open source.',
     og: 'Edit Markdown without writing Markdown. Your files stay on your disk, and your AI can work on the same notes.', locale: 'en_US', url: SITE + '/' },
-  es: { title: 'SharpMD: editor de Markdown sin sintaxis, en el navegador',
+  es: { title: 'SharpMD: editor de Markdown sin sintaxis',
     desc: 'Editás Markdown sobre la página ya formateada, sin escribir sintaxis. Tus archivos quedan en tu disco. Nube, edición en vivo y MCP para tu IA, opcionales.',
     og: 'Editá Markdown sin escribir Markdown. Tus archivos quedan en tu disco, y tu IA puede trabajar sobre las mismas notas.', locale: 'es_AR', url: SITE + '/es/' },
 };
