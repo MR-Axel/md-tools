@@ -94,6 +94,7 @@
         "src/dictate.js",
         "src/gallery.js",
         "src/present.js",
+        "src/daily.js",
         "vendor/markdown-it.min.js",
         "vendor/markdown-it-emoji.min.js",
         "vendor/markdown-it-sub.min.js",

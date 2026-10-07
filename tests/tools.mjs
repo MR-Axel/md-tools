@@ -3,7 +3,8 @@
 //   BROWSER=firefox node tools.mjs      BROWSER=webkit node tools.mjs      (sin BROWSER: chromium)
 //   ONLY=present node tools.mjs         (una sola herramienta)
 import { rig, tally, sleep } from './rig.mjs';
-import zlib from 'zlib';
+import { chromium } from 'playwright-core';
+import zlib from 'zlib'; import fs from 'fs'; import os from 'os'; import path from 'path';
 
 const ENGINE = process.env.BROWSER || 'chromium';
 const ONLY = process.env.ONLY || '';
@@ -149,6 +150,175 @@ await suite('present', async () => {
     await page.click('.lmd-pres-thumb[data-slide="4"]'); check('y lleva a la diapositiva tocada', (await pres(page)).i === 4 && await inView(page));
     await page.click('.lmd-pres [data-pres=close]'); await sleep(150);
     check('el botón de salir cierra', await page.evaluate(() => !document.querySelector('.lmd-pres')));
+    await ctx.close();
+  });
+});
+
+// ---------- Nota diaria ----------
+// El reloj queda fijo: hoy es miércoles 7 de octubre de 2026.
+const NOW = new Date(2026, 9, 7, 10, 30);
+const fixClock = (page) => page.clock.setFixedTime(NOW);
+const here = (page) => page.evaluate(() => decodeURIComponent(new URLSearchParams(location.search).get('f') || ''));
+const nav = (page) => page.evaluate(() => { const n = document.querySelector('.lmd-daily-nav'); return n ? [...n.querySelectorAll('button')].map((b) => b.textContent.trim()) : null; });
+const localNames = (page) => page.evaluate(async () => (await LMD.store.notesAll()).map((n) => n.name).sort());
+const opened = (page, name) => until(async () => (await here(page)).endsWith(name) && await page.evaluate(() => !!document.querySelector('.lmd-article > *')), 6000);
+const dailyOpts = async (page) => { await toolsTab(page); await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-card[data-tool=daily] [data-dly=go]'); };
+
+await suite('daily', async () => {
+  await step('Nota diaria: apagada no deja nada', async () => {
+    const { ctx, page } = await open(); await fixClock(page);
+    await goHome(page);
+    check('apagada: sin botón en el inicio ni en el explorador, sin archivo', await page.evaluate(() => !document.querySelector('[data-daily], .lmd-daily-btn') && !LMD.daily) && await scripts(page, 'daily.js') === 0);
+    await page.keyboard.press('Alt+Shift+H'); await sleep(300);
+    check('ni responde su atajo', (await localNames(page)).length === 0 && (await here(page)) === '');
+    await toolsTab(page);
+    check('su tarjeta está en Herramientas, apagada', await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=daily]'); return !!c && c.querySelector('b').textContent === 'Daily note' && !c.querySelector('input').checked; }));
+    await flip(page, 'daily'); await until(() => page.evaluate(() => !!LMD.daily));
+    check('prenderla pide su archivo', await scripts(page, 'daily.js') === 1 && (await stored(page, 'settings')).tools.daily === true);
+    await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await page.waitForSelector('[data-dly=go]');
+    const o = await page.evaluate(() => { const q = (k) => document.querySelector('[data-dly=' + k + ']'); return { where: [...q('where').options].map((x) => x.value + (x.disabled ? ':no' : '')).join(), name: q('name').value, tpl: q('tpl').value, many: q('tpl').options.length > 5, folderHidden: q('folder').closest('[data-dly-row]').hidden }; });
+    check('sus opciones: dónde, el nombre y la plantilla', o.where.startsWith('local,cloud:no') && o.name === 'YYYY-MM-DD' && o.tpl === '' && o.many && o.folderHidden, o);
+    check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
+    await closePanel(page);
+    check('prendida: el botón en el inicio y en el explorador', await page.evaluate(() => !!document.querySelector('.lmd-home-actions [data-daily=today]') && !!document.querySelector('.lmd-zone-files .lmd-daily-btn')));
+    await toolsTab(page); await flip(page, 'daily'); await closePanel(page);
+    check('apagarla saca los dos botones', await page.evaluate(() => !document.querySelector('[data-daily], .lmd-daily-btn')));
+    await ctx.close();
+  });
+
+  await step('Nota diaria: crear, ayer y mañana, calendario', async () => {
+    const { ctx, page } = await open({ tools: { daily: true } }); await fixClock(page);
+    await goHome(page); await page.waitForSelector('.lmd-home-actions [data-daily=today]');
+    await page.click('.lmd-home-actions [data-daily=today]'); await opened(page, '2026-10-07.md');
+    const text = await saved(page, '2026-10-07.md');
+    check('el botón del inicio crea la nota de hoy con la plantilla mínima', (await here(page)) === 'local/2026-10-07.md' && text === '# Wednesday, October 7, 2026\n\n## Tasks\n\n- [ ] \n\n## Notes\n\n', text);
+    check('abre en edición, con los enlaces a ayer y a mañana', await page.evaluate(() => document.documentElement.classList.contains('lmd-editing')) && J(await nav(page)) === J(['Yesterday', 'Today', 'Tomorrow']), await nav(page));
+    await page.evaluate(() => LMD.store.notePut('2026-10-07.md', '# Hoy\n\nYa escribí algo.\n'));
+    await goHome(page);
+    await page.click('.lmd-zone-files .lmd-daily-btn'); await opened(page, '2026-10-07.md');
+    check('el botón del explorador abre la misma, sin pisarla ni duplicarla', (await saved(page, '2026-10-07.md')) === '# Hoy\n\nYa escribí algo.\n' && J(await localNames(page)) === J(['2026-10-07.md']));
+    await page.click('.lmd-daily-nav [data-daily=prev]'); await opened(page, '2026-10-06.md');
+    check('Ayer crea y abre la nota de ayer', (await saved(page, '2026-10-06.md')).startsWith('# Tuesday, October 6, 2026') && J(await nav(page)) === J(['Previous day', 'Yesterday', 'Next day']), await nav(page));
+    await page.click('.lmd-daily-nav [data-daily=next]'); await opened(page, '2026-10-07.md');
+    check('Día siguiente vuelve a hoy', J(await nav(page)) === J(['Yesterday', 'Today', 'Tomorrow']));
+    await page.goto(R.home); await page.waitForSelector('.lmd-home'); await sleep(200);
+    await page.keyboard.press('Alt+Shift+H'); await opened(page, '2026-10-07.md');
+    check('el atajo abre la nota de hoy', (await here(page)) === 'local/2026-10-07.md');
+    // El calendario.
+    await page.click('.lmd-daily-nav [data-daily=cal]'); await page.waitForSelector('.lmd-daily-cal .lmd-daily-day');
+    const cal = () => page.evaluate(() => ({ title: document.querySelector('.lmd-daily-cal h3').textContent, days: document.querySelectorAll('.lmd-daily-day').length, has: [...document.querySelectorAll('.lmd-daily-day.lmd-has')].map((b) => b.textContent).join(), today: (document.querySelector('.lmd-daily-day.lmd-today') || {}).textContent, on: (document.querySelector('.lmd-daily-day.lmd-on') || {}).textContent, first: document.querySelector('.lmd-daily-wd').textContent, pad: document.querySelectorAll('.lmd-daily-pad').length }));
+    let c = await cal();
+    check('el calendario muestra el mes, marca los días con nota y el de hoy', c.title === 'October 2026' && c.days === 31 && c.has === '6,7' && c.today === '7' && c.on === '7' && c.first === 'S' && c.pad === 4, c);
+    await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowDown');
+    check('las flechas recorren los días', await page.evaluate(() => document.activeElement.dataset.day === '2026-10-15'));
+    await page.keyboard.press('Enter'); await opened(page, '2026-10-15.md');
+    check('elegir un día sin nota la crea', (await saved(page, '2026-10-15.md')).startsWith('# Thursday, October 15, 2026') && J(await nav(page)) === J(['Previous day', '2026-10-15', 'Next day']), await nav(page));
+    await page.click('.lmd-daily-nav [data-daily=cal]'); await page.waitForSelector('.lmd-daily-cal .lmd-daily-day');
+    await page.click('.lmd-daily-cal [data-cal=prev]'); await until(async () => (await cal()).title === 'September 2026');
+    c = await cal();
+    check('navega al mes anterior', c.title === 'September 2026' && c.days === 30 && c.has === '' && !c.today, c);
+    await page.click('.lmd-daily-day[data-day="2026-09-30"]'); await opened(page, '2026-09-30.md');
+    check('y crea una nota en ese mes', (await localNames(page)).includes('2026-09-30.md'));
+    await page.click('.lmd-daily-nav [data-daily=next]'); await opened(page, '2026-10-01.md');
+    check('Día siguiente cruza de mes', (await here(page)) === 'local/2026-10-01.md');
+    await page.click('.lmd-daily-nav [data-daily=cal]'); await page.waitForSelector('.lmd-daily-cal .lmd-daily-day');
+    c = await cal();
+    check('el calendario abre en el mes de la nota y marca todo lo creado', c.title === 'October 2026' && c.has === '1,6,7,15' && c.on === '1', c);
+    await page.keyboard.press('Escape'); await sleep(120);
+    check('Escape lo cierra', await page.evaluate(() => !document.querySelector('.lmd-daily-cal')));
+    await ctx.close();
+  });
+
+  await step('Nota diaria: sin conexión, nombre y plantilla', async () => {
+    const { ctx, page } = await open({ tools: { daily: true } }); await fixClock(page);
+    await goHome(page); await page.waitForSelector('[data-daily=today]');
+    await ctx.setOffline(true);
+    await page.click('[data-daily=today]'); await opened(page, '2026-10-07.md');
+    check('sin conexión crea y abre la nota de hoy', (await saved(page, '2026-10-07.md')).includes('## Tasks'));
+    await page.click('.lmd-daily-nav [data-daily=next]'); await opened(page, '2026-10-08.md');
+    await page.click('.lmd-daily-nav [data-daily=cal]'); await page.waitForSelector('.lmd-daily-cal .lmd-daily-day.lmd-has');
+    check('y el calendario sigue andando', await page.evaluate(() => [...document.querySelectorAll('.lmd-daily-day.lmd-has')].map((b) => b.textContent).join() === '7,8'));
+    await page.keyboard.press('Escape');
+    await ctx.setOffline(false);
+    // Una nota propia como plantilla, y otro nombre de archivo.
+    await put(page, 'molde.md', '# Diario del {{fecha}}\n\nTres cosas de hoy:\n\n1. \n');
+    await page.goto(noteUrl('molde.md')); await page.waitForSelector('.lmd-article > *'); await sleep(300);
+    await dailyOpts(page);
+    await page.click('[data-dly=own]'); await until(() => page.evaluate(() => document.querySelector('[data-dly=tpl]').value === 'own'));
+    await page.fill('[data-dly=name]', 'DD.MM'); await page.dispatchEvent('[data-dly=name]', 'change'); await sleep(150);
+    check('un nombre sin el año no se acepta', await page.evaluate(() => !document.querySelector('[data-dly=err]').hidden) && !(await stored(page, 'settings')).tools.dailyName);
+    await page.fill('[data-dly=name]', 'diario DD-MM-YYYY'); await page.dispatchEvent('[data-dly=name]', 'change'); await sleep(250);
+    check('uno con año, mes y día queda guardado', (await stored(page, 'settings')).tools.dailyName === 'diario DD-MM-YYYY' && await page.evaluate(() => document.querySelector('[data-dly=err]').hidden));
+    await page.click('[data-dly=go]'); await opened(page, 'diario 07-10-2026.md');
+    check('la nota de hoy usa el nombre nuevo y la plantilla propia, con la fecha puesta', (await saved(page, 'diario 07-10-2026.md')) === '# Diario del Wednesday, October 7, 2026\n\nTres cosas de hoy:\n\n1. \n', await saved(page, 'diario 07-10-2026.md'));
+    check('y lleva sus enlaces de ayer y mañana', J(await nav(page)) === J(['Yesterday', 'Today', 'Tomorrow']));
+    check('la nota de plantilla no se toma por una nota diaria', await page.evaluate(() => LMD.daily.dateOf('molde.md') === null && LMD.daily.dateOf('diario 31-02-2026.md') === null && LMD.daily.iso(LMD.daily.dateOf('diario 01-03-2026.md')) === '2026-03-01'));
+    // Una plantilla de las que vienen con la app.
+    await dailyOpts(page);
+    const tid = await page.evaluate(() => { const s = document.querySelector('[data-dly=tpl]'); const o = s.querySelector('optgroup option'); s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); return o.value; });
+    await sleep(250); await closePanel(page);
+    await page.click('.lmd-daily-nav [data-daily=next]'); await opened(page, 'diario 08-10-2026.md');
+    const want = await page.evaluate((id) => LMD.templates.get(id).text, tid);
+    check('con una plantilla de la app, la nota nace con ese texto', want.length > 20 && (await saved(page, 'diario 08-10-2026.md')) === want);
+    await ctx.close();
+  });
+
+  await step('Nota diaria: en una carpeta del disco y en la nube', async () => {
+    if (ENGINE === 'chromium') {
+      // Un permiso de carpeta solo se puede guardar en un perfil de verdad: una ventana privada no lo deja.
+      const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'mdtools-'));
+      const ctx = await chromium.launchPersistentContext(profile, { executablePath: process.env.CHROME_BIN || chromium.executablePath(), viewport: { width: 1280, height: 800 }, locale: 'en-US', serviceWorkers: 'block' });
+      await ctx.route((url) => /(^|\.)sharpmd\.app$/.test(url.hostname), (r) => r.abort());
+      const page = await ctx.newPage(); page.on('pageerror', (e) => R.errors.push(e.message));
+      await page.addInitScript(([base]) => { try { if (localStorage.getItem('tools:listo')) return; localStorage.setItem('tools:listo', '1'); localStorage.setItem('mdtools:settings', JSON.stringify({ cloudUrl: base, language: 'en', tools: { daily: true } })); } catch (e) { /* página en blanco */ } }, [R.base]);
+      await fixClock(page);
+      await goHome(page);
+      await page.evaluate(async () => { const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('mis-dias', { create: true }); window.showDirectoryPicker = async () => dir; });
+      await dailyOpts(page);
+      await page.selectOption('[data-dly=where]', 'disk'); await page.waitForSelector('[data-dly=pick]:visible');
+      await page.click('[data-dly=pick]'); await until(() => page.evaluate(() => (document.querySelector('[data-dly=diskname]') || {}).textContent === 'mis-dias'));
+      await page.fill('[data-dly=folder]', 'diario/2026'); await page.dispatchEvent('[data-dly=folder]', 'change'); await sleep(250);
+      await page.click('[data-dly=go]'); await opened(page, '2026-10-07.md');
+      const disk = await page.evaluate(async () => { const root = await navigator.storage.getDirectory(); const d = await (await (await root.getDirectoryHandle('mis-dias')).getDirectoryHandle('diario')).getDirectoryHandle('2026'); return (await (await d.getFileHandle('2026-10-07.md')).getFile()).text(); });
+      check('en el disco, la nota se crea en la subcarpeta elegida', disk.includes('## Tasks') && /\/diario\/2026\/2026-10-07\.md$/.test(await here(page)), await here(page));
+      check('y es una nota diaria, con sus enlaces', J(await nav(page)) === J(['Yesterday', 'Today', 'Tomorrow']) && (await localNames(page)).length === 0);
+      await page.click('.lmd-daily-nav [data-daily=cal]'); await page.waitForSelector('.lmd-daily-cal .lmd-daily-day.lmd-has');
+      check('el calendario lee los días del disco', await page.evaluate(() => [...document.querySelectorAll('.lmd-daily-day.lmd-has')].map((b) => b.textContent).join() === '7'));
+      await ctx.close(); await sleep(300);
+      try { fs.rmSync(profile, { recursive: true, force: true }); } catch (e) { /* Windows suelta el perfil después */ }
+    }
+    const who = await R.signup('diario-' + Date.now() + '@prueba.test');
+    const { ctx, page } = await open({ who, tools: { daily: true, dailyWhere: 'cloud', dailyFolder: 'diario' } }); await fixClock(page);
+    await goHome(page); await page.waitForSelector('[data-daily=today]');
+    await page.click('[data-daily=today]'); await opened(page, '2026-10-07.md');
+    const list = (await R.api('GET', '/notes', undefined, who.s)).json.map((n) => n.path);
+    check('en la nube, la nota de hoy se crea en su carpeta', J(list) === J(['diario/2026-10-07.md']) && (await here(page)) === 'cloud/diario/2026-10-07.md', list);
+    check('y lleva sus enlaces', J(await nav(page)) === J(['Yesterday', 'Today', 'Tomorrow']));
+    await sleep(500); await ctx.setOffline(true);
+    await page.click('.lmd-daily-nav [data-daily=next]'); await opened(page, '2026-10-08.md');
+    check('sin conexión, la del día nuevo queda en este navegador y se avisa', (await here(page)) === 'local/2026-10-08.md' && /saved in this browser/.test(await flashText(page)), await flashText(page));
+    await ctx.setOffline(false);
+    await ctx.close();
+  });
+
+  await step('Nota diaria: pantalla chica y en español', async () => {
+    const { ctx, page } = await open({ tools: { daily: true }, lang: 'es', ctx: SMALL }); await fixClock(page);
+    await goHome(page); await page.waitForSelector('.lmd-home-actions [data-daily=today]');
+    check('el botón del inicio entra en la pantalla', await page.evaluate(() => { const r = document.querySelector('[data-daily=today]').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.width > 80; }));
+    await page.tap('.lmd-home-actions [data-daily=today]'); await opened(page, '2026-10-07.md');
+    check('en español: la fecha larga, tareas y notas', (await saved(page, '2026-10-07.md')) === '# Miércoles, 7 de octubre de 2026\n\n## Tareas\n\n- [ ] \n\n## Notas\n\n', await saved(page, '2026-10-07.md'));
+    check('los enlaces de ayer y mañana entran en la pantalla', J(await nav(page)) === J(['Ayer', 'Hoy', 'Mañana']) && await page.evaluate(() => { const r = document.querySelector('.lmd-daily-nav').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; }));
+    await page.tap('.lmd-topbar [data-act=more]'); await page.waitForSelector('.lmd-menu [data-more=daily-cal]');
+    check('el menú "más" ofrece la nota de hoy y el calendario', await page.evaluate(() => !!document.querySelector('.lmd-menu [data-more=daily]')));
+    await page.tap('.lmd-menu [data-more=daily-cal]'); await page.waitForSelector('.lmd-daily-cal .lmd-daily-day');
+    const c = await page.evaluate(() => { const r = document.querySelector('.lmd-daily-cal .lmd-ask-card').getBoundingClientRect(); const d = document.querySelector('.lmd-daily-day').getBoundingClientRect(); return { fits: r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight, tap: d.width >= 36 && d.height >= 36, first: document.querySelector('.lmd-daily-wd').textContent, title: document.querySelector('.lmd-daily-cal h3').textContent }; });
+    check('el calendario entra, con días cómodos para el dedo y la semana desde el lunes', c.fits && c.tap && c.first === 'L' && c.title === 'Octubre de 2026', c);
+    const swipe = (dx) => page.evaluate((d) => { const g = document.querySelector('.lmd-daily-grid'); const ev = (t, x) => g.dispatchEvent(new PointerEvent(t, { bubbles: true, clientX: x, clientY: 300, pointerType: 'touch', pointerId: 1 })); ev('pointerdown', 250); ev('pointerup', 250 + d); }, dx);
+    await swipe(-120); await until(() => page.evaluate(() => document.querySelector('.lmd-daily-cal h3').textContent === 'Noviembre de 2026'));
+    check('deslizar cambia de mes', await page.evaluate(() => document.querySelector('.lmd-daily-cal h3').textContent === 'Noviembre de 2026'));
+    await page.tap('.lmd-daily-day[data-day="2026-11-02"]'); await opened(page, '2026-11-02.md');
+    check('tocar un día crea su nota', (await saved(page, '2026-11-02.md')).startsWith('# Lunes, 2 de noviembre de 2026'));
+    check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
     await ctx.close();
   });
 });

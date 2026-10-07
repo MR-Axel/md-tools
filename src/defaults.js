@@ -1136,6 +1136,16 @@
       "Pantalla completa": "Full screen", "Diapositivas en PDF": "Slides as PDF", "Salir de la presentación": "Exit presentation", "Atajo: {a}.": "Shortcut: {a}.",
       "Una diapositiva por cada título de nivel 1 o 2. Un separador (---) también corta. Una cita [!NOTE] es una nota del orador y no se proyecta.": "One slide per level 1 or 2 heading. A divider (---) also splits. A [!NOTE] quote is a speaker note and is not projected.",
       "Teclas: flechas o espacio para avanzar, Inicio y Fin, O vista general, F pantalla completa, L puntero, N notas, P PDF, Escape para salir.": "Keys: arrows or space to advance, Home and End, O overview, F full screen, L pointer, N notes, P PDF, Escape to exit.",
+      // Nota diaria (daily.js)
+      "Nota diaria": "Daily note", "Un botón y un atajo abren la nota de hoy. Un calendario lleva a los otros días.": "A button and a shortcut open today's note. A calendar takes you to other days.",
+      "Nota de hoy": "Today's note", "Abrir la nota de hoy": "Open today's note", "Notas diarias": "Daily notes", "Calendario": "Calendar", "Tareas": "Tasks", "Notas": "Notes",
+      "Hoy": "Today", "Ayer": "Yesterday", "Mañana": "Tomorrow", "Día anterior": "Previous day", "Día siguiente": "Next day", "Mes anterior": "Previous month", "Mes siguiente": "Next month", "con nota": "has a note",
+      "Dónde se guardan": "Where they are saved", "Este navegador": "This browser", "Una carpeta del disco": "A folder on disk", "Todavía no elegiste una carpeta.": "No folder chosen yet.",
+      "Subcarpeta (opcional)": "Subfolder (optional)", "diario": "daily", "El nombre lleva el año, el mes y el día: AAAA, MM y DD.": "The name needs the year, month and day: YYYY, MM and DD.",
+      "Mínima: fecha, tareas y notas": "Minimal: date, tasks and notes", "La nota que guardaste como plantilla": "The note you saved as a template", "Usar la nota abierta": "Use the open note",
+      "En una plantilla propia, {{fecha}} se cambia por la fecha del día.": "In your own template, {{date}} becomes the date of the day.",
+      "Sin conexión. La nota del día quedó en este navegador.": "Offline. The daily note was saved in this browser.", "Falta el permiso para escribir en la carpeta de las notas diarias.": "Permission to write to the daily notes folder is missing.",
+      "No se pudo abrir la nota del día. Probá de nuevo.": "Could not open the daily note. Try again.", "La nota diaria se usa desde la app.": "The daily note works from the app.",
       // Leer en voz alta (speak.js)
       "Leer en voz alta": "Read aloud", "Lee la nota con la voz del dispositivo y marca por dónde va.": "Reads the note with the device voice and marks where it is.",
       "Este navegador no tiene voces para leer.": "This browser has no voices to read with.", "Este navegador no tiene voces instaladas para leer.": "This browser has no voices installed to read with.",

@@ -140,4 +140,6 @@
     enable: (c) => redraw(c, '.lmd-kanban-off'), disable: (c) => redraw(c, '.lmd-board') });
   register({ id: 'present', name: 'Modo presentación', about: 'La nota como diapositivas a pantalla completa, una por título.', defaultOn: false, lazy: 'present', module: () => LMD.present,
     icon: svg('<rect x="3.500" y="4.500" width="17" height="11.500" rx="1.500"/><path d="M12 16v3.500M8.500 19.500h7M10.500 8v4.500l3.800-2.250z"/>') });
+  register({ id: 'daily', name: 'Nota diaria', about: 'Un botón y un atajo abren la nota de hoy. Un calendario lleva a los otros días.', defaultOn: false, lazy: 'daily', module: () => LMD.daily,
+    icon: svg('<rect x="4" y="5.500" width="16" height="14.500" rx="2"/><path d="M4 10h16M8.500 3.500v4M15.500 3.500v4M9 14.500l2.200 2.200 4-4.400"/>') });
 })();
