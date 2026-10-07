@@ -157,7 +157,7 @@ try {
   const addMenu = await app.evaluate(() => [...document.querySelectorAll('.lmd-menu [data-f]')].map((b) => b.dataset.f + ':' + b.textContent));
   await app.click('.lmd-menu [data-f=new]'); await app.waitForSelector('.lmd-draft');
   const made = await app.evaluate(() => ({ mark: window.__mark, url: location.search, active: document.querySelectorAll('.lmd-xroot[data-root=local] .lmd-node.lmd-active').length, editing: document.documentElement.classList.contains('lmd-editing') }));
-  check('el "+" del explorador ofrece nota en blanco y carpeta', J(addMenu) === J(['new:Nota en blanco', 'dir:Carpeta']), addMenu);
+  check('el "+" del explorador ofrece nota en blanco, desde una plantilla y carpeta', J(addMenu) === J(['new:Nota en blanco', 'tpl:Desde una plantilla…', 'dir:Carpeta']), addMenu);
   check('la nota en blanco nace donde van las notas nuevas y queda abierta en edición, sin recargar', made.mark === 'misma página' && /f=local%2Fnota-/.test(made.url) && made.active === 1 && made.editing, made);
   await app.click('[data-act=mode-read]'); await app.waitForTimeout(200);
   await app.addInitScript(() => { window.prompt = () => window.__answer; });
@@ -242,6 +242,40 @@ try {
   await app.locator('.lmd-xroot[data-root=disk] .lmd-node-dir', { hasText: 'repo' }).click(); await app.locator('.lmd-xroot[data-root=disk] .lmd-node', { hasText: 'README.md' }).click(); await app.waitForFunction(() => document.title === 'README.md');
   t = await treeNow();
   check('pasar a otra nota del mismo árbol no lo mueve de lugar', t.head === 'trabajo' && J(t.active) === J(['README.md']) && (await mark()) === 'misma página', t);
+
+  console.log('Desde una plantilla');
+  await app.goto(home); await app.waitForSelector('.lmd-home [data-home=tpl]');
+  await app.evaluate(() => { window.__mark = 'misma página'; });
+  await app.click('[data-home=tpl]'); await app.waitForSelector('.lmd-tpl-card');
+  const picker = await app.evaluate(() => ({ groups: [...document.querySelectorAll('.lmd-tpl-list .lmd-menu-label')].map((n) => n.textContent), rows: document.querySelectorAll('.lmd-tpl-list [data-id]').length, on: [...document.querySelectorAll('.lmd-tpl-list .lmd-on')].map((n) => n.textContent),
+    prev: [...document.querySelectorAll('.lmd-tpl-prev h1, .lmd-tpl-prev h2')].map((n) => n.tagName + ':' + n.textContent.trim()), raw: /^#\s|\{\{date\}\}/m.test(document.querySelector('.lmd-tpl-prev').textContent), focus: document.activeElement.tagName, native: 0 }));
+  check('el selector trae los cinco grupos con sus 26 plantillas y la primera elegida', J(picker.groups) === J(['Día a día', 'Proyectos', 'Equipo', 'Producto y desarrollo', 'Personal']) && picker.rows === 26 && J(picker.on) === J(['Nota diaria']) && picker.focus === 'INPUT', picker);
+  check('la vista previa muestra el contenido ya formateado, con la fecha puesta', picker.prev.length >= 3 && /^H1:\d{4}-\d{2}-\d{2}$/.test(picker.prev[0]) && picker.prev.includes('H2:Hoy') && !picker.raw, picker.prev);
+  await app.keyboard.type('reunion');
+  const filtered = await app.evaluate(() => ({ rows: [...document.querySelectorAll('.lmd-tpl-list [data-id]')].map((n) => n.textContent), groups: document.querySelectorAll('.lmd-tpl-list .lmd-menu-label').length, on: document.querySelector('.lmd-tpl-list .lmd-on').textContent, h1: document.querySelector('.lmd-tpl-prev h1').textContent.trim() }));
+  check('escribir filtra, sin fijarse en los acentos, y la vista previa sigue a la elegida', filtered.rows.length >= 1 && filtered.rows.length < 6 && filtered.rows.every((t) => /reuni/i.test(t)) && filtered.on === filtered.rows[0] && filtered.h1.length > 0, filtered);
+  await app.fill('.lmd-tpl-card input', 'zzzz');
+  check('sin coincidencias lo dice y no deja crear', /Ninguna plantilla coincide/.test(await app.textContent('.lmd-tpl-list')) && await app.isDisabled('[data-tpl=ok]'));
+  await app.fill('.lmd-tpl-card input', ''); await app.keyboard.press('ArrowDown'); await app.keyboard.press('ArrowDown'); await app.keyboard.press('ArrowUp');
+  const chosen = await app.evaluate(() => ({ on: document.querySelector('.lmd-tpl-list .lmd-on').dataset.id, all: [...document.querySelectorAll('.lmd-tpl-list [data-id]')].map((n) => n.dataset.id) }));
+  check('las flechas recorren la lista', chosen.on === chosen.all[1], chosen);
+  const want = await app.evaluate((id) => LMD.templates.get(id), chosen.on);
+  await app.keyboard.press('Enter'); await app.waitForSelector('.lmd-tpl-card', { state: 'detached' }); await app.waitForSelector('html.lmd-editing .markdown-body h1');
+  const born = await app.evaluate(async () => ({ mark: window.__mark, title: document.title, url: decodeURIComponent(location.search), note: ((await LMD.store.noteGet(document.title)) || {}).text, drafts: document.querySelectorAll('.lmd-draft').length, active: [...document.querySelectorAll('.lmd-xroot[data-root=local] .lmd-node.lmd-active')].map((n) => n.title) }));
+  check('Enter crea la nota con el nombre sugerido y el contenido de la plantilla, y la abre en edición', born.mark === 'misma página' && born.title === want.file + '.md' && born.url === '?f=local/' + want.file + '.md' && born.note === want.text && born.drafts === 0 && J(born.active) === J([born.title]), [born, want.file]);
+  await app.click('[data-act=mode-read]'); await app.waitForTimeout(200);
+  await app.click('.lmd-tree-add'); await app.click('.lmd-menu [data-f=tpl]'); await app.waitForSelector('.lmd-tpl-card');
+  await app.click('.lmd-tpl-list [data-id=' + chosen.on + ']'); await app.click('[data-tpl=ok]'); await app.waitForFunction((t) => document.title === t, want.file + '-2.md');
+  check('el nombre sugerido no pisa a una nota que ya existe', (await app.evaluate(async (n) => !!(await LMD.store.noteGet(n + '.md')) && !!(await LMD.store.noteGet(n + '-2.md')), want.file)) === true);
+  await app.click('[data-act=mode-read]'); await app.waitForTimeout(200);
+  await app.locator('.lmd-xroot[data-root=disk] .lmd-node-dir', { hasText: 'suelto' }).click({ button: 'right' }); await app.click('.lmd-menu [data-f=tpl]'); await app.waitForSelector('.lmd-tpl-card');
+  await app.fill('.lmd-tpl-card input', 'reunion'); const meet = await app.evaluate(() => LMD.templates.get(document.querySelector('.lmd-tpl-list .lmd-on').dataset.id));
+  await app.keyboard.press('Enter'); await app.waitForFunction((t) => document.title === t, meet.file + '.md');
+  const onDisk = await app.evaluate(async (n) => { const d = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('trabajo')).getDirectoryHandle('suelto'); return { text: await (await (await d.getFileHandle(n)).getFile()).text(), url: decodeURIComponent(location.search), editing: document.documentElement.classList.contains('lmd-editing') }; }, meet.file + '.md');
+  check('desde una carpeta del explorador, la plantilla se crea en esa carpeta', onDisk.text === meet.text && new RegExp('/suelto/' + meet.file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\.md$').test(onDisk.url) && onDisk.editing, onDisk.url);
+  await app.click('[data-act=mode-read]'); await app.waitForTimeout(200);
+  await app.click('.lmd-tree-add'); await app.click('.lmd-menu [data-f=tpl]'); await app.waitForSelector('.lmd-tpl-card'); await app.keyboard.press('Escape');
+  check('Escape cierra el selector sin crear nada', (await app.locator('.lmd-tpl-card').count()) === 0 && (await app.title()) === meet.file + '.md');
 
   check('sin errores de JavaScript', errors.length === 0, errors);
 } catch (e) { check('sin excepciones en la prueba', false, String(e && e.stack || e).slice(0, 700)); }

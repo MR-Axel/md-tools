@@ -173,11 +173,21 @@ try {
   await app.waitForFunction((sel) => ![...document.querySelectorAll(sel + ' .lmd-node')].some((n) => n.textContent.trim() === 'lista.md'), CLOUD);
   o.eliminada = [!(await paths()).includes('proyecto/borradores/lista.md'), await top(), await app.title()];
 
+  // Desde una plantilla, dentro de la raíz Nube: la nota nace ahí con su contenido.
+  await app.click(CLOUD + ' .lmd-tree-new'); await app.click('.lmd-menu [data-f=tpl]'); await app.waitForSelector('.lmd-tpl-card');
+  const tpl = await app.evaluate(() => LMD.templates.get(document.querySelector('.lmd-tpl-list .lmd-on').dataset.id));
+  await Promise.all([app.waitForNavigation(), app.keyboard.press('Enter')]); await opened();
+  o.plantilla = [(await paths()).includes(tpl.file + '.md'), (await serverText(tpl.file + '.md')) === tpl.text, await app.title(), await app.evaluate(() => document.documentElement.classList.contains('lmd-editing'))];
+  await app.click('[data-act=mode-read]'); await app.waitForTimeout(200);
+
   // Plan gratis: con diez notas, la undécima no se crea y el aviso invita al plan pago.
   const before = await paths();
   for (let i = before.length; i < 10; i++) await api('PUT', '/notes/relleno-' + i + '.md', { text: 'x' }, session);
   await answer('once.md'); await create();
   o.limite = [await said('límite'), (await paths()).length];
+  await app.waitForFunction(() => !/límite/.test(document.querySelector('.lmd-foot .lmd-status').textContent), null, { timeout: 8000 });
+  await app.click(CLOUD + ' .lmd-tree-new'); await app.click('.lmd-menu [data-f=tpl]'); await app.waitForSelector('.lmd-tpl-card'); await app.keyboard.press('Enter');
+  o.limitePlantilla = [await said('límite'), (await paths()).length];
   for (let i = before.length; i < 10; i++) await api('DELETE', '/notes/relleno-' + i + '.md', undefined, session);
 
   // Una nota compartida solo para ver: ni renombrar ni crear al lado.
@@ -295,6 +305,8 @@ const checks = [
   ['una nota de solo lectura no entra en edición ni se renombra desde el título, y su menú de lectura no ofrece editar', J(o.soloLectura) === J([false, false, false, 'Copiar el bloque|Copiar el enlace a esta sección', 0]), o.soloLectura],
   ['eliminar desde el árbol la saca de la nube y deja abierta la nota que estaba', o.eliminada && o.eliminada[0] && o.eliminada[1].includes('borrar.md') && o.eliminada[2] === 'borrar.md', o.eliminada],
   ['en el límite del plan gratis no crea y invita al plan pago', o.limite && /límite de notas del plan gratis/.test(o.limite[0]) && /plan pago/.test(o.limite[0]) && !/[!¡—]/.test(o.limite[0]) && o.limite[1] === 10, o.limite],
+  ['una plantilla elegida en la raíz Nube crea la nota en la nube y la abre en edición', o.plantilla && o.plantilla[0] && o.plantilla[1] && /^daily-\d{4}-\d{2}-\d{2}\.md$/.test(o.plantilla[2]) && o.plantilla[3], o.plantilla],
+  ['en el límite, una plantilla tampoco se crea y sale el mismo aviso', o.limitePlantilla && /límite de notas del plan gratis/.test(o.limitePlantilla[0]) && /plan pago/.test(o.limitePlantilla[0]) && o.limitePlantilla[1] === 10, o.limitePlantilla],
   ['una nota compartida solo para ver no se renombra ni deja crear al lado', o.soloVer && o.soloVer[0] === true && /Solo quien creó/.test(o.soloVer[1]) && /solo lectura/.test(o.soloVer[2]) && o.soloVer[3] === 1, o.soloVer],
   ['sin conexión la nota abre desde la copia y lo marca', o.sinConexion && /Suelta/.test(o.sinConexion[0]) && /Sin conexión/.test(o.sinConexion[1]) && /lmd-sync-err/.test(o.sinConexion[2]), o.sinConexion],
   ['lo escrito sin conexión queda en la cola', o.enCola === true],

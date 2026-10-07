@@ -121,6 +121,7 @@
         '<p class="lmd-home-sub">' + T('Elegí una nota de la izquierda o empezá una nueva.') + '</p>' +
         '<div class="lmd-home-actions">' +
           '<button type="button" class="lmd-btn lmd-btn-fill" data-home="new">' + ICON.plus + '<span>' + T('Nueva nota') + '</span></button>' +
+          '<button type="button" class="lmd-btn" data-home="tpl">' + ICON.doc + '<span>' + T('Desde una plantilla') + '</span></button>' +
           '<button type="button" class="lmd-btn" data-home="file">' + ICON.file + '<span>' + T('Abrir archivo') + '</span></button>' +
           (window.showDirectoryPicker ? '<button type="button" class="lmd-btn" data-home="dir">' + ICON.folder + '<span>' + T('Abrir carpeta') + '</span></button>' : '') +
         '</div>' +
@@ -230,6 +231,7 @@
       say('');
       if (b.dataset.home === 'feedback') { LMD.sync.feedback(); return; }
       if (b.dataset.home === 'new') { create(); return; }
+      if (b.dataset.home === 'tpl') { ctx.template(); return; }
       if (b.dataset.home === 'notes') {
         try { await chooseNotesFolder(); paintNotes(); ctx.refresh(); } catch (err) { if (!(err && err.name === 'AbortError')) say(T('No se pudo abrir. Probá de nuevo.')); }
         return;
@@ -312,7 +314,8 @@
   // opt: name y text (para arrancar con contenido), target 'local' (siempre al navegador) y replace.
   async function create(opt) {
     opt = opt || {};
-    const how = { edit: true, replace: !!opt.replace, tree: true };
+    // Una nota que nace con contenido abre en edición, sin el bloque nuevo que se le ofrece a una vacía.
+    const how = { edit: opt.text ? 'doc' : true, replace: !!opt.replace, tree: true };
     const base = opt.name || stamp(); const text = opt.text || '';
     const folder = opt.target !== 'local' && window.showDirectoryPicker ? await notesFolder() : null;
     if (folder) {
@@ -340,7 +343,11 @@
       try {
         const file = await cloudNote(base, text);
         return ctx.open('cloud/' + encodeURIComponent(file), how);
-      } catch (e) { /* sin conexión o sin lugar: sigue en el navegador */ }
+      } catch (e) {
+        // Desde una plantilla se eligió crearla ahí: en el límite del plan gratis se dice, en vez de mandarla a otro lado.
+        if (opt.strict && e && e.code === 'note_limit') { ctx.say(T('Llegaste al límite de notas del plan gratis. El plan pago no tiene límite.')); return false; }
+        /* sin conexión: sigue en el navegador */
+      }
     }
     // Sin carpeta de notas, la nota queda guardada en el navegador y sigue ahí al volver.
     let name = base + '.md';
@@ -348,6 +355,65 @@
     await notePut(name, text);
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* el navegador decide */ }
     return ctx.open('local/' + encodeURIComponent(name), how);
+  }
+
+  // ---------- Desde una plantilla ----------
+  // Los grupos con sus plantillas a la izquierda y, a la derecha, cómo queda la elegida. Se filtra escribiendo,
+  // las flechas recorren la lista y Enter crea. Devuelve { file, text } o null.
+  const plain = (s) => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  function pickTemplate() {
+    return new Promise((resolve) => {
+      const all = LMD.templates.list(); const groups = LMD.templates.groups();
+      const title = T('Desde una plantilla');
+      const box = el('div', { class: 'lmd-ask lmd-tpl' });
+      box.innerHTML = '<div class="lmd-ask-card lmd-tpl-card" role="dialog" aria-modal="true" aria-label="' + title + '"><h3>' + title + '</h3>' +
+        '<div class="lmd-tpl-body"><div class="lmd-tpl-side">' +
+          '<input type="search" class="lmd-lk-q" spellcheck="false" placeholder="' + T('Filtrar plantillas') + '" aria-label="' + T('Filtrar plantillas') + '">' +
+          '<div class="lmd-tpl-list" role="listbox" aria-label="' + title + '"></div></div>' +
+        '<div class="lmd-tpl-prev markdown-body"></div></div>' +
+        '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-tpl="no">' + T('Cancelar') + '</button><button type="button" class="lmd-btn lmd-btn-fill" data-tpl="ok">' + T('Crear nota') + '</button></div></div>';
+      document.body.appendChild(box);
+      const input = box.querySelector('input'); const list = box.querySelector('.lmd-tpl-list'); const prev = box.querySelector('.lmd-tpl-prev'); const ok = box.querySelector('[data-tpl=ok]');
+      let shown = []; let at = ''; let done = false;
+      const close = (value) => { if (done) return; done = true; box.remove(); resolve(value); };
+      const select = (id) => {
+        at = id;
+        list.querySelectorAll('[data-id]').forEach((b) => { const on = b.dataset.id === id; b.classList.toggle('lmd-on', on); b.setAttribute('aria-selected', String(on)); if (on) b.scrollIntoView({ block: 'nearest' }); });
+        const t = id ? LMD.templates.get(id) : null;
+        prev.innerHTML = t ? ctx.preview(t.text) : '';
+        prev.scrollTop = 0; ok.disabled = !t;
+      };
+      const draw = () => {
+        const q = plain(input.value.trim());
+        list.textContent = ''; shown = [];
+        groups.forEach((g) => {
+          const rows = all.filter((t) => t.group === g.id && (!q || plain(t.name).includes(q) || plain(g.name).includes(q)));
+          if (!rows.length) return;
+          list.appendChild(el('p', { class: 'lmd-menu-label', text: g.name }));
+          rows.forEach((t) => { list.appendChild(el('button', { type: 'button', class: 'lmd-lk-row', role: 'option', 'data-id': t.id, text: t.name })); shown.push(t.id); });
+        });
+        if (!shown.length) list.appendChild(el('p', { class: 'lmd-empty', text: T('Ninguna plantilla coincide.') }));
+        select(shown.includes(at) ? at : (shown[0] || ''));
+      };
+      draw(); input.focus();
+      input.addEventListener('input', draw);
+      box.addEventListener('keydown', (e) => {
+        e.stopPropagation(); // los atajos del documento no corren con el selector abierto
+        if (e.key === 'Escape') { e.preventDefault(); close(null); }
+        else if (e.key === 'Enter') { e.preventDefault(); if (at) close(LMD.templates.get(at)); }
+        else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (shown.length) select(shown[(shown.indexOf(at) + (e.key === 'ArrowDown' ? 1 : shown.length - 1)) % shown.length]);
+        }
+      });
+      box.addEventListener('mousedown', (e) => { if (e.target === box) close(null); });
+      box.addEventListener('click', (e) => {
+        const row = e.target.closest('[data-id]'); const b = e.target.closest('[data-tpl]');
+        if (row) { select(row.dataset.id); input.focus(); }
+        else if (b) close(b.dataset.tpl === 'ok' && at ? LMD.templates.get(at) : null);
+      });
+      list.addEventListener('dblclick', (e) => { const row = e.target.closest('[data-id]'); if (row) close(LMD.templates.get(row.dataset.id)); });
+    });
   }
 
   LMD.home = {
@@ -358,6 +424,7 @@
     show: (c, note) => { ctx = c; return home(note); },
     say: (text) => { if (sayNow) sayNow(text); },
     pick: (c, what) => { ctx = c; return pick(what, c.say); },
+    pickTemplate: (c) => { ctx = c; return pickTemplate(); },
     perks, signIn,
     gate: (c, rec, mode) => { ctx = c; return gate(rec, mode); },
   };

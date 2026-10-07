@@ -613,6 +613,16 @@
       "Nombre de la nota nueva": "Name of the new note",
       "Elegí una nota de la izquierda o empezá una nueva.": "Pick a note on the left or start a new one.",
       "No se pudo crear la carpeta": "The folder could not be created",
+      "Día a día": "Day to day",
+      "Proyectos": "Projects",
+      "Equipo": "Team",
+      "Producto y desarrollo": "Product and development",
+      "Personal": "Personal",
+      "Desde una plantilla": "From a template",
+      "Desde una plantilla…": "From a template…",
+      "Filtrar plantillas": "Filter templates",
+      "Crear nota": "Create note",
+      "Ninguna plantilla coincide.": "No template matches.",
   };
   let current = 'es';
   function setLang(pref) {

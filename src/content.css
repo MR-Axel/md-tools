@@ -949,3 +949,20 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-res-root { display: flex; align-items: center; gap: 6px; margin: 10px 6px 4px; color: var(--fg-faint); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 /* Estado vacío: liviano, sin título */
 .lmd-home-card .lmd-home-sub { margin-top: 14px; }
+/* ---------- Desde una plantilla: la lista por grupos y cómo queda la elegida ---------- */
+.lmd-tpl-card { width: min(900px, 100%); }
+.lmd-tpl-card h3 { margin-bottom: 12px; }
+.lmd-tpl-body { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 14px; height: min(470px, 62vh); margin-bottom: 16px; }
+.lmd-tpl-side { display: flex; flex-direction: column; min-height: 0; }
+.lmd-tpl-side .lmd-lk-q { margin: 0 0 8px; flex: none; }
+.lmd-tpl-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px; border: 1px solid var(--line); border-radius: 9px; }
+.lmd-tpl-list .lmd-menu-label { margin: 8px 9px 3px; }
+.lmd-tpl-list .lmd-menu-label:first-child { margin-top: 4px; }
+.lmd-ask-card .lmd-tpl-list p.lmd-empty { margin: 0; padding: 9px 10px; font-size: 13.5px; }
+.lmd-tpl-prev { min-width: 0; overflow: auto; padding: 16px 22px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-soft); font-size: 13.5px; line-height: 1.55; }
+.lmd-tpl-prev > :first-child { margin-top: 0; }
+.lmd-tpl-prev h1 { font-size: 1.55em; } .lmd-tpl-prev h2 { font-size: 1.25em; } .lmd-tpl-prev h3 { font-size: 1.1em; }
+.lmd-ask-card .lmd-tpl-prev p { margin: 0 0 0.8em; color: inherit; }
+@media (max-width: 720px) { .lmd-tpl-body { grid-template-columns: 1fr; grid-template-rows: 190px minmax(0, 1fr); } }
+.lmd-tpl-list, .lmd-tpl-prev { scrollbar-width: thin; }
+.lmd-tpl-side .lmd-lk-q:focus-visible { outline: none; }

@@ -60,7 +60,8 @@
   const isDark = () => LMD.theme.isDark(settings);
   const applyAccent = (root, dark) => LMD.theme.applyAccent(root, dark, settings);
   // Lo que el estado vacío (home.js) necesita del lector: dónde dibujarse y cómo abrir una nota sin recargar.
-  const homeCtx = () => ({ settings, APP_URL, box: ui.home, open: (f, opt) => go(f, opt), refresh: () => core.reloadTree(), say: (text) => flash(text, 'error') });
+  const homeCtx = () => ({ settings, APP_URL, box: ui.home, open: (f, opt) => go(f, opt), refresh: () => core.reloadTree(), say: (text) => flash(text, 'error'),
+    template: () => LMD.extras.fromTemplate(''), preview: (text) => DOMPurify.sanitize(buildParser().render(settings.plugins.frontmatter ? splitFrontmatter(text).body : text), { FORBID_TAGS: ['style', 'form'] }) });
   // Si la extensión se recargó o se actualizó, esta pestaña queda desconectada de ella: no puede
   // releer el archivo ni la carpeta. Se detecta y se avisa, en vez de fallar en silencio.
   let orphan = false;
@@ -2286,6 +2287,7 @@
     diskDir: () => (APP && diskRoot && diskRoot.kind === 'dir' ? treeRoot : ''),
     newNote: (opt) => LMD.home.create(homeCtx(), opt),
     pick: (what) => LMD.home.pick(homeCtx(), what),
+    pickTemplate: () => LMD.home.pickTemplate(homeCtx()),
     showFiles,
     reloadTree: () => { fileCache.clear(); folderIndex.clear(); wikiIndex = null; linkIndex = null; if (ui.searchInput.value.trim()) runSearch(ui.searchInput.value); return loadTree(); },
     dirHandle: async (dirUrl) => { let dir = rootOf(dirUrl).handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, ensure, isDark,
@@ -2679,10 +2681,10 @@
     window.scrollTo(0, 0);
     // Un archivo recién creado, o uno vacío, arranca listo para escribir. Si se venía editando, sigue en
     // edición. Lo de solo lectura y lo que no es Markdown abre leyendo.
-    const fresh = !!opt.edit; const blankDoc = !raw.trim();
+    const fresh = !!opt.edit; const blankDoc = !raw.trim(); const draft = opt.edit === true || blankDoc;
     if (fresh || (!readOnly && docKind() === 'md' && (blankDoc || opt.editing || editRemembered()))) {
       // Con Ajustes abiertos (vuelta de un cambio de idioma o de un pago) el menú de insertar no se ofrece: quedaría encima.
-      setEditMode(true).then(() => { const add = (fresh || blankDoc) && ui.panel.hidden && ui.article.querySelector('.lmd-add'); if (add) add.click(); });
+      setEditMode(true).then(() => { const add = draft && ui.panel.hidden && ui.article.querySelector('.lmd-add'); if (add) add.click(); });
     }
     const hash = opt.hash || '';
     const fromSearch = /^#lmd-q=([^&]+)(?:&r=(.+))?$/.exec(hash);

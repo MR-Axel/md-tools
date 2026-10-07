@@ -81,7 +81,7 @@ try {
   console.log('Página propia de SharpMD');
   const app = await ctx.newPage(); watch(app);
   await app.goto(`chrome-extension://${id}/src/app.html`); await app.waitForSelector('.lmd-home');
-  check('pantalla de inicio: nuevo, abrir archivo y abrir carpeta', (await app.locator('.lmd-home-actions [data-home]').count()) === 3);
+  check('centro sin nota: nueva nota, desde una plantilla, abrir archivo y abrir carpeta', (await app.evaluate(() => [...document.querySelectorAll('.lmd-home-actions [data-home]')].map((x) => x.dataset.home).join())) === 'new,tpl,file,dir');
   // Carpeta de prueba en el almacenamiento privado del origen; el selector de Windows no se puede automatizar.
   await app.evaluate(async () => {
     const base = await navigator.storage.getDirectory();
@@ -183,7 +183,7 @@ try {
   check('la raíz es la página de presentación y lleva a la app', (await web.locator('a.btn.fill[href="src/app.html"]').count()) >= 1 && (await web.locator('img.shot').count()) >= 4);
   await web.goto(origin + '/privacy.html'); check('página de privacidad', /Privac/.test(await web.textContent('h1:visible')));
   await web.goto(origin + '/src/app.html'); await web.waitForSelector('.lmd-home');
-  check('la app web muestra la pantalla de inicio', (await web.locator('.lmd-home-actions [data-home]').count()) === 3);
+  check('la app web muestra el centro con sus cuatro acciones', (await web.locator('.lmd-home-actions [data-home]').count()) === 4);
   await web.evaluate(async () => {
     const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('web', { create: true });
     const h = await dir.getFileHandle('nota.md', { create: true }); const w = await h.createWritable();
@@ -208,7 +208,7 @@ try {
   const plain = await ctx.newPage(); watch(plain);
   await plain.addInitScript(() => { delete window.showOpenFilePicker; delete window.showDirectoryPicker; Object.defineProperty(window, 'showOpenFilePicker', { value: undefined }); Object.defineProperty(window, 'showDirectoryPicker', { value: undefined }); Object.defineProperty(window, 'showSaveFilePicker', { value: undefined }); });
   await plain.goto(origin + '/src/app.html'); await plain.waitForSelector('.lmd-home');
-  check('sin acceso a archivos no ofrece abrir carpeta', (await plain.locator('.lmd-home-actions [data-home]').count()) === 2 && (await plain.locator('[data-home=dir]').count()) === 0);
+  check('sin acceso a archivos no ofrece abrir carpeta', (await plain.locator('.lmd-home-actions [data-home]').count()) === 3 && (await plain.locator('[data-home=dir]').count()) === 0);
   const [chooser] = await Promise.all([plain.waitForEvent('filechooser'), plain.click('[data-home=file]')]);
   await Promise.all([plain.waitForNavigation(), chooser.setFiles(path.join(root, 'examples', 'demo.md'))]);
   await plain.waitForSelector('.markdown-body h1');

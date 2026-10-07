@@ -109,10 +109,39 @@
     } catch (e) { core.flash(T('No se pudo crear la carpeta'), 'error'); }
   }
 
-  async function newFile(dirUrl) {
-    if (inCloud(dirUrl)) return cloudNew(dirUrl, false);
+  // Una nota que ya trae nombre y contenido (de una plantilla), dentro de una carpeta del disco o de la nube.
+  // El nombre no pisa a otro: si está tomado, suma un número.
+  async function newFrom(dirUrl, given) {
+    const free = async (taken) => { let name = given.name + '.md'; for (let n = 2; n < 50 && await taken(name); n++) name = given.name + '-' + n + '.md'; return name; };
+    try {
+      if (inCloud(dirUrl)) {
+        const dir = core.pathOf(dirUrl); const pre = dir ? dir + '/' : ''; const s = LMD.cloud.split(pre + 'x');
+        const all = new Set((await LMD.cloud.list(true, s.owner)).map((n) => n.path)); const inner = s.path.slice(0, -1);
+        const path = pre + await free((name) => all.has(inner + name));
+        await LMD.cloud.write(path, given.text);
+        return core.open(core.urlOf(path), { tree: true, edit: 'doc' });
+      }
+      const dir = await core.dirHandle(dirUrl);
+      const name = await free((n) => exists(dir, n));
+      const h = await dir.getFileHandle(name, { create: true });
+      const w = await h.createWritable(); await w.write(given.text); await w.close();
+      return core.open(dirUrl + encodeURIComponent(name), { tree: true, edit: 'doc' });
+    } catch (e) { core.flash(cloudWhy(e, 'No se pudo crear el archivo'), 'error'); }
+  }
+  // Elegir una plantilla y crear la nota: en dirUrl, o donde van las notas nuevas si no se dice dónde.
+  async function fromTemplate(dirUrl) {
+    const t = await core.pickTemplate();
+    if (!t) return;
+    const given = { name: t.file, text: t.text };
+    if (!dirUrl) return core.newNote(Object.assign({ strict: true }, given));
+    return newFile(dirUrl, given);
+  }
+
+  async function newFile(dirUrl, given) {
     // Las notas del navegador no piden nombre: nacen con la fecha y se listan por su primer renglón.
-    if (inLocal(dirUrl)) return core.newNote({ target: 'local' });
+    if (inLocal(dirUrl)) return core.newNote(Object.assign({ target: 'local' }, given));
+    if (given) return newFrom(dirUrl, given);
+    if (inCloud(dirUrl)) return cloudNew(dirUrl, false);
     let name = (window.prompt(T('Nombre del archivo nuevo'), T('nota') + '.md') || '').trim();
     if (!name) return;
     if (/[\\/:*?"<>|]/.test(name)) { core.flash(T('Ese nombre tiene caracteres que no se pueden usar'), 'error'); return; }
@@ -214,11 +243,13 @@
     const at = isDir ? url : parentOf(url);
     showMenu(x, y, [
       !local && ['new', isDir ? 'Nuevo archivo acá' : 'Nuevo archivo'],
+      !local && ['tpl', 'Desde una plantilla…'],
       !local && ['dir', 'Nueva carpeta'],
       (!isDir || cloud) && ['ren', 'Renombrar'],
       !isDir && ['del', 'Eliminar', true],
     ].filter(Boolean), (f) => {
       if (f === 'new') newFile(at);
+      else if (f === 'tpl') fromTemplate(at);
       else if (f === 'dir') newFolder(at);
       else if (f === 'ren') rename(url, isDir);
       else remove(url);
@@ -227,8 +258,9 @@
   // Crear: desde la cabecera del explorador (sin dirUrl: donde van las notas nuevas) o dentro de una raíz.
   function createMenu(x, y, dirUrl) {
     const folderAt = dirUrl ? (canTree(dirUrl) ? dirUrl : '') : (core.diskDir() || (LMD.cloud.signedIn() ? core.urlOf('') : ''));
-    showMenu(x, y, [['new', 'Nota en blanco'], folderAt && ['dir', 'Carpeta']].filter(Boolean), (f) => {
+    showMenu(x, y, [['new', 'Nota en blanco'], ['tpl', 'Desde una plantilla…'], folderAt && ['dir', 'Carpeta']].filter(Boolean), (f) => {
       if (f === 'dir') newFolder(folderAt);
+      else if (f === 'tpl') fromTemplate(dirUrl);
       else if (dirUrl) newFile(dirUrl);
       else core.newNote();
     });
@@ -540,5 +572,5 @@
     article.addEventListener('keyup', (e) => { if (/^Arrow|^Page|^Home$|^End$/.test(e.key)) centerCaret(); });
   }
 
-  LMD.extras = { init, pasteImage, exportHtml, imageDialog, imageMd };
+  LMD.extras = { init, pasteImage, exportHtml, imageDialog, imageMd, fromTemplate };
 })();
