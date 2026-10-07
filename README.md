@@ -27,7 +27,7 @@ Free and open source. No account, no tracking: files are read in your browser an
 | **Diagrams** | Mermaid and Graphviz, with an editor that shows the drawing next to the code: templates, pieces to add with a button, color palettes, and errors explained with their line marked. |
 | **Math** | KaTeX, inline and in blocks, with an editor that previews as you type. |
 | **Images** | Insert by address or from a file, pick a size, paste from the clipboard. |
-| **Files** | The outline on top and the explorer below, with the folder on disk, the notes kept in the browser and the cloud. Search across all of them, create from a template, rename, move by dragging, delete. |
+| **Files** | The outline on top and the explorer below, with the folder on disk, the notes kept in the browser and the cloud. Search across all of them, create from a template, rename, delete, and move files and whole folders by dragging. Drag a file from the explorer into the note you are editing and it becomes a link (or an image) where you drop it. |
 | **Links** | Ctrl+K links to a section of the note, to another file or to one of its sections, picked from a list. `[[name]]` works too. |
 | **Outline** | Built from the headings, with the current section and reading progress. |
 | **Notes** | New starts a note that saves itself in the browser, or in a folder you choose. 26 templates to start from. |
@@ -35,7 +35,7 @@ Free and open source. No account, no tracking: files are read in your browser an
 | **Focus** | Focus mode dims everything but the block you are writing; typewriter mode keeps the line at mid height. |
 | **Export** | One standalone HTML file, or PDF through print. |
 | **More than Markdown** | Code and config files open highlighted, CSV as a table, images as images. |
-| **Cloud notes** | Optional. Sign in with a code sent to your email, send a note to the cloud and open it on any device, also without a connection. |
+| **Cloud notes** | Optional. Sign in with a code sent to your email, move a note to the cloud and open it on any device, also without a connection. A deleted cloud note stays in the trash for 30 days. The account can be deleted from Settings. |
 | **Protected folders** | A cloud folder can carry a password. Its notes are encrypted in the browser and the server cannot read them. You unlock it for your AI for as long as you choose. |
 | **Sharing** | A note or a folder with another account, to read or to edit, or a read-only public link with a password. |
 | **Live sessions** | Open a session on a cloud note and send the link. Guests join from the browser with a name, without an account, and everyone edits at once. |

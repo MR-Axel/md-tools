@@ -59,7 +59,7 @@ curl -X POST https://sync.example.com/admin/plan -H "x-admin-key: $ADMIN_KEY" \
 
 ## What it stores
 
-Email, notes and their previous versions (paid plan, 30 days), and hashes of sign-in codes, sessions and tokens. Sessions and tokens are stored hashed: the server cannot show a token again after creating it. Of a live session it stores the note, the name its owner chose and the hash of the link's secret; the guests live in memory only (see "Live sessions"). Of a team it stores its name, the accounts that belong to it, the invitations that are waiting (the invited email address, until it is accepted, declined or removed) and the id of the subscription that pays for it (see "Teams").
+Email, notes, their previous versions (paid plan, 30 days), deleted notes while they are in the trash (30 days), and hashes of sign-in codes, sessions and tokens. Sessions and tokens are stored hashed: the server cannot show a token again after creating it. Of a live session it stores the note, the name its owner chose and the hash of the link's secret; the guests live in memory only (see "Live sessions"). Of a team it stores its name, the accounts that belong to it, the invitations that are waiting (the invited email address, until it is accepted, declined or removed) and the id of the subscription that pays for it (see "Teams").
 
 Notes are not end-to-end encrypted by default: the MCP endpoint has to read them to serve an AI, and sharing has to hand them to another account. There are two layers on top of that, and they are independent:
 
@@ -87,6 +87,8 @@ What the server enforces:
 - Notes in a protected folder are left out of `GET /search`. Sharing them, creating a public link for them and commenting them for the AI answer `409 vault`. A folder shared earlier, or a parent folder that is shared, gives no access to them.
 - Protecting a folder deletes what was readable or reachable from outside: the plain-text history of its notes, their comments, their public links and their shares. SQLite zeroes what it deletes (`secure_delete`) and the write-ahead log is truncated when a note goes from plain to encrypted, so the old text does not linger in the file.
 - Renaming or moving a note into, out of or inside a protected folder needs the text again (`POST /rename` with `text`), because the ciphertext is tied to the path.
+- A deleted note of a protected folder goes to the trash as it was, encrypted. Protecting a folder deletes what the trash held of it in plain text, and removing the protection deletes what it held encrypted.
+- `POST /vaults/{id}/destroy` deletes a protected folder without its key, for someone who lost both the password and the backup key: the folder, its notes, their history and what the trash held of them. None of it goes to the trash, since nobody could read it.
 
 ### MCP and "unlock for the AI"
 
@@ -134,7 +136,9 @@ Sign-in is a six-digit code sent by mail, no passwords.
 | `POST /auth/verify` `{ email, code }` | Returns `{ session, account }`. Limits: `tries_mail_hour`, `tries_mail_day`, `tries_ip_hour`, with the wait, and `tries_code` when that code is used up and a new one is needed |
 | `GET /account` | Plan, note count and limit. `plan` is what the account has now; `own_plan` what it pays for by itself (a member of a team can have `plan: "pro"` and `own_plan: "free"`); `team` is described in "Teams" |
 | `GET /notes` | List |
-| `GET` / `PUT` / `DELETE /notes/{path}` | Read (`{ text, rev, updated, role }`), write `{ text, rev? }`, delete. See "Revisions" below |
+| `GET` / `PUT` / `DELETE /notes/{path}` | Read (`{ text, rev, updated, role }`), write `{ text, rev? }`, delete. Deleting moves the note to the trash; `?forever=1` skips it. See "Revisions" and "Trash" below |
+| `DELETE /account` `{ email }` | Deletes the account of the session. See "Deleting an account" below |
+| `GET /trash`, `POST /trash/{id}/restore`, `DELETE /trash/{id}`, `DELETE /trash` | List the trash, restore a note, delete one for good, empty it. See "Trash" below |
 | `GET /events?path=` | Server-sent events for an open note: `presence` (who else has it open), `saved` (`{ by, updated, rev }`), `comments`, `vault`, and `live` while a live session is open |
 | `POST /rename` `{ from, to, text?, updated? }` | Rename. With a protected folder involved, `text` is the note for its new path and `updated` what the client read: `409 changed` if the note changed meanwhile |
 | `GET /search?q=` | Search the text of every note outside protected folders |
@@ -143,6 +147,7 @@ Sign-in is a six-digit code sent by mail, no passwords.
 | `PUT /vaults/{id}` `{ salt, iters, wrapped }` | Change the password: the same data key, wrapped again |
 | `POST /vaults/{id}/unlock` `{ key, minutes }` | Unlock for the AI. `minutes` is 15, 60, 480 or 0. `403 bad_key` if the key is not the one of that folder, ten wrong keys an hour |
 | `POST /vaults/{id}/lock` | Forget the key now |
+| `POST /vaults/{id}/destroy` `{ folder }` | Delete the folder and its notes without the key. `folder` has to be the exact name of the folder, or it answers `400 bad_confirm` |
 | `POST /vaults/{id}/open`, `DELETE /vaults/{id}` | Remove protection: the first lets the folder take plain text again while the browser decrypts each note, the second ends it and answers `409 vault_not_empty` while encrypted notes remain |
 | `POST /tokens` `{ name, folder }` | Creates a token for MCP, shown once. With `folder`, the token only reaches that folder |
 | `GET` / `POST /comments`, `DELETE /comments/{id}` | Comments left on a note for the AI: `{ path, quote, text }` |
@@ -151,6 +156,37 @@ Sign-in is a six-digit code sent by mail, no passwords.
 | `POST /mcp` | MCP over Streamable HTTP, with `Authorization: Bearer mdt_...` |
 
 MCP tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`.
+
+### Trash
+
+`DELETE /notes/{path}` moves the note to the trash, where it stays for `TRASH_DAYS` days (30) and is then purged. Its public links, its shares, its comments and its live session end when it is deleted, and do not come back when it is restored.
+
+What is in the trash is not a note. It does not count toward the limit of the free plan, and search, sharing, public links, live sessions and MCP cannot reach it. With `DATA_KEY` it is encrypted at rest like the rest. A note from a protected folder is kept as it was, encrypted in the browser; one that was still in plain text inside a protected folder is deleted without passing through the trash.
+
+| Call | What it does |
+|---|---|
+| `GET /trash` | `[{ id, path, size, deleted, expires, protected }]`, newest first. No text |
+| `POST /trash/{id}/restore` | Puts the note back at its path and answers `{ path, from, updated, size, rev }`. If a note already has that path it comes back under another name (`plan.md` becomes `plan (2).md`). `402 note_limit` when the free plan is full |
+| `DELETE /trash/{id}` | Deletes that note for good |
+| `DELETE /trash` | Empties the trash |
+
+With `?o=` and the number of the team space, the four work on the trash of the team: any member lists it, restores from it and empties it. Any other `o` answers `403 no_access`, and an `id` from someone else's trash `404 not_found`.
+
+A protected note that has to come back under another name cannot be renamed by the server, because its ciphertext is tied to its path. The restore answers `409 trash_rekey` with `{ path, to, text }`: the browser decrypts `text` with the old path, encrypts it for `to` and repeats the call with `{ to, text }`.
+
+Each account keeps up to 300 notes in the trash; past that the oldest go.
+
+### Deleting an account
+
+`DELETE /account` with the session and `{ email }`, the email of that same account, deletes it: its notes, version history, trash, comments, tokens, sessions, shares in both directions, public links, protected folders, live sessions, pending team invitations to that email and the record of its ended subscriptions. Open connections are closed. Five requests an hour per IP and per account.
+
+It refuses while money is still being charged, with `409` and a `manage` field holding `PORTAL_URL`:
+
+- `subscription_active`: the account has an active subscription of its own.
+- `team_billing_active`: it manages a team whose subscription is active.
+- `team_has_members`: it manages a team that still has other members. Alone in its team, the team and the notes of its space are deleted with the account.
+
+A member of a team leaves the team; the notes of the team stay with the team. `400 bad_confirm` when the email is not the one of the account.
 
 ### Revisions
 
@@ -232,6 +268,7 @@ Billing. A team is one Paddle subscription with two items: the base price, quant
 | `TEAM_MAX_SEATS` | Most seats a team can have | `50` |
 | `TEAM_INVITES_DAY` | Invitations one team may send per day | `20` |
 | `APP_URL` | Address of the app that the invitation email links to | `https://sharpmd.app/src/app.html` |
+| `TRASH_DAYS` | Days a deleted note stays in the trash. `0` turns the trash off: deleting is final | `30` |
 
 The team plan is offered only when `PADDLE_WEBHOOK_SECRET`, `PADDLE_TEAM_BASE`, `PADDLE_TEAM_SEAT` and `PADDLE_API_KEY` are all set. Without them `team.enabled` is `false` and the app does not show it.
 

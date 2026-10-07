@@ -11,7 +11,7 @@
 
 - Edits Markdown in place: click a paragraph, a heading, a list item or a table cell and type. The Markdown source is rewritten block by block.
 - Reads GitHub Flavored Markdown plus KaTeX math, Mermaid and Graphviz diagrams, footnotes, task lists, callouts, definition lists and YAML front matter.
-- Opens a whole folder: file tree, search across every file, `[[name]]` links, create, rename, move and delete.
+- Opens a whole folder: file tree, search across every file, `[[name]]` links, create, rename, move and delete. Files and folders move by dragging, and a file dragged into the note being edited becomes a link.
 - Block menu on right-click: insert a table, code block, diagram, formula or callout; turn into, move, duplicate, delete.
 - Tables with totals and formulas (`=sum`, `=avg`, `=min`, `=max`, `=count`, `=median`), kanban boards from task lists, pasted images saved next to the document.
 - Exports one standalone HTML file, or PDF through print.
@@ -27,6 +27,8 @@
 
 - Sign-in is a six-digit code sent by email, with no password.
 - A note reaches the server only when the user sends it to the cloud. Files opened from disk are never uploaded.
+- Sending a note to the cloud moves it there. A deleted cloud note stays in the trash for 30 days and can be restored; what is in the trash is not searched, shared or reachable over MCP.
+- The account can be deleted from the app (Settings, Cloud, "Delete account"), which removes its notes and everything else stored for it.
 - Cloud notes can be shared with another account, to read or to edit, or through a read-only public link with an optional password.
 - Live sessions: the owner of a cloud note, on the paid plan, opens a session and hands out a link. Guests join from the browser with a name and no account, up to 12 people, and edit the same note at once. The secret of the link travels after the # of the address.
 - MCP endpoint over Streamable HTTP at https://sync.sharpmd.app/mcp with eight tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`. Authentication is a bearer token the user creates in the app, and a token can be limited to one folder.

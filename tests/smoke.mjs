@@ -182,6 +182,14 @@ try {
   await web.goto(origin + '/'); await web.waitForSelector('h1');
   check('la raíz es la página de presentación y lleva a la app', (await web.locator('a.btn.fill[href="src/app.html"]').count()) >= 1 && (await web.locator('img.shot').count()) >= 4);
   await web.goto(origin + '/privacy.html'); check('página de privacidad', /Privac/.test(await web.textContent('h1:visible')));
+  // El enlace a cómo eliminar la cuenta (lo pide la tienda) lleva a esa sección, en el idioma que se esté viendo.
+  const inView = () => web.evaluate(() => { const h = [...document.querySelectorAll('h3')].find((x) => x.offsetParent); const r = h ? h.getBoundingClientRect() : null; return h ? [h.textContent, r.top >= 0 && r.top < window.innerHeight, /hello@sharpmd\.app/.test(h.nextElementSibling.innerHTML)] : null; });
+  await web.goto(origin + '/privacy.html#delete-account'); await web.waitForTimeout(300);
+  const delEn = await inView();
+  await web.click('.lang [data-set=es]'); await web.goto('about:blank'); await web.goto(origin + '/privacy.html#delete-account'); await web.waitForSelector('h1:visible'); await web.waitForTimeout(300);
+  const delEs = await inView();
+  await web.click('.lang [data-set=en]');
+  check('privacy.html#delete-account lleva a cómo eliminar la cuenta, en inglés y en castellano', JSON.stringify([delEn, delEs]) === JSON.stringify([['Deleting your account', true, true], ['Eliminar tu cuenta', true, true]]) && (await web.locator('#delete-account').count()) === 1, [delEn, delEs]);
   await web.goto(origin + '/src/app.html'); await web.waitForSelector('.lmd-home');
   check('la app web muestra el centro con sus cuatro acciones', (await web.locator('.lmd-home-actions [data-home]').count()) === 4);
   await web.evaluate(async () => {
