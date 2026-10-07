@@ -89,7 +89,7 @@ try {
   check('ni la rechaza por ella', (await api('POST', '/team/decline', { id: b0.team.invites[0].id }, Z.s)).status === 200 && (await pendingFor(B)).length === 1);
   const yes = await api('POST', '/team/accept', { id: b0.team.invites[0].id }, B.s);
   const b1 = await acct(B);
-  check('al aceptar entra al equipo y tiene el plan pago', yes.status === 200 && b1.plan === 'pro' && b1.own_plan === 'free' && b1.team.mine.role === 'member' && b1.team.mine.space === SPACE && b1.limit === null && b1.mcp === true, b1);
+  check('al aceptar entra al equipo y tiene el plan pago', yes.status === 200 && b1.plan === 'pro' && b1.own_plan === 'free' && b1.team.mine.role === 'editor' && b1.team.mine.space === SPACE && b1.limit === null && b1.mcp === true, b1);
   check('un miembro ve quiénes están, y nada del cobro ni de las invitaciones', b1.team.mine.members.map((m) => m.email).join() === 'ana@ejemplo.test,beto@ejemplo.test' && b1.team.mine.pending === undefined && b1.team.mine.billing === undefined && b1.manage === '', b1);
   // Carla: se le hace lugar, se la invita en castellano y rechaza.
   const sin = (await acct(A)).team.mine.pending.find((i) => i.email === 'sin-cuenta@ejemplo.test');
