@@ -30,7 +30,8 @@
 - Cloud notes can be shared with another account, to read or to edit, or through a read-only public link with an optional password.
 - MCP endpoint over Streamable HTTP at https://sync.sharpmd.app/mcp with eight tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`. Authentication is a bearer token the user creates in the app, and a token can be limited to one folder.
 - The user can leave a comment on a passage of a note. The AI reads the open comments with `list_comments`, makes the change and closes each one with `resolve_comment`.
-- Cloud notes are not end-to-end encrypted, because the server has to read them to share them and to serve MCP.
+- Cloud notes are encrypted at rest on the server, which holds the key so it can share them and serve MCP.
+- A folder can be protected with a password. Its notes are encrypted in the browser (AES-256-GCM, key wrapped with PBKDF2) and the server cannot read them. File and folder names stay visible. Protected folders are left out of sharing, public links and MCP, unless the user unlocks one for the AI for a set time; while unlocked, the server holds the key in memory only.
 
 ## Plans
 

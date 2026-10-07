@@ -36,6 +36,7 @@ Free and open source. No account, no tracking: files are read in your browser an
 | **Export** | One standalone HTML file, or PDF through print. |
 | **More than Markdown** | Code and config files open highlighted, CSV as a table, images as images. |
 | **Cloud notes** | Optional. Sign in with a code sent to your email, send a note to the cloud and open it on any device, also without a connection. |
+| **Protected folders** | A cloud folder can carry a password. Its notes are encrypted in the browser and the server cannot read them. You unlock it for your AI for as long as you choose. |
 | **Sharing** | A note or a folder with another account, to read or to edit, or a read-only public link with a password. |
 | **AI over MCP** | Claude or any MCP client can list, read, write, append to and search your cloud notes. A token can be limited to one folder, and a comment on a block tells the AI what to change. |
 | **Phone** | The same app on a small screen, and the web app opens without a connection. |
@@ -124,6 +125,8 @@ src/
   formula.js      formula editor with live preview
   links.js        link picker for sections, other files and web addresses
   comments.js     comments left on a block for the AI
+  seal.js         encryption of protected folders (WebCrypto)
+  vault.js        protected folders: password, backup key, unlock for the AI
   templates.js    note templates, in English and Spanish
   emoji.js        emoji list while typing
   dialog.js       the app's own prompt and confirm dialogs
