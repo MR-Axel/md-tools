@@ -74,7 +74,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
   if (msg.type === 'openApp') { chrome.tabs.create({ url: chrome.runtime.getURL('src/app.html') + (msg.fresh ? '?new=1' : (msg.query || '')) }); sendResponse({ ok: true }); return; }
-  if (msg.type === 'reloadExtension') { sendResponse({ ok: true }); setTimeout(() => chrome.runtime.reload(), 150); return; }
+  if (msg.type === 'reloadExtension') {
+    // Recargar la extensión cierra sus páginas y deja huérfanas las pestañas de archivos:
+    // se anotan antes, y al volver se reabren unas y se recargan las otras.
+    sendResponse({ ok: true });
+    const own = chrome.runtime.getURL('');
+    chrome.tabs.query({}).then((tabs) => {
+      const reopen = tabs.filter((t) => t.url && t.url.startsWith(own + 'src/app.html')).map((t) => ({ url: t.url, index: t.index, windowId: t.windowId, active: t.active }));
+      const reload = tabs.filter((t) => t.url && !t.url.startsWith(own) && /\.(md|mdx|mkd|mdown|markdown)([?#]|$)/i.test(t.url)).map((t) => t.id);
+      return chrome.storage.local.set({ afterUpdate: { reopen, reload, at: Date.now() } });
+    }).catch(() => {}).then(() => setTimeout(() => chrome.runtime.reload(), 150));
+    return;
+  }
   if (msg.type === 'fetchText') {
     fetchText(msg.url)
       .then((text) => sendResponse({ ok: true, text }))
@@ -88,6 +99,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 });
+
+// Después de aplicar una actualización: se devuelven las pestañas a como estaban.
+chrome.storage.local.get('afterUpdate').then((r) => {
+  const a = r && r.afterUpdate;
+  if (!a) return;
+  chrome.storage.local.remove('afterUpdate');
+  if (Date.now() - a.at > 60000) return;
+  (a.reopen || []).forEach((t) => chrome.tabs.create({ url: t.url, index: t.index, windowId: t.windowId, active: t.active }).catch(() => chrome.tabs.create({ url: t.url })));
+  (a.reload || []).forEach((id) => chrome.tabs.reload(id).catch(() => {}));
+}).catch(() => {});
 
 const THEMES = ['auto', 'light', 'dark'];
 

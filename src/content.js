@@ -657,8 +657,13 @@
     else if (act === 'close-panel') ui.panel.hidden = true;
     else if (act === 'reset') { panelStale = true; LMD.save(LMD.merge({ supporter: settings.supporter })); }
     else if (act === 'check-update') checkUpdate(true);
-    else if (act === 'update-apply') { bg({ type: 'reloadExtension' }); setTimeout(() => location.reload(), 1500); }
+    else if (act === 'update-apply') {
+      // Primero se guarda lo pendiente; el fondo se ocupa de reabrir o recargar las pestañas.
+      (dirty ? save(true) : Promise.resolve(true)).then((ok) => { if (ok || !dirty) bg({ type: 'reloadExtension' }); });
+    }
     else if (act === 'update-later') { ui.update.hidden = true; if (ui.update.dataset.v) bg({ type: 'dismissUpdate', version: ui.update.dataset.v }); }
+    else if (act === 'go-home') { if (APP) location.href = APP_URL; else bg({ type: 'openApp' }); }
+    else if (act === 'cloud-logout') LMD.cloud.logout().then(() => { panelStale = false; openPanel(); LMD.sync.paint(); });
     else if (act === 'supporter') { panelStale = true; LMD.patch({ supporter: true }); flash(T('Gracias por apoyar el proyecto.')); }
   }
 
@@ -1267,7 +1272,7 @@
     const s = settings;
     const EXTRA = ' <em class="lmd-tag">' + T('Extra') + '</em>';
     const plugins = Object.keys(LMD.PLUGIN_LABELS).map((k) =>
-      '<label class="lmd-check"><input type="checkbox" data-plugin="' + k + '"' + (s.plugins[k] ? ' checked' : '') + '><span>' + esc(T(LMD.PLUGIN_LABELS[k])) + '</span></label>').join('');
+      '<label class="lmd-switch" data-tip="' + esc(T(LMD.PLUGIN_HELP[k] || '')) + '"><input type="checkbox" data-plugin="' + k + '"' + (s.plugins[k] ? ' checked' : '') + '><i></i><span>' + esc(T(LMD.PLUGIN_LABELS[k])) + '</span></label>').join('');
     const fonts = LMD.FONTS.slice();
     if (s.fontFamily && !fonts.some((f) => f.value === s.fontFamily)) fonts.push({ name: s.fontFamily, value: s.fontFamily });
     const fontOptions = fonts.map((f) => '<option value="' + esc(f.value) + '"' + (f.value === (s.fontFamily || '') ? ' selected' : '') + '>' + esc(f.value ? f.name : T(f.name)) + '</option>').join('');
@@ -1275,7 +1280,7 @@
       '<div class="lmd-panel-card" role="dialog" aria-label="' + T('Ajustes') + '">' +
         '<header><h2>' + T('Ajustes') + '</h2><button class="lmd-icon-btn" data-act="close-panel" title="' + T('Cerrar') + '">' + ICON.close + '</button></header>' +
         '<nav class="lmd-ptabs" role="tablist">' +
-          [['look', 'Apariencia'], ['read', 'Lectura y edición'], ['plug', 'Plugins'], ['acct', 'Cuenta']].map((t) => '<button type="button" role="tab" data-ptab="' + t[0] + '">' + T(t[1]) + '</button>').join('') +
+          [['look', 'Apariencia', ICON.eye], ['read', 'Lectura y edición', ICON.pencil], ['plug', 'Plugins', ICON.b_code], ['acct', 'Cuenta', ICON.cloud]].map((t) => '<button type="button" role="tab" data-ptab="' + t[0] + '">' + t[2] + '<span>' + T(t[1]) + '</span></button>').join('') +
         '</nav>' +
         '<div class="lmd-panel-body">' +
           '<section><h3>' + T('Apariencia') + '</h3>' +
@@ -1300,9 +1305,11 @@
             '<div class="lmd-row"><span>' + T('Color de los bloques de código') + '</span><div class="lmd-swatches">' +
               LMD.CODE_COLORS.map((c) => '<button type="button" class="lmd-swatch' + ((s.codeColor || '') === c.value ? ' lmd-on' : '') + (c.value ? '' : ' lmd-swatch-auto') + '" data-code-color="' + c.value + '" title="' + T(c.name) + '"' + (c.value ? ' style="--sw:' + c.value + '"' : '') + '></button>').join('') +
             '</div></div>' +
+            '<pre class="lmd-prev-code"><code><span class="k">const</span> total = items.<span class="f">reduce</span>((a, b) =&gt; a + b, <span class="n">0</span>);</code></pre>' +
             '<div class="lmd-row"><span>' + T('Forma de los diagramas') + '</span><div class="lmd-seg" data-seg="diagramShape" role="radiogroup">' +
               [['round', 'Redondeados'], ['square', 'Rectos']].map((o) => '<button type="button" role="radio" data-val="' + o[0] + '" aria-checked="' + ((s.diagramShape || 'round') === o[0]) + '"' + ((s.diagramShape || 'round') === o[0] ? ' class="lmd-on"' : '') + '>' + T(o[1]) + '</button>').join('') +
             '</div></div>' +
+            '<svg class="lmd-prev-dgm" viewBox="0 0 300 64" aria-hidden="true"><rect class="node" x="6" y="14" width="84" height="36"/><rect class="node" x="210" y="14" width="84" height="36"/><path class="curve" d="M90 32 C 130 4, 170 60, 206 32"/><path class="line" d="M90 32 L 206 32"/><path d="m199 27 8 5-8 5z" class="tip"/><text x="48" y="37">A</text><text x="252" y="37">B</text></svg>' +
           '</section>' +
           '<section><h3>' + T('Lectura') + '</h3>' +
             '<label class="lmd-check"><input type="checkbox" data-key="centered"' + (s.centered ? ' checked' : '') + '><span>' + T('Centrar el contenido') + '</span></label>' +
@@ -1337,7 +1344,7 @@
             '<p class="lmd-hint">' + T('Lo único que se consulta es el número de versión publicado en GitHub. No se manda ningún dato.') + '</p>' +
           '</section>') +
           '<section><h3>' + T('Nube') + '</h3>' +
-            '<p class="lmd-acct lmd-hint"></p>' +
+            '<div class="lmd-acct"></div>' +
             '<label class="lmd-row"><span>' + T('Servidor de sincronización') + '</span><input type="text" data-key="cloudUrl" spellcheck="false" placeholder="https://" value="' + esc(s.cloudUrl || '') + '"></label>' +
             '<p class="lmd-hint">' + T('Dejalo vacío salvo que alojes tu propio servidor.') + '</p>' +
           '</section>' +
@@ -1364,10 +1371,25 @@
     // Cuenta: quién está conectado y con qué plan.
     const acct = ui.panel.querySelector('.lmd-acct');
     if (acct) LMD.cloud.ready().then(async () => {
-      if (!LMD.cloud.enabled()) { acct.textContent = T('La sincronización se activa cuando hay un servidor configurado.'); return; }
-      if (!LMD.cloud.signedIn()) { acct.textContent = T('Entrá a tu cuenta desde la pantalla de inicio de Sharpmd.'); return; }
-      try { const a = await LMD.cloud.account(); acct.textContent = a.email + ' · ' + T(a.plan === 'pro' ? 'Plan pago' : 'Plan gratis') + ' · ' + (a.limit ? T('{n} de {m} notas', { n: a.notes, m: a.limit }) : T('{n} notas', { n: a.notes })); }
-      catch (e) { acct.textContent = T('No hay conexión con el servidor.'); }
+      const row = (label, value) => '<div class="lmd-acct-row"><span>' + label + '</span><b>' + value + '</b></div>';
+      const plans = (a) => {
+        const pro = a && a.plan === 'pro'; const pay = (a && a.checkout) || {};
+        const btn = (url, label) => (url ? '<a class="lmd-btn lmd-btn-fill" target="_blank" rel="noopener noreferrer" href="' + esc(url) + '">' + label + '</a>' : '<button type="button" class="lmd-btn" disabled>' + label + ' · ' + T('pronto') + '</button>');
+        return '<div class="lmd-plans">' +
+          '<div class="lmd-plan' + (pro ? '' : ' lmd-plan-on') + '"><h4>' + T('Gratis') + '</h4><ul><li>' + T('Todo el editor') + '</li><li>' + T('Hasta 20 notas en la nube') + '</li><li>' + T('Notas en el navegador y en tu disco, sin límite') + '</li></ul></div>' +
+          '<div class="lmd-plan' + (pro ? ' lmd-plan-on' : '') + '"><h4>' + T('Pago') + ' <small>USD 3 / ' + T('mes') + '</small></h4><ul><li>' + T('Notas en la nube sin límite') + '</li><li>' + T('Compartir y editar entre varios') + '</li><li>' + T('Conectar una IA por MCP') + '</li><li>' + T('Historial de versiones de 30 días') + '</li><li>' + T('Colores, tipografía y CSS propio') + '</li></ul>' +
+            (pro ? '<p class="lmd-hint">' + T('Es tu plan actual.') + '</p>' : '<div class="lmd-plan-buy">' + btn(pay.monthly, 'USD 3 / ' + T('mes')) + btn(pay.yearly, 'USD 30 / ' + T('año')) + '</div>') + '</div></div>';
+      };
+      if (!LMD.cloud.enabled()) { acct.innerHTML = '<p class="lmd-hint">' + T('Las cuentas y la sincronización todavía no están activas en esta versión.') + '</p>' + plans(null); return; }
+      if (!LMD.cloud.signedIn()) {
+        acct.innerHTML = '<p class="lmd-hint">' + T('Entrá a tu cuenta desde la pantalla de inicio de Sharpmd.') + '</p><button type="button" class="lmd-btn lmd-btn-fill" data-act="go-home">' + T('Entrar') + '</button>' + plans(null);
+        return;
+      }
+      try {
+        const a = await LMD.cloud.account();
+        acct.innerHTML = row(T('Cuenta'), esc(a.email)) + row(T('Plan'), T(a.plan === 'pro' ? 'Pago' : 'Gratis')) + row(T('Notas en la nube'), a.limit ? T('{n} de {m}', { n: a.notes, m: a.limit }) : String(a.notes)) + plans(a) +
+          '<button type="button" class="lmd-btn" data-act="cloud-logout">' + T('Salir') + '</button>';
+      } catch (e) { acct.innerHTML = '<p class="lmd-hint">' + T('No hay conexión con el servidor.') + '</p>'; }
     });
 
     let pending = {};

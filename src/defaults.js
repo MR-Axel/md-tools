@@ -87,6 +87,36 @@
     typographer: 'Tipografía (comillas y guiones)',
     breaks: 'Salto de línea simple = <br>',
   };
+  // Qué hace cada plugin, para mostrar al pasar el mouse.
+  const PLUGIN_HELP = {
+    highlight: "Colorea el código según su lenguaje.",
+    emoji: "Convierte :rocket: en un emoji.",
+    sub: "H~2~O se ve con el 2 como subíndice.",
+    sup: "x^2^ se ve con el 2 como superíndice.",
+    ins: "++texto++ se ve subrayado, como agregado.",
+    mark: "==texto== se ve resaltado.",
+    abbr: "Define una sigla una vez y muestra su significado al pasar el mouse.",
+    deflist: "Un término y, debajo, su definición con dos puntos.",
+    footnote: "[^1] crea una nota al pie numerada con su vuelta.",
+    tasklists: "- [ ] y - [x] se ven como casillas que se pueden tildar.",
+    alerts: "> [!NOTE] y > [!WARNING] se ven como avisos de color.",
+    toc: "[[toc]] inserta el índice del documento en ese lugar.",
+    katex: "$E = mc^2$ y los bloques $$ se dibujan como fórmulas.",
+    mermaid: "Un bloque mermaid se dibuja como diagrama.",
+    graphviz: "Un bloque dot se dibuja como grafo.",
+    tables: "Tablas con celdas combinadas y varias líneas por celda.",
+    containers: "::: tip, ::: warning y ::: details arman recuadros.",
+    frontmatter: "La cabecera YAML del principio se muestra como una ficha.",
+    wikilinks: "[[nombre]] abre el archivo con ese nombre en la carpeta.",
+    anchors: "Cada título trae un enlace para copiar su dirección.",
+    copyCode: "Un botón en cada bloque de código para copiarlo.",
+    imageViewer: "Un clic en una imagen la muestra en grande.",
+    html: "Respeta el HTML escrito dentro del documento, ya filtrado.",
+    linkify: "Una dirección escrita suelta se vuelve un enlace.",
+    typographer: "Comillas tipográficas y guiones más prolijos.",
+    breaks: "Un solo Enter corta el renglón, sin dejar una línea en blanco.",
+  };
+
 
   function merge(saved) {
     const out = Object.assign({}, DEFAULTS, saved || {});
@@ -235,6 +265,40 @@
       "Ya aporté": "I already supported",
       "Gracias por apoyar": "Thanks for supporting",
       "Actualizaciones": "Updates",
+      "Colorea el código según su lenguaje.": "Colors code by its language.",
+      "Convierte :rocket: en un emoji.": "Turns :rocket: into an emoji.",
+      "H~2~O se ve con el 2 como subíndice.": "H~2~O shows the 2 as a subscript.",
+      "x^2^ se ve con el 2 como superíndice.": "x^2^ shows the 2 as a superscript.",
+      "++texto++ se ve subrayado, como agregado.": "++text++ shows underlined, as inserted.",
+      "==texto== se ve resaltado.": "==text== shows highlighted.",
+      "Define una sigla una vez y muestra su significado al pasar el mouse.": "Define an abbreviation once and show its meaning on hover.",
+      "Un término y, debajo, su definición con dos puntos.": "A term and, below it, its definition after a colon.",
+      "[^1] crea una nota al pie numerada con su vuelta.": "[^1] creates a numbered footnote with a way back.",
+      "- [ ] y - [x] se ven como casillas que se pueden tildar.": "- [ ] and - [x] show as boxes you can tick.",
+      "> [!NOTE] y > [!WARNING] se ven como avisos de color.": "> [!NOTE] and > [!WARNING] show as colored callouts.",
+      "[[toc]] inserta el índice del documento en ese lugar.": "[[toc]] inserts the table of contents at that spot.",
+      "$E = mc^2$ y los bloques $$ se dibujan como fórmulas.": "$E = mc^2$ and $$ blocks are drawn as formulas.",
+      "Un bloque mermaid se dibuja como diagrama.": "A mermaid block is drawn as a diagram.",
+      "Un bloque dot se dibuja como grafo.": "A dot block is drawn as a graph.",
+      "Tablas con celdas combinadas y varias líneas por celda.": "Tables with merged cells and several lines per cell.",
+      "::: tip, ::: warning y ::: details arman recuadros.": "::: tip, ::: warning and ::: details make boxes.",
+      "La cabecera YAML del principio se muestra como una ficha.": "The YAML header at the top shows as a card.",
+      "[[nombre]] abre el archivo con ese nombre en la carpeta.": "[[name]] opens the file with that name in the folder.",
+      "Cada título trae un enlace para copiar su dirección.": "Each heading gets a link to copy its address.",
+      "Un botón en cada bloque de código para copiarlo.": "A button on each code block to copy it.",
+      "Un clic en una imagen la muestra en grande.": "A click on an image shows it large.",
+      "Respeta el HTML escrito dentro del documento, ya filtrado.": "Keeps the HTML written in the document, already filtered.",
+      "Una dirección escrita suelta se vuelve un enlace.": "A bare address becomes a link.",
+      "Comillas tipográficas y guiones más prolijos.": "Typographic quotes and tidier dashes.",
+      "Un solo Enter corta el renglón, sin dejar una línea en blanco.": "A single Enter breaks the line, with no blank line needed.",
+      "pronto": "soon", "Gratis": "Free", "Pago": "Paid", "mes": "month", "año": "year", "Plan": "Plan",
+      "Todo el editor": "The whole editor", "Hasta 20 notas en la nube": "Up to 20 notes in the cloud",
+      "Notas en el navegador y en tu disco, sin límite": "Notes in the browser and on your disk, no limit",
+      "Notas en la nube sin límite": "Unlimited notes in the cloud", "Compartir y editar entre varios": "Share and edit together",
+      "Conectar una IA por MCP": "Connect an AI over MCP", "Historial de versiones de 30 días": "30-day version history",
+      "Colores, tipografía y CSS propio": "Colors, typeface and custom CSS", "Es tu plan actual.": "This is your current plan.",
+      "Las cuentas y la sincronización todavía no están activas en esta versión.": "Accounts and sync are not active in this version yet.",
+      "Notas en la nube": "Notes in the cloud", "{n} de {m}": "{n} of {m}",
       "Compartido": "Shared", "Esta nota está protegida. Contraseña:": "This note is protected. Password:",
       "Esa contraseña no coincide. Probá de nuevo:": "That password does not match. Try again:",
       "Demasiados intentos. Probá de nuevo en unos minutos.": "Too many tries. Try again in a few minutes.", "Ese enlace ya no existe.": "That link no longer exists.",
@@ -492,5 +556,5 @@
   const WEB_APP_URL = 'https://mr-axel.github.io/sharpmd/src/app.html';
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
 
-  root.LMD = { SPONSOR_URL, CLOUD_URL, WEB_APP_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
+  root.LMD = { PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
 })(typeof self !== 'undefined' ? self : this);

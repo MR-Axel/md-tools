@@ -12,6 +12,7 @@
 //   FREE_NOTES      notas del plan gratis (20)
 //   MCP_FREE=1      habilita el MCP también en el plan gratis
 //   SHARE_FREE=1    habilita compartir también en el plan gratis
+//   CHECKOUT_MONTHLY, CHECKOUT_YEARLY   enlaces de pago que la app muestra en Ajustes → Cuenta
 //   ADMIN_KEY       clave para cambiar el plan de una cuenta desde /admin/plan
 import http from 'node:http';
 import fs from 'node:fs';
@@ -107,7 +108,8 @@ function userFrom(req, kind) {
 const countNotes = (user) => q('SELECT COUNT(*) AS n FROM notes WHERE user = ?').get(user.id).n;
 const mcpAllowed = (user) => user.plan === 'pro' || !!env.MCP_FREE;
 const shareAllowed = (user) => user.plan === 'pro' || !!env.SHARE_FREE;
-const account = (user) => ({ id: user.id, share: shareAllowed(user), email: user.email, plan: user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, mcp: mcpAllowed(user), mcp_url: PUBLIC_URL + '/mcp' });
+const account = (user) => ({ id: user.id, share: shareAllowed(user), email: user.email, plan: user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, mcp: mcpAllowed(user), mcp_url: PUBLIC_URL + '/mcp',
+  checkout: { monthly: env.CHECKOUT_MONTHLY ? env.CHECKOUT_MONTHLY + (env.CHECKOUT_MONTHLY.includes('?') ? '&' : '?') + 'email=' + encodeURIComponent(user.email) : '', yearly: env.CHECKOUT_YEARLY ? env.CHECKOUT_YEARLY + (env.CHECKOUT_YEARLY.includes('?') ? '&' : '?') + 'email=' + encodeURIComponent(user.email) : '' } });
 
 // ---------- Notas ----------
 function cleanPath(v) {
