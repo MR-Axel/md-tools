@@ -1283,7 +1283,7 @@
           [['look', 'Apariencia', ICON.eye], ['read', 'Lectura y edición', ICON.pencil], ['plug', 'Plugins', ICON.b_code], ['acct', 'Cuenta', ICON.cloud]].map((t) => '<button type="button" role="tab" data-ptab="' + t[0] + '">' + t[2] + '<span>' + T(t[1]) + '</span></button>').join('') +
         '</nav>' +
         '<div class="lmd-panel-body">' +
-          '<section><h3>' + T('Apariencia') + '</h3>' +
+          '<section class="lmd-two"><h3>' + T('Apariencia') + '</h3>' +
             '<div class="lmd-row"><span>' + T('Idioma') + '</span><div class="lmd-seg" data-seg="language" role="radiogroup">' +
               ['auto', 'es', 'en'].map((l) => '<button type="button" role="radio" data-val="' + l + '" aria-checked="' + (s.language === l) + '"' + (s.language === l ? ' class="lmd-on"' : '') + '>' + { auto: T('Automático'), es: 'Español', en: 'English' }[l] + '</button>').join('') +
             '</div></div>' +
@@ -1293,25 +1293,24 @@
             '<div class="lmd-row"><span>' + T('Color de acento') + (s.supporter ? '' : EXTRA) + '</span><div class="lmd-swatches' + (s.supporter ? '' : ' lmd-locked') + '">' +
               LMD.ACCENTS.map((a) => '<button type="button" class="lmd-swatch' + ((s.accent || '') === a.value ? ' lmd-on' : '') + (a.value ? '' : ' lmd-swatch-auto') + '" data-accent="' + a.value + '" title="' + esc(T(a.name)) + '" aria-label="' + esc(T(a.name)) + '"' + (a.value ? ' style="--sw:' + a.value + '"' : '') + '></button>').join('') +
               '<label class="lmd-swatch lmd-swatch-custom' + (s.accent && !LMD.ACCENTS.some((a) => a.value === s.accent) ? ' lmd-on' : '') + '" title="' + T('Otro color') + '"><input type="color" data-accent-custom value="' + (/^#[0-9a-f]{6}$/i.test(s.accent || '') ? s.accent : '#6c7ee1') + '"></label>' +
-            '</div>' + (s.supporter
-              ? '<p class="lmd-hint">' + T('Gracias por apoyar el proyecto.') + '</p>'
-              : '<div class="lmd-extra"><p>' + T('Los colores, la tipografía y el CSS propio son extras para quienes apoyan el proyecto. No se verifica: queda en tu palabra.') + '</p>' +
-                '<div class="lmd-extra-actions"><a class="lmd-btn lmd-btn-fill" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">♥ ' + T('Apoyar el proyecto') + '</a>' +
-                '<button type="button" class="lmd-btn" data-act="supporter">' + T('Ya aporté') + '</button></div></div>') +
+            '</div>' + (s.supporter ? '<p class="lmd-hint">' + T('Gracias por apoyar el proyecto.') + '</p>' : '') +
             '</div>' +
             '<label class="lmd-row"><span>' + T('Tipografía') + (s.supporter ? '' : EXTRA) + '</span><select data-key="fontFamily"' + (s.supporter ? '' : ' disabled') + '>' + fontOptions + '</select></label>' +
             '<label class="lmd-row"><span>' + T('Tamaño de letra') + ' <output>' + s.fontSize + ' px</output></span><input type="range" min="12" max="24" step="1" data-key="fontSize" data-unit=" px" value="' + s.fontSize + '"></label>' +
             '<label class="lmd-row"><span>' + T('Interlineado') + ' <output>' + s.lineHeight + '</output></span><input type="range" min="1.2" max="2.2" step="0.05" data-key="lineHeight" data-unit="" value="' + s.lineHeight + '"></label>' +
-            '<div class="lmd-row"><span>' + T('Color de los bloques de código') + '</span><div class="lmd-swatches">' +
+            '<div class="lmd-pcell"><div class="lmd-row"><span>' + T('Color de los bloques de código') + '</span><div class="lmd-swatches">' +
               LMD.CODE_COLORS.map((c) => '<button type="button" class="lmd-swatch' + ((s.codeColor || '') === c.value ? ' lmd-on' : '') + (c.value ? '' : ' lmd-swatch-auto') + '" data-code-color="' + c.value + '" title="' + T(c.name) + '"' + (c.value ? ' style="--sw:' + c.value + '"' : '') + '></button>').join('') +
             '</div></div>' +
-            '<pre class="lmd-prev-code"><code><span class="k">const</span> total = items.<span class="f">reduce</span>((a, b) =&gt; a + b, <span class="n">0</span>);</code></pre>' +
-            '<div class="lmd-row"><span>' + T('Forma de los diagramas') + '</span><div class="lmd-seg" data-seg="diagramShape" role="radiogroup">' +
+            '<pre class="lmd-prev-code"><code><span class="k">const</span> total = items.<span class="f">reduce</span>((a, b) =&gt; a + b, <span class="n">0</span>);</code></pre></div>' +
+            '<div class="lmd-pcell"><div class="lmd-row"><span>' + T('Forma de los diagramas') + '</span><div class="lmd-seg" data-seg="diagramShape" role="radiogroup">' +
               [['round', 'Redondeados'], ['square', 'Rectos']].map((o) => '<button type="button" role="radio" data-val="' + o[0] + '" aria-checked="' + ((s.diagramShape || 'round') === o[0]) + '"' + ((s.diagramShape || 'round') === o[0] ? ' class="lmd-on"' : '') + '>' + T(o[1]) + '</button>').join('') +
             '</div></div>' +
-            '<svg class="lmd-prev-dgm" viewBox="0 0 300 64" aria-hidden="true"><rect class="node" x="6" y="14" width="84" height="36"/><rect class="node" x="210" y="14" width="84" height="36"/><path class="curve" d="M90 32 C 130 4, 170 60, 206 32"/><path class="line" d="M90 32 L 206 32"/><path d="m199 27 8 5-8 5z" class="tip"/><text x="48" y="37">A</text><text x="252" y="37">B</text></svg>' +
+            '<svg class="lmd-prev-dgm" viewBox="0 0 300 64" aria-hidden="true"><rect class="node" x="6" y="14" width="84" height="36"/><rect class="node" x="210" y="14" width="84" height="36"/><path class="curve" d="M90 32 C 130 4, 170 60, 206 32"/><path class="line" d="M90 32 L 206 32"/><path d="m199 27 8 5-8 5z" class="tip"/><text x="48" y="37">A</text><text x="252" y="37">B</text></svg></div>' +
+            (s.supporter ? '' : '<div class="lmd-extra"><p>' + T('Los colores, la tipografía y el CSS propio son extras para quienes apoyan el proyecto. No se verifica: queda en tu palabra.') + '</p>' +
+                '<div class="lmd-extra-actions"><a class="lmd-btn lmd-btn-fill" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">♥ ' + T('Apoyar el proyecto') + '</a>' +
+                '<button type="button" class="lmd-btn" data-act="supporter">' + T('Ya aporté') + '</button></div></div>') +
           '</section>' +
-          '<section><h3>' + T('Lectura') + '</h3>' +
+          '<section class="lmd-two"><h3>' + T('Lectura') + '</h3>' +
             '<label class="lmd-check"><input type="checkbox" data-key="centered"' + (s.centered ? ' checked' : '') + '><span>' + T('Centrar el contenido') + '</span></label>' +
             '<label class="lmd-row"><span>' + T('Ancho del contenido') + ' <output>' + s.contentWidth + ' px</output></span><input type="range" min="560" max="1800" step="20" data-key="contentWidth" data-unit=" px" value="' + s.contentWidth + '"></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="wrapCode"' + (s.wrapCode ? ' checked' : '') + '><span>' + T('Ajustar las líneas largas del código') + '</span></label>' +
@@ -1319,13 +1318,13 @@
             '<label class="lmd-check"><input type="checkbox" data-key="autoRefresh"' + (s.autoRefresh ? ' checked' : '') + '><span>' + T('Recargar solo cuando el archivo cambia') + '</span></label>' +
             '<label class="lmd-row"><span>' + T('Revisar cada') + ' <output>' + s.refreshInterval + ' ms</output></span><input type="range" min="300" max="5000" step="100" data-key="refreshInterval" data-unit=" ms" value="' + s.refreshInterval + '"></label>' +
           '</section>' +
-          '<section><h3>' + T('Edición') + '</h3>' +
+          '<section class="lmd-two"><h3>' + T('Edición') + '</h3>' +
             '<label class="lmd-check"><input type="checkbox" data-key="autosave"' + (s.autosave ? ' checked' : '') + '><span>' + T('Guardar solo mientras edito') + '</span></label>' +
+            '<label class="lmd-row"><span>' + T('Guardar a los') + ' <output>' + s.autosaveDelay + ' ms</output></span><input type="range" min="1000" max="30000" step="500" data-key="autosaveDelay" data-unit=" ms" value="' + s.autosaveDelay + '"></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="focusMode"' + (s.focusMode ? ' checked' : '') + '><span>' + T('Modo foco: atenuar lo que no estoy escribiendo') + '</span></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="typewriter"' + (s.typewriter ? ' checked' : '') + '><span>' + T('Máquina de escribir: mantener el renglón a media altura') + '</span></label>' +
-            '<label class="lmd-row"><span>' + T('Guardar a los') + ' <output>' + s.autosaveDelay + ' ms</output></span><input type="range" min="1000" max="30000" step="500" data-key="autosaveDelay" data-unit=" ms" value="' + s.autosaveDelay + '"></label>' +
           '</section>' +
-          '<section><h3>' + T('Carpeta') + '</h3>' +
+          '<section class="lmd-two"><h3>' + T('Carpeta') + '</h3>' +
             '<label class="lmd-check"><input type="checkbox" data-key="filesOnlyMarkdown"' + (s.filesOnlyMarkdown ? ' checked' : '') + '><span>' + T('Mostrar solo archivos Markdown') + '</span></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="filesShowHidden"' + (s.filesShowHidden ? ' checked' : '') + '><span>' + T('Mostrar archivos y carpetas ocultos') + '</span></label>' +
           '</section>' +
@@ -1335,11 +1334,11 @@
             '<p class="lmd-hint">' + T('Se aplica encima del tema. El documento vive dentro de .markdown-body.') + '</p>' +
           '</section>' +
           (chrome.runtime.getManifest().update_url ? '' :
-          '<section><h3>' + T('Actualizaciones') + '</h3>' +
+          '<section class="lmd-two"><h3>' + T('Actualizaciones') + '</h3>' +
             '<div class="lmd-row"><span>' + T('Buscar versiones nuevas') + '</span><div class="lmd-seg" data-seg="updateCheck" role="radiogroup">' +
               [['daily', 'Por día'], ['weekly', 'Por semana'], ['off', 'Nunca']].map((o) => '<button type="button" role="radio" data-val="' + o[0] + '" aria-checked="' + (s.updateCheck === o[0]) + '"' + (s.updateCheck === o[0] ? ' class="lmd-on"' : '') + '>' + T(o[1]) + '</button>').join('') +
             '</div></div>' +
-            '<div class="lmd-row"><span>' + T('Versión instalada: {v}', { v: chrome.runtime.getManifest().version }) + '</span><button type="button" class="lmd-btn" data-act="check-update">' + T('Buscar ahora') + '</button></div>' +
+            '<div class="lmd-row lmd-row-line"><span>' + T('Versión instalada: {v}', { v: chrome.runtime.getManifest().version }) + '</span><button type="button" class="lmd-btn" data-act="check-update">' + T('Buscar ahora') + '</button></div>' +
             '<p class="lmd-update-msg" role="status" hidden></p>' +
             '<p class="lmd-hint">' + T('Lo único que se consulta es el número de versión publicado en GitHub. No se manda ningún dato.') + '</p>' +
           '</section>') +
@@ -1348,9 +1347,9 @@
             '<label class="lmd-row"><span>' + T('Servidor de sincronización') + '</span><input type="text" data-key="cloudUrl" spellcheck="false" placeholder="https://" value="' + esc(s.cloudUrl || '') + '"></label>' +
             '<p class="lmd-hint">' + T('Dejalo vacío salvo que alojes tu propio servidor.') + '</p>' +
           '</section>' +
-          '<section class="lmd-panel-foot"><button type="button" class="lmd-btn" data-act="reset">' + T('Restablecer todo') + '</button></section>' +
-          '<section class="lmd-support"><p class="lmd-hint">' + T('Sharpmd es gratis y no junta datos. Si te sirve, podés apoyarlo.') + '</p>' +
-            '<a class="lmd-btn lmd-btn-accent" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">♥ ' + T('Apoyar el proyecto') + '</a></section>' +
+          '<section class="lmd-panel-foot"><p class="lmd-hint">' + T('Sharpmd es gratis y no junta datos. Si te sirve, podés apoyarlo.') + '</p>' +
+            '<a class="lmd-btn lmd-btn-accent" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">♥ ' + T('Apoyar el proyecto') + '</a>' +
+            '<button type="button" class="lmd-btn" data-act="reset">' + T('Restablecer todo') + '</button></section>' +
         '</div>' +
       '</div>';
     ui.panel.hidden = false;
