@@ -45,7 +45,8 @@ const openSettings = async (t) => { await app.click('[data-act=settings]'); awai
 const TABS = ['look', 'read', 'plug', 'cloud', 'ai', 'plan', 'adv'];
 // Ninguna pestaña puede necesitar scroll con la ventana a 800 px de alto.
 const overflow = async () => { const out = []; for (const t of TABS) { await tab(t); const m = await app.evaluate(() => { const b = document.querySelector('.lmd-panel-body'); return b.scrollHeight - b.clientHeight; }); if (m > 0) out.push(t + ' +' + m); } return out; };
-// Los dos renglones que dicen qué anda sin cuenta y qué suma tenerla: sin signos de admiración ni rayas largas.
+// Los dos renglones que dicen qué anda sin cuenta y qué suma tenerla: sin signos de admiración ni rayas largas. Van en Ajustes → Nube.
+// En el inicio, la cuenta vive al pie de la barra lateral: sin sesión, la invitación a entrar con una línea de qué suma.
 const perks = () => app.evaluate(() => [...document.querySelectorAll('.lmd-perks dt, .lmd-perks dd')].filter((n) => n.offsetWidth > 0).map((n) => n.textContent));
 const claro = (p) => p.length === 4 && p[0] === 'Sin cuenta' && /editor/.test(p[1]) && /disco/.test(p[1]) && /navegador/.test(p[1]) && p[2] === 'Con cuenta' && /nube \(10 gratis\)/.test(p[3]) && /Compartir, historial/.test(p[3]) && /IA en el plan pago/.test(p[3]) && !/[!¡—]/.test(p.join(''));
 const text = (sel) => app.evaluate((s) => { const n = document.querySelector(s); return n ? n.textContent.trim() : null; }, sel);
@@ -65,8 +66,10 @@ try {
 
   console.log('Inicio: entrar');
   const err = () => app.evaluate(() => { const p = document.querySelector('.lmd-home-cloud-err'); const i = document.querySelector('.lmd-home-cloud [data-field]'); return [p && !p.hidden ? p.textContent : '', i.getAttribute('aria-invalid'), p && p.previousElementSibling === i.parentNode]; });
-  const perksInicio = await perks();
-  check('inicio sin sesión: dos renglones dicen qué anda sin cuenta y qué suma tenerla', claro(perksInicio) && (await app.locator('.lmd-home-cloud p').count()) === 0 && (await app.locator('.lmd-home-cloud [data-cloud=ask]').count()) === 1, perksInicio);
+  const invita = await app.evaluate(() => { const foot = document.querySelector('.lmd-sidebar > .lmd-side-acct'); const b = foot && foot.querySelector('[data-cloud=ask]'); const side = document.querySelector('.lmd-sidebar').getBoundingClientRect(); const r = b && b.getBoundingClientRect();
+    return { title: b && b.querySelector('b').textContent, line: b && b.querySelector('small').textContent, asks: document.querySelectorAll('[data-cloud=ask]').length, inCard: document.querySelectorAll('.lmd-home [data-cloud], .lmd-home .lmd-perks').length, atFoot: !!r && Math.abs(side.bottom - r.bottom) < 16 && r.left >= side.left && r.right <= side.right }; });
+  check('inicio sin sesión: la invitación a entrar va al pie de la barra lateral, con una línea de qué suma', invita.title === 'Crear cuenta o entrar' && /nube/.test(invita.line) && /10 gratis/.test(invita.line) && !/[!¡—–]/.test(invita.line) && invita.asks === 1 && invita.atFoot, invita);
+  check('la tarjeta del inicio queda solo para empezar a escribir: sin cuenta ni planes', invita.inCard === 0 && (await perks()).length === 0, invita);
   await app.click('[data-cloud=ask]');
   const bad = {};
   for (const v of ['', 'ana', 'ana@ejemplo', 'ana@ejemplo..test', 'ana.@ejemplo.test', 'ana garcia@ejemplo.test']) { await app.fill('[data-field=email]', v); await app.click('[data-cloud=start]'); await app.waitForTimeout(120); bad[v] = await err(); }
@@ -94,17 +97,23 @@ try {
   check('comentarios sin sesión: el correo es opcional y se valida', /no parece válido/.test(fbBadMail || '') && anonBody.email === 'lectora@correo-ejemplo.com' && anonBody.text === 'Probando desde el inicio, sin cuenta.', [fbBadMail, anonBody]);
   await app.waitForSelector('.lmd-fb', { state: 'detached' });
 
-  await app.fill('[data-field=code]', code); await app.click('[data-cloud=verify]'); await app.waitForSelector('[data-cloud=logout]');
+  await app.fill('[data-field=code]', code); await app.click('[data-cloud=verify]'); await app.waitForSelector('[data-cloud=menu]');
   const session = (await stored('cloud')).session;
   const box = await app.evaluate(() => {
-    const q = (s) => document.querySelector('.lmd-home-cloud ' + s); const b = q('.lmd-home-acct-who b');
-    return { email: b.textContent, sub: q('.lmd-home-acct-who small').textContent, oneLine: b.getBoundingClientRect().height < 26 && q('.lmd-home-acct').getBoundingClientRect().height < 52, cut: b.scrollWidth > b.clientWidth, title: b.title,
-      inside: q('.lmd-home-acct').getBoundingClientRect().right <= document.querySelector('.lmd-home-cloud').getBoundingClientRect().right,
-      open: q('[data-cloud=open]').className, ai: q('[data-cloud=ai]').className, out: q('[data-cloud=logout]').className, first: q('.lmd-home-cloud-row button').dataset.cloud };
+    const q = (s) => document.querySelector('.lmd-sidebar > .lmd-home-cloud ' + s); const b = q('.lmd-home-acct-who b'); const side = document.querySelector('.lmd-sidebar').getBoundingClientRect(); const row = q('.lmd-home-acct').getBoundingClientRect();
+    return { email: b.textContent, sub: q('.lmd-home-acct-who small').textContent, oneLine: b.getBoundingClientRect().height < 26 && row.height < 52, cut: b.scrollWidth > b.clientWidth, title: b.title,
+      inside: row.right <= side.right && row.left >= side.left, atFoot: Math.abs(side.bottom - row.bottom) < 16, shut: q('[data-cloud=menu]').getAttribute('aria-expanded'), early: document.querySelectorAll('[data-cloud=open], [data-cloud=logout]').length };
   });
+  await app.click('[data-cloud=menu]');
+  const menu = await app.evaluate(() => { const m = document.querySelector('.lmd-side-acct .lmd-menu'); const r = m.getBoundingClientRect(); const row = document.querySelector('.lmd-home-acct').getBoundingClientRect();
+    return { acts: [...m.querySelectorAll('[data-cloud]')].map((x) => x.dataset.cloud), labels: [...m.querySelectorAll('[data-cloud]')].map((x) => x.textContent.trim()), above: r.bottom <= row.top && r.top >= 0, open: document.querySelector('[data-cloud=menu]').getAttribute('aria-expanded') }; });
+  await app.keyboard.press('Escape');
+  const shutAgain = await app.evaluate(() => [document.querySelectorAll('.lmd-side-acct .lmd-menu').length, document.querySelector('[data-cloud=menu]').getAttribute('aria-expanded'), document.activeElement.dataset.cloud]);
   check('conectado: correo, plan y notas', box.email === mail && /^Plan gratis · 0 de 10 notas/.test(box.sub), box);
-  check('un correo largo no parte la caja en dos renglones', box.oneLine && box.inside && box.title === mail, box);
-  check('"Abrir la nube" es la acción principal, "Conectar una IA" la secundaria y "Salir" un enlace', /lmd-btn-fill/.test(box.open) && box.first === 'open' && /lmd-btn/.test(box.ai) && !/lmd-btn-fill/.test(box.ai) && box.out === 'lmd-link', box);
+  check('la cuenta es una fila fija al pie de la barra lateral, y un correo largo no la parte en dos renglones', box.oneLine && box.inside && box.atFoot && box.title === mail, box);
+  check('las acciones de la cuenta están en un menú que abre hacia arriba: abrir la nube, ver planes, conectar una IA y salir', box.shut === 'false' && box.early === 0 && menu.acts.join() === 'open,plan,ai,logout' && menu.labels.join() === 'Abrir la nube,Ver planes,Conectar una IA,Salir' && menu.above && menu.open === 'true', [box, menu]);
+  check('Escape cierra el menú de la cuenta y deja el foco en la fila', shutAgain[0] === 0 && shutAgain[1] === 'false' && shutAgain[2] === 'menu', shutAgain);
+  await app.click('[data-cloud=menu]');
 
   await Promise.all([app.waitForNavigation(), app.click('[data-cloud=open]')]); await app.waitForSelector('.lmd-draft'); await app.waitForSelector('.lmd-xroot[data-root=cloud] .lmd-node.lmd-active');
   const firstNote = (await api('GET', '/notes', undefined, session)).json.map((n) => n.path);
@@ -303,14 +312,18 @@ try {
   for (let i = 0; i < 10; i++) await api('PUT', '/notes/' + encodeURIComponent('relleno/nota-' + i + '.md'), { text: 'x' }, session);
   await api('PUT', '/notes/' + encodeURIComponent('proyectos/nueva.md'), { text: '# La última que toqué\n' }, session);
   await app.goto(home); await app.waitForSelector('.lmd-xroot[data-root=cloud] .lmd-node-dir'); await app.waitForSelector('.lmd-home-acct-who small');
-  const recent = await app.evaluate(() => ({ sub: document.querySelector('.lmd-home-acct-who small').textContent, plans: document.querySelectorAll('.lmd-home-cloud [data-cloud=plan]').length, old: document.querySelectorAll('.lmd-home-recent, .lmd-home-item').length,
+  const recent = await app.evaluate(() => ({ sub: document.querySelector('.lmd-home-acct-who small').textContent, plans: document.querySelector('[data-cloud=menu]').dataset.plans ? 1 : 0, old: document.querySelectorAll('.lmd-home-recent, .lmd-home-item').length,
     top: [...document.querySelectorAll('.lmd-xroot[data-root=cloud] > .lmd-tree > .lmd-node')].map((n) => n.textContent.trim() + (n.classList.contains('lmd-node-dir') ? '/' : '')) }));
   check('con plan pago el inicio dice cuántas notas y "sin límite"', recent.sub === 'Plan pago · 14 notas, sin límite' && recent.plans === 0, recent.sub);
   check('las notas de la nube están en el explorador, con sus carpetas primero', recent.top.slice(0, 3).join() === 'archivo/,proyectos/,relleno/' && recent.top.length > 3, recent.top);
   check('el centro ya no repite la lista de recientes', recent.old === 0, recent.old);
   await app.locator('.lmd-xroot[data-root=cloud] .lmd-node-dir', { hasText: 'relleno' }).click(); await app.waitForSelector('.lmd-xroot[data-root=cloud] .lmd-node-kids .lmd-node');
   check('una carpeta de la nube se despliega con todas sus notas', (await app.locator('.lmd-xroot[data-root=cloud] .lmd-node-kids a.lmd-node').count()) === 10);
+  await app.click('[data-cloud=menu]'); const proMenu = await app.evaluate(() => [...document.querySelectorAll('.lmd-side-acct .lmd-menu [data-cloud]')].map((x) => x.dataset.cloud));
+  check('con plan pago el menú de la cuenta no ofrece ver planes', proMenu.join() === 'open,ai,logout', proMenu);
   await Promise.all([app.waitForNavigation(), app.click('[data-cloud=open]')]); await app.waitForSelector('.markdown-body h1'); await app.waitForSelector('.lmd-pane-files .lmd-node.lmd-active');
+  const footOpen = await app.evaluate(() => { const b = document.querySelector('.lmd-sidebar > .lmd-side-acct [data-cloud=menu]'); return !!b && b.offsetWidth > 0 && document.querySelector('.lmd-home').hidden; });
+  check('con una nota abierta la cuenta sigue al pie de la barra lateral', footOpen);
   const tree = await app.evaluate(() => ({ url: location.search, active: document.querySelector('.lmd-node.lmd-active').textContent.trim(), files: document.querySelector('.lmd-pane-files').getBoundingClientRect().height > 60 }));
   check('"Abrir la nube" lleva a la nota más nueva con el árbol a la vista', /f=cloud%2Fproyectos%2Fnueva\.md/.test(tree.url) && tree.active === 'nueva.md' && tree.files, tree);
   const folders = await app.evaluate(() => [...document.querySelectorAll('.lmd-xroot[data-root=cloud] > .lmd-tree > .lmd-node-dir')].map((n) => n.textContent.trim()));
@@ -320,7 +333,7 @@ try {
   await openSettings('cloud'); await app.waitForSelector('[data-acct=cloud] [data-c=open]'); await app.click('[data-acct=cloud] [data-c=open]'); await app.waitForFunction(() => document.querySelector('.lmd-panel').hidden);
   await app.waitForSelector('.lmd-xroot[data-root=cloud]:not(.lmd-shut) .lmd-node.lmd-active');
   check('en una nota de la nube, "Abrir la carpeta Nube" cierra Ajustes y deja el árbol', !((await stored('side')).shut || {}).cloud);
-  await app.goto(home); await app.waitForSelector('[data-cloud=ai]'); await app.click('[data-cloud=ai]'); await app.waitForSelector('.lmd-acct-card [data-c=token]');
+  await app.goto(home); await app.waitForSelector('[data-cloud=menu]'); await app.click('[data-cloud=menu]'); await app.click('[data-cloud=ai]'); await app.waitForSelector('.lmd-acct-card [data-c=token]');
   check('"Conectar una IA" del inicio abre el mismo panel', (await app.evaluate(() => document.querySelector('.lmd-acct-card').getAttribute('aria-label') + '|' + document.querySelector('.lmd-acct-card .lmd-field input').value)) === 'Conectar una IA|' + base + '/mcp');
   await app.click('[data-d=close]');
   await app.click('[data-home=feedback]'); await app.waitForSelector('.lmd-fb');
@@ -359,8 +372,8 @@ try {
   await app.click('[data-acct=cloud] [data-c=login]'); await app.waitForSelector('[data-acct=cloud] [data-field=email]');
   check('el botón de Nube pide el correo en el lugar', (await app.evaluate(() => document.activeElement.dataset.field)) === 'email' && app.url() === notaAbierta);
   await tab('plan'); await tab('cloud'); await app.waitForSelector('[data-acct=cloud] [data-c=login]');
-  const conLogin = await ctx.newPage(); await conLogin.goto(home + '?login=1'); await conLogin.waitForSelector('.lmd-home-cloud [data-field=email]');
-  check('el inicio abierto con ?login=1 ya pide el correo', (await conLogin.evaluate(() => document.activeElement.dataset.field)) === 'email' && (await conLogin.locator('.lmd-perks').count()) === 1);
+  const conLogin = await ctx.newPage(); await conLogin.goto(home + '?login=1'); await conLogin.waitForSelector('.lmd-sidebar .lmd-home-cloud [data-field=email]');
+  check('el inicio abierto con ?login=1 ya pide el correo, al pie de la barra lateral', (await conLogin.evaluate(() => document.activeElement.dataset.field)) === 'email' && (await conLogin.locator('.lmd-home [data-field]').count()) === 0);
   await conLogin.close();
   await tab('adv');
   const sw1 = () => app.evaluate(() => ({ own: document.querySelector('[data-server=own]').checked, off: document.querySelector('[data-server=off]').checked, shown: !document.querySelector('.lmd-server-url').hidden && document.querySelector('.lmd-server-url').getBoundingClientRect().height > 0, url: document.querySelector('[data-server=url]').value }));

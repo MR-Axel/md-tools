@@ -1,5 +1,6 @@
 // Estado vacío de la app: lo que se ve en el centro cuando no hay ninguna nota abierta. Desde acá se
-// empieza una nota, se abre un archivo o una carpeta (también arrastrándolos) y se entra a la cuenta.
+// empieza una nota y se abre un archivo o una carpeta (también arrastrándolos). También dibuja la cuenta,
+// que vive al pie de la barra lateral.
 (function () {
   'use strict';
 
@@ -161,6 +162,105 @@
     }
   }
 
+  // ---------- La cuenta, al pie de la barra lateral ----------
+  // Una fila fija: quién entró, su plan y cuántas notas lleva, con las acciones en un menú (abrir la nube, ver los
+  // planes, conectar una IA, salir). Sin sesión, la invitación a entrar con una línea de qué suma, y ahí mismo el
+  // correo y el código. Está a la vista con una nota abierta o sin ninguna; en pantalla chica, dentro del panel lateral.
+  const OUT = '<svg viewBox="0 0 24 24"><path d="M14 4.5h3.5A1.5 1.5 0 0 1 19 6v12a1.5 1.5 0 0 1-1.5 1.5H14M10 8l-4 4 4 4M6 12h9"/></svg>';
+  let acctSeq = 0; let acctMenu = null;
+  const acctHost = () => ({
+    leave: ctx.leave, back: location.href.split('#')[0], appUrl: ctx.APP_URL, close: () => {}, closed: () => paintAcct(), say: (t) => acctFail(t), unlocked: ctx.unlocked,
+  });
+  function acctFail(text, input) {
+    const p = ctx.acct && ctx.acct.querySelector('.lmd-home-cloud-err');
+    if (p) { p.hidden = false; p.textContent = text; } else if (sayNow) sayNow(text); else ctx.say(text);
+    if (input) { input.setAttribute('aria-invalid', 'true'); input.focus(); }
+  }
+  function closeAcctMenu(focus) {
+    if (!acctMenu) return;
+    acctMenu.remove(); acctMenu = null;
+    const b = ctx.acct.querySelector('[data-cloud=menu]');
+    if (b) { b.setAttribute('aria-expanded', 'false'); if (focus) b.focus(); }
+  }
+  function openAcctMenu(btn) {
+    const items = [['open', ICON.cloud, 'Abrir la nube'], btn.dataset.plans && ['plan', ICON.card, 'Ver planes'], ['ai', ICON.spark, 'Conectar una IA'], ['logout', OUT, 'Salir']].filter(Boolean);
+    acctMenu = el('div', { class: 'lmd-menu lmd-menu-acct', role: 'menu' }, '<div class="lmd-menu-list"></div>');
+    items.forEach(([act, icon, label]) => acctMenu.firstChild.appendChild(el('button', { type: 'button', role: 'menuitem', 'data-cloud': act }, icon + '<span>' + T(label) + '</span>')));
+    ctx.acct.appendChild(acctMenu); btn.setAttribute('aria-expanded', 'true');
+    // Con el teclado, el foco entra al menú y las flechas lo recorren.
+    acctMenu.addEventListener('keydown', (e) => {
+      const all = Array.from(acctMenu.querySelectorAll('button')); const at = all.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); all[(at + (e.key === 'ArrowDown' ? 1 : all.length - 1)) % all.length].focus(); }
+    });
+  }
+  async function paintAcct(step) {
+    const box = ctx && ctx.acct; if (!box) return;
+    const mine = ++acctSeq; // si en el medio llega otro pedido de pintar, este se retira
+    await LMD.cloud.ready();
+    if (mine !== acctSeq) return;
+    closeAcctMenu();
+    box.hidden = !LMD.cloud.enabled() || !!LMD.cloud.guest();
+    if (box.hidden) return;
+    // El aviso va pegado a lo que falló y no borra lo escrito.
+    const errLine = () => box.appendChild(el('p', { class: 'lmd-home-cloud-err', role: 'alert', hidden: '' }));
+    const row = (act, icon, title, sub) => {
+      const b = el('button', { type: 'button', class: 'lmd-home-acct', 'data-cloud': act },
+        '<span class="lmd-home-acct-ico">' + icon + '</span><span class="lmd-home-acct-who"><b></b><small></small></span>');
+      b.querySelector('b').textContent = title; b.querySelector('small').textContent = sub;
+      return b;
+    };
+    if (!LMD.cloud.signedIn()) {
+      box.textContent = '';
+      if (step === 'email') {
+        ctx.showSide(); // en pantalla chica el panel lateral arranca cerrado, y el campo tiene que quedar a la vista
+        const form = el('div', { class: 'lmd-signin' }); box.appendChild(form);
+        signIn(form, async () => { await paintAcct(); ctx.refresh(); });
+        // Escape en el primer paso vuelve a la invitación.
+        form.addEventListener('keydown', (e) => { if (e.key === 'Escape' && form.querySelector('[data-field=email]')) { e.stopPropagation(); paintAcct(); } });
+      } else {
+        const b = row('ask', ICON.cloud, T('Crear cuenta o entrar'), T('Tus notas en la nube, en cada dispositivo. 10 gratis.'));
+        b.classList.add('lmd-home-acct-ask'); box.appendChild(b);
+      }
+      return;
+    }
+    let a = null; let why = '';
+    try { a = await LMD.cloud.account(); } catch (e) { why = authWhy(e, ''); }
+    if (mine !== acctSeq) return;
+    if (!a && !LMD.cloud.signedIn()) return paintAcct();
+    box.textContent = '';
+    const pro = !!a && a.plan === 'pro';
+    if (a) acctHost().unlocked(a);
+    const sub = a ? T(pro ? 'Plan pago' : 'Plan gratis') + ' · ' + (a.limit ? T('{n} de {m} notas', { n: a.notes, m: a.limit }) : T(a.notes === 1 ? '1 nota, sin límite' : '{n} notas, sin límite', { n: a.notes })) : why;
+    const b = row('menu', ICON.cloudOk, LMD.cloud.email(), sub);
+    b.setAttribute('aria-haspopup', 'menu'); b.setAttribute('aria-expanded', 'false'); b.title = LMD.cloud.email();
+    b.querySelector('b').title = LMD.cloud.email();
+    if (a && !pro) b.dataset.plans = '1';
+    b.insertAdjacentHTML('beforeend', '<span class="lmd-home-acct-more">' + ICON.more + '</span>');
+    box.appendChild(b);
+    if (a && a.limit) { const m = el('span', { class: 'lmd-acct-meter' }); m.style.width = Math.min(100, Math.round((a.notes / a.limit) * 100)) + '%'; box.appendChild(m); }
+    errLine();
+  }
+  function bindAcct() {
+    const box = ctx.acct; if (!box || box.dataset.bound) return;
+    box.dataset.bound = '1';
+    box.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-cloud]'); if (!b) return;
+      const act = b.dataset.cloud;
+      if (act === 'start' || act === 'verify' || act === 'back') return; // los atiende el formulario
+      if (act === 'menu') { if (acctMenu) closeAcctMenu(); else { openAcctMenu(b); if (!e.detail) acctMenu.querySelector('button').focus(); } return; }
+      closeAcctMenu();
+      const home = !ctx.box.hidden; // sin nota abierta no hay Ajustes detrás: los paneles salen en una ventana
+      try {
+        if (act === 'ask') await paintAcct('email');
+        else if (act === 'logout') { await LMD.sync.signOut(acctHost()); await paintAcct(); ctx.refresh(); }
+        else if (act === 'open') LMD.sync.openCloud(acctHost());
+        else if (act === 'ai' || act === 'plan') { if (home) LMD.sync.dialog(act, acctHost()); else ctx.panel(act); }
+      } catch (err) { acctFail(authWhy(err, ''), box.querySelector('[data-field]')); }
+    });
+    box.addEventListener('keydown', (e) => { if (e.key === 'Escape' && acctMenu) { e.stopPropagation(); closeAcctMenu(true); } });
+    document.addEventListener('pointerdown', (e) => { if (acctMenu && !box.contains(e.target)) closeAcctMenu(); }, true);
+  }
+
   let dropBound = false;
   async function home(note) {
     const box = ctx.box;
@@ -176,13 +276,14 @@
           (window.showDirectoryPicker ? '<button type="button" class="lmd-btn" data-home="dir">' + ICON.folder + '<span>' + T('Abrir carpeta') + '</span></button>' : '') +
         '</div>' +
         // Con el dedo no hay nada que arrastrar a la ventana: ese renglón solo dice lo que hace falta saber.
+        '<div class="lmd-home-more">' +
         (LMD.touch.coarse()
           ? (canPick() ? '' : '<p class="lmd-home-hint">' + T('Este navegador no deja escribir sobre el archivo: al guardar se descarga una copia.') + '</p>')
           : '<p class="lmd-home-hint">' + (canPick()
             ? T('También podés arrastrar un archivo o una carpeta a esta ventana.')
             : T('También podés arrastrar un archivo a esta ventana. Este navegador no deja escribir sobre el archivo: al guardar se descarga una copia.')) + '</p>') +
         (window.showDirectoryPicker ? '<p class="lmd-home-notes"></p>' : '') +
-        '<div class="lmd-home-cloud" hidden></div>' +
+        '</div>' +
         '<p class="lmd-home-msg" role="status" hidden></p>' +
       '</div>' +
       '<div class="lmd-home-foot"><button type="button" class="lmd-home-coffee" data-home="feedback">' + T('Enviar comentarios') + '</button>' +
@@ -191,12 +292,6 @@
     const say = (text) => { msg.hidden = !text; msg.textContent = text || ''; };
     sayNow = say;
     if (note) say(note);
-    // Lo que los paneles de la cuenta necesitan saber del inicio: adónde vuelve el pago y qué repintar al cerrar.
-    const host = {
-      leave: async () => true, back: location.href.split('#')[0], appUrl: ctx.APP_URL, close: () => {}, closed: () => paintCloud(), say,
-      unlocked: (a) => { if (a.plan === 'pro' && !ctx.settings.supporter) { ctx.settings.supporter = true; LMD.patch({ supporter: true }); } },
-    };
-
     const notesLine = box.querySelector('.lmd-home-notes');
     const paintNotes = async () => {
       if (!notesLine) return;
@@ -209,74 +304,14 @@
     };
     paintNotes();
 
-    // Cuenta: entrar con un código al mail, ver cuántas notas hay y conectar una IA.
-    const cloudBox = box.querySelector('.lmd-home-cloud');
-    const why = (e) => authWhy(e, '');
-    const paintCloud = async (step, data) => {
-      await LMD.cloud.ready();
-      cloudBox.hidden = !LMD.cloud.enabled();
-      if (cloudBox.hidden) return;
-      cloudBox.textContent = '';
-      const button = (label, act, fill) => el('button', { type: 'button', class: 'lmd-btn' + (fill ? ' lmd-btn-fill' : ''), 'data-cloud': act, text: label });
-      const row = () => { const d = el('div', { class: 'lmd-home-cloud-row' }); cloudBox.appendChild(d); return d; };
-      // El aviso va pegado al campo y no borra lo escrito.
-      const errLine = () => cloudBox.appendChild(el('p', { class: 'lmd-home-cloud-err', role: 'alert', hidden: '' }));
-      // Quién está conectado: el correo en un renglón que no se parte, y debajo el plan y las notas.
-      const who = (sub, plans) => {
-        const head = el('div', { class: 'lmd-home-acct' }, '<span class="lmd-home-acct-ico">' + ICON.cloudOk + '</span><div class="lmd-home-acct-who"><b></b><small></small></div>');
-        head.querySelector('b').textContent = LMD.cloud.email(); head.querySelector('b').title = LMD.cloud.email();
-        head.querySelector('small').textContent = sub;
-        if (plans) head.querySelector('small').append(' · ', el('button', { type: 'button', class: 'lmd-link', 'data-cloud': 'plan', text: T('Ver planes') }));
-        head.appendChild(el('button', { type: 'button', class: 'lmd-link', 'data-cloud': 'logout', text: T('Salir') }));
-        cloudBox.appendChild(head);
-      };
-      if (!LMD.cloud.signedIn()) {
-        // Sin sesión: qué anda sin cuenta y qué suma tenerla, y debajo el botón o el formulario para entrar.
-        cloudBox.innerHTML = perks();
-        if (step === 'email') { const form = el('div', { class: 'lmd-signin' }); cloudBox.appendChild(form); signIn(form, async () => { await paintCloud(); ctx.refresh(); }); }
-        else row().append(button(T('Crear cuenta o entrar'), 'ask', true));
-        return;
-      }
-      try {
-        const a = await LMD.cloud.account();
-        host.unlocked(a);
-        const pro = a.plan === 'pro';
-        who(T(pro ? 'Plan pago' : 'Plan gratis') + ' · ' + (a.limit ? T('{n} de {m} notas', { n: a.notes, m: a.limit }) : T(a.notes === 1 ? '1 nota, sin límite' : '{n} notas, sin límite', { n: a.notes })), !pro);
-        row().append(button(T('Abrir la nube'), 'open', true), button(T('Conectar una IA'), 'ai'));
-        errLine();
-      } catch (e) {
-        if (!LMD.cloud.signedIn()) return paintCloud();
-        who(why(e));
-      }
-    };
-    cloudBox.addEventListener('click', async (e) => {
-      const b = e.target.closest('[data-cloud]'); if (!b) return;
-      const field = (name) => cloudBox.querySelector('[data-field=' + name + ']');
-      const fail = (text, input) => {
-        const p = cloudBox.querySelector('.lmd-home-cloud-err');
-        if (p) { p.hidden = false; p.textContent = text; }
-        if (input) { input.setAttribute('aria-invalid', 'true'); input.focus(); }
-      };
-      const act = b.dataset.cloud;
-      try {
-        if (act === 'ask') await paintCloud('email');
-        else if (act === 'start' || act === 'verify') return; // los atiende el formulario
-        else if (act === 'logout') { await LMD.sync.signOut(host); await paintCloud(); ctx.refresh(); }
-        else if (act === 'open') LMD.sync.openCloud(Object.assign({}, host, { say: (t) => fail(t) }));
-        else if (act === 'ai' || act === 'plan') LMD.sync.dialog(act, host);
-      } catch (err) { fail(authWhy(err, ''), field('code') || field('email')); }
-    });
-    cloudBox.addEventListener('input', (e) => {
-      if (!e.target.matches('[data-field]')) return;
-      e.target.removeAttribute('aria-invalid');
-      const p = cloudBox.querySelector('.lmd-home-cloud-err'); if (p) p.hidden = true;
-    });
+    // La cuenta vive al pie de la barra lateral: acá solo se la pone al día.
+    bindAcct();
     // Vuelta de la página de pago hecha desde acá: el plan, en su ventana, esperando la confirmación.
-    if (location.hash === '#lmd-paid') { LMD.sync.dialog('plan', host); LMD.sync.awaitPaid(); }
+    if (location.hash === '#lmd-paid') { LMD.sync.dialog('plan', acctHost()); LMD.sync.awaitPaid(); }
 
     // Lo escrito sin conexión en notas que ya no están abiertas se sube al entrar. Con ?login=1 (se llega
     // así desde un archivo abierto directo en el navegador) el correo ya queda pedido.
-    LMD.cloud.flush().catch(() => {}).then(() => paintCloud(new URLSearchParams(location.search).has('login') ? 'email' : undefined));
+    LMD.cloud.flush().catch(() => {}).then(() => paintAcct(new URLSearchParams(location.search).has('login') ? 'email' : undefined));
 
     box.onclick = async (e) => {
       const b = e.target.closest('[data-home]'); if (!b) return;
@@ -312,7 +347,7 @@
   function gate(rec, mode) {
     return new Promise((resolve) => {
       const box = ctx.box;
-      box.hidden = false; box.onclick = null; sayNow = null;
+      box.hidden = false; box.onclick = null; sayNow = null; ctx.ready();
       box.innerHTML =
         '<div class="lmd-home-card">' +
           '<img class="lmd-home-logo" src="' + chrome.runtime.getURL('icons/icon128.png') + '" alt="">' +
@@ -394,6 +429,7 @@
     if (opt.target !== 'local' && LMD.cloud.signedIn()) {
       try {
         const file = await cloudNote(base, text);
+        paintAcct(); // el contador de notas del pie
         return ctx.open('cloud/' + encodeURIComponent(file), how);
       } catch (e) {
         // Desde una plantilla se eligió crearla ahí: en el límite del plan gratis se dice, en vez de mandarla a otro lado.
@@ -480,6 +516,8 @@
     // Un archivo recién guardado pasa a ser la nota abierta: reemplaza en el historial a la que era.
     adopt: (c, handle) => { ctx = c; return openPicked(handle, () => {}, { replace: true }); },
     show: (c, note) => { ctx = c; return home(note); },
+    // El pie de la cuenta: con c se monta y se pinta; sin nada, se repinta si ya está (cambió la sesión o el plan).
+    account: (c) => { if (c) { ctx = c; bindAcct(); } return paintAcct(); },
     say: (text) => { if (sayNow) sayNow(text); },
     pick: (c, what) => { ctx = c; return pick(what, c.say); },
     pickTemplate: (c) => { ctx = c; return pickTemplate(); },

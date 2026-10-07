@@ -182,7 +182,7 @@ try {
   await app.goto(home); await app.waitForSelector('.lmd-home-cloud:not([hidden]) [data-cloud=ask]');
   await app.click('[data-cloud=ask]'); await app.fill('[data-field=email]', 'ana@ejemplo.test');
   const [started] = await Promise.all([app.waitForResponse((r) => r.url().endsWith('/auth/start')), app.click('[data-cloud=start]')]);
-  await app.waitForSelector('[data-field=code]'); await app.fill('[data-field=code]', (await started.json()).dev_code); await app.click('[data-cloud=verify]'); await app.waitForSelector('[data-cloud=logout]');
+  await app.waitForSelector('[data-field=code]'); await app.fill('[data-field=code]', (await started.json()).dev_code); await app.click('[data-cloud=verify]'); await app.waitForSelector('[data-cloud=menu]');
   await app.evaluate(async (largo) => { await LMD.cloud.write('proyecto/uno.md', '# Uno\n\n[a dos](notas/dos.md#la-sección-ñ) y [a ninguna](tres.md)\n'); await LMD.cloud.write('proyecto/notas/dos.md', '# Dos\n\n' + largo + '\n\n## La sección ñ\n\nAcá.\n\n' + largo + '\n'); }, LARGO);
   await app.goto(home + '?f=' + encodeURIComponent('cloud/proyecto/uno.md')); await app.waitForSelector('.markdown-body h1');
   await app.click('.markdown-body a:has-text("a ninguna")'); await app.waitForTimeout(700); o.nubeRoto = await estado();

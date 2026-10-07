@@ -132,7 +132,7 @@ try {
       await LMD.store.notePut('launch.md', text);
       await new Promise((resolve) => chrome.storage.local.set({ settings: { cloudUrl: url }, cloud: { session: s, email: m } }, resolve));
     }, [base, session, mail, NOTE]);
-    await page.goto(home); await page.waitForSelector('.lmd-home-acct');
+    await page.goto(home); await page.waitForSelector('.lmd-home-acct', { state: 'attached' });
     await fits(page, tag + 'estado vacío con la cuenta abierta');
 
     // ---------- Barra lateral ----------
@@ -145,6 +145,16 @@ try {
     check(tag + 'abrirla no corre ni achica el contenido', J(await mainBox()) === J(before) && before[0] === 0 && before[1] === W, [before, await mainBox()]);
     const rows = await page.evaluate(() => [...document.querySelectorAll('.lmd-sidebar .lmd-node, .lmd-sidebar .lmd-root-tog, .lmd-sidebar .lmd-zone-head')].filter((n) => n.offsetParent).map((n) => Math.round(n.getBoundingClientRect().height)));
     check(tag + 'los renglones del explorador miden 40 px o más', rows.length >= 4 && Math.min(...rows) >= 40, rows);
+    // La cuenta vive al pie del panel lateral: una fila alta para el dedo, con su menú adentro del panel.
+    const acct = await page.evaluate(() => { const side = document.querySelector('.lmd-sidebar').getBoundingClientRect(); const b = document.querySelector('.lmd-sidebar [data-cloud=menu]'); const r = b.getBoundingClientRect();
+      return { h: Math.round(r.height), inside: r.left >= side.left && r.right <= side.right && r.bottom <= window.innerHeight, low: window.innerHeight - r.bottom < 40, text: b.innerText, inCard: document.querySelectorAll('.lmd-home [data-cloud]').length }; });
+    check(tag + 'la cuenta está al pie del panel lateral, en una fila alta para el dedo', acct.h >= 44 && acct.inside && acct.low && /@/.test(acct.text) && /note/.test(acct.text) && acct.inCard === 0, acct);
+    await page.tap('.lmd-sidebar [data-cloud=menu]'); await page.waitForSelector('.lmd-side-acct .lmd-menu');
+    const acctMenu = await page.evaluate(() => { const side = document.querySelector('.lmd-sidebar').getBoundingClientRect(); const m = document.querySelector('.lmd-side-acct .lmd-menu').getBoundingClientRect();
+      return { inside: m.left >= side.left && m.right <= side.right && m.top >= 0, acts: [...document.querySelectorAll('.lmd-side-acct .lmd-menu [data-cloud]')].map((x) => x.dataset.cloud), low: Math.min(...[...document.querySelectorAll('.lmd-side-acct .lmd-menu button')].map((x) => x.getBoundingClientRect().height)) }; });
+    check(tag + 'su menú abre dentro del panel, con renglones de 44 px', acctMenu.inside && acctMenu.acts.includes('logout') && acctMenu.acts.includes('ai') && acctMenu.low >= 44, acctMenu);
+    await fits(page, tag + 'barra lateral abierta, con el menú de la cuenta');
+    await page.tap('.lmd-sidebar [data-cloud=menu]'); await page.waitForSelector('.lmd-side-acct .lmd-menu', { state: 'detached' });
     await fits(page, tag + 'barra lateral abierta');
     await page.touchscreen.tap(W - 12, H / 2); await page.waitForTimeout(350);
     check(tag + 'tocar afuera la cierra', !(await drawer()).open);

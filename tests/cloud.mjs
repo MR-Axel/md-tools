@@ -53,7 +53,7 @@ try {
   await app.waitForSelector('[data-field=code]'); await app.fill('[data-field=code]', '999999' === code ? '000000' : '999999'); await app.click('[data-cloud=verify]');
   await app.waitForSelector('.lmd-home-cloud-err'); o.codigoMalo = await app.textContent('.lmd-home-cloud-err');
   await app.fill('[data-field=code]', code); await app.click('[data-cloud=verify]');
-  await app.waitForSelector('[data-cloud=logout]'); o.cuenta = [await app.textContent('.lmd-home-acct-who b'), await app.textContent('.lmd-home-acct-who small')];
+  await app.waitForSelector('[data-cloud=menu]'); o.cuenta = [await app.textContent('.lmd-home-acct-who b'), await app.textContent('.lmd-home-acct-who small')];
 
   await Promise.all([app.waitForNavigation(), app.click('[data-home=new]')]); await app.waitForSelector('.lmd-draft');
   o.url = /f=cloud%2Fnota-/.test(app.url());
@@ -67,7 +67,7 @@ try {
   const page2 = await ctx.newPage(); await page2.goto(home); await page2.waitForSelector('.lmd-xroot[data-root=cloud] a.lmd-node');
   o.enInicio = await page2.evaluate(() => { const n = document.querySelector('.lmd-xroot[data-root=cloud] a.lmd-node'); return [n.textContent.trim(), n.querySelector('.lmd-node-where').title]; });
   // "Conectar una IA" abre el mismo panel que Ajustes → IA, en una ventana: ahí se crea el token.
-  await page2.click('[data-cloud=ai]'); await page2.waitForSelector('.lmd-acct-card [data-c=token]'); await page2.click('[data-c=token]'); await page2.waitForSelector('.lmd-ai-new');
+  await page2.click('[data-cloud=menu]'); await page2.click('[data-cloud=ai]'); await page2.waitForSelector('.lmd-acct-card [data-c=token]'); await page2.click('[data-c=token]'); await page2.waitForSelector('.lmd-ai-new');
   const fields = await page2.evaluate(() => [...document.querySelectorAll('.lmd-acct-card .lmd-field input, .lmd-acct-card .lmd-field textarea')].map((i) => i.value));
   o.campos = [fields[0], fields[1].slice(0, 4), fields[2].slice(0, 44)];
   const token = fields[1];
@@ -415,16 +415,16 @@ try {
   // La cola de notas que no están abiertas se sube desde el inicio. Si las dos ediciones se pisan,
   // gana el servidor y lo escrito acá queda aparte, como nota del navegador.
   const was = await serverText('suelta.md');
-  await app.goto(home); await app.waitForSelector('.lmd-home [data-cloud=logout]');
+  await app.goto(home); await app.waitForSelector('.lmd-side-acct [data-cloud=menu]');
   await app.evaluate(([who, text]) => Promise.all([
     LMD.store.cloudPut(who, 'suelta.md', { text: text.replace('Nota del navegador.', 'Nota editada sin conexión.'), base: text, pending: true, role: 'owner' }),
     LMD.store.cloudPut(who, 'archivo/plan.md', { text: '# plan\n\nAgregado sin conexión.\n', base: '# plan\n', pending: true, role: 'owner' }),
   ]), [mail, was]);
   await api('PUT', '/notes/suelta.md', { text: was.replace('Nota del navegador.', 'Nota editada en otro lado.') }, session);
-  await app.goto(home); await app.waitForSelector('.lmd-home [data-cloud=logout]');
+  await app.goto(home); await app.waitForSelector('.lmd-side-acct [data-cloud=menu]');
   for (let i = 0; i < 40 && ((await copy('suelta.md')) || {}).pending; i++) await app.waitForTimeout(150);
   o.cola = [await serverText('archivo/plan.md'), await serverText('suelta.md'), (await copy('suelta.md')).pending, await app.evaluate(() => LMD.store.noteGet('suelta (sin conexión).md').then((n) => n && n.text))];
-  await app.goto(home); await app.waitForSelector('[data-cloud=logout]'); await app.click('[data-cloud=logout]'); await app.waitForSelector('[data-cloud=ask]');
+  await app.goto(home); await app.waitForSelector('[data-cloud=menu]'); await app.click('[data-cloud=menu]'); await app.click('[data-cloud=logout]'); await app.waitForSelector('[data-cloud=ask]');
   await app.waitForSelector(CLOUD + ' .lmd-root-hint');
   o.salio = (await app.locator(CLOUD + ' .lmd-node').count()) === 0;
   o.sinCopias = await app.evaluate((who) => LMD.store.cloudAll(who).then((all) => all.length), mail);
@@ -433,7 +433,7 @@ try {
   // Salir con una nota de la nube abierta: se cierra, en vez de quedar a la vista diciendo "guardado en la nube".
   await app.goto(home); await app.waitForSelector('[data-cloud=ask]'); await app.click('[data-cloud=ask]'); await app.fill('[data-field=email]', 'ana@ejemplo.test');
   const [again] = await Promise.all([app.waitForResponse((r) => r.url().endsWith('/auth/start')), app.click('[data-cloud=start]')]);
-  await app.waitForSelector('[data-field=code]'); await app.fill('[data-field=code]', (await again.json()).dev_code); await app.click('[data-cloud=verify]'); await app.waitForSelector('[data-cloud=logout]');
+  await app.waitForSelector('[data-field=code]'); await app.fill('[data-field=code]', (await again.json()).dev_code); await app.click('[data-cloud=verify]'); await app.waitForSelector('[data-cloud=menu]');
   await Promise.all([app.waitForNavigation(), app.click('[data-home=new]')]); await app.waitForSelector('.lmd-draft');
   await app.keyboard.type('# Para salir'); await app.click('.lmd-foot .lmd-status', { force: true });
   await app.waitForFunction(() => /nube/.test(document.querySelector('.lmd-savestate').textContent), null, { timeout: 8000 });
@@ -445,7 +445,7 @@ try {
   // Eliminar la cuenta desde Ajustes: se confirma escribiendo el correo, y no queda nada de ella acá ni en el servidor.
   await app.goto(home); await app.waitForSelector('[data-cloud=ask]'); await app.click('[data-cloud=ask]'); await app.fill('[data-field=email]', 'chau@ejemplo.test');
   const [byeCode] = await Promise.all([app.waitForResponse((r) => r.url().endsWith('/auth/start')), app.click('[data-cloud=start]')]);
-  await app.waitForSelector('[data-field=code]'); await app.fill('[data-field=code]', (await byeCode.json()).dev_code); await app.click('[data-cloud=verify]'); await app.waitForSelector('[data-cloud=logout]');
+  await app.waitForSelector('[data-field=code]'); await app.fill('[data-field=code]', (await byeCode.json()).dev_code); await app.click('[data-cloud=verify]'); await app.waitForSelector('[data-cloud=menu]');
   const chau = await app.evaluate(() => new Promise((resolve) => chrome.storage.local.get('cloud', (r) => resolve(r.cloud.session))));
   await api('PUT', '/notes/mia.md', { text: '# Mía\n' }, chau);
   await app.goto(cloudUrl('mia.md')); await opened();

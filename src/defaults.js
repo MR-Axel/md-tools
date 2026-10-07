@@ -736,7 +736,7 @@
       "Contraseña": "Password",
       "Escribí la contraseña.": "Type the password.",
       "Esa contraseña no coincide.": "That password does not match.",
-      "Crear cuenta o entrar": "Sign up or sign in", "{n} de {m} notas": "{n} of {m} notes",
+      "Crear cuenta o entrar": "Sign up or sign in", "Tus notas en la nube, en cada dispositivo. 10 gratis.": "Your notes in the cloud, on every device. 10 free.", "{n} de {m} notas": "{n} of {m} notes",
       "Más acciones": "More actions",
       "Nube: compartir, historial y más": "Cloud: share, history and more",
       "Subir esta nota a la nube": "Upload this note to the cloud",
@@ -1085,7 +1085,7 @@
   const WEB_APP_URL = 'https://sharpmd.app/src/app.html';
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.47.0';
+  const VERSION = '2.48.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
 })(typeof self !== 'undefined' ? self : this);
