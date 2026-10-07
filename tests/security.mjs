@@ -281,6 +281,64 @@ async function serverSuite() {
     const longH = await fetch(S.base + '/health', { headers: { 'x-largo': 'a'.repeat(20000) } }).then((r) => r.status).catch(() => 0);
     check('cabeceras ilegibles o enormes se rechazan sin tirar el servicio', /^HTTP\/1\.1 400/.test(hdr) && (longH === 431 || longH === 0) && (await call('GET', '/health')).status === 200, [hdr.slice(0, 40), longH]);
 
+    // ---------- Papelera, carpeta protegida sin contraseña y eliminar la cuenta ----------
+    console.log(' Papelera y eliminar la cuenta');
+    {
+      const T = await signup(S, 'tacho@ejemplo.test'); const I = await signup(S, 'intrusa@ejemplo.test'); const V = await signup(S, 'seva@ejemplo.test');
+      await makePro(S, T.email); await makePro(S, V.email);
+      const TRASHED = 'RABANITO-EN-LA-PAPELERA-5521'; secrets.push(TRASHED);
+      await call('PUT', '/notes/' + enc('tacho/secreto.md'), { text: TRASHED }, T.s);
+      await call('PUT', '/notes/' + enc('tacho/otra.md'), { text: 'sigue' }, T.s);
+      await call('POST', '/shares', { path: 'tacho', kind: 'folder', email: I.email, role: 'edit' }, T.s);
+      const tl = (await call('POST', '/links', { path: 'tacho/secreto.md' }, T.s)).json.token; secrets.push(tl);
+      const tt = (await call('POST', '/tokens', { name: 'IA' }, T.s)).json.token; secrets.push(tt);
+      await call('DELETE', '/notes/' + enc('tacho/secreto.md'), undefined, T.s);
+      const tid = (await call('GET', '/trash', undefined, T.s)).json[0].id;
+      const spill = (r) => JSON.stringify(r.json || '').includes(TRASHED) || JSON.stringify(r.json || '').includes('secreto.md');
+      const holes = [];
+      for (const [who, w] of [['con la carpeta compartida para editar', I], ['otra cuenta paga', V]]) {
+        const tries = [['listar', await call('GET', '/trash', undefined, w.s), 200], ['listar con o', await call('GET', '/trash?o=' + T.id, undefined, w.s), 403], ['restaurar', await call('POST', '/trash/' + tid + '/restore', {}, w.s), 404],
+          ['restaurar con o', await call('POST', '/trash/' + tid + '/restore?o=' + T.id, {}, w.s), 403], ['borrar', await call('DELETE', '/trash/' + tid, undefined, w.s), 404], ['borrar con o', await call('DELETE', '/trash/' + tid + '?o=' + T.id, undefined, w.s), 403],
+          ['vaciar con o', await call('DELETE', '/trash?o=' + T.id, undefined, w.s), 403], ['vaciar', await call('DELETE', '/trash', undefined, w.s), 200], ['leer', await call('GET', '/notes/' + enc('tacho/secreto.md') + '?o=' + T.id, undefined, w.s), 404],
+          ['lo compartido', await call('GET', '/shared', undefined, w.s), 200], ['buscar', await call('GET', '/search?q=' + TRASHED, undefined, w.s), 200]];
+        for (const [what, r, want] of tries) if ((what === 'leer' ? r.status !== 403 && r.status !== 404 : r.status !== want) || spill(r)) holes.push(who + ': ' + what + ' ' + r.status);
+      }
+      check('papelera: otra cuenta no la lista, no restaura ni borra nada de ella, ni teniendo la carpeta compartida para editar', holes.length === 0 && (await call('GET', '/trash', undefined, T.s)).json.length === 1, holes);
+      const noSession = [await call('GET', '/trash'), await call('GET', '/trash', undefined, tt), await call('POST', '/trash/' + tid + '/restore', {}, tt), await call('DELETE', '/trash', undefined, tt), await call('DELETE', '/account', { email: T.email }, tt), await call('DELETE', '/account', { email: T.email })];
+      check('papelera y cuenta: sin sesión, o con un token de MCP, no hay acceso', noSession.every((r) => r.status === 401), noSession.map((r) => r.status));
+      const ai = [await tool(S, tt, 'search_notes', { query: TRASHED }), await tool(S, tt, 'list_notes', {}), await tool(S, tt, 'read_note', { path: 'tacho/secreto.md' })];
+      check('papelera: no sale por la búsqueda, por el enlace público ni por MCP', !spill(await call('GET', '/search?q=' + TRASHED, undefined, T.s)) && (await call('GET', '/public/' + tl)).status === 404 && ai.every((r) => !JSON.stringify(r).includes(TRASHED)) && !JSON.stringify(ai[1]).includes('secreto.md'), ai.map((r) => JSON.stringify(r).slice(0, 80)));
+      const odd = []; for (const u of ['/trash/abc/restore', '/trash/' + tid + '%20OR%201=1/restore', '/trash/-1/restore', '/trash/' + tid + '/restore/x', '/trash/1e3/restore', '/trash/%00/restore']) { const r = await call('POST', u, {}, T.s); if (r.status !== 404 && r.status !== 400) odd.push(u + ' ' + r.status); }
+      check('papelera: un número raro en la dirección no llega a nada', odd.length === 0 && (await call('GET', '/trash', undefined, T.s)).json.length === 1, odd);
+      const moved = await call('POST', '/trash/' + tid + '/restore', { to: 'privada.md', path: 'otra/ruta.md', text: 'pisada', o: A.id }, T.s);
+      check('papelera: restaurar no deja elegir otra ruta ni otro texto', moved.status === 200 && moved.json.path === 'tacho/secreto.md' && (await call('GET', '/notes/' + enc('tacho/secreto.md'), undefined, T.s)).json.text === TRASHED && (await call('GET', '/notes/privada.md', undefined, T.s)).status === 404, moved.json);
+      // Carpeta protegida: eliminarla sin contraseña es solo de su dueña.
+      const vb = (n) => Buffer.alloc(n, 4).toString('base64');
+      const vault = (await call('POST', '/vaults', { folder: 'cofre', salt: vb(16), iters: 200000, wrapped: vb(60), check: vb(32) }, T.s)).json;
+      await call('PUT', '/notes/' + enc('cofre/a.md'), { text: 'vault1:' + vb(60) }, T.s);
+      const raids = [await call('POST', '/vaults/' + vault.id + '/destroy', { folder: 'cofre' }, I.s), await call('POST', '/vaults/' + vault.id + '/destroy', { folder: 'cofre' }, V.s), await call('POST', '/vaults/' + vault.id + '/destroy', { folder: 'cofre' }, tt), await call('POST', '/vaults/' + vault.id + '/destroy', { folder: 'cofre' })];
+      const loose = [await call('POST', '/vaults/' + vault.id + '/destroy', {}, T.s), await call('POST', '/vaults/' + vault.id + '/destroy', { folder: 'cofre/' }, T.s), await call('POST', '/vaults/' + vault.id + '/destroy', { folder: ['cofre'] }, T.s), await call('POST', '/vaults/' + vault.id + '/destroy', { folder: 'tacho' }, T.s)];
+      check('carpeta protegida: otra cuenta no la elimina, y sin el nombre exacto tampoco su dueña', raids.map((r) => r.status).join() === '404,404,401,401' && loose.every((r) => r.status === 400) && (await call('GET', '/notes/' + enc('cofre/a.md'), undefined, T.s)).status === 200, [raids.map((r) => r.status), loose.map((r) => r.status)]);
+      // Eliminar la cuenta: solo la propia, y no queda nada suyo.
+      await call('PUT', '/notes/' + enc('mia.md'), { text: 'una' }, V.s); await call('PUT', '/notes/' + enc('mia.md'), { text: 'dos' }, V.s); await call('DELETE', '/notes/' + enc('mia.md'), undefined, V.s);
+      await call('PUT', '/notes/' + enc('otra.md'), { text: 'queda' }, V.s);
+      await call('POST', '/shares', { path: 'otra.md', email: T.email, role: 'view' }, V.s); await call('POST', '/links', { path: 'otra.md' }, V.s); await call('POST', '/tokens', { name: 'IA' }, V.s);
+      await call('POST', '/comments', { path: 'otra.md', quote: 'q', text: 'cambiar' }, V.s); await call('POST', '/vaults', { folder: 'caja', salt: vb(16), iters: 200000, wrapped: vb(60), check: vb(32) }, V.s);
+      await call('POST', '/live', { path: 'otra.md', name: 'Seva' }, V.s);
+      await call('POST', '/shares', { path: 'tacho/otra.md', email: V.email, role: 'view' }, T.s);
+      const cross = [await call('DELETE', '/account', { email: V.email }, I.s, from(nextIp())), await call('DELETE', '/account', { email: V.email, id: V.id, o: V.id }, T.s, from(nextIp())), await call('DELETE', '/account?o=' + V.id, { email: I.email.toUpperCase() + 'x' }, I.s, from(nextIp())), await call('DELETE', '/account', [V.email], V.s, from(nextIp())), await call('DELETE', '/account', { email: [V.email] }, V.s, from(nextIp()))];
+      check('eliminar la cuenta: nadie borra la cuenta de otro, y sin escribir el correo propio no se borra', cross.every((r) => r.status === 400) && (await call('GET', '/account', undefined, V.s)).status === 200 && (await call('GET', '/account', undefined, I.s)).status === 200, cross.map((r) => [r.status, r.json && r.json.error]));
+      const done = await call('DELETE', '/account', { email: V.email }, V.s, from(nextIp()));
+      const db = S.db(); const count = (sql, ...a) => db.prepare(sql).get(...a).n; const leftovers = [];
+      for (const t of ['notes', 'versions', 'trash', 'comments', 'tokens', 'sessions', 'vaults', 'paddle_subs']) if (count('SELECT COUNT(*) AS n FROM ' + t + ' WHERE user = ?', V.id)) leftovers.push(t);
+      for (const t of ['shares', 'links', 'lives']) if (count('SELECT COUNT(*) AS n FROM ' + t + ' WHERE owner = ?', V.id)) leftovers.push(t);
+      if (count('SELECT COUNT(*) AS n FROM users WHERE id = ? OR email = ?', V.id, V.email)) leftovers.push('users');
+      if (count('SELECT COUNT(*) AS n FROM shares WHERE email = ?', V.email)) leftovers.push('compartido con ella');
+      const others = count('SELECT COUNT(*) AS n FROM notes WHERE user = ?', T.id);
+      db.close();
+      check('eliminar la cuenta: en la base no queda nada de esa cuenta, y lo de las demás no se toca', done.status === 200 && leftovers.length === 0 && others >= 3 && (await call('GET', '/account', undefined, V.s)).status === 401 && (await call('GET', '/notes/' + enc('tacho/otra.md'), undefined, T.s)).json.text === 'sigue', [done.json, leftovers, others]);
+    }
+
     // ---------- Abuso y disponibilidad ----------
     console.log(' Abuso y disponibilidad');
     const ctrl = new AbortController(); const live = [];
@@ -917,6 +975,50 @@ async function teamSuite() {
     check('equipo: por MCP lee el equipo el token de un miembro; no el limitado a una carpeta propia, ni el de un ex miembro, ni el de una cuenta ajena', sees(reads[0]) && !sees(reads[1]) && !sees(reads[2]) && !sees(reads[3]), reads.map((r) => JSON.stringify(r).slice(0, 80)));
     const sweep = []; for (const tok of [tokScoped, tokE, tokX]) for (const [n, a] of [['list_notes', {}], ['list_folders', {}], ['search_notes', { query: TSECRET }], ['read_note', { path: '@team/../secreta.md' }], ['append_note', { path: '@team/secreta.md', text: 'colado' }]]) { const r = await tool(S, tok, n, a); if (sees(r) || (n !== 'append_note' && n !== 'read_note' && /@team\/secreta/.test(JSON.stringify(r.v)))) sweep.push(n); }
     check('equipo: esos tokens tampoco lo listan, lo buscan ni escriben en él', sweep.length === 0 && (await call('GET', t('secreta.md'), undefined, A.s)).json.text === 'tres ' + TSECRET, sweep);
+
+    // ---------- La papelera del equipo y eliminar la cuenta ----------
+    console.log(' Papelera del equipo y eliminar la cuenta');
+    {
+      const BIN = 'NABO-DEL-EQUIPO-EN-LA-PAPELERA-3318'; secrets.push(BIN);
+      await call('PUT', t('tacho.md'), { text: BIN }, A.s);
+      const delByMember = await call('DELETE', t('tacho.md'), undefined, B.s);
+      const tb = (await call('GET', '/trash?o=' + SPACE, undefined, A.s)).json;
+      const spill = (r) => JSON.stringify(r.json || '').includes(BIN) || JSON.stringify(r.json || '').includes('tacho.md');
+      const out = [];
+      for (const [who, w] of [['ajena', X], ['ex miembro', E], ['quien administra otro equipo', D], ['miembro de otro equipo', M]]) {
+        const tries = [['listar', await call('GET', '/trash?o=' + SPACE, undefined, w.s), 403], ['restaurar', await call('POST', '/trash/' + tb[0].id + '/restore?o=' + SPACE, {}, w.s), 403], ['borrar', await call('DELETE', '/trash/' + tb[0].id + '?o=' + SPACE, undefined, w.s), 403],
+          ['vaciar', await call('DELETE', '/trash?o=' + SPACE, undefined, w.s), 403], ['restaurar sin o', await call('POST', '/trash/' + tb[0].id + '/restore', {}, w.s), 404], ['borrar sin o', await call('DELETE', '/trash/' + tb[0].id, undefined, w.s), 404], ['listar la propia', await call('GET', '/trash', undefined, w.s), 200]];
+        for (const [what, r, want] of tries) if (r.status !== want || spill(r)) out.push(who + ': ' + what + ' ' + r.status);
+      }
+      check('equipo: quien no es miembro no ve, restaura, borra ni vacía la papelera del equipo', delByMember.status === 200 && tb.length === 1 && out.length === 0 && (await call('GET', '/trash?o=' + SPACE, undefined, B.s)).json.length === 1, out);
+      check('equipo: la papelera del equipo no se mezcla con la personal de sus miembros', (await call('GET', '/trash', undefined, A.s)).json.length === 0 && (await call('GET', '/trash', undefined, B.s)).json.length === 0 && (await call('POST', '/trash/' + tb[0].id + '/restore', {}, B.s)).status === 404);
+      const restored = await call('POST', '/trash/' + tb[0].id + '/restore?o=' + SPACE, {}, B.s);
+      check('equipo: cualquier miembro restaura lo que otro eliminó', restored.status === 200 && (await call('GET', t('tacho.md'), undefined, A.s)).json.text === BIN, restored.json);
+      // Eliminar la cuenta con un equipo de por medio.
+      const adminTeam = (email, seats) => S.call('POST', '/admin/team', { email, seats }, undefined, { 'x-admin-key': ADMIN });
+      const bye = (w) => call('DELETE', '/account', { email: w.email }, w.s, from(nextIp()));
+      const N1 = await signup(S, 'jefa@ejemplo.test'); const N2 = await signup(S, 'integrante@ejemplo.test'); const N3 = await signup(S, 'cobrada@ejemplo.test');
+      await adminTeam(N1.email, 3); await join(N1, N2);
+      const sp = (await acct(N1)).team.mine.space; const tn = (p) => '/notes/' + enc(p) + '?o=' + sp;
+      await call('PUT', tn('del-equipo.md'), { text: 'escrita por quien se va' }, N2.s);
+      await call('PUT', '/notes/' + enc('personal.md'), { text: 'personal' }, N2.s);
+      const withPeople = await bye(N1);
+      check('eliminar la cuenta: quien administra un equipo con más gente no se borra', withPeople.status === 409 && withPeople.json.error === 'team_has_members' && (await acct(N1)).team.mine.members.length === 2, withPeople.json);
+      const memberGone = await bye(N2);
+      const after = await acct(N1);
+      check('eliminar la cuenta: un miembro sale del equipo, y las notas del equipo quedan', memberGone.status === 200 && after.team.mine.members.length === 1 && (await call('GET', tn('del-equipo.md'), undefined, N1.s)).json.text === 'escrita por quien se va' && (await call('GET', tn('del-equipo.md'), undefined, N2.s)).status === 401, [memberGone.json, after.team.mine]);
+      await hook(teamEv('sub_del1', 'active', N3.email, 0));
+      const billed = await bye(N3);
+      check('eliminar la cuenta: con el cobro del equipo activo no se borra', billed.status === 409 && billed.json.error === 'team_billing_active' && (await acct(N3)).team.mine.role === 'admin', billed.json);
+      await hook(teamEv('sub_del1', 'canceled', null, 0));
+      const sp3 = (await acct(N3)).team.mine.space;
+      const ownerGone = [await bye(N3), await bye(N1)];
+      const db = S.db(); const n = (sql, ...a) => db.prepare(sql).get(...a).n;
+      const rest = [n('SELECT COUNT(*) AS n FROM teams WHERE space IN (?, ?)', sp, sp3), n('SELECT COUNT(*) AS n FROM users WHERE id IN (?, ?, ?, ?, ?)', sp, sp3, N1.id, N2.id, N3.id), n('SELECT COUNT(*) AS n FROM notes WHERE user IN (?, ?, ?, ?, ?)', sp, sp3, N1.id, N2.id, N3.id), n('SELECT COUNT(*) AS n FROM team_members WHERE user IN (?, ?, ?)', N1.id, N2.id, N3.id)];
+      const untouched = n('SELECT COUNT(*) AS n FROM notes WHERE user = ?', SPACE);
+      db.close();
+      check('eliminar la cuenta: quien queda sola en su equipo se borra con el equipo y su espacio, sin tocar otros equipos', ownerGone.every((r) => r.status === 200) && rest.join() === '0,0,0,0' && untouched > 0, [ownerGone.map((r) => r.json), rest, untouched]);
+    }
 
     const logged = secrets.filter((x) => x && S.log().includes(x));
     check('equipo: la salida del servidor no trae texto de notas, tokens ni la clave de Paddle', logged.length === 0, logged.map((x) => String(x).slice(0, 8)));

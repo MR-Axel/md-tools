@@ -453,7 +453,7 @@ function vaultRemove(user, v) {
 // bóveda, sus notas, su historial y lo que tuviera en la papelera. Nada de eso pasa por la papelera: sin la llave
 // no se podría leer nunca. Quien lo pide escribe el nombre de la carpeta, y acá se vuelve a comparar.
 function vaultDestroy(user, v, body) {
-  if (String(body.folder == null ? '' : body.folder) !== v.folder) throw new Fail(400, 'bad_confirm');
+  if (typeof body.folder !== 'string' || body.folder !== v.folder) throw new Fail(400, 'bad_confirm');
   const pre = v.folder + '/';
   aiForget(v, false);
   for (const row of q('SELECT * FROM lives WHERE owner = ? AND substr(path, 1, length(?)) = ?').all(user.id, pre, pre)) liveEnd(row, 'closed');
@@ -461,7 +461,9 @@ function vaultDestroy(user, v, body) {
   db.exec('BEGIN');
   try {
     notes = q('DELETE FROM notes WHERE user = ? AND substr(path, 1, length(?)) = ?').run(user.id, pre, pre).changes;
-    for (const t of ['versions', 'comments', 'trash']) q('DELETE FROM ' + t + ' WHERE user = ? AND substr(path, 1, length(?)) = ?').run(user.id, pre, pre);
+    q('DELETE FROM versions WHERE user = ? AND substr(path, 1, length(?)) = ?').run(user.id, pre, pre);
+    q('DELETE FROM comments WHERE user = ? AND substr(path, 1, length(?)) = ?').run(user.id, pre, pre);
+    q('DELETE FROM trash WHERE user = ? AND substr(path, 1, length(?)) = ?').run(user.id, pre, pre);
     q('DELETE FROM links WHERE owner = ? AND substr(path, 1, length(?)) = ?').run(user.id, pre, pre);
     q('DELETE FROM shares WHERE owner = ? AND (path = ? OR substr(path, 1, length(?)) = ?)').run(user.id, v.folder, pre, pre);
     q('DELETE FROM vaults WHERE id = ?').run(v.id);
@@ -1488,11 +1490,15 @@ function spaceOf(user, o) {
 // más gente saca primero a los demás (team_has_members): las notas del equipo se van con el equipo.
 // Un miembro sale de su equipo y las notas del equipo quedan en el equipo.
 const ACCOUNT_DELETES = 5; // pedidos por hora, por IP y por cuenta
+// Todo lo que cuelga de una cuenta, tabla por tabla. La cuenta misma va al final.
+const ACCOUNT_ROWS = ['DELETE FROM notes WHERE user = ?', 'DELETE FROM versions WHERE user = ?', 'DELETE FROM trash WHERE user = ?', 'DELETE FROM comments WHERE user = ?', 'DELETE FROM tokens WHERE user = ?',
+  'DELETE FROM sessions WHERE user = ?', 'DELETE FROM vaults WHERE user = ?', 'DELETE FROM paddle_subs WHERE user = ?', 'DELETE FROM shares WHERE owner = ?', 'DELETE FROM links WHERE owner = ?', 'DELETE FROM lives WHERE owner = ?',
+  'DELETE FROM users WHERE id = ?'];
 function accountDelete(req, user, body) {
   const keys = ['accdel:ip:' + clientIp(req), 'accdel:user:' + user.id];
   keys.forEach((k) => limit(k, ACCOUNT_DELETES, HOUR, 'too_many'));
   keys.forEach((k) => mark(k));
-  if (String(body.email == null ? '' : body.email).trim().toLowerCase() !== user.email) throw new Fail(400, 'bad_confirm');
+  if (typeof body.email !== 'string' || body.email.trim().toLowerCase() !== user.email) throw new Fail(400, 'bad_confirm');
   const manage = env.PORTAL_URL || '';
   if (q("SELECT 1 FROM paddle_subs WHERE user = ? AND status = 'active' AND kind != 'team' LIMIT 1").get(user.id)) throw new Fail(409, 'subscription_active', 'Cancel the subscription before deleting the account', { manage });
   const own = q('SELECT * FROM teams WHERE owner = ?').get(user.id);
@@ -1510,11 +1516,7 @@ function accountDelete(req, user, body) {
   try {
     if (!own && user.team) q('DELETE FROM team_members WHERE team = ? AND user = ?').run(user.team.id, user.id);
     if (own) { q('DELETE FROM team_members WHERE team = ?').run(own.id); q('DELETE FROM team_invites WHERE team = ?').run(own.id); q('DELETE FROM teams WHERE id = ?').run(own.id); }
-    for (const id of ids) {
-      for (const t of ['notes', 'versions', 'trash', 'comments', 'tokens', 'sessions', 'vaults', 'paddle_subs']) q('DELETE FROM ' + t + ' WHERE user = ?').run(id);
-      for (const t of ['shares', 'links', 'lives']) q('DELETE FROM ' + t + ' WHERE owner = ?').run(id);
-      q('DELETE FROM users WHERE id = ?').run(id);
-    }
+    for (const id of ids) for (const sql of ACCOUNT_ROWS) q(sql).run(id);
     q('DELETE FROM shares WHERE email = ?').run(user.email);
     q('DELETE FROM team_invites WHERE email = ?').run(user.email);
     q('DELETE FROM codes WHERE email = ?').run(user.email);
