@@ -249,6 +249,49 @@ try {
   await folder('trabajo').click(); await app.waitForSelector(CARD + ' [data-v=p]'); await app.fill('[data-v=p]', PASS); await app.click('[data-v=ok]'); await closed();
   o.reanuda.push(await until(async () => (await list()).filter((n) => n.path.startsWith('trabajo/')).every((n) => n.v === 1)), await Z.open(d9.key, 'trabajo/plan.md', await raw('trabajo/plan.md')));
 
+  // ---------- Papelera: una nota protegida va y vuelve cifrada ----------
+  const bin = () => api('GET', '/trash', undefined, session);
+  const seal9 = (p, text) => Z.seal(d9.key, p, text); const open9 = async (p) => Z.open(d9.key, p, await raw(p));
+  await api('DELETE', '/trash', undefined, session);
+  await app.waitForSelector(CLOUD + ' .lmd-node-kids a.lmd-node:has-text("plan.md")');
+  await menu('plan.md', 'del');
+  await until(async () => !(await list()).some((n) => n.path === 'trabajo/plan.md'));
+  const t1 = await bin();
+  o.papeleraCofre = [t1.length === 1 && t1[0].protected === true && t1[0].path === 'trabajo/plan.md'];
+  // Con el nombre ocupado vuelve con otro nombre: la app la descifra con su ruta de antes y la cifra para la nueva.
+  await api('PUT', '/notes/' + enc('trabajo/plan.md'), { text: await seal9('trabajo/plan.md', 'la nueva') }, session);
+  await app.click(CLOUD + ' > .lmd-trash-link'); await app.waitForSelector('.lmd-trash li');
+  o.papeleraCofre.push(await app.locator('.lmd-trash li .lmd-trash-name svg').count());
+  await app.click('.lmd-trash li [data-tr=back]');
+  await until(async () => (await list()).some((n) => n.path === 'trabajo/plan (2).md'));
+  o.papeleraCofre.push((await raw('trabajo/plan (2).md')).startsWith('vault1:'), await open9('trabajo/plan (2).md'), await open9('trabajo/plan.md'), (await bin()).length);
+  await app.click('.lmd-trash [data-tr=no]');
+  // Con la carpeta bloqueada, restaurar con otro nombre pide la contraseña.
+  await api('DELETE', '/notes/' + enc('trabajo/plan (2).md'), undefined, session);
+  await api('PUT', '/notes/' + enc('trabajo/plan (2).md'), { text: await seal9('trabajo/plan (2).md', 'otra más') }, session);
+  await menu('trabajo', 'v-lock'); await app.waitForSelector(CLOUD + ' .lmd-vault-shut'); await said('Carpeta bloqueada$');
+  await app.click(CLOUD + ' > .lmd-trash-link'); await app.waitForSelector('.lmd-trash li'); await app.click('.lmd-trash li [data-tr=back]');
+  await app.waitForSelector(CARD + ' [data-v=p]'); await app.click(CARD + ' [data-v=no]');
+  await app.waitForSelector('.lmd-trash .lmd-dlg-err:not([hidden])');
+  o.papeleraBloqueada = [await app.textContent('.lmd-trash .lmd-dlg-err'), (await bin()).length];
+  await app.click('.lmd-trash li [data-tr=back]'); await app.waitForSelector(CARD + ' [data-v=p]'); await app.fill('[data-v=p]', PASS); await app.click(CARD + ' [data-v=ok]'); await closed();
+  await until(async () => (await list()).some((n) => n.path === 'trabajo/plan (2) (2).md'));
+  o.papeleraBloqueada.push(await open9('trabajo/plan (2) (2).md'), (await bin()).length);
+  await app.click('.lmd-trash [data-tr=no]');
+
+  // ---------- Contraseña perdida: eliminar la carpeta y sus notas, sin desbloquearla ----------
+  await api('DELETE', '/notes/' + enc('trabajo/plan.md'), undefined, session);
+  await menu('trabajo', 'v-lock'); await app.waitForSelector(CLOUD + ' .lmd-vault-shut'); await said('Carpeta bloqueada$');
+  o.sinClave = [(await menuItems('trabajo')).includes('v-destroy'), (await bin()).some((x) => x.path.startsWith('trabajo/'))];
+  // Se llega también desde "¿Olvidaste la contraseña?", para quien tampoco tiene la clave de respaldo.
+  await folder('trabajo').click(); await app.waitForSelector(CARD + ' [data-v=forgot]'); await app.click('[data-v=forgot]'); await app.waitForSelector(CARD + ' [data-v=lost]'); await app.click('[data-v=lost]');
+  await app.waitForSelector(CARD + ' [data-v=name]');
+  o.eliminarCofre = [await app.textContent(CARD + ' h3'), await app.textContent(CARD + ' .lmd-vault-warn'), await app.evaluate(() => document.querySelector('[data-v=ok]').classList.contains('lmd-btn-danger'))];
+  await app.fill('[data-v=name]', 'Trabajo'); await app.click(CARD + ' [data-v=ok]'); o.eliminarCofre.push(await fail(), (await vaults()).length);
+  await app.fill('[data-v=name]', 'trabajo'); await app.keyboard.press('Enter'); await closed();
+  o.eliminarCofre.push(await said('Carpeta eliminada'), (await vaults()).length, (await list()).some((n) => n.path.startsWith('trabajo/')), (await bin()).some((x) => x.path.startsWith('trabajo/')), (await list()).some((n) => n.path === 'afuera.md'),
+    await app.locator(CLOUD + ' .lmd-node-dir:has-text("trabajo")').count(), await app.evaluate((who) => LMD.store.cloudAll(who).then((all) => all.filter((c) => c.path.startsWith('trabajo/')).length), mail));
+
   // ---------- Lo que viajó ----------
   const all = sent.map((r) => r.url + ' ' + r.body).join('\n');
   const backupForms = [shown, shown.replace(/-/g, ''), Z.b64(K), Buffer.from(K).toString('hex'), Buffer.from(K).toString('base64url')];
@@ -260,6 +303,11 @@ try {
 
 const J = (v) => JSON.stringify(v);
 const checks = [
+  ['una nota protegida eliminada queda cifrada en la papelera, y con el nombre ocupado vuelve con otro, cifrada para su ruta nueva', J(o.papeleraCofre) === J([true, 1, true, '# Plan\n\nNada secreto.\n', 'la nueva', 0]), o.papeleraCofre],
+  ['con la carpeta bloqueada, restaurar con otro nombre pide la contraseña; sin ella no restaura', o.papeleraBloqueada && /Desbloqueá la carpeta/.test(o.papeleraBloqueada[0]) && J(o.papeleraBloqueada.slice(1)) === J([1, '# Plan\n\nNada secreto.\n', 0]), o.papeleraBloqueada],
+  ['una carpeta bloqueada ofrece eliminarla con sus notas, sin pedir la contraseña', J(o.sinClave) === J([true, true]), o.sinClave],
+  ['eliminar la carpeta pide escribir su nombre y avisa que no se recupera', o.eliminarCofre && /Eliminar "trabajo" y sus notas/.test(o.eliminarCofre[0]) && /No van a la papelera/.test(o.eliminarCofre[1]) && o.eliminarCofre[2] === true && /no es el nombre/.test(o.eliminarCofre[3]) && o.eliminarCofre[4] === 1, o.eliminarCofre],
+  ['con el nombre escrito se van la carpeta, sus notas, lo suyo de la papelera y las copias locales; lo demás queda', o.eliminarCofre && /Carpeta eliminada/.test(o.eliminarCofre[5]) && J(o.eliminarCofre.slice(6)) === J([0, false, false, true, 0, 0]), o.eliminarCofre],
   ['una carpeta común de la nube ofrece protegerla con contraseña', (o.menuComun || []).includes('v-protect') && !(o.menuComun || []).includes('v-lock'), o.menuComun],
   ['el diálogo dice antes de crear que sin contraseña ni clave de respaldo no hay recuperación, y que los nombres no se cifran', o.dialogo && o.dialogo.title === 'Proteger "diario" con contraseña' && /no se pueden recuperar\. Tampoco desde SharpMD\./.test(o.dialogo.warn) && /nombres de las notas y de las carpetas no se cifran/.test(o.dialogo.notes) && /historial anterior de estas notas se elimina/.test(o.dialogo.notes) && o.dialogo.focus === 'p1' && !/[!¡—]/.test(o.dialogo.warn + o.dialogo.notes), o.dialogo],
   ['el indicador de fortaleza acompaña a la contraseña', J(o.fuerza) === J(['Al menos 8 caracteres', 'Fuerte']), o.fuerza],
@@ -268,7 +316,7 @@ const checks = [
   ['al confirmar, las notas que ya había quedan cifradas y su historial en claro se va', o.protegida && /protegida/.test(o.protegida[0]) && o.protegida[1] && o.protegida[2] && /Secreto de la nota, mandarina\./.test(o.protegida[3]) && /mandarina-carta/.test(o.protegida[4]) && o.protegida[5] === 0, o.protegida],
   ['el servidor guarda la carpeta con 600.000 vueltas y el valor de comprobación de esa llave, y no toca las demás carpetas', o.protegida && o.protegida[6] === 'diario' && o.protegida[7] === 600000 && o.protegida[8] === true && o.protegida[9] === true, o.protegida],
   ['la carpeta lleva un candado, abierto mientras está desbloqueada en la pestaña', o.candado && o.candado[0] === false && /desbloqueada/.test(o.candado[1]), o.candado],
-  ['el menú de la carpeta protegida ofrece bloquear, abrir para la IA, cambiar la contraseña y quitar la protección; una de adentro, nada de eso', J((o.menuProtegida || []).filter((f) => /^v-/.test(f))) === J(['v-lock', 'v-ai', 'v-pass', 'v-off']) && !(o.menuAdentro || ['v-']).some((f) => /^v-/.test(f)), [o.menuProtegida, o.menuAdentro]],
+  ['el menú de la carpeta protegida ofrece bloquear, abrir para la IA, cambiar la contraseña, quitar la protección y eliminarla; una de adentro, nada de eso', J((o.menuProtegida || []).filter((f) => /^v-/.test(f))) === J(['v-lock', 'v-ai', 'v-pass', 'v-off', 'v-destroy']) && !(o.menuAdentro || ['v-']).some((f) => /^v-/.test(f)), [o.menuProtegida, o.menuAdentro]],
   ['una nota protegida abre como cualquiera', o.abre && /Secreto de la nota, mandarina\./.test(o.abre[0]) && /Guardado en la nube/.test(o.abre[1]), o.abre],
   ['al guardar viaja cifrada, y la copia para usar sin conexión también queda cifrada', o.guarda && o.guarda[0] && o.guarda[1] && o.guarda[2] && o.guarda[3] === false, o.guarda],
   ['compartir y comentar para la IA explican en una línea por qué no están, con el camino a seguir', o.menuNube && o.menuNube.share && /Carpeta protegida/.test(o.menuNube.note) && /movela a otra carpeta/.test(o.menuNube.note) && o.menuNube.comments && /carpeta protegida/.test(o.menuNube.avisa) && o.menuNube.sinVentana === 0, o.menuNube],

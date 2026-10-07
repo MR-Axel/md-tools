@@ -125,6 +125,48 @@ await app.waitForSelector('.lmd-node-dir.lmd-open'); await app.waitForSelector('
 const [, mark2] = await Promise.all([app.waitForNavigation(), drag(node('titulada.md'), app.locator('.lmd-xroot[data-root=disk] .lmd-tree-head'))]); await app.waitForSelector('.markdown-body h1');
 o.arrastreRaiz = [mark2, /%2Ftitulada\.md$/.test(app.url()) && !/carpeta/.test(app.url()), (await names()).includes('titulada.md'), await inFolder()];
 
+// arrastrar una carpeta del disco a otra la mueve con todo lo que tiene adentro, sea Markdown o no
+await app.evaluate(async () => {
+  const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('x');
+  const write = async (d, name, data) => { const h = await d.getFileHandle(name, { create: true }); const s = await h.createWritable(); await s.write(data); await s.close(); };
+  await write(await dir.getDirectoryHandle('destino', { create: true }), 'ya.md', '# Ya\n');
+  const sub = await (await dir.getDirectoryHandle('carpeta')).getDirectoryHandle('sub', { create: true });
+  await write(sub, 'hoja.md', '# Hoja\n'); await write(sub, 'dato.bin', new Uint8Array([1, 2, 3]));
+});
+const walk = () => app.evaluate(async () => { const out = []; const go = async (d, pre) => { for await (const [n, h] of d.entries()) { if (h.kind === 'directory') await go(h, pre + n + '/'); else out.push(pre + n); } }; await go(await (await navigator.storage.getDirectory()).getDirectoryHandle('x'), ''); return out.sort(); });
+const dirNode = (name) => app.locator('.lmd-xroot[data-root=disk] .lmd-node-dir', { hasText: name }).first();
+await app.goto(base + 'titulada.md'); await app.waitForSelector('.markdown-body h1'); await app.waitForSelector('.lmd-node-dir:has-text("destino")');
+o.carpetaDisco = ['', await drag(dirNode('carpeta'), dirNode('destino'))];
+await app.waitForFunction(() => ![...document.querySelectorAll('.lmd-xroot[data-root=disk] > .lmd-tree > .lmd-node-dir')].some((n) => n.textContent.trim() === 'carpeta'));
+o.carpetaDisco.push((await walk()).filter((p) => /carpeta|destino/.test(p)));
+// con la nota abierta adentro de la carpeta que se mueve, queda abierta en su ruta nueva
+for (const d of ['destino', 'carpeta', 'sub']) { if (!(await dirNode(d).evaluate((n) => n.classList.contains('lmd-open')))) await dirNode(d).click(); await app.waitForSelector('.lmd-node-dir.lmd-open:has-text("' + d + '")'); }
+o.carpetaEnHija = [await drag(dirNode('destino'), dirNode('sub')), await drag(dirNode('carpeta'), dirNode('destino'))]; // ni adentro de una de las suyas, ni donde ya está
+await Promise.all([app.waitForNavigation(), node('hoja.md').click()]); await app.waitForSelector('.markdown-body h1:has-text("Hoja")'); await app.waitForSelector('.lmd-node-kids .lmd-node-dir:has-text("carpeta")');
+const [, markDir] = await Promise.all([app.waitForNavigation(), drag(dirNode('carpeta'), app.locator('.lmd-xroot[data-root=disk] .lmd-tree-head'))]); await app.waitForSelector('.markdown-body h1');
+o.carpetaDiscoAbierta = [markDir, /%2Fcarpeta%2Fsub%2Fhoja\.md$/.test(app.url()) && !/destino/.test(app.url()), await app.title(), (await walk()).filter((p) => /carpeta|destino/.test(p))];
+// soltar una imagen del explorador en la nota, en edición, la inserta como imagen con su ruta relativa
+await app.evaluate(() => LMD.patch({ filesOnlyMarkdown: false })); // las imágenes figuran en el explorador con "solo Markdown" apagado
+await app.goto(base + 'README.md'); await app.waitForSelector('.markdown-body h1'); await app.waitForSelector('.lmd-node:has-text("punto.svg")');
+await app.click('[data-act=mode-edit]'); await app.waitForSelector('.markdown-body p.lmd-editable');
+const dropOn = async (from, to) => {
+  await from.hover(); await app.mouse.down(); await to.hover(); await to.hover();
+  const mark = await app.evaluate(() => { const c = document.querySelector('.lmd-drop-caret'); return c ? (c.classList.contains('lmd-drop-line') ? 'renglón' : 'cursor') : ''; });
+  await app.mouse.up();
+  return mark;
+};
+o.soltarImagen = [await dropOn(node('punto.svg'), app.locator('.markdown-body p.lmd-editable').first())];
+await app.waitForFunction(() => !!document.querySelector('.markdown-body p img'));
+o.soltarImagen.push(await app.evaluate(() => document.querySelector('.markdown-body p img').getAttribute('data-lmd-src')));
+// y un archivo de otra carpeta, soltado fuera del texto, queda en un renglón propio debajo del último bloque
+for (const d of ['carpeta', 'sub']) { await dirNode(d).click(); await app.waitForSelector('.lmd-node-dir.lmd-open:has-text("' + d + '")'); }
+await app.waitForSelector('.lmd-node-kids .lmd-node:has-text("hoja.md")');
+o.soltarBloque = [await dropOn(app.locator('.lmd-xroot[data-root=disk] .lmd-node-kids .lmd-node', { hasText: 'hoja.md' }).first(), app.locator('.lmd-article .lmd-add'))];
+await app.click('.lmd-foot .lmd-status', { force: true }); await app.keyboard.press('Control+s'); await app.waitForTimeout(500);
+o.soltarFuente = await src();
+await app.click('[data-act=mode-read]'); await app.waitForTimeout(200);
+await app.evaluate(() => LMD.patch({ filesOnlyMarkdown: true }));
+
 // Notas "en este navegador": se renombran desde el árbol y desde el título; no tienen carpetas, así que arrastrar no hace nada.
 const notes = () => app.evaluate(async () => (await LMD.store.notesAll()).map((n) => n.name).sort());
 await app.evaluate(() => Promise.all([LMD.store.notePut('primera.md', '# Primera\n'), LMD.store.notePut('segunda.md', '# Segunda\n')]));
@@ -145,6 +187,10 @@ o.localArrastre = [await drag(node('tercera.md'), app.locator('.lmd-xroot[data-r
 
 const J = (v) => JSON.stringify(v);
 const checks = [
+  ['arrastrar una carpeta del disco a otra la mueve entera; no adentro de una de las suyas ni donde ya está', J(o.carpetaEnHija) === J(['', '']) && o.carpetaDisco && o.carpetaDisco[1] === 'destino' && J(o.carpetaDisco[2]) === J(['destino/carpeta/dentro.md', 'destino/carpeta/movible.md', 'destino/carpeta/sub/dato.bin', 'destino/carpeta/sub/hoja.md', 'destino/ya.md']), o.carpetaDisco],
+  ['mover la carpeta de la nota abierta la deja abierta en su ruta nueva', o.carpetaDiscoAbierta && o.carpetaDiscoAbierta[0] === 'raíz' && o.carpetaDiscoAbierta[1] === true && o.carpetaDiscoAbierta[2] === 'hoja.md' && J(o.carpetaDiscoAbierta[3]) === J(['carpeta/dentro.md', 'carpeta/movible.md', 'carpeta/sub/dato.bin', 'carpeta/sub/hoja.md', 'destino/ya.md']), o.carpetaDiscoAbierta],
+  ['soltar una imagen del explorador en la nota la inserta como imagen', J(o.soltarImagen) === J(['cursor', 'punto.svg']) && /!\[\]\(punto\.svg\)/.test(o.soltarFuente || ''), [o.soltarImagen, o.soltarFuente]],
+  ['soltar un archivo fuera del texto deja el enlace en un renglón propio', J(o.soltarBloque) === J(['renglón']) && /\n\[hoja\]\(carpeta\/sub\/hoja\.md\)(\n|$)/.test(o.soltarFuente || ''), [o.soltarBloque, o.soltarFuente]],
   ['archivo nuevo desde el árbol', o.nuevo.title === 'nueva.md' && o.nuevo.h1.startsWith('nueva'), o.nuevo],
   ['renombrar el archivo abierto', o.renombrado === 'renombrada.md', o.renombrado],
   ['eliminar un archivo', J(o.archivos) === J(['README.md', 'conf.json', 'datos.csv', 'punto.svg', 'renombrada.md']) && !o.arbol.includes('viejo.md'), o.archivos],
