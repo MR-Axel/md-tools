@@ -10,6 +10,7 @@
 /.gitignore export-ignore
 /.gitattributes export-ignore
 /.nojekyll export-ignore
+/.well-known/ export-ignore
 /server/ export-ignore
 /es/ export-ignore
 /tools/ export-ignore

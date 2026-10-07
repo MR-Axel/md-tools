@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.sharpmd",
+      "sha256_cert_fingerprints": [
+        "FB:E0:3C:21:25:EC:24:20:19:52:22:66:91:99:FC:3E:95:7F:0B:7B:22:B1:2C:8D:59:AE:B9:B4:13:48:65:9C"
+      ]
+    }
+  }
+]
