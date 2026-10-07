@@ -139,6 +139,60 @@ async function serverSuite() {
     const freeMcp = [await call('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/list' }, lim.token), await call('POST', '/tokens', { name: 'gratis' }, I.s), await call('POST', '/comments', { path: 'alfa/plan.md', text: 'hola' }, I.s)];
     check('MCP exige el plan pago: al volver a gratis, el token ya no entra', freeMcp.every((r) => r.status === 402), freeMcp.map((r) => r.status));
     await makePro(S, I.email);
+    // ---------- Compartir desde la IA: un permiso aparte ----------
+    console.log(' Compartir por MCP');
+    {
+    const SHARE5 = ['list_shares', 'share_note', 'unshare_note', 'create_public_link', 'revoke_public_link'];
+    const names = async (tok) => (await call('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/list' }, tok)).json.result.tools.map((x) => x.name);
+    const mkTok = async (body) => { const r = (await call('POST', '/tokens', body, I.s)).json; secrets.push(r.token); return r; };
+    const plainTok = await mkTok({ name: 'sin permiso' }); const sh = await mkTok({ name: 'comparte', share: true }); const shAlfa = await mkTok({ name: 'comparte alfa', folder: 'alfa', share: true });
+    const almost = []; for (const v of ['true', 1, 'yes', {}, [true], null]) almost.push((await mkTok({ name: 'casi', share: v })).share);
+    const listed = (await call('GET', '/tokens', undefined, I.s)).json;
+    check('compartir por MCP: el permiso se da solo con share: true, y la lista de tokens lo muestra', plainTok.share === false && sh.share === true && shAlfa.share === true && almost.every((x) => x === false) && listed.filter((x) => x.share).map((x) => x.name).sort().join() === 'comparte,comparte alfa' && listed.find((x) => x.name === 'alfa').share === false, [almost, listed.map((x) => [x.name, x.share])]);
+    const seen = [await names(plainTok.token), await names(lim.token), await names(sh.token)];
+    check('compartir por MCP: sin el permiso las herramientas no figuran; con él, sí', seen[0].length === 10 && seen[1].length === 10 && !seen[0].concat(seen[1]).some((x) => SHARE5.includes(x)) && SHARE5.every((x) => seen[2].includes(x)) && seen[2].length === 15, seen.map((x) => x.length));
+    const counts = () => { const d = S.db(); const r = [d.prepare('SELECT COUNT(*) AS n FROM shares').get().n, d.prepare('SELECT COUNT(*) AS n FROM links').get().n]; d.close(); return r.join(); };
+    const before = counts(); const denied = [];
+    for (const tok of [plainTok.token, lim.token]) for (const [n, a] of [['list_shares', {}], ['share_note', { path: 'alfa/plan.md', email: C.email }], ['share_note', { path: 'alfa', email: C.email, role: 'edit' }], ['unshare_note', { path: 'alfa/plan.md', email: C.email }], ['create_public_link', { path: 'alfa/plan.md' }], ['revoke_public_link', { path: 'alfa/plan.md' }]]) { const r = await tool(S, tok, n, a); if (!r.err || !/cannot share/.test(String(r.v))) denied.push(n); }
+    check('compartir por MCP: sin el permiso, llamarlas falla y no deja nada compartido', denied.length === 0 && counts() === before && (await call('GET', '/shared', undefined, C.s)).json.every((n) => n.by !== I.email), [denied, before, counts()]);
+
+    // Con el permiso y limitado a una carpeta: nada fuera de ella.
+    const outLink = (await call('POST', '/links', { path: 'beta/ideas.md' }, I.s)).json; await call('POST', '/shares', { path: 'beta/ideas.md', email: B.email }, I.s);
+    const base0 = counts(); const escaped = [];
+    for (const p of ['beta/ideas.md', 'beta', 'suelta.md', 'alfa/../beta/ideas.md', '../beta/ideas.md', 'alfabeto/x.md', 'Alfa/y.md', 'alfabeto', '/beta/ideas.md', 'alfa\\..\\beta\\ideas.md']) {
+      for (const [n, a] of [['share_note', { path: p, email: C.email }], ['create_public_link', { path: p }], ['unshare_note', { path: p, email: B.email }], ['revoke_public_link', { path: p }], ['list_shares', { path: p }]]) { const r = await tool(S, shAlfa.token, n, a); if (!r.err) escaped.push(n + ' ' + p); }
+    }
+    const byId = await tool(S, shAlfa.token, 'revoke_public_link', { id: outLink.id }); const seenOut = await tool(S, shAlfa.token, 'list_shares', {});
+    check('compartir por MCP: un token de carpeta no comparte, enlaza, lista ni revoca fuera de ella', escaped.length === 0 && counts() === base0 && byId.err && seenOut.v.people.length === 0 && seenOut.v.links.length === 0 && (await call('GET', '/public/' + outLink.token)).status === 200 && (await call('GET', '/notes/' + enc('beta/ideas.md') + '?o=' + I.id, undefined, B.s)).status === 200, [escaped, byId.v, seenOut.v]);
+    // Adentro, anda: nota, carpeta, enlace con contraseña, y deshacerlo.
+    const okNote = await tool(S, shAlfa.token, 'share_note', { path: 'alfa/plan.md', email: C.email }); const okFolder = await tool(S, shAlfa.token, 'share_note', { path: 'alfa/notas', email: C.email, role: 'edit' });
+    const got = (await call('GET', '/shared', undefined, C.s)).json.filter((n) => n.by === I.email).map((n) => n.path + ':' + n.role).sort().join();
+    const lk = await tool(S, shAlfa.token, 'create_public_link', { path: 'alfa/plan.md', password: 'clave-larga-9' }); const lkTok = lk.err ? '' : new URL(lk.v.url).searchParams.get('f').slice(4); secrets.push(lkTok);
+    const pub = [await call('GET', '/public/' + lkTok), await call('GET', '/public/' + lkTok, undefined, undefined, { 'x-password': 'otra' }), await call('GET', '/public/' + lkTok, undefined, undefined, { 'x-password': 'clave-larga-9' })];
+    const mineNow = await tool(S, shAlfa.token, 'list_shares', {});
+    check('compartir por MCP: dentro de su carpeta comparte una nota y una carpeta, y crea un enlace con contraseña', !okNote.err && !okFolder.err && got === 'alfa/notas/r.md:edit,alfa/plan.md:view' && !lk.err && lk.v.protected === true && /\?f=pub%2F/.test(lk.v.url) && pub[0].status === 401 && pub[1].status === 403 && pub[2].status === 200 && pub[2].json.text === 'plan de alfa' && mineNow.v.people.length === 2 && mineNow.v.links.length === 1 && !JSON.stringify(mineNow.v).includes('beta'), [okNote.v, okFolder.v, got, lk.v, pub.map((r) => r.status), mineNow.v]);
+    const undo = [await tool(S, shAlfa.token, 'unshare_note', { path: 'alfa/plan.md', email: C.email }), await tool(S, shAlfa.token, 'unshare_note', { path: 'alfa/notas', email: C.email }), await tool(S, shAlfa.token, 'revoke_public_link', { id: lk.v.id }), await tool(S, shAlfa.token, 'unshare_note', { path: 'alfa/plan.md', email: C.email })];
+    check('compartir por MCP: dejar de compartir y revocar el enlace lo deshacen', undo.slice(0, 3).every((r) => !r.err) && undo[3].err && (await call('GET', '/shared', undefined, C.s)).json.every((n) => n.by !== I.email) && (await call('GET', '/public/' + lkTok, undefined, undefined, { 'x-password': 'clave-larga-9' })).status === 404 && counts() === base0, [undo.map((r) => r.v), counts(), base0]);
+    const odd = [await tool(S, sh.token, 'share_note', { path: 'alfa/plan.md', email: I.email }), await tool(S, sh.token, 'share_note', { path: 'alfa/plan.md', email: 'no-es-correo' }), await tool(S, sh.token, 'share_note', { path: 'alfa/plan.md' }), await tool(S, sh.token, 'share_note', { path: 'no/existe.md', email: C.email }), await tool(S, sh.token, 'create_public_link', { path: 'no/existe.md' }), await tool(S, sh.token, 'create_public_link', { path: 'alfa' }), await tool(S, sh.token, 'create_public_link', { path: 'alfa/plan.md', password: 'x'.repeat(201) }), await tool(S, sh.token, 'revoke_public_link', {}), await tool(S, sh.token, 'revoke_public_link', { id: linkA.id }), await tool(S, sh.token, 'share_note', { path: 'privada.md', email: C.email })];
+    check('compartir por MCP: valen las mismas reglas que en la app (correo propio o mal formado, ruta que no existe, contraseña larga, lo de otra cuenta)', odd.every((r) => r.err) && counts() === base0 && (await call('GET', '/public/' + linkA.token)).status === 200, odd.map((r) => r.v));
+    // Carpetas con contraseña: no se comparten ni se enlazan, tampoco con el permiso.
+    await call('PUT', '/notes/' + enc('alfa/cofre/previa.md'), { text: 'antes del cofre' }, I.s);
+    const vraw = (n) => Buffer.alloc(n, 3).toString('base64');
+    const cofre = await call('POST', '/vaults', { folder: 'alfa/cofre', salt: vraw(16), iters: 200000, wrapped: vraw(60), check: vraw(32) }, I.s);
+    const vaulted = []; for (const tok of [sh.token, shAlfa.token]) for (const [n, a] of [['share_note', { path: 'alfa/cofre', email: C.email }], ['share_note', { path: 'alfa/cofre/previa.md', email: C.email }], ['create_public_link', { path: 'alfa/cofre/previa.md' }], ['move_note', { from: 'alfa/cofre/previa.md', to: 'alfa/fuera.md' }], ['move_note', { from: 'alfa/plan.md', to: 'alfa/cofre/plan.md' }], ['note_history', { path: 'alfa/cofre/previa.md' }]]) { const r = await tool(S, tok, n, a); if (!r.err) vaulted.push(n); }
+    check('compartir por MCP: una carpeta con contraseña no se comparte, no se enlaza ni se mueve desde la IA', cofre.status === 200 && vaulted.length === 0 && counts() === base0 && (await call('GET', '/notes/' + enc('alfa/plan.md'), undefined, I.s)).status === 200, [cofre.status, vaulted, counts()]);
+    // Mover y leer el historial respetan el alcance del token.
+    await call('PUT', '/notes/' + enc('beta/ideas.md'), { text: 'ideas nuevas' }, I.s); await call('PUT', '/notes/' + enc('alfa/plan.md'), { text: 'plan de alfa, segunda vuelta' }, I.s);
+    const verBeta = (await call('GET', '/versions/' + enc('beta/ideas.md'), undefined, I.s)).json[0];
+    const hist = await tool(S, lim.token, 'note_history', { path: 'alfa/plan.md' });
+    const moves = [await tool(S, lim.token, 'move_note', { from: 'beta/ideas.md', to: 'alfa/robada.md' }), await tool(S, lim.token, 'move_note', { from: 'alfa/plan.md', to: 'beta/sacada.md' }), await tool(S, lim.token, 'move_note', { from: 'alfa/plan.md', to: 'alfa/../suelta2.md' }), await tool(S, lim.token, 'move_note', { from: 'alfa/plan.md', to: 'alfa/notas/r.md' }), await tool(S, lim.token, 'note_history', { path: 'beta/ideas.md' }), await tool(S, lim.token, 'note_history', { path: 'alfa/plan.md', version: verBeta.id }), await tool(S, lim.token, 'note_history', { path: 'alfa/plan.md', version: String(verBeta.id) + ' OR 1=1' })];
+    const histText = await tool(S, lim.token, 'note_history', { path: 'alfa/plan.md', version: hist.v[0] && hist.v[0].version });
+    const moved = await tool(S, lim.token, 'move_note', { from: 'alfa/plan.md', to: 'alfa/hecho/plan.md' });
+    check('mover y leer el historial por MCP no salen de la carpeta del token', moves.every((r) => r.err && !JSON.stringify(r.v).includes(SECRET)) && hist.v.length === 1 && histText.v === 'plan de alfa' && !moved.err && /Open it: \S+\?f=cloud%2Falfa%2Fhecho%2Fplan\.md$/.test(moved.v) && (await call('GET', '/notes/' + enc('alfa/hecho/plan.md'), undefined, I.s)).json.text === 'plan de alfa, segunda vuelta' && (await call('GET', '/notes/' + enc('beta/ideas.md'), undefined, I.s)).json.text === 'ideas nuevas', [moves.map((r) => r.v), hist.v, histText.v, moved.v]);
+    // Los tokens de antes de esta versión: la columna nace en cero.
+    check('compartir por MCP: en la base, solo los tokens creados con el permiso lo tienen', (() => { const d = S.db(); const rows = d.prepare('SELECT name, share FROM tokens').all(); d.close(); return rows.filter((r) => r.share).map((r) => r.name).sort().join() === 'comparte,comparte alfa' && rows.every((r) => r.share === 0 || r.share === 1); })());
+    }
+
     const bad = []; for (const b of ['null', '[null]', '"x"', '7', '[[]]', '{"method":"tools/call","id":1,"params":null}', '{"method":"tools/call","id":1,"params":{"name":"read_note","arguments":"x"}}', '{"method":"tools/call","id":1,"params":{"name":"__proto__"}}']) bad.push(await call('POST', '/mcp', b, lim.token));
     check('MCP: un mensaje mal armado no produce un error del servidor', bad.every((r) => r.status < 500), bad.map((r) => r.status));
     const big = await call('POST', '/mcp', Array.from({ length: 51 }, (_, i) => ({ jsonrpc: '2.0', id: i, method: 'tools/call', params: { name: 'search_notes', arguments: { query: 'a' } } })), lim.token);
@@ -975,6 +1029,14 @@ async function teamSuite() {
     check('equipo: por MCP lee el equipo el token de un miembro; no el limitado a una carpeta propia, ni el de un ex miembro, ni el de una cuenta ajena', sees(reads[0]) && !sees(reads[1]) && !sees(reads[2]) && !sees(reads[3]), reads.map((r) => JSON.stringify(r).slice(0, 80)));
     const sweep = []; for (const tok of [tokScoped, tokE, tokX]) for (const [n, a] of [['list_notes', {}], ['list_folders', {}], ['search_notes', { query: TSECRET }], ['read_note', { path: '@team/../secreta.md' }], ['append_note', { path: '@team/secreta.md', text: 'colado' }]]) { const r = await tool(S, tok, n, a); if (sees(r) || (n !== 'append_note' && n !== 'read_note' && /@team\/secreta/.test(JSON.stringify(r.v)))) sweep.push(n); }
     check('equipo: esos tokens tampoco lo listan, lo buscan ni escriben en él', sweep.length === 0 && (await call('GET', t('secreta.md'), undefined, A.s)).json.text === 'tres ' + TSECRET, sweep);
+
+    {
+    const tokShare = (await call('POST', '/tokens', { name: 'IA', share: true }, B.s)).json.token; const tokShareTeam = (await call('POST', '/tokens', { name: 'IA', folder: '@team', share: true }, B.s)).json.token; secrets.push(tokShare, tokShareTeam);
+    const rowsOut = () => { const d = S.db(); const r = [d.prepare('SELECT COUNT(*) AS n FROM shares').get().n, d.prepare('SELECT COUNT(*) AS n FROM links').get().n]; d.close(); return r.join(); };
+    const out0 = rowsOut(); const teamOut = [];
+    for (const tok of [tokShare, tokShareTeam]) for (const [n, a] of [['share_note', { path: '@team/secreta.md', email: X.email }], ['share_note', { path: '@team', email: X.email }], ['create_public_link', { path: '@team/secreta.md' }], ['unshare_note', { path: '@team/secreta.md', email: X.email }], ['revoke_public_link', { path: '@team/secreta.md' }], ['list_shares', { path: '@team/secreta.md' }]]) { const r = await tool(S, tok, n, a); if (!r.err || sees(r)) teamOut.push(n); }
+    check('equipo: con el permiso de compartir, la IA igual no comparte ni enlaza las notas del equipo', teamOut.length === 0 && rowsOut() === out0 && (await call('GET', '/shared', undefined, X.s)).json.length === 0, [teamOut, out0, rowsOut()]);
+    }
 
     // ---------- La papelera del equipo y eliminar la cuenta ----------
     console.log(' Papelera del equipo y eliminar la cuenta');

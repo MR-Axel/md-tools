@@ -54,7 +54,7 @@ try {
   check('MCP: initialize', init.json.result.serverInfo.name === 'sharpmd' && !!init.json.result.capabilities.tools, init.json);
   check('MCP: las notificaciones no llevan respuesta', (await call('POST', '/mcp', { jsonrpc: '2.0', method: 'notifications/initialized' }, t)).status === 202);
   const tools = await call('POST', '/mcp', { jsonrpc: '2.0', id: 2, method: 'tools/list' }, t);
-  check('MCP: lista las ocho herramientas', tools.json.result.tools.map((x) => x.name).join() === 'list_notes,list_folders,read_note,write_note,append_note,search_notes,list_comments,resolve_comment', tools.json);
+  check('MCP: lista las diez herramientas de un token sin permiso de compartir', tools.json.result.tools.map((x) => x.name).join() === 'list_notes,list_folders,read_note,write_note,append_note,search_notes,list_comments,resolve_comment,move_note,note_history', tools.json);
   const tool = (name, args, id) => call('POST', '/mcp', { jsonrpc: '2.0', id: id || 9, method: 'tools/call', params: { name, arguments: args } }, t);
   await tool('write_note', { path: 'ia/resumen.md', text: '# Resumen\n\nEscrito por la IA.' });
   await tool('append_note', { path: 'ia/resumen.md', text: 'Segunda parte.' });
@@ -138,6 +138,32 @@ try {
   const fuera = await ask(lim.token, 'read_note', { path: 'beta/ideas.md' }); const escribeFuera = await ask(lim.token, 'write_note', { path: 'suelta.md', text: 'x' });
   check('token de carpeta: no lee ni escribe afuera', fuera.err && escribeFuera.err && (await call('GET', '/notes/suelta.md', undefined, is)).json.text === 'suelta', [fuera, escribeFuera]);
   check('token de carpeta: la búsqueda no sale de la carpeta', (await ask(lim.token, 'search_notes', { query: 'ideas' })).v.length === 0 && (await ask(full, 'search_notes', { query: 'ideas' })).v.length === 1);
+  // El enlace para abrir lo escrito, el permiso de compartir y las herramientas nuevas.
+  {
+  const openAt = 'https://sharpmd.app/src/app.html?f=';
+  const w1 = await ask(full, 'write_note', { path: 'ia/mi nota ñ.md', text: '# Hola' }); const w2 = await ask(full, 'append_note', { path: 'ia/mi nota ñ.md', text: 'Más.' });
+  check('MCP: write_note y append_note devuelven la dirección para abrir la nota en la app', w1.v === 'Saved ia/mi nota ñ.md (6 characters). Open it: ' + openAt + encodeURIComponent('cloud/ia/' + encodeURIComponent('mi nota ñ.md')) && w2.v === 'Appended to ia/mi nota ñ.md. Open it: ' + openAt + encodeURIComponent('cloud/ia/' + encodeURIComponent('mi nota ñ.md')), [w1.v, w2.v]);
+  const mv = await ask(full, 'move_note', { from: 'ia/mi nota ñ.md', to: 'archivo/nota.md' }); const mvAgain = await ask(full, 'move_note', { from: 'beta/ideas.md', to: 'archivo/nota.md' });
+  check('MCP: move_note mueve la nota, devuelve su dirección y no pisa otra', mv.v === 'Moved ia/mi nota ñ.md to archivo/nota.md. Open it: ' + openAt + 'cloud%2Farchivo%2Fnota.md' && (await call('GET', '/notes/' + encodeURIComponent('archivo/nota.md'), undefined, is)).json.text === '# Hola\n\nMás.' && (await call('GET', '/notes/' + encodeURIComponent('ia/mi nota ñ.md'), undefined, is)).status === 404 && mvAgain.err && /already a note/.test(mvAgain.v), [mv.v, mvAgain.v]);
+  await ask(full, 'write_note', { path: 'archivo/nota.md', text: '# Hola, otra vez' });
+  const hs = await ask(full, 'note_history', { path: 'archivo/nota.md' }); const hv = hs.v.length ? await ask(full, 'note_history', { path: 'archivo/nota.md', version: hs.v[0].version }) : { v: null };
+  check('MCP: note_history lista las versiones anteriores y devuelve el texto de una', hs.v.length === 1 && hs.v[0].size > 0 && hv.v === '# Hola' && (await ask(full, 'note_history', { path: 'archivo/nota.md', version: 999999 })).err, [hs.v, hv.v]);
+  const sharer = await mk({ name: 'comparte', share: true }); const shTools = (await call('POST', '/mcp', { jsonrpc: '2.0', id: 2, method: 'tools/list' }, sharer.token)).json.result.tools;
+  check('MCP: un token con el permiso de compartir tiene cinco herramientas más', sharer.share === true && typeof sharer.id === 'number' && shTools.map((x) => x.name).slice(10).join() === 'list_shares,share_note,unshare_note,create_public_link,revoke_public_link' && shTools.every((x) => !('share' in x)) && (await mk({ name: 'no' })).share === false, shTools.map((x) => x.name));
+  const noPerm = await ask(full, 'create_public_link', { path: 'suelta.md' });
+  check('MCP: sin el permiso, crear un enlace falla y dice a quién pedírselo', noPerm.err && /cannot share notes or create public links\. Ask the person/.test(noPerm.v), noPerm.v);
+  const sc = await call('POST', '/auth/start', { email: 'socia@ejemplo.test' }); const ss = (await call('POST', '/auth/verify', { email: 'socia@ejemplo.test', code: sc.json.dev_code })).json.session;
+  const s1 = await ask(sharer.token, 'share_note', { path: 'suelta.md', email: 'Socia@Ejemplo.test' }); const s2 = await ask(sharer.token, 'share_note', { path: 'alfa', email: 'socia@ejemplo.test', role: 'edit' });
+  const hers = (await call('GET', '/shared', undefined, ss)).json.map((n) => n.path + ':' + n.role).sort().join();
+  check('MCP: share_note comparte una nota para ver y una carpeta para editar', s1.v === 'Shared the note suelta.md with socia@ejemplo.test (can view). They see it in SharpMD after signing in with that address.' && /^Shared the folder alfa with socia@ejemplo\.test \(can edit\)/.test(s2.v) && hers === 'alfa/notas/reunion.md:edit,alfa/plan.md:edit,suelta.md:view', [s1.v, s2.v, hers]);
+  const l1 = await ask(sharer.token, 'create_public_link', { path: 'suelta.md' }); const l1tok = new URL(l1.v.url).searchParams.get('f').slice(4);
+  const ls = await ask(sharer.token, 'list_shares', { path: 'suelta.md' });
+  check('MCP: create_public_link devuelve la dirección del enlace, que abre la nota sin cuenta', l1.v.url === openAt + 'pub%2F' + l1tok && l1.v.protected === false && l1.v.path === 'suelta.md' && (await call('GET', '/public/' + l1tok)).json.text === 'suelta' && ls.v.people.length === 1 && ls.v.people[0].email === 'socia@ejemplo.test' && ls.v.links.length === 1 && ls.v.links[0].id === l1.v.id && !JSON.stringify(ls.v).includes(l1tok), [l1.v, ls.v]);
+  const u1 = await ask(sharer.token, 'unshare_note', { path: 'suelta.md', email: 'socia@ejemplo.test' }); const r1 = await ask(sharer.token, 'revoke_public_link', { path: 'suelta.md' });
+  check('MCP: unshare_note y revoke_public_link lo deshacen', !u1.err && r1.v === 'Revoked 1 public link to suelta.md.' && (await call('GET', '/public/' + l1tok)).status === 404 && (await call('GET', '/shared', undefined, ss)).json.every((n) => n.path !== 'suelta.md') && (await ask(sharer.token, 'revoke_public_link', { path: 'suelta.md' })).err);
+  await ask(sharer.token, 'unshare_note', { path: 'alfa', email: 'socia@ejemplo.test' });
+  await call('DELETE', '/notes/' + encodeURIComponent('archivo/nota.md') + '?forever=1', undefined, is);
+  }
   const com = await call('POST', '/comments', { path: 'alfa/plan.md', quote: 'Paso uno.', text: 'Que el pago vaya primero' }, is);
   await call('POST', '/comments', { path: 'beta/ideas.md', quote: 'ideas', text: 'Sumar una idea' }, is);
   const pend = (await ask(full, 'list_comments')).v; const pendLim = (await ask(lim.token, 'list_comments')).v;

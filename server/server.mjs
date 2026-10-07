@@ -34,7 +34,8 @@
 //   CHECKOUT_TEAM   enlace de pago del plan de equipo que la app muestra en Ajustes → Plan
 //   TEAM_MAX_SEATS  lugares que puede tener un equipo como máximo (50)
 //   TEAM_INVITES_DAY  invitaciones que un equipo puede mandar por día (20)
-//   APP_URL         dirección de la app a la que lleva el correo de invitación (https://sharpmd.app/src/app.html)
+//   APP_URL         dirección de la app: a ella llevan el correo de invitación y los enlaces que el MCP devuelve
+//                   para abrir una nota (https://sharpmd.app/src/app.html)
 //   TRASH_DAYS      días que una nota eliminada queda en la papelera antes de borrarse del todo (30)
 import http from 'node:http';
 import fs from 'node:fs';
@@ -78,6 +79,8 @@ db.exec(`
 `);
 try { db.exec('ALTER TABLE users ADD COLUMN paddle_sub TEXT'); } catch (e) { /* ya estaba */ }
 try { db.exec('ALTER TABLE tokens ADD COLUMN scope TEXT'); } catch (e) { /* ya estaba */ }
+// share: el token puede compartir notas y crear enlaces públicos. Los que ya existían quedan sin ese permiso.
+try { db.exec('ALTER TABLE tokens ADD COLUMN share INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* ya estaba */ }
 db.exec("CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY, user INTEGER NOT NULL, path TEXT NOT NULL, quote TEXT NOT NULL, text TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open', reply TEXT, created INTEGER NOT NULL, done INTEGER)");
 // Cada suscripción de Paddle con su cuenta y su estado: una cuenta puede tener más de una (alguien pagó por ella).
 db.exec('CREATE TABLE IF NOT EXISTS paddle_subs (id TEXT PRIMARY KEY, user INTEGER NOT NULL, status TEXT NOT NULL, at INTEGER NOT NULL DEFAULT 0)');
@@ -295,8 +298,8 @@ function userFrom(req, kind) {
     if (s) { q('UPDATE sessions SET seen = ? WHERE hash = ?').run(now(), sha(m[1])); return userById(s.user); }
   }
   if (kind === 'token' && m[1].startsWith('mdt_')) {
-    const t = q('SELECT id, user, scope FROM tokens WHERE hash = ?').get(sha(m[1]));
-    if (t) { q('UPDATE tokens SET used = ? WHERE id = ?').run(now(), t.id); const u = userById(t.user); if (u) u.scope = t.scope || ''; return u; }
+    const t = q('SELECT id, user, scope, share FROM tokens WHERE hash = ?').get(sha(m[1]));
+    if (t) { q('UPDATE tokens SET used = ? WHERE id = ?').run(now(), t.id); const u = userById(t.user); if (u) { u.scope = t.scope || ''; u.canShare = !!t.share; } return u; }
   }
   throw new Fail(401, 'bad_auth');
 }
@@ -706,6 +709,12 @@ function sharedWith(user) {
   }
   return out.sort((a, b) => b.updated - a.updated);
 }
+// Con quién compartió la cuenta y qué enlaces públicos tiene; con of, solo lo de esa ruta.
+function sharesOf(user, of) {
+  const people = q('SELECT id, path, kind, email, role FROM shares WHERE owner = ?').all(user.id).filter((s) => !of || s.path === of);
+  const links = q('SELECT id, path, pass IS NOT NULL AS protected, created FROM links WHERE owner = ?').all(user.id).filter((l) => !of || l.path === of);
+  return { people, links };
+}
 function addShare(user, body) {
   if (!shareAllowed(user)) throw new Fail(402, 'share_needs_plan');
   const p = cleanPath(body.path); const email = cleanEmail(body.email);
@@ -729,8 +738,8 @@ function addLink(user, body) {
   if (body.password != null && String(body.password).length > 200) throw new Fail(400, 'bad_password');
   const token = random(24); let pass = null;
   if (body.password) { const salt = random(12); pass = salt + ':' + passHash(body.password, salt); }
-  q('INSERT INTO links (hash, owner, path, pass, created) VALUES (?, ?, ?, ?, ?)').run(sha(token), user.id, p, pass, now());
-  return { token, protected: !!pass };
+  const r = q('INSERT INTO links (hash, owner, path, pass, created) VALUES (?, ?, ?, ?, ?)').run(sha(token), user.id, p, pass, now());
+  return { id: Number(r.lastInsertRowid), token, protected: !!pass };
 }
 function publicNote(token, password) {
   const link = q('SELECT * FROM links WHERE hash = ?').get(sha(String(token)));
@@ -1120,7 +1129,18 @@ const TOOLS = [
   { name: 'search_notes', description: 'Search the text of every note. Returns matching notes with the lines that match.', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
   { name: 'list_comments', description: 'List the comments the user left for you and that are still open. Each one has the note path, the quoted passage it refers to and what the user asks. Check this when the user says they left comments, and before editing a note.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Optional: only the comments on this note' } } } },
   { name: 'resolve_comment', description: 'Mark a comment as done after making the change it asks for with write_note. Add a short reply saying what you changed.', inputSchema: { type: 'object', properties: { id: { type: 'number' }, reply: { type: 'string', description: 'One or two sentences on what was changed' } }, required: ['id'] } },
+  { name: 'move_note', description: 'Move or rename a note. Its history, comments, shares and public links follow it. Fails if a note already exists at the new path.', inputSchema: { type: 'object', properties: { from: { type: 'string', description: 'Current path' }, to: { type: 'string', description: 'New path, for example archive/2025/plan.md' } }, required: ['from', 'to'] } },
+  { name: 'note_history', description: 'List the earlier versions kept for a note, newest first. Pass version to read the text of one of them.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, version: { type: 'number', description: 'Optional: id of the version to read' } }, required: ['path'] } },
+  // Las que sacan notas hacia afuera: existen solo para un token creado con el permiso de compartir.
+  { share: true, name: 'list_shares', description: 'List who the notes are shared with and which public links exist. Pass a path to see only that note or folder.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Optional note or folder' } } } },
+  { share: true, name: 'share_note', description: 'Share a note, or a whole folder, with another SharpMD account by its email address. Only do this when the person asks for it. They open it after signing in to SharpMD with that address.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path of a note, or of a folder to share everything inside it' }, email: { type: 'string' }, role: { type: 'string', enum: ['view', 'edit'], description: 'view (default) or edit' } }, required: ['path', 'email'] } },
+  { share: true, name: 'unshare_note', description: 'Stop sharing a note or folder with an email address.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, email: { type: 'string' } }, required: ['path', 'email'] } },
+  { share: true, name: 'create_public_link', description: 'Create a read-only public link to a note and return its URL. Anyone with the URL can read the note, so only do this when the person asks for it. Pass a password to protect it. The URL is only returned once.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, password: { type: 'string', description: 'Optional password the reader must type' } }, required: ['path'] } },
+  { share: true, name: 'revoke_public_link', description: 'Revoke public links: one by its id, or every link to a note by its path.', inputSchema: { type: 'object', properties: { id: { type: 'number' }, path: { type: 'string' } } } },
 ];
+const toolsFor = (user) => TOOLS.filter((t) => !t.share || user.canShare).map(({ share, ...t }) => t);
+const SHARE_TOOLS = new Set(TOOLS.filter((t) => t.share).map((t) => t.name));
+const NO_SHARE = 'This token cannot share notes or create public links. Ask the person to do it from the SharpMD app, or to create a token with that permission in Settings > AI.';
 
 // Lo que la IA lee cuando pide algo de una carpeta bloqueada: qué pasa y cómo lo resuelve la persona.
 const LOCKED = (folder) => 'The folder "' + folder + '" is protected with a password and is locked, so its notes cannot be read, searched or changed right now. The person can unlock it for the AI from SharpMD: right-click the folder, then "Unlock for the AI". Ask them to do that, then try again.';
@@ -1178,14 +1198,17 @@ function callTool(user, name, args) {
     tellSaved(a.who.id, a.p, saved, { by: 'mcp' }, text);
     return saved;
   };
+  // La dirección para abrir esa nota en la app, con el mismo formato que usa la app al navegar.
+  const appLink = (f) => APP_URL + '?f=' + encodeURIComponent(f);
+  const openUrl = (a) => appLink('cloud/' + (a.who === user ? '' : '~' + a.who.id + '/') + a.p.split('/').map(encodeURIComponent).join('/'));
   if (name === 'read_note') { const a = at(args.path); return read(a, gate(a)); }
-  if (name === 'write_note') { const a = at(args.path); write(a, gate(a), args.text); return 'Saved ' + a.full + ' (' + String(args.text == null ? '' : args.text).length + ' characters).'; }
+  if (name === 'write_note') { const a = at(args.path); write(a, gate(a), args.text); return 'Saved ' + a.full + ' (' + String(args.text == null ? '' : args.text).length + ' characters). Open it: ' + openUrl(a); }
   if (name === 'append_note') {
     // Lo que se lee y lo que se escribe son de la misma revisión: si no coincidiera, no se agrega sobre un texto viejo.
     const a = at(args.path); const key = gate(a); let prev = ''; const base = revOf(a);
     try { prev = read(a, key); } catch (e) { if (e.code !== 'not_found') throw e; }
     write(a, key, prev + (prev && !prev.endsWith('\n') ? '\n' : '') + (prev ? '\n' : '') + String(args.text || ''), base);
-    return 'Appended to ' + a.full + '.';
+    return 'Appended to ' + a.full + '. Open it: ' + openUrl(a);
   }
   if (name === 'search_notes') {
     const results = searchNotes(user, args.query, (v) => aiReach(user, v)).filter((r) => !teamPath(r.path))
@@ -1204,6 +1227,58 @@ function callTool(user, name, args) {
     announce(roomKey(user.id, c.path), { type: 'comments' });
     return 'Comment ' + c.id + ' marked as done.';
   }
+  if (name === 'move_note') {
+    const a = at(args.from); const b = at(args.to);
+    if (a.who !== b.who) throw new Fail(409, 'other_space', 'A note cannot be moved between your own notes and the team space. Write it in the new place instead.');
+    // Mover hacia, desde o dentro de una carpeta con contraseña pide volver a cifrar el texto: eso lo hace la app.
+    if (a.who === user && (vaultOf(user.id, a.p) || vaultOf(user.id, b.p))) throw new Fail(409, 'vault', 'Notes in a folder protected with a password can only be moved from the SharpMD app.');
+    try { renameNote(a.who, a.p, b.p); } catch (e) { if (e.code === 'exists') throw new Fail(409, 'exists', 'There is already a note at ' + b.full + '.'); throw e; }
+    return 'Moved ' + a.full + ' to ' + b.full + '. Open it: ' + openUrl(b);
+  }
+  if (name === 'note_history') {
+    const a = at(args.path);
+    // El historial de una carpeta con contraseña está cifrado desde el navegador: no se entrega.
+    if (a.who === user && vaultOf(user.id, a.p)) throw new Fail(409, 'vault', 'The history of a note in a folder protected with a password can only be read from the SharpMD app.');
+    if (args.version == null) return q('SELECT id, saved, size FROM versions WHERE user = ? AND path = ? AND aad IS NULL ORDER BY saved DESC LIMIT 100').all(a.who.id, a.p).map((v) => ({ version: v.id, saved: new Date(v.saved).toISOString(), size: v.size }));
+    // La versión tiene que ser de esa nota: el alcance del token se miró sobre la ruta.
+    const v = q('SELECT text, e FROM versions WHERE id = ? AND user = ? AND path = ? AND aad IS NULL').get(+args.version, a.who.id, a.p);
+    if (!v) throw new Fail(404, 'not_found');
+    return unseal(v.text, v.e, 'versions.text');
+  }
+  if (SHARE_TOOLS.has(name)) {
+    if (!user.canShare) throw new Fail(403, 'no_share_permission', NO_SHARE);
+    // Solo lo propio y dentro del alcance del token. Lo del equipo no se comparte hacia afuera (la app tampoco lo
+    // ofrece), y lo que está en una carpeta con contraseña lo rechazan addShare y addLink.
+    const own = (raw) => { const a = at(raw); if (teamPath(a.full)) throw new Fail(403, 'team', 'Team notes are open to every member of the team and cannot be shared or linked from here.'); return a.p; };
+    if (name === 'list_shares') {
+      const all = sharesOf(user, args.path ? own(args.path) : '');
+      return { people: all.people.filter((s) => within(user, s.path)).map((s) => ({ path: s.path, kind: s.kind, email: s.email, role: s.role })), links: all.links.filter((l) => within(user, l.path)).map((l) => ({ id: l.id, path: l.path, protected: !!l.protected, created: new Date(l.created).toISOString() })) };
+    }
+    if (name === 'share_note') {
+      const p = own(args.path);
+      // Una nota si existe con esa ruta; si no, la carpeta que tenga notas adentro.
+      const kind = q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(user.id, p) ? 'note' : listNotes(user).some((n) => inside(n.path, p)) ? 'folder' : '';
+      if (!kind) throw new Fail(404, 'not_found', 'There is no note or folder at ' + p + '.');
+      const role = args.role === 'edit' ? 'edit' : 'view';
+      addShare(user, { path: p, email: args.email, kind, role });
+      return 'Shared the ' + kind + ' ' + p + ' with ' + cleanEmail(args.email) + ' (' + (role === 'edit' ? 'can edit' : 'can view') + '). They see it in SharpMD after signing in with that address.';
+    }
+    if (name === 'unshare_note') {
+      const p = own(args.path); const email = cleanEmail(args.email);
+      if (!q('DELETE FROM shares WHERE owner = ? AND path = ? AND email = ?').run(user.id, p, email).changes) throw new Fail(404, 'not_found', p + ' is not shared with ' + email + '.');
+      return 'Stopped sharing ' + p + ' with ' + email + '.';
+    }
+    if (name === 'create_public_link') {
+      const p = own(args.path); const made = addLink(user, { path: p, password: args.password == null || args.password === '' ? null : String(args.password) });
+      return { path: p, url: appLink('pub/' + made.token), id: made.id, protected: made.protected, note: 'Anyone with this URL can read the note' + (made.protected ? ' after typing the password.' : '.') + ' The URL is not shown again.' };
+    }
+    // revoke_public_link: uno por id, o todos los de una nota.
+    const of = args.id == null ? own(args.path) : '';
+    const hit = q('SELECT id, path FROM links WHERE owner = ?').all(user.id).filter((l) => within(user, l.path) && (args.id == null ? l.path === of : l.id === +args.id));
+    if (!hit.length) throw new Fail(404, 'not_found', 'There is no public link there.');
+    for (const l of hit) q('DELETE FROM links WHERE id = ? AND owner = ?').run(l.id, user.id);
+    return 'Revoked ' + hit.length + ' public link' + (hit.length === 1 ? '' : 's') + ' to ' + hit[0].path + '.';
+  }
   throw new Fail(400, 'unknown_tool');
 }
 
@@ -1211,9 +1286,9 @@ function mcp(user, msg) {
   if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } };
   const reply = (result) => ({ jsonrpc: '2.0', id: msg.id, result });
   if (msg.method === 'initialize') return reply({ protocolVersion: (msg.params && msg.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'sharpmd', version: '1.0.0' },
-    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with write_note, then resolve_comment. A folder marked as protected and locked is encrypted with a password: you cannot read it until the person unlocks it for the AI from SharpMD. If the person belongs to a team, the notes the team shares are under @team/ and every member can read and edit them.' });
+    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with write_note, then resolve_comment. A folder marked as protected and locked is encrypted with a password: you cannot read it until the person unlocks it for the AI from SharpMD. If the person belongs to a team, the notes the team shares are under @team/ and every member can read and edit them. write_note, append_note and move_note return a link that opens the note in the SharpMD app: give it to the person. ' + (user.canShare ? 'This token can share notes with other accounts and create public links: only do that when the person asks.' : 'This token cannot share notes or create public links: the person does that from the SharpMD app.') + (user.scope ? ' This token only reaches the folder ' + user.scope + '/.' : '') });
   if (msg.method === 'ping') return reply({});
-  if (msg.method === 'tools/list') return reply({ tools: TOOLS });
+  if (msg.method === 'tools/list') return reply({ tools: toolsFor(user) });
   if (msg.method === 'tools/call') {
     try {
       const out = callTool(user, msg.params && msg.params.name, msg.params && msg.params.arguments);
@@ -1636,12 +1711,7 @@ async function route(req, url) {
   if (p === '/team' || p.startsWith('/team/')) return teamRoute(user, p, m, req);
   if (p === '/shared' && m === 'GET') return sharedWith(user);
   if (p === '/shares' && m === 'POST') return addShare(user, await readBody(req));
-  if (p === '/shares' && m === 'GET') {
-    const of = url.searchParams.get('path');
-    const people = q('SELECT id, path, kind, email, role FROM shares WHERE owner = ?').all(user.id).filter((s) => !of || s.path === of);
-    const links = q('SELECT id, path, pass IS NOT NULL AS protected, created FROM links WHERE owner = ?').all(user.id).filter((l) => !of || l.path === of);
-    return { people, links };
-  }
+  if (p === '/shares' && m === 'GET') return sharesOf(user, url.searchParams.get('path'));
   if (p.startsWith('/shares/') && m === 'DELETE') { q('DELETE FROM shares WHERE id = ? AND owner = ?').run(+p.slice(8), user.id); return { ok: true }; }
   if (p === '/links' && m === 'POST') return addLink(user, await readBody(req));
   if (p.startsWith('/links/') && m === 'DELETE') { q('DELETE FROM links WHERE id = ? AND owner = ?').run(+p.slice(7), user.id); return { ok: true }; }
@@ -1662,7 +1732,7 @@ async function route(req, url) {
     if (vm[2] === 'destroy' && m === 'POST') return vaultDestroy(user, v, await readBody(req));
   }
   if (p === '/auth/logout' && m === 'POST') { q('DELETE FROM sessions WHERE hash = ?').run(sha(req.headers.authorization.split(/\s+/)[1])); return { ok: true }; }
-  if (p === '/tokens' && m === 'GET') return q('SELECT id, name, scope, created, used FROM tokens WHERE user = ? ORDER BY created DESC').all(user.id);
+  if (p === '/tokens' && m === 'GET') return q('SELECT id, name, scope, share, created, used FROM tokens WHERE user = ? ORDER BY created DESC').all(user.id).map((t) => Object.assign(t, { share: !!t.share }));
   if (p === '/comments' && m === 'GET') return listComments(user, url.searchParams.get('path') || '', url.searchParams.get('all') === '1');
   if (p === '/comments' && m === 'POST') { const c = addComment(user, await readBody(req)); announce(roomKey(user.id, c.path), { type: 'comments' }); return c; }
   if (p.startsWith('/comments/') && m === 'DELETE') { q('DELETE FROM comments WHERE id = ? AND user = ?').run(+p.slice(10), user.id); return { ok: true }; }
@@ -1671,8 +1741,10 @@ async function route(req, url) {
     if (q('SELECT COUNT(*) AS n FROM tokens WHERE user = ?').get(user.id).n >= MAX_TOKENS) throw new Fail(429, 'too_many');
     const b = await readBody(req); const token = 'mdt_' + random(30);
     const scope = String(b.folder || '').trim() ? cleanPath(String(b.folder).replace(/\/+$/, '')) : '';
-    q('INSERT INTO tokens (hash, user, name, scope, created) VALUES (?, ?, ?, ?, ?)').run(sha(token), user.id, String(b.name || 'AI').slice(0, 60), scope, now());
-    return { token, scope, mcp_url: PUBLIC_URL + '/mcp' };
+    // Compartir y crear enlaces es un permiso aparte, que se pide al crear el token: sin share: true no lo tiene.
+    const share = b.share === true;
+    const r = q('INSERT INTO tokens (hash, user, name, scope, share, created) VALUES (?, ?, ?, ?, ?, ?)').run(sha(token), user.id, String(b.name || 'AI').slice(0, 60), scope, share ? 1 : 0, now());
+    return { id: Number(r.lastInsertRowid), token, scope, share, mcp_url: PUBLIC_URL + '/mcp' };
   }
   if (p.startsWith('/tokens/') && m === 'DELETE') { q('DELETE FROM tokens WHERE id = ? AND user = ?').run(+p.slice(8), user.id); return { ok: true }; }
   if (p === '/notes' && m === 'GET') {
