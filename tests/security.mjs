@@ -354,7 +354,154 @@ async function serverSuite() {
 }
 
 if (ONLY !== 'app') await serverSuite();
-// __APP__
+
+// ---------- App, extensión y página de pago ----------
+async function appSuite() {
+  console.log('Seguridad de la app');
+  const { chromium } = await import('playwright-core');
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
+  const appHtml = fs.readFileSync(path.join(root, 'src', 'app.html'), 'utf8');
+  const csp = manifest.content_security_policy.extension_pages;
+  check('manifest: las páginas de la extensión solo corren sus propios scripts', /script-src 'self' 'wasm-unsafe-eval'/.test(csp) && !/unsafe-inline|unsafe-eval'|https?:|\*/.test(csp.replace("'wasm-unsafe-eval'", '')), csp);
+  const war = manifest.web_accessible_resources;
+  check('manifest: lo único abierto a otros sitios son las tipografías, y la app solo a sharpmd.app', war.length === 2 && war[0].resources.every((r) => /fonts\/\*$/.test(r)) && war[1].resources.join() === 'src/app.html' && war[1].matches.join() === 'https://sharpmd.app/*' && !manifest.externally_connectable, war);
+  check('manifest: pide solo storage y scripting, y el script de contenido corre solo en el marco principal', manifest.permissions.slice().sort().join() === 'scripting,storage' && !manifest.content_scripts.some((c) => c.all_frames || c.match_about_blank), manifest.permissions);
+  check('la versión del manifest y la de la app coinciden', new RegExp("VERSION = '" + manifest.version.replace(/\./g, '\\.') + "'").test(fs.readFileSync(path.join(root, 'src', 'defaults.js'), 'utf8')));
+  const meta = (/<meta http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(appHtml) || [])[1] || '';
+  check('app.html trae una política de contenido sin scripts en línea ni de otros sitios, y no tiene ninguno propio', /script-src 'self' 'wasm-unsafe-eval';/.test(meta) && /object-src 'none'/.test(meta) && /base-uri 'none'/.test(meta) && /frame-src 'none'/.test(meta) && !/<script(?![^>]*\ssrc=)[^>]*>/.test(appHtml) && !/\son[a-z]+=/i.test(appHtml) && !/src="https?:/.test(appHtml), meta);
+
+  const S = await boot({ ADMIN_KEY: ADMIN, MCP_FREE: '1', SHARE_FREE: '1' });
+  // Otro servidor, que no es el de la cuenta: anota con qué credenciales le llegan los pedidos.
+  const spy = { auth: [], hits: 0 };
+  const other = http.createServer((req, res) => { spy.hits++; if (req.headers.authorization) spy.auth.push(req.headers.authorization); res.writeHead(req.method === 'OPTIONS' ? 204 : 401, { 'access-control-allow-origin': req.headers.origin || '*', 'access-control-allow-headers': 'authorization, content-type, x-password', 'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS', 'content-type': 'application/json' }); res.end(req.method === 'OPTIONS' ? '' : '{"error":"bad_auth"}'); });
+  await new Promise((r) => other.listen(0, '127.0.0.1', r)); const otherBase = 'http://127.0.0.1:' + other.address().port;
+  // El sitio: la raíz del repositorio servida como en GitHub Pages, más una carpeta de prueba con su listado.
+  const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json', '.woff2': 'font/woff2' };
+  const outside = { hits: 0 };
+  const far = http.createServer((req, res) => { outside.hits++; res.writeHead(200, { 'content-type': 'text/plain' }); res.end('# De otro servidor\n\nNo debería leerse.'); });
+  await new Promise((r) => far.listen(0, '127.0.0.1', r)); const farBase = 'http://127.0.0.1:' + far.address().port;
+  const site = http.createServer((req, res) => {
+    const rel = decodeURIComponent(req.url.split('?')[0]);
+    if (rel === '/carpeta/') { res.writeHead(200, { 'content-type': 'text/html' }); res.end(['<script>', 'addRow("nota.md","nota.md",0,10,"10 B",0,"");', 'addRow("hermana.md","hermana.md",0,10,"10 B",0,"");', 'addRow("lejana.md",' + JSON.stringify(farBase + '/lejana.md') + ',0,10,"10 B",0,"");', 'addRow("arriba.md","../arriba.md",0,10,"10 B",0,"");', '</script>'].join('\n')); return; }
+    if (rel === '/carpeta/nota.md' || rel === '/carpeta/hermana.md' || rel === '/arriba.md') { res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }); res.end('# ' + rel + '\n\nTexto de prueba.'); return; }
+    if (rel === '/datos/informe') { res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }); res.end('# No es un archivo Markdown\n\nTexto plano de un sitio.'); return; }
+    if (rel === '/marco.html') { res.writeHead(200, { 'content-type': 'text/html' }); res.end('<!doctype html><iframe id="f" src="/pay.html?email=ana%40ejemplo.test" width="600" height="600"></iframe>'); return; }
+    const file = path.join(root, rel.endsWith('/') ? rel + 'index.html' : rel);
+    if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end(); return; }
+    res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' }); fs.createReadStream(file).pipe(res);
+  });
+  await new Promise((r) => site.listen(0, '127.0.0.1', r)); const origin = 'http://127.0.0.1:' + site.address().port;
+
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'mdtools-'));
+  const ctx = await chromium.launchPersistentContext(profile, { headless: false, executablePath: process.env.CHROME_BIN || chromium.executablePath(), viewport: { width: 1400, height: 900 }, locale: 'es-AR', ignoreDefaultArgs: ['--disable-extensions'],
+    args: [`--disable-extensions-except=${root}`, `--load-extension=${root}`, '--headless=new', '--disable-features=DisableLoadExtensionCommandLineSwitch', '--lang=es-AR'] });
+  // Nada sale a producción ni a Paddle: lo que apunte ahí se corta y se cuenta.
+  const escaped = [];
+  await ctx.route(/^https?:\/\/([a-z0-9-]+\.)*(sharpmd\.app|paddle\.com)\//i, (r) => { escaped.push(r.request().url()); r.abort(); });
+  try {
+    const sw = ctx.serviceWorkers()[0] || await ctx.waitForEvent('serviceworker', { timeout: 15000 }); const id = new URL(sw.url()).host;
+    const home = `chrome-extension://${id}/src/app.html`;
+    const app = await ctx.newPage(); const errors = []; app.on('pageerror', (e) => errors.push(e.message));
+    const store = (obj) => app.evaluate((o) => new Promise((resolve) => chrome.storage.local.set(o, resolve)), obj);
+    await app.goto(home); await app.waitForSelector('.lmd-home');
+    await store({ settings: { cloudUrl: 'off' } });
+
+    console.log(' Página de la extensión y versión web');
+    const inline = (page) => page.evaluate(() => new Promise((resolve) => { const b = document.createElement('button'); b.setAttribute('onclick', 'window.__probe = 1'); document.body.appendChild(b); b.click(); b.remove(); setTimeout(() => resolve(window.__probe === 1), 50); }));
+    check('en la página de la extensión un manejador escrito en el HTML no corre', (await inline(app)) === false);
+    const framed = await app.evaluate(() => new Promise((resolve) => { const f = document.createElement('iframe'); f.src = location.pathname; f.onload = () => setTimeout(() => { const d = f.contentDocument; resolve({ ui: !!(d && d.querySelector('.lmd-main, .lmd-home')), kids: d ? d.body.children.length : -1 }); f.remove(); }, 800); f.onerror = () => resolve({ ui: false, blocked: true }); document.body.appendChild(f); setTimeout(() => resolve({ ui: false, blocked: true }), 4000); }));
+    check('la app no arranca dentro de un marco', framed.ui === false, framed);
+    const web = await ctx.newPage(); web.on('pageerror', (e) => errors.push(e.message));
+    await web.goto(origin + '/src/app.html'); await web.waitForSelector('.lmd-home');
+    check('en la versión web tampoco: la política de app.html corta los scripts en línea', (await inline(web)) === false);
+    const blocked = await web.evaluate(() => new Promise((resolve) => { const s = document.createElement('script'); s.src = 'data:text/javascript,window.__probe2=1'; s.onload = () => resolve(false); s.onerror = () => resolve(true); document.head.appendChild(s); setTimeout(() => resolve(window.__probe2 !== 1), 1500); }));
+    check('y un script que no viene del propio sitio no carga', blocked === true);
+    // La política no rompe lo que la app dibuja: matemática, Mermaid, Graphviz e imágenes de otros sitios
+    await web.evaluate(async (img) => {
+      const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('sec', { create: true });
+      const h = await dir.getFileHandle('nota.md', { create: true }); const w = await h.createWritable();
+      await w.write('# Con todo\n\nFórmula $a^2+b^2$.\n\n```mermaid\ngraph LR\n  A --> B\n```\n\n```dot\ndigraph { a -> b; a [URL="https://ejemplo.test/a"]; }\n```\n\n![remota](' + img + ')\n'); await w.close();
+      window.showDirectoryPicker = async () => dir;
+    }, origin + '/icons/icon48.png');
+    await Promise.all([web.waitForNavigation(), web.click('[data-home=dir]')]);
+    await web.waitForSelector('.markdown-body h1'); await web.waitForFunction(() => document.querySelectorAll('.lmd-diagram > svg').length === 2 && !!document.querySelector('.katex'), null, { timeout: 20000 }).catch(() => {});
+    const drawn = await web.evaluate(() => ({ katex: !!document.querySelector('.katex'), diagrams: document.querySelectorAll('.lmd-diagram > svg').length, img: (() => { const i = document.querySelector('.markdown-body img'); return !!i && i.complete && i.naturalWidth > 0; })(), link: (document.querySelector('.lmd-diagram-dot a') || { getAttribute: () => '' }).getAttribute('xlink:href') || (document.querySelector('.lmd-diagram-dot a') || { getAttribute: () => '' }).getAttribute('href') }));
+    check('con la política puesta se siguen dibujando KaTeX, Mermaid, Graphviz y las imágenes remotas', drawn.katex && drawn.diagrams === 2 && drawn.img && drawn.link === 'https://ejemplo.test/a', drawn);
+
+    console.log(' Lo que el documento no puede traer');
+    const clean = await web.evaluate(() => {
+      const out = DOMPurify.sanitize('<p class="lmd-btn nota lmd-wiki" data-act="reset" data-l="1-2" data-key="k" style="position:fixed;z-index:9;color:red">a</p><div class="lmd-ask lmd-dlg" style="position:absolute;top:0">b</div><span data-tex="x" class="lmd-math">c</span>', { ADD_ATTR: ['target', 'data-tex'], FORBID_TAGS: ['style', 'form'] });
+      const d = document.createElement('div'); d.innerHTML = out; const p = d.querySelector('p'); const box = d.querySelector('div'); const m = d.querySelector('span');
+      return { html: out, cls: p.className, act: p.hasAttribute('data-act'), key: p.hasAttribute('data-key'), line: p.getAttribute('data-l'), pos: p.style.position, z: p.style.zIndex, color: p.style.color, box: box.className + '|' + box.style.position, math: m.className + '|' + m.getAttribute('data-tex') };
+    });
+    check('del HTML de una nota se van los atributos data-* y las clases que la app usa para sí', clean.cls === 'nota lmd-wiki' && !clean.act && !clean.key && clean.line === '1-2' && clean.box === '|' && clean.math === 'lmd-math|x', clean);
+    check('y los estilos que sacan un bloque de su lugar; el resto del estilo queda', clean.pos === '' && clean.z === '' && clean.color === 'red', clean);
+    const svgSafe = await web.evaluate(() => {
+      const doc = new DOMParser().parseFromString('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><a id="a" xlink:href="otro-esquema:algo"><text>a</text></a><a id="b" href="https://ejemplo.test/x"><text>b</text></a><a id="c" href="#seccion"><text>c</text></a><a id="d" href=" Otro-Esquema:algo"><text>d</text></a><g id="e" onclick="void 0"></g><foreignObject id="f"></foreignObject></svg>', 'image/svg+xml');
+      const s = LMD.md.safeSvg(doc.documentElement); const at = (i, n) => { const e = s.querySelector('#' + i); return e ? e.getAttribute(n) : 'sin elemento'; };
+      return [at('a', 'xlink:href'), at('b', 'href'), at('c', 'href'), at('d', 'href'), at('e', 'onclick'), at('f', 'id')];
+    });
+    check('en un diagrama de Graphviz quedan solo los enlaces a páginas y secciones, sin manejadores', JSON.stringify(svgSafe) === JSON.stringify([null, 'https://ejemplo.test/x', '#seccion', null, null, 'sin elemento']), svgSafe);
+    const opts = await web.evaluate(async () => { await LMD.patch({ supporter: true, customCSS: '.markdown-body h1 { color: rgb(1, 2, 3); } </style><p id="colado">x</p>' }); await new Promise((r) => setTimeout(r, 400)); const st = document.getElementById('lmd-custom-css'); return { kids: st ? st.children.length : -1, leaked: !!document.getElementById('colado'), color: getComputedStyle(document.querySelector('.markdown-body h1')).color }; });
+    check('el CSS propio se aplica como texto de una hoja de estilos: no puede cerrar la etiqueta ni agregar elementos', opts.kids === 0 && !opts.leaked && opts.color === 'rgb(1, 2, 3)', opts);
+    await web.close();
+
+    console.log(' La sesión es del servidor que la dio');
+    const acct = await signup(S, 'sesion@ejemplo.test');
+    await store({ settings: { cloudUrl: S.base }, cloud: { session: acct.s, email: acct.email } });
+    await app.goto(home); await app.waitForSelector('.lmd-home');
+    const signed = () => app.evaluate(async () => { LMD.cloud.reset(); await LMD.cloud.ready(); let ok = false; try { await LMD.cloud.account(); ok = true; } catch (e) { /* sin sesión o sin servidor */ } try { await LMD.cloud.list(true); } catch (e) { /* idem */ } return { in: LMD.cloud.signedIn(), ok }; });
+    const first = await signed();
+    await store({ settings: { cloudUrl: otherBase } }); await app.goto(home); await app.waitForSelector('.lmd-home'); await app.waitForTimeout(800);
+    const moved = await signed(); await app.waitForTimeout(500);
+    check('al cambiar la dirección del servidor, la sesión no viaja al nuevo', first.in && first.ok && !moved.in && spy.auth.length === 0, [first, moved, spy]);
+    await store({ settings: { cloudUrl: S.base } }); await app.goto(home); await app.waitForSelector('.lmd-home');
+    const back = await signed();
+    check('y al volver a la dirección anterior sigue ahí', back.in && back.ok, back);
+    check('la sesión guardada anota de qué servidor es', (await app.evaluate(() => new Promise((resolve) => chrome.storage.local.get('cloud', (r) => resolve(r.cloud.at))))) === S.base);
+    await store({ settings: { cloudUrl: 'off' } });
+
+    console.log(' Archivos abiertos desde un sitio');
+    const doc = await ctx.newPage(); doc.on('pageerror', (e) => errors.push(e.message));
+    await doc.goto(origin + '/carpeta/nota.md'); await doc.waitForSelector('.markdown-body h1'); await doc.waitForSelector('.lmd-tree-box a.lmd-node', { timeout: 10000 }).catch(() => {});
+    await doc.fill('.lmd-search input', 'texto'); await doc.waitForTimeout(2500);
+    const tree = await doc.evaluate(() => ({ nodes: [...document.querySelectorAll('.lmd-tree-box a.lmd-node')].map((a) => a.textContent.trim()), results: [...document.querySelectorAll('.lmd-results .lmd-res')].map((g) => g.dataset.url), body: document.querySelector('.lmd-results').textContent }));
+    check('el árbol de un sitio muestra solo lo que está dentro de la carpeta', tree.nodes.join().includes('hermana.md') && !/lejana|arriba/.test(tree.nodes.join()), tree.nodes);
+    check('y la búsqueda no lee archivos de otro servidor ni de fuera de la carpeta', outside.hits === 0 && !/lejana|arriba\.md|otro servidor/.test(tree.body) && tree.results.every((u) => u.startsWith(origin + '/carpeta/')), [outside.hits, tree.results]);
+    const notMd = await ctx.newPage(); await notMd.goto(origin + '/datos/informe?archivo=x.md'); await notMd.waitForTimeout(1200);
+    check('el lector no actúa sobre una dirección que solo termina en .md en la consulta', (await notMd.evaluate(() => !document.querySelector('.lmd-main') && !!document.querySelector('pre'))));
+    await notMd.close(); await doc.close();
+
+    console.log(' Página de pago');
+    const pay = await ctx.newPage(); pay.on('pageerror', (e) => errors.push(e.message)); const navs = [];
+    pay.on('framenavigated', (f) => { if (f === pay.mainFrame()) navs.push(f.url()); });
+    const links = async (q) => { await pay.goto(origin + '/pay.html' + q); await pay.waitForTimeout(250); return pay.evaluate(() => ({ back: [...document.querySelectorAll('[data-back]')].map((a) => a.href), paid: document.querySelector('[data-paid]').href, other: document.getElementById('other').href, email: document.getElementById('email').textContent, kids: document.getElementById('email').children.length, amount: document.getElementById('amount').textContent, shown: ['buy', 'noemail', 'done'].filter((i) => !document.getElementById(i).hidden) })); };
+    const own = origin + '/src/app.html';
+    const backs = [];
+    for (const b of ['https://otro-sitio.test/', '//otro-sitio.test/x', 'https://otro-sitio.test@' + origin.slice(7) + '.otro.test/', 'data:text/html,x', 'otro-esquema:x', 'chrome-extension://' + id + '/src/popup.html', 'chrome-extension://abcdefghijklmnopabcdefghijklmnop/otra.html', '\\\\otro-sitio.test\\x', 'https:otro-sitio.test']) backs.push([b, await links('?email=ana%40ejemplo.test&back=' + enc(b))]);
+    const stray = backs.filter(([, r]) => !r.back.every((h) => h === own) || r.paid !== own + '#lmd-paid' || /back=/.test(r.other) || !r.other.startsWith(origin + '/pay.html?'));
+    check('pay.html: una vuelta (back) a otro sitio o a otra página de una extensión se ignora', stray.length === 0, stray.map((x) => [x[0], x[1].back[0]]));
+    const okSame = await links('?email=ana%40ejemplo.test&back=' + enc(origin + '/src/app.html?f=local%2Fa.md#x')); const okExt = await links('?email=ana%40ejemplo.test&back=' + enc(home + '?f=cloud%2Fa.md'));
+    check('pay.html: vuelve al mismo sitio o a la app de la extensión', okSame.back[0] === origin + '/src/app.html?f=local%2Fa.md' && okExt.back[0] === home + '?f=cloud%2Fa.md' && okExt.paid === home + '?f=cloud%2Fa.md#lmd-paid', [okSame.back[0], okExt.back[0]]);
+    navs.length = 0; await pay.goto(origin + '/pay.html?done=1&back=' + enc('https://otro-sitio.test/')); await pay.waitForTimeout(1800);
+    check('pay.html: después del pago no redirige a una dirección de afuera', navs.every((u) => u.startsWith(origin + '/pay.html')) && pay.url().startsWith(origin + '/pay.html'), navs);
+    const marked = await links('?plan=' + enc('yearly"><b>x</b>') + '&email=' + enc('a<b>b</b>@ejemplo.test'));
+    const weird = await links('?plan=__proto__&email=' + enc('Ana@Ejemplo.test'));
+    check('pay.html: el correo se muestra como texto y un plan desconocido cae en el mensual', marked.kids === 0 && marked.email === 'a<b>b</b>@ejemplo.test' && marked.amount === 'USD 3.99' && weird.email === 'ana@ejemplo.test' && weird.amount === 'USD 3.99' && weird.shown.join() === 'buy', [marked, weird]);
+    const none = await links('?email=' + enc('sin-arroba'));
+    check('pay.html: sin un correo bien formado no ofrece pagar', none.shown.join() === 'noemail', none.shown);
+    await pay.goto(origin + '/marco.html'); await pay.waitForTimeout(800);
+    const inFrame = await pay.frames().find((f) => /pay\.html/.test(f.url())).evaluate(() => ['buy', 'noemail', 'done'].filter((i) => !document.getElementById(i).hidden));
+    check('pay.html: dentro de un marco no muestra nada para pagar', inFrame.length === 0, inFrame);
+    await pay.close();
+
+    check('ningún pedido salió a sharpmd.app (los de Paddle se cortaron antes de salir)', escaped.filter((u) => /sharpmd\.app/.test(u)).length === 0, escaped);
+    check('sin errores de JavaScript en las páginas', errors.length === 0, errors);
+  } catch (e) { check('app: sin excepciones en la prueba', false, String(e && e.stack || e)); }
+  await ctx.close(); other.close(); far.close(); site.close(); await S.stop();
+  try { fs.rmSync(profile, { recursive: true, force: true }); } catch (e) { /* el navegador suelta el perfil un rato después */ }
+}
+if (ONLY !== 'server') await appSuite();
 
 const failed = results.filter((r) => !r.ok);
 console.log('\n' + (results.length - failed.length) + ' de ' + results.length + ' pruebas pasaron');

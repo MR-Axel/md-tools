@@ -87,6 +87,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return;
   }
   if (msg.type === 'fetchText') {
+    // Una pestaña lee solo de donde está: un archivo del disco, otros archivos del disco; un sitio, su mismo sitio.
+    // Así el listado de carpeta que arma un sitio no puede apuntar el lector a archivos locales ni a otros servidores.
+    let allowed = false;
+    try { const want = new URL(msg.url); const here = new URL(sender.url || (sender.tab && sender.tab.url) || ''); allowed = want.protocol === 'file:' ? here.protocol === 'file:' : /^https?:$/.test(want.protocol) && want.origin === here.origin; } catch (e) { allowed = false; }
+    if (!allowed) { sendResponse({ ok: false, error: 'origin' }); return; }
     fetchText(msg.url)
       .then((text) => sendResponse({ ok: true, text }))
       .catch((e) => sendResponse({ ok: false, error: String(e && e.message || e) }));

@@ -6,12 +6,14 @@
   // El lector corre en dos lugares: como script de contenido sobre un .md abierto en el navegador,
   // y en la página propia de la extensión (app.html), donde el archivo llega por un permiso de carpeta.
   // La página propia también se puede servir desde un sitio, sin la extensión (ver web.js).
-  const APP = /\/app\.html$/.test(location.pathname) && (location.protocol === 'chrome-extension:' || !!window.__MDT_WEB);
+  const APP = /\/app\.html$/.test(location.pathname) && (location.protocol === 'chrome-extension:' || window.__MDT_WEB === true); // true y nada más: un elemento de la página con ese id no cuenta
   // La página de pago de sharpmd.app puede volver a la app de la extensión (manifest: web_accessible_resources),
   // pero nadie la puede meter dentro de un marco: ahí no arranca.
   if (APP && window.top !== window.self) return;
   let pre = null;
   if (!APP) {
+    // El manifest también engancha direcciones que solo terminan en .md en la consulta: acá cuenta la ruta.
+    if (!/\.(md|mdx|mkd|mdown|markdown)$/i.test(location.pathname)) return;
     const type = (document.contentType || '').toLowerCase();
     if (type && !/^text\/(plain|markdown|x-markdown)/.test(type)) return;
     pre = document.body && document.body.querySelector('pre');
@@ -50,6 +52,7 @@
   const { slugify, ghSlug, splitFrontmatter, ALERTS } = LMD.md;
   const { inlineMd, roundTrips } = LMD.serialize;
   const { handlesAll, handlesPut, canWrite, walk } = LMD.store;
+  LMD.md.harden(window.DOMPurify);
   // El parser se arma una vez y se reutiliza mientras no cambien los plugins ni el idioma.
   let parser = null; let parserKey = '';
   const buildParser = () => {
@@ -414,7 +417,7 @@
     try { vizInstance = vizInstance || await Viz.instance(); } catch (e) { return; }
     for (const n of nodes) {
       try {
-        const svg = vizInstance.renderSVGElement(n.textContent);
+        const svg = LMD.md.safeSvg(vizInstance.renderSVGElement(n.textContent));
         const box = el('div', { class: 'lmd-diagram lmd-diagram-dot' });
         box.dataset.code = n.textContent; box.dataset.kind = 'dot';
         if (n.hasAttribute('data-l')) box.setAttribute('data-l', n.getAttribute('data-l'));
@@ -1119,7 +1122,8 @@
       try {
         const a = JSON.parse('[' + m[1] + ']');
         if (a[0] === '..' || a[0] === '.') continue;
-        rows.push({ name: a[0], url: new URL(a[1] + (a[2] ? '/' : ''), dirUrl).href, dir: !!a[2] });
+        const url = new URL(a[1] + (a[2] ? '/' : ''), dirUrl).href;
+        if (url.startsWith(dirUrl)) rows.push({ name: a[0], url, dir: !!a[2] }); // una fila nunca apunta fuera de su carpeta
       } catch (e) { /* fila ilegible */ }
     }
     if (!rows.length && !/addRow|<title>Index of/i.test(r.text)) {
@@ -1128,7 +1132,8 @@
       doc.querySelectorAll('a[href]').forEach((a) => {
         const href = a.getAttribute('href');
         if (!href || /^(\?|#|\/|\.\.|[a-z]+:)/i.test(href)) return;
-        rows.push({ name: decodeURIComponent(href.replace(/\/$/, '')), url: new URL(href, dirUrl).href, dir: /\/$/.test(href) });
+        const url = new URL(href, dirUrl).href;
+        if (url.startsWith(dirUrl)) rows.push({ name: decodeURIComponent(href.replace(/\/$/, '')), url, dir: /\/$/.test(href) });
       });
     }
     return all ? rows : visibleRows(rows);
