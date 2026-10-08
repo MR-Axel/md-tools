@@ -8,40 +8,17 @@
 <meta name="robots" content="noindex">
 <!--HEAD-->
 <style>
-  @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
-  :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --line: #dedbd2; --accent: #4d7c0f; --on: #fff; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #121418; --soft: #1a1d23; --fg: #e6e8ec; --muted: #a0a7b4; --line: #2a2e37; --accent: #bef264; --on: #14161a; } }
-  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.65 "MDT Inter", -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
-  main { width: min(720px, 100% - 40px); margin: 0 auto; padding: 46px 0 80px; }
-  .top { display: flex; align-items: center; gap: 14px; margin-bottom: 40px; }
-  .top > a { margin-right: auto; color: var(--muted); text-decoration: none; font-weight: 400; }
-  .top b { font-weight: 700; }
-  .lang { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); }
-  .lang a { display: flex; align-items: center; height: 26px; padding: 0 11px; border-radius: 999px; color: var(--muted); font-size: 12.5px; font-weight: 600; text-decoration: none; }
-  .lang a.on { background: var(--accent); color: var(--on); }
-  h1 { margin: 0 0 14px; font-size: 38px; line-height: 1.15; letter-spacing: -0.03em; }
-  h2 { margin: 34px 0 8px; font-size: 21px; letter-spacing: -0.015em; }
-  p, li { color: var(--muted); }
-  .lede { margin: 0 0 22px; font-size: 19px; }
-  a { color: var(--accent); }
-  code { padding: 1px 6px; border-radius: 5px; background: var(--soft); font: 0.88em ui-monospace, Consolas, monospace; color: var(--fg); }
-  .btn { display: inline-flex; align-items: center; height: 44px; padding: 0 20px; border-radius: 10px; background: var(--accent); color: var(--on); font-weight: 650; text-decoration: none; }
-  .under { margin: 10px 0 0; font-size: 14px; }
-  .next { margin-top: 40px; }
-  .legal { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 52px 0 0; padding-top: 18px; border-top: 1px solid var(--line); font-size: 14px; }
-  .legal a { color: var(--muted); text-decoration: none; }
-  .legal a:hover, .legal a[aria-current] { color: var(--fg); }
-  @media (max-width: 640px) { h1 { font-size: 31px; } }
+/*SITE-CSS*/
 </style>
 </head>
-<body>
+<body class="doc">
 <main>
-  <div class="top"><a href="./">← <b>Sharp</b>MD</a><!--LANG--></div>
+  <div class="top"><a class="brand" href="./"><img src="icons/logo.svg" alt="" width="26" height="26"><span><b>Sharp</b>MD</span></a><!--LANG--></div>
 
   <div lang="en">
     <h1>A WYSIWYG Markdown editor online: edit Markdown without typing syntax</h1>
     <p class="lede">Click a heading, a table or a diagram and change it right there, on the formatted page. The file is still plain Markdown.</p>
-    <p><a class="btn" href="src/app.html">Open the app</a></p>
+    <p><a class="btn fill" href="src/app.html">Open the app</a></p>
     <p class="under">Free and open source. Nothing to install, and no account needed to write.</p>
 
     <h2>You edit the element itself</h2>
@@ -70,14 +47,14 @@
     <h2>Web app, Chrome extension and phone</h2>
     <p>The web app runs in the browser with nothing to install. With the <a href="https://github.com/MR-Axel/sharpmd#install">extension</a>, set Chrome as the default app for <code>.md</code> files and a double-click opens them rendered. On the phone the web app fits a small screen and installs from the browser, and the Android app is that same app in a package.</p>
 
-    <p class="next"><a class="btn" href="src/app.html">Open the app</a></p>
+    <p class="next"><a class="btn fill" href="src/app.html">Open the app</a></p>
     <p>Your AI can work on the same notes: see the <a href="markdown-editor-mcp.html">Markdown editor for Claude and other AI agents</a>. Plans and everything else are on the <a href="./">SharpMD home page</a>.</p>
   </div>
 
   <div lang="es">
     <h1>Un editor de Markdown WYSIWYG online: editá Markdown sin escribir sintaxis</h1>
     <p class="lede">Hacés clic en un título, una tabla o un diagrama y lo cambiás ahí mismo, sobre la página ya formateada. El archivo sigue siendo Markdown plano.</p>
-    <p><a class="btn" href="src/app.html">Abrir la app</a></p>
+    <p><a class="btn fill" href="src/app.html">Abrir la app</a></p>
     <p class="under">Gratis y de código abierto. No hay nada que instalar ni hace falta una cuenta para escribir.</p>
 
     <h2>Editás sobre el propio elemento</h2>
@@ -106,7 +83,7 @@
     <h2>App web, extensión de Chrome y celular</h2>
     <p>La app web corre en el navegador sin nada que instalar. Con la <a href="https://github.com/MR-Axel/sharpmd#install">extensión</a>, ponés Chrome como programa por defecto para los <code>.md</code> y con doble clic se abren ya formateados. En el celular la app web entra en pantalla chica y se instala desde el navegador, y la app de Android es esa misma app empaquetada.</p>
 
-    <p class="next"><a class="btn" href="src/app.html">Abrir la app</a></p>
+    <p class="next"><a class="btn fill" href="src/app.html">Abrir la app</a></p>
     <p>Tu IA puede trabajar sobre las mismas notas: mirá el <a href="./markdown-editor-mcp.html">editor de Markdown para Claude y otros agentes de IA</a>. Los planes y todo lo demás están en la <a href="./">portada de SharpMD</a>.</p>
   </div>
   <p class="legal"><a href="./"><span lang="en">Home</span><span lang="es">Portada</span></a><a href="[[markdown-editor-mcp.html||./markdown-editor-mcp.html]]"><span lang="en">Markdown editor for AI agents</span><span lang="es">Editor de Markdown para agentes de IA</span></a><a href="[[wysiwyg-markdown-editor.html||./wysiwyg-markdown-editor.html]]" aria-current="page"><span lang="en">WYSIWYG Markdown editor</span><span lang="es">Editor de Markdown WYSIWYG</span></a><a href="privacy.html"><span lang="en">Privacy</span><span lang="es">Privacidad</span></a><a href="terms.html"><span lang="en">Terms</span><span lang="es">Términos</span></a><a href="support.html"><span lang="en">Support</span><span lang="es">Ayuda</span></a></p>

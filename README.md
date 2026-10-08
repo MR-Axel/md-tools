@@ -303,6 +303,7 @@ All of them are vendored in `vendor/`, because Manifest V3 does not allow remote
 | DOMPurify | MPL-2.0 or Apache-2.0 |
 | PDF.js (loaded only to convert a PDF) | Apache-2.0 |
 | Inter (typeface) | OFL-1.1 |
+| Figtree and JetBrains Mono (typefaces of the website, in `site/fonts`) | OFL-1.1 |
 
 ## Support
 
