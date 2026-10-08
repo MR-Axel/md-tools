@@ -225,8 +225,15 @@ o.tocViejo.despues = (await src()).split('\n').slice(0, 4);
 
 // listas de tareas: contador, renglón de agregar con Enter encadenado, reordenar y quitar los hechos
 const lista = async () => { const l = (await src()).split('\n'); return l.slice(0, l.indexOf('```kanban')).filter((x) => /^[-*+] \[/.test(x)); };
-const clBar = () => app.evaluate(() => ({ cuenta: document.querySelector('.lmd-cl-bar .lmd-cl-count').textContent, acciones: [...document.querySelectorAll('.lmd-cl-bar button')].map((b) => b.textContent), agregar: (document.querySelector('.lmd-cl-add') || {}).textContent, manijas: document.querySelectorAll('.lmd-cl .lmd-cl-grip').length, otras: document.querySelectorAll('.lmd-cl-bar').length }));
+const clBar = () => app.evaluate(() => ({ cuenta: (document.querySelector('.lmd-cl-bar .lmd-cl-count') || {}).textContent || '', acciones: [...document.querySelectorAll('.lmd-cl-bar button')].map((b) => b.textContent), agregar: (document.querySelector('.lmd-cl-add') || {}).textContent, manijas: document.querySelectorAll('.lmd-cl .lmd-cl-grip').length, otras: document.querySelectorAll('.lmd-cl-bar').length }));
 o.cl0 = await clBar();
+// leyendo, ni el renglón de agregar ni el menú están a la vista ni ocupan lugar: aparecen al pasar el mouse por la lista
+const clVe = () => app.evaluate(() => { const add = document.querySelector('.lmd-cl-add'); const more = document.querySelector('.lmd-cl-more'); const list = document.querySelector('ul.lmd-cl'); const bar = document.querySelector('.lmd-cl-bar');
+  const next = add.nextElementSibling; return { agregar: getComputedStyle(add).visibility, menu: getComputedStyle(more).visibility, barra: Math.round(bar.getBoundingClientRect().height), hueco: Math.round(next.getBoundingClientRect().top - list.getBoundingClientRect().bottom), em: Math.round(parseFloat(getComputedStyle(list).fontSize)), leyendo: !document.documentElement.classList.contains('lmd-editing') }; });
+await app.mouse.move(5, 5); await app.waitForTimeout(600);
+o.clQuieto = await clVe();
+await app.hover('ul.lmd-cl'); await app.waitForTimeout(250);
+o.clEncima = await clVe();
 await app.click('.lmd-cl-add'); await app.waitForSelector('.lmd-draft-li .lmd-draft');
 o.clAbre = await app.evaluate(() => ({ editando: document.documentElement.classList.contains('lmd-editing'), foco: document.activeElement.classList.contains('lmd-draft'), casilla: !!document.querySelector('.lmd-draft-li input.lmd-task') }));
 await app.keyboard.type('Leche'); await app.keyboard.press('Enter'); await app.waitForSelector('.lmd-draft-li .lmd-draft');
@@ -241,11 +248,15 @@ await app.click('.lmd-cl-add'); await app.waitForSelector('.lmd-draft-li .lmd-dr
 o.clBorra = await app.evaluate(() => ({ borrador: !!document.querySelector('.lmd-draft-li'), foco: (document.activeElement.textContent || '').trim() }));
 await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(600);
 o.cl2 = [await lista(), await clBar()];
+// editando están siempre a la vista, sin pasar el mouse
+await app.click('[data-act=mode-edit]').catch(() => {}); await app.mouse.move(5, 5); await app.waitForTimeout(600);
+o.clEditando = await app.evaluate(() => ({ agregar: getComputedStyle(document.querySelector('.lmd-cl-add')).visibility, menu: getComputedStyle(document.querySelector('.lmd-cl-more')).visibility, editando: document.documentElement.classList.contains('lmd-editing') }));
 // tildar pone al día el contador, y los hechos se pueden pasar abajo
 await app.locator('.lmd-cl li.lmd-task-item', { hasText: 'Leche' }).locator('input.lmd-task').check(); await app.waitForTimeout(300);
 o.clTilde = (await clBar()).cuenta;
 await app.locator('.lmd-cl li.lmd-task-item', { hasText: 'Pagar la luz' }).locator('input.lmd-task').uncheck(); await app.waitForTimeout(300);
-await app.click('.lmd-cl-bar [data-cl=sink]'); await app.waitForTimeout(400);
+o.clSinMover = await app.evaluate(() => !document.querySelector('.lmd-cl-bar [data-cl=sink]'));
+await app.click('.lmd-cl-bar .lmd-cl-more'); await app.click('.lmd-cl-menu [data-cl=sink]'); await app.waitForTimeout(400);
 o.clAbajo = [await lista(), (await clBar()).acciones];
 // reordenar: con las flechas sobre la manija, y arrastrándola
 await app.locator('.lmd-cl li.lmd-task-item', { hasText: 'Huevos' }).locator('.lmd-cl-grip').focus(); await app.keyboard.press('ArrowUp'); await app.waitForTimeout(300);
@@ -255,11 +266,57 @@ await app.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height /
 o.clMarca = await app.evaluate(() => !!document.querySelector('.lmd-cl li.lmd-cl-before') && !!document.querySelector('.lmd-cl li.lmd-cl-moving'));
 await app.mouse.up(); await app.waitForTimeout(400);
 o.clArrastre = await lista();
-// quitar los hechos, con deshacer
-await app.click('.lmd-cl-bar [data-cl=clear]'); await app.waitForSelector('.lmd-cl-toast');
+// ocultar las hechas: cambia la vista y nada más; el archivo queda igual, se recuerda al redibujar, y lo copiado va entero
+const clVista = () => app.evaluate(() => { const bar = document.querySelector('.lmd-cl-bar'); const b = bar.querySelector('[data-cl=hide]');
+  return { cuenta: bar.querySelector('.lmd-cl-count').textContent, boton: b.textContent, apretado: b.getAttribute('aria-pressed'), visibles: [...document.querySelectorAll('ul.lmd-cl > li')].filter((li) => li.offsetParent).length, foco: document.activeElement === b }; });
+const clAntes = await lista(); o.clVer0 = await clVista();
+await app.click('.lmd-cl-bar [data-cl=hide]'); await app.waitForTimeout(250);
+o.clVer1 = await clVista(); o.clVerArchivo = JSON.stringify(await lista()) === JSON.stringify(clAntes);
+o.clVerCopia = await app.evaluate(() => (LMD.extras.htmlOf().match(/<li/g) || []).length >= 4);
+await app.click('[data-act=mode-read]'); await app.waitForTimeout(400); await app.click('[data-act=mode-edit]'); await app.waitForTimeout(400);
+o.clVer2 = await clVista();
+// una tarea oculta a la que lleva el buscador o un ancla se muestra
+await app.evaluate(() => { const li = [...document.querySelectorAll('ul.lmd-cl > li')].find((x) => !x.offsetParent); LMD.write.reveal(li.querySelector('input').nextSibling || li); }); await app.waitForTimeout(250);
+o.clVer3 = await clVista();
+await app.click('.lmd-cl-bar [data-cl=hide]'); await app.waitForTimeout(200); await app.click('.lmd-cl-bar [data-cl=hide]'); await app.waitForTimeout(200);
+o.clVer4 = await clVista();
+// quitar los hechos: no está a la vista, va en el menú de la lista y pide confirmar; con deshacer
+await app.evaluate(() => { window.__manual = true; });
+o.clSinBoton = await app.evaluate(() => !document.querySelector('.lmd-cl-bar [data-cl=clear]') && !/Quitar/.test(document.querySelector('.lmd-cl-bar').textContent));
+await app.click('.lmd-cl-bar .lmd-cl-more'); await app.waitForSelector('.lmd-cl-menu');
+o.clMenu = await app.evaluate(() => { const m = document.querySelector('.lmd-cl-menu'); const b = document.querySelector('.lmd-cl-more');
+  return { rol: m.getAttribute('role'), items: [...m.querySelectorAll('[role=menuitem]')].map((x) => x.textContent + (x.disabled ? ' (no)' : '')), abierto: b.getAttribute('aria-expanded'), nombre: b.getAttribute('aria-label'), foco: document.activeElement.dataset.cl }; });
+await app.click('.lmd-cl-menu [data-cl=clear]'); await app.waitForSelector('.lmd-dlg');
+o.clPregunta = await app.evaluate(() => { const d = document.querySelector('.lmd-dlg'); return [d.querySelector('h3').textContent, d.querySelector('p').textContent, d.querySelector('[data-dlg=ok]').textContent, !document.querySelector('.lmd-cl-menu')]; });
+await app.click('.lmd-dlg [data-dlg=no]'); await app.waitForSelector('.lmd-dlg', { state: 'detached' }); await app.waitForTimeout(300);
+o.clCancela = [await lista(), await app.evaluate(() => !document.querySelector('.lmd-cl-toast'))];
+// el menú con el teclado: Enter lo abre, las flechas lo recorren, Escape lo cierra y devuelve el foco
+await app.focus('.lmd-cl-bar .lmd-cl-more'); await app.keyboard.press('Enter'); await app.waitForSelector('.lmd-cl-menu');
+const clFoco = () => app.evaluate(() => (document.activeElement.dataset || {}).cl || document.activeElement.className);
+o.clTeclas = [await clFoco()]; await app.keyboard.press('ArrowDown'); o.clTeclas.push(await clFoco()); await app.keyboard.press('ArrowDown'); o.clTeclas.push(await clFoco());
+await app.keyboard.press('Escape'); await app.waitForTimeout(150);
+o.clTeclas.push(await app.evaluate(() => !document.querySelector('.lmd-cl-menu') && document.activeElement.classList.contains('lmd-cl-more') && document.activeElement.getAttribute('aria-expanded') === 'false'));
+await app.keyboard.press('Enter'); await app.waitForSelector('.lmd-cl-menu'); await app.keyboard.press('ArrowUp'); await app.keyboard.press('Enter'); await app.waitForSelector('.lmd-dlg');
+await app.keyboard.press('Enter'); await app.waitForSelector('.lmd-cl-toast');
 o.clQuita = [await lista(), await app.evaluate(() => document.querySelector('.lmd-cl-toast').textContent), (await clBar()).cuenta];
 await app.click('.lmd-cl-toast button'); await app.waitForTimeout(400);
 o.clDeshace = [await lista(), await app.evaluate(() => !document.querySelector('.lmd-cl-toast'))];
+// Ctrl+Z también leyendo: se quitan los hechos sin entrar a editar, y el teclado los devuelve; Ctrl+Y los vuelve a quitar
+await app.evaluate(() => { const a = document.activeElement; if (a && a.blur) a.blur(); }); await app.waitForTimeout(500);
+if (await app.evaluate(() => document.body.classList.contains('lmd-editing') || !!document.querySelector('.lmd-editing'))) { await app.click('[data-act=mode-read]'); await app.waitForTimeout(400); }
+o.clLeyendo = await app.evaluate(() => !document.querySelector('.lmd-editing'));
+await app.hover('ul.lmd-cl'); await app.waitForTimeout(200);
+await app.click('.lmd-cl-bar .lmd-cl-more'); await app.click('.lmd-cl-menu [data-cl=clear]'); await app.waitForSelector('.lmd-dlg'); await app.click('.lmd-dlg [data-dlg=ok]'); await app.waitForSelector('.lmd-cl-toast');
+o.clLeeQuita = await lista();
+await app.keyboard.press('Control+z'); await app.waitForTimeout(400);
+o.clLeeDeshace = [await lista(), await app.evaluate(() => !document.querySelector('.lmd-editing'))];
+await app.keyboard.press('Control+y'); await app.waitForTimeout(400); o.clLeeRehace = await lista();
+await app.keyboard.press('Control+Shift+z'); await app.waitForTimeout(300); await app.keyboard.press('Control+z'); await app.waitForTimeout(400); o.clLeeVuelve = await lista();
+// en un campo de texto Ctrl+Z es el del campo: la nota no se toca
+await app.evaluate(() => { const i = document.createElement('input'); i.id = 'clz'; document.body.appendChild(i); i.focus(); });
+await app.keyboard.type('ab'); await app.keyboard.press('Control+z'); await app.waitForTimeout(300);
+o.clCampo = await lista(); await app.evaluate(() => document.getElementById('clz').remove());
+await app.evaluate(() => { window.__manual = false; const t = document.querySelector('.lmd-cl-toast'); if (t) t.remove(); });
 // el tablero es otra cosa: solo la lista de tareas suelta gana el renglón de agregar
 o.clSolo = await app.evaluate(() => document.querySelectorAll('.lmd-cl-add').length);
 
@@ -409,15 +466,24 @@ const checks = [
   ['aceptarla escribe width: wide en la nota y no se lista entre sus datos', o.ancha.clase && !o.ancha.aviso && !o.ancha.front && o.ancha.get === 'wide' && J(o.anchaFuente) === J(['---', 'width: wide', '---', '']), [o.ancha, o.anchaFuente]],
   ['la ventana de ajustes de la página muestra el ancho de ahora', o.dialogoPagina.marcado === 'wide' && J(o.dialogoPagina.opciones) === J(['Normal', 'Ancha', 'Completa']), o.dialogoPagina],
   ['numerar los títulos, y el aviso no vuelve a salir en esa nota', o.numerada.clase && !o.numerada.otraVez && J(o.numeradaFuente) === J(['---', 'numbered: true', '---']), [o.numerada, o.numeradaFuente]],
-  ['una lista de tareas muestra cuántas van, con un renglón para agregar y una manija por elemento', o.cl0.cuenta === '2 de 2' && J(o.cl0.acciones) === J(['Quitar los hechos']) && o.cl0.agregar === '+ Agregar elemento' && o.cl0.manijas === 2 && o.cl0.otras === 1, o.cl0],
+  ['una lista de dos tareas no lleva contador, y tiene su renglón para agregar y una manija por elemento', o.cl0.cuenta === '' && J(o.cl0.acciones) === J(['']) && o.cl0.agregar === '+ Agregar elemento' && o.cl0.manijas === 2 && o.cl0.otras === 1, o.cl0],
   ['el renglón de agregar abre un elemento con casilla, listo para escribir', o.clAbre.editando && o.clAbre.foco && o.clAbre.casilla, o.clAbre],
+  ['leyendo, agregar y el menú no se ven ni ocupan lugar, y aparecen al pasar el mouse por la lista', o.clQuieto.leyendo && o.clQuieto.agregar === 'hidden' && o.clQuieto.menu === 'hidden' && o.clQuieto.barra === 0 && Math.abs(o.clQuieto.hueco - o.clQuieto.em) <= 6 && o.clEncima.agregar === 'visible' && o.clEncima.menu === 'visible' && o.clEncima.hueco === o.clQuieto.hueco, [o.clQuieto, o.clEncima]],
   ['Enter agrega y deja el cursor en el siguiente; Enter en uno vacío termina', o.clSigue === true && o.clTermina === true && J(o.cl1) === J(['- [x] Comprar pan', '- [x] Pagar la luz', '- [ ] Leche', '- [ ] Huevos']), [o.clSigue, o.clTermina, o.cl1]],
-  ['Backspace en un elemento vacío lo borra y sube al anterior', o.clBorra.borrador === false && o.clBorra.foco === 'Huevos' && o.cl2[0].length === 4 && o.cl2[1].cuenta === '2 de 4', [o.clBorra, o.cl2]],
-  ['tildar pone al día el contador sin redibujar', o.clTilde === '3 de 4', o.clTilde],
-  ['los hechos se pasan abajo, y después ya no se ofrece', J(o.cl2[1].acciones) === J(['Mover los hechos abajo', 'Quitar los hechos']) && J(o.clAbajo[0]) === J(['- [ ] Pagar la luz', '- [ ] Huevos', '- [x] Comprar pan', '- [x] Leche']) && J(o.clAbajo[1]) === J(['Quitar los hechos']), [o.cl2[1], o.clAbajo]],
+  ['con tres tareas o más aparece el contador, y editando las acciones están a la vista sin pasar el mouse', o.cl2[1].cuenta === '2 de 4 hechas' && o.clEditando.editando === true, [o.cl2[1], o.clEditando]],
+  ['Backspace en un elemento vacío lo borra y sube al anterior', o.clBorra.borrador === false && o.clBorra.foco === 'Huevos' && o.cl2[0].length === 4 && o.cl2[1].cuenta === '2 de 4 hechas' && o.clEditando.agregar === 'visible' && o.clEditando.menu === 'visible', [o.clBorra, o.cl2]],
+  ['tildar pone al día el contador sin redibujar', o.clTilde === '3 de 4 hechas', o.clTilde],
+  ['los hechos se pasan abajo desde el menú: en el renglón solo queda ocultar las hechas', J(o.cl2[1].acciones) === J(['Ocultar hechas', '']) && o.clSinMover === true && J(o.clAbajo[0]) === J(['- [ ] Pagar la luz', '- [ ] Huevos', '- [x] Comprar pan', '- [x] Leche']) && J(o.clAbajo[1]) === J(['Ocultar hechas', '']), [o.cl2[1], o.clAbajo]],
   ['con el foco en la manija, las flechas mueven el elemento y el foco lo sigue', J(o.clFlecha[0]) === J(['- [ ] Huevos', '- [ ] Pagar la luz', '- [x] Comprar pan', '- [x] Leche']) && o.clFlecha[1] === true, o.clFlecha],
   ['arrastrar la manija reordena, marcando dónde cae', o.clMarca === true && J(o.clArrastre) === J(['- [x] Leche', '- [ ] Huevos', '- [ ] Pagar la luz', '- [x] Comprar pan']), [o.clMarca, o.clArrastre]],
-  ['quitar los hechos avisa cuántos fueron y deja deshacer', J(o.clQuita[0]) === J(['- [ ] Huevos', '- [ ] Pagar la luz']) && o.clQuita[1] === 'Hechos quitados: 2Deshacer' && o.clQuita[2] === '0 de 2' && J(o.clDeshace[0]) === J(['- [x] Leche', '- [ ] Huevos', '- [ ] Pagar la luz', '- [x] Comprar pan']) && o.clDeshace[1] === true, [o.clQuita, o.clDeshace]],
+  ['quitar los hechos avisa cuántos fueron y deja deshacer', J(o.clQuita[0]) === J(['- [ ] Huevos', '- [ ] Pagar la luz']) && o.clQuita[1] === 'Hechos quitados: 2Deshacer' && o.clQuita[2] === '' && J(o.clDeshace[0]) === J(['- [x] Leche', '- [ ] Huevos', '- [ ] Pagar la luz', '- [x] Comprar pan']) && o.clDeshace[1] === true, [o.clQuita, o.clDeshace]],
+  ['el contador dice qué cuenta, y Ocultar hechas las saca de la vista sin tocar el archivo ni lo que se copia', o.clVer0.cuenta === '2 de 4 hechas' && o.clVer0.boton === 'Ocultar hechas' && o.clVer0.apretado === 'false' && o.clVer0.visibles === 4 && o.clVer1.cuenta === 'Quedan 2 · 2 ocultas' && o.clVer1.boton === 'Mostrar hechas' && o.clVer1.apretado === 'true' && o.clVer1.visibles === 2 && o.clVer1.foco && o.clVerArchivo === true && o.clVerCopia === true, [o.clVer0, o.clVer1, o.clVerArchivo, o.clVerCopia]],
+  ['lo oculto se recuerda al redibujar la nota, una tarea oculta a la que se llega se muestra, y el mismo control las devuelve', o.clVer2.visibles === 2 && o.clVer2.apretado === 'true' && o.clVer3.visibles === 4 && o.clVer3.apretado === 'false' && o.clVer4.visibles === 4 && o.clVer4.cuenta === '2 de 4 hechas', [o.clVer2, o.clVer3, o.clVer4]],
+  ['quitar los hechos no está a la vista: va en el menú de la lista, con las dos acciones', o.clSinBoton === true && o.clMenu.rol === 'menu' && J(o.clMenu.items) === J(['Mover los hechos abajo', 'Quitar los hechos…']) && o.clMenu.abierto === 'true' && o.clMenu.nombre === 'Más acciones' && o.clMenu.foco === 'sink', [o.clSinBoton, o.clMenu]],
+  ['antes de quitar pregunta cuántos son, y cancelar no toca la nota', J(o.clPregunta) === J(['¿Quitar 2 elementos hechos?', 'Se borran de la nota. Se puede deshacer.', 'Quitar', true]) && J(o.clCancela[0]) === J(['- [x] Leche', '- [ ] Huevos', '- [ ] Pagar la luz', '- [x] Comprar pan']) && o.clCancela[1] === true, [o.clPregunta, o.clCancela]],
+  ['el menú de la lista se usa con el teclado: Enter abre, las flechas recorren y Escape devuelve el foco', J(o.clTeclas) === J(['sink', 'clear', 'sink', true]), o.clTeclas],
+  ['Ctrl+Z deshace también leyendo, y Ctrl+Y y Ctrl+Shift+Z rehacen', o.clLeyendo === true && J(o.clLeeQuita) === J(['- [ ] Huevos', '- [ ] Pagar la luz']) && J(o.clLeeDeshace[0]) === J(['- [x] Leche', '- [ ] Huevos', '- [ ] Pagar la luz', '- [x] Comprar pan']) && o.clLeeDeshace[1] === true && J(o.clLeeRehace) === J(o.clLeeQuita) && J(o.clLeeVuelve) === J(o.clLeeDeshace[0]), [o.clLeyendo, o.clLeeQuita, o.clLeeDeshace, o.clLeeRehace, o.clLeeVuelve]],
+  ['en un campo de texto Ctrl+Z es el del campo y la nota no cambia', J(o.clCampo) === J(o.clLeeVuelve), o.clCampo],
   ['los tableros no ganan renglón de agregar: solo las listas de tareas sueltas', o.clSolo === 1, o.clSolo],
   ['la fila de totales guarda fórmulas', o.totalFuente === '| **Total** | =sum | =sum |', o.totalFuente],
   ['y muestra las sumas con el formato de la columna', J(o.totalVista) === J(['Total', '$ 5.500,50', '6']), o.totalVista],

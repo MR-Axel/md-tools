@@ -139,7 +139,7 @@ async function menuOn(page, text) {
 }
 const openOptions = async (page) => {
   await page.click('[data-act=settings]'); await page.waitForSelector('.lmd-panel-card'); await page.click('[data-ptab=tools]');
-  await page.waitForSelector('[data-tool-opts=assistant]:not([hidden])'); await page.click('[data-tool-opts=assistant]'); await page.waitForSelector('.lmd-ai-set [data-ai=prov]');
+  await page.waitForSelector('[data-tool-opts=assistant]:not([hidden])'); await page.evaluate(() => { const b = document.querySelector('[data-tool-opts=assistant]'); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }); await page.waitForSelector('.lmd-ai-set [data-ai=prov]');
 };
 // Lo guardado en el navegador, sin lo que no se puede serializar (la llave): ahí no tiene que estar la clave.
 const dump = (page) => page.evaluate(async () => {
@@ -174,10 +174,19 @@ await step('key', ' La clave', async () => {
   await page.fill('.lmd-ai-set [data-ai=key]', 'sk-ant-RECHAZADA-0000000000000000000000'); await page.click('.lmd-ai-set [data-ai=save]');
   await page.waitForSelector('.lmd-ai-note:not([hidden])');
   check('una clave rechazada no se guarda, y lo dice', /rejected the key/.test(await page.textContent('.lmd-ai-note')) && (await page.evaluate(async () => (await LMD.ai.status()).has)) === false);
+  // Prendido y sin clave: la tarjeta lo avisa, y el aviso lleva a la opción
+  const needOf = () => page.evaluate(() => { const n = document.querySelector('[data-tool=assistant] .lmd-tl-need'); return n.hidden ? '' : n.textContent; });
+  const lack = await needOf();
+  await page.click('[data-tool-opts=assistant]'); await page.waitForSelector('[data-tool=assistant] .lmd-tl-opts', { state: 'hidden' });
+  await page.click('[data-tool=assistant] .lmd-tl-need'); await page.waitForSelector('.lmd-ai-set [data-ai=prov]');
+  await sleep(200);
+  const led = await page.evaluate(() => ({ open: document.querySelector('[data-tool-opts=assistant]').getAttribute('aria-expanded'), focus: !!document.activeElement.closest('[data-tool=assistant] .lmd-tl-opts'), on: document.activeElement.dataset.ai || document.activeElement.tagName }));
+  check('prendido y sin clave, la tarjeta dice que falta y el aviso abre la opción con el foco adentro', lack === 'Add your key' && led.open === 'true' && led.focus && led.on === 'prov', [lack, led]);
 
   const before = mock.log.length;
   await page.fill('.lmd-ai-set [data-ai=key]', KEY_A); await page.click('.lmd-ai-set [data-ai=save]');
   await page.waitForSelector('.lmd-ai-tail');
+  check('con la clave guardada el aviso de la tarjeta se va', (await needOf()) === '', await needOf());
   const list = mock.log.slice(before).find((r) => r.path === '/v1/models');
   check('al guardar pide los modelos a api.anthropic.com con las cabeceras del navegador', !!list && list.host === 'api.anthropic.com' && list.headers['x-api-key'] === KEY_A && list.headers['anthropic-version'] === '2023-06-01' && list.headers['anthropic-dangerous-direct-browser-access'] === 'true', list && [list.host, list.headers['anthropic-version']]);
   const shown = await page.evaluate(() => ({ tail: document.querySelector('.lmd-ai-tail').textContent, input: !!document.querySelector('.lmd-ai-set [data-ai=key]'), model: document.querySelector('[data-ai=model]').value, opts: [...document.querySelectorAll('#lmd-ai-models option')].map((x) => x.value), buttons: [...document.querySelectorAll('.lmd-ai-set button')].map((b) => b.textContent) }));
@@ -247,7 +256,8 @@ await step('key', ' La clave', async () => {
   await page.click('.lmd-ai-set [data-ai=drop]'); await page.waitForSelector('.lmd-dlg [data-dlg=ok]'); await page.click('.lmd-dlg [data-dlg=ok]');
   await page.waitForSelector('.lmd-ai-set [data-ai=key]');
   d = await dump(page);
-  check('Quitar la borra del dispositivo', d.rec === null && !/ai:key/.test(d.flat) && JSON.parse(d.status).has === false, d.status);
+  check('y al quitarla el aviso de la tarjeta vuelve', (await needOf()) === 'Add your key', await needOf());
+  check('Quitar la borra del dispositivo',d.rec === null && !/ai:key/.test(d.flat) && JSON.parse(d.status).has === false, d.status);
 
   // OpenAI y un servidor compatible
   await page.selectOption('.lmd-ai-set [data-ai=prov]', 'openai'); await page.fill('.lmd-ai-set [data-ai=key]', KEY_O); const m0 = mock.log.length; await page.click('.lmd-ai-set [data-ai=save]');

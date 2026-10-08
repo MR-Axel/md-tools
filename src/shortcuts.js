@@ -69,7 +69,8 @@
     ['sidebar', 'view', 'Alt+Shift+B', 'Mostrar u ocultar la barra lateral', { on: 'ext' }],
     ['centered', 'view', 'Alt+Shift+C', 'Centrar o no el contenido', { on: 'ext' }],
     ['refresh', 'view', 'Alt+Shift+R', 'Activar o desactivar la recarga automática', { on: 'ext' }],
-    ['theme', 'view', 'Alt+Shift+T', 'Cambiar el tema', { on: 'ext' }],
+    // Con la extensión la tecla es suya y recorre automático, claro y oscuro; en la web pasa de claro a oscuro.
+    ['theme', 'view', 'Alt+Shift+T', 'Cambiar el tema'],
 
     ['speak', 'tools', 'Alt+Shift+S', 'Leer en voz alta, o cortar la lectura', { tool: 'speak' }],
     ['dictate', 'tools', 'Alt+Shift+D', 'Dictar, o cortar el dictado', { tool: 'dictate', ctx: 'Editando' }],

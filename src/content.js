@@ -361,7 +361,7 @@
   }
   const unesc = (s) => { try { return decodeURIComponent(s); } catch (e) { return s; } };
   // Antes de llevar la página a un lugar del documento: si está dentro de algo plegado, se despliega (fold.js).
-  const shown = (node) => { if (LMD.fold) LMD.fold.reveal(node); };
+  const shown = (node) => { if (LMD.fold) LMD.fold.reveal(node); if (LMD.write && LMD.write.reveal) LMD.write.reveal(node); };
   function findAnchor(frag) {
     const direct = frag && document.getElementById(frag);
     if (direct || !frag) return direct || null;
@@ -706,6 +706,8 @@
           // Lo que vale para esta nota y no para la persona: el ancho de la página y lo que siga (page.js).
           '<button class="lmd-icon-btn lmd-doc-only lmd-page-btn" data-act="page" aria-haspopup="dialog" title="' + T('Ajustes de la página') + '"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 12h8M10 9.5 7.5 12l2.5 2.5M14 9.5l2.5 2.5-2.5 2.5"/></svg></button>' +
           '<span class="lmd-sep lmd-doc-only"></span>' +
+          // Claro u oscuro, a mano y sin depender del dispositivo. El dibujo y el nombre los pone paintTheme.
+          '<button class="lmd-icon-btn lmd-flip" data-act="theme-flip"></button>' +
           '<button class="lmd-icon-btn" data-act="settings" title="' + T('Ajustes') + '">' + ICON.sliders + '</button>' +
           // En pantalla chica todo lo de este grupo, y la nube, se abre desde acá.
           '<button class="lmd-icon-btn lmd-more lmd-doc-only" data-act="more" aria-haspopup="menu" aria-expanded="false" title="' + T('Más acciones') + '">' + ICON.more + '</button>' +
@@ -860,6 +862,7 @@
       }
       if (LMD.mod(e) && !e.shiftKey && e.key.toLowerCase() === 's' && (editMode || dirty || (appRoot && appRoot.kind === 'local'))) { e.preventDefault(); save(true); }
       if (LMD.mod(e) && e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); toggleSearch(true); }
+      if (window.__MDT_WEB && e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyT') { e.preventDefault(); flipTheme(); }
       if (LMD.mod(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k' && editMode && !rawMode && docKind() === 'md') { e.preventDefault(); LMD.links.open(); }
       // La hoja de atajos: "?" fuera de un campo de texto, o Ctrl+/ en cualquier lado. Por la letra y no por la tecla:
       // en un teclado en español la barra va con Shift, y su tecla sola con Ctrl es el zoom del navegador.
@@ -994,6 +997,10 @@
   const toolItems = (menu) => core.menus[menu].map((fn) => fn()).filter(Boolean);
   // Un archivo del disco abierto por su dirección: el enlace https que lo abre desde un chat o un documento.
   const fileHere = () => (!APP && location.protocol === 'file:' ? LMD.fileUrl(HERE) : '');
+  // Las pestañas de Ajustes que dependen de la cuenta. Sobre un archivo abierto directo llevan la franja que lo explica.
+  const DIRECT_TABS = ['cloud', 'ai', 'auto', 'plan', 'tools'];
+  // Este mismo archivo, en la app (la web o la página de la extensión, según "Abrir SharpMD en"): ahí sí hay cuenta.
+  const openInApp = () => bg({ type: 'openApp', pref: true, query: fileHere() ? '#open=' + encodeURIComponent(fileHere()) : '' });
   function openCopy(btn, keys) {
     const md = docKind() === 'md';
     barMenu(btn, 'lmd-menu-narrow lmd-menu-top lmd-menu-copy', [
@@ -1029,6 +1036,7 @@
       ['export', ICON.download, 'Exportar'],
       diskDoc() && ['reload', ICON.reload, 'Recargar ahora'],
       md && !shown('[data-act=page]') && ['page', ICON.doc, 'Ajustes de la página'],
+      !shown('[data-act=theme-flip]') && ['theme-flip', LMD.theme.isDark(settings) ? SUN : MOON, LMD.theme.isDark(settings) ? 'Pasar a claro' : 'Pasar a oscuro'],
       ['settings', ICON.sliders, 'Ajustes'],
       ['shortcuts', ICON.keyboard, 'Atajos de teclado'],
       // En pantalla chica el pie no tiene lugar para el enlace: denunciar una nota ajena va acá, al final.
@@ -1065,6 +1073,7 @@
     else if (act === 'view-doc') { rawMode = false; applyRawMode(); }
     else if (act === 'view-raw') { rawMode = true; applyRawMode(); }
     else if (act === 'settings') openPanel();
+    else if (act === 'theme-flip') flipTheme();
     // Con los títulos numerados, lo copiado lleva los números que se ven (page.js); el archivo no cambia.
     else if (act === 'copy-md') { if (needsRender && !typingNode() && !core.hold) render(); copyText(LMD.page && LMD.page.md && !needsRender && docKind() === 'md' ? LMD.page.md() : raw, source); }
     else if (act === 'copy-rich') copyRich(source);
@@ -1139,7 +1148,20 @@
     const painted = LMD.theme.apply(document.documentElement, settings, themePreview);
     document.querySelectorAll('meta[name=theme-color]').forEach((bar) => { bar.removeAttribute('media'); bar.content = painted.bg; });
     const status = document.querySelector('meta[name=apple-mobile-web-app-status-bar-style]'); if (status) status.content = painted.dark ? 'black-translucent' : 'default';
+    // El botón de la barra muestra a dónde lleva: la luna con un tema claro puesto, el sol con uno oscuro.
+    const flip = ui.main && ui.main.querySelector('[data-act=theme-flip]');
+    if (flip && flip.dataset.dark !== String(painted.dark)) { flip.dataset.dark = String(painted.dark); flip.innerHTML = painted.dark ? SUN : MOON; flip.title = T(painted.dark ? 'Pasar a claro' : 'Pasar a oscuro') + (window.__MDT_WEB ? ' (' + LMD.keys('Alt+Shift+T') + ')' : ''); flip.setAttribute('aria-label', T(painted.dark ? 'Pasar a claro' : 'Pasar a oscuro')); }
   }
+  const SUN = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.500v2.500M12 19v2.500M2.500 12h2.500M19 12h2.500M5.300 5.300l1.800 1.800M16.900 16.900l1.800 1.800M5.300 18.700l1.800-1.800M16.900 7.100l1.800-1.800"/></svg>';
+  const MOON = '<svg viewBox="0 0 24 24"><path d="M20 14.500A8 8 0 0 1 9.500 4a8 8 0 1 0 10.500 10.500z"/></svg>';
+  // Pasa a claro u oscuro, lo contrario de lo que se ve, y lo deja elegido a mano: ya no sigue al dispositivo.
+  function flipTheme() {
+    const p = LMD.theme.flipPatch(settings);
+    // El aviso sale cuando el cambio ya se aplicó: aplicar los ajustes limpia el pie.
+    flipSaid = T(p.theme === 'dark' ? 'Tema oscuro' : 'Tema claro');
+    LMD.patch(p);
+  }
+  let flipSaid = '';
 
   function applySettings() {
     const root = document.documentElement;
@@ -1163,6 +1185,7 @@
     applySide();
 
     ui.status.textContent = idleStatus();
+    if (flipSaid) { const said = flipSaid; flipSaid = ''; flash(said); }
     setupRefresh();
     markThemes();
   }
@@ -2437,16 +2460,19 @@
           '<a class="lmd-ptabs-link" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">' + ICON.coffee + '<span>' + T('Apoyar el proyecto') + '</span></a>' +
           '<small class="lmd-ptabs-ver">SharpMD ' + LMD.VERSION + '</small>' +
         '</nav>' +
+        // Sobre un archivo abierto directo no hay cuenta: lo dice una sola franja, igual en todas las pestañas que la piden.
         '<div class="lmd-panel-body">' +
+        (APP ? '' : '<div class="lmd-direct" data-direct hidden><p><b>' + T('Estás leyendo un archivo de tu disco.') + '</b> ' + T('Tu cuenta, la nube y tu IA están en la app.') + ' <span data-direct-who></span></p>' +
+          '<button type="button" class="lmd-btn lmd-btn-fill" data-direct-go>' + T('Abrir este archivo en la app') + '</button></div>') +
           // Tres niveles: esto es personal. Lo del equipo lo decide quien lo administra y está en Plan; las opciones
           // de una nota sola, en el menú de esa nota.
           '<section class="lmd-two" data-tab="look"><h3>' + T('Apariencia') + '</h3>' +
             '<p class="lmd-hint lmd-scope">' + T('Estos ajustes son tuyos. Nadie más los ve ni los cambia.') + '</p>' +
+            '<div class="lmd-row lmd-row-mode"><span>' + T('Tema') + ' <em class="lmd-mode-hint">' + T('Automático sigue al dispositivo') + '</em></span><div class="lmd-seg" data-seg="theme" role="radiogroup" aria-label="' + T('Tema') + '">' +
+              ['auto', 'light', 'dark'].map((t) => '<button type="button" role="radio" data-val="' + t + '" aria-checked="' + (s.theme === t) + '"' + (s.theme === t ? ' class="lmd-on"' : '') + '>' + T({ auto: 'Automático', light: 'Claro', dark: 'Oscuro' }[t]) + '</button>').join('') +
+            '</div></div>' +
             '<div class="lmd-row"><span>' + T('Idioma') + '</span><div class="lmd-seg" data-seg="language" role="radiogroup">' +
               ['auto', 'es', 'en'].map((l) => '<button type="button" role="radio" data-val="' + l + '" aria-checked="' + (s.language === l) + '"' + (s.language === l ? ' class="lmd-on"' : '') + '>' + { auto: T('Automático'), es: 'Español', en: 'English' }[l] + '</button>').join('') +
-            '</div></div>' +
-            '<div class="lmd-row"><span>' + T('Tema') + '</span><div class="lmd-seg" data-seg="theme" role="radiogroup">' +
-              ['auto', 'light', 'dark'].map((t) => '<button type="button" role="radio" data-val="' + t + '" aria-checked="' + (s.theme === t) + '"' + (s.theme === t ? ' class="lmd-on"' : '') + '>' + T({ auto: 'Automático', light: 'Claro', dark: 'Oscuro' }[t]) + '</button>').join('') +
             '</div></div>' +
             '<div class="lmd-pcol"><div class="lmd-row"><span>' + T('Color de acento') + (s.supporter ? '' : EXTRA) + '</span><div class="lmd-swatches' + (s.supporter ? '' : ' lmd-locked') + '">' +
               LMD.ACCENTS.map((a) => '<button type="button" class="lmd-swatch' + ((s.accent || '') === a.value ? ' lmd-on' : '') + (a.value ? '' : ' lmd-swatch-auto') + '" data-accent="' + a.value + '" title="' + esc(T(a.name)) + '" aria-label="' + esc(T(a.name)) + '"' + (a.value ? ' style="--sw:' + a.value + '"' : '') + '></button>').join('') +
@@ -2549,6 +2575,7 @@
       // En pantalla chica las pestañas son una fila que se desliza: la elegida queda a la vista.
       const on = ui.panel.querySelector('[data-ptab].lmd-on'); if (on && LMD.touch.small()) on.scrollIntoView({ block: 'nearest', inline: 'center' });
       ui.panel.querySelectorAll('.lmd-panel-body > section').forEach((sec) => { sec.hidden = sec.dataset.tab !== tab; });
+      const strip = ui.panel.querySelector('[data-direct]'); if (strip) strip.hidden = !DIRECT_TABS.includes(tab);
       if (tab !== 'look' && (themePreview || themePicked)) { themePreview = ''; themePicked = ''; paintTheme(); markThemes(); }
       ui.panel.querySelector('.lmd-panel-body').scrollTop = 0;
       const acct = ui.panel.querySelector('[data-acct=' + tab + ']');
@@ -2559,6 +2586,13 @@
       if (tab === 'auto') { const pane = ui.panel.querySelector('[data-auto-pane]'); ensure('automate').then((ok) => { if (ok && pane.isConnected) LMD.automate.pane(pane, host); }); }
     };
     ui.panel.querySelectorAll('[data-ptab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.ptab)));
+    const strip = ui.panel.querySelector('[data-direct]');
+    if (strip) {
+      strip.querySelector('[data-direct-go]').addEventListener('click', openInApp);
+      // La página de la extensión guarda su sesión donde este lector la puede ver: si la app se abre ahí y hay una,
+      // se dice de quién es. La sesión de la web es otra y desde acá no se ve.
+      LMD.cloud.ready().then(() => { const who = settings.openIn === 'ext' && LMD.cloud.signedIn() && !LMD.cloud.guest() ? LMD.cloud.email() : ''; if (who && strip.isConnected) strip.querySelector('[data-direct-who]').textContent = T('Sesión iniciada como {a} en la app.', { a: who }); }, () => {});
+    }
     showTab(panelTab);
 
     let pending = {};
@@ -2569,7 +2603,8 @@
       b.addEventListener('click', () => {
         const seg = b.parentNode;
         seg.querySelectorAll('button').forEach((x) => { x.classList.toggle('lmd-on', x === b); x.setAttribute('aria-checked', String(x === b)); });
-        LMD.patch({ [seg.dataset.seg]: b.dataset.val });
+        // El tema: con claro u oscuro a mano vuelve el último tema de esa familia.
+        LMD.patch(seg.dataset.seg === 'theme' ? LMD.theme.modePatch(settings, b.dataset.val) : { [seg.dataset.seg]: b.dataset.val });
       });
     });
     // Temas: pasar por encima o enfocar muestra el tema en toda la app; tocar lo deja elegido, y Aplicar lo guarda.
@@ -3336,7 +3371,7 @@
     tools,
     showFiles,
     reloadTree: () => { fileCache.clear(); folderIndex.clear(); clearCounts(); wikiIndex = null; linkIndex = null; if (ui.searchInput.value.trim()) runSearch(ui.searchInput.value); const done = loadTree(); resumeCloud(); return done; },
-    dirHandle: async (dirUrl) => { let dir = rootOf(dirUrl).handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, ensure, isDark,
+    dirHandle: async (dirUrl) => { let dir = rootOf(dirUrl).handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, ensure, isDark, openInApp,
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
     drawOff, rangeOf, render, softRender, flash, insertLines, spliceLines, replaceLines, tidyList, commitBlock, undo, redo, editCode, vFile, toHref, openDoc,
@@ -3346,6 +3381,8 @@
     setRaw(text) { pushUndo(); raw = text; syncSource(); markDirty(); render(); },
     // Varios cambios seguidos que para la persona son uno solo: un solo Ctrl+Z los deshace.
     oneUndo(fn) { const n = undoStack.length; try { return fn(); } finally { if (undoStack.length > n + 1) undoStack.length = n + 1; } },
+    // Si hay algo para deshacer o rehacer: Ctrl+Z también vale leyendo, pero solo cuando hay qué volver atrás.
+    canUndo: () => undoStack.length > 0, canRedo: () => redoStack.length > 0, get rawMode() { return rawMode; },
     // Las secciones plegadas en el índice lateral, por ancla.
     outlineShut: collapsed,
   };

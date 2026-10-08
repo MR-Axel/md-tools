@@ -180,6 +180,8 @@
 
   // Compartir: la nota abierta como plantilla, el tema que hay puesto, o una paleta. Se ve lo que sale antes de mandarlo.
   function share() {
+    // Sobre un archivo abierto directo no hay cuenta: compartir es abrir este archivo en la app.
+    if (!core.APP) { core.openInApp(); return; }
     if (!LMD.cloud.signedIn() || LMD.cloud.guest()) {
       LMD.dialog.confirm({ title: T('Compartí el tuyo'), text: T('Entrá a tu cuenta para compartir.'), ok: T('Entrar') }).then((ok) => { if (ok) core.openPanel('cloud'); });
       return;
@@ -280,10 +282,13 @@
     const words = view.q.toLowerCase();
     // Sin conexión se ve lo que ya está en el dispositivo, con el mismo filtro.
     const rows = view.off ? C.added().filter((it) => (!view.type || it.type === view.type) && (!words || (it.name + '\n' + it.about + '\n' + it.author).toLowerCase().includes(words))) : view.items;
-    // En Temas, primero los doce que vienen con la app: la sección nunca arranca vacía.
-    const own = view.type === 'theme' ? C.included().filter((it) => !words || (T(it.name) + '\n' + T(it.about)).toLowerCase().includes(words)) : [];
-    own.forEach((it) => list.appendChild(includedCard(it)));
+    // Los doce temas que vienen con la app son parte de la galería: en Temas van primero, y en Todo cierran la lista,
+    // después del último aporte. Así ninguna de las dos arranca vacía.
+    const all = !view.type; const last = !!view.off || view.page >= view.pages;
+    const own = view.type === 'theme' || (all && last) ? C.included().filter((it) => !words || (T(it.name) + '\n' + T(it.about)).toLowerCase().includes(words)) : [];
+    if (!all) own.forEach((it) => list.appendChild(includedCard(it)));
     rows.forEach((it) => list.appendChild(cardOf(it)));
+    if (all) own.forEach((it) => list.appendChild(includedCard(it)));
     if (!rows.length && !own.length && view.seq) list.appendChild(el('p', { class: 'lmd-empty', text: T(view.off ? 'Todavía no agregaste nada.' : view.q || view.type ? 'Ningún aporte coincide.' : 'Todavía no hay aportes.') }));
     box.querySelector('[data-gal=more]').hidden = !!view.off || view.page >= view.pages;
     const mine = box.querySelector('.lmd-gal-mine'); const ml = box.querySelector('.lmd-gal-mylist'); ml.textContent = '';
@@ -300,6 +305,8 @@
   async function load(more) {
     const seq = ++view.seq; await C.ready();
     view.page = more ? view.page + 1 : 1;
+    // Un archivo abierto directo no llega al servidor. No es una falla: se ve lo incluido y lo ya agregado, y dice dónde está el resto.
+    if (!core.APP) { view.items = []; view.pages = 1; view.off = T('Abrí la app para ver lo que compartió la comunidad.'); draw(); return; }
     try {
       const r = await api('GET', '/gallery?' + new URLSearchParams({ type: view.type, q: view.q, page: String(view.page) }));
       if (seq !== view.seq) return;
@@ -314,7 +321,7 @@
   }
   async function loadMine() {
     view.mine = [];
-    if (LMD.cloud.signedIn() && !LMD.cloud.guest()) {
+    if (core.APP && LMD.cloud.signedIn() && !LMD.cloud.guest()) {
       try { const rows = await api('GET', '/gallery/mine'); view.mine = (Array.isArray(rows) ? rows : []).filter((r) => r && Number.isInteger(r.id)).map((r) => ({ id: r.id, type: String(r.type), status: String(r.status), name: String(r.name || '').slice(0, 60), reason: String(r.reason || '').slice(0, 300) })); } catch (e) { /* sin conexión: no se listan */ }
     }
     draw();

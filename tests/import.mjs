@@ -231,7 +231,7 @@ await step('off', 'Apagada: nada cambia', async () => {
   check('las diez tarjetas, cada una con su interruptor', await page.evaluate(() => document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card').length === 10 && document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card input[data-tool-on]').length === 10));
   await page.click('.lmd-tl-card[data-tool=import] .lmd-switch'); await until(() => page.evaluate(() => !!LMD.import));
   check('prenderla pide su archivo, una vez, y queda guardado', await scripts(page, 'import.js') === 1 && (await page.evaluate(() => JSON.parse(localStorage.getItem('mdtools:settings')).tools.import)) === true);
-  await page.click('.lmd-tl-card[data-tool=import] .lmd-tl-more'); await page.waitForSelector('[data-imp-go=pick]');
+  await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=import] .lmd-tl-more'); await page.waitForSelector('[data-imp-go=pick]');
   const opts = await page.evaluate(() => document.querySelector('.lmd-tl-card[data-tool=import] .lmd-tl-opts').textContent);
   check('sus opciones dicen qué convierte y que no se sube', /Word, Excel, PowerPoint, EPUB, PDF, HTML, CSV and TSV/.test(opts) && /not uploaded/.test(opts) && /Choose a file/.test(opts), opts);
   check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
@@ -660,7 +660,7 @@ await step('tab', 'Ajustes > Herramientas desliza bien con diez tarjetas', async
     await page.evaluate(() => LMD.tools.set('import', true)); await page.waitForFunction(() => !!LMD.import);
     await page.click('[data-ptab=look]'); await page.click('[data-ptab=tools]'); await page.waitForSelector('.lmd-tl-card[data-tool=import] .lmd-tl-more:not([hidden])');
     await page.evaluate(() => document.querySelector('.lmd-tl-card[data-tool=import] .lmd-tl-more').scrollIntoView({ block: 'nearest' }));
-    await page.click('.lmd-tl-card[data-tool=import] .lmd-tl-more'); await page.waitForSelector('[data-imp-go=pick]');
+    await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=import] .lmd-tl-more'); await page.waitForSelector('[data-imp-go=pick]');
     const o = await page.evaluate(() => { const b = document.querySelector('[data-imp-go=pick]'); b.scrollIntoView({ block: 'nearest' }); const r = b.getBoundingClientRect(); const box = document.querySelector('.lmd-panel-body').getBoundingClientRect(); return r.top >= box.top - 1 && r.bottom <= box.bottom + 1 && r.right <= box.right + 1 && r.height >= 28; });
     check(where + ': las opciones de la tarjeta nueva se ven y su botón se alcanza', o === true);
     await ctx.close();

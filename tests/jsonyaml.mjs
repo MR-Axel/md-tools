@@ -76,7 +76,7 @@ await step('off', 'Apagada: el bloque de siempre', async () => {
   check('su tarjeta está en Herramientas, apagada', J(card) === J({ name: 'JSON and YAML', on: false, icon: true }), card);
   await flip(page, 'jsonyaml'); await until(() => page.evaluate(() => !!LMD.jsonyaml));
   check('prenderla pide su archivo y queda guardado', await scripts(page, 'jsonyaml.js') === 1 && (await page.evaluate(() => JSON.parse(localStorage.getItem('mdtools:settings')).tools.jsonyaml)) === true);
-  await page.click('.lmd-tl-card[data-tool=jsonyaml] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-card[data-tool=jsonyaml] .lmd-tl-opts input');
+  await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=jsonyaml] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-card[data-tool=jsonyaml] .lmd-tl-opts input');
   const texts = await page.evaluate(() => document.querySelector('.lmd-tl-card[data-tool=jsonyaml]').textContent);
   check('sus textos no llevan signos de admiración ni rayas', !/[!¡—–]/.test(texts) && /Start with everything collapsed/.test(texts), texts);
   await closePanel(page); await tree(page);

@@ -294,7 +294,7 @@ try {
     check('al prender Leer en voz alta se pide su archivo, y solo ese', J(await loaded()) === J({ speak: true, dictate: false, voice: false, tags: ['speak.js'] }), await loaded());
     await sleep(350);
     check('queda guardado en las preferencias de siempre', J((await stored(page, 'settings')).tools) === J({ speak: true }), await stored(page, 'settings'));
-    await page.click('.lmd-tl-card[data-tool=speak] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-card[data-tool=speak] .lmd-tl-opts select');
+    await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=speak] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-card[data-tool=speak] .lmd-tl-opts select');
     check('sus opciones: velocidad, idioma, voz y leer la nota', await page.evaluate(() => { const o = document.querySelector('.lmd-tl-card[data-tool=speak] .lmd-tl-opts'); return o.querySelectorAll('select').length === 3 && !!o.querySelector('[data-spk=go]') && o.querySelector('[data-spk=voice]').options.length === 3; }));
     await page.selectOption('.lmd-tl-opts [data-spk=rate]', '1.5'); await sleep(350);
     check('las opciones se guardan junto al interruptor', J((await stored(page, 'settings')).tools) === J({ speak: true, speakRate: 1.5 }), (await stored(page, 'settings')).tools);
@@ -305,7 +305,7 @@ try {
     await page.click('.lmd-tl-card[data-tool=dictate] .lmd-switch'); await until(() => page.evaluate(() => !!LMD.dictate && !!LMD.voice));
     check('al prender Dictado llegan su gramática y su código', (await loaded()).tags.join() === 'speak.js,voice.js,dictate.js', (await loaded()).tags);
     check('prenderlo no arranca el micrófono', J(await srLog(page)) === '[]' && !(await dct(page)).active, await srLog(page));
-    await page.click('.lmd-tl-card[data-tool=dictate] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-opts [data-dct=lang]');
+    await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=dictate] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-opts [data-dct=lang]');
     const dopts = await page.evaluate(() => { const o = document.querySelector('.lmd-tl-card[data-tool=dictate] .lmd-tl-opts'); return { lang: [...o.querySelector('[data-dct=lang]').options].map((x) => x.value).join(), commands: o.querySelector('[data-dct=commands]').checked, where: o.querySelector('[data-dct=where]').textContent, help: !!o.querySelector('[data-dct=help]') }; });
     check('sus opciones: idioma, órdenes y dónde se transcribe el audio', dopts.lang === 'auto,es,en' && dopts.commands && /provider/.test(dopts.where) && /does not receive or store audio/.test(dopts.where) && dopts.help, dopts);
     await page.click('.lmd-tl-opts [data-dct=help]'); await page.waitForSelector('.lmd-dct-help');
@@ -711,7 +711,7 @@ try {
     check('la vez siguiente no vuelve a ofrecer la descarga', !!(await listening(b.page)) && await b.page.evaluate(() => !document.querySelector('.lmd-dlg')));
     await b.page.click('.lmd-dct-bar [data-dct=stop]'); await stopped(b.page);
     await b.page.click('[data-act=settings]'); await b.page.click('[data-ptab=tools]'); await b.page.waitForSelector('.lmd-tl-card');
-    await b.page.click('.lmd-tl-card[data-tool=dictate] .lmd-tl-more'); await b.page.waitForSelector('.lmd-tl-opts [data-dct=install]');
+    await b.page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=dictate] .lmd-tl-more'); await b.page.waitForSelector('.lmd-tl-opts [data-dct=install]');
     await b.page.click('.lmd-tl-opts [data-dct=install]');
     check('desde las opciones se puede descargar después', !!(await until(() => b.page.evaluate(() => /transcribed on this device/.test(document.querySelector('.lmd-tl-opts [data-dct=where]').textContent) && !document.querySelector('.lmd-tl-opts [data-dct=install]')), 4000)) && !((await stored(b.page, 'dictation')).skip || {})['en-US'], await stored(b.page, 'dictation'));
     await b.ctx.close();
@@ -756,7 +756,7 @@ try {
     await page.tap('.lmd-spk [data-spk=stop]');
     await page.evaluate(() => document.querySelector('[data-act=settings]').click()); await page.waitForSelector('.lmd-panel-card');
     await page.tap('[data-ptab=tools]'); await page.waitForSelector('.lmd-tl-card');
-    await page.tap('.lmd-tl-card[data-tool=dictate] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-opts [data-dct=lang]');
+    await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=dictate] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-opts [data-dct=lang]');
     const pane = await page.evaluate(() => { const card = document.querySelector('.lmd-panel-card').getBoundingClientRect(); return [...document.querySelectorAll('section[data-tab=tools] *')].filter((n) => n.offsetParent && n.getBoundingClientRect().right > card.right + 1).length; });
     check('la pestaña Tools y sus opciones no se salen de la pantalla', pane === 0 && (await fits()) <= 0, [pane, await fits()]);
     check('sin errores de página', R.errors.length === 0, R.errors);

@@ -97,7 +97,7 @@ try {
     });
     check(tag + 'la barra lateral arranca cerrada, fuera de la pantalla', empty.sideRight <= 0 && empty.sideSeen === 'hidden', empty);
     check(tag + 'estado vacío: las cuatro acciones en dos columnas, altas para el dedo', empty.n === 4 && empty.rows === 2 && empty.low >= 40, empty);
-    check(tag + 'sin nota, arriba quedan la barra lateral y los ajustes', J(empty.bar) === J(['sidebar', 'settings']), empty.bar);
+    check(tag + 'sin nota, arriba quedan la barra lateral, claro u oscuro y los ajustes', J(empty.bar) === J(['sidebar', 'theme-flip', 'settings']), empty.bar);
     await fits(page, tag + 'estado vacío');
 
     if (W === 390) {
@@ -220,7 +220,7 @@ try {
     await page.tap('[data-act=more]'); await page.waitForSelector('.lmd-menu-more');
     const more = await page.evaluate(() => { const m = document.querySelector('.lmd-menu-more'); const r = m.getBoundingClientRect(); const bs = [...m.querySelectorAll('button')];
       return { acts: bs.map((b) => b.dataset.more), icons: bs.every((b) => b.querySelector('svg') && b.querySelector('span').textContent.trim()), low: Math.min(...bs.map((b) => b.getBoundingClientRect().height)), in: r.left >= 0 && r.right <= window.innerWidth && r.bottom <= window.innerHeight, right: Math.round(window.innerWidth - r.right) }; });
-    check(tag + 'el menú "más" trae la nube, insertar, la vista de código, copiar, exportar, los ajustes de la página, ajustes y los atajos, sin recargar (la nota es del navegador)', J(more.acts) === J(['sync', 'insert', 'view-raw', 'copy', 'export', 'page', 'settings', 'shortcuts']), more.acts);
+    check(tag + 'el menú "más" trae la nube, insertar, la vista de código, copiar, exportar, los ajustes de la página, claro u oscuro, ajustes y los atajos, sin recargar (la nota es del navegador)', J(more.acts) === J(['sync', 'insert', 'view-raw', 'copy', 'export', 'page', 'theme-flip', 'settings', 'shortcuts']), more.acts);
     check(tag + 'cada renglón del menú lleva ícono y texto, mide 40 px o más y queda a la derecha', more.icons && more.low >= 40 && more.in && more.right <= 12, more);
     await fits(page, tag + 'editando con el menú "más" abierto');
     // Copiar y exportar abren, desde "más", el mismo menú que en escritorio cuelga de su botón: sub es la opción de ese menú.
@@ -233,6 +233,14 @@ try {
       check('"más": con el código a la vista ofrece volver al documento', (await page.locator('.lmd-menu-more [data-more=view-doc]').count()) === 1 && (await page.locator('.lmd-menu-more [data-more=insert]').count()) === 0);
       await pick('view-doc');
       check('"más": volver al documento', await page.evaluate(() => !document.querySelector('.lmd-article').hidden));
+      // Claro u oscuro: en el teléfono el botón de la barra va acá, pasa al contrario de lo que se ve y lo deja fijo
+      const mode = () => page.evaluate(() => ({ dark: document.documentElement.classList.contains('lmd-dark'), saved: JSON.parse(localStorage.getItem('mdtools:settings') || '{}').theme, said: document.querySelector('.lmd-status').textContent, boot: localStorage.getItem('lmd:mode') + localStorage.getItem('lmd:dark') }));
+      const m0 = await mode();
+      await page.tap('[data-act=more]'); await page.waitForSelector('.lmd-menu-more');
+      const label = await page.textContent('.lmd-menu-more [data-more=theme-flip]');
+      await pick('theme-flip'); await page.waitForTimeout(350); const m1 = await mode();
+      await pick('theme-flip'); await page.waitForTimeout(350); const m2 = await mode();
+      check('"más": claro u oscuro pasa al contrario de lo que se ve, lo guarda fijo, lo avisa, y vuelve', label.trim() === (m0.dark ? 'Switch to light' : 'Switch to dark') && m1.dark === !m0.dark && m1.saved === (m1.dark ? 'dark' : 'light') && m1.said === (m1.dark ? 'Dark theme' : 'Light theme') && m1.boot === (m1.dark ? 'dark1' : 'light0') && m2.dark === m0.dark && m2.saved === (m0.dark ? 'dark' : 'light'), [label, m0, m1, m2]);
       await pick('copy'); await page.waitForSelector('.lmd-menu-copy');
       const copyMenu = await page.evaluate(() => { const m = document.querySelector('.lmd-menu-copy'); const r = m.getBoundingClientRect(); const bs = [...m.querySelectorAll('button')];
         return { acts: bs.map((b) => b.dataset.more), low: Math.min(...bs.map((b) => b.getBoundingClientRect().height)), in: r.left >= 0 && r.right <= window.innerWidth && r.bottom <= window.innerHeight, more: !!document.querySelector('.lmd-menu-more'), open: document.querySelector('[data-act=more]').getAttribute('aria-expanded') }; });
@@ -433,9 +441,24 @@ try {
 
     // Listas de tareas y tablero, con el dedo
     await page.evaluate(() => LMD.store.notePut('lists.md', '# Lists\n\n- [ ] Coffee\n- [x] Bread\n\n```kanban\n{show=due,tags}\n## To do\n- [ ] Call the venue {due=2026-10-20 tags=bug}\n\n## Done\n- [x] Book flights\n```\n'));
-    await page.goto(home + '?f=' + encodeURIComponent('local/lists.md')); await page.waitForSelector('.lmd-cl-add');
-    const cl = await page.evaluate(() => { const box = (s) => document.querySelector(s).getBoundingClientRect(); return { count: document.querySelector('.lmd-cl-count').textContent, add: Math.round(box('.lmd-cl-add').height), grip: [Math.round(box('.lmd-cl-grip').width), Math.round(box('.lmd-cl-grip').height)], clear: getComputedStyle(document.querySelector('.lmd-cl-bar [data-cl=clear]')).opacity, inside: box('.lmd-cl-grip').right <= innerWidth && box('.lmd-cl-grip').left >= 0 }; });
-    check(tag + 'lista de tareas: el contador, y agregar, mover y quitar con alto para el dedo', cl.count === '1 of 2' && cl.add >= 40 && cl.grip[0] >= 32 && cl.grip[1] >= 32 && cl.clear === '1' && cl.inside, cl);
+    await page.goto(home + '?f=' + encodeURIComponent('local/lists.md')); await page.waitForSelector('.lmd-cl-add', { state: 'attached' }); await page.waitForTimeout(500);
+    // Leyendo, en el teléfono no hay ni contador (son dos tareas), ni renglón de agregar, ni menú: nada para tocar sin querer
+    const quiet = await page.evaluate(() => ({ count: !!document.querySelector('.lmd-cl-count'), add: getComputedStyle(document.querySelector('.lmd-cl-add')).visibility, more: getComputedStyle(document.querySelector('.lmd-cl-more')).visibility, bar: Math.round(document.querySelector('.lmd-cl-bar').getBoundingClientRect().height) }));
+    await page.locator('.lmd-cl li.lmd-task-item input.lmd-task').first().tap(); await page.waitForTimeout(600);
+    const tapped = await page.evaluate(() => getComputedStyle(document.querySelector('.lmd-cl-add')).visibility + ' ' + getComputedStyle(document.querySelector('.lmd-cl-more')).visibility);
+    await page.locator('.lmd-cl li.lmd-task-item input.lmd-task').first().tap(); await page.waitForTimeout(400);
+    check(tag + 'lista de tareas leyendo: sin contador, sin agregar y sin menú, también después de tildar con el dedo', !quiet.count && quiet.add === 'hidden' && quiet.more === 'hidden' && quiet.bar === 0 && tapped === 'hidden hidden', [quiet, tapped]);
+    await page.tap('[data-act=mode-edit]'); await page.waitForSelector('.lmd-editing .lmd-cl-add'); await page.waitForTimeout(300);
+    const cl = await page.evaluate(() => { const box = (s) => document.querySelector(s).getBoundingClientRect(); return { count: (document.querySelector('.lmd-cl-count') || {}).textContent || '', add: Math.round(box('.lmd-cl-add').height), grip: [Math.round(box('.lmd-cl-grip').width), Math.round(box('.lmd-cl-grip').height)], clear: document.querySelector('.lmd-cl-bar [data-cl=clear]') ? 'a la vista' : getComputedStyle(document.querySelector('.lmd-cl-bar .lmd-cl-more')).opacity, more: [Math.round(box('.lmd-cl-more').width), Math.round(box('.lmd-cl-more').height)], inside: box('.lmd-cl-grip').right <= innerWidth && box('.lmd-cl-grip').left >= 0 }; });
+    check(tag + 'lista de tareas editando: agregar, mover y el menú con alto para el dedo', cl.count === '' && cl.add >= 40 && cl.grip[0] >= 32 && cl.grip[1] >= 32 && cl.clear === '1' && cl.more[0] >= 36 && cl.more[1] >= 32 && cl.inside, cl);
+    // quitar los hechos con el dedo: el menú entra en la pantalla y pregunta antes de borrar
+    await page.tap('.lmd-cl-bar .lmd-cl-more'); await page.waitForSelector('.lmd-cl-menu');
+    const clm = await page.evaluate(() => { const m = document.querySelector('.lmd-cl-menu').getBoundingClientRect(); return { in: m.left >= 0 && m.right <= innerWidth && m.bottom <= innerHeight, low: Math.min(...[...document.querySelectorAll('.lmd-cl-menu button')].map((b) => Math.round(b.getBoundingClientRect().height))), items: [...document.querySelectorAll('.lmd-cl-menu button')].map((b) => b.textContent) }; });
+    await page.tap('.lmd-cl-menu [data-cl=clear]'); await page.waitForSelector('.lmd-dlg');
+    const clq = await page.evaluate(() => document.querySelector('.lmd-dlg h3').textContent + ' | ' + document.querySelector('.lmd-dlg [data-dlg=ok]').textContent);
+    await fits(page, tag + 'pregunta antes de quitar los hechos');
+    await page.tap('.lmd-dlg [data-dlg=no]'); await page.waitForSelector('.lmd-dlg', { state: 'detached' });
+    check(tag + 'lista de tareas: quitar los hechos va en un menú que entra en la pantalla y pregunta antes', clm.in && clm.low >= 32 && clm.items.join('|') === 'Move done to the bottom|Remove completed items…' && clq === 'Remove 1 completed item? | Remove' && (await page.locator('.lmd-cl li.lmd-task-item').count()) === 2, [clm, clq]);
     await page.tap('.lmd-cl-add'); await page.waitForSelector('.lmd-draft-li .lmd-draft');
     await page.keyboard.type('Milk'); await page.keyboard.press('Enter'); await page.waitForSelector('.lmd-draft-li .lmd-draft');
     await page.keyboard.type('Eggs'); await page.keyboard.press('Enter'); await page.waitForSelector('.lmd-draft-li .lmd-draft'); await page.keyboard.press('Enter'); await page.waitForTimeout(1300);
@@ -480,7 +503,7 @@ try {
     await page.tap('[data-act=mode-edit]'); await page.waitForSelector('.lmd-editable');
     await page.tap('[data-act=more]'); await page.waitForSelector('.lmd-menu-more');
     const m = await page.evaluate(() => { const r = document.querySelector('.lmd-menu-more').getBoundingClientRect(); return { in: r.top >= 0 && r.bottom <= window.innerHeight && r.right <= window.innerWidth, rows: document.querySelectorAll('.lmd-menu-more button').length, h: Math.round(r.height), screen: window.innerHeight }; });
-    check('acostado, el menú "más" queda entero dentro de la pantalla', m.in && m.rows === 7, m);
+    check('acostado, el menú "más" queda entero dentro de la pantalla', m.in && m.rows === 8, m);
     await fits(page, 'acostado, menú "más"');
     await ctx.close();
   }

@@ -73,7 +73,7 @@ await suite('present', async () => {
     check('su tarjeta está en Herramientas, apagada', J(card) === J({ name: 'Presentation mode', on: false, icon: true }), card);
     await flip(page, 'present'); await until(() => page.evaluate(() => !!LMD.present));
     check('prenderla pide su archivo y queda guardado', await scripts(page, 'present.js') === 1 && (await stored(page, 'settings')).tools.present === true);
-    await page.click('.lmd-tl-card[data-tool=present] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-card[data-tool=present] [data-pres=go]');
+    await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=present] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-card[data-tool=present] [data-pres=go]');
     check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
     await closePanel(page);
     check('prendida: el botón en la barra y la opción en Exportar', await page.evaluate(() => !!document.querySelector('.lmd-top-right .lmd-pres-btn')) && (await menuItems(page, 'export')).includes('present-pdf'));
@@ -178,7 +178,7 @@ const here = (page) => page.evaluate(() => decodeURIComponent(new URLSearchParam
 const nav = (page) => page.evaluate(() => { const n = document.querySelector('.lmd-daily-nav'); return n ? [...n.querySelectorAll('button')].map((b) => b.textContent.trim()) : null; });
 const localNames = (page) => page.evaluate(async () => (await LMD.store.notesAll()).map((n) => n.name).sort());
 const opened = (page, name) => until(async () => (await here(page)).endsWith(name) && await page.evaluate(() => !!document.querySelector('.lmd-article > *')), 6000);
-const dailyOpts = async (page) => { await toolsTab(page); await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-card[data-tool=daily] [data-dly=go]'); };
+const dailyOpts = async (page) => { await toolsTab(page); await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-card[data-tool=daily] [data-dly=go]'); };
 
 await suite('daily', async () => {
   await step('Nota diaria: apagada no deja nada', async () => {
@@ -191,7 +191,7 @@ await suite('daily', async () => {
     check('su tarjeta está en Herramientas, apagada', await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=daily]'); return !!c && c.querySelector('b').textContent === 'Daily note' && !c.querySelector('input').checked; }));
     await flip(page, 'daily'); await until(() => page.evaluate(() => !!LMD.daily));
     check('prenderla pide su archivo', await scripts(page, 'daily.js') === 1 && (await stored(page, 'settings')).tools.daily === true);
-    await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await page.waitForSelector('[data-dly=go]');
+    await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await page.waitForSelector('[data-dly=go]');
     const o = await page.evaluate(() => { const q = (k) => document.querySelector('[data-dly=' + k + ']'); return { where: [...q('where').options].map((x) => x.value + (x.disabled ? ':no' : '')).join(), name: q('name').value, tpl: q('tpl').value, many: q('tpl').options.length > 5, folderHidden: q('folder').closest('[data-dly-row]').hidden }; });
     check('sus opciones: dónde, el nombre y la plantilla', o.where.startsWith('local,cloud:no') && o.name === 'YYYY-MM-DD' && o.tpl === '' && o.many && o.folderHidden, o);
     check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
@@ -375,7 +375,7 @@ await suite('docx', async () => {
     await toolsTab(page);
     check('su tarjeta está en Herramientas, apagada', await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=docx]'); return !!c && c.querySelector('b').textContent === 'Export to Word' && !c.querySelector('input').checked; }));
     await flip(page, 'docx'); await until(() => page.evaluate(() => !!LMD.docx));
-    await page.click('.lmd-tl-card[data-tool=docx] .lmd-tl-more'); await page.waitForSelector('[data-docx=go]');
+    await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=docx] .lmd-tl-more'); await page.waitForSelector('[data-docx=go]');
     check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
     await closePanel(page);
     const items = await menuItems(page, 'export');
@@ -490,7 +490,7 @@ await suite('linkmap', async () => {
     await toolsTab(page);
     check('su tarjeta está en Herramientas, apagada', await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=linkmap]'); return !!c && c.querySelector('b').textContent === 'Link map' && !c.querySelector('input').checked; }));
     await flip(page, 'linkmap'); await until(() => page.evaluate(() => !!LMD.linkmap));
-    await page.click('.lmd-tl-card[data-tool=linkmap] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-card[data-tool=linkmap] [data-map=go]');
+    await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=linkmap] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-card[data-tool=linkmap] [data-map=go]');
     check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
     await closePanel(page);
     await until(() => page.evaluate(() => !!document.querySelector('.lmd-back')));
@@ -655,6 +655,127 @@ await suite('linkmap', async () => {
     await touch('pointerdown', 1, pick.x, pick.y); await touch('pointerup', 1, pick.x, pick.y);
     await until(async () => (await here(page)) === 'local/' + pick.name);
     check('tocar un nodo abre su nota', (await here(page)) === 'local/' + pick.name && !(await map(page)).open, pick && pick.name);
+    await ctx.close();
+  });
+});
+
+// ---------- La tarjeta: el interruptor, Configurar y lo que se abre al prender ----------
+await suite('card', async () => {
+  const optsOf = (page, id) => page.evaluate((t) => { const c = document.querySelector('.lmd-tl-card[data-tool=' + t + ']'); const b = c.querySelector('.lmd-tl-more'); const a = c.querySelector('.lmd-tl-opts'); const f = document.activeElement;
+    return { shown: !b.hidden && !c.querySelector('.lmd-tl-acts').hidden, open: b.getAttribute('aria-expanded'), text: b.textContent, area: !a.hidden && a.children.length > 0, focus: !!(f && f.closest && f.closest('.lmd-tl-opts') === a), tag: f ? f.tagName : '', btn: b.classList.contains('lmd-btn') && !b.classList.contains('lmd-link'), icon: !!b.querySelector('svg') }; }, id);
+  await step('Tarjeta: al prender se abren las opciones, y Configurar las abre y las cierra', async () => {
+    const { ctx, page } = await open();
+    await goHome(page); await toolsTab(page);
+    const before = await optsOf(page, 'present');
+    await flip(page, 'present'); await page.waitForSelector('.lmd-tl-card[data-tool=present] [data-pres=go]'); await sleep(150);
+    const on = await optsOf(page, 'present');
+    check('apagada no ofrece configurar; al prenderla sus opciones se abren solas con el foco en el primer control', !before.shown && !before.area && on.shown && on.open === 'true' && on.area && on.focus, [before, on]);
+    check('el botón es un botón a la vista y dice Hide con las opciones abiertas', on.btn && on.icon && on.text === 'Hide', on);
+    await page.click('.lmd-tl-card[data-tool=present] .lmd-tl-more'); await sleep(120);
+    const shut = await optsOf(page, 'present');
+    await page.focus('.lmd-tl-card[data-tool=present] .lmd-tl-more'); await page.keyboard.press('Enter'); await page.waitForSelector('.lmd-tl-card[data-tool=present] [data-pres=go]'); await sleep(120);
+    const again = await optsOf(page, 'present');
+    check('Configure las cierra y las vuelve a abrir, también con el teclado, sin mover el foco', shut.open === 'false' && !shut.area && shut.text === 'Configure' && again.open === 'true' && again.area && again.text === 'Hide' && !again.focus, [shut, again]);
+    // Abrir, cerrar y volver a abrir, en una tarjeta de cada columna: abierta ocupa el ancho, y cerrada vuelve a su lugar
+    await flip(page, 'daily'); await page.waitForSelector('.lmd-tl-card[data-tool=daily] [data-dly=go]'); await sleep(200);
+    const place = (id) => page.evaluate((t) => { const c = document.querySelector('.lmd-tl-card[data-tool=' + t + ']'); const r = c.getBoundingClientRect(); const l = c.parentNode.getBoundingClientRect(); const b = c.querySelector('.lmd-tl-more');
+      return { x: Math.round(r.left - l.left), w: Math.round(r.width), full: r.width >= l.width - 2, edge: getComputedStyle(c).borderTopColor, turn: getComputedStyle(b.querySelector('svg')).transform, open: b.getAttribute('aria-expanded'), area: !c.querySelector('.lmd-tl-opts').hidden, order: [...c.parentNode.children].indexOf(c) }; }, id);
+    const tog = async (id) => { await page.click('.lmd-tl-card[data-tool=' + id + '] .lmd-tl-more'); await sleep(250); return place(id); };
+    const runs = {};
+    for (const id of ['present', 'daily']) {
+      const was = await place(id); const steps = [was.open === 'true' ? was : await tog(id)];
+      steps.push(await tog(id)); steps.push(await tog(id)); steps.push(await tog(id));
+      runs[id] = steps;
+    }
+    const cols = new Set(Object.values(runs).map((s) => s[1].x));
+    const okRun = (s) => s[0].open === 'true' && s[0].area && s[0].full && s[1].open === 'false' && !s[1].area && !s[1].full && s[2].open === 'true' && s[2].area && s[2].full && s[3].open === 'false' && !s[3].area && s[3].x === s[1].x && s[3].w === s[1].w && s[3].order === s[0].order;
+    check('las opciones se abren, se cierran y se vuelven a abrir con el mismo botón; cerrada, la tarjeta vuelve a su columna', okRun(runs.present) && okRun(runs.daily) && cols.size === 2, runs);
+    check('abierta, la tarjeta se distingue con el borde del acento y la flecha del botón gira', Object.values(runs).every((s) => s[0].edge !== s[1].edge && s[2].edge === s[0].edge && s[0].turn !== s[1].turn), [runs.present[0].edge, runs.present[1].edge, runs.present[0].turn, runs.present[1].turn]);
+    await page.click('.lmd-tl-card[data-tool=present] .lmd-tl-more'); await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await sleep(250);
+    const both = [await place('present'), await place('daily')];
+    await page.click('.lmd-tl-card[data-tool=present] .lmd-tl-more'); await sleep(200);
+    check('con dos abiertas, cada una se cierra por su cuenta', both[0].area && both[1].area && !(await place('present')).area && (await place('daily')).area, both);
+    await flip(page, 'daily');
+    await flip(page, 'present');
+    const off = await optsOf(page, 'present');
+    check('apagarla cierra sus opciones y saca el botón', !off.shown && off.open === 'false' && !off.area && off.text === 'Configure', off);
+    // Una que no sirve sin configurar: el asistente abre con el foco en el proveedor y avisa que falta la clave
+    await flip(page, 'assistant'); await page.waitForSelector('.lmd-ai-set [data-ai=prov]'); await sleep(200);
+    const ai = await optsOf(page, 'assistant');
+    const need = await page.evaluate(() => { const n = document.querySelector('[data-tool=assistant] .lmd-tl-need'); return { text: n.hidden ? '' : n.textContent, tag: n.tagName, others: [...document.querySelectorAll('.lmd-tl-need:not([hidden])')].length }; });
+    check('el asistente se abre al prenderlo, con el foco en su primer control, y la tarjeta dice que falta la clave', ai.open === 'true' && ai.focus && ai.tag === 'SELECT' && need.text === 'Add your key' && need.tag === 'BUTTON' && need.others === 1, [ai, need]);
+    check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
+    await flip(page, 'assistant');
+    check('apagado, el aviso se va', await page.evaluate(() => document.querySelector('[data-tool=assistant] .lmd-tl-need').hidden && document.querySelector('[data-tool=assistant] .lmd-tl-opts').hidden));
+    await ctx.close();
+  });
+
+  await step('Tarjeta: el interruptor prendido toma el acento, en los doce temas y con un color propio', async () => {
+    const { ctx, page } = await open({ tools: { present: true } });
+    await goHome(page); await toolsTab(page);
+    await page.addStyleTag({ content: '*, *::before, *::after { transition: none !important; }' });
+    const look = (set) => page.evaluate((s) => {
+      LMD.theme.apply(document.documentElement, s);
+      const lum = (c) => { const m = c.match(/[\d.]+/g).map(Number); const ch = m.slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2]; };
+      const ratio = (a, b) => { const x = lum(a); const y = lum(b); return +((Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)).toFixed(2); };
+      const hex = (c) => '#' + c.match(/[\d.]+/g).slice(0, 3).map((v) => (+v).toString(16).padStart(2, '0')).join('');
+      const card = document.querySelector('.lmd-tl-card[data-tool=present]'); const on = card.querySelector('.lmd-switch i'); const off = document.querySelector('.lmd-tl-card[data-tool=daily] .lmd-switch i');
+      const cs = getComputedStyle(on); const bg = getComputedStyle(card).backgroundColor; const knob = getComputedStyle(on, '::after').backgroundColor;
+      const edge = /inset/.test(cs.boxShadow) && !/rgba\(0, 0, 0, 0\)/.test(cs.boxShadow) ? cs.boxShadow.match(/rgba?\([^)]+\)/)[0] : '';
+      const fill = getComputedStyle(document.documentElement).getPropertyValue('--accent-fill').trim();
+      return { track: hex(cs.backgroundColor), fill, card: ratio(cs.backgroundColor, bg), edge: edge ? ratio(edge, bg) : 0, knob: ratio(knob, cs.backgroundColor), same: cs.backgroundColor === getComputedStyle(off).backgroundColor };
+    }, set);
+    const bad = []; const seen = [];
+    for (const p of await page.evaluate(() => LMD.theme.PRESETS.map((x) => ({ id: x.id, dark: x.dark, fill: x.c.fill })))) {
+      const r = await look({ preset: p.id, theme: p.dark ? 'dark' : 'light' }); seen.push(p.id + ' ' + r.card + '/' + r.knob);
+      if (r.track !== p.fill || r.card < 3 || r.knob < 3 || r.same) bad.push([p.id, r]);
+    }
+    check('en los doce temas el interruptor prendido va con el acento del tema, a 3:1 o más contra la tarjeta y con la perilla a la vista', bad.length === 0 && seen.length === 12, bad.length ? bad : seen);
+    // Con un acento propio (plan pago): colores cómodos, y los que se pierden contra la tarjeta o tapan la perilla
+    const own = []; const ACC = ['#e11d48', '#7c3aed', '#0ea5e9', '#f59e0b', '#f1efe9', '#ffffff', '#fde047', '#808080', '#1a1d23', '#000000', '#3f6a0a', '#bef264'];
+    for (const mode of ['light', 'dark']) for (const accent of ACC) {
+      const r = await look({ preset: '', theme: mode, supporter: true, accent });
+      if (r.track !== accent || Math.max(r.card, r.edge) < 3 || r.knob < 3 || r.same) own.push([mode, accent, r]);
+    }
+    check('con un acento propio el interruptor toma ese color tal cual, la perilla se ve y nunca se pierde contra la tarjeta', own.length === 0, own);
+    const plain = await look({ preset: '', theme: 'light', supporter: true, accent: '#e11d48' });
+    check('y un acento que ya contrasta no gana borde', plain.edge === 0 && plain.card >= 3, plain);
+    await ctx.close();
+  });
+
+  await step('Tarjeta: en el teléfono entra y la pestaña se desliza hasta la última', async () => {
+    const { ctx, page } = await open({ ctx: SMALL });
+    await goHome(page);
+    await page.evaluate(() => document.querySelector('[data-act=settings]').click()); await page.waitForSelector('.lmd-panel-card'); await page.tap('[data-ptab=tools]'); await page.waitForSelector('.lmd-tl-card');
+    await page.tap('.lmd-tl-card[data-tool=present] .lmd-switch'); await page.waitForSelector('.lmd-tl-card[data-tool=present] [data-pres=go]'); await sleep(250);
+    const m = await page.evaluate(() => { const body = document.querySelector('.lmd-panel-body'); const cards = [...document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card')]; const b = document.querySelector('.lmd-tl-card[data-tool=present] .lmd-tl-more').getBoundingClientRect();
+      const wide = cards.filter((c) => { const r = c.getBoundingClientRect(); return r.left < 0 || r.right > innerWidth + 0.5; }).length;
+      cards[cards.length - 1].scrollIntoView({ block: 'end' }); const moved = body.scrollTop > 0; const last = cards[cards.length - 1].getBoundingClientRect(); const box = body.getBoundingClientRect();
+      const cut = cards.filter((c) => c.scrollWidth > c.clientWidth + 1).length;
+      return { n: cards.length, wide, cut, side: body.scrollWidth <= body.clientWidth + 1, scrolls: moved && body.scrollHeight > body.clientHeight, lastIn: last.top >= box.top - 1 && last.bottom <= box.bottom + 1, btn: Math.round(b.height) }; });
+    check('las diez tarjetas entran en el ancho, nada se corta de costado, y deslizando se llega a la última', m.n === 10 && m.wide === 0 && m.cut === 0 && m.side && m.scrolls && m.lastIn && m.btn >= 36, m);
+    await ctx.close();
+  });
+});
+
+// ---------- Claro y oscuro desde la barra, en la web ----------
+await suite('theme', async () => {
+  await step('Tema: el botón de la barra y su atajo, con el dispositivo en oscuro', async () => {
+    const { ctx, page } = await open();
+    await page.addInitScript(() => { document.addEventListener('DOMContentLoaded', () => { const r = document.documentElement; window.__first = r.style.colorScheme + ' ' + r.style.getPropertyValue('--lmd-boot-bg'); }); });
+    await note(page, 'tema.md', '# Tema\n\nUn párrafo.\n');
+    const at = () => page.evaluate(() => { const b = document.querySelector('.lmd-topbar [data-act=theme-flip]'); return { dark: document.documentElement.classList.contains('lmd-dark'), title: b.title, name: b.getAttribute('aria-label'), shown: !!b.offsetParent, said: document.querySelector('.lmd-status').textContent, first: window.__first }; });
+    const a = await at();
+    check('con el dispositivo en oscuro arranca oscuro, y el botón está a la vista con su nombre y su atajo', a.dark && a.shown && a.name === 'Switch to light' && /^Switch to light \(Alt\+Shift\+T\)$/.test(a.title) && a.first === 'dark #121418', a);
+    await page.click('.lmd-topbar [data-act=theme-flip]'); await sleep(350);
+    const b = await at();
+    check('un clic pasa a claro, lo avisa y queda guardado como claro', !b.dark && b.name === 'Switch to dark' && b.said === 'Light theme' && (await stored(page, 'settings')).theme === 'light', b);
+    await page.reload(); await page.waitForSelector('.lmd-article > *'); await sleep(300);
+    const c = await at();
+    check('al recargar el primer cuadro ya sale claro, sin pasar por el oscuro del dispositivo', !c.dark && c.first === 'light #fbfaf7', c);
+    await page.keyboard.press('Alt+Shift+T'); await sleep(350);
+    const d = await at();
+    check('Alt+Shift+T hace lo mismo', d.dark && d.said === 'Dark theme' && (await stored(page, 'settings')).theme === 'dark', d);
     await ctx.close();
   });
 });
