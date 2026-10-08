@@ -740,7 +740,8 @@
     else { const later = () => (window.requestIdleCallback ? requestIdleCallback(tools, { timeout: 2500 }) : setTimeout(tools, 300)); if (document.readyState === 'complete') later(); else window.addEventListener('load', later); }
     LMD.extras.init(core);
     LMD.board.init(core);
-    LMD.page.init(core);
+    // page.js es un archivo aparte: si una copia guardada de la app todavía no lo trae, el resto arranca igual.
+    if (LMD.page) LMD.page.init(core);
     ui.sync = ui.main.querySelector('.lmd-sync');
     LMD.sync.init(core);
     LMD.comments.init(core);
@@ -992,7 +993,7 @@
   function onAction(act, source, keys) {
     if (act === 'sidebar') { if (LMD.touch.small()) setDrawer(!drawerOpen()); else LMD.patch({ sidebarHidden: !settings.sidebarHidden }); }
     else if (act === 'more') openMore();
-    else if (act === 'page') LMD.page.open();
+    else if (act === 'page') { if (LMD.page) LMD.page.open(); }
     else if (act === 'copy') openCopy(source, keys);
     else if (act === 'export') openExport(source, keys);
     else if (act === 'copy-html') { copyText(LMD.extras.htmlOf(), source); flash(T('HTML copiado')); }
@@ -1160,7 +1161,7 @@
     spyHeadings = postProcess(ui.article);
     if (editMode && kind === 'md') enableEditing(ui.article);
     // Los ajustes de la página (page.js) viven en el encabezado, pero no son datos de la nota: no se listan.
-    const fmRows = fm.rows ? fm.rows.filter((r) => !LMD.page.owns(r[0], r[1])) : [];
+    const fmRows = fm.rows ? fm.rows.filter((r) => !LMD.page || !LMD.page.owns(r[0], r[1])) : [];
     if (fmRows.length) ui.article.insertBefore(frontmatterNode(fmRows), ui.article.firstChild);
     buildOutline(spyHeadings);
     if (rawMode) { ui.rawPre.textContent = raw; if (document.activeElement !== ui.rawEdit) ui.rawEdit.value = raw; }

@@ -357,6 +357,18 @@ async function uiTests(K) {
   const chip = await page.locator('.lmd-card', { hasText: 'Write copy' }).locator('.lmd-chip').first().textContent();
   check('y la tarjeta lo muestra en chico', /Oct 20/.test(chip), chip);
 
+  // El servidor y la app leen el mismo formato: un mismo tablero da lo mismo de los dos lados.
+  const sample = '{show=due,owner priority=low|medium|high n=number}\n## To do\n- [ ] A {due=2026-10-20 owner="Ana \\"P\\" Paz" id=aaaaaaaa created=2026-10-01T10:00:00Z}\n- [x] B\n- [ ] C {not attrs}\n* [ ] D {k=v}\n- [ ] F {a=1 {b=2}\n\n### Done\n- E {x=1 y="two words" id=eeeeeeee updated=2026-10-02T10:00:00Z}';
+  await v1('PUT', '/note', { path: 'ui/parity.md', text: '```kanban\n' + sample + '\n```\n' }, K.token);
+  const fromServer = (await v1('GET', '/boards?path=' + encodeURIComponent('ui/parity.md'), undefined, K.token)).json.data.boards[0];
+  const fromApp = await page.evaluate((t) => LMD.board.model.parse(t), sample);
+  const flat = (cols, title) => cols.map((c) => [c.title, c.cards.map((k) => [k.id || '', k[title], k.done, k.created || '', k.attrs])]);
+  check('la app y el servidor leen igual un tablero: columnas, tarjetas, atributos y configuración', J(fromServer.show) === J(fromApp.show) && J(fromServer.fields) === J(fromApp.fields) && J(flat(fromServer.columns, 'title')) === J(flat(fromApp.columns, 'text')) && fromApp.columns[0].cards.length === 5 && fromApp.columns[0].cards[0].attrs.owner === 'Ana "P" Paz' && fromApp.columns[0].cards[2].text === 'C {not attrs}', [flat(fromServer.columns, 'title'), flat(fromApp.columns, 'text')]);
+  const rewritten = (await v1('POST', '/boards/cards/eeeeeeee/done', { path: 'ui/parity.md' }, K.token)).json.data;
+  const again = (await api('GET', '/notes/' + encodeURIComponent('ui/parity.md'), undefined, K.ana.s)).json.text;
+  const appWrites = await page.evaluate((t) => LMD.board.model.serialize(LMD.board.model.parse(t)).join('\n'), again.split('\n').slice(1, -2).join('\n'));
+  check('y lo que escribe el servidor, la app lo vuelve a escribir igual', rewritten.card.done === true && appWrites === again.split('\n').slice(1, -2).join('\n') && /^\{show=due,owner priority=low\|medium\|high n=number\}$/m.test(again), [again, appWrites]);
+
   console.log('Interfaz: alta guiada desde el tablero');
   await page.click('.lmd-board-menu'); await page.waitForSelector('.lmd-menu-board');
   const menuText = await page.textContent('.lmd-menu-board');

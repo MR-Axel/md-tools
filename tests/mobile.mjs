@@ -220,7 +220,7 @@ try {
     await page.tap('[data-act=more]'); await page.waitForSelector('.lmd-menu-more');
     const more = await page.evaluate(() => { const m = document.querySelector('.lmd-menu-more'); const r = m.getBoundingClientRect(); const bs = [...m.querySelectorAll('button')];
       return { acts: bs.map((b) => b.dataset.more), icons: bs.every((b) => b.querySelector('svg') && b.querySelector('span').textContent.trim()), low: Math.min(...bs.map((b) => b.getBoundingClientRect().height)), in: r.left >= 0 && r.right <= window.innerWidth && r.bottom <= window.innerHeight, right: Math.round(window.innerWidth - r.right) }; });
-    check(tag + 'el menú "más" trae la nube, insertar, la vista de código, copiar, exportar y ajustes, sin recargar (la nota es del navegador)', J(more.acts) === J(['sync', 'insert', 'view-raw', 'copy', 'export', 'settings']), more.acts);
+    check(tag + 'el menú "más" trae la nube, insertar, la vista de código, copiar, exportar, los ajustes de la página y ajustes, sin recargar (la nota es del navegador)', J(more.acts) === J(['sync', 'insert', 'view-raw', 'copy', 'export', 'page', 'settings']), more.acts);
     check(tag + 'cada renglón del menú lleva ícono y texto, mide 40 px o más y queda a la derecha', more.icons && more.low >= 40 && more.in && more.right <= 12, more);
     await fits(page, tag + 'editando con el menú "más" abierto');
     // Copiar y exportar abren, desde "más", el mismo menú que en escritorio cuelga de su botón: sub es la opción de ese menú.
@@ -451,7 +451,7 @@ try {
     await page.tap('[data-act=mode-edit]'); await page.waitForSelector('.lmd-editable');
     await page.tap('[data-act=more]'); await page.waitForSelector('.lmd-menu-more');
     const m = await page.evaluate(() => { const r = document.querySelector('.lmd-menu-more').getBoundingClientRect(); return { in: r.top >= 0 && r.bottom <= window.innerHeight && r.right <= window.innerWidth, rows: document.querySelectorAll('.lmd-menu-more button').length, h: Math.round(r.height), screen: window.innerHeight }; });
-    check('acostado, el menú "más" queda entero dentro de la pantalla', m.in && m.rows === 5, m);
+    check('acostado, el menú "más" queda entero dentro de la pantalla', m.in && m.rows === 6, m);
     await fits(page, 'acostado, menú "más"');
     await ctx.close();
   }

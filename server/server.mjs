@@ -2218,6 +2218,7 @@ function ipPrivate(ip) {
   return (w[0] & 0xfe00) === 0xfc00 || (w[0] & 0xffc0) === 0xfe80 || (w[0] & 0xffc0) === 0xfec0 || (w[0] & 0xff00) === 0xff00 || w[0] === 0;
 }
 const NO_DEST = (why) => new Fail(400, 'bad_destination', why);
+const OWN_HOST = (() => { try { return new URL(PUBLIC_URL).hostname.toLowerCase(); } catch (e) { return ''; } })();
 // Lo que se puede saber sin resolver el nombre. Devuelve la dirección ya leída.
 function hookUrl(raw) {
   let u; try { u = new URL(String(raw || '').trim()); } catch (e) { throw NO_DEST('That is not a web address'); }
@@ -2227,6 +2228,8 @@ function hookUrl(raw) {
   const host = u.hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
   if (!host) throw NO_DEST('That is not a web address');
   if (HOOK_PRIVATE) return { u, host };
+  // Un webhook que apunta a este mismo servidor (a una dirección de entrada, por ejemplo) se llamaría a sí mismo sin fin.
+  if (host === OWN_HOST) throw NO_DEST('The address cannot be this same server');
   if (u.port && +u.port !== 443 && +u.port < 1024) throw NO_DEST('That port is not allowed');
   if (net.isIP(host) ? ipPrivate(host) : (!host.includes('.') || /(^|\.)(localhost|local|localdomain|internal|intranet|lan|home|corp|test|invalid|example|onion)$/.test(host))) throw NO_DEST('That address points to a private network');
   return { u, host };

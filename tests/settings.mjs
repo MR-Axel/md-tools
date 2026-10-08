@@ -1,4 +1,4 @@
-// Ajustes en nueve pestañas, la cuenta en el inicio, la vuelta del pago, el cambio de idioma y los comentarios.
+// Ajustes en diez pestañas, la cuenta en el inicio, la vuelta del pago, el cambio de idioma y los comentarios.
 // Todo contra un servidor local. sharpmd.app (la página de pago) se sirve desde esta carpeta y Paddle es un doble:
 // nada sale a la red, y si algo intentara llegar al servidor de producción la prueba lo cuenta como falla.
 import { chromium } from 'playwright-core';
@@ -156,7 +156,7 @@ try {
   await app.waitForSelector('.lmd-panel-card'); await app.waitForSelector('html.lmd-editing'); await app.waitForTimeout(900);
   const en = await app.evaluate(() => ({ title: document.querySelector('.lmd-panel-card h2').textContent, menus: document.querySelectorAll('.lmd-menu').length, tab: document.querySelector('[data-ptab].lmd-on').dataset.ptab, tabs: [...document.querySelectorAll('[data-ptab]')].map((b) => b.textContent.trim()).join('|'), foot: document.querySelector('[data-act=feedback]').textContent.trim() }));
   check('al cambiar de idioma en una nota vacía, Ajustes vuelve solo, sin menú encima', en.title === 'Settings' && en.menus === 0 && en.tab === 'look', en);
-  check('las pestañas y el pie están traducidos', en.tabs === 'Appearance|Reading and editing|Plugins|Tools|Cloud|AI (MCP)|Plan|Install|Advanced' && en.foot === 'Send feedback', en);
+  check('las pestañas y el pie están traducidos', en.tabs === 'Appearance|Reading and editing|Plugins|Tools|Cloud|AI (MCP)|Automations|Plan|Install|Advanced' && en.foot === 'Send feedback', en);
   await Promise.all([app.waitForNavigation(), app.click('.lmd-seg[data-seg=language] button[data-val=es]')]);
   await app.waitForSelector('.lmd-panel-card'); await app.waitForSelector('html.lmd-editing'); await app.waitForTimeout(600);
   await app.click('[data-act=close-panel]'); await app.click('.lmd-add');
@@ -165,7 +165,7 @@ try {
 
   console.log('Ajustes, plan gratis');
   await openSettings();
-  check('nueve pestañas en orden', (await app.evaluate(() => [...document.querySelectorAll('[data-ptab]')].map((b) => b.dataset.ptab + ':' + b.textContent.trim()).join('|'))) === 'look:Apariencia|read:Lectura y edición|plug:Plugins|tools:Herramientas|cloud:Nube|ai:IA (MCP)|plan:Plan|inst:Instalar|adv:Avanzado');
+  check('diez pestañas en orden', (await app.evaluate(() => [...document.querySelectorAll('[data-ptab]')].map((b) => b.dataset.ptab + ':' + b.textContent.trim()).join('|'))) === 'look:Apariencia|read:Lectura y edición|plug:Plugins|tools:Herramientas|cloud:Nube|ai:IA (MCP)|auto:Automatizaciones|plan:Plan|inst:Instalar|adv:Avanzado');
   // Pie de la barra: comentarios, apoyar el proyecto y la versión, que tiene que ser la del manifiesto.
   const foot = await app.evaluate(() => { const nav = document.querySelector('.lmd-ptabs'); const a = nav.querySelector('a.lmd-ptabs-link'); const v = nav.querySelector('.lmd-ptabs-ver'); const box = (n) => n.getBoundingClientRect();
     return { last: [...nav.children].slice(-3).map((k) => k.textContent.trim()), href: a.href, target: a.target, rel: a.rel, ver: v.textContent, lmd: LMD.VERSION, sponsor: LMD.SPONSOR_URL,
