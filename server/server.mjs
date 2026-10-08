@@ -2365,7 +2365,6 @@ function inboxFields(owner, b, was) {
   return out;
 }
 const autoName = (v) => String(v == null ? '' : v).replace(/[\x00-\x1f\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
-const sqlSet = (o) => Object.keys(o).map((k) => k + ' = ?').join(', ');
 async function autoRoute(req, user, p, m, url) {
   const body = m === 'POST' || m === 'PUT' ? await readBody(req) : {};
   const owner = autoOwner(user, m === 'GET' || m === 'DELETE' ? url.searchParams.get('o') : body.o);
@@ -2393,7 +2392,8 @@ async function autoRoute(req, user, p, m, url) {
       const f = hookFields(owner, body, hook);
       // Una fila cifrada con otra marca: la dirección nueva y el secreto de antes tienen que quedar con la misma.
       if (f.url !== undefined && hook.e !== SEALED) { f.secret = seal(unseal(hook.secret, hook.e, 'hooks.secret'), 'hooks.secret'); f.e = SEALED; }
-      if (Object.keys(f).length) q('UPDATE hooks SET ' + sqlSet(f) + ' WHERE id = ?').run(...Object.values(f), hook.id);
+      const n = Object.assign({}, hook, f);
+      q('UPDATE hooks SET name = ?, url = ?, secret = ?, e = ?, host = ?, scope_kind = ?, scope_path = ?, events = ?, format = ?, body = ?, lang = ?, off = ?, fails = ? WHERE id = ?').run(n.name, n.url, n.secret, n.e, n.host, n.scope_kind, n.scope_path, n.events, n.format, n.body, n.lang, n.off, n.fails, hook.id);
       return { hook: hookView(q('SELECT * FROM hooks WHERE id = ?').get(hook.id)) };
     }
     if (hm[2] === 'secret' && m === 'POST') {
@@ -2425,7 +2425,7 @@ async function autoRoute(req, user, p, m, url) {
     if (!row) throw new Fail(404, 'not_found');
     if (!im[2] && m === 'DELETE') { q('DELETE FROM inboxes WHERE id = ?').run(row.id); return { ok: true }; }
     autoNeedsPlan(owner);
-    if (!im[2] && m === 'PUT') { const f = inboxFields(owner, body, row); if (Object.keys(f).length) q('UPDATE inboxes SET ' + sqlSet(f) + ' WHERE id = ?').run(...Object.values(f), row.id); return { inbox: inboxView(q('SELECT * FROM inboxes WHERE id = ?').get(row.id)) }; }
+    if (!im[2] && m === 'PUT') { const n = Object.assign({}, row, inboxFields(owner, body, row)); q('UPDATE inboxes SET name = ?, path = ?, tpl = ?, col = ?, allow_get = ?, tz = ? WHERE id = ?').run(n.name, n.path, n.tpl, n.col, n.allow_get, n.tz, row.id); return { inbox: inboxView(q('SELECT * FROM inboxes WHERE id = ?').get(row.id)) }; }
     // Una dirección nueva: la de antes deja de servir en el acto.
     if (im[2] === 'secret' && m === 'POST') { const secret = 'mdi_' + random(32); q('UPDATE inboxes SET hash = ?, hint = ? WHERE id = ?').run(sha(secret), secret.slice(-4), row.id); return { url: PUBLIC_URL + '/in/' + secret }; }
   }
@@ -2509,7 +2509,7 @@ async function inboxRoute(req, url, p, m) {
   let made = {};
   if (row.kind === 'create') {
     // El nombre: el campo title si vino, o la fecha y la hora. Si ya hay una nota con ese nombre, lleva un número.
-    const stem = (title || clock.date + ' ' + clock.time.replace(':', '')).replace(/[\\/:*?"<>|#^[\]\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').replace(/^\.+/, '').trim().slice(0, 100) || clock.date;
+    const stem = (title || clock.date + ' ' + clock.time.replace(':', '')).replace(/[\\/:*?"<>|#^[\]\x00-\x1f]/g, ' ').replace(/\.{2,}/g, ' ').replace(/\s+/g, ' ').replace(/^[. ]+/, '').trim().slice(0, 100) || clock.date;
     let path = cleanPath((row.path ? row.path + '/' : '') + stem + '.md');
     if (q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(owner.id, path)) path = freePath(owner.id, path);
     write(path, piece + '\n');

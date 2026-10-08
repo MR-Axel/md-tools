@@ -266,7 +266,7 @@ try {
   await api('PUT', '/automations/hooks/' + flk.id, { url: SINK + '/slow' }, ana.s);
   r = await api('POST', '/automations/hooks/' + flk.id + '/test', {}, ana.s);
   check('un destino lento se corta por tiempo', r.json.ok === false && r.json.error === 'timeout' && r.json.ms < 1400, r.json);
-  r = await api('POST', '/automations/hooks/' + all.id + '/secret', {}, ana.s);
+  r = await api('POST', '/automations/hooks/' + all.id + '/secret', {}, ana.s); const secret2 = r.json.secret;
   got.length = 0; await v1('PUT', '/note', { path: 'after.md', text: '# After\n' }, token);
   g = await until(() => at('/ok').find((x) => x.json.type === 'note.created'));
   check('cambiar el secreto: lo nuevo firma con el nuevo', /^whsec_/.test(r.json.secret) && r.json.secret !== secret && !!g && signed(g, r.json.secret) && !signed(g, secret));
@@ -332,11 +332,134 @@ try {
   check('sin plan pago no se crean entradas', r.status === 402, r.json);
 
   bad = 0;
-  await uiTests();
+  await uiTests({ ana, free, token, secret: secret2 });
 } catch (e) { console.log('  FALLA la prueba se cortó -> ' + (e && e.stack || e)); bad = 1; }
 
 // La interfaz se prueba aparte, más abajo, con el mismo servidor.
-async function uiTests() { /* UI */ }
+async function uiTests(K) {
+  const plain = (t) => !/[!¡—–]/.test(t);
+  const board = '# Plan\n\n```kanban\n## To do\n- [ ] Fix checkout\n- [ ] Write copy\n\n## Doing\n\n## Done\n- [x] Pick a name\n```\n\nNotes below the board.\n';
+  await v1('PUT', '/note', { path: 'ui/board.md', text: board }, K.token); await sleep(300);
+
+  console.log('Interfaz: el tablero avisa');
+  const { page } = await R.open(K.ana);
+  await page.goto(R.noteUrl('ui/board.md')); await page.waitForSelector('.lmd-board .lmd-card'); await page.waitForFunction(() => !!LMD.sync.account());
+  got.length = 0;
+  await page.dragAndDrop('.lmd-col[data-c="0"] .lmd-card[data-k="0"]', '.lmd-col[data-c="1"] .lmd-cards');
+  let g = await until(() => at('/ok').find((x) => x.json && x.json.type === 'card.moved'), 9000);
+  check('arrastrar una tarjeta en la app dispara card.moved, firmado, con from y to', !!g && g.json.data.card.title === 'Fix checkout' && g.json.data.from === 'To do' && g.json.data.to === 'Doing' && g.json.actor.type === 'app' && /^[a-z2-9]{8}$/.test(g.json.data.card.id) && signed(g, K.secret), g && g.json);
+  check('la tarjeta lleva su fecha de edición, puesta por la app', !!g && /^\d{4}-\d\d-\d\dT/.test(g.json.data.card.updated) && /^\d{4}-\d\d-\d\dT/.test(g.json.data.card.created), g && g.json.data.card);
+  await sleep(400); got.length = 0;
+  await page.locator('.lmd-card', { hasText: 'Write copy' }).locator('.lmd-card-text').click(); await page.waitForSelector('.lmd-cd');
+  await page.click('.lmd-cd [data-cd-sug=vence]'); await page.fill('.lmd-cd [data-cd-val=due]', '2026-10-20'); await page.click('.lmd-cd [data-cd=ok]');
+  g = await until(() => at('/ok').find((x) => x.json && x.json.type === 'card.updated'), 9000);
+  check('cambiar un atributo en el detalle dispara card.updated con el cambio', !!g && J(g.json.data.changes) === J({ due: { from: null, to: '2026-10-20' } }) && g.json.data.card.title === 'Write copy', g && g.json);
+  const chip = await page.locator('.lmd-card', { hasText: 'Write copy' }).locator('.lmd-chip').first().textContent();
+  check('y la tarjeta lo muestra en chico', /Oct 20/.test(chip), chip);
+
+  console.log('Interfaz: alta guiada desde el tablero');
+  await page.click('.lmd-board-menu'); await page.waitForSelector('.lmd-menu-board');
+  const menuText = await page.textContent('.lmd-menu-board');
+  await page.click('.lmd-menu-board [data-bm=notify]'); await page.waitForSelector('.lmd-au-wiz');
+  let s = await page.evaluate(() => ({ step: document.querySelector('.lmd-au-step').textContent, kind: document.querySelector('.lmd-au-wiz input[name=lmd-au-kind]:checked').value, note: document.querySelector('.lmd-au-wiz [data-au=note]').value }));
+  check('el menú del tablero ofrece avisar cuando cambie una tarjeta, con esa nota ya puesta', /Notify when a card changes/.test(menuText) && /Step 1 of 3 · Where to watch/.test(s.step) && s.kind === 'note' && s.note === 'ui/board.md', [menuText, s]);
+  await page.click('.lmd-au-wiz [data-au=next]');
+  s = await page.evaluate(() => ({ step: document.querySelector('.lmd-au-step').textContent, on: [...document.querySelectorAll('.lmd-au-wiz .lmd-au-body input:checked')].map((i) => i.value), all: document.querySelectorAll('.lmd-au-wiz .lmd-au-body input').length, groups: [...document.querySelectorAll('.lmd-au-group legend')].map((l) => l.textContent) }));
+  check('paso 2: los eventos de tarjeta ya marcados, en grupos', /Step 2 of 3 · What to notify/.test(s.step) && J(s.on.sort()) === J(['card.created', 'card.deleted', 'card.done', 'card.moved', 'card.updated']) && s.all === 12 && J(s.groups) === J(['Board cards', 'Notes', 'Comments']), s);
+  await page.click('.lmd-au-wiz [data-au=next]');
+  s = await page.evaluate(() => ({ step: document.querySelector('.lmd-au-step').textContent, fmts: [...document.querySelectorAll('[data-au-fmt]')].map((b) => b.textContent + (b.getAttribute('aria-checked') === 'true' ? '*' : '')), text: document.querySelector('.lmd-au-wiz .lmd-ask-card').textContent }));
+  check('paso 3: Slack, Discord o JSON, con Slack elegido', /Step 3 of 3 · Where to send/.test(s.step) && J(s.fmts) === J(['Slack*', 'Discord', 'Make, n8n, Zapier or other']) && plain(s.text), s);
+  await page.fill('.lmd-au-wiz [data-au=url]', 'ftp://nada'); await page.click('.lmd-au-wiz [data-au=next]');
+  const errText = await page.textContent('.lmd-au-wiz .lmd-dlg-err');
+  check('una dirección que no es https se rechaza antes de mandar', /has to start with https/.test(errText) && plain(errText), errText);
+  await page.click('.lmd-au-wiz [data-au=back]'); await page.click('.lmd-au-wiz [data-au=next]');
+  check('volver atrás no pierde lo escrito', (await page.inputValue('.lmd-au-wiz [data-au=url]')) === 'ftp://nada');
+  await page.fill('.lmd-au-wiz [data-au=url]', SINK + '/ui-slack'); await page.fill('.lmd-au-wiz [data-au=name]', 'Team channel'); await page.click('.lmd-au-wiz [data-au=next]');
+  await page.waitForSelector('.lmd-au-wiz [data-au=test]');
+  got.length = 0; await page.click('.lmd-au-wiz [data-au=test]'); await page.waitForSelector('.lmd-au-result:not([hidden])');
+  const result = await page.textContent('.lmd-au-result');
+  check('creada, "Send a test" manda el mensaje y dice que llegó', /^The test arrived \(\d+ ms\)\.$/.test(result) && at('/ui-slack').length === 1 && /SharpMD test/.test(at('/ui-slack')[0].json.text), [result, at('/ui-slack').length]);
+  await page.click('.lmd-au-wiz [data-au=no]'); await page.waitForSelector('.lmd-au-wiz', { state: 'detached' });
+  got.length = 0;
+  await page.locator('.lmd-card', { hasText: 'Write copy' }).locator('.lmd-card-check').check();
+  g = await until(() => at('/ui-slack').find((x) => /done/.test(x.json.text)), 9000);
+  check('y de ahí en más Slack recibe la línea armada', !!g && /^Card "Write copy" done in <http[^|]+\|ui\/board\.md>$/.test(g.json.text), g && g.json);
+
+  console.log('Interfaz: Ajustes > Automatizaciones');
+  await page.click('[data-act=settings]'); await page.waitForSelector('[data-ptab=auto]'); await page.click('[data-ptab=auto]'); await page.waitForSelector('.lmd-au-list');
+  s = await page.evaluate(() => ({ tab: document.querySelector('[data-ptab=auto]').textContent, heads: [...document.querySelectorAll('[data-auto-pane] h4')].map((h) => h.textContent), rows: [...document.querySelectorAll('[data-list=hooks] .lmd-au-item')].map((li) => li.querySelector('div').textContent), text: document.querySelector('[data-auto-pane]').textContent, api: [...document.querySelectorAll('[data-auto-pane] .lmd-field input')].pop().value, docs: document.querySelector('.lmd-au-docs').href, wide: document.querySelector('.lmd-panel-body').scrollWidth <= document.querySelector('.lmd-panel-body').clientWidth + 1 }));
+  check('la pestaña lista los avisos con su ámbito, sus eventos y adónde van', s.tab === 'Automations' && J(s.heads) === J(['Outgoing notifications', 'Inbound addresses', 'API']) && s.rows.some((r) => /^Team channel/.test(r) && /ui\/board\.md · 5 events · Slack/.test(r) && /127\.0\.0\.1/.test(r)) && s.rows.some((r) => /All notes/.test(r)), s.rows);
+  check('sin secretos a la vista, sin signos de admiración ni rayas, y sin desborde', !/whsec_|mdi_/.test(s.text) && plain(s.text) && s.wide, s.text.slice(0, 300));
+  check('la API: su dirección y el enlace a la documentación', s.api === base + '/api/v1' && s.docs === 'https://sharpmd.app/api.html', [s.api, s.docs]);
+  const row = page.locator('[data-list=hooks] .lmd-au-item', { hasText: 'Team channel' });
+  await row.locator('[data-ha=log]').click(); await page.waitForSelector('.lmd-au-log .lmd-au-table');
+  const logText = await page.textContent('.lmd-au-log');
+  check('el registro de entregas muestra estado, respuesta y duración', /Delivery log/.test(logText) && /Delivered/.test(logText) && /200/.test(logText) && /Test/.test(logText) && plain(logText), logText.slice(0, 300));
+  await page.click('.lmd-au-log [data-au=no]');
+  await row.locator('[data-ha=pause]').click(); await page.waitForSelector('[data-list=hooks] .lmd-au-off');
+  check('pausar lo deja a la vista como pausado', /Paused/.test(await page.locator('[data-list=hooks] .lmd-au-item', { hasText: 'Team channel' }).textContent()));
+  // Un aviso que se desactivó solo se ve con su aviso y se puede volver a prender.
+  const dead = (await api('POST', '/automations/hooks', { name: 'Broken', url: SINK + '/fail', scope: { kind: 'folder', path: 'boom' }, events: ['note.created'] }, K.ana.s)).json.hook;
+  await v1('PUT', '/note', { path: 'boom/a.md', text: '# A\n' }, K.token); await v1('PUT', '/note', { path: 'boom/b.md', text: '# B\n' }, K.token);
+  await until(async () => (await api('GET', '/automations', undefined, K.ana.s)).json.hooks.find((h) => h.id === dead.id && h.state === 'failed'), 6000);
+  await page.click('[data-ptab=look]'); await page.click('[data-ptab=auto]'); await page.waitForSelector('.lmd-au-warn[role=alert]');
+  const broken = await page.locator('[data-list=hooks] .lmd-au-item', { hasText: 'Broken' }).textContent();
+  check('el que se desactivó por fallos lo dice y ofrece volver a prenderlo', /Turned off after repeated failures\./.test(broken) && /Turn back on/.test(broken), broken);
+  await api('DELETE', '/automations/hooks/' + dead.id, undefined, K.ana.s);
+  await page.click('[data-c=inbox]'); await page.waitForSelector('.lmd-au-in');
+  await page.fill('.lmd-au-in [data-au=note]', 'in/from-ui'); await page.fill('.lmd-au-in [data-au=tpl]', '- {{date}} {{text}}'); await page.click('.lmd-au-in [data-au=ok]');
+  await page.waitForSelector('[data-in-url]');
+  const inUrl = await page.inputValue('[data-in-url]');
+  const sent = await post(inUrl, 'From a form', 'text/plain');
+  const made = (await api('GET', '/notes/' + encodeURIComponent('in/from-ui.md'), undefined, K.ana.s)).json;
+  check('una dirección de entrada creada desde la app recibe y escribe en la nota', new RegExp('^' + base + '/in/mdi_').test(inUrl) && sent.status === 200 && /^- \d{4}-\d\d-\d\d From a form\n$/.test(made.text || ''), [inUrl.slice(0, 40), sent.status, made.text]);
+  await page.click('[data-c=copy]');
+  s = await page.evaluate(() => ({ rows: [...document.querySelectorAll('[data-list=inboxes] .lmd-au-item')].map((li) => li.querySelector('div').textContent), note: document.querySelector('.lmd-ai-new').textContent }));
+  check('la dirección se ve una sola vez, con copiar, y la lista dice qué hace', /Adds to in\/from-ui\.md/.test(s.rows.join('|')) && /not shown again/.test(s.note) && !s.rows.join('|').includes(inUrl.split('/in/')[1]), s);
+  await page.keyboard.press('Escape');
+
+  console.log('Interfaz: desde el explorador y sin plan');
+  const dirNode = page.locator('.lmd-node-dir', { hasText: 'ui' }).first();
+  if (await dirNode.count()) {
+    await dirNode.click({ button: 'right' }); await page.waitForSelector('.lmd-menu [data-f=auto]');
+    const item = await page.textContent('.lmd-menu [data-f=auto]');
+    await page.click('.lmd-menu [data-f=auto]'); await page.waitForSelector('.lmd-au-wiz');
+    s = await page.evaluate(() => ({ kind: document.querySelector('.lmd-au-wiz input[name=lmd-au-kind]:checked').value, folder: document.querySelector('.lmd-au-wiz [data-au=folder]').value }));
+    check('el menú de una carpeta ofrece "Automate…" con esa carpeta ya puesta', item === 'Automate…' && s.kind === 'folder' && s.folder === 'ui', [item, s]);
+    await page.keyboard.press('Escape');
+  } else check('el menú de una carpeta ofrece "Automate…" con esa carpeta ya puesta', false, 'no encontré la carpeta en el explorador');
+  const lia = await R.open(K.free);
+  await lia.page.goto(R.home + '#lmd-auto'); await lia.page.waitForSelector('[data-auto-pane] .lmd-extra');
+  const gate = await lia.page.textContent('[data-auto-pane]');
+  check('sin plan pago se ve la sección con el aviso de plan', /Automations are part of the paid plan\./.test(gate) && /See plans/.test(gate) && plain(gate), gate);
+  await lia.ctx.close();
+
+  console.log('Interfaz: pantalla chica');
+  const small = await R.open(K.ana, { viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true });
+  const sp = small.page;
+  await sp.goto(R.noteUrl('ui/board.md')); await sp.waitForSelector('.lmd-board .lmd-card');
+  s = await sp.evaluate(() => { const b = document.querySelector('.lmd-board'); const col = b.querySelector('.lmd-col').getBoundingClientRect(); return { page: document.documentElement.scrollWidth <= window.innerWidth, snap: getComputedStyle(b).scrollSnapType, col: col.width, scrolls: b.scrollWidth > b.clientWidth, open: getComputedStyle(b.querySelector('.lmd-card-open')).opacity }; });
+  check('el tablero se desliza con el dedo, con columnas que encajan, sin mover la página', s.page && /x mandatory/.test(s.snap) && s.col > 250 && s.col < 340 && s.scrolls && s.open === '1', s);
+  await sp.locator('.lmd-card', { hasText: 'Pick a name' }).locator('.lmd-card-open').tap(); await sp.waitForSelector('.lmd-cd');
+  await sp.tap('.lmd-cd [data-cd-sug=responsable]'); await sp.fill('.lmd-cd [data-cd-val=owner]', 'Lia');
+  s = await sp.evaluate(() => { const c = document.querySelector('.lmd-cd-card').getBoundingClientRect(); const tap = [...document.querySelectorAll('.lmd-cd-card button, .lmd-cd-card select, .lmd-cd-card input[type=text]')].filter((n) => n.offsetParent).map((n) => Math.round(n.getBoundingClientRect().height)); return { fits: c.left >= 0 && c.right <= window.innerWidth && c.bottom <= window.innerHeight + 1, min: Math.min(...tap), page: document.documentElement.scrollWidth <= window.innerWidth }; });
+  check('el detalle de la tarjeta entra en la pantalla y se toca cómodo', s.fits && s.page && s.min >= 32, s);
+  await sp.tap('.lmd-cd [data-cd=ok]'); await sp.waitForSelector('.lmd-cd', { state: 'detached' });
+  check('y guarda', /Pick a name \{owner=Lia id=/.test((await api('GET', '/notes/' + encodeURIComponent('ui/board.md'), undefined, K.ana.s)).json.text) || !!(await until(async () => /Pick a name \{owner=Lia id=/.test((await api('GET', '/notes/' + encodeURIComponent('ui/board.md'), undefined, K.ana.s)).json.text), 6000)));
+  await sp.tap('[data-act=more]'); await sp.waitForSelector('.lmd-menu-more');
+  const more = await sp.textContent('.lmd-menu-more');
+  await sp.tap('.lmd-menu-more [data-more=page]'); await sp.waitForSelector('.lmd-pg');
+  s = await sp.evaluate(() => { const c = document.querySelector('.lmd-pg .lmd-ask-card').getBoundingClientRect(); return { fits: c.left >= 0 && c.right <= window.innerWidth, text: document.querySelector('.lmd-pg').textContent }; });
+  check('"más" trae Ajustes de la página, y la ventana entra', /Page settings/.test(more) && s.fits && /Page width/.test(s.text) && plain(s.text), [more, s]);
+  await sp.tap('.lmd-pg [data-pg=ok]');
+  await sp.goto(R.home + '#lmd-auto'); await sp.waitForSelector('.lmd-au-list');
+  s = await sp.evaluate(() => ({ body: document.querySelector('.lmd-panel-body').scrollWidth <= document.querySelector('.lmd-panel-body').clientWidth + 1, page: document.documentElement.scrollWidth <= window.innerWidth, btn: Math.min(...[...document.querySelectorAll('.lmd-au-acts button')].map((b) => b.getBoundingClientRect().height)) }));
+  check('Automatizaciones en pantalla chica: sin desborde y con botones que se tocan', s.body && s.page && s.btn >= 32, s);
+  await sp.tap('[data-c=hook]'); await sp.waitForSelector('.lmd-au-wiz');
+  s = await sp.evaluate(() => { const c = document.querySelector('.lmd-au-wiz .lmd-ask-card').getBoundingClientRect(); return { fits: c.left >= 0 && c.right <= window.innerWidth && c.bottom <= window.innerHeight + 1 }; });
+  check('el alta guiada entra en la pantalla', s.fits, s);
+  await small.ctx.close(); await page.context().close();
+}
 
 const failed = done();
 if (R.errors.length) console.log('errores de página: ' + J(R.errors.slice(0, 5)));

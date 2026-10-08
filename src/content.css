@@ -1856,6 +1856,7 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
   .lmd-cd-row { flex-direction: column; align-items: stretch; gap: 0; }
   .lmd-cd select, .lmd-au select, .lmd-cd-attr input, .lmd-cd-new input { height: 42px; font-size: 16px; }
   .lmd-cd-see, .lmd-cd-rm { width: 40px; height: 40px; }
+  .lmd-chip-add { min-height: 34px; padding: 0 12px; }
   .lmd-au-item { flex-direction: column; }
   .lmd-au-acts { max-width: none; justify-content: flex-start; gap: 4px 16px; }
   .lmd-au-acts button { min-height: 36px; }

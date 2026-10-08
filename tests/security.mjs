@@ -1,7 +1,7 @@
 // Seguridad: un caso por cada control del servidor, de la página de pago y de la app.
 // Todo corre contra un servidor local con claves inventadas y contra la extensión cargada en un Chromium:
 // ningún pedido sale a sync.sharpmd.app ni a sharpmd.app (lo que apunte ahí se corta y se anota como falla).
-// SHARPMD_SERVER apunta a otro server.mjs, para comparar contra una versión anterior. SEC_ONLY=server|app|live|team|gallery corre una parte.
+// SHARPMD_SERVER apunta a otro server.mjs, para comparar contra una versión anterior. SEC_ONLY=server|app|live|team|gallery|auto corre una parte.
 import { spawn } from 'child_process'; import { createHmac, createHash } from 'crypto'; import { DatabaseSync } from 'node:sqlite';
 import fs from 'fs'; import os from 'os'; import path from 'path'; import http from 'http'; import net from 'net'; import { fileURLToPath, pathToFileURL } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -1274,6 +1274,185 @@ async function gallerySuite() {
   await P.stop();
 }
 if (!ONLY || ONLY === 'gallery') await gallerySuite();
+
+// ---------- Automatizaciones: API con token, webhooks salientes y direcciones de entrada ----------
+async function automationSuite() {
+  console.log('Seguridad de las automatizaciones');
+  const J = (v) => JSON.stringify(v);
+  // Un receptor que anota lo que llega, y un puerto que solo cuenta conexiones: nadie tendría que tocarlo.
+  const got = []; const sink = http.createServer((req, res) => { let raw = ''; req.on('data', (c) => { raw += c; }); req.on('end', () => { got.push({ url: req.url, headers: req.headers, raw, json: (() => { try { return JSON.parse(raw); } catch (e) { return null; } })() }); res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"ok":true}'); }); });
+  await new Promise((r) => sink.listen(0, '127.0.0.1', r)); const SINK = 'http://127.0.0.1:' + sink.address().port;
+  let touched = 0; const trap = net.createServer((sock) => { touched++; sock.destroy(); }); await new Promise((r) => trap.listen(0, '127.0.0.1', r)); const TRAP = trap.address().port;
+  const until = async (fn, ms) => { const t0 = Date.now(); for (;;) { const v = await fn(); if (v || Date.now() - t0 > (ms || 5000)) return v; await sleep(60); } };
+  const KEY = Buffer.alloc(32, 9).toString('base64');
+
+  // --- Sin WEBHOOK_ALLOW_PRIVATE: el servidor como corre en producción ---
+  const S = await boot({ ADMIN_KEY: ADMIN, DATA_KEY: KEY, AUTH_PER_IP: '200', WEBHOOK_TIMEOUT_MS: '1500', API_PER_MINUTE: '40' });
+  try {
+    const { call } = S;
+    const A = await signup(S, 'ana@ejemplo.test'); await makePro(S, A.email); const B = await signup(S, 'bea@ejemplo.test'); await makePro(S, B.email); const F = await signup(S, 'gratis@ejemplo.test');
+    const mk = (url, extra) => call('POST', '/automations/hooks', Object.assign({ url, events: ['note.created'] }, extra || {}), A.s);
+    const BAD = ['http://example.com/x', 'https://127.0.0.1/x', 'https://127.0.0.1:' + TRAP + '/x', 'https://localhost/x', 'https://LOCALHOST./x', 'https://10.0.0.5/', 'https://172.16.0.1/', 'https://172.31.255.255/', 'https://192.168.1.1/', 'https://169.254.169.254/latest/meta-data/',
+      'https://100.64.0.1/', 'https://0.0.0.0/', 'https://255.255.255.255/', 'https://224.0.0.1/', 'https://198.18.0.1/', 'https://[::1]/', 'https://[::]/', 'https://[::ffff:127.0.0.1]/', 'https://[::ffff:7f00:1]/', 'https://[::ffff:a9fe:a9fe]/', 'https://[::127.0.0.1]/', 'https://[fd00::1]/', 'https://[fc00::1]/',
+      'https://[fe80::1]/', 'https://[fec0::1]/', 'https://[ff02::1]/', 'https://[64:ff9b::7f00:1]/', 'https://[2002:7f00:1::]/', 'https://[2002:a9fe:a9fe::1]/', 'https://[2001:db8::1]/', 'https://[2001::1]/', 'https://2130706433/', 'https://0x7f.0.0.1/', 'https://0x7f000001/', 'https://017700000001/', 'https://127.1/',
+      'https://0177.0.0.1/', 'https://user:pass@example.com/', 'https://metadata.google.internal/', 'https://printer.local/', 'https://intranet/', 'https://db.internal/x', 'https://example.com:22/', 'https://example.com:25/', 'file:///etc/passwd', 'gopher://example.com/', 'ftp://example.com/', 'javascript:alert(1)',
+      'data:text/plain,hola', '//example.com/x', 'example.com', '', '   ', 'https://', 'https://' + 'a'.repeat(2100) + '.com/'];
+    const leaked = [];
+    for (const u of BAD) { const r = await mk(u); if (r.status !== 400 || !['bad_destination'].includes(r.json.error)) leaked.push(u + ' -> ' + r.status + ' ' + (r.json && r.json.error)); }
+    check('SSRF: no se aceptan destinos que no sean https públicos (' + BAD.length + ' variantes: redes privadas, loopback, enlace local, metadatos de nube, IPv6 equivalentes, IP escrita en decimal, octal o hexadecimal, usuario en la dirección, otros esquemas, puertos bajos)', leaked.length === 0, leaked);
+    const GOOD = ['https://example.com/hook', 'https://hooks.slack.com/services/T0/B0/xyz', 'https://example.com:8443/x', 'https://[2606:4700:4700::1111]/x', 'https://8.8.8.8/x'];
+    const refused = []; const made = [];
+    for (const u of GOOD) { const r = await mk(u); if (r.status !== 200) refused.push(u + ' -> ' + r.status); else made.push(r.json); }
+    check('y un destino público sí se acepta, también por IP o con otro puerto', refused.length === 0, refused);
+    const edit = await call('PUT', '/automations/hooks/' + made[0].hook.id, { url: 'https://169.254.169.254/' }, A.s);
+    check('SSRF: cambiarle la dirección a un webhook pasa por el mismo control', edit.status === 400 && edit.json.error === 'bad_destination', edit.json);
+    // Aunque una fila llegara a la base con un destino interno (o el nombre pasara a apuntar adentro), la entrega lo vuelve a comprobar.
+    check('con DATA_KEY, la dirección y el secreto de un webhook se guardan cifrados', (() => { const db = S.db(); const rows = db.prepare('SELECT url, secret, e FROM hooks').all(); db.close(); return rows.length === GOOD.length && rows.every((r) => r.e === 1 && r.url.startsWith('enc1:') && r.secret.startsWith('enc1:')) && !J(rows).includes('hooks.slack.com') && !J(rows).includes(made[0].secret); })());
+    const S2 = await boot({ ADMIN_KEY: ADMIN, AUTH_PER_IP: '200', WEBHOOK_TIMEOUT_MS: '1500' });
+    try {
+      const A2 = await signup(S2, 'ana@ejemplo.test'); await makePro(S2, A2.email);
+      const h = (await S2.call('POST', '/automations/hooks', { url: 'https://example.com/hook', events: ['note.created'] }, A2.s)).json.hook;
+      const inside = [];
+      for (const u of ['http://127.0.0.1:' + TRAP + '/x', 'https://127.0.0.1:' + TRAP + '/x', 'https://localhost:' + TRAP + '/x', 'https://[::1]:' + TRAP + '/x', 'https://[::ffff:127.0.0.1]:' + TRAP + '/x', 'https://169.254.169.254/latest/meta-data/']) {
+        const db = S2.db(); db.prepare('UPDATE hooks SET url = ? WHERE id = ?').run(u, h.id); db.close();
+        const r = await S2.call('POST', '/automations/hooks/' + h.id + '/test', {}, A2.s);
+        if (r.json.ok || r.json.error !== 'blocked_destination' || r.json.code !== 0) inside.push(u + ' -> ' + J(r.json));
+      }
+      check('SSRF: la entrega vuelve a comprobar el destino y no abre ninguna conexión hacia adentro', inside.length === 0 && touched === 0, [inside, touched]);
+      // Un nombre público que resuelve a 127.0.0.1. Sin red para resolverlo, tampoco hay conexión.
+      const db = S2.db(); db.prepare('UPDATE hooks SET url = ? WHERE id = ?').run('https://localtest.me:' + TRAP + '/x', h.id); db.close();
+      const dnsr = await S2.call('POST', '/automations/hooks/' + h.id + '/test', {}, A2.s);
+      check('SSRF: un nombre que resuelve a una dirección interna se corta después de resolverlo (' + dnsr.json.error + ')', !dnsr.json.ok && ['blocked_destination', 'dns_failed'].includes(dnsr.json.error) && touched === 0, [dnsr.json, touched]);
+      const log = (await S2.call('GET', '/automations/hooks/' + h.id + '/deliveries', undefined, A2.s)).json;
+      check('y queda anotado en el registro como destino bloqueado', log.length >= 6 && log.filter((j) => j.error === 'blocked_destination').length >= 6 && log.every((j) => j.status === 'failed'), log.slice(0, 2));
+    } finally { await S2.stop(); }
+
+    // Dueño, pertenencia y sesión
+    const hid = made[0].hook.id;
+    const cross = [await call('GET', '/automations/hooks/' + hid + '/deliveries', undefined, B.s), await call('PUT', '/automations/hooks/' + hid, { on: false }, B.s), await call('DELETE', '/automations/hooks/' + hid, undefined, B.s), await call('POST', '/automations/hooks/' + hid + '/test', {}, B.s), await call('POST', '/automations/hooks/' + hid + '/secret', {}, B.s)];
+    check('otra cuenta no ve, cambia, prueba ni borra un webhook ajeno, ni le saca el secreto', cross.every((r) => r.status === 404) && (await call('GET', '/automations', undefined, A.s)).json.hooks.length === GOOD.length, cross.map((r) => r.status));
+    const other = [await call('GET', '/automations?o=' + B.id, undefined, A.s), await call('POST', '/automations/hooks', { o: B.id, url: 'https://example.com/x', events: ['note.created'] }, A.s), await call('POST', '/automations/inboxes', { o: B.id, kind: 'append', path: 'x.md' }, A.s)];
+    check('con el número de otra cuenta en o: 403', other.every((r) => r.status === 403), other.map((r) => r.status));
+    const tokA = (await call('POST', '/tokens', { name: 'flujo' }, A.s)).json.token; const tokScoped = (await call('POST', '/tokens', { name: 'tienda', folder: 'tienda' }, A.s)).json.token; secrets.push(tokA, tokScoped);
+    const wrongKey = [await call('GET', '/automations', undefined, tokA), await call('POST', '/automations/hooks', { url: 'https://example.com/x', events: ['note.created'] }, tokA), await call('GET', '/automations'), await call('GET', '/api/v1/notes', undefined, A.s), await call('GET', '/api/v1/notes'), await call('GET', '/api/v1/notes', undefined, 'mdt_' + 'x'.repeat(40))];
+    check('un token de API no maneja automatizaciones, y la sesión de la app no entra a la API', wrongKey.every((r) => r.status === 401), wrongKey.map((r) => r.status));
+    const lim = [await call('POST', '/automations/hooks', { url: 'https://example.com/x', events: ['note.created'] }, F.s), await call('POST', '/automations/inboxes', { kind: 'append', path: 'x.md' }, F.s)];
+    check('sin plan pago no se crean webhooks ni direcciones de entrada', lim.every((r) => r.status === 402 && r.json.error === 'automation_needs_plan'), lim.map((r) => r.status));
+    for (let i = 0; i < 30; i++) await mk('https://example.com/n' + i);
+    const count = (await call('GET', '/automations', undefined, A.s)).json.hooks.length;
+    check('hay un tope de webhooks por cuenta', count === 20 && (await mk('https://example.com/uno-mas')).status === 429, count);
+
+    // Alcance del token y permiso de compartir, en la API
+    await call('PUT', '/api/v1/note', { path: 'tienda/tablero.md', text: '```kanban\n## A\n- [ ] Uno {id=aaaaaaaa}\n\n## B\n```\n' }, tokA); await call('PUT', '/api/v1/note', { path: 'privada/diario.md', text: '# Diario\n\nSecreto.\n```kanban\n## A\n- [ ] X {id=bbbbbbbb}\n```\n' }, tokA);
+    const out = [await call('GET', '/api/v1/note?path=' + enc('privada/diario.md'), undefined, tokScoped), await call('PUT', '/api/v1/note', { path: 'privada/nueva.md', text: 'x' }, tokScoped), await call('POST', '/api/v1/note/append', { path: 'privada/diario.md', text: 'x' }, tokScoped), await call('DELETE', '/api/v1/note?path=' + enc('privada/diario.md'), undefined, tokScoped),
+      await call('POST', '/api/v1/note/move', { from: 'tienda/tablero.md', to: 'privada/t.md' }, tokScoped), await call('POST', '/api/v1/note/move', { from: 'privada/diario.md', to: 'tienda/d.md' }, tokScoped), await call('GET', '/api/v1/boards?path=' + enc('privada/diario.md'), undefined, tokScoped),
+      await call('POST', '/api/v1/boards/cards', { path: 'privada/diario.md', title: 'x' }, tokScoped), await call('POST', '/api/v1/boards/cards/bbbbbbbb/move', { path: 'privada/diario.md', column: 'B' }, tokScoped), await call('GET', '/api/v1/history?path=' + enc('privada/diario.md'), undefined, tokScoped), await call('POST', '/api/v1/comments', { path: 'privada/diario.md', text: 'x' }, tokScoped)];
+    const seenOut = [(await call('GET', '/api/v1/notes', undefined, tokScoped)).json.data, (await call('GET', '/api/v1/folders', undefined, tokScoped)).json.data, (await call('GET', '/api/v1/search?q=' + enc('Secreto'), undefined, tokScoped)).json.data];
+    check('API: un token limitado a una carpeta no lee, escribe, mueve, borra ni toca tableros fuera de ella', out.every((r) => r.status === 403 && r.json.ok === false && r.json.error.code === 'out_of_scope') && !J(seenOut).includes('privada') && (await call('GET', '/api/v1/note?path=' + enc('privada/diario.md'), undefined, tokA)).json.data.text.includes('- [ ] X {id=bbbbbbbb}'), [out.map((r) => r.status), seenOut]);
+    const inScope = await call('POST', '/api/v1/boards/cards/aaaaaaaa/move', { path: 'tienda/tablero.md', column: 'B' }, tokScoped);
+    check('y dentro de su carpeta sí mueve una tarjeta', inScope.status === 200 && inScope.json.data.card.column === 'B', inScope.json);
+    const noShare = [await call('POST', '/api/v1/shares', { path: 'tienda/tablero.md', email: 'otra@ejemplo.test' }, tokA), await call('POST', '/api/v1/links', { path: 'tienda/tablero.md' }, tokA), await call('GET', '/api/v1/shares', undefined, tokA), await call('DELETE', '/api/v1/links?path=' + enc('tienda/tablero.md'), undefined, tokA)];
+    check('API: un token sin permiso de compartir no comparte ni crea enlaces públicos', noShare.every((r) => r.status === 403 && r.json.error.code === 'no_share_permission') && (await call('GET', '/shares', undefined, A.s)).json.links.length === 0, noShare.map((r) => r.status));
+    const paths = []; for (const p of ['../fuera.md', 'a/../../b.md', '/etc/passwd/../x', 'a//b.md', '.', 'a\u0000b.md', 'x'.repeat(400) + '.md']) { const r = await call('GET', '/api/v1/note?path=' + enc(p), undefined, tokA); if (![400, 404].includes(r.status)) paths.push(p + ' ' + r.status); const w = await call('PUT', '/api/v1/note', { path: p, text: 'x' }, tokA); if (w.status !== 400 && !(p === '/etc/passwd/../x')) paths.push('PUT ' + p + ' ' + w.status); }
+    check('API: las rutas con .. o caracteres de control se rechazan', paths.length === 0, paths);
+    const inj = await call('POST', '/api/v1/boards/cards', { path: 'tienda/tablero.md', column: 'A', title: 'Linda\n## Columna falsa\n- [x] Tarjeta falsa', attrs: { nota: 'x"} {id=zzzzzzzz\n## Otra' } }, tokA);
+    const after = (await call('GET', '/api/v1/boards?path=' + enc('tienda/tablero.md'), undefined, tokA)).json.data.boards[0];
+    check('API: el título o un atributo de una tarjeta no pueden meter columnas, tarjetas ni otro id', inj.status === 200 && after.columns.length === 2 && after.columns.reduce((n, c) => n + c.cards.length, 0) === 2 && after.columns[0].cards[0].id === inj.json.data.card.id && after.columns[0].cards[0].id !== 'zzzzzzzz', after);
+    const errShape = await call('PUT', '/api/v1/note', { path: 'tienda/tablero.md', text: 'x', rev: 0 }, tokA);
+    check('API: un conflicto de revisión no devuelve el texto de la nota', errShape.status === 409 && errShape.json.error.code === 'rev_conflict' && !J(errShape.json).includes('kanban'), errShape.json);
+    let last = null; for (let i = 0; i < 45; i++) last = await call('GET', '/api/v1/me', undefined, tokScoped);
+    check('API: tope de pedidos por token, con Retry-After', last.status === 429 && last.json.error.code === 'rate_limited' && +last.headers.get('retry-after') > 0 && (await call('GET', '/api/v1/me', undefined, (await call('POST', '/tokens', { name: 'otro' }, A.s)).json.token)).status === 200, last.json);
+
+    // Carpetas protegidas: afuera de todo esto
+    const vb = (n) => Buffer.alloc(n, 3).toString('base64');
+    const vault = (await call('POST', '/vaults', { folder: 'cofre', salt: vb(16), iters: 200000, wrapped: vb(60), check: vb(32) }, A.s)).json;
+    const vres = [await call('POST', '/automations/hooks', { url: 'https://example.com/x', events: ['note.created'], scope: { kind: 'folder', path: 'cofre' } }, B.s)];
+    const db0 = S.db(); db0.prepare('DELETE FROM hooks WHERE user = ? AND id != ?').run(A.id, hid); db0.close();
+    const vAll = [await call('POST', '/automations/hooks', { url: 'https://example.com/x', events: ['note.created'], scope: { kind: 'folder', path: 'cofre' } }, A.s), await call('POST', '/automations/hooks', { url: 'https://example.com/x', events: ['note.created'], scope: { kind: 'note', path: 'cofre/a.md' } }, A.s),
+      await call('POST', '/automations/inboxes', { kind: 'append', path: 'cofre/entra.md' }, A.s), await call('POST', '/automations/inboxes', { kind: 'create', path: 'cofre' }, A.s), await call('POST', '/automations/inboxes', { kind: 'card', path: 'cofre/sub/t.md' }, A.s)];
+    check('una carpeta protegida no se puede automatizar ni recibe entradas', vres[0].status === 200 && vAll.every((r) => r.status === 409 && r.json.error === 'vault'), vAll.map((r) => r.status + ' ' + (r.json && r.json.error)));
+    const vApi = [await call('GET', '/api/v1/note?path=' + enc('cofre/a.md'), undefined, tokA), await call('PUT', '/api/v1/note', { path: 'cofre/a.md', text: 'en claro' }, tokA), await call('GET', '/api/v1/boards?path=' + enc('cofre/a.md'), undefined, tokA), await call('POST', '/api/v1/boards/cards', { path: 'cofre/a.md', title: 'x' }, tokA)];
+    check('API: una carpeta protegida y bloqueada no se lee ni se escribe (423, como en el MCP)', vApi.every((r) => r.status === 423 && r.json.error.code === 'vault_locked'), vApi.map((r) => r.status));
+    // Una dirección de entrada creada antes de proteger la carpeta deja de escribir ahí.
+    const pre = (await call('POST', '/automations/inboxes', { kind: 'append', path: 'luego/entra.md' }, A.s)).json;
+    await call('POST', '/vaults', { folder: 'luego', salt: vb(16), iters: 200000, wrapped: vb(60), check: vb(32) }, A.s);
+    const late = await fetch(pre.url, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: 'texto en claro' });
+    check('y una entrada que ya existía no escribe en claro dentro de una carpeta que se protegió después', late.status === 409 && (await call('GET', '/notes', undefined, A.s)).json.every((n) => !n.path.startsWith('luego/')), late.status);
+    void vault;
+
+    // Direcciones de entrada
+    const inb = (await call('POST', '/automations/inboxes', { kind: 'append', path: 'buzon.md' }, A.s)).json; const secret = inb.url.split('/in/')[1];
+    await call('PUT', '/notes/' + enc('buzon.md'), { text: '# Buzón\n\nTexto privado de la nota.\n' }, A.s);
+    const okIn = await fetch(inb.url, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: 'hola' }); const okBody = await okIn.text();
+    check('entrada: el secreto se guarda como hash y la respuesta no trae nada de la nota', okIn.status === 200 && okBody === '{"ok":true}' && (() => { const db = S.db(); const rows = db.prepare('SELECT * FROM inboxes').all(); db.close(); return !J(rows).includes(secret) && rows.some((r) => r.hash === createHash('sha256').update(secret).digest('hex')); })() && !S.log().includes(secret), okBody);
+    const getIn = await fetch(inb.url + '?text=x'); const putIn = await fetch(inb.url, { method: 'PUT', body: 'x' }); const delIn = await fetch(inb.url, { method: 'DELETE' });
+    check('entrada: solo POST (GET si se habilitó); nunca se lee ni se borra por ahí', getIn.status === 405 && putIn.status === 405 && delIn.status === 405 && !(await getIn.text()).includes('privado'), [getIn.status, putIn.status, delIn.status]);
+    const big = await fetch(inb.url, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: 'x'.repeat(65 * 1024 + 10) }).then((r) => r.status, () => 413);
+    const bigJson = await fetch(inb.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: J({ text: 'y'.repeat(70 * 1024) }) }).then((r) => r.status, () => 413);
+    check('entrada: tope de tamaño', big === 413 && bigJson === 413 && !(await call('GET', '/notes/' + enc('buzon.md'), undefined, A.s)).json.text.includes('xxxx'), [big, bigJson]);
+    const weird = await fetch(inb.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: J({ text: 'vault1:AAAA', title: '../../etc/passwd' }) });
+    const tr = (await call('POST', '/automations/inboxes', { kind: 'create', path: 'entradas' }, A.s)).json;
+    await fetch(tr.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: J({ title: '../../fuera/../x', text: 'cuerpo' }) }); await fetch(tr.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: J({ title: 'CON\u0000trol/barra\\otra', text: 'cuerpo' }) });
+    const where = (await call('GET', '/notes', undefined, A.s)).json.map((n) => n.path);
+    check('entrada: el título no saca la nota de su carpeta', weird.status === 200 && where.filter((p) => p.startsWith('entradas/')).length === 2 && where.every((p) => !p.includes('..') && !p.startsWith('fuera') && !p.startsWith('etc')), where);
+    const ipBad = nextIp(); const tries = [];
+    for (let i = 0; i < 34; i++) tries.push((await fetch(S.base + '/in/mdi_' + String(i).padStart(3, '0') + 'x'.repeat(40), { method: 'POST', headers: { 'content-type': 'text/plain', ...from(ipBad) }, body: 'x' })).status);
+    const blocked = await fetch(inb.url, { method: 'POST', headers: { 'content-type': 'text/plain', ...from(ipBad) }, body: 'x' });
+    check('entrada: probar secretos al azar tiene tope por IP', tries.slice(0, 30).every((s) => s === 404) && tries.slice(30).every((s) => s === 429) && blocked.status === 429 && (await fetch(inb.url, { method: 'POST', headers: { 'content-type': 'text/plain', ...from(nextIp()) }, body: 'sigo' })).status === 200, tries.slice(26));
+    const flood = []; for (let i = 0; i < 64; i++) flood.push((await fetch(inb.url, { method: 'POST', headers: { 'content-type': 'text/plain', ...from(nextIp()) }, body: 'n' + i })).status);
+    check('entrada: tope de pedidos por dirección', flood.filter((s) => s === 200).length <= 60 && flood[flood.length - 1] === 429, flood.slice(-4));
+    await call('POST', '/admin/plan', { email: A.email, plan: 'free' }, undefined, { 'x-admin-key': ADMIN });
+    const down = await fetch(tr.url, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: 'x' }); const apiDown = await call('GET', '/api/v1/notes', undefined, tokA);
+    check('al bajar del plan pago, las entradas y la API dejan de responder', down.status === 402 && apiDown.status === 402, [down.status, apiDown.status]);
+    await makePro(S, A.email);
+    check('automatizaciones: sin errores del servidor y sin secretos en su salida', !/error 500|error no capturado|promesa sin atender/.test(S.log()) && S.alive() && !made.some((m) => S.log().includes(m.secret)) && !S.log().includes(tokA), (S.log().match(/error[^\n]*/g) || []).slice(0, 3));
+  } catch (e) { check('automatizaciones: sin excepciones en la prueba', false, String(e && e.stack || e)); console.log(S.log().slice(-1500)); }
+  await S.stop();
+
+  // --- Con WEBHOOK_ALLOW_PRIVATE=1, contra el receptor local: firma, repetición, cabeceras y lo que viaja ---
+  const T = await boot({ ADMIN_KEY: ADMIN, AUTH_PER_IP: '200', WEBHOOK_ALLOW_PRIVATE: '1', WEBHOOK_UPDATE_WAIT_MS: '50', MAIL_WEBHOOK: SINK + '/mail', WEBHOOK_RETRY_MS: '100' });
+  try {
+    const { call } = T;
+    const A = await signup(T, 'ana.duenia+equipo@ejemplo.test'); const M = await signup(T, 'marcos.perez@ejemplo.test');
+    await call('POST', '/admin/team', { email: A.email, seats: 3 }, undefined, { 'x-admin-key': ADMIN });
+    await call('POST', '/team/invite', { email: M.email }, A.s);
+    const inv = (await call('GET', '/account', undefined, M.s)).json.team.invites[0]; await call('POST', '/team/accept', { id: inv.id }, M.s);
+    const space = (await call('GET', '/account', undefined, A.s)).json.team.mine.space;
+    const member = [await call('POST', '/automations/hooks', { o: space, url: SINK + '/t', events: ['note.created'] }, M.s), await call('GET', '/automations?o=' + space, undefined, M.s), await call('POST', '/automations/inboxes', { o: space, kind: 'append', path: 'x.md' }, M.s)];
+    check('equipo: las automatizaciones del espacio las maneja solo quien administra', member.every((r) => r.status === 403 && r.json.error === 'team_admin_only'), member.map((r) => r.status));
+    const mine = (await call('POST', '/automations/hooks', { url: SINK + '/own', events: ['note.created', 'note.updated', 'card.moved'], include_text: true }, A.s)).json;
+    const team = (await call('POST', '/automations/hooks', { o: space, url: SINK + '/team', events: ['note.created', 'card.moved', 'note.deleted'], scope: { kind: 'folder', path: 'ventas' } }, A.s)).json;
+    got.length = 0;
+    await call('PUT', '/notes/' + enc('ventas/tablero.md') + '?o=' + space, { text: '```kanban\n## A\n- [ ] Uno {id=aaaaaaaa}\n\n## B\n```\n' }, M.s);
+    await call('PUT', '/notes/' + enc('ventas/tablero.md') + '?o=' + space, { text: '```kanban\n## A\n\n## B\n- [ ] Uno {id=aaaaaaaa}\n```\n' }, M.s);
+    await call('PUT', '/notes/' + enc('otra/afuera.md') + '?o=' + space, { text: '# Afuera\n' }, M.s);
+    await call('PUT', '/notes/' + enc('propia.md'), { text: '# Propia\n\nCuerpo propio.\n' }, A.s);
+    const mv = await until(() => got.find((g) => g.url === '/team' && g.json.type === 'card.moved')); await until(() => got.find((g) => g.url === '/own')); await sleep(300);
+    const teamGot = got.filter((g) => g.url === '/team'); const ownGot = got.filter((g) => g.url === '/own');
+    check('equipo: lo que hace un miembro en el espacio sale con su nombre visible, sin su correo', !!mv && mv.json.actor.type === 'member' && mv.json.actor.name === 'marcos.perez' && mv.json.note.path === '@team/ventas/tablero.md' && mv.json.note.space === 'team' && /~\d+%2Fventas/.test(mv.json.note.url), mv && mv.json);
+    const everything = got.filter((g) => g.url !== '/mail').map((g) => g.raw + J(g.headers)).join('\n');
+    check('ninguna carga ni cabecera lleva un correo, el número interno de la cuenta, la sesión ni un token', !/@ejemplo\.test|ejemplo\.test|ana\.duenia/.test(everything) && !everything.includes(A.s) && !everything.includes(M.s) && !/"account":\s*\d/.test(everything) && got.filter((g) => g.url !== '/mail').every((g) => /^acc_[0-9a-f]{20}$/.test(g.json.account) && !g.headers.authorization && !g.headers.cookie && !g.headers['x-forwarded-for']), everything.slice(0, 400));
+    check('cada cuenta tiene su id opaco, y el del espacio del equipo es otro', new Set(teamGot.map((g) => g.json.account)).size === 1 && new Set(ownGot.map((g) => g.json.account)).size === 1 && teamGot[0].json.account !== ownGot[0].json.account);
+    check('el ámbito se respeta: lo de afuera de la carpeta no sale, y lo propio no va al webhook del equipo', teamGot.every((g) => g.json.note.path.startsWith('@team/ventas/')) && ownGot.every((g) => g.json.note.path === 'propia.md') && ownGot.length >= 1, [teamGot.map((g) => g.json.note.path), ownGot.map((g) => g.json.note.path)]);
+    const g0 = ownGot[0];
+    const sigOf = (g, secret, t) => { const m = /^t=(\d+),v1=([0-9a-f]{64})$/.exec(g.headers['x-sharpmd-signature']); return !!m && createHmac('sha256', secret).update((t || m[1]) + '.' + g.raw).digest('hex') === m[2]; };
+    const tOf = (g) => +/^t=(\d+)/.exec(g.headers['x-sharpmd-signature'])[1];
+    check('firma: HMAC-SHA-256 del cuerpo con el secreto de ese webhook y la marca de tiempo', sigOf(g0, mine.secret) && !sigOf(g0, team.secret) && !sigOf(g0, 'whsec_x') && !sigOf(Object.assign({}, g0, { raw: g0.raw.replace('propia', 'Propia') }), mine.secret) && sigOf(teamGot[0], team.secret));
+    check('repetición: la marca de tiempo es de ahora y está dentro de lo firmado (cambiarla rompe la firma)', Math.abs(Date.now() / 1000 - tOf(g0)) < 30 && !sigOf(g0, mine.secret, String(tOf(g0) + 600)) && /^evt_/.test(g0.headers['x-sharpmd-delivery']));
+    check('el contenido viaja solo donde se pidió', ownGot.some((g) => g.json.data.text === '# Propia\n\nCuerpo propio.\n') && teamGot.every((g) => g.json.data.text === undefined));
+    // Un miembro que sale deja de poder tocar nada, y borrar la cuenta se lleva sus automatizaciones.
+    const inb = (await call('POST', '/automations/inboxes', { kind: 'append', path: 'buzon.md' }, A.s)).json;
+    await call('DELETE', '/automations/hooks/' + team.hook.id + '?o=' + space, undefined, A.s);
+    await call('POST', '/team/remove', { id: M.id }, A.s); await call('POST', '/admin/team', { email: A.email, seats: 0 }, undefined, { 'x-admin-key': ADMIN });
+    const del = await call('DELETE', '/account', { email: A.email }, A.s, from(nextIp()));
+    const gone = await fetch(inb.url, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: 'x' });
+    const left = (() => { const db = T.db(); const n = { hooks: db.prepare('SELECT COUNT(*) AS n FROM hooks WHERE user = ?').get(A.id).n, inboxes: db.prepare('SELECT COUNT(*) AS n FROM inboxes WHERE user = ?').get(A.id).n, jobs: db.prepare('SELECT COUNT(*) AS n FROM hook_jobs WHERE hook = ?').get(mine.hook.id).n }; db.close(); return n; })();
+    check('eliminar la cuenta se lleva sus webhooks, su cola y sus direcciones de entrada', del.status === 200 && gone.status === 404 && left.hooks === 0 && left.inboxes === 0 && left.jobs === 0, [del.status, del.json, gone.status, left]);
+    check('automatizaciones (equipo): sin errores del servidor', !/error 500|error no capturado|promesa sin atender/.test(T.log()) && T.alive(), (T.log().match(/error[^\n]*/g) || []).slice(0, 3));
+  } catch (e) { check('automatizaciones (equipo): sin excepciones en la prueba', false, String(e && e.stack || e)); console.log(T.log().slice(-1500)); }
+  await T.stop(); sink.close(); trap.close();
+}
+if (!ONLY || ONLY === 'auto') await automationSuite();
 
 const failed = results.filter((r) => !r.ok);
 console.log('\n' + (results.length - failed.length) + ' de ' + results.length + ' pruebas pasaron');
