@@ -1939,15 +1939,15 @@ function teamLogSweep() {
 const TEAM_ACTIONS = ['create', 'edit', 'move', 'delete', 'restore', 'purge', 'empty_trash', 'share', 'unshare', 'link', 'unlink', 'invite', 'uninvite', 'join', 'leave', 'remove', 'role', 'policy', 'team_name', 'protect', 'password', 'rotate', 'rotate_done', 'unprotect', 'destroy', 'ai', 'ai_unlock', 'token_create', 'token_revoke'];
 // Lo que se pide del registro: who (número de cuenta), token (nombre), action, from y to (milisegundos), before (id, para seguir).
 function teamLogRows(team, url, max) {
-  const g = (k) => url.searchParams.get(k) || ''; const where = ['l.team = ?']; const args = [team.id];
-  if (/^\d+$/.test(g('who'))) { where.push('l.uid = ?'); args.push(+g('who')); }
-  if (g('token')) { where.push('l.token = ?'); args.push(g('token').slice(0, 60)); }
-  if (g('action')) { if (!TEAM_ACTIONS.includes(g('action'))) throw new Fail(400, 'bad_filter'); where.push('l.action = ?'); args.push(g('action')); }
-  for (const [k, op] of [['from', '>='], ['to', '<=']]) if (g(k)) { if (!/^\d{1,15}$/.test(g(k))) throw new Fail(400, 'bad_filter'); where.push('l.at ' + op + ' ?'); args.push(+g(k)); }
-  if (/^\d+$/.test(g('before'))) { where.push('l.id < ?'); args.push(+g('before')); }
-  where.push('l.at >= ?'); args.push(now() - TEAM_LOG_DAYS * DAY);
+  const g = (k) => url.searchParams.get(k) || '';
+  // Cada filtro es un número o un texto ya comprobado, o null si no se pidió. La consulta es fija: no se arma con lo que llega.
+  const num = (k, max15) => { const v = g(k); if (!v) return null; if (!(max15 ? /^\d{1,15}$/ : /^\d{1,12}$/).test(v)) throw new Fail(400, 'bad_filter'); return +v; };
+  const who = num('who'); const from = num('from', true); const to = num('to', true); const before = num('before');
+  const token = g('token') ? g('token').slice(0, 60) : null; const action = g('action') || null;
+  if (action && !TEAM_ACTIONS.includes(action)) throw new Fail(400, 'bad_filter');
   // El correo sale de la cuenta, al leer: en el registro no hay ninguno.
-  return q('SELECT l.id, l.at, l.uid, l.via, l.token, l.action, l.path, l.detail, u.email AS who, a.email AS about FROM team_log l LEFT JOIN users u ON u.id = l.uid LEFT JOIN users a ON a.id = l.about WHERE ' + where.join(' AND ') + ' ORDER BY l.id DESC LIMIT ?').all(...args, max)
+  return q('SELECT l.id, l.at, l.uid, l.via, l.token, l.action, l.path, l.detail, u.email AS who, a.email AS about FROM team_log l LEFT JOIN users u ON u.id = l.uid LEFT JOIN users a ON a.id = l.about WHERE l.team = ? AND l.at >= ? AND (? IS NULL OR l.uid = ?) AND (? IS NULL OR l.token = ?) AND (? IS NULL OR l.action = ?) AND (? IS NULL OR l.at >= ?) AND (? IS NULL OR l.at <= ?) AND (? IS NULL OR l.id < ?) ORDER BY l.id DESC LIMIT ?')
+    .all(team.id, now() - TEAM_LOG_DAYS * DAY, who, who, token, token, action, action, from, from, to, to, before, before, max)
     .map((r) => ({ id: r.id, at: r.at, uid: r.uid, who: r.who || '', via: r.via, token: r.token, action: r.action, path: r.path, about: r.about || '', detail: r.detail }));
 }
 // Una celda de CSV. Lo que empieza como una fórmula se guarda con un apóstrofo delante: una planilla no lo ejecuta.
