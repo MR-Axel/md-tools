@@ -2529,19 +2529,22 @@ html.lmd-ai-open .lmd-ai-card { left: calc(50% - 190px); width: min(860px, calc(
 @media print { .lmd-ai-card, .lmd-ai-panel, .lmd-ai-menu { display: none !important; } .lmd-ai-at { box-shadow: none; } html.lmd-ai-open .lmd-main { margin-right: 0; } }
 
 /* ---------- Imágenes adjuntas: almacenamiento en Ajustes y lista de adjuntos (images.js) ---------- */
-.lmd-st-sec.lmd-st-off { display: none; }
-.lmd-st + .lmd-st { margin-top: 18px; }
-.lmd-st-title { margin: 0 0 2px; font-weight: 600; color: var(--fg); }
-.lmd-st-bar { display: block; width: 100%; height: 8px; margin-top: 8px; border: 0; border-radius: 999px; overflow: hidden; background: var(--line); accent-color: var(--accent-fill); appearance: none; -webkit-appearance: none; }
+.lmd-st-host { position: relative; }
+.lmd-st-slot { position: absolute; top: 10px; right: 0; display: flex; align-items: center; gap: 10px; max-width: calc(100% - 120px); height: 24px; font-size: 13px; color: var(--fg-muted); white-space: nowrap; }
+.lmd-st-slot[hidden] { display: none; }
+.lmd-st-name { flex: none; color: var(--fg); font-weight: 600; }
+.lmd-st-num { flex: none; }
+.lmd-st-see { flex: none; padding: 0; border: 0; background: none; font: inherit; color: var(--accent, inherit); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.lmd-st-see:hover { color: var(--fg); }
+.lmd-st-bar { display: block; flex: 0 1 90px; min-width: 40px; height: 8px; border: 0; border-radius: 999px; overflow: hidden; background: var(--line); accent-color: var(--accent-fill); appearance: none; -webkit-appearance: none; }
+.lmd-st-card > .lmd-st-bar { flex: none; width: 100%; margin: 2px 0 10px; }
+.lmd-st-spaces { align-self: flex-start; margin-bottom: 10px; }
 .lmd-st-bar::-webkit-progress-bar { background: var(--line); border-radius: 999px; }
 .lmd-st-bar::-webkit-progress-value { background: var(--accent-fill); border-radius: 999px; }
 .lmd-st-bar::-moz-progress-bar { background: var(--accent-fill); border-radius: 999px; }
 .lmd-st-over .lmd-st-bar::-webkit-progress-value { background: var(--danger, #dc2626); }
 .lmd-st-over .lmd-st-bar::-moz-progress-bar { background: var(--danger, #dc2626); }
-.lmd-st .lmd-st-warn { margin: 8px 0 0; color: var(--danger, #dc2626); }
-.lmd-st .lmd-acct-actions { margin-top: 10px; }
-.lmd-st-sec > .lmd-acct > .lmd-hint { margin-top: 14px; }
-html.lmd-store-app .lmd-st-plan { display: none; }
+.lmd-ask-card p.lmd-st-warn { margin: 0 0 10px; color: var(--danger, #dc2626); }
 .lmd-ask-card.lmd-st-card { width: min(560px, 100%); max-height: min(640px, calc(100dvh - 40px)); display: flex; flex-direction: column; }
 .lmd-st-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; color: var(--fg-muted); font-size: 13.5px; }
 .lmd-st-list { flex: 1 1 auto; min-height: 80px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; }
@@ -2561,6 +2564,8 @@ html.lmd-store-app .lmd-st-plan { display: none; }
 .markdown-body img.lmd-img-locked { outline: 1px dashed var(--fg-muted); outline-offset: -1px; }
 .lmd-img-pick { flex-wrap: wrap; }
 @media (max-width: 640px) {
+  .lmd-st-slot { position: static; max-width: none; height: auto; flex-wrap: wrap; margin-bottom: 8px; white-space: normal; }
+  .lmd-st-see { min-height: 32px; }
   .lmd-ask-card.lmd-st-card { max-height: calc(100dvh - 24px); padding: 18px 16px; }
   .lmd-st-del { min-width: 44px; min-height: 44px; }
   .lmd-st-head .lmd-seg button { min-height: 38px; }

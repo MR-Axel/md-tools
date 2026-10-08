@@ -195,7 +195,7 @@
     let doc;
     try { doc = new DOMParser().parseFromString(text, 'image/svg+xml'); } catch (e) { return null; }
     const root = doc.documentElement;
-    if (!root || root.nodeName.toLowerCase() !== 'svg' || doc.querySelector('parsererror')) return null;
+    if (!root || root.localName !== 'svg' || root.namespaceURI !== 'http://www.w3.org/2000/svg' || doc.querySelector('parsererror')) return null;
     const BAD = /^(script|foreignobject|iframe|object|embed|audio|video|handler|listener|set|animate|animatetransform|animatemotion)$/i;
     const all = [root].concat(Array.from(root.querySelectorAll('*')));
     for (const node of all) {
@@ -212,7 +212,7 @@
   }
 
   // ---------- Dónde va ----------
-  const kindHere = () => { const r = core.APP ? core.rootOf(core.HERE) : null; return r ? r.kind : ''; };
+  const kindHere = () => { try { const r = core.APP && core.HERE ? core.rootOf(core.HERE) : null; return r ? r.kind : ''; } catch (e) { return ''; } };
   const inCloud = () => kindHere() === 'cloud' && LMD.cloud.signedIn() && !LMD.cloud.guest();
   const bytesOf = async (blob) => new Uint8Array(await blob.arrayBuffer());
   const dataUrl = (blob) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(fail('bad_image')); r.readAsDataURL(blob); });
@@ -420,72 +420,59 @@
   }
 
   // ---------- Ajustes > Nube: almacenamiento ----------
-  const meter = (data) => { const p = el('progress', { class: 'lmd-st-bar', max: '100' }); p.value = data.max ? Math.min(100, Math.round((data.used / data.max) * 100)) : 0; return p; };
-  function block(pane, data, space, title) {
-    const over = data.used > data.max;
-    const box = el('div', { class: 'lmd-st' + (over ? ' lmd-st-over' : '') });
-    if (title) { const h = el('p', { class: 'lmd-st-title' }); h.textContent = title; box.appendChild(h); }
-    const line = el('div', { class: 'lmd-acct-row' });
-    const a = el('span'); a.textContent = T(data.count === 1 ? '1 imagen' : '{n} imágenes', { n: data.count });
-    const b = el('b'); b.textContent = T('{a} de {b}', { a: sizeText(data.used), b: sizeText(data.max) });
-    line.appendChild(a); line.appendChild(b); box.appendChild(line); box.appendChild(meter(data));
-    if (over) { const w = el('p', { class: 'lmd-hint lmd-st-warn' }); w.textContent = T('Pasaste el tope. Nada se borra, pero no se pueden subir imágenes hasta liberar lugar.'); box.appendChild(w); }
-    const acts = el('div', { class: 'lmd-acct-actions' });
-    const see = el('button', { type: 'button', class: 'lmd-btn', 'data-st': 'list' }); see.textContent = T('Ver adjuntos');
-    see.addEventListener('click', () => manage(space));
-    acts.appendChild(see);
-    if (!space && canLift()) { const mv = el('button', { type: 'button', class: 'lmd-btn', 'data-st': 'lift' }); mv.textContent = T('Pasar las imágenes incrustadas a adjuntos'); mv.addEventListener('click', () => liftHere().then(() => pane.isConnected && paintPane(pane))); acts.appendChild(mv); }
-    if (!space && data.plan === 'free' && !LMD.storeApp) { const up = el('button', { type: 'button', class: 'lmd-btn lmd-st-plan', 'data-st': 'plan' }); up.textContent = T('Ver planes'); up.addEventListener('click', () => core.openPanel('plan')); acts.appendChild(up); }
-    box.appendChild(acts);
-    pane.appendChild(box);
-  }
+  // Un renglón en la cabecera de Nube: el nombre, la barra, cuánto se usa y el acceso a la lista. El detalle (el
+  // aviso de tope pasado, el espacio del equipo, pasar las incrustadas) está en la lista.
+  const meter = (data) => { const p = el('progress', { class: 'lmd-st-bar', max: '100' }); p.value = data.max ? Math.min(100, Math.round((data.used / data.max) * 100)) : 0; p.setAttribute('aria-label', T('Almacenamiento')); return p; };
   async function paintPane(pane) {
-    const sec = pane.closest('section');
-    const on = LMD.cloud.enabled() && LMD.cloud.signedIn() && !LMD.cloud.guest();
-    if (sec) sec.classList.toggle('lmd-st-off', !on);
-    if (!on) { pane.textContent = ''; return; }
+    // Sobre un archivo abierto directo la cuenta se maneja desde la app: acá no se le pide nada al servidor.
+    const on = !!core && !!core.APP && LMD.cloud.enabled() && LMD.cloud.signedIn() && !LMD.cloud.guest();
+    if (!on) { pane.textContent = ''; pane.hidden = true; return; }
     try {
-      const mine = await limitsOf('', true);
-      const team = LMD.cloud.teamNow(); let theirs = null;
-      // El uso del espacio del equipo lo ve quien lo administra.
-      if (team && team.role === 'admin') { try { theirs = await limitsOf(String(team.space), true); } catch (e) { /* sin ese dato */ } }
+      const data = await limitsOf('', true);
       if (!pane.isConnected) return;
-      pane.textContent = '';
-      block(pane, mine, '', theirs ? T('Tus notas') : '');
-      if (theirs) block(pane, theirs, String(team.space), team.name || T('Equipo'));
-      const hint = el('p', { class: 'lmd-hint' });
-      hint.textContent = T('Las imágenes de tus notas de la nube. Cada una pesa hasta {a}. Lo que ninguna nota usa se borra a los {n} días.', { a: sizeText(mine.max_file), n: mine.grace_days }) + ' ' + T('Quien tiene la dirección de una imagen puede verla, salvo en carpetas protegidas.');
-      pane.appendChild(hint);
+      pane.textContent = ''; pane.hidden = false; pane.classList.toggle('lmd-st-over', data.used > data.max);
+      const name = el('span', { class: 'lmd-st-name' }); name.textContent = T('Almacenamiento');
+      const num = el('span', { class: 'lmd-st-num' }); num.textContent = T('{a} de {b}', { a: sizeText(data.used), b: sizeText(data.max) });
+      const see = el('button', { type: 'button', class: 'lmd-st-see', 'data-st': 'list' }); see.textContent = T('Ver adjuntos');
+      see.addEventListener('click', () => manage(''));
+      pane.appendChild(name); pane.appendChild(meter(data)); pane.appendChild(num); pane.appendChild(see);
     } catch (e) {
-      if (!pane.isConnected) return;
-      // Un servidor propio sin actualizar no tiene adjuntos: el renglón no aparece.
-      if (e.status === 404 && sec) { sec.classList.add('lmd-st-off'); return; }
-      pane.textContent = ''; const p = el('p', { class: 'lmd-hint' }); p.textContent = T(e.code === 'offline' ? 'No hay conexión con el servidor.' : 'No se pudo leer el almacenamiento.'); pane.appendChild(p);
+      // Sin conexión, o con un servidor propio que todavía no tiene adjuntos: el renglón no aparece.
+      if (pane.isConnected) { pane.textContent = ''; pane.hidden = true; }
     }
   }
 
   // La lista de adjuntos de un espacio: ordenable por tamaño o por fecha, con borrar.
-  async function manage(space) {
+  async function manage(first) {
+    let space = first || ''; const team = LMD.cloud.teamNow(); const both = !!team && team.role === 'admin';
     const box = el('div', { class: 'lmd-ask lmd-dlg lmd-st-dlg' });
     box.innerHTML = '<div class="lmd-ask-card lmd-st-card" role="dialog" aria-modal="true"><h3></h3>' +
+      '<div class="lmd-seg lmd-st-spaces" role="radiogroup" hidden><button type="button" role="radio" data-space=""></button><button type="button" role="radio" data-space="team"></button></div>' +
+      '<progress class="lmd-st-bar" max="100"></progress><p class="lmd-hint lmd-st-warn" hidden></p>' +
       '<div class="lmd-st-head"><span class="lmd-st-sum"></span><div class="lmd-seg" role="radiogroup"><button type="button" role="radio" data-sort="size" class="lmd-on" aria-checked="true"></button><button type="button" role="radio" data-sort="date" aria-checked="false"></button></div></div>' +
       '<div class="lmd-st-list" role="list"></div><p class="lmd-hint lmd-st-note"></p>' +
-      '<div class="lmd-ask-actions"><button type="button" class="lmd-btn lmd-btn-fill" data-st="close"></button></div></div>';
+      '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-st="lift" hidden></button><button type="button" class="lmd-btn lmd-btn-fill" data-st="close"></button></div></div>';
     const card = box.querySelector('.lmd-st-card'); card.setAttribute('aria-label', T('Adjuntos'));
     box.querySelector('h3').textContent = T('Adjuntos');
     box.querySelector('[data-sort=size]').textContent = T('Tamaño'); box.querySelector('[data-sort=date]').textContent = T('Fecha');
     box.querySelector('[data-st=close]').textContent = T('Cerrar');
+    const spaces = box.querySelector('.lmd-st-spaces'); const bar = box.querySelector('.lmd-st-card > .lmd-st-bar'); const warn = box.querySelector('.lmd-st-warn'); const liftBtn = box.querySelector('[data-st=lift]');
+    bar.setAttribute('aria-label', T('Almacenamiento')); warn.textContent = T('Pasaste el tope. Nada se borra, pero no se pueden subir imágenes hasta liberar lugar.'); liftBtn.textContent = T('Pasar las imágenes incrustadas a adjuntos');
+    if (both) { spaces.hidden = false; spaces.querySelector('[data-space=""]').textContent = T('Mis notas'); spaces.querySelector('[data-space=team]').textContent = team.name || T('Equipo'); }
+    const markSpace = () => spaces.querySelectorAll('[data-space]').forEach((b) => { const on = (b.dataset.space === 'team') === !!space; b.classList.toggle('lmd-on', on); b.setAttribute('aria-checked', String(on)); });
+    markSpace();
     const list = box.querySelector('.lmd-st-list'); const sum = box.querySelector('.lmd-st-sum'); const note = box.querySelector('.lmd-st-note');
     const back = document.activeElement;
-    const close = () => { box.remove(); document.removeEventListener('keydown', onKey, true); if (back && back.isConnected && back.focus) { try { back.focus({ preventScroll: true }); } catch (e) { /* ya no recibe foco */ } } const pane = document.querySelector('[data-files-pane]'); if (pane && pane.offsetParent) paintPane(pane); };
+    const close = () => { box.remove(); document.removeEventListener('keydown', onKey, true); if (back && back.isConnected && back.focus) { try { back.focus({ preventScroll: true }); } catch (e) { /* ya no recibe foco */ } } const pane = document.querySelector('[data-files-pane]'); if (pane && pane.isConnected && !pane.closest('[hidden]')) paintPane(pane); };
     const onKey = (e) => { if (e.key === 'Escape' && document.body.contains(box) && !document.querySelector('.lmd-dlg:not(.lmd-st-dlg)')) { e.stopPropagation(); close(); } };
     document.addEventListener('keydown', onKey, true);
     document.body.appendChild(box);
     let data = null; let sort = 'size';
     const draw = () => {
       list.textContent = '';
+      bar.value = data.max ? Math.min(100, Math.round((data.used / data.max) * 100)) : 0; card.classList.toggle('lmd-st-over', data.used > data.max); warn.hidden = !(data.used > data.max); liftBtn.hidden = !!space || !canLift();
       sum.textContent = T(data.count === 1 ? '1 imagen' : '{n} imágenes', { n: data.count }) + ' · ' + T('{a} de {b}', { a: sizeText(data.used), b: sizeText(data.max) });
-      note.textContent = data.files.some((f) => f.encrypted) ? T('Las de carpetas protegidas están cifradas: acá no se sabe si una nota las usa.') : T('Borrar una imagen que una nota usa la deja sin imagen.');
+      note.textContent = T('Cada imagen pesa hasta {a}. Lo que ninguna nota usa se borra a los {n} días.', { a: sizeText(data.max_file), n: data.grace_days }) + ' ' + T('Quien tiene la dirección de una imagen puede verla, salvo en carpetas protegidas.') + (data.files.some((f) => f.encrypted) ? ' ' + T('Las de carpetas protegidas están cifradas: acá no se sabe si una nota las usa.') : '');
       const rows = data.files.slice().sort((a, b) => (sort === 'size' ? b.size - a.size : b.created - a.created));
       if (!rows.length) { const p = el('p', { class: 'lmd-st-empty' }); p.textContent = T('Todavía no hay imágenes.'); list.appendChild(p); return; }
       for (const f of rows) {
@@ -508,6 +495,9 @@
     };
     box.addEventListener('click', async (e) => {
       if (e.target === box || e.target.closest('[data-st=close]')) return close();
+      const sp = e.target.closest('[data-space]');
+      if (sp && both) { space = sp.dataset.space === 'team' ? String(team.space) : ''; markSpace(); await load(); return; }
+      if (e.target.closest('[data-st=lift]')) { close(); liftHere(); return; }
       const s = e.target.closest('[data-sort]');
       if (s) { sort = s.dataset.sort; box.querySelectorAll('[data-sort]').forEach((b) => { b.classList.toggle('lmd-on', b === s); b.setAttribute('aria-checked', String(b === s)); }); if (data) draw(); return; }
       const d = e.target.closest('[data-del]'); if (!d || !data) return;

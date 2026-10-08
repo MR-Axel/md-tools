@@ -278,9 +278,9 @@ try {
   // ---------- Almacenamiento en Ajustes ----------
   console.log('Almacenamiento');
   const pane = await A.page.evaluate(async () => {
-    const host = document.createElement('section'); host.className = 'lmd-st-sec lmd-st-off'; host.innerHTML = '<div class="lmd-acct" data-files-pane></div>'; document.body.appendChild(host);
-    await LMD.images.pane(host.firstChild);
-    const out = { off: host.classList.contains('lmd-st-off'), text: host.innerText, bar: host.querySelector('progress') ? +host.querySelector('progress').value : -1, list: !!host.querySelector('[data-st=list]'), plan: !!host.querySelector('[data-st=plan]') };
+    const host = document.createElement('div'); host.className = 'lmd-st-slot'; host.setAttribute('data-files-pane', ''); host.hidden = true; document.body.appendChild(host);
+    await LMD.images.pane(host);
+    const out = { off: host.hidden, text: host.innerText, bar: host.querySelector('progress') ? +host.querySelector('progress').value : -1, list: !!host.querySelector('[data-st=list]') };
     host.querySelector('[data-st=list]').click();
     await new Promise((r) => setTimeout(r, 900));
     const card = document.querySelector('.lmd-st-card');
@@ -288,12 +288,14 @@ try {
     out.first = card ? card.querySelector('.lmd-st-row b').textContent : '';
     card.querySelector('[data-sort=date]').click(); out.byDate = card.querySelector('.lmd-st-row b').textContent; card.querySelector('[data-sort=size]').click();
     out.states = [...card.querySelectorAll('.lmd-st-info span')].map((s) => s.textContent.split(' · ').pop());
+    out.note = card.querySelector('.lmd-st-note').textContent;
     host.remove();
     return out;
   });
   const allNow = await filesOf(ana.s); const biggest = Math.max(...allNow.files.map((f) => f.size));
-  check('Ajustes > Cloud muestra "Storage" con el uso, una barra y el acceso a la lista', !pane.off && /images/.test(pane.text) && / of 2 GB/.test(pane.text) && pane.bar >= 0 && pane.list && !pane.plan, pane);
+  check('Ajustes > Cloud muestra "Storage" con el uso, una barra y el acceso a la lista', !pane.off && /^Storage/.test(pane.text.trim()) && / of 2 GB/.test(pane.text) && /See attachments/.test(pane.text) && pane.bar >= 0 && pane.list, pane);
   check('la lista trae todos los adjuntos, ordenados por tamaño, y dice cuáles están en uso o cifrados', pane.rows === allNow.count && pane.first.startsWith(await A.page.evaluate((n) => LMD.images.sizeText(n), biggest)) && pane.states.includes('In use') && pane.states.includes('Encrypted'), pane);
+  check('y avisa, ahí mismo, que quien tiene la dirección de una imagen puede verla salvo en carpetas protegidas', /Anyone with the address of an image can see it, except in protected folders\./.test(pane.note) && /deleted after 30 days/.test(pane.note) && !/[!—–]/.test(pane.note), pane.note);
   // Borrar uno desde la lista.
   const victim = allNow.files.find((f) => !f.encrypted && !f.in_use) || allNow.files.find((f) => !f.encrypted);
   await A.page.evaluate((id) => { document.querySelector('.lmd-st-card [data-del="' + id + '"]').click(); }, victim.id);
@@ -393,15 +395,16 @@ console.log('Avisos en la app');
     // Dentro de la app de Android no hay enlaces de compra.
     const store = await L.page.evaluate(async () => {
       LMD.storeApp = true; document.documentElement.classList.add('lmd-store-app');
-      const host = document.createElement('section'); host.className = 'lmd-st-sec'; host.innerHTML = '<div class="lmd-acct" data-files-pane></div>'; document.body.appendChild(host);
-      await LMD.images.pane(host.firstChild);
-      const out = { plan: !!host.querySelector('[data-st=plan]'), text: host.innerText, why: LMD.images.why({ code: 'storage_full', plan: 'free' }) + ' ' + LMD.images.why({ code: 'file_too_large', plan: 'free', size: 5e6, max: 2e6 }) };
+      const host = document.createElement('div'); host.setAttribute('data-files-pane', ''); document.body.appendChild(host);
+      await LMD.images.pane(host);
+      const out = { plan: /plan|upgrade|buy|price/i.test(host.innerText), text: host.innerText, over: host.classList.contains('lmd-st-over'), why: LMD.images.why({ code: 'storage_full', plan: 'free' }) + ' ' + LMD.images.why({ code: 'file_too_large', plan: 'free', size: 5e6, max: 2e6 }) };
+      host.querySelector('[data-st=list]').click(); await new Promise((r) => setTimeout(r, 900));
+      const card = document.querySelector('.lmd-st-card'); out.card = card.innerText; card.querySelector('[data-st=close]').click();
       host.remove(); LMD.storeApp = false; document.documentElement.classList.remove('lmd-store-app');
-      const host2 = document.createElement('section'); host2.className = 'lmd-st-sec'; host2.innerHTML = '<div class="lmd-acct" data-files-pane></div>'; document.body.appendChild(host2);
-      await LMD.images.pane(host2.firstChild); out.web = !!host2.querySelector('[data-st=plan]'); out.over = /over the limit/.test(host2.innerText); host2.remove();
+      out.webWhy = LMD.images.why({ code: 'storage_full', plan: 'free' });
       return out;
     });
-    check('en la app de Android no se ofrece el plan: ni el botón ni la frase', !store.plan && !/paid plan/i.test(store.why) && !/plan/i.test(store.text.replace(/over the limit/i, '')) && store.web === true, store);
+    check('en la app de Android no se ofrece el plan: ni un enlace ni la frase, que en la web sí está', !store.plan && !/paid plan|upgrade|buy/i.test(store.why + store.card) && /paid plan/i.test(store.webWhy), store);
     check('la app de avisos no dio errores de página', R2.errors.length === 0, R2.errors.slice(0, 4));
 
     // ---------- Teléfono ----------

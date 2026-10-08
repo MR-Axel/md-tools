@@ -2456,9 +2456,8 @@
           '<section data-tab="plug"><h3>' + T('Plugins de Markdown') + '</h3><div class="lmd-grid">' + plugins + '</div></section>' +
           '<section data-tab="tools"><h3>' + T('Herramientas') + '</h3><div class="lmd-acct lmd-tl" data-tools-pane></div></section>' +
           // Nube, IA y Plan los dibuja sync.js al entrar a cada pestaña, con la cuenta recién consultada.
-          '<section data-tab="cloud"><h3>' + T('Nube') + '</h3><div class="lmd-acct" data-acct="cloud"></div></section>' +
-          // El almacenamiento de imágenes adjuntas lo dibuja images.js.
-          '<section data-tab="cloud" class="lmd-st-sec lmd-st-off"><h3>' + T('Almacenamiento') + '</h3><div class="lmd-acct" data-files-pane></div></section>' +
+          // El renglón de almacenamiento de imágenes, arriba a la derecha, lo dibuja images.js.
+          '<section data-tab="cloud" class="lmd-st-host"><div class="lmd-st-slot" data-files-pane hidden></div><h3>' + T('Nube') + '</h3><div class="lmd-acct" data-acct="cloud"></div></section>' +
           '<section data-tab="ai"><h3>' + T('Conectar una IA') + '</h3><div class="lmd-acct" data-acct="ai"></div></section>' +
           '<section data-tab="auto"><h3>' + T('Automatizaciones') + '</h3><div class="lmd-acct lmd-au-pane" data-auto-pane></div></section>' +
           '<section data-tab="plan"><h3>' + T('Plan') + '</h3><div class="lmd-acct" data-acct="plan"></div></section>' +
