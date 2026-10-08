@@ -3250,22 +3250,32 @@
   function askForAccess() {
     return new Promise((resolve) => {
       const name = DOC_NAME;
+      // La carpeta del archivo, como la escribe el sistema: Chrome no deja abrir su ventana ya parada ahí,
+      // así que se muestra y se copia para pegarla en la barra de direcciones de esa ventana.
+      let folder = '';
+      try { if (location.protocol === 'file:') { let d = decodeURIComponent(location.pathname).replace(/\/[^/]*$/, ''); if (/^\/[A-Za-z]:/.test(d)) d = d.slice(1).replace(/\//g, '\\'); folder = d; } } catch (e) { /* sin ruta */ }
+      const copyFolder = () => { if (!folder) return; try { navigator.clipboard.writeText(folder).catch(() => {}); } catch (e) { /* sin portapapeles */ } };
       const box = el('div', { class: 'lmd-ask' });
       box.innerHTML =
         '<div class="lmd-ask-card" role="dialog" aria-label="' + T('Permiso para guardar') + '">' +
           '<h3>' + T('Permiso para guardar') + '</h3>' +
           '<p>' + T('Chrome pide que elijas dónde puede escribir SharpMD. Elegí la carpeta de este archivo una sola vez y vas a poder guardar todo lo que haya adentro, sin que vuelva a preguntar.') + '</p>' +
+          (folder ? '<div class="lmd-ask-path"><code></code><button type="button" class="lmd-btn" data-ask="copy">' + T('Copiar') + '</button></div>' +
+            '<p class="lmd-hint lmd-ask-path-hint">' + T('Es la carpeta de este archivo. Queda copiada: pegala en la barra de direcciones de la ventana que abre Chrome.') + '</p>' : '') +
           '<div class="lmd-ask-actions">' +
             '<button type="button" class="lmd-btn lmd-btn-fill" data-ask="dir">' + T('Elegir la carpeta') + '</button>' +
             '<button type="button" class="lmd-btn" data-ask="file">' + T('Solo este archivo') + '</button>' +
             '<button type="button" class="lmd-btn" data-ask="no" data-esc>' + T('Cancelar') + '</button>' +
           '</div>' +
         '</div>';
+      if (folder) box.querySelector('.lmd-ask-path code').textContent = folder;
       document.body.appendChild(box);
       const close = (value) => { box.remove(); resolve(value); };
       box.addEventListener('click', async (e) => {
         if (e.target === box) return close(null);
         const b = e.target.closest('[data-ask]'); if (!b) return;
+        if (b.dataset.ask === 'copy') { copyFolder(); b.textContent = T('Copiado'); return; }
+        if (b.dataset.ask === 'dir' || b.dataset.ask === 'file') copyFolder();
         try {
           if (b.dataset.ask === 'no') return close(null);
           if (b.dataset.ask === 'dir') {

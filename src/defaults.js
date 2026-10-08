@@ -639,6 +639,7 @@
       "Descargá el ZIP, reemplazá con su contenido la carpeta de la extensión y tocá Aplicar. Si la clonaste con git, alcanza con git pull y Aplicar.": "Download the ZIP, replace the extension folder with its contents and click Apply. If you cloned it with git, run git pull and click Apply.",
       "Ahora no": "Not now",
       "Permiso para guardar": "Permission to save",
+      "Es la carpeta de este archivo. Queda copiada: pegala en la barra de direcciones de la ventana que abre Chrome.": "This is the folder of this file. It is copied: paste it in the address bar of the window Chrome opens.",
       "Chrome pide que elijas dónde puede escribir SharpMD. Elegí la carpeta de este archivo una sola vez y vas a poder guardar todo lo que haya adentro, sin que vuelva a preguntar.": "Chrome asks you to choose where SharpMD may write. Pick this file's folder once and you can save everything inside it, without being asked again.",
       "Elegir la carpeta": "Choose the folder",
       "Solo este archivo": "This file only",

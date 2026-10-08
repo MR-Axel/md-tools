@@ -2078,3 +2078,9 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
   .lmd-page-nudge span { flex: 1 1 100%; }
 }
 @media print { .lmd-board-menu, .lmd-card-open, .lmd-page-nudge { display: none !important; } .lmd-board { width: auto !important; margin-left: 0 !important; -webkit-mask-image: none !important; mask-image: none !important; } }
+
+/* Permiso para guardar: la carpeta del archivo, para pegarla en la ventana del navegador. */
+.lmd-ask-path { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; }
+.lmd-ask-path code { flex: 1 1 auto; min-width: 0; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-soft); font-size: 12.5px; overflow-wrap: anywhere; user-select: all; }
+.lmd-ask-path .lmd-btn { flex: none; }
+.lmd-ask-path-hint { margin: 0 0 12px; }
