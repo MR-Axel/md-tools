@@ -94,14 +94,51 @@
     '</div>';
   }
 
+  // Dos sub-pestañas: las herramientas de la app, y lo que comparte la comunidad. La última elegida vale por la sesión.
+  const SUBS = [['tools', 'Herramientas'], ['community', 'Comunidad']];
+  const SUB_KEY = 'lmd:tools-sub';
+  let subNow = ''; let paneSub = null;
+  const subGet = () => {
+    if (!subNow) { try { subNow = sessionStorage.getItem(SUB_KEY) || ''; } catch (e) { /* sin almacenamiento vale mientras dure la página */ } }
+    return SUBS.some((x) => x[0] === subNow) ? subNow : 'tools';
+  };
+  // Elige una sub-pestaña desde afuera: openPanel('community') llega por acá.
+  function sub(id) {
+    if (!SUBS.some((x) => x[0] === id)) return;
+    subNow = id; try { sessionStorage.setItem(SUB_KEY, id); } catch (e) { /* sin almacenamiento */ }
+    if (paneSub) paneSub(id);
+  }
+
   function pane(box) {
-    box.innerHTML = '<p class="lmd-hint lmd-tl-lead">' + esc(T('Funciones que se suman a la app. Cada una se prende acá.')) + '</p>' +
-      '<div class="lmd-tl-list">' + tools.map(card).join('') + '</div>' +
-      '<div class="lmd-tl-list" data-tools-community hidden>' + community.map(card).join('') + '</div>' +
-      '<div class="lmd-gal" data-gallery></div>';
-    // La galería de la comunidad (gallery.js): contenido que comparte la gente, nunca código. Se pide recién acá.
-    const gal = box.querySelector('[data-gallery]');
-    Promise.all([core.ensure('tools'), core.ensure('gallery')]).then((ok) => { if (ok[0] && ok[1] && gal.isConnected) LMD.gallery.pane(gal, core); });
+    box.innerHTML = '<div class="lmd-subtabs" role="tablist" aria-label="' + esc(T('Herramientas')) + '">' +
+        SUBS.map((x) => '<button type="button" role="tab" id="lmd-tsub-' + x[0] + '" data-tsub="' + x[0] + '" aria-controls="lmd-tsubp-' + x[0] + '">' + esc(T(x[1])) + '</button>').join('') + '</div>' +
+      '<div class="lmd-subpane" role="tabpanel" id="lmd-tsubp-tools" aria-labelledby="lmd-tsub-tools" data-tsub-pane="tools">' +
+        '<p class="lmd-hint lmd-tl-lead">' + esc(T('Funciones que se suman a la app. Cada una se prende acá.')) + '</p>' +
+        '<div class="lmd-tl-list">' + tools.map(card).join('') + '</div>' +
+        '<div class="lmd-tl-list" data-tools-community hidden>' + community.map(card).join('') + '</div></div>' +
+      '<div class="lmd-subpane" role="tabpanel" id="lmd-tsubp-community" aria-labelledby="lmd-tsub-community" data-tsub-pane="community" hidden><div class="lmd-gal" data-gallery></div></div>';
+    // La galería de la comunidad (gallery.js): contenido que comparte la gente, nunca código. Se pide al abrir su sub-pestaña.
+    const gal = box.querySelector('[data-gallery]'); let galAsked = false;
+    const tabs = Array.from(box.querySelectorAll('[data-tsub]'));
+    const showSub = (id, focus) => {
+      tabs.forEach((b) => { const on = b.dataset.tsub === id; b.classList.toggle('lmd-on', on); b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1; if (on && focus) b.focus(); });
+      box.querySelectorAll('[data-tsub-pane]').forEach((p) => { p.hidden = p.dataset.tsubPane !== id; });
+      if (id === 'community' && !galAsked) {
+        galAsked = true;
+        // Primero lo que la galería usa (community.js viene con 'tools'), después la galería: recién abierta la app todavía no está.
+        core.ensure('tools').then((ok) => ok && core.ensure('gallery')).then((ok) => { if (ok && gal.isConnected) LMD.gallery.pane(gal, core); });
+      }
+    };
+    paneSub = (id) => { if (box.isConnected) showSub(id); };
+    tabs.forEach((b) => b.addEventListener('click', () => sub(b.dataset.tsub)));
+    // Con el teclado: las flechas, Inicio y Fin pasan de una a otra y la dejan elegida.
+    box.querySelector('.lmd-subtabs').addEventListener('keydown', (e) => {
+      const at = tabs.indexOf(document.activeElement); if (at < 0) return;
+      const to = { ArrowRight: at + 1, ArrowDown: at + 1, ArrowLeft: at - 1, ArrowUp: at - 1, Home: 0, End: tabs.length - 1 }[e.key]; if (to === undefined) return;
+      e.preventDefault(); const next = tabs[(to + tabs.length) % tabs.length];
+      sub(next.dataset.tsub); next.focus();
+    });
+    showSub(subGet());
     const cardOf = (id) => box.querySelector('.lmd-tl-card[data-tool="' + id + '"]');
     const parts = (id) => { const c = cardOf(id); return c ? { more: c.querySelector('.lmd-tl-more'), area: c.querySelector('.lmd-tl-opts'), acts: c.querySelector('.lmd-tl-acts') } : {}; };
     const shut = (id) => { const p = parts(id); if (!p.more) return; p.more.setAttribute('aria-expanded', 'false'); p.more.firstChild.textContent = T('Configurar'); p.area.hidden = true; };
@@ -151,7 +188,7 @@
   let paneNeed = null;
   const need = (id, text) => { if (paneNeed) paneNeed(id, text); };
 
-  LMD.tools = { register, init, pane, isOn, set, opt, setOpt, need, ICON, list: () => tools.slice(), community };
+  LMD.tools = { register, init, pane, sub, isOn, set, opt, setOpt, need, ICON, list: () => tools.slice(), community };
 
   // ---------- Las que vienen con la app ----------
   const APP_STORE = () => !!LMD.storeApp;

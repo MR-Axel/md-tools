@@ -10,7 +10,9 @@
 // espacios. Varias personas o varias etiquetas van separadas por coma. Antes de la primera columna, un renglón solo
 // con llaves configura el tablero: qué campos se ven en las tarjetas, de qué tipo es cada uno, cuál es la columna
 // de hechas y de qué color es cada etiqueta.
-//   {show=due,assignee priority=low|medium|high estimate=number done=Done tags=bug:red,idea:blue}
+//   {show=due,assignee priority=low|medium|high estimate=number needs=longtext done=Done tags=bug:red,idea:blue}
+// Un campo de texto puede ser corto (text) o largo (longtext). En el archivo el valor va siempre en un renglón: un
+// salto de línea se guarda como un espacio. Lo largo es cómo se muestra y se edita.
 // "Hecha" es un estado: la tarjeta que entra a la columna de hechas queda [x], y la que sale vuelve a [ ]. Sin
 // done=, la columna de hechas es la que se llama Done, Hecho, Listo o parecido; done="" dice que no hay ninguna.
 // Un tablero sin nada de esto se abre igual, y recibe id y fechas la primera vez que se edita. Lo que no se
@@ -40,7 +42,7 @@
     return pairs ? { text: m[1].trim(), pairs } : { text: raw, pairs: [] };
   }
   const val = (v) => { v = String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); return /^[^\s"{}=\\]+$/.test(v) ? v : '"' + v.replace(/[{}]/g, (c) => (c === '{' ? '(' : ')')).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'; };
-  const typeOf = (v) => (/^(text|date|number)$/.test(v) ? { type: v } : { type: 'select', options: v.split('|').map((s) => s.trim()).filter(Boolean) });
+  const typeOf = (v) => (/^(text|longtext|date|number)$/.test(v) ? { type: v } : { type: 'select', options: v.split('|').map((s) => s.trim()).filter(Boolean) });
 
   // { show: [claves a la vista], fields: { clave: { type, options } }, done: columna de hechas (sin definir: por el nombre),
   //   tags: { etiqueta: color }, columns: [{ title, cards: [{ id, text, done, created, updated, by, attrs }] }] }
@@ -115,6 +117,8 @@
     due: /^(due|vence|deadline|fecha-limite)$/i, person: /^(owners?|assignees?|responsables?|asignad[oa]s?|persona|person)$/i,
     priority: /^(priority|prioridad)$/i, tags: /^(tags?|etiquetas?|labels?)$/i, link: /^(link|enlace|url)$/i,
   };
+  // Los campos que por su nombre describen algo son texto largo, salvo que el tablero diga otra cosa.
+  const LONG = /^(needs?|description|desc|notes?|details?|comments?|necesita|necesito|descripci[oó]n|notas?|detalles?|comentarios?)$/i;
   const isUrl = (v) => /^https?:\/\/[^\s<>"'`]+$/i.test(String(v || ''));
   // Un enlace también puede llevar a otra nota: su ruta relativa, como en un enlace Markdown común (con un #título si hace falta).
   const NOTE_EXT = /\.(md|markdown|mdown|mkd)$/i;
@@ -137,7 +141,9 @@
     if (f && f.type !== 'text') return f.type;
     if (NAMED.person.test(k)) return 'person';
     if (NAMED.tags.test(k)) return 'tags';
-    if (NAMED.link.test(k) || isUrl(v)) return 'link';
+    if (NAMED.link.test(k)) return 'link';
+    if (!f && LONG.test(k)) return 'longtext';
+    if (isUrl(v)) return 'link';
     return /^\d{4}-\d\d-\d\d$/.test(v || '') ? 'date' : 'text';
   }
   const SVG = (d) => '<svg viewBox="0 0 24 24">' + d + '</svg>';
@@ -146,6 +152,7 @@
     tags: SVG('<path d="M4 4.500h7.500l8 8-7.500 7.500-8-8z"/><circle cx="8.500" cy="9" r="1.200"/>'),
     number: SVG('<path d="M9.500 4 7.500 20M16.500 4l-2 16M4.500 9h16M3.500 15h16"/>'),
     text: SVG('<path d="M5 6h14M12 6v13M9.500 19h5"/>'),
+    longtext: SVG('<path d="M5 6.500h14M5 10.500h14M5 14.500h14M5 18.500h8"/>'),
     select: SVG('<path d="M9 7h11M9 12h11M9 17h11M4.500 7h.01M4.500 12h.01M4.500 17h.01"/>'),
   };
   const listOf = (v) => String(v == null ? '' : v).split(',').map((s) => s.trim()).filter(Boolean);
@@ -218,7 +225,7 @@
         box.appendChild(chip);
       } else {
         const date = kind === 'date' && /^\d{4}-\d\d-\d\d$/.test(v); const late = date && !done && v < today();
-        box.appendChild(el('span', { class: 'lmd-chip' + (date ? ' lmd-chip-date' : '') + (late ? ' lmd-chip-late' : ''), 'data-attr': k, title: name + (late ? ' · ' + T('Vencida') : ''), text: date ? dayText(v) : v }));
+        box.appendChild(el('span', { class: 'lmd-chip' + (date ? ' lmd-chip-date' : kind === 'longtext' ? ' lmd-chip-text lmd-chip-long' : kind === 'text' ? ' lmd-chip-text' : '') + (late ? ' lmd-chip-late' : ''), 'data-attr': k, title: name + (late ? ' · ' + T('Vencida') : ''), text: date ? dayText(v) : v }));
       }
     });
     return box.childNodes.length ? box : null;
@@ -290,7 +297,7 @@
   // Los tipos que se ofrecen al agregar un campo. Los cinco primeros ya traen nombre: la clave queda escrita en la
   // nota, en el idioma de quien la crea. Los otros tres piden un nombre.
   const TYPES = [['due', 'date', 'Fecha límite', 'vence'], ['person', 'person', 'Responsable', 'responsable'], ['priority', 'priority', 'Prioridad', 'prioridad'], ['tags', 'tags', 'Etiquetas', 'etiquetas'], ['link', 'link', 'Enlace', 'enlace'],
-    ['number', 'number', 'Número'], ['text', 'text', 'Texto'], ['select', 'select', 'Lista de opciones']];
+    ['number', 'number', 'Número'], ['text', 'text', 'Texto'], ['longtext', 'longtext', 'Texto largo'], ['select', 'select', 'Lista de opciones']];
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const keyFrom = (name) => String(name || '').trim().replace(/\s+/g, '-').replace(/[^\p{L}\p{N}_.-]/gu, '').replace(/^[^\p{L}_]+/u, '').slice(0, 40);
   const splitOpts = (v) => uniq(String(v || '').split(',').map((s) => s.replace(/\|/g, ' ').trim()));
@@ -400,9 +407,41 @@
   }
 
   // El control que corresponde a cada tipo de campo. x: { ro, fields, tags, name, mark(nodo), suggest(tipo), options }
+  // Un área de texto que crece con lo escrito, sin scroll de costado. El valor va en un renglón del archivo: un salto
+  // de línea que llegue (al pegar) queda como un espacio. Pasado su alto máximo, desliza por dentro.
+  function area(cls, value, attrs) {
+    const ta = el('textarea', Object.assign({ class: 'lmd-cd-grow ' + cls, rows: '1', spellcheck: 'false', autocomplete: 'off' }, attrs || {}));
+    ta.value = value;
+    // Se mide sin barra de scroll, y con un píxel de más: el alto de un renglón no es entero, y si faltara una fracción
+    // aparecería la barra, el texto cortaría distinto y quedaría corto.
+    ta._fit = () => { ta.style.overflowY = 'hidden'; ta.style.height = 'auto'; ta.style.height = (ta.scrollHeight + (ta.offsetHeight - ta.clientHeight) + 1) + 'px'; ta.style.overflowY = ''; if (ta._after) ta._after(); };
+    ta.addEventListener('input', () => {
+      if (/[\r\n]/.test(ta.value)) { const at = ta.selectionStart; ta.value = ta.value.replace(/[\r\n]+/g, ' '); try { ta.setSelectionRange(at, at); } catch (e) { /* sin selección */ } }
+      ta._fit();
+    });
+    requestAnimationFrame(ta._fit);
+    return ta;
+  }
+  // Texto corto: un renglón, que pasa a varios si el valor no entra. Texto largo: arranca con lugar para escribir,
+  // crece hasta unos ocho renglones y trae un botón para verlo entero.
+  function textBox(kind, value, set, x) {
+    const ta = area(kind === 'longtext' ? 'lmd-cd-long' : 'lmd-cd-short', value, { maxlength: '500' });
+    ta.setAttribute('aria-label', x.name); ta.disabled = !!x.ro; x.mark(ta);
+    ta.addEventListener('input', () => set(ta.value));
+    if (kind !== 'longtext') return ta;
+    const box = el('div', { class: 'lmd-cd-longbox' });
+    const more = el('button', { type: 'button', class: 'lmd-cd-expand', 'aria-expanded': 'false', title: T('Ver entero'), 'aria-label': T('Ver entero') + ': ' + x.name }, ICON.chevron);
+    more.hidden = true;
+    ta._after = () => { more.hidden = !box.classList.contains('lmd-cd-open') && ta.scrollHeight <= ta.clientHeight + 1; };
+    more.addEventListener('click', () => { const open = box.classList.toggle('lmd-cd-open'); more.setAttribute('aria-expanded', String(open)); more.title = T(open ? 'Achicar' : 'Ver entero'); more.setAttribute('aria-label', more.title + ': ' + x.name); ta._fit(); });
+    box.append(ta, more);
+    return box;
+  }
+
   function control(kind, key, value, set, x) {
     if (kind === 'person' || kind === 'tags') return multi(kind, value, set, x);
     if (kind === 'link') return linkBox(value, set, x);
+    if (kind === 'text' || kind === 'longtext') return textBox(kind, value, set, x);
     let input;
     if (kind === 'select' || kind === 'priority') {
       const opts = x.options || optionsOf(x.fields, key, kind);
@@ -428,8 +467,9 @@
     const draft = { attrs: Object.assign({}, card.attrs), show: model.show.slice(), fields: JSON.parse(JSON.stringify(model.fields)), tags: Object.assign({}, model.tags) };
     const box = el('div', { class: 'lmd-ask lmd-cd' });
     const dlg = el('div', { class: 'lmd-ask-card lmd-dlg-card lmd-cd-card', role: 'dialog', 'aria-modal': 'true', 'aria-label': T('Tarjeta') });
-    const title = el('input', { type: 'text', class: 'lmd-cd-title', 'data-cd': 'title', 'aria-label': T('Título'), placeholder: T('Título'), spellcheck: 'false', autocomplete: 'off', maxlength: '500' });
-    title.value = card.text; title.disabled = ro;
+    // El título no lleva saltos de línea en el archivo: acá se ve entero, en los renglones que necesite, y Enter guarda.
+    const title = area('lmd-cd-title', card.text, { 'data-cd': 'title', 'aria-label': T('Título'), placeholder: T('Título'), maxlength: '500' });
+    title.disabled = ro;
     const col = el('select', { 'data-cd': 'col' }); col.disabled = ro;
     model.columns.forEach((c, i) => { const o = el('option', { value: i, text: c.title }); if (i === ci) o.selected = true; col.appendChild(o); });
     const state = el('label', { class: 'lmd-cd-state' }); state.append(el('span', { text: T('Estado (columna)') }), col);
@@ -545,7 +585,9 @@
       if (step.kind === 'link' && v && !isLink(v)) { fail(T('El enlace empieza con http:// o https://')); $('newval').focus(); return; }
       fail('');
       if (!draft.fields[key]) {
-        if (step.kind === 'date' || step.kind === 'number') draft.fields[key] = { type: step.kind };
+        if (step.kind === 'date' || step.kind === 'number' || step.kind === 'longtext') draft.fields[key] = { type: step.kind };
+        // Quien eligió texto corto para un campo que por su nombre sería largo, lo deja dicho en el tablero.
+        else if (step.kind === 'text' && LONG.test(key)) draft.fields[key] = { type: 'text' };
         else if (step.kind === 'select' || step.kind === 'priority') { const o = step.kind === 'select' ? splitOpts($('opts').value) : []; draft.fields[key] = { type: 'select', options: o.length ? o : [T('baja'), T('media'), T('alta')] }; }
       }
       draft.attrs[key] = v; if (!draft.show.includes(key)) draft.show.push(key);
@@ -612,7 +654,9 @@
       if (e.key === 'Escape') { e.preventDefault(); escAt = Date.now(); if (step) { fail(''); step = null; drawAdd(true); } else tryClose(); }
       else if (e.key !== 'Enter' || ro) return;
       else if (e.ctrlKey || e.metaKey) { e.preventDefault(); save(); }
-      else if (t.tagName !== 'INPUT' || t.type === 'checkbox') return;
+      else if (!(t.tagName === 'INPUT' && t.type !== 'checkbox') && !t.classList.contains('lmd-cd-grow')) return;
+      // En un área de texto, Mayúsculas+Enter no guarda ni parte el renglón: el valor va en una sola línea del archivo.
+      else if (e.shiftKey && t.classList.contains('lmd-cd-grow')) e.preventDefault();
       else if (t.closest('.lmd-cd-new')) {
         e.preventDefault();
         const next = t.dataset.cd === 'name' ? ($('opts') || $('newval')) : t.dataset.cd === 'opts' ? $('newval') : null;

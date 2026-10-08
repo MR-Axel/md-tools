@@ -95,6 +95,14 @@
     typographer: 'Tipografía (comillas y guiones)',
     breaks: 'Salto de línea simple = <br>',
   };
+  // Los plugins en Ajustes, agrupados: cada bloque lleva un subtítulo. Uno que no esté en la lista va al final del último.
+  const PLUGIN_GROUPS = [
+    ['Texto', ['sub', 'sup', 'ins', 'mark', 'abbr', 'emoji', 'typographer']],
+    ['Bloques', ['tasklists', 'deflist', 'footnote', 'alerts', 'containers', 'tables']],
+    ['Código y matemática', ['highlight', 'copyCode', 'katex', 'mermaid', 'graphviz']],
+    ['Enlaces y medios', ['wikilinks', 'linkify', 'imageViewer']],
+    ['Comportamiento', ['toc', 'frontmatter', 'html', 'breaks']],
+  ];
   // Qué hace cada plugin, para mostrar al pasar el mouse.
   const PLUGIN_HELP = {
     highlight: "Colorea el código según su lenguaje.",
@@ -1599,6 +1607,12 @@
       "Entrada": "Inbound", "Termina en {a}": "Ends in {a}",
       "usada 1 vez": "used once", "usada {n} veces": "used {n} times",
       "Nueva dirección": "New address", "Avisos hacia afuera": "Outgoing notifications",
+      "Texto largo": "Long text", "Ver entero": "Show all", "Achicar": "Show less",
+      "Bloques": "Blocks", "Código y matemática": "Code and math", "Enlaces y medios": "Links and media", "Comportamiento": "Behavior",
+      "Tokens de la API": "API tokens", "Webhooks": "Webhooks", "Conectar tu IA": "Connect your AI",
+      "La API, los webhooks y las direcciones de entrada conectan tus notas con Slack, Make, n8n o Zapier.": "The API, webhooks and inbound addresses connect your notes to Slack, Make, n8n or Zapier.",
+      "La API y las automatizaciones son parte del plan pago.": "The API and automations are part of the paid plan.",
+      "Copiá el token ahora: no se vuelve a mostrar.": "Copy the token now: it is not shown again.", "Lo que lo usa deja de entrar.": "Whatever uses it stops working.",
       "Todavía no hay avisos. Por ejemplo: un mensaje en Slack cuando una tarjeta pasa a Hecho.": "No notifications yet. For example: a Slack message when a card moves to Done.", "Direcciones de entrada": "Inbound addresses",
       "Una dirección secreta que agrega texto a una nota. Sirve para formularios, ventas o correo.": "A secret address that adds text to a note. Good for forms, sales or email.", "Copiá la dirección ahora: no se vuelve a mostrar.": "Copy the address now: it is not shown again.",
       "Para leer y escribir notas y mover tarjetas desde un flujo. Usa los mismos tokens que la IA.": "To read and write notes and move cards from a flow. It uses the same tokens as the AI.", "Ver la documentación": "See the docs",
@@ -1894,5 +1908,5 @@
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
   const VERSION = '2.67.0';
 
-  root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
+  root.LMD = { VERSION, PLUGIN_HELP, PLUGIN_GROUPS, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);

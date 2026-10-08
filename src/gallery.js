@@ -1,4 +1,4 @@
-// Galería de la comunidad, en Ajustes > Herramientas: plantillas, temas y paletas que comparte la gente y que quien
+// Galería de la comunidad, en Ajustes > Herramientas, sub-pestaña Comunidad: plantillas, temas y paletas que comparte la gente y que quien
 // administra el servidor aprobó. Lo que llega es un dato: pasa por LMD.community.check antes de tocarse, los nombres
 // se escriben siempre como texto y nada de un aporte entra como HTML ni como CSS salvo el Markdown de una plantilla,
 // que se dibuja con el mismo saneado que cualquier nota. Lo agregado queda en el dispositivo (community.js).
@@ -330,8 +330,7 @@
   function pane(container, c) {
     core = c; box = container;
     const types = [['', 'Todo'], ['template', 'Plantillas'], ['theme', 'Temas'], ['palette', 'Paletas']];
-    box.innerHTML = '<h4 class="lmd-gal-title">' + esc(T('Comunidad')) + '</h4>' +
-      '<p class="lmd-hint lmd-gal-lead">' + esc(T('Plantillas, temas y paletas que comparte la gente. Cada aporte se revisa antes de publicarse.')) + '</p>' +
+    box.innerHTML = '<p class="lmd-hint lmd-gal-lead">' + esc(T('Plantillas, temas y paletas que comparte la gente. Cada aporte se revisa antes de publicarse.')) + '</p>' +
       '<div class="lmd-gal-bar"><div class="lmd-seg lmd-gal-types" role="radiogroup" aria-label="' + esc(T('Comunidad')) + '">' +
         types.map((t) => '<button type="button" role="radio" data-gtype="' + t[0] + '" aria-checked="' + (view.type === t[0]) + '"' + (view.type === t[0] ? ' class="lmd-on"' : '') + '>' + esc(T(t[1])) + '</button>').join('') + '</div>' +
         '<input type="search" class="lmd-lk-q lmd-gal-q" spellcheck="false" placeholder="' + esc(T('Buscar en la comunidad')) + '" aria-label="' + esc(T('Buscar en la comunidad')) + '">' +

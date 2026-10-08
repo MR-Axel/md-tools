@@ -235,10 +235,10 @@ try {
     await page.locator('.lmd-article p.lmd-editable', { hasText: 'Second paragraph' }).click(); await page.keyboard.press('End'); await page.keyboard.type(' Saved from ' + ENGINE + '.'); await page.click('.lmd-foot .lmd-status', { force: true });
     const up = await until(async () => new RegExp('Saved from ' + ENGINE).test(((await R.api('GET', '/notes/' + enc('team/plan.md'), undefined, A.s)).json || {}).text || ''), 15000);
     check('lo editado llega al servidor', up);
-    await page.click('[data-cloud=menu]'); await page.waitForSelector('.lmd-side-acct .lmd-menu [data-cloud=settings]');
+    await page.click('[data-cloud=menu]'); await page.waitForSelector('.lmd-side-acct .lmd-menu [data-cloud=name]');
     await shot(page, 'app-menu-cuenta');
-    await page.click('[data-cloud=settings]'); await page.waitForSelector('.lmd-panel-card [data-ptab=cloud].lmd-on');
-    check('el menú de la cuenta abre Ajustes en la pestaña de la nube', true);
+    await page.click('[data-cloud=name]'); await page.waitForSelector('.lmd-panel-card [data-ptab=cloud].lmd-on'); await page.waitForSelector('[data-acct=cloud] [data-name-in]');
+    check('"Nombre visible" del menú de la cuenta abre Ajustes en la pestaña de la nube, con el nombre en edición', true);
     await page.keyboard.press('Escape');
   });
 

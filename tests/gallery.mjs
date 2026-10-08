@@ -85,7 +85,7 @@ try {
 
   // ---------- App ----------
   const TID = sent.json.id; const PID = p1.json.id; const PAID = t2.json.id; const FREE = f1.json.id;
-  const openTools = async (pg) => { await pg.click('[data-act=settings]'); await pg.waitForSelector('.lmd-panel-card'); await pg.click('[data-ptab=tools]'); await pg.waitForSelector('.lmd-gal-card, .lmd-gal-note:not([hidden]), .lmd-gal-list .lmd-empty'); };
+  const openTools = async (pg) => { await pg.click('[data-act=settings]'); await pg.waitForSelector('.lmd-panel-card'); await pg.click('[data-ptab=tools]'); await pg.waitForSelector('[data-tsub=community]'); await pg.click('[data-tsub=community]'); await pg.waitForSelector('.lmd-gal-card, .lmd-gal-note:not([hidden]), .lmd-gal-list .lmd-empty'); };
   const closePanel = async (pg) => { await pg.click('[data-act=close-panel]'); await pg.waitForTimeout(150); };
   const card = (id) => '.lmd-gal-card[data-gid="' + id + '"]';
   const kept = (pg) => pg.evaluate(() => JSON.parse(localStorage.getItem('mdtools:community') || 'null'));
@@ -93,6 +93,26 @@ try {
 
   const A = await R.open(leo, { colorScheme: 'light' }); const pg = A.page;
   await pg.goto(R.home); await pg.waitForSelector('[data-home=tpl]');
+  // Herramientas tiene dos sub-pestañas: las de la app, que es la que se ve al entrar, y Comunidad.
+  await pg.click('[data-act=settings]'); await pg.waitForSelector('.lmd-panel-card'); await pg.click('[data-ptab=tools]'); await pg.waitForSelector('.lmd-tl-card');
+  const subs = () => pg.evaluate(() => { const list = document.querySelector('[data-tools-pane] [role=tablist]'); const tabs = [...list.querySelectorAll('[role=tab]')];
+    return { label: list.getAttribute('aria-label'), tabs: tabs.map((b) => b.dataset.tsub + ':' + b.textContent + ':' + b.getAttribute('aria-selected') + ':' + b.tabIndex).join('|'), focus: (document.activeElement.dataset || {}).tsub || '',
+      panes: [...document.querySelectorAll('[data-tools-pane] [role=tabpanel]')].map((p) => p.dataset.tsubPane + ':' + (p.hidden ? 'oculto' : 'visible') + ':' + (document.getElementById(p.getAttribute('aria-labelledby')) || {}).textContent).join('|'),
+      wired: tabs.every((b) => document.getElementById(b.getAttribute('aria-controls'))), tools: document.querySelectorAll('.lmd-tl-card').length, gal: !!document.querySelector('[data-tsub-pane=tools] .lmd-gal, [data-tsub-pane=tools] .lmd-gal-card') }; });
+  const sub0 = await subs();
+  check('Herramientas abre con dos sub-pestañas, y la primera muestra solo las herramientas de la app', sub0.label === 'Tools' && sub0.tabs === 'tools:Tools:true:0|community:Community:false:-1' && sub0.panes === 'tools:visible:Tools|community:oculto:Community' && sub0.wired && sub0.tools >= 10 && !sub0.gal, sub0);
+  await pg.focus('[data-tsub=tools]'); await pg.keyboard.press('ArrowRight'); await pg.waitForSelector('.lmd-gal-card');
+  const sub1 = await subs();
+  await pg.keyboard.press('ArrowRight'); const sub2 = await subs(); await pg.keyboard.press('End'); const sub3 = await subs(); await pg.keyboard.press('Home'); const sub4 = await subs(); await pg.keyboard.press('ArrowLeft'); const sub5 = await subs();
+  check('las flechas, Inicio y Fin pasan de una sub-pestaña a la otra, con el foco y la selección juntos', sub1.focus === 'community' && sub1.tabs === 'tools:Tools:false:-1|community:Community:true:0' && sub1.panes === 'tools:oculto:Tools|community:visible:Community' && sub2.focus === 'tools' && sub3.focus === 'community' && sub4.focus === 'tools' && sub5.focus === 'community', [sub1, sub2.focus, sub3.focus, sub4.focus, sub5.focus]);
+  await pg.click('[data-ptab=look]'); await pg.click('[data-ptab=tools]'); const subKept = await subs();
+  await pg.keyboard.press('Escape'); await pg.click('[data-act=settings]'); await pg.waitForSelector('.lmd-panel-card'); await pg.click('[data-ptab=tools]'); const subKept2 = await subs();
+  check('la última sub-pestaña elegida se recuerda al volver a Herramientas y al reabrir Ajustes', /community:Community:true/.test(subKept.tabs) && /community:visible/.test(subKept.panes) && /community:Community:true/.test(subKept2.tabs), [subKept.tabs, subKept2.tabs]);
+  await pg.click('[data-tsub=tools]'); await pg.keyboard.press('Escape'); await pg.waitForSelector('.lmd-panel-card', { state: 'hidden' });
+  await pg.goto('about:blank'); await pg.goto(R.home + '#lmd-community'); await pg.waitForSelector('.lmd-panel-card .lmd-gal-card');
+  const viaHash = await pg.evaluate(() => [document.querySelector('[data-ptab].lmd-on').dataset.ptab, document.querySelector('[data-tsub].lmd-on').dataset.tsub, location.hash]);
+  check('un enlace a Comunidad (#lmd-community) abre Ajustes en Herramientas, ya en esa sub-pestaña', viaHash.join() === 'tools,community,', viaHash);
+  await pg.keyboard.press('Escape'); await pg.waitForSelector('.lmd-panel-card', { state: 'hidden' });
   await openTools(pg);
   const cards = await pg.evaluate(() => [...document.querySelectorAll('.lmd-gal-card')].map((c) => ({ id: +c.dataset.gid, kind: c.dataset.gkind, name: c.querySelector('b').textContent, html: c.querySelector('b').innerHTML, by: c.querySelector('.lmd-gal-by').textContent })));
   check('la sección Comunidad lista lo aprobado, con el más agregado primero, y cierra con los doce temas incluidos', cards.length === 16 && cards.slice(0, 4).every((c) => c.kind !== 'included') && cards.slice(4).every((c) => c.kind === 'included') && cards[0].id === PID && /by Ana P\./.test(cards[0].by) && /Added 2 times/.test(cards[0].by), cards);
@@ -299,7 +319,7 @@ try {
   // Pantalla chica
   const M = await R.open(leo, { viewport: { width: 380, height: 760 }, hasTouch: true, isMobile: true }); const mp = M.page;
   await mp.goto(R.noteUrl('Reading log.md')); await mp.waitForSelector('.lmd-article:not([hidden]) h1');
-  await mp.evaluate(() => document.querySelector('[data-act=settings]').click()); await mp.waitForSelector('.lmd-panel-card'); await mp.tap('[data-ptab=tools]'); await mp.waitForSelector('.lmd-gal-card');
+  await mp.evaluate(() => document.querySelector('[data-act=settings]').click()); await mp.waitForSelector('.lmd-panel-card'); await mp.tap('[data-ptab=tools]'); await mp.tap('[data-tsub=community]'); await mp.waitForSelector('.lmd-gal-card');
   const fits = (sel) => mp.evaluate((q) => { const w = window.innerWidth; const bad = [...document.querySelectorAll(q + ', ' + q + ' *')].filter((n) => n.offsetParent && !n.closest('.lmd-gal-md, .lmd-seg')).map((n) => { const r = n.getBoundingClientRect(); return r.width && (r.left < -1 || r.right > w + 1) ? n.className || n.tagName : ''; }).filter(Boolean); return { bad: bad.slice(0, 5), scroll: document.documentElement.scrollWidth <= w + 1 }; }, sel);
   const small = await fits('.lmd-gal');
   await mp.tap(card(PAID) + ' [data-gal=view]'); await mp.waitForSelector('.lmd-gal-view');

@@ -47,7 +47,7 @@
   <div lang="en">
     <h1>API, webhooks and inbound addresses</h1>
     <p class="date">Version 1 · part of the paid plan · <a href="https://sync.sharpmd.app/api/v1/openapi.json">OpenAPI 3.1</a></p>
-    <p>Three ways to connect your notes to other tools. All three are set up in the app, in <b>Settings &gt; Automations</b>.</p>
+    <p>Three ways to connect your notes to other tools. All three are set up in the app, in <b>Settings &gt; API and automations</b>.</p>
     <ul>
       <li><a href="#webhooks">Webhooks</a>: SharpMD calls an address when a note or a kanban card changes. Paste a Slack address and it posts a readable line.</li>
       <li><a href="#inbound">Inbound addresses</a>: a secret address that adds text to a note, creates a note or creates a card. Good for forms, sales and email.</li>
@@ -122,7 +122,7 @@ function valid(header, rawBody, secret) {
     <p>Up to 64 KB and 60 requests per minute. The answer is <code>{"ok": true}</code>.</p>
 
     <h2 id="api">API</h2>
-    <p>Create a token in <b>Settings &gt; AI (MCP)</b>: the API uses the same tokens. A token limited to a folder only reaches that folder. Send it in every request:</p>
+    <p>Create a token in <b>Settings &gt; API and automations</b>, under API tokens. The same tokens connect your AI. A token limited to a folder only reaches that folder. Send it in every request:</p>
 <pre><code>curl https://sync.sharpmd.app/api/v1/notes?folder=shop \
   -H "Authorization: Bearer mdt_YOUR_TOKEN"</code></pre>
     <p>Answers are <code>{"ok": true, "data": …}</code> or <code>{"ok": false, "error": {"code", "message"}}</code>. 120 requests per minute per token. Every write returns the <code>url</code> that opens the note in the app.</p>
@@ -159,7 +159,7 @@ function valid(header, rawBody, secret) {
 
     <h2 id="tools">Make, n8n, Activepieces, Zapier, Slack</h2>
     <h3>Slack</h3>
-    <ol><li>In Slack, add an incoming webhook to a channel and copy its address.</li><li>In SharpMD: Settings &gt; Automations &gt; New automation. Pick where to watch and the events.</li><li>Choose Slack, paste the address, Create, then Send a test.</li></ol>
+    <ol><li>In Slack, add an incoming webhook to a channel and copy its address.</li><li>In SharpMD: Settings &gt; API and automations &gt; New automation. Pick where to watch and the events.</li><li>Choose Slack, paste the address, Create, then Send a test.</li></ol>
     <p>The channel gets lines like: Card "Fix checkout" moved from To do to Done in shop/board.md. Discord works the same with its webhook address.</p>
     <h3>Make</h3>
     <ol><li>Start a scenario with <b>Webhooks &gt; Custom webhook</b> and copy its address.</li><li>In SharpMD, create an automation with the format "Make, n8n, Zapier or other" and that address. Send a test so Make learns the fields.</li><li>To write back, add an <b>HTTP &gt; Make a request</b> module with the header <code>Authorization: Bearer mdt_…</code>, or post to an inbound address.</li></ol>
@@ -177,7 +177,7 @@ function valid(header, rawBody, secret) {
   <div lang="es">
     <h1>API, webhooks y direcciones de entrada</h1>
     <p class="date">Versión 1 · parte del plan pago · <a href="https://sync.sharpmd.app/api/v1/openapi.json">OpenAPI 3.1</a></p>
-    <p>Tres formas de conectar tus notas con otras herramientas. Las tres se arman en la app, en <b>Ajustes &gt; Automatizaciones</b>.</p>
+    <p>Tres formas de conectar tus notas con otras herramientas. Las tres se arman en la app, en <b>Ajustes &gt; API y automatizaciones</b>.</p>
     <ul>
       <li><a href="#webhooks-es">Webhooks</a>: SharpMD llama a una dirección cuando cambia una nota o una tarjeta del tablero. Pegás una dirección de Slack y publica una línea legible.</li>
       <li><a href="#inbound-es">Direcciones de entrada</a>: una dirección secreta que agrega texto a una nota, crea una nota o crea una tarjeta. Sirve para formularios, ventas y correo.</li>
@@ -245,7 +245,7 @@ X-SharpMD-Signature: t=1791380591,v1=5f2b…
     <p>Hasta 64 KB y 60 pedidos por minuto. La respuesta es <code>{"ok": true}</code>.</p>
 
     <h2 id="api-es">API</h2>
-    <p>Creá un token en <b>Ajustes &gt; IA (MCP)</b>: la API usa los mismos tokens. Uno limitado a una carpeta solo llega a esa carpeta. Va en cada pedido:</p>
+    <p>Creá un token en <b>Ajustes &gt; API y automatizaciones</b>, en Tokens de la API. Los mismos tokens conectan tu IA. Uno limitado a una carpeta solo llega a esa carpeta. Va en cada pedido:</p>
 <pre><code>curl https://sync.sharpmd.app/api/v1/notes?folder=tienda \
   -H "Authorization: Bearer mdt_TU_TOKEN"</code></pre>
     <p>Las respuestas son <code>{"ok": true, "data": …}</code> o <code>{"ok": false, "error": {"code", "message"}}</code>. 120 pedidos por minuto por token. Cada escritura devuelve la <code>url</code> que abre la nota en la app. La tabla de pedidos está en la versión en inglés, y la descripción completa en el <a href="https://sync.sharpmd.app/api/v1/openapi.json">archivo OpenAPI</a>.</p>
@@ -265,7 +265,7 @@ X-SharpMD-Signature: t=1791380591,v1=5f2b…
 
     <h2 id="tools-es">Make, n8n, Activepieces, Zapier, Slack</h2>
     <h3>Slack</h3>
-    <ol><li>En Slack, agregá un webhook entrante a un canal y copiá su dirección.</li><li>En SharpMD: Ajustes &gt; Automatizaciones &gt; Nueva automatización. Elegí dónde mirar y qué eventos.</li><li>Elegí Slack, pegá la dirección, Crear, y después Enviar una prueba.</li></ol>
+    <ol><li>En Slack, agregá un webhook entrante a un canal y copiá su dirección.</li><li>En SharpMD: Ajustes &gt; API y automatizaciones &gt; Nueva automatización. Elegí dónde mirar y qué eventos.</li><li>Elegí Slack, pegá la dirección, Crear, y después Enviar una prueba.</li></ol>
     <p>Al canal le llegan líneas como: Tarjeta "Arreglar el pago" pasó de Por hacer a Hecho en tienda/tablero.md. Discord funciona igual con la dirección de su webhook.</p>
     <h3>Make</h3>
     <ol><li>Empezá un escenario con <b>Webhooks &gt; Custom webhook</b> y copiá su dirección.</li><li>En SharpMD, creá una automatización con el formato "Make, n8n, Zapier u otro" y esa dirección. Mandá una prueba para que Make conozca los campos.</li><li>Para escribir de vuelta, sumá un módulo <b>HTTP &gt; Make a request</b> con la cabecera <code>Authorization: Bearer mdt_…</code>, o mandá a una dirección de entrada.</li></ol>

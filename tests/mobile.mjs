@@ -175,7 +175,7 @@ try {
     await page.tap('.lmd-sidebar [data-cloud=menu]'); await page.waitForSelector('.lmd-side-acct .lmd-menu');
     const acctMenu = await page.evaluate(() => { const side = document.querySelector('.lmd-sidebar').getBoundingClientRect(); const m = document.querySelector('.lmd-side-acct .lmd-menu').getBoundingClientRect();
       return { inside: m.left >= side.left && m.right <= side.right && m.top >= 0, acts: [...document.querySelectorAll('.lmd-side-acct .lmd-menu [data-cloud]')].map((x) => x.dataset.cloud), low: Math.min(...[...document.querySelectorAll('.lmd-side-acct .lmd-menu button')].map((x) => x.getBoundingClientRect().height)) }; });
-    check(tag + 'su menú abre dentro del panel, con renglones de 44 px', acctMenu.inside && acctMenu.acts.join() === 'settings,plan,ai,logout' && acctMenu.low >= 44, acctMenu);
+    check(tag + 'su menú abre dentro del panel, con renglones de 44 px', acctMenu.inside && acctMenu.acts.join() === 'plan,ai,name,logout' && acctMenu.low >= 44, acctMenu);
     await fits(page, tag + 'barra lateral abierta, con el menú de la cuenta');
     await page.tap('.lmd-sidebar [data-cloud=menu]'); await page.waitForSelector('.lmd-side-acct .lmd-menu', { state: 'detached' });
     await fits(page, tag + 'barra lateral abierta');
@@ -394,7 +394,7 @@ try {
     for (const tab of ['look', 'read', 'plug', 'cloud', 'ai', 'plan', 'inst', 'adv']) {
       await page.tap('[data-ptab=' + tab + ']'); await page.waitForTimeout(tab === 'cloud' || tab === 'ai' || tab === 'plan' ? 700 : 200);
       const t = await page.evaluate(() => { const body = document.querySelector('.lmd-panel-body'); const on = document.querySelector('[data-ptab].lmd-on').getBoundingClientRect();
-        const cols = [...body.querySelectorAll('section:not([hidden]).lmd-two, section:not([hidden]) .lmd-grid, section:not([hidden]) .lmd-plans, section:not([hidden]) .lmd-sec ul')].map((g) => getComputedStyle(g).gridTemplateColumns.split(' ').length);
+        const cols = [...body.querySelectorAll('section:not([hidden]).lmd-two, section:not([hidden]) .lmd-plug, section:not([hidden]) .lmd-plans, section:not([hidden]) .lmd-sec ul')].map((g) => getComputedStyle(g).gridTemplateColumns.split(' ').length);
         return { wide: body.scrollWidth - body.clientWidth, cols, tab: on.left >= 0 && on.right <= window.innerWidth, cut: [...body.querySelectorAll('section:not([hidden]) *')].filter((n) => n.offsetParent && n.getBoundingClientRect().right > window.innerWidth + 1).length }; });
       check(tag + 'ajustes, pestaña ' + tab + ': una columna, sin cortes y con la pestaña a la vista', t.wide <= 0 && t.cols.every((n) => n === 1) && t.tab && !t.cut, t);
       if (tab === 'cloud') { const sec = await page.evaluate(() => { const s = document.querySelector('[data-acct=cloud] .lmd-sec'); return s ? { rows: s.querySelectorAll('[data-sec-row]').length, wide: s.scrollWidth - s.clientWidth, right: Math.round(s.getBoundingClientRect().right), screen: window.innerWidth } : null; });

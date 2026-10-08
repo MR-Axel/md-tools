@@ -176,14 +176,15 @@
   const loginBtn = (host) => (host.login ? actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="login">' + T('Crear cuenta o entrar') + '</button>') : '');
   // Se entra en Ajustes → Nube, ahí mismo. Desde IA o Plan el botón lleva a esa pestaña con el correo ya pedido.
   let wantLogin = false;
+  // "Nombre visible" del menú de la cuenta: Nube se abre con ese campo ya en edición.
+  let wantName = false;
   const goLogin = (host) => { if (host.direct || !host.tab) host.login(); else { wantLogin = true; host.tab('cloud'); } };
   const quota = (a) => (a.limit ? T('{n} de {m}', { n: a.notes, m: a.limit }) : T('{n}, sin límite', { n: a.notes }));
   const fetchAccount = async (host) => { account = await LMD.cloud.account(); asked = true; adopt(account, true); if (host && host.unlocked) host.unlocked(account); return account; };
   const offline = () => hint(T('No hay conexión con el servidor.'));
-  // Un .md abierto directo en el navegador no puede hablar con el servidor: la cuenta está en la app.
-  // El botón abre la app (la web o la página de la extensión, según "Abrir SharpMD en") en la pestaña de Ajustes que toca.
-  const DIRECT_AT = { cloud: '?login=1', ai: '#lmd-ai', plan: '#lmd-plans' };
-  const direct = (host, tab, soft) => (host.direct ? hint(T('La cuenta se maneja desde la app de SharpMD.')) + actions('<button type="button" class="lmd-btn' + (soft ? '' : ' lmd-btn-fill') + '" data-c="app" data-at="' + DIRECT_AT[tab] + '">' + T('Abrir SharpMD') + '</button>') : '');
+  // Un .md abierto directo en el navegador no puede hablar con el servidor: la cuenta está en la app, y lo dice una
+  // sola franja arriba de Ajustes (content.js). Acá queda el botón de suscribirse, que abre la app ya en los planes.
+  const DIRECT_AT = { plan: '#lmd-plans' };
   const goApp = (host, e) => { const b = e.target.closest('[data-c=app]'); if (b) host.openApp(b.dataset.at); return !!b; };
 
   // Abre la carpeta Nube con el árbol a la vista: la nota más nueva, o la primera si todavía no hay ninguna.
@@ -204,7 +205,8 @@
   const PRIVACY = 'https://sharpmd.app/privacy.html#cloud-notes';
   const TERMS = 'https://sharpmd.app/terms.html';
   let secRedraw = null;
-  const secRow = (id, icon, title, text, tech, extra) => '<li data-sec-row="' + id + '"><span class="lmd-sec-ico">' + icon + '</span><div><b>' + T(title) + '</b><p>' + T(text) + '</p>' + (extra || '') + (tech ? '<small>' + tech + '</small>' : '') + '</div></li>';
+  // Cada hecho es una tarjeta: el ícono y el título arriba, un párrafo, y la línea técnica como etiqueta al pie.
+  const secRow = (id, icon, title, text, tech, extra) => '<li data-sec-row="' + id + '"><div class="lmd-sec-head"><span class="lmd-sec-ico">' + icon + '</span><b>' + T(title) + '</b></div><p>' + T(text) + '</p>' + (extra || '') + (tech ? '<small class="lmd-sec-tech">' + tech + '</small>' : '') + '</li>';
   // own: un servidor propio. can: se ofrece proteger una carpeta. count: carpetas protegidas de la cuenta.
   // pick: se está eligiendo cuál proteger, entre folders.
   // ai: la clave del asistente de este dispositivo, si se sabe: { hasKey, provider, last4, off }. De la clave solo
@@ -225,17 +227,18 @@
     return '<section class="lmd-sec" aria-label="' + T('Seguridad') + '"><h4>' + T('Seguridad') + '</h4><ul>' +
       (o.own ? secRow('notes', ICON.lock, 'Notas en la nube', 'En un servidor propio, el cifrado en tránsito y en el servidor depende de cómo esté instalado. El servidor puede leerlas, para compartirlas y atender a tu IA.', 'HTTPS · DATA_KEY')
         : secRow('notes', ICON.lock, 'Notas en la nube', 'Viajan cifradas y se guardan cifradas en el servidor. El servidor tiene la llave, para poder compartirlas y atender a tu IA.', 'HTTPS · AES-256-GCM')) +
-      // El orden es el de las columnas en una ventana ancha: la cuenta (notas, entrar), las carpetas protegidas, y la
-      // clave de IA con el código abierto. Ver los estilos de .lmd-sec en content.css.
-      secRow('signin', ICON.key, 'Entrar sin contraseña', 'Entrás con un código de un solo uso que llega a tu correo. No hay contraseña de cuenta que se pueda filtrar.', T('Las sesiones y los tokens se guardan como hash')) +
+      // Dos columnas parejas: las notas junto a las carpetas protegidas, la clave de IA junto a cómo se entra, y el
+      // código abierto al final, a lo ancho. Ver los estilos de .lmd-sec en content.css.
       secRow('vaults', ICON.shield, 'Carpetas protegidas', 'Se cifran en tu dispositivo con tu contraseña. Ni el servidor puede leerlas.', 'AES-256-GCM · PBKDF2 · ' + T('En el plan gratis y en el pago'),
         '<p>' + T('Los nombres de archivos y carpetas quedan visibles. Sin la contraseña y sin la clave de respaldo, esas notas no se pueden recuperar.') + '</p>' +
         (n ? '<p class="lmd-sec-count">' + T(n === 1 ? 'Tenés 1 carpeta protegida.' : 'Tenés {n} carpetas protegidas.', { n }) + '</p>' : '') +
         (o.can ? '<p class="lmd-sec-act"><button type="button" class="lmd-link" data-c="protect">' + T('Proteger una carpeta') + '</button></p>' + choose : '')) +
       // La clave del asistente (aikey.js): dónde queda y por dónde viaja. Informa aunque el asistente esté apagado.
       secRow('aikey', ICON.spark, 'Tu clave de IA', 'Se guarda cifrada solo en este dispositivo. No pasa por el servidor de SharpMD ni se sincroniza, y las llamadas van directo a tu proveedor.',
-        'AES-256-GCM · ' + T('llave no exportable') + (ai && ai.off ? ' · <button type="button" class="lmd-link" data-c="ai-tools">' + T('Prender en Herramientas') + '</button>' : ''),
-        ai && ai.hasKey ? '<p class="lmd-sec-key">' + esc(ai.provider === 'compat' ? T('Compatible con OpenAI') : AI_NAMES[ai.provider] || ai.provider) + ' · ••••' + esc(ai.last4 ? ' ' + ai.last4 : '') + '</p>' : '') +
+        'AES-256-GCM · ' + T('llave no exportable'),
+        (ai && ai.hasKey ? '<p class="lmd-sec-key">' + esc(ai.provider === 'compat' ? T('Compatible con OpenAI') : AI_NAMES[ai.provider] || ai.provider) + ' · ••••' + esc(ai.last4 ? ' ' + ai.last4 : '') + '</p>' : '') +
+        (ai && ai.off ? '<p class="lmd-sec-act"><button type="button" class="lmd-link" data-c="ai-tools">' + T('Prender en Herramientas') + '</button></p>' : '')) +
+      secRow('signin', ICON.key, 'Entrar sin contraseña', 'Entrás con un código de un solo uso que llega a tu correo. No hay contraseña de cuenta que se pueda filtrar.', T('Las sesiones y los tokens se guardan como hash')) +
       secRow('open', ICON.code, 'Sin analítica y con código abierto', 'No hay analítica. El código es abierto y podés usar tu propio servidor.', T('App MIT · Servidor AGPL')) +
       '</ul><p class="lmd-sec-foot">' + T('Una nota eliminada queda 30 días en la papelera.') + ' <a href="' + PRIVACY + '" target="_blank" rel="noopener noreferrer">' + T('Cómo funciona') + '</a>' +
       // Los términos regulan el servicio alojado: con un servidor propio no se muestran.
@@ -283,10 +286,11 @@
   async function cloudPane(box, host) {
     await LMD.cloud.ready();
     secRedraw = null;
+    const nameNow = wantName; wantName = false;
     const canProtect = !host.direct && LMD.vault.can(); let picking = false; let free = []; let ai = null;
     const secNow = (count) => security({ own: LMD.cloud.own(), can: canProtect, count, pick: picking, folders: free, ai });
     if (!LMD.cloud.enabled()) box.innerHTML = hint(T('La nube está apagada: SharpMD funciona sin cuenta y sin sincronizar.')) + actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="on">' + T('Prender la nube') + '</button>');
-    else if (host.direct) box.innerHTML = direct(host, 'cloud') + '<div data-sec>' + secNow(0) + '</div>';
+    else if (host.direct) box.innerHTML = '<div data-sec>' + secNow(0) + '</div>';
     else if (!LMD.cloud.signedIn()) box.innerHTML = LMD.home.perks() + actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="login">' + T('Crear cuenta o entrar') + '</button>') + '<div data-sec>' + secNow(0) + '</div>';
     else {
       try {
@@ -295,6 +299,7 @@
           actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="open">' + T('Abrir la carpeta Nube') + '</button><button type="button" class="lmd-btn" data-c="out">' + T('Salir') + '</button>') +
           '<p class="lmd-hint lmd-acct-msg" role="status" hidden></p>' + siteBlock(a, host) + '<div data-sec>' + secNow(0) + '</div>' +
           '<p class="lmd-acct-del"><button type="button" class="lmd-link" data-c="delete">' + T('Eliminar la cuenta') + '</button></p>';
+        if (nameNow) editName(box, host);
       } catch (e) { if (!LMD.cloud.signedIn()) return cloudPane(box, host); box.innerHTML = offline(); }
     }
     // Con sesión, el bloque de seguridad suma cuántas carpetas protegidas hay y cuáles se pueden proteger.
@@ -569,7 +574,7 @@
     // No pisa un token recién creado (no se vuelve a mostrar) ni un campo que tiene el foco.
     aiRedraw = () => { const f = document.activeElement; if (a && box.isConnected && box.offsetParent && !box.querySelector('.lmd-ai-new') && !(f && box.contains(f) && /^(INPUT|TEXTAREA|SELECT)$/.test(f.tagName))) draw(); };
     if (!LMD.cloud.enabled()) box.innerHTML = hint(T('La nube está apagada: sin ella no hay notas para conectar.'));
-    else if (host.direct) box.innerHTML = intro + direct(host, 'ai');
+    else if (host.direct) box.innerHTML = intro;
     else if (!LMD.cloud.signedIn()) box.innerHTML = intro + hint(T('Entrá a tu cuenta para conectar una IA.')) + loginBtn(host);
     else {
       try {
@@ -639,7 +644,7 @@
     await LMD.cloud.ready();
     let a = null; let note = '';
     if (!LMD.cloud.enabled()) note = hint(T('La nube está apagada: los planes son de la cuenta de la nube.'));
-    else if (host.direct) note = direct(host, 'plan', true); // acá lo principal es suscribirse: esos botones van en la tarjeta del plan pago
+    else if (host.direct) note = ''; // acá lo principal es suscribirse: esos botones van en la tarjeta del plan pago
     else if (!LMD.cloud.signedIn()) note = hint(T('Entrá a tu cuenta para pasar al plan pago.')) + loginBtn(host);
     else { try { a = await fetchAccount(host); } catch (e) { note = offline(); } }
     if (turn !== planTurn) return;
@@ -908,6 +913,6 @@
   // Vuelve a leer la cuenta después de un cambio en el equipo.
   const reload = async () => { account = await LMD.cloud.account(); asked = true; adopt(account, true); paint(); return account; };
 
-  LMD.sync = { init, paint, click, panes, reload, dialog, feedback, report, reportRef, awaitPaid, openCloud, quota, PAY, login, me, foldersOf, signOut, aiBrief, account: () => account, why: (text) => { planWhy = text || ''; },
+  LMD.sync = { init, paint, click, panes, reload, dialog, feedback, report, reportRef, awaitPaid, openCloud, quota, PAY, login, me, foldersOf, signOut, aiBrief, askName: () => { wantName = true; }, account: () => account, why: (text) => { planWhy = text || ''; },
     repaintAi: () => { if (aiRedraw) aiRedraw(); if (secRedraw) secRedraw(); }, security, canPublish, publish, siteState };
 })();

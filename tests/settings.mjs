@@ -43,7 +43,9 @@ const cloudUrl = (p) => home + '?f=' + encodeURIComponent('cloud/' + p.split('/'
 const tab = async (t) => { await app.click('[data-ptab=' + t + ']'); await app.waitForTimeout(450); };
 const openSettings = async (t) => { await app.click('[data-act=settings]'); await app.waitForSelector('.lmd-panel-card'); if (t) await tab(t); };
 const TABS = ['look', 'read', 'plug', 'tools', 'cloud', 'ai', 'plan', 'inst', 'adv'];
-// Ninguna pestaña puede necesitar scroll con la ventana a 800 px de alto.
+// Ninguna pestaña puede necesitar scroll con la ventana a 800 px de alto. Las dos que sí deslizan se sacan al leer el
+// resultado: Herramientas, que es una lista que crece, y Nube, por las tarjetas del bloque Seguridad.
+const SCROLLS = /^(tools|cloud) /;
 const overflow = async () => { const out = []; for (const t of TABS) { await tab(t); const m = await app.evaluate(() => { const b = document.querySelector('.lmd-panel-body'); return b.scrollHeight - b.clientHeight; }); if (m > 0) out.push(t + ' +' + m); } return out; };
 // Los dos renglones que dicen qué anda sin cuenta y qué suma tenerla: sin signos de admiración ni rayas largas. Van en Ajustes → Nube.
 // En el inicio, la cuenta vive al pie de la barra lateral: sin sesión, la invitación a entrar con una línea de qué suma.
@@ -122,27 +124,30 @@ try {
   const menu = await app.evaluate(() => { const m = document.querySelector('.lmd-side-acct .lmd-menu'); const r = m.getBoundingClientRect(); const row = document.querySelector('.lmd-home-acct').getBoundingClientRect();
     return { acts: [...m.querySelectorAll('[data-cloud]')].map((x) => x.dataset.cloud), labels: [...m.querySelectorAll('[data-cloud]')].map((x) => x.textContent.trim()),
       order: [...m.querySelector('.lmd-menu-list').children].map((x) => (x.tagName === 'HR' ? '-' : x.dataset.cloud + (x.classList.contains('lmd-menu-sub') ? '>' : ''))).join(' '), icons: Object.fromEntries([...m.querySelectorAll('[data-cloud]')].map((x) => [x.dataset.cloud, x.querySelector('svg').outerHTML])),
-      inset: m.querySelector('[data-cloud=plan] svg').getBoundingClientRect().left - m.querySelector('[data-cloud=settings] svg').getBoundingClientRect().left, rowH: Math.round(m.querySelector('[data-cloud=plan]').getBoundingClientRect().height), above: r.bottom <= row.top && r.top >= 0, open: document.querySelector('[data-cloud=menu]').getAttribute('aria-expanded') }; });
+      inset: m.querySelector('[data-cloud=plan] svg').getBoundingClientRect().left - m.querySelector('[data-cloud=logout] svg').getBoundingClientRect().left, gear: document.querySelectorAll('[data-act=settings]').length, rowH: Math.round(m.querySelector('[data-cloud=plan]').getBoundingClientRect().height), above: r.bottom <= row.top && r.top >= 0, open: document.querySelector('[data-cloud=menu]').getAttribute('aria-expanded') }; });
   await app.keyboard.press('Escape');
   const shutAgain = await app.evaluate(() => [document.querySelectorAll('.lmd-side-acct .lmd-menu').length, document.querySelector('[data-cloud=menu]').getAttribute('aria-expanded'), document.activeElement.dataset.cloud]);
   check('conectado: correo, plan y notas', box.email === mail && /^Plan gratis · 0 de 10 notas/.test(box.sub), box);
   check('la cuenta es una fila fija al pie de la barra lateral, y un correo largo no la parte en dos renglones', box.oneLine && box.inside && box.atFoot && box.title === mail, box);
-  check('las acciones de la cuenta están en un menú que abre hacia arriba: Ajustes, sus pestañas Plan e IA como atajos, y Salir aparte', box.shut === 'false' && box.early === 0 && menu.acts.join() === 'settings,plan,ai,logout' && menu.labels.join() === 'Ajustes,Plan,IA (MCP),Salir' && menu.order === 'settings plan> ai> - logout' && menu.above && menu.open === 'true', [box, menu.acts, menu.labels, menu.order]);
-  check('el menú es compacto, con un ícono por renglón, y los atajos van un paso adentro', Object.values(menu.icons).every((s) => /^<svg/.test(s)) && menu.inset >= 16 && menu.rowH <= 32, [menu.inset, menu.rowH]);
+  check('el menú de la cuenta abre hacia arriba y es solo de la cuenta: el plan que tiene, conectar su IA, el nombre visible, y Salir aparte', box.shut === 'false' && box.early === 0 && menu.acts.join() === 'plan,ai,name,logout' && menu.labels.join() === 'Plan · Gratis,Conectar tu IA,Nombre visible,Salir' && menu.order === 'plan ai name - logout' && menu.above && menu.open === 'true', [box, menu.acts, menu.labels, menu.order]);
+  check('no repite los ajustes de la app: a esos se entra por el único botón de la barra de arriba', !menu.acts.includes('settings') && menu.gear === 1, [menu.acts, menu.gear]);
+  check('el menú es compacto, con un ícono por renglón, todos al mismo nivel', Object.values(menu.icons).every((s) => /^<svg/.test(s)) && menu.inset === 0 && menu.rowH <= 32, [menu.inset, menu.rowH]);
   check('Escape cierra el menú de la cuenta y deja el foco en la fila', shutAgain[0] === 0 && shutAgain[1] === 'false' && shutAgain[2] === 'menu', shutAgain);
   await app.click('[data-cloud=menu]');
 
-  // "Ajustes" abre Ajustes en la pestaña de la nube; los atajos llevan el nombre y el ícono de su pestaña.
-  await app.click('[data-cloud=settings]'); await app.waitForSelector('.lmd-panel-card [data-acct=cloud] [data-c=open]');
+  // "Nombre visible" abre Ajustes en Nube con ese campo listo para escribir; Plan e IA llevan el ícono de su pestaña.
+  await app.click('[data-cloud=name]'); await app.waitForSelector('.lmd-panel-card [data-acct=cloud] [data-name-in]');
+  const nameAt = await app.evaluate(() => ({ focus: document.activeElement === document.querySelector('[data-acct=cloud] [data-name-in]'), value: document.querySelector('[data-acct=cloud] [data-name-in]').value }));
+  await app.click('[data-acct=cloud] [data-c=name-no]'); await app.waitForSelector('.lmd-panel-card [data-acct=cloud] [data-c=open]');
   const tabs = await app.evaluate(() => ({ on: document.querySelector('.lmd-panel-card [data-ptab].lmd-on').dataset.ptab, menu: document.querySelectorAll('.lmd-side-acct .lmd-menu').length,
     plan: [document.querySelector('[data-ptab=plan] svg').outerHTML, document.querySelector('[data-ptab=plan]').textContent.trim()], ai: [document.querySelector('[data-ptab=ai] svg').outerHTML, document.querySelector('[data-ptab=ai]').textContent.trim()], gear: document.querySelector('[data-act=settings] svg').outerHTML }));
-  check('"Ajustes" del menú de la cuenta abre Ajustes en la pestaña Nube y cierra el menú', tabs.on === 'cloud' && tabs.menu === 0, tabs.on);
-  check('cada atajo lleva el mismo nombre y el mismo ícono que su pestaña, y Ajustes el del botón de arriba', tabs.plan[0] === menu.icons.plan && tabs.plan[1] === 'Plan' && tabs.ai[0] === menu.icons.ai && tabs.ai[1] === 'IA (MCP)' && menu.labels[2] === tabs.ai[1] && tabs.gear === menu.icons.settings, [tabs.plan[1], tabs.ai[1]]);
+  check('"Nombre visible" del menú de la cuenta abre Ajustes en Nube con el campo del nombre en edición y el foco puesto, y cierra el menú', tabs.on === 'cloud' && tabs.menu === 0 && nameAt.focus && nameAt.value.length > 0, [tabs.on, nameAt]);
+  check('Plan e IA llevan el mismo ícono que su pestaña de Ajustes', tabs.plan[0] === menu.icons.plan && tabs.plan[1] === 'Plan' && tabs.ai[0] === menu.icons.ai && tabs.ai[1] === 'IA (MCP)', [tabs.plan[1], tabs.ai[1]]);
   await app.keyboard.press('Escape'); await app.waitForSelector('.lmd-panel-card', { state: 'hidden' });
   await app.click('[data-cloud=menu]'); await app.click('[data-cloud=plan]'); await app.waitForSelector('.lmd-acct-card, .lmd-panel-card [data-ptab=plan].lmd-on');
   check('el atajo Plan abre los planes', await app.waitForSelector('.lmd-acct-card .lmd-plans', { timeout: 8000 }).then(() => true, () => false));
   await app.keyboard.press('Escape'); await app.waitForSelector('.lmd-acct-card', { state: 'detached' });
-  await app.click('[data-cloud=menu]'); await app.click('[data-cloud=settings]'); await app.waitForSelector('.lmd-panel-card [data-acct=cloud] [data-c=open]');
+  await openSettings('cloud'); await app.waitForSelector('.lmd-panel-card [data-acct=cloud] [data-c=open]');
   await Promise.all([app.waitForNavigation(), app.click('.lmd-panel-card [data-acct=cloud] [data-c=open]')]); await app.waitForSelector('.lmd-draft'); await app.waitForSelector('.lmd-xroot[data-root=cloud] .lmd-node.lmd-active');
   const firstNote = (await api('GET', '/notes', undefined, session)).json.map((n) => n.path);
   const empty = await app.evaluate(() => ({ url: location.search, tree: [...document.querySelectorAll('.lmd-xroot[data-root=cloud] .lmd-node')].map((n) => n.textContent.trim() + (n.classList.contains('lmd-active') ? '*' : '')), shown: !document.querySelector('.lmd-pane-files').hidden && document.querySelector('.lmd-pane-files').getBoundingClientRect().width > 100 }));
@@ -156,7 +161,7 @@ try {
   await app.waitForSelector('.lmd-panel-card'); await app.waitForSelector('html.lmd-editing'); await app.waitForTimeout(900);
   const en = await app.evaluate(() => ({ title: document.querySelector('.lmd-panel-card h2').textContent, menus: document.querySelectorAll('.lmd-menu').length, tab: document.querySelector('[data-ptab].lmd-on').dataset.ptab, tabs: [...document.querySelectorAll('[data-ptab]')].map((b) => b.textContent.trim()).join('|'), foot: document.querySelector('[data-act=feedback]').textContent.trim() }));
   check('al cambiar de idioma en una nota vacía, Ajustes vuelve solo, sin menú encima', en.title === 'Settings' && en.menus === 0 && en.tab === 'look', en);
-  check('las pestañas y el pie están traducidos', en.tabs === 'Appearance|Reading and editing|Plugins|Tools|Cloud|AI (MCP)|Automations|Plan|Install|Advanced' && en.foot === 'Send feedback', en);
+  check('las pestañas y el pie están traducidos', en.tabs === 'Appearance|Reading and editing|Plugins|Tools|Cloud|AI (MCP)|API and automations|Plan|Install|Advanced' && en.foot === 'Send feedback', en);
   await Promise.all([app.waitForNavigation(), app.click('.lmd-seg[data-seg=language] button[data-val=es]')]);
   await app.waitForSelector('.lmd-panel-card'); await app.waitForSelector('html.lmd-editing'); await app.waitForTimeout(600);
   await app.click('[data-act=close-panel]'); await app.click('.lmd-add');
@@ -165,7 +170,16 @@ try {
 
   console.log('Ajustes, plan gratis');
   await openSettings();
-  check('diez pestañas en orden', (await app.evaluate(() => [...document.querySelectorAll('[data-ptab]')].map((b) => b.dataset.ptab + ':' + b.textContent.trim()).join('|'))) === 'look:Apariencia|read:Lectura y edición|plug:Plugins|tools:Herramientas|cloud:Nube|ai:IA (MCP)|auto:Automatizaciones|plan:Plan|inst:Instalar|adv:Avanzado');
+  await tab('plug');
+  const plug = await app.evaluate(() => { const box = document.querySelector('[data-tab=plug] .lmd-plug'); const cols = [...box.querySelectorAll('.lmd-plug-col')]; const rows = [...box.querySelectorAll('.lmd-switch')];
+    return { groups: [...box.querySelectorAll('.lmd-plug-group')].map((g) => g.querySelector('h4').textContent + ':' + g.querySelectorAll('[data-plugin]').length + ':' + g.getAttribute('role') + ':' + (g.getAttribute('aria-label') === g.querySelector('h4').textContent)).join('|'),
+      all: rows.length, uniq: new Set(rows.map((r) => r.querySelector('input').dataset.plugin)).size, known: Object.keys(LMD.PLUGIN_LABELS).length, low: Math.min(...rows.map((r) => r.getBoundingClientRect().height)),
+      gap: Math.round(cols[1].getBoundingClientRect().left - cols[0].getBoundingClientRect().right), split: cols.map((c) => c.querySelectorAll('.lmd-switch').length), between: Math.min(...cols.flatMap((c) => [...c.querySelectorAll('.lmd-plug-group')].slice(1).map((g) => Math.round(g.getBoundingClientRect().top - g.previousElementSibling.getBoundingClientRect().bottom)))),
+      anchors: !!box.querySelector('[data-plugin=anchor], [data-plugin=anchors]'), heads: getComputedStyle(box.querySelector('h4')).textTransform + ' ' + getComputedStyle(box.querySelector('h4')).fontSize }; });
+  check('Plugins: los interruptores van en cinco bloques con subtítulo, cada uno una sola vez', plug.groups === 'Texto:7:group:true|Bloques:6:group:true|Código y matemática:5:group:true|Enlaces y medios:3:group:true|Comportamiento:4:group:true' && plug.all === plug.known && plug.uniq === plug.all && !plug.anchors, plug);
+  check('en dos columnas parejas, con renglones de 40 px o más y 20 px o más entre bloques y entre columnas', plug.low >= 40 && plug.gap >= 28 && plug.between >= 20 && Math.abs(plug.split[0] - plug.split[1]) <= 2 && plug.heads === 'uppercase 12px', plug);
+  await tab('look');
+  check('diez pestañas en orden', (await app.evaluate(() => [...document.querySelectorAll('[data-ptab]')].map((b) => b.dataset.ptab + ':' + b.textContent.trim()).join('|'))) === 'look:Apariencia|read:Lectura y edición|plug:Plugins|tools:Herramientas|cloud:Nube|ai:IA (MCP)|auto:API y automatizaciones|plan:Plan|inst:Instalar|adv:Avanzado');
   // Pie de la barra: comentarios, apoyar el proyecto y la versión, que tiene que ser la del manifiesto.
   const foot = await app.evaluate(() => { const nav = document.querySelector('.lmd-ptabs'); const a = nav.querySelector('a.lmd-ptabs-link'); const v = nav.querySelector('.lmd-ptabs-ver'); const box = (n) => n.getBoundingClientRect();
     return { last: [...nav.children].slice(-3).map((k) => k.textContent.trim()), href: a.href, target: a.target, rel: a.rel, ver: v.textContent, lmd: LMD.VERSION, sponsor: LMD.SPONSOR_URL,
@@ -175,8 +189,8 @@ try {
   check('LMD.VERSION es el mismo número que manifest.json', /^\d+\.\d+\.\d+$/.test(manifestVersion) && constVersion === manifestVersion && foot.lmd === manifestVersion, [manifestVersion, constVersion, foot.lmd]);
   check('al pie de las pestañas: enviar comentarios, apoyar el proyecto y la versión', JSON.stringify(foot.last) === JSON.stringify(['Enviar comentarios', 'Apoyar el proyecto', 'SharpMD ' + manifestVersion]) && foot.stacked, foot);
   check('apoyar el proyecto abre el enlace en una pestaña nueva', foot.href.replace(/\/$/, '') === foot.sponsor.replace(/\/$/, '') && foot.target === '_blank' && /noopener/.test(foot.rel), foot);
-  let over = (await overflow()).filter((x) => !/^tools /.test(x)); // Tools es una lista que crece: esa pestaña sí desliza
-  check('ninguna pestaña necesita scroll a 800 px de alto (plan gratis)', over.length === 0, over);
+  let over = (await overflow()).filter((x) => !SCROLLS.test(x));
+  check('ninguna pestaña necesita scroll a 800 px de alto, salvo Herramientas y Nube (plan gratis)', over.length === 0, over);
   await tab('cloud');
   const freeCloud = await app.evaluate(() => [...document.querySelectorAll('[data-acct=cloud] .lmd-acct-row')].map((r) => r.children[0].textContent + '=' + r.children[1].textContent).join('|') + ' / ' + [...document.querySelectorAll('[data-acct=cloud] button')].map((b) => b.textContent).join('|'));
   check('Nube: la cuenta, el plan y cuántas notas, con abrir la carpeta, salir y eliminar la cuenta', freeCloud === 'Cuenta=' + mail + '|Nombre visible=' + mail.split('@')[0] + '|Plan=Gratis|Notas en la nube=1 de 10 / Cambiar|Abrir la carpeta Nube|Salir|Proteger una carpeta|Prender en Herramientas|Eliminar la cuenta', freeCloud);
@@ -302,14 +316,14 @@ try {
   const direct = {};
   for (const t of ['cloud', 'ai', 'plan']) { await file.click('[data-ptab=' + t + ']'); await file.waitForTimeout(500); direct[t] = await file.evaluate((k) => document.querySelector('[data-acct=' + k + ']').textContent, t); }
   await file.waitForTimeout(800);
-  check('sobre un archivo directo, Nube, IA y Plan mandan a la app en vez de fallar', Object.values(direct).every((d) => /La cuenta se maneja desde la app de SharpMD\./.test(d) && /Abrir SharpMD/.test(d) && !/No hay conexión/.test(d)) && /Gratis/.test(direct.plan), direct);
+  check('sobre un archivo directo, Nube, IA y Plan no fallan ni repiten lo que ya dice la franja de arriba', Object.values(direct).every((d) => !/La cuenta se maneja desde la app|Abrir SharpMD|No hay conexión/.test(d)) && /Seguridad/.test(direct.cloud) && /Una IA que hable MCP/.test(direct.ai) && /Gratis/.test(direct.plan), direct);
   // Una sola franja lo dice igual en cada pestaña que depende de la cuenta, y ofrece abrir ESTE archivo en la app
   const strip = {};
   for (const t of ['look', 'cloud', 'ai', 'auto', 'plan', 'tools']) { await file.click('[data-ptab=' + t + ']'); await file.waitForTimeout(200); strip[t] = await file.evaluate(() => { const d = document.querySelector('[data-direct]'); return d.hidden || !d.offsetParent ? '' : d.textContent; }); }
   const same = 'Estás leyendo un archivo de tu disco. Tu cuenta, la nube y tu IA están en la app. Abrir este archivo en la app';
-  check('sobre un archivo directo, una franja dice lo mismo en Nube, IA, Automatizaciones, Plan y Herramientas, y no aparece en Apariencia', strip.look === '' && ['cloud', 'ai', 'auto', 'plan', 'tools'].every((t) => strip[t].replace(/\s+/g, ' ').trim() === same), strip);
+  check('sobre un archivo directo, una franja dice lo mismo en Nube, IA, API y automatizaciones, Plan y Herramientas, y no aparece en Apariencia', strip.look === '' && ['cloud', 'ai', 'auto', 'plan', 'tools'].every((t) => strip[t].replace(/\s+/g, ' ').trim() === same), strip);
   // La galería ahí no habla con el servidor: muestra los temas incluidos y dice dónde está lo demás, sin "no hay conexión"
-  await file.waitForSelector('.lmd-gal-card[data-gkind=included]');
+  await file.click('[data-tsub=community]'); await file.waitForSelector('.lmd-gal-card[data-gkind=included]');
   const dgal = await file.evaluate(() => ({ note: document.querySelector('.lmd-gal-note').textContent, hidden: document.querySelector('.lmd-gal-note').hidden, own: document.querySelectorAll('.lmd-gal-card[data-gkind=included]').length, empty: !!document.querySelector('.lmd-gal-list .lmd-empty') }));
   check('la galería sobre un archivo directo muestra los doce temas incluidos y dice que el resto está en la app', !dgal.hidden && dgal.note === 'Abrí la app para ver lo que compartió la comunidad.' && dgal.own === 12 && !dgal.empty && !/conexión/.test(dgal.note), dgal);
   const fileUrl = pathToFileURL(path.join(root, 'examples', 'sample.md')).href;
@@ -319,8 +333,8 @@ try {
   check('y no le piden nada al servidor', asked.length === 0, asked.slice(0, 5));
   const buy = await file.evaluate(() => ({ paid: [...document.querySelectorAll('[data-acct=plan] .lmd-plan + .lmd-plan .lmd-plan-buy [data-c=app]')].map((b) => b.textContent + ' ' + b.dataset.at + (b.classList.contains('lmd-btn-fill') ? ' fill' : '')),
     open: [...document.querySelectorAll('[data-acct=plan] .lmd-acct-actions [data-c=app]')].map((b) => b.textContent + (b.classList.contains('lmd-btn-fill') ? ' fill' : '')), price: document.querySelector('[data-acct=plan] .lmd-plan + .lmd-plan h4').textContent }));
-  check('Plan sobre un archivo directo: la tarjeta del plan pago trae suscribirse por año (el destacado) y por mes, con los precios de la app, y "Abrir SharpMD" queda de secundario',
-    buy.paid.join('|') === 'USD 40 / año #lmd-plans fill|USD 4 / mes #lmd-plans' && buy.open.join('|') === 'Abrir SharpMD' && /USD 40 \/ año/.test(buy.price), buy);
+  check('Plan sobre un archivo directo: la tarjeta del plan pago trae suscribirse por año (el destacado) y por mes, con los precios de la app, y ningún otro botón de abrir la app',
+    buy.paid.join('|') === 'USD 40 / año #lmd-plans fill|USD 4 / mes #lmd-plans' && buy.open.length === 0 && /USD 40 \/ año/.test(buy.price), buy);
   await file.evaluate(() => document.documentElement.classList.add('lmd-store-app'));
   check('dentro de la app de Android los botones de compra no se ven', await file.evaluate(() => getComputedStyle(document.querySelector('[data-acct=plan] .lmd-plan-buy')).display === 'none'));
   await file.evaluate(() => document.documentElement.classList.remove('lmd-store-app'));
@@ -330,24 +344,18 @@ try {
   const webPlan = await goes('plan', '.lmd-plan-buy [data-c=app]'); await webPlan.p.waitForSelector('.lmd-panel .lmd-plans');
   check('suscribirse abre la app web en una pestaña nueva, directo en los planes', webPlan.first === SITE + '/src/app.html#lmd-plans' && (await onTab(webPlan.p)) === 'plan', webPlan.first);
   await webPlan.p.close();
-  const webAi = await goes('ai', '[data-c=app]'); await webAi.p.waitForSelector('.lmd-panel [data-acct=ai]');
-  check('en IA, "Abrir SharpMD" abre la app web en Ajustes > IA', webAi.first === SITE + '/src/app.html#lmd-ai' && (await onTab(webAi.p)) === 'ai' && !/#/.test(webAi.p.url()), [webAi.first, webAi.p.url()]);
-  await webAi.p.close();
-  const webCloud = await goes('cloud', '[data-c=app]'); await webCloud.p.waitForSelector('.lmd-home .lmd-login [data-field=email]');
-  check('en Nube, abre la app web lista para entrar', webCloud.first === SITE + '/src/app.html?login=1', webCloud.first);
-  await webCloud.p.close();
+  // En Nube, IA y API y automatizaciones no queda otro botón de abrir la app: el de la franja alcanza.
+  const others = {};
+  for (const t of ['cloud', 'ai', 'auto']) { await file.click('[data-ptab=' + t + ']'); await file.waitForTimeout(500); others[t] = await file.evaluate((k) => document.querySelectorAll('[data-tab=' + k + '] [data-c=app]').length, t); }
+  check('en Nube, IA y API y automatizaciones el único botón que abre la app es el de la franja', Object.values(others).every((n) => n === 0) && (await file.evaluate(() => { const d = document.querySelector('[data-direct]'); return !d.hidden && !!d.querySelector('[data-direct-go]').offsetParent; })), others);
   // Con "Abrir SharpMD en: esta extensión", los mismos botones abren la página de la extensión con la misma ancla.
   const openWas = await stored('settings');
   await app.evaluate((v) => new Promise((resolve) => chrome.storage.local.set({ settings: v }, resolve)), Object.assign({}, openWas, { openIn: 'ext' }));
   const extPlan = await goes('plan', '.lmd-plan-buy [data-c=app]'); await extPlan.p.waitForSelector('.lmd-panel .lmd-plans');
   check('con "esta extensión" elegida, suscribirse abre la página de la extensión en los planes', extPlan.first === home + '#lmd-plans' && (await onTab(extPlan.p)) === 'plan', extPlan.first);
   await extPlan.p.close();
-  const opened = (await goes('plan', '.lmd-acct-actions [data-c=app]')).p;
-  check('"Abrir SharpMD" de Plan también lleva a los planes', opened.url().split('#')[0] === home, opened.url());
-  await opened.close();
-  const extCloud = await goes('cloud', '[data-c=app]'); // en esta página la cuenta ya está abierta: no hay nada que pedir
-  check('"Abrir SharpMD" de Nube abre la app, lista para entrar', extCloud.first === home + '?login=1', extCloud.first);
-  await extCloud.p.close();
+  const extStrip = await lands('[data-direct-go]');
+  check('y el botón de la franja abre este mismo archivo en la página de la extensión', extStrip.first === home + '#open=' + encodeURIComponent(fileUrl), extStrip.first);
   await app.evaluate((v) => new Promise((resolve) => chrome.storage.local.set({ settings: v }, resolve)), openWas);
   await file.bringToFront();
   await file.click('[data-act=feedback]'); await file.waitForSelector('.lmd-fb a');
@@ -452,8 +460,8 @@ try {
   console.log('Ajustes, plan pago');
   for (const p of ['archivo/vieja.md', 'proyectos/plan.md', 'proyectos/nueva.md']) { await api('PUT', '/notes/' + encodeURIComponent(p), { text: '# ' + p + '\n' }, session); await new Promise((r) => setTimeout(r, 15)); }
   await app.goto(cloudUrl('proyectos/plan.md')); await app.waitForSelector('.markdown-body h1'); await openSettings();
-  over = (await overflow()).filter((x) => !/^tools /.test(x));
-  check('ninguna pestaña necesita scroll a 800 px de alto (plan pago)', over.length === 0, over);
+  over = (await overflow()).filter((x) => !SCROLLS.test(x));
+  check('ninguna pestaña necesita scroll a 800 px de alto, salvo Herramientas y Nube (plan pago)', over.length === 0, over);
   await tab('cloud');
   const paidCloud = await app.evaluate(() => [...document.querySelectorAll('[data-acct=cloud] .lmd-acct-row')].map((r) => r.children[0].textContent + '=' + r.children[1].textContent).join('|'));
   check('Nube con plan pago: el número de notas y "sin límite"', paidCloud === 'Cuenta=' + mail + '|Nombre visible=' + mail.split('@')[0] + '|Plan=Pago|Notas en la nube=4, sin límite', paidCloud);
@@ -481,8 +489,9 @@ try {
   await app.locator('.lmd-xroot[data-root=cloud] .lmd-node-dir', { hasText: 'relleno' }).click(); await app.waitForSelector('.lmd-xroot[data-root=cloud] .lmd-node-kids .lmd-node');
   check('una carpeta de la nube se despliega con todas sus notas', (await app.locator('.lmd-xroot[data-root=cloud] .lmd-node-kids a.lmd-node').count()) === 10);
   await app.click('[data-cloud=menu]'); const proMenu = await app.evaluate(() => [...document.querySelectorAll('.lmd-side-acct .lmd-menu [data-cloud]')].map((x) => x.dataset.cloud));
-  check('con plan pago el menú de la cuenta es el mismo: Ajustes, Plan, IA y Salir', proMenu.join() === 'settings,plan,ai,logout', proMenu);
-  await app.click('[data-cloud=settings]'); await app.waitForSelector('.lmd-panel-card [data-acct=cloud] [data-c=open]');
+  const proPlan = await app.evaluate(() => document.querySelector('.lmd-side-acct .lmd-menu [data-cloud=plan]').textContent.trim());
+  check('con plan pago el menú de la cuenta es el mismo, y dice el plan que tiene', proMenu.join() === 'plan,ai,name,logout' && proPlan === 'Plan · Pago', [proMenu, proPlan]);
+  await app.keyboard.press('Escape'); await openSettings('cloud'); await app.waitForSelector('.lmd-panel-card [data-acct=cloud] [data-c=open]');
   await Promise.all([app.waitForNavigation(), app.click('.lmd-panel-card [data-acct=cloud] [data-c=open]')]); await app.waitForSelector('.markdown-body h1'); await app.waitForSelector('.lmd-pane-files .lmd-node.lmd-active');
   const footOpen = await app.evaluate(() => { const b = document.querySelector('.lmd-sidebar > .lmd-side-acct [data-cloud=menu]'); return !!b && b.offsetWidth > 0 && document.querySelector('.lmd-home').hidden; });
   check('con una nota abierta la cuenta sigue al pie de la barra lateral', footOpen);
@@ -495,9 +504,9 @@ try {
   await openSettings('cloud'); await app.waitForSelector('[data-acct=cloud] [data-c=open]'); await app.click('[data-acct=cloud] [data-c=open]'); await app.waitForFunction(() => document.querySelector('.lmd-panel').hidden);
   await app.waitForSelector('.lmd-xroot[data-root=cloud]:not(.lmd-shut) .lmd-node.lmd-active');
   check('en una nota de la nube, "Abrir la carpeta Nube" cierra Ajustes y deja el árbol', !((await stored('side')).shut || {}).cloud);
-  await app.goto(home); await app.waitForSelector('[data-cloud=menu]'); await app.click('[data-cloud=menu]'); await app.click('[data-cloud=ai]'); await app.waitForSelector('.lmd-acct-card [data-c=token]');
-  check('"Conectar una IA" del inicio abre el mismo panel', (await app.evaluate(() => document.querySelector('.lmd-acct-card').getAttribute('aria-label') + '|' + document.querySelector('.lmd-acct-card .lmd-field input').value)) === 'Conectar una IA|' + base + '/mcp');
-  await app.click('[data-d=close]');
+  await app.goto(home); await app.waitForSelector('[data-cloud=menu]'); await app.click('[data-cloud=menu]'); await app.click('[data-cloud=ai]'); await app.waitForSelector('.lmd-panel-card [data-acct=ai] [data-c=token]');
+  check('"Conectar tu IA" del menú de la cuenta abre Ajustes en IA (MCP), también desde el inicio', (await app.evaluate(() => document.querySelector('.lmd-panel-card [data-ptab].lmd-on').dataset.ptab + '|' + document.querySelector('[data-acct=ai] .lmd-field input').value + '|' + document.querySelectorAll('.lmd-acct-card').length)) === 'ai|' + base + '/mcp|0');
+  await app.keyboard.press('Escape'); await app.waitForSelector('.lmd-panel-card', { state: 'hidden' });
   await app.click('[data-home=feedback]'); await app.waitForSelector('.lmd-fb');
   check('con sesión, los comentarios no piden el correo', (await app.locator('.lmd-fb [data-fb=email]').count()) === 0 && (await app.locator('.lmd-fb textarea').count()) === 1);
   await app.click('[data-fb=close]');
@@ -545,7 +554,7 @@ try {
       pick: [...s.querySelectorAll('[data-c=protect-at]')].map((b) => b.dataset.f), msg: (s.querySelector('p.lmd-sec-pick') || {}).textContent || '', wide: s.scrollWidth - s.clientWidth };
   });
   const limpio = (t) => !!t && !/[!¡—–]/.test(t) && !/end-to-end|extremo a extremo|militar|inviolable|100%/i.test(t);
-  const ROWS = 'notes:Notas en la nube|signin:Entrar sin contraseña|vaults:Carpetas protegidas|aikey:Tu clave de IA|open:Sin analítica y con código abierto';
+  const ROWS = 'notes:Notas en la nube|vaults:Carpetas protegidas|aikey:Tu clave de IA|signin:Entrar sin contraseña|open:Sin analítica y con código abierto';
   const fuera = await secOf();
   check('sin sesión, Nube muestra el bloque de seguridad debajo del botón de entrar: cinco renglones con ícono', !!fuera && fuera.title === 'Seguridad' && fuera.rows === ROWS && fuera.icons === 5 && fuera.below && fuera.wide <= 0, fuera);
   check('dice qué lee el servidor y qué no, cada cosa en su renglón, sin signos de admiración ni rayas', limpio(fuera.text) && /Ni el servidor puede leerlas\./.test(fuera.text) && /para compartirlas y atender a tu IA\./.test(fuera.text) && /En el plan gratis y en el pago/.test(fuera.text) && /AES-256-GCM · PBKDF2/.test(fuera.text) && /no se pueden recuperar\./.test(fuera.text), fuera.text);
@@ -581,7 +590,7 @@ try {
   const keyRow = () => app.evaluate(() => { const li = document.querySelector('[data-acct=cloud] [data-sec-row=aikey]'); return li && { title: li.querySelector('b').textContent, text: li.querySelector('p').textContent, tech: li.querySelector('small').textContent, act: (li.querySelector('[data-c=ai-tools]') || {}).textContent || '', key: (li.querySelector('.lmd-sec-key') || {}).textContent || '', all: li.textContent }; });
   await app.waitForSelector('[data-acct=cloud] [data-sec-row=aikey] [data-c=ai-tools]');
   const k0 = await keyRow();
-  check('el bloque dice cómo se protege la clave de IA: cifrada, solo en este dispositivo, sin pasar por el servidor ni sincronizarse', k0.title === 'Tu clave de IA' && /^Se guarda cifrada solo en este dispositivo\./.test(k0.text) && /No pasa por el servidor de SharpMD ni se sincroniza, y las llamadas van directo a tu proveedor\./.test(k0.text) && k0.tech === 'AES-256-GCM · llave no exportable · Prender en Herramientas' && limpio(k0.all), k0);
+  check('el bloque dice cómo se protege la clave de IA: cifrada, solo en este dispositivo, sin pasar por el servidor ni sincronizarse', k0.title === 'Tu clave de IA' && /^Se guarda cifrada solo en este dispositivo\./.test(k0.text) && /No pasa por el servidor de SharpMD ni se sincroniza, y las llamadas van directo a tu proveedor\./.test(k0.text) && k0.tech === 'AES-256-GCM · llave no exportable' && limpio(k0.all), k0);
   check('con el asistente apagado y sin clave, se muestra igual, con una acción discreta para prenderlo', k0.act === 'Prender en Herramientas' && k0.key === '' && (await app.evaluate(() => !LMD.tools.isOn('assistant') && document.querySelector('[data-c=ai-tools]').classList.contains('lmd-link'))), k0);
   // Con una clave cargada: el proveedor y los últimos cuatro caracteres, nada más.
   const FAKE = 'sk-ant-PRUEBA-NO-ES-UNA-CLAVE-Zz9Q';
@@ -589,7 +598,7 @@ try {
   await tab('plan'); await tab('cloud'); await app.waitForSelector('[data-acct=cloud] [data-sec-row=aikey] .lmd-sec-key');
   const k1 = await keyRow(); const whole = await app.evaluate(() => document.querySelector('.lmd-panel').innerHTML);
   const slack1 = await app.evaluate(() => { const b = document.querySelector('.lmd-panel-body'); const d = document.querySelector('[data-acct=cloud] .lmd-acct-del').getBoundingClientRect(); return { over: b.scrollHeight - b.clientHeight, left: Math.round(b.getBoundingClientRect().bottom - d.bottom) }; });
-  check('con la clave cargada y el asistente apagado (el renglón más largo), la pestaña sigue entrando sin scroll a 800 px', slack1.over <= 0, slack1);
+  check('con la clave cargada y el asistente apagado (la tarjeta más larga), el bloque no desborda a lo ancho', await app.evaluate(() => { const b = document.querySelector('.lmd-panel-body'); return b.scrollWidth <= b.clientWidth; }), slack1);
   check('con una clave cargada muestra el proveedor y los últimos cuatro caracteres, y nada más de la clave', k1.key === 'Anthropic (Claude) · •••• Zz9Q' && k1.act === 'Prender en Herramientas' && !whole.includes('PRUEBA') && !whole.includes(FAKE.slice(0, 12)) && limpio(k1.all), k1);
   const kept = await app.evaluate(async () => { const r = await LMD.store.aiGet(); const sync = chrome.storage.sync ? await new Promise((res) => chrome.storage.sync.get(null, res)) : {}; const local = await new Promise((res) => chrome.storage.local.get(null, res)); let exported = true; try { await crypto.subtle.exportKey('raw', r.cryptoKey); } catch (e) { exported = false; } return { alg: r.cryptoKey.algorithm.name + '-' + r.cryptoKey.algorithm.length, extractable: r.cryptoKey.extractable, exported, sealed: typeof r.data === 'string' && !r.data.includes('PRUEBA'), inSync: JSON.stringify(sync).includes('Zz9Q') || JSON.stringify(sync).includes('PRUEBA'), inLocal: JSON.stringify(local).includes('PRUEBA') }; });
   check('lo que afirma es cierto: la clave queda cifrada con una llave AES-256-GCM que el navegador no deja exportar, y no está en las preferencias que se sincronizan', kept.alg === 'AES-GCM-256' && kept.extractable === false && kept.exported === false && kept.sealed && !kept.inSync && !kept.inLocal, kept);
@@ -599,10 +608,14 @@ try {
   await tab('plan'); await tab('cloud'); await app.waitForSelector('[data-acct=cloud] [data-sec-row=aikey] .lmd-sec-key');
   const k2 = await keyRow();
   check('con el asistente prendido la acción ya no está, y la clave sigue a la vista', k2.act === '' && k2.tech === 'AES-256-GCM · llave no exportable' && k2.key === 'Anthropic (Claude) · •••• Zz9Q', k2);
-  const fits = await app.evaluate(() => { const b = document.querySelector('.lmd-panel-body'); const li = (id) => document.querySelector('[data-acct=cloud] [data-sec-row=' + id + ']').getBoundingClientRect(); return { over: b.scrollHeight - b.clientHeight, cols: [li('notes').left === li('signin').left && li('signin').top > li('notes').bottom - 1, li('vaults').left > li('notes').right - 1 && li('vaults').top === li('notes').top, li('aikey').left > li('vaults').right - 1 && li('aikey').top === li('notes').top, li('open').left === li('aikey').left && li('open').top > li('aikey').bottom - 1] }; });
-  check('con la clave a la vista la pestaña Nube sigue entrando sin scroll a 800 px, en tres columnas', fits.over <= 0 && fits.cols.every(Boolean), fits);
+  const fits = await app.evaluate(() => { const b = document.querySelector('.lmd-panel-body'); const li = (id) => document.querySelector('[data-acct=cloud] [data-sec-row=' + id + ']').getBoundingClientRect(); const tag = (id) => { const c = li(id); const t = document.querySelector('[data-acct=cloud] [data-sec-row=' + id + '] .lmd-sec-tech').getBoundingClientRect(); return Math.round(c.bottom - t.bottom); }; const same = (a, c) => Math.abs(a - c) < 1;
+    return { wide: b.scrollWidth - b.clientWidth, tags: ['notes', 'vaults', 'aikey', 'signin', 'open'].map(tag),
+      cols: [same(li('notes').left, li('aikey').left) && same(li('aikey').left, li('open').left), same(li('vaults').left, li('signin').left) && li('vaults').left >= li('notes').right + 16, same(li('vaults').top, li('notes').top) && same(li('vaults').height, li('notes').height), same(li('signin').top, li('aikey').top) && same(li('signin').height, li('aikey').height),
+        li('aikey').top >= li('notes').bottom + 16 && li('open').top >= li('aikey').bottom + 16, same(li('open').right, li('vaults').right)] }; });
+  check('el bloque Seguridad es una grilla pareja de dos columnas: tarjetas del mismo alto por fila, 16 px o más entre ellas, y la quinta a lo ancho', fits.wide <= 0 && fits.cols.every(Boolean), fits);
+  check('en cada tarjeta la línea técnica es una etiqueta aparte, al pie', fits.tags.every((d) => d >= 10 && d <= 20), fits.tags);
   const keyEn = await app.evaluate(() => { const plain = (h) => { const d = document.createElement('div'); d.innerHTML = h; return d.textContent; }; LMD.setLang('en'); const t = plain(LMD.sync.security({ ai: { hasKey: true, provider: 'compat', last4: 'abcd', off: true } })); const none = plain(LMD.sync.security({})); LMD.setLang('es'); return { t, none }; });
-  check('en inglés dice lo mismo, y sin saber de la clave el renglón informa igual', /Your AI key/.test(keyEn.t) && /Stored encrypted on this device only\. It does not go through the SharpMD server and is not synced, and calls go straight to your provider\./.test(keyEn.t) && /AES-256-GCM · non-exportable key · Turn on in Tools/.test(keyEn.t) && /OpenAI compatible · •••• abcd/.test(keyEn.t) && !/[áéíóúñ]/i.test(keyEn.t) && limpio(keyEn.t) && /Your AI key/.test(keyEn.none) && !/Turn on in Tools|••••/.test(keyEn.none), keyEn);
+  check('en inglés dice lo mismo, y sin saber de la clave el renglón informa igual', /Your AI key/.test(keyEn.t) && /Stored encrypted on this device only\. It does not go through the SharpMD server and is not synced, and calls go straight to your provider\./.test(keyEn.t) && /AES-256-GCM · non-exportable key/.test(keyEn.t) && /Turn on in Tools/.test(keyEn.t) && /OpenAI compatible · •••• abcd/.test(keyEn.t) && !/[áéíóúñ]/i.test(keyEn.t) && limpio(keyEn.t) && /Your AI key/.test(keyEn.none) && !/Turn on in Tools|••••/.test(keyEn.none), keyEn);
   await app.evaluate(async () => { await LMD.store.aiDelete(); LMD.tools.set('assistant', false); }); await app.waitForFunction(() => !LMD.tools.isOn('assistant'));
   await tab('plan'); await tab('cloud'); await app.waitForSelector('[data-acct=cloud] [data-sec-row=aikey] [data-c=ai-tools]');
   const segSession = (await stored('cloud')).session;
@@ -674,7 +687,7 @@ try {
   await toggle('own'); const s4 = await sw1(); const u4 = (await stored('settings')).cloudUrl;
   check('de sin nube a servidor propio: el campo aparece aunque todavía no haya dirección', s4.own && !s4.off && s4.shown && u4 === '', [s4, u4]);
   await toggle('off');
-  over = (await overflow()).filter((x) => !/^tools /.test(x));
+  over = (await overflow()).filter((x) => !SCROLLS.test(x));
   check('ninguna pestaña necesita scroll con la nube apagada', over.length === 0, over);
   await tab('cloud');
   const offCloud = await text('[data-acct=cloud]');

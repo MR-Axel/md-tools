@@ -2962,7 +2962,7 @@ function kbSplit(raw) {
   return pairs ? { text: m[1].trim(), pairs } : { text: raw, pairs: [] };
 }
 const kbVal = (v) => { v = String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); return /^[^\s"{}=\\]+$/.test(v) ? v : '"' + v.replace(/[{}]/g, (c) => (c === '{' ? '(' : ')')).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'; };
-const kbType = (v) => (/^(text|date|number)$/.test(v) ? { type: v } : { type: 'select', options: v.split('|').map((s) => s.trim()).filter(Boolean) });
+const kbType = (v) => (/^(text|longtext|date|number)$/.test(v) ? { type: v } : { type: 'select', options: v.split('|').map((s) => s.trim()).filter(Boolean) });
 function kbParse(lines) {
   const board = { show: [], fields: {}, columns: [] }; let cur = null;
   for (const raw of lines) {

@@ -87,13 +87,13 @@ try {
 
   await page.click('[data-act=settings]'); await page.waitForSelector('.lmd-panel-card');
   const sections = await page.evaluate(() => [...document.querySelectorAll('.lmd-panel h3')].map((h) => h.textContent.replace(/\s*Plan pago$/, '')));
-  check('panel de ajustes', sections.join('|') === 'Apariencia|Lectura|Edición|Carpeta|Plugins de Markdown|Herramientas|Nube|Conectar una IA|Automatizaciones|Plan|Instalar|CSS propio|Servidor|Actualizaciones', sections);
+  check('panel de ajustes', sections.join('|') === 'Apariencia|Lectura|Edición|Carpeta|Plugins de Markdown|Herramientas|Nube|Conectar una IA|API y automatizaciones|Plan|Instalar|CSS propio|Servidor|Actualizaciones', sections);
   // Cada pestaña muestra sus secciones y ninguna otra. Los títulos se leen de lo que está a la vista.
   const tabs = await page.evaluate(() => {
     const vis = () => [...document.querySelectorAll('.lmd-panel-body > section:not([hidden]) h3')].map((h) => h.firstChild.nodeValue.trim()).join('+');
     return [...document.querySelectorAll('[data-ptab]')].map((b) => { b.click(); return b.dataset.ptab + ':' + b.textContent.trim() + '=' + vis() + (b.classList.contains('lmd-on') ? '' : ' (sin marcar)'); });
   });
-  check('los ajustes van en diez pestañas, cada una con lo suyo', tabs.join('|') === 'look:Apariencia=Apariencia|read:Lectura y edición=Lectura+Edición+Carpeta|plug:Plugins=Plugins de Markdown|tools:Herramientas=Herramientas|cloud:Nube=Nube|ai:IA (MCP)=Conectar una IA|auto:Automatizaciones=Automatizaciones|plan:Plan=Plan|inst:Instalar=Instalar|adv:Avanzado=CSS propio+Servidor+Actualizaciones', tabs);
+  check('los ajustes van en diez pestañas, cada una con lo suyo', tabs.join('|') === 'look:Apariencia=Apariencia|read:Lectura y edición=Lectura+Edición+Carpeta|plug:Plugins=Plugins de Markdown|tools:Herramientas=Herramientas|cloud:Nube=Nube|ai:IA (MCP)=Conectar una IA|auto:API y automatizaciones=API y automatizaciones|plan:Plan=Plan|inst:Instalar=Instalar|adv:Avanzado=CSS propio+Servidor+Actualizaciones', tabs);
   const marks = await page.evaluate(() => ({ plugins: document.querySelectorAll('[data-tab=plug] [data-plugin]').length, other: document.querySelectorAll('[data-tab=plug] input:not([data-plugin]), [data-tab=plug] textarea, [data-tab=plug] select, [data-tab=plug] button').length, paidInPlugins: document.querySelectorAll('[data-tab=plug] .lmd-tag').length, cssTab: document.querySelector('[data-key=customCSS]').closest('section').dataset.tab, cssPaid: document.querySelector('[data-key=customCSS]').closest('section').querySelectorAll('.lmd-tag').length, reset: document.querySelector('[data-act=reset]').closest('section').dataset.tab }));
   check('Plugins trae solo los interruptores, sin marca de plan pago; el CSS propio y Restablecer van en Avanzado', marks.plugins >= 20 && marks.other === 0 && marks.paidInPlugins === 0 && marks.cssTab === 'adv' && marks.cssPaid === 1 && marks.reset === 'adv', marks);
   await page.close();
