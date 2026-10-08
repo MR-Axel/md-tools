@@ -2527,3 +2527,41 @@ html.lmd-ai-open .lmd-ai-card { left: calc(50% - 190px); width: min(860px, calc(
   .lmd-ai-ask textarea, .lmd-ai-free input, .lmd-ai-gen textarea, .lmd-ai-field input, .lmd-ai-field textarea, .lmd-ai-field select { font-size: 16px; }
 }
 @media print { .lmd-ai-card, .lmd-ai-panel, .lmd-ai-menu { display: none !important; } .lmd-ai-at { box-shadow: none; } html.lmd-ai-open .lmd-main { margin-right: 0; } }
+
+/* ---------- Atajos de teclado (shortcuts.js) ---------- */
+/* El botón: chico y apagado, abajo a la derecha, sobre el de volver arriba cuando ese está. Solo con teclado físico. */
+.lmd-keys-btn {
+  position: fixed; right: 27px; bottom: calc(52px + env(safe-area-inset-bottom, 0px)); width: 30px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg-soft); color: var(--fg-muted); display: grid; place-items: center; cursor: pointer; z-index: 15; opacity: 0.55; transition: opacity 0.15s;
+}
+.lmd-keys-btn:hover, .lmd-keys-btn:focus-visible { opacity: 1; color: var(--fg); }
+.lmd-keys-btn svg { width: 17px; height: 17px; }
+.lmd-to-top:not([hidden]) + .lmd-keys-btn { bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
+.lmd-nodoc .lmd-to-top + .lmd-keys-btn { bottom: calc(52px + env(safe-area-inset-bottom, 0px)); }
+@media (hover: none), (pointer: coarse) { .lmd-keys-btn { display: none; } }
+@media print { .lmd-keys-btn { display: none !important; } }
+/* La hoja. */
+.lmd-ask-card.lmd-keys-card { width: min(1060px, 100%); max-height: 100%; padding: 18px 20px 12px; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; }
+.lmd-keys-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; }
+.lmd-keys-head h3 { margin: 0; }
+.lmd-keys-q { width: 100%; box-sizing: border-box; margin: 0 0 12px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-soft); color: var(--fg); font: inherit; flex: none; }
+.lmd-keys-q:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lmd-keys-body { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; outline: none; }
+.lmd-keys-cols { column-width: 290px; column-gap: 32px; }
+.lmd-keys-group { break-inside: avoid; margin: 0 0 16px; }
+.lmd-keys-group h4 { margin: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--fg-faint); }
+.lmd-keys-group ul { list-style: none; margin: 0; padding: 0; }
+.lmd-keys-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 5px 0; border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent); font-size: 13.5px; line-height: 1.35; }
+.lmd-keys-row[hidden], .lmd-keys-group[hidden] { display: none; }
+.lmd-keys-what { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; overflow-wrap: anywhere; }
+.lmd-keys-what small { font-size: 12px; color: var(--fg-faint); }
+.lmd-keys-what [hidden] { display: none; }
+.lmd-keys-what .lmd-link { font-size: 12px; text-align: left; }
+.lmd-keys-set { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px; flex: none; max-width: 58%; }
+.lmd-keys-set i { font-style: normal; color: var(--fg-faint); font-size: 12px; }
+.lmd-keys-combo { display: inline-flex; gap: 3px; }
+.lmd-keys kbd { display: inline-block; min-width: 12px; padding: 2px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; background: var(--bg-soft); color: var(--fg); font: 600 12px/1.3 var(--lmd-font); text-align: center; white-space: nowrap; }
+.lmd-keys-off .lmd-keys-what > span, .lmd-keys-off .lmd-keys-set { opacity: 0.45; }
+.lmd-ask-card p.lmd-keys-none { margin: 8px 0 16px; }
+.lmd-ask-card p.lmd-keys-foot { flex: none; margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--fg-faint); }
+@media (max-width: 720px) { .lmd-keys-q { font-size: 16px; } .lmd-ask-card.lmd-keys-card { padding: 14px 14px 10px; } }
