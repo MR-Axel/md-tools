@@ -1,6 +1,7 @@
 // Genera la portada en inglés (/index.html) y en castellano (/es/index.html) desde tools/landing.src.html,
 // que tiene los dos idiomas juntos. Cada página sale con un solo idioma en el HTML: es lo que leen los
 // buscadores, que no ejecutan el cambio de idioma. También escribe sitemap.xml.
+// Las páginas de PAGES salen igual, de tools/<nombre>.src.html a /<nombre>.html y /es/<nombre>.html.
 // Uso: node tools/build-site.mjs      (y se commitea lo generado junto con el fuente)
 import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -76,7 +77,7 @@ function build(lang) {
   // preguntas frecuentes, también como datos estructurados
   const faq = [...html.matchAll(/<details class="faq"><summary>([\s\S]*?)<\/summary><p>([\s\S]*?)<\/p><\/details>/g)].map((x) => ({ '@type': 'Question', name: plain(x[1]), acceptedAnswer: { '@type': 'Answer', text: plain(x[2]) } }));
   if (faq.length < 3) throw new Error('no se encontraron las preguntas frecuentes');
-  const app = { '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'SharpMD', url: m.url, applicationCategory: 'ProductivityApplication', operatingSystem: 'Web, Chrome, Edge, Brave',
+  const app = { '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'SharpMD', alternateName: ['Sharp MD', 'SharpMD Markdown editor'], url: m.url, applicationCategory: 'ProductivityApplication', operatingSystem: 'Web, Android', browserRequirements: 'Chrome, Edge, Brave, Firefox or Safari',
     description: m.desc, featureList: FEATURES[lang], inLanguage: lang, image: CARD, screenshot: SITE + '/docs/store/2-editing.png', isAccessibleForFree: true,
     offers: [{ '@type': 'Offer', name: 'Free', price: '0', priceCurrency: 'USD' }, { '@type': 'Offer', name: 'Paid', price: PRICE.offers.paid, priceCurrency: 'USD' }].concat(TEAM_OPEN ? [{ '@type': 'Offer', name: 'Team', price: PRICE.offers.team, priceCurrency: 'USD' }] : []),
     license: 'https://opensource.org/licenses/MIT', codeRepository: 'https://github.com/MR-Axel/sharpmd' };
@@ -111,16 +112,71 @@ function build(lang) {
   return html;
 }
 
+// Las páginas que explican un uso (para quien llega buscando eso): cada una tiene su fuente en tools/<nombre>.src.html, con
+// los dos idiomas en bloques <div lang>, y sale a /<nombre>.html y /es/<nombre>.html con un solo idioma, como la portada.
+const PAGES = {
+  'markdown-editor-mcp': {
+    en: { title: 'Markdown editor for Claude and AI agents (MCP): SharpMD',
+      desc: 'A Markdown editor with the MCP endpoint already running. Claude, Codex or any MCP client reads and writes your notes. Free over 10 cloud notes.' },
+    es: { title: 'Editor de Markdown para Claude y agentes de IA (MCP): SharpMD',
+      desc: 'Un editor de Markdown con la conexión MCP ya andando. Claude, Codex o cualquier cliente MCP lee y escribe tus notas. Gratis sobre 10 notas en la nube.' } },
+  'wysiwyg-markdown-editor': {
+    en: { title: 'WYSIWYG Markdown editor online, no syntax: SharpMD',
+      desc: 'Edit Markdown on the formatted page: paragraphs, tables, tasks, formulas and diagrams. The file stays plain Markdown. Free, with no account, and offline.' },
+    es: { title: 'Editor de Markdown WYSIWYG online, sin sintaxis: SharpMD',
+      desc: 'Editá Markdown sobre la página ya formateada: párrafos, tablas, tareas, fórmulas y diagramas. El archivo sigue siendo Markdown plano. Gratis y sin cuenta.' } },
+};
+const pageUrl = (slug, lang) => SITE + (lang === 'es' ? '/es/' : '/') + slug + '.html';
+function buildPage(slug, lang) {
+  const m = PAGES[slug][lang]; const up = lang === 'es' ? '../' : ''; const url = pageUrl(slug, lang);
+  if (m.title.length > 62) throw new Error('título de ' + slug + ' (' + lang + ') de ' + m.title.length + ' caracteres: hasta 62');
+  if (m.desc.length < 120 || m.desc.length > 158) throw new Error('descripción de ' + slug + ' (' + lang + ') de ' + m.desc.length + ' caracteres: va entre 120 y 158');
+  let html = fs.readFileSync(path.join(root, 'tools', slug + '.src.html'), 'utf8').replace(/\r\n/g, '\n').replace(/<!-- Fuente de la página[\s\S]*?-->\n/, '').replace('<meta name="robots" content="noindex">\n', '');
+  if (/noindex/.test(html)) throw new Error(slug + ': la página publicada quedó con noindex');
+  // el bloque del otro idioma se va entero y el propio se desenvuelve; los dos van con dos espacios de sangría, y lo de adentro con más
+  let own = 0;
+  html = html.replace(/^  <div lang="(en|es)">\n([\s\S]*?)\n  <\/div>\n\n?/gm, (all, l, inner) => { if (l !== lang) return ''; own++; return inner.replace(/^  /gm, '') + '\n'; });
+  if (own !== 1) throw new Error(slug + ': tiene que haber un bloque en ' + lang + ' y hay ' + own);
+  html = html.replace(/\[\[([^\]|]+)\|\|([^\]|]+)\]\]/g, (all, en, es) => esc(lang === 'en' ? en : es));
+  html = html.replace(/<span lang="(en|es)">([\s\S]*?)<\/span>/g, (all, l, inner) => (l === lang ? inner : ''));
+  if (/lang="(en|es)"/.test(html.replace(/<html[^>]*>/, ''))) throw new Error(slug + ': quedó una marca de idioma sin resolver');
+  const head = [
+    // la app, en "automático", sigue el idioma de la página que se vio
+    '<script>try{localStorage.setItem("mdtools:site-lang","' + lang + '")}catch(e){}</script>',
+    '<title>' + esc(m.title) + '</title>',
+    '<meta name="description" content="' + esc(m.desc) + '">',
+    '<link rel="canonical" href="' + url + '">',
+    '<link rel="alternate" hreflang="en" href="' + pageUrl(slug, 'en') + '">',
+    '<link rel="alternate" hreflang="es" href="' + pageUrl(slug, 'es') + '">',
+    '<link rel="alternate" hreflang="x-default" href="' + pageUrl(slug, 'en') + '">',
+    '<meta property="og:type" content="website">', '<meta property="og:site_name" content="SharpMD">', '<meta property="og:title" content="' + esc(m.title) + '">',
+    '<meta property="og:description" content="' + esc(m.desc) + '">', '<meta property="og:url" content="' + url + '">', '<meta property="og:locale" content="' + META[lang].locale + '">',
+    '<meta property="og:image" content="' + CARD + '">', '<meta property="og:image:type" content="image/png">', '<meta property="og:image:width" content="1200">', '<meta property="og:image:height" content="630">', '<meta property="og:image:alt" content="' + esc(CARD_ALT[lang]) + '">',
+    '<meta name="twitter:card" content="summary_large_image">', '<meta name="twitter:title" content="' + esc(m.title) + '">', '<meta name="twitter:description" content="' + esc(m.desc) + '">', '<meta name="twitter:image" content="' + CARD + '">', '<meta name="twitter:image:alt" content="' + esc(CARD_ALT[lang]) + '">',
+    '<meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">', '<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">',
+    '<link rel="icon" href="' + up + 'icons/icon32.png">',
+  ].join('\n');
+  html = html.replace(/<!--HEAD-->/, head).replace(/<html[^>]*>/, '<html lang="' + lang + '">');
+  // en /es/ las rutas relativas suben un nivel; las que empiezan con ./ se quedan en /es/ (la portada y la otra página, en castellano)
+  if (up) html = html.replace(/\b(href|src)="(?!https?:|mailto:|#|\/|\.\.?\/)([^"]+)"/g, '$1="' + up + '$2"').replace(/url\("(?!https?:|data:|\/|\.\.\/)([^"]+)"\)/g, 'url("' + up + '$1")');
+  html = html.replace(/<!--LANG-->/, '<div class="lang"><a href="' + (lang === 'en' ? '' : '../') + slug + '.html"' + (lang === 'en' ? ' class="on" aria-current="true"' : '') + ' hreflang="en">EN</a><a href="' + (lang === 'en' ? 'es/' : './') + slug + '.html"' + (lang === 'es' ? ' class="on" aria-current="true"' : '') + ' hreflang="es">ES</a></div>');
+  if (/<!--(HEAD|LANG)-->/.test(html) || /%%|\[\[[^\]]*\|\|/.test(html)) throw new Error(slug + ': faltó reemplazar una marca');
+  if ((html.match(/<h1[ >]/g) || []).length !== 1) throw new Error(slug + ' (' + lang + '): tiene que quedar un solo h1');
+  return html;
+}
+
 fs.writeFileSync(path.join(root, 'index.html'), build('en'));
 fs.mkdirSync(path.join(root, 'es'), { recursive: true });
 fs.writeFileSync(path.join(root, 'es', 'index.html'), build('es'));
+for (const slug of Object.keys(PAGES)) { fs.writeFileSync(path.join(root, slug + '.html'), buildPage(slug, 'en')); fs.writeFileSync(path.join(root, 'es', slug + '.html'), buildPage(slug, 'es')); }
 const today = new Date().toISOString().slice(0, 10);
 const alt = '<xhtml:link rel="alternate" hreflang="en" href="' + META.en.url + '"/><xhtml:link rel="alternate" hreflang="es" href="' + META.es.url + '"/>';
 fs.writeFileSync(path.join(root, 'sitemap.xml'), '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n' +
   '  <url><loc>' + META.en.url + '</loc><lastmod>' + today + '</lastmod>' + alt + '</url>\n' +
   '  <url><loc>' + META.es.url + '</loc><lastmod>' + today + '</lastmod>' + alt + '</url>\n' +
+  Object.keys(PAGES).map((slug) => { const a = '<xhtml:link rel="alternate" hreflang="en" href="' + pageUrl(slug, 'en') + '"/><xhtml:link rel="alternate" hreflang="es" href="' + pageUrl(slug, 'es') + '"/>'; return ['en', 'es'].map((l) => '  <url><loc>' + pageUrl(slug, l) + '</loc><lastmod>' + today + '</lastmod>' + a + '</url>\n').join(''); }).join('') +
   '  <url><loc>' + SITE + '/privacy.html</loc><lastmod>' + today + '</lastmod></url>\n' +
   '  <url><loc>' + SITE + '/api.html</loc><lastmod>' + today + '</lastmod></url>\n' +
   '  <url><loc>' + SITE + '/support.html</loc><lastmod>' + today + '</lastmod></url>\n' +
   ['terms', 'refunds', 'acceptable-use', 'copyright'].map((p) => '  <url><loc>' + SITE + '/' + p + '.html</loc><lastmod>' + today + '</lastmod></url>\n').join('') + '</urlset>\n');
-console.log('escrito: index.html (en), es/index.html, sitemap.xml');
+console.log('escrito: index.html (en), es/index.html, ' + Object.keys(PAGES).map((s) => s + '.html (en y es)').join(', ') + ', sitemap.xml');

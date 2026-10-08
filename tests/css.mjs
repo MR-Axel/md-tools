@@ -24,7 +24,7 @@ for (const f of files) {
   check(f + ': ninguna regla queda a más de tres niveles', b.max <= 3, b.max);
 }
 // Los estilos que van dentro de una página (portada, pago, ayuda, privacidad, API).
-for (const f of ['tools/landing.src.html', 'pay.html', 'support.html', 'privacy.html', 'api.html', 'terms.html', 'refunds.html', 'acceptable-use.html', 'copyright.html', 'src/app.html']) {
+for (const f of ['tools/landing.src.html', 'pay.html', 'support.html', 'privacy.html', 'api.html', 'terms.html', 'refunds.html', 'acceptable-use.html', 'copyright.html', 'tools/markdown-editor-mcp.src.html', 'tools/wysiwyg-markdown-editor.src.html', 'src/app.html']) {
   if (!fs.existsSync(path.join(root, f))) continue;
   const html = fs.readFileSync(path.join(root, f), 'utf8');
   const css = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]).join('\n');

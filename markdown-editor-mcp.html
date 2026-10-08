@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{localStorage.setItem("mdtools:site-lang","en")}catch(e){}</script>
+<title>Markdown editor for Claude and AI agents (MCP): SharpMD</title>
+<meta name="description" content="A Markdown editor with the MCP endpoint already running. Claude, Codex or any MCP client reads and writes your notes. Free over 10 cloud notes.">
+<link rel="canonical" href="https://sharpmd.app/markdown-editor-mcp.html">
+<link rel="alternate" hreflang="en" href="https://sharpmd.app/markdown-editor-mcp.html">
+<link rel="alternate" hreflang="es" href="https://sharpmd.app/es/markdown-editor-mcp.html">
+<link rel="alternate" hreflang="x-default" href="https://sharpmd.app/markdown-editor-mcp.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="SharpMD">
+<meta property="og:title" content="Markdown editor for Claude and AI agents (MCP): SharpMD">
+<meta property="og:description" content="A Markdown editor with the MCP endpoint already running. Claude, Codex or any MCP client reads and writes your notes. Free over 10 cloud notes.">
+<meta property="og:url" content="https://sharpmd.app/markdown-editor-mcp.html">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://sharpmd.app/docs/social-card-3.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="SharpMD: Markdown notes your AI writes and your team reads">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Markdown editor for Claude and AI agents (MCP): SharpMD">
+<meta name="twitter:description" content="A Markdown editor with the MCP endpoint already running. Claude, Codex or any MCP client reads and writes your notes. Free over 10 cloud notes.">
+<meta name="twitter:image" content="https://sharpmd.app/docs/social-card-3.png">
+<meta name="twitter:image:alt" content="SharpMD: Markdown notes your AI writes and your team reads">
+<meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<link rel="icon" href="icons/icon32.png">
+<style>
+  @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
+  :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --line: #dedbd2; --accent: #4d7c0f; --on: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121418; --soft: #1a1d23; --fg: #e6e8ec; --muted: #a0a7b4; --line: #2a2e37; --accent: #bef264; --on: #14161a; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.65 "MDT Inter", -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  main { width: min(720px, 100% - 40px); margin: 0 auto; padding: 46px 0 80px; }
+  .top { display: flex; align-items: center; gap: 14px; margin-bottom: 40px; }
+  .top > a { margin-right: auto; color: var(--muted); text-decoration: none; font-weight: 600; }
+  .lang { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); }
+  .lang a { display: flex; align-items: center; height: 26px; padding: 0 11px; border-radius: 999px; color: var(--muted); font-size: 12.5px; font-weight: 600; text-decoration: none; }
+  .lang a.on { background: var(--accent); color: var(--on); }
+  h1 { margin: 0 0 14px; font-size: 38px; line-height: 1.15; letter-spacing: -0.03em; }
+  h2 { margin: 34px 0 8px; font-size: 21px; letter-spacing: -0.015em; }
+  p, li { color: var(--muted); }
+  .lede { margin: 0 0 22px; font-size: 19px; }
+  a { color: var(--accent); }
+  code { padding: 1px 6px; border-radius: 5px; background: var(--soft); font: 0.88em ui-monospace, Consolas, monospace; color: var(--fg); }
+  .btn { display: inline-flex; align-items: center; height: 44px; padding: 0 20px; border-radius: 10px; background: var(--accent); color: var(--on); font-weight: 650; text-decoration: none; }
+  .under { margin: 10px 0 0; font-size: 14px; }
+  .next { margin-top: 40px; }
+  .legal { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 52px 0 0; padding-top: 18px; border-top: 1px solid var(--line); font-size: 14px; }
+  .legal a { color: var(--muted); text-decoration: none; }
+  .legal a:hover, .legal a[aria-current] { color: var(--fg); }
+  @media (max-width: 640px) { h1 { font-size: 31px; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><a href="./">← SharpMD</a><div class="lang"><a href="markdown-editor-mcp.html" class="on" aria-current="true" hreflang="en">EN</a><a href="es/markdown-editor-mcp.html" hreflang="es">ES</a></div></div>
+
+  <h1>A Markdown editor for Claude, Codex and other AI agents, over MCP</h1>
+  <p class="lede">SharpMD is a Markdown editor in the cloud with the MCP endpoint already running. Your AI reads your notes before it works and writes down what it did. You edit the same notes on the formatted page.</p>
+  <p><a class="btn" href="src/app.html">Open the app</a></p>
+  <p class="under">Free over 10 cloud notes. SharpMD has no AI of its own: you connect yours.</p>
+
+  <h2>Your AI reads and writes your notes</h2>
+  <p>Claude, Codex or any other MCP client reads and writes the notes you keep in the cloud, from wherever it works. It lists them, searches them, appends to them, moves them and reads their history.</p>
+  <p>Leave a comment on a paragraph. Your AI reads the open ones, makes each change and closes it with a reply.</p>
+
+  <h2>Connect it in three steps</h2>
+  <ol>
+    <li>Sign in, open Settings &gt; AI (MCP) and create a token.</li>
+    <li>Press "Copy instructions for your AI". The message carries the address, the token and how to write here.</li>
+    <li>Paste it into your AI.</li>
+  </ol>
+  <p>The endpoint is <code>https://sync.sharpmd.app/mcp</code>, over Streamable HTTP, with the token as a bearer header. There is no server to set up.</p>
+
+  <h2>It documents the project</h2>
+  <p>Those instructions ask your AI to read the notes of the project before a task and to update them when it changes something. It keeps them in one folder: <code>README.md</code>, <code>architecture.md</code>, <code>features/</code>, <code>epics.md</code>, <code>decisions.md</code> and <code>log.md</code>.</p>
+  <p>The next session starts from there, whichever AI it is.</p>
+
+  <h2>It keeps a task board</h2>
+  <p>The same instructions set it up to keep a kanban board in <code>board.md</code>, one card per task. It creates the board, adds cards, moves them between columns and updates them. Moving a card to the done column marks it as done.</p>
+  <p>You see that board in the note as columns with cards you drag.</p>
+
+  <h2>You decide how far it reaches</h2>
+  <p>Your AI only sees the notes you keep in the cloud. Limit a token to a folder and nothing outside it can be read or written. Sharing is a separate permission, off unless you turn it on.</p>
+  <p>The cloud is encrypted, and password-protected folders are end-to-end encrypted. Your AI gets into one of those only while you unlock it, for the time you set.</p>
+
+  <h2>Free over 10 notes</h2>
+  <p>The free plan has 10 notes in the cloud and the MCP connection over those notes, with the comments your AI resolves. The paid plan has unlimited cloud notes. The editor is free and open source, and it asks for no account to write.</p>
+
+  <p class="next"><a class="btn" href="src/app.html">Open the app</a></p>
+  <p>You edit those notes without typing syntax: see the <a href="wysiwyg-markdown-editor.html">WYSIWYG Markdown editor</a>. Plans and everything else are on the <a href="./">SharpMD home page</a>.</p>
+  <p class="legal"><a href="./">Home</a><a href="markdown-editor-mcp.html" aria-current="page">Markdown editor for AI agents</a><a href="wysiwyg-markdown-editor.html">WYSIWYG Markdown editor</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="support.html">Support</a></p>
+</main>
+</body>
+</html>

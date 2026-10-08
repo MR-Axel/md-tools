@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Fuente de la página: los dos idiomas van juntos, cada uno en su bloque. La genera tools/build-site.mjs, que escribe
+     /markdown-editor-mcp.html y /es/markdown-editor-mcp.html con un solo idioma cada una. Los generados no se editan a mano. -->
+<meta name="robots" content="noindex">
+<!--HEAD-->
+<style>
+  @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
+  :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --line: #dedbd2; --accent: #4d7c0f; --on: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121418; --soft: #1a1d23; --fg: #e6e8ec; --muted: #a0a7b4; --line: #2a2e37; --accent: #bef264; --on: #14161a; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.65 "MDT Inter", -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  main { width: min(720px, 100% - 40px); margin: 0 auto; padding: 46px 0 80px; }
+  .top { display: flex; align-items: center; gap: 14px; margin-bottom: 40px; }
+  .top > a { margin-right: auto; color: var(--muted); text-decoration: none; font-weight: 600; }
+  .lang { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); }
+  .lang a { display: flex; align-items: center; height: 26px; padding: 0 11px; border-radius: 999px; color: var(--muted); font-size: 12.5px; font-weight: 600; text-decoration: none; }
+  .lang a.on { background: var(--accent); color: var(--on); }
+  h1 { margin: 0 0 14px; font-size: 38px; line-height: 1.15; letter-spacing: -0.03em; }
+  h2 { margin: 34px 0 8px; font-size: 21px; letter-spacing: -0.015em; }
+  p, li { color: var(--muted); }
+  .lede { margin: 0 0 22px; font-size: 19px; }
+  a { color: var(--accent); }
+  code { padding: 1px 6px; border-radius: 5px; background: var(--soft); font: 0.88em ui-monospace, Consolas, monospace; color: var(--fg); }
+  .btn { display: inline-flex; align-items: center; height: 44px; padding: 0 20px; border-radius: 10px; background: var(--accent); color: var(--on); font-weight: 650; text-decoration: none; }
+  .under { margin: 10px 0 0; font-size: 14px; }
+  .next { margin-top: 40px; }
+  .legal { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 52px 0 0; padding-top: 18px; border-top: 1px solid var(--line); font-size: 14px; }
+  .legal a { color: var(--muted); text-decoration: none; }
+  .legal a:hover, .legal a[aria-current] { color: var(--fg); }
+  @media (max-width: 640px) { h1 { font-size: 31px; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><a href="./">← SharpMD</a><!--LANG--></div>
+
+  <div lang="en">
+    <h1>A Markdown editor for Claude, Codex and other AI agents, over MCP</h1>
+    <p class="lede">SharpMD is a Markdown editor in the cloud with the MCP endpoint already running. Your AI reads your notes before it works and writes down what it did. You edit the same notes on the formatted page.</p>
+    <p><a class="btn" href="src/app.html">Open the app</a></p>
+    <p class="under">Free over 10 cloud notes. SharpMD has no AI of its own: you connect yours.</p>
+
+    <h2>Your AI reads and writes your notes</h2>
+    <p>Claude, Codex or any other MCP client reads and writes the notes you keep in the cloud, from wherever it works. It lists them, searches them, appends to them, moves them and reads their history.</p>
+    <p>Leave a comment on a paragraph. Your AI reads the open ones, makes each change and closes it with a reply.</p>
+
+    <h2>Connect it in three steps</h2>
+    <ol>
+      <li>Sign in, open Settings &gt; AI (MCP) and create a token.</li>
+      <li>Press "Copy instructions for your AI". The message carries the address, the token and how to write here.</li>
+      <li>Paste it into your AI.</li>
+    </ol>
+    <p>The endpoint is <code>https://sync.sharpmd.app/mcp</code>, over Streamable HTTP, with the token as a bearer header. There is no server to set up.</p>
+
+    <h2>It documents the project</h2>
+    <p>Those instructions ask your AI to read the notes of the project before a task and to update them when it changes something. It keeps them in one folder: <code>README.md</code>, <code>architecture.md</code>, <code>features/</code>, <code>epics.md</code>, <code>decisions.md</code> and <code>log.md</code>.</p>
+    <p>The next session starts from there, whichever AI it is.</p>
+
+    <h2>It keeps a task board</h2>
+    <p>The same instructions set it up to keep a kanban board in <code>board.md</code>, one card per task. It creates the board, adds cards, moves them between columns and updates them. Moving a card to the done column marks it as done.</p>
+    <p>You see that board in the note as columns with cards you drag.</p>
+
+    <h2>You decide how far it reaches</h2>
+    <p>Your AI only sees the notes you keep in the cloud. Limit a token to a folder and nothing outside it can be read or written. Sharing is a separate permission, off unless you turn it on.</p>
+    <p>The cloud is encrypted, and password-protected folders are end-to-end encrypted. Your AI gets into one of those only while you unlock it, for the time you set.</p>
+
+    <h2>Free over 10 notes</h2>
+    <p>The free plan has 10 notes in the cloud and the MCP connection over those notes, with the comments your AI resolves. The paid plan has unlimited cloud notes. The editor is free and open source, and it asks for no account to write.</p>
+
+    <p class="next"><a class="btn" href="src/app.html">Open the app</a></p>
+    <p>You edit those notes without typing syntax: see the <a href="wysiwyg-markdown-editor.html">WYSIWYG Markdown editor</a>. Plans and everything else are on the <a href="./">SharpMD home page</a>.</p>
+  </div>
+
+  <div lang="es">
+    <h1>Un editor de Markdown para Claude, Codex y otros agentes de IA, por MCP</h1>
+    <p class="lede">SharpMD es un editor de Markdown en la nube con la conexión MCP ya andando. Tu IA lee tus notas antes de trabajar y deja escrito lo que hizo. Vos editás las mismas notas sobre la página ya formateada.</p>
+    <p><a class="btn" href="src/app.html">Abrir la app</a></p>
+    <p class="under">Gratis sobre 10 notas en la nube. SharpMD no trae una IA propia: conectás la tuya.</p>
+
+    <h2>Tu IA lee y escribe tus notas</h2>
+    <p>Claude, Codex o cualquier otro cliente MCP lee y escribe las notas que tenés en la nube, desde donde trabaja. Las lista, las busca, les agrega texto, las mueve y lee su historial.</p>
+    <p>Dejás un comentario sobre un párrafo. Tu IA lee los abiertos, hace cada cambio y lo cierra con una respuesta.</p>
+
+    <h2>Se conecta en tres pasos</h2>
+    <ol>
+      <li>Entrás a tu cuenta, abrís Ajustes &gt; IA (MCP) y creás un token.</li>
+      <li>Tocás "Copiar instrucciones para tu IA". El mensaje lleva la dirección, el token y cómo escribir acá.</li>
+      <li>Lo pegás en tu IA.</li>
+    </ol>
+    <p>La dirección es <code>https://sync.sharpmd.app/mcp</code>, por Streamable HTTP, con el token como encabezado bearer. No hay ningún servidor que instalar.</p>
+
+    <h2>Documenta el proyecto</h2>
+    <p>Esas instrucciones le piden a tu IA leer las notas del proyecto antes de una tarea y actualizarlas cuando cambia algo. Las lleva en una sola carpeta: <code>README.md</code>, <code>architecture.md</code>, <code>features/</code>, <code>epics.md</code>, <code>decisions.md</code> y <code>log.md</code>.</p>
+    <p>La próxima sesión arranca desde ahí, sea la IA que sea.</p>
+
+    <h2>Lleva un tablero de tareas</h2>
+    <p>Las mismas instrucciones la dejan lista para llevar un tablero kanban en <code>board.md</code>, con una tarjeta por tarea. Crea el tablero, suma tarjetas, las mueve de columna y las actualiza. Una tarjeta que pasa a la columna de terminadas queda marcada como hecha.</p>
+    <p>Ese tablero lo ves en la nota como columnas con tarjetas que arrastrás.</p>
+
+    <h2>Vos decidís hasta dónde llega</h2>
+    <p>Tu IA solo ve las notas que tenés en la nube. Limitás un token a una carpeta y nada de afuera se puede leer ni escribir. Compartir es un permiso aparte, apagado salvo que lo prendas.</p>
+    <p>La nube está cifrada, y las carpetas protegidas con contraseña van cifradas de extremo a extremo. Tu IA entra a una de esas solo mientras la desbloqueás, por el tiempo que elijas.</p>
+
+    <h2>Gratis sobre 10 notas</h2>
+    <p>El plan gratis tiene 10 notas en la nube y la conexión MCP sobre esas notas, con los comentarios que tu IA resuelve. El plan pago tiene notas en la nube sin límite. El editor es gratis y de código abierto, y no pide cuenta para escribir.</p>
+
+    <p class="next"><a class="btn" href="src/app.html">Abrir la app</a></p>
+    <p>Esas notas las editás sin escribir sintaxis: mirá el <a href="./wysiwyg-markdown-editor.html">editor de Markdown WYSIWYG</a>. Los planes y todo lo demás están en la <a href="./">portada de SharpMD</a>.</p>
+  </div>
+  <p class="legal"><a href="./"><span lang="en">Home</span><span lang="es">Portada</span></a><a href="[[markdown-editor-mcp.html||./markdown-editor-mcp.html]]" aria-current="page"><span lang="en">Markdown editor for AI agents</span><span lang="es">Editor de Markdown para agentes de IA</span></a><a href="[[wysiwyg-markdown-editor.html||./wysiwyg-markdown-editor.html]]"><span lang="en">WYSIWYG Markdown editor</span><span lang="es">Editor de Markdown WYSIWYG</span></a><a href="privacy.html"><span lang="en">Privacy</span><span lang="es">Privacidad</span></a><a href="terms.html"><span lang="en">Terms</span><span lang="es">Términos</span></a><a href="support.html"><span lang="en">Support</span><span lang="es">Ayuda</span></a></p>
+</main>
+</body>
+</html>
