@@ -186,7 +186,7 @@
     assistant: { js: ['src/aikey.js', 'src/assistant.js'] },
     // La galería de la comunidad, en Ajustes > Herramientas: se pide al abrir esa pestaña.
     gallery: { js: ['src/gallery.js'] },
-    // Ajustes > Automatizaciones y el alta guiada: se piden al abrir esa pestaña o al elegir "Automatizar…".
+    // Ajustes > API y automatizaciones y el alta guiada: se piden al abrir esa pestaña o al elegir "Automatizar…".
     automate: { js: ['src/automate.js'] },
     publish: { js: ['src/publish.js'] },
     // La hoja de atajos de teclado: se pide al abrirla.
@@ -2487,8 +2487,8 @@
   const PANEL_TABS = [['look', 'Apariencia', ICON.eye], ['read', 'Lectura y edición', ICON.pencil], ['plug', 'Plugins', ICON.b_code], ['cloud', 'Nube', ICON.cloud], ['ai', 'IA (MCP)', ICON.spark], ['plan', 'Plan', ICON.card], ['inst', 'Instalar', ICON.download], ['adv', 'Avanzado', ICON.gear]];
   // Herramientas (tools.js) va después de Plugins. El invitado de una sesión en vivo no la ve.
   PANEL_TABS.splice(3, 0, ['tools', 'Herramientas', LMD.tools.ICON.tools]);
-  // Automatizaciones (automate.js) va después de IA: avisos hacia afuera, direcciones de entrada y la API.
-  PANEL_TABS.splice(PANEL_TABS.findIndex((t) => t[0] === 'ai') + 1, 0, ['auto', 'Automatizaciones', '<svg viewBox="0 0 24 24"><path d="M13 3 5 13.5h6L10 21l8-10.5h-6z"/></svg>']);
+  // API y automatizaciones (automate.js) va después de IA: los tokens de la API, los webhooks y las direcciones de entrada.
+  PANEL_TABS.splice(PANEL_TABS.findIndex((t) => t[0] === 'ai') + 1, 0, ['auto', 'API y automatizaciones', '<svg viewBox="0 0 24 24"><path d="M13 3 5 13.5h6L10 21l8-10.5h-6z"/></svg>']);
   // Al cerrar Ajustes el foco vuelve a donde estaba al abrirlos.
   let panelBack = null;
   // La grilla de temas de Apariencia: cuál está puesto, cuál se eligió para mirar y qué botón le toca.
@@ -2513,6 +2513,8 @@
   }
   // Con tab abre directo en esa pestaña: openPanel('plan'). why es una línea que dice por qué se llegó a Plan.
   function openPanel(tab, why) {
+    // 'community' es la sub-pestaña Comunidad de Herramientas.
+    if (tab === 'community') { tab = 'tools'; LMD.tools.sub('community'); }
     if (tab) panelTab = tab;
     LMD.sync.why(why);
     // Un invitado de una sesión en vivo no tiene cuenta que manejar acá, ni cambia de servidor a mitad de la sesión.
@@ -2525,8 +2527,15 @@
     if (ui.panel.hidden) serverDraft = false;
     const noCloud = /^off$/i.test(s.cloudUrl || ''); const own = serverDraft || (!!s.cloudUrl && !noCloud);
     const EXTRA = ' <em class="lmd-tag">' + T('Plan pago') + '</em>';
-    const plugins = Object.keys(LMD.PLUGIN_LABELS).map((k) =>
-      '<label class="lmd-switch" data-tip="' + esc(T(LMD.PLUGIN_HELP[k] || '')) + '"><input type="checkbox" data-plugin="' + k + '"' + (s.plugins[k] ? ' checked' : '') + '><i></i><span>' + esc(T(LMD.PLUGIN_LABELS[k])) + '</span></label>').join('');
+    // Los plugins van en bloques con subtítulo (PLUGIN_GROUPS), repartidos en dos columnas parejas: la primera se
+    // llena hasta la mitad de los interruptores. Uno que no esté en ningún bloque va al final del último.
+    const plugSwitch = (k) => '<label class="lmd-switch" data-tip="' + esc(T(LMD.PLUGIN_HELP[k] || '')) + '"><input type="checkbox" data-plugin="' + k + '"' + (s.plugins[k] ? ' checked' : '') + '><i></i><span>' + esc(T(LMD.PLUGIN_LABELS[k])) + '</span></label>';
+    const plugKeys = Object.keys(LMD.PLUGIN_LABELS);
+    const plugGroups = LMD.PLUGIN_GROUPS.map((g) => [g[0], g[1].filter((k) => plugKeys.includes(k))]);
+    plugGroups[plugGroups.length - 1][1].push(...plugKeys.filter((k) => !plugGroups.some((g) => g[1].includes(k))));
+    const plugCols = [[], []]; let plugSeen = 0;
+    plugGroups.forEach((g) => { if (!g[1].length) return; plugCols[plugSeen < plugKeys.length / 2 ? 0 : 1].push(g); plugSeen += g[1].length; });
+    const plugins = plugCols.map((col) => '<div class="lmd-plug-col">' + col.map((g) => '<div class="lmd-plug-group" role="group" aria-label="' + esc(T(g[0])) + '"><h4>' + esc(T(g[0])) + '</h4>' + g[1].map(plugSwitch).join('') + '</div>').join('') + '</div>').join('');
     const fonts = LMD.FONTS.slice();
     if (s.fontFamily && !fonts.some((f) => f.value === s.fontFamily)) fonts.push({ name: s.fontFamily, value: s.fontFamily });
     const fontOptions = fonts.map((f) => '<option value="' + esc(f.value) + '"' + (f.value === (s.fontFamily || '') ? ' selected' : '') + '>' + esc(f.value ? f.name : T(f.name)) + '</option>').join('');
@@ -2608,13 +2617,13 @@
             '<label class="lmd-check"><input type="checkbox" data-key="filesOnlyMarkdown"' + (s.filesOnlyMarkdown ? ' checked' : '') + '><span>' + T('Mostrar solo archivos Markdown') + '</span></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="filesShowHidden"' + (s.filesShowHidden ? ' checked' : '') + '><span>' + T('Mostrar archivos y carpetas ocultos') + '</span></label>' +
           '</section>' +
-          '<section data-tab="plug"><h3>' + T('Plugins de Markdown') + '</h3><div class="lmd-grid">' + plugins + '</div></section>' +
+          '<section data-tab="plug"><h3>' + T('Plugins de Markdown') + '</h3><div class="lmd-plug">' + plugins + '</div></section>' +
           '<section data-tab="tools"><h3>' + T('Herramientas') + '</h3><div class="lmd-acct lmd-tl" data-tools-pane></div></section>' +
           // Nube, IA y Plan los dibuja sync.js al entrar a cada pestaña, con la cuenta recién consultada.
           // El renglón de almacenamiento de imágenes, arriba a la derecha, lo dibuja images.js.
           '<section data-tab="cloud" class="lmd-st-host"><div class="lmd-st-slot" data-files-pane hidden></div><h3>' + T('Nube') + '</h3><div class="lmd-acct" data-acct="cloud"></div></section>' +
           '<section data-tab="ai"><h3>' + T('Conectar una IA') + '</h3><div class="lmd-acct" data-acct="ai"></div></section>' +
-          '<section data-tab="auto"><h3>' + T('Automatizaciones') + '</h3><div class="lmd-acct lmd-au-pane" data-auto-pane></div></section>' +
+          '<section data-tab="auto"><h3>' + T('API y automatizaciones') + '</h3><div class="lmd-acct lmd-au-pane" data-auto-pane></div></section>' +
           '<section data-tab="plan"><h3>' + T('Plan') + '</h3><div class="lmd-acct" data-acct="plan"></div></section>' +
           '<section data-tab="inst"><h3>' + T('Instalar') + '</h3><div class="lmd-acct lmd-inst" data-inst-pane></div></section>' +
           '<section data-tab="adv"><h3>' + T('CSS propio') + (s.supporter ? '' : EXTRA) + '</h3>' +
@@ -4067,7 +4076,7 @@
     if (APP && withDoc && location.hash === '#lmd-paid') { openPanel('plan'); LMD.sync.awaitPaid(); }
     // Desde la portada, el botón del plan pago llega acá: Ajustes en Plan, donde se entra a la cuenta y se paga.
     // Ajustes sobre un archivo abierto directo manda igual, y también a la pestaña de IA.
-    const hashTab = APP && { '#lmd-plans': 'plan', '#lmd-ai': 'ai', '#lmd-auto': 'auto' }[location.hash];
+    const hashTab = APP && { '#lmd-plans': 'plan', '#lmd-ai': 'ai', '#lmd-auto': 'auto', '#lmd-community': 'community' }[location.hash];
     if (hashTab) { history.replaceState(history.state, '', location.href.split('#')[0]); openPanel(hashTab); }
     updateSaveState();
     checkUpdate(false);

@@ -155,7 +155,7 @@ await app.evaluate(([tpl, img, colors, P]) => {
   LMD.cloud.api = async (m, p) => (p.startsWith('/gallery?') ? { items, pages: '<img>' } : p === '/gallery/7' ? Object.assign({ type: 'template' }, tpl)
     : p === '/gallery/mine' ? [{ id: 1, type: img, status: '">' + img, name: img, reason: '<svg onload=' + P + '>' }] : {});
 }, [TPL_BAD, IMG, COLORS, P]);
-await app.click('[data-act=settings]'); await app.waitForSelector('.lmd-panel-card'); await app.click('[data-ptab=tools]'); await app.waitForSelector('.lmd-gal-card'); await app.waitForSelector('.lmd-gal-my'); await app.waitForTimeout(500);
+await app.click('[data-act=settings]'); await app.waitForSelector('.lmd-panel-card'); await app.click('[data-ptab=tools]'); await app.click('[data-tsub=community]'); await app.waitForSelector('.lmd-gal-card'); await app.waitForSelector('.lmd-gal-my'); await app.waitForTimeout(500);
 o.galeria = await scan();
 o.tarjetas = await app.evaluate(() => [...document.querySelectorAll('.lmd-gal-card')].map((c) => c.dataset.gid));
 await app.click('.lmd-gal-card[data-gid="13"] [data-gal=view]'); await app.waitForSelector('.lmd-gal-view .lmd-gal-sample'); o.vistaTema = await scan(); await app.click('.lmd-gal-view [data-gv=close]');

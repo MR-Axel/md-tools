@@ -179,6 +179,7 @@
   // correo y el código. Está a la vista con una nota abierta o sin ninguna; en pantalla chica, dentro del panel lateral.
   const OUT = '<svg viewBox="0 0 24 24"><path d="M14 4.5h3.5A1.5 1.5 0 0 1 19 6v12a1.5 1.5 0 0 1-1.5 1.5H14M10 8l-4 4 4 4M6 12h9"/></svg>';
   let acctSeq = 0; let acctMenu = null;
+  let acctNow = null; // la cuenta, como vino la última vez que se pintó la fila: de ahí sale el plan que muestra el menú
   const acctHost = () => ({
     leave: ctx.leave, back: location.href.split('#')[0], appUrl: ctx.APP_URL, close: () => {}, closed: () => paintAcct(), say: (t) => acctFail(t), unlocked: ctx.unlocked,
   });
@@ -194,13 +195,18 @@
     if (b) { b.setAttribute('aria-expanded', 'false'); if (focus) b.focus(); }
   }
   function openAcctMenu(btn) {
-    // Ajustes primero, y debajo sus pestañas de la cuenta como atajos: el mismo ícono y el mismo nombre que llevan allá.
-    // Salir va aparte. La nube se abre desde el explorador, que está justo arriba.
-    const items = [['settings', ICON.sliders, 'Ajustes'], ['plan', ICON.card, 'Plan', true], ['ai', ICON.spark, 'IA (MCP)', true], null, ['logout', OUT, 'Salir']];
+    // Solo lo de la cuenta: el plan que tiene, conectar su IA y el nombre visible. Salir va aparte. A los ajustes de
+    // la app se entra por el botón de la barra de arriba, y la nube se abre desde el explorador.
+    const a = acctNow; const mine = a && a.team && a.team.mine;
+    const plan = !a ? '' : a.billing === false && mine ? mine.name || T('Equipo') : T(a.plan === 'pro' ? 'Pago' : 'Gratis');
+    const items = [['plan', ICON.card, T('Plan') + (plan ? ' · ' + plan : '')], ['ai', ICON.spark, T('Conectar tu IA')], a && a.name !== undefined ? ['name', ICON.pencil, T('Nombre visible')] : 0, null, ['logout', OUT, T('Salir')]].filter((it) => it !== 0);
     acctMenu = el('div', { class: 'lmd-menu lmd-menu-acct', role: 'menu' }, '<div class="lmd-menu-list"></div>');
-    items.forEach((it) => acctMenu.firstChild.appendChild(it
-      ? el('button', Object.assign({ type: 'button', role: 'menuitem', 'data-cloud': it[0] }, it[3] ? { class: 'lmd-menu-sub' } : {}), it[1] + '<span>' + T(it[2]) + '</span>')
-      : el('hr', { class: 'lmd-menu-sep' })));
+    items.forEach((it) => {
+      if (!it) { acctMenu.firstChild.appendChild(el('hr', { class: 'lmd-menu-sep' })); return; }
+      const b = el('button', { type: 'button', role: 'menuitem', 'data-cloud': it[0] }, it[1] + '<span></span>');
+      b.lastChild.textContent = it[2]; // el nombre de un equipo lo escribió una persona
+      acctMenu.firstChild.appendChild(b);
+    });
     ctx.acct.appendChild(acctMenu); btn.setAttribute('aria-expanded', 'true');
     // Con el teclado, el foco entra al menú y las flechas lo recorren.
     acctMenu.addEventListener('keydown', (e) => {
@@ -313,6 +319,7 @@
     try { a = await LMD.cloud.account(); } catch (e) { why = authWhy(e, ''); }
     if (mine !== acctSeq) return;
     if (!a && !LMD.cloud.signedIn()) return paintAcct();
+    acctNow = a;
     box.textContent = '';
     const pro = !!a && a.plan === 'pro';
     if (a) acctHost().unlocked(a);
@@ -340,8 +347,10 @@
       try {
         if (act === 'ask') await login();
         else if (act === 'logout') { await LMD.sync.signOut(acctHost()); await paintAcct(); ctx.refresh(); }
-        else if (act === 'settings') { ctx.hideSide(); ctx.panel('cloud'); }
-        else if (act === 'ai' || act === 'plan') { ctx.hideSide(); if (home) LMD.sync.dialog(act, acctHost()); else ctx.panel(act); } // en pantalla chica el panel lateral no queda abierto detrás
+        // En pantalla chica el panel lateral no queda abierto detrás.
+        else if (act === 'ai') { ctx.hideSide(); ctx.panel('ai'); }
+        else if (act === 'name') { ctx.hideSide(); LMD.sync.askName(); ctx.panel('cloud'); }
+        else if (act === 'plan') { ctx.hideSide(); if (home) LMD.sync.dialog(act, acctHost()); else ctx.panel(act); }
       } catch (err) { acctFail(authWhy(err, ''), box.querySelector('[data-field]')); }
     });
     box.addEventListener('keydown', (e) => { if (e.key === 'Escape' && acctMenu) { e.stopPropagation(); closeAcctMenu(true); } });

@@ -134,6 +134,14 @@ try {
     const gone = await bt('delete_card', { path: 'ia/board.md', id: two.v.card.id });
     const errs = [await bt('add_card', { path: 'ia/resumen.md', title: 'x' }), await bt('move_card', { path: 'ia/board.md', id: 'zzzzzzzz', column: 'Done' }), await bt('move_card', { path: 'ia/board.md', id: cid }), await bt('add_card', { path: 'ia/board.md', title: 'x', fields: { id: 'pisada' } }), await bt('create_board', { path: 'ia/otro.md', columns: ['A', 'a'] }), await bt('create_board', { path: 'ia/otro.md', columns: ['A'], done: 'B' }), await bt('list_boards', { path: 'ia/no-existe.md' })];
     check('MCP: delete_card la quita, y los errores se dicen sin escribir nada', !gone.err && gone.v.card.title === 'Dark theme' && errs.every((r) => r.err) && /no kanban board/.test(errs[0].v) && /no card with that id/.test(errs[1].v) && (await call('GET', '/notes/' + encodeURIComponent('ia/otro.md'), undefined, s)).status === 404, errs.map((r) => r.v));
+    // Un campo de texto largo (longtext) es un tipo más: no se confunde con una lista de una sola opción, y un tablero viejo se lee igual.
+    await call('PUT', '/notes/' + encodeURIComponent('ia/tipos.md'), { text: '# Tipos\n\n```kanban\n{show=needs needs=longtext est=number etapa=idea|final nota=text}\n## To do\n- [ ] Uno {needs="Un texto largo, en un solo renglón del archivo" id=aaaaaaaa}\n\n## Done\n```\n' }, s);
+    const tipos = await call('GET', '/api/v1/boards?path=' + encodeURIComponent('ia/tipos.md'), undefined, t);
+    const tf = (((tipos.json || {}).data || {}).boards || [{}])[0].fields || {};
+    const moved = await bt('move_card', { path: 'ia/tipos.md', id: 'aaaaaaaa', column: 'Done' });
+    const tiposText = (await call('GET', '/notes/' + encodeURIComponent('ia/tipos.md'), undefined, s)).json.text;
+    check('tablero: el tipo longtext se lee como texto largo, junto a los de siempre, y al reescribir el tablero queda igual', tipos.status === 200 && JSON.stringify(tf) === JSON.stringify({ needs: { type: 'longtext' }, est: { type: 'number' }, etapa: { type: 'select', options: ['idea', 'final'] }, nota: { type: 'text' } }) && !moved.err && tiposText.includes('{show=needs needs=longtext est=number etapa=idea|final nota=text}') && /- \[x\] Uno \{needs="Un texto largo, en un solo renglón del archivo" id=aaaaaaaa/.test(tiposText), [tipos.status, tf, tiposText]);
+    await call('DELETE', '/notes/' + encodeURIComponent('ia/tipos.md'), undefined, s);
     await call('DELETE', '/notes/' + encodeURIComponent('ia/board.md'), undefined, s);
   }
   const found = await tool('search_notes', { query: 'zanahoria' });

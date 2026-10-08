@@ -1,6 +1,6 @@
 // Automatizaciones, de punta a punta contra un servidor local: la API con token (/api/v1), los webhooks salientes
 // (contra un receptor local que comprueba la firma), las direcciones de entrada (/in/…), los eventos de tarjeta
-// venga el cambio de la app, de la API o del MCP, y la interfaz (Ajustes > Automatizaciones, el detalle de una
+// venga el cambio de la app, de la API o del MCP, y la interfaz (Ajustes > API y automatizaciones, el detalle de una
 // tarjeta, pantalla chica). La nube de verdad no se toca.
 import { rig, tally, sleep, root } from './rig.mjs';
 import http from 'http'; import crypto from 'crypto'; import fs from 'fs'; import path from 'path';
@@ -471,12 +471,21 @@ async function uiTests(K) {
   await gp.keyboard.press('Escape'); await gp.waitForSelector('.lmd-cd', { state: 'detached' });
   await guest.ctx.close();
 
-  console.log('Interfaz: Ajustes > Automatizaciones');
+  console.log('Interfaz: Ajustes > API y automatizaciones');
   await page.click('[data-act=settings]'); await page.waitForSelector('[data-ptab=auto]'); await page.click('[data-ptab=auto]'); await page.waitForSelector('.lmd-au-list');
-  s = await page.evaluate(() => ({ tab: document.querySelector('[data-ptab=auto]').textContent, heads: [...document.querySelectorAll('[data-auto-pane] h4')].map((h) => h.textContent), rows: [...document.querySelectorAll('[data-list=hooks] .lmd-au-item')].map((li) => li.querySelector('div').textContent), text: document.querySelector('[data-auto-pane]').textContent, api: [...document.querySelectorAll('[data-auto-pane] .lmd-field input')].pop().value, docs: document.querySelector('.lmd-au-docs').href, wide: document.querySelector('.lmd-panel-body').scrollWidth <= document.querySelector('.lmd-panel-body').clientWidth + 1 }));
-  check('la pestaña lista los avisos con su ámbito, sus eventos y adónde van', s.tab === 'Automations' && J(s.heads) === J(['Outgoing notifications', 'Inbound addresses', 'API']) && s.rows.some((r) => /^Team channel/.test(r) && /ui\/board\.md · 5 events · Slack/.test(r) && /127\.0\.0\.1/.test(r)) && s.rows.some((r) => /All notes/.test(r)), s.rows);
+  s = await page.evaluate(() => ({ tab: document.querySelector('[data-ptab=auto]').textContent, heads: [...document.querySelectorAll('[data-auto-pane] h4')].map((h) => h.textContent), rows: [...document.querySelectorAll('[data-list=hooks] .lmd-au-item')].map((li) => li.querySelector('div').textContent), text: document.querySelector('[data-auto-pane]').textContent, api: document.querySelector('[data-auto-pane] .lmd-field input').value, toks: document.querySelectorAll('[data-list=tokens] li').length, make: (document.querySelector('[data-auto-pane] [data-c=token]') || {}).textContent, docs: document.querySelector('.lmd-au-docs').href, wide: document.querySelector('.lmd-panel-body').scrollWidth <= document.querySelector('.lmd-panel-body').clientWidth + 1 }));
+  check('la pestaña lista los avisos con su ámbito, sus eventos y adónde van', s.tab === 'API and automations' && J(s.heads) === J(['API tokens', 'Webhooks', 'Inbound addresses']) && s.rows.some((r) => /^Team channel/.test(r) && /ui\/board\.md · 5 events · Slack/.test(r) && /127\.0\.0\.1/.test(r)) && s.rows.some((r) => /All notes/.test(r)), s.rows);
   check('sin secretos a la vista, sin signos de admiración ni rayas, y sin desborde', !/whsec_|mdi_/.test(s.text) && plain(s.text) && s.wide, s.text.slice(0, 300));
-  check('la API: su dirección y el enlace a la documentación', s.api === base + '/api/v1' && s.docs === 'https://sharpmd.app/api.html', [s.api, s.docs]);
+  check('la API va primero: su dirección, los tokens de la cuenta, crear uno y el enlace a la referencia', s.api === base + '/api/v1' && s.docs === 'https://sharpmd.app/api.html' && s.toks >= 1 && s.make === 'Create a token', [s.api, s.docs, s.toks, s.make]);
+  // Un token se crea y se revoca ahí mismo, sin pasar por la pestaña de IA.
+  const toks0 = s.toks;
+  await page.click('[data-auto-pane] [data-c=token]'); await page.waitForSelector('[data-auto-pane] [data-api-token]');
+  const tokMade = await page.evaluate(() => ({ token: document.querySelector('[data-api-token]').value, note: document.querySelector('[data-auto-pane] .lmd-ai-new').textContent, rows: [...document.querySelectorAll('[data-list=tokens] li span')].map((x) => x.textContent), tab: document.querySelector('[data-ptab].lmd-on').dataset.ptab }));
+  const works = await v1('GET', '/me', undefined, tokMade.token);
+  check('"Crear un token" lo crea ahí mismo y lo muestra una sola vez, y el token anda contra la API', /^mdt_/.test(tokMade.token) && /not shown again/.test(tokMade.note) && tokMade.rows.length === toks0 + 1 && tokMade.rows.some((r) => /^API · All notes/.test(r)) && tokMade.tab === 'auto' && works.status === 200, [tokMade.rows, tokMade.tab, works.status]);
+  await page.locator('[data-list=tokens] li', { hasText: /^API · / }).locator('[data-tk]').click(); await page.waitForSelector('.lmd-dlg-card'); await page.click('.lmd-dlg-card [data-dlg=ok]');
+  await page.waitForFunction((n) => document.querySelectorAll('[data-list=tokens] li').length === n && !document.querySelector('[data-api-token]'), toks0);
+  check('revocarlo lo saca de la lista y deja de servir', (await v1('GET', '/me', undefined, tokMade.token)).status === 401);
   const row = page.locator('[data-list=hooks] .lmd-au-item', { hasText: 'Team channel' });
   await row.locator('[data-ha=log]').click(); await page.waitForSelector('.lmd-au-log .lmd-au-table');
   const logText = await page.textContent('.lmd-au-log');
@@ -517,7 +526,7 @@ async function uiTests(K) {
   const lia = await R.open(K.free);
   await lia.page.goto(R.home + '#lmd-auto'); await lia.page.waitForSelector('[data-auto-pane] .lmd-extra');
   const gate = await lia.page.textContent('[data-auto-pane]');
-  check('sin plan pago se ve la sección con el aviso de plan', /Automations are part of the paid plan\./.test(gate) && /See plans/.test(gate) && plain(gate), gate);
+  check('sin plan pago se ve la sección con el aviso de plan', /The API and automations are part of the paid plan\./.test(gate) && /See plans/.test(gate) && plain(gate), gate);
   await lia.ctx.close();
 
   console.log('Interfaz: pantalla chica');
@@ -549,7 +558,7 @@ async function uiTests(K) {
   await sp.tap('.lmd-pg [data-pg=ok]');
   await sp.goto(R.home + '#lmd-auto'); await sp.waitForSelector('.lmd-au-list');
   s = await sp.evaluate(() => ({ body: document.querySelector('.lmd-panel-body').scrollWidth <= document.querySelector('.lmd-panel-body').clientWidth + 1, page: document.documentElement.scrollWidth <= window.innerWidth, btn: Math.min(...[...document.querySelectorAll('.lmd-au-acts button')].map((b) => b.getBoundingClientRect().height)) }));
-  check('Automatizaciones en pantalla chica: sin desborde y con botones que se tocan', s.body && s.page && s.btn >= 32, s);
+  check('API y automatizaciones en pantalla chica: sin desborde y con botones que se tocan', s.body && s.page && s.btn >= 32, s);
   await sp.tap('[data-c=hook]'); await sp.waitForSelector('.lmd-au-wiz');
   s = await sp.evaluate(() => { const c = document.querySelector('.lmd-au-wiz .lmd-ask-card').getBoundingClientRect(); return { fits: c.left >= 0 && c.right <= window.innerWidth && c.bottom <= window.innerHeight + 1 }; });
   check('el alta guiada entra en la pantalla', s.fits, s);

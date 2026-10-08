@@ -1,8 +1,8 @@
-// Automatizaciones: la pestaña de Ajustes y el alta guiada.
+// API y automatizaciones: la pestaña de Ajustes y el alta guiada.
 // Tres cosas para conectar SharpMD con flujos de afuera (Slack, Make, n8n, Zapier, Activepieces):
 //   - avisos hacia afuera: cuando pasa algo con una nota o con una tarjeta, sale un mensaje a una dirección;
 //   - direcciones de entrada: una dirección secreta que agrega texto a una nota, crea una nota o una tarjeta;
-//   - la API, con los mismos tokens que usa la IA.
+//   - la API, con los mismos tokens que usa la IA: se crean y se revocan acá mismo.
 // Se pide recién al abrir la pestaña o al elegir "Automatizar…" en un menú (ver LAZY_APP en content.js).
 (function () {
   'use strict';
@@ -188,15 +188,23 @@
   // ---------- La pestaña de Ajustes ----------
   const hint = (text) => '<p class="lmd-hint">' + text + '</p>';
   const actions = (html) => '<div class="lmd-acct-actions">' + html + '</div>';
-  const INTRO = 'Conectá tus notas con Slack, Make, n8n o Zapier: avisos cuando algo cambia y direcciones para recibir texto.';
+  const INTRO = 'La API, los webhooks y las direcciones de entrada conectan tus notas con Slack, Make, n8n o Zapier.';
   async function pane(box, host) {
     await LMD.cloud.ready();
     const intro = hint(T(INTRO));
     let space = ''; let shownUrl = null; let data = null;
+    // Los tokens de la API son los de la cuenta, los mismos que usa la IA. El recién creado queda a la vista hasta salir de acá o revocarlo.
+    let tokens = []; let shownTok = null;
+    const tokName = (n) => (/^(IA|AI)$/.test(n || '') ? T('IA') : n || 'API');
     const say = (t, ok) => { const m = box.querySelector('.lmd-acct-msg'); if (m) { m.hidden = !t; m.textContent = t || ''; m.classList.toggle('lmd-acct-done', !!ok); } };
     const draw = async () => {
       data = await api('GET', '/automations' + (space ? '?o=' + space : ''));
       const admin = teamAdmin();
+      let folders = [];
+      try { tokens = await LMD.cloud.tokens(); } catch (e) { tokens = []; /* sin la lista, igual se puede crear uno */ }
+      try { folders = (await places('')).folders; } catch (e) { /* sin carpetas, el token alcanza todo */ }
+      const keptFolder = (box.querySelector('[data-c=tok-folder]') || {}).value || '';
+      const tokRow = (t) => '<li><span>' + esc(tokName(t.name)) + ' · ' + (t.scope ? T('Carpeta {a}', { a: esc(t.scope) + '/' }) : T('Todas las notas')) + ' · ' + T('creado el {a}', { a: day(t.created) }) + ' · ' + (t.used ? T('usado el {a}', { a: day(t.used) }) : T('sin usar')) + '</span><button type="button" data-tk="' + esc(t.id) + '">' + T('Revocar') + '</button></li>';
       const hookRow = (h) => '<li class="lmd-au-item' + (h.state !== 'on' ? ' lmd-au-off' : '') + '" data-hook="' + h.id + '"><div><b>' + esc(h.name || fmtName(h.format)) + '</b><span>' + scopeText(h.scope, !!space) + ' · ' + T(h.events.length === 1 ? '1 evento' : '{n} eventos', { n: h.events.length }) + ' · ' + esc(T(fmtName(h.format))) + '</span>' +
         '<span class="lmd-au-dest">' + esc(h.destination) + '</span>' +
         (h.state === 'failed' ? '<span class="lmd-au-warn" role="alert">' + T('Se desactivó por fallos seguidos.') + '</span>' : h.state === 'paused' ? '<span class="lmd-au-warn">' + T('En pausa') + '</span>' : h.last ? '<span>' + T(h.last.ok ? 'Último aviso entregado el {a}' : 'El último aviso falló el {a}', { a: day(h.last.at) }) + '</span>' : '') + '</div>' +
@@ -206,34 +214,40 @@
         '<div class="lmd-au-acts"><button type="button" data-ia="new">' + T('Nueva dirección') + '</button><button type="button" data-ia="rm">' + T('Eliminar') + '</button></div></li>';
       box.innerHTML = intro +
         (admin ? '<label class="lmd-pick lmd-au-space"><span>' + T('De quién') + '</span><select data-c="space"><option value="">' + T('Mis notas') + '</option><option value="' + admin.space + '"' + (space ? ' selected' : '') + '>' + T('El espacio del equipo') + '</option></select></label>' : '') +
-        '<h4>' + T('Avisos hacia afuera') + '</h4>' + (data.hooks.length ? '<ul class="lmd-au-list" data-list="hooks">' + data.hooks.map(hookRow).join('') + '</ul>' : hint(T('Todavía no hay avisos. Por ejemplo: un mensaje en Slack cuando una tarjeta pasa a Hecho.'))) +
+        // Tres secciones, en este orden: los tokens de la API, los webhooks y las direcciones de entrada.
+        '<h4>' + T('Tokens de la API') + '</h4>' + hint(T('Para leer y escribir notas y mover tarjetas desde un flujo. Usa los mismos tokens que la IA.')) +
+        '<div class="lmd-field"><span>URL</span><input type="text" readonly value="' + esc(data.api_url) + '"><button type="button" class="lmd-link" data-c="copy">' + T('Copiar') + '</button></div>' +
+        (shownTok ? '<p class="lmd-ai-new">' + T('Copiá el token ahora: no se vuelve a mostrar.') + '</p><div class="lmd-field"><span>Token</span><input type="text" readonly data-api-token value="' + esc(shownTok.token) + '"><button type="button" class="lmd-link" data-c="copy">' + T('Copiar') + '</button></div>' : '') +
+        (tokens.length ? '<ul class="lmd-tokens" data-list="tokens">' + tokens.map(tokRow).join('') + '</ul>' : hint(T('Todavía no hay tokens.'))) +
+        (folders.length ? '<label class="lmd-pick"><span>' + T('Carpeta') + '</span><select data-c="tok-folder"><option value="">' + T('Todas las notas') + '</option>' + options(folders, keptFolder, '/') + '</select></label>' : '') +
+        actions('<button type="button" class="lmd-btn" data-c="token">' + T('Crear un token') + '</button><a class="lmd-btn lmd-au-docs" href="' + DOCS + '" target="_blank" rel="noopener">' + T('Ver la documentación') + '</a>') +
+        '<h4>' + T('Webhooks') + '</h4>' + (data.hooks.length ? '<ul class="lmd-au-list" data-list="hooks">' + data.hooks.map(hookRow).join('') + '</ul>' : hint(T('Todavía no hay avisos. Por ejemplo: un mensaje en Slack cuando una tarjeta pasa a Hecho.'))) +
         actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="hook">' + T('Nueva automatización') + '</button>') +
         '<h4>' + T('Direcciones de entrada') + '</h4>' + hint(T('Una dirección secreta que agrega texto a una nota. Sirve para formularios, ventas o correo.')) +
         (shownUrl ? '<p class="lmd-ai-new">' + T('Copiá la dirección ahora: no se vuelve a mostrar.') + '</p><div class="lmd-field"><span>URL</span><input type="text" readonly data-in-url value="' + esc(shownUrl) + '"><button type="button" class="lmd-link" data-c="copy">' + T('Copiar') + '</button></div>' : '') +
         (data.inboxes.length ? '<ul class="lmd-au-list" data-list="inboxes">' + data.inboxes.map(inRow).join('') + '</ul>' : '') +
         actions('<button type="button" class="lmd-btn" data-c="inbox">' + T('Nueva dirección de entrada') + '</button>') +
-        '<h4>API</h4>' + hint(T('Para leer y escribir notas y mover tarjetas desde un flujo. Usa los mismos tokens que la IA.')) +
-        '<div class="lmd-field"><span>URL</span><input type="text" readonly value="' + esc(data.api_url) + '"><button type="button" class="lmd-link" data-c="copy">' + T('Copiar') + '</button></div>' +
-        actions('<button type="button" class="lmd-btn" data-c="tokens">' + T('Crear un token') + '</button><a class="lmd-btn lmd-au-docs" href="' + DOCS + '" target="_blank" rel="noopener">' + T('Ver la documentación') + '</a>') +
         '<p class="lmd-hint lmd-acct-msg" role="status" hidden></p>';
     };
     const redraw = async () => { try { await draw(); } catch (e) { say(why(e)); } };
     if (!LMD.cloud.enabled()) box.innerHTML = hint(T('La nube está apagada: sin ella no hay notas para automatizar.'));
-    else if (host.direct) box.innerHTML = intro + hint(T('La cuenta se maneja desde la app de SharpMD.')) + actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="app">' + T('Abrir SharpMD') + '</button>');
+    else if (host.direct) box.innerHTML = intro; // la franja de arriba ya dice que la cuenta está en la app
     else if (!LMD.cloud.signedIn()) box.innerHTML = intro + hint(T('Entrá a tu cuenta para crear automatizaciones.')) + (host.tab ? actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="login">' + T('Crear cuenta o entrar') + '</button>') : '');
     else {
       try {
         const a = await LMD.cloud.account(); acct = a;
         if (a.api != null ? a.api : a.mcp) await draw();
-        else box.innerHTML = intro + '<div class="lmd-extra"><p>' + T('Las automatizaciones son parte del plan pago.') + '</p><div class="lmd-extra-actions"><button type="button" class="lmd-btn lmd-btn-fill" data-c="plans">' + T('Ver planes') + '</button></div></div>';
+        else box.innerHTML = intro + '<div class="lmd-extra"><p>' + T('La API y las automatizaciones son parte del plan pago.') + '</p><div class="lmd-extra-actions"><button type="button" class="lmd-btn lmd-btn-fill" data-c="plans">' + T('Ver planes') + '</button></div></div>';
       } catch (e) { box.innerHTML = hint(T('No hay conexión con el servidor.')); }
     }
     box.onchange = (e) => { if (e.target.dataset.c === 'space') { space = e.target.value; shownUrl = null; redraw(); } };
     box.onfocusin = (e) => { if (e.target.matches('input[readonly]')) e.target.select(); };
     box.onclick = async (e) => {
-      const b = e.target.closest('[data-c]'); const ha = e.target.closest('[data-ha]'); const ia = e.target.closest('[data-ia]');
+      const b = e.target.closest('[data-c]'); const ha = e.target.closest('[data-ha]'); const ia = e.target.closest('[data-ia]'); const tk = e.target.closest('[data-tk]');
       try {
-        if (ha) {
+        if (tk) {
+          if (await LMD.dialog.confirm({ title: T('¿Revocar este token?'), text: T('Lo que lo usa deja de entrar.'), ok: T('Revocar'), danger: true })) { await LMD.cloud.revoke(tk.dataset.tk); if (shownTok && String(shownTok.id) === tk.dataset.tk) shownTok = null; await draw(); }
+        } else if (ha) {
           const id = ha.closest('[data-hook]').dataset.hook; const hook = data.hooks.find((h) => String(h.id) === id); const o = space || undefined;
           if (ha.dataset.ha === 'test') { say(T('Enviando la prueba…'), true); await test(id, space, box.querySelector('.lmd-acct-msg')); }
           else if (ha.dataset.ha === 'log') deliveries(hook, space);
@@ -247,10 +261,9 @@
         else if (b.dataset.c === 'hook') wizard(null, { kind: 'all', path: space ? '~' + space + '/' : '' }, redraw);
         else if (b.dataset.c === 'inbox') inboxForm(space, (made) => { shownUrl = made.url; redraw(); });
         else if (b.dataset.c === 'copy') copy(b.parentNode.querySelector('input').value, b);
-        else if (b.dataset.c === 'tokens') host.tab('ai');
+        else if (b.dataset.c === 'token') { shownTok = await LMD.cloud.newToken('API', (box.querySelector('[data-c=tok-folder]') || {}).value || '', false); await draw(); }
         else if (b.dataset.c === 'plans') host.tab('plan');
         else if (b.dataset.c === 'login') host.tab('cloud');
-        else if (b.dataset.c === 'app') host.openApp('#lmd-auto');
       } catch (x) { say(why(x)); }
     };
   }

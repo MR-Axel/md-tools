@@ -4,7 +4,7 @@
     "title": "SharpMD API",
     "version": "1.0.0",
     "summary": "Read and write the Markdown notes of a SharpMD account from automated flows.",
-    "description": "The same notes the SharpMD app shows, over plain HTTP. Authenticate with a token created in Settings > Automations (or Settings > AI): the tokens are the ones MCP uses, so a token limited to a folder only reaches that folder, and sharing needs a token created with that permission. Notes of the team space are under @team/. Notes inside a protected folder are encrypted in the browser: they are only reachable while the person has the folder unlocked for the AI.\n\nEvery response is JSON: { \"ok\": true, \"data\": … } or { \"ok\": false, \"error\": { \"code\", \"message\" } }. Each token can make 120 requests per minute; past that the answer is 429 with a Retry-After header.\n\nDocs with examples: https://sharpmd.app/api.html",
+    "description": "The same notes the SharpMD app shows, over plain HTTP. Authenticate with a token created in Settings > API and automations (or Settings > AI): the tokens are the ones MCP uses, so a token limited to a folder only reaches that folder, and sharing needs a token created with that permission. Notes of the team space are under @team/. Notes inside a protected folder are encrypted in the browser: they are only reachable while the person has the folder unlocked for the AI.\n\nEvery response is JSON: { \"ok\": true, \"data\": … } or { \"ok\": false, \"error\": { \"code\", \"message\" } }. Each token can make 120 requests per minute; past that the answer is 429 with a Retry-After header.\n\nDocs with examples: https://sharpmd.app/api.html",
     "license": {
       "name": "AGPL-3.0-or-later",
       "identifier": "AGPL-3.0-or-later"
@@ -2449,7 +2449,7 @@
         "operationId": "inbound",
         "summary": "Add to a note through an inbound address",
         "security": [],
-        "description": "An inbound address is created in Settings > Automations. Depending on how it was set up, what arrives is added at the end of a note, becomes a new note in a folder, or becomes a card on a board. It takes text/plain, JSON ({ \"text\", \"title\" }; any other JSON becomes a table of field and value, or a code block if it is nested), application/x-www-form-urlencoded and multipart/form-data (fields become a list; files are skipped). Up to 64 KB and 60 requests per minute. The answer never carries content of the note. GET with ?text= works only if the address allows it.",
+        "description": "An inbound address is created in Settings > API and automations. Depending on how it was set up, what arrives is added at the end of a note, becomes a new note in a folder, or becomes a card on a board. It takes text/plain, JSON ({ \"text\", \"title\" }; any other JSON becomes a table of field and value, or a code block if it is nested), application/x-www-form-urlencoded and multipart/form-data (fields become a list; files are skipped). Up to 64 KB and 60 requests per minute. The answer never carries content of the note. GET with ?text= works only if the address allows it.",
         "parameters": [
           {
             "name": "secret",
@@ -2783,7 +2783,7 @@
           },
           "fields": {
             "type": "object",
-            "description": "Declared attributes and their type: text, date, number or select with its options",
+            "description": "Declared attributes and their type: text, longtext, date, number or select with its options",
             "additionalProperties": {
               "type": "object",
               "properties": {
