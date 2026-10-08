@@ -1294,7 +1294,7 @@ function callTool(user, name, args, opt) {
   };
   // La dirección para abrir esa nota en la app, con el mismo formato que usa la app al navegar.
   const appLink = (f) => APP_URL + '?f=' + encodeURIComponent(f);
-  const openUrl = (a) => appLink('cloud/' + (a.who === user ? '' : '~' + a.who.id + '/') + a.p.split('/').map(encodeURIComponent).join('/'));
+  const openUrl = (a) => appLink('cloud/' + (isSpace(a.who) ? '~' + a.who.id + '/' : '') + a.p.split('/').map(encodeURIComponent).join('/'));
   if (opt.raw) { const out = apiTool(name, args, { user, at, gate, read, write, revOf, openUrl, seen, mayWrite, noted, mcp: (n, x) => callTool(user, n, x) }); if (out !== undefined) return out; }
   if (name === 'read_note') { const a = at(args.path); seen(a); return read(a, gate(a)); }
   if (name === 'write_note') { const a = at(args.path); mayWrite(a); const had = revOf(a) != null; write(a, gate(a), args.text); noted(had ? 'edit' : 'create', a); return 'Saved ' + a.full + ' (' + String(args.text == null ? '' : args.text).length + ' characters). Open it: ' + openUrl(a); }
