@@ -105,7 +105,7 @@
   // El plan de equipo: un solo precio en Paddle, por persona y por mes, con la cantidad = personas. Trae la prueba
   // gratis. Con price vacío, esta página no ofrece el plan de equipo. paid es el id del mismo precio sin prueba, para
   // quien ya tuvo la suya (llega con trial=0): mientras esté vacío, a esa cuenta se le dice que escriba.
-  var TEAM = { price: 'pri_01m4e773tttxwpany1dbxc7y8y', paid: '', min: 2, max: 50, cents: 500, en: 'a month', es: 'por mes' };
+  var TEAM = { price: 'pri_01m4e773tttxwpany1dbxc7y8y', paid: 'pri_01m4eanwxgxk9cjgp6j43r53t9', min: 2, max: 50, cents: 500, en: 'a month', es: 'por mes' };
   var q = new URLSearchParams(location.search);
   var show = function (id) { document.getElementById(id).hidden = false; };
   // Adónde volver: la app manda su propia dirección en back. Solo vale si es de este mismo sitio o de la
