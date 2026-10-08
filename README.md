@@ -123,7 +123,7 @@ No analytics. Settings, reading positions and browser notes are stored in your b
 
 ## Cloud notes and the sync server
 
-`server/` holds SharpMD Sync: accounts, notes in the cloud and an MCP endpoint so an AI can read and write them. Sign in from the start screen with a code sent to your email. The free plan holds 10 cloud notes; the paid plan (USD 3.99 a month or USD 39 a year) has no limit and adds sharing, the MCP connection, 30 days of version history and the appearance options. The team plan (USD 7.98 a month for 2 people, USD 3 a month for each extra one) gives every member the paid plan and a shared space for the team notes: whoever pays invites by email and manages the seats. That person can protect the team space with one password: the team notes are then encrypted in each member's browser and the server cannot read them. Members get the password from the administrator, outside the app.
+`server/` holds SharpMD Sync: accounts, notes in the cloud and an MCP endpoint so an AI can read and write them. Sign in from the start screen with a code sent to your email. The free plan holds 10 cloud notes; the paid plan (USD 3.99 a month or USD 39 a year) has no limit and adds sharing, the MCP connection, 30 days of version history and the appearance options. The team plan (USD 7.98 a month for 2 people, USD 3 a month for each extra one) gives every member the paid plan and a shared space for the team notes: whoever pays invites by email and manages the seats. Each member is an administrator, an editor or a reader. Administrators decide the team settings (whether members share team notes outside, create public links, connect their AI or use automations on the space, how long its history is kept, and the folder and template of new notes), create team tokens that belong to the team and not to a person, and read an activity log of who did what, without the content of the notes. The team space keeps a year of version history. Personal settings stay with each person, and only whoever pays sees prices and billing. That person can protect the team space with one password: the team notes are then encrypted in each member's browser and the server cannot read them. Members get the password from the administrator, outside the app.
 
 The server is one file with no dependencies, and you can host it yourself: set its address in Settings → Account, or type `off` there to use SharpMD with no cloud at all. See [server/README.md](server/README.md).
 
@@ -166,7 +166,7 @@ src/
   touch.js        touch editing and the small-screen layout
   sync.js         cloud icon, sharing, history, tokens and plans
   live.js         live sessions: the link, the guests and who is on each block
-  team.js         team plan: members, invitations and seats
+  team.js         team plan: members and roles, invitations, seats, team settings, team tokens and the activity log
   board.js        kanban boards and table formulas
   extras.js       files from the tree, images, replace, typewriter mode, HTML export
   content.js      the reader: interface, outline, tree, search, editing, saving, settings
