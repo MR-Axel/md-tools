@@ -1397,7 +1397,7 @@
       "No se pudo guardar. Probá de nuevo.": "It could not be saved. Try again.",
       "Ajustes de la página": "Page settings", "Ancho de la página": "Page width",
       "Normal": "Normal", "Ancha": "Wide",
-      "Completa": "Full", "Numerar los títulos": "Number the headings",
+      "Completa": "Full", "Numerar los títulos": "Number the headings", "Mostrar el índice": "Show the outline",
       "Listo": "Done", "Se guardan en la nota y valen para quien la abra.": "They are saved in the note and apply to whoever opens it.",
       "Esta nota es de solo lectura.": "This note is read-only.", "Este tablero es más ancho que la página.": "This board is wider than the page.",
       "Esta tabla es más ancha que la página.": "This table is wider than the page.", "Usar página ancha": "Use a wide page",

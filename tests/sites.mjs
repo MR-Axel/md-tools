@@ -286,6 +286,13 @@ try {
   check('"no indexar" pone noindex en la página y en la cabecera, y saca el sitemap; cambiar la dirección muda el sitio', xPub.status === 200 && noIdx.json.noindex === true && moved[0].status === 404 && moved[1].status === 302 && /p0$/.test(moved[1].headers.location) &&
     /<meta name="robots" content="noindex">/.test((await site('/xime-notas/p0')).body) && (await site('/xime-notas/p0')).headers['x-robots-tag'] === 'noindex' && nmap.status === 404 && /Disallow: \/xime-notas\//.test(nrob.body) && !(await site('/sitemap.xml')).body.includes('xime-notas'), [moved.map((m) => m.status), nmap.status, nrob.body]);
 
+  // Ajustes de la página: una nota con toc: false se publica sin su lista de secciones.
+  const HS = '<h2 id="uno">Uno</h2><p>a</p><h2 id="dos">Dos</h2><p>b</p>';
+  const tocPut = await api('PUT', '/sites/' + xs.id + '/pages', { pages: [page('notas/p1.md', 1, HS), page('notas/p2.md', 1, HS, { toc: false })] }, X.s);
+  await api('POST', '/sites/' + xs.id + '/publish', {}, X.s);
+  const withToc = (await site('/xime-notas/p1')).body; const noToc = (await site('/xime-notas/p2')).body;
+  check('una página con toc: false sale sin la lista "En esta página", con sus títulos en el cuerpo', tocPut.status === 200 && /<aside class="sp-toc"/.test(withToc) && !/<aside class="sp-toc"/.test(noToc) && /Uno/.test(noToc) && /Dos/.test(noToc) && /id="uno"/.test(noToc), [tocPut.status, /sp-toc"/.test(withToc), /sp-toc"/.test(noToc)]);
+
   // ---------- Denuncia ----------
   console.log('Denuncia');
   const rc = await R.browser.newContext({ viewport: { width: 1280, height: 800 } }); const rp = await rc.newPage(); const repErrors = [];

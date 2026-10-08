@@ -31,7 +31,7 @@ Free and open source. No tracking: files are read in your browser and never uplo
 | **Blocks** | Right-click, the handle next to a block, the + button or `/` on an empty line: insert, turn into, move, duplicate or delete. Undo with Ctrl+Z, redo with Ctrl+Y. |
 | **Tables** | Add and remove rows and columns. A totals row sums each column, and a cell can hold `=sum`, `=avg`, `=min`, `=max`, `=count` or `=median`. |
 | **Boards** | A `kanban` block turns headings into columns and tasks into cards you can drag. Each card has a stable id, created and edited dates and your own attributes (due date, owner, priority…), and a click opens its detail. Anywhere else it reads as a plain task list. A wide board uses the full width of the note. |
-| **Page settings** | Settings that belong to a note, kept in its front matter so they travel with the file: page width (normal, wide, full) and numbered headings. |
+| **Page settings** | Settings that belong to a note, kept in its front matter so they travel with the file: page width (normal, wide, full), numbered headings and whether the outline shows. |
 | **Diagrams** | Mermaid and Graphviz, with an editor that shows the drawing next to the code: templates, pieces to add with a button, color palettes, and errors explained with their line marked. |
 | **Math** | KaTeX, inline and in blocks, with an editor that previews as you type. |
 | **Images** | Insert by address or from a file, pick a size, paste from the clipboard. |
@@ -161,10 +161,11 @@ What applies to one note and not to the person lives in the front matter of the 
 ---
 width: wide
 numbered: true
+toc: false
 ---
 ```
 
-`width` is `normal`, `wide` or `full`; `numbered` numbers the headings. The list of keys is closed and each value is checked: an unknown key or value does nothing, and a note can never bring CSS. They apply to whoever opens the note, also through a public link or in a live session. In the app: the page button in the top bar, or "Page settings" in the "more" menu on a phone.
+`width` is `normal`, `wide` or `full`; `numbered` numbers the headings; `toc: false` hides the outline of that note in the side panel and the "On this page" list of its page in a published site. The list of keys is closed and each value is checked: an unknown key or value does nothing, and a note can never bring CSS. They apply to whoever opens the note, also through a public link or in a live session. In the app: the page button in the top bar, or "Page settings" in the "more" menu on a phone.
 
 ## Cloud notes and the sync server
 

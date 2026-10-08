@@ -63,6 +63,8 @@
     const name = note.slice(note.lastIndexOf('/') + 1).replace(/\.(md|mdx|mkd|mdown|markdown|txt)$/i, '');
     const page = { note, rev: n.rev, title: (fm.title || (h1 && h1.textContent.trim()) || name).slice(0, 120), descr: (fm.description || fm.summary || '').slice(0, 300), html: LMD.extras.htmlOf(d.box) };
     if (fm.order !== undefined && fm.order !== '' && Number.isFinite(+fm.order)) page.order = +fm.order;
+    // Ajustes de la página: sin índice, la página publicada no lleva la lista "En esta página".
+    if (LMD.page && LMD.page.read(n.text).toc === 'no') page.toc = false;
     return page;
   }
   // Dibuja y sube esas notas, de a una. step(hechas, total) avisa el avance. Devuelve cuántas imágenes quedaron afuera.

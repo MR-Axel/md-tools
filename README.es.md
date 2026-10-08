@@ -226,10 +226,11 @@ Se guardan en el encabezado de la nota, con claves simples:
 ---
 width: wide
 numbered: true
+toc: false
 ---
 ```
 
-`width` es `normal`, `wide` o `full`; `numbered` numera los títulos. La lista de claves es cerrada y cada valor se comprueba: una clave o un valor que no se conoce no hace nada, y una nota nunca puede traer CSS. Valen para quien abra la nota, también por un enlace público o en una sesión en vivo. En la app: el botón de página de la barra de arriba, o "Ajustes de la página" en el menú "más" del teléfono.
+`width` es `normal`, `wide` o `full`; `numbered` numera los títulos; `toc: false` oculta el índice de esa nota en el panel lateral y la lista "En esta página" de su página en un sitio publicado. La lista de claves es cerrada y cada valor se comprueba: una clave o un valor que no se conoce no hace nada, y una nota nunca puede traer CSS. Valen para quien abra la nota, también por un enlace público o en una sesión en vivo. En la app: el botón de página de la barra de arriba, o "Ajustes de la página" en el menú "más" del teléfono.
 
 ## Notas en la nube y servidor de sincronización
 

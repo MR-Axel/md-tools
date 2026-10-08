@@ -3721,7 +3721,7 @@ function sitePut(user, x, b) {
     let route = siteRouteOf(site, home, note); const base = route; let k = 2;
     while (q('SELECT 1 FROM site_pages WHERE site = ? AND route = ? AND note != ?').get(site.id, route, note)) route = (base || 'index') + '-' + k++;
     q('INSERT INTO site_pages (site, note, route, title, descr, html, text, toc, rev, ord, size, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (site, note) DO UPDATE SET route = excluded.route, title = excluded.title, descr = excluded.descr, html = excluded.html, text = excluded.text, toc = excluded.toc, rev = excluded.rev, ord = excluded.ord, size = excluded.size, at = excluded.at')
-      .run(site.id, note, route, title, descr, clean.html, clean.text.slice(0, SITE_TEXT_MAX), JSON.stringify(clean.toc), rev, ord, clean.html.length, now());
+      .run(site.id, note, route, title, descr, clean.html, clean.text.slice(0, SITE_TEXT_MAX), JSON.stringify(p.toc === false ? clean.toc.map((h) => Object.assign({ x: 1 }, h)) : clean.toc), rev, ord, clean.html.length, now());
     done.push({ note, route, images_skipped: clean.skipped });
   }
   siteTouch(site);
@@ -4128,7 +4128,8 @@ function sitePage(ctx, page) {
   let toc = []; try { toc = JSON.parse(page.toc || '[]'); } catch (e) { toc = []; }
   const home = page.route === ''; const brand = conf.logo || conf.title;
   const at = ctx.tree.flat.indexOf(page); const prev = ctx.tree.flat[at - 1]; const next = ctx.tree.flat[at + 1];
-  const side = toc.filter((h) => h.l === 2 || h.l === 3);
+  // x: la nota pidió no mostrar su índice (toc: false en sus ajustes de página).
+  const side = toc.filter((h) => !h.x && (h.l === 2 || h.l === 3));
   const report = '/_/report?s=' + encodeURIComponent(site.slug) + '&p=' + encodeURIComponent(page.route);
   const step = (p, cls, label) => (p ? '<a class="' + cls + '" href="' + html(base + '/' + p.route) + '"' + (cls === 'sp-prev' ? ' rel="prev"' : ' rel="next"') + '><small>' + html(label) + '</small><b>' + html(p.title) + '</b></a>' : '');
   const body = '<a class="sp-skip" href="#sp-main">' + html(t.skip) + '</a>\n' + (ctx.preview ? '<p class="sp-preview">' + html(t.preview) + '</p>\n' : '') +

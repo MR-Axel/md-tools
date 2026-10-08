@@ -190,7 +190,8 @@ o.remarcada = await cfgLine();
 o.pagina = await app.evaluate(() => {
   const P = LMD.page; const a = P.write('# Hola\n', 'width', 'wide'); const b = P.write(a, 'numbered', 'yes'); const c = P.write(P.write(b, 'width', 'normal'), 'numbered', 'no');
   const d = P.write('---\ntitle: Plan\n---\n\n# Hola\n', 'width', 'full');
-  return { a, b, c, d, read: P.read(b), malo: P.read('---\nwidth: 9000px\nnumbered: quizas\nfont: evil\n---\n'), noToca: P.write('# Hola\n', 'width', 'url(x)') === '# Hola\n' && P.write('# Hola\n', 'css', 'x') === '# Hola\n' };
+  const t = P.write('# Hola\n', 'toc', 'no');
+  return { a, b, c, d, read: P.read(b), toc: t, tocRead: P.read(t).toc, tocBack: P.write(t, 'toc', 'yes'), tocWords: ['false', 'off', 'true', 'quizas'].map((w) => P.read('---\ntoc: ' + w + '\n---\n').toc).join(), malo: P.read('---\nwidth: 9000px\nnumbered: quizas\ntoc: nunca\nfont: evil\n---\n'), noToca: P.write('# Hola\n', 'width', 'url(x)') === '# Hola\n' && P.write('# Hola\n', 'css', 'x') === '# Hola\n' };
 });
 await app.click('[data-act=mode-edit]'); await app.click('[data-act=view-raw]'); await app.waitForSelector('.lmd-raw-edit:not([hidden])');
 await app.evaluate(() => { const lines = ['', '```kanban']; for (let i = 1; i <= 9; i++) lines.push('## Columna larga ' + i, '- [ ] Tarjeta ' + i, ''); lines.push('```', ''); const t = document.querySelector('.lmd-raw-edit'); t.value = t.value + lines.join('\n'); t.dispatchEvent(new Event('input', { bubbles: true })); });
@@ -205,6 +206,18 @@ o.dialogoPagina = await app.evaluate(() => ({ marcado: document.querySelector('.
 await app.click('.lmd-pg [data-pg-width=normal]'); await app.check('.lmd-pg [data-pg=numbered]'); await app.click('.lmd-pg [data-pg=ok]'); await app.waitForTimeout(400);
 o.numerada = await app.evaluate(() => ({ clase: document.documentElement.classList.contains('lmd-page-numbered') && !document.documentElement.classList.contains('lmd-pw-wide'), antes: getComputedStyle(document.querySelector('.lmd-article > h2') || document.body, '::before').content, otraVez: !!document.querySelector('.lmd-page-nudge') }));
 o.numeradaFuente = (await src()).split('\n').slice(0, 3);
+// el índice de esta nota: se oculta desde la misma ventana
+// (esta nota no tiene secciones: para medir la regla se pone un árbol de prueba en el panel y se lo saca)
+const arbol = () => app.evaluate(() => { const pane = document.querySelector('.lmd-pane-outline'); const had = pane.querySelector('.lmd-o-tree'); const t = had || pane.appendChild(Object.assign(document.createElement('div'), { className: 'lmd-o-tree' })); const on = getComputedStyle(t).display !== 'none'; if (!had) t.remove(); return on; });
+o.sinIndice = { antes: await arbol() };
+await app.click('[data-act=page]'); await app.waitForSelector('.lmd-pg');
+o.sinIndice.marcado = await app.isChecked('.lmd-pg [data-pg=toc]');
+await app.uncheck('.lmd-pg [data-pg=toc]'); await app.click('.lmd-pg [data-pg=ok]'); await app.waitForTimeout(400);
+o.sinIndice.clase = await app.evaluate(() => document.documentElement.classList.contains('lmd-page-notoc')); o.sinIndice.arbol = await arbol();
+o.sinIndice.cabecera = await app.evaluate(() => !!document.querySelector('.lmd-pane-outline .lmd-o-head .lmd-o-title'));
+o.sinIndice.fuente = (await src()).split('\n').slice(0, 5);
+await app.click('[data-act=page]'); await app.waitForSelector('.lmd-pg'); await app.check('.lmd-pg [data-pg=toc]'); await app.click('.lmd-pg [data-pg=ok]'); await app.waitForTimeout(400);
+o.sinIndice.vuelve = await arbol(); o.sinIndice.fuenteDespues = (await src()).split('\n').slice(0, 5);
 
 // listas de tareas: contador, renglón de agregar con Enter encadenado, reordenar y quitar los hechos
 const lista = async () => { const l = (await src()).split('\n'); return l.slice(0, l.indexOf('```kanban')).filter((x) => /^[-*+] \[/.test(x)); };
@@ -301,8 +314,10 @@ const checks = [
   ['las tarjetas tildadas en una columna común se respetan, atenuadas', o.marcada.vieja === '- [x] Probar' && o.marcada.viejaOpaca === true, o.marcada],
   ['quitarle la marca deja el tablero sin columna de hechas y las destilda', / done=""/.test(o.desmarcada.cfg) && o.desmarcada.linea === '- [ ] Planear' && o.desmarcada.col === 0, o.desmarcada],
   ['y se puede volver a marcar otra', / done=Hecho /.test(o.remarcada), o.remarcada],
-  ['ajustes de la página: se escriben en el encabezado con claves simples', o.pagina.a === '---\nwidth: wide\n---\n\n# Hola\n' && o.pagina.b === '---\nwidth: wide\nnumbered: true\n---\n\n# Hola\n' && o.pagina.c === '# Hola\n' && o.pagina.d === '---\ntitle: Plan\nwidth: full\n---\n\n# Hola\n' && J(o.pagina.read) === J({ width: 'wide', numbered: 'yes' }), o.pagina],
-  ['un valor que no está en la lista no hace nada', J(o.pagina.malo) === J({ width: 'normal', numbered: 'no' }) && o.pagina.noToca === true, o.pagina.malo],
+  ['ajustes de la página: se escriben en el encabezado con claves simples', o.pagina.a === '---\nwidth: wide\n---\n\n# Hola\n' && o.pagina.b === '---\nwidth: wide\nnumbered: true\n---\n\n# Hola\n' && o.pagina.c === '# Hola\n' && o.pagina.d === '---\ntitle: Plan\nwidth: full\n---\n\n# Hola\n' && J(o.pagina.read) === J({ width: 'wide', numbered: 'yes', toc: 'yes' }), o.pagina],
+  ['toc: false oculta el índice de esa nota: se escribe en el encabezado y el valor de siempre lo saca', o.pagina.toc === '---\ntoc: false\n---\n\n# Hola\n' && o.pagina.tocRead === 'no' && o.pagina.tocBack === '# Hola\n' && o.pagina.tocWords === 'no,no,yes,yes', o.pagina],
+  ['desde la ventana: el índice del panel se oculta, queda el título, y la nota lleva toc: false', o.sinIndice.antes && o.sinIndice.marcado && o.sinIndice.clase && !o.sinIndice.arbol && o.sinIndice.cabecera && o.sinIndice.fuente.includes('toc: false') && o.sinIndice.vuelve && !o.sinIndice.fuenteDespues.includes('toc:'), o.sinIndice],
+  ['un valor que no está en la lista no hace nada', J(o.pagina.malo) === J({ width: 'normal', numbered: 'no', toc: 'yes' }) && o.pagina.noToca === true, o.pagina.malo],
   ['un tablero ancho se sale de la columna de texto sin salirse del área de la nota', o.ancho.sale && o.ancho.adentro && o.ancho.pagina, o.ancho],
   ['si aun así no entra, se desliza con una barra fina y el borde se desvanece', o.ancho.desliza && o.ancho.sombra && o.ancho.fina === 'thin', o.ancho],
   ['una línea ofrece la página ancha', /Este tablero es más ancho que la página\./.test(o.ancho.aviso), o.ancho.aviso],
