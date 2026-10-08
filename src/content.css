@@ -1888,6 +1888,7 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
   .lmd-tl-list .lmd-tl-main p { font-size: 12.5px; line-height: 1.35; margin-top: 1px; }
   .lmd-tl-list .lmd-tl-card { height: 100%; align-content: start; padding: 7px 12px; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 4px 10px; }
   .lmd-tl-list .lmd-tl-card:has(.lmd-tl-opts:not([hidden])) { grid-column: 1 / -1; height: auto; }
+}
 
 /* Equipo: papeles, ajustes que decide quien administra, tokens del equipo y registro de actividad. */
 .lmd-scope { color: var(--fg-faint); }
