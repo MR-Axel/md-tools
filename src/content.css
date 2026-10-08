@@ -2136,8 +2136,6 @@ html.lmd-dark:not(.lmd-themed) .hljs .hljs-section { color: #58a6ff; }
 .lmd-th-code i { display: block; height: 2px; border-radius: 2px; }
 .lmd-th-row u { flex: none; width: 10px; height: 2px; border-radius: 2px; text-decoration: none; }
 .lmd-th-row em { flex: none; width: 15px; height: 8px; border-radius: 999px; }
-.lmd-th-lock { position: absolute; top: 5px; right: 6px; display: block; line-height: 0; }
-.lmd-th-lock svg { width: 10px; height: 10px; }
 /* Con la grilla al lado, la vista previa se achica: el texto arriba, y el código y el diagrama en un renglón. */
 .lmd-look-side .lmd-preview { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 12px; padding: 10px 14px 12px; }
 .lmd-look-side .lmd-preview > small, .lmd-look-side .lmd-prev-text { grid-column: 1 / -1; }

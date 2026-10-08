@@ -159,7 +159,7 @@ try {
   const inc = await pg.evaluate(() => { const all = [...document.querySelectorAll('.lmd-gal-card')]; const own = all.filter((c) => c.dataset.gkind === 'included');
     return { first: all.slice(0, 12).every((c) => c.dataset.gkind === 'included'), names: own.map((c) => c.querySelector('b').textContent).join(), tags: own.every((c) => c.querySelector('.lmd-tag').textContent === 'Included'), thumbs: own.every((c) => c.querySelector('.lmd-th-page')), about: own.every((c) => c.querySelector('.lmd-gal-about').textContent.length > 8 && !/[!¡—–]/.test(c.textContent)),
       paid: own.filter((c) => /Paid plan/.test(c.querySelector('.lmd-gal-by').textContent)).length, report: own.some((c) => c.querySelector('[data-gal=report]')), on: own.filter((c) => c.querySelector('[data-gal=add]').disabled).map((c) => c.dataset.gid).join() }; });
-  check('en Temas, la galería arranca con los doce incluidos, marcados y con su miniatura', inc.first && inc.names === 'Lime,Sand,Chalk,Sage,Mist,Ink,Night,Coal,Tide,Forest,Lagoon,Plum' && inc.tags && inc.thumbs && inc.about && inc.paid === 8 && !inc.report && inc.on === 'lima', inc);
+  check('en Temas, la galería arranca con los doce incluidos, marcados y con su miniatura', inc.first && inc.names === 'Lime,Sand,Chalk,Sage,Mist,Ink,Night,Coal,Tide,Forest,Lagoon,Plum' && inc.tags && inc.thumbs && inc.about && inc.paid === 0 && !inc.report && inc.on === 'lima', inc);
   await pg.fill('.lmd-gal-q', 'plum'); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card').length === 1);
   const found = await pg.evaluate(() => document.querySelector('.lmd-gal-card').dataset.gid);
   await pg.fill('.lmd-gal-q', ''); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card[data-gkind=included]').length === 12);
@@ -170,13 +170,11 @@ try {
   const sand = await pg.evaluate(() => ({ bg: document.documentElement.style.getPropertyValue('--bg'), btn: document.querySelector('.lmd-gal-card[data-gid=arena] [data-gal=add]').textContent }));
   check('uno gratis se aplica desde la galería, sin pasar por el servidor', sand.bg === '#f6efe0' && sand.btn === 'Applied' && (await cfg(pg)).preset === 'arena' && reqs.length === 0, [sand, reqs]);
   pg.off('request', spy);
-  await pg.click(card('marea') + ' [data-gal=add]'); await pg.waitForSelector('.lmd-gal-view .lmd-extra');
-  const incLocked = await pg.evaluate(() => ({ note: document.querySelector('.lmd-gal-view .lmd-extra p').textContent, add: !!document.querySelector('.lmd-gal-view [data-gv=add]'), thumb: getComputedStyle(document.querySelector('.lmd-gal-view .lmd-th-page')).backgroundColor, pay: !!document.querySelector('.lmd-gal-view [data-pay] [data-gv=plans]') }));
-  await pg.evaluate(() => document.documentElement.classList.add('lmd-store-app'));
-  const incPayHidden = await pg.evaluate(() => getComputedStyle(document.querySelector('.lmd-gal-view [data-pay]')).display === 'none');
-  await pg.evaluate(() => document.documentElement.classList.remove('lmd-store-app'));
-  await pg.click('.lmd-gal-view [data-gv=close]');
-  check('uno del plan pago muestra su vista previa y el aviso del plan, y no se aplica', /paid plan/.test(incLocked.note) && !/[!¡—–]/.test(incLocked.note) && !incLocked.add && incLocked.thumb === 'rgb(13, 21, 36)' && incLocked.pay && incPayHidden && (await cfg(pg)).preset === 'arena', incLocked);
+  // Los doce temas incluidos son de todos los planes: uno que antes pedía el plan pago se aplica igual, y su vista previa no trae aviso.
+  await pg.click(card('marea') + ' [data-gal=view]'); await pg.waitForSelector('.lmd-gal-view [data-gv=add]');
+  const incView = await pg.evaluate(() => ({ note: !!document.querySelector('.lmd-gal-view .lmd-extra'), add: !!document.querySelector('.lmd-gal-view [data-gv=add]:not(:disabled)'), thumb: getComputedStyle(document.querySelector('.lmd-gal-view .lmd-th-page')).backgroundColor, by: document.querySelector('.lmd-gal-card[data-gid=marea] .lmd-gal-by').textContent }));
+  await pg.click('.lmd-gal-view [data-gv=add]'); await pg.waitForFunction(() => document.documentElement.style.getPropertyValue('--bg') === '#0d1524');
+  check('los doce son de todos los planes: uno oscuro se ve en su vista previa sin aviso del plan y se aplica', !incView.note && incView.add && incView.thumb === 'rgb(13, 21, 36)' && incView.by === 'Dark' && (await cfg(pg)).preset === 'marea' && (await cfg(pg)).theme === 'dark', incView);
   await pg.click(card('lima') + ' [data-gal=add]'); await pg.waitForFunction(() => !document.documentElement.classList.contains('lmd-themed'));
   check('y el de siempre vuelve con un clic', (await cfg(pg)).preset === '' && (await cfg(pg)).theme === 'light');
   await pg.evaluate(() => { const s = JSON.parse(localStorage.getItem('mdtools:settings')); s.theme = 'auto'; localStorage.setItem('mdtools:settings', JSON.stringify(s)); });

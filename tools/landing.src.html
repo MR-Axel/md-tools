@@ -6,6 +6,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!--HEAD-->
+<script>
+// Two headlines on trial. The HTML carries B. The first visit draws A or B, half and half, and keeps it in this browser.
+// Whoever is being sent to the app (class go) takes no part.
+(function () {
+  var d = document.documentElement, v = null;
+  if (d.classList.contains('go')) return;
+  try { v = localStorage.getItem('sharpmd:hero'); } catch (e) { /* no storage */ }
+  if (v !== 'a' && v !== 'b') { v = Math.random() < 0.5 ? 'a' : 'b'; try { localStorage.setItem('sharpmd:hero', v); } catch (e) { /* no storage */ } }
+  d.setAttribute('data-ab', v);
+})();
+</script>
 <style>
   @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
   :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --faint: #8a909c; --line: #dedbd2; --accent: #3f6b0c; --fill: #4d7c0f; --on: #fff; --shadow: 0 24px 60px rgba(30, 32, 38, .16); --mono: ui-monospace, "Cascadia Code", Consolas, monospace; }
@@ -59,6 +70,8 @@
   .lede { margin: 0 0 28px; max-width: 30em; color: var(--muted); font-size: clamp(17px, 1.7vw, 19.5px); }
   .cta { display: flex; flex-wrap: wrap; gap: 12px; }
   .under { margin: 20px 0 0; color: var(--faint); font-size: 14px; }
+  /* Headline A is written in by the script below the hero: until then its place is kept and nothing shows. */
+  html[data-ab="a"]:not(.ab-on) .hero h1, html[data-ab="a"]:not(.ab-on) .hero .lede { visibility: hidden; }
   /* Un clip: la app grabada, en bucle. Mientras no se reproduce se ve el póster. */
   .clip { display: block; width: 100%; height: auto; aspect-ratio: 8 / 5; border: 1px solid var(--line); border-radius: 12px; background: #0c0d10; box-shadow: var(--shadow); object-fit: cover; }
 
@@ -293,8 +306,8 @@
 
 <header class="hero" id="top"><div class="wrap">
   <div>
-    <h1><span lang="en">Markdown notes your AI writes and your team reads.</span><span lang="es">Notas en Markdown que tu IA escribe y tu equipo lee.</span></h1>
-    <p class="lede">
+    <h1 data-a="[[Edit Markdown without writing Markdown.||Editá Markdown sin escribir Markdown.]]"><span lang="en">Markdown notes your AI writes and your team reads.</span><span lang="es">Notas en Markdown que tu IA escribe y tu equipo lee.</span></h1>
+    <p class="lede" data-a="[[Click a heading, a table or a diagram and change it right there, on the formatted page. No syntax to type and nothing to install. Your AI reads and writes the same notes over MCP.||Hacés clic en un título, una tabla o un diagrama y lo cambiás ahí mismo, sobre la página ya formateada. Sin sintaxis que escribir ni nada que instalar. Tu IA lee y escribe las mismas notas por MCP.]]">
       <span lang="en">A Markdown editor in the cloud, with the MCP endpoint already running. Claude, Codex or any other MCP client reads your notes before it works and writes down what it did. You edit on the formatted page, with no syntax to type.</span>
       <span lang="es">Un editor de Markdown en la nube, con la conexión MCP ya andando. Claude, Codex o cualquier otro cliente MCP lee tus notas antes de trabajar y deja escrito lo que hizo. Vos editás sobre la página ya formateada, sin escribir sintaxis.</span>
     </p>
@@ -303,6 +316,25 @@
       <a class="btn" href="#ai"><span lang="en">Connect your AI</span><span lang="es">Conectar tu IA</span></a>
     </div>
     <p class="under"><span lang="en">The editor is free and open source. Nothing to install, and no account needed to write.</span><span lang="es">El editor es gratis y de código abierto. No hay nada que instalar ni hace falta una cuenta para escribir.</span></p>
+    <script>
+    // Puts headline A in place before the hero is painted, and counts: one view per load, and one open the first time
+    // a link to the app or to the plans is used. What is sent is the variant and the event. No cookie and no identifier.
+    // Only the published site counts.
+    (function () {
+      var d = document.documentElement, v = d.getAttribute('data-ab'), opened = false;
+      if (v !== 'a' && v !== 'b') return;
+      if (v === 'a') [].forEach.call(document.querySelectorAll('.hero h1[data-a], .hero .lede[data-a]'), function (n) { n.textContent = n.getAttribute('data-a'); });
+      d.classList.add('ab-on');
+      if (location.hostname !== 'sharpmd.app' || !navigator.sendBeacon) return;
+      function tell(e) { try { navigator.sendBeacon('https://sync.sharpmd.app/landing', JSON.stringify({ v: v, e: e })); } catch (x) { /* not counted */ } }
+      tell('view');
+      document.addEventListener('click', function (ev) {
+        var a = ev.target.closest ? ev.target.closest('a[href]') : null; if (!a || opened) return;
+        var h = a.getAttribute('href') || '';
+        if (/src\/app\.html/.test(h) || /#plans$/.test(h)) { opened = true; tell('open'); }
+      }, true);
+    })();
+    </script>
   </div>
   <video class="clip" muted loop playsinline preload="none" poster="docs/clips/hero.jpg" width="880" height="550" aria-label="[[SharpMD: a sentence typed on the formatted page of a cloud note, and then the summary an AI wrote arrives in the same note||SharpMD: una frase escrita sobre la página ya formateada de una nota de la nube, y después llega a la misma nota el resumen que escribió una IA]]"><source src="docs/clips/hero.mp4" type="video/mp4"><source src="docs/clips/hero.webm" type="video/webm"></video>
 </div></header>
@@ -511,7 +543,7 @@
 
 <section class="band center yours"><div class="wrap">
   <h2><span lang="en">Make it yours</span><span lang="es">Hacela tuya</span></h2>
-  <p class="lede"><span lang="en">Twelve built-in themes, six light and six dark. Four of them are free.</span><span lang="es">Doce temas incluidos, seis claros y seis oscuros. Cuatro son gratis.</span></p>
+  <p class="lede"><span lang="en">Twelve built-in themes, six light and six dark, on every plan.</span><span lang="es">Doce temas incluidos, seis claros y seis oscuros, en todos los planes.</span></p>
   <ul class="strip" aria-hidden="true">
     <li data-theme="lima" style="--b:#fbfaf7;--f:#1d2026;--m:#5c6370;--c:#f1efe9;--l:#dedbd2;--a:#3f6a0a"><b><span lang="en">Lime</span><span lang="es">Lima</span></b><i></i><i></i><u><s></s><em></em></u></li>
     <li data-theme="arena" style="--b:#f6efe0;--f:#2b2419;--m:#5f5443;--c:#ece2cc;--l:#d9cdb4;--a:#874710"><b><span lang="en">Sand</span><span lang="es">Arena</span></b><i></i><i></i><u><s></s><em></em></u></li>
@@ -548,12 +580,12 @@
       <li class="no"><span><span lang="en">Sharing and public links</span><span lang="es">Compartir y enlaces públicos</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
       <li class="no"><span><span lang="en">Live sessions by link</span><span lang="es">Sesiones en vivo por enlace</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
       <li class="no"><span><span lang="en">Publish a site</span><span lang="es">Publicar un sitio</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
-      <li class="no"><span><span lang="en">The MCP connection for your AI</span><span lang="es">La conexión MCP para tu IA</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
-      <li class="no"><span><span lang="en">Comments your AI resolves</span><span lang="es">Comentarios que resuelve tu IA</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
+      <li><span><span lang="en">The MCP connection for your AI</span><span lang="es">La conexión MCP para tu IA</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span><span lang="en">Comments your AI resolves</span><span lang="es">Comentarios que resuelve tu IA</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li class="no"><span><span lang="en">API, webhooks and inbound addresses</span><span lang="es">API, webhooks y direcciones de entrada</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
       <li class="no"><span><span lang="en">Version history</span><span lang="es">Historial de versiones</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
       <li class="grp"><span><span lang="en">Appearance</span><span lang="es">Apariencia</span></span></li>
-      <li><span><span lang="en">Built-in themes</span><span lang="es">Temas incluidos</span></span><em>4</em></li>
+      <li><span><span lang="en">Built-in themes</span><span lang="es">Temas incluidos</span></span><em>12</em></li>
       <li class="no"><span><span lang="en">Colors, fonts and your own CSS</span><span lang="es">Colores, tipografías y tu propio CSS</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
       <!--TEAM-->
       <li class="grp"><span><span lang="en">For the team</span><span lang="es">Para el equipo</span></span></li>
@@ -662,7 +694,7 @@
     <p class="muted"><span lang="en">Something else? Write to <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>.</span><span lang="es">¿Otra cosa? Escribí a <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>.</span></p>
   </div>
   <div class="faqs">
-    <details class="faq"><summary><span lang="en">What is free and what is paid?</span><span lang="es">¿Qué es gratis y qué se paga?</span></summary><p><span lang="en">The editor is free and open source, with no limit on files or on notes kept in the browser, and 10 notes in the cloud. The paid plan, %%PAID_LINE%%, covers what runs on our server: unlimited cloud notes, sharing, live sessions, a published site, the connection for your AI, the API and webhooks, and version history.</span><span lang="es">El editor es gratis y de código abierto, sin límite de archivos ni de notas guardadas en el navegador, y con 10 notas en la nube. El plan pago, %%PAID_LINE%%, cubre lo que corre en nuestro servidor: notas en la nube sin límite, compartir, sesiones en vivo, un sitio publicado, la conexión para tu IA, la API y los webhooks, y el historial de versiones.</span></p></details>
+    <details class="faq"><summary><span lang="en">What is free and what is paid?</span><span lang="es">¿Qué es gratis y qué se paga?</span></summary><p><span lang="en">The editor is free and open source, with no limit on files or on notes kept in the browser. The free plan adds 10 notes in the cloud, the MCP connection for your AI over those notes and the twelve themes. The paid plan, %%PAID_LINE%%, covers the rest of what runs on our server: unlimited cloud notes, image uploads, sharing, live sessions, a published site, the API and webhooks, and version history.</span><span lang="es">El editor es gratis y de código abierto, sin límite de archivos ni de notas guardadas en el navegador. El plan gratis suma 10 notas en la nube, la conexión MCP para tu IA sobre esas notas y los doce temas. El plan pago, %%PAID_LINE%%, cubre el resto de lo que corre en nuestro servidor: notas en la nube sin límite, subir imágenes, compartir, sesiones en vivo, un sitio publicado, la API y los webhooks, y el historial de versiones.</span></p></details>
     <details class="faq"><summary><span lang="en">Does SharpMD come with its own AI?</span><span lang="es">¿SharpMD trae una IA propia?</span></summary><p><span lang="en">No. You bring yours, in one of two ways: connect the agent you already use over MCP (Claude, Codex or another client), or turn on the assistant inside the note with your own key for Claude, OpenAI or a compatible server.</span><span lang="es">No. Usás la tuya, de una de dos formas: conectás por MCP el agente que ya usás (Claude, Codex u otro cliente), o prendés el asistente dentro de la nota con tu propia clave de Claude, OpenAI o un servidor compatible.</span></p></details>
     <details class="faq"><summary><span lang="en">Does SharpMD see my AI key or what I send to the AI?</span><span lang="es">¿SharpMD ve mi clave de IA o lo que le mando?</span></summary><p><span lang="en">No. The key is stored encrypted on your device and the requests go from your browser straight to the provider you chose. That provider receives the text you send and handles it under its own terms.</span><span lang="es">No. La clave se guarda cifrada en tu dispositivo y los pedidos van de tu navegador directo al proveedor que elegiste. Ese proveedor recibe el texto que le mandás y lo trata según sus propios términos.</span></p></details>
     <details class="faq"><summary><span lang="en">How does my AI get to my notes?</span><span lang="es">¿Cómo llega mi IA a mis notas?</span></summary><p><span lang="en">You create a token in the app and add SharpMD as an MCP server in Claude or another client. It only sees the notes you keep in the cloud, or one folder if you limit the token.</span><span lang="es">Creás un token en la app y agregás SharpMD como servidor MCP en Claude u otro cliente. Solo ve las notas que tenés en la nube, o una sola carpeta si limitás el token.</span></p></details>

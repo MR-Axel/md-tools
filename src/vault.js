@@ -506,9 +506,6 @@
   // ---------- Desbloquear para la IA ----------
   const TIMES = [[15, '15 minutos'], [60, '1 hora'], [480, '8 horas'], [0, 'Hasta que la bloquee']];
   async function aiUnlock(vault) {
-    // Sin la cuenta a mano (sin conexión) se sigue: si hace falta el plan pago, lo dice el servidor.
-    const a = await LMD.sync.me();
-    if (a && !a.mcp) { core.openPanel('plan', T('Desbloquear una carpeta para la IA es parte del plan pago.')); return; }
     const o = sheet(T('Desbloquear "{a}" para la IA', { a: nameOf(vault) }),
       '<p>' + T(vault.team ? 'Mientras esté desbloqueado, el servidor puede leer y escribir las notas del equipo para tu IA. Para la IA de los demás sigue bloqueado.'
         : 'Mientras esté desbloqueada, el servidor puede leer y escribir las notas de esta carpeta para tu IA.') + '</p>' +

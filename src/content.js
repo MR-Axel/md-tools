@@ -2361,11 +2361,10 @@
       const on = b.dataset.th === now.id;
       b.classList.toggle('lmd-on', on); b.setAttribute('aria-checked', String(on)); b.classList.toggle('lmd-th-picked', b.dataset.th === themePicked);
     });
-    const p = LMD.theme.byId(themePicked); const locked = !!p && LMD.theme.locked(p.id, settings);
+    const p = LMD.theme.byId(themePicked);
     box.querySelector('.lmd-th-custom').hidden = !now.custom || !!p;
-    box.querySelector('.lmd-th-note').textContent = p ? T(p.name) + (locked ? ' · ' + T('Plan pago') : '') : now.custom ? '' : T(LMD.theme.byId(now.id).name);
-    box.querySelector('[data-th-apply]').hidden = !p || locked;
-    box.querySelector('.lmd-th-plans').hidden = !locked;
+    box.querySelector('.lmd-th-note').textContent = p ? T(p.name) : now.custom ? '' : T(LMD.theme.byId(now.id).name);
+    box.querySelector('[data-th-apply]').hidden = !p;
   }
   function closePanel() {
     ui.panel.hidden = true;
@@ -2434,11 +2433,10 @@
             '</div>' +
             '<div class="lmd-pcol lmd-look-side"><div class="lmd-themes" data-themes>' +
               '<div class="lmd-themes-head"><span>' + T('Temas') + '</span><em class="lmd-th-custom" hidden>' + T('Personalizado') + '</em><small class="lmd-th-note"></small>' +
-                '<button type="button" class="lmd-btn lmd-btn-fill" data-th-apply hidden>' + T('Aplicar') + '</button>' +
-                '<button type="button" class="lmd-btn lmd-th-plans" data-th-plans data-pay hidden>' + T('Ver planes') + '</button></div>' +
+                '<button type="button" class="lmd-btn lmd-btn-fill" data-th-apply hidden>' + T('Aplicar') + '</button></div>' +
               '<div class="lmd-th-grid" role="radiogroup" aria-label="' + T('Temas') + '">' +
-                LMD.theme.PRESETS.map((p) => '<button type="button" role="radio" class="lmd-th' + (p.free || s.supporter ? '' : ' lmd-th-paid') + '" data-th="' + p.id + '" aria-checked="false" aria-label="' + esc(T(p.name)) + '" title="' + esc(T(p.name) + ' · ' + T(p.dark ? 'Oscuro' : 'Claro') + (p.free ? '' : ' · ' + T('Plan pago'))) + '">' +
-                  LMD.theme.thumb(Object.assign({}, p, { name: esc(T(p.name)) })) + (p.free || s.supporter ? '' : '<span class="lmd-th-lock" style="color:' + p.c.muted + '">' + ICON.lock + '</span>') + '</button>').join('') +
+                LMD.theme.PRESETS.map((p) => '<button type="button" role="radio" class="lmd-th" data-th="' + p.id + '" aria-checked="false" aria-label="' + esc(T(p.name)) + '" title="' + esc(T(p.name) + ' · ' + T(p.dark ? 'Oscuro' : 'Claro')) + '">' +
+                  LMD.theme.thumb(Object.assign({}, p, { name: esc(T(p.name)) })) + '</button>').join('') +
               '</div></div>' + PREVIEW + '</div>' +
             (s.supporter ? '' : '<div class="lmd-extra"><p>' + T('Los colores, la tipografía y el CSS propio vienen con el plan pago.') + '</p>' +
                 '<div class="lmd-extra-actions"><button type="button" class="lmd-btn lmd-btn-fill" data-act="see-plans">' + T('Ver planes') + '</button></div></div>') +
@@ -2561,12 +2559,11 @@
       e.preventDefault(); all[(i + d + all.length) % all.length].focus();
     });
     ui.panel.querySelector('[data-th-apply]').addEventListener('click', () => {
-      const id = themePicked; if (!id || LMD.theme.locked(id, settings)) return;
+      const id = themePicked; if (!id) return;
       themePicked = ''; themePreview = ''; panelStale = true;
       if (LMD.community) LMD.community.setTheme(null); // un tema de la comunidad que estuviera puesto deja de estarlo
       LMD.patch(LMD.theme.patchFor(id)).then(() => flash(T('Tema aplicado')));
     });
-    ui.panel.querySelector('[data-th-plans]').addEventListener('click', () => openPanel('plan'));
     markThemes();
     const markSwatch = (node) => ui.panel.querySelectorAll('.lmd-swatch:not([data-code-color])').forEach((x) => x.classList.toggle('lmd-on', x === node));
     ui.panel.querySelectorAll('[data-code-color]').forEach((b) => {

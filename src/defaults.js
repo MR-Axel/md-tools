@@ -312,7 +312,7 @@
       "Comillas tipográficas y guiones más prolijos.": "Typographic quotes and tidier dashes.",
       "Un solo Enter corta el renglón, sin dejar una línea en blanco.": "A single Enter breaks the line, with no blank line needed.",
       "pronto": "soon", "Gratis": "Free", "Pago": "Paid", "mes": "month", "año": "year", "Plan": "Plan",
-      "Todo el editor": "The whole editor", "Hasta 10 notas en la nube": "Up to 10 notes in the cloud", "Los colores, la tipografía y el CSS propio vienen con el plan pago.": "Colors, the font and custom CSS come with the paid plan.", "Ver planes": "See plans", "Volver a lo que tenía": "Back to what I had", "Agregar": "Add", "Paso": "Step", "Pregunta": "Question", "Flecha": "Arrow", "Flecha con texto": "Arrow with a label", "Las notas nuevas se guardan en este navegador": "New notes are saved in this browser", "Guardarlas en una carpeta": "Save them to a folder", "Administrar la suscripción": "Manage subscription", "Qué es SharpMD": "About SharpMD",
+      "Todo el editor": "The whole editor", "Hasta 10 notas en la nube": "Up to 10 notes in the cloud", "Los 12 temas": "All 12 themes", "API y automatizaciones": "API and automations", "Los colores, la tipografía y el CSS propio vienen con el plan pago.": "Colors, the font and custom CSS come with the paid plan.", "Ver planes": "See plans", "Volver a lo que tenía": "Back to what I had", "Agregar": "Add", "Paso": "Step", "Pregunta": "Question", "Flecha": "Arrow", "Flecha con texto": "Arrow with a label", "Las notas nuevas se guardan en este navegador": "New notes are saved in this browser", "Guardarlas en una carpeta": "Save them to a folder", "Administrar la suscripción": "Manage subscription", "Qué es SharpMD": "About SharpMD",
       "Notas en el navegador y en tu disco, sin límite": "Notes in the browser and on your disk, no limit",
       "Notas en la nube sin límite": "Unlimited notes in the cloud", "Compartir y editar entre varios": "Share and edit together",
       "Conectar una IA por MCP": "Connect an AI over MCP", "Historial de versiones de 30 días": "30-day version history",
@@ -526,7 +526,7 @@
       "Copiá el enlace ahora: no se vuelve a mostrar.": "Copy the link now: it is not shown again.",
       "Ese código no coincide.": "That code does not match.", "El código venció. Pedí otro.": "The code expired. Ask for another one.",
       "No hay conexión con el servidor.": "Cannot reach the server.",
-      "Conectar una IA es parte del plan pago.": "Connecting an AI is part of the paid plan.", "No se pudo completar. Probá de nuevo.": "Could not complete it. Try again.",
+      "Conectar una IA es parte del plan pago.": "Connecting an AI is part of the paid plan.", "En el plan gratis tu IA trabaja con las {a} notas de tu nube.": "On the free plan your AI works with the {a} notes of your cloud.", "No se pudo completar. Probá de nuevo.": "Could not complete it. Try again.",
       "Te mandamos un código a {a}.": "We sent a code to {a}.", "Entrar": "Sign in", "tu correo": "your email", "Enviar código": "Send code",
       "Conectar una IA": "Connect an AI", "Salir": "Sign out",
       "Copiá estos datos ahora: el token no se vuelve a mostrar.": "Copy these now: the token is not shown again.",
@@ -703,7 +703,7 @@
       "Sin cuenta": "No account",
       "Con cuenta": "With an account",
       "Todo el editor, tus archivos del disco y las notas guardadas en este navegador.": "The whole editor, your files on disk and the notes saved in this browser.",
-      "Notas en la nube (10 gratis). Compartir, historial y conexión con una IA en el plan pago.": "Cloud notes (10 free). Sharing, history and AI connection on the paid plan.",
+      "Notas en la nube (10 gratis), con tu IA conectada. Compartir e historial en el plan pago.": "Cloud notes (10 free), with your AI connected. Sharing and history on the paid plan.",
       "Editar el enlace": "Edit link",
       "Ahora lleva a": "Now points to",
       "Destino": "Destination",
@@ -1360,7 +1360,7 @@
       "Papel claro con acento verde, el de siempre.": "Light paper with a green accent, the usual one.", "Papel cálido color arena.": "Warm sand colored paper.", "Gris neutro de alto contraste.": "Neutral gray with high contrast.",
       "Verde suave para leer mucho rato.": "Soft green for long reads.", "Azul frío y despejado.": "Cool, clear blue.", "Blanco y negro, pensado para imprimir.": "Black and white, made for printing.",
       "Oscuro con acento lima, el de siempre.": "Dark with a lime accent, the usual one.", "Negro neutro de alto contraste.": "Neutral black with high contrast.", "Azul noche.": "Night blue.", "Verde bosque.": "Forest green.",
-      "Verde azulado profundo con texto cálido.": "Deep teal with warm text.", "Violeta oscuro con acento rosa.": "Dark purple with a pink accent.", "Este tema viene con el plan pago.": "This theme comes with the paid plan.",
+      "Verde azulado profundo con texto cálido.": "Deep teal with warm text.", "Violeta oscuro con acento rosa.": "Dark purple with a pink accent.",
       "Fondo de paneles": "Panel background", "Texto secundario": "Secondary text", "Bordes": "Borders", "Enlaces": "Links", "Paletas": "Palettes",
       "Plantilla": "Template", "Paleta": "Palette",
       "Buscar en la comunidad": "Search the community", "por {a}": "by {a}",
@@ -1775,7 +1775,7 @@
   const fileLink = (url) => WEB_APP_URL + '#open=' + encodeURIComponent(url);
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.60.0';
+  const VERSION = '2.61.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);

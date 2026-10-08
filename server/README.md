@@ -40,8 +40,9 @@ Then, in SharpMD: Settings → Cloud → Sync server, and type the address (`htt
 | `RESEND_API_KEY`, `MAIL_FROM` | Send the sign-in code through Resend | |
 | `MAIL_WEBHOOK` | Or post `{ to, subject, text, html }` to your own mailer | |
 | `FREE_NOTES` | Notes on the free plan | `10` |
-| `MCP_FREE` | `1` gives MCP access to the free plan too | off |
-| `ADMIN_KEY` | Key for `POST /admin/plan`, `POST /admin/team`, `/admin/gallery` and `/admin/sites`. It also signs the review links of the community gallery: without it the gallery takes no contributions | off |
+| `API_FREE` | `1` opens the API and the automations on the free plan too. MCP is on every plan and needs no switch. `MCP_FREE`, the older name, does the same | off |
+| `LANDING_PER_HOUR` | Notices the home page may send per IP in an hour (`POST /landing`) | `60` |
+| `ADMIN_KEY` | Key for `POST /admin/plan`, `POST /admin/team`, `/admin/gallery`, `/admin/sites` and `GET /admin/landing`. It also signs the review links of the community gallery: without it the gallery takes no contributions | off |
 | `TEST_LOGIN` | `email:123456`. That one account signs in with the fixed code and gets no email. For store reviewers | off |
 | `CHECKOUT_MONTHLY`, `CHECKOUT_YEARLY` | Payment links the app shows in Settings → Plan. The account email is appended as `email=`, and the app adds `back=` with the address to return to | |
 | `PADDLE_WEBHOOK_SECRET` | Turns on `POST /paddle/webhook`: Paddle subscription events switch the plan | off |
@@ -126,7 +127,7 @@ What the server enforces:
 
 The MCP tools do not see the content of a locked folder. `list_notes` and `list_folders` show that it exists, with `protected: true` and `locked: true`. `read_note`, `write_note` and `append_note` answer with a message written for the AI: the folder is protected with a password and the person can unlock it for the AI from SharpMD. `search_notes` skips its content and says which folders were left out.
 
-The user can unlock a folder for the AI from the app, for 15 minutes, 1 hour, 8 hours or until it is locked again. The browser then sends the data key. The server checks it against the stored check value, derives the encryption key, and keeps that key in memory only, with its expiry. While it is there, the MCP tools read by decrypting and write by encrypting in the same format the browser uses. Locking by hand, the time running out or restarting the server forgets the key. It is never written to the database or to the log. Unlocking is part of MCP, so it needs the paid plan (or `MCP_FREE=1`). A token limited to a folder only benefits when the whole protected folder is inside its reach.
+The user can unlock a folder for the AI from the app, for 15 minutes, 1 hour, 8 hours or until it is locked again. The browser then sends the data key. The server checks it against the stored check value, derives the encryption key, and keeps that key in memory only, with its expiry. While it is there, the MCP tools read by decrypting and write by encrypting in the same format the browser uses. Locking by hand, the time running out or restarting the server forgets the key. It is never written to the database or to the log. Unlocking is part of MCP, so it works on every plan. A token limited to a folder only benefits when the whole protected folder is inside its reach.
 
 If you run your own server, this is the point to understand: while a folder is unlocked for the AI, your server can read it, and so can anyone who can read the memory of that process. Restarting the server locks every folder. A folder nobody unlocks stays unreadable to you too, and there is nothing you can do for a user who loses both the password and the backup key.
 
@@ -192,9 +193,11 @@ Sign-in is a six-digit code sent by mail, no passwords.
 | `GET` / `POST /admin/gallery` | With `x-admin-key`: list, approve, reject, remove |
 | `GET` / `POST /sites`, `GET` / `PUT` / `DELETE /sites/{id}`, `PUT /sites/{id}/pages`, `POST /sites/{id}/publish`, `POST /sites/{id}/unpublish` | With a session: publish a folder as a public site. See "Published sites" |
 | `GET` / `POST /admin/sites` | With `x-admin-key`: list the published sites, suspend, restore, delete |
+| `POST /landing` `{ v, e }` | Public, no session: the home page says which headline it showed (`v`: `a` or `b`) and what happened (`e`: `view` or `open`). It adds one to a counter per day, variant and event, and stores nothing else: no IP, no header, no identifier. `LANDING_PER_HOUR` per IP, counted in memory. Answers `204` |
+| `GET /admin/landing?days=` | With `x-admin-key`: `{ from, to, variants: { a: { view, open, rate }, b: { view, open, rate } } }`, where `rate` is open divided by view. `days` limits it to the last days |
 | `GET` / `POST /files`, `DELETE /files/{id}`, `GET /files/{id}/raw` | With a session: list the attached images with the storage in use, upload one, delete one, and download the bytes of an encrypted one. See "Attached images" |
 | `GET /f/{id}` | No session: serves an attached image to whoever has its address |
-| `POST /mcp` | MCP over Streamable HTTP, with `Authorization: Bearer mdt_...` |
+| `POST /mcp` | MCP over Streamable HTTP, with `Authorization: Bearer mdt_...`. On every plan. On the free plan it works over the notes that plan holds: a tool that would add a note past `FREE_NOTES` answers with an error that says so, and the sharing tools answer that sharing is part of the paid plan |
 
 MCP tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`, `move_note`, `note_history`, `get_guide`, `list_boards`, `create_board`, `add_card`, `move_card`, `update_card`, `delete_card`.
 
@@ -668,7 +671,7 @@ claude mcp add --transport http sharpmd https://sync.example.com/mcp --header "A
 
 ### Automations
 
-The public description, with examples for Make, n8n, Activepieces, Zapier and Slack, is at <https://sharpmd.app/api.html>. All of it is part of the paid plan (the same switch as MCP: `MCP_FREE=1` opens it on the free plan). Deploy `openapi.json` next to `server.mjs`: it is what `GET /api/v1/openapi.json` serves (rebuild it with `node tools/build-openapi.mjs`).
+The public description, with examples for Make, n8n, Activepieces, Zapier and Slack, is at <https://sharpmd.app/api.html>. All of it is part of the paid plan (`API_FREE=1` opens it on the free plan). MCP is not: it works on every plan, over the notes that plan holds. `GET /account` carries `api: true` when the account can use the API and the automations. Deploy `openapi.json` next to `server.mjs`: it is what `GET /api/v1/openapi.json` serves (rebuild it with `node tools/build-openapi.mjs`).
 
 **REST API, with a token.** `/api/v1/…` takes `Authorization: Bearer mdt_…`, the same tokens as MCP, and every request ends in the same code as the MCP tools: the folder of the token, the sharing permission, the team space under `@team/` and protected folders (only while unlocked for the AI) behave the same. Answers are `{ ok: true, data }` or `{ ok: false, error: { code, message } }`. It can be called from any origin: there are no cookies, the token travels in the request.
 

@@ -57,7 +57,36 @@ try {
   check('busca en el texto', (await call('GET', '/search?q=zanahoria', undefined, s)).json[0].path === 'ideas/uno.md');
   check('borra', (await call('DELETE', '/notes/dos.md', undefined, s)).status === 200 && (await call('GET', '/notes', undefined, s)).json.length === 2);
 
-  check('el MCP es del plan pago', (await call('POST', '/tokens', { name: 'Claude' }, s)).status === 402);
+  // El MCP está en el plan gratis, sobre las mismas notas y con el mismo tope (acá, 3). Lo demás sigue siendo del plan pago.
+  {
+    const ftok = await call('POST', '/tokens', { name: 'Claude gratis', share: true }, s); const ft = ftok.json.token;
+    const fmcp = async (name, args) => { const r = await call('POST', '/mcp', { jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name, arguments: args || {} } }, ft); const c = (r.json && r.json.result) || { content: [{ text: '' }], isError: true }; return { status: r.status, text: c.content[0].text, err: !!c.isError }; };
+    const facc = (await call('GET', '/account', undefined, s)).json;
+    check('en el plan gratis se crea un token para la IA, y la cuenta dice que tiene MCP y no API', ftok.status === 200 && String(ft).startsWith('mdt_') && ftok.json.mcp_url.endsWith('/mcp') && facc.plan === 'free' && facc.mcp === true && facc.api === false && facc.limit === 3, [ftok.json, facc]);
+    const flist = await call('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/list' }, ft);
+    const fread = await fmcp('read_note', { path: 'ideas/uno.md' });
+    check('MCP gratis: lista las herramientas y lee una nota', flist.status === 200 && flist.json.result.tools.some((x) => x.name === 'write_note') && !fread.err && fread.text.includes('zanahoria'), [flist.status, fread]);
+    const fw1 = await fmcp('write_note', { path: 'gratis/tercera.md', text: 'tres' });
+    const fw2 = await fmcp('write_note', { path: 'gratis/cuarta.md', text: 'cuatro' });
+    const fap = await fmcp('append_note', { path: 'gratis/quinta.md', text: 'cinco' });
+    const fed = await fmcp('write_note', { path: 'gratis/tercera.md', text: 'tres, editada' });
+    const fnotes = (await call('GET', '/notes', undefined, s)).json.map((n) => n.path).sort();
+    check('MCP gratis: escribe hasta el tope de notas, y pasado el tope el error lo dice claro y en inglés', !fw1.err && fw2.err && /free plan holds 3 notes/.test(fw2.text) && /Nothing was saved/.test(fw2.text) && /paid plan/.test(fw2.text) && !/[áéíóúñ¡!—]/.test(fw2.text) && fap.err && /free plan holds 3 notes/.test(fap.text) && fnotes.length === 3 && !fnotes.includes('gratis/cuarta.md') && !fnotes.includes('gratis/quinta.md'), [fw1, fw2, fap, fnotes]);
+    check('MCP gratis: en el tope se siguen editando las notas que ya están', !fed.err && (await call('GET', '/notes/' + encodeURIComponent('gratis/tercera.md'), undefined, s)).json.text === 'tres, editada', fed);
+    const fsh = await fmcp('share_note', { path: 'ideas/uno.md', email: 'otra@ejemplo.test' }); const flk = await fmcp('create_public_link', { path: 'ideas/uno.md' });
+    check('MCP gratis: compartir y crear enlaces siguen siendo del plan pago', fsh.err && /paid plan/.test(fsh.text) && flk.err && /paid plan/.test(flk.text) && (await call('GET', '/shares', undefined, s)).json.people.length === 0, [fsh, flk]);
+    const fapi = await call('GET', '/api/v1/notes', undefined, ft);
+    const fhook = await call('POST', '/automations/hooks', { url: 'https://ejemplo.test/x', events: ['note.created'] }, s);
+    const fin = await call('POST', '/automations/inboxes', { name: 'x', kind: 'append', path: 'ideas/uno.md' }, s);
+    const fau = (await call('GET', '/automations', undefined, s)).json;
+    check('la API, los webhooks, las direcciones de entrada y las automatizaciones siguen siendo del plan pago', fapi.status === 402 && fapi.json.error.code === 'api_needs_plan' && fhook.status === 402 && fhook.json.error === 'automation_needs_plan' && fin.status === 402 && fin.json.error === 'automation_needs_plan' && fau.allowed === false, [fapi.json, fhook.json, fin.json, fau.allowed]);
+    const fcom = await call('POST', '/comments', { path: 'ideas/uno.md', text: 'acortalo' }, s);
+    const fcl = await fmcp('list_comments', {});
+    check('los comentarios para la IA van con el MCP, también en el plan gratis', fcom.status === 200 && !fcl.err && fcl.text.includes('acortalo'), [fcom.json, fcl]);
+    await call('DELETE', '/comments/' + fcom.json.id, undefined, s);
+    await call('DELETE', '/notes/' + encodeURIComponent('gratis/tercera.md'), undefined, s);
+    await call('DELETE', '/tokens/' + ftok.json.id, undefined, s);
+  }
   check('el plan no se cambia sin la clave', (await call('POST', '/admin/plan', { email: 'ana@ejemplo.test', plan: 'pro' })).status === 403);
   await call('POST', '/admin/plan', { email: 'ana@ejemplo.test', plan: 'pro' }, undefined, { 'x-admin-key': 'clave-de-prueba' });
   const tok = await call('POST', '/tokens', { name: 'Claude' }, s);
@@ -169,7 +198,7 @@ try {
   check('renombrar lleva consigo lo compartido y el historial', JSON.stringify(rcomp).includes('pago@ejemplo.test') && Array.isArray(rver) && rver.length >= 1, [rcomp, rver]);
   // IA: carpetas, token limitado a una carpeta y comentarios pendientes
   const ic = await call('POST', '/auth/start', { email: 'ia@ejemplo.test' }); const is = (await call('POST', '/auth/verify', { email: 'ia@ejemplo.test', code: ic.json.dev_code })).json.session;
-  check('comentar necesita el plan pago', (await call('POST', '/comments', { path: 'x.md', text: 'hola' }, is)).status === 402);
+  check('comentar no pide el plan pago: sin la nota responde que no existe', (await call('POST', '/comments', { path: 'x.md', text: 'hola' }, is)).status === 404);
   await call('POST', '/admin/plan', { email: 'ia@ejemplo.test', plan: 'pro' }, undefined, { 'x-admin-key': 'clave-de-prueba' });
   for (const [pa, tx] of [['alfa/plan.md', '# Plan\n\nPaso uno.\n'], ['alfa/notas/reunion.md', 'reunion'], ['beta/ideas.md', 'ideas'], ['suelta.md', 'suelta']]) await call('PUT', '/notes/' + pa, { text: tx }, is);
   const mk = async (body) => (await call('POST', '/tokens', body, is)).json;
@@ -555,6 +584,32 @@ try {
     const n4 = await note();
     check('las notas anteriores a la columna quedan sin autor y conservan su fecha', hasCols && n4.edited === null && n4.updated === n3.updated && n4.text === n3.text, [hasCols, n4.edited]);
     check('otra cuenta no llega al autor de una nota ajena', (await call('GET', '/notes/autor.md', undefined, s)).status === 404 && (await call('GET', '/versions/autor.md', undefined, s)).json.length === 0);
+  }
+
+  // La portada: dos titulares a prueba. Un contador por día, variante y evento, sin nada de quien visita.
+  {
+    const KEY = { 'x-admin-key': 'clave-de-prueba' };
+    // Como lo manda sendBeacon: texto plano, sin sesión.
+    const beat = (body, ip) => fetch(base + '/landing', { method: 'POST', headers: { 'content-type': 'text/plain;charset=UTF-8', 'x-forwarded-for': ip || '203.0.113.7' }, body: typeof body === 'string' ? body : JSON.stringify(body) });
+    const zero = await call('GET', '/admin/landing', undefined, undefined, KEY);
+    check('portada: sin visitas los totales están en cero y sin tasa', zero.status === 200 && JSON.stringify(zero.json.variants) === JSON.stringify({ a: { view: 0, open: 0, rate: null }, b: { view: 0, open: 0, rate: null } }) && zero.json.from === null, zero.json);
+    const sent = [];
+    for (const b of [{ v: 'a', e: 'view' }, { v: 'a', e: 'view' }, { v: 'a', e: 'view' }, { v: 'a', e: 'view' }, { v: 'a', e: 'open' }, { v: 'b', e: 'view' }, { v: 'b', e: 'view' }, { v: 'b', e: 'open' }]) { const r = await beat(b); sent.push(r.status + ':' + (await r.text()).length); }
+    check('portada: el aviso se recibe sin sesión, como texto, y responde vacío', sent.every((x) => x === '204:0'), sent);
+    const badOnes = [];
+    for (const b of [{ v: 'c', e: 'view' }, { v: 'a', e: 'buy' }, { v: 'a' }, 'hola', '[]', '{"v":"a","e":"view","x":"' + 'y'.repeat(400) + '"}']) badOnes.push((await beat(b, '203.0.113.8')).status);
+    check('portada: otra variante, otro evento, algo que no es JSON o un cuerpo largo no se cuentan', badOnes.slice(0, 5).every((x) => x === 400) && badOnes[5] === 413, badOnes);
+    const tot = await call('GET', '/admin/landing', undefined, undefined, KEY);
+    const today = new Date().toISOString().slice(0, 10);
+    check('portada: /admin/landing da los totales por variante con la tasa open/view', tot.status === 200 && JSON.stringify(tot.json.variants) === JSON.stringify({ a: { view: 4, open: 1, rate: 0.25 }, b: { view: 2, open: 1, rate: 0.5 } }) && tot.json.from === today && tot.json.to === today && (await call('GET', '/admin/landing?days=1', undefined, undefined, KEY)).json.variants.a.view === 4, tot.json);
+    check('portada: los totales piden la clave de administración', (await call('GET', '/admin/landing')).status === 403 && (await call('GET', '/admin/landing', undefined, undefined, { 'x-admin-key': 'otra' })).status === 403 && (await call('POST', '/admin/landing', {}, undefined, KEY)).status !== 200);
+    const { DatabaseSync } = await import('node:sqlite'); const db = new DatabaseSync(path.join(data, 'mdtools.db'), { readOnly: true });
+    const cols = db.prepare('PRAGMA table_info(landing_stats)').all().map((c) => c.name).join(); const rows = db.prepare('SELECT * FROM landing_stats ORDER BY v, e').all().map((r) => Object.values(r).join(':'));
+    db.close();
+    check('portada: la tabla guarda solo el día, la variante, el evento y la cuenta, sin IP ni identificador', cols === 'day,v,e,n' && JSON.stringify(rows) === JSON.stringify([today + ':a:open:1', today + ':a:view:4', today + ':b:open:1', today + ':b:view:2']) && !JSON.stringify(rows).includes('203.0.113'), [cols, rows]);
+    let last = null; for (let i = 0; i < 70; i++) last = await beat({ v: 'b', e: 'view' }, '203.0.113.9');
+    const after = (await call('GET', '/admin/landing', undefined, undefined, KEY)).json.variants.b.view;
+    check('portada: hay un tope por IP, y otra IP sigue entrando', last.status === 429 && after === 2 + 60 && (await beat({ v: 'b', e: 'view' }, '203.0.113.10')).status === 204, [last.status, after]);
   }
 
   check('cerrar sesión la invalida', (await call('POST', '/auth/logout', {}, s)).status === 200 && (await call('GET', '/notes', undefined, s)).status === 401);

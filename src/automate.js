@@ -224,7 +224,7 @@
     else {
       try {
         const a = await LMD.cloud.account(); acct = a;
-        if (a.mcp) await draw();
+        if (a.api != null ? a.api : a.mcp) await draw();
         else box.innerHTML = intro + '<div class="lmd-extra"><p>' + T('Las automatizaciones son parte del plan pago.') + '</p><div class="lmd-extra-actions"><button type="button" class="lmd-btn lmd-btn-fill" data-c="plans">' + T('Ver planes') + '</button></div></div>';
       } catch (e) { box.innerHTML = hint(T('No hay conexión con el servidor.')); }
     }
