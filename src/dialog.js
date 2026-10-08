@@ -11,7 +11,7 @@
     const back = document.activeElement;
     const box = el('div', { class: 'lmd-ask lmd-dlg' });
     box.innerHTML = '<div class="lmd-ask-card lmd-dlg-card" role="dialog" aria-modal="true"><h3></h3>' + inner +
-      '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-dlg="no"></button>' + (o.alt ? '<button type="button" class="lmd-btn" data-dlg="alt"></button>' : '') + '<button type="button" class="lmd-btn ' + (o.danger ? 'lmd-btn-danger' : 'lmd-btn-fill') + '" data-dlg="ok"></button></div></div>';
+      '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-dlg="no" data-esc></button>' + (o.alt ? '<button type="button" class="lmd-btn" data-dlg="alt"></button>' : '') + '<button type="button" class="lmd-btn ' + (o.danger ? 'lmd-btn-danger' : 'lmd-btn-fill') + '" data-dlg="ok"></button></div></div>';
     box.querySelector('.lmd-dlg-card').setAttribute('aria-label', o.title);
     box.querySelector('h3').textContent = o.title;
     // cancel: false deja un solo botón, para un aviso que solo se lee.

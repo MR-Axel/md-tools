@@ -76,7 +76,7 @@ await app.evaluate(async ([doc, front]) => {
 }, [HOSTIL, FRONT]);
 await app.click('[data-home=dir]'); await app.waitForSelector('.lmd-sidebar');
 const here = app.url();
-const dlg = async (tag) => { const t = await app.evaluate(() => { const d = document.querySelector('.lmd-dlg'); return d ? d.innerText.replace(/\s+/g, ' ').slice(0, 160) : ''; }); if (t) { console.log('  (diálogo en ' + tag + ': ' + t + ')'); await app.keyboard.press('Escape'); await app.waitForTimeout(300); } };
+const dlg = async (tag) => { const t = await app.evaluate(() => { const d = document.querySelector('.lmd-dlg, .lmd-ask'); return d ? d.innerText.replace(/\s+/g, ' ').slice(0, 160) : ''; }); if (t) { console.log('  (diálogo en ' + tag + ': ' + t + ')'); await app.keyboard.press('Escape'); await app.waitForTimeout(300); } };
 const open = async (name) => { await dlg(name); await app.locator('.lmd-sidebar').getByText(name, { exact: true }).first().click(); await app.waitForSelector('.lmd-article:not([hidden])'); await app.waitForTimeout(2500); };
 const scan = () => app.evaluate(() => {
   const bad = [];
@@ -102,7 +102,7 @@ const o = {};
 await open('hostil.md'); o.leer = await scan();
 // pasar el mouse y hacer clic sobre todo lo que se pueda tocar, que es cuando disparan los manejadores perezosos
 await app.evaluate(() => { document.querySelectorAll('.lmd-article a, .lmd-article summary, .lmd-article button, .lmd-article svg *').forEach((n) => { n.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); if (n.tagName !== 'A') n.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); }); });
-await app.waitForTimeout(500); o.tocar = await scan(); for (let i = 0; i < 4; i++) await dlg('tocar');
+await app.waitForTimeout(500); o.tocar = await scan(); for (let i = 0; i < 40; i++) await dlg('tocar');
 o.url1 = app.url();
 await app.click('[data-act=mode-edit]'); await app.waitForTimeout(1500); o.editar = await scan(); await dlg('editar');
 await app.click('[data-act=view-raw]'); await app.waitForTimeout(500); await app.click('[data-act=view-doc]'); await app.waitForTimeout(1500); o.volver = await scan();
