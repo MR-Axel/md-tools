@@ -443,10 +443,7 @@
     try {
       const data = await bytes();
       const name = (core.docName || T('documento')).replace(/\.[^.]+$/, '') + '.docx';
-      const a = el('a', { download: name });
-      a.href = URL.createObjectURL(new Blob([data], { type: MIME_DOCX }));
-      a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-      core.flash(T('Documento de Word descargado'));
+      if (LMD.kit.saveFile(new Blob([data], { type: MIME_DOCX }), name) === 'download') core.flash(T('Documento de Word descargado'));
       return true;
     } catch (e) { core.flash(T('No se pudo armar el documento de Word.'), 'error'); return false; }
     finally { busy = false; }

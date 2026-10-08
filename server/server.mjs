@@ -2174,7 +2174,7 @@ async function paddleWebhook(req) {
 // dirección, ni nada que la app pueda cargar o ejecutar: lo que no calza con el esquema se rechaza entero.
 //   { type, name, about, lang, author, data }
 //   template  data: { text }                      hasta 20 KB
-//   theme     data: { mode, accent, paperLight, paperDark, font, codeColor, diagramShape }   todas opcionales, al menos una
+//   theme     data: { mode, accent, paperLight, paperDark, font, codeColor, diagramShape, surface, text, muted, border, link }   todas opcionales, al menos una
 //   palette   data: { colors: { fill, text, border, line, second, third } }
 // author es el nombre que eligió quien aporta. El correo de la cuenta no sale nunca por las rutas públicas.
 // Cada aporte nuevo manda un correo a FEEDBACK_TO con dos enlaces firmados (HMAC con ADMIN_KEY sobre el aporte, la
@@ -2182,7 +2182,8 @@ async function paddleWebhook(req) {
 // que manda un POST. Decidido el aporte, los dos enlaces dejan de servir.
 const GALLERY_TYPES = ['template', 'theme', 'palette'];
 const GALLERY_FONTS = ['Inter', 'System', 'Arial', 'Calibri', 'Verdana', 'Trebuchet MS', 'Georgia', 'Cambria', 'Palatino', 'Times New Roman', 'Consolas', 'Courier New'];
-const GALLERY_THEME = ['mode', 'accent', 'paperLight', 'paperDark', 'font', 'codeColor', 'diagramShape'];
+const GALLERY_THEME = ['mode', 'accent', 'paperLight', 'paperDark', 'font', 'codeColor', 'diagramShape', 'surface', 'text', 'muted', 'border', 'link'];
+const GALLERY_INK = ['surface', 'text', 'muted', 'border', 'link']; // colores sueltos: van con un modo fijo, y se mira que dejen leer
 const GALLERY_COLORS = ['fill', 'text', 'border', 'line', 'second', 'third'];
 const GALLERY_HEX = /^#[0-9a-f]{6}$/i;
 const MAX_TEMPLATE = 20 * 1024; const GALLERY_DAY = 5; const GALLERY_PAGE = 24; const GALLERY_MINE = 30;
@@ -2213,6 +2214,19 @@ function galleryData(type, d) {
     if ('paperDark' in d) { out.paperDark = hex(d.paperDark); if (galLum(out.paperDark) > 0.08) throw bad(); }
     if ('font' in d) { if (!GALLERY_FONTS.includes(d.font)) throw bad(); out.font = d.font; }
     if ('diagramShape' in d) { if (!['round', 'square'].includes(d.diagramShape)) throw bad(); out.diagramShape = d.diagramShape; }
+    // Los colores de texto, paneles, bordes y enlaces son de un modo solo (claro u oscuro). Es la misma cuenta que hace
+    // la app (src/community.js): texto, secundario y enlace a 4.5 o más sobre el fondo, y el panel sin tapar el texto.
+    if (GALLERY_INK.some((k) => k in d)) {
+      GALLERY_INK.forEach((k) => { if (k in d) out[k] = hex(d[k]); });
+      if (out.mode !== 'light' && out.mode !== 'dark') throw bad();
+      const dark = out.mode === 'dark'; const ratio = (a, b) => { const x = galLum(a); const y = galLum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+      const paper = (dark ? out.paperDark : out.paperLight) || (dark ? '#121418' : '#fbfaf7');
+      const text = out.text || (dark ? '#e6e8ec' : '#1d2026'); const muted = out.muted || (dark ? '#a0a7b4' : '#5c6370');
+      if (ratio(text, paper) < 4.5 || ratio(muted, paper) < 4.5) throw bad();
+      if (out.surface && (ratio(text, out.surface) < 4.5 || ratio(muted, out.surface) < 4.5)) throw bad();
+      if (out.border && ratio(out.border, paper) > ratio(text, paper)) throw bad();
+      if (out.link && ratio(out.link, paper) < 4.5) throw bad();
+    }
     return out;
   }
   if (!galOnly(d, ['colors']) || !galOnly(d.colors, GALLERY_COLORS) || Object.keys(d.colors).length !== GALLERY_COLORS.length) throw bad();

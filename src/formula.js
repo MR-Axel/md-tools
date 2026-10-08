@@ -170,7 +170,7 @@
         '<footer><a href="https://katex.org/docs/supported.html" target="_blank" rel="noopener noreferrer">' + T('Ver la sintaxis') + '</a><span></span>' +
           (node ? '<button type="button" class="lmd-btn lmd-dgm-remove" data-fx-act="del">' + T('Eliminar la fórmula') + '</button>' : '') +
           '<button type="button" class="lmd-btn" data-fx-act="no">' + T('Cancelar') + '</button>' +
-          '<button type="button" class="lmd-btn lmd-btn-fill" data-fx-act="ok">' + T('Aplicar') + ' <kbd>Ctrl+Enter</kbd></button></footer>' +
+          '<button type="button" class="lmd-btn lmd-btn-fill" data-fx-act="ok">' + T('Aplicar') + ' <kbd>' + LMD.keys('Ctrl+Enter') + '</kbd></button></footer>' +
       '</div>';
     document.body.appendChild(modal);
     const code = LMD.diagram.pane(modal.querySelector('.lmd-ed-code')); const ta = code.ta;

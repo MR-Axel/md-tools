@@ -12,7 +12,7 @@
     cal: svg('<rect x="4" y="5.500" width="16" height="14.500" rx="2"/><path d="M4 10h16M8.500 3.500v4M15.500 3.500v4M8 13.500h.01M12 13.500h.01M16 13.500h.01M8 16.800h.01M12 16.800h.01"/>'),
     prev: svg('<path d="m14.500 6-6 6 6 6"/>'), next: svg('<path d="m9.500 6 6 6-6 6"/>'),
   };
-  const KEY = 'Alt+Shift+H';
+  const KEY = LMD.keys('Alt+Shift+H');
   const MD = '.md';
   let core = null; let on = false; let wired = false;
   const opt = (k, d) => LMD.tools.opt(k, d);

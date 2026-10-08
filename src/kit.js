@@ -92,5 +92,25 @@
     return labels.length > 1 && labels.every((l) => /^[\p{L}\p{N}]([\p{L}\p{N}-]*[\p{L}\p{N}])?$/u.test(l)) && /^(\p{L}{2,}|xn--[a-z0-9-]+)$/iu.test(labels[labels.length - 1]);
   };
 
-  LMD.kit = { ICON, el, esc, debounce, MD_RE, SKIP_DIRS, validEmail };
+  // Entrega un archivo. En iPhone y iPad sale por la hoja de compartir, donde está Guardar en Archivos: ahí una
+  // descarga común abre el archivo en vez de guardarlo. En el resto, y si la hoja no acepta el archivo, se descarga.
+  // Hay que llamarla dentro del gesto (el clic): Safari no abre la hoja de compartir fuera de él.
+  function saveFile(blob, name) {
+    const link = () => { const a = el('a', { download: name }); a.href = URL.createObjectURL(blob); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
+    try {
+      if (LMD.device && LMD.device.ios && navigator.share && navigator.canShare) {
+        // Safari no reconoce todos los tipos: un .md viaja como texto.
+        const types = [blob.type || 'application/octet-stream'].concat(/^text\//.test(blob.type) ? ['text/plain'] : []);
+        for (const type of types) {
+          const file = new File([blob], name, { type });
+          if (!navigator.canShare({ files: [file] })) continue;
+          navigator.share({ files: [file] }).catch((e) => { if (!e || e.name !== 'AbortError') link(); }); // cerrar la hoja no es un error
+          return 'share';
+        }
+      }
+    } catch (e) { /* sin hoja de compartir: se descarga */ }
+    link();
+    return 'download';
+  }
+  LMD.kit = { ICON, el, esc, debounce, MD_RE, SKIP_DIRS, validEmail, saveFile };
 })();

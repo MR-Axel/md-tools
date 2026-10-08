@@ -6,7 +6,8 @@
 // app, la carga, el inicio, una nota nueva editada en el lugar, diagramas y fórmulas, un archivo suelto (estos
 // navegadores no dan acceso a carpetas: se abre una copia y al guardar se descarga), la búsqueda, Ajustes, los menús,
 // arrastrar un archivo a la nota y a la papelera, entrar a la nube contra un servidor local, una sesión en vivo como
-// invitado, el panel lateral en teléfono y la comparación de planes.
+// invitado, el panel lateral en teléfono y la comparación de planes. En WebKit, además, la app como la ve un iPhone
+// (instalar, áreas seguras, teclado en pantalla, copiar, exportar), un iPad y una Mac (atajos con ⌘).
 // Las capturas quedan fuera del repo: en ~/.sharpmd/revision-navegadores (o en SHOTS).
 import { rig, tally, sleep } from './rig.mjs';
 import fs from 'fs'; import os from 'os'; import path from 'path';
@@ -164,7 +165,7 @@ try {
         return { tab, on: document.querySelector('.lmd-panel-card [data-ptab].lmd-on').dataset.ptab, shown: shown.length, own: shown.every((s) => s.dataset.tab === tab), out, inView: card.left >= 0 && card.right <= window.innerWidth + 1 && card.bottom <= window.innerHeight + 1 }; }, t));
       if (t === 'look' || t === 'plan' || t === 'inst') await shot(page, 'app-ajustes-' + t);
     }
-    check('las nueve pestañas de Ajustes abren, cada una con lo suyo y sin salirse de la tarjeta', tabs.length === 9 && rows.every((r) => r.on === r.tab && r.shown > 0 && r.own && r.out === 0 && r.inView), rows.filter((r) => !(r.on === r.tab && r.shown > 0 && r.own && r.out === 0 && r.inView)));
+    check('las diez pestañas de Ajustes abren, cada una con lo suyo y sin salirse de la tarjeta', tabs.length === 10 && rows.every((r) => r.on === r.tab && r.shown > 0 && r.own && r.out === 0 && r.inView), rows.filter((r) => !(r.on === r.tab && r.shown > 0 && r.own && r.out === 0 && r.inView)));
     // Un cambio de apariencia se aplica en el momento.
     await page.click('.lmd-panel-card [data-ptab=look]');
     const themed = await page.evaluate(async () => { const b = document.querySelector('.lmd-seg[data-seg=theme] button[data-val=light]'); if (!b) return 'sin botón'; b.click(); await new Promise((r) => setTimeout(r, 400)); const bg = getComputedStyle(document.body).backgroundColor; document.querySelector('.lmd-seg[data-seg=theme] button[data-val=dark]').click(); await new Promise((r) => setTimeout(r, 300)); return bg; });
@@ -307,6 +308,247 @@ try {
     const shut = await p.evaluate(() => Math.round(document.querySelector('.lmd-sidebar').getBoundingClientRect().right));
     check('teléfono: tocar afuera lo cierra', shut <= 0, shut);
     check('teléfono: sin errores', R.errors.length === before, R.errors.slice(before));
+    await m.ctx.close();
+  });
+
+  // ---------- iPhone, iPad y Mac ----------
+  // El motor es WebKit, no Safari: no hay muesca, teclado en pantalla ni hoja de compartir. Lo que se puede, se arma:
+  // el navegador se presenta como un iPhone, las áreas seguras se ponen fijas en la hoja de estilos (47 px arriba y
+  // 34 abajo, las de un iPhone con muesca), el teclado es un visualViewport de prueba que se achica, y la hoja de
+  // compartir y el portapapeles anotan qué recibieron y si fue dentro del toque.
+  const APPLE = ENGINE === 'webkit';
+  const UA_IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+  const UA_IPAD = 'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+  const UA_MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15';
+  const INSET = { top: 47, bottom: 34 };
+  const appleShot = (page, name, opt) => page.screenshot(Object.assign({ path: path.join(SHOTS, name + '.png') }, opt || {})).catch(() => {});
+  // Las áreas seguras, fijas: se sirve la misma hoja con env() ya resuelto.
+  const withInsets = (ctx) => ctx.route('**/src/content.css', async (r) => {
+    const css = fs.readFileSync(new URL('../src/content.css', import.meta.url), 'utf8');
+    await r.fulfill({ status: 200, contentType: 'text/css', body: css.replace(/env\(safe-area-inset-top, 0px\)/g, INSET.top + 'px').replace(/env\(safe-area-inset-bottom, 0px\)/g, INSET.bottom + 'px').replace(/env\(safe-area-inset-(left|right), 0px\)/g, '0px') });
+  });
+  const iphone = async (who, opt) => {
+    const a = await R.open(who || null, Object.assign({ viewport: { width: 390, height: 844 }, userAgent: UA_IPHONE, hasTouch: true, isMobile: true, colorScheme: 'light', deviceScaleFactor: 2 }, opt || {}));
+    await withInsets(a.ctx);
+    await a.page.addInitScript(() => {
+      // El teclado: la zona visible se achica desde abajo, como en Safari. window.__kb(alto) lo abre o lo cierra.
+      let kb = 0; const vv = new EventTarget();
+      Object.defineProperties(vv, { width: { get: () => window.innerWidth }, height: { get: () => window.innerHeight - kb }, offsetTop: { get: () => 0 }, offsetLeft: { get: () => 0 }, scale: { get: () => 1 } });
+      Object.defineProperty(window, 'visualViewport', { get: () => vv, configurable: true });
+      window.__kb = (h) => { kb = h; vv.dispatchEvent(new Event('resize')); };
+      // La hoja de compartir y el portapapeles: anotan lo que llega y si el toque seguía activo.
+      const live = () => (navigator.userActivation ? navigator.userActivation.isActive : null);
+      window.__shared = []; window.__copied = [];
+      Object.defineProperty(navigator, 'canShare', { value: (d) => !!(d && d.files && d.files.length) && window.__noShare !== true, configurable: true });
+      Object.defineProperty(navigator, 'share', { value: (d) => { window.__shared.push({ name: d.files[0].name, type: d.files[0].type, size: d.files[0].size, live: live() }); return Promise.resolve(); }, configurable: true });
+      const clip = { write: (items) => { window.__copied.push({ types: items[0].types.slice(), live: live() }); return Promise.resolve(); }, writeText: (t) => { window.__copied.push({ text: String(t), live: live() }); return Promise.resolve(); }, readText: () => Promise.resolve('') };
+      Object.defineProperty(navigator, 'clipboard', { value: clip, configurable: true });
+      if (navigator.storage) Object.defineProperty(navigator.storage, 'persist', { value: () => { window.__persistAsked = (window.__persistAsked || 0) + 1; return Promise.resolve(false); }, configurable: true });
+    });
+    return a;
+  };
+  const inside = (page, sel, top, bottom) => page.evaluate(([s, t, b]) => [...document.querySelectorAll(s)].filter((n) => n.offsetParent && getComputedStyle(n).visibility !== 'hidden').map((n) => { const r = n.getBoundingClientRect(); return { n: (n.dataset.act || n.dataset.ptab || n.className || n.tagName).toString().slice(0, 30), ok: r.left >= -1 && r.right <= innerWidth + 1 && r.top >= t - 1 && r.bottom <= innerHeight - b + 1 }; }).filter((x) => !x.ok).map((x) => x.n), [sel, top || 0, bottom || 0]);
+
+  if (APPLE) await step('iPhone: cabecera, íconos y aviso de guardado', async () => {
+    const m = await iphone(); const p = m.page; const before = R.errors.length;
+    await p.goto(R.home); await p.waitForSelector('.lmd-home [data-home=new]');
+    const head = await p.evaluate(() => { const q = (s) => document.querySelector(s); const meta = (n) => (q('meta[name="' + n + '"]') || {}).content;
+      return { capable: meta('apple-mobile-web-app-capable'), web: meta('mobile-web-app-capable'), title: meta('apple-mobile-web-app-title'), bar: meta('apple-mobile-web-app-status-bar-style'), viewport: meta('viewport'),
+        colors: [...document.querySelectorAll('meta[name=theme-color]')].map((x) => x.content + (x.media || '')), icons: [...document.querySelectorAll('link[rel=apple-touch-icon]')].map((l) => (l.getAttribute('sizes') || '') + ' ' + l.getAttribute('href')),
+        cls: document.documentElement.className, bg: getComputedStyle(document.body).backgroundColor }; });
+    check('iphone: la página se declara instalable, con su nombre y su barra de estado', head.capable === 'yes' && head.web === 'yes' && head.title === 'SharpMD' && head.bar === 'default', head);
+    check('iphone: el color de la barra sigue al tema, y la página llega hasta los bordes', head.colors.length === 2 && head.colors.every((c) => c === '#fbfaf7') && /viewport-fit=cover/.test(head.viewport) && /maximum-scale=1/.test(head.viewport), head);
+    check('iphone: la página sabe que es un iPhone, y no una Mac', /\blmd-ios\b/.test(head.cls) && !/lmd-mac|lmd-standalone/.test(head.cls), head.cls);
+    const sizes = await p.evaluate(async () => { const out = []; for (const n of [180, 167, 152]) { const img = new Image(); img.src = '../icons/apple-touch-icon-' + n + '.png'; try { await img.decode(); } catch (e) { out.push('falta ' + n); continue; }
+      const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; const g = c.getContext('2d'); g.drawImage(img, 0, 0); const d = g.getImageData(0, 0, c.width, c.height).data; let clear = 0; for (let i = 3; i < d.length; i += 4) if (d[i] !== 255) clear++;
+      out.push('200:' + img.naturalWidth + 'x' + img.naturalHeight + ':' + (clear ? clear + ' transparentes' : 'opaco')); } return out; });
+    check('iphone: los tres íconos de inicio existen, con su tamaño y sin transparencia', head.icons.length === 4 && [180, 167, 152].every((n) => head.icons.some((i) => i.includes(n + 'x' + n + ' ') && i.includes('apple-touch-icon-' + n))) && sizes.join() === '200:180x180:opaco,200:167x167:opaco,200:152x152:opaco', [head.icons, sizes]);
+    const told = await until(() => p.evaluate(() => { const t = document.querySelector('.lmd-home').innerText; return /Safari can delete the notes in this browser/.test(t) ? t.split('\n').find((l) => /Safari can delete/.test(l)) : ''; }), 6000);
+    check('iphone: pide guardado persistente y avisa una vez, en una línea, que conviene instalar o usar la nube', (await p.evaluate(() => window.__persistAsked)) >= 1 && /Install the app or use the cloud/.test(told || '') && !/[!¡—–]/.test(told || '') && (told || '').length < 130, told);
+    await appleShot(p, 'iphone-inicio');
+    await p.reload(); await p.waitForSelector('.lmd-home [data-home=new]'); await sleep(2200);
+    check('iphone: el aviso no vuelve a salir', !(await p.evaluate(() => /Safari can delete/.test(document.querySelector('.lmd-home').innerText))));
+    check('iphone: el inicio entra en el ancho, con todo dentro de la pantalla', (await fits(p)) <= 1 && (await inside(p, '.lmd-home button, .lmd-home a, .lmd-topbar button', 0, 0)).length === 0, [await fits(p), await inside(p, '.lmd-home button, .lmd-home a, .lmd-topbar button', 0, 0)]);
+    check('iphone: sin errores', R.errors.length === before, R.errors.slice(before));
+    await m.ctx.close();
+  });
+
+  if (APPLE) await step('iPhone: instalar, los pasos', async () => {
+    const m = await iphone(); const p = m.page; const before = R.errors.length;
+    await p.goto(R.home); await p.waitForSelector('.lmd-home [data-home=new]');
+    await p.tap('[data-act=settings]'); await p.waitForSelector('.lmd-panel-card'); await p.tap('[data-ptab=inst]'); await p.waitForSelector('[data-inst-ios]');
+    const inst = await p.evaluate(() => { const box = document.querySelector('[data-inst-pane]'); const ol = box.querySelector('[data-inst-ios]'); const ico = ol.querySelector('.lmd-inst-ico svg').getBoundingClientRect(); const r = ol.getBoundingClientRect();
+      return { heads: [...box.querySelectorAll('h4')].map((h) => h.textContent), steps: [...ol.querySelectorAll('li')].map((li) => li.textContent.trim()), ico: Math.round(ico.width), seen: r.top >= 0 && r.bottom <= innerHeight && r.width > 200, keep: box.querySelector('.lmd-inst-keep').textContent, btn: !!box.querySelector('[data-inst=app]'), text: box.textContent }; });
+    check('iphone: Instalar muestra los pasos de iPhone y iPad, con el ícono de compartir dibujado', inst.heads.join('|') === 'On iPhone and iPad' && inst.steps.length === 3 && /^In Safari, tap Share/.test(inst.steps[0]) && /Add to Home Screen/.test(inst.steps[1]) && inst.ico >= 16 && inst.seen && !inst.btn, inst);
+    check('iphone: sin extensión, doble clic ni Windows, y con los textos cortos', !/extension|double click|Windows|Dock/i.test(inst.text) && /Safari can delete/.test(inst.keep) && !/[!¡—–]/.test(inst.text) && inst.steps.every((s) => s.length < 70), inst.text);
+    check('iphone: Ajustes > Instalar entra en el ancho', (await fits(p)) <= 1, await fits(p));
+    await appleShot(p, 'iphone-instalar');
+    await p.tap('[data-ptab=look]'); await sleep(400);
+    const look = await p.evaluate(() => { const g = document.querySelector('.lmd-th-grid').getBoundingClientRect(); const b = document.querySelector('.lmd-panel-body'); return { in: g.left >= 0 && g.right <= innerWidth, wide: b.scrollWidth - b.clientWidth, n: document.querySelectorAll('.lmd-th').length, low: Math.min(...[...document.querySelectorAll('.lmd-th')].map((x) => x.getBoundingClientRect().height)) }; });
+    check('iphone: la grilla de temas entra en el ancho, con miniaturas que se pueden tocar', look.in && look.wide <= 0 && look.n === 12 && look.low >= 44 && (await fits(p)) <= 1, look);
+    await p.tap('[data-th=arena]'); await sleep(300);
+    const tapped = await p.evaluate(() => ({ bg: document.documentElement.style.getPropertyValue('--bg'), apply: !document.querySelector('[data-th-apply]').hidden, bar: document.querySelector('meta[name=theme-color]').content }));
+    check('iphone: tocar un tema lo muestra en vivo, con la barra del sistema en su color, y ofrece aplicarlo', tapped.bg === '#f6efe0' && tapped.apply && tapped.bar === '#f6efe0', tapped);
+    await appleShot(p, 'iphone-temas');
+    check('iphone: sin errores', R.errors.length === before, R.errors.slice(before));
+    await m.ctx.close();
+  });
+
+  if (APPLE) await step('iPhone: áreas seguras', async () => {
+    const m = await iphone(); const p = m.page; const before = R.errors.length;
+    await p.goto(R.home); await p.waitForSelector('.lmd-home [data-home=new]');
+    await p.evaluate((t) => LMD.store.notePut('rich.md', t), RICH);
+    await p.goto(R.home + '?f=' + enc('local/rich.md')); await p.waitForSelector('.markdown-body h1'); await p.waitForSelector('.lmd-diagram svg', { timeout: 30000 });
+    const bars = await p.evaluate(() => { const top = document.querySelector('.lmd-topbar'); const foot = document.querySelector('.lmd-foot'); const r = (n) => n.getBoundingClientRect(); const first = [...top.querySelectorAll('button')].filter((b) => b.offsetParent)[0];
+      return { topH: Math.round(r(top).height), btnTop: Math.round(r(first).top), footH: Math.round(r(foot).height), footPad: getComputedStyle(foot).paddingBottom, text: Math.round(r(foot.querySelector('.lmd-status, .lmd-count')).bottom), h: innerHeight, h1: Math.round(r(document.querySelector('.markdown-body h1')).top) }; });
+    check('iphone: la barra de arriba deja libre la muesca', bars.topH === 49 + INSET.top && bars.btnTop >= INSET.top && bars.h1 >= bars.topH, bars);
+    check('iphone: el pie deja libre la barra de inicio', bars.footH === 30 + INSET.bottom && bars.footPad === INSET.bottom + 'px' && bars.text <= bars.h - INSET.bottom + 1, bars);
+    check('iphone: ningún control de la nota queda fuera de pantalla ni debajo de la muesca', (await inside(p, '.lmd-topbar button, .lmd-topbar a', INSET.top, 0)).length === 0 && (await fits(p)) <= 1, await inside(p, '.lmd-topbar button, .lmd-topbar a', INSET.top, 0));
+    await appleShot(p, 'iphone-nota');
+    await p.tap('[data-act=sidebar]'); await sleep(450);
+    const side = await p.evaluate(() => { const s = document.querySelector('.lmd-sidebar'); const cs = getComputedStyle(s); const first = [...s.querySelectorAll('input, button')].filter((b) => b.offsetParent)[0]; return { top: cs.paddingTop, bottom: cs.paddingBottom, first: Math.round(first.getBoundingClientRect().top), right: Math.round(s.getBoundingClientRect().right) }; });
+    check('iphone: el panel lateral respeta la muesca y la barra de inicio', side.top === INSET.top + 'px' && side.bottom === INSET.bottom + 'px' && side.first >= INSET.top && side.right <= 390, side);
+    await appleShot(p, 'iphone-panel');
+    await p.touchscreen.tap(380, 420); await sleep(450);
+    await p.evaluate(() => { LMD.dialog.confirm({ title: 'Delete this note?', text: 'It goes to the trash.', ok: 'Delete' }); }); await p.waitForSelector('.lmd-ask-card');
+    const dlg = await p.evaluate(() => { const r = document.querySelector('.lmd-ask-card').getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right), h: innerHeight, low: Math.min(...[...document.querySelectorAll('.lmd-ask-card button')].map((b) => b.getBoundingClientRect().height)) }; });
+    check('iphone: un diálogo queda dentro del área segura, con botones que se pueden tocar', dlg.top >= INSET.top && dlg.bottom <= dlg.h - INSET.bottom && dlg.left >= 12 && dlg.right <= 378 && dlg.low >= 40, dlg);
+    await appleShot(p, 'iphone-dialogo');
+    await p.keyboard.press('Escape'); await sleep(200);
+    await p.evaluate(() => document.querySelector('[data-act=settings]').click()); await p.waitForSelector('.lmd-panel-card'); // con una nota abierta, en el teléfono Ajustes está dentro de "más"
+    const panel = await p.evaluate(() => { const head = document.querySelector('.lmd-panel-card header').getBoundingClientRect(); const body = document.querySelector('.lmd-panel-body'); return { head: Math.round(head.top), pad: parseFloat(getComputedStyle(body).paddingBottom), close: Math.round(document.querySelector('[data-act=close-panel]').getBoundingClientRect().top) }; });
+    check('iphone: Ajustes a pantalla completa respeta la muesca y la barra de inicio', panel.head >= INSET.top && panel.close >= INSET.top && panel.pad >= INSET.bottom + 20, panel);
+    const tabsWide = [];
+    for (const t of ['look', 'read', 'plug', 'tools', 'cloud', 'ai', 'plan', 'inst', 'adv']) { await p.tap('[data-ptab=' + t + ']'); await sleep(350); const w = await p.evaluate(() => { const b = document.querySelector('.lmd-panel-body'); return Math.max(b.scrollWidth - b.clientWidth, document.documentElement.scrollWidth - innerWidth); }); if (w > 1) tabsWide.push(t + ' +' + w); }
+    check('iphone: ninguna pestaña de Ajustes se pasa de ancho', tabsWide.length === 0, tabsWide);
+    check('iphone: sin errores', R.errors.length === before, R.errors.slice(before));
+    await m.ctx.close();
+  });
+
+  if (APPLE) await step('iPhone: escribir con el teclado en pantalla', async () => {
+    const m = await iphone(); const p = m.page; const before = R.errors.length;
+    await p.goto(R.home); await p.waitForSelector('.lmd-home [data-home=new]');
+    await p.evaluate((t) => LMD.store.notePut('rich.md', t), RICH);
+    await p.goto(R.home + '?f=' + enc('local/rich.md') + '&edit=1'); await p.waitForSelector('.lmd-article > p.lmd-editable');
+    const para = p.locator('.lmd-article > p.lmd-editable').first();
+    await para.tap(); await sleep(200);
+    await p.evaluate(() => window.__kb(336)); await sleep(300);
+    const up = await p.evaluate(() => ({ cls: document.documentElement.classList.contains('lmd-kb'), kb: document.documentElement.style.getPropertyValue('--lmd-kb'), foot: getComputedStyle(document.querySelector('.lmd-foot')).display, focus: !!document.activeElement && document.activeElement.isContentEditable }));
+    check('iphone: al abrirse el teclado la página lo sabe, y el pie se corre', up.cls && up.kb === '336px' && up.foot === 'none' && up.focus, up);
+    await p.keyboard.press('End'); await p.keyboard.type(' Typed on the phone.', { delay: 20 }); await sleep(300);
+    const caret = await p.evaluate(() => { const r = getSelection().getRangeAt(0).getClientRects()[0] || getSelection().getRangeAt(0).getBoundingClientRect(); return { bottom: Math.round(r.bottom), top: Math.round(r.top), seen: innerHeight - 336, text: document.querySelector('.lmd-article > p.lmd-editable').textContent }; });
+    check('iphone: lo escrito entra en la nota y el cursor queda a la vista, arriba del teclado', /Typed on the phone\.$/.test(caret.text) && caret.bottom <= caret.seen && caret.top >= 49 + INSET.top, caret);
+    await p.evaluate(() => { const el = document.querySelector('.lmd-article > p.lmd-editable'); const r = document.createRange(); r.setStart(el.firstChild, 0); r.setEnd(el.firstChild, 5); const s = getSelection(); s.removeAllRanges(); s.addRange(r); });
+    await sleep(450);
+    const bar = await p.evaluate(() => { const b = document.querySelector('.lmd-format'); const r = b.getBoundingClientRect(); const sel = getSelection().getRangeAt(0).getBoundingClientRect(); return { seen: !b.hidden, top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right), limit: innerHeight - 336, sel: Math.round(sel.bottom), low: Math.min(...[...b.querySelectorAll('button')].filter((x) => x.offsetParent).map((x) => x.getBoundingClientRect().height)) }; });
+    check('iphone: la barra de formato queda pegada arriba del teclado, entera y sin tapar lo elegido', bar.seen && bar.bottom <= bar.limit && bar.bottom >= bar.limit - 24 && bar.top > bar.sel && bar.left >= 0 && bar.right <= 390 && bar.low >= 40, bar);
+    await appleShot(p, 'iphone-teclado');
+    await p.tap('.lmd-format [data-fmt=bold]'); await sleep(300);
+    check('iphone: negrita desde la barra', await p.evaluate(() => !!document.querySelector('.lmd-article > p.lmd-editable strong, .lmd-article > p.lmd-editable b')));
+    const zoom = await p.evaluate(() => { const small = [...document.querySelectorAll('input, select, textarea')].filter((n) => n.offsetParent && !/checkbox|radio|range|color|file/.test(n.type) && parseFloat(getComputedStyle(n).fontSize) < 16).map((n) => n.className || n.name || n.type); const b = document.querySelector('.lmd-topbar button'); return { small, action: getComputedStyle(b).touchAction, tap: getComputedStyle(b).webkitTapHighlightColor, adjust: getComputedStyle(document.documentElement).webkitTextSizeAdjust, over: getComputedStyle(document.documentElement).overscrollBehaviorY }; });
+    // El WebKit de prueba no conoce todas estas propiedades (en Windows le faltan el destello y el rebote): donde las conoce se mide lo que quedó
+    // aplicado, y donde no, que la regla esté en la hoja de estilos.
+    const sheet = fs.readFileSync(new URL('../src/content.css', import.meta.url), 'utf8');
+    const ruled = /html\.lmd-ios, html\.lmd-ios \.lmd-body[^{]*\{ overscroll-behavior-y: none; \}/.test(sheet) && /-webkit-tap-highlight-color: transparent; touch-action: manipulation;/.test(sheet) && /-webkit-text-size-adjust: 100%/.test(sheet) && /html\.lmd-ios input[^{]*\{ font-size: max\(16px, 1em\); \}/.test(sheet);
+    check('iphone: ningún campo tiene letra de menos de 16 px, y los botones no hacen zoom con doble toque ni destellan', zoom.small.length === 0 && zoom.action === 'manipulation' && (zoom.tap === undefined || /rgba\(0, 0, 0, 0\)|transparent/.test(zoom.tap)) && (zoom.adjust === undefined || zoom.adjust === '100%') && ruled, zoom);
+    check('iphone: arrastrar más allá del borde no rebota la página', (zoom.over === undefined || zoom.over === 'none') && ruled, zoom.over);
+    await p.evaluate(() => window.__kb(0)); await sleep(300);
+    check('iphone: al cerrarse el teclado vuelve el pie', await p.evaluate(() => !document.documentElement.classList.contains('lmd-kb') && getComputedStyle(document.querySelector('.lmd-foot')).display !== 'none'));
+    check('iphone: sin errores', R.errors.length === before, R.errors.slice(before));
+    await m.ctx.close();
+  });
+
+  if (APPLE) await step('iPhone: copiar y exportar', async () => {
+    const who = await R.signup('iphone' + Date.now() + '@ejemplo.test', true);
+    const m = await iphone(who); const p = m.page; const before = R.errors.length;
+    await p.goto(R.home); await p.waitForSelector('.lmd-home [data-home=new]');
+    await p.evaluate((t) => LMD.store.notePut('rich.md', t), RICH);
+    await p.goto(R.home + '?f=' + enc('local/rich.md')); await p.waitForSelector('.markdown-body h1');
+    const pick = async (act, sub) => { await p.tap('[data-act=more]'); await p.waitForSelector('.lmd-menu-more'); await p.tap('.lmd-menu-more [data-more=' + act + ']'); await p.waitForSelector('.lmd-menu-' + act); await p.tap('.lmd-menu-' + act + ' [data-more=' + sub + ']'); await sleep(350); };
+    await pick('copy', 'copy-rich');
+    const rich = await p.evaluate(() => window.__copied.slice(-1)[0]);
+    check('iphone: copiar con formato escribe HTML y texto, dentro del toque', !!rich && rich.types && rich.types.includes('text/html') && rich.types.includes('text/plain') && rich.live !== false && /Copied with formatting/.test(await p.textContent('.lmd-status')), rich);
+    await pick('copy', 'copy-md');
+    const md = await p.evaluate(() => window.__copied.slice(-1)[0]);
+    check('iphone: copiar el Markdown, dentro del toque', !!md && /^# Trip plan/.test(md.text || '') && md.live !== false, md);
+    await pick('export', 'export-html');
+    const html = await p.evaluate(() => window.__shared.slice(-1)[0]);
+    check('iphone: exportar a HTML abre la hoja de compartir con el archivo', !!html && html.name === 'rich.html' && html.type === 'text/html' && html.size > 500 && html.live !== false, html);
+    await pick('export', 'export-md');
+    const file = await p.evaluate(() => window.__shared.slice(-1)[0]);
+    check('iphone: exportar el .md también, con su nombre', !!file && file.name === 'rich.md' && /^text\//.test(file.type) && file.live !== false, file);
+    await p.evaluate(() => { window.__noShare = true; });
+    const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 8000 }).catch(() => null), pick('export', 'export-html')]);
+    check('iphone: si la hoja de compartir no acepta archivos, se descarga como siempre', !!dl && dl.suggestedFilename() === 'rich.html' && (await p.evaluate(() => window.__shared.length)) === 2, dl && dl.suggestedFilename());
+    // El mensaje para la IA: se crea un token y se copian las instrucciones.
+    await p.evaluate(() => document.querySelector('[data-act=settings]').click()); await p.waitForSelector('.lmd-panel-card'); await p.tap('[data-ptab=ai]'); await p.waitForSelector('[data-acct=ai] [data-c=token]', { timeout: 15000 });
+    await p.tap('[data-acct=ai] [data-c=token]'); await p.waitForSelector('[data-acct=ai] [data-c=brief]', { timeout: 15000 });
+    await p.evaluate(() => { window.__copied.length = 0; });
+    await p.tap('[data-acct=ai] [data-c=brief]'); await sleep(500);
+    const brief = await p.evaluate(() => window.__copied.slice(-1)[0]);
+    check('iphone: copiar el mensaje para la IA, dentro del toque', !!brief && /mcp/i.test(brief.text || '') && (brief.text || '').length > 300 && brief.live !== false, brief && { live: brief.live, n: (brief.text || '').length });
+    check('iphone: Ajustes > IA entra en el ancho', (await fits(p)) <= 1, await fits(p));
+    check('iphone: sin errores', R.errors.length === before, R.errors.slice(before));
+    await m.ctx.close();
+  });
+
+  if (APPLE) await step('iPad: inicio, nota y Ajustes', async () => {
+    for (const [name, viewport] of [['vertical', { width: 820, height: 1180 }], ['acostado', { width: 1180, height: 820 }]]) {
+      const m = await R.open(null, { viewport, userAgent: UA_IPAD, hasTouch: true, isMobile: true, colorScheme: 'light', deviceScaleFactor: 2 }); const p = m.page; const before = R.errors.length;
+      await p.goto(R.home); await p.waitForSelector('.lmd-home [data-home=new]');
+      check('ipad ' + name + ': el inicio entra en el ancho y la página sabe que es un iPad', (await fits(p)) <= 1 && await p.evaluate(() => document.documentElement.classList.contains('lmd-ios')), await fits(p));
+      await appleShot(p, 'ipad-inicio-' + name);
+      await p.evaluate((t) => LMD.store.notePut('rich.md', t), RICH);
+      await p.goto(R.home + '?f=' + enc('local/rich.md')); await p.waitForSelector('.markdown-body h1'); await p.waitForSelector('.lmd-diagram svg', { timeout: 30000 });
+      check('ipad ' + name + ': la nota entra en el ancho, con sus controles en pantalla', (await fits(p)) <= 1 && (await inside(p, '.lmd-topbar button', 0, 0)).length === 0, [await fits(p), await inside(p, '.lmd-topbar button', 0, 0)]);
+      await appleShot(p, 'ipad-nota-' + name);
+      await p.evaluate(() => document.querySelector('[data-act=settings]').click()); await p.waitForSelector('.lmd-panel-card'); await sleep(300);
+      const look = await p.evaluate(() => { const c = document.querySelector('.lmd-panel-card').getBoundingClientRect(); const b = document.querySelector('.lmd-panel-body'); return { in: c.left >= 0 && c.right <= innerWidth && c.top >= 0 && c.bottom <= innerHeight, wide: b.scrollWidth - b.clientWidth, themes: document.querySelectorAll('.lmd-th').length }; });
+      check('ipad ' + name + ': Ajustes entra en pantalla, con la grilla de temas', look.in && look.wide <= 0 && look.themes === 12, look);
+      await appleShot(p, 'ipad-ajustes-' + name);
+      await p.tap('[data-ptab=inst]'); await p.waitForSelector('[data-inst-ios]');
+      check('ipad ' + name + ': Instalar muestra los pasos de iPhone y iPad', (await p.evaluate(() => document.querySelectorAll('[data-inst-ios] li').length)) === 3);
+      if (name === 'vertical') await appleShot(p, 'ipad-instalar');
+      check('ipad ' + name + ': sin errores', R.errors.length === before, R.errors.slice(before));
+      await m.ctx.close();
+    }
+  });
+
+  if (APPLE) await step('Mac: atajos con ⌘ y pasos de instalación', async () => {
+    const m = await R.open(null, { viewport: { width: 1280, height: 800 }, userAgent: UA_MAC, colorScheme: 'light' }); const p = m.page; const before = R.errors.length;
+    await p.goto(R.home); await p.waitForSelector('.lmd-home [data-home=new]');
+    await p.evaluate((t) => LMD.store.notePut('rich.md', t), RICH);
+    await p.goto(R.home + '?f=' + enc('local/rich.md') + '&edit=1'); await p.waitForSelector('.lmd-article > p.lmd-editable');
+    const keys = await p.evaluate(() => ({ cls: document.documentElement.className, save: document.querySelector('[data-act=save]').title, side: document.querySelector('[data-act=sidebar]').title, bold: document.querySelector('.lmd-format [data-fmt=bold]').title, link: document.querySelector('.lmd-format [data-fmt=link]').title,
+      map: [LMD.keys('Ctrl+Y'), LMD.keys('Ctrl+Enter'), LMD.keys('Alt+Shift+P'), LMD.keys('Ctrl+Shift+V'), LMD.t('Cambio deshecho. Ctrl+Y lo rehace')].join(' | '), ctrl: [...document.querySelectorAll('[title]')].map((n) => n.title).filter((t) => /Ctrl\+|Alt\+/.test(t)) }));
+    check('mac: los rótulos muestran ⌘, ⌥ y ⇧ en vez de Ctrl y Alt', /\blmd-mac\b/.test(keys.cls) && !/lmd-ios/.test(keys.cls) && /⌘S/.test(keys.save) && /⌥⇧B/.test(keys.side) && /⌘B/.test(keys.bold) && /⌘K/.test(keys.link) && keys.ctrl.length === 0, keys);
+    check('mac: rehacer es ⇧⌘Z, aplicar es ⌘↩', keys.map === '⇧⌘Z | ⌘↩ | ⌥⇧P | ⇧⌘V | Change undone. ⇧⌘Z redoes it', keys.map);
+    await p.locator('.lmd-article > p.lmd-editable').first().click(); await p.keyboard.press('End'); await p.keyboard.type(' Mac.'); await sleep(200);
+    // La tecla ⌘ de verdad no existe en el teclado de prueba: se manda el evento que manda una Mac.
+    const cmd = (shift) => p.evaluate((s) => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: s ? 'Z' : 'z', code: 'KeyZ', metaKey: true, shiftKey: s, bubbles: true, cancelable: true })); }, shift);
+    await p.evaluate(() => { const a = document.activeElement; if (a && a.blur) a.blur(); }); await sleep(700); // fuera del bloque, deshacer es el de la app
+    await cmd(false); await sleep(300);
+    const undone = await p.evaluate(() => document.querySelector('.lmd-article > p.lmd-editable').textContent);
+    await cmd(true); await sleep(300);
+    const redone = await p.evaluate(() => document.querySelector('.lmd-article > p.lmd-editable').textContent);
+    check('mac: ⌘Z deshace y ⇧⌘Z rehace', !/Mac\.$/.test(undone) && /Mac\.$/.test(redone), [undone.slice(-30), redone.slice(-30)]);
+    // Ctrl+K en una Mac borra hasta el fin del renglón: el enlace sale solo con ⌘K.
+    await p.locator('.lmd-article > p.lmd-editable').first().click();
+    const key = (o) => p.evaluate((x) => { document.activeElement.dispatchEvent(new KeyboardEvent('keydown', Object.assign({ key: 'k', code: 'KeyK', bubbles: true, cancelable: true }, x))); }, o);
+    await key({ ctrlKey: true }); await sleep(300);
+    const withCtrl = await p.locator('.lmd-lk-card').count();
+    await key({ metaKey: true }); await sleep(400);
+    const withCmd = await p.locator('.lmd-lk-card').count();
+    await p.keyboard.press('Escape'); await sleep(200);
+    check('mac: Ctrl+K queda para el sistema y ⌘K abre el enlace', withCtrl === 0 && withCmd === 1, [withCtrl, withCmd]);
+    await p.click('[data-act=export]'); await p.waitForSelector('.lmd-menu-export');
+    const print = await p.evaluate(() => [...document.querySelectorAll('.lmd-menu-export kbd')].map((k) => k.textContent).join());
+    await p.keyboard.press('Escape');
+    check('mac: imprimir muestra ⌘P', print === '⌘P', print);
+    await p.click('[data-act=settings]'); await p.waitForSelector('.lmd-panel-card'); await p.click('[data-ptab=inst]'); await p.waitForSelector('[data-inst-mac]');
+    const inst = await p.evaluate(() => { const box = document.querySelector('[data-inst-pane]'); return { heads: [...box.querySelectorAll('h4')].map((h) => h.textContent), steps: [...box.querySelectorAll('[data-inst-mac] li')].map((li) => li.textContent), finder: /In Finder/.test(box.textContent), win: /Windows|Always/.test(box.textContent), ios: !!box.querySelector('[data-inst-ios]'), text: box.textContent }; });
+    check('mac: Instalar muestra los pasos de Mac (Safari y Chrome) y el doble clic desde Finder', inst.heads.includes('On Mac') && inst.steps.length === 2 && /Add to Dock/.test(inst.steps[0]) && /Chrome or Edge/.test(inst.steps[1]) && inst.finder && !inst.win && !inst.ios && !/[!¡—–]/.test(inst.text), inst);
+    check('mac: sin errores', R.errors.length === before, R.errors.slice(before));
     await m.ctx.close();
   });
 } catch (e) {

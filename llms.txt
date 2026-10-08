@@ -22,6 +22,8 @@
 - Word export (a tool turned on in Settings > Tools): a .docx built in the browser without libraries, with Word heading styles, lists, task checkboxes, tables, code, footnotes, embedded images and diagrams as images. Formulas are exported as LaTeX text.
 - Link map (a tool turned on in Settings > Tools): a graph of the links between notes (relative Markdown links and `[[wikilinks]]`) and a list of the notes that link to the open one. It reads only notes already on the device.
 - Community gallery (Settings > Tools): templates, themes and diagram palettes shared by people and reviewed before they are published. Declarative content only, never code. What is added is stored on the device and works offline. Sharing needs an account; the public list (GET /gallery on the sync server) needs none.
+- Twelve built-in themes (six light, six dark), picked from a grid of thumbnails with a live preview. Four are free; the other eight come with the paid plan. Each theme sets page, panels, text, borders, links, selection, code syntax and diagram colors, with AA contrast.
+- On iPhone and iPad the web app installs from Safari (Share, Add to Home Screen). On a Mac the shortcuts use ⌘ and ⌥.
 - Interface in English and Spanish.
 
 ## Where it runs

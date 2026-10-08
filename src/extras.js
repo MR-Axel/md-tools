@@ -775,11 +775,8 @@
   function exportHtml() {
     const title = (core.docName || 'documento').replace(/\.[^.]+$/, '');
     const html = '<!doctype html>\n<html lang="' + LMD.lang() + '">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>' +
-      title.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])) + '</title>\n<style>' + EXPORT_CSS + '</style>\n</head>\n<body>\n<main>\n' + htmlOf() + '\n</main>\n</body>\n</html>\n';
-    const a = el('a', { download: title + '.html' });
-    a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    core.flash(T('HTML descargado'));
+      title.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])) + '</title>\n<style>' + EXPORT_CSS + LMD.theme.exportCss(core.settings) + '</style>\n</head>\n<body>\n<main>\n' + htmlOf() + '\n</main>\n</body>\n</html>\n';
+    if (LMD.kit.saveFile(new Blob([html], { type: 'text/html' }), title + '.html') === 'download') core.flash(T('HTML descargado'));
   }
 
   function init(c) {

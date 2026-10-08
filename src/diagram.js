@@ -459,7 +459,7 @@
       return;
     }
     await core.ensure('mermaid');
-    window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: core.isDark() ? 'dark' : 'default', flowchart: { curve: core.shape === 'square' ? 'linear' : 'basis' } });
+    window.mermaid.initialize(Object.assign({ startOnLoad: false, securityLevel: 'strict', flowchart: { curve: core.shape === 'square' ? 'linear' : 'basis' } }, LMD.theme.mermaid(core.settings)));
     const id = 'lmd-dgm-' + (++seq);
     try {
       const out = await window.mermaid.render(id, code);
@@ -499,7 +499,7 @@
         '<footer><a href="' + (kind === 'dot' ? 'https://graphviz.org/doc/info/lang.html' : 'https://mermaid.js.org/intro/') + '" target="_blank" rel="noopener noreferrer">' + T('Ver la sintaxis') + '</a><span></span>' +
           '<button type="button" class="lmd-btn lmd-dgm-remove" data-dgm="del">' + T('Eliminar el diagrama') + '</button>' +
           '<button type="button" class="lmd-btn" data-dgm="no">' + T('Cancelar') + '</button>' +
-          '<button type="button" class="lmd-btn lmd-btn-fill" data-dgm="ok">' + T('Aplicar') + ' <kbd>Ctrl+Enter</kbd></button></footer>' +
+          '<button type="button" class="lmd-btn lmd-btn-fill" data-dgm="ok">' + T('Aplicar') + ' <kbd>' + LMD.keys('Ctrl+Enter') + '</kbd></button></footer>' +
       '</div>';
     document.body.appendChild(modal);
     const code = pane(modal.querySelector('.lmd-ed-code')); const ta = code.ta;
@@ -609,9 +609,7 @@
       wrap.appendChild(copy); core.ui.viewer.appendChild(wrap); core.ui.viewer.hidden = false;
       return;
     }
-    const a = el('a', { download: (core.docName || 'diagrama').replace(/\.[^.]+$/, '') + '-' + T('diagrama') + '.svg' });
-    a.href = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(copy)], { type: 'image/svg+xml' }));
-    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    LMD.kit.saveFile(new Blob([new XMLSerializer().serializeToString(copy)], { type: 'image/svg+xml' }), (core.docName || 'diagrama').replace(/\.[^.]+$/, '') + '-' + T('diagrama') + '.svg');
   }
 
   function init(c) {

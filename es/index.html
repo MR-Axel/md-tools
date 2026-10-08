@@ -235,6 +235,17 @@
   .last p { max-width: 36em; margin: 0 auto 28px; color: var(--muted); }
   .last .cta { justify-content: center; }
   footer { padding: 26px 0 40px; border-top: 1px solid var(--line); color: var(--faint); font-size: 14px; }
+  /* Temas incluidos: una tira de páginas chicas, cada una con los colores de su tema (los mismos de src/theme.js). */
+  .yours .lede { max-width: none; margin-inline: auto; }
+  .strip { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin: 34px 0 0; padding: 0; list-style: none; }
+  .strip li { display: flex; flex-direction: column; gap: 6px; aspect-ratio: 8 / 5; min-width: 0; padding: 12px 13px; border: 1px solid var(--l); border-radius: 10px; background: var(--b); color: var(--f); text-align: left; overflow: hidden; }
+  .strip b { font-size: 13px; line-height: 1.1; letter-spacing: -0.01em; white-space: nowrap; }
+  .strip i { display: block; height: 3px; border-radius: 3px; background: var(--m); opacity: .7; } .strip i + i { width: 62%; }
+  .strip u { display: flex; align-items: center; gap: 6px; margin-top: auto; text-decoration: none; }
+  .strip s { flex: 1; height: 14px; border: 1px solid var(--l); border-radius: 4px; background: var(--c); }
+  .strip em { flex: none; width: 26px; height: 12px; border-radius: 999px; background: var(--a); }
+  @media (max-width: 900px) { .strip { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .strip { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; } .strip li { padding: 9px 10px; } .strip b { font-size: 11.5px; } }
   footer .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 22px; }
   footer span { margin-right: auto; }
   footer a { color: var(--muted); text-decoration: none; } footer a:hover { color: var(--fg); }
@@ -323,6 +334,25 @@
     <p>Soltás un archivo dentro de la nota que estás editando y queda como enlace. <code>[[nombre]]</code> abre el archivo con ese nombre.</p>
   </div>
   <video class="clip" muted loop playsinline preload="none" poster="../docs/clips/drop.jpg" width="880" height="550" aria-label="A file dragged from the explorer into the note becomes a link"><source src="../docs/clips/drop.mp4" type="video/mp4"><source src="../docs/clips/drop.webm" type="video/webm"></video>
+</div></section>
+
+<section class="center yours"><div class="wrap">
+  <h2>Hacela tuya</h2>
+  <p class="lede">Doce temas incluidos, seis claros y seis oscuros. Cuatro son gratis.</p>
+  <ul class="strip" aria-hidden="true">
+    <li data-theme="lima" style="--b:#fbfaf7;--f:#1d2026;--m:#5c6370;--c:#f1efe9;--l:#dedbd2;--a:#3f6a0a"><b>Lima</b><i></i><i></i><u><s></s><em></em></u></li>
+    <li data-theme="arena" style="--b:#f6efe0;--f:#2b2419;--m:#5f5443;--c:#ece2cc;--l:#d9cdb4;--a:#874710"><b>Arena</b><i></i><i></i><u><s></s><em></em></u></li>
+    <li data-theme="tiza" style="--b:#f4f4f5;--f:#0b0b0c;--m:#3f3f46;--c:#e6e6e9;--l:#85858e;--a:#1a44c2"><b>Tiza</b><i></i><i></i><u><s></s><em></em></u></li>
+    <li data-theme="salvia" style="--b:#f3f6ef;--f:#1c2a20;--m:#4d5e50;--c:#e4ebdc;--l:#cdd8c5;--a:#2a6535"><b>Salvia</b><i></i><i></i><u><s></s><em></em></u></li>
+    <li data-theme="bruma" style="--b:#f2f5f9;--f:#18222e;--m:#4a5868;--c:#e3e9f1;--l:#cbd5e1;--a:#2456a6"><b>Bruma</b><i></i><i></i><u><s></s><em></em></u></li>
+    <li data-theme="tinta" style="--b:#ffffff;--f:#000000;--m:#404040;--c:#f2f2f2;--l:#b3b3b3;--a:#111111"><b>Tinta</b><i></i><i></i><u><s></s><em></em></u></li>
+    <li data-theme="noche" style="--b:#121418;--f:#e6e8ec;--m:#a0a7b4;--c:#181b21;--l:#2a2e37;--a:#bef264"><b>Noche</b><i></i><i></i><u><s></s><em></em></u></li>
+    <li data-theme="carbon" style="--b:#0e0e0f;--f:#f5f5f5;--m:#bdbdc2;--c:#18181a;--l:#66666d;--a:#ffd166"><b>Carbón</b><i></i><i></i><u><s></s><em></em></u></li>
+    <li data-theme="marea" style="--b:#0d1524;--f:#dfe7f5;--m:#9aa9c2;--c:#121c30;--l:#24324d;--a:#7cc4ff"><b>Marea</b><i></i><i></i><u><s></s><em></em></u></li>
+    <li data-theme="bosque" style="--b:#0f1712;--f:#e2ebe2;--m:#9db3a2;--c:#142019;--l:#26372b;--a:#8fe0a0"><b>Bosque</b><i></i><i></i><u><s></s><em></em></u></li>
+    <li data-theme="laguna" style="--b:#0b2027;--f:#e6ded0;--m:#a3b3ad;--c:#0f2a32;--l:#21434c;--a:#f2b84b"><b>Laguna</b><i></i><i></i><u><s></s><em></em></u></li>
+    <li data-theme="ciruela" style="--b:#1a1220;--f:#efe6f2;--m:#b5a5bd;--c:#21172a;--l:#3a2a45;--a:#f0a6ca"><b>Ciruela</b><i></i><i></i><u><s></s><em></em></u></li>
+  </ul>
 </div></section>
 
 <section class="center"><div class="wrap">

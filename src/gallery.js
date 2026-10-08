@@ -10,7 +10,8 @@
   const TYPE = { template: 'Plantilla', theme: 'Tema', palette: 'Paleta' };
   const STATUS = { pending: 'En revisión', approved: 'Publicado', rejected: 'No publicado', removed: 'Retirado' };
   const COLOR_NAMES = { fill: 'Relleno', text: 'Texto', border: 'Borde', line: 'Línea', second: 'Segundo relleno', third: 'Tercer relleno' };
-  const THEME_NAMES = { mode: 'Tema', accent: 'Color de acento', paperLight: 'Fondo claro', paperDark: 'Fondo oscuro', font: 'Tipografía', codeColor: 'Color de los bloques de código', diagramShape: 'Forma de los diagramas' };
+  const THEME_NAMES = { mode: 'Tema', accent: 'Color de acento', paperLight: 'Fondo claro', paperDark: 'Fondo oscuro', font: 'Tipografía', codeColor: 'Color de los bloques de código', diagramShape: 'Forma de los diagramas',
+    surface: 'Fondo de paneles', text: 'Texto', muted: 'Texto secundario', border: 'Bordes', link: 'Enlaces' };
   const THEME_VALUES = { auto: 'Automático', light: 'Claro', dark: 'Oscuro', round: 'Redondeados', square: 'Rectos' };
 
   let core = null; let box = null;
@@ -41,13 +42,14 @@
     const dark = data.mode === 'dark' || (data.mode !== 'light' && core.isDark());
     const s = el('div', { class: 'lmd-gal-sample' });
     s.style.background = (dark ? data.paperDark : data.paperLight) || (dark ? '#121418' : '#fbfaf7');
-    s.style.color = dark ? '#e6e8ec' : '#1d2026';
+    s.style.color = data.text || (dark ? '#e6e8ec' : '#1d2026');
+    if (data.border) s.style.borderColor = data.border;
     if (data.font && C.fontValue(data.font)) s.style.fontFamily = C.fontValue(data.font);
     const accent = data.accent || (dark ? '#bef264' : '#3f6a0a');
     s.appendChild(el('b', { text: T('Título de ejemplo') }));
-    const p = el('p'); p.appendChild(document.createTextNode(T('Un párrafo con') + ' ')); const a = el('span', { text: T('un enlace') }); a.style.color = accent; a.style.textDecoration = 'underline'; p.appendChild(a); s.appendChild(p);
+    const p = el('p'); p.appendChild(document.createTextNode(T('Un párrafo con') + ' ')); const a = el('span', { text: T('un enlace') }); a.style.color = data.link || accent; if (data.muted) p.style.color = data.muted; a.style.textDecoration = 'underline'; p.appendChild(a); s.appendChild(p);
     const row = el('div', { class: 'lmd-gal-sample-row' });
-    const code = el('code', { text: 'const x = 1;' }); if (data.codeColor) { code.style.borderColor = data.codeColor; code.style.color = data.codeColor; } row.appendChild(code);
+    const code = el('code', { text: 'const x = 1;' }); if (data.surface) code.style.background = data.surface; if (data.codeColor) { code.style.borderColor = data.codeColor; code.style.color = data.codeColor; } row.appendChild(code);
     const pill = el('i', { text: T('Botón') }); pill.style.background = accent; pill.style.color = dark ? '#14161a' : '#ffffff'; if (data.diagramShape === 'square') pill.style.borderRadius = '3px'; row.appendChild(pill);
     s.appendChild(row);
     const wrap = el('div');
@@ -98,6 +100,51 @@
     await LMD.patch(t.prev);
   }
   const report = (it) => LMD.sync.report({ kind: 'gallery', note: '#' + it.id + ' ' + it.type + ' ' + it.name, owner: it.author });
+
+  // ---------- Temas incluidos ----------
+  // Vienen con la app (theme.js) y se listan junto a los de la comunidad. No pasan por el servidor ni cuentan agregados.
+  const includedOn = (it) => { const now = LMD.theme.active(settings()); return now.id === it.id && !now.custom; };
+  async function applyIncluded(it) {
+    if (LMD.theme.locked(it.id, settings())) { previewIncluded(it); return; }
+    await C.setTheme(null);
+    await LMD.patch(LMD.theme.patchFor(it.id));
+    core.flash(T('Tema aplicado')); setTimeout(draw, 250);
+  }
+  function includedCard(it) {
+    const c = el('div', { class: 'lmd-gal-card', 'data-gid': it.id, 'data-gkind': 'included' });
+    const h = el('div', { class: 'lmd-gal-head' }); h.appendChild(el('b', { text: T(it.name) })); h.appendChild(el('em', { class: 'lmd-tag', text: T('Incluido') })); c.appendChild(h);
+    c.appendChild(el('p', { class: 'lmd-gal-about', text: T(it.about) }));
+    c.appendChild(el('p', { class: 'lmd-gal-by', text: T(it.dark ? 'Oscuro' : 'Claro') + (it.free ? '' : ' · ' + T('Plan pago')) }));
+    const th = el('div'); th.innerHTML = LMD.theme.thumb(Object.assign({}, it.preset, { name: esc(T(it.name)) })); c.appendChild(th);
+    const acts = el('div', { class: 'lmd-gal-acts' }); const on = includedOn(it);
+    acts.appendChild(el('button', { type: 'button', class: 'lmd-btn', 'data-gal': 'view', text: T('Vista previa') }));
+    const b = el('button', { type: 'button', class: 'lmd-btn' + (on ? '' : ' lmd-btn-fill'), 'data-gal': 'add', text: T(on ? 'Aplicado' : 'Aplicar') }); b.disabled = on; acts.appendChild(b);
+    c.appendChild(acts);
+    return c;
+  }
+  function previewIncluded(it) {
+    const { m, card } = modal('lmd-gal-view', T(it.name));
+    const h = el('h3', { text: T(it.name) }); h.appendChild(el('em', { class: 'lmd-tag', text: T('Incluido') })); card.appendChild(h);
+    card.appendChild(el('p', { class: 'lmd-gal-about', text: T(it.about) }));
+    const prev = el('div', { class: 'lmd-gal-prev' }); prev.innerHTML = LMD.theme.thumb(Object.assign({}, it.preset, { name: esc(T(it.name)) })); card.appendChild(prev);
+    const locked = LMD.theme.locked(it.id, settings());
+    if (locked) {
+      const extra = el('div', { class: 'lmd-extra' }); extra.appendChild(el('p', { text: T('Este tema viene con el plan pago.') }));
+      const pay = el('div', { class: 'lmd-extra-actions', 'data-pay': '' }); pay.appendChild(el('button', { type: 'button', class: 'lmd-btn lmd-btn-fill', 'data-gv': 'plans', text: T('Ver planes') }));
+      extra.appendChild(pay); card.appendChild(extra);
+    }
+    const acts = el('div', { class: 'lmd-ask-actions' });
+    acts.appendChild(el('button', { type: 'button', class: 'lmd-btn', 'data-gv': 'close', 'data-esc': '', text: T('Cerrar') }));
+    if (!locked) { const b = el('button', { type: 'button', class: 'lmd-btn lmd-btn-fill', 'data-gv': 'add', text: T(includedOn(it) ? 'Aplicado' : 'Aplicar') }); b.disabled = includedOn(it); acts.appendChild(b); }
+    card.appendChild(acts);
+    (acts.querySelector('[data-gv=add]:not(:disabled)') || acts.querySelector('[data-gv=close]')).focus();
+    card.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-gv]'); if (!b) return;
+      m.remove();
+      if (b.dataset.gv === 'plans') core.openPanel('plan');
+      else if (b.dataset.gv === 'add') applyIncluded(it);
+    });
+  }
 
   // ---------- Ventanas ----------
   function modal(cls, label) {
@@ -241,8 +288,11 @@
     const words = view.q.toLowerCase();
     // Sin conexión se ve lo que ya está en el dispositivo, con el mismo filtro.
     const rows = view.off ? C.added().filter((it) => (!view.type || it.type === view.type) && (!words || (it.name + '\n' + it.about + '\n' + it.author).toLowerCase().includes(words))) : view.items;
+    // En Temas, primero los doce que vienen con la app: la sección nunca arranca vacía.
+    const own = view.type === 'theme' ? C.included().filter((it) => !words || (T(it.name) + '\n' + T(it.about)).toLowerCase().includes(words)) : [];
+    own.forEach((it) => list.appendChild(includedCard(it)));
     rows.forEach((it) => list.appendChild(cardOf(it)));
-    if (!rows.length && view.seq) list.appendChild(el('p', { class: 'lmd-empty', text: T(view.off ? 'Todavía no agregaste nada.' : view.q || view.type ? 'Ningún aporte coincide.' : 'Todavía no hay aportes.') }));
+    if (!rows.length && !own.length && view.seq) list.appendChild(el('p', { class: 'lmd-empty', text: T(view.off ? 'Todavía no agregaste nada.' : view.q || view.type ? 'Ningún aporte coincide.' : 'Todavía no hay aportes.') }));
     box.querySelector('[data-gal=more]').hidden = !!view.off || view.page >= view.pages;
     const mine = box.querySelector('.lmd-gal-mine'); const ml = box.querySelector('.lmd-gal-mylist'); ml.textContent = '';
     mine.hidden = !view.mine.length;
@@ -300,6 +350,11 @@
       if (seg) { view.type = seg.dataset.gtype; box.querySelectorAll('[data-gtype]').forEach((b) => { const on = b === seg; b.classList.toggle('lmd-on', on); b.setAttribute('aria-checked', String(on)); }); load(); return; }
       const b = e.target.closest('[data-gal]'); if (!b) return;
       const act = b.dataset.gal; const cardEl = b.closest('[data-gid]');
+      if (cardEl && cardEl.dataset.gkind === 'included') {
+        const own = C.included().find((x) => x.id === cardEl.dataset.gid); if (!own) return;
+        if (act === 'view') previewIncluded(own); else if (act === 'add') applyIncluded(own);
+        return;
+      }
       const it = cardEl ? (view.off ? C.added() : view.items).find((x) => String(x.id) === cardEl.dataset.gid && x.type === cardEl.dataset.gkind) : null;
       if (act === 'share') share();
       else if (act === 'more') load(true);

@@ -507,7 +507,7 @@
       if (e.key === 'Escape') closeMenu();
       const t = e.target;
       const typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
-      const mod = e.ctrlKey || e.metaKey; const key = e.key.toLowerCase();
+      const mod = LMD.mod(e); const key = e.key.toLowerCase();
       if (!core.editMode || typing || !mod) return;
       if (key === 'z' && !e.shiftKey) {
         e.preventDefault();

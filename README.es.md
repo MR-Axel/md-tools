@@ -55,6 +55,7 @@ Gratis y de código abierto. Sin seguimiento: los archivos se leen en tu navegad
 - **Índice automático** del documento, con la sección actual resaltada mientras se hace scroll.
 - **Árbol de carpetas**: los archivos Markdown de la carpeta del documento, con subcarpetas que se abren y botón para subir de nivel.
 - **Recarga automática** cuando el archivo cambia en disco, sin perder la posición.
+- **Doce temas incluidos**, seis claros y seis oscuros, en una grilla de miniaturas con vista previa en vivo. Cuatro son gratis y el resto viene con el plan pago. Cada uno fija la página, los paneles, el texto, los bordes, los enlaces, la selección, la sintaxis del código y los diagramas, con contraste AA medido (`tests/themes.mjs`).
 - **Tema** claro, oscuro o automático. Los colores de acento, la tipografía y el CSS propio son extras de agradecimiento para quienes apoyan el proyecto, y se liberan a palabra: no hay verificación. Todo lo que hace el lector y el editor es gratis.
 - **Contenido centrado**, con **ancho**, **tamaño de letra**, **interlineado** y **tipografía** a medida. Las líneas largas del código bajan de renglón, con un ajuste para dejarlas con scroll.
 - **CSS propio** encima del tema.
@@ -89,7 +90,7 @@ Abrir un `.md` directo en el navegador sigue funcionando igual que antes. La pes
 
 La página de SharpMD es HTML y JavaScript, así que también funciona servida desde cualquier hosting estático, sin la extensión. En Chrome, Edge, Brave y otros navegadores Chromium abre archivos y carpetas y guarda en el lugar. En Firefox y Safari, que no dejan que una página escriba en el disco, abre de a un archivo y al guardar descarga una copia. En los dos casos no se sube nada: los archivos se leen en tu navegador.
 
-Está publicada en [sharpmd.app](https://sharpmd.app/). Desde Ajustes → Instalar se instala como app, con ventana propia, y Windows la ofrece en "Abrir con" para los `.md`. Para correr tu propia copia, serví esta carpeta (`npx serve .`) y abrí la dirección que te muestra.
+Está publicada en [sharpmd.app](https://sharpmd.app/). Desde Ajustes → Instalar se instala como app, con ventana propia, y Windows la ofrece en "Abrir con" para los `.md`. Ahí mismo están los pasos para iPhone y iPad (en Safari: Compartir, Agregar a inicio) y para Mac (en Safari: Archivo, Agregar al Dock; en Chrome o Edge: el ícono de instalar). En iPhone respeta la muesca y la barra de inicio, deja la barra de formato arriba del teclado y exporta por la hoja de compartir. Safari puede borrar las notas del navegador tras semanas sin uso si la app no está instalada: conviene instalarla o usar la nube. Para correr tu propia copia, serví esta carpeta (`npx serve .`) y abrí la dirección que te muestra.
 
 La app de Android es esta misma web empaquetada (Trusted Web Activity): abre `sharpmd.app` a pantalla completa, con las mismas notas y la misma cuenta. `.well-known/assetlinks.json` lleva la huella de la llave que firma la app.
 
@@ -100,6 +101,8 @@ Chrome no puede actualizar una extensión cargada desde una carpeta, así que Sh
 Lee el número de versión publicado y no manda ningún dato. El otro pedido de red que hace la extensión es una consulta corta, al tocar su botón, para saber si la app web contesta.
 
 ## Atajos
+
+En una Mac, Ctrl es ⌘ y Alt es ⌥ (rehacer es ⇧⌘Z), y la app los muestra así.
 
 | Atajo | Acción |
 |---|---|
@@ -125,7 +128,7 @@ src/
   defaults.js     ajustes por defecto, acceso al storage y el diccionario español/inglés
   kit.js          íconos y utilidades compartidas
   markdown.js     el parser con sus plugins: links [[wiki]], matemática, cabecera YAML
-  theme.js        tema claro u oscuro y color de acento
+  theme.js        los doce temas incluidos, modo claro u oscuro y color de acento
   serialize.js    del bloque editado al Markdown
   store.js        permisos de archivos y carpetas, guardados en IndexedDB
   bridge.js       un solo depósito entre la app web y la extensión: iguala los dos lados y reconecta carpetas
@@ -172,7 +175,8 @@ Carga la extensión en un Chromium y recorre los dos modos: el `.md` abierto dir
 
 Otros dos scripts se corren a mano, fuera de `npm test`:
 
-- `BROWSER=firefox node browsers.mjs` (o `webkit`) recorre la portada y la app web en los otros motores. Se instalan una vez con `npx playwright-core install firefox webkit`.
+- `node themes.mjs` mide el contraste de los doce temas incluidos, sin navegador.
+- `BROWSER=firefox node browsers.mjs` (o `webkit`) recorre la portada y la app web en los otros motores. En WebKit recorre además la app como la ve un iPhone, un iPad y una Mac (capturas con prefijo `iphone-` e `ipad-`); ese motor no es Safari, así que falta mirarlo en un dispositivo real. Se instalan una vez con `npx playwright-core install firefox webkit`.
 - `node perf.mjs` mide la carga de la app web, en frío y en caliente, con la red y la CPU limitadas. Conviene correrlo antes y después de tocar lo que carga `src/app.html`.
 
 Un script que el primer pintado no necesita no se suma a `src/app.html`: va en `LAZY_APP` (`src/content.js`) y en la lista `LATE` de `sw.js`, y sigue en `manifest.json` para la extensión.
