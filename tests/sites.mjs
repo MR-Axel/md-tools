@@ -364,6 +364,23 @@ try {
   const delSite = await api('DELETE', '/sites/' + S.id, undefined, A.s);
   check('eliminar el sitio libera la dirección', delSite.status === 200 && (await site('/cafetera/')).status === 404 && (await api('GET', '/sites/slug?slug=cafetera', undefined, X.s)).json.ok === true, delSite.json);
 
+  // Sin sitio, Ajustes > Nube ofrece publicar una carpeta: se elige entre las que no tienen contraseña.
+  await ana.page.goto(R.noteUrl('manual/guia.md')); await ana.page.waitForSelector('.markdown-body h1');
+  await ana.page.evaluate(() => document.querySelector('[data-act=settings]').click()); await ana.page.waitForSelector('.lmd-panel-card'); await ana.page.click('[data-ptab=cloud]');
+  await ana.page.waitForSelector('[data-c=site-new]'); await ana.page.click('[data-c=site-new]'); await ana.page.waitForSelector('.lmd-site-pick [data-st=pick]');
+  const picks = await ana.page.evaluate(() => [...document.querySelectorAll('.lmd-site-pick [data-st=pick]')].map((b) => b.dataset.folder));
+  await ana.page.click('.lmd-site-pick [data-folder=otra]'); await ana.page.waitForSelector('.lmd-site [data-f=slug]');
+  const picked = await ana.page.evaluate(() => ({ folder: document.querySelector('.lmd-site-folder').textContent.trim(), slug: document.querySelector('.lmd-site [data-f=slug]').value }));
+  check('desde Ajustes se elige la carpeta a publicar, y las protegidas no figuran', picks.includes('manual') && picks.includes('otra') && picks.includes('manual/cuidado') && !picks.some((p) => /cofre/.test(p)) && picked.folder === 'otra/' && picked.slug === 'otra', [picks, picked]);
+  await ana.page.click('.lmd-site [data-st=close]'); await ana.page.keyboard.press('Escape');
+  // Con el plan gratis el menú lo ofrece igual, y la ventana dice que es del plan pago.
+  const fede = await R.open(F); await fede.page.goto(R.noteUrl('manual/index.md')); await fede.page.waitForSelector('.markdown-body h1'); await fede.page.waitForSelector(CLOUD + ' .lmd-node-dir');
+  await fede.page.locator(CLOUD + ' .lmd-node-dir', { hasText: 'manual' }).first().click({ button: 'right' }); await fede.page.waitForSelector('.lmd-menu [data-f=site]'); await fede.page.click('.lmd-menu [data-f=site]');
+  await fede.page.waitForSelector('.lmd-site [data-st=plan]');
+  const wall = await fede.page.evaluate(() => ({ text: document.querySelector('.lmd-site-body').innerText, pay: document.querySelector('.lmd-site [data-st=plan]').hasAttribute('data-pay'), form: !!document.querySelector('.lmd-site [data-f=slug]') }));
+  check('con el plan gratis la ventana dice que publicar es del plan pago, sin formulario, y el botón a los planes se oculta en la app de la tienda', /Publishing a site is part of the paid plan\./.test(wall.text) && wall.pay === true && wall.form === false, wall);
+  await fede.ctx.close();
+
   // ---------- Equipo ----------
   console.log('Equipo');
   const O = await R.signup('olga@ejemplo.test'); const M = await R.signup('mario@ejemplo.test'); const L = await R.signup('lola@ejemplo.test'); const N = await R.signup('nico@ejemplo.test');
