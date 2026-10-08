@@ -2479,9 +2479,9 @@ button.lmd-cd-pill-name { cursor: pointer; border-radius: 4px; }
 .lmd-ask-card p.lmd-ai-none, .lmd-ai-none { margin: 0; padding: 10px; color: var(--fg-faint); font-size: 13px; }
 
 .lmd-ai-set { display: grid; gap: 8px; margin: 10px 0; }
-.lmd-ai-field { display: grid; gap: 4px; font-size: 13px; }
+.lmd-ai-field { display: grid; gap: 4px; margin-top: 6px; font-size: 13px; }
 .lmd-ai-field > span { color: var(--fg-muted); }
-.lmd-ai-tail { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.lmd-ai-tail { margin-left: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .lmd-tl-opts .lmd-ai-note { margin: 0; }
 
 .lmd-ai-panel { position: fixed; z-index: 44; top: 0; right: 0; bottom: 0; box-sizing: border-box; width: min(380px, 100vw); display: flex; flex-direction: column; gap: 8px; padding: 12px 12px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--bg); border-left: 1px solid var(--line); box-shadow: var(--shadow); font: 13.5px/1.5 var(--lmd-font); color: var(--fg); }
