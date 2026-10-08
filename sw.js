@@ -31,13 +31,14 @@ const SHELL = [
 const LATE = [
   'src/emoji-data.js', 'src/emoji.js', 'src/community.js', 'src/templates.js', 'src/diagram.js', 'src/formula.js',
   'src/speak.js', 'src/voice.js', 'src/dictate.js', 'src/gallery.js',
-  'src/present.js', 'src/daily.js', 'src/docx.js', 'src/linkmap.js', 'src/jsonyaml.js', 'src/automate.js', 'src/publish.js', 'src/aikey.js', 'src/assistant.js', 'src/shortcuts.js',
+  'src/present.js', 'src/daily.js', 'src/docx.js', 'src/linkmap.js', 'src/jsonyaml.js', 'src/import.js', 'src/automate.js', 'src/publish.js', 'src/aikey.js', 'src/assistant.js', 'src/shortcuts.js',
   'vendor/highlight.min.js', 'vendor/markdown-it-emoji.min.js',
   'vendor/fonts/inter-italic.woff2',
   'vendor/katex/katex.min.js', 'vendor/katex/katex.min.css',
   'icons/icon192.png', 'icons/icon512.png', 'icons/apple-touch-icon-180.png',
 ];
-// Los diagramas (Mermaid, Graphviz) y las tipografías de las fórmulas pesan: se guardan la primera vez que se usan.
+// Los diagramas (Mermaid, Graphviz), las tipografías de las fórmulas y el lector de PDF (vendor/pdfjs) pesan: se
+// guardan la primera vez que se usan.
 
 // Lo guardado se busca por ruta, sin lo que venga después del "?": app.html?f=… es la misma página.
 const keyOf = (url) => url.origin + url.pathname;

@@ -148,6 +148,8 @@
     icon: svg('<circle cx="6" cy="7" r="2.300"/><circle cx="18" cy="6" r="2.300"/><circle cx="12" cy="17.500" r="2.300"/><path d="M8.200 6.800l7.500-.600M7.100 9l3.800 6.500M16.900 8l-3.800 7.500"/>') });
   register({ id: 'jsonyaml', name: 'JSON y YAML', about: 'Un bloque o un archivo JSON o YAML se ve como un árbol plegable que se edita.', defaultOn: false, lazy: 'jsonyaml', module: () => LMD.jsonyaml,
     icon: svg('<path d="M8.500 4.500c-2 0-2.500 1-2.500 2.500v2.500c0 1.300-.700 2.300-2 2.500 1.300.200 2 1.200 2 2.500V17c0 1.500.500 2.500 2.500 2.500M15.500 4.500c2 0 2.500 1 2.500 2.500v2.500c0 1.300.700 2.300 2 2.500-1.300.200-2 1.200-2 2.500V17c0 1.500-.500 2.500-2.500 2.500"/>') });
+  register({ id: 'import', name: 'Importar a Markdown', about: 'Convierte Word, Excel, PowerPoint, PDF, EPUB, HTML y CSV en una nota, sin subir el archivo.', defaultOn: false, lazy: 'import', module: () => LMD.import,
+    icon: svg('<path d="M6.500 3.500h8l4 4v13h-12z"/><path d="M14.500 3.500v4h4M12 10.500v6M9.500 14l2.500 2.500 2.500-2.500"/>') });
   // La IA va con la clave de cada persona: las llamadas salen de acá derecho a su proveedor (aikey.js).
   register({ id: 'assistant', name: 'Asistente de IA (con tu clave)', about: 'Mejora, traduce, genera y responde sobre la nota con tu propia clave de Claude, OpenAI o un servidor compatible.', defaultOn: false, lazy: 'assistant', module: () => LMD.assistant,
     available: () => (window.crypto && window.crypto.subtle && window.indexedDB ? '' : T('Acá no se puede guardar la clave de forma segura.')),

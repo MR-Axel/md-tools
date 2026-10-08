@@ -122,6 +122,7 @@
   }
 
   async function openPicked(handle, say, opt) {
+    if (handle.kind === 'file' && imports(handle.name)) { LMD.import.run(await handle.getFile()); return; }
     let rec = null;
     for (const r of await rootsAll()) {
       try { if (await r.handle.isSameEntry(handle)) { rec = r; break; } } catch (e) { /* permiso vencido */ }
@@ -141,8 +142,11 @@
 
   // Sin File System Access (Firefox, Safari) el archivo se lee una vez y se guarda en la sesión.
   const canPick = () => !!window.showOpenFilePicker;
+  // Con la herramienta de importar prendida, un Word, un PDF y los demás que ella convierte van a ella (import.js).
+  const imports = (name) => !!LMD.import && LMD.tools.isOn('import') && LMD.import.takes(name);
   async function openInMemory(file, say) {
     if (!file) return;
+    if (imports(file.name)) { LMD.import.run(file); return; }
     try { sessionStorage.setItem('mdt-mem', JSON.stringify({ name: file.name, text: await file.text() })); }
     catch (e) { say(T('No se pudo abrir. Probá de nuevo.')); return; }
     ctx.open('mem/' + encodeURIComponent(file.name));
@@ -152,7 +156,7 @@
   async function pick(what, say) {
     try {
       if (!canPick()) {
-        const input = el('input', { type: 'file', accept: '.md,.markdown,.mdx,.mkd,.mdown,.txt,.json,.yaml,.yml' });
+        const input = el('input', { type: 'file', accept: '.md,.markdown,.mdx,.mkd,.mdown,.txt,.json,.yaml,.yml' + (imports('x.pdf') ? ',' + LMD.import.accept : '') });
         input.addEventListener('change', () => openInMemory(input.files[0], say));
         input.click();
         return;
@@ -160,7 +164,8 @@
       if (what === 'dir') await openPicked(await window.showDirectoryPicker({ id: 'lmd-abrir-carpeta', mode: 'readwrite' }), say);
       else {
         const picked = await window.showOpenFilePicker({ id: 'lmd-abrir', multiple: false,
-          types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.mkd', '.mdown'] } }, { description: 'Text, JSON, YAML', accept: { 'text/plain': ['.txt'], 'application/json': ['.json'], 'application/yaml': ['.yaml', '.yml'] } }] });
+          types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.mkd', '.mdown'] } }, { description: 'Text, JSON, YAML', accept: { 'text/plain': ['.txt'], 'application/json': ['.json'], 'application/yaml': ['.yaml', '.yml'] } }]
+            .concat(imports('x.pdf') ? [{ description: 'Word, Excel, PowerPoint, EPUB, PDF, HTML, CSV', accept: { 'application/octet-stream': LMD.import.accept.split(',') } }] : []) });
         await openPicked(picked[0], say);
       }
     } catch (err) {

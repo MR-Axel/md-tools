@@ -182,6 +182,7 @@
     docx: { js: ['src/docx.js'] },
     linkmap: { js: ['src/linkmap.js'] },
     jsonyaml: { js: ['src/jsonyaml.js'] },
+    import: { js: ['src/import.js'] },
     assistant: { js: ['src/aikey.js', 'src/assistant.js'] },
     // La galería de la comunidad, en Ajustes > Herramientas: se pide al abrir esa pestaña.
     gallery: { js: ['src/gallery.js'] },
@@ -194,7 +195,7 @@
   const LAZY_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, tools: () => !!(LMD.diagram && LMD.formula && LMD.templates && LMD.community) };
   LAZY_HAVE.gallery = () => !!LMD.gallery; LAZY_HAVE.automate = () => !!LMD.automate; LAZY_HAVE.publish = () => !!LMD.publish;
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
-  ['present', 'daily', 'docx', 'linkmap', 'jsonyaml'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
+  ['present', 'daily', 'docx', 'linkmap', 'jsonyaml', 'import'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
   LAZY_HAVE.assistant = () => !!(LMD.ai && LMD.assistant);
   LAZY_HAVE.shortcuts = () => !!LMD.shortcuts;
   async function appLazy(what) {
@@ -3263,6 +3264,8 @@
     // Abrir otra nota (por su dirección virtual) o quedarse sin ninguna, sin recargar la página.
     open: (url, opt) => go(url.slice(VBASE.length), opt),
     close: (opt) => go('', opt),
+    // Un texto como nota nueva sin guardar: vive en la sesión hasta que se elige dónde guardarla (import.js).
+    openText: (name, text) => { try { sessionStorage.setItem('mdt-mem', JSON.stringify({ name, text, disk: '' })); } catch (e) { return Promise.resolve(false); } return go('mem/' + encodeURIComponent(name), { edit: 'doc' }); },
     get HERE() { return HERE; }, get docName() { return DOC_NAME; }, get noDoc() { return noDoc; },
     openApp: (query) => bg({ type: 'openApp', query }),
     openPanel: (tab, why) => openPanel(tab, why),
