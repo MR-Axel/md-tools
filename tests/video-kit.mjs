@@ -364,7 +364,7 @@ const fakeRecognizer = () => {
 };
 const fakeSynth = () => {
   const V = (name, lang, uri, def) => ({ name, lang, voiceURI: uri, localService: true, default: !!def });
-  const fake = { getVoices: () => [V('English', 'en-US', 'v-us', true)], addEventListener() {}, removeEventListener() {}, pause() {}, resume() {}, speaking: false, pending: false, paused: false, speak() {}, cancel() {} };
+  const fake = { getVoices: () => [V('English', 'en-US', 'v-us', true)], addEventListener() {}, removeEventListener() {}, pause() {}, resume() {}, speaking: false, pending: false, paused: false, speak(u) { setTimeout(() => { if (u.onstart) u.onstart({ type: 'start' }); }, 10); }, cancel() {} };
   Object.defineProperty(window, 'speechSynthesis', { value: fake, configurable: true });
   window.SpeechSynthesisUtterance = function (text) { this.text = text; this.lang = ''; this.rate = 1; this.voice = null; };
 };
