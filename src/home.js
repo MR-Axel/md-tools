@@ -152,7 +152,7 @@
   async function pick(what, say) {
     try {
       if (!canPick()) {
-        const input = el('input', { type: 'file', accept: '.md,.markdown,.mdx,.mkd,.mdown,.txt' });
+        const input = el('input', { type: 'file', accept: '.md,.markdown,.mdx,.mkd,.mdown,.txt,.json,.yaml,.yml' });
         input.addEventListener('change', () => openInMemory(input.files[0], say));
         input.click();
         return;
@@ -160,7 +160,7 @@
       if (what === 'dir') await openPicked(await window.showDirectoryPicker({ id: 'lmd-abrir-carpeta', mode: 'readwrite' }), say);
       else {
         const picked = await window.showOpenFilePicker({ id: 'lmd-abrir', multiple: false,
-          types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.mkd', '.mdown'] } }] });
+          types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.mkd', '.mdown'] } }, { description: 'Text, JSON, YAML', accept: { 'text/plain': ['.txt'], 'application/json': ['.json'], 'application/yaml': ['.yaml', '.yml'] } }] });
         await openPicked(picked[0], say);
       }
     } catch (err) {
