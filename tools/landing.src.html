@@ -21,14 +21,12 @@
   @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
   :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --faint: #8a909c; --line: #dedbd2; --accent: #3f6b0c; --fill: #4d7c0f; --on: #fff; --shadow: 0 24px 60px rgba(30, 32, 38, .16); --mono: ui-monospace, "Cascadia Code", Consolas, monospace; }
   @media (prefers-color-scheme: dark) { :root { --bg: #121418; --soft: #1a1d23; --fg: #e6e8ec; --muted: #a0a7b4; --faint: #737b89; --line: #2a2e37; --accent: #bef264; --fill: #bef264; --on: #14161a; --shadow: 0 24px 70px rgba(0, 0, 0, .55); } }
-  /* Quien ya usó la app va directo a ella: mientras tanto no se pinta la portada, sino el logo con el cursor sobre el fondo de la app. */
+  /* Quien ya usó la app va directo a ella: mientras tanto no se pinta la portada, sino el logo (icons/logo.svg, con el cursor que parpadea) sobre el fondo de la app. */
   html.go body { background: #121418; } html.go.go-light body { background: #fbfaf7; }
   html.go body > * { display: none; }
   html.go body::before, html.go body::after { content: ""; position: fixed; left: 50%; top: 50%; }
-  html.go body::before { width: 72px; height: 72px; margin: -36px 0 0 -36px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='6 8 52 48'%3E%3Cpath d='M27 16 22 48M41 16 36 48M13 27h30M11 38h30' fill='none' stroke='%23bef264' stroke-width='5.5' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat; }
-  html.go.go-light body::before { filter: brightness(.52) saturate(1.5); }
-  html.go body::after { width: 8.3px; height: 47px; margin: -26.3px 0 0 22.2px; border-radius: 4.2px; background: #e8eaee; animation: go-blink 1.06s steps(1, end) .3s infinite; }
-  html.go.go-light body::after { background: #1d2026; }
+  html.go body::before { width: 72px; height: 72px; margin: -36px 0 0 -36px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%2314161a'/%3E%3Cg fill='%23f3f5f8'%3E%3Crect x='14.5' y='17' width='6' height='30' rx='1.3'/%3E%3Crect x='26.5' y='17' width='6' height='30' rx='1.3'/%3E%3Crect x='8.5' y='23.25' width='30' height='6' rx='1.3'/%3E%3Crect x='8.5' y='34.75' width='30' height='6' rx='1.3'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat; }
+  html.go body::after { width: 12.4px; height: 38.2px; margin: -19.1px 0 0 12.9px; border-radius: 2.7px; background: #c5f467; animation: go-blink 1.06s steps(1, end) .3s infinite; }
   @keyframes go-blink { 50% { opacity: 0; } }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
@@ -37,8 +35,9 @@
   .wrap { width: min(1120px, 100% - 40px); margin: 0 auto; }
   nav { position: sticky; top: 0; z-index: 5; background: var(--bg); background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
   nav .wrap { display: flex; align-items: center; gap: 22px; height: 58px; }
-  .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; text-decoration: none; margin-right: auto; }
-  .brand img { width: 26px; height: 26px; border-radius: 7px; }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 400; text-decoration: none; margin-right: auto; }
+  .brand img { width: 26px; height: 26px; border-radius: 6px; }
+  .brand b { font-weight: 700; }
   nav a.link { color: var(--muted); text-decoration: none; font-size: 14.5px; }
   nav a.link:hover { color: var(--fg); }
   .lang { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); }
@@ -314,7 +313,7 @@
 </head>
 <body>
 <nav><div class="wrap">
-  <a class="brand" href="#top"><img src="icons/icon48.png" alt="SharpMD logo" width="26" height="26"><span>SharpMD</span></a>
+  <a class="brand" href="#top"><img src="icons/logo.svg" alt="SharpMD logo" width="26" height="26"><span><b>Sharp</b>MD</span></a>
   <a class="link" href="#features"><span lang="en">Features</span><span lang="es">Funciones</span></a>
   <a class="link" href="#ai"><span lang="en">Your AI</span><span lang="es">Tu IA</span></a>
   <a class="link" href="#share"><span lang="en">Sharing</span><span lang="es">Compartir</span></a>

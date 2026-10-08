@@ -272,7 +272,7 @@ const phoneOverlay = (label) => `<!doctype html><meta charset="utf-8"><style>${F
   .cap span { font-weight: 720; font-size: 76px; letter-spacing: -0.035em; line-height: 1.06; }
   .brand { position: absolute; right: 110px; bottom: 84px; display: flex; align-items: center; gap: 16px; font-weight: 700; font-size: 34px; letter-spacing: -0.03em; color: #a0a7b4; }
   .brand img { width: 46px; height: 46px; border-radius: 11px; }
-</style><body><div class="hole"></div><div class="glow"></div><div class="body"></div><div class="cap"><i></i><span>${label}</span></div><div class="brand"><img src="${R.origin}/icons/icon128.png">SharpMD</div></body>`;
+</style><body><div class="hole"></div><div class="glow"></div><div class="body"></div><div class="cap"><i></i><span>${label}</span></div><div class="brand"><img src="${R.origin}/icons/icon128.png"><div>Sharp<span style="font-weight:400">MD</span></div></div></body>`;
 // The opening and closing cards, animated by the browser and recorded like any other scene.
 const card = (lines) => `<!doctype html><meta charset="utf-8"><style>${FONT} html, body { background: ${BG}; }
   .glow { position: absolute; inset: 0; background: radial-gradient(60% 80% at 20% 110%, rgba(190, 242, 100, .16), transparent 70%); }

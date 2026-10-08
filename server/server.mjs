@@ -248,7 +248,7 @@ const MAIL = {
 const mailHtml = (m, code) => '<!doctype html><html><body style="margin:0;padding:32px 16px;background:#f4f3ee;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1d2026">' +
   '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">' +
   '<table role="presentation" width="420" cellpadding="0" cellspacing="0" style="max-width:420px;width:100%;background:#ffffff;border:1px solid #dedbd2;border-radius:14px">' +
-  '<tr><td style="padding:28px 32px 8px;font-size:17px;font-weight:700;letter-spacing:-0.01em"><span style="color:#4d7c0f">#</span> SharpMD</td></tr>' +
+  '<tr><td style="padding:28px 32px 8px;font-size:17px;font-weight:700;letter-spacing:-0.01em"><span style="display:inline-block;padding:3px 5px 3px 6px;border-radius:6px;background:#14161a;color:#f3f5f8;font:700 15px/16px ui-monospace,Consolas,Menlo,monospace;vertical-align:middle">#<span style="display:inline-block;width:5px;height:14px;margin-left:3px;border-radius:1px;background:#c5f467;vertical-align:-2px"></span></span>&nbsp; <span style="vertical-align:middle">Sharp<span style="font-weight:400">MD</span></span></td></tr>' +
   '<tr><td style="padding:8px 32px 0;font-size:15px;color:#5c6370">' + m.lead + '</td></tr>' +
   '<tr><td style="padding:14px 32px 6px"><div style="padding:16px 0;border-radius:10px;background:#f1efe9;text-align:center;font:700 32px/1 ui-monospace,Consolas,Menlo,monospace;letter-spacing:0.28em;color:#1d2026">' + code + '</div></td></tr>' +
   '<tr><td style="padding:12px 32px 28px;font-size:13.5px;line-height:1.5;color:#8a909c">' + m.note + '</td></tr>' +
@@ -4350,7 +4350,7 @@ const SITE_VER = sha(SITE_CSS + SITE_JS).slice(0, 12);
 // con este host. Sin estilos ni scripts en línea, sin marcos, sin formularios que salgan.
 const SITE_CSP = PAGES ? "default-src 'none'; script-src " + PAGES.url + "/_/site.js; style-src " + PAGES.url + "/_/site.css; img-src https: data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" : '';
 const SITE_HEADERS = { 'content-security-policy': SITE_CSP, 'x-content-type-options': 'nosniff', 'referrer-policy': 'strict-origin-when-cross-origin', 'x-frame-options': 'DENY', 'cross-origin-opener-policy': 'same-origin', 'cross-origin-resource-policy': 'same-origin', 'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()' };
-const SITE_ICON = 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#1d2026"/><text x="16" y="23" font-family="monospace" font-size="22" font-weight="700" text-anchor="middle" fill="#bef264">#</text></svg>').toString('base64');
+const SITE_ICON = 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3.75" fill="#14161a"/><path fill="#f3f5f8" d="M3 4h2v8H3zM7 4h2v8H7zM2 5h8v2H2zM2 9h8v2H2z"/><rect x="11" y="3" width="3" height="10" rx=".5" fill="#c5f467"/></svg>').toString('base64');
 const siteDay = (ms) => new Date(ms).toISOString().slice(0, 10);
 // El documento entero, con su cabecera. Todo lo que no es el cuerpo ya filtrado pasa por html().
 function siteDoc(o) {
