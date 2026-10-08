@@ -334,13 +334,22 @@
   // put cambia líneas como spliceLines y, si el cambio deja dos tablas pegadas, suma ese renglón en el mismo paso
   // (un solo Ctrl+Z). Devuelve cómo quedó corrida cada línea.
   const RULE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
-  function put(s, count, body) {
-    const all = lines(); const from = Math.max(fm(), s - 3); const tail = all.slice(s + count, s + count + 3);
-    const win = all.slice(from, s).concat(body, tail); const added = [];
-    for (let i = win.length - 3; i > 0; i--) {
-      if (win[i].trim() === '' && win[i - 1].includes('|') && win[i + 1].includes('|') && win[i + 2].includes('|') && RULE.test(win[i + 2])) { win.splice(i, 0, ''); added.push(from + i); }
+  // Con tag, además, dos listas que el cambio dejó pegadas siguen siendo dos (lists.js: una cambia de marca).
+  // tag(was) recibe de qué lista era cada línea y devuelve lo mismo para body: { g: orígenes, m: cuáles se movieron }.
+  function put(s, count, body, tag) {
+    const all = lines(); let next = all.slice(0, s).concat(body, all.slice(s + count));
+    if (tag && LMD.lists && LMD.lists.apart) {
+      const was = LMD.lists.origins(all, fm()); const t = tag(was);
+      const moved = new Set(); t.m.forEach((x, i) => { if (x) moved.add(s + i); });
+      next = LMD.lists.apart(next, fm(), was.slice(0, s).concat(t.g, was.slice(s + count)), (i) => moved.has(i)) || next;
     }
-    core.spliceLines(from, s - from + count + tail.length, win);
+    const from = Math.max(fm(), s - 3); const to = Math.min(next.length, s + body.length + 3); const added = [];
+    for (let i = to - 3; i > from; i--) {
+      if (next[i].trim() === '' && next[i - 1].includes('|') && next[i + 1].includes('|') && next[i + 2].includes('|') && RULE.test(next[i + 2])) { next.splice(i, 0, ''); added.push(i); }
+    }
+    let a = 0; while (a < all.length && a < next.length && all[a] === next[a]) a++;
+    let b = 0; while (b < all.length - a && b < next.length - a && all[all.length - 1 - b] === next[next.length - 1 - b]) b++;
+    core.spliceLines(a, all.length - a - b, next.slice(a, next.length - b));
     return (line) => line + added.filter((i) => i < line).length;
   }
 
@@ -388,14 +397,15 @@
     const r = span(block); if (!r) return;
     let s = r.s; let n = r.e - r.s;
     if (blank(s - 1) && blank(r.e)) { if (r.e < lines().length) n++; else if (s > fm()) { s--; n++; } }
-    put(s, n, []);
+    put(s, n, [], () => ({ g: [], m: [] }));
     core.render();
     core.flash(T('Bloque eliminado. Ctrl+Z lo deshace'));
   }
 
   function duplicate(block) {
     const r = span(block); if (!r) return;
-    put(r.e, 0, [''].concat(lines().slice(r.s, r.e), blank(r.e) ? [] : ['']));
+    const body = [''].concat(lines().slice(r.s, r.e), blank(r.e) ? [] : ['']);
+    put(r.e, 0, body, () => ({ g: body.map(() => -1), m: body.map(() => true) }));
     core.render();
   }
 
@@ -405,7 +415,11 @@
     const a = span(dir < 0 ? other : block); const b = span(dir < 0 ? block : other);
     if (!a || !b) return;
     const first = lines().slice(a.s, a.e); const gap = lines().slice(a.e, b.s); const second = lines().slice(b.s, b.e);
-    const shifted = put(a.s, b.e - a.s, second.concat(gap, first));
+    const cut = (was, x, y, on) => ({ g: was.slice(x, y), m: was.slice(x, y).map(() => on) });
+    const shifted = put(a.s, b.e - a.s, second.concat(gap, first), (was) => {
+      const one = cut(was, b.s, b.e, dir < 0); const mid = cut(was, a.e, b.s, false); const two = cut(was, a.s, a.e, dir > 0);
+      return { g: one.g.concat(mid.g, two.g), m: one.m.concat(mid.m, two.m) };
+    });
     core.render();
     const at = shifted(dir < 0 ? a.s : a.s + second.length + gap.length);
     const moved = blockAtLine(at);
@@ -587,11 +601,11 @@
   }
   const clSettle = () => { const a = document.activeElement; if (a && a.blur && a.isContentEditable) a.blur(); };
   let clToast = null;
-  function clSay(text) {
+  function clSay(text, then) {
     if (clToast) clToast.remove();
     const t = el('div', { class: 'lmd-cl-toast', role: 'status' }); clToast = t;
     const undo = el('button', { type: 'button', class: 'lmd-link', text: T('Deshacer') });
-    undo.addEventListener('click', () => { t.remove(); if (clToast === t) clToast = null; core.undo(); });
+    undo.addEventListener('click', () => { t.remove(); if (clToast === t) clToast = null; core.undo(); if (then) then(); });
     t.append(el('span', { text }), undo);
     document.body.appendChild(t);
     setTimeout(() => { t.remove(); if (clToast === t) clToast = null; }, 8000);
@@ -768,7 +782,7 @@
   }
 
   LMD.write = {
-    init, enter, onKey, append, closeMenu, nest,
+    init, enter, onKey, append, closeMenu, nest, say: clSay,
     remove: (node) => { const b = topBlock(node); if (b) removeBlock(b); },
     blur: (d) => commitDraft(d, false),
     sync: syncDraft,

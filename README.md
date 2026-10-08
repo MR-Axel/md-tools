@@ -238,7 +238,7 @@ src/
   board.js        kanban boards (cards with attributes) and table formulas
   page.js         page settings kept in the front matter of the note
   fold.js         collapsible sections edited in place and folding by heading
-  blocks.js       select several blocks and act on them: copy, cut, move, wrap, new note
+  blocks.js       select several blocks, or items of one list, and act on them: copy, cut, move, wrap, new note
   automate.js     Settings → Automations and the guided setup, loaded on demand
   extras.js       files from the tree, images, replace, typewriter mode, HTML export
   images.js       shrinking images in the browser, cloud attachments, storage in Settings
@@ -276,6 +276,7 @@ Two more scripts run by hand, outside `npm test`:
 - `node jsonyaml.mjs` covers the JSON and YAML tree and plain `.txt` files (`ONLY=yaml` runs one part).
 - `node fold.mjs` covers collapsible sections (insert, title, wrap, nesting, export) and folding by heading.
 - `node blocks.mjs` covers selecting several blocks (mouse, keyboard, touch) and every action on them.
+- `node items.mjs` covers selecting list items and acting on them, neighbouring lists that must stay apart, pasting across tabs, and the cost of dragging in a long note.
 - `node import.mjs` covers Import to Markdown: each format, progress, cancelling, limits, hostile files and the extension page (`ONLY=pdf` runs one part).
 - `node assistant.mjs` covers the AI assistant against a local server that imitates the Anthropic and OpenAI streaming formats: no real provider and no real key (`ONLY=key` runs one part: key, actions, gen, panel, comments, errors, vault, small, safe, ext).
 - `node perf.mjs` measures the web app load, cold and warm, on a throttled network and CPU. Run it before and after touching what `src/app.html` loads.

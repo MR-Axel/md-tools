@@ -1395,6 +1395,9 @@
   let checking = false;
   async function checkForChanges(manual) {
     if (checking || noDoc || saving) return;
+    // Una nota que todavía no tiene archivo (vive en la sesión) no tiene nada afuera que releer. Su "archivo" es
+    // lo que hay en memoria: compararlo con lo guardado (nada, en una nota nueva) daba un cambio en el disco falso.
+    if (appRoot && appRoot.id === 'mem') { if (manual) flash(T('Sin cambios')); return; }
     checking = true;
     const seq = docSeq;
     try {

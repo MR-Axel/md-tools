@@ -39,6 +39,8 @@ const md = async (page) => (await page.evaluate(() => LMD.page.md())).replace(/\
 const blur = (page) => page.evaluate(() => { const a = document.activeElement; if (a && a.blur) a.blur(); });
 const para = (page, has) => page.locator('.lmd-article .lmd-editable', { hasText: has }).first();
 const flash = (page) => page.evaluate(() => (document.querySelector('.lmd-status') || {}).textContent || '');
+// El aviso de lo eliminado, con su botón de deshacer.
+const toast = (page) => page.evaluate(() => { const t = document.querySelector('.lmd-cl-toast'); return t ? t.querySelector('span').textContent + ' | ' + t.querySelector('button').textContent : ''; });
 // Los bloques marcados, por su texto.
 const sel = (page) => page.evaluate(() => [...document.querySelectorAll('.lmd-article > .lmd-bsel')].map((n) => { const c = n.cloneNode(true); c.querySelectorAll('.lmd-anchor, .lmd-code-copy, .lmd-code-lang').forEach((a) => a.remove()); return c.textContent.replace(/\s+/g, ' ').trim().slice(0, 24); }));
 const bar = (page) => page.evaluate(() => {
@@ -230,13 +232,17 @@ await step('Cortar, eliminar y duplicar: un paso de deshacer cada uno', async ()
   await page.keyboard.press('Delete'); await sleep(350);
   t = await md(page);
   check('Supr elimina los marcados, también salteados y el último', t === ['# Doc', '', 'Beta two.', '', '## Section', '', 'Gamma three.', '', '| a | b |', '| --- | --- |', '| 1 | 2 |', '', '```js', 'code();', '```', '', '::: details More', 'Inside.', ':::', ''].join('\n'), t);
-  check('y lo dice', /Blocks deleted: 3\. Ctrl\+Z brings them back/.test(await flash(page)), await flash(page));
+  check('y lo dice, con un botón para deshacer a la vista', (await toast(page)) === 'Blocks deleted: 3 | Undo', await toast(page));
+  await page.click('.lmd-cl-toast button'); await sleep(300);
+  check('ese botón devuelve los tres de una vez', (await md(page)) === DOC && (await toast(page)) === '', await md(page));
+  await marginClick(page, 'Alpha one'); await marginClick(page, 'item a', 'Control'); await para(page, 'Omega end').click({ modifiers: ['Control'] }); await sleep(120);
+  await page.keyboard.press('Delete'); await sleep(350);
   await undo(page);
-  check('un solo deshacer devuelve los tres', (await md(page)) === DOC);
+  check('y un solo Ctrl+Z también', (await md(page)) === DOC);
   await page.keyboard.press('Control+y'); await sleep(300); await undo(page);
   check('rehacer y deshacer de nuevo dejan todo igual', (await md(page)) === DOC);
   await marginClick(page, 'Beta two'); await page.keyboard.press('Backspace'); await sleep(300);
-  check('Retroceso también elimina', (await md(page)) === DOC.replace('Beta two.\n\n', '') && /Block deleted/.test(await flash(page)));
+  check('Retroceso también elimina', (await md(page)) === DOC.replace('Beta two.\n\n', '') && /^Block deleted \| Undo$/.test(await toast(page)), await toast(page));
   await undo(page);
   // Duplicar: un tramo y salteados.
   await marginDrag(page, 'Alpha one', 'Beta two'); await marginClick(page, 'Inside.', 'Control');
@@ -467,7 +473,7 @@ await step('Título plegado: lleva lo que esconde', async () => {
   check('deshacer lo devuelve', (await md(page)) === F);
   await marginClick(page, 'First'); await page.keyboard.press('Delete'); await sleep(350);
   t = await md(page);
-  check('eliminarlo se lleva la sección entera y lo dice', t === ['# Doc', '', 'Intro.', '', '## Second', '', 'Two.', ''].join('\n') && /Blocks deleted: 5/.test(await flash(page)), [t, await flash(page)]);
+  check('eliminarlo se lleva la sección entera y lo dice', t === ['# Doc', '', 'Intro.', '', '## Second', '', 'Two.', ''].join('\n') && /Blocks deleted: 5/.test(await toast(page)), [t, await toast(page)]);
   await undo(page);
   check('y un deshacer la devuelve entera', (await md(page)) === F);
   // Un título que sube pasa por arriba de toda la sección plegada, no se mete adentro.
@@ -682,9 +688,15 @@ await step('En una carpeta del disco, y con un archivo suelto', async () => {
     await page.goto(home); await page.waitForSelector('.lmd-home [data-home=file]'); await seed();
     await Promise.all([page.waitForNavigation(), page.click('[data-home=file]')]); await page.waitForSelector('.lmd-article h1'); await sleep(400);
     await page.click('[data-act=mode-edit]'); await sleep(400); await blur(page); await seed();
-    await marginDrag(page, 'Section', 'Gamma three'); await more(page, 'doc-move');
+    await marginDrag(page, 'Section', 'Gamma three'); await more(page);
+    const loose = await menuIds(page);
+    check('con un archivo suelto no hay dónde guardar la nota nueva: se ofrece copiar, no mover', loose.includes('doc-copy') && !loose.includes('doc-move'), loose);
+    await page.click('.lmd-bsel-menu [data-bs=doc-copy]');
     check('con un archivo suelto, la nota nueva se abre sin guardar', await until(() => page.evaluate(() => /mem\/Section\.md/.test(decodeURIComponent(location.href)) && document.querySelector('.lmd-article').textContent.includes('Gamma three.') && !document.querySelector('.lmd-article').textContent.includes('Alpha one.'))), await page.evaluate(() => location.href));
-    check('y se avisa', /No hay dónde guardar la nota nueva/.test(await flash(page)), await flash(page));
+    check('y se avisa que fue una copia', /Se copió: todavía no hay dónde guardar la nota nueva/.test(await flash(page)), await flash(page));
+    // Una nota sin archivo no tiene nada en el disco que releer: ese aviso no lo pisa otro a los segundos.
+    await sleep(3500);
+    check('a los segundos no aparece un aviso de cambio en el disco', !/cambió en el disco/.test(await flash(page)) && await page.evaluate(() => !/cambió en el disco/.test(document.body.innerText)), await flash(page));
     await seed();
     check('el original no cambió', (await page.evaluate(() => window.__read('', 'suelto.md'))) === DOC);
     // Y desde una nota que todavía no se guardó, no se abre otra encima.

@@ -192,6 +192,203 @@
   }
   const isEmptyItem = (line) => { const m = ITEM.exec(line); return !!m && !!markOf(m) && !line.slice(m[0].length).trim(); };
 
+  // ---------- Varios ítems a la vez (blocks.js) ----------
+  // Cada operación recibe las líneas donde empiezan los ítems marcados, que son hermanos (cuelgan de la misma
+  // lista), y devuelve { lines, at }: las líneas nuevas y dónde quedó cada ítem. Un ítem va con lo que cuelga de él.
+  // Dentro de una cita, un renglón que solo tiene el ">" cuenta como en blanco.
+  const hollow = (l) => l == null || /^(?:[ \t]{0,3}>[ \t]?)*[ \t]*$/.test(l);
+  const wide = (s) => s.replace(/\t/g, '    ').length;
+  function pick(lines, from, starts) {
+    const lists = parse(lines, from); const set = new Set(starts); let list = null; const items = [];
+    for (const l of lists) for (const it of l.items) if (set.has(it.s) && it.m) { if (!list) list = l; if (it.list === list) items.push(it); }
+    return list ? { list, items, lists } : null;
+  }
+  // Los renglones de cada ítem de una lista. En una lista con renglones en blanco entre ítems (loose), esos
+  // renglones no son de ningún ítem: se vuelven a poner al escribirla.
+  function chunks(lines, list) {
+    const last = list.items[list.items.length - 1]; let end = list.e;
+    while (end - 1 > last.s && hollow(lines[end - 1])) end--;
+    let loose = false;
+    const parts = list.items.map((it, i) => { const c = lines.slice(it.s, i + 1 < list.items.length ? list.items[i + 1].s : end); while (c.length > 1 && hollow(c[c.length - 1])) { c.pop(); loose = true; } return c; });
+    return { s: list.items[0].s, e: end, parts, loose, gap: list.items[0].m ? list.items[0].m[1].replace(/[ \t]+$/, '') : '' };
+  }
+  // Escribe la lista con esos renglones por ítem (parts). La cuenta sigue arrancando en el número que tenía.
+  // Sin ítems, la lista se va entera. Devuelve las líneas y dónde empieza cada parte.
+  function relist(lines, from, list, c, parts) {
+    const out = lines.slice(); const at = []; const body = [];
+    const first = list.ordered && list.items[0].m ? numberOf(lines, list.items[0]) : null;
+    parts.forEach((p, n) => { if (n && c.loose) body.push(c.gap); at.push(c.s + body.length); p.forEach((l) => body.push(l)); });
+    if (!parts.length) {
+      let s = c.s; let n = c.e - c.s; const edge = (i) => i < from || i >= out.length || hollow(out[i]);
+      if (list.parent) while (s - 1 > list.parent.s && hollow(out[s - 1])) { s--; n++; }
+      else if (edge(s - 1) && edge(c.e)) { if (c.e < out.length) n++; else if (s > from) { s--; n++; } }
+      out.splice(s, n);
+      return { lines: list.parent ? settle(out, from, list.parent.s) : out, at, gone: list.parent ? null : { s, n } };
+    }
+    out.splice(c.s, c.e - c.s, ...body);
+    const m = ITEM.exec(out[c.s]);
+    if (first != null && m && m[4] && parseInt(m[4], 10) !== first) restyle(out, { s: c.s, e: c.s + parts[0].length }, null, first + m[5]);
+    return { lines: settle(out, from, c.s), at };
+  }
+  // order: qué ítem va en cada lugar (un índice repetido es una copia). keep: los lugares que quedan marcados.
+  function reorder(lines, from, p, order, keep) {
+    const c = chunks(lines, p.list); const r = relist(lines, from, p.list, c, order.map((i) => c.parts[i]));
+    return { lines: r.lines, at: keep.map((k) => r.at[k]), gone: r.gone || null };
+  }
+  const flags = (p) => { const on = new Set(p.items); return p.list.items.map((it) => on.has(it)); };
+  function removeItems(lines, from, starts) {
+    const p = pick(lines, from, starts); if (!p) return null; const sel = flags(p);
+    return reorder(lines, from, p, sel.map((x, i) => i).filter((i) => !sel[i]), []);
+  }
+  // La copia va debajo de cada tramo de ítems seguidos, y es la que queda marcada.
+  function copyItems(lines, from, starts) {
+    const p = pick(lines, from, starts); if (!p) return null; const sel = flags(p); const order = []; const keep = []; let run = [];
+    sel.forEach((x, i) => { order.push(i); if (x) run.push(i); if (run.length && (!x || !sel[i + 1])) { run.forEach((k) => { keep.push(order.length); order.push(k); }); run = []; } });
+    return reorder(lines, from, p, order, keep);
+  }
+  // Un lugar arriba o abajo: cada tramo cambia de lugar con el ítem que tiene al lado.
+  function moveItems(lines, from, starts, dir) {
+    const p = pick(lines, from, starts); if (!p) return null; const sel = flags(p); const n = sel.length;
+    const order = sel.map((x, i) => i); let moved = false;
+    for (let k = dir < 0 ? 1 : n - 2; k >= 0 && k < n; k -= dir) {
+      const o = k + dir;
+      if (sel[order[k]] && !sel[order[o]]) { const t = order[k]; order[k] = order[o]; order[o] = t; moved = true; }
+    }
+    if (!moved) return null;
+    return reorder(lines, from, p, order, order.map((i, k) => (sel[i] ? k : -1)).filter((k) => k >= 0));
+  }
+  // Arrastrando: los marcados van juntos antes del ítem que está en ese lugar de la lista (o al final).
+  function placeItems(lines, from, starts, before) {
+    const p = pick(lines, from, starts); if (!p) return null; const sel = flags(p);
+    const order = []; const keep = []; const mine = sel.map((x, i) => i).filter((i) => sel[i]);
+    const put = () => mine.forEach((i) => { keep.push(order.length); order.push(i); });
+    sel.forEach((x, i) => { if (i === before) put(); if (!x) order.push(i); });
+    if (before >= sel.length || before < 0) put();
+    if (order.every((i, k) => i === k)) return null;
+    return reorder(lines, from, p, order, keep);
+  }
+  // Tab y Mayúsculas + Tab sobre el grupo: de arriba hacia abajo, cada uno como si tuviera el cursor.
+  function shiftItems(lines, from, starts, dir) {
+    const p = pick(lines, from, starts); if (!p) return null;
+    if (dir > 0 ? p.list.items.indexOf(p.items[0]) === 0 : !p.list.parent || !p.list.parent.m) return null;
+    let cur = lines; let any = false;
+    p.items.map((it) => it.s).forEach((s) => { const r = (dir > 0 ? indent : outdent)(cur, from, s); if (r) { cur = r.lines; any = true; } });
+    return any ? { lines: cur, at: p.items.map((it) => it.s) } : null;
+  }
+  // Pasa los ítems marcados a viñetas (ul), números (ol) o tareas (task). Los que no están marcados quedan como
+  // estaban: si cambia el tipo de lista, Markdown los lee como listas aparte.
+  function convertItems(lines, from, starts, kind) {
+    const p = pick(lines, from, starts); if (!p) return null; const out = lines.slice();
+    // De abajo hacia arriba: cambiar el ancho de una marca corre lo que cuelga de ese ítem y nada más.
+    p.items.slice().reverse().forEach((it) => {
+      const m = ITEM.exec(out[it.s]); if (!m) return;
+      const text = out[it.s].slice(m[0].length).replace(m[7] ? /^[ \t]+/ : /^/, '');
+      const box = kind === 'task' ? (m[7] || '[ ]') + (text ? ' ' : '') : '';
+      out[it.s] = m[1] + m[2] + markOf(m) + (m[6] || ' ') + box + text;
+      const mark = kind === 'ol' ? (m[4] ? m[4] + m[5] : '1.') : (m[3] || '-');
+      if (mark !== markOf(m)) restyle(out, it, null, mark);
+    });
+    let cur = out; p.items.forEach((it) => { cur = settle(cur, from, it.s); });
+    return cur.some((l, i) => l !== lines[i]) ? { lines: cur, at: p.items.map((it) => it.s) } : null;
+  }
+  // Las tareas que hay en los ítems marcados y en lo que cuelga de ellos.
+  function tasksIn(lines, from, starts) {
+    const p = pick(lines, from, starts); if (!p) return [];
+    const out = [];
+    p.lists.forEach((l) => l.items.forEach((it) => { const m = it.m && ITEM.exec(lines[it.s]); if (m && m[7] && p.items.some((x) => it.s >= x.s && it.s < x.e)) out.push({ s: it.s, done: /x/i.test(m[7]) }); }));
+    return out;
+  }
+  function checkItems(lines, from, starts, on) {
+    const todo = tasksIn(lines, from, starts).filter((t) => t.done !== on); if (!todo.length) return null;
+    const out = lines.slice();
+    todo.forEach((t) => { const m = ITEM.exec(out[t.s]); const head = m[0].length - m[7].length; out[t.s] = out[t.s].slice(0, head) + (on ? '[x]' : '[ ]') + out[t.s].slice(m[0].length); });
+    return { lines: out, at: starts.slice() };
+  }
+  // Los ítems marcados como una lista suelta: desde la columna 0, sin las citas, contando desde 1.
+  function liftItems(lines, from, starts) {
+    const p = pick(lines, from, starts); if (!p) return null; const c = chunks(lines, p.list); const sel = flags(p);
+    const first = p.items[0].m; const depth = (first[1].match(/>/g) || []).length; const base = wide(first[2]);
+    const body = [];
+    sel.forEach((x, i) => {
+      if (!x) return; if (body.length && c.loose) body.push('');
+      c.parts[i].forEach((l) => {
+        let t = l; for (let k = 0; k < depth; k++) t = t.replace(/^[ \t]{0,3}>[ \t]?/, '');
+        const lead = /^[ \t]*/.exec(t)[0]; const w = wide(lead);
+        body.push(t.trim() ? ' '.repeat(Math.max(0, w - base)) + t.slice(lead.length) : '');
+      });
+    });
+    const m = ITEM.exec(body[0] || ''); const made = parse(body, 0)[0];
+    if (m && m[4] && m[4] !== '1' && made && made.items[0]) restyle(body, made.items[0], null, '1' + m[5]);
+    return settle(body, 0);
+  }
+  // El texto es una sola lista y nada más: se puede pegar como ítems.
+  function single(body) {
+    const tops = parse(body, 0).filter((l) => !l.parent); if (tops.length !== 1 || tops[0].items.some((it) => !it.m)) return null;
+    const a = body.findIndex((l) => l.trim()); let b = body.length; while (b > 0 && !body[b - 1].trim()) b--;
+    return tops[0].s === a && tops[0].e >= b ? tops[0] : null;
+  }
+  // Pone una lista suelta (body) como ítems hermanos, debajo del ítem que empieza en at: con su sangría, sus citas
+  // y su tipo de marca. Las casillas de las tareas quedan como venían.
+  function insertItems(lines, from, at, body) {
+    const p = pick(lines, from, [at]); const src = single(body); if (!p || !src) return null;
+    const it = p.items[0]; const b = body.slice();
+    src.items.forEach((x) => restyle(b, x, null, p.list.ordered ? '1' + it.m[5] : it.m[3]));
+    const again = single(b); if (!again) return null;
+    const pad = ' '.repeat(wide(it.m[2])); const q = it.m[1]; const bare = q.replace(/[ \t]+$/, '');
+    const fresh = chunks(b, again).parts.map((part) => part.map((l) => (l.trim() ? q + pad + l : bare)));
+    const c = chunks(lines, p.list); const i = p.list.items.indexOf(it);
+    const parts = c.parts.slice(0, i + 1).concat(fresh, c.parts.slice(i + 1));
+    const r = relist(lines, from, p.list, c, parts);
+    return { lines: r.lines, at: fresh.map((x, k) => r.at[i + 1 + k]) };
+  }
+
+  // ---------- Listas vecinas ----------
+  // Dos listas del mismo tipo, con la misma marca y solo renglones en blanco en el medio, son una sola para
+  // Markdown. Cuando un cambio (mover, duplicar, pegar o sacar el bloque que las separaba) deja pegadas dos que
+  // eran listas distintas, una cambia de marca: "-" por "*" o "+", y "1." por "1)". Es lo que CommonMark define
+  // como el comienzo de otra lista; no agrega líneas y se lee igual en GitHub. Un comentario "<!-- -->" en el
+  // medio también las separa, pero queda como una línea suelta cuando las listas vuelven a alejarse, y sin HTML
+  // habilitado se lee como texto.
+  // origins: de qué lista de primer nivel es cada línea (0: de ninguna).
+  function origins(lines, from) {
+    const out = new Array(lines.length).fill(0);
+    parse(lines, from).filter((l) => !l.parent).forEach((l, k) => { for (let i = l.s; i < l.e && i < out.length; i++) out[i] = k + 1; });
+    return out;
+  }
+  // tags: el origen de cada línea de ahora (las que no estaban, uno que no sea de ninguna lista de antes).
+  // fresh(i): esa línea es de lo que se movió o se creó; entre dos listas, cambia la marca de esa.
+  function apart(lines, from, tags, fresh) {
+    let out = null;
+    for (let pass = 0; pass < 6; pass++) {
+      const cur = out || lines; const next = cur.slice(); let hit = false;
+      const tops = parse(cur, from).filter((l) => !l.parent);
+      const charOf = (it) => { const m = ITEM.exec(next[it.s] || ''); return m ? (m[3] || m[5] || '') : ''; };
+      // La lista de al lado, si entre las dos solo hay renglones en blanco.
+      const beside = (a, b) => { if (!a || !b || a.ordered !== b.ordered) return false; for (let i = a.e; i < b.s; i++) if (!hollow(cur[i])) return false; return true; };
+      tops.forEach((list, k) => {
+        const segs = [];
+        list.items.forEach((it) => { const g = tags[it.s]; const last = segs[segs.length - 1]; if (last && last.g === g) last.items.push(it); else segs.push({ g, items: [it], fresh: !!fresh && fresh(it.s) }); });
+        if (segs.length < 2 || list.items.some((it) => !it.m)) return;
+        const pool = list.ordered ? ['.', ')'] : ['-', '*', '+'];
+        const marks = segs.map((s) => charOf(s.items[0]));
+        const before = beside(tops[k - 1], list) ? charOf(tops[k - 1].items[tops[k - 1].items.length - 1]) : '';
+        const after = beside(list, tops[k + 1]) ? charOf(tops[k + 1].items[0]) : '';
+        for (let i = 1; i < segs.length; i++) {
+          if (marks[i] !== marks[i - 1]) continue;
+          const j = i === 1 && segs[0].fresh && !segs[1].fresh ? 0 : i;
+          const left = j > 0 ? marks[j - 1] : before; const right = j + 1 < segs.length ? marks[j + 1] : after;
+          const to = pool.find((c) => c !== left && c !== right) || pool.find((c) => c !== (j === i ? left : right));
+          if (!to || to === marks[j]) continue;
+          marks[j] = to; hit = true;
+          segs[j].items.forEach((it) => { const m = ITEM.exec(next[it.s]); if (m) restyle(next, it, null, m[3] ? to : m[4] + to); });
+        }
+      });
+      if (!hit) break;
+      out = next;
+    }
+    return out;
+  }
+
   // ---------- Sobre el elemento ----------
   const fm = () => core.fmOffset;
   const itemText = (node) => {
@@ -394,5 +591,7 @@
     }
   }
 
-  LMD.lists = { init, parse, renumber, indent, outdent, unlist, remove, move, nextMark, childMark, isEmptyItem, ITEM };
+  LMD.lists = { init, parse, renumber, indent, outdent, unlist, remove, move, nextMark, childMark, isEmptyItem, ITEM,
+    items: { pick, remove: removeItems, copy: copyItems, move: moveItems, place: placeItems, shift: shiftItems, convert: convertItems, tasks: tasksIn, check: checkItems, lift: liftItems, single, insert: insertItems },
+    origins, apart };
 })();
