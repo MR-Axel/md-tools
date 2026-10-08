@@ -175,7 +175,7 @@ try {
   check('LMD.VERSION es el mismo número que manifest.json', /^\d+\.\d+\.\d+$/.test(manifestVersion) && constVersion === manifestVersion && foot.lmd === manifestVersion, [manifestVersion, constVersion, foot.lmd]);
   check('al pie de las pestañas: enviar comentarios, apoyar el proyecto y la versión', JSON.stringify(foot.last) === JSON.stringify(['Enviar comentarios', 'Apoyar el proyecto', 'SharpMD ' + manifestVersion]) && foot.stacked, foot);
   check('apoyar el proyecto abre el enlace en una pestaña nueva', foot.href.replace(/\/$/, '') === foot.sponsor.replace(/\/$/, '') && foot.target === '_blank' && /noopener/.test(foot.rel), foot);
-  let over = await overflow();
+  let over = (await overflow()).filter((x) => !/^tools /.test(x)); // Tools es una lista que crece: esa pestaña sí desliza
   check('ninguna pestaña necesita scroll a 800 px de alto (plan gratis)', over.length === 0, over);
   await tab('cloud');
   const freeCloud = await app.evaluate(() => [...document.querySelectorAll('[data-acct=cloud] .lmd-acct-row')].map((r) => r.children[0].textContent + '=' + r.children[1].textContent).join('|') + ' / ' + [...document.querySelectorAll('[data-acct=cloud] button')].map((b) => b.textContent).join('|'));
@@ -439,7 +439,7 @@ try {
   console.log('Ajustes, plan pago');
   for (const p of ['archivo/vieja.md', 'proyectos/plan.md', 'proyectos/nueva.md']) { await api('PUT', '/notes/' + encodeURIComponent(p), { text: '# ' + p + '\n' }, session); await new Promise((r) => setTimeout(r, 15)); }
   await app.goto(cloudUrl('proyectos/plan.md')); await app.waitForSelector('.markdown-body h1'); await openSettings();
-  over = await overflow();
+  over = (await overflow()).filter((x) => !/^tools /.test(x));
   check('ninguna pestaña necesita scroll a 800 px de alto (plan pago)', over.length === 0, over);
   await tab('cloud');
   const paidCloud = await app.evaluate(() => [...document.querySelectorAll('[data-acct=cloud] .lmd-acct-row')].map((r) => r.children[0].textContent + '=' + r.children[1].textContent).join('|'));
@@ -661,7 +661,7 @@ try {
   await toggle('own'); const s4 = await sw1(); const u4 = (await stored('settings')).cloudUrl;
   check('de sin nube a servidor propio: el campo aparece aunque todavía no haya dirección', s4.own && !s4.off && s4.shown && u4 === '', [s4, u4]);
   await toggle('off');
-  over = await overflow();
+  over = (await overflow()).filter((x) => !/^tools /.test(x));
   check('ninguna pestaña necesita scroll con la nube apagada', over.length === 0, over);
   await tab('cloud');
   const offCloud = await text('[data-acct=cloud]');

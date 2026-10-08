@@ -23,6 +23,11 @@
       "action": "src/app.html",
       "accept": { "text/markdown": [".md", ".markdown", ".mdx"] },
       "launch_type": "multiple-clients"
+    },
+    {
+      "action": "src/app.html",
+      "accept": { "text/plain": [".txt"], "application/json": [".json"], "application/yaml": [".yaml", ".yml"] },
+      "launch_type": "multiple-clients"
     }
   ],
   "shortcuts": [

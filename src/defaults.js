@@ -1309,6 +1309,20 @@
       "Exportar a Word": "Export to Word", "Suma Word (.docx) al menú Exportar.": "Adds Word (.docx) to the Export menu.",
       "Documento de Word descargado": "Word document downloaded", "No se pudo armar el documento de Word.": "Could not build the Word document.", "Exportar esta nota": "Export this note", "documento": "document",
       "Está en el menú Exportar de la barra de arriba. Las fórmulas van como texto LaTeX y los diagramas como imagen.": "It is in the Export menu of the top bar. Formulas go as LaTeX text and diagrams as images.",
+      // JSON y YAML (jsonyaml.js)
+      "JSON y YAML": "JSON and YAML", "Un bloque o un archivo JSON o YAML se ve como un árbol plegable que se edita.": "A JSON or YAML block or file shows as a collapsible tree you can edit.",
+      "Los bloques json, jsonc, yaml y yml, y los archivos .json, .yaml y .yml, se ven como un árbol que se edita. Teclas: flechas para moverse y plegar, Enter para editar, F2 para la clave, Supr para borrar, + para agregar.": "json, jsonc, yaml and yml blocks, and .json, .yaml and .yml files, show as a tree you can edit. Keys: arrows to move and collapse, Enter to edit, F2 for the key, Delete to remove, + to add.",
+      "Arrancar con todo plegado": "Start with everything collapsed", "Desplegar todo": "Expand all", "Plegar todo": "Collapse all", "Árbol": "Tree", "Ver como árbol": "View as tree", "Ver como texto": "View as text", "Árbol de {a}": "{a} tree",
+      "Acciones": "Actions", "Mostrar {n} más": "Show {n} more", "Nombre de la clave": "Key name", "clave": "key", "Booleano": "Boolean", "Objeto": "Object",
+      "Copiar valor": "Copy value", "Copiar ruta": "Copy path", "Editar valor": "Edit value", "Cambiar nombre de la clave": "Rename key", "Agregar clave": "Add key", "Agregar elemento": "Add item",
+      "Cambiar el tipo": "Change type", "Se pierde lo que hay adentro. Se puede deshacer.": "What is inside is lost. You can undo it.",
+      "No es un número": "Not a number", "La clave va en una sola línea": "A key goes on a single line", "Ya existe esa clave": "That key already exists",
+      "No se pudo reescribir sin riesgo. Editá en la vista de texto.": "Could not rewrite it safely. Edit in the text view.", "Editá en la vista de texto.": "Edit in the text view.",
+      "Solo lectura: usa varios documentos o directivas.": "Read only: it uses several documents or directives.", "Solo lectura: usa anclas o alias.": "Read only: it uses anchors or aliases.", "Solo lectura: usa etiquetas.": "Read only: it uses tags.",
+      "Solo lectura: tiene claves repetidas.": "Read only: it has repeated keys.", "Solo lectura: tiene comentarios que se perderían.": "Read only: it has comments that would be lost.", "Solo lectura: el árbol no puede reescribirlo igual.": "Read only: the tree cannot rewrite it the same.",
+      "Solo lectura: es muy grande.": "Read only: it is very large.", "Solo lectura: el bloque está dentro de una lista o una cita.": "Read only: the block is inside a list or a quote.",
+      "Es demasiado grande para verlo como árbol.": "It is too large to show as a tree.", "Tiene demasiados niveles para verlo como árbol.": "It has too many levels to show as a tree.",
+      "El árbol no lee este YAML (línea {n}).": "The tree cannot read this YAML (line {n}).", "{a} inválido en la línea {n}.": "Invalid {a} on line {n}.", "{a} inválido.": "Invalid {a}.",
       // Mapa de enlaces (linkmap.js)
       "Mapa de enlaces": "Link map", "Qué notas enlazan con cuáles, y cuáles llegan a la nota abierta.": "Which notes link to which, and which point to the open note.",
       "Enlaces a esta nota": "Links to this note", "Buscar una nota": "Find a note", "Notas sin enlaces": "Notes without links", "Todas las carpetas": "All folders",
@@ -1775,7 +1789,7 @@
   const fileLink = (url) => WEB_APP_URL + '#open=' + encodeURIComponent(url);
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.61.0';
+  const VERSION = '2.62.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);

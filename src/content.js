@@ -181,6 +181,7 @@
     daily: { js: ['src/daily.js'] },
     docx: { js: ['src/docx.js'] },
     linkmap: { js: ['src/linkmap.js'] },
+    jsonyaml: { js: ['src/jsonyaml.js'] },
     assistant: { js: ['src/aikey.js', 'src/assistant.js'] },
     // La galería de la comunidad, en Ajustes > Herramientas: se pide al abrir esa pestaña.
     gallery: { js: ['src/gallery.js'] },
@@ -193,7 +194,7 @@
   const LAZY_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, tools: () => !!(LMD.diagram && LMD.formula && LMD.templates && LMD.community) };
   LAZY_HAVE.gallery = () => !!LMD.gallery; LAZY_HAVE.automate = () => !!LMD.automate; LAZY_HAVE.publish = () => !!LMD.publish;
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
-  ['present', 'daily', 'docx', 'linkmap'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
+  ['present', 'daily', 'docx', 'linkmap', 'jsonyaml'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
   LAZY_HAVE.assistant = () => !!(LMD.ai && LMD.assistant);
   LAZY_HAVE.shortcuts = () => !!LMD.shortcuts;
   async function appLazy(what) {
@@ -548,7 +549,7 @@
     const box = el('div');
     if (sel && !sel.isCollapsed && ui.article.contains(sel.anchorNode)) box.appendChild(sel.getRangeAt(0).cloneContents());
     else box.innerHTML = ui.article.innerHTML;
-    box.querySelectorAll('.lmd-anchor, .lmd-code-copy, .lmd-code-lang, .lmd-kanban-off, .lmd-front, .lmd-cl-bar, .lmd-cl-add, .lmd-cl-grip').forEach((n) => n.remove());
+    box.querySelectorAll('.lmd-anchor, .lmd-code-copy, .lmd-code-lang, .lmd-kanban-off, .lmd-jy, .lmd-front, .lmd-cl-bar, .lmd-cl-add, .lmd-cl-grip').forEach((n) => n.remove());
     box.querySelectorAll('table').forEach((t) => { t.setAttribute('style', 'border-collapse:collapse'); });
     box.querySelectorAll('th, td').forEach((c) => c.setAttribute('style', 'border:1px solid #c9c9c9;padding:6px 10px;vertical-align:top'));
     box.querySelectorAll('pre').forEach((p) => p.setAttribute('style', 'font-family:Consolas,monospace;background:#f3f3f3;padding:10px;white-space:pre-wrap'));
@@ -1161,9 +1162,20 @@
   // ---------- Render ----------
   // La página propia también abre lo que no es Markdown: código resaltado, CSV como tabla e imágenes.
   const IMG_RE = /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i;
+  // Un .txt es texto plano: se muestra y se guarda tal cual. En el explorador va junto a los Markdown.
+  const TXT_RE = /\.txt$/i; const JY_RE = /\.(json|ya?ml)$/i;
+  // El tipo que ofrece la ventana de guardar: el del archivo, para que un .txt no termine como .md.
+  const pickTypes = (name) => {
+    const ext = (/\.([A-Za-z0-9]+)$/.exec(name || '') || [0, ''])[1].toLowerCase();
+    if (ext === 'txt') return [{ description: 'Text', accept: { 'text/plain': ['.txt'] } }];
+    if (ext === 'json') return [{ description: 'JSON', accept: { 'application/json': ['.json'] } }];
+    if (ext === 'yaml' || ext === 'yml') return [{ description: 'YAML', accept: { 'application/yaml': ['.yaml', '.yml'] } }];
+    return [{ description: 'Markdown', accept: { 'text/markdown': ['.md'] } }];
+  };
   const LANGS = { yml: 'yaml', mjs: 'javascript', cjs: 'javascript', js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript', py: 'python', rb: 'ruby', rs: 'rust', sh: 'bash', ps1: 'powershell', htm: 'html', kt: 'kotlin', cs: 'csharp', h: 'c' };
   function docKind() {
-    if (!APP || MD_RE.test(DOC_NAME) || /\.txt$/i.test(DOC_NAME) || DOC_NAME.indexOf('.') === -1) return 'md';
+    if (APP && TXT_RE.test(DOC_NAME)) return 'text';
+    if (!APP || MD_RE.test(DOC_NAME) || DOC_NAME.indexOf('.') === -1) return 'md';
     if (IMG_RE.test(DOC_NAME)) return 'image';
     return /\.(csv|tsv)$/i.test(DOC_NAME) ? 'table' : 'code';
   }
@@ -1202,15 +1214,17 @@
     if (noDoc) { ui.article.textContent = ''; spyHeadings = []; ui.paneOutline.textContent = ''; ui.progress = null; needsRender = false; if (ui.searchInput.value) runSearch(ui.searchInput.value, false, true); return; }
     const md = buildParser();
     const kind = docKind();
-    const fm = kind !== 'md' ? { body: asMarkdown(kind), rows: null } : (settings.plugins.frontmatter ? splitFrontmatter(raw) : { body: raw, rows: null });
+    const fm = kind === 'text' ? { body: '', rows: null } : kind !== 'md' ? { body: asMarkdown(kind), rows: null } : (settings.plugins.frontmatter ? splitFrontmatter(raw) : { body: raw, rows: null });
     syncSource();
     fmOffset = kind !== 'md' ? 0 : raw.slice(0, raw.length - fm.body.length).split('\n').length - 1;
     needsRender = false;
-    let html = md.render(fm.body);
+    let html = kind === 'text' ? '' : md.render(fm.body);
     wantEmoji(fm.body);
     html = DOMPurify.sanitize(html, { ADD_ATTR: ['target', 'data-tex'], FORBID_TAGS: ['style', 'form'] });
     const y = window.scrollY;
     ui.article.innerHTML = html;
+    // Un .txt es texto plano: se muestra tal cual, sin interpretar Markdown ni HTML.
+    if (kind === 'text') ui.article.appendChild(el('div', { class: 'lmd-plain', text: raw.replace(/\r\n?/g, '\n') }));
     spyHeadings = postProcess(ui.article);
     if (editMode && kind === 'md') enableEditing(ui.article);
     // Los ajustes de la página (page.js) viven en el encabezado, pero no son datos de la nota: no se listan.
@@ -1744,7 +1758,7 @@
 
   const visibleRows = (rows) => rows
     .filter((x) => settings.filesShowHidden || !x.name.startsWith('.'))
-    .filter((x) => x.dir || !settings.filesOnlyMarkdown || MD_RE.test(x.name))
+    .filter((x) => x.dir || !settings.filesOnlyMarkdown || MD_RE.test(x.name) || TXT_RE.test(x.name) || (JY_RE.test(x.name) && !!LMD.tools && LMD.tools.isOn('jsonyaml')))
     .sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
   async function listDir(dirUrl, all) {
@@ -2068,7 +2082,7 @@
       let n = 0; let more = false;
       for (const r of rows) {
         if (!settings.filesShowHidden && r.name.startsWith('.')) continue;
-        if (!r.dir) { if (MD_RE.test(r.name)) n++; continue; }
+        if (!r.dir) { if (MD_RE.test(r.name) || TXT_RE.test(r.name)) n++; continue; }
         if (SKIP_DIRS.test(r.name)) continue;
         const sub = await diskCount(r.url, depth + 1);
         n += sub.n; more = more || sub.more;
@@ -2081,7 +2095,7 @@
   async function cloudCount(url) {
     const parts = vParts(url); const other = parts.length && parts[0][0] === '~' ? parts.shift().slice(1) : '';
     const prefix = parts.map((p) => p + '/').join('');
-    return { n: (await LMD.cloud.list(false, other)).filter((x) => x.path.startsWith(prefix) && MD_RE.test(x.path)).length, more: false };
+    return { n: (await LMD.cloud.list(false, other)).filter((x) => x.path.startsWith(prefix) && (MD_RE.test(x.path) || TXT_RE.test(x.path))).length, more: false };
   }
   function showCount(item, url) {
     if (!APP && !isFile) return; // el listado de un servidor web no se recorre
@@ -3383,7 +3397,7 @@
           }
           const picked = await window.showOpenFilePicker({
             id: 'lmd-guardar', multiple: false,
-            types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.mkd', '.mdown'] } }],
+            types: MD_RE.test(name) ? [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.mkd', '.mdown'] } }] : pickTypes(name),
           });
           const handle = picked[0];
           if (handle.name !== name && !(await LMD.dialog.confirm({ title: T('Elegiste otro archivo'), text: T('Elegiste "{a}" y el documento abierto es "{b}".', { a: handle.name, b: name }), ok: T('Guardar sobre el archivo elegido') }))) return;
@@ -3405,7 +3419,7 @@
       return true;
     }
     try {
-      const target = await window.showSaveFilePicker({ id: 'lmd-nuevo', suggestedName: DOC_NAME, types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md'] } }] });
+      const target = await window.showSaveFilePicker({ id: 'lmd-nuevo', suggestedName: DOC_NAME, types: pickTypes(DOC_NAME) });
       const w = await target.createWritable(); await w.write(raw); await w.close();
       await LMD.store.noteDelete(DOC_NAME);
       diskText = raw; dirty = false; updateSaveState();
@@ -3456,7 +3470,7 @@
         if (appRoot && appRoot.id === 'mem' && window.showSaveFilePicker) {
           // Archivo nuevo: se elige dónde guardarlo y desde ahí pasa a ser un archivo común.
           const target = await window.showSaveFilePicker({ id: 'lmd-nuevo', suggestedName: DOC_NAME,
-            types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md'] } }] });
+            types: pickTypes(DOC_NAME) });
           const w = await target.createWritable(); await w.write(raw); await w.close();
           diskText = raw; dirty = false; updateSaveState();
           try { sessionStorage.removeItem('mdt-mem'); } catch (e) { /* sin sesión */ }
