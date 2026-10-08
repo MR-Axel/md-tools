@@ -3243,7 +3243,8 @@ function sanImg(raw) {
   const m = SAN_IMG_DATA.exec(v); if (!m) return null;
   if (m[1] === 'svg+xml') {
     const xml = Buffer.from(m[2], 'base64').toString('utf8');
-    if (/<\s*script|<[^>]*\son[a-z]+\s*=|javascript\s*:|<\s*(iframe|object|embed)\b/i.test(xml)) return null;
+    // [^<>]: cada búsqueda termina en la etiqueta siguiente, así una entrada llena de "<" no la vuelve lenta.
+    if (/<\s*script|<[^<>]*\son[a-z]+\s*=|javascript\s*:|<\s*(iframe|object|embed)\b/i.test(xml)) return null;
   }
   return v;
 }
@@ -3351,12 +3352,14 @@ function siteClean(input) {
     if (SAN_RAW.has(name)) { const e = low.indexOf('</' + name, i); const g = e === -1 ? -1 : s.indexOf('>', e); i = g === -1 ? n : g + 1; continue; }
     if (SAN_SKIP.has(name)) {
       if (tag.self) continue;
-      let depth = 1;
-      while (depth && i < n) {
-        const o = low.indexOf('<' + name, i); const e = low.indexOf('</' + name, i);
-        if (e === -1) { i = n; break; }
-        if (o !== -1 && o < e) { depth++; i = o + name.length + 1; } else { depth--; const g = s.indexOf('>', e); i = g === -1 ? n : g + 1; }
+      // Hasta su cierre, contando las que se abren adentro. Cada posición se busca una vez: no se vuelve a recorrer lo ya visto.
+      const open = '<' + name; const close = '</' + name;
+      let depth = 1; let e = low.indexOf(close, i); let o = low.indexOf(open, i);
+      while (depth && e !== -1) {
+        if (o !== -1 && o < e) { depth++; i = o + open.length; o = low.indexOf(open, i); }
+        else { depth--; const g = s.indexOf('>', e); i = g === -1 ? n : g + 1; if (depth) e = low.indexOf(close, i); if (o !== -1 && o < i) o = low.indexOf(open, i); }
       }
+      if (depth) i = n;
       continue;
     }
     if (SAN_SKIP_VOID.has(name)) {
@@ -3444,7 +3447,10 @@ function siteLapse(site, owner) {
   else if (siteVaulted(site.owner, site.folder) && has()) siteTakeDown(site);
   return site;
 }
-function sitesSweep() { for (const s of q('SELECT * FROM sites').all()) { try { siteLapse(s, userById(s.owner)); } catch (e) { console.error('sitios: no se pudo revisar el plan · ' + String(e && e.message || e).slice(0, 200)); } } }
+function sitesSweep() {
+  // Lo publicado de una nota que ya no existe (se eliminó o cambió de nombre) no se servía más: acá se borra.
+  q('DELETE FROM site_pages WHERE NOT EXISTS (SELECT 1 FROM sites s JOIN notes n ON n.user = s.owner AND n.path = site_pages.note WHERE s.id = site_pages.site)').run();
+  for (const s of q('SELECT * FROM sites').all()) { try { siteLapse(s, userById(s.owner)); } catch (e) { console.error('sitios: no se pudo revisar el plan · ' + String(e && e.message || e).slice(0, 200)); } } }
 if (PAGES) setInterval(sitesSweep, Math.min(600000, Math.max(1000, PAGES_GRACE_MS / 4 || 600000))).unref();
 
 // Lo que cambió desde la última publicación: notas con otra revisión, notas nuevas en la carpeta y páginas cuya
@@ -3474,8 +3480,7 @@ function siteView(site, user, full) {
 }
 // Los sitios que alcanza una cuenta: los suyos y los del espacio de su equipo.
 function sitesOf(user) {
-  const ids = [user.id].concat(user.team ? [user.team.space] : []);
-  const rows = q('SELECT * FROM sites WHERE owner IN (' + ids.map(() => '?').join(',') + ') ORDER BY id').all(...ids);
+  const rows = q('SELECT * FROM sites WHERE owner = ? OR owner = ? ORDER BY id').all(user.id, user.team ? user.team.space : user.id);
   return rows.map((s) => siteLapse(s, s.owner === user.id ? user : userById(s.owner)));
 }
 // Va en GET /account: si el servidor publica sitios, cuántos entran y los que hay. La app lee de acá si el sitio
