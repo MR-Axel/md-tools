@@ -323,6 +323,34 @@
 .lmd-box-info, .lmd-box-note { border-left-color: #3b82f6; } .lmd-box-info .lmd-box-title, .lmd-box-note .lmd-box-title { color: #3b82f6; }
 .lmd-box-warning { border-left-color: #d97706; } .lmd-box-warning .lmd-box-title { color: #d97706; }
 .lmd-box-danger { border-left-color: #dc2626; } .lmd-box-danger .lmd-box-title { color: #dc2626; }
+/* Secciones desplegables (fold.js): el título se escribe en el lugar, y una vacía ofrece dónde empezar. */
+details.lmd-box > summary { border-radius: 4px; }
+details.lmd-box > summary:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 3px; }
+details.lmd-box[open] > summary { margin-bottom: 0.5em; }
+details.lmd-box[open] > summary:last-child { margin-bottom: 0; }
+.lmd-editing .lmd-sum-title { display: inline-block; min-width: 4em; vertical-align: top; }
+.lmd-editing .lmd-sum-title:empty::before { content: attr(data-ph); color: var(--fg-faint); pointer-events: none; }
+.lmd-box-empty { min-height: 1.65em; margin: 0; border-radius: 4px; color: var(--fg-faint); cursor: text; }
+.lmd-box-empty::before { content: attr(data-label); }
+.lmd-box-empty:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 3px; }
+.lmd-draft + .lmd-box-empty { display: none; }
+/* Al imprimir, una sección cerrada muestra igual lo que tiene adentro. */
+@media print { .lmd-box-empty { display: none !important; } details.lmd-box::details-content { display: block; content-visibility: visible; } }
+/* Plegado por títulos (fold.js): el control aparece al pasar por el título o con el foco; plegado, queda a la vista. */
+.lmd-foldable .lmd-article > :is(h1, h2, h3, h4, h5, h6) { position: relative; padding-right: 34px; }
+.lmd-fold-tog { position: absolute; right: 0; top: calc(0.625em - 13px); width: 26px; height: 26px; margin: 0; display: grid; place-items: center; border-radius: 6px; cursor: pointer; user-select: none; -webkit-user-select: none; }
+.lmd-fold-tog[hidden] { display: none; }
+.lmd-fold-tog svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transform: rotate(90deg); transition: transform 0.12s ease; }
+.lmd-fold-shut > .lmd-fold-tog svg { transform: none; }
+.lmd-fold-tog:hover { background: var(--bg-soft); color: var(--fg); }
+.lmd-fold-tog:focus-visible { opacity: 1; outline: 2px solid var(--accent-fill); outline-offset: 1px; }
+.lmd-fold-shut > .lmd-fold-tog, .lmd-article > :is(h1, h2, h3, h4, h5, h6):focus > .lmd-fold-tog { opacity: 1; }
+@media (hover: none) { .lmd-fold-tog { width: 32px; height: 32px; top: calc(0.625em - 16px); opacity: 0.75; } }
+@media not print {
+  .lmd-article > .lmd-fold-away { display: none !important; }
+  .lmd-article > .lmd-fold-shut::after { content: "\2026\00a0" attr(data-fold-n); margin-left: 0.7em; padding: 1px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg-soft); color: var(--fg-muted); font-size: 12px; font-weight: 500; letter-spacing: 0; vertical-align: middle; white-space: nowrap; }
+}
+@media print { .lmd-foldable .lmd-article > :is(h1, h2, h3, h4, h5, h6) { padding-right: 0; } }
 .lmd-front { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0 0 1.5em; padding: 12px 16px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-soft); font-size: 0.9em; }
 .lmd-front dt { color: var(--fg-muted); font-weight: 600; font-family: var(--lmd-mono); font-size: 0.92em; }
 .lmd-front dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }

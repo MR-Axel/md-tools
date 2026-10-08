@@ -1362,7 +1362,7 @@ const TOOLS = [
   { name: 'move_note', description: 'Move or rename a note. Its history, comments, shares and public links follow it. Fails if a note already exists at the new path.', inputSchema: { type: 'object', properties: { from: { type: 'string', description: 'Current path' }, to: { type: 'string', description: 'New path, for example archive/2025/plan.md' } }, required: ['from', 'to'] } },
   { name: 'note_history', description: 'List the earlier versions kept for a note, newest first. Pass version to read the text of one of them.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, version: { type: 'number', description: 'Optional: id of the version to read' } }, required: ['path'] } },
   // El modo de trabajo completo, a demanda: la estructura del proyecto y las reglas del tablero (ver guide).
-  { name: 'get_guide', description: 'Read the SharpMD working guide: the folder structure to document a project (README, architecture, features, epics, decisions, log) and the rules of its task board. Call it once at the start of a session, before you create notes or cards.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'get_guide', description: 'Read the SharpMD working guide: the folder structure to document a project (README, architecture, features, epics, decisions, log), the rules of its task board and the format of the list of what the person has to do. Call it once at the start of a session, before you create notes or cards.', inputSchema: { type: 'object', properties: {} } },
   // Tableros: las mismas operaciones que la API (apiTool), con nombres para un modelo.
   { name: 'list_boards', description: 'List the kanban boards of a note: each board with its columns, which column holds finished cards, and every card with its id, title and fields. Call it before moving or updating cards, to get their ids and the exact column names.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path of the note that holds the board, for example project/board.md' } }, required: ['path'] } },
   { name: 'create_board', description: 'Create a kanban board. If the note does not exist it is created with the board; if it exists, the board is added at its end. Without columns it gets To do, In progress, Paused and Done, and cards moved to Done are marked as done.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path of the note, for example project/board.md' }, title: { type: 'string', description: 'Optional heading written above the board' }, columns: { type: 'array', items: { type: 'string' }, description: 'Optional column names, in order' }, done: { type: 'string', description: 'Optional: the column that holds finished cards. By default the one called Done or similar' } }, required: ['path'] } },
@@ -1581,7 +1581,7 @@ function mcp(user, msg) {
   if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } };
   const reply = (result) => ({ jsonrpc: '2.0', id: msg.id, result });
   if (msg.method === 'initialize') return reply({ protocolVersion: (msg.params && msg.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'sharpmd', version: '1.0.0' },
-    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with write_note, then resolve_comment. A folder marked as protected and locked is encrypted with a password: you cannot read it until the person unlocks it for the AI from SharpMD. If the person belongs to a team, the notes the team shares are under @team/ and every member can read and edit them. write_note, append_note and move_note return a link that opens the note in the SharpMD app: give it to the person. ' + (user.canWrite === false ? '' : 'Work this way without being asked. Keep the project documented in one folder: README.md as the index, architecture.md, features/ with one note per feature, epics.md, decisions.md and log.md. Keep its task board in board.md, one card per task: To do when you plan it, In progress when you start, Paused when you need something from the person (say what in a field called needs), Done when it is finished. Change the board with create_board, add_card, move_card and update_card instead of rewriting the note, and call get_guide once per session for the full structure and rules. ') + (user.teamToken ? 'This token belongs to a team, not to a person: every note it reaches is in the shared space of the team' + (user.canWrite ? '. ' : ', and it can only read. ') : '') + (user.canShare ? 'This token can share notes with other accounts and create public links: only do that when the person asks.' : 'This token cannot share notes or create public links: the person does that from the SharpMD app.') + (user.scope ? ' This token only reaches the folder ' + user.scope + '/.' : '') + ' When you mention a Markdown file that lives on the person\'s disk instead of here, give it as a link that opens it in their browser with the SharpMD extension: ' + APP_URL + '#open= followed by the file:// address of the file, percent-encoded as a single value (what encodeURIComponent returns). For example [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///C:/Users/me/Desktop/notes.md') + ') on Windows, or [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///Users/me/Desktop/notes.md') + ') on Mac and Linux. Under the link, write the full path as plain text, in case the link cannot be clicked.' });
+    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with write_note, then resolve_comment. A folder marked as protected and locked is encrypted with a password: you cannot read it until the person unlocks it for the AI from SharpMD. If the person belongs to a team, the notes the team shares are under @team/ and every member can read and edit them. write_note, append_note and move_note return a link that opens the note in the SharpMD app: give it to the person. ' + (user.canWrite === false ? '' : 'Work this way without being asked. Keep the project documented in one folder: README.md as the index, architecture.md, features/ with one note per feature, epics.md, decisions.md and log.md. Keep its task board in board.md, one card per task: To do when you plan it, In progress when you start, Paused when you need something from the person (say what in a field called needs), Done when it is finished. Change the board with create_board, add_card, move_card and update_card instead of rewriting the note. Keep what only the person can do in pending.md: a task list where each item has numbered steps with the direct link to the page where each one is done. Call get_guide once per session for the full structure and rules. ') + (user.teamToken ? 'This token belongs to a team, not to a person: every note it reaches is in the shared space of the team' + (user.canWrite ? '. ' : ', and it can only read. ') : '') + (user.canShare ? 'This token can share notes with other accounts and create public links: only do that when the person asks.' : 'This token cannot share notes or create public links: the person does that from the SharpMD app.') + (user.scope ? ' This token only reaches the folder ' + user.scope + '/.' : '') + ' When you mention a Markdown file that lives on the person\'s disk instead of here, give it as a link that opens it in their browser with the SharpMD extension: ' + APP_URL + '#open= followed by the file:// address of the file, percent-encoded as a single value (what encodeURIComponent returns). For example [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///C:/Users/me/Desktop/notes.md') + ') on Windows, or [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///Users/me/Desktop/notes.md') + ') on Mac and Linux. Under the link, write the full path as plain text, in case the link cannot be clicked.' });
   if (msg.method === 'ping') return reply({});
   if (msg.method === 'tools/list') return reply({ tools: toolsFor(user) });
   if (msg.method === 'tools/call') {
@@ -3367,7 +3367,7 @@ function guide(user) {
   return [
     '# Working in SharpMD',
     '',
-    'Two jobs, done without being asked: keep the project documented, and keep a task board the person can follow.',
+    'Three jobs, done without being asked: keep the project documented, keep a task board the person can follow, and keep a list of what the person has to do.',
     '',
     '## The project folder',
     '',
@@ -3383,6 +3383,7 @@ function guide(user) {
     '| ' + dir + '/decisions.md | Decision log, newest last: date, context, decision, consequence. |',
     '| ' + dir + '/log.md | Dated work log. Add entries with append_note, do not rewrite it. |',
     '| ' + dir + '/board.md | The task board. |',
+    '| ' + dir + '/pending.md | What the person has to do, each item with its steps. |',
     '',
     '- Create the structure in the first session, from what you can learn in the code and the conversation. Leave a section empty instead of inventing its content.',
     '- Keep it current as you work. A feature that changes updates its note, a choice between options adds an entry to decisions.md, and each session adds an entry to log.md.',
@@ -3448,6 +3449,39 @@ function guide(user) {
     '- Do not delete finished cards: they are the record of the work.',
     '- With subagents, give each one the path of the board and the id of its card, and have it move its own card.',
     '- The fields agent, needs and link have that meaning. Others are free, for example due=2026-01-31 or priority=high.',
+    '',
+    '## The list of what the person has to do',
+    '',
+    'The board holds your tasks. What only the person can do (open an account, pay, decide, hand over a credential) goes in ' + dir + '/pending.md. Create it the first time something depends on them, and link it from the README.',
+    '',
+    '- It is a task list (- [ ] and - [x]) grouped by topic under headings, the most urgent first. One short line per item.',
+    '- The steps go right under the item, indented inside it, in a collapsible section (::: details Steps, the steps, then ::: to close). The list stays readable and the steps are one click away.',
+    '- Number the steps. Each one is a single action with the direct link to the exact page where it is done. "Go to the console" is not a step: the link is.',
+    '- Say what the person has to bring back (a key, an id, a yes or a no) and where to leave it.',
+    '- If it costs money, say how much and where it is paid.',
+    '- If you are not sure of a menu path, say so and ask for a screenshot. Do not invent it.',
+    '- Never ask for a secret in the conversation. Name the file or the screen where the person enters it.',
+    '- Tick an item as soon as you learn it is done. When the person decides something, move it to a section Decided, with the date.',
+    '- Your own tasks stay on the board. If one has to appear here, mark it as yours.',
+    '- At the end of every session, tell the person what is left for them, with the link to this note.',
+    '',
+    F + 'markdown',
+    '# Pending',
+    '',
+    '## Payments',
+    '',
+    '- [ ] Create the payment account',
+    '  ::: details Steps',
+    '  1. Open [the sign-up page](https://dashboard.example.com/register) and create the account. It is free.',
+    '  2. Copy the secret key from [API keys](https://dashboard.example.com/apikeys).',
+    '  3. Paste it in the file .env, on the line PAYMENT_KEY=. Do not send it in the chat.',
+    '  :::',
+    '- [ ] Choose the plan: 20 USD a month, paid at [Billing](https://dashboard.example.com/billing)',
+    '',
+    '## Decided',
+    '',
+    '- [x] 2026-01-15 The domain is example.com',
+    F,
     '',
     '## ' + (ro ? 'This token cannot write' : 'Without write access, or with local files'),
     '',

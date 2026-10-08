@@ -27,6 +27,7 @@
     diagramShape: 'round', // round | square: nodos y flechas de los diagramas de flujo
     focusMode: false, // al editar, atenúa todo menos el bloque en el que se escribe
     typewriter: false, // al editar, mantiene el renglón actual a media altura
+    foldHeadings: false, // cada título puede plegar lo que tiene debajo (fold.js). No cambia la nota
     imageQuality: 'normal', // normal | high | original: cuánto se achica una imagen al insertarla
     refreshInterval: 1000, // ms
     sidebarHidden: false,
@@ -605,6 +606,11 @@
       "Ítem nuevo": "New item", "Párrafo": "Paragraph", "Tabla": "Table", "Bloque de código": "Code block",
       "Diagrama": "Diagram", "Fórmula": "Formula", "Aviso": "Callout", "Imagen": "Image", "Separador": "Divider",
       "Columna": "Column", "Inicio": "Start", "Fin": "End", "Texto del aviso": "Callout text",
+      "Sección desplegable": "Collapsible section", "Texto de la sección": "Section text", "Escribí acá": "Write here",
+      "Envolver en una sección desplegable": "Wrap in a collapsible section", "Desenvolver la sección desplegable": "Unwrap the collapsible section",
+      "Plegar secciones por título": "Fold sections by heading", "Plegar la sección": "Fold the section", "Desplegar la sección": "Unfold the section",
+      "Plegar o desplegar la sección del cursor": "Fold or unfold the section at the cursor", "Plegar todas las secciones": "Fold all sections", "Desplegar todas las secciones": "Unfold all sections",
+      "Con el plegado por títulos prendido": "With heading folding on", "Secciones plegadas": "Sections folded", "Secciones desplegadas": "Sections unfolded",
       "Bloque eliminado. Ctrl+Z lo deshace": "Block deleted. Ctrl+Z brings it back",
       "Insertar debajo": "Insert below", "Insertar": "Insert", "Convertir en": "Turn into", "Este bloque": "This block",
       "Subir": "Move up", "Bajar": "Move down", "Duplicar": "Duplicate", "Eliminar": "Delete",
@@ -1811,7 +1817,7 @@
   const fileLink = (url) => WEB_APP_URL + '#open=' + encodeURIComponent(url);
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.63.0';
+  const VERSION = '2.64.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);
