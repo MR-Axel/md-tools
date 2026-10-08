@@ -47,7 +47,58 @@
     const handle = params && params.files && params.files[0];
     if (!handle || handle.kind !== 'file') return false;
     try { await LMD.home.adopt(homeCtx(), handle); return true; }
+    catch (e) { /* sin lugar donde guardar el permiso (pasa en algunos teléfonos): se abre una copia */ }
+    try { await LMD.home.openFile(homeCtx(), await handle.getFile(), homeCtx().say); return true; }
     catch (e) { homeCtx().say(T('No se pudo abrir. Probá de nuevo.')); return false; }
+  }
+
+  // ---------- "Compartir": lo que manda otra app ----------
+  // El service worker (sw.js) recibe el envío, lo deja en una caché aparte y manda a app.html?share=1. Acá se
+  // recoge una sola vez: un archivo se abre como uno elegido a mano, sin guardar; un texto o un enlace, como nota nueva.
+  // Devuelve true si abrió algo; si no, el aviso para el inicio (o '' si no había nada).
+  const SHARE_CACHE = 'lmd-share'; const SHARE_MAX = 5 * 1024 * 1024;
+  const SHARE_EXT = /\.(md|markdown|mdx|mkd|mdown|txt|json|ya?ml)$/i; // lo mismo que deja elegir "Abrir archivo"
+  const SHARE_TYPES = { 'text/markdown': '.md', 'text/x-markdown': '.md', 'text/plain': '.txt', 'application/json': '.json', 'application/yaml': '.yaml', 'application/x-yaml': '.yaml', 'text/yaml': '.yaml' };
+  function sharedNote(meta) {
+    const one = (v) => String(v || '').replace(/\r\n?/g, '\n').trim();
+    const title = one(meta.title).replace(/\s+/g, ' '); const text = one(meta.text); let url = one(meta.url);
+    if (!/^https?:\/\/\S+$/i.test(url)) url = '';
+    const parts = [];
+    if (title) parts.push('# ' + title);
+    if (text) parts.push(text);
+    if (url && !text.includes(url)) parts.push('<' + url + '>');
+    return parts.length ? parts.join('\n\n') + '\n' : '';
+  }
+  async function takeShared(ctx) {
+    try { const u = new URL(location.href); u.searchParams.delete('share'); history.replaceState(history.state, '', u.href); } catch (e) { /* dirección rara */ }
+    let meta = null; let body = null;
+    try {
+      const cache = await caches.open(SHARE_CACHE); const at = (name) => new URL('share/' + name, location.href).href;
+      const m = await cache.match(at('meta')); const f = await cache.match(at('file'));
+      meta = m ? await m.json() : null; body = f ? await f.blob() : null;
+      await caches.delete(SHARE_CACHE);
+    } catch (e) { /* sin caché: no hay nada que recoger */ }
+    if (!meta || typeof meta !== 'object') return '';
+    const file = meta.file;
+    if (file) {
+      let name = String(file.name || '').replace(/[\\/]/g, '-').slice(0, 200);
+      const byType = SHARE_TYPES[String(file.type || '').split(';')[0].trim().toLowerCase()];
+      if (!SHARE_EXT.test(name) && byType && !/\.[a-z0-9]{1,8}$/i.test(name)) name = (name || 'shared') + byType;
+      if (!SHARE_EXT.test(name)) return T('Solo se abren archivos Markdown, de texto, JSON o YAML.');
+      if (!body || body.size > SHARE_MAX) return T('Ese archivo es demasiado grande para abrirlo acá.');
+      let failed = '';
+      LMD.home.account(ctx);
+      await LMD.home.openFile(ctx, new File([body], name), (text) => { failed = text; });
+      if (failed) return failed;
+      if (meta.count > 1) ctx.warn(T('Llegaron {n} archivos. Se abrió el primero.', { n: meta.count }));
+      return true;
+    }
+    const text = sharedNote(meta);
+    if (!text) return '';
+    if (text.length > SHARE_MAX) return T('Ese texto es demasiado grande para abrirlo acá.');
+    LMD.home.account(ctx);
+    await LMD.home.create(ctx, { text, replace: true });
+    return true;
   }
 
   // ---------- Sin conexión ----------
@@ -173,5 +224,5 @@
     return without(T('La extensión no lo pudo abrir. Actualizala o elegí el archivo a mano.'));
   }
 
-  LMD.install = { init, pane, openLaunched, openLink, EXTENSION_URL, ANDROID_URL };
+  LMD.install = { init, pane, openLaunched, takeShared, openLink, EXTENSION_URL, ANDROID_URL };
 })();

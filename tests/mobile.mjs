@@ -593,6 +593,89 @@ try {
     await ctx.close();
   }
 
+  // ---------- Compartir a SharpMD ----------
+  console.log('Compartir: lo que manda otra app');
+  {
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.webmanifest'), 'utf8'));
+    const st = manifest.share_target || {}; const sp = st.params || {}; const sf = (sp.files || [])[0] || {}; const accept = sf.accept || [];
+    const action = new URL(st.action || 'none', origin + '/'); const scope = new URL(manifest.scope, origin + '/');
+    check('el manifiesto declara el destino de compartir: POST multipart a una ruta dentro del alcance de la app', st.method === 'POST' && st.enctype === 'multipart/form-data' && action.href === origin + '/src/share' && action.pathname.startsWith(scope.pathname), st);
+    check('con título, texto, enlace y archivos Markdown, de texto, JSON y YAML', sp.title === 'title' && sp.text === 'text' && sp.url === 'url' && (sp.files || []).length === 1 && sf.name === 'files' &&
+      ['.md', '.markdown', '.txt', '.json', '.yaml', '.yml', 'text/markdown', 'text/plain'].every((a) => accept.includes(a)) && accept.every((a) => /^\.[a-z]+$|^[a-z]+\/[a-z.+-]+$/.test(a)), sf);
+    check('el service worker atiende esa misma ruta', new RegExp("SHARE_PATH = '" + action.pathname.slice(1) + "'").test(fs.readFileSync(path.join(root, 'sw.js'), 'utf8')));
+
+    const { ctx, page } = await open(390, 844);
+    await page.goto(home); await page.waitForSelector('.lmd-home');
+    await page.evaluate(() => new Promise((resolve) => chrome.storage.local.set({ settings: { cloudUrl: 'off' } }, resolve)));
+    await page.evaluate(() => navigator.serviceWorker.ready); await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 10000 }).catch(() => {});
+    const mark = hits.length;
+    // El envío, como lo arma el sistema: un formulario multipart a la dirección del manifiesto. Sale de otra página
+    // del sitio, porque la app no deja mandar formularios (form-action 'none').
+    const send = async (fields, files, offline) => {
+      await page.goto(origin + '/privacy.html');
+      await page.evaluate(({ to, fields, withFiles }) => {
+        const form = document.createElement('form'); form.id = 'share-test'; form.method = 'POST'; form.enctype = 'multipart/form-data'; form.action = to;
+        for (const k of Object.keys(fields)) { const i = document.createElement('input'); i.type = 'hidden'; i.name = k; i.value = fields[k]; form.appendChild(i); }
+        if (withFiles) { const f = document.createElement('input'); f.type = 'file'; f.name = 'files'; f.multiple = true; form.appendChild(f); }
+        document.body.appendChild(form);
+      }, { to: action.href, fields, withFiles: !!files });
+      if (files) await page.setInputFiles('#share-test input[type=file]', files.map(([name, mimeType, text]) => ({ name, mimeType, buffer: Buffer.from(text) })));
+      if (offline) await ctx.setOffline(true);
+      const gone = page.waitForNavigation({ timeout: 15000 }).catch((e) => errors.push('compartir: ' + e.message.split('\n')[0]));
+      await page.evaluate(() => document.getElementById('share-test').submit()).catch(() => {});
+      await gone;
+    };
+    const state = () => page.evaluate(async () => ({ path: location.pathname, f: decodeURIComponent(new URLSearchParams(location.search).get('f') || ''), share: new URLSearchParams(location.search).has('share'),
+      h1: (document.querySelector('.markdown-body h1') || {}).textContent || '', caches: await caches.keys(), nodoc: document.documentElement.classList.contains('lmd-nodoc'),
+      msg: (document.querySelector('.lmd-home-msg') || {}).textContent || '', mem: (JSON.parse(sessionStorage.getItem('mdt-mem') || 'null') || {}).name || '', notes: (await LMD.store.notesAll()).map((n) => n.text) }));
+
+    await send({ title: 'ignored with a file' }, [['shared.md', 'text/markdown', '# Shared file\n\nSent from another app.\n']]);
+    await page.waitForSelector('.markdown-body h1', { timeout: 8000 }).catch(() => {});
+    let s = await state();
+    check('un .md compartido se abre como documento sin guardar, por el mismo camino que un archivo elegido a mano', s.path === '/src/app.html' && s.f === 'mem/shared.md' && s.h1.startsWith('Shared file') && s.mem === 'shared.md' && !s.notes.length, s);
+    check('la dirección queda limpia y lo recibido no queda guardado', !s.share && !s.caches.includes('lmd-share'), s);
+    await page.reload(); await page.waitForSelector('.markdown-body h1', { timeout: 8000 }).catch(() => {});
+    check('al recargar sigue abierto y no se vuelve a recoger', (await state()).f === 'mem/shared.md');
+
+    await send({}, [['first.txt', 'text/plain', 'plain first\n'], ['second.md', 'text/markdown', '# Second\n']]);
+    await page.waitForFunction(() => /first\.txt/.test(location.search), null, { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(400); s = await state();
+    check('de varios archivos se abre el primero y se avisa cuántos llegaron', s.f === 'mem/first.txt' && /2 files arrived/.test(await page.evaluate(() => document.body.textContent)), s);
+
+    await send({}, [['photo.png', 'image/png', 'not a note']]);
+    await page.waitForSelector('.lmd-home-msg:not([hidden])', { timeout: 8000 }).catch(() => {});
+    s = await state();
+    check('un archivo de otro tipo no se abre: el inicio dice por qué', s.nodoc && !s.f && /Only Markdown, text, JSON or YAML/.test(s.msg) && !s.caches.includes('lmd-share'), s);
+
+    await send({}, [['notes', 'text/markdown', '# No extension\n']]);
+    await page.waitForSelector('.markdown-body h1', { timeout: 8000 }).catch(() => {});
+    check('un Markdown que llega sin extensión la toma de su tipo', (await state()).f === 'mem/notes.md');
+
+    await send({}, [['big.md', 'text/markdown', '# Big\n\n' + 'x'.repeat(5 * 1024 * 1024 + 10)]]);
+    await page.waitForSelector('.lmd-home-msg:not([hidden])', { timeout: 15000 }).catch(() => {});
+    s = await state();
+    check('uno más grande que el tope tampoco: se dice y no queda guardado', s.nodoc && /too large/.test(s.msg) && !s.caches.includes('lmd-share'), [s.msg, s.caches]);
+
+    // Texto y enlace, sin red: el service worker recibe el envío y la app abre desde lo guardado.
+    await send({ title: 'Reading   list', text: 'An article worth keeping', url: 'https://example.com/post' }, null, true);
+    await page.waitForSelector('.lmd-editing .lmd-article', { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(400); s = await state();
+    check('sin red, un texto con enlace compartido abre una nota nueva con eso adentro', /^local\/note-\d{8}-\d{4}\.md$/.test(s.f) && J(s.notes) === J(['# Reading list\n\nAn article worth keeping\n\n<https://example.com/post>\n']) && !s.share, s);
+    await ctx.setOffline(false);
+
+    await send({ title: '<img src=x onerror="window.__pwned=1">', text: '<script>window.__pwned=1</script>plain', url: 'javascript:window.__pwned=1' });
+    await page.waitForSelector('.lmd-editing .lmd-article', { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    const safe = await page.evaluate(async () => ({ pwned: window.__pwned, text: (await LMD.store.notesAll()).map((n) => n.text).find((t) => /onerror/.test(t)) || '', img: !!document.querySelector('.lmd-article img[onerror], .lmd-article script') }));
+    check('lo compartido es texto: no corre nada y un enlace que no es http no entra', safe.pwned === undefined && !safe.img && /onerror/.test(safe.text) && !/javascript:/.test(safe.text), safe);
+
+    await page.goto(origin + '/src/share'); await page.waitForSelector('.lmd-home', { timeout: 8000 }).catch(() => {});
+    s = await state();
+    check('entrar a esa dirección sin un envío abre la app, sin más', s.path === '/src/app.html' && s.nodoc && !s.share && !s.msg, s);
+    check('ningún envío fue a la red', !hits.slice(mark).includes('/src/share'), hits.slice(mark).filter((h) => /share/.test(h)));
+    await ctx.close();
+  }
+
   // ---------- La portada va guardando la app ----------
   console.log('Portada: la app se guarda mientras se lee');
   {
