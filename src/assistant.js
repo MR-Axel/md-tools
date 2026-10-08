@@ -689,6 +689,8 @@
           '<div class="lmd-row"><button type="button" class="lmd-link" data-ai="list">' + esc(T('Traer los modelos del proveedor')) + '</button></div>' +
           (st.hasKey ? '<label class="lmd-switch"><input type="checkbox" data-ai="lock"' + (st.lock ? ' checked' : '') + '><i></i><span>' + esc(T('Pedir una contraseña al abrir')) + '</span></label>' : '')) +
         '<p class="' + (noteBad ? 'lmd-img-err' : 'lmd-tl-why') + ' lmd-ai-note" role="status"' + (note ? '' : ' hidden') + '>' + esc(note) + '</p>';
+      // La tarjeta de Herramientas avisa mientras falte la conexión.
+      LMD.tools.need('assistant', st.has ? '' : NEED);
     };
     const tell = (text, bad) => { note = text || ''; noteBad = !!bad; draw(); };
     const load = async (quiet) => {
@@ -749,8 +751,11 @@
         busy = false;
       }
     });
-    refresh();
+    return refresh();
   }
+  // Sin una conexión cargada el asistente no puede hacer nada: Herramientas lo dice en su tarjeta.
+  const NEED = 'Falta la clave';
+  async function needs() { try { return (await A().status()).has ? '' : NEED; } catch (e) { return NEED; } }
 
   // ---------- Encendido ----------
   function buttons() {
@@ -796,5 +801,5 @@
   }
   function disable() { on = false; closeMenu(); closeCard(); closePanel(); document.querySelectorAll('.lmd-ai-gen, .lmd-ai-pick').forEach((n) => n.remove()); if (core) buttons(); }
 
-  LMD.assistant = { enable, disable, settings, openMenu: openHere, generate, ask: togglePanel, diff, shape, state: () => ({ on, card: card ? { done: card.done, text: card.done ? card.final : card.text, bad: !!card.bad, error: card.err ? card.err.code : '' } : null, panel: panel ? { messages: panel.msgs.length, busy: !!panel.ctl } : null }) };
+  LMD.assistant = { enable, disable, settings, needs,openMenu: openHere, generate, ask: togglePanel, diff, shape, state: () => ({ on, card: card ? { done: card.done, text: card.done ? card.final : card.text, bad: !!card.bad, error: card.err ? card.err.code : '' } : null, panel: panel ? { messages: panel.msgs.length, busy: !!panel.ctl } : null }) };
 })();

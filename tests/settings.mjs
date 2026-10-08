@@ -303,6 +303,19 @@ try {
   for (const t of ['cloud', 'ai', 'plan']) { await file.click('[data-ptab=' + t + ']'); await file.waitForTimeout(500); direct[t] = await file.evaluate((k) => document.querySelector('[data-acct=' + k + ']').textContent, t); }
   await file.waitForTimeout(800);
   check('sobre un archivo directo, Nube, IA y Plan mandan a la app en vez de fallar', Object.values(direct).every((d) => /La cuenta se maneja desde la app de SharpMD\./.test(d) && /Abrir SharpMD/.test(d) && !/No hay conexión/.test(d)) && /Gratis/.test(direct.plan), direct);
+  // Una sola franja lo dice igual en cada pestaña que depende de la cuenta, y ofrece abrir ESTE archivo en la app
+  const strip = {};
+  for (const t of ['look', 'cloud', 'ai', 'auto', 'plan', 'tools']) { await file.click('[data-ptab=' + t + ']'); await file.waitForTimeout(200); strip[t] = await file.evaluate(() => { const d = document.querySelector('[data-direct]'); return d.hidden || !d.offsetParent ? '' : d.textContent; }); }
+  const same = 'Estás leyendo un archivo de tu disco. Tu cuenta, la nube y tu IA están en la app. Abrir este archivo en la app';
+  check('sobre un archivo directo, una franja dice lo mismo en Nube, IA, Automatizaciones, Plan y Herramientas, y no aparece en Apariencia', strip.look === '' && ['cloud', 'ai', 'auto', 'plan', 'tools'].every((t) => strip[t].replace(/\s+/g, ' ').trim() === same), strip);
+  // La galería ahí no habla con el servidor: muestra los temas incluidos y dice dónde está lo demás, sin "no hay conexión"
+  await file.waitForSelector('.lmd-gal-card[data-gkind=included]');
+  const dgal = await file.evaluate(() => ({ note: document.querySelector('.lmd-gal-note').textContent, hidden: document.querySelector('.lmd-gal-note').hidden, own: document.querySelectorAll('.lmd-gal-card[data-gkind=included]').length, empty: !!document.querySelector('.lmd-gal-list .lmd-empty') }));
+  check('la galería sobre un archivo directo muestra los doce temas incluidos y dice que el resto está en la app', !dgal.hidden && dgal.note === 'Abrí la app para ver lo que compartió la comunidad.' && dgal.own === 12 && !dgal.empty && !/conexión/.test(dgal.note), dgal);
+  const fileUrl = pathToFileURL(path.join(root, 'examples', 'sample.md')).href;
+  const lands = async (sel) => { await file.bringToFront(); const [p] = await Promise.all([ctx.waitForEvent('page'), file.click(sel)]); const first = p.url(); await p.close(); return { first, dlg: await file.evaluate(() => !!document.querySelector('.lmd-dlg, .lmd-gal-share')) }; };
+  const viaShare = await lands('[data-gal=share]'); const viaStrip = await lands('[data-direct-go]');
+  check('"Compartí el tuyo" y el botón de la franja abren este mismo archivo en la app, sin el diálogo de entrar', viaShare.first === SITE + '/src/app.html#open=' + encodeURIComponent(fileUrl) && viaStrip.first === viaShare.first && !viaShare.dlg && !viaStrip.dlg, [viaShare, viaStrip, fileUrl]);
   check('y no le piden nada al servidor', asked.length === 0, asked.slice(0, 5));
   const buy = await file.evaluate(() => ({ paid: [...document.querySelectorAll('[data-acct=plan] .lmd-plan + .lmd-plan .lmd-plan-buy [data-c=app]')].map((b) => b.textContent + ' ' + b.dataset.at + (b.classList.contains('lmd-btn-fill') ? ' fill' : '')),
     open: [...document.querySelectorAll('[data-acct=plan] .lmd-acct-actions [data-c=app]')].map((b) => b.textContent + (b.classList.contains('lmd-btn-fill') ? ' fill' : '')), price: document.querySelector('[data-acct=plan] .lmd-plan + .lmd-plan h4').textContent }));
@@ -672,6 +685,49 @@ try {
   await app.click('[data-fb=close]');
   await tab('cloud'); await app.click('[data-acct=cloud] [data-c=on]'); await app.waitForSelector('[data-acct=cloud] [data-c=login]');
   check('"Prender la nube" la deja andando con el servidor de SharpMD', (await stored('settings')).cloudUrl === '' && !(await app.evaluate(() => document.querySelector('.lmd-sync').hidden)));
+
+  // ---------- Claro y oscuro a mano, sin depender del dispositivo ----------
+  console.log('Claro y oscuro desde la barra');
+  const tp = await ctx.newPage(); tp.on('pageerror', (e) => errors.push(e.message));
+  await tp.emulateMedia({ colorScheme: 'dark' });
+  await tp.goto(home); await tp.waitForSelector('.lmd-home');
+  await tp.evaluate(() => LMD.patch({ theme: 'auto', preset: '', presetLight: '', presetDark: '', accent: '' })); await tp.waitForTimeout(400);
+  const seen = () => tp.evaluate(() => { const r = document.documentElement; const b = document.querySelector('[data-act=theme-flip]'); return { dark: r.classList.contains('lmd-dark'), bg: r.style.getPropertyValue('--bg') || (r.classList.contains('lmd-dark') ? '#121418' : '#fbfaf7'), title: b.title, name: b.getAttribute('aria-label'), icon: !!b.querySelector('svg'), shown: !!b.offsetParent, next: b.nextElementSibling.dataset.act, mode: localStorage.getItem('lmd:mode'), kept: localStorage.getItem('lmd:dark') }; });
+  const set = async () => { const s = await tp.evaluate(() => new Promise((resolve) => chrome.storage.local.get('settings', (r) => resolve(r.settings)))); return [s.theme, s.preset || '', s.presetLight || '', s.presetDark || ''].join('|'); };
+  const t0 = await seen();
+  check('en automático sigue al dispositivo, y la barra tiene el botón al lado de Ajustes', t0.dark && t0.shown && t0.icon && t0.name === 'Pasar a claro' && t0.title === t0.name && t0.next === 'settings' && t0.mode === 'auto', t0);
+  await tp.click('[data-act=theme-flip]'); await tp.waitForFunction(() => document.documentElement.classList.contains('lmd-light')); await tp.waitForTimeout(400);
+  const t1 = await seen();
+  check('un toque pasa a claro aunque el dispositivo esté en oscuro, y queda guardado como claro', !t1.dark && t1.name === 'Pasar a oscuro' && (await set()) === 'light|||' && t1.mode === 'light' && t1.kept === '0', [t1, await set()]);
+  await tp.reload(); await tp.waitForSelector('.lmd-home'); await tp.waitForTimeout(300);
+  check('al recargar sigue en claro: la elección manda sobre el dispositivo', !(await seen()).dark && (await set()).startsWith('light|'), await seen());
+  // El primer cuadro (boot.js) pinta con lo elegido, no con el dispositivo; en automático, con el dispositivo
+  const boot = async () => tp.evaluate(async () => { const r = document.documentElement; const was = [r.style.background, r.style.colorScheme]; await new Promise((done, fail) => { const tag = document.createElement('script'); tag.src = chrome.runtime.getURL('src/boot.js') + '?' + Math.random(); tag.onload = done; tag.onerror = fail; document.head.appendChild(tag); }); const out = [r.style.colorScheme, r.style.getPropertyValue('--lmd-boot-bg')]; r.style.background = was[0]; r.style.colorScheme = was[1]; return out.join(' '); });
+  const b1 = await boot();
+  await tp.evaluate(() => { localStorage.setItem('lmd:mode', 'auto'); }); const b2 = await boot();
+  await tp.evaluate(() => { localStorage.setItem('lmd:mode', 'light'); });
+  check('sin destello: el primer cuadro sale claro con claro elegido y el dispositivo en oscuro, y en automático sale con el dispositivo', b1 === 'light #fbfaf7' && b2 === 'dark #121418', [b1, b2]);
+  // Cada familia recuerda su tema: Arena en claro, Marea en oscuro
+  await tp.evaluate(() => LMD.patch(LMD.theme.patchFor('arena'))); await tp.waitForFunction(() => document.documentElement.style.getPropertyValue('--bg') === '#f6efe0');
+  await tp.click('[data-act=theme-flip]'); await tp.waitForFunction(() => document.documentElement.classList.contains('lmd-dark')); await tp.waitForTimeout(300);
+  const d1 = [await set(), (await seen()).bg];
+  await tp.evaluate(() => LMD.patch(LMD.theme.patchFor('marea'))); await tp.waitForFunction(() => document.documentElement.style.getPropertyValue('--bg') === '#0d1524'); await tp.waitForTimeout(200);
+  await tp.click('[data-act=theme-flip]'); await tp.waitForFunction(() => document.documentElement.style.getPropertyValue('--bg') === '#f6efe0'); await tp.waitForTimeout(300);
+  const l2 = await set();
+  await tp.click('[data-act=theme-flip]'); await tp.waitForFunction(() => document.documentElement.style.getPropertyValue('--bg') === '#0d1524'); await tp.waitForTimeout(300);
+  const d2 = await set();
+  check('el botón alterna entre el último tema claro y el último oscuro que se usó', d1[0] === 'dark||arena|' && d1[1] === '#121418' && l2 === 'light|arena|arena|marea' && d2 === 'dark|marea|arena|marea', [d1, l2, d2]);
+  // En Ajustes > Apariencia el selector va primero, dice qué hace Automático, y elegir Claro trae el tema claro de siempre
+  await tp.click('[data-act=settings]'); await tp.waitForSelector('.lmd-panel-card'); await tp.click('[data-ptab=look]');
+  const look = await tp.evaluate(() => { const sec = document.querySelector('.lmd-panel-body > section[data-tab=look]'); const rows = [...sec.querySelectorAll(':scope > .lmd-row, :scope > .lmd-pcol')]; const seg = sec.querySelector('[data-seg=theme]');
+    return { first: rows[0].contains(seg), vals: [...seg.querySelectorAll('button')].map((b) => b.textContent + (b.classList.contains('lmd-on') ? '*' : '')).join(), hint: rows[0].querySelector('.lmd-mode-hint').textContent }; });
+  check('en Apariencia el selector Automático, Claro, Oscuro va arriba de todo y dice que Automático sigue al dispositivo', look.first && look.vals === 'Automático,Claro,Oscuro*' && look.hint === 'Automático sigue al dispositivo', look);
+  await tp.click('[data-seg=theme] [data-val=light]'); await tp.waitForFunction(() => document.documentElement.style.getPropertyValue('--bg') === '#f6efe0'); await tp.waitForTimeout(300);
+  const viaSeg = await set();
+  await tp.click('[data-seg=theme] [data-val=auto]'); await tp.waitForFunction(() => document.documentElement.classList.contains('lmd-dark')); await tp.waitForTimeout(300);
+  check('desde el selector, Claro vuelve al último tema claro y Automático vuelve a seguir al dispositivo', viaSeg === 'light|arena|arena|marea' && (await set()).startsWith('auto|') && (await seen()).mode === 'auto', [viaSeg, await set()]);
+  await tp.evaluate(() => LMD.patch({ theme: 'auto', preset: '', presetLight: '', presetDark: '' })); await tp.waitForTimeout(300);
+  await tp.close();
   check('ninguna prueba tocó el servidor de producción ni otro sitio', outside.length === 0, outside);
   check('sin errores de JavaScript', errors.length === 0, errors);
 } catch (e) { check('sin excepciones', false, String(e && e.stack || e).slice(0, 900)); }

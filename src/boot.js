@@ -4,7 +4,12 @@
 (function () {
   var dark = null;
   try { var v = localStorage.getItem('lmd:dark'); if (v === '1') dark = true; else if (v === '0') dark = false; } catch (e) { /* sin almacenamiento */ }
-  if (dark === null) dark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  var sys = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  // Claro u oscuro elegido a mano manda sobre el dispositivo. En automático manda el dispositivo: si cambió desde la
+  // última vez, lo anotado ya no sirve y se pinta el fondo de siempre de ese modo.
+  var stale = false;
+  try { if (dark !== null && dark !== sys && localStorage.getItem('lmd:mode') === 'auto') { dark = sys; stale = true; } } catch (e) { /* sin almacenamiento */ }
+  if (dark === null) dark = sys;
   var root = document.documentElement;
   // En iPhone y iPad, Safari agranda la página al enfocar un campo de letra chica. Con este tope no lo hace, y el
   // zoom con dos dedos sigue andando: iOS no deja que una página lo bloquee.
@@ -15,7 +20,7 @@
   }
   var bg = dark ? '#121418' : '#fbfaf7';
   // Con un tema incluido o un fondo propio, el color que dejó anotado theme.js.
-  try { var kept = localStorage.getItem('lmd:bg'); if (/^#[0-9a-f]{6}$/i.test(kept || '')) bg = kept; } catch (e) { /* sin almacenamiento */ }
+  try { var kept = localStorage.getItem('lmd:bg'); if (!stale && /^#[0-9a-f]{6}$/i.test(kept || '')) bg = kept; } catch (e) { /* sin almacenamiento */ }
   root.style.background = bg;
   root.style.colorScheme = dark ? 'dark' : 'light';
   root.style.setProperty('--lmd-boot-bg', bg);

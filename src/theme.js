@@ -39,7 +39,7 @@
   // Cada color del tema y la variable que pinta.
   const VARS = { bg: '--bg', side: '--bg-side', soft: '--bg-soft', code: '--bg-code', fg: '--fg', muted: '--fg-muted', faint: '--fg-faint', line: '--line', link: '--link', sel: '--sel', danger: '--danger',
     k: '--syn-k', s: '--syn-s', n: '--syn-n', f: '--syn-f', c: '--syn-c', t: '--syn-t', b: '--syn-b' };
-  const ACCENT = ['--accent', '--accent-soft', '--accent-fg', '--accent-fill'];
+  const ACCENT = ['--accent', '--accent-soft', '--accent-fg', '--accent-fill', '--accent-knob', '--accent-edge'];
   // Los colores sueltos que puede fijar un tema de la comunidad, con la clave de ajustes donde quedan.
   const CUSTOM = { surface: 'colSurface', text: 'colText', muted: 'colMuted', border: 'colBorder', link: 'colLink' };
 
@@ -93,7 +93,7 @@
     return pal;
   }
 
-  function accent(root, dark, hex) {
+  function accent(root, dark, hex, c) {
     const lum = luminance(hex);
     // El relleno usa el color tal cual; el texto se corrige si no contrasta con el fondo del tema.
     let text = hex;
@@ -103,6 +103,10 @@
     root.style.setProperty('--accent-fill', hex);
     root.style.setProperty('--accent-soft', 'color-mix(in srgb, ' + hex + ' 17%, transparent)');
     root.style.setProperty('--accent-fg', lum > 0.36 ? '#14161a' : '#ffffff');
+    // Un interruptor prendido se pinta con el acento tal cual. La perilla va en el tono que más contrasta con él, y si
+    // el acento se pierde contra el panel o la tarjeta (menos de 3 a 1), el interruptor gana un borde que sí se ve.
+    root.style.setProperty('--accent-knob', lum > 0.2 ? '#14161a' : '#ffffff');
+    if (c && Math.min(contrast(hex, c.bg), contrast(hex, c.soft)) < 3) root.style.setProperty('--accent-edge', c.muted);
   }
 
   // Pinta el tema en la página. Con previewId se ve ese tema sin guardarlo: es la vista previa.
@@ -127,9 +131,10 @@
       const over = overrides(settings, dark, base);
       Object.keys(over).forEach((k) => root.style.setProperty(VARS[k], over[k]));
       if (over.bg) bg = over.bg;
-      if (settings.supporter && HEX.test(settings.accent || '')) accent(root, dark, settings.accent);
+      if (settings.supporter && HEX.test(settings.accent || '')) accent(root, dark, settings.accent, Object.assign({}, base, over));
       // Lo lee boot.js en la próxima carga, para pintar el primer cuadro con el fondo que corresponde.
-      try { localStorage.setItem('lmd:dark', dark ? '1' : '0'); localStorage.setItem('lmd:bg', bg); } catch (e) { /* sin almacenamiento */ }
+      // Con el modo anotado, boot.js sabe si lo guardado manda (claro u oscuro a mano) o si tiene que mirar el dispositivo.
+      try { localStorage.setItem('lmd:dark', dark ? '1' : '0'); localStorage.setItem('lmd:bg', bg); localStorage.setItem('lmd:mode', settings.theme === 'light' || settings.theme === 'dark' ? settings.theme : 'auto'); } catch (e) { /* sin almacenamiento */ }
     }
     return { dark, bg };
   }
@@ -146,8 +151,26 @@
     const p = byId(id); if (!p) return null;
     const out = { preset: p.id === BASE.light || p.id === BASE.dark ? '' : p.id, theme: p.dark ? 'dark' : 'light', accent: '', paperLight: '', paperDark: '', codeColor: '' };
     Object.values(CUSTOM).forEach((k) => { out[k] = ''; });
+    out[FAMILY(p.dark)] = out.preset;
     return out;
   }
+  // El último tema claro y el último oscuro que se usó se recuerdan por separado ('' es el de siempre): al pasar de
+  // claro a oscuro, o al revés, vuelve el de esa familia.
+  const FAMILY = (dark) => (dark ? 'presetDark' : 'presetLight');
+  // Lo que se guarda al elegir Automático, Claro u Oscuro a mano. flipPatch pasa al contrario de lo que se ve.
+  function modePatch(settings, mode) {
+    const out = { theme: mode === 'light' || mode === 'dark' ? mode : 'auto' };
+    const seen = modeDark(settings); const now = chosen(settings); const kept = byId(settings.preset);
+    // Lo que se ve es la elección de esta familia, salvo que sea el de siempre por tener puesto uno de la otra.
+    if (!kept || kept.dark === seen) out[FAMILY(seen)] = now ? now.id : '';
+    if (out.theme === 'auto') return out;
+    const dark = out.theme === 'dark';
+    if (dark === seen && now) return out;
+    const back = byId(FAMILY(dark) in out ? out[FAMILY(dark)] : settings[FAMILY(dark)]);
+    out.preset = back && back.dark === dark && back.id !== BASE.light && back.id !== BASE.dark ? back.id : '';
+    return out;
+  }
+  const flipPatch = (settings) => modePatch(settings, modeDark(settings) ? 'light' : 'dark');
 
   // Los diagramas de Mermaid con los colores del tema. Con los temas de siempre, sus dos temas propios.
   function mermaid(settings) {
@@ -187,5 +210,5 @@
     apply(root, settings);
   }
 
-  LMD.theme = { PRESETS, BASE, CUSTOM, byId, isDark, chosen, active, apply, palette, patchFor, mermaid, thumb, exportCss, themeOnly, luminance, contrast, paperOk };
+  LMD.theme = { PRESETS, BASE, CUSTOM, byId, isDark, chosen, active, apply, palette, patchFor, modePatch, flipPatch, mermaid, thumb, exportCss, themeOnly, luminance, contrast, paperOk };
 })();

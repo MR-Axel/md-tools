@@ -9,6 +9,7 @@
     paperLight: '', // fondo de la página en el tema claro (#rrggbb); lo pone un tema de la comunidad. Vacío = el del tema
     paperDark: '', // lo mismo para el tema oscuro
     preset: '', // tema incluido que hay puesto (theme.js); vacío = el de siempre
+    presetLight: '', presetDark: '', // el último tema claro y el último oscuro que se usó: a ese se vuelve al pasar de claro a oscuro
     colSurface: '', colText: '', colMuted: '', colBorder: '', colLink: '', // colores sueltos de un tema de la comunidad (#rrggbb)
     centered: true,
     contentWidth: 1040, // px
@@ -262,6 +263,8 @@
       "Idioma": "Language",
       "Tema": "Theme",
       "Automático": "Auto",
+      "Pasar a claro": "Switch to light", "Pasar a oscuro": "Switch to dark", "Tema claro": "Light theme", "Tema oscuro": "Dark theme",
+      "Automático sigue al dispositivo": "Auto follows your device",
       "Claro": "Light",
       "Oscuro": "Dark",
       "Color de acento": "Accent color",
@@ -1336,7 +1339,11 @@
       "Denunciar esta nota": "Report this note", "Motivo (opcional)": "Reason (optional)", "Enviar denuncia": "Send report",
       "Avisanos si esta nota tiene algo que no debería estar acá. Se envía qué nota es, no su contenido.": "Tell us if this note has something that should not be here. We receive which note it is, not its content.",
       // Ajustes > Herramientas (tools.js)
-      "Herramientas": "Tools", "Prendé el Tablero kanban en Ajustes > Herramientas para verlo como tablero": "Turn on Kanban board in Settings > Tools to see it as a board", "Opciones": "Options",
+      "Estás leyendo un archivo de tu disco.": "You are reading a file from your disk.", "Tu cuenta, la nube y tu IA están en la app.": "Your account, the cloud and your AI are in the app.",
+      "Abrir este archivo en la app": "Open this file in the app", "Sesión iniciada como {a} en la app.": "Signed in as {a} in the app.",
+      "Abrí la app para ver lo que compartió la comunidad.": "Open the app to see what the community shared.",
+      "Configurar": "Configure","Ocultar": "Hide", "Falta la clave": "Add your key",
+      "Herramientas": "Tools","Prendé el Tablero kanban en Ajustes > Herramientas para verlo como tablero": "Turn on Kanban board in Settings > Tools to see it as a board", "Opciones": "Options",
       "Funciones que se suman a la app. Cada una se prende acá.": "Features added to the app. Turn each one on here.",
       "Tablero kanban": "Kanban board", "Un bloque kanban se ve como un tablero con columnas y tarjetas que se arrastran.": "A kanban block shows as a board with columns and cards you can drag.",
       // Modo presentación (present.js)
@@ -1502,8 +1509,10 @@
       "¿Eliminar la tarjeta \"{a}\"?": "Delete the card \"{a}\"?", "Campos en las tarjetas": "Fields on the cards", "Campos en las tarjetas…": "Fields on the cards…",
       "Todavía no hay campos. Abrí una tarjeta para agregar el primero.": "There are no fields yet. Open a card to add the first one.", "Hasta 120 caracteres.": "Up to 120 characters.",
       // Listas de tareas: contador, renglón de agregar, reordenar y quitar los hechos.
-      "{a} de {b}": "{a} of {b}", "Agregar elemento": "Add item", "Quitar los hechos": "Clear done", "Mover los hechos abajo": "Move done to the bottom",
+      "{a} de {b}": "{a} of {b}", "Agregar elemento": "Add item", "Quitar los hechos": "Remove completed items", "Mover los hechos abajo": "Move done to the bottom",
       "Mover el elemento": "Move the item", "Hechos quitados: {a}": "Done items removed: {a}",
+      "{a} de {b} hechas": "{a} of {b} done", "Ocultar hechas": "Hide done", "Mostrar hechas": "Show done", "Queda 1": "1 left", "Quedan {a}": "{a} left", "1 oculta": "1 hidden", "{a} ocultas": "{a} hidden",
+      "¿Quitar {n} elementos hechos?":"Remove {n} completed items?", "¿Quitar 1 elemento hecho?": "Remove 1 completed item?", "Se borran de la nota. Se puede deshacer.": "They are deleted from the note. You can undo it.",
       // El nombre visible de la cuenta.
       "Nombre visible": "Display name", "Los demás ven este nombre en notas compartidas y equipos": "Others see this name in shared notes and teams",
       "De 2 a 40 caracteres, sin arroba.": "2 to 40 characters, no @ sign.", "Demasiados cambios por ahora. Probá más tarde.": "Too many changes for now. Try again later.",

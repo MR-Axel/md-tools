@@ -563,20 +563,33 @@
   const clItems = (list) => Array.from(list.children).filter((li) => li.tagName === 'LI' && !li.classList.contains('lmd-draft-li'));
   const clLists = () => Array.from(core.ui.article.querySelectorAll(':scope > ul.lmd-task-list')).filter((list) => { const it = clItems(list); return it.length > 0 && it.every((li) => li.classList.contains('lmd-task-item')); });
   const clDone = (li) => { const b = li.querySelector('input.lmd-task'); return !!(b && b.checked); };
+  // Ocultar las hechas es solo de la vista: el archivo no cambia, y copiar, exportar e imprimir llevan la lista entera.
+  // Se recuerda por nota mientras dure la sesión, por el lugar que ocupa la lista entre las listas de tareas.
+  const clKey = () => 'lmd-cl-hide:' + location.pathname + location.search;
+  const clHidden = () => { try { const v = JSON.parse(sessionStorage.getItem(clKey()) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } };
+  function clHide(at, on) {
+    const now = clHidden().filter((i) => i !== at); if (on) now.push(at);
+    try { if (now.length) sessionStorage.setItem(clKey(), JSON.stringify(now)); else sessionStorage.removeItem(clKey()); } catch (e) { /* sin almacenamiento: vale hasta redibujar */ }
+  }
   function checklists() {
     const article = core.ui.article;
     article.querySelectorAll('.lmd-cl-bar, .lmd-cl-add, .lmd-cl-grip').forEach((n) => n.remove());
     article.querySelectorAll('.lmd-cl').forEach((n) => n.classList.remove('lmd-cl'));
     if (core.readOnly || !core.blocks) return;
-    clLists().forEach((list) => {
+    const hidden = clHidden();
+    clLists().forEach((list, at) => {
       const items = clItems(list); const done = items.map(clDone); const n = done.filter(Boolean).length;
       list.classList.add('lmd-cl');
-      const bar = el('div', { class: 'lmd-cl-bar', contenteditable: 'false' });
-      bar.appendChild(el('span', { class: 'lmd-cl-count', text: T('{a} de {b}', { a: n, b: items.length }) }));
-      // "Hechos abajo" solo se ofrece si alguno hecho quedó arriba de uno sin hacer.
-      if (done.lastIndexOf(false) > done.indexOf(true) && done.indexOf(true) >= 0) bar.appendChild(el('button', { type: 'button', class: 'lmd-link', 'data-cl': 'sink', text: T('Mover los hechos abajo') }));
-      if (n) bar.appendChild(el('button', { type: 'button', class: 'lmd-link', 'data-cl': 'clear', text: T('Quitar los hechos') }));
-      list.before(bar);
+      // El contador recién dice algo con tres tareas o más: en una nota llena de listas de una sola tarea es ruido.
+      // Sin contador, la barra no ocupa renglón: sus acciones quedan arriba a la derecha de la lista.
+      const counted = items.length >= 3; const hiding = counted && n > 0 && hidden.includes(at);
+      const bar = el('div', { class: 'lmd-cl-bar' + (counted ? '' : ' lmd-cl-bare') + (hiding ? ' lmd-cl-hiding' : ''), contenteditable: 'false' });
+      if (counted) bar.appendChild(el('span', { class: 'lmd-cl-count', text: hiding ? (items.length - n === 1 ? T('Queda 1') : T('Quedan {a}', { a: items.length - n })) + ' · ' + (n === 1 ? T('1 oculta') : T('{a} ocultas', { a: n })) : T('{a} de {b} hechas', { a: n, b: items.length }) }));
+      // Lo único a la vista al lado del contador: ocultar las hechas, que no borra nada.
+      if (counted && n) bar.appendChild(el('button', { type: 'button', class: 'lmd-cl-toggle', 'data-cl': 'hide', 'aria-pressed': String(hiding), text: T(hiding ? 'Mostrar hechas' : 'Ocultar hechas') }));
+      // Mover y quitar los hechos cambian la nota: van en el menú de la lista, y quitar pide confirmar.
+      if (n) bar.appendChild(el('button', { type: 'button', class: 'lmd-link lmd-cl-more', 'aria-haspopup': 'menu', 'aria-expanded': 'false', title: T('Más acciones'), 'aria-label': T('Más acciones') }, ICON.more));
+      if (bar.firstChild) list.before(bar);
       items.forEach((li) => li.insertBefore(el('button', { type: 'button', class: 'lmd-cl-grip', contenteditable: 'false', title: T('Mover el elemento'), 'aria-label': T('Mover el elemento') }, ICON.dots), li.firstChild));
       list.after(el('button', { type: 'button', class: 'lmd-cl-add', contenteditable: 'false', text: '+ ' + T('Agregar elemento') }));
     });
@@ -608,14 +621,56 @@
     undo.addEventListener('click', () => { t.remove(); if (clToast === t) clToast = null; core.undo(); if (then) then(); });
     t.append(el('span', { text }), undo);
     document.body.appendChild(t);
-    setTimeout(() => { t.remove(); if (clToast === t) clToast = null; }, 8000);
+    setTimeout(() => { t.remove(); if (clToast === t) clToast = null; }, 12000);
   }
-  function clAct(list, what) {
+  async function clAct(list, what) {
     clSettle();
+    if (what !== 'sink') {
+      // Borra de la nota: se pregunta antes. La lista se vuelve a buscar por si la nota se redibujó mientras tanto.
+      const at = clLists().indexOf(list); const n = clItems(list).filter(clDone).length; if (at < 0 || !n) return;
+      const ok = await LMD.dialog.confirm({ title: n === 1 ? T('¿Quitar 1 elemento hecho?') : T('¿Quitar {n} elementos hechos?', { n }), text: T('Se borran de la nota. Se puede deshacer.'), ok: T('Quitar'), danger: true });
+      list = clLists()[at]; if (!ok || !list) return;
+    }
     const c = clChunks(list); if (!c) return;
     const done = c.items.map(clDone); const all = c.chunks.map((_, i) => i);
     if (what === 'sink') clWrite(c, all.filter((i) => !done[i]).concat(all.filter((i) => done[i])));
     else { const n = done.filter(Boolean).length; if (!n) return; clWrite(c, all.filter((i) => !done[i])); clSay(T('Hechos quitados: {a}', { a: n })); }
+  }
+  // El menú de la lista, detrás de "⋯": las dos acciones. Se recorre con las flechas, Escape lo cierra y devuelve el foco.
+  let clMenu = null;
+  function clMenuClose(focus) {
+    if (!clMenu) return;
+    const m = clMenu; clMenu = null; m.box.remove();
+    if (m.btn.isConnected) { m.btn.setAttribute('aria-expanded', 'false'); if (focus) m.btn.focus(); }
+  }
+  function clMenuOpen(btn) {
+    if (clMenu && clMenu.btn === btn) { clMenuClose(true); return; }
+    clMenuClose(); closeMenu();
+    const list = btn.parentNode.nextElementSibling; if (!list || !list.classList.contains('lmd-cl')) return;
+    const done = clItems(list).map(clDone);
+    const box = el('div', { class: 'lmd-menu lmd-menu-narrow lmd-cl-menu', role: 'menu', 'aria-label': T('Más acciones') });
+    const rows = el('div', { class: 'lmd-menu-list' });
+    const sink = el('button', { type: 'button', role: 'menuitem', 'data-cl': 'sink', text: T('Mover los hechos abajo') });
+    sink.disabled = !(done.indexOf(true) >= 0 && done.lastIndexOf(false) > done.indexOf(true));
+    rows.append(sink, el('button', { type: 'button', role: 'menuitem', class: 'lmd-menu-danger', 'data-cl': 'clear', text: T('Quitar los hechos') + '…' }));
+    box.appendChild(rows); document.body.appendChild(box);
+    const at = btn.getBoundingClientRect(); const w = box.offsetWidth; const h = box.offsetHeight;
+    box.style.left = Math.max(8, Math.min(at.left, window.innerWidth - w - 8)) + 'px';
+    box.style.top = (at.bottom + h + 12 > window.innerHeight && at.top - h - 6 > 0 ? at.top - h - 6 : at.bottom + 6) + 'px';
+    clMenu = { box, btn }; btn.setAttribute('aria-expanded', 'true');
+    const items = () => Array.from(box.querySelectorAll('button:not(:disabled)'));
+    items()[0].focus();
+    box.addEventListener('keydown', (e) => {
+      const all = items(); const i = all.indexOf(document.activeElement);
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); clMenuClose(true); }
+      else if (e.key === 'Tab') { e.preventDefault(); clMenuClose(true); }
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); all[(i + (e.key === 'ArrowDown' ? 1 : all.length - 1)) % all.length].focus(); }
+      else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); all[e.key === 'Home' ? 0 : all.length - 1].focus(); }
+    });
+    box.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-cl]'); if (!b || b.disabled) return;
+      clMenuClose(true); clAct(list, b.dataset.cl);
+    });
   }
   // Pasa un elemento de un lugar a otro de su lista. Devuelve la lista ya redibujada.
   function clMove(list, from, to) {
@@ -637,9 +692,15 @@
   function clBind(article) {
     article.addEventListener('click', (e) => {
       const t = e.target; if (!t.closest) return;
-      const add = t.closest('.lmd-cl-add'); const act = t.closest('.lmd-cl-bar [data-cl]');
+      const add = t.closest('.lmd-cl-add'); const act = t.closest('.lmd-cl-bar [data-cl]'); const more = t.closest('.lmd-cl-more');
       if (add) { e.preventDefault(); clAdd(add); }
-      else if (act) { e.preventDefault(); const list = act.parentNode.nextElementSibling; if (list && list.classList.contains('lmd-cl')) clAct(list, act.dataset.cl); }
+      else if (more) { e.preventDefault(); clMenuOpen(more); }
+      else if (act) {
+        e.preventDefault(); const list = act.parentNode.nextElementSibling; if (!list || !list.classList.contains('lmd-cl')) return;
+        // Ocultar o mostrar las hechas no toca la nota: se redibuja la barra y el foco queda en el mismo control.
+        if (act.dataset.cl === 'hide') { const at = clLists().indexOf(list); clHide(at, act.getAttribute('aria-pressed') !== 'true'); checklists(); const again = clLists()[at]; const b = again && again.previousElementSibling && again.previousElementSibling.querySelector('[data-cl=hide]'); if (b) b.focus(); }
+        else clAct(list, act.dataset.cl);
+      }
     });
     // Tildar no redibuja la nota: el contador se pone al día solo.
     article.addEventListener('change', (e) => { if (e.target.matches && e.target.matches('input.lmd-task')) setTimeout(checklists, 0); });
@@ -705,22 +766,32 @@
     article.addEventListener('click', (e) => {
       if (e.target.closest('.lmd-add')) { const all = Array.from(article.children).filter((n) => !n.classList.contains('lmd-add')); openDraft(all[all.length - 1] || null, 'p', true); }
     });
-    document.addEventListener('mousedown', (e) => { if (menu && !menu.contains(e.target)) closeMenu(); });
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeMenu();
-      const t = e.target;
-      const typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
-      const mod = LMD.mod(e); const key = e.key.toLowerCase();
-      if (!core.editMode || typing || !mod) return;
-      if (key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        core.flash(core.undo() ? T('Cambio deshecho. Ctrl+Y lo rehace') : T('No hay más cambios para deshacer'));
-      } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
-        e.preventDefault();
-        core.flash(core.redo() ? T('Cambio rehecho') : T('No hay cambios para rehacer'));
-      }
+    document.addEventListener('mousedown', (e) => {
+      if (menu && !menu.contains(e.target)) closeMenu();
+      if (clMenu && !clMenu.box.contains(e.target) && !clMenu.btn.contains(e.target)) clMenuClose();
     });
-    window.addEventListener('scroll', closeMenu, { passive: true });
+    // Un bloque en el que se escribió tiene su propio deshacer, el del navegador: ahí Ctrl+Z no es el de la app.
+    const typed = new WeakSet();
+    document.addEventListener('input', (e) => { const t = e.target; if (t && t.isContentEditable) typed.add(t); }, true);
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { closeMenu(); clMenuClose(); }
+      const key = String(e.key || '').toLowerCase();
+      const back = key === 'z' && !e.shiftKey; const again = key === 'y' || (key === 'z' && e.shiftKey);
+      if (!LMD.mod(e) || e.altKey || e.defaultPrevented || !(back || again)) return;
+      const t = e.target;
+      // Un campo de texto y una ventana abierta deshacen lo suyo.
+      if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+      if (t && t.closest && t.closest('[aria-modal="true"], .lmd-ask')) return;
+      const has = back ? core.canUndo() : core.canRedo();
+      // En un bloque sin nada escrito el navegador no tiene qué deshacer: vale el de la app, si tiene algo.
+      if (t && t.isContentEditable && (typed.has(t) || !has)) return;
+      // Leyendo también se deshace (tildar, mover o quitar tareas se hace sin entrar a editar), pero solo si hay qué.
+      if (!core.editMode && (!has || core.readOnly || core.rawMode)) return;
+      e.preventDefault();
+      if (back) core.flash(core.undo() ? T('Cambio deshecho. Ctrl+Y lo rehace') : T('No hay más cambios para deshacer'));
+      else core.flash(core.redo() ? T('Cambio rehecho') : T('No hay cambios para rehacer'));
+    });
+    window.addEventListener('scroll', () => { closeMenu(); clMenuClose(); }, { passive: true });
     // Manija: al pasar el mouse por un bloque aparece a su izquierda y abre el mismo menú que el clic derecho.
     const handle = el('button', { class: 'lmd-handle', type: 'button', title: T('Opciones del bloque: mover, duplicar, eliminar'), hidden: '' }, ICON.dots);
     document.body.appendChild(handle);
@@ -781,8 +852,16 @@
     insertTemplate(core.lastBlock && core.lastBlock.isConnected ? topBlock(core.lastBlock) : all[all.length - 1] || null, body);
   }
 
+  // Una tarea oculta a la que lleva el buscador o un ancla se muestra: su lista deja de ocultar las hechas.
+  function clReveal(node) {
+    const from = node && (node.nodeType === 1 ? node : node.parentElement); const list = from && from.closest && from.closest('ul.lmd-cl');
+    const bar = list && list.previousElementSibling;
+    if (!bar || !bar.classList.contains('lmd-cl-hiding') || from.offsetParent) return;
+    clHide(clLists().indexOf(list), false); checklists();
+  }
+
   LMD.write = {
-    init, enter, onKey, append, closeMenu, nest, say: clSay,
+    init, enter, onKey, append, closeMenu, nest, say: clSay, reveal: clReveal,
     remove: (node) => { const b = topBlock(node); if (b) removeBlock(b); },
     blur: (d) => commitDraft(d, false),
     sync: syncDraft,

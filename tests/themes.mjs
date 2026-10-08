@@ -56,6 +56,62 @@ for (const p of P) {
   if (VERBOSE) console.log('       ' + all.join(' · '));
 }
 
+// Un interruptor prendido se pinta con el acento: la pista contra la tarjeta y el panel, y la perilla contra la pista.
+console.log('El interruptor prendido');
+{
+  const low = P.filter((p) => Math.min(TH.contrast(p.c.fill, p.c.soft), TH.contrast(p.c.fill, p.c.bg), TH.contrast(p.c.bg, p.c.fill)) < 3).map((p) => p.id);
+  check('en los doce temas el acento del interruptor contrasta 3:1 o más con la tarjeta, el panel y la perilla', low.length === 0, low);
+  // Con un acento propio el relleno es ese color tal cual: la perilla y, si hace falta, un borde, lo mantienen a la vista.
+  const paint = (settings) => { const vars = {}; const root = { classList: { toggle() {} }, style: { setProperty: (k, v) => { vars[k] = v; }, removeProperty: (k) => { delete vars[k]; } } }; TH.apply(root, settings); return vars; };
+  const ACC = ['#e11d48', '#7c3aed', '#0ea5e9', '#f59e0b', '#f1efe9', '#ffffff', '#fde047', '#808080', '#8a8a2a', '#1a1d23', '#000000', '#3f6a0a', '#bef264'];
+  const bad = []; let edged = 0; let plain = 0;
+  for (const p of P) for (const accent of ACC) {
+    const v = paint({ preset: p.id, theme: p.dark ? 'dark' : 'light', supporter: true, accent });
+    const card = Math.min(TH.contrast(accent, p.c.soft), TH.contrast(accent, p.c.bg)); const edge = v['--accent-edge'];
+    if (edge) edged++; else plain++;
+    const ok = v['--accent-fill'] === accent && TH.contrast(v['--accent-knob'], accent) >= 3 && (card >= 3 ? !edge : !!edge && Math.min(TH.contrast(edge, p.c.soft), TH.contrast(edge, p.c.bg)) >= 3);
+    if (!ok) bad.push(p.id + ' ' + accent + ' ' + card.toFixed(2) + ' ' + (edge || 'sin borde') + ' ' + v['--accent-knob']);
+  }
+  check('con un acento propio el interruptor lleva ese color, la perilla contrasta 3:1 y gana un borde solo si se pierde contra la tarjeta', bad.length === 0 && edged > 0 && plain > 0, bad.slice(0, 8));
+  const none = paint({ preset: 'marea', theme: 'dark' });
+  check('sin acento propio no queda ni perilla ni borde a medida: valen los del tema', !('--accent-knob' in none) && !('--accent-edge' in none), none);
+}
+
+// Claro y oscuro a mano: cada familia recuerda su último tema, y el dispositivo deja de mandar.
+console.log('Claro y oscuro a mano');
+{
+  const sys = (dark) => { box.window.matchMedia = () => ({ matches: dark }); };
+  const J = (v) => JSON.stringify(v);
+  const use = (s, patch) => Object.assign({}, s, patch);
+  sys(true);
+  let s = { theme: 'auto', preset: '', presetLight: '', presetDark: '' };
+  const a = TH.flipPatch(s);
+  check('en automático con el dispositivo en oscuro, el botón pasa a claro y lo deja fijo', a.theme === 'light' && a.preset === '' && a.presetDark === '' && TH.isDark(use(s, a)) === false, a);
+  s = use(s, a); sys(false); sys(true);
+  check('y con claro elegido el dispositivo ya no cambia nada', TH.isDark(s) === false && TH.chosen(s) === null);
+  s = use(s, TH.patchFor('arena'));
+  check('aplicar un tema lo anota como el último de su familia', s.presetLight === 'arena' && s.preset === 'arena' && s.theme === 'light', s);
+  const b = TH.flipPatch(s); s = use(s, b);
+  check('pasar a oscuro guarda el claro y trae el oscuro de siempre si nunca se eligió otro', J(b) === J({ theme: 'dark', presetLight: 'arena', preset: '' }) && TH.chosen(s) === null && TH.isDark(s), b);
+  s = use(s, TH.patchFor('marea'));
+  const c = TH.flipPatch(s); s = use(s, c);
+  check('de vuelta a claro vuelve el último tema claro, y queda anotado el oscuro', J(c) === J({ theme: 'light', presetDark: 'marea', preset: 'arena' }) && TH.chosen(s).id === 'arena', c);
+  const d = TH.flipPatch(s); s = use(s, d);
+  check('y otra vez a oscuro vuelve el último oscuro', d.theme === 'dark' && d.preset === 'marea' && TH.chosen(s).id === 'marea', d);
+  const e = TH.modePatch(s, 'auto');
+  check('Automático no toca el tema elegido: solo vuelve a seguir al dispositivo', J(e) === J({ theme: 'auto', presetDark: 'marea' }), e);
+  // En automático con un tema oscuro puesto y el dispositivo en claro se ve el claro de siempre: eso no pisa lo recordado.
+  sys(false); s = { theme: 'auto', preset: 'marea', presetLight: 'salvia', presetDark: 'marea' };
+  const f = TH.flipPatch(s);
+  check('lo que se ve por descarte no pisa el tema recordado de esa familia', J(f) === J({ theme: 'dark', preset: 'marea' }), f);
+  const g = TH.modePatch(s, 'light');
+  check('y Claro elegido a mano trae el último tema claro', J(g) === J({ theme: 'light', preset: 'salvia' }), g);
+  const h = TH.modePatch({ theme: 'auto', preset: 'salvia', presetLight: 'salvia', presetDark: '' }, 'light');
+  check('fijar el modo que ya se ve no cambia el tema', J(h) === J({ theme: 'light', presetLight: 'salvia' }), h);
+  check('un tema recordado que no existe o es de la otra familia no se usa', TH.modePatch({ theme: 'light', preset: '', presetLight: '', presetDark: 'arena' }, 'dark').preset === '' && TH.modePatch({ theme: 'light', preset: '', presetDark: 'nada' }, 'dark').preset === '');
+  sys(false);
+}
+
 console.log('Coherencia con el resto');
 const css = fs.readFileSync(path.join(root, 'src', 'content.css'), 'utf8');
 const block = (cls) => { const m = new RegExp('\\.lmd-root\\.' + cls + ' \\{([^}]*)\\}').exec(css); const o = {}; (m ? m[1] : '').replace(/(--[a-z-]+):\s*(#[0-9a-f]{6})/g, (x, k, v) => { o[k] = v; }); return o; };

@@ -321,7 +321,7 @@ const checks = [
   ['una plantilla de la comunidad hostil no ejecuta nada en el selector, y su nombre se muestra como texto', limpio(o.selector) && o.selectorMal.length === 0 && o.selectorNombre === '<img src=x onerror=' + P + '>', [o.selector, o.selectorMal, o.selectorNombre]],
   ['la nota creada con esa plantilla tampoco', limpio(o.creada), o.creada],
   ['una paleta de la comunidad con HTML en el nombre se muestra como texto en el editor de diagramas', o.paleta.ok && o.paleta.pwn === undefined, o.paleta],
-  ['la galería descarta lo que llega con CSS, url(), claves de más o un tipo que no existe', o.tarjetas.join() === '7,13', o.tarjetas],
+  ['la galería descarta lo que llega con CSS, url(), claves de más o un tipo que no existe', o.tarjetas.filter((id) => /^[0-9]+$/.test(id)).join() === '7,13' && o.tarjetas.length === 14, o.tarjetas],
   ['y muestra como texto los nombres, autores, estados y motivos', limpio(o.galeria) && limpio(o.vistaTema) && limpio(o.vistaPlantilla) && o.vistaMal.length === 0, [o.galeria, o.vistaTema, o.vistaPlantilla, o.vistaMal]],
   ['volver de un tema guardado con valores hostiles no mete nada en los estilos', limpio(o.volverTema) && !/xss\.invalid|display/.test(o.estilo), [o.volverTema, o.estilo]],
   ['asistente de IA: lo que devuelve el modelo no ejecuta nada en la propuesta ni en el panel', limpio(o.iaPropuesta) && limpio(o.iaPanel), [o.iaPropuesta, o.iaPanel]],

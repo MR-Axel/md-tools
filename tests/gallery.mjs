@@ -95,7 +95,7 @@ try {
   await pg.goto(R.home); await pg.waitForSelector('[data-home=tpl]');
   await openTools(pg);
   const cards = await pg.evaluate(() => [...document.querySelectorAll('.lmd-gal-card')].map((c) => ({ id: +c.dataset.gid, kind: c.dataset.gkind, name: c.querySelector('b').textContent, html: c.querySelector('b').innerHTML, by: c.querySelector('.lmd-gal-by').textContent })));
-  check('la sección Comunidad lista lo aprobado, con el más agregado primero', cards.length === 4 && cards[0].id === PID && /by Ana P\./.test(cards[0].by) && /Added 2 times/.test(cards[0].by), cards);
+  check('la sección Comunidad lista lo aprobado, con el más agregado primero, y cierra con los doce temas incluidos', cards.length === 16 && cards.slice(0, 4).every((c) => c.kind !== 'included') && cards.slice(4).every((c) => c.kind === 'included') && cards[0].id === PID && /by Ana P\./.test(cards[0].by) && /Added 2 times/.test(cards[0].by), cards);
   check('el nombre de un aporte se muestra como texto', cards.find((c) => c.id === TID).name === 'Weekly review <b>' && cards.find((c) => c.id === TID).html === 'Weekly review &lt;b&gt;', cards.find((c) => c.id === TID));
   check('el lugar para herramientas de la comunidad sigue vacío: acá solo hay contenido', await pg.evaluate(() => { const c = document.querySelector('[data-tools-community]'); return c.hidden && !c.children.length && LMD.tools.community.length === 0; }));
   await pg.click('[data-gtype=template]'); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card').length === 1);
@@ -103,7 +103,7 @@ try {
   await pg.click('[data-gtype=""]'); await pg.fill('.lmd-gal-q', 'sunset'); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card').length === 1 && document.querySelector('.lmd-gal-card').dataset.gkind === 'palette');
   await pg.fill('.lmd-gal-q', 'nada de nada'); await pg.waitForSelector('.lmd-gal-list .lmd-empty');
   const none = await pg.textContent('.lmd-gal-list .lmd-empty');
-  await pg.fill('.lmd-gal-q', ''); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card').length === 4);
+  await pg.fill('.lmd-gal-q', ''); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card').length === 16);
   check('se filtra por tipo y con el buscador', onlyTpl === 'template' && /No contribution matches/.test(none), [onlyTpl, none]);
 
   // Plantilla: vista previa y agregar
@@ -155,7 +155,7 @@ try {
   await api('DELETE', '/gallery/' + okPost.json.id, undefined, tem.s);
 
   // ---------- Temas incluidos ----------
-  await pg.click('[data-gtype=theme]'); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card[data-gkind=included]').length === 12 && document.querySelectorAll('.lmd-gal-card[data-gkind=theme]').length === 2);
+  await pg.click('[data-gtype=theme]'); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card[data-gkind=included]').length === 12 && document.querySelectorAll('.lmd-gal-card[data-gkind=theme]').length === 2 && document.querySelectorAll('.lmd-gal-card').length === 14);
   const inc = await pg.evaluate(() => { const all = [...document.querySelectorAll('.lmd-gal-card')]; const own = all.filter((c) => c.dataset.gkind === 'included');
     return { first: all.slice(0, 12).every((c) => c.dataset.gkind === 'included'), names: own.map((c) => c.querySelector('b').textContent).join(), tags: own.every((c) => c.querySelector('.lmd-tag').textContent === 'Included'), thumbs: own.every((c) => c.querySelector('.lmd-th-page')), about: own.every((c) => c.querySelector('.lmd-gal-about').textContent.length > 8 && !/[!¡—–]/.test(c.textContent)),
       paid: own.filter((c) => /Paid plan/.test(c.querySelector('.lmd-gal-by').textContent)).length, report: own.some((c) => c.querySelector('[data-gal=report]')), on: own.filter((c) => c.querySelector('[data-gal=add]').disabled).map((c) => c.dataset.gid).join() }; });
@@ -178,7 +178,20 @@ try {
   await pg.click(card('lima') + ' [data-gal=add]'); await pg.waitForFunction(() => !document.documentElement.classList.contains('lmd-themed'));
   check('y el de siempre vuelve con un clic', (await cfg(pg)).preset === '' && (await cfg(pg)).theme === 'light');
   await pg.evaluate(() => { const s = JSON.parse(localStorage.getItem('mdtools:settings')); s.theme = 'auto'; localStorage.setItem('mdtools:settings', JSON.stringify(s)); });
-  await pg.click('[data-gtype=""]'); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card[data-gkind=included]').length === 0 && document.querySelectorAll('.lmd-gal-card').length === 4);
+  // Todo es la unión: los aportes de todos los tipos y, al final, los doce incluidos. Nunca "no hay aportes" con temas a la vista.
+  await pg.click('[data-gtype=""]'); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card[data-gkind=included]').length === 12 && document.querySelectorAll('.lmd-gal-card').length === 16);
+  const whole = await pg.evaluate(() => { const all = [...document.querySelectorAll('.lmd-gal-card')]; const keys = all.map((c) => c.dataset.gkind + ':' + c.dataset.gid);
+    return { kinds: [...new Set(all.slice(0, 4).map((c) => c.dataset.gkind))].sort().join(), tail: all.slice(4).every((c) => c.dataset.gkind === 'included'), dup: keys.length - new Set(keys).size, empty: !!document.querySelector('.lmd-gal-list .lmd-empty') }; });
+  check('Todo muestra la unión: los aportes de cada tipo primero y los doce incluidos después, sin repetir ni decir que no hay nada', whole.kinds === 'palette,template,theme' && whole.tail && whole.dup === 0 && !whole.empty, whole);
+  await pg.fill('.lmd-gal-q', 'plum'); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card').length === 1 && document.querySelector('.lmd-gal-card').dataset.gid === 'ciruela');
+  await pg.fill('.lmd-gal-q', 'zzzz'); await pg.waitForSelector('.lmd-gal-list .lmd-empty');
+  const zero = await pg.evaluate(() => [document.querySelectorAll('.lmd-gal-card').length, document.querySelector('.lmd-gal-list .lmd-empty').textContent]);
+  check('en Todo el buscador también encuentra los incluidos, y el aviso de vacío sale solo si no hay nada', zero[0] === 0 && zero[1] === 'No contribution matches.', zero);
+  await pg.fill('.lmd-gal-q', ''); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card').length === 16);
+  await pg.click('[data-gtype=palette]'); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card').length === 1 && document.querySelector('.lmd-gal-card').dataset.gkind === 'palette');
+  await pg.click('[data-gtype=template]'); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card').length === 1 && document.querySelector('.lmd-gal-card').dataset.gkind === 'template');
+  check('Plantillas y Paletas siguen mostrando solo lo suyo', await pg.evaluate(() => !document.querySelector('.lmd-gal-card[data-gkind=included]')));
+  await pg.click('[data-gtype=""]'); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card').length === 16);
 
   // Denunciar un aporte
   const nMail = mails.length;
@@ -204,7 +217,7 @@ try {
   await R.stop();
   await openTools(pg);
   const offline = await pg.evaluate(() => ({ note: document.querySelector('.lmd-gal-note').textContent, hidden: document.querySelector('.lmd-gal-note').hidden, cards: [...document.querySelectorAll('.lmd-gal-card')].map((c) => c.dataset.gkind + ':' + c.querySelector('b').textContent), report: !!document.querySelector('.lmd-gal-report') }));
-  check('sin conexión la sección muestra lo ya agregado y una línea que lo explica', !offline.hidden && /cannot be reached/.test(offline.note) && offline.cards.length === 2 && offline.cards.includes('template:Weekly review <b>') && offline.cards.includes('palette:Sunset') && !offline.report, offline);
+  check('sin conexión la sección muestra lo ya agregado y una línea que lo explica', !offline.hidden && /cannot be reached/.test(offline.note) && offline.cards.length === 14 && offline.cards.slice(2).every((c) => c.startsWith('included:')) && offline.cards.includes('template:Weekly review <b>') && offline.cards.includes('palette:Sunset') && !offline.report, offline);
   await pg.click('.lmd-gal-card[data-gkind=template] [data-gal=view]'); await pg.waitForSelector('.lmd-gal-view .lmd-gal-md h1');
   const offPrev = await pg.textContent('.lmd-gal-view .lmd-gal-md h1'); await pg.click('.lmd-gal-view [data-gv=close]');
   await closePanel(pg);
@@ -280,7 +293,7 @@ try {
   const guestCards = await gp.evaluate(() => document.querySelectorAll('.lmd-gal-card').length);
   await gp.click('[data-gal=share]'); await gp.waitForSelector('.lmd-dlg');
   const ask = await gp.textContent('.lmd-dlg-card'); await gp.click('.lmd-dlg [data-dlg=no]');
-  check('sin sesión se ve la galería y compartir pide entrar', guestCards === 4 && /Sign in to share/.test(ask) && !(await gp.$('.lmd-gal-mine:not([hidden])')), [guestCards, ask]);
+  check('sin sesión se ve la galería y compartir pide entrar', guestCards === 16 && /Sign in to share/.test(ask) && !(await gp.$('.lmd-gal-mine:not([hidden])')), [guestCards, ask]);
   await G.ctx.close();
 
   // Pantalla chica

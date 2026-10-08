@@ -735,8 +735,8 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-switch input { position: absolute; opacity: 0; pointer-events: none; }
 .lmd-switch i { flex: none; width: 34px; height: 20px; border-radius: 999px; background: var(--line); position: relative; transition: background .15s; }
 .lmd-switch i::after { content: ""; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--bg); box-shadow: 0 1px 2px rgba(0, 0, 0, .3); transition: transform .15s; }
-.lmd-switch input:checked + i { background: var(--accent-fill); }
-.lmd-switch input:checked + i::after { transform: translateX(14px); }
+.lmd-switch input:checked + i { background: var(--accent-fill); box-shadow: inset 0 0 0 1.5px var(--accent-edge, transparent); }
+.lmd-switch input:checked + i::after { transform: translateX(14px); background: var(--accent-knob, var(--bg)); }
 .lmd-switch input:focus-visible + i { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
 .lmd-switch[data-tip]:not([data-tip=""])::after { content: attr(data-tip); position: absolute; left: 0; bottom: calc(100% + 4px); z-index: 5; width: max-content; max-width: 280px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-soft); color: var(--fg); font-size: 12.5px; line-height: 1.4; box-shadow: var(--shadow); opacity: 0; transform: translateY(4px); pointer-events: none; transition: opacity .14s, transform .14s; }
 .lmd-switch[data-tip]:hover::after { opacity: 1; transform: none; transition-delay: .25s; }
@@ -1109,7 +1109,7 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
   .lmd-top-left { gap: 4px; }
   .lmd-docname { display: block; font-size: 14.5px; color: var(--fg); }
   .lmd-top-left .lmd-sync, .lmd-topbar .lmd-insert, .lmd-top-right > * { display: none; }
-  .lmd-top-right > .lmd-more, .lmd-nodoc .lmd-top-right > [data-act=settings] { display: grid; }
+  .lmd-top-right > .lmd-more, .lmd-nodoc .lmd-top-right > [data-act=settings], .lmd-nodoc .lmd-top-right > [data-act=theme-flip] { display: grid; }
   .lmd-icon-btn { width: 40px; height: 40px; }
   .lmd-modeseg button { height: 34px; }
 
@@ -1554,7 +1554,13 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-top-right > *, .lmd-top-mid > *, .lmd-top-left > .lmd-icon-btn { flex: none; }
 .lmd-docname { display: block; width: 0; flex: 1 1 0; }
 .lmd-bar-tight .lmd-top-left .lmd-sync, .lmd-bar-tight .lmd-topbar .lmd-insert, .lmd-bar-tight .lmd-top-right > :not(.lmd-view):not(.lmd-more) { display: none; }
-.lmd-bar-tight .lmd-top-right > .lmd-more, .lmd-bar-tight.lmd-nodoc .lmd-top-right > [data-act=settings] { display: grid; }
+.lmd-bar-tight .lmd-top-right > .lmd-more, .lmd-bar-tight.lmd-nodoc .lmd-top-right > [data-act=settings], .lmd-bar-tight.lmd-nodoc .lmd-top-right > [data-act=theme-flip] { display: grid; }
+/* Un archivo abierto directo: la franja que dice dónde está la cuenta, arriba de las pestañas que la piden. */
+.lmd-direct { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 12px 0 4px; padding: 12px 14px; border: 1px solid var(--accent-fill); border-radius: 10px; background: var(--accent-soft); color: var(--fg); font-size: 13.5px; line-height: 1.45; }
+.lmd-direct[hidden] { display: none; }
+.lmd-direct p { flex: 1 1 260px; min-width: 0; margin: 0; }
+.lmd-direct .lmd-btn { flex: none; }
+.lmd-row-mode .lmd-mode-hint { margin-left: 6px; color: var(--fg-faint); font-size: 12.5px; font-style: normal; }
 .lmd-bar-tight .lmd-topbar { gap: 6px; }
 .lmd-bar-tight .lmd-view { margin-right: 0; }
 .lmd-bar-min .lmd-top-right > .lmd-view, .lmd-bar-min .lmd-docname { display: none; }
@@ -1592,9 +1598,19 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-tl-card .lmd-tag { margin: 0; }
 .lmd-tl-off .lmd-tl-ico { color: var(--fg-faint); }
 .lmd-tl-off .lmd-switch { opacity: .5; cursor: default; }
-.lmd-tl-more { grid-column: 2 / -1; justify-self: start; padding: 2px 0; color: var(--accent); }
-.lmd-tl-more[hidden], .lmd-tl-opts[hidden] { display: none; }
-.lmd-tl-more[aria-expanded=true] { color: var(--fg-muted); }
+.lmd-tl-acts { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 4px; }
+.lmd-tl-acts[hidden], .lmd-tl-more[hidden], .lmd-tl-opts[hidden], .lmd-tl-need[hidden] { display: none; }
+.lmd-tl-more { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px 4px 11px; background: var(--bg); font-size: 13px; }
+.lmd-tl-more svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transform: rotate(90deg); transition: transform .15s; }
+.lmd-tl-more[aria-expanded=true] svg { transform: rotate(-90deg); }
+/* Una tarjeta con las opciones abiertas se distingue: borde con el acento, y su botón también. */
+.lmd-tl-card:has(.lmd-tl-opts:not([hidden])) { border-color: var(--accent-fill); }
+.lmd-tl-more[aria-expanded=true] { border-color: var(--accent-fill); color: var(--accent); }
+.lmd-tl-need { padding: 4px 10px; border: 0; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.lmd-tl-need:hover { text-decoration: underline; }
+.lmd-tl-opts:focus { outline: none; }
+.lmd-tl-need:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .lmd-tl-more svg { transition: none; } }
 .lmd-tl-opts { grid-column: 1 / -1; margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
 .lmd-tl-opts .lmd-row { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
 .lmd-tl-opts .lmd-row > span { min-width: 0; font-size: 13.5px; }
@@ -1650,6 +1666,7 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
   .lmd-tl-card { grid-template-columns: 34px minmax(0, 1fr) auto; padding: 12px; }
   .lmd-tl-ico { width: 34px; height: 34px; }
+  .lmd-tl-more, .lmd-tl-need { min-height: 36px; }
   .lmd-tl-opts .lmd-row { flex-wrap: wrap; }
   .lmd-tl-opts .lmd-row select { flex: 1 1 160px; }
   .lmd-spk { bottom: calc(46px + env(safe-area-inset-bottom, 0px)); flex-wrap: wrap; justify-content: center; }
@@ -2491,9 +2508,37 @@ button.lmd-cd-pill-name { cursor: pointer; border-radius: 4px; }
 /* ---------- Listas de tareas: contador, renglón de agregar, manija y quitar los hechos ---------- */
 .lmd-cl-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 0 0 4px; font-size: 12.5px; color: var(--fg-faint); user-select: none; }
 .lmd-cl-count { font-variant-numeric: tabular-nums; }
-.lmd-cl-bar .lmd-link { padding: 0; font-size: 12.5px; color: var(--fg-muted); opacity: 0; transition: opacity .12s; }
-.lmd-cl-bar:hover .lmd-link, .lmd-cl-bar .lmd-link:focus-visible, .lmd-cl-bar:has(+ .lmd-cl:hover) .lmd-link { opacity: 1; }
+.lmd-cl-bar .lmd-link { padding: 0; font-size: 12.5px; color: var(--fg-muted); }
+/* Las acciones de la lista y el renglón de agregar son para editar. Leyendo no están a la vista ni se pueden tocar: en
+   escritorio aparecen al pasar el mouse por la lista o al llegar con el teclado, y se quedan un instante para alcanzarlas. */
+.lmd-cl-bar .lmd-link, .lmd-cl-add { opacity: 0; visibility: hidden; transition: opacity .12s, visibility 0s linear .35s; }
+.lmd-editing .lmd-cl-bar .lmd-link, .lmd-editing .lmd-cl-add, .lmd-cl-bar .lmd-cl-more[aria-expanded=true],
+.lmd-cl-bar:has(:focus-visible) .lmd-link, .lmd-cl-bar:has(+ .lmd-cl :focus-visible) .lmd-link, .lmd-cl-bar:has(+ .lmd-cl + .lmd-cl-add:focus-visible) .lmd-link,
+.lmd-cl:has(:focus-visible) + .lmd-cl-add, .lmd-cl-add:focus-visible, .lmd-cl-bar:has(:focus-visible) + .lmd-cl + .lmd-cl-add { opacity: 1; visibility: visible; transition-delay: 0s; }
+@media (hover: hover) {
+  .lmd-cl-bar:hover .lmd-link, .lmd-cl-bar:has(+ .lmd-cl:hover) .lmd-link, .lmd-cl-bar:has(+ .lmd-cl + .lmd-cl-add:hover) .lmd-link,
+  .lmd-cl:hover + .lmd-cl-add, .lmd-cl-add:hover, .lmd-cl-bar:hover + .lmd-cl + .lmd-cl-add { opacity: 1; visibility: visible; transition-delay: 0s; }
+}
+@media (prefers-reduced-motion: reduce) { .lmd-cl-bar .lmd-link, .lmd-cl-add { transition: none; } }
+/* Ocultar las hechas: lo único a la vista junto al contador. Es de la vista y solo en pantalla: al imprimir va la lista
+   entera, y lo que se copia o exporta sale sin la barra, así que tampoco oculta nada. Una tarea a la que lleva un ancla
+   o un comentario se ve igual. */
+.lmd-cl-toggle { padding: 0; border: 0; border-radius: 3px; background: transparent; color: var(--fg-muted); font: inherit; font-size: 12.5px; cursor: pointer; }
+.lmd-cl-toggle:hover, .lmd-cl-toggle[aria-pressed=true] { color: var(--accent); }
+.lmd-cl-toggle:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+@media screen {
+  .lmd-cl-bar.lmd-cl-hiding + ul.lmd-cl > li.lmd-task-item:has(> input.lmd-task:checked, > .lmd-li-text > input.lmd-task:checked, > p > input.lmd-task:checked):not(:has(.lmd-cm-here, :target)):not(.lmd-cm-here):not(:target) { display: none; }
+}
+/* Una lista corta no lleva contador: su barra no ocupa renglón y las acciones quedan arriba a la derecha. */
+.lmd-cl-bar.lmd-cl-bare { flex-wrap: nowrap; justify-content: flex-end; align-items: flex-end; height: 0; margin: 0; }
+.lmd-cl-bare .lmd-link { line-height: 16px; }
+.lmd-cl-bar.lmd-cl-bare .lmd-cl-more { height: 16px; }
 .lmd-cl-bar .lmd-link:hover { color: var(--accent); }
+.lmd-cl-bar .lmd-cl-more { display: inline-grid; place-items: center; width: 26px; height: 22px; border-radius: 5px; }
+.lmd-cl-bar .lmd-cl-more[aria-expanded=true] { opacity: 1; background: var(--bg-soft); color: var(--accent); }
+.lmd-cl-more svg { width: 15px; height: 15px; fill: currentColor; stroke: none; transform: rotate(90deg); pointer-events: none; }
+.lmd-menu button:disabled { opacity: .45; cursor: default; }
+.lmd-menu button:disabled:hover { background: transparent; color: inherit; }
 .markdown-body ul.lmd-cl { margin-bottom: 4px; }
 .markdown-body ul.lmd-cl > li { position: relative; }
 .markdown-body ul.lmd-cl > li.lmd-task-item:has(> input.lmd-task:checked, > .lmd-li-text > input.lmd-task:checked, > p > input.lmd-task:checked) { color: var(--fg-faint); }
@@ -2507,15 +2552,20 @@ button.lmd-cd-pill-name { cursor: pointer; border-radius: 4px; }
 .lmd-cl > li.lmd-cl-moving { opacity: 0.45; }
 .lmd-cl > li.lmd-cl-before { box-shadow: 0 -2px 0 var(--accent-fill); }
 .lmd-cl.lmd-cl-end > li:last-child { box-shadow: 0 2px 0 var(--accent-fill); }
-.lmd-cl-add { display: block; margin: 0 0 1em; padding: 3px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--fg-faint); font: inherit; font-size: 0.92em; cursor: pointer; }
+.lmd-cl-add { display: block; margin: 0 0 1em; padding: 3px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--fg-faint); font: inherit; font-size: 0.92em; cursor: pointer; user-select: none; }
+/* Leyendo, el renglón de agregar cabe en el espacio que la lista ya deja debajo: no suma alto ni mueve la página al aparecer. */
+html:not(.lmd-editing) .markdown-body ul.lmd-cl { margin-bottom: 0; }
+html:not(.lmd-editing) .lmd-cl-add { height: 1.25em; margin: 0; padding: 0 8px; font-size: 0.8em; line-height: 1.25em; }
 .lmd-cl-add:hover { background: var(--bg-soft); color: var(--accent); }
 .lmd-cl-add:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 1px; }
 .lmd-cl-toast { position: fixed; left: 50%; bottom: calc(22px + var(--lmd-kb, 0px)); transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 24px); padding: 9px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--fg); box-shadow: var(--shadow); font-family: var(--lmd-font); font-size: 13.5px; }
 .lmd-cl-toast .lmd-link { padding: 0; color: var(--accent); font-weight: 600; }
 @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
-  .lmd-cl-bar .lmd-link { opacity: 1; min-height: 32px; }
+  .lmd-cl-bar .lmd-link, .lmd-cl-toggle { min-height: 32px; }
+  .lmd-editing .lmd-cl-bar.lmd-cl-bare { height: auto; margin: 0 0 4px; }
+  .lmd-cl-bar .lmd-cl-more, .lmd-cl-bar.lmd-cl-bare .lmd-cl-more { width: 40px; height: 32px; }
   .lmd-cl-grip { width: 36px; height: 32px; margin: -4px -6px 0 4px; opacity: 0.7; }
-  .lmd-cl-add { min-height: 40px; padding: 6px 10px; }
+  .lmd-editing .lmd-cl-add { min-height: 40px; padding: 6px 10px; }
   .lmd-cl-toast .lmd-link { min-height: 32px; }
 }
 @media print { .lmd-cl-bar, .lmd-cl-add, .lmd-cl-grip, .lmd-cl-toast { display: none !important; } }

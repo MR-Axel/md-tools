@@ -46,7 +46,7 @@ await step('Se abre con el botón, con ? y con Ctrl+/', async () => {
   check('el botón abre la hoja', await waitOpen(page));
   const dlg = await page.evaluate(() => { const c = document.querySelector('.lmd-keys-card'); return { role: c.getAttribute('role'), modal: c.getAttribute('aria-modal'), label: c.getAttribute('aria-label'), focus: document.activeElement.className, groups: [...document.querySelectorAll('.lmd-keys-group h4')].map((h) => h.textContent), foot: document.querySelector('.lmd-keys-foot').textContent }; });
   check('es un diálogo con nombre y el foco en el buscador', dlg.role === 'dialog' && dlg.modal === 'true' && dlg.label === 'Keyboard shortcuts' && dlg.focus === 'lmd-keys-q', dlg);
-  check('los grupos van en su orden', J(dlg.groups) === J(['Writing and formatting', 'Navigate', 'Files', 'Tools', 'Board', 'Diagram and formula editors', 'AI', 'General']), dlg.groups);
+  check('los grupos van en su orden', J(dlg.groups) === J(['Writing and formatting', 'Navigate', 'Files', 'View', 'Tools', 'Board', 'Diagram and formula editors', 'AI', 'General']), dlg.groups);
   check('el pie dice cómo abrirla', dlg.foot === 'Open this sheet with ?, or with ' + (APPLE ? '⌘' : 'Ctrl+') + '/ while typing.', dlg.foot);
   const fit = await page.evaluate(() => { const c = document.querySelector('.lmd-keys-card').getBoundingClientRect(); const b = document.querySelector('.lmd-keys-body'); const lefts = new Set([...document.querySelectorAll('.lmd-keys-group')].map((g) => Math.round(g.getBoundingClientRect().left))); return { in: c.left >= 0 && c.right <= innerWidth && c.top >= 0 && c.bottom <= innerHeight, side: b.scrollWidth <= b.clientWidth + 1 && document.documentElement.scrollWidth <= innerWidth, cols: lefts.size, kbd: document.querySelectorAll('.lmd-keys-row kbd').length }; });
   check('entra en la pantalla, sin scroll horizontal y en varias columnas', fit.in && fit.side && fit.cols >= 2 && fit.kbd > 60, fit);
@@ -168,7 +168,7 @@ if (ENGINE === 'chromium') await step('Pantalla chica y táctil: sin botón flot
 // Cada atajo listado tiene acá su prueba, o figura abajo con el motivo por el que no se dispara desde esta batería.
 const ELSEWHERE = {
   follow: 'necesita un enlace a otra pestaña', print: 'abre el cuadro de impresión del navegador', 'pres-full': 'la pantalla completa pide un gesto real', 'pres-pdf': 'abre el cuadro de impresión',
-  sidebar: 'lo atiende la extensión', centered: 'lo atiende la extensión', refresh: 'lo atiende la extensión', theme: 'lo atiende la extensión',
+  sidebar: 'lo atiende la extensión', centered: 'lo atiende la extensión', refresh: 'lo atiende la extensión', theme: 'tools.mjs (en la web) y la extensión',
   speak: 'depende de las voces del equipo (voice.mjs)', dictate: 'necesita micrófono (voice.mjs)', 'daily-month': 'tools.mjs', wiki: 'links.mjs', replace: 'extras.mjs', 'replace-all': 'extras.mjs',
   'card-tag': 'data.mjs', 'col-name': 'data.mjs', 'ed-apply': 'diagram-editor.mjs y formulas.mjs', 'ed-cancel': 'diagram-editor.mjs y formulas.mjs', 'ed-indent': 'diagram-editor.mjs', 'ed-hole': 'formulas.mjs',
   'code-done': 'writing.mjs', 'list-level': 'lists.mjs', 'list-move': 'lists.mjs', fold: 'fold.mjs', 'fold-all': 'fold.mjs', 'unfold-all': 'fold.mjs', 'ai-here': 'assistant.mjs', 'ai-send': 'assistant.mjs', 'ai-gen': 'assistant.mjs', comment: 'ai.mjs',
