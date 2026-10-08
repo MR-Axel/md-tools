@@ -521,7 +521,7 @@ try {
     await p.goto(R.home + '?f=' + enc('local/rich.md') + '&edit=1'); await p.waitForSelector('.lmd-article > p.lmd-editable');
     const keys = await p.evaluate(() => ({ cls: document.documentElement.className, save: document.querySelector('[data-act=save]').title, side: document.querySelector('[data-act=sidebar]').title, bold: document.querySelector('.lmd-format [data-fmt=bold]').title, link: document.querySelector('.lmd-format [data-fmt=link]').title,
       map: [LMD.keys('Ctrl+Y'), LMD.keys('Ctrl+Enter'), LMD.keys('Alt+Shift+P'), LMD.keys('Ctrl+Shift+V'), LMD.t('Cambio deshecho. Ctrl+Y lo rehace')].join(' | '), ctrl: [...document.querySelectorAll('[title]')].map((n) => n.title).filter((t) => /Ctrl\+|Alt\+/.test(t)) }));
-    check('mac: los rótulos muestran ⌘, ⌥ y ⇧ en vez de Ctrl y Alt', /\blmd-mac\b/.test(keys.cls) && !/lmd-ios/.test(keys.cls) && /⌘S/.test(keys.save) && /⌥⇧B/.test(keys.side) && /⌘B/.test(keys.bold) && /⌘K/.test(keys.link) && keys.ctrl.length === 0, keys);
+    check('mac: los rótulos muestran ⌘, ⌥ y ⇧ en vez de Ctrl y Alt', /\blmd-mac\b/.test(keys.cls) && !/lmd-ios/.test(keys.cls) && /⌘S/.test(keys.save) && keys.side === 'Sidebar' && /⌘B/.test(keys.bold) && /⌘K/.test(keys.link) && keys.ctrl.length === 0, keys);
     check('mac: rehacer es ⇧⌘Z, aplicar es ⌘↩', keys.map === '⇧⌘Z | ⌘↩ | ⌥⇧P | ⇧⌘V | Change undone. ⇧⌘Z redoes it', keys.map);
     await p.locator('.lmd-article > p.lmd-editable').first().click(); await p.keyboard.press('End'); await p.keyboard.type(' Mac.'); await sleep(200);
     // La tecla ⌘ de verdad no existe en el teclado de prueba: se manda el evento que manda una Mac.

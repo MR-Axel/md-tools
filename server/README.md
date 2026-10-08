@@ -28,6 +28,9 @@ Then, in SharpMD: Settings → Cloud → Sync server, and type the address (`htt
 | `WEBHOOK_RETRY_MS` | Waits between delivery attempts of a webhook, in milliseconds, separated by commas | `60000,300000,900000,2400000` (5 attempts in an hour) |
 | `WEBHOOK_MAX_FAILS` | Failed attempts in a row that turn a webhook off | `15` |
 | `WEBHOOK_TIMEOUT_MS` | How long a delivery waits for the answer | `8000` |
+| `AI_SEEN_MS` | How long an AI is shown as present in a note after reading it with a token, in milliseconds | `60000` |
+| `AI_WROTE_MS` | The same after writing it | `120000` |
+| `AI_WRITING_MS` | How long it is shown as writing after a save | `10000` |
 | `WEBHOOK_UPDATE_WAIT_MS` | How long `note.updated` waits to join the saves of one note into one event | `10000` |
 | `API_PER_MINUTE` | Requests per minute of each token on `/api/v1` | `120` |
 | `INBOX_PER_MINUTE` | Requests per minute of each inbound address | `60` |
@@ -80,7 +83,7 @@ curl -X POST https://sync.example.com/admin/plan -H "x-admin-key: $ADMIN_KEY" \
 
 ## What it stores
 
-Email, notes, their previous versions (paid plan, 30 days), deleted notes while they are in the trash (30 days), and hashes of sign-in codes, sessions and tokens. Sessions and tokens are stored hashed: the server cannot show a token again after creating it. Of a live session it stores the note, the name its owner chose and the hash of the link's secret; the guests live in memory only (see "Live sessions"). Of a team it stores its name, the accounts that belong to it, the invitations that are waiting (the invited email address, until it is accepted, declined or removed) the id of the subscription that pays for it, the role of each member, the policies its administrators set and, for 90 days, an activity log of its shared space: who did what and when, with the path of the note, never its text (see "Teams").
+Email, notes with who made their last save (the number of the account or of the token, or the name a guest of a live session chose; never an email), their previous versions (paid plan, 30 days) with who had written each one, deleted notes while they are in the trash (30 days), and hashes of sign-in codes, sessions and tokens. Sessions and tokens are stored hashed: the server cannot show a token again after creating it. Of a live session it stores the note, the name chosen by whoever opened it, the hash of the link's secret and, on a team note, the member who opened it; the guests live in memory only (see "Live sessions"). Of a team it stores its name, the accounts that belong to it, the invitations that are waiting (the invited email address, until it is accepted, declined or removed) the id of the subscription that pays for it, the role of each member, the policies its administrators set and, for 90 days, an activity log of its shared space: who did what and when, with the path of the note, never its text, and the name a guest of a live session chose when what they wrote was saved or they were removed (see "Teams").
 
 Of a contribution to the community gallery it stores the type, the name, the description, the language, the public name its sender chose, the content, the account that sent it, its state and how many times it was added (a number, not who). See "Community gallery".
 
@@ -168,7 +171,7 @@ Sign-in is a six-digit code sent by mail, no passwords.
 | `GET` / `PUT` / `DELETE /notes/{path}` | Read (`{ text, rev, updated, role }`), write `{ text, rev? }`, delete. Deleting moves the note to the trash; `?forever=1` skips it. See "Revisions" and "Trash" below |
 | `DELETE /account` `{ email }` | Deletes the account of the session. See "Deleting an account" below |
 | `GET /trash`, `POST /trash/{id}/restore`, `DELETE /trash/{id}`, `DELETE /trash` | List the trash, restore a note, delete one for good, empty it. See "Trash" below |
-| `GET /events?path=` | Server-sent events for an open note: `presence` (who else has it open), `saved` (`{ by, updated, rev }`), `comments`, `vault`, and `live` while a live session is open |
+| `GET /events?path=` | Server-sent events for an open note: `presence` (who else has it open, and `ai`: the agents in it, see "Who is in a note"), `saved` (`{ by, updated, rev, edited }`), `comments`, `vault`, and `live` while a live session is open |
 | `POST /rename` `{ from, to, text?, updated? }` | Rename. With a protected folder involved, `text` is the note for its new path and `updated` what the client read: `409 changed` if the note changed meanwhile |
 | `GET /search?q=` | Search the text of every note outside protected folders |
 | `GET /vaults` | Protected folders: `{ id, folder, salt, iters, wrapped, check, state, ai }`. `ai` is `null`, or `{ until }` while unlocked for the AI (`until: 0` means until locked) |
@@ -193,13 +196,17 @@ Sign-in is a six-digit code sent by mail, no passwords.
 | `GET /f/{id}` | No session: serves an attached image to whoever has its address |
 | `POST /mcp` | MCP over Streamable HTTP, with `Authorization: Bearer mdt_...` |
 
-MCP tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`, `move_note`, `note_history`.
+MCP tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`, `move_note`, `note_history`, `get_guide`, `list_boards`, `create_board`, `add_card`, `move_card`, `update_card`, `delete_card`.
 
 `write_note`, `append_note` and `move_note` end their answer with `Open it: <url>`, the address that opens the note in the app. It is built from `APP_URL` as `?f=cloud/<path>`, the same address the app uses, so point `APP_URL` at the app your users open. Opened without a session, the app asks to sign in and then opens the note.
 
 `read_note` returns the Markdown as it is stored: an attached image is the address of the image, and there is no tool that uploads one. From an automated flow, images go through `POST /api/v1/files`.
 
 `move_note` `{ from, to }` moves or renames a note inside the same space, and its history, comments, shares and public links follow it. `note_history` `{ path, version? }` lists the earlier versions of a note, or returns the text of one. Neither works inside a folder protected with a password.
+
+Boards. The board tools are the card operations of the API (`/api/v1/boards`) under names for a model, with the same rules: the folder limit of the token, team roles and policies, protected folders, and the write goes over the revision that was read. `list_boards` `{ path }` returns each board of a note with its columns, the column of finished cards (`done_column`) and every card with its `id`, title and fields. `create_board` `{ path, title?, columns?, done? }` creates the note with a board, or adds a board at the end of a note that exists; without `columns` it gets To do, In progress, Paused and Done, with `{done=Done}` written in the board. `add_card` `{ path, title, column?, fields?, position?, board? }`, `move_card` `{ path, id, column, position? }`, `update_card` `{ path, id, title?, fields?, done? }` (a field with an empty value is removed) and `delete_card` `{ path, id }` answer with the card (`id`, `title`, `column`, `done`, `fields`), the `path` and the `url` that opens the note. Moving a card to the column of finished cards marks it as done. They produce the same card events as the API, with `actor.type: "mcp"`. A token that only reads is offered `list_boards` and not the others.
+
+`get_guide` returns a Markdown guide for the AI: the folder structure to document a project (`README.md`, `architecture.md`, `features/`, `epics.md`, `decisions.md`, `log.md`) and the rules of its task board in `board.md` (one card per task, moved through To do, In progress, Paused and Done, with the fields `agent`, `needs` and `link`). The `instructions` of `initialize` carry a short version and tell the AI to call it once per session. The message the app copies from Settings > AI (MCP) says the same.
 
 Sharing from an AI is a way out for the notes if the AI is fed instructions by someone else, so it is a separate permission. Five more tools exist only for a token created with `share: true` ("Can share and create links" in Settings > AI), which is off by default, cannot be added to an existing token and shows in the token list:
 
@@ -344,7 +351,7 @@ Of each page the server stores the path of the note, its route, title, descripti
 | `GET /sites/slug?slug=` | `{ ok: true }`, or `{ ok: false, why }` with `bad_slug`, `slug_reserved` or `slug_taken` |
 | `POST /sites` `{ folder, slug, title, o?, descr?, home?, lang?, accent?, font?, logo?, author?, noindex?, auto? }` | Creates the site, not published yet. `slug` takes lowercase letters, digits and hyphens, 3 to 40, and some names are reserved. `lang` is `en` or `es`; `accent` and `font` come from the closed lists of the app (`400 bad_theme`); `author` is a name, never an email (`400 bad_author`); `home` is a note of the folder. `402 site_needs_plan`, `409 site_limit`, `409 vault`, `404 no_notes`, `429 too_many` |
 | `GET /sites/{id}`, `PUT /sites/{id}` | One site, and changing its settings (the same fields, and `slug`) |
-| `PUT /sites/{id}/pages` `{ pages: [{ note, rev, html, title?, descr?, order? }] }` | Uploads up to 20 rendered pages. Each `note` has to exist inside the folder, and `rev` cannot be ahead of the note. `400 bad_note`, `400 bad_rev`, `409 vault`, `409 site_full`, `413 too_large`, `413 site_too_big`. The answer says, per page, its `route`, `images_skipped`, or `excluded: true` |
+| `PUT /sites/{id}/pages` `{ pages: [{ note, rev, html, title?, descr?, order?, toc? }] }` | Uploads up to 20 rendered pages. `toc: false` leaves the page without its "On this page" list. Each `note` has to exist inside the folder, and `rev` cannot be ahead of the note. `400 bad_note`, `400 bad_rev`, `409 vault`, `409 site_full`, `413 too_large`, `413 site_too_big`. The answer says, per page, its `route`, `images_skipped`, or `excluded: true` |
 | `POST /sites/{id}/publish` | Removes the pages whose note is gone or excluded and puts the site up. `409 site_empty` |
 | `POST /sites/{id}/unpublish` | Deletes every stored page at once. The settings stay |
 | `DELETE /sites/{id}` | Deletes the site and frees its address |
@@ -449,6 +456,14 @@ It refuses while money is still being charged, with `409` and a `manage` field h
 
 A member of a team leaves the team; the notes of the team stay with the team. `400 bad_confirm` when the email is not the one of the account.
 
+### Who is in a note, and who edited it last
+
+People. Every account that has a note open (`GET /events`) receives `who` (emails) and `names` (visible names) of the others, as before. Only someone who can read the note can listen to it.
+
+AI. An agent that reads or writes a note with a token (`mdt_...`, personal or of a team; over MCP or the REST API) counts as present in that note for `AI_SEEN_MS` after its last read and `AI_WROTE_MS` after its last write. The same events carry `ai: [{ kind: "ai", id, token, client, writing }]`: `token` is the name of the token, `client` is what the MCP client said in `initialize` (`clientInfo.name`, empty if it said nothing or came through the REST API), and `writing` is true for `AI_WRITING_MS` after a save. `id` is a number made up for the occasion, not the token's. This lives in memory only. The guests of a live session receive the same list in their `live` events.
+
+Last edit. `GET /notes/{path}` carries `edited`: `{ kind, name }` for whoever made the last save, or `null` for a note saved before this was recorded (the app then shows only `updated`). `kind` is `user` (`name` is the visible name of the account), `ai` (`name` is the name of the token, empty once the token is revoked) or `guest` (the name a guest of a live session chose; empty for an account that only has the note shared with it, which is not part of the session). The `saved` event carries the same `edited`, and `GET /versions/{path}` gives each version the `edited` of whoever had written it. A guest of a live session gets it in `GET /live/note` and in `saved`, where an account that has not chosen a visible name comes with an empty `name`: nothing taken from an email reaches a guest. The database stores `u:12`, `t:5` or `g:Name` in `notes.by` and `versions.by`; the name is looked up on reading. None of this is added to webhooks or to the REST API.
+
 ### Revisions
 
 Every note has a revision number, `rev`. It starts at 1 and goes up by one with each save. `GET /notes/{path}` returns it, and so does a successful `PUT`.
@@ -462,10 +477,12 @@ Every note has a revision number, `rev`. It starts at 1 and goes up by one with 
 
 The owner of a note, on the paid plan (or with `LIVE_FREE=1`), opens a live session on it and hands out a link. Whoever has the link joins without an account and gets a pass that works only for that note and only while the session is open.
 
+On a note of a team space the routes take `o` (the team space, as everywhere else) and the session belongs to the note of the space, with the member who opened it on record. See "Live sessions on team notes" below.
+
 | Call | What it does |
 |---|---|
-| `POST /live` `{ path, name }` | Opens the session on a note of the account and returns `{ secret, open, name, created, max, people }`. `name` is what guests see instead of the email. The secret is returned once: only its hash is stored. If the session was already open it answers without `secret`. `402 live_needs_plan`, `409 live_vault` for a note in a protected folder |
-| `GET /live?path=` | `{ open: false }`, or the session: `{ open, name, created, max, people }` |
+| `POST /live` `{ path, name, o }` | Opens the session on a note of the account (or of the team space, with `o`) and returns `{ secret, open, name, created, max, people }`. `name` is what guests see instead of the email. The secret is returned once: only its hash is stored. If the session was already open it answers without `secret`. `402 live_needs_plan`, `409 live_vault` for a note in a protected folder or a protected team space, `403 team_policy` or `read_only` and `429 live_team_max` on a team note |
+| `GET /live?path=&o=` | `{ open: false }`, or the session: `{ open, name, created, max, people }`. On a team note also `team: true`, `you` (the caller's id in `people`) and `can` (whether the caller manages it) |
 | `DELETE /live?path=` | Ends the session. Every pass stops working at once |
 | `POST /live/rotate` `{ path }` | New secret. The old link stops working; the people inside stay |
 | `POST /live/kick` `{ path, id }` | Removes a guest (`id` as in `people`, for example `g3`). Their pass and re-entry key die at once, and the secret changes so they cannot come back with the same link. Returns the session with the new `secret` |
@@ -477,11 +494,11 @@ The owner of a note, on the paid plan (or with `LIVE_FREE=1`), opens a live sess
 | `POST /live/presence` `{ block, editing }` | Where the caller is. A guest sends it with the pass; the owner with the account session and `path`. `block` is a short mark of letters, digits, dots, dashes and colons (the app sends a fingerprint of the block and its lines; the text never travels here). Forty every ten seconds per person, then `429 presence_rate`. If someone else is already writing in that block the answer carries `held` with their id |
 | `POST /live/leave` | The guest leaves: pass and re-entry key are deleted |
 
-`people` is `[{ id, name, color, block, editing, here }]`. `id` is `o` for whoever opened the session and `g1`, `g2`... for guests; `color` is a number the server assigns. Nobody can speak for someone else: presence is always attributed to the pass or session that sent it, and names cannot be changed by another participant. A name is trimmed to 40 characters and loses control characters and invisible direction marks; it is otherwise stored as typed, so a client must always show it as text, never as HTML.
+`people` is `[{ id, name, color, block, editing, here }]`. `id` is `o` for whoever opened the session, `g1`, `g2`... for guests and, on a team note, `m1`, `m2`... for the other members of the team who have the note open (with `member: true`, and an empty `name` when the account has not chosen a visible name: the address is never sent); `color` is a number the server assigns. Nobody can speak for someone else: presence is always attributed to the pass or session that sent it, and names cannot be changed by another participant. A name is trimmed to 40 characters and loses control characters and invisible direction marks; it is otherwise stored as typed, so a client must always show it as text, never as HTML.
 
 While a session is open, the `saved` event sent to its members (the owner and the guests) carries the change itself, so they apply it without another request: `text` with the whole note, or, when the note is over 4000 characters, `base` and `patch: { at, del, lines }` (from line `at`, remove `del` lines and put `lines`, over revision `base`). `pid` says who saved. An event for a guest never carries an email. Roster changes are batched: at most one `live` event every 120 ms per session.
 
-What a pass cannot do: list or read any other note, see the history, share, create links or tokens, use MCP, or call any route outside `/live/`. Guests are kept in memory only (name, color, pass hash); re-entry keys are stored as hashes in the `live_tickets` table and deleted with the session. A guest with no connection and no requests for two minutes gives up the place and can come back with the re-entry key.
+What a pass cannot do: list or read any other note, see the history, share, create links or tokens, use MCP, reach anything else of a team, or call any route outside `/live/`. Guests are kept in memory only (name, color, pass hash); re-entry keys are stored as hashes in the `live_tickets` table and deleted with the session. A guest with no connection and no requests for two minutes gives up the place and can come back with the re-entry key.
 
 A session ends when the owner ends it, after 12 hours with nobody connected, when the note is deleted, renamed or moved, when its folder gets a password, or when the account leaves the paid plan.
 
@@ -493,6 +510,17 @@ A session ends when the owner ends it, after 12 hours with nobody connected, whe
 | `LIVE_GUEST_MS` | How long a guest with no connection keeps the place | 2 minutes |
 
 The connection limits of `/events` apply to `/live/events` too: 60 open connections per IP, and 4 per guest. Behind a proxy, make sure it does not buffer event streams (the server sends `x-accel-buffering: no`) and that it lets them stay open.
+
+#### Live sessions on team notes
+
+A member who can edit opens a live session on a note of the team space and invites people from outside with the link. Administrators always can; editors when the `live` policy is on (it is off by default); readers never. The `lives` table keeps whose note it is (`owner`, the team space) and who opened it (`opener`, empty on a personal note).
+
+- Every route checks membership, role and policy on each request. `POST /live` with `o`: `403 read_only` for a reader, `403 team_policy` without the policy, `409 live_vault` in a team space protected with a password (a guest does not have the key), `429 live_team_max` over 10 open sessions per team. Opening, rotating, removing and ending share a limit of 120 an hour per team.
+- The other members do not join: with the note open (`GET /events?path=&o=`) they receive the `live` events, each with its own `you` and `can`, and the `saved` events with the change inside. They save with `PUT /notes/{path}?o=` over a revision, as always, and say where they are with `POST /live/presence` `{ path, o, block, editing }`. A reader is shown on a block and never holds it. Members do not take the place of a guest.
+- `GET /live?path=&o=` answers any member. Rotating the link, removing a guest and ending the session are for whoever opened it and for any administrator: `403 not_opener` for another editor, `403 read_only` for a reader. Only guests can be removed.
+- The session ends by itself when whoever opened it stops being allowed: they become a reader, leave the team or delete their account, the policy is turned off (for a session opened by someone who is not an administrator), the team stops being paid, or the space is protected with a password. The guests' passes die in that same request.
+- A guest's pass reaches that one note of the space and nothing else of the team: not its other notes, its trash, its history, its members, its policies, its log or its tokens.
+- In the activity log: `live_open`, `live_end` and `live_kick` (with the name of the guest in `detail`). What a guest saves is an `edit` entry with `via: guest` and the name the guest chose in `token`. A session that ended by itself is a `live_end` entry with `via: auto`.
 
 ### Teams
 
@@ -537,17 +565,17 @@ Team policies. What an administrator decides for the space, stored with the team
 | `tokens` | on | Whether the AI of a member reaches the team space. Off, the tokens of members stop seeing `@team/` at once, and a path there answers with a message for the AI |
 | `automation` | off | Using automations on the team space. Whatever runs an automation asks `teamAllows(team, user, 'automation')` first |
 | `publish` | off | Publishing a folder of the team space as a public site: `POST /sites` with `o`, and every route of that site. See "Published sites" |
-| `live` | off | Opening a live session with guests on a team note. The team space has no live sessions yet: the policy is stored and answered by `teamAllows`, and nothing reads it today |
+| `live` | off | Opening a live session with guests on a team note. Turning it off ends the sessions opened by members who are not administrators |
 | `history_days` | `0` | How long the version history of the space is kept: `30`, `90`, `180` or `365`, never more than `TEAM_HISTORY_DAYS`. `0` is the longest the server allows. Shortening it deletes the older versions right away |
 | `folder` | empty | The folder where the app puts a note created at the top of the team space |
 | `template` | empty | The text a new team note starts with, up to 20,000 characters. It is stored on the server, encrypted at rest with `DATA_KEY` like a note, and readable by the server: a protected space has no template (`409 vault`), and protecting a space clears it |
 
 What goes out of the team. With `share` or `links` allowed, a team note is shared or linked exactly like a personal one, with `o` naming the space. The account it is shared with sees the name of the team as the sender, never the internal account. A team note cannot be shared with someone who is already in the team (`409 already_member`), and the whole space cannot be shared. A protected space has no sharing and no links. Who a team note is shared with is visible to administrators and editors. Refusals are `403 team_policy`, or `403 read_only` for a reader.
 
-The activity log. For administrators: who did what in the team space and when. Each entry is `{ id, at, who, uid, via, token, action, path, about, detail }`. `via` is empty from the app, `ai` with the token of a person and `team` with a team token, and `token` is the name of that token. Actions: `create`, `edit`, `move`, `delete`, `restore`, `purge`, `empty_trash`, `share`, `unshare`, `link`, `unlink`, `invite`, `uninvite`, `join`, `leave`, `remove`, `role`, `policy`, `team_name`, `protect`, `password`, `rotate`, `rotate_done`, `unprotect`, `destroy`, `ai`, `ai_unlock`, `token_create`, `token_revoke`, `automation`, `automation_remove`, `site`, `publish`, `unpublish`.
+The activity log. For administrators: who did what in the team space and when. Each entry is `{ id, at, who, uid, via, token, action, path, about, detail }`. `via` is empty from the app, `ai` with the token of a person, `team` with a team token (`token` is the name of that token), `guest` for a guest of a live session (`token` is the name the guest chose) and `auto` for what the server did by itself. Actions: `create`, `edit`, `move`, `delete`, `restore`, `purge`, `empty_trash`, `share`, `unshare`, `link`, `unlink`, `invite`, `uninvite`, `join`, `leave`, `remove`, `role`, `policy`, `team_name`, `protect`, `password`, `rotate`, `rotate_done`, `unprotect`, `destroy`, `ai`, `ai_unlock`, `token_create`, `token_revoke`, `automation`, `automation_remove`, `site`, `publish`, `unpublish`, `live_open`, `live_end`, `live_kick`.
 
-- It never stores the text of a note. It stores the path, the action, the account and the time. `detail` holds a role, the name of a policy with its new value, the new path of a move or the name of a token.
-- It stores no email address. Of the person who acted it stores the account number, and the address is looked up when the log is read: an account that was deleted shows empty. The address a note was shared with and the address that was invited are not written.
+- It never stores the text of a note. It stores the path, the action, the account and the time. `detail` holds a role, the name of a policy with its new value, the new path of a move, the name of a token or the name of a guest who was removed from a live session.
+- It stores no email address. Of the person who acted it stores the account number, and the address is looked up when the log is read: an account that was deleted shows empty. The address a note was shared with and the address that was invited are not written. A guest of a live session has no account: the log keeps the name they chose.
 - Several saves of one note by the same account within ten minutes are one `edit` entry. An AI reaching the space is one `ai` entry per token and hour.
 - With a protected space, the paths of the notes are in the log as they are everywhere else: names are not encrypted.
 - `GET /team/log` takes `who` (account number), `token` (name), `action`, `from` and `to` (milliseconds) and `before` (an entry id, to continue): `{ entries, more, days }`, 100 entries a page, newest first. With `format=csv` it answers `{ csv, days }` with up to 5,000 rows and the same filters; cells that start like a formula are neutralised.
@@ -557,7 +585,7 @@ Team tokens. A token that belongs to the team, not to a person: for an AI or a s
 
 History. In the team space the version history is kept for `TEAM_HISTORY_DAYS` (365), or less if the `history_days` policy says so. Personal notes keep 30 days. `GET /versions/{path}?o=` returns up to 500 versions.
 
-What the team space does not have in this version: comments for the AI and live sessions. Those routes work on the caller's own notes. A member cannot protect a folder inside the team space: `/vaults` only works on the caller's own notes. The whole space can be protected by its administrator, see below. Until then, text that starts with `vault1:` is refused there with `409 vault_text`.
+What the team space does not have in this version: comments for the AI. That route works on the caller's own notes. A member cannot protect a folder inside the team space: `/vaults` only works on the caller's own notes. The whole space can be protected by its administrator, see below. Until then, text that starts with `vault1:` is refused there with `409 vault_text`.
 
 Protecting the team space. The administrator can protect the whole team space with one password. It is not per folder, and members cannot add passwords of their own, so nobody can lock the rest of the team out. It is a protected folder like the ones above: the same data key, the same wrapping with the password, the same backup key and the same `vault1:` format, stored as one more row of the same table under the internal account of the team. The only difference in the encryption is the associated data of each note, which is `~{space}/{path}` instead of the bare path, so a ciphertext of a team note does not open as a personal note or in another team. Members receive the password from the administrator, outside the app. Anyone who knows it can unwrap the data key in their browser, read and write.
 

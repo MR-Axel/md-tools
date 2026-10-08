@@ -2571,3 +2571,96 @@ html.lmd-ai-open .lmd-ai-card { left: calc(50% - 190px); width: min(860px, calc(
   .lmd-st-head .lmd-seg button { min-height: 38px; }
 }
 @media print { .lmd-st-dlg { display: none !important; } }
+/* Sesión en vivo sobre una nota del equipo: la línea que lo dice, arriba del cuadro. */
+.lmd-ask-card.lmd-live-card p.lmd-live-team { margin: 0 0 12px; color: var(--fg); overflow-wrap: anywhere; }
+/* Ajustes de la página, toc: false. El panel conserva el título y el avance de lectura. */
+.lmd-page-notoc .lmd-o-tree { display: none; }
+/* Tarjeta de un tablero, campo Enlace: el botón para elegir otra nota, al lado del campo. */
+.lmd-cd-link .lmd-cd-note { flex: none; min-height: 32px; white-space: nowrap; }
+@media (pointer: coarse) { .lmd-cd-link .lmd-cd-note { min-height: 44px; } }
+/* Quiénes tienen abierta la nota, personas e IA: una tira de avatares junto a la nube, con el cuadrito de la última edición. */
+.lmd-here { position: relative; display: inline-flex; align-items: center; flex: none; height: 30px; padding: 0 4px; border: 0; border-radius: 999px; background: none; color: var(--fg); font: inherit; cursor: default; }
+.lmd-here[hidden] { display: none; }
+.lmd-here:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lmd-here .lmd-live-av { border-color: var(--bg); }
+.lmd-here-ai { background: var(--bg-soft); color: var(--accent); border-color: var(--line); }
+.lmd-here .lmd-here-ai { border-color: var(--line); }
+.lmd-here-ai svg { width: 13px; height: 13px; fill: currentColor; stroke: none; }
+.lmd-here-busy svg { animation: lmd-here-pulse 1.4s ease-in-out infinite; }
+@keyframes lmd-here-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.82); } }
+@media (prefers-reduced-motion: reduce) { .lmd-here-busy svg { animation: none; opacity: 0.7; } }
+.lmd-here-more-s { display: none; }
+.lmd-here-tip { position: absolute; top: calc(100% + 6px); right: 0; z-index: 60; display: none; flex-direction: column; gap: 3px; width: max-content; max-width: min(320px, calc(100vw - 24px)); padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg-muted); font: 400 12.5px/1.4 var(--lmd-font); text-align: left; white-space: normal; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16); }
+.lmd-here-tip b { color: var(--fg); font-weight: 600; }
+.lmd-here:hover .lmd-here-tip, .lmd-here:focus-visible .lmd-here-tip, .lmd-here.lmd-on .lmd-here-tip { display: flex; }
+.lmd-ask-card.lmd-live-card p.lmd-live-last { margin: 10px 0 0; }
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  /* Entran dos avatares y la cuenta de los demás. */
+  .lmd-here { height: 34px; }
+  .lmd-here .lmd-live-avs > .lmd-live-av:nth-child(n+3) { display: none; }
+  .lmd-here .lmd-live-avs > .lmd-live-av.lmd-here-more-s:nth-child(n) { display: inline-grid; }
+}
+@media print { .lmd-here { display: none !important; } }
+
+/* ---------- Atajos de teclado (shortcuts.js) ---------- */
+/* El botón: chico y apagado, abajo a la derecha, sobre el de volver arriba cuando ese está. Solo con teclado físico. */
+.lmd-keys-btn {
+  position: fixed; right: 27px; bottom: calc(52px + env(safe-area-inset-bottom, 0px)); width: 30px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg-soft); color: var(--fg-muted); display: grid; place-items: center; cursor: pointer; z-index: 15; opacity: 0.55; transition: opacity 0.15s;
+}
+.lmd-keys-btn:hover, .lmd-keys-btn:focus-visible { opacity: 1; color: var(--fg); }
+.lmd-keys-btn svg { width: 17px; height: 17px; }
+.lmd-to-top:not([hidden]) + .lmd-keys-btn { bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
+.lmd-nodoc .lmd-to-top + .lmd-keys-btn { bottom: calc(52px + env(safe-area-inset-bottom, 0px)); }
+@media (hover: none), (pointer: coarse) { .lmd-keys-btn { display: none; } }
+@media print { .lmd-keys-btn { display: none !important; } }
+/* La hoja. */
+.lmd-ask-card.lmd-keys-card { width: min(1060px, 100%); max-height: 100%; padding: 18px 20px 12px; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; }
+.lmd-keys-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; }
+.lmd-keys-head h3 { margin: 0; }
+.lmd-keys-q { width: 100%; box-sizing: border-box; margin: 0 0 12px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-soft); color: var(--fg); font: inherit; flex: none; }
+.lmd-keys-q:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lmd-keys-body { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; outline: none; }
+.lmd-keys-cols { column-width: 290px; column-gap: 32px; }
+.lmd-keys-group { break-inside: avoid; margin: 0 0 16px; }
+.lmd-keys-group h4 { margin: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--fg-faint); }
+.lmd-keys-group ul { list-style: none; margin: 0; padding: 0; }
+.lmd-keys-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 5px 0; border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent); font-size: 13.5px; line-height: 1.35; }
+.lmd-keys-row[hidden], .lmd-keys-group[hidden] { display: none; }
+.lmd-keys-what { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; overflow-wrap: anywhere; }
+.lmd-keys-what small { font-size: 12px; color: var(--fg-faint); }
+.lmd-keys-what [hidden] { display: none; }
+.lmd-keys-what .lmd-link { font-size: 12px; text-align: left; }
+.lmd-keys-set { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px; flex: none; max-width: 58%; }
+.lmd-keys-set i { font-style: normal; color: var(--fg-faint); font-size: 12px; }
+.lmd-keys-combo { display: inline-flex; gap: 3px; }
+.lmd-keys kbd { display: inline-block; min-width: 12px; padding: 2px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; background: var(--bg-soft); color: var(--fg); font: 600 12px/1.3 var(--lmd-font); text-align: center; white-space: nowrap; }
+.lmd-keys-off .lmd-keys-what > span, .lmd-keys-off .lmd-keys-set { opacity: 0.45; }
+.lmd-ask-card p.lmd-keys-none { margin: 8px 0 16px; }
+.lmd-ask-card p.lmd-keys-foot { flex: none; margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--fg-faint); }
+@media (max-width: 720px) { .lmd-keys-q { font-size: 16px; } .lmd-ask-card.lmd-keys-card { padding: 14px 14px 10px; } }
+
+/* Ajustes > IA (MCP): el interruptor de las instrucciones del espacio de proyecto, junto al botón que copia el mensaje. */
+.lmd-acct .lmd-ai-ws { margin: 6px 0 0; font-size: 13px; color: var(--fg); }
+
+/* Ajustes > Nube, bloque Seguridad: de la clave de IA guardada, el proveedor y sus últimos caracteres. */
+.lmd-sec li p.lmd-sec-key { color: var(--fg); font-weight: 600; }
+/* Con el renglón de la clave son cinco. En una ventana ancha van en tres columnas, para que la pestaña siga entrando
+   sin scroll: la cuenta a la izquierda, las carpetas protegidas (el más largo) al medio, y la clave y el código a la
+   derecha. El orden de lectura no cambia: solo dónde cae cada uno. */
+.lmd-sec li small .lmd-link { padding: 0; color: var(--accent); font-size: inherit; text-decoration: underline; }
+@media (min-width: 1000px) {
+  [data-acct=cloud] .lmd-sec { margin-top: 8px; padding-top: 8px; }
+  [data-acct=cloud] .lmd-sec h4 { margin-bottom: 4px; }
+  [data-acct=cloud] .lmd-sec ul { display: block; columns: 3; column-gap: 16px; }
+  [data-acct=cloud] .lmd-sec li { gap: 8px; margin-bottom: 5px; break-inside: avoid; }
+  [data-acct=cloud] .lmd-sec li p { font-size: 12.5px; line-height: 1.35; }
+  [data-acct=cloud] .lmd-sec li small { margin-top: 2px; }
+  [data-acct=cloud] .lmd-sec-ico { width: 24px; height: 24px; border-radius: 7px; }
+  [data-acct=cloud] .lmd-sec li[data-sec-row=vaults], [data-acct=cloud] .lmd-sec li[data-sec-row=aikey] { break-before: column; }
+  [data-acct=cloud] .lmd-sec-foot { margin-top: 2px; }
+  [data-acct=cloud] .lmd-acct-del { margin-top: 4px; }
+}
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  .lmd-sec li small .lmd-link { display: inline-flex; align-items: center; min-height: 40px; }
+}

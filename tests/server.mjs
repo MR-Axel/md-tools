@@ -70,13 +70,42 @@ try {
   check('MCP: initialize', init.json.result.serverInfo.name === 'sharpmd' && !!init.json.result.capabilities.tools, init.json);
   check('MCP: las notificaciones no llevan respuesta', (await call('POST', '/mcp', { jsonrpc: '2.0', method: 'notifications/initialized' }, t)).status === 202);
   const tools = await call('POST', '/mcp', { jsonrpc: '2.0', id: 2, method: 'tools/list' }, t);
-  check('MCP: lista las diez herramientas de un token sin permiso de compartir', tools.json.result.tools.map((x) => x.name).join() === 'list_notes,list_folders,read_note,write_note,append_note,search_notes,list_comments,resolve_comment,move_note,note_history', tools.json);
+  check('MCP: lista las herramientas de un token sin permiso de compartir, con la guía y las de tablero', tools.json.result.tools.map((x) => x.name).join() === 'list_notes,list_folders,read_note,write_note,append_note,search_notes,list_comments,resolve_comment,move_note,note_history,get_guide,list_boards,create_board,add_card,move_card,update_card,delete_card' && tools.json.result.tools.every((x) => x.description.length > 20 && !/[!¡—–]/.test(x.description)), tools.json);
   const tool = (name, args, id) => call('POST', '/mcp', { jsonrpc: '2.0', id: id || 9, method: 'tools/call', params: { name, arguments: args } }, t);
   await tool('write_note', { path: 'ia/resumen.md', text: '# Resumen\n\nEscrito por la IA.' });
   await tool('append_note', { path: 'ia/resumen.md', text: 'Segunda parte.' });
   const read = await tool('read_note', { path: 'ia/resumen.md' });
   check('MCP: escribe, agrega y lee', read.json.result.content[0].text === '# Resumen\n\nEscrito por la IA.\n\nSegunda parte.', read.json);
   check('MCP: lo que escribe la IA lo ve la app', (await call('GET', '/notes/' + encodeURIComponent('ia/resumen.md'), undefined, s)).json.text.includes('Segunda parte.'));
+  {
+    // Tableros por MCP: las mismas operaciones que la API, con el id de la tarjeta, la columna y el enlace.
+    const said = String(init.json.result.instructions || '');
+    check('MCP: las instrucciones nombran la estructura del proyecto, el tablero y sus herramientas', ['README.md', 'architecture.md', 'features/', 'epics.md', 'decisions.md', 'log.md', 'board.md', 'To do', 'In progress', 'Paused', 'Done', 'needs', 'create_board', 'add_card', 'move_card', 'update_card', 'get_guide'].every((x) => said.includes(x)), said.slice(0, 900));
+    const bt = async (name, args) => { const r = (await tool(name, args)).json.result; let v = r.content[0].text; try { v = JSON.parse(v); } catch (e) { /* texto */ } return { v, err: !!r.isError }; };
+    const gd = (await bt('get_guide', {})).v;
+    check('MCP: get_guide devuelve la guía en Markdown, sobria, con la estructura y las reglas del tablero', typeof gd === 'string' && /^# Working in SharpMD/.test(gd) && ['<project>/README.md', '<project>/architecture.md', '<project>/features/<name>.md', '<project>/epics.md', '<project>/decisions.md', '<project>/log.md', '<project>/board.md', 'Mermaid', 'Acceptance criteria', 'Context:', 'Consequence:', 'append_note', 'create_board', 'add_card', 'move_card', 'update_card', 'list_boards', 'field agent', 'field needs', 'field link', 'Do not delete finished cards', 'subagents', 'relative paths', '{done=Done}'].every((x) => gd.includes(x)) && !/[!¡—–]/.test(gd), gd);
+    const made = await bt('create_board', { path: 'ia/board.md' });
+    const mdBoard = (await call('GET', '/notes/' + encodeURIComponent('ia/board.md'), undefined, s)).json.text;
+    check('MCP: create_board crea la nota con el tablero de cuatro columnas y la de hechas marcada', !made.err && made.v.columns.join() === 'To do,In progress,Paused,Done' && made.v.done_column === 'Done' && made.v.board === 0 && made.v.path === 'ia/board.md' && /\?f=cloud%2Fia%2Fboard\.md$/.test(made.v.url) && mdBoard === '# board\n\n' + '`'.repeat(3) + 'kanban\n{done=Done}\n## To do\n\n## In progress\n\n## Paused\n\n## Done\n' + '`'.repeat(3) + '\n', [made.v, mdBoard]);
+    const card = await bt('add_card', { path: 'ia/board.md', title: 'Write the sign-in spec', fields: { agent: 'claude' } });
+    const cid = card.v.card && card.v.card.id;
+    check('MCP: add_card deja la tarjeta en la primera columna y devuelve su id, la columna y el enlace', !card.err && /^[a-z2-9]{8}$/.test(cid) && card.v.card.column === 'To do' && card.v.card.done === false && card.v.card.fields.agent === 'claude' && card.v.url === made.v.url, card.v);
+    const doing = await bt('move_card', { path: 'ia/board.md', id: cid, column: 'in progress' });
+    const paused = await bt('move_card', { path: 'ia/board.md', id: cid, column: 'Paused' }); const needs = await bt('update_card', { path: 'ia/board.md', id: cid, fields: { needs: 'The name of the mail provider' } });
+    check('MCP: move_card la pasa de columna (sin crear otra por las mayúsculas) y update_card le suma un campo sin tocar los demás', doing.v.card.column === 'In progress' && paused.v.card.column === 'Paused' && needs.v.card.fields.agent === 'claude' && needs.v.card.fields.needs === 'The name of the mail provider' && needs.v.card.done === false, [doing.v, needs.v]);
+    const cleared = await bt('update_card', { path: 'ia/board.md', id: cid, title: 'Write the sign-in spec v2', fields: { needs: '', link: 'ia/resumen.md' } });
+    const done = await bt('move_card', { path: 'ia/board.md', id: cid, column: 'Done' });
+    check('MCP: un campo vacío se quita, y mover a la columna de hechas marca la tarjeta', !('needs' in cleared.v.card.fields) && cleared.v.card.title === 'Write the sign-in spec v2' && done.v.card.done === true && done.v.card.column === 'Done' && /marked as done/.test(done.v.result) && /- \[x\] Write the sign-in spec v2 \{agent=claude link=ia\/resumen\.md id=/.test((await call('GET', '/notes/' + encodeURIComponent('ia/board.md'), undefined, s)).json.text), [cleared.v, done.v]);
+    const listed = await bt('list_boards', { path: 'ia/board.md' });
+    check('MCP: list_boards da las columnas, la de hechas y las tarjetas con su id', listed.v.boards.length === 1 && listed.v.boards[0].done_column === 'Done' && listed.v.boards[0].columns.map((c) => c.column).join() === 'To do,In progress,Paused,Done' && listed.v.boards[0].columns[3].cards[0].id === cid && listed.v.boards[0].columns[3].cards[0].done === true && listed.v.url === made.v.url, listed.v);
+    const second = await bt('create_board', { path: 'ia/board.md', title: 'Ideas', columns: ['Maybe', 'Shipped'], done: 'Shipped' });
+    const two = await bt('add_card', { path: 'ia/board.md', board: 1, column: 'Shipped', title: 'Dark theme' });
+    check('MCP: create_board sobre una nota que existe suma otro tablero sin tocar el primero', second.v.board === 1 && second.v.done_column === 'Shipped' && two.v.card.done === true && two.v.board === 1 && (await bt('list_boards', { path: 'ia/board.md' })).v.boards[0].columns[3].cards[0].id === cid, [second.v, two.v]);
+    const gone = await bt('delete_card', { path: 'ia/board.md', id: two.v.card.id });
+    const errs = [await bt('add_card', { path: 'ia/resumen.md', title: 'x' }), await bt('move_card', { path: 'ia/board.md', id: 'zzzzzzzz', column: 'Done' }), await bt('move_card', { path: 'ia/board.md', id: cid }), await bt('add_card', { path: 'ia/board.md', title: 'x', fields: { id: 'pisada' } }), await bt('create_board', { path: 'ia/otro.md', columns: ['A', 'a'] }), await bt('create_board', { path: 'ia/otro.md', columns: ['A'], done: 'B' }), await bt('list_boards', { path: 'ia/no-existe.md' })];
+    check('MCP: delete_card la quita, y los errores se dicen sin escribir nada', !gone.err && gone.v.card.title === 'Dark theme' && errs.every((r) => r.err) && /no kanban board/.test(errs[0].v) && /no card with that id/.test(errs[1].v) && (await call('GET', '/notes/' + encodeURIComponent('ia/otro.md'), undefined, s)).status === 404, errs.map((r) => r.v));
+    await call('DELETE', '/notes/' + encodeURIComponent('ia/board.md'), undefined, s);
+  }
   const found = await tool('search_notes', { query: 'zanahoria' });
   check('MCP: busca', /ideas\/uno\.md/.test(found.json.result.content[0].text));
   const bad = await tool('read_note', { path: 'no-existe.md' });
@@ -165,7 +194,7 @@ try {
   const hs = await ask(full, 'note_history', { path: 'archivo/nota.md' }); const hv = hs.v.length ? await ask(full, 'note_history', { path: 'archivo/nota.md', version: hs.v[0].version }) : { v: null };
   check('MCP: note_history lista las versiones anteriores y devuelve el texto de una', hs.v.length === 1 && hs.v[0].size > 0 && hv.v === '# Hola' && (await ask(full, 'note_history', { path: 'archivo/nota.md', version: 999999 })).err, [hs.v, hv.v]);
   const sharer = await mk({ name: 'comparte', share: true }); const shTools = (await call('POST', '/mcp', { jsonrpc: '2.0', id: 2, method: 'tools/list' }, sharer.token)).json.result.tools;
-  check('MCP: un token con el permiso de compartir tiene cinco herramientas más', sharer.share === true && typeof sharer.id === 'number' && shTools.map((x) => x.name).slice(10).join() === 'list_shares,share_note,unshare_note,create_public_link,revoke_public_link' && shTools.every((x) => !('share' in x)) && (await mk({ name: 'no' })).share === false, shTools.map((x) => x.name));
+  check('MCP: un token con el permiso de compartir tiene cinco herramientas más', sharer.share === true && typeof sharer.id === 'number' && shTools.map((x) => x.name).slice(-5).join() === 'list_shares,share_note,unshare_note,create_public_link,revoke_public_link' && shTools.every((x) => !('share' in x)) && (await mk({ name: 'no' })).share === false, shTools.map((x) => x.name));
   const noPerm = await ask(full, 'create_public_link', { path: 'suelta.md' });
   check('MCP: sin el permiso, crear un enlace falla y dice a quién pedírselo', noPerm.err && /cannot share notes or create public links\. Ask the person/.test(noPerm.v), noPerm.v);
   const sc = await call('POST', '/auth/start', { email: 'socia@ejemplo.test' }); const ss = (await call('POST', '/auth/verify', { email: 'socia@ejemplo.test', code: sc.json.dev_code })).json.session;
@@ -493,6 +522,39 @@ try {
     check('alias de Gmail: fuera de gmail.com y googlemail.com no se toca nada', new Set([a.acc.id, d.acc.id, e.acc.id, f.acc.id]).size === 4 && f.acc.email === 'mariagomez+x@ejemplo.test', [d.acc.id, e.acc.id, f.acc.id]);
     const g = await enter('otragmail@gmail.com', '10.8.0.7');
     check('alias de Gmail: otra casilla de Gmail es otra cuenta', g.acc.id !== a.acc.id && g.acc.email === 'otragmail@gmail.com');
+  }
+
+  console.log('Última edición');
+  {
+    const { DatabaseSync } = await import('node:sqlite'); const pathMod = await import('path');
+    const h = { 'x-forwarded-for': '10.9.1.9' };
+    const st = await call('POST', '/auth/start', { email: 'edita@ejemplo.test' }, undefined, h);
+    const es = (await call('POST', '/auth/verify', { email: 'edita@ejemplo.test', code: st.json.dev_code }, undefined, h)).json.session;
+    await call('POST', '/admin/plan', { email: 'edita@ejemplo.test', plan: 'pro' }, undefined, { 'x-admin-key': 'clave-de-prueba' });
+    const note = () => call('GET', '/notes/autor.md', undefined, es).then((r) => r.json);
+    await call('PUT', '/notes/autor.md', { text: 'uno' }, es);
+    const n1 = await note();
+    check('la nota dice quién hizo el último guardado: la cuenta, por su nombre visible', n1.edited && n1.edited.kind === 'user' && n1.edited.name === 'edita' && n1.updated > 0 && !JSON.stringify(n1.edited).includes('@'), n1.edited);
+    const tk = (await call('POST', '/tokens', { name: 'robot' }, es)).json;
+    const mcpCall = (name, args) => call('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, tk.token);
+    await mcpCall('write_note', { path: 'autor.md', text: 'dos, de la IA' });
+    const n2 = await note();
+    check('si guardó una IA, dice que fue una IA y el nombre de su token', n2.edited && n2.edited.kind === 'ai' && n2.edited.name === 'robot' && n2.text === 'dos, de la IA', n2.edited);
+    const vers = (await call('GET', '/versions/autor.md', undefined, es)).json;
+    check('el historial dice de quién era cada versión', vers.length === 1 && vers[0].edited && vers[0].edited.kind === 'user' && vers[0].edited.name === 'edita', vers);
+    const viaApi = await call('GET', '/api/v1/note?path=autor.md', undefined, tk.token);
+    check('por la API la nota viaja como antes, sin el autor', viaApi.status === 200 && !/"edited"|"by"/.test(JSON.stringify(viaApi.json)), viaApi.json);
+    await call('DELETE', '/tokens/' + tk.id, undefined, es);
+    const n3 = await note();
+    check('con el token revocado sigue diciendo que fue una IA, sin nombre', n3.edited && n3.edited.kind === 'ai' && n3.edited.name === '', n3.edited);
+    // Una nota guardada antes de que existiera la columna: queda sin autor, con su fecha.
+    const db = new DatabaseSync(pathMod.join(data, 'mdtools.db')); db.exec('PRAGMA busy_timeout = 3000');
+    const cols = (t) => db.prepare('PRAGMA table_info(' + t + ')').all().map((c) => c.name);
+    const hasCols = cols('notes').includes('by') && cols('versions').includes('by');
+    db.prepare("UPDATE notes SET by = NULL WHERE path = 'autor.md'").run(); db.close();
+    const n4 = await note();
+    check('las notas anteriores a la columna quedan sin autor y conservan su fecha', hasCols && n4.edited === null && n4.updated === n3.updated && n4.text === n3.text, [hasCols, n4.edited]);
+    check('otra cuenta no llega al autor de una nota ajena', (await call('GET', '/notes/autor.md', undefined, s)).status === 404 && (await call('GET', '/versions/autor.md', undefined, s)).json.length === 0);
   }
 
   check('cerrar sesión la invalida', (await call('POST', '/auth/logout', {}, s)).status === 200 && (await call('GET', '/notes', undefined, s)).status === 401);

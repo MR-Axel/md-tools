@@ -116,6 +116,20 @@
     priority: /^(priority|prioridad)$/i, tags: /^(tags?|etiquetas?|labels?)$/i, link: /^(link|enlace|url)$/i,
   };
   const isUrl = (v) => /^https?:\/\/[^\s<>"'`]+$/i.test(String(v || ''));
+  // Un enlace también puede llevar a otra nota: su ruta relativa, como en un enlace Markdown común (con un #título si hace falta).
+  const NOTE_EXT = /\.(md|markdown|mdown|mkd)$/i;
+  const isNote = (v) => /^(?![a-z][a-z0-9+.-]*:|[\/\\#])[^\s<>"'`\\]+\.(md|markdown|mdown|mkd)(#[^\s<>"'`]*)?$/i.test(String(v || ''));
+  const isLink = (v) => isUrl(v) || isNote(v);
+  const noteName = (v) => { const s = String(v).split('#')[0].split('/').pop().replace(NOTE_EXT, ''); try { return decodeURIComponent(s); } catch (e) { return s; } };
+  const linkLabel = (v) => (isNote(v) ? noteName(v) : shortUrl(v));
+  // El <a> de un enlace. Hacia afuera abre otra pestaña; a una nota la sigue el lector, como un enlace del texto.
+  function linkEl(v, attrs, html) {
+    const a = el('a', attrs, html);
+    if (!isNote(v)) { a.href = v; a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+    else if (core.APP) { a.setAttribute('data-lmd-href', v); a.href = core.toHref(new URL(v, core.HERE).href); }
+    else a.setAttribute('href', v);
+    return a;
+  }
   function kindOf(fields, k, v) {
     if (k === 'by') return 'person';
     const f = fields[k];
@@ -197,7 +211,7 @@
         listOf(v).forEach((p) => group.appendChild(el('span', { class: 'lmd-avatar', title: name + ': ' + p, 'aria-label': name + ': ' + p, role: 'img', text: initials(p) })));
         box.appendChild(group);
       } else if (kind === 'tags') listOf(v).forEach((t) => box.appendChild(el('span', { class: 'lmd-chip lmd-ktag lmd-ktag-' + tagColor(model.tags, t), 'data-attr': k, title: name, text: t })));
-      else if (kind === 'link' && isUrl(v)) box.appendChild(el('a', { class: 'lmd-chip lmd-chip-link', 'data-attr': k, href: v, target: '_blank', rel: 'noopener noreferrer', draggable: 'false', title: shortUrl(v), 'aria-label': name + ': ' + shortUrl(v) }, ICON.link));
+      else if (kind === 'link' && isLink(v)) box.appendChild(linkEl(v, { class: 'lmd-chip lmd-chip-link', 'data-attr': k, draggable: 'false', title: linkLabel(v), 'aria-label': name + ': ' + linkLabel(v) }, ICON.link));
       else if (kind === 'priority') {
         const chip = el('span', { class: 'lmd-chip lmd-chip-prio', 'data-attr': k, title: name });
         chip.append(el('i', { class: 'lmd-dot lmd-prio-' + rank(v, optionsOf(model.fields, k, kind)), 'aria-hidden': 'true' }), el('span', { text: v }));
@@ -343,25 +357,44 @@
     return wrap;
   }
 
-  // Un enlace: se ve como enlace, con un lápiz para cambiarlo. Solo http y https.
+  // Un enlace: se ve como enlace, con un lápiz para cambiarlo. Una dirección http o https, u otra nota elegida de la carpeta.
   function linkBox(value, set, x) {
     const wrap = el('div', { class: 'lmd-cd-link' });
     const input = el('input', { type: 'url', inputmode: 'url', placeholder: 'https://', spellcheck: 'false', autocomplete: 'off', 'aria-label': x.name });
     input.value = value; input.disabled = !!x.ro; x.mark(input);
-    const fix = () => { const v = input.value.trim(); const n = !v || isUrl(v) ? v : (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(v) ? 'https://' + v : v); if (n !== input.value) input.value = n; set(n); return n; };
+    const fix = () => { const v = input.value.trim(); const n = !v || isLink(v) ? v : (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(v) ? 'https://' + v : v); if (n !== input.value) input.value = n; set(n); return n; };
     const draw = (edit) => {
       wrap.textContent = ''; const v = input.value;
-      if (isUrl(v) && !edit) {
+      if (isLink(v) && !edit) {
         input.hidden = true;
-        wrap.append(el('a', { class: 'lmd-link lmd-cd-url', href: v, target: '_blank', rel: 'noopener noreferrer', title: v, text: shortUrl(v) }), input);
+        wrap.append(linkEl(v, { class: 'lmd-link lmd-cd-url', title: v, text: linkLabel(v) }), input);
         if (!x.ro) wrap.appendChild(el('button', { type: 'button', class: 'lmd-cd-edit', 'data-cd-edit': '', title: T('Editar el enlace'), 'aria-label': T('Editar el enlace') }, ICON.pencil));
-      } else { input.hidden = false; wrap.appendChild(input); }
+      } else {
+        input.hidden = false; wrap.appendChild(input);
+        if (!x.ro && LMD.links) wrap.appendChild(el('button', { type: 'button', class: 'lmd-link lmd-cd-note', 'data-cd-note': '', text: T('Elegir una nota') }));
+      }
+    };
+    // Otra nota, con el mismo selector que un enlace del texto: queda su ruta relativa.
+    const pick = async () => {
+      const res = await LMD.links.dialog(null, { tabs: ['file', 'web'], cur: input.value.trim() });
+      if (!res || !wrap.isConnected) return;
+      input.value = res.remove ? '' : res.href; set(input.value);
+      if (isLink(input.value) && !input.closest('.lmd-cd-new')) draw(false); else input.focus();
     };
     input._commit = fix;
     input.addEventListener('input', () => set(input.value.trim()));
     // En el renglón de alta no se redibuja al salir del campo: correría el botón Agregar justo cuando se lo toca.
-    input.addEventListener('change', () => { fix(); if (isUrl(input.value) && !input.closest('.lmd-cd-new')) draw(false); });
-    wrap.addEventListener('click', (e) => { if (e.target.closest('[data-cd-edit]')) { draw(true); input.focus(); input.select(); } });
+    input.addEventListener('change', () => { fix(); if (isLink(input.value) && !input.closest('.lmd-cd-new')) draw(false); });
+    wrap.addEventListener('click', (e) => {
+      if (e.target.closest('[data-cd-edit]')) { draw(true); input.focus(); input.select(); return; }
+      if (e.target.closest('[data-cd-note]')) { pick(); return; }
+      // A otra nota: se abre dentro de la app, cerrando antes la tarjeta (si tiene cambios, pregunta).
+      const a = e.target.closest('a[data-lmd-href]');
+      if (!a || !core.APP || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      e.preventDefault();
+      const go = () => core.openDoc(a.href);
+      if (x.leave) x.leave(go); else go();
+    });
     draw(false);
     return wrap;
   }
@@ -418,7 +451,7 @@
     }
     dates.hidden = !dates.textContent;
     const fail = (text) => { err.hidden = !text; err.textContent = text || ''; };
-    const X = { ro, fields: draft.fields, tags: draft.tags, suggest: (kind) => (kind === 'tags' ? tagsUsed(model, draft.tags) : people(model)) };
+    const X = { ro, fields: draft.fields, tags: draft.tags, leave: (go) => leave(go), suggest: (kind) => (kind === 'tags' ? tagsUsed(model, draft.tags) : people(model)) };
     let undo = null; let step = null;
 
     const drawAttrs = () => {
@@ -509,7 +542,7 @@
       if (key in draft.attrs) { fail(T('La tarjeta ya tiene ese campo.')); return; }
       if (Object.keys(draft.attrs).length >= 30) { fail(T('Una tarjeta tiene hasta 30 campos.')); return; }
       const v = String(step.value || '').trim();
-      if (step.kind === 'link' && v && !isUrl(v)) { fail(T('El enlace empieza con http:// o https://')); $('newval').focus(); return; }
+      if (step.kind === 'link' && v && !isLink(v)) { fail(T('El enlace empieza con http:// o https://')); $('newval').focus(); return; }
       fail('');
       if (!draft.fields[key]) {
         if (step.kind === 'date' || step.kind === 'number') draft.fields[key] = { type: step.kind };
@@ -531,11 +564,13 @@
       asking = true;
       LMD.dialog.confirm({ title: T('Hay cambios sin guardar'), ok: T('Descartarlos'), cancel: T('Seguir editando'), danger: true }).then((yes) => { asking = false; if (yes) close(); });
     };
+    // Seguir el enlace a otra nota saca de esta: primero se cierra la tarjeta, con la misma pregunta.
+    const leave = (go) => { tryClose(); const wait = () => { if (!box.isConnected) go(); else if (asking) setTimeout(wait, 80); }; wait(); };
     const save = () => {
       box.querySelectorAll('input').forEach((i) => { if (i._commit && !i.closest('.lmd-cd-new')) i._commit(); });
       const text = title.value.replace(/\s+/g, ' ').trim();
       if (!text) { fail(T('Escribí un título.')); title.focus(); return; }
-      const bad = Object.keys(draft.attrs).find((k) => NAMED.link.test(k) && String(draft.attrs[k]).trim() && !isUrl(String(draft.attrs[k]).trim()));
+      const bad = Object.keys(draft.attrs).find((k) => NAMED.link.test(k) && String(draft.attrs[k]).trim() && !isLink(String(draft.attrs[k]).trim()));
       if (bad) { fail(T('El enlace empieza con http:// o https://')); const i = list.querySelector('[data-cd-val="' + CSS.escape(bad) + '"]'); if (i) { i.hidden = false; i.focus(); } return; }
       const to = model.columns[+col.value] ? +col.value : ci;
       const before = JSON.stringify([card.text, card.done, card.attrs, ci]);

@@ -193,9 +193,34 @@
       "Carpeta": "Folder",
       "Índice": "Outline",
       "Arrastrar para cambiar el ancho": "Drag to resize",
-      "Barra lateral (Alt+Shift+B)": "Sidebar (Alt+Shift+B)",
+      "Barra lateral (Alt+Shift+B)": "Sidebar (Alt+Shift+B)", "Barra lateral": "Sidebar",
       "Palabras y caracteres": "Words and characters",
       "Vista": "View",
+      // La hoja de atajos de teclado (shortcuts.js).
+      "Atajos de teclado": "Keyboard shortcuts",
+      "Buscar una acción o una tecla": "Search an action or a key", "Ningún atajo coincide.": "No shortcut matches.",
+      "Esta hoja se abre con {a}, o con {b} mientras escribís.": "Open this sheet with {a}, or with {b} while typing.",
+      "Prendela en Ajustes > Herramientas": "Turn on in Settings > Tools",
+      "Escribir y formato": "Writing and formatting", "Navegar": "Navigate", "Editores de diagramas y fórmulas": "Diagram and formula editors", "General": "General",
+      "Editando": "Editing", "En una tabla": "In a table", "En un bloque nuevo": "In a new block", "En el buscador": "In search", "En Reemplazar": "In Replace",
+      "En el calendario": "In the calendar", "Presentando": "Presenting", "En la tarjeta": "In the card", "En un diagrama": "In a diagram", "En una fórmula": "In a formula", "En el asistente": "In the assistant",
+      "Negrita": "Bold", "Cursiva": "Italic", "Insertar o editar un enlace": "Insert or edit a link", "Cerrar el bloque y abrir otro debajo": "Close the block and open one below",
+      "Salto de línea": "Line break", "Descartar lo escrito en el bloque": "Discard what you typed in the block", "Rehacer": "Redo", "Celda siguiente o anterior": "Next or previous cell",
+      "Título, de # a ####": "Heading, from # to ####", "Negrita al escribir. También *…*, `…`, ~~…~~ y ==…==": "Bold as you type. Also *…*, `…`, ~~…~~ and ==…==",
+      "Enlazar otra nota": "Link another note", "Mover una tarea, con el foco en su manija": "Move a task, with focus on its handle",
+      "Buscar en la nota o en la carpeta": "Search the note or the folder", "Resultado siguiente o anterior": "Next or previous result", "Reemplazar todo": "Replace all",
+      "Seguir un enlace": "Follow a link", "Recorrer un menú o una lista": "Move through a menu or a list", "Primera o última opción de un menú": "First or last option of a menu",
+      "Cambiar el nombre de la nota, o del archivo elegido en el árbol": "Rename the note, or the file selected in the tree", "Imprimir o guardar como PDF": "Print or save as PDF",
+      "Mostrar u ocultar la barra lateral": "Show or hide the sidebar", "Centrar o no el contenido": "Center the content or not",
+      "Activar o desactivar la recarga automática": "Turn auto reload on or off", "Cambiar el tema": "Switch theme",
+      "Leer en voz alta, o cortar la lectura": "Read aloud, or stop reading", "Dictar, o cortar el dictado": "Dictate, or stop dictation", "Mes anterior o siguiente": "Previous or next month",
+      "Presentar, o salir": "Present, or exit", "Diapositiva siguiente": "Next slide", "Diapositiva anterior": "Previous slide", "Primera o última diapositiva": "First or last slide",
+      "Abrir la tarjeta elegida": "Open the selected card", "Guardar la tarjeta": "Save the card", "Sumar una etiqueta o una persona": "Add a tag or a person",
+      "Confirmar o descartar el nombre de la columna": "Confirm or discard the column name",
+      "Aplicar los cambios": "Apply the changes", "Cerrar sin aplicar": "Close without applying", "Sangría": "Indent", "Hueco siguiente o anterior": "Next or previous placeholder",
+      "Terminar de editar un bloque de código": "Finish editing a code block", "Asistente sobre la selección o el bloque": "Assistant on the selection or the block",
+      "Enviar la pregunta": "Send the question", "Ver esta hoja": "Show this sheet", "Ver esta hoja, también mientras escribís": "Show this sheet, also while typing",
+      "Cerrar un menú, un cuadro o el buscador": "Close a menu, a dialog or search", "Enviar un comentario": "Send a comment",
       "Ver documento": "View document",
       "Ver código fuente": "View source",
       "Copiar Markdown": "Copy Markdown",
@@ -344,7 +369,8 @@
       "Demasiados códigos equivocados desde esta red. Probá de nuevo en {a}.": "Too many wrong codes from this network. Try again in {a}.",
       "Ese código se probó demasiadas veces y ya no sirve. Pedí uno nuevo.": "That code was tried too many times and no longer works. Ask for a new one.",
       // Seguridad de la nube, en Ajustes → Nube
-      "Seguridad": "Security", "Cómo funciona": "How it works", "Seguridad de la nube": "Cloud security",
+      "Tu clave de IA": "Your AI key", "Se guarda cifrada solo en este dispositivo. No pasa por el servidor de SharpMD ni se sincroniza, y las llamadas van directo a tu proveedor.": "Stored encrypted on this device only. It does not go through the SharpMD server and is not synced, and calls go straight to your provider.", "llave no exportable": "non-exportable key", "Prender en Herramientas": "Turn on in Tools",
+      "Seguridad": "Security","Cómo funciona": "How it works", "Seguridad de la nube": "Cloud security",
       "Viajan cifradas y se guardan cifradas en el servidor. El servidor tiene la llave, para poder compartirlas y atender a tu IA.": "Encrypted in transit and on the server. The server holds the key, so it can share them and serve your AI.",
       "En un servidor propio, el cifrado en tránsito y en el servidor depende de cómo esté instalado. El servidor puede leerlas, para compartirlas y atender a tu IA.": "On your own server, encryption in transit and on the server depends on how it is set up. The server can read them, to share them and serve your AI.",
       "Se cifran en tu dispositivo con tu contraseña. Ni el servidor puede leerlas.": "Encrypted on your device with your password. Not even the server can read them.",
@@ -514,7 +540,8 @@
       "Una IA que hable MCP, como Claude, lee y escribe tus notas de la nube.": "An AI that speaks MCP, like Claude, reads and writes your cloud notes.",
       "Tokens": "Tokens", "creado el {a}": "created {a}", "usado el {a}": "used {a}", "sin usar": "never used", "Todavía no hay tokens.": "No tokens yet.",
       "Crear un token": "Create a token", "Revocar": "Revoke", "Copiado": "Copied",
-      "Copiar instrucciones para tu IA": "Copy instructions for your AI", "Un mensaje para pegar en tu IA: cómo conectarse y cómo documentar acá.": "A message to paste into your AI: how to connect and how to document here.", "Instrucciones": "Instructions", "Puede compartir y crear enlaces": "Can share and create links", "puede compartir": "can share", "Instrucciones copiadas. Pegalas en tu IA.": "Instructions copied. Paste them into your AI.", "Instrucciones copiadas. Reemplazá {a} por tu token, que ya no se muestra.": "Instructions copied. Replace {a} with your token, which is no longer shown.",
+      "Copiar instrucciones para tu IA": "Copy instructions for your AI", "Con ese mensaje, tu IA documenta el proyecto y lleva un tablero de tareas en SharpMD.": "With that message, your AI documents the project and keeps a task board in SharpMD.", "Incluir las instrucciones del espacio de proyecto": "Include the project workspace instructions",
+      "Crear carpeta": "Create folder", "Nombre de la carpeta del proyecto": "Name for the project folder", "proyecto": "project", "Un espacio de proyecto es una carpeta: entrá a tu cuenta o abrí una carpeta del disco.": "A project workspace is a folder: sign in or open a folder from your disk.", "Instrucciones": "Instructions", "Puede compartir y crear enlaces": "Can share and create links", "puede compartir": "can share", "Instrucciones copiadas. Pegalas en tu IA.": "Instructions copied. Paste them into your AI.", "Instrucciones copiadas. Reemplazá {a} por tu token, que ya no se muestra.": "Instructions copied. Replace {a} with your token, which is no longer shown.",
       "La nube está apagada: sin ella no hay notas para conectar.": "The cloud is off: without it there are no notes to connect.",
       "Entrá a tu cuenta para conectar una IA.": "Sign in to connect an AI.", "Entrá a tu cuenta para pasar al plan pago.": "Sign in to move to the paid plan.",
       "La nube está apagada: los planes son de la cuenta de la nube.": "The cloud is off: plans belong to the cloud account.",
@@ -1392,7 +1419,7 @@
       "Creada por {a} el {b}": "Created by {a} · {b}", "Quitar el campo": "Remove the field", "Campo quitado: {a}": "Field removed: {a}", "Deshacer": "Undo",
       "Agregar campo": "Add field", "Usar un campo de este tablero": "Use a field from this board", "Campo nuevo": "New field", "Nombre del campo": "Field name",
       "Ese nombre no sirve: empezá con una letra.": "That name does not work: start with a letter.", "La tarjeta ya tiene ese campo.": "The card already has that field.",
-      "Una tarjeta tiene hasta 30 campos.": "A card holds up to 30 fields.", "El enlace empieza con http:// o https://": "A link starts with http:// or https://",
+      "Una tarjeta tiene hasta 30 campos.": "A card holds up to 30 fields.", "El enlace empieza con http:// o https://": "A link starts with http:// or https://", "Elegir una nota": "Choose a note",
       "Hay cambios sin guardar": "There are unsaved changes", "Descartarlos": "Discard", "Seguir editando": "Keep editing",
       "¿Eliminar la tarjeta \"{a}\"?": "Delete the card \"{a}\"?", "Campos en las tarjetas": "Fields on the cards", "Campos en las tarjetas…": "Fields on the cards…",
       "Todavía no hay campos. Abrí una tarjeta para agregar el primero.": "There are no fields yet. Open a card to add the first one.", "Hasta 120 caracteres.": "Up to 120 characters.",
@@ -1405,7 +1432,7 @@
       "No se pudo guardar. Probá de nuevo.": "It could not be saved. Try again.",
       "Ajustes de la página": "Page settings", "Ancho de la página": "Page width",
       "Normal": "Normal", "Ancha": "Wide",
-      "Completa": "Full", "Numerar los títulos": "Number the headings",
+      "Completa": "Full", "Numerar los títulos": "Number the headings", "Mostrar el índice": "Show the outline",
       "Listo": "Done", "Se guardan en la nota y valen para quien la abra.": "They are saved in the note and apply to whoever opens it.",
       "Esta nota es de solo lectura.": "This note is read-only.", "Este tablero es más ancho que la página.": "This board is wider than the page.",
       "Esta tabla es más ancha que la página.": "This table is wider than the page.", "Usar página ancha": "Use a wide page",
@@ -1675,6 +1702,16 @@
       "La imagen pesa más de 40 MB.": "The image is over 40 MB.",
       "Sacar una foto": "Take a photo",
       "La nota pesa más de 1 MB y no se guardó en la nube. Pasá sus imágenes incrustadas a adjuntos desde el menú de la nota.": "The note is over 1 MB and was not saved to the cloud. Move its embedded images to attachments from the note menu.",
+      "Última edición: {d}, por {a}": "Last edited {d} by {a}", "Última edición: {d}": "Last edited {d}", "En esta nota: {a}": "In this note: {a}", "escribiendo": "writing",
+      "Los miembros pueden abrir sesiones en vivo con invitados": "Members can open live sessions with guests", "Miembro del equipo": "Team member", "del equipo": "team", "invitado": "guest",
+      "Abrió una sesión en vivo": "Opened a live session", "Terminó una sesión en vivo": "Ended a live session", "Sacó a un invitado": "Removed a guest",
+      "Quien administra el equipo no habilitó las sesiones en vivo con invitados.": "The team admin has not turned on live sessions with guests.",
+      "La maneja quien la abrió o quien administra el equipo.": "Whoever opened it or a team admin manages it.",
+      "El equipo ya tiene varias sesiones en vivo abiertas. Terminá alguna.": "The team already has several live sessions open. End one.",
+      "En un espacio protegido con contraseña no hay sesiones en vivo: los invitados no tienen la llave.": "A space protected with a password has no live sessions: guests do not have the key.",
+      "Esta nota es del equipo. Quien tenga el enlace entra a editarla sin crear cuenta, junto a los miembros que la tengan abierta.": "This note belongs to the team. Anyone with the link joins to edit it without an account, next to the members who have it open.",
+      "Nota del equipo. Los miembros editan desde su cuenta, sin el enlace.": "Team note. Members edit from their account, without the link.",
+      "Nota del equipo, en vivo con invitados. La abrió {a}.": "Team note, live with guests. Opened by {a}.",
   };
   let current = 'es';
   function setLang(pref) {
@@ -1739,7 +1776,7 @@
   const fileLink = (url) => WEB_APP_URL + '#open=' + encodeURIComponent(url);
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.57.0';
+  const VERSION = '2.58.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);

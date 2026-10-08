@@ -303,6 +303,224 @@ gantt
   Second release :after a1, 21d
 \`\`\`
 `],
+    // Un espacio de proyecto no es una nota: es una carpeta con varias, enlazadas entre sí. El cuerpo es su README
+    // (lo que muestra la vista previa) y el octavo lugar trae el resto: [ruta dentro de la carpeta, texto], por idioma.
+    // Es la misma estructura que arma una IA conectada por MCP (get_guide, en el servidor). Los nombres de los
+    // archivos y los campos de las tarjetas (agent, needs, link) van igual en los dos idiomas: la IA los busca así.
+    ['workspace', 'project', 'Espacio de proyecto', 'Project workspace', 'README',
+`# Nombre del proyecto
+
+Qué es, en dos renglones.
+
+## Cómo se corre
+
+1.
+
+## Índice
+
+- [Arquitectura](architecture.md): los componentes y cómo se conectan.
+- [Épicas](epics.md): los grandes bloques de trabajo y su estado.
+- [Funciones](features/funcion-de-ejemplo.md): una nota por función.
+- [Decisiones](decisions.md): qué se decidió y por qué.
+- [Bitácora](log.md): qué cambió, por fecha.
+- [Tablero de tareas](board.md): lo planeado, lo que está en curso, en pausa y hecho.
+`,
+`# Project name
+
+What it is, in two lines.
+
+## How to run it
+
+1.
+
+## Index
+
+- [Architecture](architecture.md): the components and how they connect.
+- [Epics](epics.md): the big pieces of work and their status.
+- [Features](features/example-feature.md): one note per feature.
+- [Decisions](decisions.md): what was decided and why.
+- [Log](log.md): what changed, by date.
+- [Task board](board.md): what is planned, in progress, paused and done.
+`,
+      { es: [
+        ['architecture.md',
+`# Arquitectura
+
+Cómo se conectan las partes.
+
+\`\`\`mermaid
+flowchart LR
+  app[App] --> api[API]
+  api --> db[(Base de datos)]
+\`\`\`
+
+## Componentes
+
+| Componente | Qué hace | Dónde vive |
+|---|---|---|
+| App |  |  |
+| API |  |  |
+| Base de datos |  |  |
+
+[Volver al índice](README.md)
+`],
+        ['epics.md',
+`# Épicas
+
+## Épica de ejemplo
+
+Estado: planeada
+
+- [Función de ejemplo](features/funcion-de-ejemplo.md): planeada
+
+[Volver al índice](README.md)
+`],
+        ['features/funcion-de-ejemplo.md',
+`# Función de ejemplo
+
+Estado: planeada
+
+## Qué hace
+
+## Cómo se usa
+
+## Criterios de aceptación
+- [ ]
+
+## Dónde vive en el código
+
+## Pendientes
+- [ ]
+
+[Volver al índice](../README.md)
+`],
+        ['decisions.md',
+`# Decisiones
+
+La más nueva va al final.
+
+## {{date}} Decisión de ejemplo
+
+- Contexto: qué obligó a elegir.
+- Decisión: qué se eligió.
+- Consecuencia: qué cuesta o qué cambia.
+
+[Volver al índice](README.md)
+`],
+        ['log.md',
+`# Bitácora
+
+## {{date}}
+
+- Se creó el espacio del proyecto.
+`],
+        ['board.md',
+`# Tablero de tareas
+
+\`\`\`kanban
+{show=agent,needs done=Hecho}
+## Por hacer
+- [ ] Tarea de ejemplo {agent=yo}
+
+## En curso
+
+## En pausa
+
+## Hecho
+\`\`\`
+
+[Volver al índice](README.md)
+`],
+      ], en: [
+        ['architecture.md',
+`# Architecture
+
+How the parts connect.
+
+\`\`\`mermaid
+flowchart LR
+  app[App] --> api[API]
+  api --> db[(Database)]
+\`\`\`
+
+## Components
+
+| Component | What it does | Where it lives |
+|---|---|---|
+| App |  |  |
+| API |  |  |
+| Database |  |  |
+
+[Back to the index](README.md)
+`],
+        ['epics.md',
+`# Epics
+
+## Example epic
+
+Status: planned
+
+- [Example feature](features/example-feature.md): planned
+
+[Back to the index](README.md)
+`],
+        ['features/example-feature.md',
+`# Example feature
+
+Status: planned
+
+## What it does
+
+## How it is used
+
+## Acceptance criteria
+- [ ]
+
+## Where it lives in the code
+
+## Pending
+- [ ]
+
+[Back to the index](../README.md)
+`],
+        ['decisions.md',
+`# Decisions
+
+Newest last.
+
+## {{date}} Example decision
+
+- Context: what forced the choice.
+- Decision: what was chosen.
+- Consequence: what it costs or changes.
+
+[Back to the index](README.md)
+`],
+        ['log.md',
+`# Log
+
+## {{date}}
+
+- Project workspace created.
+`],
+        ['board.md',
+`# Task board
+
+\`\`\`kanban
+{show=agent,needs done=Done}
+## To do
+- [ ] Example task {agent=me}
+
+## In progress
+
+## Paused
+
+## Done
+\`\`\`
+
+[Back to the index](README.md)
+`],
+      ] }],
     ['board', 'project', 'Tablero kanban', 'Kanban board', 'board',
 `# Tablero
 
@@ -792,7 +1010,11 @@ What it does, in one sentence.
     // Devuelve el texto y el nombre de archivo sugerido (sin extensión) de una plantilla.
     get: (id) => {
       if (String(id).startsWith('c:')) { const c = extra().find((x) => 'c:' + x.id === id); return c ? { file: c.file, text: fill(c.text) } : null; }
-      const t = LIST.find((x) => x[0] === id); return t ? { file: fill(t[4]), text: fill(LMD.lang() === 'es' ? t[5] : t[6]) } : null;
+      const t = LIST.find((x) => x[0] === id); if (!t) return null;
+      const es = LMD.lang() === 'es'; const out = { file: fill(t[4]), text: fill(es ? t[5] : t[6]) };
+      // pack: las notas de una plantilla que crea una carpeta, con la primera (el índice) adelante.
+      if (t[7]) out.pack = [{ path: out.file + '.md', text: out.text }].concat((es ? t[7].es : t[7].en).map((n) => ({ path: n[0], text: fill(n[1]) })));
+      return out;
     },
   };
 })();

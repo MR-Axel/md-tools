@@ -187,12 +187,15 @@
     // Ajustes > Automatizaciones y el alta guiada: se piden al abrir esa pestaña o al elegir "Automatizar…".
     automate: { js: ['src/automate.js'] },
     publish: { js: ['src/publish.js'] },
+    // La hoja de atajos de teclado: se pide al abrirla.
+    shortcuts: { js: ['src/shortcuts.js'] },
   };
   const LAZY_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, tools: () => !!(LMD.diagram && LMD.formula && LMD.templates && LMD.community) };
   LAZY_HAVE.gallery = () => !!LMD.gallery; LAZY_HAVE.automate = () => !!LMD.automate; LAZY_HAVE.publish = () => !!LMD.publish;
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
   ['present', 'daily', 'docx', 'linkmap'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
   LAZY_HAVE.assistant = () => !!(LMD.ai && LMD.assistant);
+  LAZY_HAVE.shortcuts = () => !!LMD.shortcuts;
   async function appLazy(what) {
     const spec = LAZY_APP[what];
     try {
@@ -672,7 +675,7 @@
     ui.main.innerHTML =
       '<div class="lmd-topbar">' +
         '<div class="lmd-top-left">' +
-          '<button class="lmd-icon-btn" data-act="sidebar" title="' + T('Barra lateral (Alt+Shift+B)') + '">' + ICON.side + '</button>' +
+          '<button class="lmd-icon-btn" data-act="sidebar" title="' + T(window.__MDT_WEB ? 'Barra lateral' : 'Barra lateral (Alt+Shift+B)') + '">' + ICON.side + '</button>' +
           '<span class="lmd-docname lmd-doc-only"></span>' +
           '<button class="lmd-icon-btn lmd-sync lmd-doc-only" data-act="sync" hidden></button>' +
         '</div>' +
@@ -734,7 +737,9 @@
 
     // En pantalla chica la barra lateral se abre encima del contenido; esto oscurece lo que queda detrás.
     ui.scrim = el('div', { class: 'lmd-scrim' });
-    document.body.append(ui.sidebar, ui.scrim, ui.main, ui.toTop, ui.panel, ui.viewer, ui.format, ui.tableBar);
+    // Los atajos de teclado, a mano y sin ocupar la barra de arriba: solo donde hay teclado físico (lo decide el CSS).
+    ui.keysBtn = el('button', { class: 'lmd-keys-btn', type: 'button', 'data-act': 'shortcuts', title: T('Atajos de teclado') + ' (?)', 'aria-label': T('Atajos de teclado') }, ICON.keyboard);
+    document.body.append(ui.sidebar, ui.scrim, ui.main, ui.toTop, ui.keysBtn, ui.panel, ui.viewer, ui.format, ui.tableBar);
 
     ui.article = ui.main.querySelector('.lmd-article');
     ui.rawPre = ui.main.querySelector('pre.lmd-raw');
@@ -848,6 +853,10 @@
       if (LMD.mod(e) && !e.shiftKey && e.key.toLowerCase() === 's' && (editMode || dirty || (appRoot && appRoot.kind === 'local'))) { e.preventDefault(); save(true); }
       if (LMD.mod(e) && e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); toggleSearch(true); }
       if (LMD.mod(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k' && editMode && !rawMode && docKind() === 'md') { e.preventDefault(); LMD.links.open(); }
+      // La hoja de atajos: "?" fuera de un campo de texto, o Ctrl+/ en cualquier lado. Por la letra y no por la tecla:
+      // en un teclado en español la barra va con Shift, y su tecla sola con Ctrl es el zoom del navegador.
+      const t = e.target; const typing = !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+      if (!e.altKey && ((e.key === '?' && !e.ctrlKey && !e.metaKey && !typing) || (e.key === '/' && LMD.mod(e))) && !document.querySelector('.lmd-ask, .lmd-dgm, .lmd-pres')) { e.preventDefault(); openKeys(); }
     });
 
     ui.searchInput.addEventListener('input', debounce(() => runSearch(ui.searchInput.value, true), 180));
@@ -1013,6 +1022,7 @@
       diskDoc() && ['reload', ICON.reload, 'Recargar ahora'],
       md && !shown('[data-act=page]') && ['page', ICON.doc, 'Ajustes de la página'],
       ['settings', ICON.sliders, 'Ajustes'],
+      ['shortcuts', ICON.keyboard, 'Atajos de teclado'],
       // En pantalla chica el pie no tiene lugar para el enlace: denunciar una nota ajena va acá, al final.
       LMD.touch.small() && APP && LMD.sync.reportRef() && ['report', ICON.flag, 'Denunciar esta nota'],
     ].concat(toolItems('more')));
@@ -1024,8 +1034,11 @@
     if (LMD.kit.saveFile(new Blob([raw], { type: 'text/markdown' }), DOC_NAME || 'nota.md') === 'download') flash(T('Archivo descargado'));
   }
 
+  // La hoja de atajos de teclado (shortcuts.js) se pide recién al abrirla.
+  const openKeys = (from) => ensure('shortcuts').then((ok) => { if (ok) LMD.shortcuts.open(core, from); });
   function onAction(act, source, keys) {
-    if (act === 'sidebar') { if (LMD.touch.small()) setDrawer(!drawerOpen()); else LMD.patch({ sidebarHidden: !settings.sidebarHidden }); }
+    if (act === 'shortcuts') openKeys(source);
+    else if (act === 'sidebar') { if (LMD.touch.small()) setDrawer(!drawerOpen()); else LMD.patch({ sidebarHidden: !settings.sidebarHidden }); }
     else if (act === 'more') openMore();
     else if (act === 'page') { if (LMD.page) LMD.page.open(); }
     else if (act === 'copy') openCopy(source, keys);
@@ -1317,6 +1330,7 @@
   }
 
   let diskStamp = ''; let cloudPoll = 0; let cloudState = 'ok'; let readOnly = false; let present = []; const presentNames = {};
+  let hereAi = []; let lastEdit = null; // las IA que están en la nota abierta, y su último guardado: { at, by }
   let polled = true; // false cuando la nube no se consultó de verdad porque todavía no tocaba
   // La revisión de la nube que corresponde a diskText: sobre esa se guarda. Cambia solo junto con diskText, cuando
   // lo leído ya entró al documento; así un guardado nunca pasa por encima de un cambio que todavía no se juntó.
@@ -2481,7 +2495,8 @@
             '<p class="lmd-update-msg" role="status" hidden></p>' +
             '<p class="lmd-hint">' + T('Lo único que se consulta es el número de versión publicado en GitHub. No se manda ningún dato.') + '</p>' +
           '</section>') +
-          '<section class="lmd-panel-foot" data-tab="adv"><button type="button" class="lmd-btn" data-act="reset">' + T('Restablecer todo') + '</button></section>' +
+          // Al pie de Avanzado, junto a restablecer: la hoja de atajos de teclado, sin sumar una sección.
+          '<section class="lmd-panel-foot" data-tab="adv"><button type="button" class="lmd-btn" data-act="reset">' + T('Restablecer todo') + '</button> <button type="button" class="lmd-btn" data-act="shortcuts">' + ICON.keyboard + '<span>' + T('Atajos de teclado') + '</span></button></section>' +
         '</div>' +
       '</div>';
     ui.panel.hidden = false;
@@ -3226,7 +3241,7 @@
     get shape() { return settings.diagramShape; },
     get cloudState() { return cloudState; },
     get readOnly() { return readOnly; },
-    get present() { return present; }, get presentNames() { return presentNames; },
+    get present() { return present; }, get presentNames() { return presentNames; }, get hereAi() { return hereAi; }, get lastEdit() { return lastEdit; },
     get cloudPath() { return vParts(HERE).join('/'); },
     get dirty() { return dirty; },
     save: (interactive) => save(interactive),
@@ -3279,7 +3294,7 @@
     dirHandle: async (dirUrl) => { let dir = rootOf(dirUrl).handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, ensure, isDark,
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
-    drawOff, rangeOf, render, softRender, flash, insertLines, spliceLines, replaceLines, commitBlock, undo, redo, editCode, vFile, toHref,
+    drawOff, rangeOf, render, softRender, flash, insertLines, spliceLines, replaceLines, commitBlock, undo, redo, editCode, vFile, toHref, openDoc,
     inline: (text) => DOMPurify.sanitize(buildParser().renderInline(text)),
     // Un Markdown cualquiera, dibujado con el mismo saneado que una nota (la vista previa de una plantilla).
     preview: (text) => homeCtx().preview(text),
@@ -3658,7 +3673,7 @@
     if (unhold) { unhold(); unhold = null; LMD.cloud.flush(); }
     blobUrls.splice(0).forEach((u) => URL.revokeObjectURL(u));
     if (!noDoc) fileCache.delete(HERE);
-    undoStack.length = 0; redoStack.length = 0; collapsed.clear(); spyPin = null; present = [];
+    undoStack.length = 0; redoStack.length = 0; collapsed.clear(); spyPin = null; present = []; hereAi = []; lastEdit = null;
     pendingCell = null; fileHandle = null; stashed = null; opened = null; diskStamp = ''; cloudPoll = 0; cloudState = 'ok'; diskRev = null;
     needsRender = false; core.lastBlock = null; core.hold = false;
     LMD.write.closeMenu(); closeMore(); setDrawer(false);
@@ -3706,6 +3721,7 @@
     raw = doc ? doc.raw : ''; diskText = doc ? doc.disk : ''; dirty = raw !== diskText;
     diskRev = doc && doc.rev != null ? doc.rev : null;
     readOnly = !!(doc && doc.readOnly); opened = (doc && doc.opened) || null;
+    if (opened && opened.updated) lastEdit = { at: opened.updated, by: opened.edited || null };
     rawMode = false; editMode = false;
     if (!opt.pop) {
       // La marca de la vuelta del pago se queda hasta que el servidor confirma: la limpia quien espera.
@@ -3729,6 +3745,10 @@
           if (mine !== docSeq) return;
           if (ev.who) present = ev.who;
           if (ev.who && ev.names) ev.who.forEach((mail, i) => { if (ev.names[i]) presentNames[mail] = ev.names[i]; });
+          // Las IA que están leyendo o escribiendo la nota, y quién hizo el último guardado.
+          if (Array.isArray(ev.ai)) hereAi = ev.ai;
+          if (ev.type === 'saved' && ev.updated) lastEdit = { at: ev.updated, by: ev.edited || null };
+          if (ev.type !== 'link') LMD.live.strip();
           // La escucha se cortó o volvió. Al volver se trae lo que haya cambiado mientras tanto, y sale lo pendiente.
           if (ev.type === 'link') {
             if (ev.up && !linkUp) { if (dirty && cloudState === 'error') { clearTimeout(autosaveTimer); save(false); } else { cloudPoll = 0; checkForChanges(false); } }
@@ -3749,6 +3769,7 @@
       // Quien entró por el enlace de una sesión en vivo no tiene cuenta: no hay comentarios que traerle.
       if (appRoot.kind === 'cloud' && LMD.comments && !LMD.cloud.guest()) LMD.comments.attach(vParts(HERE).join('/'));
       if (appRoot.kind === 'cloud') LMD.live.attach(vParts(HERE).join('/'));
+      LMD.live.strip();
     }
     core.hooks.doc.forEach((fn) => fn());
   }
