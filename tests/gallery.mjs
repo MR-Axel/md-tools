@@ -197,7 +197,7 @@ try {
   const inPicker = await pg.evaluate(() => { const rows = [...document.querySelectorAll('.lmd-tpl-list [data-id]')]; const row = rows.find((r) => r.dataset.id.startsWith('c:')); const label = row && row.previousElementSibling; return { row: row && row.textContent, html: row && row.innerHTML, label: label && label.textContent, total: rows.length }; });
   await pg.click('.lmd-tpl-list [data-id="c:' + TID + '"]');
   const picked = await pg.evaluate(() => ({ h1: document.querySelector('.lmd-tpl-prev h1')?.textContent || '', rm: !document.querySelector('[data-tpl=rm]').hidden, date: /\d{4}-\d{2}-\d{2}/.test(document.querySelector('.lmd-tpl-prev h1')?.textContent || '') }));
-  check('la plantilla agregada sale en Desde una plantilla, en el grupo Comunidad', inPicker.row === 'Weekly review <b>' && inPicker.html === 'Weekly review &lt;b&gt;' && inPicker.label === 'Community' && inPicker.total === 28 && /Weekly review/.test(picked.h1) && picked.date && picked.rm, [inPicker, picked]);
+  check('la plantilla agregada sale en Desde una plantilla, en el grupo Comunidad', inPicker.row === 'Weekly review <b>' && inPicker.html === 'Weekly review &lt;b&gt;' && inPicker.label === 'Community' && inPicker.total === 29 && /Weekly review/.test(picked.h1) && picked.date && picked.rm, [inPicker, picked]);
   await pg.click('.lmd-tpl-list [data-id=daily]');
   const houseRm = await pg.evaluate(() => document.querySelector('[data-tpl=rm]').hidden);
   await pg.keyboard.press('Escape');
