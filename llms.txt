@@ -57,7 +57,7 @@
 ## Plans
 
 - Free: the whole editor, unlimited files and browser notes, 10 notes in the cloud.
-- Paid: USD 3.99 a month or USD 39 a year. Unlimited cloud notes, sharing and public links, live sessions, the MCP connection, automations (API, webhooks, inbound addresses), 30 days of version history, and colors, fonts and custom CSS.
+- Paid: USD 3.99 a month or USD 39 a year. Unlimited cloud notes, sharing and public links, live sessions, the MCP connection, automations (API, webhooks, inbound addresses), 30 days of version history, and colors, fonts and custom CSS., and one published site (a folder of notes as a public website at pages.sharpmd.app).
 
 ## Privacy
 
