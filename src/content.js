@@ -768,6 +768,7 @@
     if (LAZY_HAVE.tools()) { LMD.diagram.init(core); LMD.formula.init(core); toolsReady = Promise.resolve(true); }
     else { const later = () => (window.requestIdleCallback ? requestIdleCallback(tools, { timeout: 2500 }) : setTimeout(tools, 300)); if (document.readyState === 'complete') later(); else window.addEventListener('load', later); }
     LMD.extras.init(core);
+    if (LMD.images) LMD.images.init(core);
     LMD.board.init(core);
     // page.js es un archivo aparte: si una copia guardada de la app todavía no lo trae, el resto arranca igual.
     if (LMD.page) LMD.page.init(core);
@@ -2443,6 +2444,10 @@
             '<label class="lmd-row"><span>' + T('Guardar a los') + ' <output>' + s.autosaveDelay + ' ms</output></span><input type="range" min="1000" max="30000" step="500" data-key="autosaveDelay" data-unit=" ms" value="' + s.autosaveDelay + '"></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="focusMode"' + (s.focusMode ? ' checked' : '') + '><span>' + T('Modo foco: atenuar lo que no estoy escribiendo') + '</span></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="typewriter"' + (s.typewriter ? ' checked' : '') + '><span>' + T('Máquina de escribir: mantener el renglón a media altura') + '</span></label>' +
+            '<div class="lmd-row"><span>' + T('Calidad de las imágenes') + '</span><div class="lmd-seg" data-seg="imageQuality" role="radiogroup">' +
+              [['normal', 'Normal'], ['high', 'Alta'], ['original', 'Original']].map((o) => '<button type="button" role="radio" data-val="' + o[0] + '" aria-checked="' + ((s.imageQuality || 'normal') === o[0]) + '"' + ((s.imageQuality || 'normal') === o[0] ? ' class="lmd-on"' : '') + '>' + T(o[1]) + '</button>').join('') +
+            '</div></div>' +
+            '<p class="lmd-hint">' + T('Al insertar una imagen se achica y se le quitan los metadatos, como la ubicación. Con Original queda como es.') + '</p>' +
           '</section>' +
           '<section class="lmd-two" data-tab="read"><h3>' + T('Carpeta') + '</h3>' +
             '<label class="lmd-check"><input type="checkbox" data-key="filesOnlyMarkdown"' + (s.filesOnlyMarkdown ? ' checked' : '') + '><span>' + T('Mostrar solo archivos Markdown') + '</span></label>' +
@@ -2452,6 +2457,8 @@
           '<section data-tab="tools"><h3>' + T('Herramientas') + '</h3><div class="lmd-acct lmd-tl" data-tools-pane></div></section>' +
           // Nube, IA y Plan los dibuja sync.js al entrar a cada pestaña, con la cuenta recién consultada.
           '<section data-tab="cloud"><h3>' + T('Nube') + '</h3><div class="lmd-acct" data-acct="cloud"></div></section>' +
+          // El almacenamiento de imágenes adjuntas lo dibuja images.js.
+          '<section data-tab="cloud" class="lmd-st-sec lmd-st-off"><h3>' + T('Almacenamiento') + '</h3><div class="lmd-acct" data-files-pane></div></section>' +
           '<section data-tab="ai"><h3>' + T('Conectar una IA') + '</h3><div class="lmd-acct" data-acct="ai"></div></section>' +
           '<section data-tab="auto"><h3>' + T('Automatizaciones') + '</h3><div class="lmd-acct lmd-au-pane" data-auto-pane></div></section>' +
           '<section data-tab="plan"><h3>' + T('Plan') + '</h3><div class="lmd-acct" data-acct="plan"></div></section>' +
@@ -2501,6 +2508,7 @@
       ui.panel.querySelector('.lmd-panel-body').scrollTop = 0;
       const acct = ui.panel.querySelector('[data-acct=' + tab + ']');
       if (acct) LMD.sync.panes[tab](acct, host);
+      if (tab === 'cloud' && LMD.images) LMD.images.pane(ui.panel.querySelector('[data-files-pane]'));
       if (tab === 'inst') LMD.install.pane(ui.panel.querySelector('[data-inst-pane]'));
       if (tab === 'tools') LMD.tools.pane(ui.panel.querySelector('[data-tools-pane]'));
       if (tab === 'auto') { const pane = ui.panel.querySelector('[data-auto-pane]'); ensure('automate').then((ok) => { if (ok && pane.isConnected) LMD.automate.pane(pane, host); }); }
@@ -3528,6 +3536,8 @@
         flash(T('La carpeta está bloqueada. Desbloqueala para guardar.'), 'warn');
         if (interactive) LMD.vault.unlockFor(vParts(HERE).join('/')).then((ok) => { if (ok && seq === docSeq) save(false); });
       }
+      // Una nota con imágenes incrustadas que pasa el tope del servidor: lo escrito sigue acá.
+      else if (e && e.code === 'too_large') flash(T('La nota pesa más de 1 MB y no se guardó en la nube. Pasá sus imágenes incrustadas a adjuntos desde el menú de la nota.'), 'error');
       else if (e && e.code === 'offline') {
         // El aviso sale una vez; después se reintenta en silencio hasta que vuelva.
         if (cloudState !== 'error' || interactive) flash(T('Sin conexión. Se guarda cuando vuelva'), 'warn');

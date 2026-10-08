@@ -37,6 +37,10 @@
       "description": "Needs a token created with the sharing permission."
     },
     {
+      "name": "Images",
+      "description": "Images attached to notes. A note keeps the address of each image, not its content."
+    },
+    {
       "name": "Inbound",
       "description": "Secret addresses that add to a note without a token."
     }
@@ -2187,6 +2191,244 @@
         }
       }
     },
+    "/api/v1/files": {
+      "get": {
+        "tags": [
+          "Images"
+        ],
+        "operationId": "listFiles",
+        "summary": "List the attached images and the storage in use",
+        "description": "A token limited to a folder only sees the images that the notes of that folder use. Images of protected folders are encrypted and have no public address.",
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "description": "team for the team space. Leave it out for your own",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "team"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "data"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "used": {
+                          "type": "integer",
+                          "description": "Bytes in use"
+                        },
+                        "max": {
+                          "type": "integer",
+                          "description": "Bytes the plan holds"
+                        },
+                        "max_file": {
+                          "type": "integer",
+                          "description": "Bytes one image may weigh"
+                        },
+                        "max_gif": {
+                          "type": "integer"
+                        },
+                        "count": {
+                          "type": "integer"
+                        },
+                        "files": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/File"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "402": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "423": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Images"
+        ],
+        "operationId": "uploadFile",
+        "summary": "Upload an image",
+        "description": "The body is the image itself, not JSON: PNG, JPEG, GIF, WebP or AVIF. The type is read from the first bytes of the file, whatever Content-Type says. The answer carries the address to put in a note, as ![](url). Anyone with that address can see the image. Errors: bad_image (415), file_too_large and storage_full (413, with max).",
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "description": "team to upload to the team space",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "team"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "image/png": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "image/jpeg": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "image/gif": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "image/webp": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "image/avif": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "data"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string",
+                          "description": "Address of the image"
+                        },
+                        "type": {
+                          "type": "string",
+                          "example": "image/png"
+                        },
+                        "size": {
+                          "type": "integer"
+                        },
+                        "markdown": {
+                          "type": "string",
+                          "description": "Ready to paste into a note",
+                          "example": "![](https://sync.sharpmd.app/f/…)"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "402": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error"
+          },
+          "423": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/openapi.json": {
       "get": {
         "tags": [
@@ -2369,6 +2611,40 @@
         "properties": {
           "message": {
             "type": "string"
+          }
+        }
+      },
+      "File": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "description": "Address of the image"
+          },
+          "type": {
+            "type": "string",
+            "example": "image/webp"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "created": {
+            "type": "string",
+            "description": "ISO date"
+          },
+          "encrypted": {
+            "type": "boolean",
+            "description": "Encrypted in the browser, in a protected folder"
+          },
+          "in_use": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether a note uses it. null when it is encrypted"
           }
         }
       },

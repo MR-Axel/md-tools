@@ -620,7 +620,6 @@
     const w = await h.createWritable(); await w.write(file); await w.close();
     return 'assets/' + name;
   }
-  const asDataUrl = (file) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(file); });
 
   function imageDialog() {
     return new Promise((resolve) => {
@@ -629,7 +628,7 @@
         '<div class="lmd-ask-card lmd-img-card" role="dialog" aria-label="' + T('Insertar imagen') + '">' +
           '<h3>' + T('Insertar imagen') + '</h3>' +
           '<label class="lmd-row"><span>' + T('Dirección o ruta') + '</span><input type="text" data-i="src" spellcheck="false" placeholder="https://"></label>' +
-          '<div class="lmd-img-pick"><button type="button" class="lmd-btn" data-i="pick">' + ICON.b_image + '<span>' + T('Elegir un archivo') + '</span></button><span data-i="picked"></span><input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" hidden></div>' +
+          '<div class="lmd-img-pick"><button type="button" class="lmd-btn" data-i="pick">' + ICON.b_image + '<span>' + T('Elegir un archivo') + '</span></button><span data-i="picked"></span>' + (LMD.touch.coarse() ? '<button type="button" class="lmd-btn" data-i="shot">' + ICON.b_image + '<span>' + T('Sacar una foto') + '</span></button>' : '') + '<input type="file" accept="image/*" hidden><input type="file" accept="image/*" capture="environment" hidden data-cam></div>' +
           '<label class="lmd-row"><span>' + T('Descripción (para quien no ve la imagen)') + '</span><input type="text" data-i="alt"></label>' +
           '<div class="lmd-row"><span>' + T('Tamaño') + '</span><div class="lmd-seg" data-i="size">' + SIZES.map((s, i) => '<button type="button" data-val="' + s[0] + '"' + (i ? '' : ' class="lmd-on"') + '>' + T(s[1]) + '</button>').join('') + '</div></div>' +
           '<p class="lmd-img-err" hidden></p>' +
@@ -642,27 +641,30 @@
       const fail = (text) => { err.hidden = false; err.textContent = text; };
       const close = (value) => { box.remove(); resolve(value); };
       q('src').focus();
-      fileInput.addEventListener('change', () => {
-        file = fileInput.files[0] || null; err.hidden = true;
-        if (file && !/^image\/(png|jpeg|gif|webp|svg\+xml)$/.test(file.type)) { file = null; fail(T('Ese archivo no es una imagen que se pueda insertar.')); }
+      const camInput = box.querySelector('input[data-cam]');
+      const picked = (input) => () => {
+        file = input.files[0] || null; err.hidden = true;
+        if (file && !/^image\//.test(file.type)) { file = null; fail(T('Ese archivo no es una imagen que se pueda insertar.')); }
         q('picked').textContent = file ? file.name : '';
         if (file) q('src').value = '';
-      });
+      };
+      fileInput.addEventListener('change', picked(fileInput)); camInput.addEventListener('change', picked(camInput));
       box.addEventListener('click', async (e) => {
         if (e.target === box) return close(null);
         const seg = e.target.closest('.lmd-seg button');
         if (seg) { width = seg.dataset.val; seg.parentNode.querySelectorAll('button').forEach((b) => b.classList.toggle('lmd-on', b === seg)); return; }
         const b = e.target.closest('[data-i]'); if (!b) return;
         if (b.dataset.i === 'pick') return fileInput.click();
+        if (b.dataset.i === 'shot') return camInput.click();
         if (b.dataset.i === 'no') return close(null);
         if (b.dataset.i !== 'ok') return;
         try {
           let src = q('src').value.trim();
           if (file) {
-            if (file.size > 10 * 1024 * 1024) return fail(T('La imagen pesa más de 10 MB.'));
-            if (canManage()) src = await saveImage(file);
-            else if (file.type !== 'image/svg+xml' && file.size <= 400 * 1024) src = await asDataUrl(file);
-            else return fail(T('Sin una carpeta abierta la imagen va dentro del documento, y esta es muy grande para eso. Abrí la carpeta desde SharpMD, o usá una dirección web.'));
+            if (file.size > 40 * 1024 * 1024) return fail(T('La imagen pesa más de 40 MB.'));
+            // Se achica y va a donde corresponde a esta nota: a assets/, adentro del documento o a la nube como adjunto.
+            b.disabled = true;
+            try { src = (await LMD.images.put(file)).src; } catch (ex) { return fail(LMD.images.why(ex)); } finally { b.disabled = false; }
           }
           if (!src) return fail(T('Falta la dirección o el archivo.'));
           if (!safeSrc(src)) return fail(T('Esa dirección no sirve para una imagen.'));
@@ -707,21 +709,21 @@
     const item = Array.from((e.clipboardData && e.clipboardData.items) || []).find((i) => i.kind === 'file' && /^image\//.test(i.type));
     if (!item) return false;
     e.preventDefault();
-    if (!canManage()) { core.flash(T('Para pegar imágenes abrí la carpeta desde la página de SharpMD'), 'warn'); return true; }
     const file = item.getAsFile();
     const target = e.target.closest && e.target.closest('.lmd-editable');
     const range = target && getSelection().rangeCount ? getSelection().getRangeAt(0).cloneRange() : null;
     (async () => {
       try {
-        const rel = await saveImage(file);
+        // Achicada, y guardada donde va en esta nota (images.js): assets/, el documento o un adjunto de la nube.
+        const put = await LMD.images.put(file); const rel = put.src;
         if (target && range && target.isConnected) {
-          const img = el('img', { alt: '', src: URL.createObjectURL(file) });
+          const img = el('img', { alt: '', src: put.view });
           img.setAttribute('data-lmd-src', rel);
           range.deleteContents(); range.insertNode(img);
           getSelection().collapse(img.parentNode, Array.from(img.parentNode.childNodes).indexOf(img) + 1);
         } else LMD.write.append(['![](' + rel + ')']);
-        core.flash(T('Imagen guardada en {a}', { a: rel }));
-      } catch (err) { core.flash(T('No se pudo guardar la imagen'), 'error'); }
+        if (put.where === 'dir') core.flash(T('Imagen guardada en {a}', { a: rel }));
+      } catch (err) { LMD.images.tell(err); }
     })();
     return true;
   }
@@ -844,5 +846,5 @@
     article.addEventListener('keyup', (e) => { if (/^Arrow|^Page|^Home$|^End$/.test(e.key)) centerCaret(); });
   }
 
-  LMD.extras = { init, pasteImage, exportHtml, htmlOf, imageDialog, imageMd, fromTemplate, trash, menu: showMenu };
+  LMD.extras = { init, pasteImage, saveImage, exportHtml, htmlOf, imageDialog, imageMd, fromTemplate, trash, menu: showMenu };
 })();

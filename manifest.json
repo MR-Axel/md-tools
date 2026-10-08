@@ -81,6 +81,7 @@
         "src/diagram.js",
         "src/formula.js",
         "src/extras.js",
+        "src/images.js",
         "src/board.js",
         "src/page.js",
         "src/sync.js",

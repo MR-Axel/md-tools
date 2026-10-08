@@ -709,7 +709,25 @@
     report: (text, ref, context) => api('POST', '/feedback', { text, report: ref, context }),
     // Cambió la dirección del servidor en Ajustes: se vuelve a leer.
     reset: () => { loaded = null; listCache = null; vaultCache = null; },
-    write: (path, text) => putNote(path, text).then((r) => { listCache = null; delete otherLists[split(path).owner]; return r; }),
+    // Adjuntos (images.js). binary: un pedido cuyo cuerpo es la imagen, no JSON; con bytes, la respuesta son bytes.
+    binary: async (method, path, body, type, bytes) => {
+      await ready();
+      if (!base || !session || guest) throw Object.assign(new Error('no_session'), { code: guest ? 'guest' : 'no_session', status: 401 });
+      let res;
+      try { res = await fetch(base + path, { method, headers: Object.assign({ authorization: 'Bearer ' + session }, type ? { 'content-type': type } : {}), body }); }
+      catch (e) { throw Object.assign(new Error('offline'), { code: 'offline' }); }
+      if (res.ok && bytes) return new Uint8Array(await res.arrayBuffer());
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw Object.assign(new Error((json && json.error) || 'failed'), { code: (json && json.error) || 'failed', status: res.status, body: json });
+      return json;
+    },
+    base: () => base,
+    // La carpeta protegida que cubre esa ruta, con su llave abierta: null si la ruta no está protegida, y sale con
+    // vault_locked si lo está y falta desbloquearla. vaultKeys: las llaves abiertas en esta pestaña.
+    vaultKey: async (path) => { const v = await vaultFor(path); return v && sealing(v) ? { vault: v, key: await keyOf(v) } : null; },
+    vaultKeys: async () => { const out = []; for (const v of await vaults()) { try { out.push(await keyOf(v)); } catch (e) { /* bloqueada */ } } return out; },
+    // Una nota que llega a la nube con imágenes incrustadas las deja como adjuntos (si no se puede, va como estaba).
+    write: async (path, text) => putNote(path, LMD.images ? await LMD.images.liftQuiet(text, path) : text).then((r) => { listCache = null; delete otherLists[split(path).owner]; return r; }),
     // Una versión del historial, en claro. Las de una nota protegida están cifradas con la ruta que tenía entonces.
     version: async (id, path) => {
       const v = await api('GET', '/version/' + id + (isTeam(path) ? '?o=' + team.space : ''));

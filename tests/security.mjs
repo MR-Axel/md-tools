@@ -1879,6 +1879,139 @@ async function sitesSuite() {
 }
 if (!ONLY || ONLY === 'sites') await sitesSuite();
 
+// ====================================================================================================================
+// Imágenes adjuntas: lo que se sube, cómo se guarda y cómo se sirve
+// ====================================================================================================================
+async function filesSuite() {
+  console.log('\nImágenes adjuntas');
+  const zlib = await import('zlib');
+  const S = await boot({ ADMIN_KEY: ADMIN, PAGES_URL: 'http://pages.localhost:' + (portSeq + 1), FILES_FREE_MB: '0.3', FILE_MAX_FREE_MB: '0.1', FILE_MAX_PAID_MB: '1', FILES_PAID_MB: '4', AUTH_PER_IP: '500' });
+  const { call } = S; const PH = 'pages.localhost:' + S.port;
+  const chunk = (t, d) => { const len = Buffer.alloc(4); len.writeUInt32BE(d.length); const td = Buffer.concat([Buffer.from(t, 'latin1'), d]); const c = Buffer.alloc(4); c.writeUInt32BE(zlib.crc32(td)); return Buffer.concat([len, td, c]); };
+  const png = (w, h, fill, seed) => { const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2; return Buffer.concat([Buffer.from('\x89PNG\r\n\x1a\n', 'latin1'), chunk('IHDR', ihdr), fill ? chunk('prVt', Buffer.alloc(fill, (seed || 1) & 255)) : Buffer.alloc(0), chunk('IDAT', zlib.deflateSync(Buffer.alloc((Math.min(w, 64) * 3 + 1) * Math.min(h, 64), (seed || 0) & 255))), chunk('IEND', Buffer.alloc(0))]); };
+  const up = (s, buf, q, headers, ip) => fetch(S.base + '/files' + (q || ''), { method: 'POST', headers: Object.assign({ authorization: 'Bearer ' + s, 'content-type': 'image/png' }, from(ip || '10.90.0.1'), headers || {}), body: buf }).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) })).catch((e) => ({ status: 0, json: null, err: String(e) }));
+  const get = (p, headers, ip) => fetch(S.base + p, { headers: Object.assign({}, from(ip || '10.90.0.2'), headers || {}), redirect: 'manual' }).then(async (r) => ({ status: r.status, type: r.headers.get('content-type') || '', headers: r.headers, body: Buffer.from(await r.arrayBuffer()) }));
+  const raw = (host, p, opt) => new Promise((resolve) => { try { const r = http.request({ host: '127.0.0.1', port: S.port, path: p, method: (opt && opt.method) || 'GET', headers: Object.assign({ host }, (opt && opt.headers) || {}) }, (res) => { let b = ''; res.on('data', (c) => { b += c; }); res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: b })); }); r.on('error', () => resolve({ status: 0, headers: {}, body: '' })); if (opt && opt.body) r.write(opt.body); r.end(); } catch (e) { resolve({ status: 0, headers: {}, body: '' }); } });
+  const wire = (text) => new Promise((resolve) => { const sock = net.connect(S.port, '127.0.0.1', () => sock.write(text)); let b = ''; const t = setTimeout(() => { sock.destroy(); resolve(b || 'sin respuesta'); }, 9000); sock.on('data', (c) => { b += c; }); sock.on('end', () => { clearTimeout(t); resolve(b); }); sock.on('error', () => { clearTimeout(t); resolve(b); }); });
+  const tree = () => { const out = []; const walk = (d) => { for (const n of fs.readdirSync(d)) { const at = path.join(d, n); if (fs.statSync(at).isDirectory()) walk(at); else out.push(path.relative(path.join(S.dir, 'files'), at).replace(/\\/g, '/')); } }; walk(path.join(S.dir, 'files')); return out; };
+  try {
+    const A = await signup(S, 'ana-img@ejemplo.test'); const B = await signup(S, 'beto-img@ejemplo.test'); await makePro(S, A.email);
+    const P = 'window.__pwn=1';
+
+    // ---------- Lo que entra: solo imágenes, reconocidas por su contenido ----------
+    const html = Buffer.from('<!doctype html><html><body><script>' + P + '</script></body></html>');
+    const svg = Buffer.from('<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" onload="' + P + '"><script>' + P + '</script></svg>');
+    const notImg = [await up(A.s, html), await up(A.s, html, '', { 'content-type': 'image/jpeg' }), await up(A.s, svg, '', { 'content-type': 'image/svg+xml' }), await up(A.s, svg), await up(A.s, Buffer.from('%PDF-1.7\n')), await up(A.s, Buffer.from('MZ\x90\x00')), await up(A.s, Buffer.alloc(0)), await up(A.s, Buffer.from('GIF8'))];
+    check('un HTML o un SVG con código, digan lo que digan de sí mismos, no se guardan', notImg.every((r) => r.status === 415 && r.json.error === 'bad_image') && tree().length === 0, notImg.map((r) => [r.status, r.json && r.json.error]));
+    // Polyglots: empiezan como una imagen y siguen con otra cosa.
+    const gifHtml = Buffer.concat([Buffer.from('GIF89a', 'latin1'), Buffer.from([1, 0, 1, 0, 0, 0, 0]), Buffer.from('<html><script>' + P + '</script>', 'latin1'), Buffer.from([0x3b])]);
+    const pngHtml = Buffer.concat([png(4, 4), html]);
+    const riffLie = Buffer.concat([Buffer.from('RIFF', 'latin1'), Buffer.from([4, 0, 0, 0]), Buffer.from('WEBPVP8 ', 'latin1'), html]);
+    const pngHuge = png(70000, 70000);
+    const poly = [await up(A.s, gifHtml, '', { 'content-type': 'text/html' }), await up(A.s, pngHtml, '', { 'content-type': 'text/html; charset=utf-8' })];
+    check('un WebP con un tamaño declarado que no es el suyo y un PNG de medidas imposibles se rechazan', (await up(A.s, riffLie)).status === 415 && (await up(A.s, pngHuge)).status === 415, null);
+    const served = await Promise.all(poly.map((r) => get(new URL(r.json.url).pathname)));
+    check('un archivo que empieza como imagen y sigue con HTML se sirve siempre como imagen, nunca como página', poly.every((r) => r.status === 200) && served[0].type === 'image/gif' && served[1].type === 'image/png' && served.every((r) => r.headers.get('x-content-type-options') === 'nosniff' && r.headers.get('content-security-policy') === "default-src 'none'; sandbox" && /^inline; filename="image\.(gif|png)"$/.test(r.headers.get('content-disposition'))), served.map((r) => [r.status, r.type]));
+    check('la cabecera content-type de quien sube no decide nada', poly[0].json.type === 'image/gif' && poly[1].json.type === 'image/png' && !served.some((r) => /html|svg|xml|javascript/.test(r.type)), poly.map((r) => r.json.type));
+    const every = await call('GET', '/files', undefined, A.s);
+    check('ninguna respuesta de una imagen lleva cookies ni credenciales', served.every((r) => !r.headers.get('set-cookie') && !r.headers.get('access-control-allow-credentials') && r.headers.get('access-control-allow-origin') === '*') && every.json.files.every((f) => /^image\/(png|gif|jpeg|webp|avif)$/.test(f.type)), null);
+
+    // ---------- Nombres y rutas: nada del cliente llega al disco ----------
+    const named = await up(A.s, png(5, 5, 0, 7), '?name=..%2F..%2Fmdtools.db&path=..%2Fx&id=' + 'a'.repeat(40), { 'content-disposition': 'attachment; filename="../../evil.html"', 'x-file-name': '..\\..\\evil.html' });
+    const names = tree();
+    check('el archivo se guarda con un nombre propio, bajo files/, sin importar el nombre o la ruta que mande el cliente', named.status === 200 && named.json.id !== 'a'.repeat(40) && names.length === 3 && names.every((n) => /^[0-9a-f]{2}\/[0-9a-f]{40}$/.test(n)) && !fs.existsSync(path.join(S.dir, 'evil.html')) && fs.readdirSync(S.dir).every((n) => /^(mdtools\.db(-wal|-shm)?|files)$/.test(n)), [named.status, names, fs.readdirSync(S.dir)]);
+    const idOk = named.json.id;
+    const walks = ['/f/..%2F..%2Fmdtools.db', '/f/%2e%2e/%2e%2e/mdtools.db', '/f/' + idOk + '/../../mdtools.db', '/f/' + idOk + '%00.png', '/f/' + idOk + '.png/..', '/f/' + idOk.slice(0, 2) + '/' + idOk, '/f/' + idOk.toUpperCase(), '/f/' + idOk + '.html', '/f/' + idOk + '.svg', '/f/' + idOk + '.png.html', '/f//' + idOk, '/f/tmp/x'];
+    const walked = await Promise.all(walks.map((w) => get(w)));
+    const wired = [await wire('GET /f/../mdtools.db HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n'), await wire('GET /f/../../etc/passwd HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n'), await wire('GET /f/..\\..\\mdtools.db HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n')];
+    check('ninguna dirección armada para salir de la carpeta sirve otra cosa: ni la base, ni un archivo con otra terminación', walked.every((r) => (r.status === 404 || r.status === 401) && !r.body.includes('SQLite format 3') && !/^image/.test(r.type)) && wired.every((t) => /^HTTP\/1\.1 (404|400)/.test(t) && !/SQLite format 3/.test(t)), [walked.map((r) => r.status), wired.map((t) => t.slice(0, 20))]);
+    const walkSession = [await call('GET', '/files/..%2F..%2Fmdtools.db/raw', undefined, A.s), await call('DELETE', '/files/..%2F..%2Fmdtools.db', undefined, A.s), await call('DELETE', '/files/' + idOk + '%2F..%2F..', undefined, A.s), await call('GET', '/files/' + idOk + '/raw', undefined, A.s)];
+    check('con sesión tampoco: las rutas de adjuntos solo aceptan un identificador', walkSession.every((r) => r.status === 404) && fs.existsSync(path.join(S.dir, 'mdtools.db')) && tree().length === 3, walkSession.map((r) => r.status));
+    const methods = await Promise.all(['POST', 'PUT', 'DELETE', 'PATCH'].map((m) => fetch(S.base + '/f/' + idOk, { method: m, headers: from('10.90.0.3'), body: m === 'DELETE' ? undefined : 'x' }).then((r) => r.status)));
+    check('por la dirección de una imagen solo se lee', methods.every((s) => s === 405) && (await get('/f/' + idOk)).status === 200, methods);
+
+    // ---------- La dirección es la llave: no se adivina ni se enumera ----------
+    const ids = [named.json.id, poly[0].json.id, poly[1].json.id];
+    check('cada identificador tiene 160 bits al azar y no se parece a otro', ids.every((i) => /^[0-9a-f]{40}$/.test(i)) && new Set(ids).size === 3 && new Set(ids.map((i) => i.slice(0, 8))).size === 3, ids.map((i) => i.slice(0, 6)));
+    const near = idOk.slice(0, 39) + (idOk[39] === '0' ? '1' : '0');
+    const guess = [await get('/f/' + near, null, '10.91.0.1'), await get('/f/' + idOk.slice(0, 20), null, '10.91.0.1'), await get('/f/' + 'f'.repeat(40), null, '10.91.0.1'), await get('/f/1', null, '10.91.0.1'), await get('/f/', null, '10.91.0.1')];
+    check('un identificador casi igual, uno a medias o uno inventado responden lo mismo: nada', guess.every((r) => r.status === 404 && r.body.length === 0 && r.type === guess[0].type), guess.map((r) => r.status));
+    let last = 0; for (let i = 0; i < 70; i++) last = (await get('/f/' + createHash('sha1').update('x' + i).digest('hex'), null, '10.91.0.9')).status;
+    const blocked = await get('/f/' + idOk, null, '10.91.0.9'); const otherIp = await get('/f/' + idOk, null, '10.91.0.10');
+    check('quien prueba direcciones al azar queda frenado, sin frenar a los demás', last === 429 && blocked.status === 429 && !!blocked.headers.get('retry-after') && otherIp.status === 200, [last, blocked.status, otherIp.status]);
+    const noList = [await call('GET', '/files'), await call('GET', '/files', undefined, 'mds_' + 'x'.repeat(40)), await call('GET', '/files?o=' + A.id, undefined, B.s), await call('GET', '/f', undefined, A.s), await call('GET', '/files/' + idOk, undefined, A.s)];
+    check('no hay forma de listar las imágenes de otra cuenta, ni sin sesión', noList[0].status === 401 && noList[1].status === 401 && noList[2].status === 403 && noList[3].status === 404 && noList[4].status === 404, noList.map((r) => r.status));
+    const cross = [await call('DELETE', '/files/' + idOk, undefined, B.s), await call('DELETE', '/files/' + idOk + '?o=' + A.id, undefined, B.s), await call('GET', '/files/' + idOk + '/raw', undefined, B.s), await up(B.s, png(3, 3), '?o=' + A.id)];
+    check('otra cuenta no borra una imagen ajena ni sube al espacio de otro', cross[0].status === 404 && cross[1].status === 403 && cross[2].status === 404 && cross[3].status === 403 && (await get('/f/' + idOk)).status === 200, cross.map((r) => r.status));
+
+    // ---------- El host de sitios no sirve adjuntos ni tiene estas rutas ----------
+    const viaPages = [await raw(PH, '/f/' + idOk), await raw(PH, '/f/' + idOk + '.png'), await raw(PH, '/files', { headers: { authorization: 'Bearer ' + A.s } }), await raw(PH, '/files', { method: 'POST', headers: { authorization: 'Bearer ' + A.s, 'content-type': 'image/png' }, body: png(3, 3) }), await raw(PH, '/api/v1/files', { headers: { authorization: 'Bearer ' + A.s } })];
+    check('por el host de sitios no sale ninguna imagen adjunta ni se sube nada', viaPages[0].status === 404 && viaPages[1].status === 404 && !/PNG/.test(viaPages[0].body + viaPages[1].body) && viaPages[2].status === 404 && viaPages[3].status === 405 && viaPages[4].status === 404, viaPages.map((r) => r.status));
+    const hostTrick = await raw('127.0.0.1:' + S.port, '/f/' + idOk, { headers: { 'x-forwarded-host': PH, forwarded: 'host=' + PH } });
+    check('y una imagen no hereda la política del sitio: se carga como recurso, sin credenciales, desde el host de la API', hostTrick.status === 200 && hostTrick.headers['cross-origin-resource-policy'] === 'cross-origin' && !hostTrick.headers['set-cookie'], hostTrick.status);
+
+    // ---------- Tamaño: se corta al pasar el tope, sin juntar el cuerpo en memoria ----------
+    const mem0 = process.memoryUsage().rss; void mem0;
+    const big = await up(B.s, Buffer.concat([png(4, 4), Buffer.alloc(3 * 1048576, 1)]));
+    const lied = await wire('POST /files HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer ' + B.s + '\r\nContent-Type: image/png\r\nContent-Length: 5000000000\r\nConnection: close\r\n\r\n' + png(4, 4).toString('latin1'));
+    const chunked = await new Promise((resolve) => { const r = http.request({ host: '127.0.0.1', port: S.port, path: '/files', method: 'POST', headers: { authorization: 'Bearer ' + B.s, 'content-type': 'image/png', 'transfer-encoding': 'chunked' } }, (res) => { let b = ''; res.on('data', (c) => { b += c; }); res.on('end', () => resolve({ status: res.statusCode, body: b })); }); r.on('error', () => resolve({ status: 0, body: '' })); r.write(png(4, 4)); let n = 0; const more = () => { if (n++ < 40 && !r.destroyed) { r.write(Buffer.alloc(16384, 2), () => setTimeout(more, 2)); } else r.end(); }; more(); });
+    check('una imagen que pasa el tope se rechaza, también si llega por tramos o anunciando otro tamaño, y no queda nada a medias en el disco', big.status === 413 && big.json.error === 'file_too_large' && /^HTTP\/1\.1 413/.test(lied) && chunked.status === 413 && /file_too_large/.test(chunked.body) && fs.readdirSync(path.join(S.dir, 'files', 'tmp')).length === 0 && S.alive(), [big.status, lied.slice(0, 30), chunked.status, fs.readdirSync(path.join(S.dir, 'files', 'tmp')).length]);
+    const stalled = await wire('POST /files HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer ' + B.s + '\r\nContent-Type: image/png\r\nContent-Length: 500000\r\n\r\nabc');
+    check('un pedido que anuncia de más y deja de mandar recibe su respuesta sin dejar colgado al servidor', /^HTTP\/1\.1 413/.test(stalled) && S.alive() && (await call('GET', '/health')).status === 200, stalled.slice(0, 40));
+
+    // ---------- Cupos en paralelo ----------
+    const burst = await Promise.all(Array.from({ length: 24 }, (_, i) => up(B.s, png(6, 6, 60000, 40 + i))));
+    const okB = burst.filter((r) => r.status === 200); const lb = (await call('GET', '/files', undefined, B.s)).json;
+    check('veinticuatro subidas a la vez no pasan el cupo entre todas, y lo que hay en el disco es lo que dice la tabla', okB.length >= 1 && okB.length <= 5 && lb.used <= lb.max && lb.count === okB.length && burst.every((r) => r.status === 200 || (r.status === 413 && r.json.error === 'storage_full')) && tree().filter((n) => !n.startsWith('tmp/')).length === 3 + lb.count && fs.readdirSync(path.join(S.dir, 'files', 'tmp')).length === 0, [okB.length, lb.used, lb.max, tree().length]);
+    const same = await Promise.all(Array.from({ length: 6 }, () => up(A.s, png(7, 7, 2000, 5))));
+    check('la misma imagen subida seis veces a la vez no ocupa seis lugares de más', same.every((r) => r.status === 200) && (await call('GET', '/files', undefined, A.s)).json.count <= 3 + 6 && S.db().prepare('SELECT COUNT(*) AS n FROM files WHERE owner = ?').get(A.id).n === tree().filter((n) => !n.startsWith('tmp/')).length - lb.count, same.map((r) => r.status));
+
+    // ---------- Carpeta protegida: lo cifrado no se lee ni se sirve ----------
+    await call('POST', '/vaults', { folder: 'secreta', salt: Buffer.alloc(16, 3).toString('base64'), iters: 200000, wrapped: Buffer.alloc(60, 3).toString('base64'), check: Buffer.alloc(32, 3).toString('base64') }, A.s);
+    const { randomBytes, createCipheriv } = await import('crypto');
+    const key = randomBytes(32); const iv = randomBytes(12); const plainImg = png(40, 40, 3000, 9); const c = createCipheriv('aes-256-gcm', key, iv); c.setAAD(Buffer.from('sharpmd image v1'));
+    const sealed = Buffer.concat([iv, c.update(Buffer.concat([Buffer.from([1]), plainImg])), c.final(), c.getAuthTag()]);
+    const e1 = await up(A.s, sealed, '?enc=1', { 'content-type': 'application/octet-stream' });
+    const onDisk = fs.readFileSync(path.join(S.dir, 'files', e1.json.id.slice(0, 2), e1.json.id));
+    check('una imagen de una carpeta protegida queda en el disco tal como salió del navegador: cifrada', e1.status === 200 && e1.json.encrypted === true && onDisk.equals(sealed) && !onDisk.includes(Buffer.from('PNG')) && !onDisk.includes(Buffer.from('IHDR')) && !onDisk.includes(plainImg.subarray(8, 40)), [e1.status, onDisk.length]);
+    const dbRow = S.db().prepare('SELECT * FROM files WHERE id = ?').get(e1.json.id);
+    check('en la base queda marcada como cifrada, sin tipo de imagen ni medidas', dbRow.enc === 1 && dbRow.type === 'application/octet-stream' && dbRow.w === 0 && dbRow.h === 0, dbRow);
+    const encGets = await Promise.all(['', '.enc', '.png', '.webp', '.jpg', '.gif', '.avif'].map((x) => get('/f/' + e1.json.id + x, { authorization: 'Bearer ' + A.s })));
+    check('y no se sirve por su dirección de ninguna forma, ni con la sesión de su dueña', encGets.every((r) => r.status === 404 && r.body.length === 0), encGets.map((r) => r.status));
+    const rawGet = await get('/files/' + e1.json.id + '/raw', { authorization: 'Bearer ' + A.s }); const rawNo = [await get('/files/' + e1.json.id + '/raw'), await get('/files/' + e1.json.id + '/raw', { authorization: 'Bearer ' + B.s }), await get('/files/' + idOk + '/raw', { authorization: 'Bearer ' + A.s })];
+    check('sus bytes salen solo con la sesión de la cuenta, cifrados y como un archivo que el navegador no abre', rawGet.status === 200 && rawGet.body.equals(sealed) && rawGet.type === 'application/octet-stream' && /^attachment/.test(rawGet.headers.get('content-disposition')) && rawGet.headers.get('x-content-type-options') === 'nosniff' && /no-store/.test(rawGet.headers.get('cache-control')) && rawNo[0].status === 401 && rawNo[1].status === 404 && rawNo[2].status === 404, [rawGet.status, rawNo.map((r) => r.status)]);
+    // Un HTML subido "cifrado" tampoco se vuelve una página: solo sale por la ruta con sesión, como archivo.
+    const e2 = await up(A.s, Buffer.concat([html, Buffer.alloc(40)]), '?enc=1'); const e2raw = await get('/files/' + e2.json.id + '/raw', { authorization: 'Bearer ' + A.s });
+    check('lo que entra como cifrado nunca se sirve como página, sea lo que sea', e2.status === 200 && (await get('/f/' + e2.json.id)).status === 404 && e2raw.type === 'application/octet-stream' && e2raw.headers.get('content-security-policy') === "default-src 'none'; sandbox", [e2.status, e2raw.type]);
+    check('una cuenta sin carpetas protegidas no puede subir bytes sin revisar', (await up(B.s, sealed, '?enc=1')).status === 409, null);
+    // El espacio de un equipo protegido no acepta imágenes en claro.
+    await call('POST', '/admin/team', { email: A.email, seats: 3 }, undefined, { 'x-admin-key': ADMIN });
+    const space = (await call('GET', '/team', undefined, A.s)).json.mine.space;
+    const tv = await call('POST', '/team/vault', { salt: Buffer.alloc(16, 4).toString('base64'), iters: 200000, wrapped: Buffer.alloc(60, 4).toString('base64'), check: Buffer.alloc(32, 4).toString('base64') }, A.s);
+    const teamPlain = await up(A.s, png(9, 9, 0, 61), '?o=' + space); const teamEnc = await up(A.s, sealed, '?o=' + space + '&enc=1');
+    check('un espacio de equipo protegido solo recibe imágenes cifradas', tv.status === 200 && teamPlain.status === 409 && teamPlain.json.error === 'vault' && teamEnc.status === 200 && (await get('/f/' + teamEnc.json.id)).status === 404, [tv.status, teamPlain.status, teamEnc.status]);
+
+    // ---------- Tokens ----------
+    const tok = (await call('POST', '/tokens', { name: 'ia' }, A.s)).json.token; secrets.push(tok);
+    const viaTok = [await call('GET', '/files', undefined, tok), await fetch(S.base + '/files', { method: 'POST', headers: { authorization: 'Bearer ' + tok, 'content-type': 'image/png' }, body: png(3, 3) }).then((r) => r.status), await call('GET', '/files/' + e1.json.id + '/raw', undefined, tok), await call('DELETE', '/files/' + idOk, undefined, tok)];
+    const teamTok = await fetch(S.base + '/api/v1/files?space=team', { method: 'POST', headers: { authorization: 'Bearer ' + tok, 'content-type': 'image/png' }, body: png(3, 3, 0, 5) }).then(async (r) => [r.status, (await r.json()).error.code]);
+    const apiEnc = (await call('GET', '/api/v1/files', undefined, tok)).json;
+    check('un token de IA no entra por las rutas de la app, no baja imágenes cifradas, y por la API no sube en claro a un espacio protegido', viaTok[0].status === 401 && viaTok[1] === 401 && viaTok[2].status === 401 && viaTok[3].status === 401 && teamTok[0] === 409 && teamTok[1] === 'vault' && apiEnc.ok && apiEnc.data.files.filter((f) => f.encrypted).every((f) => /\.enc$/.test(f.url)), [viaTok.map((r) => r.status || r), teamTok]);
+    const freeTok = await fetch(S.base + '/api/v1/files', { method: 'POST', headers: { authorization: 'Bearer mdt_' + 'x'.repeat(40), 'content-type': 'image/png' }, body: png(3, 3) }).then((r) => r.status);
+    check('la API de adjuntos pide un token válido', freeTok === 401, freeTok);
+
+    // ---------- Al eliminar la cuenta ----------
+    const urls = (await call('GET', '/files', undefined, B.s)).json.files.map((f) => f.url);
+    const delB = await call('DELETE', '/account', { email: B.email }, B.s, from(nextIp()));
+    const after = await Promise.all(urls.map((u) => get(new URL(u).pathname, null, '10.92.0.1')));
+    check('eliminar la cuenta borra sus imágenes: del disco, de la tabla y de sus direcciones', delB.status === 200 && urls.length >= 1 && after.every((r) => r.status === 404) && S.db().prepare('SELECT COUNT(*) AS n FROM files WHERE owner = ?').get(B.id).n === 0, [delB.status, urls.length]);
+    const log = S.log();
+    check('adjuntos: nada de lo subido ni ninguna sesión aparece en la salida del servidor, y no hubo errores', !/error 500|error no capturado|promesa sin atender/.test(log) && !secrets.some((s) => s && log.includes(s)) && !log.includes(idOk) && S.alive(), (log.match(/error[^\n]*/g) || []).slice(0, 3));
+  } catch (e) { check('adjuntos: sin excepciones en la prueba', false, String(e && e.stack || e)); console.log(S.log().slice(-1500)); }
+  await S.stop();
+}
+if (!ONLY || ONLY === 'files') await filesSuite();
+
 const failed = results.filter((r) => !r.ok);
 console.log('\n' + (results.length - failed.length) + ' de ' + results.length + ' pruebas pasaron');
 process.exit(failed.length ? 1 : 0);
