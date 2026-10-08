@@ -517,6 +517,52 @@ try {
   o.borrarCuenta.push((await api('GET', '/account', undefined, chau)).error, await app.evaluate(() => new Promise((resolve) => chrome.storage.local.get('cloud', (r) => resolve(r.cloud.session || '')))), await app.evaluate(() => !document.querySelector('.lmd-home').hidden), /[?&]f=/.test(app.url()),
     await app.evaluate((who) => LMD.store.cloudAll(who).then((all) => all.length), 'chau@ejemplo.test'), await app.locator(CLOUD + ' .lmd-trash-link').count());
   await app.evaluate(() => { window.__manual = false; }); await app.keyboard.press('Escape');
+  // ---------- El enlace del correo con el código (app.html#signin=...) ----------
+  // En una pestaña sin respuestas automáticas: abrir el enlace pregunta, y recién al confirmar se prueba el código.
+  {
+    const lp = await ctx.newPage(); const seen = []; lp.on('request', (r) => seen.push(r.method() + ' ' + r.url() + ' ' + (r.postData() || ''))); lp.on('pageerror', (e) => errors.push(e.message));
+    const fragOf = (mail, c) => Buffer.from(c + ':' + mail).toString('base64url');
+    const m1 = 'enlace@ejemplo.test'; const m2 = 'otra-enlace@ejemplo.test';
+    const c1 = (await (await post('/auth/start', { email: m1 })).json()).dev_code; const f1 = fragOf(m1, c1);
+    const c2 = (await (await post('/auth/start', { email: m2 })).json()).dev_code; const f2 = fragOf(m2, c2);
+    const dlg = async (title) => {
+      await lp.waitForFunction((t) => { const h = document.querySelector('.lmd-dlg h3'); return !!h && (!t || h.textContent.includes(t)); }, title || '');
+      return lp.evaluate(() => { const d = document.querySelector('.lmd-dlg'); return { title: d.querySelector('h3').textContent, text: (d.querySelector('p') || {}).textContent || '', ok: d.querySelector('[data-dlg=ok]').textContent, no: (d.querySelector('[data-dlg=no]') || {}).textContent || '', url: location.href }; });
+    };
+    const pick = async (which) => { await lp.click('.lmd-dlg [data-dlg=' + which + ']'); await lp.waitForFunction(() => !document.querySelector('.lmd-dlg')); };
+    const viaHash = (f) => lp.evaluate((v) => { location.hash = 'signin=' + v; }, f);
+    const stored = () => lp.evaluate(() => new Promise((resolve) => chrome.storage.local.get(null, (all) => resolve(JSON.stringify([all, Object.assign({}, localStorage), Object.assign({}, sessionStorage)])))));
+    const who = () => lp.evaluate(() => LMD.cloud.email());
+    const tries = () => seen.filter((x) => /\/auth\/verify/.test(x)).length;
+    await lp.goto(home + '#signin=' + f1);
+    const none = () => ({ title: '', text: '', ok: '', no: '', url: '#' }); // si algo se corta, las comprobaciones fallan sin romperse
+    o.porCorreo = { abre: none(), hash: none(), yaEntro: none(), otra: none(), usadoOtra: none(), usado: none(), roto: none() };
+    o.porCorreo.abre = await dlg();
+    o.porCorreo.sinEntrar = [await lp.evaluate(() => LMD.cloud.signedIn()), tries(), (await stored()).includes(f1)];
+    await pick('no'); o.porCorreo.cancelar = [await lp.evaluate(() => LMD.cloud.signedIn()), tries()];
+    // Con la app ya abierta el enlace llega por hashchange.
+    await viaHash(f1); o.porCorreo.hash = await dlg();
+    await pick('ok'); await lp.waitForSelector('[data-cloud=menu]');
+    o.porCorreo.entro = [await who(), await lp.textContent('.lmd-home-acct-who b'), (await stored()).includes(f1), lp.url().includes('#'), tries()];
+    const s1 = await lp.evaluate(() => new Promise((resolve) => chrome.storage.local.get('cloud', (r) => resolve(r.cloud.session))));
+    await viaHash(f1); o.porCorreo.yaEntro = await dlg(); await pick('ok'); o.porCorreo.yaEntro.tries = tries();
+    // Con otra cuenta abierta se pregunta antes de cambiar.
+    await viaHash(f2); o.porCorreo.otra = await dlg(); await pick('no'); o.porCorreo.otraNo = [await who(), tries()];
+    await viaHash(f2); await dlg('Cambiar'); await Promise.all([lp.waitForNavigation(), lp.click('.lmd-dlg [data-dlg=ok]')]); // la app arranca de nuevo con la otra cuenta
+    await lp.waitForFunction((m) => !!window.LMD && !!LMD.cloud && LMD.cloud.email() === m && !!document.querySelector('[data-cloud=menu]') && !document.querySelector('.lmd-dlg'), m2);
+    o.porCorreo.cambio = [await who(), (await api('GET', '/account', undefined, s1)).error, lp.url().includes('#'), await lp.evaluate((m) => LMD.store.cloudAll(m).then((all) => all.length), m1)];
+    // Un enlace ya usado, con otra cuenta abierta: avisa y la sesión sigue.
+    await viaHash(f1); await dlg('Cambiar'); await lp.click('.lmd-dlg [data-dlg=ok]'); o.porCorreo.usadoOtra = await dlg('ya no sirve'); await pick('ok'); o.porCorreo.usadoOtra.who = await who();
+    await lp.click('[data-cloud=menu]'); await lp.click('[data-cloud=logout]'); await lp.waitForSelector('[data-cloud=ask]');
+    // Sin sesión: avisa y ofrece pedir otro, con el correo ya puesto.
+    await viaHash(f2); await dlg('Entrar como'); await lp.click('.lmd-dlg [data-dlg=ok]'); o.porCorreo.usado = await dlg('ya no sirve'); await pick('ok');
+    await lp.waitForSelector('.lmd-login [data-field=email]'); o.porCorreo.pedirOtro = [await lp.inputValue('.lmd-login [data-field=email]'), await lp.evaluate(() => LMD.cloud.signedIn())];
+    await viaHash('no-es-un-enlace'); o.porCorreo.roto = await dlg('no sirve'); await pick('no');
+    await viaHash(fragOf('NoEsUnCorreo', '123456')); o.porCorreo.roto2 = (await dlg('no sirve')).title; await pick('no');
+    const toServer = seen.filter((x) => x.includes(base));
+    o.porCorreo.red = [toServer.some((x) => x.includes(f1) || x.includes(f2) || /signin/.test(x)), tries(), toServer.filter((x) => x.includes(c1) || x.includes(c2)).every((x) => /^POST \S+\/auth\/verify /.test(x))];
+    await lp.close();
+  }
   // El tope por red (20 pedidos por hora): el aviso general, con las dos esperas posibles.
   for (let i = 0; i < 20; i++) await post('/auth/start', { email: 'red' + i + '@ejemplo.test' });
   await app.goto(home); await app.waitForSelector('[data-cloud=ask]'); await app.click('[data-cloud=ask]'); await app.fill('[data-field=email]', 'nueva@ejemplo.test'); await app.click('[data-cloud=start]');
@@ -539,6 +585,17 @@ try {
 
 const J = (v) => JSON.stringify(v);
 const checks = [
+  ['enlace del correo: abrirlo pregunta "¿Entrar como ...?" y no prueba el código ni inicia sesión', o.porCorreo && o.porCorreo.abre.title === '¿Entrar como enlace@ejemplo.test?' && o.porCorreo.abre.ok === 'Entrar' && o.porCorreo.abre.no === 'Cancelar' && J(o.porCorreo.sinEntrar) === J([false, 0, false]), o.porCorreo],
+  ['enlace del correo: el fragmento sale de la barra de direcciones apenas se lee', o.porCorreo && !o.porCorreo.abre.url.includes('#') && !o.porCorreo.hash.url.includes('#') && !/signin/.test(o.porCorreo.abre.url + o.porCorreo.hash.url), o.porCorreo && [o.porCorreo.abre.url, o.porCorreo.hash.url]],
+  ['enlace del correo: cancelar no gasta el código', o.porCorreo && J(o.porCorreo.cancelar) === J([false, 0])],
+  ['enlace del correo: con la app ya abierta también pregunta, y confirmar inicia sesión', o.porCorreo && o.porCorreo.hash.title === '¿Entrar como enlace@ejemplo.test?' && J(o.porCorreo.entro) === J(['enlace@ejemplo.test', 'enlace@ejemplo.test', false, false, 1]), o.porCorreo && o.porCorreo.entro],
+  ['enlace del correo: con esa misma cuenta abierta solo avisa', o.porCorreo && /Ya entraste como enlace@ejemplo\.test/.test(o.porCorreo.yaEntro.title) && o.porCorreo.yaEntro.no === '' && o.porCorreo.yaEntro.tries === 1, o.porCorreo && o.porCorreo.yaEntro],
+  ['enlace del correo: con otra cuenta abierta pregunta antes de cambiar, y cancelar deja todo como estaba', o.porCorreo && o.porCorreo.otra.title === '¿Cambiar de cuenta?' && /enlace@ejemplo\.test/.test(o.porCorreo.otra.text) && /otra-enlace@ejemplo\.test/.test(o.porCorreo.otra.text) && o.porCorreo.otra.ok === 'Cambiar de cuenta' && J(o.porCorreo.otraNo) === J(['enlace@ejemplo.test', 1]), o.porCorreo && [o.porCorreo.otra, o.porCorreo.otraNo]],
+  ['enlace del correo: al confirmar el cambio entra la otra cuenta y la de antes queda cerrada, sin copias', o.porCorreo && J(o.porCorreo.cambio) === J(['otra-enlace@ejemplo.test', 'bad_auth', false, 0]), o.porCorreo && o.porCorreo.cambio],
+  ['enlace del correo: un código ya usado avisa claro, y con otra cuenta abierta la sesión sigue', o.porCorreo && o.porCorreo.usadoOtra.title === 'Ese enlace ya no sirve' && /venció o ya se usó/.test(o.porCorreo.usadoOtra.text) && /la sesión sigue abierta/.test(o.porCorreo.usadoOtra.text) && o.porCorreo.usadoOtra.no === '' && o.porCorreo.usadoOtra.who === 'otra-enlace@ejemplo.test', o.porCorreo && o.porCorreo.usadoOtra],
+  ['enlace del correo: sin sesión, el código usado ofrece pedir otro con el correo ya puesto', o.porCorreo && o.porCorreo.usado.title === 'Ese enlace ya no sirve' && o.porCorreo.usado.ok === 'Pedir otro código' && o.porCorreo.usado.no === 'Cerrar' && J(o.porCorreo.pedirOtro) === J(['otra-enlace@ejemplo.test', false]), o.porCorreo && [o.porCorreo.usado, o.porCorreo.pedirOtro]],
+  ['enlace del correo: un enlace roto no prueba nada y lo dice', o.porCorreo && o.porCorreo.roto.title === 'Este enlace para entrar no sirve' && o.porCorreo.roto2 === 'Este enlace para entrar no sirve' && !o.porCorreo.roto.url.includes('#'), o.porCorreo && o.porCorreo.roto],
+  ['enlace del correo: nada del fragmento llega al servidor, y el código viaja solo al confirmar, en el cuerpo de /auth/verify', o.porCorreo && J(o.porCorreo.red) === J([false, 4, true]), o.porCorreo && o.porCorreo.red],
   ['con la nube apagada en Ajustes no aparece', o.sinServidor === true],
   ['un código equivocado avisa', /no coincide/.test(o.codigoMalo || ''), o.codigoMalo],
   ['entrar muestra la cuenta, el plan y el cupo', o.cuenta && o.cuenta[0] === 'ana@ejemplo.test' && /^Plan gratis · 0 de 10 notas/.test(o.cuenta[1]), o.cuenta],

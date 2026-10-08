@@ -513,6 +513,12 @@
       "\"{a}\" está en una carpeta protegida. Desbloqueala para abrirla.": "\"{a}\" is in a protected folder. Unlock it to open the note.", "\"{a}\" no se pudo descifrar con la llave de su carpeta.": "\"{a}\" could not be decrypted with the key of its folder.",
       "La carpeta está bloqueada. Desbloqueala para guardar.": "The folder is locked. Unlock it to save.",
       "No se pudo enviar el correo. Probá de nuevo en unos minutos.": "The email could not be sent. Try again in a few minutes.",
+      // El enlace del correo con el código (home.js).
+      "¿Entrar como {a}?": "Sign in as {a}?", "Abriste el enlace del correo. Vas a entrar a tu cuenta en este navegador.": "You opened the link from the email. You will sign in to your account in this browser.",
+      "¿Cambiar de cuenta?": "Switch accounts?", "Ahora la sesión abierta es de {a}. Si seguís, se cierra y entrás como {b}.": "You are signed in as {a} now. If you continue, that session closes and you sign in as {b}.", "Cambiar de cuenta": "Switch accounts",
+      "Ya entraste como {a}": "You are already signed in as {a}", "La sesión ya está abierta en este navegador.": "The session is already open in this browser.",
+      "Ese enlace ya no sirve": "That link no longer works", "El código venció o ya se usó. Pedí otro.": "The code expired or was already used. Ask for another one.", "Pedir otro código": "Get a new code",
+      "Este enlace para entrar no sirve": "This sign-in link does not work", "Pedí un código nuevo y entrá con ese.": "Ask for a new code and sign in with it.", "No se pudo entrar": "Could not sign in",
       "Código de seis dígitos": "Six-digit code", "Cambiar el correo o pedir otro código": "Change the email or get a new code",
       "Este navegador no deja escribir sobre el archivo: al guardar se descarga una copia.": "This browser cannot write to the file: saving downloads a copy.",
       "Demasiadas contraseñas equivocadas. Probá de nuevo en 10 minutos.": "Too many wrong passwords. Try again in 10 minutes.",

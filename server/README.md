@@ -42,7 +42,7 @@ Then, in SharpMD: Settings → Cloud → Sync server, and type the address (`htt
 | `FREE_NOTES` | Notes on the free plan | `10` |
 | `API_FREE` | `1` opens the API and the automations on the free plan too. MCP is on every plan and needs no switch. `MCP_FREE`, the older name, does the same | off |
 | `LANDING_PER_HOUR` | Notices the home page may send per IP in an hour (`POST /landing`) | `60` |
-| `ADMIN_KEY` | Key for `POST /admin/plan`, `POST /admin/team`, `/admin/gallery`, `/admin/sites` and `GET /admin/landing`. It also signs the review links of the community gallery: without it the gallery takes no contributions | off |
+| `ADMIN_KEY` | Key for `POST /admin/plan`, `POST /admin/team`, `/admin/gallery`, `/admin/sites`, `GET /admin/landing` and `GET /admin/feedback`. It also signs the review links of the community gallery: without it the gallery takes no contributions | off |
 | `TEST_LOGIN` | `email:123456`. That one account signs in with the fixed code and gets no email. For store reviewers | off |
 | `CHECKOUT_MONTHLY`, `CHECKOUT_YEARLY` | Payment links the app shows in Settings → Plan. The account email is appended as `email=`, and the app adds `back=` with the address to return to | |
 | `PADDLE_WEBHOOK_SECRET` | Turns on `POST /paddle/webhook`: Paddle subscription events switch the plan | off |
@@ -50,7 +50,7 @@ Then, in SharpMD: Settings → Cloud → Sync server, and type the address (`htt
 | `PADDLE_PRICE_LEGACY` | Ids of earlier prices of the paid plan, separated by commas. Whoever is still subscribed to one keeps the paid plan | |
 | `PORTAL_URL` | Where a subscriber manages the subscription | |
 | `PADDLE_PRICE_TEAM`, `PADDLE_PRICE_TEAM_NOTRIAL`, `PADDLE_API_KEY`, `CHECKOUT_TEAM` | The team plan: see "Teams" below | off |
-| `FEEDBACK_TO` | Address that receives what people send from "Send feedback" (`POST /feedback`). It goes out through the same mailer as the sign-in code. Without it the endpoint answers 404 and the app offers a `mailto:` link instead | off |
+| `FEEDBACK_TO` | Address that receives what people send from "Send feedback" (`POST /feedback`). It goes out through the same mailer as the sign-in code, and every message is also kept in the `feedback` table (see "Feedback"). Without it the endpoint answers 404 and the app offers a `mailto:` link instead | off |
 | `GALLERY_NOTIFY_URL` | Optional hook for the community gallery: every new contribution posts `{ "text": "..." }` there, one short line with the type and the name, no links and no addresses. Point it at anything that takes a JSON POST | off |
 | `AUTH_PER_IP` | Sign-in codes one IP address may request per hour. Each email is also limited to 5 codes an hour and 15 a day, and wrong codes to 10 an hour per email and 30 per IP. Behind a proxy the IP is the last entry of `x-forwarded-for`: check that your proxy sets it, or every visitor shares one allowance | `20` |
 | `PAGES_URL` | Origin of the second host that serves published sites, for example `https://pages.example.com`: only the origin, and a different host name than `PUBLIC_URL`. Without it publishing is off and the app does not offer it. See "Published sites" | off |
@@ -84,11 +84,36 @@ curl -X POST https://sync.example.com/admin/plan -H "x-admin-key: $ADMIN_KEY" \
   -H "content-type: application/json" -d '{"email":"someone@example.com","plan":"pro"}'
 ```
 
+## Feedback
+
+What people send from "Send feedback", and every report of a note, a gallery contribution or a published site, is stored in the `feedback` table and then mailed to `FEEDBACK_TO`. Stored means received: if the mail fails, the message is already in the database, the failure is logged and the answer is still `{ ok: true }`.
+
+| Column | What it holds |
+|---|---|
+| `id` | Number of the message. It only grows and is never reused, so "everything after id N" is a safe way to find what is new |
+| `created` | When it arrived, in milliseconds |
+| `kind` | `feedback` or `report` |
+| `from_email` | The address of the account if there was a session, the one the person typed if not, or empty |
+| `signed_in`, `plan` | Whether there was a session (0 or 1) and the plan of that account |
+| `text` | What the person wrote, up to 4000 characters. A report may have none |
+| `version`, `place`, `browser`, `lang` | The four details of context, cut to 40, `web` or `extension`, 300 and 20 characters. Nothing else of the context is kept |
+| `rep_kind`, `rep_note`, `rep_owner` | For a report: `link`, `shared`, `live`, `gallery` or `site`, which note it is (its public address or its path, never its content) and the account that owns it |
+
+It never holds the content of a note, a path of the disk or the IP address. The rows are not encrypted with `DATA_KEY`, so another process can read them straight from the database to send a notice somewhere else:
+
+```sql
+SELECT id, created, kind, from_email, text FROM feedback WHERE id > ? ORDER BY id LIMIT 50;
+```
+
+Rows older than 180 days are deleted by the periodic cleanup (every six hours, and at start). Deleting an account deletes the messages sent from its address. `GET /admin/feedback?days=` lists them with `x-admin-key`: each item is `{ id, created, kind, from_email, signed_in, plan, text, context: { version, where, browser, lang } }`, plus `report: { kind, note, owner }` on a report.
+
 ## What it stores
 
 Email, notes with who made their last save (the number of the account or of the token, or the name a guest of a live session chose; never an email), their previous versions (paid plan, 30 days) with who had written each one, deleted notes while they are in the trash (30 days), and hashes of sign-in codes, sessions and tokens. Sessions and tokens are stored hashed: the server cannot show a token again after creating it. Of a live session it stores the note, the name chosen by whoever opened it, the hash of the link's secret and, on a team note, the member who opened it; the guests live in memory only (see "Live sessions"). Of a team it stores its name, the accounts that belong to it, the invitations that are waiting (the invited email address, until it is accepted, declined or removed) the id of the subscription that pays for it, the role of each member, the policies its administrators set and, for 90 days, an activity log of its shared space: who did what and when, with the path of the note, never its text, and the name a guest of a live session chose when what they wrote was saved or they were removed (see "Teams").
 
 Of a contribution to the community gallery it stores the type, the name, the description, the language, the public name its sender chose, the content, the account that sent it, its state and how many times it was added (a number, not who). See "Community gallery".
+
+Of a message sent from "Send feedback" or a report it stores the text, the email address if one was given, and four details of where it was written, for 180 days. See "Feedback".
 
 Of a published site it stores the account it belongs to (its number, never the email address), the folder, the address, its settings (title, description, language, color, font, text logo, author name and its two switches), a preview key, how many times it was reported and, of each page, the path of the note, its address, its title and description, the HTML that is served, its text for the search and the revision of the note it was made from. That content is public: it is not encrypted at rest. See "Published sites".
 
@@ -165,6 +190,8 @@ There is no command to change the key or to go back to plain text. To do either,
 
 Sign-in is a six-digit code sent by mail, no passwords.
 
+The email is short, plain text plus simple HTML, with no remote images and no tracking. The code comes first in the subject (`123456 is your SharpMD code`) and alone on its own line, so a phone offers to copy it from the notification and a double click selects it whole. It also carries a "Sign in to SharpMD" button: `APP_URL#signin=<base64url of "code:email">`. The email and the code travel in the fragment of the address, which a browser never sends to a server and never puts in `Referer`. The link adds no power: it is the same one-time code with the same 15 minutes, not a separate token. Opening it does not sign anyone in: the app shows "Sign in as <email>?" and calls `POST /auth/verify` only when the person confirms, so a mail client or a scanner that opens links does not use up the code. The app removes the fragment from the address bar as soon as it reads it and stores it nowhere. A code is not tied to the device that asked for it: whoever confirms first signs in, on that device, and the code stops working everywhere. If your mail provider rewrites links to count clicks, turn that off for this sender: a rewritten link passes through their server.
+
 | Call | What it does |
 |---|---|
 | `POST /auth/start` `{ email, lang }` | Sends the code, in English or with `lang: "es"` in Spanish. A limit answers `429` with its own code (`code_gap`, `code_mail_hour`, `code_mail_day`, `code_ip_hour`), `retry_after` in the body and a `Retry-After` header, both in seconds |
@@ -187,7 +214,7 @@ Sign-in is a six-digit code sent by mail, no passwords.
 | `POST /tokens` `{ name, folder, share }` | Creates a token for MCP, shown once. With `folder`, the token only reaches that folder. With `share: true`, it can share notes and create public links |
 | `GET` / `POST /comments`, `DELETE /comments/{id}` | Comments left on a note for the AI: `{ path, quote, text }` |
 | `GET /tokens`, `DELETE /tokens/{id}` | List the tokens (with `scope` and `share`) and revoke one |
-| `POST /feedback` `{ text, email?, context? }` | Mails the text to `FEEDBACK_TO`, with or without a session. 5 to 4000 characters, five an hour per IP and per account. Behind a proxy the IP is the last entry of `x-forwarded-for` |
+| `POST /feedback` `{ text, email?, context? }` | Stores the message and mails it to `FEEDBACK_TO`, with or without a session. 5 to 4000 characters, five an hour per IP and per account. Behind a proxy the IP is the last entry of `x-forwarded-for`. See "Feedback" |
 | `GET /gallery?type=&q=&lang=&sort=&page=` | Public, no session: the approved contributions. See "Community gallery" |
 | `GET /gallery/{id}`, `POST /gallery/{id}/add` | Public: one approved contribution in full, and the anonymous "added" counter |
 | `POST /gallery`, `GET /gallery/mine`, `DELETE /gallery/{id}` | With a session: send a contribution, see the state of your own, withdraw one |
@@ -197,6 +224,7 @@ Sign-in is a six-digit code sent by mail, no passwords.
 | `GET` / `POST /admin/sites` | With `x-admin-key`: list the published sites, suspend, restore, delete |
 | `POST /landing` `{ v, e }` | Public, no session: the home page says which headline it showed (`v`: `a` or `b`) and what happened (`e`: `view` or `open`). It adds one to a counter per day, variant and event, and stores nothing else: no IP, no header, no identifier. `LANDING_PER_HOUR` per IP, counted in memory. Answers `204` |
 | `GET /admin/landing?days=` | With `x-admin-key`: `{ from, to, variants: { a: { view, open, rate }, b: { view, open, rate } } }`, where `rate` is open divided by view. `days` limits it to the last days |
+| `GET /admin/feedback?days=` | With `x-admin-key`: `{ days, items }`, the stored feedback and reports of the last `days` days (30 by default, 180 at most, 500 items), newest first. See "Feedback" |
 | `GET` / `POST /files`, `DELETE /files/{id}`, `GET /files/{id}/raw` | With a session: list the attached images with the storage in use, upload one, delete one, and download the bytes of an encrypted one. See "Attached images" |
 | `GET /f/{id}` | No session: serves an attached image to whoever has its address |
 | `POST /mcp` | MCP over Streamable HTTP, with `Authorization: Bearer mdt_...`. On every plan. On the free plan it works over the notes that plan holds: a tool that would add a note past `FREE_NOTES` answers with an error that says so, and the sharing tools answer that sharing is part of the paid plan |
@@ -655,7 +683,7 @@ Individual prices. A subscription counts for the paid plan when one of its price
 | `TEAM_INVITES_DAY` | Invitations one team may send per day | `20` |
 | `TEAM_HISTORY_DAYS` | Days of version history kept in a team space. The `history_days` policy can only shorten it | `365` |
 | `TEAM_LOG_DAYS` | Days the activity log of a team is kept | `90` |
-| `APP_URL` | Address of the app: the invitation email links to it, and the MCP tools build on it the link that opens a note | `https://sharpmd.app/src/app.html` |
+| `APP_URL` | Address of the app: the invitation email and the button of the sign-in email link to it, and the MCP tools build on it the link that opens a note | `https://sharpmd.app/src/app.html` |
 | `TRASH_DAYS` | Days a deleted note stays in the trash. `0` turns the trash off: deleting is final | `30` |
 
 The team plan is offered only when `PADDLE_WEBHOOK_SECRET`, `PADDLE_PRICE_TEAM` and `PADDLE_API_KEY` are all set. Without them `team.enabled` is `false` and the app does not show it.

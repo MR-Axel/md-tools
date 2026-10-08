@@ -686,7 +686,8 @@
     signedIn: () => !!session,
     email: () => email,
     start: (mail) => api('POST', '/auth/start', { email: mail, lang: LMD.lang() }),
-    verify: async (mail, code) => { const r = await api('POST', '/auth/verify', { email: mail, code }); session = r.session; email = r.account.email; vaultCache = null; await remember(); return r.account; },
+    // Entrar con otra cuenta abierta (el enlace del correo): la de antes se cierra como al salir, recién cuando el código sirvió.
+    verify: async (mail, code) => { const r = await api('POST', '/auth/verify', { email: mail, code }); if (session && email && email !== r.account.email) await LMD.cloud.logout(); session = r.session; email = r.account.email; vaultCache = null; await remember(); return r.account; },
     // Al salir se borran las copias locales de la cuenta; lo que no llegó a subirse queda para cuando vuelva a entrar.
     // Las llaves de las carpetas protegidas se olvidan, también las recordadas en este dispositivo.
     logout: async () => {
