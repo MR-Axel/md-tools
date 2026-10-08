@@ -222,6 +222,24 @@ try {
   await mcp(token, 'write_note', { path: 'shop/plan.md', text: cur.replace(/^- \[ \] Ship it.*\n/m, '') });
   g = await until(() => at('/ok').find((x) => x.json.type === 'card.deleted'));
   check('desde el MCP: card.deleted', !!g && g.json.data.card.title === 'Ship it' && g.json.actor.type === 'mcp', g && g.json);
+  // Desde el MCP, con las herramientas de tablero: los mismos eventos, hechos por la IA.
+  await sleep(300); got.length = 0;
+  const made = JSON.parse((await mcp(token, 'add_card', { path: 'shop/plan.md', column: 'To do', title: 'Agent task', fields: { agent: 'claude' } })).content[0].text);
+  const mine = (type) => until(() => at('/ok').find((x) => x.json.type === type && x.json.data.card.id === made.card.id));
+  g = await mine('card.created');
+  check('herramientas de tablero del MCP: add_card dispara card.created, hecho por la IA', !!g && g.json.actor.type === 'mcp' && g.json.data.card.title === 'Agent task' && g.json.data.card.column === 'To do' && g.json.data.card.attrs.agent === 'claude' && g.json.note.path === 'shop/plan.md' && signed(g, secret), g && g.json);
+  await mcp(token, 'update_card', { path: 'shop/plan.md', id: made.card.id, fields: { needs: 'A decision on the price' } });
+  g = await mine('card.updated');
+  check('update_card dispara card.updated con el campo que cambió', !!g && J(g.json.data.changes) === J({ needs: { from: null, to: 'A decision on the price' } }) && g.json.actor.type === 'mcp', g && g.json);
+  await mcp(token, 'move_card', { path: 'shop/plan.md', id: made.card.id, column: 'Done' });
+  g = await mine('card.moved'); const g3 = await mine('card.done');
+  check('move_card a la columna de hechas dispara card.moved y card.done', !!g && g.json.data.from === 'To do' && g.json.data.to === 'Done' && g.json.actor.type === 'mcp' && !!g3 && g3.json.data.card.done === true && g3.json.actor.type === 'mcp', [g && g.json, g3 && g3.json]);
+  await mcp(token, 'delete_card', { path: 'shop/plan.md', id: made.card.id });
+  g = await mine('card.deleted');
+  check('delete_card dispara card.deleted', !!g && g.json.data.card.title === 'Agent task' && g.json.actor.type === 'mcp', g && g.json);
+  await mcp(token, 'create_board', { path: 'shop/agents.md' });
+  g = await until(() => at('/ok').find((x) => x.json.type === 'note.created' && x.json.note.path === 'shop/agents.md'));
+  check('create_board dispara note.created, hecho por la IA', !!g && g.json.actor.type === 'mcp', g && g.json);
   // Un tablero viejo, sin ids: mover una tarjeta se reconoce por su texto.
   await api('PUT', '/notes/' + encodeURIComponent('old.md'), { text: '```kanban\n## A\n- [ ] Uno\n- [ ] Dos\n\n## B\n```\n' }, ana.s); await sleep(250); got.length = 0;
   await api('PUT', '/notes/' + encodeURIComponent('old.md'), { text: '```kanban\n## A\n- [ ] Dos\n\n## B\n- [ ] Uno\n```\n' }, ana.s);
