@@ -51,7 +51,7 @@ Free and open source. No tracking: files are read in your browser and never uplo
 | **Publish a site** | A cloud folder becomes a public website with a menu, search and a theme: one site on the paid plan. Pages are drawn in your browser and served from a separate host, with no script and no style of the notes. A note with `publish: false` stays out, and a protected folder is never published. Offered when the server has a host for sites (`PAGES_URL`). |
 | **Live sessions** | Open a session on a cloud note and send the link. Guests join from the browser with a name, without an account, and everyone edits at once. On a team note, the members who have it open edit along without the link. |
 | **Who is here** | On a cloud note, small avatars show who has it open now, people and the AI agents working on it with a token, and who edited it last. |
-| **AI over MCP** | Claude or any MCP client can list, read, write, append to, move and search your cloud notes, read their history, and keep kanban boards: create one, add cards and move them by id. Each write returns a link that opens the note in the app. A token can be limited to one folder, and only a token created with the sharing permission can share notes or create public links. A comment on a block tells the AI what to change, and Settings has a ready message to paste into your AI: with it the agent documents the project in one folder (README, architecture, features, epics, decisions, log) and keeps a task board you can follow (To do, In progress, Paused, Done). The template "Project workspace" creates the same structure without an AI. |
+| **AI over MCP** | Claude or any MCP client can list, read, write, append to, edit in place, move and search your cloud notes, check off a task, read their history, and keep kanban boards: create one, add cards and move them by id. Each write returns a link that opens the note in the app. A token can be limited to one folder, and only a token created with the sharing permission can share notes or create public links. A comment on a block tells the AI what to change, and Settings has a ready message to paste into your AI: with it the agent documents the project in one folder (README, architecture, features, epics, decisions, log) and keeps a task board you can follow (To do, In progress, Paused, Done). The template "Project workspace" creates the same structure without an AI. |
 | **Automations** | Signed webhooks when a note or a card changes (ready-made for Slack and Discord, JSON for Make, n8n, Activepieces and Zapier), secret inbound addresses that add text to a note or create a card, and a REST API with the same tokens as MCP. See [the API page](https://sharpmd.app/api.html). |
 | **Read aloud** | A tool you turn on in Settings → Tools. Reads the whole note, from a block or the selection, with the voices of your device. It marks the block and the sentence it is reading and keeps them in view, opens a collapsed section while it reads it and closes it again, says when a task is done, and announces code and diagrams instead of reading them. Buttons and counters of the app are never read. |
 | **Community** | In Settings → Tools: templates, themes and diagram palettes shared by people, each one reviewed before it is published. Add one and it works offline; share the open note as a template, your theme or a palette. Content only, never code. |
@@ -140,6 +140,8 @@ The first four Alt+Shift shortcuts can be changed at `chrome://extensions/shortc
 ## Saving
 
 A page cannot write to disk on its own, so the first time you save a file opened by double-click, SharpMD asks you to pick its folder. From then on every Markdown file inside saves straight to itself. Files and folders opened from the SharpMD page already carry that permission.
+
+When another program changes the open file, or an AI saves the open cloud note, SharpMD does not overwrite either side. With no unsaved edits it takes the new text and keeps your place on the page. With unsaved edits it merges the two, line by line, over the text as it was last loaded or saved: changes to different lines are both kept, a task checked on one side stays checked, and one step of undo goes back to your version. If both sides changed the same lines it asks what stays (keep both, use mine or use theirs) and saves nothing until you decide. The file is read again right before every save.
 
 ## Privacy
 
@@ -238,6 +240,7 @@ src/
   board.js        kanban boards (cards with attributes) and table formulas
   page.js         page settings kept in the front matter of the note
   fold.js         collapsible sections edited in place and folding by heading
+  merge.js        three-way merge of outside changes with unsaved edits, and the conflict dialog
   blocks.js       select several blocks, or items of one list, and act on them: copy, cut, move, wrap, new note
   automate.js     Settings → Automations and the guided setup, loaded on demand
   extras.js       files from the tree, images, replace, typewriter mode, HTML export
@@ -275,6 +278,7 @@ Two more scripts run by hand, outside `npm test`:
 - `node tools.mjs` covers presentation mode, the daily note, Word export and the link map (`ONLY=docx` runs one). `KEEP_DOCX=path ONLY=docx node tools.mjs` leaves the generated file there to open it by hand.
 - `node jsonyaml.mjs` covers the JSON and YAML tree and plain `.txt` files (`ONLY=yaml` runs one part).
 - `node fold.mjs` covers collapsible sections (insert, title, wrap, nesting, export) and folding by heading.
+- `node merge.mjs` covers merging instead of overwriting: the three-way merge on its own, a file on disk that changes outside with and without unsaved edits, the conflict dialog, paused auto-save, a cloud note in two browsers, and the MCP tools that edit a note in place.
 - `node blocks.mjs` covers selecting several blocks (mouse, keyboard, touch) and every action on them.
 - `node items.mjs` covers selecting list items and acting on them, neighbouring lists that must stay apart, pasting across tabs, and the cost of dragging in a long note.
 - `node import.mjs` covers Import to Markdown: each format, progress, cancelling, limits, hostile files and the extension page (`ONLY=pdf` runs one part).

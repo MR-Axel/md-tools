@@ -99,7 +99,7 @@ try {
   check('MCP: initialize', init.json.result.serverInfo.name === 'sharpmd' && !!init.json.result.capabilities.tools, init.json);
   check('MCP: las notificaciones no llevan respuesta', (await call('POST', '/mcp', { jsonrpc: '2.0', method: 'notifications/initialized' }, t)).status === 202);
   const tools = await call('POST', '/mcp', { jsonrpc: '2.0', id: 2, method: 'tools/list' }, t);
-  check('MCP: lista las herramientas de un token sin permiso de compartir, con la guía y las de tablero', tools.json.result.tools.map((x) => x.name).join() === 'list_notes,list_folders,read_note,write_note,append_note,search_notes,list_comments,resolve_comment,move_note,note_history,get_guide,list_boards,create_board,add_card,move_card,update_card,delete_card' && tools.json.result.tools.every((x) => x.description.length > 20 && !/[!¡—–]/.test(x.description)), tools.json);
+  check('MCP: lista las herramientas de un token sin permiso de compartir, con la guía y las de tablero', tools.json.result.tools.map((x) => x.name).join() === 'list_notes,list_folders,read_note,write_note,append_note,edit_note,set_task,search_notes,list_comments,resolve_comment,move_note,note_history,get_guide,list_boards,create_board,add_card,move_card,update_card,delete_card' && tools.json.result.tools.every((x) => x.description.length > 20 && !/[!¡—–]/.test(x.description)), tools.json);
   const tool = (name, args, id) => call('POST', '/mcp', { jsonrpc: '2.0', id: id || 9, method: 'tools/call', params: { name, arguments: args } }, t);
   await tool('write_note', { path: 'ia/resumen.md', text: '# Resumen\n\nEscrito por la IA.' });
   await tool('append_note', { path: 'ia/resumen.md', text: 'Segunda parte.' });

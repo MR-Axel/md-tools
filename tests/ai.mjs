@@ -264,7 +264,10 @@ try {
   check('con un token limitado a una carpeta, pending.md va en esa carpeta', old.includes('proyecto/docs/pending.md'));
   check('con un token limitado a una carpeta, esa carpeta es la del proyecto y el tablero va ahí', old.includes('The project folder is proyecto/docs/, the one this token reaches.') && old.includes('proyecto/docs/board.md') && !old.includes('<project>') && !old.includes('ask me once'), sect(old, 'Document the project'));
   const words = msg.split(/\s+/).filter(Boolean).length;
-  check('el mensaje completo sigue siendo corto: menos de 1250 palabras', words < 1250, words);
+  check('el mensaje completo sigue siendo corto: menos de 1320 palabras', words < 1320, words);
+  // Unir, no pisar: la persona edita las mismas notas y archivos mientras la IA trabaja.
+  const care = sect(msg, 'Change notes without overwriting me');
+  check('trae las reglas para no pisar a la persona: leer justo antes, herramientas puntuales, no destildar ni borrar, unir, y lo mismo con archivos locales', care.split('\n').length === 7 && ['I edit the same notes and files while you work, and I tick tasks in them.', 'Read a note right before you change it.', 'Prefer edit_note, set_task, append_note and the board tools over write_note.', 'pass base_rev from read_note', 'Never untick or delete what I ticked or wrote.', 'merge it. Do not overwrite it.', 'local files: read the file again right before each edit and make small edits. Never rewrite the whole file.'].every((x) => care.includes(x)) && sober(care), care);
   check('y con el permiso, que puede compartir y crear enlaces solo cuando se lo piden', /share_note/.test(msg) && /create_public_link/.test(msg) && /only when I ask/.test(msg) && !/cannot share/.test(msg));
   await app.locator('.lmd-tokens li').first().locator('[data-brief]').click(); await app.waitForFunction(() => window.__copied.length === 3);
   const again = await copied(); const saySent = await app.textContent('[data-acct=ai] .lmd-acct-msg');

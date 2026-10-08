@@ -478,7 +478,7 @@
         const copy = await copyOf(path);
         if (copy && !copy.pending && copy.text !== n.text) await keep(path, n.text, n.text, false);
         // rev viaja con el texto: quien lo toma como base guarda después sobre esa revisión.
-        return { text: async () => n.text, lastModified: n.updated, size: n.text.length, rev: n.rev };
+        return { text: async () => n.text, lastModified: n.updated, size: n.text.length, rev: n.rev, edited: n.edited || null };
       },
       createWritable: async () => { let data = ''; return { write: async (t) => { data = String(t); }, close: async () => { await putNote(path, data); listCache = null; await keep(path, data, data, false); } }; },
     };

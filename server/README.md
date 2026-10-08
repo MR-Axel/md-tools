@@ -229,9 +229,9 @@ The email is short, plain text plus simple HTML, with no remote images and no tr
 | `GET /f/{id}` | No session: serves an attached image to whoever has its address |
 | `POST /mcp` | MCP over Streamable HTTP, with `Authorization: Bearer mdt_...`. On every plan. On the free plan it works over the notes that plan holds: a tool that would add a note past `FREE_NOTES` answers with an error that says so, and the sharing tools answer that sharing is part of the paid plan |
 
-MCP tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`, `move_note`, `note_history`, `get_guide`, `list_boards`, `create_board`, `add_card`, `move_card`, `update_card`, `delete_card`.
+MCP tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `edit_note`, `set_task`, `search_notes`, `list_comments`, `resolve_comment`, `move_note`, `note_history`, `get_guide`, `list_boards`, `create_board`, `add_card`, `move_card`, `update_card`, `delete_card`.
 
-`write_note`, `append_note` and `move_note` end their answer with `Open it: <url>`, the address that opens the note in the app. It is built from `APP_URL` as `?f=cloud/<path>`, the same address the app uses, so point `APP_URL` at the app your users open. Opened without a session, the app asks to sign in and then opens the note.
+`write_note`, `edit_note`, `set_task`, `append_note` and `move_note` end their answer with `Open it: <url>`, the address that opens the note in the app. It is built from `APP_URL` as `?f=cloud/<path>`, the same address the app uses, so point `APP_URL` at the app your users open. Opened without a session, the app asks to sign in and then opens the note.
 
 `read_note` returns the Markdown as it is stored: an attached image is the address of the image, and there is no tool that uploads one. From an automated flow, images go through `POST /api/v1/files`.
 
@@ -517,7 +517,10 @@ Every note has a revision number, `rev`. It starts at 1 and goes up by one with 
 - `PUT { text, rev }` saves only if `rev` is the current revision of the note. If someone saved in between, nothing is written and the answer is `409 rev_conflict` with the current `text`, `rev` and `updated`. The client merges and tries again over the new revision. The app merges by lines and, where both sides touched the same lines, keeps the saved text and puts the local one aside.
 - `PUT { text }` without `rev` saves as before, overwriting. That keeps an extension that has not been updated working. A note that does not exist yet is created either way.
 - `rev` must be a whole number, zero or more: anything else answers `400 bad_rev`.
-- `write_note` and `append_note` save over the revision that is current at that instant, in one step, so an AI never overwrites a save that came in between and never appends to an old text. Both are announced on `/events`, with `by: "mcp"`.
+- `append_note`, `edit_note`, `set_task` and the board tools read and save over the revision that is current at that instant, in one step, so an AI never overwrites a save that came in between and never changes an old text. They are announced on `/events`, with `by: "mcp"`.
+- `read_note` answers with two text blocks: the Markdown, and a line with the version of the note (its `rev`). `write_note` takes that number as `base_rev`. If the note is still at that version, it is replaced. If it changed, the server merges the text of the AI with the current one, line by line, over the version the AI read: changes to different lines are both kept, and in a task the checkbox and the text are merged apart, so a task the person checked stays checked. If both changed the same lines, nothing is saved and the answer is an error with the current text and its version. The version each token read is kept in memory, never the text of a note in a protected folder: after a restart, or for a protected note, a stale `base_rev` gets that same error.
+- `write_note` without `base_rev` replaces the note as before. If someone else saved it after the last time that token read it, the answer says so.
+- `edit_note { path, old_text, new_text }` replaces one passage, which must appear exactly once. `set_task { path, task, done, occurrence }` checks or unchecks one task found by its text, outside code blocks. Both leave the rest of the note untouched.
 
 ### Live sessions
 
@@ -752,6 +755,7 @@ Events: `note.created`, `note.updated`, `note.deleted`, `note.restored`, `note.m
 cd ../tests
 node server.mjs
 node revision.mjs
+node merge.mjs
 node live.mjs
 node team.mjs
 node teamvault.mjs

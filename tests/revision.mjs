@@ -161,16 +161,17 @@ try {
   check('los dos navegadores muestran lo mismo que el servidor', all(await shown(one.page)) && all(await shown(two.page)));
   check('y quedaron en "guardado"', /Saved to the cloud/.test(await one.page.textContent('.lmd-savestate')) && /Saved to the cloud/.test(await two.page.textContent('.lmd-savestate')));
 
-  // Los dos cambian el mismo párrafo a la vez: gana el que llegó primero y lo del otro queda aparte.
+  // Los dos cambian el mismo párrafo a la vez: entra el que llegó primero, y al otro se le pregunta qué queda.
   await typeIn(one.page, 'Segundo párrafo', ' VERSION-UNO', 0); await typeIn(two.page, 'Segundo párrafo', ' VERSION-DOS', 0);
   await Promise.all([leave(one.page), leave(two.page)]);
-  await Promise.all([settled(one.page), settled(two.page)]);
+  await Promise.race([one.page.waitForSelector('.lmd-mrg', { timeout: 20000 }), two.page.waitForSelector('.lmd-mrg', { timeout: 20000 })]);
   await sleep(1500);
   const clash = (await serverText()).text; const kept = /VERSION-UNO/.test(clash) ? 'UNO' : 'DOS'; const loser = kept === 'UNO' ? two : one; const other = kept === 'UNO' ? 'DOS' : 'UNO';
   check('los dos sobre el mismo párrafo: en el servidor queda una versión entera, no una mezcla rota', (/VERSION-UNO/.test(clash)) !== (/VERSION-DOS/.test(clash)) && /Segundo párrafo\. VERSION-(UNO|DOS)\n/.test(clash), clash);
-  const aside = await loser.page.evaluate(async () => (await LMD.store.notesAll()).map((n) => [n.name, n.text]));
-  check('la versión que no entró queda guardada aparte en el navegador de quien la escribió', aside.length === 1 && aside[0][1].includes('VERSION-' + other), aside);
-  check('y se le avisa', /kept aside/.test(await loser.page.textContent('.lmd-status')), await loser.page.textContent('.lmd-status'));
+  const asked = await loser.page.evaluate(() => { const b = document.querySelector('.lmd-mrg'); return b ? { texts: [...b.querySelectorAll('.lmd-mrg-text')].map((n) => n.textContent), state: document.querySelector('.lmd-savestate').textContent } : null; });
+  check('a quien no entró se le pregunta qué queda, con las dos versiones a la vista, y mientras tanto no se guarda', !!asked && asked.texts.length === 2 && asked.texts[0].includes('VERSION-' + other) && asked.texts[1].includes('VERSION-' + kept) && /Saving paused/.test(asked.state), asked);
+  check('y nada quedó aparte ni se perdió: la decisión es suya', (await loser.page.evaluate(async () => (await LMD.store.notesAll()).length)) === 0 && (await serverText()).text === clash);
+  await loser.page.click('.lmd-mrg [data-mrg=theirs]'); await loser.page.waitForSelector('.lmd-mrg', { state: 'detached' });
   await loser.page.waitForFunction((k) => document.querySelector('.lmd-article').innerText.includes('VERSION-' + k), kept, { timeout: 15000 });
   check('los dos terminan mostrando la versión que quedó', (await shown(one.page)).includes('VERSION-' + kept) && (await shown(two.page)).includes('VERSION-' + kept));
 
