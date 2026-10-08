@@ -7,7 +7,7 @@ import { rig, tally, sleep, typeIn, leave } from './rig.mjs';
 import { createHmac, randomBytes } from 'crypto';
 import http from 'http'; import fs from 'fs'; import os from 'os'; import path from 'path';
 
-const SECRET = 'firma-de-prueba'; const BASE = 'pri_prueba_equipo_base'; const SEAT = 'pri_prueba_equipo_lugar'; const KEY = 'clave-de-api-de-prueba';
+const SECRET = 'firma-de-prueba'; const TEAM = 'pri_prueba_equipo'; const TEAM_PAID = 'pri_prueba_equipo_sin_prueba'; const KEY = 'clave-de-api-de-prueba';
 const PORTAL = 'https://portal.ejemplo.test';
 // La API de Paddle, falsa: anota cada pedido y responde bien, salvo que se le pida fallar.
 const paddleCalls = []; let paddleFails = false;
@@ -21,7 +21,7 @@ const fakeMail = http.createServer((req, res) => { let raw = ''; req.on('data', 
 await new Promise((r) => fakePaddle.listen(0, '127.0.0.1', r)); await new Promise((r) => fakeMail.listen(0, '127.0.0.1', r));
 const DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'mdteam-'));
 
-const R = await rig({ PADDLE_WEBHOOK_SECRET: SECRET, PADDLE_TEAM_BASE: BASE, PADDLE_TEAM_SEAT: SEAT, PADDLE_API_KEY: KEY, PADDLE_API_URL: 'http://127.0.0.1:' + fakePaddle.address().port,
+const R = await rig({ PADDLE_WEBHOOK_SECRET: SECRET, PADDLE_PRICE_TEAM: TEAM, PADDLE_PRICE_TEAM_NOTRIAL: TEAM_PAID, PADDLE_PRICE_MONTHLY: 'pri_prueba_mensual', PADDLE_PRICE_YEARLY: 'pri_prueba_anual', PADDLE_PRICE_LEGACY: 'pri_viejo_mensual, pri_viejo_anual', PADDLE_API_KEY: KEY, PADDLE_API_URL: 'http://127.0.0.1:' + fakePaddle.address().port,
   CHECKOUT_TEAM: 'https://pago.ejemplo.test/pay.html?plan=team', CHECKOUT_MONTHLY: 'https://pago.ejemplo.test/pay.html?plan=monthly', PORTAL_URL: PORTAL, MAIL_WEBHOOK: 'http://127.0.0.1:' + fakeMail.address().port,
   TEAM_INVITES_DAY: '12', AUTH_PER_IP: '300', FREE_NOTES: '3', DATA_DIR: DATA, DATA_KEY: randomBytes(32).toString('base64'), APP_URL: 'https://app.ejemplo.test/' });
 const { check, done } = tally();
@@ -32,9 +32,12 @@ try {
   const acct = async (who) => (await api('GET', '/account', undefined, who.s)).json;
   let clock = Date.now() - 600000;
   const signed = async (ev) => { const raw = JSON.stringify(ev); const ts = Math.floor(Date.now() / 1000); const h1 = createHmac('sha256', SECRET).update(ts + ':' + raw).digest('hex'); const r = await fetch(R.base + '/paddle/webhook', { method: 'POST', headers: { 'paddle-signature': 'ts=' + ts + ';h1=' + h1 }, body: raw }); return { status: r.status, json: await r.json() }; };
-  // Un aviso de la suscripción de un equipo: el precio base y, con extra, el precio por lugar con esa cantidad.
-  const teamSub = (id, status, email, extra) => signed({ event_type: 'subscription.updated', occurred_at: new Date(clock += 1000).toISOString(),
-    data: Object.assign({ id, status, items: [{ price: { id: BASE, custom_data: { app: 'sharpmd' } }, quantity: 1 }].concat(extra ? [{ price: { id: SEAT, custom_data: { app: 'sharpmd' } }, quantity: extra }] : []) }, email ? { custom_data: { sharpmd_email: email } } : {}) });
+  // Un aviso de la suscripción de un equipo: un solo ítem con el precio del equipo (reconocido por su id, sin marca) y
+  // los lugares como cantidad: 2 más extra. more suma datos a la suscripción (data) o al ítem (item, price).
+  const teamSub = (id, status, email, extra, more) => signed({ event_type: 'subscription.updated', occurred_at: new Date(clock += 1000).toISOString(),
+    data: Object.assign({ id, status, items: [Object.assign({ price: (more && more.price) || { id: TEAM }, quantity: 2 + (extra || 0) }, more && more.item)] }, email ? { custom_data: { sharpmd_email: email } } : {}, more && more.data) });
+  // Una suscripción en prueba gratis, como la manda Paddle: el ítem dice hasta cuándo.
+  const DAY = 86400000; const trialOf = (days) => { const ends = new Date(Date.now() + days * DAY).toISOString(); return { ends: Date.parse(ends), item: { trial_dates: { starts_at: new Date().toISOString(), ends_at: ends } }, data: { next_billed_at: ends } }; };
   const soloSub = (id, status, email) => signed({ event_type: 'subscription.updated', occurred_at: new Date(clock += 1000).toISOString(), data: Object.assign({ id, status, items: [{ price: { id: 'pri_prueba_individual', custom_data: { app: 'sharpmd' } }, quantity: 1 }] }, email ? { custom_data: { sharpmd_email: email } } : {}) });
   const invite = (who, email, lang) => api('POST', '/team/invite', Object.assign({ email }, lang ? { lang } : {}), who.s);
   const pendingFor = async (who) => (await acct(who)).team.invites;
@@ -52,10 +55,10 @@ try {
   // ---------- Alta por el aviso de Paddle ----------
   console.log('Alta del equipo');
   const before = await acct(A);
-  check('con el cobro configurado la app ofrece el plan de equipo, con el enlace de pago a nombre de la cuenta', before.team.enabled === true && before.team.mine === null && before.team.checkout === 'https://pago.ejemplo.test/pay.html?plan=team&email=' + enc(A.email) && before.team.included === 2, before.team);
+  check('con el cobro configurado la app ofrece el plan de equipo, con el enlace de pago a nombre de la cuenta', before.team.enabled === true && before.team.mine === null && before.team.checkout === 'https://pago.ejemplo.test/pay.html?plan=team&email=' + enc(A.email) && before.team.min === 2 && before.team.max === 50 && before.team.trial === true && !('included' in before.team), before.team);
   const alta = await teamSub('sub_eq_1', 'active', A.email, 1);
   const a1 = await acct(A);
-  check('el aviso de la suscripción de equipo crea el equipo, con los lugares que trae (2 del base más 1)', alta.status === 200 && alta.json.seats === 3 && a1.team.mine && a1.team.mine.role === 'admin' && a1.team.mine.seats === 3 && a1.team.mine.used === 1 && a1.team.mine.active === true, [alta.json, a1.team]);
+  check('el aviso de la suscripción de equipo crea el equipo, con los lugares que trae: la cantidad de su ítem', alta.status === 200 && alta.json.seats === 3 && a1.team.mine && a1.team.mine.role === 'admin' && a1.team.mine.seats === 3 && a1.team.mine.used === 1 && a1.team.mine.active === true, [alta.json, a1.team]);
   check('quien paga tiene el plan pago por el equipo, sin plan individual', a1.plan === 'pro' && a1.own_plan === 'free' && a1.limit === null && a1.mcp === true && a1.share === true && a1.live === true, a1);
   check('y es quien administra la suscripción', a1.manage === PORTAL && a1.team.mine.billing === true, a1);
   const SPACE = a1.team.mine.space;
@@ -199,14 +202,14 @@ try {
   paddleCalls.length = 0;
   const up = await api('POST', '/team/seats', { seats: 5 }, A.s);
   const call = paddleCalls[0] || {};
-  check('subir los lugares cambia la suscripción en Paddle: el base y la cantidad de lugares adicionales, con prorrateo inmediato', up.status === 200 && up.json.seats === 5 && paddleCalls.length === 1 && call.method === 'PATCH' && call.url === '/subscriptions/sub_eq_1' && call.auth === 'Bearer ' + KEY &&
-    JSON.stringify(call.body) === JSON.stringify({ items: [{ price_id: BASE, quantity: 1 }, { price_id: SEAT, quantity: 3 }], proration_billing_mode: 'prorated_immediately' }), [up.json, call]);
+  check('subir los lugares cambia la suscripción en Paddle: el mismo precio con la cantidad nueva, con prorrateo inmediato', up.status === 200 && up.json.seats === 5 && paddleCalls.length === 1 && call.method === 'PATCH' && call.url === '/subscriptions/sub_eq_1' && call.auth === 'Bearer ' + KEY &&
+    JSON.stringify(call.body) === JSON.stringify({ items: [{ price_id: TEAM, quantity: 5 }], proration_billing_mode: 'prorated_immediately' }), [up.json, call]);
   check('y el equipo ya tiene esos lugares', (await acct(A)).team.mine.seats === 5 && up.json.team.mine.seats === 5);
   await invite(A, C.email); // ana, beto y una invitación pendiente: tres ocupados
   const low = await api('POST', '/team/seats', { seats: 2 }, A.s);
   check('no se puede bajar por debajo de los lugares ocupados, y Paddle no se entera', low.status === 409 && low.json.error === 'seats_in_use' && low.json.used === 3 && paddleCalls.length === 1 && (await acct(A)).team.mine.seats === 5, low.json);
   const down = await api('POST', '/team/seats', { seats: 3 }, A.s);
-  check('bajar hasta los ocupados sí', down.status === 200 && paddleCalls.length === 2 && JSON.stringify(paddleCalls[1].body.items) === JSON.stringify([{ price_id: BASE, quantity: 1 }, { price_id: SEAT, quantity: 1 }]), [down.json, paddleCalls[1]]);
+  check('bajar hasta los ocupados sí', down.status === 200 && paddleCalls.length === 2 && JSON.stringify(paddleCalls[1].body.items) === JSON.stringify([{ price_id: TEAM, quantity: 3 }]), [down.json, paddleCalls[1]]);
   let bad = 0; for (const n of [1, 0, -3, 2.5, '4', null, 5000]) { const r = await api('POST', '/team/seats', { seats: n }, A.s); if (r.status !== 400 || r.json.error !== 'bad_seats') bad++; }
   check('una cantidad de lugares que no sirve se rechaza sin llamar a Paddle', bad === 0 && paddleCalls.length === 2);
   paddleFails = true;
@@ -292,10 +295,66 @@ try {
   check('con la clave de administración se arma un equipo sin cobro: da el plan pago y no deja cambiar lugares desde la app', byHand.status === 200 && g1.plan === 'pro' && g1.team.mine.seats === 4 && g1.team.mine.billing === false && (await deny(api('POST', '/team/seats', { seats: 5 }, G.s))) === '409:no_billing', [byHand.json, g1.team]);
   check('sin la clave no', (await api('POST', '/admin/team', { email: G.email, seats: 9 }, undefined, { 'x-admin-key': 'otra' })).status === 403);
 
+  // ---------- Prueba gratis ----------
+  console.log('Prueba gratis');
+  const T1 = await R.signup('tania@ejemplo.test'); const T2 = await R.signup('ulises@ejemplo.test');
+  const tr = trialOf(14);
+  const fr_started = await teamSub('sub_tr_1', 'trialing', T1.email, 2, tr);
+  const t1 = await acct(T1);
+  check('una suscripción de equipo en prueba gratis cuenta como equipo al día, con los lugares de su cantidad', fr_started.status === 200 && fr_started.json.seats === 4 && t1.plan === 'pro' && t1.own_plan === 'free' && t1.team.mine.active === true && t1.team.mine.seats === 4 && t1.team.mine.billing === true, [fr_started.json, t1.team]);
+  check('y la app sabe hasta cuándo dura la prueba', t1.team.mine.trial_until === tr.ends, [t1.team.mine.trial_until, tr.ends]);
+  paddleCalls.length = 0;
+  const trSeats = await api('POST', '/team/seats', { seats: 6 }, T1.s);
+  check('durante la prueba, cambiar los lugares cambia la cantidad sin cobrar nada', trSeats.status === 200 && paddleCalls.length === 1 && paddleCalls[0].url === '/subscriptions/sub_tr_1' && JSON.stringify(paddleCalls[0].body) === JSON.stringify({ items: [{ price_id: TEAM, quantity: 6 }], proration_billing_mode: 'do_not_bill' }), paddleCalls);
+  const fr_paidNow = await teamSub('sub_tr_1', 'active', null, 4);
+  const t1b = await acct(T1);
+  check('cuando la prueba pasa a cobrada, el equipo sigue y ya no figura en prueba', fr_paidNow.json.seats === 6 && t1b.team.mine.active === true && !('trial_until' in t1b.team.mine) && t1b.plan === 'pro', [fr_paidNow.json, t1b.team.mine]);
+  const trSeats2 = await api('POST', '/team/seats', { seats: 5 }, T1.s);
+  check('y los lugares vuelven a cambiarse con prorrateo', trSeats2.status === 200 && paddleCalls.length === 2 && paddleCalls[1].body.proration_billing_mode === 'prorated_immediately' && paddleCalls[1].body.items[0].quantity === 5, paddleCalls[1]);
+  check('un miembro no ve nada de la prueba', await (async () => { const X = await R.signup('ximena@ejemplo.test'); await teamSub('sub_tr_x', 'trialing', X.email, 0, trialOf(14)); const Y = await R.signup('yago@ejemplo.test'); await invite(X, Y.email); await api('POST', '/team/accept', { id: (await pendingFor(Y))[0].id }, Y.s); const y = await acct(Y); return y.plan === 'pro' && y.team.trial === false && !('trial_until' in y.team.mine) && !/trial_until|sub_tr_x/.test(JSON.stringify(y)); })());
+  // La prueba termina sin pago: Paddle da de baja la suscripción y el equipo pierde el plan, como en cualquier baja.
+  const t2a = await acct(T2);
+  await teamSub('sub_tr_2', 'trialing', T2.email, 0, trialOf(14));
+  const fr_during = await acct(T2);
+  const fr_over = await teamSub('sub_tr_2', 'canceled', null, 0);
+  const t2 = await acct(T2);
+  check('al terminar la prueba sin pago el equipo pierde el plan y queda con su gente y sus notas', t2a.team.trial === true && fr_during.plan === 'pro' && fr_during.team.mine.trial_until > Date.now() && fr_over.json.ended === true && t2.plan === 'free' && t2.team.mine.active === false && !('trial_until' in t2.team.mine), [fr_over.json, t2.team.mine]);
+  // Una prueba por cuenta: el servidor lo recuerda, el enlace de pago lo dice y otra suscripción en prueba no da nada.
+  check('a esa cuenta ya no se le ofrece la prueba: los enlaces de pago llevan trial=0', t2.team.trial === false && t2.team.checkout === 'https://pago.ejemplo.test/pay.html?plan=team&email=' + enc(T2.email) + '&trial=0' && t2.checkout.monthly === 'https://pago.ejemplo.test/pay.html?plan=monthly&email=' + enc(T2.email) + '&trial=0', [t2.team.trial, t2.team.checkout, t2.checkout]);
+  const fr_again = await teamSub('sub_tr_3', 'trialing', T2.email, 3, trialOf(14));
+  const t2b = await acct(T2);
+  check('otra suscripción en prueba de la misma cuenta no le devuelve el plan', fr_again.status === 200 && fr_again.json.trial === 'used' && !fr_again.json.seats && t2b.plan === 'free' && t2b.team.mine.active === false && (await deny(api('POST', '/team/seats', { seats: 4 }, T2.s))) === '402:team_ended', [fr_again.json, t2b.team.mine]);
+  const fr_repeat = await teamSub('sub_tr_3', 'trialing', null, 3, trialOf(14));
+  check('ni aunque el aviso se repita', fr_repeat.json.trial === 'used' && (await acct(T2)).plan === 'free', fr_repeat.json);
+  const fr_charged = await teamSub('sub_tr_3', 'active', null, 3);
+  const t2c = await acct(T2);
+  check('recién con su primer cobro esa suscripción pone al equipo al día', fr_charged.json.seats === 5 && t2c.plan === 'pro' && t2c.team.mine.active === true && t2c.team.mine.seats === 5 && !('trial_until' in t2c.team.mine), [fr_charged.json, t2c.team.mine]);
+  const fr_first = await teamSub('sub_tr_1', 'trialing', null, 4, trialOf(3));
+  check('la misma suscripción que tuvo la prueba no se bloquea a sí misma', fr_first.json.seats === 6 && !fr_first.json.trial && (await acct(T1)).team.mine.active === true, fr_first.json);
+  await teamSub('sub_tr_1', 'active', null, 4);
+  // El precio del equipo también se reconoce por su marca, y los lugares se cambian con ese mismo precio.
+  const K = await R.signup('karen@ejemplo.test');
+  const fr_marked = await teamSub('sub_tr_k', 'active', K.email, 5, { price: { id: 'pri_otro_equipo', custom_data: { app: 'sharpmd', kind: 'team', cycle: 'monthly' } } });
+  paddleCalls.length = 0;
+  const kSeats = await api('POST', '/team/seats', { seats: 8 }, K.s);
+  check('un precio marcado kind: team arma el equipo, y sus lugares se cambian con ese precio', fr_marked.json.seats === 7 && (await acct(K)).own_plan === 'free' && kSeats.status === 200 && JSON.stringify(paddleCalls[0].body.items) === JSON.stringify([{ price_id: 'pri_otro_equipo', quantity: 8 }]), [fr_marked.json, paddleCalls[0]]);
+  const TP = await R.signup('pago-directo@ejemplo.test');
+  const fr_direct = await teamSub('sub_tr_p', 'active', TP.email, 0, { price: { id: TEAM_PAID } });
+  check('el precio de equipo sin prueba cuenta igual, y no gasta la prueba de la cuenta', fr_direct.json.seats === 2 && (await acct(TP)).team.mine.active === true && !('trial_until' in (await acct(TP)).team.mine), fr_direct.json);
+  // Los precios del plan pago: los vigentes y los anteriores se reconocen por su id; uno ajeno, no.
+  const soloBy = (id, status, email, price) => signed({ event_type: 'subscription.updated', occurred_at: new Date(clock += 1000).toISOString(), data: Object.assign({ id, status, items: [{ price: { id: price }, quantity: 1 }] }, email ? { custom_data: { sharpmd_email: email } } : {}) });
+  const L1 = await R.signup('lara@ejemplo.test'); const L2 = await R.signup('leo@ejemplo.test'); const L3 = await R.signup('lola@ejemplo.test');
+  const oldM = await soloBy('sub_viejo_m', 'active', L1.email, 'pri_viejo_mensual'); const oldY = await soloBy('sub_viejo_a', 'active', L2.email, 'pri_viejo_anual');
+  check('quien sigue suscripto a un precio anterior conserva el plan pago', oldM.json.plan === 'pro' && oldY.json.plan === 'pro' && (await acct(L1)).plan === 'pro' && (await acct(L2)).own_plan === 'pro' && (await acct(L1)).team.mine === null, [oldM.json, oldY.json]);
+  const fr_renew = await soloBy('sub_viejo_m', 'past_due', null, 'pri_viejo_mensual'); const oldEnd = await soloBy('sub_viejo_a', 'canceled', null, 'pri_viejo_anual');
+  check('sus renovaciones y su baja siguen andando', fr_renew.json.plan === 'pro' && oldEnd.json.plan === 'free' && (await acct(L2)).plan === 'free', [fr_renew.json, oldEnd.json]);
+  const newY = await soloBy('sub_nuevo_a', 'active', L3.email, 'pri_prueba_anual'); const fr_alien = await soloBy('sub_ajeno', 'active', L2.email, 'pri_de_otro_producto');
+  check('los precios vigentes dan el plan pago, y un precio que no es de SharpMD no da nada', newY.json.plan === 'pro' && (await acct(L3)).plan === 'pro' && fr_alien.json.ignored === 'product' && (await acct(L2)).plan === 'free', [newY.json, fr_alien.json]);
+
   // ---------- En el navegador ----------
   console.log('En el navegador');
   const O = await R.signup('olga@ejemplo.test'); const P = await R.signup('pedro@ejemplo.test'); const Q = await R.signup('quique@ejemplo.test', true);
-  await teamSub('sub_eq_n', 'active', O.email, 1);
+  await teamSub('sub_eq_n', 'trialing', O.email, 1, trialOf(14));
   const SP = (await acct(O)).team.mine.space; const NOTE = '# Plan\n\nPrimer párrafo.\n\nSegundo párrafo.\n\nTercer párrafo.\n';
   await api('PUT', '/notes/' + enc('plan.md') + '?o=' + SP, { text: NOTE }, O.s);
   const tUrl = (p, edit) => R.noteUrl('~' + SP + '/' + p, edit);
@@ -317,9 +376,10 @@ try {
 
   // Ajustes → Plan: la columna del equipo y la gestión de quien administra.
   await openPlan(olga.page);
-  const pane = await olga.page.evaluate(() => { const b = document.querySelector('.lmd-panel [data-acct=plan]'); return { cols: b.querySelectorAll('.lmd-plan').length, teamOn: !!b.querySelector('.lmd-plan-team.lmd-plan-on'), price: b.querySelector('.lmd-plan-team h4').textContent, text: b.querySelector('.lmd-team').innerText, invite: !!b.querySelector('[data-t=invite]'), seats: b.querySelector('.lmd-team-cost').textContent, manage: (b.querySelector('.lmd-team a.lmd-btn') || {}).href || '', all: b.innerText }; });
-  check('Plan muestra el equipo como tercera columna, con su precio, y es el plan actual', pane.cols === 3 && pane.teamOn && /Team\s+USD 7\.98 \/ month/.test(pane.price) && /2 people included, USD 3 for each extra one/.test(pane.all), pane);
-  check('quien administra ve miembros, lugares con su costo, invitar y el enlace para administrar el cobro', /olga@ejemplo\.test · Administrator/.test(pane.text) && /1 of 3 taken/.test(pane.text) && pane.invite && pane.seats === '3 seats: USD 10.98 a month' && pane.manage.startsWith(PORTAL), pane);
+  const pane = await olga.page.evaluate(() => { const b = document.querySelector('.lmd-panel [data-acct=plan]'); return { cols: b.querySelectorAll('.lmd-plan').length, teamOn: !!b.querySelector('.lmd-plan-team.lmd-plan-on'), price: b.querySelector('.lmd-plan-team h4').textContent, trial: (b.querySelector('[data-team=trial]') || {}).textContent || '', perSeat: (b.querySelector('[data-team=price]') || {}).textContent || '', text: b.querySelector('.lmd-team').innerText, invite: !!b.querySelector('[data-t=invite]'), seats: b.querySelector('.lmd-team-cost').textContent, manage: (b.querySelector('.lmd-team a.lmd-btn') || {}).href || '', all: b.innerText }; });
+  check('Plan muestra el equipo como tercera columna, con su precio, y es el plan actual', pane.cols === 3 && pane.teamOn && /Team\s+USD 5 \/ person/.test(pane.price) && /USD 5 per person a month, minimum 2/.test(pane.all) && !/included|extra one/.test(pane.all), pane);
+  check('mientras dura, quien paga ve hasta cuándo va la prueba gratis', /^Free trial until [A-Z][a-z]+ \d{1,2}$/.test(pane.trial) && pane.perSeat === 'USD 5 per person a month, minimum 2', [pane.trial, pane.perSeat]);
+  check('quien administra ve miembros, lugares con su costo, invitar y el enlace para administrar el cobro', /olga@ejemplo\.test · Administrator/.test(pane.text) && /1 of 3 taken/.test(pane.text) && pane.invite && pane.seats === '3 seats: USD 15 a month' && pane.manage.startsWith(PORTAL), pane);
   check('los textos del equipo no llevan signos de admiración ni rayas largas', !/[!¡—–]/.test(pane.all), pane.all);
   mails.length = 0;
   await olga.page.fill('.lmd-team [data-t=email]', P.email); await olga.page.click('.lmd-team [data-t=invite]');
@@ -332,16 +392,16 @@ try {
   paddleCalls.length = 0;
   await olga.page.click('.lmd-team-seats [data-t=more]'); await olga.page.click('.lmd-team-seats [data-t=more]');
   const preview = await olga.page.evaluate(() => ({ n: document.querySelector('.lmd-team-seats [data-t=n]').textContent, cost: document.querySelector('.lmd-team-cost').textContent, can: !document.querySelector('.lmd-team-seats [data-t=seats]').disabled }));
-  check('al cambiar los lugares se ve el costo que queda, antes de confirmar nada', preview.n === '5' && preview.cost === '5 seats: USD 16.98 a month' && preview.can && paddleCalls.length === 0, preview);
+  check('al cambiar los lugares se ve el costo que queda, antes de confirmar nada', preview.n === '5' && preview.cost === '5 seats: USD 25 a month' && preview.can && paddleCalls.length === 0, preview);
   await olga.page.click('.lmd-team-seats [data-t=less]'); await olga.page.click('.lmd-team-seats [data-t=less]'); await olga.page.click('.lmd-team-seats [data-t=less]'); await olga.page.click('.lmd-team-seats [data-t=less]');
-  check('no deja bajar de los lugares ocupados', (await olga.page.textContent('.lmd-team-seats [data-t=n]')) === '2' && (await olga.page.textContent('.lmd-team-cost')) === '2 seats: USD 7.98 a month');
+  check('no deja bajar de los lugares ocupados', (await olga.page.textContent('.lmd-team-seats [data-t=n]')) === '2' && (await olga.page.textContent('.lmd-team-cost')) === '2 seats: USD 10 a month');
   await olga.page.click('.lmd-team-seats [data-t=more]'); await olga.page.click('.lmd-team-seats [data-t=more]');
   await olga.page.click('.lmd-team-seats [data-t=seats]'); await olga.page.waitForSelector('.lmd-dlg');
   const ask = await olga.page.evaluate(() => document.querySelector('.lmd-dlg-card').innerText);
-  check('confirmar pasa por un diálogo propio que repite el costo', /Change to 4 seats\?/.test(ask) && /USD 13\.98 a month/.test(ask), ask);
+  check('confirmar pasa por un diálogo propio que repite el costo', /Change to 4 seats\?/.test(ask) && /USD 20 a month\. It is charged when the free trial ends\./.test(ask), ask);
   await olga.page.click('.lmd-dlg [data-dlg=ok]');
   await olga.page.waitForFunction(() => /2 of 4 taken/.test(document.querySelector('.lmd-team').innerText), null, { timeout: 10000 });
-  check('y cambia la suscripción', paddleCalls.length === 1 && paddleCalls[0].body.items[1].quantity === 2 && (await olga.page.textContent('.lmd-team-msg')) === 'Seats changed.', paddleCalls);
+  check('y cambia la suscripción', paddleCalls.length === 1 && paddleCalls[0].body.items.length === 1 && paddleCalls[0].body.items[0].quantity === 4 && paddleCalls[0].body.proration_billing_mode === 'do_not_bill' && (await olga.page.textContent('.lmd-team-msg')) === 'Seats changed.', paddleCalls);
   await closePanel(olga.page);
 
   // Pedro entra a la app: el aviso de la invitación, con aceptar y rechazar.
@@ -483,7 +543,7 @@ try {
   await carla.page.goto(R.noteUrl('suya.md')); await carla.page.waitForSelector('.lmd-article h1');
   await openPlan(carla.page);
   const offer = await carla.page.evaluate(() => { const b = document.querySelector('.lmd-panel [data-acct=plan]'); const t = b.querySelector('.lmd-plan-team'); return { on: t.classList.contains('lmd-plan-on'), pay: (t.querySelector('[data-pay=team]') || {}).href || '', label: (t.querySelector('[data-pay=team]') || {}).textContent, mgmt: !!b.querySelector('.lmd-team'), root: !!document.querySelector('[data-root=team]') }; });
-  check('quien no está en un equipo ve el plan de equipo como una opción más, con su enlace de pago y la dirección a la que volver', !offer.on && offer.pay.startsWith('https://pago.ejemplo.test/pay.html?plan=team&email=' + enc(C.email) + '&back=') && offer.label === 'USD 7.98 / month' && !offer.mgmt && !offer.root, offer);
+  check('quien no está en un equipo ve el plan de equipo como una opción más, con su enlace de pago y la dirección a la que volver', !offer.on && offer.pay.startsWith('https://pago.ejemplo.test/pay.html?plan=team&email=' + enc(C.email) + '&back=') && offer.label === 'Try free for 14 days' && !offer.mgmt && !offer.root, offer);
   // Sale a pagar y vuelve: la app espera a que el equipo exista (lo crea el aviso de Paddle) y recién ahí lo confirma.
   await carla.ctx.route((url) => url.hostname === 'pago.ejemplo.test', (r) => r.fulfill({ contentType: 'text/html', body: '<p>pago</p>' }));
   await carla.page.click('.lmd-plan-team [data-pay=team]'); await carla.page.waitForURL(/pago\.ejemplo\.test/);
@@ -506,38 +566,57 @@ try {
   await shop.ctx.route((url) => url.hostname === 'cdn.paddle.com', (r) => r.fulfill({ contentType: 'text/javascript', body: 'window.Paddle = { Initialize: function (o) { window.__init = o; }, Checkout: { open: function (o) { window.__open = o; } } };' }));
   const sections = () => shop.page.evaluate(() => [...document.querySelectorAll('main section')].filter((s) => !s.hidden).map((s) => s.id));
   const sideways = () => shop.page.evaluate(() => ({ over: document.documentElement.scrollWidth - innerWidth, out: [...document.querySelectorAll('main a, main button')].filter((n) => n.offsetParent).filter((n) => { const b = n.getBoundingClientRect(); return b.left < 0 || b.right > innerWidth; }).length }));
+  // Los precios del equipo que lleva la página se cambian acá por los de prueba: primero ninguno, como con el plan cerrado.
+  let payTeam = ''; let payPaid = '';
+  const realPay = fs.readFileSync(new URL('../pay.html', import.meta.url), 'utf8');
+  await shop.ctx.route((url) => url.pathname === '/pay.html', async (r) => { const res = await r.fetch(); const body = (await res.text()).replace(/var TEAM = \{ price: '[^']*', paid: '[^']*'/, "var TEAM = { price: '" + payTeam + "', paid: '" + payPaid + "'"); await r.fulfill({ response: res, body }); });
+  check('pay.html: lleva los precios vigentes, el del equipo, y ninguno de los anteriores', /monthly: \{ price: 'pri_01m4e773dzheygbxbswehb0kgm', amount: 'USD 4'/.test(realPay) && /yearly: \{ price: 'pri_01m4e773n8bx1qdn38s3e9zfd3', amount: 'USD 40'/.test(realPay) && /var TEAM = \{ price: 'pri_01m4e773tttxwpany1dbxc7y8y', paid: '', min: 2, max: 50, cents: 500/.test(realPay) && !/pri_01m4a2|3\.99|USD 39\b|7\.98|base:|included/.test(realPay));
   await shop.page.goto(R.origin + '/pay.html?plan=team&email=' + enc('ana@ejemplo.test')); await shop.page.waitForTimeout(300);
-  check('pay.html: mientras no estén cargados los precios del equipo, no ofrece pagarlo', (await sections()).join() === 'noteam' && !(await shop.page.evaluate(() => window.__open)));
+  check('pay.html: mientras no esté cargado el precio del equipo, no ofrece pagarlo', (await sections()).join() === 'noteam' && !(await shop.page.evaluate(() => window.__open)));
   await shop.page.goto(R.origin + '/pay.html?plan=monthly&email=' + enc('ana@ejemplo.test')); await shop.page.waitForTimeout(300);
-  check('pay.html: y el plan individual no lo menciona', (await sections()).join() === 'buy' && (await shop.page.evaluate(() => document.getElementById('team').hidden && document.getElementById('amount').textContent === 'USD 3.99')));
-  // Con los dos precios puestos en la página (acá, de prueba), el plan de equipo se arma con sus dos ítems.
-  await shop.ctx.route((url) => url.pathname === '/pay.html', async (r) => { const res = await r.fetch(); const body = (await res.text()).replace("var TEAM = { base: '', seat: ''", "var TEAM = { base: '" + BASE + "', seat: '" + SEAT + "'"); await r.fulfill({ response: res, body }); });
+  check('pay.html: y el plan individual no lo menciona', (await sections()).join() === 'buy' && (await shop.page.evaluate(() => document.getElementById('team').hidden && document.getElementById('amount').textContent === 'USD 4')));
+  // Con el precio puesto en la página (acá, de prueba), el plan de equipo se arma con un ítem y las personas como cantidad.
+  payTeam = TEAM;
   await shop.page.goto(R.origin + '/pay.html?plan=team&email=' + enc('ana@ejemplo.test')); await shop.page.waitForSelector('#buy:not([hidden])');
-  const teamPay = await shop.page.evaluate(() => ({ title: document.querySelector('#buy h1').innerText.trim(), amount: document.getElementById('amount').textContent, cycle: document.getElementById('cycle').textContent, seats: document.getElementById('seats').textContent, less: document.getElementById('less').disabled, text: document.getElementById('buy').innerText, other: document.getElementById('other').textContent }));
-  check('pay.html: el plan de equipo muestra su precio para 2 personas, mensual', teamPay.title === 'Team plan' && teamPay.amount === 'USD 7.98' && teamPay.cycle === 'a month' && teamPay.seats === '2' && teamPay.less && /USD 3 a month for each extra one/.test(teamPay.text) && /Individual plan: USD 3\.99 a month/.test(teamPay.other) && !/[!¡—–]/.test(teamPay.text), teamPay);
+  const teamPay = await shop.page.evaluate(() => ({ title: document.querySelector('#buy h1').innerText.trim(), amount: document.getElementById('amount').textContent, cycle: document.getElementById('cycle').textContent, seats: document.getElementById('seats').textContent, less: document.getElementById('less').disabled, go: document.getElementById('go').innerText.trim(), text: document.getElementById('buy').innerText, other: document.getElementById('other').textContent }));
+  check('pay.html: el plan de equipo muestra su precio por persona, desde 2, con la prueba gratis', teamPay.title === 'Team plan' && teamPay.amount === 'USD 10' && teamPay.cycle === 'a month' && teamPay.seats === '2' && teamPay.less && /USD 5 per person a month, from 2 people\./.test(teamPay.text) && /Free for the first 14 days\./.test(teamPay.text) && teamPay.go === 'Start the free trial' && /Individual plan: USD 4 a month/.test(teamPay.other) && !/[!¡—–]/.test(teamPay.text), teamPay);
   check('pay.html: entra en el ancho de un teléfono', (await sideways()).over <= 0 && (await sideways()).out === 0, await sideways());
   await shop.page.click('#go');
   const forTwo = await shop.page.evaluate(() => window.__open);
-  check('pay.html: para 2 personas el checkout lleva solo el precio base, a nombre de la cuenta', JSON.stringify(forTwo.items) === JSON.stringify([{ priceId: BASE, quantity: 1 }]) && forTwo.customData.sharpmd_email === 'ana@ejemplo.test' && forTwo.customer.email === 'ana@ejemplo.test', forTwo);
+  check('pay.html: para 2 personas el checkout lleva el precio del equipo con cantidad 2, a nombre de la cuenta', JSON.stringify(forTwo.items) === JSON.stringify([{ priceId: TEAM, quantity: 2 }]) && forTwo.customData.sharpmd_email === 'ana@ejemplo.test' && forTwo.customer.email === 'ana@ejemplo.test', forTwo);
   await shop.page.click('#more'); await shop.page.click('#more'); await shop.page.click('#more');
-  check('pay.html: al sumar personas el precio se actualiza', (await shop.page.textContent('#amount')) === 'USD 16.98' && (await shop.page.textContent('#seats')) === '5');
+  check('pay.html: al sumar personas el precio se actualiza', (await shop.page.textContent('#amount')) === 'USD 25' && (await shop.page.textContent('#seats')) === '5');
   await shop.page.click('#go');
   const five = await shop.page.evaluate(() => window.__open);
-  check('pay.html: y el checkout suma el precio por lugar con esa cantidad', JSON.stringify(five.items) === JSON.stringify([{ priceId: BASE, quantity: 1 }, { priceId: SEAT, quantity: 3 }]), five.items);
+  check('pay.html: y el checkout lleva el mismo precio con esa cantidad', JSON.stringify(five.items) === JSON.stringify([{ priceId: TEAM, quantity: 5 }]), five.items);
+  await shop.page.evaluate(() => { for (let i = 0; i < 60; i++) document.getElementById('more').click(); });
+  check('pay.html: no pasa de 50 personas', (await shop.page.textContent('#seats')) === '50' && (await shop.page.textContent('#amount')) === 'USD 250' && (await shop.page.evaluate(() => document.getElementById('more').disabled)));
+  // Quien ya tuvo su prueba gratis llega con trial=0: sin un precio sin prueba, la página no abre el cobro.
+  await shop.page.evaluate(() => { window.__open = null; });
+  await shop.page.goto(R.origin + '/pay.html?plan=team&trial=0&email=' + enc('ana@ejemplo.test')); await shop.page.waitForSelector('#tried:not([hidden])');
+  const tried = await shop.page.evaluate(() => ({ text: document.getElementById('tried').innerText, mail: document.querySelector('#tried a[href^="mailto:"]').getAttribute('href'), go: document.getElementById('go').offsetParent !== null, open: !!window.__open }));
+  check('pay.html: a quien ya tuvo su prueba gratis no se la ofrece de nuevo', (await sections()).join() === 'tried' && /already had its free trial/.test(tried.text) && tried.mail === 'mailto:hello@sharpmd.app' && !tried.go && !tried.open && !/[!¡—–]/.test(tried.text) && (await sideways()).over <= 0, tried);
+  payPaid = TEAM_PAID;
+  await shop.page.goto(R.origin + '/pay.html?plan=team&trial=0&email=' + enc('ana@ejemplo.test')); await shop.page.waitForSelector('#buy:not([hidden])');
+  await shop.page.click('#more'); await shop.page.click('#go');
+  const noTrial = await shop.page.evaluate(() => ({ items: window.__open.items, go: document.getElementById('go').innerText.trim(), trial: document.getElementById('trial').hidden, other: document.getElementById('other').getAttribute('href') }));
+  check('pay.html: y con un precio sin prueba, paga desde el primer día con ese precio', JSON.stringify(noTrial.items) === JSON.stringify([{ priceId: TEAM_PAID, quantity: 3 }]) && noTrial.go === 'Pay with card' && noTrial.trial && /&trial=0/.test(noTrial.other), noTrial);
+  payPaid = '';
+  await shop.page.goto(R.origin + '/pay.html?plan=yearly&trial=0&email=' + enc('ana@ejemplo.test')); await shop.page.waitForSelector('#buy:not([hidden])');
+  check('pay.html: trial=0 viaja del plan individual al de equipo', (await shop.page.evaluate(() => document.getElementById('amount').textContent + ' ' + document.getElementById('team').getAttribute('href'))) === 'USD 40 pay.html?plan=team&email=ana%40ejemplo.test&trial=0');
   await shop.page.goto(R.origin + '/pay.html?plan=monthly&email=' + enc('ana@ejemplo.test')); await shop.page.waitForSelector('#buy:not([hidden])');
   const cross = await shop.page.evaluate(() => ({ hidden: document.getElementById('team').hidden, href: document.getElementById('team').getAttribute('href'), text: document.getElementById('team').innerText }));
-  check('pay.html: desde el plan individual se llega al de equipo', !cross.hidden && /^pay\.html\?plan=team&email=ana%40ejemplo\.test$/.test(cross.href) && /Team plan: USD 7\.98 a month for 2 people/.test(cross.text) && (await sideways()).out === 0, cross);
+  check('pay.html: desde el plan individual se llega al de equipo', !cross.hidden && /^pay\.html\?plan=team&email=ana%40ejemplo\.test$/.test(cross.href) && /Team plan: USD 5 per person a month/.test(cross.text) && (await sideways()).out === 0, cross);
   // La portada, en inglés y en castellano, en teléfono y en escritorio.
   const plansOf = (page) => page.evaluate(() => ({ plans: [...document.querySelectorAll('#plans .plan')].map((p) => ({ name: p.querySelector('h3').textContent, price: p.querySelector('.price').textContent.replace(/\s+/g, ' ').trim(), left: Math.round(p.getBoundingClientRect().left), top: Math.round(p.getBoundingClientRect().top), right: Math.round(p.getBoundingClientRect().right) })), over: document.documentElement.scrollWidth - innerWidth, w: innerWidth, text: document.querySelector('#plans').innerText }));
   await shop.page.goto(R.origin + '/index.html?site'); await shop.page.waitForSelector('#plans .plan');
   const landPhone = await plansOf(shop.page);
-  const teamOpen = /var TEAM = \{ base: '[^']+', seat: '[^']+'/.test(fs.readFileSync(new URL('../pay.html', import.meta.url), 'utf8'));
-  // Los precios que muestra la portada salen de un solo lugar (tools/build-site.mjs), con un interruptor entre los vigentes y los nuevos.
-  const newPricing = /const NEW_PRICING = true;/.test(fs.readFileSync(new URL('../tools/build-site.mjs', import.meta.url), 'utf8'));
-  const PRICE = newPricing ? { paid: /USD 40 a year/, paidAlt: /or USD 4 a month/, team: 'USD 5 per person a month', teamEs: 'USD 5 por persona por mes', teamAlt: /From 2 people[\s\S]*Free for 14 days, no card needed/, teamAltEs: /Desde 2 personas[\s\S]*Gratis por 14 días, sin tarjeta/, gone: /3\.99|7\.98|USD 39\b/ }
-    : { paid: /USD 3\.99 a month/, paidAlt: /or USD 39 a year/, team: 'USD 7.98 a month', teamEs: 'USD 7.98 por mes', teamAlt: /2 people included, USD 3 for each extra one/, teamAltEs: /2 personas incluidas, USD 3 por cada una más/, gone: /USD 40\b|USD 4 a month|USD 5 per person/ };
-  // La portada muestra el plan de equipo cuando su cobro está abierto (los dos precios cargados en pay.html).
-  if (teamOpen) check('portada: el plan de equipo es la tercera columna, y en un teléfono las tres quedan una debajo de otra sin desbordar', landPhone.plans.length === 3 && landPhone.plans[2].name === 'Team' && landPhone.plans[2].price === PRICE.team && new Set(landPhone.plans.map((p) => p.left)).size === 1 && landPhone.plans.every((p) => p.right <= landPhone.w) && landPhone.over <= 0 && PRICE.teamAlt.test(landPhone.text), landPhone.plans);
+  const teamOpen = /var TEAM = \{ price: '[^']+'/.test(realPay);
+  check('el plan de equipo está abierto: pay.html lleva su precio', teamOpen);
+  // Los precios que muestra la portada salen de un solo lugar (tools/build-site.mjs).
+  const PRICE = { paid: /USD 40 a year/, paidAlt: /or USD 4 a month/, team: 'USD 5 per person a month', teamEs: 'USD 5 por persona por mes', teamAlt: /From 2 people[\s\S]*Free for 14 days/, teamAltEs: /Desde 2 personas[\s\S]*Gratis por 14 días/, gone: /3[.,]99|7[.,]98|USD 39\b|included, USD|incluidas, USD/ };
+  // La portada muestra el plan de equipo cuando su cobro está abierto (el precio cargado en pay.html).
+  if (teamOpen) check('portada: el plan de equipo es la tercera columna, y en un teléfono las tres van en una fila que se desliza, sin desbordar la página', landPhone.plans.length === 3 && landPhone.plans[2].name === 'Team' && landPhone.plans[2].price === PRICE.team && new Set(landPhone.plans.map((p) => p.top)).size === 1 && landPhone.plans.every((p) => p.right - p.left <= landPhone.w) && landPhone.plans[0].left >= 0 && landPhone.over <= 0 && PRICE.teamAlt.test(landPhone.text), landPhone.plans);
   else check('portada sin el plan de equipo abierto: quedan los dos planes y no se lo nombra', landPhone.plans.length === 2 && !/Team|7\.98|per person/.test(landPhone.text) && landPhone.over <= 0, landPhone.plans);
   await shop.page.goto(R.origin + '/es/index.html?site'); await shop.page.waitForSelector('#plans .plan');
   const landEs = await plansOf(shop.page);
@@ -556,7 +635,7 @@ try {
   check('portada: los planes se comparan fila por fila, con las mismas filas en el mismo orden y a la misma altura', cmp.every((p) => p.rows.length >= 10 && p.rows.join('|') === freeP.rows.join('|') && p.tops.join() === freeP.tops.join()), cmp.map((p) => [p.rows.length, p.tops.slice(0, 3)]));
   check('portada: lo que el plan gratis no incluye figura como ausente, y el pago lo trae', ['Sharing and public links', 'Live sessions by link', 'Publish a site', 'API, webhooks and inbound addresses', 'Version history', 'Colors, fonts and your own CSS'].every((r) => freeP.off.includes(r) && !paidP.off.includes(r)) && /Built-in themes\s*12/.test(freeP.text) && ['The whole editor', 'Files and browser notes', 'The AI assistant with your own key', 'Notes in the cloud', 'Protected folders', 'Trash for 30 days', 'The MCP connection for your AI', 'Comments your AI resolves', 'Built-in themes'].every((r) => freeP.rows.includes(r) && !freeP.off.includes(r)) && /Notes in the cloud\s*10/.test(freeP.text) && /Notes in the cloud\s*No limit/.test(paidP.text) && !/[!¡—–]/.test(cmp.map((p) => p.text).join('')), [freeP.off, paidP.off]);
   const whole = await desk.page.evaluate(() => ({ text: document.body.innerText + ' ' + [...document.querySelectorAll('.faq')].map((d) => d.textContent).join(' '), faq: document.querySelector('.faq p').textContent, offers: JSON.parse(document.querySelector('script[type="application/ld+json"]').textContent).offers.map((o) => o.price), groups: [...document.querySelectorAll('#plans .plan')].map((p) => [...p.querySelectorAll('.rows li.grp')].map((li) => li.textContent.trim()).join('|')) }));
-  check('portada: los planes dicen la regla (lo del dispositivo es gratis, se paga lo del servidor), agrupan las filas así, y en toda la página hay un solo juego de precios', /on your device, is free/.test(whole.text) && whole.groups.every((g) => g === whole.groups[0] && /^On your device\|On our server\|Appearance/.test(g)) && !PRICE.gone.test(whole.text) && whole.offers[1] === (newPricing ? '4' : '3.99') && (newPricing ? /USD 40 a year or USD 4 a month/ : /USD 3\.99 a month or USD 39 a year/).test(whole.faq), [whole.groups, whole.offers, whole.faq.slice(0, 200)]);
+  check('portada: los planes dicen la regla (lo del dispositivo es gratis, se paga lo del servidor), agrupan las filas así, y en toda la página hay un solo juego de precios', /on your device, is free/.test(whole.text) && whole.groups.every((g) => g === whole.groups[0] && /^On your device\|On our server\|Appearance/.test(g)) && !PRICE.gone.test(whole.text) && whole.offers.join() === '0,4,5' && /USD 40 a year or USD 4 a month/.test(whole.faq), [whole.groups, whole.offers, whole.faq.slice(0, 200)]);
   check('portada: cada plan tiene su botón, el gratis abre la app y el pago la abre en los planes', freeP.cta === 'src/app.html' && paidP.cta === 'src/app.html#lmd-plans' && cmp.every((p) => p.label.length > 3) && (teamOpen ? cmp[2].cta === 'src/app.html#lmd-plans' : cmp.length === 2) && PRICE.paid.test(paidP.text) && PRICE.paidAlt.test(paidP.text) && /USD 0/.test(freeP.text), cmp.map((p) => [p.cta, p.label]));
   await desk.ctx.close();
 

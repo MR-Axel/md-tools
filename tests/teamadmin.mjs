@@ -12,7 +12,7 @@ const fakeMail = http.createServer((req, res) => { let raw = ''; req.on('data', 
 await new Promise((r) => fakeMail.listen(0, '127.0.0.1', r));
 const DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'mdadm-'));
 const PORTAL = 'https://portal.ejemplo.test';
-const R = await rig({ PADDLE_WEBHOOK_SECRET: 'firma', PADDLE_TEAM_BASE: 'pri_base', PADDLE_TEAM_SEAT: 'pri_lugar', PADDLE_API_KEY: 'clave', PADDLE_API_URL: 'http://127.0.0.1:9',
+const R = await rig({ PADDLE_WEBHOOK_SECRET: 'firma', PADDLE_PRICE_TEAM: 'pri_equipo', PADDLE_API_KEY: 'clave', PADDLE_API_URL: 'http://127.0.0.1:9',
   CHECKOUT_TEAM: 'https://pago.ejemplo.test/pay.html?plan=team', CHECKOUT_MONTHLY: 'https://pago.ejemplo.test/pay.html?plan=monthly', CHECKOUT_YEARLY: 'https://pago.ejemplo.test/pay.html?plan=yearly', PORTAL_URL: PORTAL,
   MAIL_WEBHOOK: 'http://127.0.0.1:' + fakeMail.address().port, AUTH_PER_IP: '300', DATA_DIR: DATA, DATA_KEY: randomBytes(32).toString('base64'), APP_URL: 'https://app.ejemplo.test/' });
 const { check, done } = tally();

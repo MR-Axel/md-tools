@@ -49,13 +49,14 @@
     <h1><span data-for="solo"><span lang="en">Paid plan</span><span lang="es">Plan pago</span></span><span data-for="team" hidden><span lang="en">Team plan</span><span lang="es">Plan de equipo</span></span></h1>
     <p class="price"><span id="amount"></span> <small id="cycle"></small></p>
     <p data-for="solo"><span lang="en">Unlimited cloud notes, image uploads, sharing, the API and webhooks, 30 days of version history, and colors, fonts and your own CSS.</span><span lang="es">Notas en la nube sin límite, subir imágenes, compartir, la API y los webhooks, 30 días de historial, y colores, tipografías y tu propio CSS.</span></p>
-    <p data-for="team" hidden><span lang="en">Everything in the paid plan for each person, and a shared space for the team notes with roles, team settings, an activity log and a year of version history. 2 people included, USD 3 a month for each extra one.</span><span lang="es">Todo lo del plan pago para cada persona y un espacio compartido para las notas del equipo, con papeles, ajustes del equipo, registro de actividad y un año de historial de versiones. 2 personas incluidas, USD 3 por mes por cada una más.</span></p>
+    <p data-for="team" hidden><span lang="en">Everything in the paid plan for each person, and a shared space for the team notes with roles, team settings, an activity log and a year of version history. USD 5 per person a month, from 2 people.</span><span lang="es">Todo lo del plan pago para cada persona y un espacio compartido para las notas del equipo, con papeles, ajustes del equipo, registro de actividad y un año de historial de versiones. USD 5 por persona por mes, desde 2 personas.</span></p>
+    <p data-for="team" id="trial" hidden><span lang="en">Free for the first 14 days.</span><span lang="es">Gratis los primeros 14 días.</span></p>
     <div class="seats" data-for="team" hidden><span><span lang="en">People</span><span lang="es">Personas</span></span><button type="button" id="less" aria-label="-">-</button><b id="seats" aria-live="polite">2</b><button type="button" id="more" aria-label="+">+</button></div>
     <div class="who"><small><span lang="en">For the account</span><span lang="es">Para la cuenta</span></small><span id="email"></span></div>
-    <button type="button" class="btn" id="go"><span lang="en">Pay with card</span><span lang="es">Pagar con tarjeta</span></button>
+    <button type="button" class="btn" id="go"><span data-go="pay"><span lang="en">Pay with card</span><span lang="es">Pagar con tarjeta</span></span><span data-go="trial" hidden><span lang="en">Start the free trial</span><span lang="es">Empezar la prueba gratis</span></span></button>
     <p class="fine agree"><span lang="en">By subscribing you agree to the <a href="terms.html" target="_blank" rel="noopener">Terms</a> and the <a href="refunds.html" target="_blank" rel="noopener">Refund policy</a>.</span><span lang="es">Al suscribirte aceptás los <a href="terms.html" target="_blank" rel="noopener">Términos</a> y la <a href="refunds.html" target="_blank" rel="noopener">Política de reembolsos</a>.</span></p>
     <a class="btn ghost" id="other" href="#"></a>
-    <a class="btn ghost" id="team" href="#" hidden><span lang="en">Team plan: USD 7.98 a month for 2 people</span><span lang="es">Plan de equipo: USD 7.98 por mes para 2 personas</span></a>
+    <a class="btn ghost" id="team" href="#" hidden><span lang="en">Team plan: USD 5 per person a month</span><span lang="es">Plan de equipo: USD 5 por persona por mes</span></a>
     <p class="fine" data-for="team" hidden><span lang="en">You invite people and change the number of seats from Settings, Plan.</span><span lang="es">Invitás a la gente y cambiás la cantidad de lugares desde Ajustes, Plan.</span></p>
     <p class="fine"><span lang="en">Paddle handles the payment and the receipt. Cancel whenever you want from the link in that receipt.</span><span lang="es">El pago y el recibo los maneja Paddle. Te das de baja cuando quieras desde el enlace de ese recibo.</span></p>
     <a class="back" data-back href="src/app.html"><span lang="en">Back to SharpMD without paying</span><span lang="es">Volver a SharpMD sin pagar</span></a>
@@ -64,6 +65,12 @@
   <section id="noteam" hidden>
     <h1><span lang="en">Team plan</span><span lang="es">Plan de equipo</span></h1>
     <p><span lang="en">The team plan is not open yet.</span><span lang="es">El plan de equipo todavía no está abierto.</span></p>
+    <a class="btn" data-back href="src/app.html"><span lang="en">Back to SharpMD</span><span lang="es">Volver a SharpMD</span></a>
+  </section>
+
+  <section id="tried" hidden>
+    <h1><span lang="en">Team plan</span><span lang="es">Plan de equipo</span></h1>
+    <p><span lang="en">This account already had its free trial. To start the team plan again, write to <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>.</span><span lang="es">Esta cuenta ya tuvo su prueba gratis. Para volver al plan de equipo, escribinos a <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>.</span></p>
     <a class="btn" data-back href="src/app.html"><span lang="en">Back to SharpMD</span><span lang="es">Volver a SharpMD</span></a>
   </section>
 
@@ -92,12 +99,13 @@
   if (window.top !== window.self) return;
   var TOKEN = 'live_a38899cc0a5afae1c88c5a0fd60';
   var PLANS = {
-    monthly: { price: 'pri_01m4a2ykw09jk7m71dr2a0gpng', amount: 'USD 3.99', en: 'a month', es: 'por mes' },
-    yearly: { price: 'pri_01m4a2ym1r61j0xkcvbh9xp84y', amount: 'USD 39', en: 'a year', es: 'por año' },
+    monthly: { price: 'pri_01m4e773dzheygbxbswehb0kgm', amount: 'USD 4', en: 'a month', es: 'por mes' },
+    yearly: { price: 'pri_01m4e773n8bx1qdn38s3e9zfd3', amount: 'USD 40', en: 'a year', es: 'por año' },
   };
-  // El plan de equipo: los ids de sus dos precios en Paddle (el base, que cubre a las personas incluidas, y el de
-  // cada lugar adicional). Mientras estén vacíos, esta página no ofrece el plan de equipo.
-  var TEAM = { base: '', seat: '', included: 2, max: 50, cents: 798, extra: 300, en: 'a month', es: 'por mes' };
+  // El plan de equipo: un solo precio en Paddle, por persona y por mes, con la cantidad = personas. Trae la prueba
+  // gratis. Con price vacío, esta página no ofrece el plan de equipo. paid es el id del mismo precio sin prueba, para
+  // quien ya tuvo la suya (llega con trial=0): mientras esté vacío, a esa cuenta se le dice que escriba.
+  var TEAM = { price: 'pri_01m4e773tttxwpany1dbxc7y8y', paid: '', min: 2, max: 50, cents: 500, en: 'a month', es: 'por mes' };
   var q = new URLSearchParams(location.search);
   var show = function (id) { document.getElementById(id).hidden = false; };
   // Adónde volver: la app manda su propia dirección en back. Solo vale si es de este mismo sitio o de la
@@ -111,7 +119,8 @@
     return '';
   })();
   var home = back || new URL('src/app.html', location.href).href;
-  var tail = back ? '&back=' + encodeURIComponent(back) : '';
+  // trial=0 (la cuenta ya tuvo su prueba gratis de equipo) viaja también de un plan al otro.
+  var tail = (q.get('trial') === '0' ? '&trial=0' : '') + (back ? '&back=' + encodeURIComponent(back) : '');
   document.querySelectorAll('[data-back]').forEach(function (a) { a.href = home; });
   document.querySelector('[data-paid]').href = home + '#lmd-paid';
   if (q.has('done')) {
@@ -124,12 +133,17 @@
   try { if (sessionStorage.getItem('sharpmd:store') === '1') { location.replace(home); return; } } catch (e) { /* sin almacenamiento */ }
   var email = (q.get('email') || '').trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { show('noemail'); return; }
-  var isTeam = q.get('plan') === 'team'; var teamOpen = !!(TEAM.base && TEAM.seat);
+  var isTeam = q.get('plan') === 'team'; var teamOpen = !!TEAM.price;
   if (isTeam && !teamOpen) { show('noteam'); return; }
-  var seats = TEAM.included;
-  var teamAmount = function () { var c = TEAM.cents + TEAM.extra * (seats - TEAM.included); return 'USD ' + (c / 100).toFixed(2); };
+  // La prueba gratis es una por cuenta: quien ya la tuvo llega con trial=0 y paga desde el primer día, si hay precio para eso.
+  var trial = isTeam && q.get('trial') !== '0';
+  if (isTeam && !trial && !TEAM.paid) { show('tried'); return; }
+  var seats = TEAM.min;
+  var teamAmount = function () { return 'USD ' + (TEAM.cents * seats / 100).toFixed(2).replace(/\.00$/, ''); };
   var key = q.get('plan') === 'yearly' ? 'yearly' : 'monthly'; var plan = isTeam ? TEAM : PLANS[key];
   document.querySelectorAll('[data-for]').forEach(function (n) { n.hidden = (n.getAttribute('data-for') === 'team') !== isTeam; });
+  document.getElementById('trial').hidden = !trial;
+  document.querySelectorAll('[data-go]').forEach(function (n) { n.hidden = (n.getAttribute('data-go') === 'trial') !== trial; });
   var lang = function () { return document.documentElement.getAttribute('data-lang') === 'es' ? 'es' : 'en'; };
   var amount = document.getElementById('amount'); amount.textContent = isTeam ? teamAmount() : plan.amount;
   document.getElementById('email').textContent = email;
@@ -144,7 +158,7 @@
   if (isTeam) {
     // Cuántas personas: el precio se actualiza en el lugar. Después se cambia desde la app.
     var less = document.getElementById('less'); var more = document.getElementById('more');
-    var step = function (d) { seats = Math.max(TEAM.included, Math.min(TEAM.max, seats + d)); document.getElementById('seats').textContent = seats; amount.textContent = teamAmount(); less.disabled = seats <= TEAM.included; more.disabled = seats >= TEAM.max; };
+    var step = function (d) { seats = Math.max(TEAM.min, Math.min(TEAM.max, seats + d)); document.getElementById('seats').textContent = seats; amount.textContent = teamAmount(); less.disabled = seats <= TEAM.min; more.disabled = seats >= TEAM.max; };
     less.addEventListener('click', function () { step(-1); }); more.addEventListener('click', function () { step(1); }); step(0);
   }
   paint(); document.addEventListener('click', function (e) { if (e.target.closest && e.target.closest('[data-set]')) setTimeout(paint, 0); });
@@ -154,7 +168,7 @@
     if (!window.Paddle) return;
     if (!ready) { Paddle.Initialize({ token: TOKEN }); ready = true; }
     Paddle.Checkout.open({
-      items: isTeam ? [{ priceId: TEAM.base, quantity: 1 }].concat(seats > TEAM.included ? [{ priceId: TEAM.seat, quantity: seats - TEAM.included }] : []) : [{ priceId: plan.price, quantity: 1 }],
+      items: [isTeam ? { priceId: trial ? TEAM.price : TEAM.paid, quantity: seats } : { priceId: plan.price, quantity: 1 }],
       customer: { email: email },
       customData: { sharpmd_email: email },
       settings: { displayMode: 'overlay', theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', locale: lang(), successUrl: location.origin + location.pathname + '?done=1' + tail },

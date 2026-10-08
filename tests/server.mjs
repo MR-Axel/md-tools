@@ -5,7 +5,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'mdsync-'));
 const PORT = 18000 + Math.floor(Math.random() * 400);
 const base = 'http://127.0.0.1:' + PORT;
-const child = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(PORT), DATA_DIR: data, DEV_CODES: '1', ADMIN_KEY: 'clave-de-prueba', TEST_LOGIN: 'revision@ejemplo.test:246810', PADDLE_WEBHOOK_SECRET: 'firma-de-prueba', PORTAL_URL: 'https://portal.ejemplo.test', FREE_NOTES: '3', ALLOW_ORIGINS: 'https://ejemplo.test', FEEDBACK_TO: 'duenio@ejemplo.test' }, stdio: ['ignore', 'pipe', 'pipe'] });
+const child = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(PORT), DATA_DIR: data, DEV_CODES: '1', ADMIN_KEY: 'clave-de-prueba', TEST_LOGIN: 'revision@ejemplo.test:246810', PADDLE_WEBHOOK_SECRET: 'firma-de-prueba', PADDLE_PRICE_MONTHLY: 'pri_mensual', PADDLE_PRICE_YEARLY: 'pri_anual', PADDLE_PRICE_LEGACY: 'pri_viejo_mensual,pri_viejo_anual', PORTAL_URL: 'https://portal.ejemplo.test', FREE_NOTES: '3', ALLOW_ORIGINS: 'https://ejemplo.test', FEEDBACK_TO: 'duenio@ejemplo.test' }, stdio: ['ignore', 'pipe', 'pipe'] });
 let log = ''; child.stdout.on('data', (d) => { log += d; }); child.stderr.on('data', (d) => { log += d; });
 for (let i = 0; i < 50 && !/puerto/.test(log); i++) await new Promise((r) => setTimeout(r, 100));
 
@@ -271,6 +271,28 @@ try {
   await paddle(sub('canceled'));
   check('Paddle: al cancelarse vuelve a gratis', (await call('GET', '/account', undefined, ps)).json.plan === 'free');
   check('Paddle: un aviso sin cuenta no rompe', (await paddle({ event_type: 'subscription.created', data: { id: 'sub_2', status: 'active', custom_data: { sharpmd_email: 'nadie@ejemplo.test' }, items: [{ price: { custom_data: { app: 'sharpmd' } } }] } })).json.ignored === 'user');
+  // Los precios por su id: los vigentes y los anteriores dan el plan pago aunque no lleven la marca; otro id, no.
+  const byId = (id, status, price, mail) => paddle({ event_type: 'subscription.updated', data: { id, status, items: [{ price: { id: price }, quantity: 1 }], ...(mail ? { custom_data: { sharpmd_email: mail } } : {}) } });
+  const planDe = async () => (await call('GET', '/account', undefined, ps)).json.plan;
+  const viejo = await byId('sub_viejo', 'active', 'pri_viejo_anual', 'pago@ejemplo.test'); const conViejo = await planDe();
+  const viejoBaja = await byId('sub_viejo', 'canceled', 'pri_viejo_anual');
+  check('Paddle: un precio anterior todavía se reconoce como plan pago, y su baja también', viejo.json.plan === 'pro' && conViejo === 'pro' && viejoBaja.json.plan === 'free' && (await planDe()) === 'free', [viejo.json, viejoBaja.json]);
+  const nuevo = await byId('sub_nuevo', 'active', 'pri_mensual', 'pago@ejemplo.test'); const conNuevo = await planDe(); await byId('sub_nuevo', 'canceled', 'pri_mensual');
+  const ajeno = await byId('sub_ajeno', 'active', 'pri_cualquiera', 'pago@ejemplo.test');
+  check('Paddle: los precios vigentes también, y un id que no está configurado no da nada', nuevo.json.plan === 'pro' && conNuevo === 'pro' && ajeno.json.ignored === 'product' && (await planDe()) === 'free', [nuevo.json, ajeno.json]);
+  // El equipo: un precio marcado kind: team, con los lugares como cantidad. En prueba gratis cuenta como al día.
+  const eqCode = await call('POST', '/auth/start', { email: 'equipo@ejemplo.test' }); const eqSes = (await call('POST', '/auth/verify', { email: 'equipo@ejemplo.test', code: eqCode.json.dev_code })).json.session;
+  const finPrueba = new Date(Date.now() + 14 * 86400000).toISOString();
+  const eq = (id, status, quantity, mail) => paddle({ event_type: 'subscription.updated', data: { id, status, next_billed_at: status === 'trialing' ? finPrueba : null, items: [{ price: { id: 'pri_equipo', custom_data: { app: 'sharpmd', kind: 'team', cycle: 'monthly' } }, quantity, ...(status === 'trialing' ? { trial_dates: { ends_at: finPrueba } } : {}) }], ...(mail ? { custom_data: { sharpmd_email: mail } } : {}) } });
+  const equipoDe = async () => (await call('GET', '/account', undefined, eqSes)).json;
+  const enPrueba = await eq('sub_eq', 'trialing', 3, 'equipo@ejemplo.test'); const e1 = await equipoDe();
+  check('Paddle: la suscripción de equipo en prueba arma el equipo con los lugares de su cantidad, y da el plan', enPrueba.json.seats === 3 && e1.plan === 'pro' && e1.own_plan === 'free' && e1.team.mine.seats === 3 && e1.team.mine.active === true && e1.team.mine.trial_until === Date.parse(finPrueba), [enPrueba.json, e1.team.mine]);
+  const crece = await eq('sub_eq', 'active', 5); const e2 = await equipoDe();
+  check('Paddle: al cobrarse sigue, con la cantidad nueva y ya sin prueba', crece.json.seats === 5 && e2.team.mine.seats === 5 && !('trial_until' in e2.team.mine) && e2.plan === 'pro', [crece.json, e2.team.mine]);
+  const finEq = await eq('sub_eq', 'canceled', 5); const e3 = await equipoDe();
+  check('Paddle: al cancelarse el equipo pierde el plan y conserva a su gente', finEq.json.ended === true && e3.plan === 'free' && e3.team.mine.active === false && e3.team.mine.members.length === 1, [finEq.json, e3.team.mine]);
+  const otraPrueba = await eq('sub_eq_2', 'trialing', 2, 'equipo@ejemplo.test');
+  check('Paddle: otra prueba gratis para la misma cuenta no le devuelve el plan', otraPrueba.json.trial === 'used' && (await equipoDe()).plan === 'free', otraPrueba.json);
   // Correo bien formado: lo que antes pasaba con cualquier cosa con una arroba y un punto
   const mailOk = async (mail) => (await call('POST', '/auth/start', { email: mail })).status;
   const malos = ['sin-arroba.test', 'dos@@ejemplo.test', 'con espacio@ejemplo.test', 'ana@ejemplo', 'ana@ejemplo..test', '.ana@ejemplo.test', 'ana.@ejemplo.test', 'ana@-ejemplo.test', 'ana@ejemplo.t', 'ana@ejemplo.123'];

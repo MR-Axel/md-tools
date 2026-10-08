@@ -44,8 +44,8 @@ try {
   check('con ?src=android LMD.storeApp es true y <html> lleva lmd-store-app', s.on === true && s.cls && s.kept === '1', s);
   await app.page.click('[data-act=settings]'); await app.page.waitForSelector('.lmd-panel:not([hidden])');
   check('adentro de la app no se ve el enlace de donación', await app.page.evaluate(() => { const l = document.querySelector('.lmd-ptabs-link'); return !!l && getComputedStyle(l).display === 'none'; }));
-  await app.page.evaluate(() => { const d = document.createElement('div'); d.className = 'lmd-plan'; d.innerHTML = '<h4>Paid <small>USD 3.99</small></h4><div class="lmd-plan-buy"><a data-pay="" href="#">x</a></div><a target="_blank" href="#">portal</a>'; d.id = 'probe'; document.body.appendChild(d); });
-  check('ni precios, botones de compra o el enlace al cobro', await app.page.evaluate(() => [...document.querySelectorAll('#probe small, #probe .lmd-plan-buy, #probe [data-pay], #probe > a')].every((n) => getComputedStyle(n).display === 'none')));
+  await app.page.evaluate(() => { const d = document.createElement('div'); d.className = 'lmd-plan'; d.innerHTML = '<h4>Paid <small>USD 40</small></h4><p class="lmd-price">USD 5 per person a month, minimum 2</p><div class="lmd-plan-buy"><a data-pay="" href="#">x</a></div><a target="_blank" href="#">portal</a>'; d.id = 'probe'; document.body.appendChild(d); });
+  check('ni precios, botones de compra o el enlace al cobro', await app.page.evaluate(() => [...document.querySelectorAll('#probe small, #probe .lmd-price, #probe .lmd-plan-buy, #probe [data-pay], #probe > a')].every((n) => getComputedStyle(n).display === 'none')));
   await app.page.evaluate(() => document.getElementById('probe').remove()); await app.page.click('[data-act=close-panel]');
   await app.page.goto(home.replace(/src\/app\.html.*$/, 'pay.html?plan=monthly&email=a%40b.test')); await app.page.waitForURL(/app\.html/);
   check('pay.html devuelve a la app sin abrir el cobro', /app\.html/.test(app.page.url()));

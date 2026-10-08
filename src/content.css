@@ -1415,7 +1415,7 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 @media print { .lmd-trash-link, .lmd-drop-caret { display: none !important; } }
 
 /* Dentro de la app de la tienda (Android) no se ofrece comprar, cambiar el cobro ni donar: el plan se ve, no se vende. */
-.lmd-store-app [data-cloud=plan], .lmd-store-app .lmd-plan-buy, .lmd-store-app [data-pay], .lmd-store-app .lmd-ptabs-link, .lmd-store-app .lmd-plan h4 small, .lmd-store-app .lmd-team-seats, .lmd-store-app .lmd-team-cost,
+.lmd-store-app [data-cloud=plan], .lmd-store-app .lmd-plan-buy, .lmd-store-app [data-pay], .lmd-store-app .lmd-ptabs-link, .lmd-store-app .lmd-plan h4 small, .lmd-store-app .lmd-price, .lmd-store-app .lmd-team-seats, .lmd-store-app .lmd-team-cost,
 .lmd-store-app .lmd-plan a[target="_blank"], .lmd-store-app .lmd-team a[target="_blank"], .lmd-store-app .lmd-team-solo a, .lmd-store-app .lmd-paywait { display: none !important; }
 
 /* Ajustes > IA: cada token lleva dos acciones (copiar las instrucciones y revocar) y, al crearlo, el permiso de compartir. */
