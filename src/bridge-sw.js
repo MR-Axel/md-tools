@@ -16,7 +16,7 @@
 
   // Preferencias que comparten los dos lados. El servidor, el plan y el CSS propio quedan de cada lado.
   const PREFS = ['language', 'theme', 'accent', 'centered', 'contentWidth', 'fontSize', 'fontFamily', 'lineHeight', 'wrapCode', 'autosave', 'autosaveDelay',
-    'codeColor', 'diagramShape', 'focusMode', 'typewriter', 'filesOnlyMarkdown', 'filesShowHidden', 'plugins', 'openIn'];
+    'codeColor', 'diagramShape', 'focusMode', 'typewriter', 'filesOnlyMarkdown', 'filesShowHidden', 'plugins', 'openIn', 'imageQuality'];
   const NAME_MAX = 200; const TEXT_MAX = 8e6; const LAST_MAX = 2000;
 
   // La misma huella que calcula src/bridge.js: largo y FNV-1a del texto.
@@ -56,6 +56,7 @@
       if (typeof v === 'number' && !isFinite(v)) return;
       if (typeof v === 'string' && v.length > 200) return;
       if (k === 'openIn' && v !== 'web' && v !== 'ext') return;
+      if (k === 'imageQuality' && v !== 'normal' && v !== 'high' && v !== 'original') return;
       out[k] = v;
     });
     return out;

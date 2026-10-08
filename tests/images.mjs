@@ -4,7 +4,7 @@
 // ninguna nota usa; pasar las incrustadas a adjuntos; la API con token, y el teléfono.
 import { rig, tally, sleep, root } from './rig.mjs';
 import { spawn } from 'child_process';
-import http from 'http'; import fs from 'fs'; import os from 'os'; import path from 'path'; import zlib from 'zlib';
+import http from 'http'; import net from 'net'; import fs from 'fs'; import os from 'os'; import path from 'path'; import zlib from 'zlib';
 
 const { check, done } = tally();
 const enc = encodeURIComponent;
@@ -156,7 +156,9 @@ try {
   const afterReload = await seen(A.page);
   check('al volver a abrir la nota la imagen se ve', !!afterReload && afterReload.length === 1 && afterReload[0].w > 0 && afterReload[0].src.includes('/f/'), afterReload || await shown(A.page));
   const used1 = await filesOf(ana.s);
-  check('la lista dice que está en uso y cuánto ocupa', used1.files[0].in_use === true && used1.used === used1.files[0].size && used1.max === 2048 * 1048576 && used1.max_file === 10 * 1048576, { used: used1.used, max: used1.max, f: used1.files[0] });
+  const freeDefaults = await filesOf((await R.signup('gratis-def@ejemplo.test', false)).s);
+  check('por defecto: gratis, 5 MB por imagen y 100 MB en total; pago, 20 MB y 5 GB', freeDefaults.max === 100 * 1048576 && freeDefaults.max_file === 5 * 1048576 && freeDefaults.max_gif === undefined && used1.max === 5120 * 1048576, [freeDefaults.max, freeDefaults.max_file, used1.max]);
+  check('la lista dice que está en uso y cuánto ocupa', used1.files[0].in_use === true && used1.used === used1.files[0].size && used1.max === 5120 * 1048576 && used1.max_file === 20 * 1048576, { used: used1.used, max: used1.max, f: used1.files[0] });
 
   // El diálogo de insertar imagen, con un archivo elegido.
   await prep(A.page);
@@ -255,6 +257,95 @@ try {
   const pubTry = await api('PUT', '/sites/' + site.id + '/pages', { pages: [{ note: 'web/inicio.md', rev: 1, html: '<p><img src="' + R.base + '/f/' + encId + '.enc" alt="cifrada"></p>' }] }, ana.s);
   check('ni entra en un sitio publicado', pubTry.status === 200 && !(await rawHost('pages.localhost:' + PORT, '/fotos-ana/')).body.includes(encId), pubTry.status);
 
+  // ---------- Proteger una carpeta que ya tenía imágenes, mover, quitar la protección ----------
+  console.log('Proteger con imágenes');
+  const p1 = (await upload(ana.s, png(60, 40, 0, 201))).json; const p2 = (await upload(ana.s, png(60, 40, 0, 202))).json;
+  // La dirección guardada puede tener otro origen que el que la app tiene configurado: vale la ruta /f/<id>.
+  const alias = (u) => u.replace(R.base, 'https://otro-nombre.ejemplo.test');
+  await api('PUT', '/notes/' + enc('album/uno.md'), { text: '# Uno\n\n![a](' + alias(p1.url) + ')\n\n![b|240](' + p2.url + ')\n\n![ajena](https://ejemplo.test/f/' + 'c'.repeat(40) + '.png)\n' }, ana.s);
+  await api('PUT', '/notes/' + enc('album/dos.md'), { text: '# Dos\n\n![a](' + p1.url + ')\n' }, ana.s);
+  await api('PUT', '/notes/' + enc('album/tres.md'), { text: '# Tres\n\nSin imágenes.\n' }, ana.s);
+  await api('PUT', '/notes/' + enc('fuera.md'), { text: '# Fuera\n\n![b](' + p2.url + ')\n' }, ana.s);
+  await A.page.goto(R.home); await A.page.waitForSelector('.lmd-home, .lmd-article');
+  // La primera pasada se corta en la segunda nota: queda a medias y se retoma.
+  let cutOnce = true;
+  await A.page.route((u) => /\/notes\/album%2Fdos\.md/.test(u.href), (route) => { if (cutOnce && route.request().method() === 'PUT') { cutOnce = false; return route.abort(); } return route.continue(); });
+  const firstPass = await A.page.evaluate(async () => {
+    const Z = LMD.seal; const K = Z.newKey(); const d = await Z.derive(K); const w = await Z.wrap(K, 'otra contraseña larga 2', 100000);
+    Z.hold({ check: d.check }, d.key); await Z.remember(LMD.cloud.email(), { check: d.check });
+    await LMD.cloud.vaultCreate(Object.assign({ folder: 'album', check: d.check }, w));
+    const vault = (await LMD.cloud.vaults(true)).find((v) => v.folder === 'album'); const steps = [];
+    try { await LMD.cloud.sealFolder(vault, (n, m) => steps.push(n + '/' + m)); return { ok: true, steps }; } catch (e) { return { ok: false, code: e.code, steps }; }
+  });
+  const midList = (await api('GET', '/notes', undefined, ana.s)).json.filter((n) => n.path.startsWith('album/'));
+  const midP1 = await status(p1.url);
+  check('si se corta a mitad de camino, lo hecho queda hecho y lo que falta sigue en claro', firstPass.ok === false && midList.filter((n) => n.v).length >= 1 && midList.filter((n) => !n.v).length >= 1, [firstPass, midList.map((n) => [n.path, n.v])]);
+  check('y una imagen que todavía usa una nota sin cifrar no se borra', midP1 === 200, midP1);
+  const secondPass = await A.page.evaluate(async () => { const vault = (await LMD.cloud.vaults(true)).find((v) => v.folder === 'album'); const steps = []; const n = await LMD.cloud.sealFolder(vault, (a, b) => steps.push(a + '/' + b)); return { n, steps, uno: (await LMD.cloud.read('album/uno.md')).text, dos: (await LMD.cloud.read('album/dos.md')).text }; });
+  await A.page.unroute((u) => /\/notes\/album%2Fdos\.md/.test(u.href)).catch(() => {});
+  const sealedAll = (await api('GET', '/notes', undefined, ana.s)).json.filter((n) => n.path.startsWith('album/'));
+  check('al retomar se cifra lo que faltaba, con su progreso', secondPass.n >= 1 && secondPass.steps.length >= 2 && secondPass.steps[secondPass.steps.length - 1] === secondPass.n + '/' + secondPass.n && sealedAll.every((n) => n.v === 1), [secondPass.n, secondPass.steps, sealedAll.map((n) => n.v)]);
+  const encOf = (t) => (t.match(/\/f\/[0-9a-f]{40}\.enc/g) || []).map((x) => x.slice(3, 43));
+  check('cada nota pasa a nombrar copias cifradas de sus imágenes, también la que tenía otro origen en la dirección, y conserva el tamaño', encOf(secondPass.uno).length === 2 && encOf(secondPass.dos).length === 1 && !/\/f\/[0-9a-f]{40}\.png\)\n\n!\[b/.test(secondPass.uno) && !secondPass.uno.includes(p1.id) && !secondPass.uno.includes(p2.id) && /!\[b\|240\]\(http[^)]*\.enc\)/.test(secondPass.uno) && secondPass.uno.includes('https://ejemplo.test/f/' + 'c'.repeat(40) + '.png'), secondPass.uno);
+  const afterP = [await status(p1.url), await status(p2.url)];
+  const filesNow = await filesOf(ana.s);
+  check('la copia en claro se borra en el acto si nadie fuera de la carpeta la usa, y queda si otra nota la usa', afterP[0] === 404 && afterP[1] === 200 && !filesNow.files.some((f) => f.id === p1.id) && filesNow.files.some((f) => f.id === p2.id), afterP);
+  const usedEnc = encOf(secondPass.uno).concat(encOf(secondPass.dos));
+  check('el servidor sabe qué imágenes cifradas usa cada nota, sin leerlas: figuran en uso', usedEnc.every((id) => { const f = filesNow.files.find((x) => x.id === id); return f && f.encrypted && f.in_use === true; }) && (await Promise.all(usedEnc.map((id) => status(R.base + '/f/' + id)))).every((s) => s === 404), usedEnc.map((id) => filesNow.files.find((x) => x.id === id)));
+  await A.page.goto(R.noteUrl('album/uno.md')); await A.page.waitForSelector('.lmd-article img');
+  const albumSeen = await until(async () => { const l = (await shown(A.page)).filter((i) => /\.enc$/.test(i.kept)); return l.length === 2 && l.every((i) => i.ok && i.src.startsWith('blob:')) ? l : null; }, 12000);
+  check('y la nota protegida muestra sus imágenes', !!albumSeen, await shown(A.page));
+  // Exportar una nota protegida desbloqueada lleva sus imágenes, descifradas, dentro de lo exportado.
+  const exported = await until(() => A.page.evaluate(() => { const h = LMD.extras.htmlOf(); return (h.match(/<img[^>]*src="data:image\/png;base64,/g) || []).length === 2 ? h : null; }), 6000);
+  check('exportar a HTML una nota protegida desbloqueada incrusta sus imágenes ya descifradas', !!exported && !/\.enc"/.test(exported) && !/blob:/.test(exported), String(exported).slice(0, 300));
+  // Mover hacia afuera y hacia adentro convierte en ese momento.
+  const movedOut = await A.page.evaluate(async () => { await LMD.cloud.rename('album/uno.md', 'libre.md'); return true; });
+  const libre = await textOf(ana.s, 'libre.md'); const libreUrls = (libre.match(/https?:\/\/[^\s)]+\/f\/[0-9a-f]{40}\.png/g) || []).filter((u) => !u.includes('c'.repeat(40)));
+  const libreStatus = await Promise.all(libreUrls.map((u) => status(u))); const afterOut = await filesOf(ana.s);
+  check('sacar una nota de la carpeta protegida deja sus imágenes como adjuntos comunes en ese momento', movedOut && !/^vault1:/.test(libre) && !/\.enc/.test(libre) && libreUrls.length === 2 && libreStatus.every((s) => s === 200) && /!\[b\|240\]/.test(libre), [libre, libreStatus]);
+  check('y sus copias cifradas se borran', encOf(secondPass.uno).every((id) => !afterOut.files.some((f) => f.id === id)) && encOf(secondPass.dos).every((id) => afterOut.files.some((f) => f.id === id)), null);
+  await A.page.evaluate(async () => { await LMD.cloud.rename('fuera.md', 'album/fuera.md'); });
+  const fueraRaw = await textOf(ana.s, 'album/fuera.md'); const fueraPlain = await A.page.evaluate(async () => (await LMD.cloud.read('album/fuera.md')).text);
+  check('meter una nota en la carpeta protegida cifra sus imágenes en ese momento', /^vault1:/.test(fueraRaw) && encOf(fueraPlain).length === 1 && !fueraPlain.includes(p2.id), fueraPlain);
+  check('la copia en claro sigue para la nota de afuera que también la usa', (await status(p2.url)) === 200 && libre.includes(p2.id), null);
+  // Quitar la protección: todo vuelve a ser un adjunto común.
+  const encBefore = (await filesOf(ana.s)).files.filter((f) => f.encrypted).map((f) => f.id);
+  const albumEnc = encOf(secondPass.dos).concat(encOf(fueraPlain));
+  const opened = await A.page.evaluate(async () => { const vault = (await LMD.cloud.vaults(true)).find((v) => v.folder === 'album'); const steps = []; await LMD.cloud.openFolder(vault, (n, m) => steps.push(n + '/' + m)); return steps; });
+  const dosNow = await textOf(ana.s, 'album/dos.md'); const fueraNow = await textOf(ana.s, 'album/fuera.md'); const afterOpen = await filesOf(ana.s);
+  const openUrls = (dosNow + fueraNow).match(/https?:\/\/[^\s)]+\/f\/[0-9a-f]{40}\.png/g) || [];
+  check('al quitar la protección las notas quedan en claro y sus imágenes vuelven a ser adjuntos con dirección', opened.length >= 2 && !/vault1:|\.enc/.test(dosNow + fueraNow) && openUrls.length === 2 && (await Promise.all(openUrls.map((u) => status(u)))).every((s) => s === 200), [dosNow, fueraNow]);
+  check('y las copias cifradas de esa carpeta se borran: quedan solo las de la otra carpeta protegida', albumEnc.every((id) => encBefore.includes(id) && !afterOpen.files.some((f) => f.id === id)) && afterOpen.files.filter((f) => f.encrypted).length === encBefore.length - albumEnc.length, [encBefore.length, afterOpen.files.filter((f) => f.encrypted).length]);
+
+  // ---------- Espacio de equipo: proteger y rotar la llave ----------
+  console.log('Equipo: proteger y rotar');
+  await api('POST', '/admin/team', { email: ana.email, seats: 3 }, undefined, { 'x-admin-key': R.ADMIN });
+  const space = (await api('GET', '/team', undefined, ana.s)).json.mine.space;
+  const tDefault = await filesOf(ana.s, '?o=' + space);
+  check('el equipo tiene una bolsa común de 10 GB por persona, y cada imagen hasta 20 MB', tDefault.max === 10240 * 1048576 && tDefault.max_file === 20 * 1048576, [tDefault.max, tDefault.max_file]);
+  const t1 = (await upload(ana.s, png(70, 50, 0, 211), '?o=' + space)).json;
+  await api('PUT', '/notes/' + enc('equipo.md') + '?o=' + space, { text: '# Equipo\n\n![t](' + t1.url + ')\n' }, ana.s);
+  await A.page.goto(R.home); await A.page.waitForSelector('.lmd-home, .lmd-article');
+  const teamRun = await A.page.evaluate(async (sp) => {
+    const Z = LMD.seal; const out = {};
+    LMD.cloud.setTeam((await LMD.cloud.account()).team.mine);
+    const K1 = Z.newKey(); const d1 = await Z.derive(K1); Z.hold({ check: d1.check }, d1.key); await Z.remember(LMD.cloud.email(), { check: d1.check });
+    const v1 = await LMD.cloud.teamVaultCreate(Object.assign({ check: d1.check }, await Z.wrap(K1, 'la contraseña del equipo 1', 100000)));
+    await LMD.cloud.sealFolder(v1);
+    out.sealed = (await LMD.cloud.read('~' + sp + '/equipo.md')).text;
+    const K2 = Z.newKey(); const d2 = await Z.derive(K2); Z.hold({ check: d2.check }, d2.key); await Z.remember(LMD.cloud.email(), { check: d2.check });
+    const now = await LMD.cloud.teamVaultRotate(Object.assign({ check: d2.check }, await Z.wrap(K2, 'la contraseña del equipo 2', 100000)));
+    out.bad = await LMD.cloud.rotateSpace(now);
+    out.rotated = (await LMD.cloud.read('~' + sp + '/equipo.md')).text;
+    return out;
+  }, space);
+  const e1 = encOf(teamRun.sealed)[0]; const e2 = encOf(teamRun.rotated)[0]; const teamFiles = await filesOf(ana.s, '?o=' + space);
+  check('proteger el espacio del equipo cifra sus imágenes y borra la copia en claro', !!e1 && (await status(t1.url)) === 404 && !teamFiles.files.some((f) => f.id === t1.id), [teamRun.sealed]);
+  check('rotar la llave vuelve a cifrar las imágenes con la llave nueva y borra las de la llave anterior', teamRun.bad === 0 && !!e2 && e2 !== e1 && teamFiles.files.some((f) => f.id === e2 && f.encrypted && f.in_use) && !teamFiles.files.some((f) => f.id === e1), [e1, e2, teamFiles.files.map((f) => [f.id.slice(0, 6), f.in_use])]);
+  await A.page.goto(R.noteUrl('~' + space + '/equipo.md')); await A.page.waitForSelector('.lmd-article img');
+  const teamSeen = await until(async () => { const l = await shown(A.page); return l.length === 1 && l[0].ok && l[0].src.startsWith('blob:') ? l : null; }, 12000);
+  check('y la imagen se ve con la llave nueva', !!teamSeen, await shown(A.page));
+
   // ---------- Pasar las incrustadas a adjuntos ----------
   console.log('Incrustadas');
   const dataPng = 'data:image/png;base64,' + png(64, 48, 0, 9).toString('base64');
@@ -288,13 +379,13 @@ try {
     out.first = card ? card.querySelector('.lmd-st-row b').textContent : '';
     card.querySelector('[data-sort=date]').click(); out.byDate = card.querySelector('.lmd-st-row b').textContent; card.querySelector('[data-sort=size]').click();
     out.states = [...card.querySelectorAll('.lmd-st-info span')].map((s) => s.textContent.split(' · ').pop());
-    out.note = card.querySelector('.lmd-st-note').textContent;
+    out.note = card.querySelector('.lmd-st-note').textContent; out.rowsText = [...card.querySelectorAll('.lmd-st-info span')].map((s) => s.textContent).join(' | ');
     host.remove();
     return out;
   });
   const allNow = await filesOf(ana.s); const biggest = Math.max(...allNow.files.map((f) => f.size));
-  check('Ajustes > Cloud muestra "Storage" con el uso, una barra y el acceso a la lista', !pane.off && /^Storage/.test(pane.text.trim()) && / of 2 GB/.test(pane.text) && /See attachments/.test(pane.text) && pane.bar >= 0 && pane.list, pane);
-  check('la lista trae todos los adjuntos, ordenados por tamaño, y dice cuáles están en uso o cifrados', pane.rows === allNow.count && pane.first.startsWith(await A.page.evaluate((n) => LMD.images.sizeText(n), biggest)) && pane.states.includes('In use') && pane.states.includes('Encrypted'), pane);
+  check('Ajustes > Cloud muestra "Storage" con el uso, una barra y el acceso a la lista', !pane.off && /^Storage/.test(pane.text.trim()) && / of 5 GB/.test(pane.text) && /See attachments/.test(pane.text) && pane.bar >= 0 && pane.list, pane);
+  check('la lista trae todos los adjuntos, ordenados por tamaño, y dice cuáles están en uso o cifrados', pane.rows === allNow.count && pane.first.startsWith(await A.page.evaluate((n) => LMD.images.sizeText(n), biggest)) && pane.states.includes('In use') && /Encrypted · (In use|Not used)/.test(pane.rowsText), pane);
   check('y avisa, ahí mismo, que quien tiene la dirección de una imagen puede verla salvo en carpetas protegidas', /Anyone with the address of an image can see it, except in protected folders\./.test(pane.note) && /deleted after 30 days/.test(pane.note) && !/[!—–]/.test(pane.note), pane.note);
   // Borrar uno desde la lista.
   const victim = allNow.files.find((f) => !f.encrypted && !f.in_use) || allNow.files.find((f) => !f.encrypted);
@@ -327,7 +418,7 @@ check('y nada salió hacia la nube de verdad', R.outside.length === 0, R.outside
 // ---------- Topes por plan, con un servidor de topes chicos ----------
 console.log('Topes por plan');
 {
-  const S = await boot({ FILE_MAX_FREE_MB: '0.05', FILE_MAX_PAID_MB: '0.2', FILE_GIF_FREE_MB: '0.01', FILES_FREE_MB: '0.1', FILES_PAID_MB: '0.5', FILES_TEAM_MB: '1', FILES_TEAM_SEAT_MB: '0.25' });
+  const S = await boot({ FILE_MAX_FREE_MB: '0.05', FILE_MAX_PAID_MB: '0.2', FILES_FREE_MB: '0.1', FILES_PAID_MB: '0.5', FILES_TEAM_MB: '1', FILES_TEAM_SEAT_MB: '0.25' });
   try {
     const free = await S.signup('gratis@ejemplo.test', false); const pro = await S.signup('paga@ejemplo.test', true);
     const lf = (await S.api('GET', '/files', undefined, free.s)).json; const lp = (await S.api('GET', '/files', undefined, pro.s)).json;
@@ -335,7 +426,9 @@ console.log('Topes por plan');
     const tooBig = await S.up(free.s, png(10, 10, 70000)); const okPro = await S.up(pro.s, png(10, 10, 70000));
     check('una imagen que pasa el tope del plan gratis se rechaza diciendo cuál es el tope, y en el plan pago entra', tooBig.status === 413 && tooBig.json.error === 'file_too_large' && tooBig.json.max === lf.max_file && tooBig.json.plan === 'free' && /MB/.test(tooBig.json.message) && okPro.status === 200, [tooBig, okPro.status]);
     const gifBig = await S.up(free.s, Buffer.concat([gif2().subarray(0, gif2().length - 1), Buffer.from([0x21, 0xfe]), ...Array.from({ length: 60 }, () => Buffer.concat([Buffer.from([250]), Buffer.alloc(250, 65)])), Buffer.from([0, 0x3b])]), '', 'image/gif');
-    check('un GIF tiene su propio tope', gifBig.status === 413 && gifBig.json.error === 'file_too_large' && gifBig.json.max === Math.round(0.01 * 1048576), gifBig);
+    const gifHuge = await S.up(free.s, Buffer.concat([gif2().subarray(0, gif2().length - 1), Buffer.from([0x21, 0xfe]), ...Array.from({ length: 260 }, () => Buffer.concat([Buffer.from([250]), Buffer.alloc(250, 65)])), Buffer.from([0, 0x3b])]), '', 'image/gif');
+    check('un GIF animado tiene el mismo tope que cualquier imagen', gifBig.status === 200 && gifBig.json.type === 'image/gif' && gifHuge.status === 413 && gifHuge.json.error === 'file_too_large' && gifHuge.json.max === lf.max_file, [gifBig.status, gifHuge]);
+    await S.api('DELETE', '/files/' + gifBig.json.id, undefined, free.s);
     const a1 = await S.up(free.s, png(10, 10, 40000, 1)); const a2 = await S.up(free.s, png(10, 10, 40000, 2)); const a3 = await S.up(free.s, png(10, 10, 40000, 3));
     check('al llenarse el almacenamiento, la siguiente se rechaza con lo usado y el tope', a1.status === 200 && a2.status === 200 && a3.status === 413 && a3.json.error === 'storage_full' && a3.json.used === a1.json.size + a2.json.size && a3.json.max === lf.max, [a1.status, a2.status, a3]);
     await S.api('PUT', '/notes/' + enc('n.md'), { text: 'sigue\n' }, free.s);
@@ -432,7 +525,7 @@ console.log('Avisos en la app');
 // ---------- Limpieza de lo que ninguna nota usa ----------
 console.log('Limpieza');
 {
-  const S = await boot({ FILES_SWEEP_MS: '250', FILES_FRESH_MS: '300', FILES_GRACE_MS: '1800' });
+  const S = await boot({ FILES_SWEEP_MS: '250', FILES_FRESH_MS: '300', FILES_GRACE_MS: '1800', FILE_STALL_MS: '700', FILE_SLOW_AFTER_MS: '600' });
   try {
     const ana = await S.signup('ana@ejemplo.test', true); const otro = await S.signup('otro@ejemplo.test', true);
     const used = (await S.up(ana.s, png(8, 8, 3000, 1))).json; const loose = (await S.up(ana.s, png(8, 8, 3000, 2))).json; const inTrash = (await S.up(ana.s, png(8, 8, 3000, 3))).json; const inHist = (await S.up(ana.s, png(8, 8, 3000, 4))).json; const moved = (await S.up(ana.s, png(8, 8, 3000, 5))).json;
@@ -461,10 +554,31 @@ console.log('Limpieza');
     // Borrar la nota manda la imagen a esperar (sigue en la papelera), y mover la nota conserva la referencia.
     await S.api('POST', '/rename', { from: 'a.md', to: 'carpeta/a.md' }, ana.s); await sleep(700);
     check('mover una nota conserva sus imágenes', (await S.api('GET', '/files', undefined, ana.s)).json.files.find((f) => f.id === used.id).waiting === false && (await status(used.url)) === 200, null);
+    // Los cifrados: el servidor no lee las notas, así que vale lo que la app declara.
+    const b64 = (n, v) => Buffer.alloc(n, v).toString('base64');
+    await S.api('POST', '/vaults', { folder: 'secreta', salt: b64(16, 3), iters: 200000, wrapped: b64(60, 3), check: b64(32, 3) }, otro.s);
+    await S.api('PUT', '/notes/' + enc('secreta/n.md'), { text: 'vault1:' + b64(60, 7) }, otro.s);
+    const x1 = (await S.up(otro.s, Buffer.alloc(300, 11), '?enc=1')).json; const x2 = (await S.up(otro.s, Buffer.alloc(300, 12), '?enc=1')).json;
+    const refOk = await S.api('PUT', '/files/refs', { path: 'secreta/n.md', ids: [x1.id, moved.id, 'f'.repeat(40)] }, otro.s);
+    const refBad = [await S.api('PUT', '/files/refs', { path: 'copiada.md', ids: [x1.id] }, otro.s), await S.api('PUT', '/files/refs', { path: 'secreta/no-existe.md', ids: [x1.id] }, otro.s), await S.api('PUT', '/files/refs', { path: 'secreta/n.md', ids: ['../x'] }, otro.s), await S.api('PUT', '/files/refs', { path: 'secreta/n.md', ids: 'x' }, otro.s), await S.api('PUT', '/files/refs', { path: 'secreta/n.md', ids: [x1.id] }), await S.api('PUT', '/files/refs?o=' + otro.id, { path: 'secreta/n.md', ids: [] }, ana.s)];
+    check('la app declara qué imágenes cifradas usa una nota protegida: solo identificadores, solo las de esa cuenta', refOk.status === 200 && refOk.json.ids.join() === x1.id && refBad.map((x) => x.status).join() === '409,409,400,400,401,403', [refOk.json, refBad.map((x) => x.status)]);
+    await sleep(1100);
+    const encMid = (await S.api('GET', '/files', undefined, otro.s)).json.files;
+    check('la cifrada que ninguna nota declara queda esperando su borrado; la declarada figura en uso', encMid.find((f) => f.id === x1.id).in_use === true && encMid.find((f) => f.id === x1.id).waiting === false && encMid.find((f) => f.id === x2.id).waiting === true && encMid.find((f) => f.id === x2.id).in_use === false, encMid.map((f) => [f.id.slice(0, 6), f.encrypted, f.in_use, f.waiting]));
+    await sleep(2600);
+    const encEnd = (await S.api('GET', '/files', undefined, otro.s)).json.files.map((f) => f.id);
+    check('y pasado el margen se borra, igual que una en claro', encEnd.includes(x1.id) && !encEnd.includes(x2.id) && !S.onDisk().some((p) => p.endsWith(x2.id)), encEnd.length);
+    await S.api('PUT', '/files/refs', { path: 'secreta/n.md', ids: [] }, otro.s); await sleep(3400);
+    check('cuando la nota deja de declararla, le pasa lo mismo', !(await S.api('GET', '/files', undefined, otro.s)).json.files.some((f) => f.id === x1.id), null);
+    // Subidas lentas: una que manda de a gotas o deja de mandar se corta; una normal entra.
+    const trickle = (gapMs, stopAfter) => new Promise((resolve) => { const t0 = Date.now(); const sock = net.connect(S.port, '127.0.0.1', () => { sock.write('POST /files HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer ' + otro.s + '\r\nContent-Type: image/png\r\nContent-Length: 200000\r\n\r\n'); let n = 0; const tick = setInterval(() => { if (sock.destroyed || (stopAfter && ++n > stopAfter)) { clearInterval(tick); return; } sock.write('\x89'); }, gapMs); sock.on('close', () => clearInterval(tick)); }); let b = ''; sock.on('data', (c) => { b += c; }); const end = () => resolve({ ms: Date.now() - t0, head: b.slice(0, 12) }); sock.on('close', end); sock.on('error', () => {}); setTimeout(() => { sock.destroy(); }, 9000); });
+    const slow = await trickle(50, 0); const stalled = await trickle(50, 3);
+    check('una subida que viene de a gotas, o que deja de mandar, se corta sola en poco tiempo', slow.ms < 4000 && stalled.ms < 4000, [slow, stalled]);
+    check('y una subida normal sigue entrando, sin dejar nada a medias', (await S.up(otro.s, png(9, 9, 5000, 77))).status === 200 && fs.readdirSync(path.join(S.dir, 'files', 'tmp')).length === 0, null);
     // Eliminar la cuenta se lleva sus adjuntos.
     const before = S.onDisk().length;
     const del = await S.api('DELETE', '/account', { email: ana.email }, ana.s);
-    check('eliminar la cuenta borra sus adjuntos del disco, y sus direcciones dejan de servir', del.status === 200 && before === 4 && S.onDisk().length === 0 && (await status(used.url)) === 404 && (await status(moved.url)) === 404, [del.status, before, S.onDisk().length]);
+    check('eliminar la cuenta borra sus adjuntos del disco, y sus direcciones dejan de servir', del.status === 200 && before >= 4 && ![used.id, inTrash.id, inHist.id, moved.id].some((id) => S.onDisk().some((p) => p.endsWith(id))) && (await status(used.url)) === 404 && (await status(moved.url)) === 404, [del.status, before, S.onDisk().length]);
     check('limpieza: sin errores del servidor', !/error 500|error no capturado|promesa sin atender|adjuntos: /.test(S.log()), (S.log().match(/(error|adjuntos)[^\n]*/g) || []).slice(0, 3));
   } catch (e) { check('limpieza: sin excepciones en la prueba', false, String(e && e.stack || e)); }
   await S.stop();

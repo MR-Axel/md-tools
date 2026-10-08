@@ -2125,7 +2125,7 @@ function teamLogSweep() {
   for (const t of q('SELECT team, COUNT(*) AS n FROM team_log GROUP BY team HAVING n > ?').all(TEAM_LOG_MAX)) q('DELETE FROM team_log WHERE team = ? AND id NOT IN (SELECT id FROM team_log WHERE team = ? ORDER BY id DESC LIMIT ?)').run(t.team, t.team, TEAM_LOG_MAX);
   for (const [k, at] of logSeen) if (now() - at > HOUR) logSeen.delete(k);
 }
-const TEAM_ACTIONS = ['create', 'edit', 'move', 'delete', 'restore', 'purge', 'empty_trash', 'share', 'unshare', 'link', 'unlink', 'invite', 'uninvite', 'join', 'leave', 'remove', 'role', 'policy', 'team_name', 'protect', 'password', 'rotate', 'rotate_done', 'unprotect', 'destroy', 'ai', 'ai_unlock', 'token_create', 'token_revoke', 'automation', 'automation_remove', 'site', 'publish', 'unpublish', 'live_open', 'live_end', 'live_kick'];
+const TEAM_ACTIONS = ['create', 'edit', 'move', 'delete', 'restore', 'purge', 'empty_trash', 'share', 'unshare', 'link', 'unlink', 'invite', 'uninvite', 'join', 'leave', 'remove', 'role', 'policy', 'team_name', 'protect', 'password', 'rotate', 'rotate_done', 'unprotect', 'destroy', 'ai', 'ai_unlock', 'token_create', 'token_revoke', 'automation', 'automation_remove', 'site', 'publish', 'unpublish', 'live_open', 'live_end', 'live_kick', 'attach', 'detach'];
 // Lo que se pide del registro: who (número de cuenta), token (nombre), action, from y to (milisegundos), before (id, para seguir).
 function teamLogRows(team, url, max) {
   const g = (k) => url.searchParams.get(k) || '';
@@ -4491,17 +4491,18 @@ async function pagesServe(req, res) {
 //     content-type del pedido no cuenta. SVG no entra: es un documento que puede llevar código.
 //   - Carpetas protegidas y espacio de equipo protegido: el navegador cifra la imagen con la llave de la carpeta y
 //     acá llegan bytes que no se pueden leer (enc = 1). Esos no se sirven por /f/: los baja la app con su sesión
-//     (GET /files/{id}/raw) y los descifra en memoria.
+//     (GET /files/{id}/raw) y los descifra en memoria. Como el servidor no puede leer las notas que los nombran,
+//     la app declara, al guardar cada nota protegida, qué adjuntos cifrados usa (PUT /files/refs: solo identificadores).
 //   - Topes por plan: peso por imagen y almacenamiento total del espacio. El espacio que se va a ocupar se reserva
 //     antes de recibir, para que varias subidas a la vez no pasen el total entre todas.
 //   - Limpieza: un barrido mira qué adjuntos siguen nombrados en alguna nota, versión del historial o nota de la
-//     papelera. El que no, queda marcado y deja de contar en el uso; pasados FILES_GRACE_DAYS se borra. Los
-//     cifrados no se barren: el servidor no puede leer las notas que los nombran. Se borran a mano o con la cuenta.
+//     papelera. El que no, queda marcado y deja de contar en el uso; pasados FILES_GRACE_DAYS se borra. De
+//     los cifrados se mira lo que declaró la app: el que ninguna nota declara corre la misma suerte.
 // Variables:
-//   FILE_MAX_FREE_MB, FILE_MAX_PAID_MB    peso máximo de una imagen en el plan gratis y en el pago (2, 10)
-//   FILE_GIF_FREE_MB, FILE_GIF_PAID_MB    lo mismo para un GIF (2, 10)
-//   FILES_FREE_MB, FILES_PAID_MB          almacenamiento de adjuntos de una cuenta gratis y de una paga (50, 2048)
-//   FILES_TEAM_MB, FILES_TEAM_SEAT_MB     almacenamiento del espacio de un equipo, y lo que suma cada persona (5120, 1024)
+//   FILE_MAX_FREE_MB, FILE_MAX_PAID_MB    peso máximo de una imagen (también un GIF) en el plan gratis y en el pago (5, 20)
+//   FILES_FREE_MB, FILES_PAID_MB          almacenamiento de adjuntos de una cuenta gratis y de una paga (100, 5120)
+//   FILES_TEAM_SEAT_MB, FILES_TEAM_MB     lo que suma cada persona a la bolsa común de un equipo, y una base fija si se quiere (10240, 0)
+//   FILE_UPLOAD_KBPS                      velocidad mínima de una subida, en KB por segundo: más lenta que eso se corta (32)
 //   FILES_GRACE_DAYS                      días que un adjunto sin uso espera antes de borrarse (30)
 //   FILES_PER_HOUR                        subidas por hora y por cuenta (300)
 //   FILES_GETS_MINUTE                     pedidos de imágenes por minuto y por IP (600)
@@ -4511,16 +4512,22 @@ async function pagesServe(req, res) {
 const MB = 1048576;
 const envMb = (name, def) => { const n = env[name] == null || env[name] === '' ? def : +env[name]; return Math.round((Number.isFinite(n) && n > 0 ? n : def) * MB); };
 const envMs = (name, def) => { const n = +(env[name] || 0); return Number.isFinite(n) && n > 0 ? n : def; };
-const FILE_MAX = { free: envMb('FILE_MAX_FREE_MB', 2), pro: envMb('FILE_MAX_PAID_MB', 10) };
-const FILE_GIF = { free: envMb('FILE_GIF_FREE_MB', 2), pro: envMb('FILE_GIF_PAID_MB', 10) };
-const FILES_TOTAL = { free: envMb('FILES_FREE_MB', 50), pro: envMb('FILES_PAID_MB', 2048), team: envMb('FILES_TEAM_MB', 5120), seat: envMb('FILES_TEAM_SEAT_MB', 1024) };
+const FILE_MAX = { free: envMb('FILE_MAX_FREE_MB', 5), pro: envMb('FILE_MAX_PAID_MB', 20) };
+// El equipo tiene una bolsa común: lo que suma cada persona. FILES_TEAM_MB le agrega una base fija (0 por defecto).
+const FILES_TOTAL = { free: envMb('FILES_FREE_MB', 100), pro: envMb('FILES_PAID_MB', 5120), team: envMb('FILES_TEAM_MB', 0), seat: envMb('FILES_TEAM_SEAT_MB', 10240) };
+// Una subida no depende del minuto que tiene cualquier otro pedido: tiene el tiempo que lleva su tope a la velocidad
+// mínima, y se corta antes si viene más lenta que eso o deja de mandar.
+const FILE_UPLOAD_BPS = Math.max(1, +(env.FILE_UPLOAD_KBPS || 32) || 32) * 1024;
+const FILE_UPLOAD_MS = Math.max(120000, Math.ceil((FILE_MAX.pro + 65536) / FILE_UPLOAD_BPS) * 1000 + 30000);
+const FILE_STALL_MS = envMs('FILE_STALL_MS', 20000); const FILE_SLOW_AFTER_MS = envMs('FILE_SLOW_AFTER_MS', 15000);
+const fileUploadReq = (req) => req.method === 'POST' && /^\/(api\/v1\/)?files(\?|$)/.test(String(req.url || ''));
 const FILES_GRACE_MS = envMs('FILES_GRACE_MS', Math.max(1, +(env.FILES_GRACE_DAYS || 30) || 30) * DAY);
 const FILES_FRESH_MS = envMs('FILES_FRESH_MS', HOUR);
 const FILES_SWEEP_MS = envMs('FILES_SWEEP_MS', 6 * HOUR);
 const FILES_PER_HOUR = Math.max(1, +(env.FILES_PER_HOUR || 300) || 300);
 const FILES_GETS_MINUTE = Math.max(1, +(env.FILES_GETS_MINUTE || 600) || 600);
 const FILES_MISS_HOUR = 60; // direcciones que no existen, por hora y por IP: después de eso, 429
-const FILES_LIST_MAX = 5000; const FILE_SIDE_MAX = 16384; const FILE_DRAIN = 32 * MB;
+const FILES_LIST_MAX = 5000; const FILE_SIDE_MAX = 16384; const FILE_DRAIN = Math.max(32 * MB, FILE_MAX.pro + MB);
 // Lo que suma el cifrado del navegador a una imagen: nonce (12), etiqueta (16) y el byte que dice de qué tipo es.
 const FILE_ENC_EXTRA = 64;
 const FILES_DIR = path.join(DATA_DIR, 'files'); const FILES_TMP = path.join(FILES_DIR, 'tmp');
@@ -4532,6 +4539,10 @@ for (const name of fs.readdirSync(FILES_TMP)) { try { fs.unlinkSync(path.join(FI
 db.exec('CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, owner INTEGER NOT NULL, made_by INTEGER, type TEXT NOT NULL, size INTEGER NOT NULL, hash TEXT NOT NULL, enc INTEGER NOT NULL DEFAULT 0, w INTEGER NOT NULL DEFAULT 0, h INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL, orphan INTEGER NOT NULL DEFAULT 0)');
 db.exec('CREATE INDEX IF NOT EXISTS files_owner ON files (owner, created)');
 db.exec('CREATE INDEX IF NOT EXISTS files_hash ON files (owner, hash)');
+// Qué adjuntos cifrados usa cada nota protegida, según lo declaró la app. gone: desde cuándo la nota dejó de usarlo
+// (0 mientras lo usa). Lo que dejó de usarse se recuerda mientras pueda seguir nombrado en el historial.
+db.exec('CREATE TABLE IF NOT EXISTS file_refs (owner INTEGER NOT NULL, path TEXT NOT NULL, id TEXT NOT NULL, gone INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (owner, path, id))');
+db.exec('CREATE INDEX IF NOT EXISTS file_refs_id ON file_refs (owner, id)');
 
 const FILE_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/avif': 'avif' };
 const FILE_ID = /^[0-9a-f]{40}$/;
@@ -4557,14 +4568,14 @@ function filesQuota(owner) {
 }
 // El uso cuenta lo vivo: lo que ya no nombra ninguna nota espera su borrado sin ocupar lugar.
 const filesUsed = (ownerId) => q('SELECT COALESCE(SUM(size), 0) AS n FROM files WHERE owner = ? AND orphan = 0').get(ownerId).n;
-const filesLimits = (owner) => { const plan = owner.plan === 'pro' ? 'pro' : 'free'; return { plan, file: FILE_MAX[plan], gif: FILE_GIF[plan], total: filesQuota(owner) }; };
+const filesLimits = (owner) => { const plan = owner.plan === 'pro' ? 'pro' : 'free'; return { plan, file: FILE_MAX[plan], total: filesQuota(owner) }; };
 const mbText = (bytes) => { const n = bytes / MB; return (n >= 1024 ? Math.round(n / 102.4) / 10 + ' GB' : Math.round(n * 10) / 10 + ' MB'); };
 function fileDrop(id) {
-  q('DELETE FROM files WHERE id = ?').run(id);
+  q('DELETE FROM files WHERE id = ?').run(id); q('DELETE FROM file_refs WHERE id = ?').run(id);
   try { fs.unlinkSync(fileAt(id)); } catch (e) { /* ya no estaba */ }
 }
 // Todo lo de una cuenta o de un espacio: al eliminar la cuenta.
-function filesDropOwner(ownerId) { for (const f of q('SELECT id FROM files WHERE owner = ?').all(ownerId)) fileDrop(f.id); }
+function filesDropOwner(ownerId) { for (const f of q('SELECT id FROM files WHERE owner = ?').all(ownerId)) fileDrop(f.id); q('DELETE FROM file_refs WHERE owner = ?').run(ownerId); }
 // Lo que falta leer de un pedido que ya se va a rechazar: se descarta, para que quien sube reciba la respuesta en
 // vez de una conexión cortada. Con un cuerpo enorme no se espera: se corta.
 const fileDrain = (req) => new Promise((resolve) => {
@@ -4583,12 +4594,18 @@ function fileReceive(req, max) {
   return new Promise((resolve, reject) => {
     const tmp = path.join(FILES_TMP, crypto.randomBytes(16).toString('hex'));
     const out = fs.createWriteStream(tmp, { flags: 'wx' }); const hash = crypto.createHash('sha256');
-    let size = 0; let head = Buffer.alloc(0); let done = false; let big = false;
-    const fail = (err) => { if (done) return; done = true; out.destroy(); fs.unlink(tmp, () => reject(err)); };
+    let size = 0; let head = Buffer.alloc(0); let done = false; let big = false; const t0 = now(); let last = t0;
+    // Lenta de más, quieta de más o pasada de tiempo: se corta. Nadie ocupa una conexión mandando de a gotas.
+    const watch = setInterval(() => {
+      const dt = now() - t0;
+      if (now() - last > FILE_STALL_MS || dt > FILE_UPLOAD_MS || (dt > FILE_SLOW_AFTER_MS && size < (dt / 1000) * FILE_UPLOAD_BPS)) { fail(new Fail(408, 'upload_slow', 'The upload was too slow and was cut. Try again on a better connection')); req.destroy(); }
+    }, Math.min(2000, Math.max(100, FILE_STALL_MS / 4)));
+    watch.unref();
+    const fail = (err) => { if (done) return; done = true; clearInterval(watch); out.destroy(); fs.unlink(tmp, () => reject(err)); };
     out.on('error', () => fail(new Fail(500, 'server_error')));
     req.on('data', (c) => {
       if (done) return;
-      size += c.length;
+      size += c.length; last = now();
       if (size > max) {
         if (!big) { big = true; out.destroy(); }
         if (size > FILE_DRAIN) { req.destroy(); fail(new Fail(413, 'file_too_large')); }
@@ -4601,7 +4618,7 @@ function fileReceive(req, max) {
     req.on('end', () => {
       if (done) return;
       if (big) { fail(new Fail(413, 'file_too_large')); return; }
-      out.end(() => { if (done) return; done = true; resolve({ tmp, size, hash: hash.digest('hex'), head }); });
+      out.end(() => { if (done) return; done = true; clearInterval(watch); resolve({ tmp, size, hash: hash.digest('hex'), head }); });
     });
     req.on('error', () => fail(new Fail(400, 'bad_request')));
     req.on('close', () => { if (!req.complete) fail(new Fail(400, 'bad_request')); });
@@ -4633,7 +4650,6 @@ async function fileUpload(req, who, owner, enc) {
       kind = fileSniff(got.head);
       const side = (n) => n >= 1 && n <= FILE_SIDE_MAX;
       if (!kind || ((kind.type === 'image/png' || kind.type === 'image/gif') && !(side(kind.w) && side(kind.h))) || (kind.riff && Math.abs(kind.riff - got.size) > 1)) throw new Fail(415, 'bad_image', 'That is not an image SharpMD can store: PNG, JPEG, GIF, WebP or AVIF');
-      if (kind.type === 'image/gif' && got.size > lim.gif) throw tooBig(lim.gif);
     }
     // La misma imagen subida otra vez al mismo espacio es el mismo adjunto.
     const twin = enc ? null : q('SELECT * FROM files WHERE owner = ? AND hash = ? AND enc = 0').get(owner.id, got.hash);
@@ -4675,14 +4691,40 @@ function filesRefs(ownerId, under) {
   return seen;
 }
 let filesSwept = 0; // cuándo corrió el último barrido completo
+// Lo declarado se pone al día: una nota que ya no existe (ni está en la papelera) deja de usar sus adjuntos, y lo
+// que una nota dejó de usar se olvida cuando ya no puede estar en su historial.
+function fileRefsSweep() {
+  q('UPDATE file_refs SET gone = ? WHERE gone = 0 AND NOT EXISTS (SELECT 1 FROM notes n WHERE n.user = file_refs.owner AND n.path = file_refs.path) AND NOT EXISTS (SELECT 1 FROM trash t WHERE t.user = file_refs.owner AND t.path = file_refs.path)').run(now());
+  const keep = env.FILES_GRACE_MS ? FILES_GRACE_MS : Math.max(HISTORY_DAYS, TEAM_HISTORY_DAYS) * DAY;
+  q('DELETE FROM file_refs WHERE gone > 0 AND gone < ? AND NOT EXISTS (SELECT 1 FROM versions v WHERE v.user = file_refs.owner AND v.path = file_refs.path)').run(now() - FILES_FRESH_MS);
+  q('DELETE FROM file_refs WHERE gone > 0 AND gone < ?').run(now() - keep);
+}
+// PUT /files/refs { path, ids }: la app dice qué adjuntos cifrados usa una nota protegida. Solo identificadores.
+function fileRefsPut(owner, body) {
+  const p = cleanPath(body.path);
+  if (!Array.isArray(body.ids) || body.ids.length > 2000 || body.ids.some((x) => typeof x !== 'string' || !FILE_ID.test(x))) throw new Fail(400, 'bad_ids', 'ids is a list of attachment ids');
+  const ids = Array.from(new Set(body.ids));
+  // Con algo que declarar, la nota tiene que existir y estar en una carpeta protegida. Vaciar la lista vale siempre.
+  if (ids.length && (!vaultOf(owner.id, p) || !q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(owner.id, p))) throw new Fail(409, 'vault', 'Only notes of a protected folder declare encrypted images');
+  const mine = new Set(ids.length ? q('SELECT id FROM files WHERE owner = ? AND enc = 1').all(owner.id).map((x) => x.id) : []);
+  const use = ids.filter((x) => mine.has(x));
+  db.exec('BEGIN');
+  try {
+    for (const row of q('SELECT id FROM file_refs WHERE owner = ? AND path = ? AND gone = 0').all(owner.id, p)) if (!use.includes(row.id)) q('UPDATE file_refs SET gone = ? WHERE owner = ? AND path = ? AND id = ?').run(now(), owner.id, p, row.id);
+    for (const id of use) { q('INSERT INTO file_refs (owner, path, id, gone) VALUES (?, ?, ?, 0) ON CONFLICT (owner, path, id) DO UPDATE SET gone = 0').run(owner.id, p, id); q('UPDATE files SET orphan = 0 WHERE id = ? AND orphan != 0').run(id); }
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  return { ok: true, path: p, ids: use };
+}
 function filesSweep() {
-  const rows = q('SELECT id, owner, size, created, orphan FROM files WHERE enc = 0').all();
+  fileRefsSweep();
+  const rows = q('SELECT id, owner, size, created, orphan, enc FROM files').all();
   if (rows.length) {
-    let refs = null;
+    let refs = null; const declared = new Set(q('SELECT DISTINCT id FROM file_refs').all().map((x) => x.id));
     try { refs = filesRefs(null); } catch (e) { console.error('adjuntos: el barrido no pudo leer las notas y no borró nada · ' + String(e && e.message || e).slice(0, 200)); return; }
     const waiting = new Map();
     for (const f of rows) {
-      if (refs.has(f.id)) { if (f.orphan) q('UPDATE files SET orphan = 0 WHERE id = ?').run(f.id); continue; }
+      if (f.enc ? declared.has(f.id) : refs.has(f.id)) { if (f.orphan) q('UPDATE files SET orphan = 0 WHERE id = ?').run(f.id); continue; }
       if (!f.orphan) { if (now() - f.created > FILES_FRESH_MS) { f.orphan = now(); q('UPDATE files SET orphan = ? WHERE id = ?').run(f.orphan, f.id); } else continue; }
       if (now() - f.orphan > FILES_GRACE_MS) { fileDrop(f.id); continue; }
       if (!waiting.has(f.owner)) waiting.set(f.owner, []);
@@ -4701,21 +4743,22 @@ function filesSweep() {
   filesSwept = now();
 }
 setInterval(() => { try { filesSweep(); } catch (e) { console.error('adjuntos: falló el barrido · ' + String(e && e.stack || e).slice(0, 600)); } }, FILES_SWEEP_MS).unref();
-// La lista de un espacio, con su uso y sus topes. in_use: si alguna nota la nombra (null en las cifradas: no se sabe).
+// La lista de un espacio, con su uso y sus topes. in_use: si alguna nota la nombra (en las cifradas, si alguna la declaró).
 function filesList(owner, under) {
-  const lim = filesLimits(owner); const mine = filesRefs(owner.id, under);
+  const lim = filesLimits(owner); const mine = filesRefs(owner.id, under); const declared = new Set(q('SELECT DISTINCT id FROM file_refs WHERE owner = ? AND gone = 0').all(owner.id).map((x) => x.id));
   let rows = q('SELECT * FROM files WHERE owner = ? ORDER BY created DESC, id LIMIT ?').all(owner.id, FILES_LIST_MAX);
   // Un token limitado a una carpeta solo ve las imágenes que nombran las notas de esa carpeta.
   if (under) rows = rows.filter((f) => !f.enc && mine.has(f.id));
   const seenElsewhere = (f) => !f.orphan && filesSwept > 0 && f.created < filesSwept - FILES_FRESH_MS;
   const all = q('SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS size FROM files WHERE owner = ?').get(owner.id);
-  return { used: filesUsed(owner.id), max: lim.total, max_file: lim.file, max_gif: lim.gif, plan: lim.plan, count: under ? rows.length : all.n, stored: under ? rows.reduce((n, f) => n + f.size, 0) : all.size, grace_days: Math.round(FILES_GRACE_MS / DAY),
-    files: rows.map((f) => Object.assign(fileView(f), { in_use: f.enc ? null : mine.has(f.id) || seenElsewhere(f), waiting: !!f.orphan })) };
+  return { used: filesUsed(owner.id), max: lim.total, max_file: lim.file, plan: lim.plan, count: under ? rows.length : all.n, stored: under ? rows.reduce((n, f) => n + f.size, 0) : all.size, grace_days: Math.round(FILES_GRACE_MS / DAY),
+    files: rows.map((f) => Object.assign(fileView(f), { in_use: f.enc ? declared.has(f.id) : mine.has(f.id) || seenElsewhere(f), waiting: !!f.orphan })) };
 }
 // Rutas de la app, con la sesión. o: el espacio del equipo.
 async function filesRoute(req, user, p, m, url) {
   const o = url.searchParams.get('o');
-  if (p === '/files' && m === 'GET') { rate('files:list:' + user.id, 240, HOUR, 'too_many'); return filesList(spaceOf(user, o)); }
+  if (p === '/files' && m === 'GET') { rate('files:list:' + user.id, 1200, HOUR, 'too_many'); return filesList(spaceOf(user, o)); }
+  if (p === '/files/refs' && m === 'PUT') { rate('files:refs:' + user.id, 3000, HOUR, 'too_many'); const body = await readBody(req); return fileRefsPut(spaceOf(user, o, 'edit'), body); }
   if (p === '/files' && m === 'POST') {
     let owner = null;
     try { owner = spaceOf(user, o, 'edit'); teamHold(user, owner); } catch (e) { await fileDrain(req); throw e; }
@@ -4733,10 +4776,10 @@ async function filesRoute(req, user, p, m, url) {
   }
   if (!fm[2] && m === 'DELETE') {
     const owner = spaceOf(user, o, 'edit');
-    const f = q('SELECT id FROM files WHERE id = ? AND owner = ?').get(fm[1], owner.id);
+    const f = q('SELECT id, enc FROM files WHERE id = ? AND owner = ?').get(fm[1], owner.id);
     if (!f) throw new Fail(404, 'not_found');
     // unused=1: solo si ninguna nota de ese espacio la nombra (la app lo pide tras cifrar las imágenes de una nota).
-    if (url.searchParams.get('unused') === '1') { rate('files:list:' + user.id, 240, HOUR, 'too_many'); if (filesRefs(owner.id).has(f.id)) throw new Fail(409, 'in_use', 'A note still uses this image'); }
+    if (url.searchParams.get('unused') === '1') { rate('files:unused:' + user.id, 6000, HOUR, 'too_many'); if (f.enc ? !!q('SELECT 1 FROM file_refs WHERE owner = ? AND id = ? AND gone = 0 LIMIT 1').get(owner.id, f.id) : filesRefs(owner.id).has(f.id)) throw new Fail(409, 'in_use', 'A note still uses this image'); }
     fileDrop(f.id);
     if (owner !== user) teamLog(user.team, user, 'detach', '', f.id.slice(0, 8));
     return { ok: true, used: filesUsed(owner.id), max: filesQuota(owner) };
@@ -4762,7 +4805,7 @@ async function filesApi(req, url, r, m, user) {
   } catch (e) { if (write) await fileDrain(req); throw e; }
   if (m === 'GET') {
     const out = filesList(owner, user.scope || '');
-    return ok({ used: out.used, max: out.max, max_file: out.max_file, max_gif: out.max_gif, count: out.count, files: out.files.map((f) => ({ id: f.id, url: f.url, type: f.type, size: f.size, created: iso(f.created), encrypted: f.encrypted, in_use: f.in_use })) });
+    return ok({ used: out.used, max: out.max, max_file: out.max_file, count: out.count, files: out.files.map((f) => ({ id: f.id, url: f.url, type: f.type, size: f.size, created: iso(f.created), encrypted: f.encrypted, in_use: f.in_use })) });
   }
   const out = await fileUpload(req, user, owner, false);
   if (team) teamLog(team, user, 'attach', '', out.id.slice(0, 8));
@@ -5011,7 +5054,10 @@ const server = http.createServer(async (req, res) => {
 });
 // Conexiones lentas: los encabezados tienen 15 segundos para llegar y el pedido entero, un minuto. /events no
 // entra en esa cuenta: lo que queda abierto ahí es la respuesta.
-server.headersTimeout = 15000; server.requestTimeout = 60000;
+// Una subida de imagen tiene su propio plazo (FILE_UPLOAD_MS, con velocidad mínima); el resto, el minuto de siempre,
+// que se mide por pedido en el manejador.
+server.headersTimeout = 15000; server.requestTimeout = Math.max(60000, FILE_UPLOAD_MS + 30000);
+server.on('request', (req) => { if (fileUploadReq(req)) return; const t = setTimeout(() => { if (!req.complete) req.destroy(); }, 60000); t.unref(); req.on('close', () => clearTimeout(t)); req.on('end', () => clearTimeout(t)); });
 // Un error que se escapa de una ruta se anota y el servicio sigue: no se cae por un pedido.
 process.on('uncaughtException', (e) => console.error('error no capturado · ' + String(e && e.stack || e).slice(0, 1500)));
 process.on('unhandledRejection', (e) => console.error('promesa sin atender · ' + String(e && e.stack || e).slice(0, 1500)));

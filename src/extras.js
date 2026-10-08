@@ -810,6 +810,8 @@
     // La matemática viaja como MathML, que el navegador dibuja solo, sin la hoja de estilos de KaTeX.
     copy.querySelectorAll('.katex').forEach((k) => { const m = k.querySelector('math'); if (m) k.replaceWith(m); });
     copy.querySelectorAll('img[data-lmd-src]').forEach((i) => i.setAttribute('src', i.getAttribute('data-lmd-src')));
+    // Las imágenes de una carpeta protegida van dentro de lo exportado, ya descifradas (images.js).
+    if (LMD.images) LMD.images.inline(copy);
     copy.querySelectorAll('a[data-lmd-href]').forEach((a) => a.setAttribute('href', a.getAttribute('data-lmd-href')));
     return copy.innerHTML.trim();
   }

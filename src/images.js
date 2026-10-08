@@ -258,7 +258,7 @@
     let lim = null;
     try { lim = await limitsOf(space); } catch (e) { if (e.code === 'offline') throw e; }
     if (lim) {
-      const max = r.type === 'image/gif' ? lim.max_gif : lim.max_file;
+      const max = lim.max_file;
       if (r.blob.size > max) throw fail('file_too_large', { max, size: r.blob.size, plan: lim.plan });
       if (lim.used + r.blob.size > lim.max) throw fail('storage_full', { used: lim.used, max: lim.max, plan: lim.plan });
     }
@@ -269,7 +269,7 @@
     } catch (e) { throw fail(e.code || 'failed', Object.assign({ size: r.blob.size }, e.body || {})); }
     if (lim && typeof out.used === 'number') lim.used = out.used;
     if (!vk) return { src: out.url, view: out.url };
-    const view = URL.createObjectURL(r.blob); opened.set(out.id, view);
+    const view = URL.createObjectURL(r.blob); opened.set(out.id, view); remember(out.id, r.blob);
     return { src: out.url, view };
   }
 
@@ -331,7 +331,7 @@
         const keys = [];
         try { const vk = inCloud() ? await LMD.cloud.vaultKey(core.cloudPath) : null; if (vk) keys.push(vk.key); } catch (e) { /* bloqueada */ }
         for (const k of await LMD.cloud.vaultKeys()) if (!keys.includes(k)) keys.push(k);
-        for (const key of keys) { try { const url = URL.createObjectURL(await openBytes(key, raw)); opened.set(id, url); return url; } catch (e) { /* no es esa llave */ } }
+        for (const key of keys) { try { const blob = await openBytes(key, raw); const url = URL.createObjectURL(blob); opened.set(id, url); remember(id, blob); return url; } catch (e) { /* no es esa llave */ } }
         throw fail('vault_locked');
       } finally { opening.delete(id); }
     })());
@@ -345,7 +345,7 @@
       if (!m) return;
       if (img.dataset.lmdEnc === m[1] && (img.getAttribute('src') || '').startsWith('blob:')) return;
       img.setAttribute('data-lmd-src', src); img.dataset.lmdEnc = m[1];
-      if (opened.has(m[1])) { img.src = opened.get(m[1]); return; }
+      if (opened.has(m[1])) { img.src = opened.get(m[1]); if (!openedData.has(m[1])) fetch(opened.get(m[1])).then((x) => x.blob()).then((b) => remember(m[1], b)).catch(() => {}); return; }
       img.src = BLANK; img.classList.add('lmd-img-wait');
       if (!LMD.cloud.signedIn() || LMD.cloud.guest()) { img.classList.add('lmd-img-locked'); img.title = T('Imagen de una carpeta protegida'); return; }
       openEnc(m[1]).then((url) => { if (img.isConnected) { img.src = url; img.classList.remove('lmd-img-wait', 'lmd-img-locked'); img.removeAttribute('title'); } })
@@ -388,35 +388,136 @@
     } finally { lifting = false; }
   }
 
+  // ---------- Convertir las imágenes de una nota cuando cambia cómo se guarda ----------
+  // Una nota que entra a una carpeta protegida, sale de ella, cambia de llave o de espacio lleva sus imágenes al
+  // mismo estado: en claro (un adjunto con dirección) o cifradas con la llave de su carpeta. Lo usa cloud.js en
+  // los mismos pasos en que cifra o descifra el texto, nota por nota, así que se retoma donde quedó si se corta.
+  // Un adjunto se reconoce por la ruta /f/<id>, con cualquier origen delante, y por ser de un espacio de la cuenta.
+  const REF_RE = /https?:\/\/[^\s()<>"'\]\\]*?\/f\/([0-9a-f]{40})\.(png|jpg|gif|webp|avif|enc)(?![0-9a-z])/g;
+  const refsIn = (text) => { const out = []; const seen = new Set(); for (const m of String(text || '').matchAll(REF_RE)) { if (seen.has(m[0])) continue; seen.add(m[0]); out.push({ url: m[0], id: m[1], enc: m[2] === 'enc' }); } return out; };
+  const encIdsIn = (text) => Array.from(new Set(refsIn(text).filter((x) => x.enc).map((x) => x.id)));
+  // Qué adjuntos hay en cada espacio de la cuenta. Se pide una vez cada tanto y se pone al día con lo que se sube.
+  const known = new Map();
+  async function ownedIn(space) {
+    const hit = known.get(space);
+    if (hit && Date.now() - hit.at < 120000) return hit.ids;
+    const data = await LMD.cloud.binary('GET', withSpace('/files', space));
+    const ids = new Map(data.files.map((f) => [f.id, !!f.encrypted]));
+    known.set(space, { at: Date.now(), ids });
+    return ids;
+  }
+  // Lo que queda por borrar del servidor (copias que una nota dejó de usar al convertirse), guardado en este
+  // navegador para terminarlo aunque se corte en el medio. Cada borrado pide "solo si ninguna nota la usa".
+  const PURGE = 'imagePurge';
+  const purgeGet = () => new Promise((resolve) => { try { chrome.storage.local.get(PURGE, (r) => resolve(Array.isArray(r && r[PURGE]) ? r[PURGE] : [])); } catch (e) { resolve([]); } });
+  const purgeSet = (list) => new Promise((resolve) => { try { chrome.storage.local.set({ [PURGE]: list.slice(-500) }, resolve); } catch (e) { resolve(); } });
+  let purging = Promise.resolve();
+  const purgeEdit = (fn) => { purging = purging.then(async () => purgeSet(fn(await purgeGet()))).catch(() => {}); return purging; };
+  async function purgeNow(drops) {
+    for (const d of drops) {
+      let gone = true;
+      try { await LMD.cloud.binary('DELETE', withSpace('/files/' + d.id, d.space, 'unused=1')); const k = known.get(d.space); if (k) k.ids.delete(d.id); }
+      catch (e) { gone = e.code !== 'offline'; } // en uso por otra nota, o ya no está: no se insiste. Sin conexión, queda para después
+      if (gone) await purgeEdit((list) => list.filter((x) => !(x.id === d.id && x.space === d.space)));
+    }
+    forgetUsage();
+  }
+  async function purgeFlush() { try { if (!LMD.cloud.signedIn() || LMD.cloud.guest()) return; const list = await purgeGet(); if (list.length) await purgeNow(list); } catch (e) { /* queda para la próxima */ } }
+  // La app le dice al servidor qué imágenes cifradas usa una nota protegida: solo sus identificadores.
+  const declared = new Map();
+  async function declare(space, path, ids) {
+    const key = space + '|' + path; const sig = ids.slice().sort().join(',');
+    if (declared.get(key) === sig) return;
+    try { await LMD.cloud.api('PUT', withSpace('/files/refs', space), { path, ids }); declared.set(key, sig); }
+    catch (e) { /* solo lectura, sin conexión o un servidor sin actualizar: se vuelve a intentar al próximo guardado */ }
+  }
+  const inner = (path) => String(path).replace(/^~\d+\//, '');
+  // o: { fromSpace, toSpace, fromKeys, toKey, fromPath, toPath }. Las rutas son las de adentro del espacio.
+  // Devuelve { text, finish }: text es la nota con sus imágenes ya convertidas, y finish() se llama cuando esa nota
+  // quedó guardada: declara lo que usa y borra del servidor las copias que nadie más usa.
+  // Si una imagen no se puede convertir (sin conexión, sin lugar) sale el error y la nota no se toca.
+  async function convert(text, o) {
+    const refs = refsIn(text); const drops = []; let out = String(text == null ? '' : text);
+    const fromKeys = (o.fromKeys || []).filter(Boolean); const sameSpace = o.fromSpace === o.toSpace;
+    const up = async (bytes, type) => {
+      const body = o.toKey ? await sealBytes(o.toKey, bytes, type) : new Blob([bytes], { type });
+      const made = await LMD.cloud.binary('POST', withSpace('/files', o.toSpace, o.toKey ? 'enc=1' : ''), body, o.toKey ? 'application/octet-stream' : type);
+      const k = known.get(o.toSpace); if (k) k.ids.set(made.id, !!o.toKey);
+      return made;
+    };
+    for (const ref of refs) {
+      if (!ref.enc && !o.toKey) continue; // en claro y sigue en claro: su dirección sirve en cualquier espacio
+      if (ref.enc && o.toKey && sameSpace && fromKeys.length === 1 && fromKeys[0] === o.toKey) continue;
+      if (!ref.enc) {
+        // Solo lo propio: una imagen de otro servidor, o de otra cuenta, es una dirección web como cualquiera.
+        let home = null;
+        for (const s of Array.from(new Set([o.fromSpace, o.toSpace, '']))) { if ((await ownedIn(s)).get(ref.id) === false) { home = s; break; } }
+        if (home == null) continue;
+        let res; try { res = await fetch(LMD.cloud.base() + '/f/' + ref.id); } catch (e) { throw fail('offline'); }
+        if (res.status === 404) continue;
+        if (!res.ok) throw fail('failed');
+        const bytes = new Uint8Array(await res.arrayBuffer()); const type = sniff(bytes);
+        if (!CODES[type]) continue;
+        const made = await up(bytes, type);
+        opened.set(made.id, URL.createObjectURL(new Blob([bytes], { type })));
+        out = out.split(ref.url).join(made.url); drops.push({ space: home, id: ref.id });
+        continue;
+      }
+      // Cifrada: se baja, se abre con la llave que corresponda y se guarda como va en el destino.
+      let raw = null;
+      try { raw = await LMD.cloud.binary('GET', withSpace('/files/' + ref.id + '/raw', o.fromSpace), undefined, '', true); }
+      catch (e) { if (e.code === 'offline') throw e; continue; } // ya no está, o no es de este espacio: queda como estaba
+      let blob = null; let with_ = null;
+      for (const key of fromKeys) { try { blob = await openBytes(key, raw); with_ = key; break; } catch (e) { /* no es esa llave */ } }
+      if (!blob) continue;
+      if (o.toKey && with_ === o.toKey && sameSpace) continue; // ya está con la llave nueva
+      const made = await up(new Uint8Array(await blob.arrayBuffer()), blob.type);
+      if (o.toKey) opened.set(made.id, URL.createObjectURL(blob));
+      out = out.split(ref.url).join(made.url); drops.push({ space: o.fromSpace, id: ref.id });
+    }
+    if (drops.length) await purgeEdit((list) => list.concat(drops));
+    const finish = async () => {
+      if (o.toKey && o.toPath) await declare(o.toSpace, o.toPath, encIdsIn(out));
+      if (fromKeys.length && o.fromPath && (!o.toKey || !sameSpace || o.fromPath !== o.toPath)) { declared.delete(o.fromSpace + '|' + o.fromPath); await declare(o.fromSpace, o.fromPath, []); }
+      if (drops.length) await purgeNow(drops);
+    };
+    return { text: out, finish, changed: out !== String(text == null ? '' : text) };
+  }
+  // Para lo exportado: las imágenes cifradas que están abiertas van incrustadas, ya descifradas.
+  const openedData = new Map();
+  const remember = (id, blob) => { const r = new FileReader(); r.onload = () => openedData.set(id, r.result); r.readAsDataURL(blob); };
+  function inline(root) {
+    root.querySelectorAll('img').forEach((img) => {
+      const m = ENC_RE.exec(img.getAttribute('data-lmd-src') || img.getAttribute('src') || ''); if (!m) return;
+      img.removeAttribute('data-lmd-enc'); img.classList.remove('lmd-img-wait', 'lmd-img-locked');
+      if (openedData.has(m[1])) { img.setAttribute('src', openedData.get(m[1])); img.removeAttribute('data-lmd-src'); }
+    });
+  }
+
   // ---------- Una nota protegida con imágenes en claro ----------
-  // Una nota que entra a una carpeta protegida (o una carpeta que se protege) puede traer imágenes subidas antes,
-  // en claro. Al abrirla con la carpeta desbloqueada se vuelven a subir cifradas, la nota pasa a nombrar esas, y
-  // la copia en claro se borra del servidor si ninguna otra nota la usa.
-  const plainHere = () => { const b = LMD.cloud.base().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); return new RegExp(b + '/f/([0-9a-f]{40})\\.(?:png|jpg|gif|webp|avif)', 'g'); };
+  // Lo normal es que las imágenes se conviertan al proteger la carpeta o al mover la nota. Queda este repaso al
+  // abrir una nota protegida, por si trae la dirección de un adjunto en claro (pegada como texto, o escrita por una
+  // versión anterior de la app). También declara al servidor qué imágenes cifradas usa la nota.
   let sealingNow = false;
   async function sealHere() {
-    if (sealingNow || !core || !inCloud() || core.readOnly || !core.blocks) return;
+    if (sealingNow || !core || !inCloud() || !core.blocks) return;
     const path = core.cloudPath; let vk = null;
     try { vk = await LMD.cloud.vaultKey(path); } catch (e) { return; }
-    const found = vk ? Array.from(new Set(core.raw.match(plainHere()) || [])) : [];
-    if (!found.length) return;
+    if (!vk) return;
+    const space = spaceOf(path); const at = inner(path);
+    if (core.readOnly || !refsIn(core.raw).some((x) => !x.enc)) { if (!core.readOnly && !core.dirty) declare(space, at, encIdsIn(core.raw)); return; }
     sealingNow = true;
     try {
-      const space = spaceOf(path); const map = [];
-      for (const url of found) {
-        try {
-          const res = await fetch(url); if (!res.ok) continue;
-          const bytes = new Uint8Array(await res.arrayBuffer()); const type = sniff(bytes); if (!CODES[type]) continue;
-          const r = await upload({ blob: new Blob([bytes], { type }), type }, path);
-          map.push([url, r.src, /\/f\/([0-9a-f]{40})/.exec(url)[1]]);
-        } catch (e) { if (e.code === 'offline' || e.code === 'storage_full' || e.code === 'vault_locked') break; }
-      }
-      if (!map.length || core.cloudPath !== path) return;
-      let now = core.raw; for (const [from, to] of map) now = now.split(from).join(to);
+      const before = core.raw;
+      const c = await convert(before, { fromSpace: space, toSpace: space, fromKeys: [vk.key], toKey: vk.key, fromPath: at, toPath: at });
+      if (!c.changed || core.cloudPath !== path) return;
+      let now = core.raw; const made = refsIn(c.text).filter((x) => x.enc);
+      if (now === before) now = c.text;
+      else for (const ref of refsIn(before).filter((x) => !x.enc)) { const i = before.split(ref.url)[0].length; const to = made.find((x) => c.text.indexOf(x.url) === i); if (to) now = now.split(ref.url).join(to.url); }
       core.setRaw(now);
-      if (await core.save(false)) { for (const m of map) { try { await LMD.cloud.binary('DELETE', withSpace('/files/' + m[2], space, 'unused=1')); } catch (e) { /* otra nota la usa, o no es de este espacio: queda */ } } forgetUsage(); }
+      if (await core.save(false)) await c.finish();
       core.flash(T('Las imágenes de esta nota ahora están cifradas'));
-    } finally { sealingNow = false; }
+    } catch (e) { /* queda para la próxima vez que se abra */ } finally { sealingNow = false; }
   }
 
   // ---------- Ajustes > Nube: almacenamiento ----------
@@ -472,7 +573,7 @@
       list.textContent = '';
       bar.value = data.max ? Math.min(100, Math.round((data.used / data.max) * 100)) : 0; card.classList.toggle('lmd-st-over', data.used > data.max); warn.hidden = !(data.used > data.max); liftBtn.hidden = !!space || !canLift();
       sum.textContent = T(data.count === 1 ? '1 imagen' : '{n} imágenes', { n: data.count }) + ' · ' + T('{a} de {b}', { a: sizeText(data.used), b: sizeText(data.max) });
-      note.textContent = T('Cada imagen pesa hasta {a}. Lo que ninguna nota usa se borra a los {n} días.', { a: sizeText(data.max_file), n: data.grace_days }) + ' ' + T('Quien tiene la dirección de una imagen puede verla, salvo en carpetas protegidas.') + (data.files.some((f) => f.encrypted) ? ' ' + T('Las de carpetas protegidas están cifradas: acá no se sabe si una nota las usa.') : '');
+      note.textContent = T('Cada imagen pesa hasta {a}. Lo que ninguna nota usa se borra a los {n} días.', { a: sizeText(data.max_file), n: data.grace_days }) + ' ' + T('Quien tiene la dirección de una imagen puede verla, salvo en carpetas protegidas.');
       const rows = data.files.slice().sort((a, b) => (sort === 'size' ? b.size - a.size : b.created - a.created));
       if (!rows.length) { const p = el('p', { class: 'lmd-st-empty' }); p.textContent = T('Todavía no hay imágenes.'); list.appendChild(p); return; }
       for (const f of rows) {
@@ -483,7 +584,7 @@
         else { const img = el('img', { alt: '', loading: 'lazy', decoding: 'async' }); img.src = LMD.cloud.base() + '/f/' + f.id; thumb.appendChild(img); }
         const info = el('span', { class: 'lmd-st-info' });
         const top = el('b'); top.textContent = sizeText(f.size) + (f.encrypted ? '' : ' · ' + (EXT[f.type] || '').toUpperCase());
-        const sub = el('span'); sub.textContent = new Date(f.created).toLocaleDateString(LMD.lang()) + ' · ' + T(f.encrypted ? 'Cifrada' : f.in_use ? 'En uso' : 'Sin uso');
+        const sub = el('span'); sub.textContent = new Date(f.created).toLocaleDateString(LMD.lang()) + ' · ' + (f.encrypted ? T('Cifrada') + ' · ' : '') + T(f.in_use ? 'En uso' : 'Sin uso');
         info.appendChild(top); info.appendChild(sub);
         const del = el('button', { type: 'button', class: 'lmd-btn lmd-st-del', 'data-del': f.id, 'aria-label': T('Eliminar') }); del.innerHTML = ICON.trash;
         row.appendChild(thumb); row.appendChild(info); row.appendChild(del); list.appendChild(row);
@@ -538,7 +639,10 @@
     core.menus.more.push(() => (canLift() ? ['img-lift', ICON.b_image, 'Pasar las imágenes incrustadas a adjuntos'] : null));
     bindDrop(core.ui.article);
     core.hooks.doc.push(() => setTimeout(sealHere, 1200));
+    // Al guardar una nota protegida, el servidor se entera de qué imágenes cifradas usa.
+    core.hooks.saved.push((at) => { if (!refsIn(core.raw).length && !declared.has(spaceOf(at) + '|' + inner(at))) return; LMD.cloud.vaultKey(at).then((vk) => { if (vk && core.cloudPath === at) declare(spaceOf(at), inner(at), encIdsIn(core.raw)); }).catch(() => {}); });
+    setTimeout(purgeFlush, 4000);
   }
 
-  LMD.images = { init, reduce, put, upload, why, tell, lift, liftQuiet, liftHere, pane: paintPane, manage, cleanSvg, paintEnc, sizeText, sniff, forgetUsage, mode, sealHere };
+  LMD.images = { init, reduce, put, upload, why, tell, lift, liftQuiet, liftHere, pane: paintPane, manage, cleanSvg, paintEnc, sizeText, sniff, forgetUsage, mode, sealHere, convert, inline, purgeFlush, refsIn };
 })();
