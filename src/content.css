@@ -1858,3 +1858,12 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-back li span { flex: none; max-width: 45%; color: var(--fg-faint); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 760px) { .lmd-back { padding: 0 16px 100px; } }
 @media print { .lmd-back, .lmd-map { display: none !important; } }
+
+/* Con más herramientas, las tarjetas van de a dos en pantalla ancha; la que muestra sus opciones ocupa el renglón. */
+@media (min-width: 761px) {
+  .lmd-tl-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .lmd-tl-list { gap: 6px; } .lmd-tl-lead { margin-bottom: 8px; }
+  .lmd-tl-list .lmd-tl-main p { font-size: 12.5px; line-height: 1.35; margin-top: 1px; }
+  .lmd-tl-list .lmd-tl-card { height: 100%; align-content: start; padding: 7px 12px; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 4px 10px; }
+  .lmd-tl-list .lmd-tl-card:has(.lmd-tl-opts:not([hidden])) { grid-column: 1 / -1; height: auto; }
+}

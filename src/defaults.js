@@ -1137,7 +1137,7 @@
       "Una diapositiva por cada título de nivel 1 o 2. Un separador (---) también corta. Una cita [!NOTE] es una nota del orador y no se proyecta.": "One slide per level 1 or 2 heading. A divider (---) also splits. A [!NOTE] quote is a speaker note and is not projected.",
       "Teclas: flechas o espacio para avanzar, Inicio y Fin, O vista general, F pantalla completa, L puntero, N notas, P PDF, Escape para salir.": "Keys: arrows or space to advance, Home and End, O overview, F full screen, L pointer, N notes, P PDF, Escape to exit.",
       // Nota diaria (daily.js)
-      "Nota diaria": "Daily note", "Un botón y un atajo abren la nota de hoy. Un calendario lleva a los otros días.": "A button and a shortcut open today's note. A calendar takes you to other days.",
+      "Nota diaria": "Daily note", "Abre o crea la nota de hoy, con un calendario del mes.": "Opens or creates today's note, with a month calendar.",
       "Nota de hoy": "Today's note", "Abrir la nota de hoy": "Open today's note", "Notas diarias": "Daily notes", "Calendario": "Calendar", "Tareas": "Tasks", "Notas": "Notes",
       "Hoy": "Today", "Ayer": "Yesterday", "Mañana": "Tomorrow", "Día anterior": "Previous day", "Día siguiente": "Next day", "Mes anterior": "Previous month", "Mes siguiente": "Next month", "con nota": "has a note",
       "Dónde se guardan": "Where they are saved", "Este navegador": "This browser", "Una carpeta del disco": "A folder on disk", "Todavía no elegiste una carpeta.": "No folder chosen yet.",
@@ -1147,11 +1147,11 @@
       "Sin conexión. La nota del día quedó en este navegador.": "Offline. The daily note was saved in this browser.", "Falta el permiso para escribir en la carpeta de las notas diarias.": "Permission to write to the daily notes folder is missing.",
       "No se pudo abrir la nota del día. Probá de nuevo.": "Could not open the daily note. Try again.", "La nota diaria se usa desde la app.": "The daily note works from the app.",
       // Exportar a Word (docx.js)
-      "Exportar a Word": "Export to Word", "Suma la opción Word (.docx) al menú Exportar. El archivo se arma en el navegador.": "Adds a Word (.docx) option to the Export menu. The file is built in the browser.",
+      "Exportar a Word": "Export to Word", "Suma Word (.docx) al menú Exportar.": "Adds Word (.docx) to the Export menu.",
       "Documento de Word descargado": "Word document downloaded", "No se pudo armar el documento de Word.": "Could not build the Word document.", "Exportar esta nota": "Export this note", "documento": "document",
       "Está en el menú Exportar de la barra de arriba. Las fórmulas van como texto LaTeX y los diagramas como imagen.": "It is in the Export menu of the top bar. Formulas go as LaTeX text and diagrams as images.",
       // Mapa de enlaces (linkmap.js)
-      "Mapa de enlaces": "Link map", "Un gráfico de qué notas enlazan con cuáles, y los enlaces que llegan a la nota abierta.": "A graph of which notes link to which, and the links that point to the open note.",
+      "Mapa de enlaces": "Link map", "Qué notas enlazan con cuáles, y cuáles llegan a la nota abierta.": "Which notes link to which, and which point to the open note.",
       "Enlaces a esta nota": "Links to this note", "Buscar una nota": "Find a note", "Notas sin enlaces": "Notes without links", "Todas las carpetas": "All folders",
       "Acercar": "Zoom in", "Alejar": "Zoom out", "Encuadrar": "Fit to view", "Abrir el mapa": "Open the map", "1 enlace": "1 link", "{n} enlaces": "{n} links", "Leyendo las notas…": "Reading notes…",
       "Ninguna nota para mostrar con este filtro.": "No notes to show with this filter.", "No hay notas en este dispositivo para armar el mapa.": "There are no notes on this device to build the map.",
