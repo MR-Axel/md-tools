@@ -1237,9 +1237,12 @@ function callTool(user, name, args) {
   const noted = (action, a, detail) => { if (inTeam(a)) teamLog(theTeam, user, action, a.p, detail); };
   const seen = (a) => { if (!a || inTeam(a)) teamAiSeen(theTeam, user); };
   if (tt) seen();
-  const teamPath = (p) => !!space && (p === TEAM_PRE.slice(0, -1) || p.startsWith(TEAM_PRE));
+  // barred: es miembro, pero el equipo no deja que su IA entre al espacio. @team/ no es entonces una carpeta propia:
+  // se rechaza diciendo por qué, para que la IA no crea que guardó algo en el equipo.
+  const barred = !tt && !!user.team && !space;
+  const teamPath = (p) => (!!space || barred) && (p === TEAM_PRE.slice(0, -1) || p.startsWith(TEAM_PRE));
   // at: de quién es la nota de esa ruta y cómo se llama ahí. full es la ruta como la ve la IA.
-  const at = (raw) => { const full = scoped(user, raw); return teamPath(full) && full.length > TEAM_PRE.length ? { who: space, p: cleanPath(full.slice(TEAM_PRE.length)), full } : { who: user, p: full, full }; };
+  const at = (raw) => { const full = scoped(user, raw); if (barred && teamPath(full)) throw new Fail(403, 'team_policy', 'The administrator of the team has not allowed members to connect their AI to the team space.'); return teamPath(full) && full.length > TEAM_PRE.length ? { who: space, p: cleanPath(full.slice(TEAM_PRE.length)), full } : { who: user, p: full, full }; };
   // El espacio del equipo protegido: su llave, si quien llama lo desbloqueó para su IA y el token alcanza todo @team.
   const tv = space ? teamVault(user.team) : null;
   const teamKey = () => { const k = tv && tv.state === 'on' && within(user, TEAM_PRE.slice(0, -1)) ? aiKey(tv, user.id) : null; return k ? k.key : null; };
