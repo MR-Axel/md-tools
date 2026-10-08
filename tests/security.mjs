@@ -974,6 +974,13 @@ async function teamSuite() {
     check('equipo: un miembro no administra, y quien administra un equipo no toca a la gente de otro', roles.length === 0 && cross.every((s) => s === 404) && (await acct(B)).team.mine.space === SPACE && (await acct(A)).team.mine.name === '' && (await acct(A)).team.mine.seats === 4 && paddleCalls.length === 0, [roles, cross]);
     const twice = [(await call('POST', '/team/accept', { id: pInv }, P.s)).status, (await call('POST', '/team/accept', { id: pInv }, P.s)).status];
     check('equipo: una invitación sirve una sola vez', twice.join() === '200,404' && (await acct(A)).team.mine.members.length === 3, twice);
+    // Nombre visible: cada cuenta cambia solo el suyo; viaja como texto a los miembros del mismo equipo, y a nadie más.
+    const evilName = '<img src=x onerror=alert(1)>';
+    const nameMine = await call('PUT', '/account', { name: evilName, id: A.id, user: A.id, email: A.email }, B.s);
+    const seenByA = (await acct(A)).team.mine.members; const nameOut = await signup(S, 'afuera-nombre@ejemplo.test');
+    check('nombre visible: nadie cambia el de otra cuenta, y el propio se guarda como texto, sin tocar', nameMine.status === 200 && nameMine.json.name === evilName && nameMine.json.id === B.id && (seenByA.find((x) => x.id === B.id) || {}).name === evilName && (seenByA.find((x) => x.id === A.id) || {}).name === A.email.split('@')[0] && (await acct(A)).name === A.email.split('@')[0], [nameMine.json, seenByA]);
+    check('nombre visible: quien no es del equipo no lo recibe', !JSON.stringify(await acct(nameOut)).includes('onerror') && !JSON.stringify((await call('GET', '/shared', undefined, nameOut.s)).json).includes('onerror'));
+    await call('PUT', '/account', { name: '' }, B.s);
     // Una cuenta que ya es miembro no sale de su equipo porque alguien pague una suscripción de equipo a su nombre.
     const pull = await hook(teamEv('sub_t9', 'active', B.email, 0));
     check('equipo: un pago a nombre de quien ya está en un equipo no lo saca de ahí', pull.json.ignored === 'in_team' && (await acct(B)).team.mine.space === SPACE && (await acct(B)).team.mine.role === 'editor', pull.json);

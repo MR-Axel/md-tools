@@ -29,6 +29,20 @@ try {
   check('entra y devuelve la cuenta', login.status === 200 && s.startsWith('mds_') && login.json.account.plan === 'free' && login.json.account.limit === 3, login.json);
   check('sin sesión no hay acceso', (await call('GET', '/notes')).status === 401);
 
+  console.log('Nombre visible');
+  const acc0 = (await call('GET', '/account', undefined, s)).json;
+  check('la cuenta tiene un nombre visible: por defecto, lo que va antes de la arroba', acc0.name === 'ana' && acc0.name_default === true && login.json.account.name === 'ana', acc0);
+  let named = await call('PUT', '/account', { name: '  Ana   Paz ' }, s);
+  check('cambiarlo lo guarda limpio, y deja de ser el por defecto', named.status === 200 && named.json.name === 'Ana Paz' && named.json.name_default === false && (await call('GET', '/account', undefined, s)).json.name === 'Ana Paz', named.json);
+  const badNames = [];
+  for (const name of ['A', 'x'.repeat(41), 'ana@paz', 'Ana\nPaz', 12, undefined]) badNames.push((await call('PUT', '/account', name === undefined ? {} : { name }, s)).status);
+  check('de 2 a 40 caracteres, sin arroba, sin saltos y solo texto', badNames.every((x) => x === 400) && (await call('GET', '/account', undefined, s)).json.name === 'Ana Paz', badNames);
+  check('sin sesión no se cambia', (await call('PUT', '/account', { name: 'Otra' })).status === 401);
+  named = await call('PUT', '/account', { name: '' }, s);
+  check('vacío vuelve al nombre por defecto', named.status === 200 && named.json.name === 'ana' && named.json.name_default === true, named.json);
+  let lastName = null; for (let i = 0; i < 12; i++) lastName = await call('PUT', '/account', { name: 'Nombre ' + i }, s);
+  check('hay un tope de cambios por hora', lastName.status === 429 && lastName.json.error === 'too_many' && lastName.json.retry_after >= 1, lastName.json);
+
   await call('PUT', '/notes/' + encodeURIComponent('ideas/uno.md'), { text: '# Uno\n\nUna zanahoria.' }, s);
   await call('PUT', '/notes/dos.md', { text: '# Dos' }, s);
   await call('PUT', '/notes/tres.md', { text: '# Tres' }, s);

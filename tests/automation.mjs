@@ -351,23 +351,30 @@ async function uiTests(K) {
   check('la tarjeta lleva su fecha de edición, puesta por la app', !!g && /^\d{4}-\d\d-\d\dT/.test(g.json.data.card.updated) && /^\d{4}-\d\d-\d\dT/.test(g.json.data.card.created), g && g.json.data.card);
   await sleep(400); got.length = 0;
   await page.locator('.lmd-card', { hasText: 'Write copy' }).locator('.lmd-card-text').click(); await page.waitForSelector('.lmd-cd');
-  await page.click('.lmd-cd [data-cd-sug=vence]'); await page.fill('.lmd-cd [data-cd-val=due]', '2026-10-20'); await page.click('.lmd-cd [data-cd=ok]');
+  const addField = async (pg, type, value) => { await pg.click('.lmd-cd [data-cd=add-open]'); await pg.click('.lmd-cd [data-cd-type=' + type + ']'); await pg.fill('.lmd-cd [data-cd=newval]', value); await pg.click('.lmd-cd [data-cd=add]'); };
+  await addField(page, 'due', '2026-10-20'); await addField(page, 'tags', 'bug, idea'); await addField(page, 'person', 'Lia'); await addField(page, 'link', 'https://example.com/a');
+  await page.click('.lmd-cd [data-cd-me]'); await page.keyboard.press('Control+Enter');
   g = await until(() => at('/ok').find((x) => x.json && x.json.type === 'card.updated'), 9000);
-  check('cambiar un atributo en el detalle dispara card.updated con el cambio', !!g && J(g.json.data.changes) === J({ due: { from: null, to: '2026-10-20' } }) && g.json.data.card.title === 'Write copy', g && g.json);
+  const mine = K.ana.email.split('@')[0];
+  check('cambiar campos en el detalle dispara card.updated con el valor anterior y el nuevo de cada uno', !!g && J(g.json.data.changes) === J({ due: { from: null, to: '2026-10-20' }, tags: { from: null, to: 'bug,idea' }, assignee: { from: null, to: 'Lia, ' + mine }, link: { from: null, to: 'https://example.com/a' } }) && g.json.data.card.title === 'Write copy', g && g.json);
+  check('el actor del evento sigue sin nombre ni correo', !!g && !/@/.test(J(g.json.actor)) && !('name' in g.json.actor), g && g.json.actor);
   const chip = await page.locator('.lmd-card', { hasText: 'Write copy' }).locator('.lmd-chip').first().textContent();
   check('y la tarjeta lo muestra en chico', /Oct 20/.test(chip), chip);
 
   // El servidor y la app leen el mismo formato: un mismo tablero da lo mismo de los dos lados.
-  const sample = '{show=due,owner priority=low|medium|high n=number}\n## To do\n- [ ] A {due=2026-10-20 owner="Ana \\"P\\" Paz" id=aaaaaaaa created=2026-10-01T10:00:00Z}\n- [x] B\n- [ ] C {not attrs}\n* [ ] D {k=v}\n- [ ] F {a=1 {b=2}\n\n### Done\n- E {x=1 y="two words" id=eeeeeeee updated=2026-10-02T10:00:00Z}';
+  const sample = '{show=due,owner priority=low|medium|high n=number done=Done tags=bug:red,idea:blue}\n## To do\n- [ ] A {due=2026-10-20 owner="Ana \\"P\\" Paz" tags=bug,idea id=aaaaaaaa created=2026-10-01T10:00:00Z by=Ana}\n- [x] B\n- [ ] C {not attrs}\n* [ ] D {k=v}\n- [ ] F {a=1 {b=2}\n\n### Done\n- E {x=1 y="two words" id=eeeeeeee updated=2026-10-02T10:00:00Z}';
   await v1('PUT', '/note', { path: 'ui/parity.md', text: '```kanban\n' + sample + '\n```\n' }, K.token);
   const fromServer = (await v1('GET', '/boards?path=' + encodeURIComponent('ui/parity.md'), undefined, K.token)).json.data.boards[0];
   const fromApp = await page.evaluate((t) => LMD.board.model.parse(t), sample);
   const flat = (cols, title) => cols.map((c) => [c.title, c.cards.map((k) => [k.id || '', k[title], k.done, k.created || '', k.attrs])]);
   check('la app y el servidor leen igual un tablero: columnas, tarjetas, atributos y configuración', J(fromServer.show) === J(fromApp.show) && J(fromServer.fields) === J(fromApp.fields) && J(flat(fromServer.columns, 'title')) === J(flat(fromApp.columns, 'text')) && fromApp.columns[0].cards.length === 5 && fromApp.columns[0].cards[0].attrs.owner === 'Ana "P" Paz' && fromApp.columns[0].cards[2].text === 'C {not attrs}', [flat(fromServer.columns, 'title'), flat(fromApp.columns, 'text')]);
+  check('la columna de hechas, los colores de las etiquetas y el autor no son campos ni de un lado ni del otro', !('done' in fromServer.fields) && !('tags' in fromServer.fields) && !('by' in fromServer.columns[0].cards[0].attrs) && fromServer.columns[0].cards[0].attrs.tags === 'bug,idea' && fromApp.done === 'Done' && J(fromApp.tags) === J({ bug: 'red', idea: 'blue' }) && fromApp.columns[0].cards[0].by === 'Ana' && !('by' in fromApp.columns[0].cards[0].attrs), [fromServer.fields, fromApp]);
+  const noBy = await v1('PATCH', '/boards/cards/aaaaaaaa', { path: 'ui/parity.md', attrs: { by: 'Otra' } }, K.token);
+  check('el autor de una tarjeta no se cambia por la API', noBy.status === 400 && noBy.json.error.code === 'bad_attr_key', noBy.json);
   const rewritten = (await v1('POST', '/boards/cards/eeeeeeee/done', { path: 'ui/parity.md' }, K.token)).json.data;
   const again = (await api('GET', '/notes/' + encodeURIComponent('ui/parity.md'), undefined, K.ana.s)).json.text;
   const appWrites = await page.evaluate((t) => LMD.board.model.serialize(LMD.board.model.parse(t)).join('\n'), again.split('\n').slice(1, -2).join('\n'));
-  check('y lo que escribe el servidor, la app lo vuelve a escribir igual', rewritten.card.done === true && appWrites === again.split('\n').slice(1, -2).join('\n') && /^\{show=due,owner priority=low\|medium\|high n=number\}$/m.test(again), [again, appWrites]);
+  check('y lo que escribe el servidor, la app lo vuelve a escribir igual', rewritten.card.done === true && appWrites === again.split('\n').slice(1, -2).join('\n') && /^\{show=due,owner priority=low\|medium\|high n=number done=Done tags=bug:red,idea:blue\}$/m.test(again) && / created=2026-10-01T10:00:00Z by=Ana\}$/m.test(again), [again, appWrites]);
 
   console.log('Interfaz: alta guiada desde el tablero');
   await page.click('.lmd-board-menu'); await page.waitForSelector('.lmd-menu-board');
@@ -393,9 +400,27 @@ async function uiTests(K) {
   check('creada, "Send a test" manda el mensaje y dice que llegó', /^The test arrived \(\d+ ms\)\.$/.test(result) && at('/ui-slack').length === 1 && /SharpMD test/.test(at('/ui-slack')[0].json.text), [result, at('/ui-slack').length]);
   await page.click('.lmd-au-wiz [data-au=no]'); await page.waitForSelector('.lmd-au-wiz', { state: 'detached' });
   got.length = 0;
-  await page.locator('.lmd-card', { hasText: 'Write copy' }).locator('.lmd-card-check').check();
+  // "Hecha" es un estado: llevar la tarjeta a la columna de hechas la tilda en el archivo y dispara card.done.
+  await page.locator('.lmd-card', { hasText: 'Write copy' }).dragTo(page.locator('.lmd-col', { hasText: 'Done' }).locator('.lmd-col-head'));
   g = await until(() => at('/ui-slack').find((x) => /done/.test(x.json.text)), 9000);
   check('y de ahí en más Slack recibe la línea armada', !!g && /^Card "Write copy" done in <http[^|]+\|ui\/board\.md>$/.test(g.json.text), g && g.json);
+  const gDone = await until(() => at('/ok').find((x) => x.json && x.json.type === 'card.done' && x.json.data.card.title === 'Write copy'), 9000);
+  const doneText = (await api('GET', '/notes/' + encodeURIComponent('ui/board.md'), undefined, K.ana.s)).json.text;
+  check('mover una tarjeta a la columna de hechas dispara card.done y la deja [x] en el Markdown', !!gDone && gDone.json.data.card.done === true && gDone.json.data.card.column === 'Done' && /## Done\n- \[x\] Write copy \{/.test(doneText), [gDone && gDone.json, doneText]);
+  got.length = 0;
+  await page.locator('.lmd-card', { hasText: 'Write copy' }).dragTo(page.locator('.lmd-col', { hasText: 'To do' }).locator('.lmd-col-head'));
+  const gBack = await until(() => at('/ok').find((x) => x.json && x.json.type === 'card.updated' && x.json.data.changes.done), 9000);
+  check('y sacarla la vuelve a [ ], con el cambio en card.updated', !!gBack && J(gBack.json.data.changes.done) === J({ from: true, to: false }) && /- \[ \] Write copy \{/.test((await api('GET', '/notes/' + encodeURIComponent('ui/board.md'), undefined, K.ana.s)).json.text), gBack && gBack.json);
+
+  console.log('Interfaz: solo lectura');
+  const pub = (await api('POST', '/links', { path: 'ui/board.md' }, K.ana.s)).json;
+  const guest = await R.open(null); const gp = guest.page;
+  await gp.goto(R.home + '?f=' + encodeURIComponent('pub/' + pub.token)); await gp.waitForSelector('.lmd-board .lmd-card');
+  await gp.locator('.lmd-card', { hasText: 'Write copy' }).click(); await gp.waitForSelector('.lmd-cd');
+  const ro = await gp.evaluate(() => ({ title: document.querySelector('.lmd-cd [data-cd=title]').value, editable: [...document.querySelectorAll('.lmd-cd input, .lmd-cd select')].filter((n) => !n.disabled && !n.hidden).length, botones: [...document.querySelectorAll('.lmd-cd button')].map((b) => b.dataset.cd || b.className), enlace: (document.querySelector('.lmd-cd-attr[data-key=link] a') || {}).href, personas: [...document.querySelectorAll('.lmd-cd-attr[data-key=assignee] .lmd-cd-pill')].length, arrastra: document.querySelector('.lmd-card').getAttribute('draggable'), menu: getComputedStyle(document.querySelector('.lmd-col-menu')).display }));
+  check('con un enlace público el detalle se abre sin poder editar: sin guardar, eliminar ni agregar', ro.title === 'Write copy' && ro.editable === 0 && J(ro.botones) === J(['no']) && ro.enlace === 'https://example.com/a' && ro.personas === 2 && ro.arrastra === 'false' && ro.menu === 'none', ro);
+  await gp.keyboard.press('Escape'); await gp.waitForSelector('.lmd-cd', { state: 'detached' });
+  await guest.ctx.close();
 
   console.log('Interfaz: Ajustes > Automatizaciones');
   await page.click('[data-act=settings]'); await page.waitForSelector('[data-ptab=auto]'); await page.click('[data-ptab=auto]'); await page.waitForSelector('.lmd-au-list');
@@ -450,14 +475,23 @@ async function uiTests(K) {
   const small = await R.open(K.ana, { viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true });
   const sp = small.page;
   await sp.goto(R.noteUrl('ui/board.md')); await sp.waitForSelector('.lmd-board .lmd-card');
-  s = await sp.evaluate(() => { const b = document.querySelector('.lmd-board'); const col = b.querySelector('.lmd-col').getBoundingClientRect(); return { page: document.documentElement.scrollWidth <= window.innerWidth, snap: getComputedStyle(b).scrollSnapType, col: col.width, scrolls: b.scrollWidth > b.clientWidth, open: getComputedStyle(b.querySelector('.lmd-card-open')).opacity }; });
-  check('el tablero se desliza con el dedo, con columnas que encajan, sin mover la página', s.page && /x mandatory/.test(s.snap) && s.col > 250 && s.col < 340 && s.scrolls && s.open === '1', s);
-  await sp.locator('.lmd-card', { hasText: 'Pick a name' }).locator('.lmd-card-open').tap(); await sp.waitForSelector('.lmd-cd');
-  await sp.tap('.lmd-cd [data-cd-sug=responsable]'); await sp.fill('.lmd-cd [data-cd-val=owner]', 'Lia');
+  s = await sp.evaluate(() => { const b = document.querySelector('.lmd-board'); const col = b.querySelector('.lmd-col').getBoundingClientRect(); return { page: document.documentElement.scrollWidth <= window.innerWidth, snap: getComputedStyle(b).scrollSnapType, col: col.width, scrolls: b.scrollWidth > b.clientWidth, open: getComputedStyle(b.querySelector('.lmd-col-menu')).opacity, sinControles: b.querySelectorAll('.lmd-card input, .lmd-card button').length === 0 }; });
+  check('el tablero se desliza con el dedo, con columnas que encajan, sin mover la página', s.page && /x mandatory/.test(s.snap) && s.col > 250 && s.col < 340 && s.scrolls && s.open === '1' && s.sinControles, s);
+  // deslizar el tablero con el dedo no abre una tarjeta; un toque, sí
+  const cdp = await small.ctx.newCDPSession(sp); const cb = await sp.locator('.lmd-card', { hasText: 'Pick a name' }).boundingBox().catch(() => null);
+  const first = await sp.locator('.lmd-card').first().boundingBox();
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: first.x + 40, y: first.y + 12 }] });
+  for (let i = 1; i <= 6; i++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: first.x + 40 - i * 18, y: first.y + 12 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(400);
+  check('deslizar sobre una tarjeta no la abre', (await sp.locator('.lmd-cd').count()) === 0 && cb !== undefined);
+  await sp.evaluate(() => { document.querySelector('.lmd-board').scrollLeft = 0; }); await sleep(300);
+  await sp.evaluate(() => [...document.querySelectorAll('.lmd-card')].find((c) => /Pick a name/.test(c.textContent)).scrollIntoView({ inline: 'center', block: 'center' })); await sleep(400);
+  await sp.locator('.lmd-card', { hasText: 'Pick a name' }).tap(); await sp.waitForSelector('.lmd-cd');
+  await sp.tap('.lmd-cd [data-cd=add-open]'); await sp.tap('.lmd-cd [data-cd-use=assignee]'); await sp.fill('.lmd-cd [data-cd=newval]', 'Lia'); await sp.tap('.lmd-cd [data-cd=add]');
   s = await sp.evaluate(() => { const c = document.querySelector('.lmd-cd-card').getBoundingClientRect(); const tap = [...document.querySelectorAll('.lmd-cd-card button, .lmd-cd-card select, .lmd-cd-card input[type=text]')].filter((n) => n.offsetParent).map((n) => Math.round(n.getBoundingClientRect().height)); return { fits: c.left >= 0 && c.right <= window.innerWidth && c.bottom <= window.innerHeight + 1, min: Math.min(...tap), page: document.documentElement.scrollWidth <= window.innerWidth }; });
   check('el detalle de la tarjeta entra en la pantalla y se toca cómodo', s.fits && s.page && s.min >= 32, s);
   await sp.tap('.lmd-cd [data-cd=ok]'); await sp.waitForSelector('.lmd-cd', { state: 'detached' });
-  check('y guarda', /Pick a name \{owner=Lia id=/.test((await api('GET', '/notes/' + encodeURIComponent('ui/board.md'), undefined, K.ana.s)).json.text) || !!(await until(async () => /Pick a name \{owner=Lia id=/.test((await api('GET', '/notes/' + encodeURIComponent('ui/board.md'), undefined, K.ana.s)).json.text), 6000)));
+  check('y guarda', /Pick a name \{assignee=Lia id=/.test((await api('GET', '/notes/' + encodeURIComponent('ui/board.md'), undefined, K.ana.s)).json.text) || !!(await until(async () => /Pick a name \{assignee=Lia id=/.test((await api('GET', '/notes/' + encodeURIComponent('ui/board.md'), undefined, K.ana.s)).json.text), 6000)));
   await sp.tap('[data-act=more]'); await sp.waitForSelector('.lmd-menu-more');
   const more = await sp.textContent('.lmd-menu-more');
   await sp.tap('.lmd-menu-more [data-more=page]'); await sp.waitForSelector('.lmd-pg');

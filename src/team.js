@@ -148,7 +148,7 @@
       '<div class="lmd-acct-row" data-team="role"><span>' + T('Tu papel') + '</span><b>' + role(mine.role) + '</b></div>' +
       (owner ? '' : '<p class="lmd-hint">' + esc(T('Administra {a}', { a: boss })) + '</p>') +
       (mine.role === 'reader' ? '<p class="lmd-hint">' + T('Leés las notas del equipo. Para editarlas, pedile a quien administra que cambie tu papel.') + '</p>' : '') +
-      '<ul class="lmd-tokens lmd-team-list" data-team="members">' + mine.members.map((m) => '<li><span>' + esc(m.email) + ' · ' + role(m.role || (m.admin ? 'admin' : 'editor')) + '</span>' +
+      '<ul class="lmd-tokens lmd-team-list" data-team="members">' + mine.members.map((m) => '<li><span>' + (m.name && m.name !== String(m.email).split('@')[0] ? '<b class="lmd-team-name">' + esc(m.name) + '</b> · ' : '') + esc(m.email) + ' · ' + role(m.role || (m.admin ? 'admin' : 'editor')) + '</span>' +
         (admin && !m.owner && m.id !== a.id ? '<span class="lmd-team-acts">' + roleSelect('data-t="role" data-id="' + m.id + '"', m.role, T('Papel de {a}', { a: m.email })) +
           '<button type="button" data-t="remove" data-id="' + m.id + '" data-mail="' + esc(m.email) + '">' + T('Sacar') + '</button></span>' : '') + '</li>').join('') + '</ul>' + out;
     if (admin) {
@@ -217,7 +217,7 @@
     if (e.about) out.push(e.about);
     return out.join(' · ');
   }
-  const actor = (e) => (e.via === 'team' ? T('Token del equipo') + ' · ' + e.token : (e.who || T('Cuenta eliminada')) + (e.via === 'ai' ? ' · ' + T('IA') + ' ' + e.token : ''));
+  const actor = (e) => (e.via === 'team' ? T('Token del equipo') + ' · ' + e.token : (e.who_name || e.who || T('Cuenta eliminada')) + (e.via === 'ai' ? ' · ' + T('IA') + ' ' + e.token : ''));
   async function logDialog(mine) {
     const C = LMD.cloud.team; const when = (ms) => new Date(ms).toLocaleString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { dateStyle: 'medium', timeStyle: 'short' });
     const box = el('div', { class: 'lmd-ask lmd-tlog-ask' });

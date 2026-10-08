@@ -767,7 +767,7 @@
   // Con from, el de un bloque dibujado fuera de la página (una nota que se publica en un sitio).
   function htmlOf(from) {
     const copy = (from || core.ui.article).cloneNode(true);
-    copy.querySelectorAll('.lmd-anchor, .lmd-code-copy, .lmd-code-lang, .lmd-dgm-tools, .lmd-add, .lmd-draft, .lmd-draft-li, .lmd-board-edit').forEach((n) => n.remove());
+    copy.querySelectorAll('.lmd-anchor, .lmd-code-copy, .lmd-code-lang, .lmd-dgm-tools, .lmd-add, .lmd-draft, .lmd-draft-li, .lmd-board-edit, .lmd-cl-bar, .lmd-cl-add, .lmd-cl-grip').forEach((n) => n.remove());
     copy.querySelectorAll('[contenteditable]').forEach((n) => n.removeAttribute('contenteditable'));
     copy.querySelectorAll('[data-l], [data-p]').forEach((n) => { n.removeAttribute('data-l'); n.removeAttribute('data-p'); });
     // La matemática viaja como MathML, que el navegador dibuja solo, sin la hoja de estilos de KaTeX.

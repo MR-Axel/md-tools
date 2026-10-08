@@ -475,9 +475,130 @@
     return best;
   }
 
+  // ---------- Listas de tareas ----------
+  // Una lista donde todos los elementos llevan casilla es una lista para tildar. En el archivo sigue siendo una
+  // lista de tareas común; en la app gana un contador, un renglón para agregar siempre a mano, una manija para
+  // reordenar, y dos acciones: pasar los hechos abajo y quitarlos (con deshacer).
+  const clItems = (list) => Array.from(list.children).filter((li) => li.tagName === 'LI' && !li.classList.contains('lmd-draft-li'));
+  const clLists = () => Array.from(core.ui.article.querySelectorAll(':scope > ul.lmd-task-list')).filter((list) => { const it = clItems(list); return it.length > 0 && it.every((li) => li.classList.contains('lmd-task-item')); });
+  const clDone = (li) => { const b = li.querySelector('input.lmd-task'); return !!(b && b.checked); };
+  function checklists() {
+    const article = core.ui.article;
+    article.querySelectorAll('.lmd-cl-bar, .lmd-cl-add, .lmd-cl-grip').forEach((n) => n.remove());
+    article.querySelectorAll('.lmd-cl').forEach((n) => n.classList.remove('lmd-cl'));
+    if (core.readOnly || !core.blocks) return;
+    clLists().forEach((list) => {
+      const items = clItems(list); const done = items.map(clDone); const n = done.filter(Boolean).length;
+      list.classList.add('lmd-cl');
+      const bar = el('div', { class: 'lmd-cl-bar', contenteditable: 'false' });
+      bar.appendChild(el('span', { class: 'lmd-cl-count', text: T('{a} de {b}', { a: n, b: items.length }) }));
+      // "Hechos abajo" solo se ofrece si alguno hecho quedó arriba de uno sin hacer.
+      if (done.lastIndexOf(false) > done.indexOf(true) && done.indexOf(true) >= 0) bar.appendChild(el('button', { type: 'button', class: 'lmd-link', 'data-cl': 'sink', text: T('Mover los hechos abajo') }));
+      if (n) bar.appendChild(el('button', { type: 'button', class: 'lmd-link', 'data-cl': 'clear', text: T('Quitar los hechos') }));
+      list.before(bar);
+      items.forEach((li) => li.insertBefore(el('button', { type: 'button', class: 'lmd-cl-grip', contenteditable: 'false', title: T('Mover el elemento'), 'aria-label': T('Mover el elemento') }, ICON.dots), li.firstChild));
+      list.after(el('button', { type: 'button', class: 'lmd-cl-add', contenteditable: 'false', text: '+ ' + T('Agregar elemento') }));
+    });
+  }
+  // Los renglones de cada elemento, con sus sublistas. En una lista con renglones en blanco, vuelven a separarse así.
+  function clChunks(list) {
+    const items = clItems(list); const starts = items.map((li) => { const r = core.rangeOf(li); return r ? r[0] + fm() : -1; });
+    const whole = core.rangeOf(list);
+    if (!items.length || !whole || starts.some((s, i) => s < 0 || (i && s <= starts[i - 1]))) return null;
+    let end = whole[1] + fm(); const last = starts[starts.length - 1];
+    while (end - 1 > last && blank(end - 1)) end--;
+    let loose = false;
+    const chunks = starts.map((s, i) => { const c = lines().slice(s, i + 1 < starts.length ? starts[i + 1] : end); while (c.length > 1 && !c[c.length - 1].trim()) { c.pop(); loose = true; } return c; });
+    return { start: starts[0], end, chunks, loose, items };
+  }
+  // Reescribe la lista con sus elementos en otro orden, o sin algunos. Es un solo cambio: un solo Ctrl+Z.
+  function clWrite(c, order) {
+    const body = [];
+    order.forEach((i, n) => { if (n && c.loose) body.push(''); c.chunks[i].forEach((l) => body.push(l)); });
+    core.replaceLines(c.start, c.end, body);
+    core.render();
+  }
+  const clSettle = () => { const a = document.activeElement; if (a && a.blur && a.isContentEditable) a.blur(); };
+  let clToast = null;
+  function clSay(text) {
+    if (clToast) clToast.remove();
+    const t = el('div', { class: 'lmd-cl-toast', role: 'status' }); clToast = t;
+    const undo = el('button', { type: 'button', class: 'lmd-link', text: T('Deshacer') });
+    undo.addEventListener('click', () => { t.remove(); if (clToast === t) clToast = null; core.undo(); });
+    t.append(el('span', { text }), undo);
+    document.body.appendChild(t);
+    setTimeout(() => { t.remove(); if (clToast === t) clToast = null; }, 8000);
+  }
+  function clAct(list, what) {
+    clSettle();
+    const c = clChunks(list); if (!c) return;
+    const done = c.items.map(clDone); const all = c.chunks.map((_, i) => i);
+    if (what === 'sink') clWrite(c, all.filter((i) => !done[i]).concat(all.filter((i) => done[i])));
+    else { const n = done.filter(Boolean).length; if (!n) return; clWrite(c, all.filter((i) => !done[i])); clSay(T('Hechos quitados: {a}', { a: n })); }
+  }
+  // Pasa un elemento de un lugar a otro de su lista. Devuelve la lista ya redibujada.
+  function clMove(list, from, to) {
+    const at = clLists().indexOf(list); const c = clChunks(list);
+    if (!c || from < 0 || to < 0 || to >= c.chunks.length || from === to) return null;
+    const order = c.chunks.map((_, i) => i); order.splice(to, 0, order.splice(from, 1)[0]);
+    clWrite(c, order);
+    return clLists()[at] || null;
+  }
+  // El renglón de agregar: abre un elemento nuevo al final. Enter lo agrega y deja el cursor en el siguiente.
+  async function clAdd(btn) {
+    const at = clLists().indexOf(btn.previousElementSibling); if (at < 0) return;
+    clSettle();
+    if (!core.editMode) { await core.setEditMode(true); if (!core.editMode) return; }
+    const list = clLists()[at]; if (!list) return;
+    const items = clItems(list); const d = openItemDraft(items[items.length - 1]);
+    d.dataset.ph = T('Agregar elemento');
+  }
+  function clBind(article) {
+    article.addEventListener('click', (e) => {
+      const t = e.target; if (!t.closest) return;
+      const add = t.closest('.lmd-cl-add'); const act = t.closest('.lmd-cl-bar [data-cl]');
+      if (add) { e.preventDefault(); clAdd(add); }
+      else if (act) { e.preventDefault(); const list = act.parentNode.nextElementSibling; if (list && list.classList.contains('lmd-cl')) clAct(list, act.dataset.cl); }
+    });
+    // Tildar no redibuja la nota: el contador se pone al día solo.
+    article.addEventListener('change', (e) => { if (e.target.matches && e.target.matches('input.lmd-task')) setTimeout(checklists, 0); });
+    // La manija: se arrastra con el mouse o con el dedo, y con el foco puesto se mueve con las flechas.
+    let drag = null;
+    const mark = (list, to) => { clItems(list).forEach((li, i) => li.classList.toggle('lmd-cl-before', i === to)); list.classList.toggle('lmd-cl-end', to === clItems(list).length); };
+    article.addEventListener('pointerdown', (e) => {
+      const grip = e.target.closest && e.target.closest('.lmd-cl-grip'); if (!grip || e.button > 0) return;
+      e.preventDefault(); clSettle();
+      const li = grip.closest('li'); drag = { li, list: li.parentNode, id: e.pointerId, to: -1, y: e.clientY, grip };
+      try { grip.setPointerCapture(e.pointerId); } catch (err) { /* el puntero ya no está */ }
+    });
+    article.addEventListener('pointermove', (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      if (drag.to < 0 && Math.abs(e.clientY - drag.y) < 6) return;
+      const items = clItems(drag.list); let to = items.length;
+      for (let i = 0; i < items.length; i++) { const b = items[i].getBoundingClientRect(); if (e.clientY < b.top + b.height / 2) { to = i; break; } }
+      drag.to = to; drag.li.classList.add('lmd-cl-moving'); mark(drag.list, to);
+    });
+    const drop = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const d = drag; drag = null; d.li.classList.remove('lmd-cl-moving'); mark(d.list, -1);
+      if (e.type !== 'pointerup' || d.to < 0) return;
+      const from = clItems(d.list).indexOf(d.li); clMove(d.list, from, d.to > from ? d.to - 1 : d.to);
+    };
+    article.addEventListener('pointerup', drop); article.addEventListener('pointercancel', drop);
+    article.addEventListener('keydown', (e) => {
+      const grip = e.target.classList && e.target.classList.contains('lmd-cl-grip') ? e.target : null;
+      if (!grip || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+      e.preventDefault(); e.stopPropagation();
+      const li = grip.closest('li'); const from = clItems(li.parentNode).indexOf(li); const to = from + (e.key === 'ArrowUp' ? -1 : 1);
+      const list = clMove(li.parentNode, from, to); const again = list && clItems(list)[to];
+      if (again) again.querySelector('.lmd-cl-grip').focus();
+    });
+  }
+
   function init(c) {
     core = c;
     const article = core.ui.article;
+    clBind(article); core.hooks.render.push(checklists);
     article.addEventListener('contextmenu', (e) => {
       // Con Shift queda el menú del navegador, que es el que corrige la ortografía.
       if (!core.blocks || e.shiftKey || e.target.closest('.lmd-src')) return;

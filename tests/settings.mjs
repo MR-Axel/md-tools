@@ -179,7 +179,20 @@ try {
   check('ninguna pestaña necesita scroll a 800 px de alto (plan gratis)', over.length === 0, over);
   await tab('cloud');
   const freeCloud = await app.evaluate(() => [...document.querySelectorAll('[data-acct=cloud] .lmd-acct-row')].map((r) => r.children[0].textContent + '=' + r.children[1].textContent).join('|') + ' / ' + [...document.querySelectorAll('[data-acct=cloud] button')].map((b) => b.textContent).join('|'));
-  check('Nube: la cuenta, el plan y cuántas notas, con abrir la carpeta, salir y eliminar la cuenta', freeCloud === 'Cuenta=' + mail + '|Plan=Gratis|Notas en la nube=1 de 10 / Abrir la carpeta Nube|Salir|Proteger una carpeta|Eliminar la cuenta', freeCloud);
+  check('Nube: la cuenta, el plan y cuántas notas, con abrir la carpeta, salir y eliminar la cuenta', freeCloud === 'Cuenta=' + mail + '|Nombre visible=' + mail.split('@')[0] + '|Plan=Gratis|Notas en la nube=1 de 10 / Cambiar|Abrir la carpeta Nube|Salir|Proteger una carpeta|Eliminar la cuenta', freeCloud);
+  // el nombre visible se cambia en el lugar, y se muestra siempre como texto
+  const nameHint = await text('[data-acct=cloud] .lmd-acct-name-hint');
+  await app.click('[data-acct=cloud] [data-c=name]'); await app.waitForSelector('[data-acct=cloud] [data-name-in]');
+  const nameEdit = await app.evaluate(() => ({ foco: document.activeElement.matches('[data-name-in]'), valor: document.activeElement.value, max: document.activeElement.maxLength, nombre: document.activeElement.getAttribute('aria-label') }));
+  await app.fill('[data-acct=cloud] [data-name-in]', 'm@l'); await app.keyboard.press('Enter'); await app.waitForTimeout(200);
+  const nameBad = await app.evaluate(() => ({ aviso: document.querySelector('[data-acct=cloud] .lmd-acct-name-hint').textContent, mal: document.querySelector('[data-acct=cloud] [data-name-in]').getAttribute('aria-invalid') }));
+  await app.fill('[data-acct=cloud] [data-name-in]', '<b id=pwn>María</b>'); await app.keyboard.press('Enter'); await app.waitForSelector('[data-acct=cloud] [data-name]');
+  const nameNow = await app.evaluate(() => ({ fila: document.querySelector('[data-acct=cloud] [data-name]').textContent, html: !!document.querySelector('#pwn'), cuenta: LMD.sync.account().name, defecto: LMD.sync.account().name_default }));
+  check('Nube: el nombre visible, con su línea, se cambia en el lugar', nameHint === 'Los demás ven este nombre en notas compartidas y equipos' && nameEdit.foco && nameEdit.valor === mail.split('@')[0] && nameEdit.max === 40 && nameEdit.nombre === 'Nombre visible' && nameNow.cuenta === '<b id=pwn>María</b>' && nameNow.defecto === false, [nameHint, nameEdit, nameNow]);
+  check('un nombre con arroba se avisa ahí mismo', nameBad.aviso === 'De 2 a 40 caracteres, sin arroba.' && nameBad.mal === 'true', nameBad);
+  check('y se muestra siempre como texto, nunca como HTML', nameNow.fila === '<b id=pwn>María</b>' && nameNow.html === false, nameNow);
+  await app.click('[data-acct=cloud] [data-c=name]'); await app.fill('[data-acct=cloud] [data-name-in]', ''); await app.click('[data-acct=cloud] [data-c=name-ok]'); await app.waitForSelector('[data-acct=cloud] [data-name]');
+  check('vacío vuelve a lo que va antes de la arroba', (await text('[data-acct=cloud] [data-name]')) === mail.split('@')[0], await text('[data-acct=cloud] [data-name]'));
   await tab('ai');
   const freeAi = await text('[data-acct=ai]');
   await app.click('[data-acct=ai] [data-c=plans]'); await app.waitForTimeout(450);
@@ -427,7 +440,7 @@ try {
   check('ninguna pestaña necesita scroll a 800 px de alto (plan pago)', over.length === 0, over);
   await tab('cloud');
   const paidCloud = await app.evaluate(() => [...document.querySelectorAll('[data-acct=cloud] .lmd-acct-row')].map((r) => r.children[0].textContent + '=' + r.children[1].textContent).join('|'));
-  check('Nube con plan pago: el número de notas y "sin límite"', paidCloud === 'Cuenta=' + mail + '|Plan=Pago|Notas en la nube=4, sin límite', paidCloud);
+  check('Nube con plan pago: el número de notas y "sin límite"', paidCloud === 'Cuenta=' + mail + '|Nombre visible=' + mail.split('@')[0] + '|Plan=Pago|Notas en la nube=4, sin límite', paidCloud);
   await tab('ai'); await app.waitForSelector('[data-acct=ai] [data-c=token]');
   const aiBefore = await app.evaluate(() => ({ url: document.querySelector('[data-acct=ai] .lmd-field input').value, fields: document.querySelectorAll('[data-acct=ai] .lmd-field').length, none: /Todavía no hay tokens/.test(document.querySelector('[data-acct=ai]').textContent) }));
   await app.click('[data-acct=ai] [data-c=token]'); await app.waitForSelector('.lmd-ai-new');

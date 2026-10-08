@@ -152,7 +152,7 @@
   }
 
   // ---------- De la nota al documento ----------
-  const SKIP = '.lmd-anchor, .lmd-code-copy, .lmd-code-lang, .lmd-dgm-tools, .lmd-add, .lmd-draft, .lmd-draft-li, .lmd-board-edit, .lmd-front, .lmd-cm-layer, .lmd-live-layer, .lmd-voice-ghost, .lmd-handle, .footnote-backref, .lmd-col-n, .lmd-err-note, .footnotes-sep, script, style, button, select, textarea';
+  const SKIP = '.lmd-anchor, .lmd-code-copy, .lmd-code-lang, .lmd-dgm-tools, .lmd-add, .lmd-draft, .lmd-draft-li, .lmd-board-edit, .lmd-cl-bar, .lmd-cl-add, .lmd-cl-grip, .lmd-front, .lmd-cm-layer, .lmd-live-layer, .lmd-voice-ghost, .lmd-handle, .footnote-backref, .lmd-col-n, .lmd-err-note, .footnotes-sep, script, style, button, select, textarea';
   const BLOCK = /^(P|DIV|UL|OL|DL|PRE|TABLE|BLOCKQUOTE|H[1-6]|HR|SECTION|DETAILS|FIGURE|ARTICLE|ASIDE|HEADER|FOOTER|NAV|MAIN)$/;
   const isBlock = (n) => n.nodeType === 1 && (BLOCK.test(n.tagName) || n.matches('.lmd-code, .lmd-table, .lmd-diagram, .lmd-math-block, .lmd-board'));
 
@@ -344,7 +344,7 @@
         return Array.from(n.querySelectorAll('.lmd-col')).map((col) => {
           const title = col.querySelector('.lmd-col-title');
           return para(pPrOf(c), textRun(title ? title.textContent.trim() : '', { b: true })) +
-            Array.from(col.querySelectorAll('.lmd-card')).map((card) => { const t = card.querySelector('.lmd-card-text'); const box = card.querySelector('.lmd-card-check'); return para(pPrOf(Object.assign({}, c, { list: { depth: 0 } }), { left: 720, hanging: 360 }), checkbox(!!(box && box.checked)) + textRun(' ' + (t ? t.textContent : card.textContent).trim(), {})); }).join('');
+            Array.from(col.querySelectorAll('.lmd-card')).map((card) => { const t = card.querySelector('.lmd-card-text'); return para(pPrOf(Object.assign({}, c, { list: { depth: 0 } }), { left: 720, hanging: 360 }), checkbox(card.classList.contains('lmd-card-done')) + textRun(' ' + (t ? t.textContent : card.textContent).trim(), {})); }).join('');
         }).join('');
       }
       if (tag === 'TABLE') return table(n, c);

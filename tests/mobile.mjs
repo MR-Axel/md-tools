@@ -430,6 +430,35 @@ try {
     check(tag + 'plantillas: el filtro no abre el teclado solo', tpl.focus !== 'INPUT', tpl.focus);
     await fits(page, tag + 'selector de plantillas');
     await page.tap('[data-tpl=no]');
+
+    // Listas de tareas y tablero, con el dedo
+    await page.evaluate(() => LMD.store.notePut('lists.md', '# Lists\n\n- [ ] Coffee\n- [x] Bread\n\n```kanban\n{show=due,tags}\n## To do\n- [ ] Call the venue {due=2026-10-20 tags=bug}\n\n## Done\n- [x] Book flights\n```\n'));
+    await page.goto(home + '?f=' + encodeURIComponent('local/lists.md')); await page.waitForSelector('.lmd-cl-add');
+    const cl = await page.evaluate(() => { const box = (s) => document.querySelector(s).getBoundingClientRect(); return { count: document.querySelector('.lmd-cl-count').textContent, add: Math.round(box('.lmd-cl-add').height), grip: [Math.round(box('.lmd-cl-grip').width), Math.round(box('.lmd-cl-grip').height)], clear: getComputedStyle(document.querySelector('.lmd-cl-bar [data-cl=clear]')).opacity, inside: box('.lmd-cl-grip').right <= innerWidth && box('.lmd-cl-grip').left >= 0 }; });
+    check(tag + 'lista de tareas: el contador, y agregar, mover y quitar con alto para el dedo', cl.count === '1 of 2' && cl.add >= 40 && cl.grip[0] >= 32 && cl.grip[1] >= 32 && cl.clear === '1' && cl.inside, cl);
+    await page.tap('.lmd-cl-add'); await page.waitForSelector('.lmd-draft-li .lmd-draft');
+    await page.keyboard.type('Milk'); await page.keyboard.press('Enter'); await page.waitForSelector('.lmd-draft-li .lmd-draft');
+    await page.keyboard.type('Eggs'); await page.keyboard.press('Enter'); await page.waitForSelector('.lmd-draft-li .lmd-draft'); await page.keyboard.press('Enter'); await page.waitForTimeout(1300);
+    const listText = () => page.evaluate(async () => ((await LMD.store.notesAll()).find((n) => n.name === 'lists.md') || {}).text || '');
+    check(tag + 'lista de tareas: se escribe, Enter agrega y sigue en el próximo, y Enter en uno vacío termina', /- \[ \] Coffee\n- \[x\] Bread\n- \[ \] Milk\n- \[ \] Eggs\n/.test(await listText()) && (await page.locator('.lmd-draft-li').count()) === 0, await listText());
+    await fits(page, tag + 'lista de tareas en edición');
+    // arrastrar la manija con el dedo
+    try {
+      const cdp = await ctx.newCDPSession(page); await page.evaluate(() => { const a = document.activeElement; if (a && a.blur) a.blur(); }); await page.waitForTimeout(700);
+      const g = await page.locator('.lmd-cl li.lmd-task-item', { hasText: 'Eggs' }).locator('.lmd-cl-grip').boundingBox(); const top = await page.locator('.lmd-cl li.lmd-task-item').first().boundingBox();
+      const x = g.x + g.width / 2; let y = g.y + g.height / 2;
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      for (let i = 0; i < 8; i++) { y -= (g.y + g.height / 2 - top.y - 2) / 8; await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] }); }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await page.waitForTimeout(1300);
+      check(tag + 'lista de tareas: la manija se arrastra con el dedo', /- \[ \] Eggs\n- \[ \] Coffee\n- \[x\] Bread\n- \[ \] Milk\n/.test(await listText()), await listText());
+    } catch (e) { check(tag + 'lista de tareas: la manija se arrastra con el dedo', false, String(e.message || e).slice(0, 200)); }
+    await page.locator('.lmd-card').first().scrollIntoViewIfNeeded(); await page.locator('.lmd-card').first().tap(); await page.waitForSelector('.lmd-cd');
+    await page.tap('.lmd-cd [data-cd=add-open]'); await page.tap('.lmd-cd [data-cd-type=person]'); await page.waitForSelector('.lmd-cd [data-cd=newval]');
+    const cd = await page.evaluate(() => { const c = document.querySelector('.lmd-cd-card').getBoundingClientRect(); const hs = [...document.querySelectorAll('.lmd-cd-card button, .lmd-cd-card select, .lmd-cd-card input:not([type=checkbox])')].filter((n) => n.offsetParent).map((n) => Math.round(n.getBoundingClientRect().height));
+      return { wide: c.left <= 16 && c.right >= innerWidth - 16 && c.right <= innerWidth, min: Math.min(...hs), cards: document.querySelectorAll('.lmd-card input, .lmd-card button').length, font: parseFloat(getComputedStyle(document.querySelector('.lmd-cd [data-cd=newval]')).fontSize), chips: [...document.querySelectorAll('.lmd-card .lmd-chip')].map((x) => x.textContent) }; });
+    check(tag + 'tablero: un toque abre la tarjeta, el detalle ocupa el ancho y los controles tienen alto para el dedo', cd.wide && cd.min >= 32 && cd.cards === 0 && cd.font >= 16 && cd.chips.join('|') === 'Oct 20|bug', cd);
+    await fits(page, tag + 'detalle de una tarjeta');
+    await page.tap('.lmd-cd [data-cd=add-cancel]'); await page.tap('.lmd-cd [data-cd=no]'); await page.waitForSelector('.lmd-cd', { state: 'detached' });
     await ctx.close();
   }
 

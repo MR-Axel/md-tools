@@ -1371,10 +1371,30 @@
       "Una tarjeta tiene hasta 30 atributos.": "A card holds up to 30 attributes.", "Escribí un título.": "Type a title.",
       "Atributos en las tarjetas": "Attributes on the cards", "Atributos en las tarjetas…": "Attributes on the cards…",
       "Todavía no hay atributos. Abrí una tarjeta para agregar el primero.": "There are no attributes yet. Open a card to add the first one.", "Avisar cuando cambie una tarjeta…": "Notify when a card changes…",
-      "vence": "due", "responsable": "owner",
+      "vence": "due", "responsable": "assignee",
       "prioridad": "priority", "etiqueta": "tag",
       "enlace": "link", "baja": "low",
       "media": "medium", "alta": "high",
+      // El tablero: tarjetas que se abren con un clic, columna de hechas y campos por tipo.
+      "etiquetas": "tags", "Fecha límite": "Due date", "Responsable": "Assignee", "Prioridad": "Priority", "Etiquetas": "Tags",
+      "Autor": "Author", "Vencida": "Overdue", "Yo": "Me", "Color": "Color", "Amarillo": "Yellow", "Sin elegir": "Not set", "Valor": "Value",
+      "Columna de hechas": "Done column", "Opciones de la columna": "Column options",
+      "Marcar como columna de hechas": "Mark as the done column", "Quitar como columna de hechas": "Unmark as the done column",
+      "Cambiar el color": "Change the color", "Agregar etiqueta": "Add a tag", "Agregar persona": "Add a person",
+      "Creada por {a} el {b}": "Created by {a} · {b}", "Quitar el campo": "Remove the field", "Campo quitado: {a}": "Field removed: {a}", "Deshacer": "Undo",
+      "Agregar campo": "Add field", "Usar un campo de este tablero": "Use a field from this board", "Campo nuevo": "New field", "Nombre del campo": "Field name",
+      "Ese nombre no sirve: empezá con una letra.": "That name does not work: start with a letter.", "La tarjeta ya tiene ese campo.": "The card already has that field.",
+      "Una tarjeta tiene hasta 30 campos.": "A card holds up to 30 fields.", "El enlace empieza con http:// o https://": "A link starts with http:// or https://",
+      "Hay cambios sin guardar": "There are unsaved changes", "Descartarlos": "Discard", "Seguir editando": "Keep editing",
+      "¿Eliminar la tarjeta \"{a}\"?": "Delete the card \"{a}\"?", "Campos en las tarjetas": "Fields on the cards", "Campos en las tarjetas…": "Fields on the cards…",
+      "Todavía no hay campos. Abrí una tarjeta para agregar el primero.": "There are no fields yet. Open a card to add the first one.", "Hasta 120 caracteres.": "Up to 120 characters.",
+      // Listas de tareas: contador, renglón de agregar, reordenar y quitar los hechos.
+      "{a} de {b}": "{a} of {b}", "Agregar elemento": "Add item", "Quitar los hechos": "Clear done", "Mover los hechos abajo": "Move done to the bottom",
+      "Mover el elemento": "Move the item", "Hechos quitados: {a}": "Done items removed: {a}",
+      // El nombre visible de la cuenta.
+      "Nombre visible": "Display name", "Los demás ven este nombre en notas compartidas y equipos": "Others see this name in shared notes and teams",
+      "De 2 a 40 caracteres, sin arroba.": "2 to 40 characters, no @ sign.", "Demasiados cambios por ahora. Probá más tarde.": "Too many changes for now. Try again later.",
+      "No se pudo guardar. Probá de nuevo.": "It could not be saved. Try again.",
       "Ajustes de la página": "Page settings", "Ancho de la página": "Page width",
       "Normal": "Normal", "Ancha": "Wide",
       "Completa": "Full", "Numerar los títulos": "Number the headings",
@@ -1514,7 +1534,7 @@
   const WEB_APP_URL = 'https://sharpmd.app/src/app.html';
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.55.0';
+  const VERSION = '2.56.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);
