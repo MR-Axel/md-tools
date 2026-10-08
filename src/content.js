@@ -175,12 +175,17 @@
     // Las herramientas de Ajustes > Herramientas (tools.js): cada una se pide recién cuando está prendida.
     speak: { js: ['src/speak.js'] },
     dictate: { js: ['src/voice.js', 'src/dictate.js'] },
+    present: { js: ['src/present.js'] },
+    daily: { js: ['src/daily.js'] },
+    docx: { js: ['src/docx.js'] },
+    linkmap: { js: ['src/linkmap.js'] },
     // La galería de la comunidad, en Ajustes > Herramientas: se pide al abrir esa pestaña.
     gallery: { js: ['src/gallery.js'] },
   };
   const LAZY_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, tools: () => !!(LMD.diagram && LMD.formula && LMD.templates && LMD.community) };
   LAZY_HAVE.gallery = () => !!LMD.gallery;
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
+  ['present', 'daily', 'docx', 'linkmap'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
   async function appLazy(what) {
     const spec = LAZY_APP[what];
     try {
@@ -937,6 +942,8 @@
   }
   const PRINT_KEY = /Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘P' : 'Ctrl+P';
   const hasLink = () => !!appRoot && (appRoot.kind === 'cloud' || appRoot.kind === 'pub');
+  // Lo que suman las herramientas prendidas (tools.js) a un menú de la barra: cada una devuelve su renglón o nada.
+  const toolItems = (menu) => core.menus[menu].map((fn) => fn()).filter(Boolean);
   function openCopy(btn, keys) {
     const md = docKind() === 'md';
     barMenu(btn, 'lmd-menu-narrow lmd-menu-top lmd-menu-copy', [
@@ -953,7 +960,7 @@
       md && ['export-html', ICON.code, 'Archivo HTML'],
       ['export-md', ICON.file, md ? 'Archivo Markdown (.md)' : 'Descargar el archivo'],
       ['print', ICON.print, 'Imprimir', PRINT_KEY],
-    ], keys);
+    ].concat(toolItems('export')), keys);
   }
   // En pantalla chica, lo que en escritorio está a la vista en la barra de arriba, acá en una lista.
   function openMore() {
@@ -973,7 +980,7 @@
       ['settings', ICON.sliders, 'Ajustes'],
       // En pantalla chica el pie no tiene lugar para el enlace: denunciar una nota ajena va acá, al final.
       LMD.touch.small() && APP && LMD.sync.reportRef() && ['report', ICON.flag, 'Denunciar esta nota'],
-    ]);
+    ].concat(toolItems('more')));
   }
   // Una nota del disco puede cambiar por fuera; las del navegador y las de la nube no se recargan a mano.
   const diskDoc = () => !APP || !appRoot || appRoot.kind === 'dir' || appRoot.kind === 'file';
@@ -1008,6 +1015,7 @@
     else if (act === 'reload') { if (orphan || !alive()) location.reload(); else checkForChanges(true); }
     else if (act === 'print') window.print();
     else if (act === 'export-html') LMD.extras.exportHtml();
+    else if (core.actions[act]) core.actions[act](source, keys);
     else if (act === 'close-panel') closePanel();
     else if (act === 'reset') { panelStale = true; LMD.save(LMD.merge({ supporter: settings.supporter })); }
     else if (act === 'check-update') checkUpdate(true);
@@ -3126,7 +3134,8 @@
     openApp: (query) => bg({ type: 'openApp', query }),
     openPanel: (tab, why) => openPanel(tab, why),
     // patch: se dibujó en el lugar un cambio de otra persona (sesión en vivo), sin pasar por render.
-    ui, hooks: { render: [], tree: [], doc: [], patch: [] }, lastBlock: null, appUrl: APP_URL, hold: false,
+    ui, hooks: { render: [], tree: [], doc: [], patch: [], home: [] }, menus: { export: [], more: [] }, actions: {},
+    get treeRoot() { return treeRoot; }, collect: (root) => collectFiles(root), readFile: (url) => readFile(url), wikiKey, lastBlock: null, appUrl: APP_URL, hold: false,
     // Lo que la sesión en vivo (live.js) necesita del lector.
     live: {
       blockId, locate,
@@ -3641,7 +3650,7 @@
     ui.main.querySelector('.lmd-report').hidden = !(APP && LMD.sync.reportRef());
     if (settings && !ui.status.classList.contains('lmd-flash')) ui.status.textContent = idleStatus();
   }
-  function showEmpty(note) { ui.home.hidden = false; LMD.home.show(homeCtx(), note); unsplash(); }
+  function showEmpty(note) { ui.home.hidden = false; LMD.home.show(homeCtx(), note); core.hooks.home.forEach((fn) => fn(ui.home)); unsplash(); }
 
   // Dibuja la nota recién abierta y la deja donde corresponde: en edición si toca, y en la sección o búsqueda pedida.
   function afterOpen(opt) {

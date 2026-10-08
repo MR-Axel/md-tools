@@ -31,6 +31,7 @@ const SHELL = [
 const LATE = [
   'src/emoji-data.js', 'src/emoji.js', 'src/community.js', 'src/templates.js', 'src/diagram.js', 'src/formula.js',
   'src/speak.js', 'src/voice.js', 'src/dictate.js', 'src/gallery.js',
+  'src/present.js', 'src/daily.js', 'src/docx.js', 'src/linkmap.js',
   'vendor/highlight.min.js', 'vendor/markdown-it-emoji.min.js',
   'vendor/fonts/inter-italic.woff2',
   'vendor/katex/katex.min.js', 'vendor/katex/katex.min.css',

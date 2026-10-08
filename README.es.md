@@ -42,6 +42,10 @@ Gratis y de código abierto. Sin seguimiento: los archivos se leen en tu navegad
 - **Leer en voz alta** (Ajustes → Herramientas): lee la nota entera, desde un bloque o lo elegido, con las voces de tu dispositivo. Marca el bloque que va leyendo y anuncia el código y los diagramas en vez de leerlos. Atajo: Alt+Shift+S.
 - **Comunidad** (Ajustes → Herramientas): plantillas, temas y paletas de diagramas que comparte la gente, cada una revisada antes de publicarse. Lo que agregás funciona sin conexión, y podés compartir la nota abierta como plantilla, tu tema o una paleta. Solo contenido, nunca código.
 - **Dictado** (Ajustes → Herramientas): escribís hablando, en español o en inglés, con órdenes para puntuar, poner títulos, listas, tareas y formato. "Fórmula … fin fórmula" arma LaTeX y "diagrama de flujo … fin diagrama" arma un diagrama de Mermaid, los dos a la vista mientras hablás. Usa el reconocimiento de voz del navegador, en el dispositivo cuando el navegador lo ofrece. Atajo: Alt+Shift+D.
+- **Modo presentación** (Ajustes → Herramientas): la nota abierta como diapositivas a pantalla completa, una por cada título de nivel 1 o 2; un separador (`---`) corta a mano. Flechas, espacio, Inicio y Fin para moverte, O para la vista general, F para pantalla completa y L para el puntero láser. Una cita `> [!NOTE]` es una nota del orador y no se proyecta. Las diapositivas se exportan a PDF, una por página apaisada. Atajo: Alt+Shift+P.
+- **Nota diaria** (Ajustes → Herramientas): un botón en el inicio y en el explorador abre la nota de hoy y, si no existe, la crea desde una plantilla, en el navegador, la nube o una carpeta del disco. Un calendario del mes marca los días que tienen nota, y cada nota diaria enlaza al día anterior y al siguiente. Funciona sin conexión. Atajo: Alt+Shift+H.
+- **Exportar a Word** (Ajustes → Herramientas): suma Word (.docx) al menú Exportar. El archivo se arma en el navegador: títulos con estilos que alimentan el índice automático, listas, tareas con casilla, tablas, código, notas al pie, imágenes incrustadas y diagramas como imagen. Las fórmulas van como texto LaTeX.
+- **Mapa de enlaces** (Ajustes → Herramientas): un gráfico de qué notas enlazan con cuáles, por enlaces relativos y `[[wikilinks]]`: se arrastra, se acerca, se filtra por carpeta, se busca, y un clic abre la nota. Bajo la nota abierta, las notas que enlazan a ella. Lee solo lo que ya está en el dispositivo y no envía nada. Atajo: Alt+Shift+G.
 - **Archivos desde el árbol** (página de SharpMD): archivo nuevo, renombrar y eliminar con clic derecho. Los archivos y las carpetas enteras se mueven arrastrándolos, y un archivo soltado adentro de la nota que estás editando queda como enlace (o como imagen) en ese punto.
 - **Pegar imágenes** (página de SharpMD): una imagen del portapapeles se guarda en `assets/`, al lado del documento, y queda insertada.
 - **No solo Markdown** (página de SharpMD): los archivos de código y configuración se ven resaltados y se editan como texto, los CSV y TSV se ven como tabla, y las imágenes como imágenes.
@@ -102,6 +106,9 @@ Lee el número de versión publicado y no manda ningún dato. El otro pedido de 
 | Alt+Shift+T | Cambiar el tema |
 | Alt+Shift+S | Leer en voz alta: empezar, pausar y seguir (con la herramienta prendida) |
 | Alt+Shift+D | Dictado: empezar y cortar (con la herramienta prendida) |
+| Alt+Shift+P | Modo presentación: empezar y salir (con la herramienta prendida) |
+| Alt+Shift+H | Nota diaria: abrir la nota de hoy (con la herramienta prendida) |
+| Alt+Shift+G | Mapa de enlaces: abrir y cerrar (con la herramienta prendida) |
 | Ctrl+Shift+F | Buscar en el documento |
 
 Se cambian en `chrome://extensions/shortcuts`.
@@ -128,6 +135,10 @@ src/
   speak.js        herramienta: leer en voz alta con las voces del dispositivo
   voice.js        la gramática del dictado: órdenes de texto, fórmulas y diagramas, por idioma
   dictate.js      herramienta: dictado, el botón del micrófono y el indicador de escucha
+  present.js      herramienta: modo presentación, las diapositivas de la nota abierta
+  daily.js        herramienta: nota diaria, su calendario y los enlaces al día anterior y al siguiente
+  docx.js         herramienta: exportar a Word, las partes de OOXML y un zip mínimo
+  linkmap.js      herramienta: mapa de enlaces en un canvas y los enlaces a la nota abierta
   home.js         pantalla de inicio de la página propia
   write.js        bloques nuevos, atajos de Markdown y menú de clic derecho
   diagram.js      editor de diagramas con vista previa en vivo

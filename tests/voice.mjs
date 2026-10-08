@@ -280,7 +280,9 @@ try {
     await page.click('[data-ptab=tools]'); await page.waitForSelector('.lmd-tl-card');
     const cards = await page.evaluate(() => [...document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card')].map((c) => ({ id: c.dataset.tool, name: c.querySelector('b').textContent, about: c.querySelector('p').textContent.length > 20, icon: !!c.querySelector('.lmd-tl-ico svg'),
       sw: c.querySelector('input[type=checkbox]') ? (c.querySelector('input').checked ? 'on' : 'off') : 'none', tag: (c.querySelector('.lmd-tag') || {}).textContent || '', opts: !!c.querySelector('.lmd-tl-more:not([hidden])') })));
-    check('tres tarjetas con interruptor: leer en voz alta y dictado apagadas, el tablero prendido', J(cards) === J([
+    // Las demás herramientas tienen su suite (tools.mjs): acá solo que vengan apagadas.
+    check('las herramientas nuevas vienen apagadas', cards.slice(3).every((c) => c.sw === 'off' && c.icon && c.about && !c.opts), cards.slice(3));
+    check('tres tarjetas con interruptor: leer en voz alta y dictado apagadas, el tablero prendido', J(cards.slice(0, 3)) === J([
       { id: 'speak', name: 'Read aloud', about: true, icon: true, sw: 'off', tag: '', opts: false }, { id: 'dictate', name: 'Dictation', about: true, icon: true, sw: 'off', tag: '', opts: false },
       { id: 'kanban', name: 'Kanban board', about: true, icon: true, sw: 'on', tag: '', opts: false }]), cards);
     check('la sección de Plugins sigue siendo otra, con sus interruptores', await page.evaluate(() => document.querySelectorAll('section[data-tab=plug] [data-plugin]').length > 20 && !document.querySelector('section[data-tab=plug] .lmd-tl-card')));

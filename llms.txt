@@ -17,6 +17,10 @@
 - Exports one standalone HTML file, or PDF through print.
 - Read aloud (a tool turned on in Settings > Tools): reads the note, from a block or the selection, with the voices of the device. Code and diagrams are announced, not read.
 - Dictation (a tool turned on in Settings > Tools): speech to text in English and Spanish with spoken commands for punctuation, headings, lists, tasks and formatting, a formula mode that produces LaTeX and a flowchart mode that produces Mermaid. It uses the speech recognition of the browser, on the device when available; SharpMD never receives audio.
+- Presentation mode (a tool turned on in Settings > Tools): the open note as full screen slides, one per level 1 or 2 heading, with a divider as a manual split, keyboard and swipe navigation, an overview, a laser pointer, speaker notes written as `> [!NOTE]` quotes and PDF export through print.
+- Daily note (a tool turned on in Settings > Tools): opens today's note or creates it from a template, as `YYYY-MM-DD.md` by default, in the browser, the cloud or a folder on disk. A month calendar marks the days that have a note. Works offline.
+- Word export (a tool turned on in Settings > Tools): a .docx built in the browser without libraries, with Word heading styles, lists, task checkboxes, tables, code, footnotes, embedded images and diagrams as images. Formulas are exported as LaTeX text.
+- Link map (a tool turned on in Settings > Tools): a graph of the links between notes (relative Markdown links and `[[wikilinks]]`) and a list of the notes that link to the open one. It reads only notes already on the device.
 - Community gallery (Settings > Tools): templates, themes and diagram palettes shared by people and reviewed before they are published. Declarative content only, never code. What is added is stored on the device and works offline. Sharing needs an account; the public list (GET /gallery on the sync server) needs none.
 - Interface in English and Spanish.
 
