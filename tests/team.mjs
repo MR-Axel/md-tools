@@ -526,6 +526,7 @@ try {
   check('al unirse, Plan le dice que su suscripción individual sigue activa, con el enlace para darla de baja', !!solo && /Your individual subscription is still active\./.test(solo.text) && /Cancel it/.test(solo.text) && solo.href.startsWith(PORTAL), solo);
   const phoneTeam = await fits('.lmd-panel [data-acct=plan]');
   check('y la gestión del equipo entra en el ancho del teléfono', !phoneTeam.out.length, phoneTeam);
+  await quique.page.waitForFunction(() => [...document.querySelectorAll('[data-root=team] .lmd-node-name')].some((n) => n.textContent === 'plan.md'), null, { timeout: 8000 }).catch(() => {});
   const drawer = await quique.page.evaluate(() => ({ team: !!document.querySelector('[data-root=team]'), nodes: [...document.querySelectorAll('[data-root=team] .lmd-node-name')].map((n) => n.textContent) }));
   check('el espacio del equipo está en el explorador del teléfono', drawer.team && drawer.nodes.includes('plan.md'), drawer);
   await quique.page.click('.lmd-team [data-t=leave]'); await quique.page.waitForSelector('.lmd-dlg');
