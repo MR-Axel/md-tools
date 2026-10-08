@@ -3,27 +3,45 @@
 // copia, se corta, se duplica, se mueve, se elimina, se envuelve, se convierte o pasa a una nota nueva.
 // Un bloque es lo que el documento tiene en su primer nivel: un párrafo, un título, una lista entera, una tabla, un
 // bloque de código, un recuadro o una sección desplegable con todo lo suyo. Un título plegado lleva lo que esconde.
+// Dentro de una lista también se marcan ítems sueltos: desde la viñeta (el margen de la lista), con Ctrl + clic
+// sobre un ítem o con Escape en él. Un ítem va con sus subítems. Lo marcado es de bloques O de ítems hermanos de
+// una misma lista, nunca mezclado: al extender hacia fuera de la lista pasa a ser de bloques enteros.
 // Cada acción cambia el Markdown una sola vez (un solo Ctrl+Z) y por el mismo camino que cualquier otra edición.
 (function () {
   'use strict';
 
   const { el, ICON } = LMD.kit;
   const T = LMD.t;
-  let core = null; let article = null; let W = null;
+  let core = null; let article = null; let W = null; let I = null;
 
   const CUT = '<svg viewBox="0 0 24 24"><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/><path d="M8.4 15.8 19 4.5M15.6 15.8 5 4.5"/></svg>';
   const DUP = '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="11" height="11" rx="2"/><path d="M9 20h9a2 2 0 0 0 2-2V9M9.5 7v5M7 9.5h5"/></svg>';
+  const IN = '<svg viewBox="0 0 24 24"><path d="M4 6h16M11 12h9M11 18h9M4 10l3.5 3L4 16"/></svg>';
+  const OUT = '<svg viewBox="0 0 24 24"><path d="M4 6h16M11 12h9M11 18h9M7.5 10 4 13l3.5 3"/></svg>';
   // Lo que la app dibuja en el primer nivel y no es un bloque de la nota.
   const SKIP = '.lmd-add, .lmd-draft, .lmd-front, .lmd-cl-bar, .lmd-cl-add, .lmd-cm-layer, .lmd-live-layer';
   const OVER = '.lmd-ask, .lmd-dgm, .lmd-pres';
+  // El portapapeles lleva el Markdown crudo en un tipo propio, además del HTML y el texto.
+  const MIME = 'application/x-sharpmd-blocks'; const STAMP = 'mdtools:blocks-clip';
   const root = document.documentElement;
   const fm = () => core.fmOffset;
   const lines = () => core.srcLines;
   const usable = () => !!core && core.blocks && !core.noDoc && !article.hidden;
   const canEdit = () => core.editMode && !core.readOnly;
-  const units = () => Array.from(article.children).filter((n) => !n.matches(SKIP) && W.span(n));
+  // Mientras dura un arrastre, los bloques, su lugar y su altura en la página se leen una sola vez: en una nota
+  // larga, recorrerlos en cada movimiento del mouse es lo que lo hacía lento.
+  let frozen = null;
+  const scan = () => Array.from(article.children).filter((n) => !n.matches(SKIP) && W.span(n));
   const seen = (n) => !n.classList.contains('lmd-fold-away');
-  const shown = () => units().filter(seen);
+  const order = (u) => { const m = new Map(); u.forEach((b, i) => m.set(b, i)); return m; };
+  function freeze() { const u = scan(); frozen = { u, ix: order(u), shown: u.filter(seen), geo: null }; }
+  const units = () => (frozen ? frozen.u : scan());
+  const shown = () => (frozen ? frozen.shown : scan().filter(seen));
+  const indexOf = (u) => (frozen && u === frozen.u ? frozen.ix : order(u));
+  function geo() {
+    if (!frozen.geo) { const y = window.scrollY; frozen.geo = frozen.shown.map((b) => { const r = b.getBoundingClientRect(); return { b, top: r.top + y, bottom: r.bottom + y, flat: !r.height && !r.width }; }).filter((g) => !g.flat); }
+    return frozen.geo;
+  }
   const unitOf = (node) => {
     const n = node && node.nodeType !== 1 ? node.parentNode : node;
     const b = n && n !== article && article.contains(n) ? W.top(n) : null;
@@ -32,16 +50,50 @@
   const inField = (t) => !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''));
   const isPara = (b) => b.tagName === 'P';
 
+  // ---------- Los ítems de una lista ----------
+  // La estructura la da lists.js (el mismo analizador que dibuja la nota): un <li> cuenta si ahí empieza un ítem.
+  let parsed = null;
+  function struct() {
+    if (!parsed || parsed.raw !== core.raw) {
+      const by = new Map();
+      LMD.lists.parse(lines(), fm()).forEach((l) => l.items.forEach((it) => { if (it.m && !by.has(it.s)) by.set(it.s, it); }));
+      parsed = { raw: core.raw, by };
+    }
+    return parsed;
+  }
+  const startOf = (li) => { const r = core.rangeOf(li); return r ? r[0] + fm() : -1; };
+  const itemOf = (li) => (li && li.tagName === 'LI' && !li.classList.contains('lmd-draft-li') && !li.closest('.footnotes') ? struct().by.get(startOf(li)) || null : null);
+  const liOf = (node) => {
+    const n = node && node.nodeType !== 1 ? node.parentNode : node;
+    const li = n && n.closest ? n.closest('li') : null;
+    return li && article.contains(li) && itemOf(li) ? li : null;
+  };
+  const liAt = (abs) => { const li = article.querySelector('li[data-l^="' + (abs - fm()) + '-"]'); return li && itemOf(li) ? li : null; };
+  const kin = (li) => Array.from(li.parentNode.children).filter((x) => itemOf(x));
+  // Del ítem de más afuera hasta ese.
+  const chain = (li) => { const out = []; for (let n = li; n && n.tagName === 'LI'; n = n.parentNode.parentNode) out.unshift(n); return out; };
+  const rootOf = (li) => chain(li)[0].parentNode;
+  // Los dos ítems hermanos que contienen a uno y a otro, en la lista más de adentro que comparten.
+  function level(a, b) {
+    const ca = chain(a); const cb = chain(b); if (ca[0].parentNode !== cb[0].parentNode) return null;
+    let i = 0; while (i + 1 < ca.length && i + 1 < cb.length && ca[i] === cb[i] && ca[i + 1].parentNode === cb[i + 1].parentNode) i++;
+    return [ca[i], cb[i]];
+  }
+  const within = (li) => { for (let n = li; n && n !== article; n = n.parentNode) if (picked.has(n)) return n; return null; };
+
   // ---------- Lo marcado ----------
   let picked = new Set(); let anchor = null; let head = null;
+  let items = false; // lo marcado son ítems de una lista (hermanos), no bloques
+  // Cómo se llegó a lo marcado: 'esc' si fue con Escape mientras se escribía. Ahí Retroceso no elimina.
+  let how = 'sure';
   let touchMode = false; // con el dedo: tocar un bloque lo suma o lo quita, hasta "Listo"
   // Dónde estaba lo marcado, por línea: al redibujar la misma nota vuelve a marcarse lo mismo.
   let mark = null;
   let bar = null; let menu = null; let busy = false;
 
-  // Lo marcado más lo que esconde cada título plegado, en el orden del documento.
+  // Lo marcado más lo que esconde cada título plegado, en el orden del documento. Con ítems marcados, ningún bloque.
   function effective() {
-    if (!picked.size) return [];
+    if (!picked.size || items) return [];
     const u = units(); const set = new Set();
     u.forEach((b) => {
       if (!picked.has(b)) return;
@@ -50,11 +102,15 @@
     });
     return u.filter((b) => set.has(b));
   }
+  // Los ítems marcados, en el orden de la lista, y las líneas donde empiezan.
+  const chosen = () => (items && anchor && anchor.isConnected ? kin(anchor).filter((li) => picked.has(li)) : []);
+  const starts = () => chosen().map(startOf);
+  const count = () => (items ? chosen().length : effective().length);
   // Los tramos de bloques seguidos, con sus líneas. Lo que haya entre dos bloques del tramo va con él.
   function groups(list) {
-    const u = units(); const out = []; let cur = null; let last = -2;
+    const ix = indexOf(units()); const out = []; let cur = null; let last = -2;
     list.forEach((b) => {
-      const i = u.indexOf(b); const r = W.span(b);
+      const i = ix.get(b); const r = W.span(b);
       if (cur && i === last + 1) { cur.e = Math.max(cur.e, r.e); cur.blocks.push(b); } else { cur = { s: r.s, e: r.e, blocks: [b] }; out.push(cur); }
       last = i;
     });
@@ -69,26 +125,39 @@
     if (sel.rangeCount && !sel.isCollapsed && article.contains(sel.anchorNode)) sel.removeAllRanges();
   }
   function remember() {
-    const at = (b) => (b && W.span(b) ? W.span(b).s : -1);
-    const u = units();
-    mark = { raw: core.raw, at: Array.from(picked).map(at), a: at(anchor), h: at(head), n: u.length, idx: Array.from(picked).map((b) => u.indexOf(b)), ai: u.indexOf(anchor), hi: u.indexOf(head) };
+    const all = Array.from(picked);
+    if (items) { mark = { raw: core.raw, items: true, at: all.map(startOf), a: all.indexOf(anchor), h: all.indexOf(head) }; return; }
+    const u = units(); const ix = indexOf(u); const at = (b) => (b && ix.has(b) ? ix.get(b) : -1);
+    mark = { raw: core.raw, items: false, at: all.map((b) => W.span(b).s), end: all.map((b) => W.span(b).e), a: all.indexOf(anchor), h: all.indexOf(head), n: u.length, idx: all.map(at), ai: at(anchor), hi: at(head) };
   }
   function setSel(list, a, h) {
     list = (list || []).filter((b) => b && b.isConnected);
     if (!list.length) { reset(); return; }
     settle();
+    items = false; how = 'sure';
+    picked = new Set(list);
+    anchor = a && picked.has(a) ? a : list[0]; head = h && picked.has(h) ? h : list[list.length - 1];
+    remember(); paint();
+  }
+  // Ítems hermanos: los que no cuelgan de la misma lista que el primero quedan afuera.
+  function setItems(list, a, h) {
+    list = (list || []).filter((li) => li && li.isConnected && itemOf(li));
+    list = list.filter((li) => li.parentNode === list[0].parentNode);
+    if (!list.length) { reset(); return; }
+    settle();
+    items = true; how = 'sure'; touchMode = false;
     picked = new Set(list);
     anchor = a && picked.has(a) ? a : list[0]; head = h && picked.has(h) ? h : list[list.length - 1];
     remember(); paint();
   }
   function reset() {
-    picked = new Set(); anchor = null; head = null; mark = null; touchMode = false;
+    picked = new Set(); anchor = null; head = null; mark = null; touchMode = false; items = false; how = 'sure';
     closeMenu(); paint();
   }
   const clear = () => { if (picked.size || mark || touchMode) reset(); };
   function rangeTo(a, b) {
-    const u = shown(); let i = u.indexOf(a); let j = u.indexOf(b);
-    if (i < 0 || j < 0) return;
+    const u = shown(); const ix = indexOf(u); let i = ix.has(a) ? ix.get(a) : u.indexOf(a); let j = ix.has(b) ? ix.get(b) : u.indexOf(b);
+    if (i == null || j == null || i < 0 || j < 0) return;
     if (i > j) { const k = i; i = j; j = k; }
     setSel(u.slice(i, j + 1), a, b);
   }
@@ -96,35 +165,89 @@
     const list = shown().filter((n) => (n === b ? !picked.has(n) : picked.has(n)));
     setSel(list, list.includes(b) ? b : null, list.includes(b) ? b : null);
   }
+  function itemRange(a, b) {
+    const k = kin(a); let i = k.indexOf(a); let j = k.indexOf(b); if (i < 0 || j < 0) return;
+    if (i > j) { const x = i; i = j; j = x; }
+    setItems(k.slice(i, j + 1), a, b);
+  }
+  // De ítems a bloques enteros: se dice, para que no pase sin que se note.
+  const whole = () => core.flash(T('La selección pasó a bloques enteros'));
   const selectAll = () => { const u = shown(); setSel(u, u[0], u[u.length - 1]); };
   // Marca los bloques que quedaron en esas líneas, tras un cambio.
   function pickLines(ranges) {
     setSel(shown().filter((b) => { const r = W.span(b); return ranges.some((x) => r.s >= x[0] && r.s < x[1]); }));
   }
-  function afterRender() {
-    if (!mark) { paint(); return; }
-    if (!usable() || core.raw !== mark.raw) { reset(); return; }
-    const u = units(); const by = (s) => u.find((b) => W.span(b).s === s) || null;
-    picked = new Set(mark.at.map(by).filter(Boolean)); anchor = by(mark.a); head = by(mark.h);
-    if (picked.size) paint(); else reset();
+  // Lo marcado, buscado por su texto en una nota que cambió (otra persona en una sesión en vivo, o un deshacer):
+  // cada bloque o ítem que sigue existiendo queda marcado, el más cercano a donde estaba. Devuelve si quedó alguno.
+  function restore() {
+    const old = mark; const was = old.raw.split(/\r?\n/); const now = lines(); let wants; let cands;
+    if (old.items) {
+      const key = (L, s) => { const m = LMD.lists.ITEM.exec(L[s] || ''); return m ? (m[4] ? '1' : '-') + m[2].length + '\n' + L[s].slice(m[0].length) : null; };
+      wants = old.at.map((s) => ({ key: key(was, s), at: s }));
+      cands = Array.from(article.querySelectorAll('li[data-l]')).filter(itemOf).map((n) => ({ n, s: startOf(n), key: key(now, startOf(n)) }));
+    } else {
+      wants = old.at.map((s, i) => ({ key: was.slice(s, old.end[i]).join('\n'), at: s }));
+      cands = units().map((n) => { const r = W.span(n); return { n, s: r.s, key: now.slice(r.s, r.e).join('\n') }; });
+    }
+    const by = new Map(); cands.forEach((c) => { if (c.key == null) return; if (!by.has(c.key)) by.set(c.key, []); by.get(c.key).push(c); });
+    const found = wants.map((w) => {
+      let best = null;
+      (by.get(w.key) || []).forEach((c) => { if (!c.used && (!best || Math.abs(c.s - w.at) < Math.abs(best.s - w.at))) best = c; });
+      if (best) best.used = true;
+      return best ? best.n : null;
+    });
+    let list = found.filter(Boolean);
+    if (old.items && list.length) list = list.filter((li) => li.parentNode === list[0].parentNode);
+    if (!list.length) return false;
+    const w = how; const t = touchMode;
+    picked = new Set(list); items = !!old.items; how = w; touchMode = t;
+    anchor = picked.has(found[old.a]) ? found[old.a] : list[0]; head = picked.has(found[old.h]) ? found[old.h] : list[list.length - 1];
+    remember(); paint();
+    return true;
   }
-  // Otra persona cambió algo y se dibujó en el lugar: lo marcado sigue siendo lo que quedó en pantalla.
-  function afterPatch() {
-    if (!mark) return;
-    const u = units();
-    // El bloque que cambió es un nodo nuevo: si la cantidad de bloques es la misma, sigue marcado el de ese lugar.
-    if (u.length === mark.n) { picked = new Set(mark.idx.map((i) => u[i]).filter(Boolean)); anchor = u[mark.ai] || null; head = u[mark.hi] || null; }
-    else picked.forEach((b) => { if (!b.isConnected || !W.span(b)) picked.delete(b); });
+  function afterRender() {
+    if (frozen) freeze();
+    if (!mark) { paint(); return; }
+    if (!usable()) { reset(); return; }
+    // La nota cambió y se redibujó entera: sigue marcado lo que sigue existiendo.
+    if (core.raw !== mark.raw) { if (!restore()) reset(); return; }
+    if (mark.items) {
+      const all = mark.at.map(liAt);
+      picked = new Set(all.filter(Boolean)); anchor = all[mark.a] || null; head = all[mark.h] || null;
+    } else {
+      const u = units(); const by = new Map(); u.forEach((b) => by.set(W.span(b).s, b));
+      const all = mark.at.map((s) => by.get(s) || null);
+      picked = new Set(all.filter(Boolean)); anchor = all[mark.a] || null; head = all[mark.h] || null;
+    }
     if (!picked.size) { reset(); return; }
     if (!picked.has(anchor)) anchor = picked.values().next().value;
     if (!picked.has(head)) head = anchor;
+    paint();
+  }
+  // Otra persona cambió algo y se dibujó en el lugar: lo marcado sigue siendo lo que quedó en pantalla.
+  function afterPatch() {
+    if (frozen) freeze();
+    if (!mark) return;
+    if (mark.items) picked.forEach((li) => { if (!li.isConnected || !itemOf(li)) picked.delete(li); });
+    else {
+      const u = units();
+      // El bloque que cambió es un nodo nuevo: si la cantidad de bloques es la misma, sigue marcado el de ese lugar.
+      if (u.length === mark.n && mark.idx) { picked = new Set(mark.idx.map((i) => u[i]).filter(Boolean)); anchor = u[mark.ai] || null; head = u[mark.hi] || null; }
+      else picked.forEach((b) => { if (!b.isConnected || !W.span(b)) picked.delete(b); });
+    }
+    // Ninguno quedó como nodo: se los busca por su texto antes de soltar.
+    if (!picked.size) { if (!restore()) reset(); return; }
+    if (!picked.has(anchor)) anchor = picked.values().next().value;
+    if (!picked.has(head)) head = anchor;
+    if (items) { const p = anchor.parentNode; picked.forEach((li) => { if (li.parentNode !== p) picked.delete(li); }); if (!picked.has(head)) head = anchor; }
     remember(); paint();
   }
 
   function paint() {
-    article.querySelectorAll(':scope > .lmd-bsel').forEach((n) => { if (!picked.has(n)) n.classList.remove('lmd-bsel'); });
+    article.querySelectorAll('.lmd-bsel').forEach((n) => { if (!picked.has(n)) n.classList.remove('lmd-bsel'); });
     picked.forEach((n) => n.classList.add('lmd-bsel'));
     root.classList.toggle('lmd-bsel-on', picked.size > 0);
+    root.classList.toggle('lmd-bsel-items', picked.size > 0 && items);
     drawBar();
   }
 
@@ -139,6 +262,7 @@
   // Con el dedo la barra es más corta: subir y bajar van en el menú.
   const docked = () => LMD.touch.coarse();
   const inBar = (id) => IN_BAR.includes(id) && !(docked() && (id === 'up' || id === 'down'));
+  const openMore = (b) => { const r = b.getBoundingClientRect(); openMenu(r.left, r.bottom + 6, actions().filter((a) => !inBar(a.id)), b); };
   function buildBar() {
     bar = el('div', { class: 'lmd-bsel-bar', role: 'toolbar', hidden: '' });
     bar.appendChild(el('span', { class: 'lmd-bsel-n', role: 'status', 'aria-live': 'polite' }));
@@ -152,7 +276,7 @@
       const b = e.target.closest('[data-bs]'); if (!b || b.hidden) return;
       const id = b.dataset.bs;
       if (id === 'done') reset();
-      else if (id === 'more') { const r = b.getBoundingClientRect(); openMenu(r.left, r.bottom + 6, actions().filter((a) => !inBar(a.id)), b); }
+      else if (id === 'more') openMore(b);
       else if (id !== 'grip') run(id);
     });
     // La manija: se arrastra con el mouse o con el dedo, y con el foco puesto se mueve con las flechas.
@@ -160,7 +284,7 @@
     grip.addEventListener('pointerdown', (e) => {
       if (e.button > 0 || !canEdit() || !picked.size) return;
       e.preventDefault();
-      drag = { kind: 'move', from: null, x: e.clientX, y: e.clientY, last: e.clientY, on: false, id: e.pointerId };
+      drag = { kind: items ? 'imove' : 'move', from: null, x: e.clientX, y: e.clientY, last: e.clientY, on: false, id: e.pointerId };
       try { grip.setPointerCapture(e.pointerId); } catch (err) { /* el puntero ya no está */ }
     });
     grip.addEventListener('pointermove', (e) => { if (drag && drag.id === e.pointerId) dragMove(e); });
@@ -175,17 +299,18 @@
   }
   function drawBar() {
     if (!bar) return;
-    const n = effective().length;
+    const n = count();
     if (!n || !usable()) { bar.hidden = true; return; }
     const edit = canEdit();
-    bar.setAttribute('aria-label', T('Bloques seleccionados'));
-    bar.querySelector('.lmd-bsel-n').textContent = n === 1 ? T('1 bloque') : T('{n} bloques', { n });
+    bar.setAttribute('aria-label', T(items ? 'Ítems seleccionados' : 'Bloques seleccionados'));
+    bar.querySelector('.lmd-bsel-n').textContent = items ? (n === 1 ? T('1 ítem') : T('{n} ítems', { n })) : (n === 1 ? T('1 bloque') : T('{n} bloques', { n }));
     BTN.forEach((d) => {
-      const b = bar.querySelector('[data-bs=' + d[0] + ']'); const label = T(d[2]);
+      const b = bar.querySelector('[data-bs=' + d[0] + ']'); const label = T(d[0] === 'grip' && items ? 'Mover los ítems' : d[2]);
       b.setAttribute('aria-label', label); b.title = label + (d[3] ? ' (' + LMD.keys(d[3]) + ')' : '');
       b.hidden = (d[4] && !edit) || (docked() && (d[0] === 'up' || d[0] === 'down'));
     });
-    bar.querySelector('[data-bs=more]').hidden = !actions().some((a) => !inBar(a.id));
+    // Con ítems, el menú siempre tiene algo más cuando se puede editar o crear una nota (no hace falta armarlo).
+    bar.querySelector('[data-bs=more]').hidden = items ? !(edit || canNew()) : !actions().some((a) => !inBar(a.id));
     const done = bar.querySelector('[data-bs=done]');
     done.textContent = T('Listo'); done.hidden = !(touchMode || docked());
     bar.classList.toggle('lmd-bsel-dock', docked());
@@ -196,21 +321,40 @@
   function placeBar() {
     if (!bar || bar.hidden) return;
     if (bar.classList.contains('lmd-bsel-dock')) { bar.style.top = ''; bar.style.left = ''; return; }
-    const first = shown().find((b) => picked.has(b)); if (!first) return;
+    // Con ítems va arriba de su lista, no del primer ítem marcado: ahí taparía al ítem de arriba, que se puede querer sumar.
+    const first = items ? (chosen()[0] ? rootOf(chosen()[0]) : null) : shown().find((b) => picked.has(b)); if (!first) return;
     const box = first.getBoundingClientRect(); const h = bar.offsetHeight; const w = bar.offsetWidth;
     bar.style.top = Math.max(64, Math.min(window.innerHeight - h - 60, box.top - h - 12)) + 'px';
     bar.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, box.left)) + 'px';
   }
 
   // ---------- El menú ----------
+  // Sin carpeta ni cuenta (un archivo abierto suelto) la nota nueva no se puede guardar: ahí solo se ofrece copiar.
+  const nowhere = () => !!core.appRoot && core.appRoot.kind === 'file';
   function actions() {
-    const list = effective(); const edit = canEdit(); const out = [];
-    if (!list.length) return out;
+    const edit = canEdit(); const out = [];
     const add = (id, icon, label, cls) => out.push({ id, icon, label, cls: cls || '' });
+    if (items) {
+      const at = starts(); if (!at.length) return out;
+      add('copy', ICON.copy, 'Copiar');
+      if (edit) {
+        add('cut', CUT, 'Cortar'); add('dup', DUP, 'Duplicar'); add('up', ICON.up, 'Subir'); add('down', ICON.download, 'Bajar');
+        add('indent', IN, 'Sangrar'); add('outdent', OUT, 'Sacar un nivel');
+        add('to-ul', ICON.b_ul, 'Convertir en lista con viñetas'); add('to-ol', ICON.b_ol, 'Convertir en lista numerada'); add('to-task', ICON.b_task, 'Convertir en lista de tareas');
+        const tasks = I.tasks(lines(), fm(), at);
+        if (tasks.length) add('check', ICON.check, tasks.every((t) => t.done) ? 'Destildar las tareas' : 'Tildar las tareas');
+      }
+      if (canNew()) add('doc-copy', ICON.file, 'Copiar a una nota nueva');
+      if (edit && canNew() && !nowhere()) add('doc-move', ICON.doc, 'Mover a una nota nueva');
+      if (edit) add('del', ICON.trash, 'Eliminar', 'lmd-menu-danger');
+      return out;
+    }
+    const list = effective();
+    if (!list.length) return out;
     add('copy', ICON.copy, 'Copiar');
     if (edit) { add('cut', CUT, 'Cortar'); add('dup', DUP, 'Duplicar'); add('up', ICON.up, 'Subir'); add('down', ICON.download, 'Bajar'); }
     if (canNew()) add('doc-copy', ICON.file, 'Copiar a una nota nueva');
-    if (edit && canNew()) add('doc-move', ICON.doc, 'Mover a una nota nueva');
+    if (edit && canNew() && !nowhere()) add('doc-move', ICON.doc, 'Mover a una nota nueva');
     if (edit && core.settings.plugins.containers && LMD.fold && LMD.fold.wrap && groups(list).length === 1) add('wrap', ICON.b_details, 'Envolver en una sección desplegable');
     if (edit && list.every(isPara)) {
       add('to-ul', ICON.b_ul, 'Convertir en lista con viñetas'); add('to-ol', ICON.b_ol, 'Convertir en lista numerada');
@@ -220,6 +364,7 @@
     return out;
   }
   function run(id) {
+    if (items) { runItems(id); return; }
     if (id === 'copy') copy();
     else if (id === 'cut') cut();
     else if (id === 'dup') duplicate();
@@ -235,12 +380,13 @@
     const from = menu._from; menu.remove(); menu = null;
     if (from) { from.setAttribute('aria-expanded', 'false'); if (back && from.isConnected && !from.hidden) from.focus(); }
   }
-  function openMenu(x, y, items, from) {
+  // focus: abierto con el teclado, el foco entra al menú aunque no haya un botón que lo abra.
+  function openMenu(x, y, list, from, focus) {
     closeMenu(); W.closeMenu();
-    if (!items.length) return;
-    menu = el('div', { class: 'lmd-menu lmd-menu-read lmd-bsel-menu', role: 'menu', 'aria-label': T('Bloques seleccionados') });
+    if (!list.length) return;
+    menu = el('div', { class: 'lmd-menu lmd-menu-read lmd-bsel-menu', role: 'menu', 'aria-label': T(items ? 'Ítems seleccionados' : 'Bloques seleccionados') });
     const box = el('div', { class: 'lmd-menu-list' });
-    items.forEach((it) => {
+    list.forEach((it) => {
       const b = el('button', { type: 'button', role: 'menuitem', 'data-bs': it.id }, it.icon);
       if (it.cls) b.className = it.cls;
       b.appendChild(el('span', { text: T(it.label) })); box.appendChild(b);
@@ -255,15 +401,17 @@
       const all = Array.from(menu.querySelectorAll('button')); const at = all.indexOf(document.activeElement);
       const go = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: all.length - 1 }[e.key];
       if (go != null) { e.preventDefault(); e.stopPropagation(); all[(go + all.length) % all.length].focus(); }
-      else if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); closeMenu(true); }
+      else if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); closeMenu(true); if (!menu && !from) document.activeElement.blur(); }
     });
-    if (from) { from.setAttribute('aria-expanded', 'true'); menu.querySelector('button').focus(); }
+    if (from) from.setAttribute('aria-expanded', 'true');
+    if (from || focus) menu.querySelector('button').focus();
   }
 
   // ---------- El Markdown ----------
   // Las operaciones trabajan sobre una copia de las líneas, cada una en su caja: así lo que se movió o se creó se
   // reconoce al final aunque haya cambiado de lugar (m), y los renglones en blanco que quedaron de junta (j) se revisan.
-  const boxed = () => lines().map((t) => ({ t }));
+  // g dice de qué lista de primer nivel era la línea: con eso se ve si dos listas quedaron pegadas (lists.js).
+  const boxed = () => { const g = LMD.lists.origins(lines(), fm()); return lines().map((t, i) => ({ t, g: g[i] })); };
   const bl = (L, i) => i < fm() || i >= L.length || L[i].t.trim() === '';
   const tag = (L, i) => { if (i >= 0 && i < L.length) L[i].j = true; };
   // Saca las líneas [s, e) y no deja dos renglones en blanco donde había uno. Devuelve dónde quedó el hueco.
@@ -290,17 +438,28 @@
       if (L[i].j && L[i].t.trim() === '' && L[i - 1].t.includes('|') && L[i + 1].t.includes('|') && L[i + 2].t.includes('|') && RULE.test(L[i + 2].t)) L.splice(i, 0, { t: '' });
     }
   }
-  // Escribe el resultado: solo las líneas que cambiaron, en un solo paso de deshacer. Después marca lo que se movió.
-  function finish(L) {
-    glue(L);
-    const next = L.map((x) => x.t); const cur = lines(); const made = [];
-    L.forEach((x, i) => { if (!x.m) return; const last = made[made.length - 1]; if (last && last[1] === i) last[1] = i + 1; else made.push([i, i + 1]); });
+  // Escribe las líneas nuevas: solo las que cambiaron, en un solo paso de deshacer, y redibuja.
+  function write(next) {
+    const cur = lines();
     let a = 0; while (a < cur.length && a < next.length && cur[a] === next[a]) a++;
     if (a === cur.length && a === next.length) return false;
     let b = 0; while (b < cur.length - a && b < next.length - a && cur[cur.length - 1 - b] === next[next.length - 1 - b]) b++;
     reset();
     core.spliceLines(a, cur.length - a - b, next.slice(a, next.length - b));
     core.render();
+    return true;
+  }
+  // Escribe el resultado y marca lo que se movió. join: las listas que quedaron pegadas se juntan a propósito
+  // (un párrafo convertido en ítem al lado de una lista); si no, siguen siendo dos (lists.js).
+  function finish(L, join) {
+    if (!join) {
+      const fixed = LMD.lists.apart(L.map((x) => x.t), fm(), L.map((x) => (x.g === undefined ? -1 : x.g)), (i) => !!L[i].m);
+      if (fixed) fixed.forEach((t, i) => { L[i].t = t; });
+    }
+    glue(L);
+    const made = [];
+    L.forEach((x, i) => { if (!x.m) return; const last = made[made.length - 1]; if (last && last[1] === i) last[1] = i + 1; else made.push([i, i + 1]); });
+    if (!write(L.map((x) => x.t))) return false;
     if (made.length) {
       // Lo que cayó dentro de una sección plegada no queda escondido: esa sección se despliega.
       // Lo que viajó debajo de su propio título plegado sigue plegado.
@@ -311,27 +470,38 @@
     }
     return true;
   }
-  // En una sesión en vivo, lo que otro está escribiendo no se corta, no se mueve ni se elimina.
+  // Lo mismo para un cambio dentro de una lista: quedan marcados los ítems que empiezan en res.at.
+  function commit(res) {
+    if (!res || !write(res.lines)) return false;
+    const all = (res.at || []).map(liAt).filter(Boolean);
+    if (all.length) { all.forEach((li) => { if (LMD.fold) LMD.fold.reveal(li); }); setItems(all); }
+    return true;
+  }
+  // En una sesión en vivo, lo que otro está escribiendo no se corta, no se mueve ni se elimina. Con ítems marcados
+  // cuenta la lista entera: reordenarla toca las líneas de todos sus ítems.
   function locked() {
     let who = null;
-    effective().some((b) => { const h = b.matches('.lmd-live-held') ? b : b.querySelector('.lmd-live-held'); if (h) who = h.dataset.liveBy || ''; return !!h; });
+    const held = (b) => { const h = b.matches('.lmd-live-held') ? b : b.querySelector('.lmd-live-held'); if (h) who = h.dataset.liveBy || ''; return !!h; };
+    if (items) { const top = anchor && unitOf(anchor); if (top) held(top); } else effective().some(held);
     if (who == null) return false;
-    core.flash(T('{a} está escribiendo en esos bloques', { a: who }), 'warn');
+    core.flash(T(items ? '{a} está escribiendo en esa lista' : '{a} está escribiendo en esos bloques', { a: who }), 'warn');
     return true;
   }
   const said = (one, many, n) => core.flash(n === 1 ? T(one) : T(many, { n }));
+  // Lo eliminado se avisa con un botón de deshacer a la vista unos segundos.
+  const gone = (one, many, n) => W.say(n === 1 ? T(one) : T(many, { n }));
 
   // ---------- Copiar y pegar ----------
   // Al portapapeles va el Markdown como texto (con los números de título que se ven) y lo dibujado como HTML.
-  // El HTML lleva además el Markdown tal cual está en la nota: con eso, pegar sobre un bloque marcado los inserta.
+  // El HTML lleva además el Markdown tal cual está en la nota, y lo mismo va en un tipo propio (MIME): con eso,
+  // pegar sobre un bloque marcado los inserta. Si en el camino se pierden las dos cosas (otra pestaña que solo
+  // recibe el texto), queda la huella del último texto copiado: si lo que se pega es ese texto, vino de acá.
   let lastCopy = null; let pending = null; let wrote = false;
-  function payload() {
-    const list = effective(); if (!list.length) return null;
-    const gs = groups(list); const src = lines();
-    const shownMd = LMD.page && LMD.page.md ? LMD.page.md().split(/\r?\n/) : src;
-    const text = (from) => gs.map((g) => from.slice(g.s, g.e).join('\n')).join('\n\n');
-    const box = el('div');
-    list.forEach((b) => box.appendChild(b.cloneNode(true)));
+  const norm = (t) => String(t || '').replace(/\r\n?/g, '\n').trim();
+  const print = (t) => { let h = 2166136261; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return t.length + ':' + (h >>> 0).toString(36); };
+  const stamp = (p) => { try { localStorage.setItem(STAMP, print(norm(p.md))); } catch (e) { /* sin almacenamiento */ } };
+  // Lo dibujado, sin nada de la interfaz y con el formato que entienden un correo o un procesador de textos.
+  function tidy(box) {
     box.querySelectorAll('.lmd-anchor, .lmd-code-copy, .lmd-code-lang, .lmd-kanban-off, .lmd-jy, .lmd-cl-bar, .lmd-cl-add, .lmd-cl-grip, .lmd-src').forEach((n) => n.remove());
     if (LMD.fold) LMD.fold.clean(box, true);
     box.querySelectorAll('table').forEach((t) => t.setAttribute('style', 'border-collapse:collapse'));
@@ -342,32 +512,60 @@
     box.querySelectorAll('*').forEach((n) => {
       Array.from(n.attributes).forEach((a) => { if (/^(class|contenteditable|spellcheck|tabindex|role|id)$/.test(a.name) || /^(data-|aria-)/.test(a.name)) n.removeAttribute(a.name); });
     });
-    const raw = text(src);
-    const wrap = el('div', { 'data-lmd-blocks': encodeURIComponent(raw) });
-    while (box.firstChild) wrap.appendChild(box.firstChild);
-    return { md: text(shownMd.length === src.length ? shownMd : src), raw, html: wrap.outerHTML, n: list.length };
   }
-  const fill = (e, p) => { e.clipboardData.setData('text/plain', p.md); e.clipboardData.setData('text/html', p.html); e.preventDefault(); wrote = true; lastCopy = p; };
+  const packed = (box, raw) => { const wrap = el('div', { 'data-lmd-blocks': encodeURIComponent(raw) }); while (box.firstChild) wrap.appendChild(box.firstChild); return wrap.outerHTML; };
+  function payload() {
+    if (items) return payloadItems();
+    const list = effective(); if (!list.length) return null;
+    const gs = groups(list); const src = lines();
+    const shownMd = LMD.page && LMD.page.md ? LMD.page.md().split(/\r?\n/) : src;
+    const text = (from) => gs.map((g) => from.slice(g.s, g.e).join('\n')).join('\n\n');
+    const box = el('div');
+    list.forEach((b) => box.appendChild(b.cloneNode(true)));
+    tidy(box);
+    const raw = text(src);
+    return { md: text(shownMd.length === src.length ? shownMd : src), raw, html: packed(box, raw), n: list.length, items: false };
+  }
+  // Los ítems marcados viajan como una lista suelta.
+  function payloadItems() {
+    const list = chosen(); const body = list.length ? I.lift(lines(), fm(), list.map(startOf)) : null; if (!body) return null;
+    const box = el('div'); const host = el(list[0].parentNode.tagName.toLowerCase());
+    list.forEach((li) => host.appendChild(li.cloneNode(true)));
+    box.appendChild(host); tidy(box);
+    const raw = body.join('\n');
+    return { md: raw, raw, html: packed(box, raw), n: list.length, items: true };
+  }
+  function fill(e, p) {
+    e.clipboardData.setData('text/plain', p.md); e.clipboardData.setData('text/html', p.html);
+    try { e.clipboardData.setData(MIME, p.raw); } catch (err) { /* este navegador no deja tipos propios */ }
+    e.preventDefault(); wrote = true; lastCopy = p; stamp(p);
+  }
   // Desde un botón: se dispara la copia del navegador, que pasa por fill; si no la deja, queda la del portapapeles.
-  function write(p) {
+  function send(p) {
     lastCopy = p; pending = p; wrote = false;
     try { document.execCommand('copy'); } catch (e) { /* sin ese camino */ }
     pending = null;
     if (wrote) return;
+    stamp(p);
     try {
-      navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([p.html], { type: 'text/html' }), 'text/plain': new Blob([p.md], { type: 'text/plain' }) })])
-        .catch(() => navigator.clipboard.writeText(p.md).catch(() => {}));
+      const parts = { 'text/html': new Blob([p.html], { type: 'text/html' }), 'text/plain': new Blob([p.md], { type: 'text/plain' }) };
+      const own = 'web ' + MIME;
+      if (window.ClipboardItem && ClipboardItem.supports && ClipboardItem.supports(own)) parts[own] = new Blob([p.raw], { type: own });
+      navigator.clipboard.write([new ClipboardItem(parts)]).catch(() => navigator.clipboard.writeText(p.md).catch(() => {}));
     } catch (e) { try { navigator.clipboard.writeText(p.md).catch(() => {}); } catch (err) { /* sin portapapeles */ } }
   }
+  const saidCopy = (p) => (p.items ? said('Ítem copiado', 'Ítems copiados: {n}', p.n) : said('Bloque copiado', 'Bloques copiados: {n}', p.n));
+  const saidCut = (p) => (p.items ? said('Ítem cortado. Ctrl+Z lo deshace', 'Ítems cortados: {n}. Ctrl+Z los deshace', p.n) : said('Bloque cortado. Ctrl+Z lo deshace', 'Bloques cortados: {n}. Ctrl+Z los deshace', p.n));
+  const drop = (quiet) => (items ? removeItems(quiet) : remove(quiet));
   function copy() {
     const p = payload(); if (!p) return;
-    write(p); said('Bloque copiado', 'Bloques copiados: {n}', p.n);
+    send(p); saidCopy(p);
   }
   function cut() {
     if (!canEdit() || locked()) return;
     const p = payload(); if (!p) return;
-    write(p);
-    if (remove(true)) said('Bloque cortado. Ctrl+Z lo deshace', 'Bloques cortados: {n}. Ctrl+Z los deshace', p.n);
+    send(p);
+    if (drop(true)) saidCut(p);
   }
   // Ctrl+C y Ctrl+X con bloques marcados y sin texto elegido.
   function onClip(e) {
@@ -378,33 +576,51 @@
     if (isCut && (!canEdit() || locked())) { e.preventDefault(); return; }
     const p = payload(); if (!p) return;
     fill(e, p);
-    if (!isCut) said('Bloque copiado', 'Bloques copiados: {n}', p.n);
-    else if (remove(true)) said('Bloque cortado. Ctrl+Z lo deshace', 'Bloques cortados: {n}. Ctrl+Z los deshace', p.n);
+    if (!isCut) saidCopy(p);
+    else if (drop(true)) saidCut(p);
   }
-  // El Markdown de lo que se copió como bloques, si el portapapeles trae eso.
-  function fromClip(html, plain) {
+  // El Markdown de lo que se copió como bloques, si el portapapeles trae eso. Un texto de otra aplicación no pasa.
+  function fromClip(data) {
+    const get = (type) => { try { return data.getData(type) || ''; } catch (e) { return ''; } };
+    const own = get(MIME) || get('web ' + MIME); if (own) return own;
+    const html = get('text/html'); const plain = get('text/plain');
     if (html && html.indexOf('data-lmd-blocks') >= 0) {
       try {
         const d = new DOMParser().parseFromString(html, 'text/html').querySelector('[data-lmd-blocks]');
         const v = d && d.getAttribute('data-lmd-blocks'); if (v) return decodeURIComponent(v);
       } catch (e) { /* no es de acá */ }
     }
-    const norm = (t) => String(t || '').replace(/\r\n?/g, '\n').trim();
-    return lastCopy && plain && norm(plain) === norm(lastCopy.md) ? lastCopy.raw : null;
+    if (!norm(plain)) return null;
+    if (lastCopy && norm(plain) === norm(lastCopy.md)) return lastCopy.raw;
+    // El HTML perdió el atributo o no llegó: el texto ya es Markdown, y la huella dice que salió de acá.
+    let mine = ''; try { mine = localStorage.getItem(STAMP) || ''; } catch (e) { /* sin almacenamiento */ }
+    return mine && mine === print(norm(plain)) ? plain : null;
   }
-  function pasteBelow(text) {
-    const list = effective(); if (!list.length || !canEdit()) return false;
+  const bodyOf = (text) => {
     const body = String(text).replace(/\r\n?/g, '\n').split('\n');
     while (body.length && !body[0].trim()) body.shift();
     while (body.length && !body[body.length - 1].trim()) body.pop();
-    if (!body.length) return false;
+    return body;
+  };
+  function pasteBelow(text) {
+    if (!canEdit()) return false;
+    const body = bodyOf(text); if (!body.length) return false;
+    let after;
+    if (items) {
+      // Una lista copiada entra como ítems, debajo del último marcado. Otra cosa va como bloques, debajo de la lista.
+      const at = starts(); if (!at.length) return false;
+      if (locked()) return false;
+      if (I.single(body)) { const res = I.insert(lines(), fm(), at[at.length - 1], body); if (res) return commit(res); }
+      after = unitOf(anchor);
+    } else { const list = effective(); after = list[list.length - 1]; }
+    if (!after) return false;
     const L = boxed();
-    putIn(L, W.span(list[list.length - 1]).e, body.map((t) => ({ t, m: true })));
+    putIn(L, W.span(after).e, body.map((t) => ({ t, m: true })));
     return finish(L);
   }
   function onPaste(e) {
     if (!picked.size || !usable() || !canEdit() || inField(e.target) || document.querySelector(OVER) || !e.clipboardData) return;
-    const text = fromClip(e.clipboardData.getData('text/html'), e.clipboardData.getData('text/plain'));
+    const text = fromClip(e.clipboardData);
     if (text == null) return;
     e.preventDefault(); e.stopImmediatePropagation();
     pasteBelow(text);
@@ -417,7 +633,7 @@
     const L = boxed();
     for (let i = gs.length - 1; i >= 0; i--) cutOut(L, gs[i].s, gs[i].e);
     if (!finish(L)) return false;
-    if (!quiet) said('Bloque eliminado. Ctrl+Z lo deshace', 'Bloques eliminados: {n}. Ctrl+Z los deshace', list.length);
+    if (!quiet) gone('Bloque eliminado', 'Bloques eliminados: {n}', list.length);
     return true;
   }
   // La copia va debajo de cada tramo de bloques seguidos, y queda marcada.
@@ -472,6 +688,39 @@
     finish(L);
   }
 
+  // ---------- Lo mismo, con ítems ----------
+  // Las cuentas las hace lists.js sobre las líneas; las listas numeradas quedan renumeradas en el mismo paso.
+  const onItems = (fn, ...more) => { const at = starts(); return at.length ? fn(lines(), fm(), at, ...more) : null; };
+  function removeItems(quiet) {
+    if (!canEdit() || locked()) return false;
+    const n = chosen().length; const res = onItems(I.remove); if (!res) return false;
+    // Si se fue la lista entera y dejó pegadas a las dos de al lado, siguen siendo dos.
+    if (res.gone) {
+      const was = LMD.lists.origins(lines(), fm());
+      res.lines = LMD.lists.apart(res.lines, fm(), was.slice(0, res.gone.s).concat(was.slice(res.gone.s + res.gone.n))) || res.lines;
+    }
+    if (!commit(res)) return false;
+    if (!quiet) gone('Ítem eliminado', 'Ítems eliminados: {n}', n);
+    return true;
+  }
+  const act = (fn, ...more) => { if (!canEdit() || locked()) return false; return commit(onItems(fn, ...more)); };
+  function moveItems(dir) { if (act(I.move, dir) && head && head.isConnected) head.scrollIntoView({ block: 'nearest' }); }
+  function checkItems() {
+    const tasks = onItems(I.tasks) || []; if (!tasks.length) return;
+    act(I.check, !tasks.every((t) => t.done));
+  }
+  function runItems(id) {
+    if (id === 'copy') copy();
+    else if (id === 'cut') cut();
+    else if (id === 'dup') act(I.copy);
+    else if (id === 'del') removeItems();
+    else if (id === 'up' || id === 'down') moveItems(id === 'up' ? -1 : 1);
+    else if (id === 'indent' || id === 'outdent') act(I.shift, id === 'indent' ? 1 : -1);
+    else if (id === 'check') checkItems();
+    else if (id === 'doc-copy' || id === 'doc-move') toDoc(id === 'doc-move');
+    else if (/^to-/.test(id)) act(I.convert, id.slice(3));
+  }
+
   // ---------- Envolver y convertir ----------
   function wrap() {
     if (!canEdit() || locked()) return;
@@ -501,7 +750,7 @@
       const rest = []; for (let k = g.s; k < g.e; k++) if (!used.has(k) && L[k].t.trim()) rest.push(L[k]);
       L.splice(g.s, g.e - g.s, ...body.map((t) => ({ t, m: true })), ...(rest.length ? [{ t: '' }].concat(rest) : []));
     }
-    finish(L);
+    finish(L, true);
   }
 
   // ---------- A una nota nueva ----------
@@ -510,7 +759,7 @@
     const r = core.appRoot;
     return !!core.APP && !!r && !core.readOnly && !(LMD.cloud && LMD.cloud.guest && LMD.cloud.guest()) && ['local', 'cloud', 'dir', 'file'].includes(r.kind);
   };
-  const textOf = (b) => { const c = b.cloneNode(true); c.querySelectorAll('.lmd-anchor, .lmd-hnum, .lmd-code-copy, .lmd-code-lang, .lmd-cl-grip').forEach((n) => n.remove()); return c.textContent.replace(/\s+/g, ' ').trim(); };
+  const textOf = (b) => { const c = b.cloneNode(true); c.querySelectorAll('.lmd-anchor, .lmd-hnum, .lmd-code-copy, .lmd-code-lang, .lmd-cl-grip' + (items ? ', ul, ol' : '')).forEach((n) => n.remove()); return c.textContent.replace(/\s+/g, ' ').trim(); };
   // El nombre sale del primer título; sin título, de las primeras palabras.
   function titleOf(list) {
     const h = list.find((b) => /^H[1-6]$/.test(b.tagName) && textOf(b));
@@ -538,36 +787,62 @@
     // Un archivo abierto suelto: no hay carpeta ni cuenta donde dejarla.
     if (r.id === 'mem') { core.flash(T('Guardá esta nota antes de pasar bloques a una nueva.'), 'warn'); return null; }
     if (!(await core.openText(name + '.md', text))) return null;
-    core.flash(T('No hay dónde guardar la nota nueva: quedó abierta sin guardar y el original no cambió.'), 'warn');
+    // Se abre sin guardar y el original queda como estaba: es una copia, y se dice.
+    core.flash(T('Se copió: todavía no hay dónde guardar la nota nueva.'), 'warn');
     return { unsaved: true };
   }
   async function toDoc(move) {
+    // Sin dónde guardar la nota nueva no hay mover: sería una copia callada.
+    if (nowhere()) move = false;
     if (busy || !canNew() || (move && (!canEdit() || locked()))) return;
-    const list = effective(); const gs = groups(list); if (!gs.length) return;
-    const src = lines(); const eol = /\r\n/.test(core.raw) ? '\r\n' : '\n';
-    const text = gs.map((g) => src.slice(g.s, g.e).join(eol)).join(eol + eol) + eol;
-    const title = titleOf(list) || T('nota'); const was = core.raw; const here = core.HERE;
+    const eol = /\r\n/.test(core.raw) ? '\r\n' : '\n'; const src = lines(); let text; let title; let gs = null; let at = null;
+    if (items) {
+      const list = chosen(); at = list.map(startOf); const body = I.lift(src, fm(), at); if (!body) return;
+      text = body.join(eol) + eol; title = titleOf(list) || T('nota');
+    } else {
+      const list = effective(); gs = groups(list); if (!gs.length) return;
+      text = gs.map((g) => src.slice(g.s, g.e).join(eol)).join(eol + eol) + eol; title = titleOf(list) || T('nota');
+    }
+    const was = core.raw; const here = core.HERE;
     busy = true; let made = null;
     try { made = await create(fileName(title), text); } catch (e) { core.flash(T('No se pudo crear la nota nueva.'), 'error'); }
     busy = false;
     if (!made || made.unsaved) return;
     if (move) {
-      // Mientras se creaba la nota, esta no cambió: se quitan los bloques y queda un enlace en su lugar.
-      if (core.HERE !== here || core.raw !== was || !canEdit()) { core.flash(T('La nota cambió mientras tanto: los bloques quedaron también acá.'), 'warn'); return; }
-      const L = boxed(); let at = fm();
-      for (let i = gs.length - 1; i >= 0; i--) at = cutOut(L, gs[i].s, gs[i].e);
-      putIn(L, at, [{ t: linkTo(title, made.url), m: true }]);
-      finish(L);
+      // Mientras se creaba la nota, esta no cambió: se quita lo marcado y queda un enlace en su lugar.
+      if (core.HERE !== here || core.raw !== was || !canEdit()) { core.flash(T(at ? 'La nota cambió mientras tanto: los ítems quedaron también acá.' : 'La nota cambió mientras tanto: los bloques quedaron también acá.'), 'warn'); return; }
+      if (at) {
+        // El enlace queda como un ítem más, debajo del último que se fue.
+        const put = I.insert(src, fm(), at[at.length - 1], ['- ' + linkTo(title, made.url)]);
+        const res = put && I.remove(put.lines, fm(), at);
+        if (res && write(res.lines)) { const li = liAt(put.at[0] - (put.lines.length - res.lines.length)); if (li) setItems([li]); }
+      } else {
+        const L = boxed(); let to = fm();
+        for (let i = gs.length - 1; i >= 0; i--) to = cutOut(L, gs[i].s, gs[i].e);
+        putIn(L, to, [{ t: linkTo(title, made.url), m: true }]);
+        finish(L);
+      }
     }
     core.flash(T('Nota nueva: {a}', { a: made.file }));
   }
 
   // ---------- El mouse ----------
-  let drag = null; let drop = null; let line = null; let eat = 0;
+  let drag = null; let drop_ = null; let line = null; let eat = 0;
   const contentLeft = () => { const r = article.getBoundingClientRect(); return r.left + (parseFloat(getComputedStyle(article).paddingLeft) || 0); };
   // El bloque a esa altura de la pantalla. Entre dos bloques, el más cercano.
   function blockAt(y, loose) {
     let best = null; let gap = Infinity;
+    if (frozen) {
+      // Durante un arrastre las alturas ya están leídas: se busca por mitades.
+      const g = geo(); const Y = y + window.scrollY; let lo = 0; let hi = g.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (g[mid].bottom < Y) lo = mid + 1; else hi = mid; }
+      [g[lo], g[lo - 1]].forEach((x) => {
+        if (!x) return;
+        const d = Y >= x.top && Y <= x.bottom ? 0 : Y < x.top ? x.top - Y : Y - x.bottom;
+        if (d < gap) { gap = d; best = x.b; }
+      });
+      return gap === 0 || loose || gap <= 28 ? best : null;
+    }
     for (const b of shown()) {
       const r = b.getBoundingClientRect(); if (!r.height && !r.width) continue;
       if (y >= r.top && y <= r.bottom) return b;
@@ -578,24 +853,62 @@
   }
   // Dónde caería lo arrastrado: antes del bloque next, o al final. Dentro de lo marcado no hay dónde.
   function dropAt(y) {
-    const u = shown(); if (!u.length) return null;
-    const mine = new Set(effective());
-    let i = 0; while (i < u.length) { const r = u[i].getBoundingClientRect(); if (y < r.top + r.height / 2) break; i++; }
-    const prev = u[i - 1] || null; const next = u[i] || null;
+    const mine = new Set(effective()); let prev; let next; let a = null; let b = null;
+    if (frozen) {
+      const g = geo(); if (!g.length) return null;
+      const Y = y + window.scrollY; const off = window.scrollY; let lo = 0; let hi = g.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (Y < (g[mid].top + g[mid].bottom) / 2) hi = mid; else lo = mid + 1; }
+      prev = g[lo - 1] ? g[lo - 1].b : null; next = g[lo] ? g[lo].b : null;
+      if (prev) a = g[lo - 1].bottom - off; if (next) b = g[lo].top - off;
+    } else {
+      const u = shown(); if (!u.length) return null;
+      let i = 0; while (i < u.length) { const r = u[i].getBoundingClientRect(); if (y < r.top + r.height / 2) break; i++; }
+      prev = u[i - 1] || null; next = u[i] || null;
+      if (prev) a = prev.getBoundingClientRect().bottom; if (next) b = next.getBoundingClientRect().top;
+    }
     if (prev && next && mine.has(prev) && mine.has(next)) return null;
-    const a = prev ? prev.getBoundingClientRect().bottom : null; const b = next ? next.getBoundingClientRect().top : null;
     return { next, y: a != null && b != null ? (a + b) / 2 : b != null ? b - 8 : a + 8 };
   }
+  // Lo mismo entre los ítems hermanos de lo marcado: before es el lugar en la lista.
+  function dropItem(y) {
+    if (!anchor || !anchor.isConnected) return null;
+    const k = kin(anchor); if (!k.length) return null;
+    let i = 0; while (i < k.length) { const r = k[i].getBoundingClientRect(); if (y < r.top + r.height / 2) break; i++; }
+    const prev = k[i - 1] || null; const next = k[i] || null;
+    if (prev && next && picked.has(prev) && picked.has(next)) return null;
+    const a = prev ? prev.getBoundingClientRect().bottom : null; const b = next ? next.getBoundingClientRect().top : null;
+    const box = anchor.parentNode.getBoundingClientRect();
+    return { before: i, y: a != null && b != null ? (a + b) / 2 : b != null ? b - 3 : a + 3, left: box.left, width: box.width };
+  }
   function showDrop(spot) {
-    drop = spot;
+    drop_ = spot;
     if (!spot) { if (line) line.hidden = true; return; }
     if (!line) { line = el('div', { class: 'lmd-bsel-drop', role: 'presentation' }); document.body.appendChild(line); }
-    const r = article.getBoundingClientRect(); const left = contentLeft();
-    line.style.top = (spot.y - 1.5) + 'px'; line.style.left = left + 'px'; line.style.width = Math.max(40, r.right - left - (left - r.left)) + 'px';
+    const r = article.getBoundingClientRect(); const left = spot.left != null ? spot.left : contentLeft();
+    line.style.top = (spot.y - 1.5) + 'px'; line.style.left = left + 'px'; line.style.width = Math.max(40, spot.width != null ? spot.width : r.right - left - (left - r.left)) + 'px';
     line.hidden = false;
+  }
+  // El ítem de esa lista a esa altura: el de más adentro que la ocupa; si no, el más cercano del primer nivel.
+  function itemAt(list, y) {
+    let hit = null;
+    list.querySelectorAll('li').forEach((li) => { if (!itemOf(li)) return; const r = li.getBoundingClientRect(); if (y >= r.top && y <= r.bottom) hit = li; });
+    if (hit) return hit;
+    let gap = Infinity;
+    Array.from(list.children).forEach((li) => { if (!itemOf(li)) return; const r = li.getBoundingClientRect(); const d = y < r.top ? r.top - y : y - r.bottom; if (d < gap) { gap = d; hit = li; } });
+    return hit;
+  }
+  // Arrastrando desde una viñeta: un rango de ítems. Al salir de la lista, pasa a ser un rango de bloques enteros.
+  function trackItems() {
+    if (!drag.from.isConnected) { if (anchor && items) drag.from = anchor; else return; }
+    const top = unitOf(drag.from); const b = blockAt(drag.last, true);
+    if (top && b && b !== top) { drag.kind = 'range'; drag.from = top; whole(); rangeTo(top, b); return; }
+    const li = itemAt(rootOf(drag.from), drag.last); const pair = li && level(drag.from, li); if (!pair) return;
+    if (!items || pair[0] !== anchor || pair[1] !== head || pair[0].parentNode !== anchor.parentNode) itemRange(pair[0], pair[1]);
   }
   function dragTrack() {
     if (!drag || !drag.on) return;
+    if (drag.kind === 'irange') { trackItems(); return; }
+    if (drag.kind === 'imove') { showDrop(dropItem(drag.last)); return; }
     // Si la nota se redibujó a mitad del arrastre, el bloque de partida es el que quedó en su lugar.
     if (drag.kind === 'range' && drag.from && !drag.from.isConnected && anchor) drag.from = anchor;
     if (drag.kind === 'range') { const b = blockAt(drag.last, true); if (b && (b !== head || anchor !== drag.from)) rangeTo(drag.from, b); }
@@ -606,7 +919,8 @@
     if (!drag.on) {
       if (Math.abs(e.clientY - drag.y) < 5 && Math.abs(e.clientX - drag.x) < 5) return;
       drag.on = true; W.closeMenu(); closeMenu();
-      root.classList.add(drag.kind === 'move' ? 'lmd-bsel-moving' : 'lmd-bsel-ranging');
+      freeze();
+      root.classList.add(/move/.test(drag.kind) ? 'lmd-bsel-moving' : 'lmd-bsel-ranging');
       if (drag.kind === 'range') setSel([drag.from]);
       // Cerca del borde de arriba o de abajo, la página se desplaza sola.
       const tick = () => {
@@ -622,12 +936,13 @@
     dragTrack();
   }
   function dragEnd(done) {
-    const d = drag; drag = null; if (!d) return false;
+    const d = drag; drag = null; frozen = null; if (!d) return false;
     cancelAnimationFrame(d.raf);
     root.classList.remove('lmd-bsel-moving', 'lmd-bsel-ranging');
-    const spot = drop; showDrop(null);
+    const spot = drop_; showDrop(null);
     if (!d.on) return false;
     if (done && d.kind === 'move' && spot) moveTo(spot.next);
+    if (done && d.kind === 'imove' && spot) act(I.place, spot.before);
     placeBar();
     return true;
   }
@@ -638,11 +953,29 @@
     if (dragEnd(true)) eat = Date.now();
     // Un clic en el margen de un bloque ya marcado deja marcado solo ese.
     else if (d && d.kind === 'move' && !d.handle && d.from) setSel([d.from]);
+    else if (d && d.kind === 'imove' && d.from) setItems([d.from]);
+  }
+  // Dónde empieza lo que tiene el ítem: su casilla o su texto (leyendo, el texto va suelto dentro del <li>).
+  function textLeft(li) {
+    const n = Array.from(li.childNodes).find((x) => (x.nodeType === 1 ? !x.classList.contains('lmd-cl-grip') : x.nodeType === 3 && !!x.nodeValue.trim()));
+    let box = null;
+    if (n && n.nodeType === 1) box = n.getBoundingClientRect();
+    else if (n) { const r = document.createRange(); r.selectNode(n); box = r.getClientRects()[0] || null; }
+    return box ? box.left : li.getBoundingClientRect().left + 4;
+  }
+  // La viñeta de un ítem: el margen de su lista, a la izquierda de su texto y de su casilla.
+  function bulletOf(e, t) {
+    if (!t || !article.contains(t) || !/^(LI|UL|OL)$/.test(t.tagName)) return null;
+    let li = t.tagName === 'LI' ? t : null;
+    if (!li) { let gap = Infinity; Array.from(t.children).forEach((x) => { if (x.tagName !== 'LI') return; const r = x.getBoundingClientRect(); const d = e.clientY < r.top ? r.top - e.clientY : e.clientY > r.bottom ? e.clientY - r.bottom : 0; if (d < gap) { gap = d; li = x; } }); }
+    if (!li || !itemOf(li)) return null;
+    return e.clientX < textLeft(li) ? li : null;
   }
   function onDown(e) {
     eat = 0;
     if (e.button === 2 && picked.size && usable()) {
       // Clic derecho sobre lo marcado: el cursor no entra al bloque, que eso lo soltaría.
+      if (items) { if (within(liOf(e.target))) e.preventDefault(); return; }
       const b = e.target === article ? blockAt(e.clientY) : unitOf(e.target);
       if (b && effective().includes(b)) e.preventDefault();
       return;
@@ -664,22 +997,59 @@
     const margin = !!handle || (t === article && e.clientX < contentLeft() + 1);
     const b = handle ? blockAt(handle.getBoundingClientRect().top + 6, true) : margin ? blockAt(e.clientY) : unitOf(t);
     if (!b || !seen(b)) { if (!handle) clear(); return; }
+    // El ítem bajo el clic: en su viñeta (dot) o en cualquier parte de él (li).
+    const dot = handle || margin ? null : bulletOf(e, t); const li = dot || (handle || margin ? null : liOf(t));
+    const take = () => { e.preventDefault(); eat = Date.now(); };
     if (e.shiftKey) {
+      const a = document.activeElement; const typing = core.editMode && a && a.isContentEditable && article.contains(a);
+      // Desde un ítem a otro de la misma lista: un rango de ítems, en el nivel que comparten.
+      const start = items ? anchor : !picked.size && typing ? liOf(a) : null;
+      if (start && li && rootOf(li) === rootOf(start)) {
+        const pair = level(start, li);
+        if (!items && pair[0] === pair[1] && !dot) return; // dentro del mismo ítem se sigue eligiendo texto
+        take(); itemRange(pair[0], pair[1]);
+        return;
+      }
+      // Desde un ítem hacia fuera de su lista: bloques enteros, con la lista completa.
+      if (items) { take(); const top = unitOf(anchor); whole(); if (top) rangeTo(top, b); return; }
       // Extiende desde el último marcado; sin nada marcado, desde el bloque donde está el cursor.
-      const a = document.activeElement;
-      const from = picked.size ? anchor : (core.editMode && a && a.isContentEditable && article.contains(a) ? unitOf(a) : null);
+      const from = picked.size ? anchor : (typing ? unitOf(a) : null);
       if (!from || (!picked.size && from === b && !margin)) return; // dentro del mismo bloque se sigue eligiendo texto
-      e.preventDefault(); eat = Date.now(); rangeTo(from, b);
+      take(); rangeTo(from, b);
       return;
     }
     if (LMD.mod(e)) {
       if (t.closest('a')) return; // Ctrl + clic sobre un enlace lo sigue
-      e.preventDefault(); eat = Date.now(); toggle(b);
+      take();
+      if (items) {
+        if (li && rootOf(li) === rootOf(anchor)) {
+          // Suma o quita un ítem. Si es de otro nivel de la misma lista, lo marcado sube al nivel que comparten.
+          const pair = level(anchor, li); const same = pair[0].parentNode === anchor.parentNode;
+          const cur = same ? Array.from(picked) : Array.from(picked).map((p) => level(p, li)[0]);
+          const next = new Set(cur); if (same && next.has(pair[1])) next.delete(pair[1]); else next.add(pair[1]);
+          const k = kin(pair[1]).filter((x) => next.has(x));
+          setItems(k, next.has(pair[1]) ? pair[1] : null, next.has(pair[1]) ? pair[1] : null);
+        } else {
+          const top = unitOf(anchor); whole();
+          const list = shown().filter((n) => n === top || n === b); setSel(list, b, b);
+        }
+        return;
+      }
+      // Sin nada marcado, Ctrl + clic sobre un ítem marca ese ítem; con bloques marcados, la lista cuenta entera.
+      if (!picked.size && li) setItems([li]); else toggle(b);
+      return;
+    }
+    if (dot) {
+      e.preventDefault();
+      const moving = items && picked.has(dot) && canEdit();
+      if (!moving) setItems([dot]);
+      drag = { kind: moving ? 'imove' : 'irange', from: dot, x: e.clientX, y: e.clientY, last: e.clientY, on: false };
+      document.addEventListener('mousemove', onMove, true); document.addEventListener('mouseup', onUp, true);
       return;
     }
     if (!margin) { clear(); return; }
     e.preventDefault();
-    const moving = picked.has(b) && canEdit();
+    const moving = !items && picked.has(b) && canEdit();
     if (!moving && !handle) setSel([b]);
     drag = { kind: moving ? 'move' : 'range', from: b, x: e.clientX, y: e.clientY, last: e.clientY, on: false, handle: !!handle };
     document.addEventListener('mousemove', onMove, true); document.addEventListener('mouseup', onUp, true);
@@ -697,7 +1067,10 @@
   }
   function onContext(e) {
     if (Date.now() - pressed < 1500) { e.preventDefault(); e.stopPropagation(); return; }
-    if (e.shiftKey || !usable() || effective().length < 2) return;
+    if (e.shiftKey || !usable()) return;
+    // Sobre un ítem marcado, sus acciones (también con uno solo: un ítem no tiene otro menú).
+    if (items) { if (!within(liOf(e.target))) return; e.preventDefault(); e.stopPropagation(); openMenu(e.clientX, e.clientY, actions()); return; }
+    if (effective().length < 2) return;
     const b = e.target === article ? blockAt(e.clientY) : unitOf(e.target);
     if (!b || !effective().includes(b)) return;
     e.preventDefault(); e.stopPropagation();
@@ -717,7 +1090,7 @@
       if (!t.closest || t.closest('button, input, textarea, a') || (a && a !== document.body && a.contains(t))) return;
       const b = unitOf(t); if (!b || !seen(b)) return;
       at = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      press = setTimeout(() => { press = null; fired = true; pressed = Date.now(); touchMode = true; setSel([b]); getSelection().removeAllRanges(); }, 500);
+      press = setTimeout(() => { press = null; fired = true; pressed = Date.now(); setSel([b]); touchMode = true; paint(); getSelection().removeAllRanges(); }, 500);
     }, { passive: true });
     article.addEventListener('touchmove', (e) => {
       const p = e.touches[0];
@@ -735,11 +1108,31 @@
 
   // ---------- El teclado ----------
   const allPicked = (node) => { const sel = getSelection(); const flat = (s) => String(s).replace(/\s+/g, ''); return flat(sel.toString()) === flat(node.textContent); };
+  // Pasar al bloque de al lado no cambia cómo se llegó a lo marcado; extender con Mayúsculas ya es a propósito.
   function step(dir, extend) {
     const u = shown(); const i = u.indexOf(head); if (i < 0) return;
-    const to = u[Math.max(0, Math.min(u.length - 1, i + dir))];
-    if (extend) rangeTo(anchor, to); else setSel([to]);
+    const to = u[Math.max(0, Math.min(u.length - 1, i + dir))]; const w = how;
+    if (extend) rangeTo(anchor, to); else { setSel([to]); how = w; }
     to.scrollIntoView({ block: 'nearest' });
+  }
+  // El bloque que está antes o después del que contiene a la lista.
+  const beside = (li, dir) => { const u = shown(); const i = u.indexOf(unitOf(li)); return i < 0 ? null : { top: u[i], to: u[i + dir] || null }; };
+  function stepItems(dir, extend) {
+    if (!head || !head.isConnected) return;
+    if (extend) {
+      // Entre hermanos; en el borde de una sublista, sube al ítem que la contiene; en el de la lista, a bloques.
+      const k = kin(head); const to = k[k.indexOf(head) + dir];
+      if (to) { itemRange(anchor, to); to.scrollIntoView({ block: 'nearest' }); return; }
+      const up = head.parentNode.parentNode;
+      if (up && up.tagName === 'LI' && itemOf(up)) { setItems([up]); up.scrollIntoView({ block: 'nearest' }); return; }
+      const at = beside(head, dir); if (!at || !at.to) return;
+      whole(); rangeTo(at.top, at.to); at.to.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    const all = Array.from(rootOf(head).querySelectorAll('li')).filter((li) => itemOf(li)); const to = all[all.indexOf(head) + dir]; const w = how;
+    if (to) { setItems([to]); how = w; to.scrollIntoView({ block: 'nearest' }); return; }
+    const at = beside(head, dir); if (!at || !at.to) return;
+    setSel([at.to]); how = w; at.to.scrollIntoView({ block: 'nearest' });
   }
   function onKey(e) {
     if (!usable()) return;
@@ -756,24 +1149,36 @@
     const inBar = bar.contains(t); const edit = canEdit();
     const take = () => { e.preventDefault(); e.stopPropagation(); };
     if (key === 'Escape') { take(); if (inBar) t.blur(); reset(); return; }
+    // Mayúsculas + F10 (o la tecla de menú) abre las acciones de lo marcado, con el foco adentro.
+    if ((key === 'F10' && e.shiftKey) || key === 'ContextMenu') { take(); const r = bar.getBoundingClientRect(); openMenu(r.left, r.bottom + 6, actions(), null, true); return; }
     if (key === 'Tab') {
-      // Tab lleva el foco a la barra; desde ella, vuelve al documento.
       take();
+      // Con ítems marcados, Tab los sangra y Mayúsculas + Tab los saca un nivel.
+      if (items && edit && !inBar && !mod && !e.altKey) { act(I.shift, e.shiftKey ? -1 : 1); return; }
+      // Tab lleva el foco a la barra; desde ella, vuelve al documento.
       if (inBar) t.blur(); else { const b = Array.from(bar.querySelectorAll('button')).find((x) => !x.hidden && x.dataset.bs !== 'grip') || bar.querySelector('button:not([hidden])'); if (b) b.focus(); }
       return;
     }
     if (key === 'ArrowUp' || key === 'ArrowDown') {
       const dir = key === 'ArrowUp' ? -1 : 1; if (mod) return;
       take();
-      if (e.altKey || (inBar && t.dataset.bs === 'grip')) { if (edit) moveBy(dir); } else step(dir, e.shiftKey);
+      if (e.altKey || (inBar && t.dataset.bs === 'grip')) { if (edit) { if (items) moveItems(dir); else moveBy(dir); } }
+      else if (items) stepItems(dir, e.shiftKey); else step(dir, e.shiftKey);
       return;
     }
     if (inBar && (key === 'Enter' || key === ' ' || /^(Arrow|Home|End)/.test(key))) return;
-    if (key === 'Delete' || key === 'Backspace') { take(); if (edit) remove(); return; }
-    if (mod && !e.shiftKey && !e.altKey && key.toLowerCase() === 'd') { if (edit) { take(); duplicate(); } return; }
+    if (key === 'Delete' || key === 'Backspace') {
+      take(); if (!edit) return;
+      // Lo que quedó marcado con Escape mientras se escribía no se va con Retroceso (la tecla que ya se venía
+      // apretando para borrar texto): hace falta Supr, o haberlo marcado a propósito.
+      if (key === 'Backspace' && how === 'esc') { core.flash(T('Para eliminar lo marcado: {a}', { a: LMD.keys('Delete') })); return; }
+      drop();
+      return;
+    }
+    if (mod && !e.shiftKey && !e.altKey && key.toLowerCase() === 'd') { if (edit) { take(); if (items) act(I.copy); else duplicate(); } return; }
     if (key === 'Enter' && !mod && !e.altKey) {
       // Enter entra a escribir en el bloque.
-      const b = head; const node = edit && b ? (b.matches('.lmd-editable') ? b : b.querySelector('.lmd-editable')) : null;
+      const b = head; const node = edit && b ? (b.matches('.lmd-editable') ? b : b.querySelector(':scope > .lmd-editable') || b.querySelector('.lmd-editable')) : null;
       if (!node) return;
       take(); reset();
       if (LMD.fold) LMD.fold.reveal(node);
@@ -785,7 +1190,7 @@
   }
 
   function init(c) {
-    core = c; article = core.ui.article; W = LMD.write;
+    core = c; article = core.ui.article; W = LMD.write; I = LMD.lists.items;
     buildBar();
     core.hooks.render.push(afterRender); core.hooks.patch.push(afterPatch); core.hooks.doc.push(reset);
     document.addEventListener('mousedown', onDown, true);
@@ -798,30 +1203,33 @@
     // Entrar a escribir en un bloque suelta lo marcado.
     article.addEventListener('focusin', (e) => { if (picked.size && e.target.closest && e.target.closest('.lmd-editable, .lmd-src')) reset(); });
     // Escape en un bloque descarta lo escrito (content.js) y lo deja marcado: desde ahí se sigue con el teclado.
+    // En un ítem de una lista queda marcado ese ítem.
     article.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape' || !core.editMode || !usable()) return;
       const node = e.target.closest && e.target.closest('.lmd-editable'); if (!node || node.classList.contains('lmd-draft')) return;
       const b = unitOf(node); if (!b) return;
-      const at = W.span(b).s;
+      const at = W.span(b).s; const li = liOf(node); const item = li ? startOf(li) : -1;
       // Si Escape cerró otra cosa (un menú, la lista de enlaces), el cursor sigue en el bloque y no se marca nada.
       setTimeout(() => {
         const a = document.activeElement;
         if (picked.size || !usable() || !core.editMode || (a && a !== document.body) || document.querySelector(OVER + ', .lmd-menu')) return;
-        const again = units().find((x) => W.span(x).s === at);
-        if (again && seen(again)) setSel([again]);
+        const again = units().find((x) => W.span(x).s === at); if (!again || !seen(again)) return;
+        const one = item >= 0 ? liAt(item) : null;
+        if (one) setItems([one]); else setSel([again]);
+        how = 'esc';
       }, 0);
     }, true);
     let queued = false;
     const follow = () => { if (menu) closeMenu(); if (queued || !bar || bar.hidden) return; queued = true; requestAnimationFrame(() => { queued = false; placeBar(); }); };
     window.addEventListener('scroll', follow, { passive: true });
-    window.addEventListener('resize', follow);
+    window.addEventListener('resize', () => { if (frozen) frozen.geo = null; follow(); });
     // Con el dedo no hay margen del que arrastrar: el menú de un bloque (el de la manija y el de mantener apretado
     // leyendo) ofrece entrar a seleccionar.
     const byTouch = () => LMD.touch.coarse() || LMD.touch.touched();
-    const pick = (block) => { touchMode = true; setSel([block]); };
+    const pick = (block) => { setSel([block]); touchMode = true; paint(); };
     W.editMenu.push(({ block, draft }) => (byTouch() && block && !draft && unitOf(block) === block ? [['block', 'bsel-pick', ICON.check, 'Seleccionar el bloque', () => pick(block)]] : []));
     W.readMenu.push(({ block, picked: text }) => (byTouch() && !text && block && unitOf(block) === block ? ['bsel-pick', ICON.check, 'Seleccionar el bloque', () => pick(block)] : null));
   }
 
-  LMD.blocks = { init, clear, count: () => effective().length, active: () => picked.size > 0, picked: () => effective() };
+  LMD.blocks = { init, clear, count, active: () => picked.size > 0, picked: () => effective(), items: () => (items ? chosen() : []) };
 })();

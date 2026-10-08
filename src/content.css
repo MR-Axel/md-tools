@@ -2783,6 +2783,8 @@ html.lmd-ai-open .lmd-ai-card { left: calc(50% - 190px); width: min(860px, calc(
 
 /* ---------- Varios bloques a la vez (blocks.js) ---------- */
 .lmd-article > .lmd-bsel { background: var(--accent-soft); box-shadow: 0 0 0 5px var(--accent-soft); outline: 1.5px solid color-mix(in srgb, var(--accent) 62%, transparent); outline-offset: 5px; border-radius: 3px; }
+.lmd-article li.lmd-bsel { background: var(--accent-soft); box-shadow: 0 0 0 3px var(--accent-soft); outline: 1.5px solid color-mix(in srgb, var(--accent) 62%, transparent); outline-offset: 3px; border-radius: 3px; }
+.lmd-bsel-moving .lmd-article li.lmd-bsel { opacity: 0.55; }
 .lmd-bsel-bar { position: fixed; z-index: 45; display: flex; align-items: center; gap: 2px; padding: 4px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 9px; box-shadow: var(--shadow); font: 13px/1.2 var(--lmd-font); color: var(--fg); }
 .lmd-bsel-bar[hidden], .lmd-bsel-bar button[hidden], .lmd-bsel-drop[hidden] { display: none; }
 .lmd-bsel-n { padding: 0 8px 0 7px; color: var(--fg-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -2799,4 +2801,4 @@ html.lmd-ai-open .lmd-ai-card { left: calc(50% - 190px); width: min(860px, calc(
 .lmd-bsel-moving, .lmd-bsel-moving * { cursor: grabbing !important; }
 .lmd-bsel-ranging, .lmd-bsel-moving { user-select: none; -webkit-user-select: none; }
 @media (pointer: coarse) { .lmd-bsel-bar button { min-width: 40px; height: 40px; } }
-@media print { .lmd-bsel-bar, .lmd-bsel-drop { display: none !important; } .lmd-article > .lmd-bsel { background: none; box-shadow: none; outline: 0; } }
+@media print { .lmd-bsel-bar, .lmd-bsel-drop { display: none !important; } .lmd-article > .lmd-bsel, .lmd-article li.lmd-bsel { background: none; box-shadow: none; outline: 0; } }
