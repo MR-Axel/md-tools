@@ -57,9 +57,9 @@ Then, in SharpMD: Settings → Cloud → Sync server, and type the address (`htt
 | `PAGES_NEW_DAY`, `PAGES_PUTS_HOUR` | Sites one account may create per day, and pages one site may upload per hour | `3`, `1200` |
 | `PAGES_GRACE_MS` | Tests only: the grace period in milliseconds. Leave it alone in production | |
 | `DATA_KEY` | 32 bytes in base64. Turns on encryption at rest: see below | off |
-| `FILE_MAX_FREE_MB`, `FILE_MAX_PAID_MB` | Megabytes one attached image may weigh, an animated GIF included, on the free plan and on the paid one. See "Attached images" | `5`, `20` |
-| `FILES_FREE_MB`, `FILES_PAID_MB` | Megabytes of attached images per free account and per paid account | `100`, `5120` |
-| `FILES_TEAM_SEAT_MB`, `FILES_TEAM_MB` | Megabytes each member adds to the shared pool of a team space, and a fixed base on top of it if you want one | `10240`, `0` |
+| `FILE_MAX_FREE_MB`, `FILE_MAX_PAID_MB` | Megabytes one attached image may weigh, an animated GIF included, on the free plan and on the paid one. See "Attached images" | `5`, `10` |
+| `FILES_FREE_MB`, `FILES_PAID_MB` | Megabytes of attached images per free account and per paid account. With `0` the free plan does not upload | `0`, `1024` |
+| `FILES_TEAM_SEAT_MB`, `FILES_TEAM_MB` | Megabytes each member adds to the shared pool of a team space, and a fixed base on top of it if you want one | `2048`, `0` |
 | `FILE_UPLOAD_KBPS` | Slowest upload accepted, in KB per second. An upload gets the time its limit takes at that speed instead of the minute every other request has | `32` |
 | `FILES_GRACE_DAYS` | Days an image that no note uses waits before it is deleted | `30` |
 | `FILES_PER_HOUR`, `FILES_GETS_MINUTE` | Uploads per hour and account, and image requests per minute and IP | `300`, `600` |
@@ -444,8 +444,8 @@ Since the server cannot read protected notes, the app declares what they use: af
 
 | | Free | Paid | Team |
 |---|---|---|---|
-| One image, an animated GIF included | 5 MB | 20 MB | 20 MB |
-| Storage | 100 MB | 5 GB | 10 GB per member, in one pool for the team |
+| One image, an animated GIF included | No upload | 10 MB | 10 MB |
+| Storage | Images by address | 1 GB | 2 GB per member, in one pool for the team |
 
 The space an upload is going to take is reserved before its body is read, so uploads sent at the same time cannot pass the total together. When an account leaves the paid plan nothing is deleted and its images keep being served; it cannot upload again until it is under the limit of its plan. The members of a team keep their own allowance for their own notes.
 

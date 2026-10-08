@@ -156,9 +156,10 @@ try {
   const afterReload = await seen(A.page);
   check('al volver a abrir la nota la imagen se ve', !!afterReload && afterReload.length === 1 && afterReload[0].w > 0 && afterReload[0].src.includes('/f/'), afterReload || await shown(A.page));
   const used1 = await filesOf(ana.s);
-  const freeDefaults = await filesOf((await R.signup('gratis-def@ejemplo.test', false)).s);
-  check('por defecto: gratis, 5 MB por imagen y 100 MB en total; pago, 20 MB y 5 GB', freeDefaults.max === 100 * 1048576 && freeDefaults.max_file === 5 * 1048576 && freeDefaults.max_gif === undefined && used1.max === 5120 * 1048576, [freeDefaults.max, freeDefaults.max_file, used1.max]);
-  check('la lista dice que está en uso y cuánto ocupa', used1.files[0].in_use === true && used1.used === used1.files[0].size && used1.max === 5120 * 1048576 && used1.max_file === 20 * 1048576, { used: used1.used, max: used1.max, f: used1.files[0] });
+  const gratisDef = await R.signup('gratis-def@ejemplo.test', false); const freeDefaults = await filesOf(gratisDef.s);
+  { const r = await fetch(R.base + '/files', { method: 'POST', headers: { authorization: 'Bearer ' + gratisDef.s, 'content-type': 'image/png' }, body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64') }); freeDefaults.gratisSube = r.status; }
+  check('por defecto: el plan gratis no sube imágenes; pago, 10 MB y 1 GB', freeDefaults.max === 0 && freeDefaults.gratisSube === 402 && freeDefaults.max_gif === undefined && used1.max === 1024 * 1048576, [freeDefaults.max, freeDefaults.max_file, used1.max]);
+  check('la lista dice que está en uso y cuánto ocupa', used1.files[0].in_use === true && used1.used === used1.files[0].size && used1.max === 1024 * 1048576 && used1.max_file === 10 * 1048576, { used: used1.used, max: used1.max, f: used1.files[0] });
 
   // El diálogo de insertar imagen, con un archivo elegido.
   await prep(A.page);
@@ -322,7 +323,7 @@ try {
   await api('POST', '/admin/team', { email: ana.email, seats: 3 }, undefined, { 'x-admin-key': R.ADMIN });
   const space = (await api('GET', '/team', undefined, ana.s)).json.mine.space;
   const tDefault = await filesOf(ana.s, '?o=' + space);
-  check('el equipo tiene una bolsa común de 10 GB por persona, y cada imagen hasta 20 MB', tDefault.max === 10240 * 1048576 && tDefault.max_file === 20 * 1048576, [tDefault.max, tDefault.max_file]);
+  check('el equipo tiene una bolsa común de 2 GB por persona, y cada imagen hasta 10 MB', tDefault.max === 2048 * 1048576 && tDefault.max_file === 10 * 1048576, [tDefault.max, tDefault.max_file]);
   const t1 = (await upload(ana.s, png(70, 50, 0, 211), '?o=' + space)).json;
   await api('PUT', '/notes/' + enc('equipo.md') + '?o=' + space, { text: '# Equipo\n\n![t](' + t1.url + ')\n' }, ana.s);
   await A.page.goto(R.home); await A.page.waitForSelector('.lmd-home, .lmd-article');
@@ -384,7 +385,7 @@ try {
     return out;
   });
   const allNow = await filesOf(ana.s); const biggest = Math.max(...allNow.files.map((f) => f.size));
-  check('Ajustes > Cloud muestra "Storage" con el uso, una barra y el acceso a la lista', !pane.off && /^Storage/.test(pane.text.trim()) && / of 5 GB/.test(pane.text) && /See attachments/.test(pane.text) && pane.bar >= 0 && pane.list, pane);
+  check('Ajustes > Cloud muestra "Storage" con el uso, una barra y el acceso a la lista', !pane.off && /^Storage/.test(pane.text.trim()) && / of 1 GB/.test(pane.text) && /See attachments/.test(pane.text) && pane.bar >= 0 && pane.list, pane);
   check('la lista trae todos los adjuntos, ordenados por tamaño, y dice cuáles están en uso o cifrados', pane.rows === allNow.count && pane.first.startsWith(await A.page.evaluate((n) => LMD.images.sizeText(n), biggest)) && pane.states.includes('In use') && /Encrypted · (In use|Not used)/.test(pane.rowsText), pane);
   check('y avisa, ahí mismo, que quien tiene la dirección de una imagen puede verla salvo en carpetas protegidas', /Anyone with the address of an image can see it, except in protected folders\./.test(pane.note) && /deleted after 30 days/.test(pane.note) && !/[!—–]/.test(pane.note), pane.note);
   // Borrar uno desde la lista.

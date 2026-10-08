@@ -2292,7 +2292,7 @@
         ],
         "operationId": "uploadFile",
         "summary": "Upload an image",
-        "description": "The body is the image itself, not JSON: PNG, JPEG, GIF, WebP or AVIF. The type is read from the first bytes of the file, whatever Content-Type says. The answer carries the address to put in a note, as ![](url). Anyone with that address can see the image. Limits by default: 5 MB per image and 100 MB on the free plan, 20 MB and 5 GB on the paid plan, 10 GB per member on a team. Errors: bad_image (415), file_too_large and storage_full (413, with max), upload_slow (408).",
+        "description": "The body is the image itself, not JSON: PNG, JPEG, GIF, WebP or AVIF. The type is read from the first bytes of the file, whatever Content-Type says. The answer carries the address to put in a note, as ![](url). Anyone with that address can see the image. Uploading is part of the paid plan. Limits by default: 10 MB per image and 1 GB, 2 GB per member on a team. Errors: files_need_plan (402), bad_image (415), file_too_large and storage_full (413, with max), upload_slow (408).",
         "parameters": [
           {
             "name": "space",

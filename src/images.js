@@ -257,6 +257,7 @@
     // Lo que el servidor va a rechazar se avisa antes de mandarlo.
     let lim = null;
     try { lim = await limitsOf(space); } catch (e) { if (e.code === 'offline') throw e; }
+    if (lim && lim.plan === 'free' && !lim.max) throw fail('files_need_plan', { plan: 'free' });
     if (lim) {
       const max = lim.max_file;
       if (r.blob.size > max) throw fail('file_too_large', { max, size: r.blob.size, plan: lim.plan });
@@ -295,6 +296,7 @@
     const c = e && e.code; const free = e && e.plan === 'free' && !LMD.storeApp;
     if (c === 'file_too_large') return T('La imagen pesa {a} y el tope es {b} por imagen.', { a: sizeText(e.size || 0), b: sizeText(e.max || 0) }) + ' ' + T(mode() === 'original' ? 'Elegí otra calidad de imagen en Ajustes.' : 'Probá con una más chica.') + (free ? ' ' + T('El plan pago admite imágenes más pesadas.') : '');
     if (c === 'storage_full') return T('El almacenamiento de imágenes está lleno. Borrá adjuntos en Ajustes, en Nube.') + (free ? ' ' + T('El plan pago tiene más lugar.') : '');
+    if (c === 'files_need_plan') return T(LMD.storeApp ? 'En esta cuenta las imágenes se insertan por su dirección.' : 'Subir imágenes a la nube es del plan pago. Podés insertar una imagen por su dirección.');
     if (c === 'bad_image') return T('Ese archivo no es una imagen que se pueda insertar.');
     if (c === 'svg_cloud' || c === 'svg_embed') return T('Un SVG no se guarda dentro de una nota. Usá un PNG, o una dirección web.');
     if (c === 'embed_big') return T('La imagen es muy pesada para ir dentro del documento. Subí la nota a la nube o abrí una carpeta.');
@@ -363,7 +365,7 @@
     let out = String(text || ''); let moved = 0; let left = 0; let error = null; const map = [];
     for (const url of embedded(out)) {
       try { const r = await upload(await reduce(fromDataUrl(url)), path); out = out.split(url).join(r.src); map.push([url, r.src]); moved++; }
-      catch (e) { left++; error = error || e; if (e.code === 'offline' || e.code === 'storage_full' || e.code === 'vault_locked') break; }
+      catch (e) { left++; error = error || e; if (e.code === 'offline' || e.code === 'storage_full' || e.code === 'files_need_plan' || e.code === 'vault_locked') break; }
     }
     return { text: out, moved, left, error, map };
   }
@@ -531,6 +533,8 @@
     try {
       const data = await limitsOf('', true);
       if (!pane.isConnected) return;
+      // El plan gratis no sube imágenes: sin adjuntos guardados no hay nada que mostrar.
+      if (!data.max && !data.count) { pane.textContent = ''; pane.hidden = true; return; }
       pane.textContent = ''; pane.hidden = false; pane.classList.toggle('lmd-st-over', data.used > data.max);
       const name = el('span', { class: 'lmd-st-name' }); name.textContent = T('Almacenamiento');
       const num = el('span', { class: 'lmd-st-num' }); num.textContent = T('{a} de {b}', { a: sizeText(data.used), b: sizeText(data.max) });

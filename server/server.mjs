@@ -4499,9 +4499,9 @@ async function pagesServe(req, res) {
 //     papelera. El que no, queda marcado y deja de contar en el uso; pasados FILES_GRACE_DAYS se borra. De
 //     los cifrados se mira lo que declaró la app: el que ninguna nota declara corre la misma suerte.
 // Variables:
-//   FILE_MAX_FREE_MB, FILE_MAX_PAID_MB    peso máximo de una imagen (también un GIF) en el plan gratis y en el pago (5, 20)
-//   FILES_FREE_MB, FILES_PAID_MB          almacenamiento de adjuntos de una cuenta gratis y de una paga (100, 5120)
-//   FILES_TEAM_SEAT_MB, FILES_TEAM_MB     lo que suma cada persona a la bolsa común de un equipo, y una base fija si se quiere (10240, 0)
+//   FILE_MAX_FREE_MB, FILE_MAX_PAID_MB    peso máximo de una imagen (también un GIF) en el plan gratis y en el pago (5, 10)
+//   FILES_FREE_MB, FILES_PAID_MB          almacenamiento de adjuntos de una cuenta gratis y de una paga (0, 1024). Con 0 el plan gratis no sube imágenes: las enlaza por su dirección
+//   FILES_TEAM_SEAT_MB, FILES_TEAM_MB     lo que suma cada persona a la bolsa común de un equipo, y una base fija si se quiere (2048, 0)
 //   FILE_UPLOAD_KBPS                      velocidad mínima de una subida, en KB por segundo: más lenta que eso se corta (32)
 //   FILES_GRACE_DAYS                      días que un adjunto sin uso espera antes de borrarse (30)
 //   FILES_PER_HOUR                        subidas por hora y por cuenta (300)
@@ -4511,10 +4511,11 @@ async function pagesServe(req, res) {
 // ====================================================================================================================
 const MB = 1048576;
 const envMb = (name, def) => { const n = env[name] == null || env[name] === '' ? def : +env[name]; return Math.round((Number.isFinite(n) && n > 0 ? n : def) * MB); };
+const envMb0 = (name, def) => { const n = env[name] == null || env[name] === '' ? def : +env[name]; return Math.round((Number.isFinite(n) && n >= 0 ? n : def) * MB); };
 const envMs = (name, def) => { const n = +(env[name] || 0); return Number.isFinite(n) && n > 0 ? n : def; };
-const FILE_MAX = { free: envMb('FILE_MAX_FREE_MB', 5), pro: envMb('FILE_MAX_PAID_MB', 20) };
+const FILE_MAX = { free: envMb('FILE_MAX_FREE_MB', 5), pro: envMb('FILE_MAX_PAID_MB', 10) };
 // El equipo tiene una bolsa común: lo que suma cada persona. FILES_TEAM_MB le agrega una base fija (0 por defecto).
-const FILES_TOTAL = { free: envMb('FILES_FREE_MB', 100), pro: envMb('FILES_PAID_MB', 5120), team: envMb('FILES_TEAM_MB', 0), seat: envMb('FILES_TEAM_SEAT_MB', 10240) };
+const FILES_TOTAL = { free: envMb0('FILES_FREE_MB', 0), pro: envMb('FILES_PAID_MB', 1024), team: envMb('FILES_TEAM_MB', 0), seat: envMb('FILES_TEAM_SEAT_MB', 2048) };
 // Una subida no depende del minuto que tiene cualquier otro pedido: tiene el tiempo que lleva su tope a la velocidad
 // mínima, y se corta antes si viene más lenta que eso o deja de mandar.
 const FILE_UPLOAD_BPS = Math.max(1, +(env.FILE_UPLOAD_KBPS || 32) || 32) * 1024;
@@ -4633,6 +4634,7 @@ async function fileUpload(req, who, owner, enc) {
   const full = (used) => new Fail(413, 'storage_full', 'The image storage of this plan is full (' + mbText(lim.total) + ')', { used, max: lim.total, plan: lim.plan });
   try { rate('files:put:' + who.id, FILES_PER_HOUR, HOUR, 'too_many'); } catch (e) { await refuse(e); }
   if (enc && !q('SELECT 1 FROM vaults WHERE user = ? LIMIT 1').get(owner.id)) await refuse(new Fail(409, 'vault', 'Encrypted images belong to a folder protected with a password'));
+  if (!lim.total && lim.plan === 'free') await refuse(new Fail(402, 'files_need_plan', 'Uploading images belongs to the paid plan. A note can still show an image by its address', { plan: 'free' }));
   // Un espacio de equipo protegido solo recibe imágenes cifradas.
   if (!enc && sealing(q("SELECT * FROM vaults WHERE user = ? AND folder = ''").get(owner.id))) await refuse(new Fail(409, 'vault', 'This space is protected with a password: its images are encrypted in the browser'));
   const max = lim.file + (enc ? FILE_ENC_EXTRA : 0);

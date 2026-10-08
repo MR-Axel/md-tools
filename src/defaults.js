@@ -1690,6 +1690,8 @@
       "El plan pago admite imágenes más pesadas.": "The paid plan takes heavier images.",
       "El almacenamiento de imágenes está lleno. Borrá adjuntos en Ajustes, en Nube.": "Image storage is full. Delete attachments in Settings, under Cloud.",
       "El plan pago tiene más lugar.": "The paid plan has more room.",
+      "Subir imágenes a la nube es del plan pago. Podés insertar una imagen por su dirección.": "Uploading images to the cloud is part of the paid plan. You can insert an image by its address.",
+      "En esta cuenta las imágenes se insertan por su dirección.": "On this account images are inserted by their address.",
       "Un SVG no se guarda dentro de una nota. Usá un PNG, o una dirección web.": "An SVG is not stored inside a note. Use a PNG, or a web address.",
       "La imagen es muy pesada para ir dentro del documento. Subí la nota a la nube o abrí una carpeta.": "The image is too heavy to go inside the document. Upload the note to the cloud or open a folder.",
       "Demasiadas imágenes seguidas. Probá más tarde.": "Too many images in a row. Try later.",
@@ -1773,7 +1775,7 @@
   const fileLink = (url) => WEB_APP_URL + '#open=' + encodeURIComponent(url);
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.59.0';
+  const VERSION = '2.60.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);
