@@ -1534,7 +1534,7 @@
   const WEB_APP_URL = 'https://sharpmd.app/src/app.html';
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.56.0';
+  const VERSION = '2.56.1';
 
   root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);
