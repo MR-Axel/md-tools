@@ -24,9 +24,9 @@ const CARD_ALT = { en: 'SharpMD: Markdown notes your AI writes and your team rea
 // README.md y README.es.md ("Cloud notes and the sync server").
 const PRICE = {
   offers: { paid: '4', team: '5' },
-  en: { PAID_BIG: 'USD 40', PAID_PER: 'a year', PAID_ALT: 'or USD 4 a month', PAID_LINE: 'USD 40 a year or USD 4 a month',
+  en: { PAID_BIG: 'USD 4', PAID_PER: 'a month', PAID_ALT: 'or USD 40 a year', PAID_LINE: 'USD 4 a month or USD 40 a year',
     TEAM_BIG: 'USD 5', TEAM_PER: 'per person a month', TEAM_ALT: 'From 2 people', TEAM_HOW: 'Free for 14 days' },
-  es: { PAID_BIG: 'USD 40', PAID_PER: 'por año', PAID_ALT: 'o USD 4 por mes', PAID_LINE: 'USD 40 por año o USD 4 por mes',
+  es: { PAID_BIG: 'USD 4', PAID_PER: 'por mes', PAID_ALT: 'o USD 40 por año', PAID_LINE: 'USD 4 por mes o USD 40 por año',
     TEAM_BIG: 'USD 5', TEAM_PER: 'por persona por mes', TEAM_ALT: 'Desde 2 personas', TEAM_HOW: 'Gratis por 14 días' },
 };
 
@@ -89,7 +89,7 @@ function build(lang) {
     '<script type="application/ld+json">' + JSON.stringify({ '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: faq }) + '</script>',
   ].join('\n');
   html = html.replace(/<!--HEAD-->/, head).replace(/<html[^>]*>/, '<html lang="' + lang + '">');
-  html = html.replace(/<!--LANG-->/, '<div class="lang"><a href="' + (lang === 'en' ? './' : '../') + '?site"' + (lang === 'en' ? ' class="on" aria-current="true"' : '') + ' hreflang="en">EN</a><a href="' + (lang === 'en' ? 'es/' : './') + '?site"' + (lang === 'es' ? ' class="on" aria-current="true"' : '') + ' hreflang="es">ES</a></div>');
+  html = html.replace(/<!--LANG-->/, '<div class="lang"><a href="' + (lang === 'en' ? 'es/' : '../') + '?site"' + (lang === 'en' ? ' class="on" aria-current="true"' : '') + ' hreflang="' + (lang === 'en' ? 'es' : 'en') + '">EN</a><a href="' + (lang === 'en' ? 'es/' : '../') + '?site"' + (lang === 'es' ? ' class="on" aria-current="true"' : '') + ' hreflang="' + (lang === 'en' ? 'es' : 'en') + '">ES</a></div>');
   if (/<!--(HEAD|LANG)-->/.test(html) || /%%|\[\[[^\]]*\|\|/.test(html)) throw new Error('faltó reemplazar una marca');
   // en /es/ las rutas relativas suben un nivel
   if (up) html = html.replace(/\b(href|src|poster|data-poster)="(?!https?:|mailto:|#|\/|\.\.?\/)([^"]+)"/g, '$1="' + up + '$2"').replace(/url\("(?!https?:|data:|\/|\.\.\/)([^"]+)"\)/g, 'url("' + up + '$1")');
@@ -144,7 +144,7 @@ function buildPage(slug, lang) {
   html = html.replace(/<!--HEAD-->/, head).replace(/<html[^>]*>/, '<html lang="' + lang + '">');
   // en /es/ las rutas relativas suben un nivel; las que empiezan con ./ se quedan en /es/ (la portada y la otra página, en castellano)
   if (up) html = html.replace(/\b(href|src)="(?!https?:|mailto:|#|\/|\.\.?\/)([^"]+)"/g, '$1="' + up + '$2"').replace(/url\("(?!https?:|data:|\/|\.\.\/)([^"]+)"\)/g, 'url("' + up + '$1")');
-  html = html.replace(/<!--LANG-->/, '<div class="lang"><a href="' + (lang === 'en' ? '' : '../') + slug + '.html"' + (lang === 'en' ? ' class="on" aria-current="true"' : '') + ' hreflang="en">EN</a><a href="' + (lang === 'en' ? 'es/' : './') + slug + '.html"' + (lang === 'es' ? ' class="on" aria-current="true"' : '') + ' hreflang="es">ES</a></div>');
+  html = html.replace(/<!--LANG-->/, '<div class="lang"><a href="' + (lang === 'en' ? 'es/' : '../') + slug + '.html"' + (lang === 'en' ? ' class="on" aria-current="true"' : '') + ' hreflang="' + (lang === 'en' ? 'es' : 'en') + '">EN</a><a href="' + (lang === 'en' ? 'es/' : '../') + slug + '.html"' + (lang === 'es' ? ' class="on" aria-current="true"' : '') + ' hreflang="' + (lang === 'en' ? 'es' : 'en') + '">ES</a></div>');
   if (/<!--(HEAD|LANG)-->/.test(html) || /%%|\[\[[^\]]*\|\|/.test(html)) throw new Error(slug + ': faltó reemplazar una marca');
   if ((html.match(/<h1[ >]/g) || []).length !== 1) throw new Error(slug + ' (' + lang + '): tiene que quedar un solo h1');
   return html;

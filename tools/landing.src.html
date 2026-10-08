@@ -209,6 +209,7 @@
   /* Planes: las mismas filas en cada columna, en el mismo orden. Lo que un plan no trae queda apagado. */
   .plans { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; max-width: 820px; margin: 40px auto 0; text-align: left; }
   .plans.three { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: none; }
+  @media (min-width: 1280px) { .plans.three { width: 1220px; margin-left: calc((100% - 1220px) / 2); gap: 24px; } .plans.three .plan { padding: 30px 30px 18px; } }
   .plan { display: flex; flex-direction: column; padding: 28px 26px 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--bg); }
   .plan.paid { border-color: var(--fill); box-shadow: 0 0 0 3px color-mix(in srgb, var(--fill) 14%, transparent); }
   .plan h3 { margin: 0; font-size: 15px; color: var(--muted); font-weight: 600; letter-spacing: 0; }
@@ -220,7 +221,7 @@
   .rows { margin: 14px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
   .rows li { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 46px; padding: 6px 0; font-size: 15px; line-height: 1.35; }
   .rows li + li { border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
-  .rows em { flex: none; font-style: normal; font-weight: 650; font-size: 14px; color: var(--accent); }
+  .rows em { flex: 0 1 auto; max-width: 58%; text-align: right; font-style: normal; font-weight: 650; font-size: 14px; color: var(--accent); }
   .rows svg { flex: none; width: 18px; height: 18px; fill: none; stroke: var(--accent); stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
   .rows li.no { color: var(--faint); }
   .rows li.grp { min-height: 0; padding: 18px 0 7px; color: var(--faint); font-size: 12px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
@@ -235,6 +236,14 @@
   .use p { font-size: 15px; margin: 0 0 16px; }
   .use a { margin-top: auto; align-self: flex-start; color: var(--accent); font-weight: 650; font-size: 15px; text-decoration: none; }
   .use a:hover { text-decoration: underline; }
+  .get { display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0 0; padding: 0; list-style: none; }
+  .get a, .get .wait { display: flex; align-items: center; gap: 12px; min-width: 210px; padding: 12px 18px 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--fg); text-decoration: none; }
+  .get a:hover { border-color: var(--fill); }
+  .get .wait { color: var(--muted); }
+  .get svg { flex: none; width: 26px; height: 26px; fill: currentColor; }
+  .get svg.ln { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+  .get b { display: block; font-size: 15px; font-weight: 650; line-height: 1.25; }
+  .get small { display: block; color: var(--faint); font-size: 12.5px; line-height: 1.3; }
   .note { margin: 18px 0 0; color: var(--faint); font-size: 14.5px; }
   .note a { color: var(--muted); }
   .two.host { margin-top: 34px; } .two.host h3 { font-size: 19px; margin-bottom: 8px; }
@@ -309,10 +318,7 @@
   <a class="link" href="#features"><span lang="en">Features</span><span lang="es">Funciones</span></a>
   <a class="link" href="#ai"><span lang="en">Your AI</span><span lang="es">Tu IA</span></a>
   <a class="link" href="#share"><span lang="en">Sharing</span><span lang="es">Compartir</span></a>
-  <a class="link" href="#connect"><span lang="en">Automations</span><span lang="es">Automatizaciones</span></a>
   <a class="link" href="#plans"><span lang="en">Plans</span><span lang="es">Planes</span></a>
-  <a class="link" href="#faq"><span lang="en">Questions</span><span lang="es">Preguntas</span></a>
-  <a class="link" href="https://github.com/MR-Axel/sharpmd">GitHub</a>
   <!--LANG-->
   <a class="btn fill small" href="src/app.html"><span lang="en">Open the app</span><span lang="es">Abrir la app</span></a>
 </div></nav>
@@ -587,7 +593,7 @@
       <li><span><span lang="en">The AI assistant with your own key</span><span lang="es">El asistente de IA con tu propia clave</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li class="grp"><span><span lang="en">On our server</span><span lang="es">En nuestro servidor</span></span></li>
       <li><span><span lang="en">Notes in the cloud</span><span lang="es">Notas en la nube</span></span><em>10</em></li>
-      <li><span><span lang="en">Images</span><span lang="es">Imágenes</span></span><em><span lang="en">By address</span><span lang="es">Por dirección</span></em></li>
+      <li><span><span lang="en">Images</span><span lang="es">Imágenes</span></span><em><span lang="en">By link</span><span lang="es">Por enlace</span></em></li>
       <li><span><span lang="en">Protected folders</span><span lang="es">Carpetas protegidas</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Trash for 30 days</span><span lang="es">Papelera de 30 días</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li class="no"><span><span lang="en">Sharing and public links</span><span lang="es">Compartir y enlaces públicos</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
@@ -620,7 +626,7 @@
       <li><span><span lang="en">The AI assistant with your own key</span><span lang="es">El asistente de IA con tu propia clave</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li class="grp"><span><span lang="en">On our server</span><span lang="es">En nuestro servidor</span></span></li>
       <li><span><span lang="en">Notes in the cloud</span><span lang="es">Notas en la nube</span></span><em><span lang="en">No limit</span><span lang="es">Sin límite</span></em></li>
-      <li><span><span lang="en">Images</span><span lang="es">Imágenes</span></span><em><span lang="en">Upload, 10 MB each, 1 GB</span><span lang="es">Subir, 10 MB cada una, 1 GB</span></em></li>
+      <li><span><span lang="en">Images</span><span lang="es">Imágenes</span></span><em><span lang="en">1 GB</span><span lang="es">1 GB</span></em></li>
       <li><span><span lang="en">Protected folders</span><span lang="es">Carpetas protegidas</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Trash for 30 days</span><span lang="es">Papelera de 30 días</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Sharing and public links</span><span lang="es">Compartir y enlaces públicos</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
@@ -654,7 +660,7 @@
       <li><span><span lang="en">The AI assistant with your own key</span><span lang="es">El asistente de IA con tu propia clave</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li class="grp"><span><span lang="en">On our server</span><span lang="es">En nuestro servidor</span></span></li>
       <li><span><span lang="en">Notes in the cloud</span><span lang="es">Notas en la nube</span></span><em><span lang="en">No limit</span><span lang="es">Sin límite</span></em></li>
-      <li><span><span lang="en">Images</span><span lang="es">Imágenes</span></span><em><span lang="en">Upload, 10 MB each, 2 GB per person</span><span lang="es">Subir, 10 MB cada una, 2 GB por persona</span></em></li>
+      <li><span><span lang="en">Images</span><span lang="es">Imágenes</span></span><em><span lang="en">2 GB per person</span><span lang="es">2 GB por persona</span></em></li>
       <li><span><span lang="en">Protected folders</span><span lang="es">Carpetas protegidas</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Trash for 30 days</span><span lang="es">Papelera de 30 días</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Sharing and public links</span><span lang="es">Compartir y enlaces públicos</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
@@ -688,6 +694,11 @@
     <div><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2.2"/><path d="M11 18h2"/></svg></span><h3><span lang="en">On the phone</span><span lang="es">En el celular</span></h3><p><span lang="en">The web app fits a small screen and installs from the browser. The Android app is that same app in a package, with the same notes and the same account.</span><span lang="es">La app web entra en pantalla chica y se instala desde el navegador. La app de Android es esa misma app empaquetada, con las mismas notas y la misma cuenta.</span></p><a href="src/app.html"><span lang="en">Open it on your phone</span><span lang="es">Abrirla en el celular</span></a></div>
     <div><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/><path d="M7.5 7.5h.01M7.5 16.5h.01M11 7.5h5M11 16.5h5"/></svg></span><h3><span lang="en">The sync server</span><span lang="es">El servidor de sincronización</span></h3><p><span lang="en">What the cloud notes, the AI connection and the automations run on: one Node file with SQLite, under AGPL.</span><span lang="es">Sobre esto corren las notas en la nube, la conexión con la IA y las automatizaciones: un archivo de Node con SQLite, con licencia AGPL.</span></p><a href="https://github.com/MR-Axel/sharpmd/tree/main/server"><span lang="en">Server source</span><span lang="es">Código del servidor</span></a></div>
   </div>
+  <ul class="get">
+    <li><a href="https://github.com/MR-Axel/sharpmd"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg><span><b>GitHub</b><small><span lang="en">Source code</span><span lang="es">Código fuente</span></small></span></a></li>
+    <li><span class="wait"><svg class="ln" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.2"/><path d="M12 8.8h7.8M9.2 13.6 5.3 6.9M14.8 13.6l-3.9 6.8"/></svg><span><b>Chrome Web Store</b><small><span lang="en">In review</span><span lang="es">En revisión</span></small></span></span></li>
+    <li><span class="wait"><svg class="ln" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 4.2v15.6a.8.8 0 0 0 1.2.7l13-7.8a.8.8 0 0 0 0-1.4l-13-7.8a.8.8 0 0 0-1.2.7z"/></svg><span><b>Google Play</b><small><span lang="en">In testing</span><span lang="es">En prueba</span></small></span></span></li>
+  </ul>
   <div class="two host">
     <div>
       <h3><span lang="en">On sharpmd.app it is already running</span><span lang="es">En sharpmd.app ya está andando</span></h3>

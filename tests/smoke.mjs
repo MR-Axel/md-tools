@@ -348,7 +348,7 @@ try {
     // Los botones se tocan sin dejar que naveguen: lo que se mira es el aviso.
     await ab.evaluate(() => document.addEventListener('click', (e) => e.preventDefault()));
     const tap = async (sel) => { await ab.evaluate((s) => document.querySelector(s).click(), sel); await ab.waitForTimeout(150); return beats.length; };
-    const afterFaq = await tap('nav a[href="#faq"]'); const afterOpen = await tap('.hero a.btn.fill[href="src/app.html"]'); const afterMore = (await tap('nav a[href="#plans"]'), await tap('#plans a[href^="src/app.html"]'));
+    const afterFaq = await tap('nav a[href="#share"]'); const afterOpen = await tap('.hero a.btn.fill[href="src/app.html"]'); const afterMore = (await tap('nav a[href="#plans"]'), await tap('#plans a[href^="src/app.html"]'));
     check('titulares a prueba: un botón que abre la app avisa "open" una vez por visita, y un enlace cualquiera no avisa', afterFaq === 1 && afterOpen === 2 && afterMore === 2 && beats[1].body === '{"v":"a","e":"open"}', [afterFaq, afterOpen, afterMore, beats.map((b) => b.body)]);
     beats.length = 0; await open('https://sharpmd.app/?site', 'b'); await ab.waitForTimeout(300); beats.length = 0;
     await ab.goto('https://sharpmd.app/es/?site'); await ab.waitForSelector('.hero h1'); await ab.waitForTimeout(300);
