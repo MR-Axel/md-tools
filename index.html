@@ -4,35 +4,35 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script>try{localStorage.setItem("mdtools:site-lang","en");if(localStorage.getItem("sharpmd:app")&&location.search.indexOf("site")<0&&!location.hash&&document.referrer.indexOf(location.origin)!==0){var d=localStorage.getItem("lmd:dark"),c=document.documentElement.classList;c.add("go");if(d==="0"||(d!=="1"&&window.matchMedia&&!matchMedia("(prefers-color-scheme: dark)").matches))c.add("go-light");location.replace("src/app.html")}}catch(e){}</script>
-<title>SharpMD: Markdown editor without the syntax</title>
-<meta name="description" content="Edit Markdown on the formatted page, with no syntax to type. Your files stay on your disk. Optional cloud, live editing and MCP for your AI. Open source.">
+<title>SharpMD: Markdown editor with your AI connected</title>
+<meta name="description" content="A Markdown editor in the cloud with MCP ready: your AI reads the notes and writes down what it did. Edit with no syntax, share by link, connect an API.">
 <link rel="canonical" href="https://sharpmd.app/">
 <link rel="alternate" hreflang="en" href="https://sharpmd.app/">
 <link rel="alternate" hreflang="es" href="https://sharpmd.app/es/">
 <link rel="alternate" hreflang="x-default" href="https://sharpmd.app/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="SharpMD">
-<meta property="og:title" content="SharpMD: Markdown editor without the syntax">
-<meta property="og:description" content="Edit Markdown without writing Markdown. Your files stay on your disk, and your AI can work on the same notes.">
+<meta property="og:title" content="SharpMD: Markdown editor with your AI connected">
+<meta property="og:description" content="Markdown notes your AI writes and your team reads. The MCP endpoint is already running, and you edit on the formatted page.">
 <meta property="og:url" content="https://sharpmd.app/">
 <meta property="og:locale" content="en_US">
-<meta property="og:image" content="https://sharpmd.app/docs/social-card-2.png">
+<meta property="og:image" content="https://sharpmd.app/docs/social-card-3.png">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="SharpMD, a Markdown editor for your files, your cloud and your AI">
+<meta property="og:image:alt" content="SharpMD: Markdown notes your AI writes and your team reads">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="SharpMD: Markdown editor without the syntax">
-<meta name="twitter:description" content="Edit Markdown without writing Markdown. Your files stay on your disk, and your AI can work on the same notes.">
-<meta name="twitter:image" content="https://sharpmd.app/docs/social-card-2.png">
-<meta name="twitter:image:alt" content="SharpMD, a Markdown editor for your files, your cloud and your AI">
+<meta name="twitter:title" content="SharpMD: Markdown editor with your AI connected">
+<meta name="twitter:description" content="Markdown notes your AI writes and your team reads. The MCP endpoint is already running, and you edit on the formatted page.">
+<meta name="twitter:image" content="https://sharpmd.app/docs/social-card-3.png">
+<meta name="twitter:image:alt" content="SharpMD: Markdown notes your AI writes and your team reads">
 <meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
 <link rel="preload" href="vendor/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="docs/clips/edit.jpg" as="image" fetchpriority="high">
+<link rel="preload" href="docs/clips/hero.jpg" as="image" fetchpriority="high">
 <link rel="icon" href="icons/icon32.png">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"SharpMD","url":"https://sharpmd.app/","applicationCategory":"ProductivityApplication","operatingSystem":"Web, Chrome, Edge, Brave","description":"Edit Markdown on the formatted page, with no syntax to type. Your files stay on your disk. Optional cloud, live editing and MCP for your AI. Open source.","inLanguage":"en","image":"https://sharpmd.app/docs/social-card-2.png","screenshot":"https://sharpmd.app/docs/store/2-editing.png","isAccessibleForFree":true,"offers":[{"@type":"Offer","name":"Free","price":"0","priceCurrency":"USD"},{"@type":"Offer","name":"Paid","price":"3.99","priceCurrency":"USD"}],"license":"https://opensource.org/licenses/MIT","codeRepository":"https://github.com/MR-Axel/sharpmd"}</script>
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Is SharpMD free?","acceptedAnswer":{"@type":"Answer","text":"The editor is free and open source, with no limit on files or on notes kept in the browser. Cloud notes are free up to 10."}},{"@type":"Question","name":"How do I open a .md file with a double-click?","acceptedAnswer":{"@type":"Answer","text":"Install the extension, turn on \"Allow access to file URLs\" in its details, and set Chrome as the default app for .md files."}},{"@type":"Question","name":"Which Markdown does it support?","acceptedAnswer":{"@type":"Answer","text":"GitHub Flavored Markdown, plus KaTeX math, Mermaid and Graphviz diagrams, footnotes, task lists, callouts, definition lists and YAML front matter."}},{"@type":"Question","name":"Does it work without a connection?","acceptedAnswer":{"@type":"Answer","text":"Yes. The extension always does, and the web app does once you have opened it. Cloud notes you have already opened are there too, and what you write uploads when the connection is back."}},{"@type":"Question","name":"Can several people edit a note at once?","acceptedAnswer":{"@type":"Answer","text":"Open a live session on a cloud note and send the link. Whoever has it joins from the browser with a name, without an account, and everyone sees who is on each block as they write. You end the session when you want, or make a new link to leave the old one out."}},{"@type":"Question","name":"Can the server read my notes?","acceptedAnswer":{"@type":"Answer","text":"Cloud notes are stored encrypted on the server, which holds the key so it can share them and serve your AI. A folder you protect with a password is different: it is encrypted in your browser and nobody else can read it. To let your AI in, you unlock that folder for a set time. If you lose the password and the backup key, those notes cannot be recovered."}},{"@type":"Question","name":"What happens to a cloud note I delete?","acceptedAnswer":{"@type":"Answer","text":"It stays in the trash for 30 days and you can restore it. While it is there it is not searched, shared or reachable by your AI."}},{"@type":"Question","name":"How does my AI get to my notes?","acceptedAnswer":{"@type":"Answer","text":"You create a token in the app and add SharpMD as an MCP server in Claude or another client. It only sees the notes you keep in the cloud, or one folder if you limit the token."}}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"SharpMD","url":"https://sharpmd.app/","applicationCategory":"ProductivityApplication","operatingSystem":"Web, Chrome, Edge, Brave","description":"A Markdown editor in the cloud with MCP ready: your AI reads the notes and writes down what it did. Edit with no syntax, share by link, connect an API.","featureList":["Edit Markdown on the formatted page, with no syntax to type","MCP endpoint so an AI reads and writes the notes","Comments on a block that the AI resolves","Tokens limited to one folder","Sharing, public links and live sessions by link","REST API, signed webhooks and inbound addresses","Kanban boards with fields per card","Folders with a password, encrypted in the browser","Open source, with a server you can host yourself"],"inLanguage":"en","image":"https://sharpmd.app/docs/social-card-3.png","screenshot":"https://sharpmd.app/docs/store/2-editing.png","isAccessibleForFree":true,"offers":[{"@type":"Offer","name":"Free","price":"0","priceCurrency":"USD"},{"@type":"Offer","name":"Paid","price":"3.99","priceCurrency":"USD"}],"license":"https://opensource.org/licenses/MIT","codeRepository":"https://github.com/MR-Axel/sharpmd"}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is free and what is paid?","acceptedAnswer":{"@type":"Answer","text":"The editor is free and open source, with no limit on files or on notes kept in the browser, and 10 notes in the cloud. The paid plan, USD 3.99 a month or USD 39 a year, covers what runs on our server: unlimited cloud notes, sharing, live sessions, a published site, the connection for your AI, the API and webhooks, and version history."}},{"@type":"Question","name":"Does SharpMD come with its own AI?","acceptedAnswer":{"@type":"Answer","text":"No. You connect the one you already use: Claude, Codex or any other MCP client. SharpMD gives it your notes and the tools to read and write them."}},{"@type":"Question","name":"How does my AI get to my notes?","acceptedAnswer":{"@type":"Answer","text":"You create a token in the app and add SharpMD as an MCP server in Claude or another client. It only sees the notes you keep in the cloud, or one folder if you limit the token."}},{"@type":"Question","name":"How is it different from a local editor with plugins?","acceptedAnswer":{"@type":"Answer","text":"A local editor keeps the notes on one machine. To share them or reach them from an AI you add plugins and a sync service, and each person repeats the setup. SharpMD opens in the browser with the sharing, the MCP endpoint and the API already running. A file on your disk still opens without being uploaded."}},{"@type":"Question","name":"Can the server read my notes?","acceptedAnswer":{"@type":"Answer","text":"Cloud notes are stored encrypted on the server, which holds the key so it can share them and serve your AI. A folder you protect with a password is different: it is encrypted in your browser and nobody else can read it. To let your AI in, you unlock that folder for a set time. If you lose the password and the backup key, those notes cannot be recovered."}},{"@type":"Question","name":"Can several people edit a note at once?","acceptedAnswer":{"@type":"Answer","text":"Open a live session on a cloud note and send the link. Up to 12 people write at once. You end the session when you want, or make a new link to leave the old one out."}},{"@type":"Question","name":"What happens to a cloud note I delete?","acceptedAnswer":{"@type":"Answer","text":"It stays in the trash for 30 days and you can restore it. While it is there it is not searched, shared or reachable by your AI."}},{"@type":"Question","name":"Does it work without a connection?","acceptedAnswer":{"@type":"Answer","text":"Yes. The extension always does, and the web app does once you have opened it. Cloud notes you have already opened are there too, and what you write uploads when the connection is back."}},{"@type":"Question","name":"Which Markdown does it support?","acceptedAnswer":{"@type":"Answer","text":"GitHub Flavored Markdown, plus KaTeX math, Mermaid and Graphviz diagrams, footnotes, task lists, callouts, definition lists and YAML front matter."}},{"@type":"Question","name":"How do I open a .md file with a double-click?","acceptedAnswer":{"@type":"Answer","text":"Install the extension, turn on \"Allow access to file URLs\" in its details, and set Chrome as the default app for .md files."}}]}</script>
 <style>
   @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
   :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --faint: #8a909c; --line: #dedbd2; --accent: #3f6b0c; --fill: #4d7c0f; --on: #fff; --shadow: 0 24px 60px rgba(30, 32, 38, .16); --mono: ui-monospace, "Cascadia Code", Consolas, monospace; }
@@ -170,22 +170,52 @@
 
   /* Nube e IA */
   .sub { margin: 0; max-width: 38em; color: var(--muted); }
-  .cloud { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 56px; align-items: start; margin-top: 40px; }
-  .cloud figure { margin: 0; position: sticky; top: 86px; }
-  figcaption { margin-top: 12px; color: var(--faint); font-size: 14px; }
-  .points { margin: 0; padding: 0; list-style: none; display: grid; gap: 22px; }
-  .points li { display: grid; grid-template-columns: 38px 1fr; gap: 16px; }
-  .points p { margin: 0; font-size: 15.5px; }
   .ic { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: color-mix(in srgb, var(--fill) 14%, var(--bg)); color: var(--accent); }
   .ic svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-  .ai { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 56px; align-items: center; margin-top: 64px; padding-top: 56px; border-top: 1px solid var(--line); }
-  .ai h3 { font-size: clamp(22px, 2.4vw, 27px); letter-spacing: -0.02em; margin-bottom: 10px; }
-  .ai ul { margin: 14px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 15.5px; }
-  .ai li { padding: 7px 0 7px 22px; position: relative; } .ai li::before { content: ""; position: absolute; left: 2px; top: 16px; width: 8px; height: 8px; border-radius: 2px; background: var(--fill); }
-  .term { margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); overflow: hidden; }
-  .term .bar { display: flex; gap: 6px; padding: 11px 14px; border-bottom: 1px solid var(--line); } .term .bar i { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
-  .term pre { margin: 0; padding: 16px 18px; font: 13.5px/1.65 var(--mono); color: var(--fg); overflow-x: auto; white-space: pre; }
+  /* Una lista que elige lo que se ve al lado. Cada ítem trae su propio visual: en pantalla ancha se muestra el del ítem
+     elegido en la columna de la izquierda; en pantalla angosta, cada uno queda debajo de su texto. Sin JavaScript queda el primero. */
+  .pick { position: relative; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 56px; align-items: start; margin-top: 40px; }
+  .stage { aspect-ratio: 8 / 5; }
+  .opts { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+  .opts > li { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 16px; padding: 14px 16px 16px; border: 1px solid transparent; border-radius: 12px; cursor: pointer; transition: background-color .15s, border-color .15s; }
+  .opts > li.on { border-color: var(--line); background: linear-gradient(var(--fill), var(--fill)) left bottom / 0 2px no-repeat var(--soft); }
+  .band .opts > li.on { background-color: var(--bg); }
+  .pick.auto .opts > li.on { animation: pick-go 6s linear; }
+  @keyframes pick-go { from { background-size: 0 2px; } to { background-size: 100% 2px; } }
+  .opts h3 { margin-bottom: 4px; }
+  .opts h3 button { all: unset; cursor: pointer; } .opts h3 button:focus-visible { outline: 2px solid var(--fill); outline-offset: 3px; border-radius: 4px; }
+  .opts p { margin: 0; color: var(--muted); font-size: 15.5px; }
+  .vis { display: none; position: absolute; left: 0; top: 0; width: calc((100% - 56px) * 7 / 12); margin: 0; }
+  .opts > li.on .vis { display: block; }
+  .vis .term, .ill { aspect-ratio: 8 / 5; box-shadow: var(--shadow); }
+  .more-link { margin: 34px 0 0; }
+  .term { margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); overflow: hidden; }
+  .term .bar { display: flex; align-items: center; gap: 6px; padding: 11px 14px; border-bottom: 1px solid var(--line); } .term .bar i { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
+  .term .bar b { margin-left: 8px; color: var(--muted); font-size: 12.5px; font-weight: 600; }
+  .term pre { flex: 1; margin: 0; padding: 16px 18px; font: 12.5px/1.6 var(--mono); color: var(--fg); overflow: auto; white-space: pre; }
   .term pre i { font-style: normal; color: var(--accent); } .term pre s { text-decoration: none; color: var(--faint); }
+  /* Ilustraciones de "Conectalo a tus herramientas": dos paneles y una flecha. */
+  .ill { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 26px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); overflow: hidden; font-size: 13.5px; line-height: 1.45; text-align: left; }
+  .band .ill { background: var(--bg); }
+  .pn { flex: 1 1 0; min-width: 0; padding: 14px 16px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+  .band .pn { background: var(--soft); }
+  .pn small { display: block; margin-bottom: 10px; color: var(--faint); font: 11.5px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pn pre { margin: 0; font: 11.5px/1.6 var(--mono); white-space: pre; overflow: hidden; } .pn pre i { font-style: normal; color: var(--accent); }
+  .arrow { flex: none; width: 26px; height: 2px; border-radius: 1px; background: var(--faint); position: relative; }
+  .arrow::after { content: ""; position: absolute; right: -1px; top: -4px; width: 8px; height: 8px; border-top: 2px solid var(--faint); border-right: 2px solid var(--faint); transform: rotate(45deg); }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .cols > div { min-height: 96px; padding: 8px; border-radius: 8px; background: var(--soft); } .band .cols > div { background: var(--bg); }
+  .cols b { display: block; margin-bottom: 8px; color: var(--muted); font-size: 11.5px; font-weight: 650; }
+  .cd { display: block; margin-bottom: 6px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); font-style: normal; font-size: 13px; line-height: 1.3; }
+  .cd.from, .cd.to { border-color: var(--fill); } .cd.from { animation: ill-out 7s infinite; } .cd.to { animation: ill-in 7s infinite; }
+  .opts .msg { margin: 0; padding: 9px 11px; color: var(--fg); font-size: 13px; line-height: 1.45; border-radius: 8px; background: color-mix(in srgb, var(--fill) 12%, var(--bg)); animation: ill-late 7s infinite; } .msg b { display: block; font-size: 12px; } .msg u { color: var(--accent); }
+  @keyframes ill-out { 0%, 22% { opacity: 1; } 30%, 100% { opacity: 0; } }
+  @keyframes ill-in { 0%, 26% { opacity: 0; transform: translateY(-6px); } 36%, 100% { opacity: 1; transform: none; } }
+  @keyframes ill-late { 0%, 44% { opacity: 0; transform: translateY(6px); } 54%, 100% { opacity: 1; transform: none; } }
+  .ttl { display: block; margin-bottom: 8px; font-size: 14px; }
+  .pn dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 13px; } .pn dt { color: var(--faint); } .pn dd { margin: 0; } .pn dd em { font-style: normal; font-weight: 650; color: var(--accent); }
+  .form label { display: block; margin-bottom: 8px; color: var(--faint); font-size: 11.5px; } .form label i { display: block; margin-top: 3px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--fg); font-style: normal; font-size: 12.5px; }
+  .send { display: inline-block; margin-top: 2px; padding: 5px 14px; border-radius: 999px; background: var(--fill); color: var(--on); font-size: 12px; }
+  .lines { margin: 0; padding: 0 0 0 16px; font-size: 13px; } .lines li { margin-bottom: 6px; } .lines .new { padding: 2px 5px; margin-left: -5px; border-radius: 5px; background: color-mix(in srgb, var(--fill) 20%, transparent); }
   .soon { display: none; margin-left: 10px; padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--fill) 16%, var(--soft)); color: var(--accent); font-size: 12px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; vertical-align: 6px; }
   html[data-cloud="soon"] .soon { display: inline-block; }
 
@@ -206,6 +236,7 @@
   .rows em { flex: none; font-style: normal; font-weight: 650; font-size: 14px; color: var(--accent); }
   .rows svg { flex: none; width: 18px; height: 18px; fill: none; stroke: var(--accent); stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
   .rows li.no { color: var(--faint); }
+  .rows li.grp { min-height: 0; padding: 18px 0 7px; color: var(--faint); font-size: 12px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
   .rows li.no::after { content: ""; flex: none; width: 12px; height: 2px; margin-right: 3px; border-radius: 1px; background: var(--line); }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
@@ -218,6 +249,9 @@
   .use a { margin-top: auto; align-self: flex-start; color: var(--accent); font-weight: 650; font-size: 15px; text-decoration: none; }
   .use a:hover { text-decoration: underline; }
   .note { margin: 18px 0 0; color: var(--faint); font-size: 14.5px; }
+  .note a { color: var(--muted); }
+  .two.host { margin-top: 34px; } .two.host h3 { font-size: 19px; margin-bottom: 8px; }
+  .rule { max-width: 39em; margin: 0 auto; }
 
   /* Preguntas: el título a la izquierda, fijo mientras pasan las respuestas. */
   .asks { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: 56px; align-items: start; }
@@ -253,24 +287,30 @@
   @media (max-width: 980px) { .use { grid-template-columns: 1fr 1fr; } .use > div:nth-child(3) { border-left: 0; } .use > div:nth-child(n+3) { border-top: 1px solid var(--line); } .plans.three { grid-template-columns: 1fr; max-width: 520px; } }
   @media (max-width: 860px) {
     nav a.link { display: none; } section { padding: 56px 0; } .hero { padding: 44px 0 56px; }
-    .hero .wrap, .feature, .feature.flip, .cloud, .ai, .asks, .two { grid-template-columns: minmax(0, 1fr); gap: 30px; }
+    .hero .wrap, .feature, .feature.flip, .asks, .two { grid-template-columns: minmax(0, 1fr); gap: 30px; }
     .gains { padding-bottom: 56px; } .six { grid-template-columns: minmax(0, 1fr); } .six li { padding: 20px 0 18px; }
-    .feature.flip > div { order: 0; } .cloud figure, .asks > div:first-child { position: static; }
+    .feature.flip > div { order: 0; } .asks > div:first-child { position: static; }
     .two > div, .two > div + div { padding: 0; border: 0; } .two > div + div { padding-top: 30px; border-top: 1px solid var(--line); }
     .more { grid-template-columns: minmax(0, 1fr); gap: 30px; } .more h3, .more li { padding-left: 0; padding-right: 0; }
-    .ai { margin-top: 44px; padding-top: 40px; } .last { padding: 64px 0; }
+    .last { padding: 64px 0; }
+    .pick { display: block; margin-top: 30px; } .stage { display: none; } .opts { gap: 34px; }
+    .opts > li, .opts > li.on, .band .opts > li.on { padding: 0; border: 0; background: none; animation: none; cursor: auto; }
+    .vis { display: block; position: static; width: auto; grid-column: 1 / -1; }
+    .two.host { margin-top: 30px; }
   }
-  @media (max-width: 640px) { nav .btn { display: none; } .term pre { font-size: 12px; padding: 14px; } .plans, .plans.three, .use { grid-template-columns: minmax(0, 1fr); max-width: none; } .use > div + div { border-left: 0; border-top: 1px solid var(--line); } .cta .btn { flex: 1 1 auto; } footer span { flex-basis: 100%; } }
-  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .pk *, html.go body::after { animation: none !important; } .pk .src { width: auto !important; } .pk .out, .pk .box, .pk .new { opacity: 1 !important; max-height: none !important; } .pk .b { display: none; } .btn, .more li, .more li b { transition: none; } }
+  @media (max-width: 640px) { nav .btn { display: none; } .term pre { font-size: 10.5px; padding: 12px; } .vis .term, .ill { aspect-ratio: auto; } .ill { flex-direction: column; align-items: stretch; padding: 14px; } .pn { flex: none; } .arrow { align-self: center; transform: rotate(90deg); margin: 4px 0; } .cols > div { min-height: 76px; } .plans, .plans.three, .use { grid-template-columns: minmax(0, 1fr); max-width: none; } .use > div + div { border-left: 0; border-top: 1px solid var(--line); } .cta .btn { flex: 1 1 auto; } footer span { flex-basis: 100%; } }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .pk *, .cd, .msg, .opts > li.on, html.go body::after { animation: none !important; } .cd.from { display: none; } .pk .src { width: auto !important; } .pk .out, .pk .box, .pk .new { opacity: 1 !important; max-height: none !important; } .pk .b { display: none; } .btn, .more li, .more li b { transition: none; } }
 </style>
+<noscript><style>video[data-poster] { display: none; }</style></noscript>
 </head>
 <body>
 <nav><div class="wrap">
   <a class="brand" href="#top"><img src="icons/icon48.png" alt="SharpMD logo" width="26" height="26"><span>SharpMD</span></a>
   <a class="link" href="#features">Features</a>
-  <a class="link" href="#cloud">Cloud and AI</a>
+  <a class="link" href="#ai">Your AI</a>
+  <a class="link" href="#share">Sharing</a>
+  <a class="link" href="#connect">Automations</a>
   <a class="link" href="#plans">Plans</a>
-  <a class="link" href="#use">Where it runs</a>
   <a class="link" href="#faq">Questions</a>
   <a class="link" href="https://github.com/MR-Axel/sharpmd">GitHub</a>
   <div class="lang"><a href="./?site" class="on" aria-current="true" hreflang="en">EN</a><a href="es/?site" hreflang="es">ES</a></div>
@@ -279,29 +319,29 @@
 
 <header class="hero" id="top"><div class="wrap">
   <div>
-    <h1>Edit Markdown without writing Markdown.</h1>
+    <h1>Markdown notes your AI writes and your team reads.</h1>
     <p class="lede">
-      Click a heading, a table, a task list, a diagram or a formula and change it right there. Your files stay on your disk, and your AI can work on the same notes.
+      A Markdown editor in the cloud, with the MCP endpoint already running. Claude, Codex or any other MCP client reads your notes before it works and writes down what it did. You edit on the formatted page, with no syntax to type.
       
     </p>
     <div class="cta">
       <a class="btn fill" href="src/app.html">Open the app</a>
-      <a class="btn" href="https://github.com/MR-Axel/sharpmd#install">Get the extension</a>
+      <a class="btn" href="#ai">Connect your AI</a>
     </div>
-    <p class="under">Free and open source. No account needed. Runs in the browser.</p>
+    <p class="under">The editor is free and open source. Nothing to install, and no account needed to write.</p>
   </div>
-  <video class="clip" muted loop playsinline preload="none" poster="docs/clips/edit.jpg" width="880" height="550" aria-label="SharpMD: typing on a formatted paragraph and in a table cell"><source src="docs/clips/edit.mp4" type="video/mp4"><source src="docs/clips/edit.webm" type="video/webm"></video>
+  <video class="clip" muted loop playsinline preload="none" poster="docs/clips/hero.jpg" width="880" height="550" aria-label="SharpMD: a sentence typed on the formatted page of a cloud note, and then the summary an AI wrote arrives in the same note"><source src="docs/clips/hero.mp4" type="video/mp4"><source src="docs/clips/hero.webm" type="video/webm"></video>
 </div></header>
 
 <main id="features">
 <section class="gains"><div class="wrap">
   <ul class="six">
-    <li><h3>No syntax to type</h3><p>Change headings, tables, task lists, diagrams and formulas on the formatted page, with buttons. The source is one click away.</p></li>
-    <li><h3>Your files, on your disk</h3><p>Open a <code>.md</code> or a whole folder. Nothing is uploaded and there is no account to create.</p></li>
-    <li><h3>A cloud when you want one</h3><p>The same notes on every device, sharing, and editing together live through a link.</p></li>
-    <li><h3>Your AI on the same notes</h3><p>Over MCP it reads, writes, documents what it does and answers the comments you leave.</p></li>
-    <li><h3>Private</h3><p>Protected folders that the server cannot read, open source, and your own server if you want one.</p></li>
-    <li><h3>Web, Chrome and phone</h3><p>A web app, a Chrome extension and an app on the phone. It also works without a connection.</p></li>
+    <li><h3>No syntax to type</h3><p>Headings, tables, task lists, diagrams and formulas change on the formatted page. The source is one click away.</p></li>
+    <li><h3>Nothing to install</h3><p>It opens in the browser, and the same notes are on every device you sign in on.</p></li>
+    <li><h3>Your AI has the context</h3><p>Over MCP it reads the notes of the project before a task and documents what it changed.</p></li>
+    <li><h3>Shared by link</h3><p>A note or a folder with another account, a public link, or a live session where everyone writes at once.</p></li>
+    <li><h3>Wired to your tools</h3><p>An API, signed webhooks and inbound addresses for Make, n8n, Activepieces, Zapier and Slack.</p></li>
+    <li><h3>Your files stay yours</h3><p>A <code>.md</code> on your disk opens without being uploaded. Open source, with a server you can run yourself.</p></li>
   </ul>
 </div></section>
 
@@ -324,19 +364,160 @@
     <p>Click a Mermaid or Graphviz diagram and it opens with a live preview. Start from a template, add steps and arrows with a button, and pick a color palette.</p>
     <p>A mistake is explained in plain words, with its line marked. Formulas have an editor of the same kind.</p>
   </div>
-  <video class="clip" muted loop playsinline preload="none" poster="docs/clips/diagram.jpg" width="880" height="550" aria-label="The diagram editor: a line of code is typed and the drawing adds the step"><source src="docs/clips/diagram.mp4" type="video/mp4"><source src="docs/clips/diagram.webm" type="video/webm"></video>
+  <video class="clip" muted loop playsinline preload="none" data-poster="docs/clips/diagram.jpg" width="880" height="550" aria-label="The diagram editor: a step added with a button shows up in the drawing next to the code"><source src="docs/clips/diagram.mp4" type="video/mp4"><source src="docs/clips/diagram.webm" type="video/webm"></video><noscript><img class="clip" loading="lazy" src="docs/clips/diagram.jpg" width="880" height="550" alt="The diagram editor: a step added with a button shows up in the drawing next to the code"></noscript>
 </div></section>
 
 <section class="band"><div class="wrap feature flip">
   <div>
     <h2>The whole folder, searchable.</h2>
-    <p>The sidebar lists the files next to the one you opened and searches the text of all of them at once. Create, rename and delete from there, and move files and folders by dragging.</p>
-    <p>Drop a file into the note you are editing and it becomes a link. <code>[[name]]</code> opens the file with that name.</p>
+    <p>Open a folder from your disk and the sidebar lists its files, with how many notes each folder holds. The search box looks through the text of all of them at once.</p>
+    <p>Create, rename and delete from there, and move files and folders by dragging.</p>
   </div>
-  <video class="clip" muted loop playsinline preload="none" poster="docs/clips/drop.jpg" width="880" height="550" aria-label="A file dragged from the explorer into the note becomes a link"><source src="docs/clips/drop.mp4" type="video/mp4"><source src="docs/clips/drop.webm" type="video/webm"></video>
+  <video class="clip" muted loop playsinline preload="none" data-poster="docs/clips/folder.jpg" width="880" height="550" aria-label="A folder from the disk in the sidebar, with the number of notes in each folder, and a search that finds a word in several files"><source src="docs/clips/folder.mp4" type="video/mp4"><source src="docs/clips/folder.webm" type="video/webm"></video><noscript><img class="clip" loading="lazy" src="docs/clips/folder.jpg" width="880" height="550" alt="A folder from the disk in the sidebar, with the number of notes in each folder, and a search that finds a word in several files"></noscript>
 </div></section>
 
-<section class="center yours"><div class="wrap">
+<section id="ai"><div class="wrap">
+  <h2>Your AI on the same notes</h2>
+  <p class="sub">Claude, Codex or any other MCP client, working on the notes you keep in the cloud. It reaches as far as the token you give it.</p>
+  <div class="pick">
+    <div class="stage"></div>
+    <ul class="opts">
+      <li class="on"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5h-7l-4 3v-3H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5z"/><path d="M8 9.5h8M8 12.5h5"/></svg></span><div><h3><button type="button">One message connects it</button></h3><p>Create a token in Settings and copy the instructions. Pasted into your AI, they carry the address, the token and how to write here.</p></div>
+        <figure class="vis"><div class="term"><div class="bar"><i></i><i></i><i></i><b>Copy instructions for your AI</b></div><pre>You are being connected to SharpMD, a Markdown notes app.
+
+<i>## Connect</i>
+- URL: https://sync.sharpmd.app/mcp
+- Header: Authorization: Bearer mdt_...
+
+<i>## What to use it for</i>
+- Keep a record of your work as you go: what changed,
+  progress, decisions and why, open questions.
+
+<i>## Use it as project memory</i>
+- Before you start a task, call search_notes and read
+  the notes of the project.
+<s># list_notes  read_note  write_note  append_note  move_note
+# search_notes  note_history  list_comments  resolve_comment</s></pre></div></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h11a2 2 0 0 1 2 2v13H7a2 2 0 0 1-2-2z"/><path d="M5 17.5a2 2 0 0 1 2-2h11M9 8.5h5M9 11.5h3"/></svg></span><div><h3><button type="button">The notes are the memory of the project</button></h3><p>Those instructions ask it to read the project notes before a task and to update them when it changes something. The next session starts from there, whichever AI it is.</p></div>
+        <figure class="vis"><img class="clip" loading="lazy" decoding="async" src="docs/clips/memory.jpg" width="880" height="550" alt="A project folder in the cloud with an index note that links to the decisions and the work log"></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.5A1.5 1.5 0 0 1 6 5h12a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 18 16h-5l-4 3.5V16H6a1.5 1.5 0 0 1-1.5-1.5z"/><path d="m9 10.5 2 2 4-4"/></svg></span><div><h3><button type="button">Comments it resolves</button></h3><p>Leave a comment on a paragraph. Your AI reads the open ones, makes each change and closes it with a reply.</p></div>
+        <figure class="vis"><video class="clip" muted loop playsinline preload="none" data-poster="docs/clips/ai.jpg" width="880" height="550" aria-label="A comment left on a paragraph asks for a change; the AI makes it and the note says the comment was resolved"><source src="docs/clips/ai.mp4" type="video/mp4"><source src="docs/clips/ai.webm" type="video/webm"></video><noscript><img class="clip" loading="lazy" src="docs/clips/ai.jpg" width="880" height="550" alt="A comment left on a paragraph asks for a change; the AI makes it and the note says the comment was resolved"></noscript></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="3.5"/><path d="m10.6 12.4 7.4-7.4M15 8l2.5 2.5M17.5 5.5 20 8"/></svg></span><div><h3><button type="button">A token for one folder</button></h3><p>Limit a token to a folder and nothing outside it can be read or written. Sharing is a separate permission, off unless you turn it on.</p></div>
+        <figure class="vis"><img class="clip" loading="lazy" decoding="async" src="docs/clips/token.jpg" width="880" height="550" alt="Settings, AI: a token limited to one folder, next to one that reaches every note"></figure></li>
+    </ul>
+  </div>
+</div></section>
+
+<section class="band" id="share"><div class="wrap">
+  <h2>Cloud notes and sharing<span class="soon">Soon</span></h2>
+  <p class="sub">Nothing goes to the cloud until you send it.</p>
+  <div class="pick">
+    <div class="stage"></div>
+    <ul class="opts">
+      <li class="on"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5a4 4 0 0 1-.6-7.95 5.5 5.5 0 0 1 10.7-1.1A4.5 4.5 0 0 1 17 18.5z"/></svg></span><div><h3><button type="button">The same notes on every device</button></h3><p>Sign in with a six-digit code sent to your email, and your cloud notes are in the sidebar. One click sends a note there, and it saves itself from then on.</p></div>
+        <figure class="vis"><img class="clip" loading="lazy" decoding="async" src="docs/clips/signin.jpg" width="880" height="550" alt="The start screen asking for the six-digit code that was sent by email"></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8.5" cy="9" r="3"/><path d="M3 19c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5"/><circle cx="16.8" cy="9.8" r="2.3"/><path d="M16.5 14.6c2.3 0 4 1.4 4.5 3.9"/></svg></span><div><h3><button type="button">Live sessions by link</button></h3><p>Open a session on a note and send the link. Guests join from the browser with a name, without an account, and everyone sees who is on each block.</p></div>
+        <figure class="vis"><video class="clip" muted loop playsinline preload="none" data-poster="docs/clips/live.jpg" width="880" height="550" aria-label="A live session: two people write in the same note, each on a block"><source src="docs/clips/live.mp4" type="video/mp4"><source src="docs/clips/live.webm" type="video/webm"></video><noscript><img class="clip" loading="lazy" src="docs/clips/live.jpg" width="880" height="550" alt="A live session: two people write in the same note, each on a block"></noscript></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></span><div><h3><button type="button">Share a note or a folder</button></h3><p>With another account, to read or to edit. Or a read-only public link with a password.</p></div>
+        <figure class="vis"><img class="clip" loading="lazy" decoding="async" src="docs/clips/share.jpg" width="880" height="550" alt="The sharing box of a note: a person invited by email and a public link with a password"></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg></span><div><h3><button type="button">Protected folders</button></h3><p>Give a folder a password and it shows a lock. Its notes are encrypted in your browser before they are sent.</p></div>
+        <figure class="vis"><img class="clip" loading="lazy" decoding="async" src="docs/clips/vault.jpg" width="880" height="550" alt="The sidebar with a protected folder marked with a lock, and the box that asks for its password"></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l.8 12h8.4L17 7"/></svg></span><div><h3><button type="button">Trash for 30 days</button></h3><p>A deleted note waits there, and you can restore it.</p></div>
+        <figure class="vis"><img class="clip" loading="lazy" decoding="async" src="docs/clips/trash.jpg" width="880" height="550" alt="The trash of the cloud: a deleted note with its Restore button"></figure></li>
+    </ul>
+  </div>
+</div></section>
+
+<section id="connect"><div class="wrap">
+  <h2>Connect it to your tools</h2>
+  <p class="sub">The notes your AI and your team write can start a flow in Make, n8n, Activepieces, Zapier or Slack, or receive from one.</p>
+  <div class="pick">
+    <div class="stage"></div>
+    <ul class="opts">
+      <li class="on"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h12M12 7l5 5-5 5M20 5v14"/></svg></span><div><h3><button type="button">Outgoing webhooks</button></h3><p>SharpMD calls an address when a note or a card changes, for the whole account, one folder or one note. Paste a Slack or Discord address and the channel gets a readable line.</p></div>
+        <figure class="vis"><div class="ill ill-hook" role="img" aria-label="A card moves from To do to Done on a board, and a line saying so arrives in a chat channel">
+          <div class="pn"><small>shop/board.md</small><div class="cols"><div><b>To do</b><i class="cd from">Fix checkout</i><i class="cd">Welcome email</i></div><div><b>Done</b><i class="cd to">Fix checkout</i></div></div></div>
+          <span class="arrow" aria-hidden="true"></span>
+          <div class="pn chat"><small># shop-launch</small><p class="msg"><b>SharpMD</b>Card "Fix checkout" moved from To do to Done in <u>shop/board.md</u></p></div>
+        </div></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="5" height="14" rx="1.2"/><rect x="9.5" y="5" width="5" height="9" rx="1.2"/><rect x="15.5" y="5" width="5" height="11" rx="1.2"/></svg></span><div><h3><button type="button">A board that notifies</button></h3><p>Each card carries its own fields, like due date, owner and priority. Moving it to another column sends <code>card.moved</code>, and finishing it sends <code>card.done</code>.</p></div>
+        <figure class="vis"><div class="ill ill-card" role="img" aria-label="A card with due date, owner and priority, and the card.moved event that is sent when it changes column">
+          <div class="pn"><small>Card</small><b class="ttl">Fix checkout</b><dl><dt>due</dt><dd>2026-10-20</dd><dt>owner</dt><dd>Ana Paz</dd><dt>priority</dt><dd>high</dd><dt>status</dt><dd>To do → <em>Done</em></dd></dl></div>
+          <span class="arrow" aria-hidden="true"></span>
+          <div class="pn"><small>POST /your/address</small><pre>"type": <i>"card.moved"</i>,
+"card": {
+  "title": "Fix checkout",
+  "attrs": {
+    "due": "2026-10-20",
+    "owner": "Ana Paz" } },
+"from": "To do",
+"to": <i>"Done"</i></pre></div>
+        </div></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12H8M12 7l-5 5 5 5M4 5v14"/></svg></span><div><h3><button type="button">Inbound addresses</button></h3><p>A secret address that adds a line to a note, creates a note or creates a card. A form or another system posts to it.</p></div>
+        <figure class="vis"><div class="ill ill-in" role="img" aria-label="An order form posts to an inbound address and a new line appears in a note">
+          <div class="pn form"><small>Order form</small><label>Name<i>Ana</i></label><label>Total<i>$ 120</i></label><b class="send">Send</b></div>
+          <span class="arrow" aria-hidden="true"></span>
+          <div class="pn"><small>shop/orders.md</small><ul class="lines"><li>2026-10-06 New order from Marta, $ 85</li><li class="new">2026-10-07 New order from Ana, $ 120</li></ul></div>
+        </div></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5c-2 0-2.5 1-2.5 2.5v2c0 1.2-.6 2.1-2 2.5 1.4.4 2 1.300 2 2.500v2C6.500 18 7 19 9 19M15 5c2 0 2.500 1 2.500 2.500v2c0 1.200.6 2.100 2 2.500-1.400.4-2 1.300-2 2.500v2c0 1.500-.5 2.500-2.500 2.500"/></svg></span><div><h3><button type="button">REST API</button></h3><p>Notes, folders, search, history, comments and boards as JSON, with the same tokens as MCP. OpenAPI 3.1 included.</p></div>
+        <figure class="vis"><div class="term"><div class="bar"><i></i><i></i><i></i></div><pre><i>$</i> curl -X POST \
+    https://sync.sharpmd.app/api/v1/boards/cards/c8k2m9xq/move \
+    -H "Authorization: Bearer mdt_..." \
+    -H "Content-Type: application/json" \
+    -d '{"path": "shop/board.md", "column": "Done"}'
+
+<s>{"ok": true, "data": { ... }}</s>
+
+<i>$</i> curl "https://sync.sharpmd.app/api/v1/search?q=checkout" \
+    -H "Authorization: Bearer mdt_..."</pre></div></figure></li>
+    </ul>
+  </div>
+  <p class="more-link"><a class="btn" href="api.html">Read the API docs</a></p>
+</div></section>
+
+<section class="band" id="private"><div class="wrap">
+  <h2>What the server can read, and what it cannot</h2>
+  <ul class="six three">
+    <li><h3>Files on your disk</h3><p>They are read in your browser and never uploaded. No account and no analytics.</p></li>
+    <li><h3>Notes in the cloud</h3><p>Stored encrypted. The server holds that key, because it has to share them and hand them to your AI.</p></li>
+    <li><h3>Folders with a password</h3><p>Encrypted end to end: the server stores text it cannot read. Your AI gets in only while you unlock the folder, for the time you set.</p></li>
+  </ul>
+  <p class="note">The detail is in <a href="privacy.html">Privacy</a>, and the code is on <a href="https://github.com/MR-Axel/sharpmd">GitHub</a>: the app under MIT, the server under AGPL.</p>
+</div></section>
+
+<section class="center"><div class="wrap">
+  <h2>Also in the editor</h2>
+  <div class="more">
+    <div><h3>Writing</h3><ul>
+      <li data-peek="math"><b>Formulas</b><small>An editor with live preview and buttons for fractions, sums and symbols.</small></li>
+      <li data-peek="table"><b>Tables with totals</b><small>Rows and columns with a button, and a row that sums each column.</small></li>
+      <li data-peek="board"><b>Boards</b><small>A task list turns into columns with cards you drag.</small></li>
+      <li data-peek="tpl"><b>Templates</b><small>26 starting points: meeting notes, project plan, roadmap, budget.</small></li>
+      <li data-peek="emoji"><b>Emoji</b><small>Type <code>:</code> and pick from the list.</small></li>
+      <li data-peek="focus"><b>Focus mode</b><small>Dims everything but the block you are writing. Typewriter mode keeps the line at mid height.</small></li>
+    </ul></div>
+    <div><h3>Finding and linking</h3><ul>
+      <li data-peek="find"><b>Find and replace</b><small>One match or all of them.</small></li>
+      <li data-peek="link"><b>Links between notes</b><small><code>[[name]]</code> links to the file with that name, and <kbd>Ctrl</kbd> <kbd>K</kbd> picks a section or a file from a list.</small></li>
+      <li><b>Files dropped into the note</b><small>Drag a file from the sidebar into the note you are editing and it becomes a link.</small></li>
+      <li><b>Images</b><small>Pasted or dropped, saved to <code>assets/</code> next to the document.</small></li>
+      <li><b>More than Markdown</b><small>Code highlighted, CSV as a table, images as images.</small></li>
+      <li><b>Export</b><small>One HTML file, PDF through print, or Word.</small></li>
+      <li><b>Publish a site</b><small>A cloud folder becomes a public website, with a menu, search and a theme. One click to update it.</small></li>
+    </ul></div>
+    <div><h3>Anywhere</h3><ul>
+      <li data-peek="phone"><b>On the phone</b><small>The same app in a small screen, with the files in a side panel.</small></li>
+      <li><b>Without a connection</b><small>The web app opens offline once you have used it.</small></li>
+      <li><b>Quick notes</b><small>New opens an empty note, saved in the browser or in the folder you chose.</small></li>
+      <li><b>Read aloud and dictation</b><small>Listen to a note, or write by speaking, with formulas and flowcharts by voice.</small></li>
+      <li><b>Slides, daily note and link map</b><small>Present a note full screen, open today's note with one button and see which notes link to which.</small></li>
+      <li><b>Community gallery</b><small>Templates, themes and diagram palettes shared by people, reviewed before they are published.</small></li>
+      <li><b>English and Spanish</b><small>Switch in Settings.</small></li>
+    </ul></div>
+  </div>
+</div></section>
+
+<section class="band center yours"><div class="wrap">
   <h2>Make it yours</h2>
   <p class="lede">Twelve built-in themes, six light and six dark. Four of them are free.</p>
   <ul class="strip" aria-hidden="true">
@@ -355,80 +536,18 @@
   </ul>
 </div></section>
 
-<section class="center"><div class="wrap">
-  <h2>Also in there</h2>
-  <div class="more">
-    <div><h3>Writing</h3><ul>
-      <li data-peek="math"><b>Formulas</b><small>An editor with live preview and buttons for fractions, sums and symbols.</small></li>
-      <li data-peek="table"><b>Tables with totals</b><small>Rows and columns with a button, and a row that sums each column.</small></li>
-      <li data-peek="board"><b>Boards</b><small>A task list turns into columns with cards you drag.</small></li>
-      <li data-peek="tpl"><b>Templates</b><small>26 starting points: meeting notes, project plan, roadmap, budget.</small></li>
-      <li data-peek="emoji"><b>Emoji</b><small>Type <code>:</code> and pick from the list.</small></li>
-      <li data-peek="focus"><b>Focus and typewriter modes</b><small>Dim the rest and keep the line at mid height.</small></li>
-    </ul></div>
-    <div><h3>Finding and linking</h3><ul>
-      <li data-peek="find"><b>Find and replace</b><small>One match or all of them.</small></li>
-      <li data-peek="link"><b>Links between notes</b><small><kbd>Ctrl</kbd> <kbd>K</kbd> links to a section or to another file, picked from a list.</small></li>
-      <li><b>Images</b><small>Pasted or dropped, saved to <code>assets/</code> next to the document.</small></li>
-      <li><b>More than Markdown</b><small>Code highlighted, CSV as a table, images as images.</small></li>
-      <li><b>Export</b><small>One HTML file, or PDF through print.</small></li>
-    </ul></div>
-    <div><h3>Anywhere</h3><ul>
-      <li data-peek="phone"><b>On the phone</b><small>The same app in a small screen, with the files in a side panel.</small></li>
-      <li><b>Without a connection</b><small>The web app opens offline once you have used it.</small></li>
-      <li><b>Quick notes</b><small>New opens an empty note, saved in the browser or in the folder you chose.</small></li>
-      <li><b>Read aloud and dictation</b><small>Listen to a note, or write by speaking, with formulas and flowcharts by voice.</small></li>
-      <li><b>Community gallery</b><small>Templates, themes and diagram palettes shared by the community, reviewed before they are published.</small></li>
-      <li><b>More tools</b><small>Present a note as slides, keep a daily note, export to Word and see how your notes link.</small></li>
-      <li><b>Publish a site</b><small>Turn a folder of notes into a public website, with a menu, search and a theme. One click to update it.</small></li>
-      <li><b>Reading menu</b><small>Right-click while reading to copy a block or search the folder.</small></li>
-      <li><b>English and Spanish</b><small>Switch in Settings.</small></li>
-    </ul></div>
-  </div>
-</div></section>
-
-<section class="band" id="cloud"><div class="wrap">
-  <h2>Cloud notes, sharing and a connection for your AI<span class="soon">Soon</span></h2>
-  <p class="sub">Nothing goes to the cloud until you send it.</p>
-  <div class="cloud">
-    <figure>
-      <video class="clip" muted loop playsinline preload="none" poster="docs/clips/live.jpg" width="880" height="550" aria-label="A live session: two people write in the same note, each on a block"><source src="docs/clips/live.mp4" type="video/mp4"><source src="docs/clips/live.webm" type="video/webm"></video>
-      <figcaption>A live session: two people on the same note.</figcaption>
-    </figure>
-    <ul class="points">
-      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5a4 4 0 0 1-.6-7.95 5.5 5.5 0 0 1 10.7-1.1A4.5 4.5 0 0 1 17 18.5z"/></svg></span><div><h3>The same notes on every device</h3><p>Sign in with a six-digit code sent to your email. One click sends a note to the cloud, and it saves itself from then on.</p></div></li>
-      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8.5" cy="9" r="3"/><path d="M3 19c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5"/><circle cx="16.8" cy="9.8" r="2.3"/><path d="M16.5 14.6c2.3 0 4 1.4 4.5 3.9"/></svg></span><div><h3>Live sessions by link</h3><p>Open a session on a note and send the link. Guests join from the browser with a name, without an account, and everyone sees who is on each block.</p></div></li>
-      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></span><div><h3>Share a note or a folder</h3><p>With another account, to read or to edit. Or a read-only public link with a password.</p></div></li>
-      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg></span><div><h3>Protected folders</h3><p>Their notes are encrypted in your browser with your password, and the server stores text it cannot read.</p></div></li>
-      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l.8 12h8.4L17 7"/></svg></span><div><h3>Trash for 30 days</h3><p>A deleted note waits there, and you can restore it.</p></div></li>
-    </ul>
-  </div>
-  <div class="ai">
-    <div>
-      <h3>Let your AI read and write them</h3>
-      <p class="muted">An MCP endpoint for Claude and any other MCP client: it lists, reads, writes, moves and searches your notes, and hands you a link to open what it wrote. Copy the setup message from Settings and paste it into your AI.</p>
-      <ul>
-        <li>A comment on a passage tells the AI what to change.</li>
-        <li>A token can be limited to one folder.</li>
-        <li>A protected folder opens to the AI for the time you set.</li>
-      </ul>
-    </div>
-    <div class="term"><div class="bar"><i></i><i></i><i></i></div><pre><i>$</i> claude mcp add --transport http sharpmd \
-    https://sync.sharpmd.app/mcp \
-    --header "Authorization: Bearer mdt_..."
-<s># list_notes  read_note  write_note  append_note
-# search_notes  list_folders  list_comments  resolve_comment</s></pre></div>
-  </div>
-</div></section>
-
 <section class="center" id="plans"><div class="wrap">
   <h2>Plans</h2>
+  <p class="lede rule">What you do on your own, on your device, is free. You pay for what runs on our server to connect you with other people or with your AI.</p>
   <div class="plans">
     <div class="plan"><h3>Free</h3><p class="price">USD 0</p><p class="alt">No account needed</p>
       <a class="btn" href="src/app.html" data-plan="free">Start writing</a><p class="how"></p>
       <ul class="rows">
+      <li class="grp"><span>On your device</span></li>
       <li><span>The whole editor</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span>Files and browser notes</span><em>No limit</em></li>
+      <li><span>Dictation, slides, daily note and Word export</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li class="grp"><span>On our server</span></li>
       <li><span>Notes in the cloud</span><em>10</em></li>
       <li><span>Protected folders</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span>Trash for 30 days</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
@@ -436,22 +555,33 @@
       <li class="no"><span>Live sessions by link</span><i class="sr">not included</i></li>
       <li class="no"><span>Publish a site</span><i class="sr">not included</i></li>
       <li class="no"><span>The MCP connection for your AI</span><i class="sr">not included</i></li>
+      <li class="no"><span>Comments your AI resolves</span><i class="sr">not included</i></li>
+      <li class="no"><span>API, webhooks and inbound addresses</span><i class="sr">not included</i></li>
       <li class="no"><span>Version history</span><i class="sr">not included</i></li>
+      <li class="grp"><span>Appearance</span></li>
+      <li><span>Built-in themes</span><em>4</em></li>
       <li class="no"><span>Colors, fonts and your own CSS</span><i class="sr">not included</i></li>
     </ul></div>
     <div class="plan paid"><h3>Paid</h3><p class="price">USD 3.99 <small>a month</small></p><p class="alt">or USD 39 a year</p>
       <a class="btn fill" href="src/app.html#lmd-plans" data-plan="paid">Get the paid plan</a><p class="how">You sign in and pay inside the app.</p>
       <ul class="rows">
+      <li class="grp"><span>On your device</span></li>
       <li><span>The whole editor</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span>Files and browser notes</span><em>No limit</em></li>
+      <li><span>Dictation, slides, daily note and Word export</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li class="grp"><span>On our server</span></li>
       <li><span>Notes in the cloud</span><em>No limit</em></li>
       <li><span>Protected folders</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span>Trash for 30 days</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span>Sharing and public links</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span>Live sessions by link</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
-      <li><span>Publish a site</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span>Publish a site</span><em>1 site</em></li>
       <li><span>The MCP connection for your AI</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span>Comments your AI resolves</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span>API, webhooks and inbound addresses</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span>Version history</span><em>30 days</em></li>
+      <li class="grp"><span>Appearance</span></li>
+      <li><span>Built-in themes</span><em>12</em></li>
       <li><span>Colors, fonts and your own CSS</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
     </ul></div>
   </div>
@@ -464,7 +594,17 @@
     <div><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.5 9.5h17M7 7.3h.01M9.5 7.3h.01"/></svg></span><h3>The web app</h3><p>Nothing to install. Chrome, Edge and Brave open folders and save in place. Firefox and Safari open one file at a time and saving downloads a copy.</p><a href="src/app.html">Open the app</a></div>
     <div><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 4.5h2a1.75 1.75 0 1 1 3.5 0h2A1.5 1.5 0 0 1 18.5 6v2a1.75 1.75 0 1 0 0 3.5v2a1.5 1.5 0 0 1-1.5 1.5h-2a1.75 1.75 0 1 0-3.5 0h-2A1.5 1.5 0 0 1 8 13.5v-2a1.75 1.75 0 1 1 0-3.5V6a1.5 1.5 0 0 1 1.5-1.5z" transform="translate(-1.2 2.5)"/></svg></span><h3>The extension</h3><p>Works without a connection. Set Chrome as the default app for <code>.md</code> files and a double-click opens them rendered.</p><a href="https://github.com/MR-Axel/sharpmd#install">Get the extension</a></div>
     <div><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2.2"/><path d="M11 18h2"/></svg></span><h3>On the phone</h3><p>The web app fits a small screen and installs from the browser. The Android app is that same app in a package, with the same notes and the same account.</p><a href="src/app.html">Open it on your phone</a></div>
-    <div><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/><path d="M7.5 7.5h.01M7.5 16.5h.01M11 7.5h5M11 16.5h5"/></svg></span><h3>The sync server</h3><p>What cloud notes and the AI connection run on: one Node file with SQLite, under AGPL. Run your own and point the app at it in Settings.</p><a href="https://github.com/MR-Axel/sharpmd/tree/main/server">Server source</a></div>
+    <div><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/><path d="M7.5 7.5h.01M7.5 16.5h.01M11 7.5h5M11 16.5h5"/></svg></span><h3>The sync server</h3><p>What the cloud notes, the AI connection and the automations run on: one Node file with SQLite, under AGPL.</p><a href="https://github.com/MR-Axel/sharpmd/tree/main/server">Server source</a></div>
+  </div>
+  <div class="two host">
+    <div>
+      <h3>On sharpmd.app it is already running</h3>
+      <p>We run the accounts, the sign-in mail, the backups, the updates and the MCP endpoint over HTTPS. You sign in and paste one message into your AI.</p>
+    </div>
+    <div>
+      <h3>On your own server it is the same code</h3>
+      <p>You set up the domain with HTTPS, a mailer for the sign-in codes, the encryption key, the backups and each update, and then type its address in Settings. The steps are in the <a href="https://github.com/MR-Axel/sharpmd/blob/main/server/README.md">server README</a>.</p>
+    </div>
   </div>
   <p class="note">With the extension installed, the web app and the extension show the same notes and recent files. Install the web app and Windows offers it in Open with for .md files.</p>
 </div></section>
@@ -475,20 +615,22 @@
     <p class="muted">Something else? Write to <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>.</p>
   </div>
   <div class="faqs">
-    <details class="faq"><summary>Is SharpMD free?</summary><p>The editor is free and open source, with no limit on files or on notes kept in the browser. Cloud notes are free up to 10.</p></details>
-    <details class="faq"><summary>How do I open a .md file with a double-click?</summary><p>Install the extension, turn on "Allow access to file URLs" in its details, and set Chrome as the default app for <code>.md</code> files.</p></details>
-    <details class="faq"><summary>Which Markdown does it support?</summary><p>GitHub Flavored Markdown, plus KaTeX math, Mermaid and Graphviz diagrams, footnotes, task lists, callouts, definition lists and YAML front matter.</p></details>
-    <details class="faq"><summary>Does it work without a connection?</summary><p>Yes. The extension always does, and the web app does once you have opened it. Cloud notes you have already opened are there too, and what you write uploads when the connection is back.</p></details>
-    <details class="faq"><summary>Can several people edit a note at once?</summary><p>Open a live session on a cloud note and send the link. Whoever has it joins from the browser with a name, without an account, and everyone sees who is on each block as they write. You end the session when you want, or make a new link to leave the old one out.</p></details>
-    <details class="faq"><summary>Can the server read my notes?</summary><p>Cloud notes are stored encrypted on the server, which holds the key so it can share them and serve your AI. A folder you protect with a password is different: it is encrypted in your browser and nobody else can read it. To let your AI in, you unlock that folder for a set time. If you lose the password and the backup key, those notes cannot be recovered.</p></details>
-    <details class="faq"><summary>What happens to a cloud note I delete?</summary><p>It stays in the trash for 30 days and you can restore it. While it is there it is not searched, shared or reachable by your AI.</p></details>
+    <details class="faq"><summary>What is free and what is paid?</summary><p>The editor is free and open source, with no limit on files or on notes kept in the browser, and 10 notes in the cloud. The paid plan, USD 3.99 a month or USD 39 a year, covers what runs on our server: unlimited cloud notes, sharing, live sessions, a published site, the connection for your AI, the API and webhooks, and version history.</p></details>
+    <details class="faq"><summary>Does SharpMD come with its own AI?</summary><p>No. You connect the one you already use: Claude, Codex or any other MCP client. SharpMD gives it your notes and the tools to read and write them.</p></details>
     <details class="faq"><summary>How does my AI get to my notes?</summary><p>You create a token in the app and add SharpMD as an MCP server in Claude or another client. It only sees the notes you keep in the cloud, or one folder if you limit the token.</p></details>
+    <details class="faq"><summary>How is it different from a local editor with plugins?</summary><p>A local editor keeps the notes on one machine. To share them or reach them from an AI you add plugins and a sync service, and each person repeats the setup. SharpMD opens in the browser with the sharing, the MCP endpoint and the API already running. A file on your disk still opens without being uploaded.</p></details>
+    <details class="faq"><summary>Can the server read my notes?</summary><p>Cloud notes are stored encrypted on the server, which holds the key so it can share them and serve your AI. A folder you protect with a password is different: it is encrypted in your browser and nobody else can read it. To let your AI in, you unlock that folder for a set time. If you lose the password and the backup key, those notes cannot be recovered.</p></details>
+    <details class="faq"><summary>Can several people edit a note at once?</summary><p>Open a live session on a cloud note and send the link. Up to 12 people write at once. You end the session when you want, or make a new link to leave the old one out.</p></details>
+    <details class="faq"><summary>What happens to a cloud note I delete?</summary><p>It stays in the trash for 30 days and you can restore it. While it is there it is not searched, shared or reachable by your AI.</p></details>
+    <details class="faq"><summary>Does it work without a connection?</summary><p>Yes. The extension always does, and the web app does once you have opened it. Cloud notes you have already opened are there too, and what you write uploads when the connection is back.</p></details>
+    <details class="faq"><summary>Which Markdown does it support?</summary><p>GitHub Flavored Markdown, plus KaTeX math, Mermaid and Graphviz diagrams, footnotes, task lists, callouts, definition lists and YAML front matter.</p></details>
+    <details class="faq"><summary>How do I open a .md file with a double-click?</summary><p>Install the extension, turn on "Allow access to file URLs" in its details, and set Chrome as the default app for <code>.md</code> files.</p></details>
   </div>
 </div></section>
 
 <section class="band last"><div class="wrap">
-  <h2>Your files are read in your browser.</h2>
-  <p>No analytics. A note reaches the sync server only when you send it to the cloud. <a href="privacy.html">Privacy</a> has the detail, and the code is on <a href="https://github.com/MR-Axel/sharpmd">GitHub</a>: the app under MIT, the server under AGPL.</p>
+  <h2>Open a note and click on a paragraph.</h2>
+  <p>The editor asks for no account. The cloud, the connection for your AI and the automations start when you sign in.</p>
   <div class="cta"><a class="btn fill" href="src/app.html">Open the app</a><a class="btn" href="https://ko-fi.com/surlabs" target="_blank" rel="noopener noreferrer">Buy me a coffee</a></div>
 </div></section>
 </main>
@@ -518,6 +660,11 @@
   var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Los clips se cargan y arrancan al entrar en pantalla, y se frenan al salir. Con movimiento reducido queda el póster.
   var clips = [].slice.call(document.querySelectorAll('video.clip'));
+  // El póster de los clips de más abajo se pide recién cuando se acercan a la pantalla: la primera carga no los paga.
+  var late = clips.filter(function (v) { return v.hasAttribute('data-poster'); });
+  function dress(v) { if (!v.getAttribute('poster')) v.setAttribute('poster', v.getAttribute('data-poster')); }
+  if ('IntersectionObserver' in window) { var near = new IntersectionObserver(function (items) { items.forEach(function (it) { if (it.isIntersecting) { dress(it.target); near.unobserve(it.target); } }); }, { rootMargin: '300px 0px' }); late.forEach(function (v) { near.observe(v); }); }
+  else late.forEach(dress);
   if (!still && 'IntersectionObserver' in window) {
     var io = new IntersectionObserver(function (items) {
       items.forEach(function (it) {
@@ -527,6 +674,26 @@
     }, { threshold: 0.35 });
     clips.forEach(function (v) { io.observe(v); });
   }
+  // Las listas que eligen lo que se ve al lado: el ítem elegido muestra su visual. Si nadie elige, avanza sola mientras está
+  // a la vista; se frena al pasar el cursor, enfocar o tocar, y con movimiento reducido. En pantalla angosta no hace falta:
+  // cada ítem ya tiene su visual debajo.
+  var wide = window.matchMedia ? matchMedia('(min-width: 861px)') : { matches: true };
+  [].forEach.call(document.querySelectorAll('.pick'), function (pk) {
+    var items = [].slice.call(pk.querySelectorAll('.opts > li')), cur = 0, timer = 0, free = !still;
+    function show(i) {
+      cur = i;
+      items.forEach(function (li, k) { li.classList.toggle('on', k === i); var b = li.querySelector('h3 button'); if (b) b.setAttribute('aria-pressed', k === i ? 'true' : 'false'); });
+      // la imagen del que sigue se va bajando, para que el cambio no muestre un hueco
+      var img = items[(i + 1) % items.length].querySelector('img[loading=lazy]'); if (img && wide.matches) img.loading = 'eager';
+    }
+    function run(on) { clearInterval(timer); timer = 0; pk.classList.toggle('auto', !!on); if (on) timer = setInterval(function () { show((cur + 1) % items.length); }, 6000); }
+    items.forEach(function (li, i) {
+      function choose() { free = false; run(false); if (i !== cur) show(i); }
+      li.addEventListener('pointerenter', function (e) { if (e.pointerType === 'mouse' && wide.matches) choose(); });
+      li.addEventListener('focusin', choose); li.addEventListener('click', choose);
+    });
+    if ('IntersectionObserver' in window) new IntersectionObserver(function (e) { if (e[0].isIntersecting && !pk.seen) { pk.seen = 1; show(cur); } run(free && wide.matches && e[0].isIntersecting); }, { threshold: 0.35 }).observe(pk);
+  });
   // La vista previa de "También trae" sigue al cursor. Con el dedo no hay cursor: no aparece.
   var peek = document.querySelector('.peek');
   if (!peek || !window.matchMedia || !matchMedia('(hover: hover) and (pointer: fine)').matches) return;

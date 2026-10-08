@@ -143,22 +143,52 @@
 
   /* Nube e IA */
   .sub { margin: 0; max-width: 38em; color: var(--muted); }
-  .cloud { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 56px; align-items: start; margin-top: 40px; }
-  .cloud figure { margin: 0; position: sticky; top: 86px; }
-  figcaption { margin-top: 12px; color: var(--faint); font-size: 14px; }
-  .points { margin: 0; padding: 0; list-style: none; display: grid; gap: 22px; }
-  .points li { display: grid; grid-template-columns: 38px 1fr; gap: 16px; }
-  .points p { margin: 0; font-size: 15.5px; }
   .ic { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: color-mix(in srgb, var(--fill) 14%, var(--bg)); color: var(--accent); }
   .ic svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-  .ai { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 56px; align-items: center; margin-top: 64px; padding-top: 56px; border-top: 1px solid var(--line); }
-  .ai h3 { font-size: clamp(22px, 2.4vw, 27px); letter-spacing: -0.02em; margin-bottom: 10px; }
-  .ai ul { margin: 14px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 15.5px; }
-  .ai li { padding: 7px 0 7px 22px; position: relative; } .ai li::before { content: ""; position: absolute; left: 2px; top: 16px; width: 8px; height: 8px; border-radius: 2px; background: var(--fill); }
-  .term { margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); overflow: hidden; }
-  .term .bar { display: flex; gap: 6px; padding: 11px 14px; border-bottom: 1px solid var(--line); } .term .bar i { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
-  .term pre { margin: 0; padding: 16px 18px; font: 13.5px/1.65 var(--mono); color: var(--fg); overflow-x: auto; white-space: pre; }
+  /* Una lista que elige lo que se ve al lado. Cada ítem trae su propio visual: en pantalla ancha se muestra el del ítem
+     elegido en la columna de la izquierda; en pantalla angosta, cada uno queda debajo de su texto. Sin JavaScript queda el primero. */
+  .pick { position: relative; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 56px; align-items: start; margin-top: 40px; }
+  .stage { aspect-ratio: 8 / 5; }
+  .opts { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+  .opts > li { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 16px; padding: 14px 16px 16px; border: 1px solid transparent; border-radius: 12px; cursor: pointer; transition: background-color .15s, border-color .15s; }
+  .opts > li.on { border-color: var(--line); background: linear-gradient(var(--fill), var(--fill)) left bottom / 0 2px no-repeat var(--soft); }
+  .band .opts > li.on { background-color: var(--bg); }
+  .pick.auto .opts > li.on { animation: pick-go 6s linear; }
+  @keyframes pick-go { from { background-size: 0 2px; } to { background-size: 100% 2px; } }
+  .opts h3 { margin-bottom: 4px; }
+  .opts h3 button { all: unset; cursor: pointer; } .opts h3 button:focus-visible { outline: 2px solid var(--fill); outline-offset: 3px; border-radius: 4px; }
+  .opts p { margin: 0; color: var(--muted); font-size: 15.5px; }
+  .vis { display: none; position: absolute; left: 0; top: 0; width: calc((100% - 56px) * 7 / 12); margin: 0; }
+  .opts > li.on .vis { display: block; }
+  .vis .term, .ill { aspect-ratio: 8 / 5; box-shadow: var(--shadow); }
+  .more-link { margin: 34px 0 0; }
+  .term { margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); overflow: hidden; }
+  .term .bar { display: flex; align-items: center; gap: 6px; padding: 11px 14px; border-bottom: 1px solid var(--line); } .term .bar i { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
+  .term .bar b { margin-left: 8px; color: var(--muted); font-size: 12.5px; font-weight: 600; }
+  .term pre { flex: 1; margin: 0; padding: 16px 18px; font: 12.5px/1.6 var(--mono); color: var(--fg); overflow: auto; white-space: pre; }
   .term pre i { font-style: normal; color: var(--accent); } .term pre s { text-decoration: none; color: var(--faint); }
+  /* Ilustraciones de "Conectalo a tus herramientas": dos paneles y una flecha. */
+  .ill { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 26px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); overflow: hidden; font-size: 13.5px; line-height: 1.45; text-align: left; }
+  .band .ill { background: var(--bg); }
+  .pn { flex: 1 1 0; min-width: 0; padding: 14px 16px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+  .band .pn { background: var(--soft); }
+  .pn small { display: block; margin-bottom: 10px; color: var(--faint); font: 11.5px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pn pre { margin: 0; font: 11.5px/1.6 var(--mono); white-space: pre; overflow: hidden; } .pn pre i { font-style: normal; color: var(--accent); }
+  .arrow { flex: none; width: 26px; height: 2px; border-radius: 1px; background: var(--faint); position: relative; }
+  .arrow::after { content: ""; position: absolute; right: -1px; top: -4px; width: 8px; height: 8px; border-top: 2px solid var(--faint); border-right: 2px solid var(--faint); transform: rotate(45deg); }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .cols > div { min-height: 96px; padding: 8px; border-radius: 8px; background: var(--soft); } .band .cols > div { background: var(--bg); }
+  .cols b { display: block; margin-bottom: 8px; color: var(--muted); font-size: 11.5px; font-weight: 650; }
+  .cd { display: block; margin-bottom: 6px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); font-style: normal; font-size: 13px; line-height: 1.3; }
+  .cd.from, .cd.to { border-color: var(--fill); } .cd.from { animation: ill-out 7s infinite; } .cd.to { animation: ill-in 7s infinite; }
+  .opts .msg { margin: 0; padding: 9px 11px; color: var(--fg); font-size: 13px; line-height: 1.45; border-radius: 8px; background: color-mix(in srgb, var(--fill) 12%, var(--bg)); animation: ill-late 7s infinite; } .msg b { display: block; font-size: 12px; } .msg u { color: var(--accent); }
+  @keyframes ill-out { 0%, 22% { opacity: 1; } 30%, 100% { opacity: 0; } }
+  @keyframes ill-in { 0%, 26% { opacity: 0; transform: translateY(-6px); } 36%, 100% { opacity: 1; transform: none; } }
+  @keyframes ill-late { 0%, 44% { opacity: 0; transform: translateY(6px); } 54%, 100% { opacity: 1; transform: none; } }
+  .ttl { display: block; margin-bottom: 8px; font-size: 14px; }
+  .pn dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 13px; } .pn dt { color: var(--faint); } .pn dd { margin: 0; } .pn dd em { font-style: normal; font-weight: 650; color: var(--accent); }
+  .form label { display: block; margin-bottom: 8px; color: var(--faint); font-size: 11.5px; } .form label i { display: block; margin-top: 3px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--fg); font-style: normal; font-size: 12.5px; }
+  .send { display: inline-block; margin-top: 2px; padding: 5px 14px; border-radius: 999px; background: var(--fill); color: var(--on); font-size: 12px; }
+  .lines { margin: 0; padding: 0 0 0 16px; font-size: 13px; } .lines li { margin-bottom: 6px; } .lines .new { padding: 2px 5px; margin-left: -5px; border-radius: 5px; background: color-mix(in srgb, var(--fill) 20%, transparent); }
   .soon { display: none; margin-left: 10px; padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--fill) 16%, var(--soft)); color: var(--accent); font-size: 12px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; vertical-align: 6px; }
   html[data-cloud="soon"] .soon { display: inline-block; }
 
@@ -179,6 +209,7 @@
   .rows em { flex: none; font-style: normal; font-weight: 650; font-size: 14px; color: var(--accent); }
   .rows svg { flex: none; width: 18px; height: 18px; fill: none; stroke: var(--accent); stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
   .rows li.no { color: var(--faint); }
+  .rows li.grp { min-height: 0; padding: 18px 0 7px; color: var(--faint); font-size: 12px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
   .rows li.no::after { content: ""; flex: none; width: 12px; height: 2px; margin-right: 3px; border-radius: 1px; background: var(--line); }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
@@ -191,6 +222,9 @@
   .use a { margin-top: auto; align-self: flex-start; color: var(--accent); font-weight: 650; font-size: 15px; text-decoration: none; }
   .use a:hover { text-decoration: underline; }
   .note { margin: 18px 0 0; color: var(--faint); font-size: 14.5px; }
+  .note a { color: var(--muted); }
+  .two.host { margin-top: 34px; } .two.host h3 { font-size: 19px; margin-bottom: 8px; }
+  .rule { max-width: 39em; margin: 0 auto; }
 
   /* Preguntas: el título a la izquierda, fijo mientras pasan las respuestas. */
   .asks { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: 56px; align-items: start; }
@@ -226,24 +260,30 @@
   @media (max-width: 980px) { .use { grid-template-columns: 1fr 1fr; } .use > div:nth-child(3) { border-left: 0; } .use > div:nth-child(n+3) { border-top: 1px solid var(--line); } .plans.three { grid-template-columns: 1fr; max-width: 520px; } }
   @media (max-width: 860px) {
     nav a.link { display: none; } section { padding: 56px 0; } .hero { padding: 44px 0 56px; }
-    .hero .wrap, .feature, .feature.flip, .cloud, .ai, .asks, .two { grid-template-columns: minmax(0, 1fr); gap: 30px; }
+    .hero .wrap, .feature, .feature.flip, .asks, .two { grid-template-columns: minmax(0, 1fr); gap: 30px; }
     .gains { padding-bottom: 56px; } .six { grid-template-columns: minmax(0, 1fr); } .six li { padding: 20px 0 18px; }
-    .feature.flip > div { order: 0; } .cloud figure, .asks > div:first-child { position: static; }
+    .feature.flip > div { order: 0; } .asks > div:first-child { position: static; }
     .two > div, .two > div + div { padding: 0; border: 0; } .two > div + div { padding-top: 30px; border-top: 1px solid var(--line); }
     .more { grid-template-columns: minmax(0, 1fr); gap: 30px; } .more h3, .more li { padding-left: 0; padding-right: 0; }
-    .ai { margin-top: 44px; padding-top: 40px; } .last { padding: 64px 0; }
+    .last { padding: 64px 0; }
+    .pick { display: block; margin-top: 30px; } .stage { display: none; } .opts { gap: 34px; }
+    .opts > li, .opts > li.on, .band .opts > li.on { padding: 0; border: 0; background: none; animation: none; cursor: auto; }
+    .vis { display: block; position: static; width: auto; grid-column: 1 / -1; }
+    .two.host { margin-top: 30px; }
   }
-  @media (max-width: 640px) { nav .btn { display: none; } .term pre { font-size: 12px; padding: 14px; } .plans, .plans.three, .use { grid-template-columns: minmax(0, 1fr); max-width: none; } .use > div + div { border-left: 0; border-top: 1px solid var(--line); } .cta .btn { flex: 1 1 auto; } footer span { flex-basis: 100%; } }
-  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .pk *, html.go body::after { animation: none !important; } .pk .src { width: auto !important; } .pk .out, .pk .box, .pk .new { opacity: 1 !important; max-height: none !important; } .pk .b { display: none; } .btn, .more li, .more li b { transition: none; } }
+  @media (max-width: 640px) { nav .btn { display: none; } .term pre { font-size: 10.5px; padding: 12px; } .vis .term, .ill { aspect-ratio: auto; } .ill { flex-direction: column; align-items: stretch; padding: 14px; } .pn { flex: none; } .arrow { align-self: center; transform: rotate(90deg); margin: 4px 0; } .cols > div { min-height: 76px; } .plans, .plans.three, .use { grid-template-columns: minmax(0, 1fr); max-width: none; } .use > div + div { border-left: 0; border-top: 1px solid var(--line); } .cta .btn { flex: 1 1 auto; } footer span { flex-basis: 100%; } }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .pk *, .cd, .msg, .opts > li.on, html.go body::after { animation: none !important; } .cd.from { display: none; } .pk .src { width: auto !important; } .pk .out, .pk .box, .pk .new { opacity: 1 !important; max-height: none !important; } .pk .b { display: none; } .btn, .more li, .more li b { transition: none; } }
 </style>
+<noscript><style>video[data-poster] { display: none; }</style></noscript>
 </head>
 <body>
 <nav><div class="wrap">
   <a class="brand" href="#top"><img src="icons/icon48.png" alt="SharpMD logo" width="26" height="26"><span>SharpMD</span></a>
   <a class="link" href="#features"><span lang="en">Features</span><span lang="es">Funciones</span></a>
-  <a class="link" href="#cloud"><span lang="en">Cloud and AI</span><span lang="es">Nube e IA</span></a>
+  <a class="link" href="#ai"><span lang="en">Your AI</span><span lang="es">Tu IA</span></a>
+  <a class="link" href="#share"><span lang="en">Sharing</span><span lang="es">Compartir</span></a>
+  <a class="link" href="#connect"><span lang="en">Automations</span><span lang="es">Automatizaciones</span></a>
   <a class="link" href="#plans"><span lang="en">Plans</span><span lang="es">Planes</span></a>
-  <a class="link" href="#use"><span lang="en">Where it runs</span><span lang="es">Dónde corre</span></a>
   <a class="link" href="#faq"><span lang="en">Questions</span><span lang="es">Preguntas</span></a>
   <a class="link" href="https://github.com/MR-Axel/sharpmd">GitHub</a>
   <!--LANG-->
@@ -252,29 +292,29 @@
 
 <header class="hero" id="top"><div class="wrap">
   <div>
-    <h1><span lang="en">Edit Markdown without writing Markdown.</span><span lang="es">Editá Markdown sin escribir Markdown.</span></h1>
+    <h1><span lang="en">Markdown notes your AI writes and your team reads.</span><span lang="es">Notas en Markdown que tu IA escribe y tu equipo lee.</span></h1>
     <p class="lede">
-      <span lang="en">Click a heading, a table, a task list, a diagram or a formula and change it right there. Your files stay on your disk, and your AI can work on the same notes.</span>
-      <span lang="es">Hacés clic en un título, una tabla, una lista de tareas, un diagrama o una fórmula y lo cambiás ahí mismo. Tus archivos quedan en tu disco, y tu IA puede trabajar sobre las mismas notas.</span>
+      <span lang="en">A Markdown editor in the cloud, with the MCP endpoint already running. Claude, Codex or any other MCP client reads your notes before it works and writes down what it did. You edit on the formatted page, with no syntax to type.</span>
+      <span lang="es">Un editor de Markdown en la nube, con la conexión MCP ya andando. Claude, Codex o cualquier otro cliente MCP lee tus notas antes de trabajar y deja escrito lo que hizo. Vos editás sobre la página ya formateada, sin escribir sintaxis.</span>
     </p>
     <div class="cta">
       <a class="btn fill" href="src/app.html"><span lang="en">Open the app</span><span lang="es">Abrir la app</span></a>
-      <a class="btn" href="https://github.com/MR-Axel/sharpmd#install"><span lang="en">Get the extension</span><span lang="es">Instalar la extensión</span></a>
+      <a class="btn" href="#ai"><span lang="en">Connect your AI</span><span lang="es">Conectar tu IA</span></a>
     </div>
-    <p class="under"><span lang="en">Free and open source. No account needed. Runs in the browser.</span><span lang="es">Gratis y de código abierto. Sin cuenta obligatoria. Corre en el navegador.</span></p>
+    <p class="under"><span lang="en">The editor is free and open source. Nothing to install, and no account needed to write.</span><span lang="es">El editor es gratis y de código abierto. No hay nada que instalar ni hace falta una cuenta para escribir.</span></p>
   </div>
-  <video class="clip" muted loop playsinline preload="none" poster="docs/clips/edit.jpg" width="880" height="550" aria-label="SharpMD: typing on a formatted paragraph and in a table cell"><source src="docs/clips/edit.mp4" type="video/mp4"><source src="docs/clips/edit.webm" type="video/webm"></video>
+  <video class="clip" muted loop playsinline preload="none" poster="docs/clips/hero.jpg" width="880" height="550" aria-label="[[SharpMD: a sentence typed on the formatted page of a cloud note, and then the summary an AI wrote arrives in the same note||SharpMD: una frase escrita sobre la página ya formateada de una nota de la nube, y después llega a la misma nota el resumen que escribió una IA]]"><source src="docs/clips/hero.mp4" type="video/mp4"><source src="docs/clips/hero.webm" type="video/webm"></video>
 </div></header>
 
 <main id="features">
 <section class="gains"><div class="wrap">
   <ul class="six">
-    <li><h3><span lang="en">No syntax to type</span><span lang="es">Sin escribir sintaxis</span></h3><p><span lang="en">Change headings, tables, task lists, diagrams and formulas on the formatted page, with buttons. The source is one click away.</span><span lang="es">Cambiás títulos, tablas, listas de tareas, diagramas y fórmulas sobre la página ya formateada, con botones. El código está a un clic.</span></p></li>
-    <li><h3><span lang="en">Your files, on your disk</span><span lang="es">Tus archivos, en tu disco</span></h3><p><span lang="en">Open a <code>.md</code> or a whole folder. Nothing is uploaded and there is no account to create.</span><span lang="es">Abrís un <code>.md</code> o una carpeta entera. No se sube nada ni hay que crear una cuenta.</span></p></li>
-    <li><h3><span lang="en">A cloud when you want one</span><span lang="es">Nube cuando la quieras</span></h3><p><span lang="en">The same notes on every device, sharing, and editing together live through a link.</span><span lang="es">Las mismas notas en cada dispositivo, compartir, y editar entre varios en vivo con un enlace.</span></p></li>
-    <li><h3><span lang="en">Your AI on the same notes</span><span lang="es">Tu IA sobre las mismas notas</span></h3><p><span lang="en">Over MCP it reads, writes, documents what it does and answers the comments you leave.</span><span lang="es">Por MCP lee, escribe, documenta lo que hace y responde los comentarios que le dejás.</span></p></li>
-    <li><h3><span lang="en">Private</span><span lang="es">Privado</span></h3><p><span lang="en">Protected folders that the server cannot read, open source, and your own server if you want one.</span><span lang="es">Carpetas protegidas que el servidor no puede leer, código abierto y servidor propio si querés.</span></p></li>
-    <li><h3><span lang="en">Web, Chrome and phone</span><span lang="es">Web, Chrome y celular</span></h3><p><span lang="en">A web app, a Chrome extension and an app on the phone. It also works without a connection.</span><span lang="es">App web, extensión de Chrome y app en el celular. También anda sin conexión.</span></p></li>
+    <li><h3><span lang="en">No syntax to type</span><span lang="es">Sin escribir sintaxis</span></h3><p><span lang="en">Headings, tables, task lists, diagrams and formulas change on the formatted page. The source is one click away.</span><span lang="es">Títulos, tablas, listas de tareas, diagramas y fórmulas se cambian sobre la página ya formateada. El código está a un clic.</span></p></li>
+    <li><h3><span lang="en">Nothing to install</span><span lang="es">Nada que instalar</span></h3><p><span lang="en">It opens in the browser, and the same notes are on every device you sign in on.</span><span lang="es">Abre en el navegador, y las mismas notas están en cada dispositivo donde entrás.</span></p></li>
+    <li><h3><span lang="en">Your AI has the context</span><span lang="es">Tu IA tiene el contexto</span></h3><p><span lang="en">Over MCP it reads the notes of the project before a task and documents what it changed.</span><span lang="es">Por MCP lee las notas del proyecto antes de una tarea y documenta lo que cambió.</span></p></li>
+    <li><h3><span lang="en">Shared by link</span><span lang="es">Compartido con un enlace</span></h3><p><span lang="en">A note or a folder with another account, a public link, or a live session where everyone writes at once.</span><span lang="es">Una nota o una carpeta con otra cuenta, un enlace público, o una sesión en vivo donde todos escriben a la vez.</span></p></li>
+    <li><h3><span lang="en">Wired to your tools</span><span lang="es">Conectado a tus herramientas</span></h3><p><span lang="en">An API, signed webhooks and inbound addresses for Make, n8n, Activepieces, Zapier and Slack.</span><span lang="es">API, webhooks firmados y direcciones de entrada para Make, n8n, Activepieces, Zapier y Slack.</span></p></li>
+    <li><h3><span lang="en">Your files stay yours</span><span lang="es">Tus archivos siguen siendo tuyos</span></h3><p><span lang="en">A <code>.md</code> on your disk opens without being uploaded. Open source, with a server you can run yourself.</span><span lang="es">Un <code>.md</code> de tu disco abre sin subirse. Código abierto, con un servidor que podés levantar vos.</span></p></li>
   </ul>
 </div></section>
 
@@ -297,19 +337,167 @@
     <p><span lang="en">Click a Mermaid or Graphviz diagram and it opens with a live preview. Start from a template, add steps and arrows with a button, and pick a color palette.</span><span lang="es">Hacés clic en un diagrama Mermaid o Graphviz y se abre con la vista previa en vivo. Arrancás de una plantilla, sumás pasos y flechas con un botón y elegís una paleta de colores.</span></p>
     <p><span lang="en">A mistake is explained in plain words, with its line marked. Formulas have an editor of the same kind.</span><span lang="es">Un error se explica en palabras simples, con su línea marcada. Las fórmulas tienen un editor del mismo tipo.</span></p>
   </div>
-  <video class="clip" muted loop playsinline preload="none" poster="docs/clips/diagram.jpg" width="880" height="550" aria-label="The diagram editor: a line of code is typed and the drawing adds the step"><source src="docs/clips/diagram.mp4" type="video/mp4"><source src="docs/clips/diagram.webm" type="video/webm"></video>
+  <video class="clip" muted loop playsinline preload="none" data-poster="docs/clips/diagram.jpg" width="880" height="550" aria-label="[[The diagram editor: a step added with a button shows up in the drawing next to the code||El editor de diagramas: un paso agregado con un botón aparece en el dibujo, al lado del código]]"><source src="docs/clips/diagram.mp4" type="video/mp4"><source src="docs/clips/diagram.webm" type="video/webm"></video><noscript><img class="clip" loading="lazy" src="docs/clips/diagram.jpg" width="880" height="550" alt="[[The diagram editor: a step added with a button shows up in the drawing next to the code||El editor de diagramas: un paso agregado con un botón aparece en el dibujo, al lado del código]]"></noscript>
 </div></section>
 
 <section class="band"><div class="wrap feature flip">
   <div>
     <h2><span lang="en">The whole folder, searchable.</span><span lang="es">La carpeta entera, con búsqueda.</span></h2>
-    <p><span lang="en">The sidebar lists the files next to the one you opened and searches the text of all of them at once. Create, rename and delete from there, and move files and folders by dragging.</span><span lang="es">La barra lateral muestra los archivos que están al lado del que abriste y busca en el texto de todos a la vez. Desde ahí creás, renombrás y eliminás, y movés archivos y carpetas arrastrándolos.</span></p>
-    <p><span lang="en">Drop a file into the note you are editing and it becomes a link. <code>[[name]]</code> opens the file with that name.</span><span lang="es">Soltás un archivo dentro de la nota que estás editando y queda como enlace. <code>[[nombre]]</code> abre el archivo con ese nombre.</span></p>
+    <p><span lang="en">Open a folder from your disk and the sidebar lists its files, with how many notes each folder holds. The search box looks through the text of all of them at once.</span><span lang="es">Abrís una carpeta de tu disco y la barra lateral muestra sus archivos, con cuántas notas tiene cada carpeta. El buscador revisa el texto de todos a la vez.</span></p>
+    <p><span lang="en">Create, rename and delete from there, and move files and folders by dragging.</span><span lang="es">Desde ahí creás, renombrás y eliminás, y movés archivos y carpetas arrastrándolos.</span></p>
   </div>
-  <video class="clip" muted loop playsinline preload="none" poster="docs/clips/drop.jpg" width="880" height="550" aria-label="A file dragged from the explorer into the note becomes a link"><source src="docs/clips/drop.mp4" type="video/mp4"><source src="docs/clips/drop.webm" type="video/webm"></video>
+  <video class="clip" muted loop playsinline preload="none" data-poster="docs/clips/folder.jpg" width="880" height="550" aria-label="[[A folder from the disk in the sidebar, with the number of notes in each folder, and a search that finds a word in several files||Una carpeta del disco en la barra lateral, con la cantidad de notas de cada carpeta, y una búsqueda que encuentra una palabra en varios archivos]]"><source src="docs/clips/folder.mp4" type="video/mp4"><source src="docs/clips/folder.webm" type="video/webm"></video><noscript><img class="clip" loading="lazy" src="docs/clips/folder.jpg" width="880" height="550" alt="[[A folder from the disk in the sidebar, with the number of notes in each folder, and a search that finds a word in several files||Una carpeta del disco en la barra lateral, con la cantidad de notas de cada carpeta, y una búsqueda que encuentra una palabra en varios archivos]]"></noscript>
 </div></section>
 
-<section class="center yours"><div class="wrap">
+<section id="ai"><div class="wrap">
+  <h2><span lang="en">Your AI on the same notes</span><span lang="es">Tu IA sobre las mismas notas</span></h2>
+  <p class="sub"><span lang="en">Claude, Codex or any other MCP client, working on the notes you keep in the cloud. It reaches as far as the token you give it.</span><span lang="es">Claude, Codex o cualquier otro cliente MCP, trabajando sobre las notas que tenés en la nube. Llega hasta donde llega el token que le das.</span></p>
+  <div class="pick">
+    <div class="stage"></div>
+    <ul class="opts">
+      <li class="on"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5h-7l-4 3v-3H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5z"/><path d="M8 9.5h8M8 12.5h5"/></svg></span><div><h3><button type="button"><span lang="en">One message connects it</span><span lang="es">Un mensaje la conecta</span></button></h3><p><span lang="en">Create a token in Settings and copy the instructions. Pasted into your AI, they carry the address, the token and how to write here.</span><span lang="es">Creás un token en Ajustes y copiás las instrucciones. Pegadas en tu IA, llevan la dirección, el token y cómo escribir acá.</span></p></div>
+        <figure class="vis"><div class="term"><div class="bar"><i></i><i></i><i></i><b><span lang="en">Copy instructions for your AI</span><span lang="es">Copiar instrucciones para tu IA</span></b></div><pre>You are being connected to SharpMD, a Markdown notes app.
+
+<i>## Connect</i>
+- URL: https://sync.sharpmd.app/mcp
+- Header: Authorization: Bearer mdt_...
+
+<i>## What to use it for</i>
+- Keep a record of your work as you go: what changed,
+  progress, decisions and why, open questions.
+
+<i>## Use it as project memory</i>
+- Before you start a task, call search_notes and read
+  the notes of the project.
+<s># list_notes  read_note  write_note  append_note  move_note
+# search_notes  note_history  list_comments  resolve_comment</s></pre></div></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h11a2 2 0 0 1 2 2v13H7a2 2 0 0 1-2-2z"/><path d="M5 17.5a2 2 0 0 1 2-2h11M9 8.5h5M9 11.5h3"/></svg></span><div><h3><button type="button"><span lang="en">The notes are the memory of the project</span><span lang="es">Las notas son la memoria del proyecto</span></button></h3><p><span lang="en">Those instructions ask it to read the project notes before a task and to update them when it changes something. The next session starts from there, whichever AI it is.</span><span lang="es">Esas instrucciones le piden leer las notas del proyecto antes de una tarea y actualizarlas cuando cambia algo. La próxima sesión arranca desde ahí, sea la IA que sea.</span></p></div>
+        <figure class="vis"><img class="clip" loading="lazy" decoding="async" src="docs/clips/memory.jpg" width="880" height="550" alt="[[A project folder in the cloud with an index note that links to the decisions and the work log||Una carpeta de proyecto en la nube con una nota índice que enlaza a las decisiones y al registro de trabajo]]"></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.5A1.5 1.5 0 0 1 6 5h12a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 18 16h-5l-4 3.5V16H6a1.5 1.5 0 0 1-1.5-1.5z"/><path d="m9 10.5 2 2 4-4"/></svg></span><div><h3><button type="button"><span lang="en">Comments it resolves</span><span lang="es">Comentarios que resuelve</span></button></h3><p><span lang="en">Leave a comment on a paragraph. Your AI reads the open ones, makes each change and closes it with a reply.</span><span lang="es">Dejás un comentario sobre un párrafo. Tu IA lee los abiertos, hace cada cambio y lo cierra con una respuesta.</span></p></div>
+        <figure class="vis"><video class="clip" muted loop playsinline preload="none" data-poster="docs/clips/ai.jpg" width="880" height="550" aria-label="[[A comment left on a paragraph asks for a change; the AI makes it and the note says the comment was resolved||Un comentario sobre un párrafo pide un cambio; la IA lo hace y la nota avisa que el comentario quedó resuelto]]"><source src="docs/clips/ai.mp4" type="video/mp4"><source src="docs/clips/ai.webm" type="video/webm"></video><noscript><img class="clip" loading="lazy" src="docs/clips/ai.jpg" width="880" height="550" alt="[[A comment left on a paragraph asks for a change; the AI makes it and the note says the comment was resolved||Un comentario sobre un párrafo pide un cambio; la IA lo hace y la nota avisa que el comentario quedó resuelto]]"></noscript></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="3.5"/><path d="m10.6 12.4 7.4-7.4M15 8l2.5 2.5M17.5 5.5 20 8"/></svg></span><div><h3><button type="button"><span lang="en">A token for one folder</span><span lang="es">Un token para una sola carpeta</span></button></h3><p><span lang="en">Limit a token to a folder and nothing outside it can be read or written. Sharing is a separate permission, off unless you turn it on.</span><span lang="es">Limitás un token a una carpeta y nada de afuera se puede leer ni escribir. Compartir es un permiso aparte, apagado salvo que lo prendas.</span></p></div>
+        <figure class="vis"><img class="clip" loading="lazy" decoding="async" src="docs/clips/token.jpg" width="880" height="550" alt="[[Settings, AI: a token limited to one folder, next to one that reaches every note||Ajustes, IA: un token limitado a una carpeta, al lado de otro que llega a todas las notas]]"></figure></li>
+    </ul>
+  </div>
+</div></section>
+
+<section class="band" id="share"><div class="wrap">
+  <h2><span lang="en">Cloud notes and sharing</span><span lang="es">Notas en la nube y compartir</span><span class="soon"><span lang="en">Soon</span><span lang="es">Pronto</span></span></h2>
+  <p class="sub"><span lang="en">Nothing goes to the cloud until you send it.</span><span lang="es">Nada va a la nube hasta que lo mandás.</span></p>
+  <div class="pick">
+    <div class="stage"></div>
+    <ul class="opts">
+      <li class="on"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5a4 4 0 0 1-.6-7.95 5.5 5.5 0 0 1 10.7-1.1A4.5 4.5 0 0 1 17 18.5z"/></svg></span><div><h3><button type="button"><span lang="en">The same notes on every device</span><span lang="es">Las mismas notas en cada dispositivo</span></button></h3><p><span lang="en">Sign in with a six-digit code sent to your email, and your cloud notes are in the sidebar. One click sends a note there, and it saves itself from then on.</span><span lang="es">Entrás con un código de seis dígitos que llega a tu correo, y tus notas de la nube están en la barra lateral. Con un clic mandás una nota ahí, y desde entonces se guarda sola.</span></p></div>
+        <figure class="vis"><img class="clip" loading="lazy" decoding="async" src="docs/clips/signin.jpg" width="880" height="550" alt="[[The start screen asking for the six-digit code that was sent by email||La pantalla de inicio pidiendo el código de seis dígitos que llegó por correo]]"></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8.5" cy="9" r="3"/><path d="M3 19c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5"/><circle cx="16.8" cy="9.8" r="2.3"/><path d="M16.5 14.6c2.3 0 4 1.4 4.5 3.9"/></svg></span><div><h3><button type="button"><span lang="en">Live sessions by link</span><span lang="es">Sesiones en vivo por enlace</span></button></h3><p><span lang="en">Open a session on a note and send the link. Guests join from the browser with a name, without an account, and everyone sees who is on each block.</span><span lang="es">Abrís una sesión sobre una nota y mandás el enlace. Quien lo tiene entra desde el navegador con un nombre, sin cuenta, y todos ven quién está en cada bloque.</span></p></div>
+        <figure class="vis"><video class="clip" muted loop playsinline preload="none" data-poster="docs/clips/live.jpg" width="880" height="550" aria-label="[[A live session: two people write in the same note, each on a block||Una sesión en vivo: dos personas escriben en la misma nota, cada una en un bloque]]"><source src="docs/clips/live.mp4" type="video/mp4"><source src="docs/clips/live.webm" type="video/webm"></video><noscript><img class="clip" loading="lazy" src="docs/clips/live.jpg" width="880" height="550" alt="[[A live session: two people write in the same note, each on a block||Una sesión en vivo: dos personas escriben en la misma nota, cada una en un bloque]]"></noscript></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></span><div><h3><button type="button"><span lang="en">Share a note or a folder</span><span lang="es">Compartí una nota o una carpeta</span></button></h3><p><span lang="en">With another account, to read or to edit. Or a read-only public link with a password.</span><span lang="es">Con otra cuenta, para ver o para editar. O un enlace público de solo lectura con contraseña.</span></p></div>
+        <figure class="vis"><img class="clip" loading="lazy" decoding="async" src="docs/clips/share.jpg" width="880" height="550" alt="[[The sharing box of a note: a person invited by email and a public link with a password||El cuadro de compartir de una nota: una persona invitada por correo y un enlace público con contraseña]]"></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg></span><div><h3><button type="button"><span lang="en">Protected folders</span><span lang="es">Carpetas protegidas</span></button></h3><p><span lang="en">Give a folder a password and it shows a lock. Its notes are encrypted in your browser before they are sent.</span><span lang="es">Le ponés una contraseña a una carpeta y aparece con un candado. Sus notas se cifran en tu navegador antes de enviarse.</span></p></div>
+        <figure class="vis"><img class="clip" loading="lazy" decoding="async" src="docs/clips/vault.jpg" width="880" height="550" alt="[[The sidebar with a protected folder marked with a lock, and the box that asks for its password||La barra lateral con una carpeta protegida marcada con un candado, y el cuadro que pide su contraseña]]"></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l.8 12h8.4L17 7"/></svg></span><div><h3><button type="button"><span lang="en">Trash for 30 days</span><span lang="es">Papelera de 30 días</span></button></h3><p><span lang="en">A deleted note waits there, and you can restore it.</span><span lang="es">Una nota eliminada espera ahí, y la podés restaurar.</span></p></div>
+        <figure class="vis"><img class="clip" loading="lazy" decoding="async" src="docs/clips/trash.jpg" width="880" height="550" alt="[[The trash of the cloud: a deleted note with its Restore button||La papelera de la nube: una nota eliminada con su botón Restaurar]]"></figure></li>
+    </ul>
+  </div>
+</div></section>
+
+<section id="connect"><div class="wrap">
+  <h2><span lang="en">Connect it to your tools</span><span lang="es">Conectalo a tus herramientas</span></h2>
+  <p class="sub"><span lang="en">The notes your AI and your team write can start a flow in Make, n8n, Activepieces, Zapier or Slack, or receive from one.</span><span lang="es">Las notas que escriben tu IA y tu equipo pueden disparar un flujo en Make, n8n, Activepieces, Zapier o Slack, o recibir de uno.</span></p>
+  <div class="pick">
+    <div class="stage"></div>
+    <ul class="opts">
+      <li class="on"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h12M12 7l5 5-5 5M20 5v14"/></svg></span><div><h3><button type="button"><span lang="en">Outgoing webhooks</span><span lang="es">Avisos salientes</span></button></h3><p><span lang="en">SharpMD calls an address when a note or a card changes, for the whole account, one folder or one note. Paste a Slack or Discord address and the channel gets a readable line.</span><span lang="es">SharpMD llama a una dirección cuando cambia una nota o una tarjeta, de toda la cuenta, de una carpeta o de una sola nota. Pegás una dirección de Slack o de Discord y al canal le llega un renglón legible.</span></p></div>
+        <figure class="vis"><div class="ill ill-hook" role="img" aria-label="[[A card moves from To do to Done on a board, and a line saying so arrives in a chat channel||Una tarjeta pasa de Por hacer a Hecho en un tablero, y a un canal de chat llega un renglón que lo dice]]">
+          <div class="pn"><small><span lang="en">shop/board.md</span><span lang="es">tienda/tablero.md</span></small><div class="cols"><div><b><span lang="en">To do</span><span lang="es">Por hacer</span></b><i class="cd from"><span lang="en">Fix checkout</span><span lang="es">Arreglar el pago</span></i><i class="cd"><span lang="en">Welcome email</span><span lang="es">Correo de bienvenida</span></i></div><div><b><span lang="en">Done</span><span lang="es">Hecho</span></b><i class="cd to"><span lang="en">Fix checkout</span><span lang="es">Arreglar el pago</span></i></div></div></div>
+          <span class="arrow" aria-hidden="true"></span>
+          <div class="pn chat"><small><span lang="en"># shop-launch</span><span lang="es"># lanzamiento</span></small><p class="msg"><b>SharpMD</b><span lang="en">Card "Fix checkout" moved from To do to Done in <u>shop/board.md</u></span><span lang="es">Tarjeta "Arreglar el pago" pasó de Por hacer a Hecho en <u>tienda/tablero.md</u></span></p></div>
+        </div></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="5" height="14" rx="1.2"/><rect x="9.5" y="5" width="5" height="9" rx="1.2"/><rect x="15.5" y="5" width="5" height="11" rx="1.2"/></svg></span><div><h3><button type="button"><span lang="en">A board that notifies</span><span lang="es">Un tablero que avisa</span></button></h3><p><span lang="en">Each card carries its own fields, like due date, owner and priority. Moving it to another column sends <code>card.moved</code>, and finishing it sends <code>card.done</code>.</span><span lang="es">Cada tarjeta lleva sus campos, como vencimiento, responsable y prioridad. Al pasarla de columna sale <code>card.moved</code>, y al terminarla, <code>card.done</code>.</span></p></div>
+        <figure class="vis"><div class="ill ill-card" role="img" aria-label="[[A card with due date, owner and priority, and the card.moved event that is sent when it changes column||Una tarjeta con vencimiento, responsable y prioridad, y el evento card.moved que sale cuando cambia de columna]]">
+          <div class="pn"><small><span lang="en">Card</span><span lang="es">Tarjeta</span></small><b class="ttl"><span lang="en">Fix checkout</span><span lang="es">Arreglar el pago</span></b><dl><dt><span lang="en">due</span><span lang="es">vence</span></dt><dd>2026-10-20</dd><dt><span lang="en">owner</span><span lang="es">responsable</span></dt><dd>Ana Paz</dd><dt><span lang="en">priority</span><span lang="es">prioridad</span></dt><dd><span lang="en">high</span><span lang="es">alta</span></dd><dt><span lang="en">status</span><span lang="es">estado</span></dt><dd><span lang="en">To do</span><span lang="es">Por hacer</span> → <em><span lang="en">Done</span><span lang="es">Hecho</span></em></dd></dl></div>
+          <span class="arrow" aria-hidden="true"></span>
+          <div class="pn"><small><span lang="en">POST /your/address</span><span lang="es">POST /tu/direccion</span></small><pre><span lang="en">"type": <i>"card.moved"</i>,
+"card": {
+  "title": "Fix checkout",
+  "attrs": {
+    "due": "2026-10-20",
+    "owner": "Ana Paz" } },
+"from": "To do",
+"to": <i>"Done"</i></span><span lang="es">"type": <i>"card.moved"</i>,
+"card": {
+  "title": "Arreglar el pago",
+  "attrs": {
+    "vence": "2026-10-20",
+    "responsable": "Ana Paz" } },
+"from": "Por hacer",
+"to": <i>"Hecho"</i></span></pre></div>
+        </div></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12H8M12 7l-5 5 5 5M4 5v14"/></svg></span><div><h3><button type="button"><span lang="en">Inbound addresses</span><span lang="es">Direcciones de entrada</span></button></h3><p><span lang="en">A secret address that adds a line to a note, creates a note or creates a card. A form or another system posts to it.</span><span lang="es">Una dirección secreta que agrega un renglón a una nota, crea una nota o crea una tarjeta. Un formulario u otro sistema le manda los datos.</span></p></div>
+        <figure class="vis"><div class="ill ill-in" role="img" aria-label="[[An order form posts to an inbound address and a new line appears in a note||Un formulario de pedido manda sus datos a una dirección de entrada y aparece un renglón nuevo en una nota]]">
+          <div class="pn form"><small><span lang="en">Order form</span><span lang="es">Formulario de pedido</span></small><label><span lang="en">Name</span><span lang="es">Nombre</span><i>Ana</i></label><label><span lang="en">Total</span><span lang="es">Total</span><i>$ 120</i></label><b class="send"><span lang="en">Send</span><span lang="es">Enviar</span></b></div>
+          <span class="arrow" aria-hidden="true"></span>
+          <div class="pn"><small><span lang="en">shop/orders.md</span><span lang="es">tienda/pedidos.md</span></small><ul class="lines"><li><span lang="en">2026-10-06 New order from Marta, $ 85</span><span lang="es">2026-10-06 Pedido nuevo de Marta, $ 85</span></li><li class="new"><span lang="en">2026-10-07 New order from Ana, $ 120</span><span lang="es">2026-10-07 Pedido nuevo de Ana, $ 120</span></li></ul></div>
+        </div></figure></li>
+      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5c-2 0-2.5 1-2.5 2.5v2c0 1.2-.6 2.1-2 2.5 1.4.4 2 1.300 2 2.500v2C6.500 18 7 19 9 19M15 5c2 0 2.500 1 2.500 2.500v2c0 1.200.6 2.100 2 2.500-1.400.4-2 1.300-2 2.500v2c0 1.500-.5 2.500-2.500 2.500"/></svg></span><div><h3><button type="button"><span lang="en">REST API</span><span lang="es">API REST</span></button></h3><p><span lang="en">Notes, folders, search, history, comments and boards as JSON, with the same tokens as MCP. OpenAPI 3.1 included.</span><span lang="es">Notas, carpetas, búsqueda, historial, comentarios y tableros en JSON, con los mismos tokens que MCP. Incluye OpenAPI 3.1.</span></p></div>
+        <figure class="vis"><div class="term"><div class="bar"><i></i><i></i><i></i></div><pre><i>$</i> curl -X POST \
+    https://sync.sharpmd.app/api/v1/boards/cards/c8k2m9xq/move \
+    -H "Authorization: Bearer mdt_..." \
+    -H "Content-Type: application/json" \
+    -d '{"path": "shop/board.md", "column": "Done"}'
+
+<s>{"ok": true, "data": { ... }}</s>
+
+<i>$</i> curl "https://sync.sharpmd.app/api/v1/search?q=checkout" \
+    -H "Authorization: Bearer mdt_..."</pre></div></figure></li>
+    </ul>
+  </div>
+  <p class="more-link"><a class="btn" href="api.html"><span lang="en">Read the API docs</span><span lang="es">Ver la documentación de la API</span></a></p>
+</div></section>
+
+<section class="band" id="private"><div class="wrap">
+  <h2><span lang="en">What the server can read, and what it cannot</span><span lang="es">Qué puede leer el servidor y qué no</span></h2>
+  <ul class="six three">
+    <li><h3><span lang="en">Files on your disk</span><span lang="es">Los archivos de tu disco</span></h3><p><span lang="en">They are read in your browser and never uploaded. No account and no analytics.</span><span lang="es">Se leen en tu navegador y no se suben. Sin cuenta y sin analítica.</span></p></li>
+    <li><h3><span lang="en">Notes in the cloud</span><span lang="es">Las notas de la nube</span></h3><p><span lang="en">Stored encrypted. The server holds that key, because it has to share them and hand them to your AI.</span><span lang="es">Se guardan cifradas. El servidor tiene esa llave, porque tiene que compartirlas y dárselas a tu IA.</span></p></li>
+    <li><h3><span lang="en">Folders with a password</span><span lang="es">Las carpetas con contraseña</span></h3><p><span lang="en">Encrypted end to end: the server stores text it cannot read. Your AI gets in only while you unlock the folder, for the time you set.</span><span lang="es">Cifradas de extremo a extremo: el servidor guarda texto que no puede leer. Tu IA entra solo mientras desbloqueás la carpeta, por el tiempo que elijas.</span></p></li>
+  </ul>
+  <p class="note"><span lang="en">The detail is in <a href="privacy.html">Privacy</a>, and the code is on <a href="https://github.com/MR-Axel/sharpmd">GitHub</a>: the app under MIT, the server under AGPL.</span><span lang="es">El detalle está en <a href="privacy.html">Privacidad</a>, y el código en <a href="https://github.com/MR-Axel/sharpmd">GitHub</a>: la app con licencia MIT, el servidor con AGPL.</span></p>
+</div></section>
+
+<section class="center"><div class="wrap">
+  <h2><span lang="en">Also in the editor</span><span lang="es">El editor también trae</span></h2>
+  <div class="more">
+    <div><h3><span lang="en">Writing</span><span lang="es">Escribir</span></h3><ul>
+      <li data-peek="math"><b><span lang="en">Formulas</span><span lang="es">Fórmulas</span></b><small><span lang="en">An editor with live preview and buttons for fractions, sums and symbols.</span><span lang="es">Un editor con vista previa en vivo y botones para fracciones, sumatorias y símbolos.</span></small></li>
+      <li data-peek="table"><b><span lang="en">Tables with totals</span><span lang="es">Tablas con totales</span></b><small><span lang="en">Rows and columns with a button, and a row that sums each column.</span><span lang="es">Filas y columnas con un botón, y una fila que suma cada columna.</span></small></li>
+      <li data-peek="board"><b><span lang="en">Boards</span><span lang="es">Tableros</span></b><small><span lang="en">A task list turns into columns with cards you drag.</span><span lang="es">Una lista de tareas pasa a ser columnas con tarjetas que arrastrás.</span></small></li>
+      <li data-peek="tpl"><b><span lang="en">Templates</span><span lang="es">Plantillas</span></b><small><span lang="en">26 starting points: meeting notes, project plan, roadmap, budget.</span><span lang="es">26 puntos de partida: notas de reunión, plan de proyecto, hoja de ruta, presupuesto.</span></small></li>
+      <li data-peek="emoji"><b><span lang="en">Emoji</span><span lang="es">Emojis</span></b><small><span lang="en">Type <code>:</code> and pick from the list.</span><span lang="es">Escribís <code>:</code> y elegís de la lista.</span></small></li>
+      <li data-peek="focus"><b><span lang="en">Focus mode</span><span lang="es">Modo foco</span></b><small><span lang="en">Dims everything but the block you are writing. Typewriter mode keeps the line at mid height.</span><span lang="es">Atenúa todo menos el bloque que estás escribiendo. El modo máquina de escribir deja el renglón a media altura.</span></small></li>
+    </ul></div>
+    <div><h3><span lang="en">Finding and linking</span><span lang="es">Encontrar y enlazar</span></h3><ul>
+      <li data-peek="find"><b><span lang="en">Find and replace</span><span lang="es">Buscar y reemplazar</span></b><small><span lang="en">One match or all of them.</span><span lang="es">De a una coincidencia o todas.</span></small></li>
+      <li data-peek="link"><b><span lang="en">Links between notes</span><span lang="es">Enlaces entre notas</span></b><small><span lang="en"><code>[[name]]</code> links to the file with that name, and <kbd>Ctrl</kbd> <kbd>K</kbd> picks a section or a file from a list.</span><span lang="es"><code>[[nombre]]</code> enlaza al archivo con ese nombre, y <kbd>Ctrl</kbd> <kbd>K</kbd> elige una sección o un archivo de una lista.</span></small></li>
+      <li><b><span lang="en">Files dropped into the note</span><span lang="es">Archivos soltados en la nota</span></b><small><span lang="en">Drag a file from the sidebar into the note you are editing and it becomes a link.</span><span lang="es">Arrastrás un archivo de la barra lateral a la nota que estás editando y queda como enlace.</span></small></li>
+      <li><b><span lang="en">Images</span><span lang="es">Imágenes</span></b><small><span lang="en">Pasted or dropped, saved to <code>assets/</code> next to the document.</span><span lang="es">Pegadas o soltadas, se guardan en <code>assets/</code>, al lado del documento.</span></small></li>
+      <li><b><span lang="en">More than Markdown</span><span lang="es">No solo Markdown</span></b><small><span lang="en">Code highlighted, CSV as a table, images as images.</span><span lang="es">Código resaltado, CSV como tabla, imágenes como imágenes.</span></small></li>
+      <li><b><span lang="en">Export</span><span lang="es">Exportar</span></b><small><span lang="en">One HTML file, PDF through print, or Word.</span><span lang="es">Un solo archivo HTML, PDF desde imprimir, o Word.</span></small></li>
+      <li><b><span lang="en">Publish a site</span><span lang="es">Publicar un sitio</span></b><small><span lang="en">A cloud folder becomes a public website, with a menu, search and a theme. One click to update it.</span><span lang="es">Una carpeta de la nube se convierte en un sitio web público, con menú, buscador y tema. Un clic para actualizarlo.</span></small></li>
+    </ul></div>
+    <div><h3><span lang="en">Anywhere</span><span lang="es">En cualquier lado</span></h3><ul>
+      <li data-peek="phone"><b><span lang="en">On the phone</span><span lang="es">En el celular</span></b><small><span lang="en">The same app in a small screen, with the files in a side panel.</span><span lang="es">La misma app en pantalla chica, con los archivos en un panel lateral.</span></small></li>
+      <li><b><span lang="en">Without a connection</span><span lang="es">Sin conexión</span></b><small><span lang="en">The web app opens offline once you have used it.</span><span lang="es">La app web abre sin conexión una vez que la usaste.</span></small></li>
+      <li><b><span lang="en">Quick notes</span><span lang="es">Notas rápidas</span></b><small><span lang="en">New opens an empty note, saved in the browser or in the folder you chose.</span><span lang="es">Nuevo abre una nota vacía, guardada en el navegador o en la carpeta que elegiste.</span></small></li>
+      <li><b><span lang="en">Read aloud and dictation</span><span lang="es">Leer en voz alta y dictado</span></b><small><span lang="en">Listen to a note, or write by speaking, with formulas and flowcharts by voice.</span><span lang="es">Escuchás una nota, o escribís hablando, con fórmulas y diagramas por voz.</span></small></li>
+      <li><b><span lang="en">Slides, daily note and link map</span><span lang="es">Diapositivas, nota diaria y mapa de enlaces</span></b><small><span lang="en">Present a note full screen, open today's note with one button and see which notes link to which.</span><span lang="es">Presentás una nota a pantalla completa, abrís la nota de hoy con un botón y ves qué notas se enlazan entre sí.</span></small></li>
+      <li><b><span lang="en">Community gallery</span><span lang="es">Galería de la comunidad</span></b><small><span lang="en">Templates, themes and diagram palettes shared by people, reviewed before they are published.</span><span lang="es">Plantillas, temas y paletas de diagramas que comparte la gente, revisadas antes de publicarse.</span></small></li>
+      <li><b><span lang="en">English and Spanish</span><span lang="es">Inglés y español</span></b><small><span lang="en">Switch in Settings.</span><span lang="es">Se cambia en Ajustes.</span></small></li>
+    </ul></div>
+  </div>
+</div></section>
+
+<section class="band center yours"><div class="wrap">
   <h2><span lang="en">Make it yours</span><span lang="es">Hacela tuya</span></h2>
   <p class="lede"><span lang="en">Twelve built-in themes, six light and six dark. Four of them are free.</span><span lang="es">Doce temas incluidos, seis claros y seis oscuros. Cuatro son gratis.</span></p>
   <ul class="strip" aria-hidden="true">
@@ -328,80 +516,18 @@
   </ul>
 </div></section>
 
-<section class="center"><div class="wrap">
-  <h2><span lang="en">Also in there</span><span lang="es">También trae</span></h2>
-  <div class="more">
-    <div><h3><span lang="en">Writing</span><span lang="es">Escribir</span></h3><ul>
-      <li data-peek="math"><b><span lang="en">Formulas</span><span lang="es">Fórmulas</span></b><small><span lang="en">An editor with live preview and buttons for fractions, sums and symbols.</span><span lang="es">Un editor con vista previa en vivo y botones para fracciones, sumatorias y símbolos.</span></small></li>
-      <li data-peek="table"><b><span lang="en">Tables with totals</span><span lang="es">Tablas con totales</span></b><small><span lang="en">Rows and columns with a button, and a row that sums each column.</span><span lang="es">Filas y columnas con un botón, y una fila que suma cada columna.</span></small></li>
-      <li data-peek="board"><b><span lang="en">Boards</span><span lang="es">Tableros</span></b><small><span lang="en">A task list turns into columns with cards you drag.</span><span lang="es">Una lista de tareas pasa a ser columnas con tarjetas que arrastrás.</span></small></li>
-      <li data-peek="tpl"><b><span lang="en">Templates</span><span lang="es">Plantillas</span></b><small><span lang="en">26 starting points: meeting notes, project plan, roadmap, budget.</span><span lang="es">26 puntos de partida: notas de reunión, plan de proyecto, hoja de ruta, presupuesto.</span></small></li>
-      <li data-peek="emoji"><b><span lang="en">Emoji</span><span lang="es">Emojis</span></b><small><span lang="en">Type <code>:</code> and pick from the list.</span><span lang="es">Escribís <code>:</code> y elegís de la lista.</span></small></li>
-      <li data-peek="focus"><b><span lang="en">Focus and typewriter modes</span><span lang="es">Modo foco y máquina de escribir</span></b><small><span lang="en">Dim the rest and keep the line at mid height.</span><span lang="es">Atenúa el resto y deja el renglón a media altura.</span></small></li>
-    </ul></div>
-    <div><h3><span lang="en">Finding and linking</span><span lang="es">Encontrar y enlazar</span></h3><ul>
-      <li data-peek="find"><b><span lang="en">Find and replace</span><span lang="es">Buscar y reemplazar</span></b><small><span lang="en">One match or all of them.</span><span lang="es">De a una coincidencia o todas.</span></small></li>
-      <li data-peek="link"><b><span lang="en">Links between notes</span><span lang="es">Enlaces entre notas</span></b><small><span lang="en"><kbd>Ctrl</kbd> <kbd>K</kbd> links to a section or to another file, picked from a list.</span><span lang="es"><kbd>Ctrl</kbd> <kbd>K</kbd> enlaza a una sección o a otro archivo, eligiendo de una lista.</span></small></li>
-      <li><b><span lang="en">Images</span><span lang="es">Imágenes</span></b><small><span lang="en">Pasted or dropped, saved to <code>assets/</code> next to the document.</span><span lang="es">Pegadas o soltadas, se guardan en <code>assets/</code>, al lado del documento.</span></small></li>
-      <li><b><span lang="en">More than Markdown</span><span lang="es">No solo Markdown</span></b><small><span lang="en">Code highlighted, CSV as a table, images as images.</span><span lang="es">Código resaltado, CSV como tabla, imágenes como imágenes.</span></small></li>
-      <li><b><span lang="en">Export</span><span lang="es">Exportar</span></b><small><span lang="en">One HTML file, or PDF through print.</span><span lang="es">Un solo archivo HTML, o PDF desde imprimir.</span></small></li>
-    </ul></div>
-    <div><h3><span lang="en">Anywhere</span><span lang="es">En cualquier lado</span></h3><ul>
-      <li data-peek="phone"><b><span lang="en">On the phone</span><span lang="es">En el celular</span></b><small><span lang="en">The same app in a small screen, with the files in a side panel.</span><span lang="es">La misma app en pantalla chica, con los archivos en un panel lateral.</span></small></li>
-      <li><b><span lang="en">Without a connection</span><span lang="es">Sin conexión</span></b><small><span lang="en">The web app opens offline once you have used it.</span><span lang="es">La app web abre sin conexión una vez que la usaste.</span></small></li>
-      <li><b><span lang="en">Quick notes</span><span lang="es">Notas rápidas</span></b><small><span lang="en">New opens an empty note, saved in the browser or in the folder you chose.</span><span lang="es">Nuevo abre una nota vacía, guardada en el navegador o en la carpeta que elegiste.</span></small></li>
-      <li><b><span lang="en">Read aloud and dictation</span><span lang="es">Leer en voz alta y dictado</span></b><small><span lang="en">Listen to a note, or write by speaking, with formulas and flowcharts by voice.</span><span lang="es">Escuchás una nota, o escribís hablando, con fórmulas y diagramas por voz.</span></small></li>
-      <li><b><span lang="en">Community gallery</span><span lang="es">Galería de la comunidad</span></b><small><span lang="en">Templates, themes and diagram palettes shared by the community, reviewed before they are published.</span><span lang="es">Plantillas, temas y paletas de diagramas que comparte la comunidad, revisadas antes de publicarse.</span></small></li>
-      <li><b><span lang="en">More tools</span><span lang="es">Más herramientas</span></b><small><span lang="en">Present a note as slides, keep a daily note, export to Word and see how your notes link.</span><span lang="es">Presentás una nota como diapositivas, llevás una nota diaria, exportás a Word y ves cómo se enlazan tus notas.</span></small></li>
-      <li><b><span lang="en">Publish a site</span><span lang="es">Publicar un sitio</span></b><small><span lang="en">Turn a folder of notes into a public website, with a menu, search and a theme. One click to update it.</span><span lang="es">Una carpeta de notas se convierte en un sitio web público, con menú, buscador y tema. Un clic para actualizarlo.</span></small></li>
-      <li><b><span lang="en">Reading menu</span><span lang="es">Menú de lectura</span></b><small><span lang="en">Right-click while reading to copy a block or search the folder.</span><span lang="es">Clic derecho leyendo para copiar un bloque o buscar en la carpeta.</span></small></li>
-      <li><b><span lang="en">English and Spanish</span><span lang="es">Inglés y español</span></b><small><span lang="en">Switch in Settings.</span><span lang="es">Se cambia en Ajustes.</span></small></li>
-    </ul></div>
-  </div>
-</div></section>
-
-<section class="band" id="cloud"><div class="wrap">
-  <h2><span lang="en">Cloud notes, sharing and a connection for your AI</span><span lang="es">Notas en la nube, compartir y una conexión para tu IA</span><span class="soon"><span lang="en">Soon</span><span lang="es">Pronto</span></span></h2>
-  <p class="sub"><span lang="en">Nothing goes to the cloud until you send it.</span><span lang="es">Nada va a la nube hasta que lo mandás.</span></p>
-  <div class="cloud">
-    <figure>
-      <video class="clip" muted loop playsinline preload="none" poster="docs/clips/live.jpg" width="880" height="550" aria-label="A live session: two people write in the same note, each on a block"><source src="docs/clips/live.mp4" type="video/mp4"><source src="docs/clips/live.webm" type="video/webm"></video>
-      <figcaption><span lang="en">A live session: two people on the same note.</span><span lang="es">Una sesión en vivo: dos personas en la misma nota.</span></figcaption>
-    </figure>
-    <ul class="points">
-      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5a4 4 0 0 1-.6-7.95 5.5 5.5 0 0 1 10.7-1.1A4.5 4.5 0 0 1 17 18.5z"/></svg></span><div><h3><span lang="en">The same notes on every device</span><span lang="es">Las mismas notas en cada dispositivo</span></h3><p><span lang="en">Sign in with a six-digit code sent to your email. One click sends a note to the cloud, and it saves itself from then on.</span><span lang="es">Entrás con un código de seis dígitos que llega a tu correo. Con un clic mandás una nota a la nube, y desde ahí se guarda sola.</span></p></div></li>
-      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8.5" cy="9" r="3"/><path d="M3 19c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5"/><circle cx="16.8" cy="9.8" r="2.3"/><path d="M16.5 14.6c2.3 0 4 1.4 4.5 3.9"/></svg></span><div><h3><span lang="en">Live sessions by link</span><span lang="es">Sesiones en vivo por enlace</span></h3><p><span lang="en">Open a session on a note and send the link. Guests join from the browser with a name, without an account, and everyone sees who is on each block.</span><span lang="es">Abrís una sesión sobre una nota y mandás el enlace. Quien lo tiene entra desde el navegador con un nombre, sin cuenta, y todos ven quién está en cada bloque.</span></p></div></li>
-      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></span><div><h3><span lang="en">Share a note or a folder</span><span lang="es">Compartí una nota o una carpeta</span></h3><p><span lang="en">With another account, to read or to edit. Or a read-only public link with a password.</span><span lang="es">Con otra cuenta, para ver o para editar. O un enlace público de solo lectura con contraseña.</span></p></div></li>
-      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg></span><div><h3><span lang="en">Protected folders</span><span lang="es">Carpetas protegidas</span></h3><p><span lang="en">Their notes are encrypted in your browser with your password, and the server stores text it cannot read.</span><span lang="es">Sus notas se cifran en tu navegador con tu contraseña, y el servidor guarda texto que no puede leer.</span></p></div></li>
-      <li><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l.8 12h8.4L17 7"/></svg></span><div><h3><span lang="en">Trash for 30 days</span><span lang="es">Papelera de 30 días</span></h3><p><span lang="en">A deleted note waits there, and you can restore it.</span><span lang="es">Una nota eliminada espera ahí, y la podés restaurar.</span></p></div></li>
-    </ul>
-  </div>
-  <div class="ai">
-    <div>
-      <h3><span lang="en">Let your AI read and write them</span><span lang="es">Que tu IA las lea y las escriba</span></h3>
-      <p class="muted"><span lang="en">An MCP endpoint for Claude and any other MCP client: it lists, reads, writes, moves and searches your notes, and hands you a link to open what it wrote. Copy the setup message from Settings and paste it into your AI.</span><span lang="es">Un servidor MCP para Claude y cualquier otro cliente MCP: lista, lee, escribe, mueve y busca en tus notas, y te deja el enlace para abrir lo que escribió. Copiás el mensaje de configuración desde Ajustes y lo pegás en tu IA.</span></p>
-      <ul>
-        <li><span lang="en">A comment on a passage tells the AI what to change.</span><span lang="es">Un comentario sobre un párrafo le dice a la IA qué cambiar.</span></li>
-        <li><span lang="en">A token can be limited to one folder.</span><span lang="es">Un token puede quedar limitado a una carpeta.</span></li>
-        <li><span lang="en">A protected folder opens to the AI for the time you set.</span><span lang="es">Una carpeta protegida se le abre a la IA por el tiempo que elijas.</span></li>
-      </ul>
-    </div>
-    <div class="term"><div class="bar"><i></i><i></i><i></i></div><pre><i>$</i> claude mcp add --transport http sharpmd \
-    https://sync.sharpmd.app/mcp \
-    --header "Authorization: Bearer mdt_..."
-<s># list_notes  read_note  write_note  append_note
-# search_notes  list_folders  list_comments  resolve_comment</s></pre></div>
-  </div>
-</div></section>
-
 <section class="center" id="plans"><div class="wrap">
   <h2><span lang="en">Plans</span><span lang="es">Planes</span></h2>
+  <p class="lede rule"><span lang="en">What you do on your own, on your device, is free. You pay for what runs on our server to connect you with other people or with your AI.</span><span lang="es">Lo que hacés solo y en tu dispositivo es gratis. Se paga lo que corre en nuestro servidor para conectarte con otras personas o con tu IA.</span></p>
   <div class="plans">
     <div class="plan"><h3><span lang="en">Free</span><span lang="es">Gratis</span></h3><p class="price">USD 0</p><p class="alt"><span lang="en">No account needed</span><span lang="es">Sin cuenta obligatoria</span></p>
       <a class="btn" href="src/app.html" data-plan="free"><span lang="en">Start writing</span><span lang="es">Empezar a escribir</span></a><p class="how"></p>
       <ul class="rows">
+      <li class="grp"><span><span lang="en">On your device</span><span lang="es">En tu dispositivo</span></span></li>
       <li><span><span lang="en">The whole editor</span><span lang="es">Todo el editor</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Files and browser notes</span><span lang="es">Archivos y notas del navegador</span></span><em><span lang="en">No limit</span><span lang="es">Sin límite</span></em></li>
+      <li><span><span lang="en">Dictation, slides, daily note and Word export</span><span lang="es">Dictado, diapositivas, nota diaria y exportar a Word</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li class="grp"><span><span lang="en">On our server</span><span lang="es">En nuestro servidor</span></span></li>
       <li><span><span lang="en">Notes in the cloud</span><span lang="es">Notas en la nube</span></span><em>10</em></li>
       <li><span><span lang="en">Protected folders</span><span lang="es">Carpetas protegidas</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Trash for 30 days</span><span lang="es">Papelera de 30 días</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
@@ -409,57 +535,81 @@
       <li class="no"><span><span lang="en">Live sessions by link</span><span lang="es">Sesiones en vivo por enlace</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
       <li class="no"><span><span lang="en">Publish a site</span><span lang="es">Publicar un sitio</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
       <li class="no"><span><span lang="en">The MCP connection for your AI</span><span lang="es">La conexión MCP para tu IA</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
+      <li class="no"><span><span lang="en">Comments your AI resolves</span><span lang="es">Comentarios que resuelve tu IA</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
+      <li class="no"><span><span lang="en">API, webhooks and inbound addresses</span><span lang="es">API, webhooks y direcciones de entrada</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
       <li class="no"><span><span lang="en">Version history</span><span lang="es">Historial de versiones</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
+      <li class="grp"><span><span lang="en">Appearance</span><span lang="es">Apariencia</span></span></li>
+      <li><span><span lang="en">Built-in themes</span><span lang="es">Temas incluidos</span></span><em>4</em></li>
       <li class="no"><span><span lang="en">Colors, fonts and your own CSS</span><span lang="es">Colores, tipografías y tu propio CSS</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
       <!--TEAM-->
+      <li class="grp"><span><span lang="en">For the team</span><span lang="es">Para el equipo</span></span></li>
       <li class="no"><span><span lang="en">A shared space for the team notes</span><span lang="es">Un espacio compartido para las notas del equipo</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
-      <li class="no"><span><span lang="en">Seats managed by whoever pays</span><span lang="es">Lugares que administra quien paga</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
-      <li class="no"><span><span lang="en">Roles: administrator, editor and reader</span><span lang="es">Papeles: administrador, editor y lector</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
-      <li class="no"><span><span lang="en">Team settings and an activity log</span><span lang="es">Ajustes del equipo y registro de actividad</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
+      <li class="no"><span><span lang="en">Roles: administrator, editor and reader</span><span lang="es">Roles: administrador, editor y lector</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
+      <li class="no"><span><span lang="en">Settings the administrators decide</span><span lang="es">Ajustes que deciden los administradores</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
+      <li class="no"><span><span lang="en">The space protected with one password</span><span lang="es">El espacio protegido con una contraseña</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
+      <li class="no"><span><span lang="en">An activity log of the space</span><span lang="es">Registro de actividad del espacio</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
       <li class="no"><span><span lang="en">Team tokens for an AI or a service</span><span lang="es">Tokens del equipo para una IA o un servicio</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
       <!--/TEAM-->
     </ul></div>
-    <div class="plan paid"><h3><span lang="en">Paid</span><span lang="es">Pago</span></h3><p class="price">USD 3.99 <small><span lang="en">a month</span><span lang="es">por mes</span></small></p><p class="alt"><span lang="en">or USD 39 a year</span><span lang="es">o USD 39 por año</span></p>
+    <div class="plan paid"><h3><span lang="en">Paid</span><span lang="es">Pago</span></h3><p class="price">%%PAID_BIG%% <small>%%PAID_PER%%</small></p><p class="alt">%%PAID_ALT%%</p>
       <a class="btn fill" href="src/app.html#lmd-plans" data-plan="paid"><span lang="en">Get the paid plan</span><span lang="es">Pasar al plan pago</span></a><p class="how"><span lang="en">You sign in and pay inside the app.</span><span lang="es">Entrás a tu cuenta y pagás dentro de la app.</span></p>
       <ul class="rows">
+      <li class="grp"><span><span lang="en">On your device</span><span lang="es">En tu dispositivo</span></span></li>
       <li><span><span lang="en">The whole editor</span><span lang="es">Todo el editor</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Files and browser notes</span><span lang="es">Archivos y notas del navegador</span></span><em><span lang="en">No limit</span><span lang="es">Sin límite</span></em></li>
+      <li><span><span lang="en">Dictation, slides, daily note and Word export</span><span lang="es">Dictado, diapositivas, nota diaria y exportar a Word</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li class="grp"><span><span lang="en">On our server</span><span lang="es">En nuestro servidor</span></span></li>
       <li><span><span lang="en">Notes in the cloud</span><span lang="es">Notas en la nube</span></span><em><span lang="en">No limit</span><span lang="es">Sin límite</span></em></li>
       <li><span><span lang="en">Protected folders</span><span lang="es">Carpetas protegidas</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Trash for 30 days</span><span lang="es">Papelera de 30 días</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Sharing and public links</span><span lang="es">Compartir y enlaces públicos</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Live sessions by link</span><span lang="es">Sesiones en vivo por enlace</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
-      <li><span><span lang="en">Publish a site</span><span lang="es">Publicar un sitio</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span><span lang="en">Publish a site</span><span lang="es">Publicar un sitio</span></span><em><span lang="en">1 site</span><span lang="es">1 sitio</span></em></li>
       <li><span><span lang="en">The MCP connection for your AI</span><span lang="es">La conexión MCP para tu IA</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span><span lang="en">Comments your AI resolves</span><span lang="es">Comentarios que resuelve tu IA</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span><span lang="en">API, webhooks and inbound addresses</span><span lang="es">API, webhooks y direcciones de entrada</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Version history</span><span lang="es">Historial de versiones</span></span><em><span lang="en">30 days</span><span lang="es">30 días</span></em></li>
+      <li class="grp"><span><span lang="en">Appearance</span><span lang="es">Apariencia</span></span></li>
+      <li><span><span lang="en">Built-in themes</span><span lang="es">Temas incluidos</span></span><em>12</em></li>
       <li><span><span lang="en">Colors, fonts and your own CSS</span><span lang="es">Colores, tipografías y tu propio CSS</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <!--TEAM-->
+      <li class="grp"><span><span lang="en">For the team</span><span lang="es">Para el equipo</span></span></li>
       <li class="no"><span><span lang="en">A shared space for the team notes</span><span lang="es">Un espacio compartido para las notas del equipo</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
-      <li class="no"><span><span lang="en">Seats managed by whoever pays</span><span lang="es">Lugares que administra quien paga</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
-      <li class="no"><span><span lang="en">Roles: administrator, editor and reader</span><span lang="es">Papeles: administrador, editor y lector</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
-      <li class="no"><span><span lang="en">Team settings and an activity log</span><span lang="es">Ajustes del equipo y registro de actividad</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
+      <li class="no"><span><span lang="en">Roles: administrator, editor and reader</span><span lang="es">Roles: administrador, editor y lector</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
+      <li class="no"><span><span lang="en">Settings the administrators decide</span><span lang="es">Ajustes que deciden los administradores</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
+      <li class="no"><span><span lang="en">The space protected with one password</span><span lang="es">El espacio protegido con una contraseña</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
+      <li class="no"><span><span lang="en">An activity log of the space</span><span lang="es">Registro de actividad del espacio</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
       <li class="no"><span><span lang="en">Team tokens for an AI or a service</span><span lang="es">Tokens del equipo para una IA o un servicio</span></span><i class="sr"><span lang="en">not included</span><span lang="es">no incluido</span></i></li>
       <!--/TEAM-->
     </ul></div>
     <!--TEAM-->
-    <div class="plan"><h3><span lang="en">Team</span><span lang="es">Equipo</span></h3><p class="price">USD 7.98 <small><span lang="en">a month</span><span lang="es">por mes</span></small></p><p class="alt"><span lang="en">2 people included, USD 3 for each extra one</span><span lang="es">2 personas incluidas, USD 3 por cada una más</span></p>
-      <a class="btn" href="src/app.html#lmd-plans" data-plan="team"><span lang="en">Start a team</span><span lang="es">Armar un equipo</span></a><p class="how"><span lang="en">You sign in and pay inside the app.</span><span lang="es">Entrás a tu cuenta y pagás dentro de la app.</span></p>
+    <div class="plan"><h3><span lang="en">Team</span><span lang="es">Equipo</span></h3><p class="price">%%TEAM_BIG%% <small>%%TEAM_PER%%</small></p><p class="alt">%%TEAM_ALT%%</p>
+      <a class="btn" href="src/app.html#lmd-plans" data-plan="team"><span lang="en">Start a team</span><span lang="es">Armar un equipo</span></a><p class="how">%%TEAM_HOW%%</p>
       <ul class="rows">
+      <li class="grp"><span><span lang="en">On your device</span><span lang="es">En tu dispositivo</span></span></li>
       <li><span><span lang="en">The whole editor</span><span lang="es">Todo el editor</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Files and browser notes</span><span lang="es">Archivos y notas del navegador</span></span><em><span lang="en">No limit</span><span lang="es">Sin límite</span></em></li>
+      <li><span><span lang="en">Dictation, slides, daily note and Word export</span><span lang="es">Dictado, diapositivas, nota diaria y exportar a Word</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li class="grp"><span><span lang="en">On our server</span><span lang="es">En nuestro servidor</span></span></li>
       <li><span><span lang="en">Notes in the cloud</span><span lang="es">Notas en la nube</span></span><em><span lang="en">No limit</span><span lang="es">Sin límite</span></em></li>
       <li><span><span lang="en">Protected folders</span><span lang="es">Carpetas protegidas</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Trash for 30 days</span><span lang="es">Papelera de 30 días</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Sharing and public links</span><span lang="es">Compartir y enlaces públicos</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Live sessions by link</span><span lang="es">Sesiones en vivo por enlace</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
-      <li><span><span lang="en">Publish a site</span><span lang="es">Publicar un sitio</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span><span lang="en">Publish a site</span><span lang="es">Publicar un sitio</span></span><em><span lang="en">Yours and the team's</span><span lang="es">El tuyo y el del equipo</span></em></li>
       <li><span><span lang="en">The MCP connection for your AI</span><span lang="es">La conexión MCP para tu IA</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
-      <li><span><span lang="en">Version history</span><span lang="es">Historial de versiones</span></span><em><span lang="en">1 year for team notes</span><span lang="es">1 año en las notas del equipo</span></em></li>
+      <li><span><span lang="en">Comments your AI resolves</span><span lang="es">Comentarios que resuelve tu IA</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span><span lang="en">API, webhooks and inbound addresses</span><span lang="es">API, webhooks y direcciones de entrada</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span><span lang="en">Version history</span><span lang="es">Historial de versiones</span></span><em><span lang="en">Up to 1 year</span><span lang="es">Hasta 1 año</span></em></li>
+      <li class="grp"><span><span lang="en">Appearance</span><span lang="es">Apariencia</span></span></li>
+      <li><span><span lang="en">Built-in themes</span><span lang="es">Temas incluidos</span></span><em>12</em></li>
       <li><span><span lang="en">Colors, fonts and your own CSS</span><span lang="es">Colores, tipografías y tu propio CSS</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li class="grp"><span><span lang="en">For the team</span><span lang="es">Para el equipo</span></span></li>
       <li><span><span lang="en">A shared space for the team notes</span><span lang="es">Un espacio compartido para las notas del equipo</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
-      <li><span><span lang="en">Seats managed by whoever pays</span><span lang="es">Lugares que administra quien paga</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
-      <li><span><span lang="en">Roles: administrator, editor and reader</span><span lang="es">Papeles: administrador, editor y lector</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
-      <li><span><span lang="en">Team settings and an activity log</span><span lang="es">Ajustes del equipo y registro de actividad</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span><span lang="en">Roles: administrator, editor and reader</span><span lang="es">Roles: administrador, editor y lector</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span><span lang="en">Settings the administrators decide</span><span lang="es">Ajustes que deciden los administradores</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span><span lang="en">The space protected with one password</span><span lang="es">El espacio protegido con una contraseña</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span><span lang="en">An activity log of the space</span><span lang="es">Registro de actividad del espacio</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Team tokens for an AI or a service</span><span lang="es">Tokens del equipo para una IA o un servicio</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
     </ul></div>
     <!--/TEAM-->
@@ -473,7 +623,17 @@
     <div><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.5 9.5h17M7 7.3h.01M9.5 7.3h.01"/></svg></span><h3><span lang="en">The web app</span><span lang="es">La app web</span></h3><p><span lang="en">Nothing to install. Chrome, Edge and Brave open folders and save in place. Firefox and Safari open one file at a time and saving downloads a copy.</span><span lang="es">Nada que instalar. Chrome, Edge y Brave abren carpetas y guardan en el lugar. Firefox y Safari abren de a un archivo y al guardar descargan una copia.</span></p><a href="src/app.html"><span lang="en">Open the app</span><span lang="es">Abrir la app</span></a></div>
     <div><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 4.5h2a1.75 1.75 0 1 1 3.5 0h2A1.5 1.5 0 0 1 18.5 6v2a1.75 1.75 0 1 0 0 3.5v2a1.5 1.5 0 0 1-1.5 1.5h-2a1.75 1.75 0 1 0-3.5 0h-2A1.5 1.5 0 0 1 8 13.5v-2a1.75 1.75 0 1 1 0-3.5V6a1.5 1.5 0 0 1 1.5-1.5z" transform="translate(-1.2 2.5)"/></svg></span><h3><span lang="en">The extension</span><span lang="es">La extensión</span></h3><p><span lang="en">Works without a connection. Set Chrome as the default app for <code>.md</code> files and a double-click opens them rendered.</span><span lang="es">Funciona sin conexión. Ponés Chrome como programa por defecto para los <code>.md</code> y con doble clic se abren ya formateados.</span></p><a href="https://github.com/MR-Axel/sharpmd#install"><span lang="en">Get the extension</span><span lang="es">Instalar la extensión</span></a></div>
     <div><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2.2"/><path d="M11 18h2"/></svg></span><h3><span lang="en">On the phone</span><span lang="es">En el celular</span></h3><p><span lang="en">The web app fits a small screen and installs from the browser. The Android app is that same app in a package, with the same notes and the same account.</span><span lang="es">La app web entra en pantalla chica y se instala desde el navegador. La app de Android es esa misma app empaquetada, con las mismas notas y la misma cuenta.</span></p><a href="src/app.html"><span lang="en">Open it on your phone</span><span lang="es">Abrirla en el celular</span></a></div>
-    <div><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/><path d="M7.5 7.5h.01M7.5 16.5h.01M11 7.5h5M11 16.5h5"/></svg></span><h3><span lang="en">The sync server</span><span lang="es">El servidor de sincronización</span></h3><p><span lang="en">What cloud notes and the AI connection run on: one Node file with SQLite, under AGPL. Run your own and point the app at it in Settings.</span><span lang="es">Sobre esto corren las notas en la nube y la conexión con la IA: un archivo de Node con SQLite, con licencia AGPL. Levantás el tuyo y lo cargás en Ajustes.</span></p><a href="https://github.com/MR-Axel/sharpmd/tree/main/server"><span lang="en">Server source</span><span lang="es">Código del servidor</span></a></div>
+    <div><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/><path d="M7.5 7.5h.01M7.5 16.5h.01M11 7.5h5M11 16.5h5"/></svg></span><h3><span lang="en">The sync server</span><span lang="es">El servidor de sincronización</span></h3><p><span lang="en">What the cloud notes, the AI connection and the automations run on: one Node file with SQLite, under AGPL.</span><span lang="es">Sobre esto corren las notas en la nube, la conexión con la IA y las automatizaciones: un archivo de Node con SQLite, con licencia AGPL.</span></p><a href="https://github.com/MR-Axel/sharpmd/tree/main/server"><span lang="en">Server source</span><span lang="es">Código del servidor</span></a></div>
+  </div>
+  <div class="two host">
+    <div>
+      <h3><span lang="en">On sharpmd.app it is already running</span><span lang="es">En sharpmd.app ya está andando</span></h3>
+      <p><span lang="en">We run the accounts, the sign-in mail, the backups, the updates and the MCP endpoint over HTTPS. You sign in and paste one message into your AI.</span><span lang="es">Nosotros mantenemos las cuentas, el correo de ingreso, los respaldos, las actualizaciones y la conexión MCP con HTTPS. Vos entrás y pegás un mensaje en tu IA.</span></p>
+    </div>
+    <div>
+      <h3><span lang="en">On your own server it is the same code</span><span lang="es">En tu servidor es el mismo código</span></h3>
+      <p><span lang="en">You set up the domain with HTTPS, a mailer for the sign-in codes, the encryption key, the backups and each update, and then type its address in Settings. The steps are in the <a href="https://github.com/MR-Axel/sharpmd/blob/main/server/README.md">server README</a>.</span><span lang="es">Configurás el dominio con HTTPS, un servicio de correo para los códigos de ingreso, la llave de cifrado, los respaldos y cada actualización, y después cargás su dirección en Ajustes. Los pasos están en el <a href="https://github.com/MR-Axel/sharpmd/blob/main/server/README.md">README del servidor</a>.</span></p>
+    </div>
   </div>
   <p class="note"><span lang="en">With the extension installed, the web app and the extension show the same notes and recent files. Install the web app and Windows offers it in Open with for .md files.</span><span lang="es">Con la extensión instalada, la app web y la extensión muestran las mismas notas y los mismos recientes. Si instalás la app web, Windows la ofrece en Abrir con para los .md.</span></p>
 </div></section>
@@ -484,20 +644,22 @@
     <p class="muted"><span lang="en">Something else? Write to <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>.</span><span lang="es">¿Otra cosa? Escribí a <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>.</span></p>
   </div>
   <div class="faqs">
-    <details class="faq"><summary><span lang="en">Is SharpMD free?</span><span lang="es">¿SharpMD es gratis?</span></summary><p><span lang="en">The editor is free and open source, with no limit on files or on notes kept in the browser. Cloud notes are free up to 10.</span><span lang="es">El editor es gratis y de código abierto, sin límite de archivos ni de notas guardadas en el navegador. La nube es gratis hasta 10 notas.</span></p></details>
-    <details class="faq"><summary><span lang="en">How do I open a .md file with a double-click?</span><span lang="es">¿Cómo abro un .md con doble clic?</span></summary><p><span lang="en">Install the extension, turn on "Allow access to file URLs" in its details, and set Chrome as the default app for <code>.md</code> files.</span><span lang="es">Instalás la extensión, activás "Permitir acceso a URLs de archivo" en sus detalles, y ponés Chrome como programa por defecto para los <code>.md</code>.</span></p></details>
-    <details class="faq"><summary><span lang="en">Which Markdown does it support?</span><span lang="es">¿Qué Markdown soporta?</span></summary><p><span lang="en">GitHub Flavored Markdown, plus KaTeX math, Mermaid and Graphviz diagrams, footnotes, task lists, callouts, definition lists and YAML front matter.</span><span lang="es">GitHub Flavored Markdown, más matemática con KaTeX, diagramas Mermaid y Graphviz, notas al pie, listas de tareas, avisos, listas de definición y cabecera YAML.</span></p></details>
-    <details class="faq"><summary><span lang="en">Does it work without a connection?</span><span lang="es">¿Funciona sin conexión?</span></summary><p><span lang="en">Yes. The extension always does, and the web app does once you have opened it. Cloud notes you have already opened are there too, and what you write uploads when the connection is back.</span><span lang="es">Sí. La extensión siempre, y la app web una vez que la abriste. Las notas de la nube que ya abriste también están, y lo que escribís se sube cuando vuelve.</span></p></details>
-    <details class="faq"><summary><span lang="en">Can several people edit a note at once?</span><span lang="es">¿Pueden editar varios una nota a la vez?</span></summary><p><span lang="en">Open a live session on a cloud note and send the link. Whoever has it joins from the browser with a name, without an account, and everyone sees who is on each block as they write. You end the session when you want, or make a new link to leave the old one out.</span><span lang="es">Abrís una sesión en vivo sobre una nota de la nube y mandás el enlace. Quien lo tiene entra desde el navegador con un nombre, sin cuenta, y todos ven quién está en cada bloque mientras escriben. La terminás cuando querés, o armás un enlace nuevo para dejar afuera al anterior.</span></p></details>
-    <details class="faq"><summary><span lang="en">Can the server read my notes?</span><span lang="es">¿El servidor puede leer mis notas?</span></summary><p><span lang="en">Cloud notes are stored encrypted on the server, which holds the key so it can share them and serve your AI. A folder you protect with a password is different: it is encrypted in your browser and nobody else can read it. To let your AI in, you unlock that folder for a set time. If you lose the password and the backup key, those notes cannot be recovered.</span><span lang="es">Las notas de la nube se guardan cifradas en el servidor, que tiene la llave para poder compartirlas y dárselas a tu IA. Una carpeta que protegés con contraseña es distinta: se cifra en tu navegador y nadie más puede leerla. Para dejar entrar a tu IA, desbloqueás esa carpeta por un tiempo. Si perdés la contraseña y la clave de respaldo, esas notas no se pueden recuperar.</span></p></details>
-    <details class="faq"><summary><span lang="en">What happens to a cloud note I delete?</span><span lang="es">¿Qué pasa con una nota de la nube que elimino?</span></summary><p><span lang="en">It stays in the trash for 30 days and you can restore it. While it is there it is not searched, shared or reachable by your AI.</span><span lang="es">Queda 30 días en la papelera y la podés restaurar. Mientras está ahí no aparece en las búsquedas, no se comparte y tu IA no llega a ella.</span></p></details>
+    <details class="faq"><summary><span lang="en">What is free and what is paid?</span><span lang="es">¿Qué es gratis y qué se paga?</span></summary><p><span lang="en">The editor is free and open source, with no limit on files or on notes kept in the browser, and 10 notes in the cloud. The paid plan, %%PAID_LINE%%, covers what runs on our server: unlimited cloud notes, sharing, live sessions, a published site, the connection for your AI, the API and webhooks, and version history.</span><span lang="es">El editor es gratis y de código abierto, sin límite de archivos ni de notas guardadas en el navegador, y con 10 notas en la nube. El plan pago, %%PAID_LINE%%, cubre lo que corre en nuestro servidor: notas en la nube sin límite, compartir, sesiones en vivo, un sitio publicado, la conexión para tu IA, la API y los webhooks, y el historial de versiones.</span></p></details>
+    <details class="faq"><summary><span lang="en">Does SharpMD come with its own AI?</span><span lang="es">¿SharpMD trae una IA propia?</span></summary><p><span lang="en">No. You connect the one you already use: Claude, Codex or any other MCP client. SharpMD gives it your notes and the tools to read and write them.</span><span lang="es">No. Conectás la que ya usás: Claude, Codex o cualquier otro cliente MCP. SharpMD le da tus notas y las herramientas para leerlas y escribirlas.</span></p></details>
     <details class="faq"><summary><span lang="en">How does my AI get to my notes?</span><span lang="es">¿Cómo llega mi IA a mis notas?</span></summary><p><span lang="en">You create a token in the app and add SharpMD as an MCP server in Claude or another client. It only sees the notes you keep in the cloud, or one folder if you limit the token.</span><span lang="es">Creás un token en la app y agregás SharpMD como servidor MCP en Claude u otro cliente. Solo ve las notas que tenés en la nube, o una sola carpeta si limitás el token.</span></p></details>
+    <details class="faq"><summary><span lang="en">How is it different from a local editor with plugins?</span><span lang="es">¿En qué se diferencia de un editor local con complementos?</span></summary><p><span lang="en">A local editor keeps the notes on one machine. To share them or reach them from an AI you add plugins and a sync service, and each person repeats the setup. SharpMD opens in the browser with the sharing, the MCP endpoint and the API already running. A file on your disk still opens without being uploaded.</span><span lang="es">Un editor local guarda las notas en una sola máquina. Para compartirlas o llegar a ellas desde una IA sumás complementos y un servicio de sincronización, y cada persona repite la instalación. SharpMD abre en el navegador con el compartir, la conexión MCP y la API ya andando. Un archivo de tu disco igual abre sin subirse.</span></p></details>
+    <details class="faq"><summary><span lang="en">Can the server read my notes?</span><span lang="es">¿El servidor puede leer mis notas?</span></summary><p><span lang="en">Cloud notes are stored encrypted on the server, which holds the key so it can share them and serve your AI. A folder you protect with a password is different: it is encrypted in your browser and nobody else can read it. To let your AI in, you unlock that folder for a set time. If you lose the password and the backup key, those notes cannot be recovered.</span><span lang="es">Las notas de la nube se guardan cifradas en el servidor, que tiene la llave para poder compartirlas y dárselas a tu IA. Una carpeta que protegés con contraseña es distinta: se cifra en tu navegador y nadie más puede leerla. Para dejar entrar a tu IA, desbloqueás esa carpeta por un tiempo. Si perdés la contraseña y la clave de respaldo, esas notas no se pueden recuperar.</span></p></details>
+    <details class="faq"><summary><span lang="en">Can several people edit a note at once?</span><span lang="es">¿Pueden editar varios una nota a la vez?</span></summary><p><span lang="en">Open a live session on a cloud note and send the link. Up to 12 people write at once. You end the session when you want, or make a new link to leave the old one out.</span><span lang="es">Abrís una sesión en vivo sobre una nota de la nube y mandás el enlace. Escriben hasta 12 personas a la vez. La terminás cuando querés, o armás un enlace nuevo para dejar afuera al anterior.</span></p></details>
+    <details class="faq"><summary><span lang="en">What happens to a cloud note I delete?</span><span lang="es">¿Qué pasa con una nota de la nube que elimino?</span></summary><p><span lang="en">It stays in the trash for 30 days and you can restore it. While it is there it is not searched, shared or reachable by your AI.</span><span lang="es">Queda 30 días en la papelera y la podés restaurar. Mientras está ahí no aparece en las búsquedas, no se comparte y tu IA no llega a ella.</span></p></details>
+    <details class="faq"><summary><span lang="en">Does it work without a connection?</span><span lang="es">¿Funciona sin conexión?</span></summary><p><span lang="en">Yes. The extension always does, and the web app does once you have opened it. Cloud notes you have already opened are there too, and what you write uploads when the connection is back.</span><span lang="es">Sí. La extensión siempre, y la app web una vez que la abriste. Las notas de la nube que ya abriste también están, y lo que escribís se sube cuando vuelve.</span></p></details>
+    <details class="faq"><summary><span lang="en">Which Markdown does it support?</span><span lang="es">¿Qué Markdown soporta?</span></summary><p><span lang="en">GitHub Flavored Markdown, plus KaTeX math, Mermaid and Graphviz diagrams, footnotes, task lists, callouts, definition lists and YAML front matter.</span><span lang="es">GitHub Flavored Markdown, más matemática con KaTeX, diagramas Mermaid y Graphviz, notas al pie, listas de tareas, avisos, listas de definición y cabecera YAML.</span></p></details>
+    <details class="faq"><summary><span lang="en">How do I open a .md file with a double-click?</span><span lang="es">¿Cómo abro un .md con doble clic?</span></summary><p><span lang="en">Install the extension, turn on "Allow access to file URLs" in its details, and set Chrome as the default app for <code>.md</code> files.</span><span lang="es">Instalás la extensión, activás "Permitir acceso a URLs de archivo" en sus detalles, y ponés Chrome como programa por defecto para los <code>.md</code>.</span></p></details>
   </div>
 </div></section>
 
 <section class="band last"><div class="wrap">
-  <h2><span lang="en">Your files are read in your browser.</span><span lang="es">Tus archivos se leen en tu navegador.</span></h2>
-  <p><span lang="en">No analytics. A note reaches the sync server only when you send it to the cloud. <a href="privacy.html">Privacy</a> has the detail, and the code is on <a href="https://github.com/MR-Axel/sharpmd">GitHub</a>: the app under MIT, the server under AGPL.</span><span lang="es">Sin analítica. Una nota llega al servidor solo cuando la mandás a la nube. El detalle está en <a href="privacy.html">Privacidad</a>, y el código en <a href="https://github.com/MR-Axel/sharpmd">GitHub</a>: la app con licencia MIT, el servidor con AGPL.</span></p>
+  <h2><span lang="en">Open a note and click on a paragraph.</span><span lang="es">Abrí una nota y hacé clic en un párrafo.</span></h2>
+  <p><span lang="en">The editor asks for no account. The cloud, the connection for your AI and the automations start when you sign in.</span><span lang="es">El editor no pide cuenta. La nube, la conexión para tu IA y las automatizaciones empiezan cuando entrás.</span></p>
   <div class="cta"><a class="btn fill" href="src/app.html"><span lang="en">Open the app</span><span lang="es">Abrir la app</span></a><a class="btn" href="https://ko-fi.com/surlabs" target="_blank" rel="noopener noreferrer"><span lang="en">Buy me a coffee</span><span lang="es">Invitame un café</span></a></div>
 </div></section>
 </main>
@@ -527,6 +689,11 @@
   var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Los clips se cargan y arrancan al entrar en pantalla, y se frenan al salir. Con movimiento reducido queda el póster.
   var clips = [].slice.call(document.querySelectorAll('video.clip'));
+  // El póster de los clips de más abajo se pide recién cuando se acercan a la pantalla: la primera carga no los paga.
+  var late = clips.filter(function (v) { return v.hasAttribute('data-poster'); });
+  function dress(v) { if (!v.getAttribute('poster')) v.setAttribute('poster', v.getAttribute('data-poster')); }
+  if ('IntersectionObserver' in window) { var near = new IntersectionObserver(function (items) { items.forEach(function (it) { if (it.isIntersecting) { dress(it.target); near.unobserve(it.target); } }); }, { rootMargin: '300px 0px' }); late.forEach(function (v) { near.observe(v); }); }
+  else late.forEach(dress);
   if (!still && 'IntersectionObserver' in window) {
     var io = new IntersectionObserver(function (items) {
       items.forEach(function (it) {
@@ -536,6 +703,26 @@
     }, { threshold: 0.35 });
     clips.forEach(function (v) { io.observe(v); });
   }
+  // Las listas que eligen lo que se ve al lado: el ítem elegido muestra su visual. Si nadie elige, avanza sola mientras está
+  // a la vista; se frena al pasar el cursor, enfocar o tocar, y con movimiento reducido. En pantalla angosta no hace falta:
+  // cada ítem ya tiene su visual debajo.
+  var wide = window.matchMedia ? matchMedia('(min-width: 861px)') : { matches: true };
+  [].forEach.call(document.querySelectorAll('.pick'), function (pk) {
+    var items = [].slice.call(pk.querySelectorAll('.opts > li')), cur = 0, timer = 0, free = !still;
+    function show(i) {
+      cur = i;
+      items.forEach(function (li, k) { li.classList.toggle('on', k === i); var b = li.querySelector('h3 button'); if (b) b.setAttribute('aria-pressed', k === i ? 'true' : 'false'); });
+      // la imagen del que sigue se va bajando, para que el cambio no muestre un hueco
+      var img = items[(i + 1) % items.length].querySelector('img[loading=lazy]'); if (img && wide.matches) img.loading = 'eager';
+    }
+    function run(on) { clearInterval(timer); timer = 0; pk.classList.toggle('auto', !!on); if (on) timer = setInterval(function () { show((cur + 1) % items.length); }, 6000); }
+    items.forEach(function (li, i) {
+      function choose() { free = false; run(false); if (i !== cur) show(i); }
+      li.addEventListener('pointerenter', function (e) { if (e.pointerType === 'mouse' && wide.matches) choose(); });
+      li.addEventListener('focusin', choose); li.addEventListener('click', choose);
+    });
+    if ('IntersectionObserver' in window) new IntersectionObserver(function (e) { if (e[0].isIntersecting && !pk.seen) { pk.seen = 1; show(cur); } run(free && wide.matches && e[0].isIntersecting); }, { threshold: 0.35 }).observe(pk);
+  });
   // La vista previa de "También trae" sigue al cursor. Con el dedo no hay cursor: no aparece.
   var peek = document.querySelector('.peek');
   if (!peek || !window.matchMedia || !matchMedia('(hover: hover) and (pointer: fine)').matches) return;

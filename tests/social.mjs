@@ -4,7 +4,7 @@
 import { chromium } from 'playwright-core';
 import fs from 'fs'; import path from 'path'; import { fileURLToPath, pathToFileURL } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const out = path.join(root, 'docs', 'social-card-2.png');
+const out = path.join(root, 'docs', 'social-card-3.png');
 const font = pathToFileURL(path.join(root, 'vendor/fonts/inter.woff2')).href;
 const html = `<!doctype html><meta charset="utf-8"><style>
   @font-face { font-family: "Inter"; font-weight: 100 900; src: url("${font}") format("woff2"); }
@@ -21,16 +21,17 @@ const html = `<!doctype html><meta charset="utf-8"><style>
   .app h1 { margin: 0 0 22px; font-size: 40px; letter-spacing: -0.03em; font-weight: 720; }
   .app .p { height: 14px; border-radius: 7px; background: #2a2e37; margin-bottom: 16px; }
   .app .edit { margin: 26px -14px 30px; padding: 16px 14px; border: 2px solid #bef264; border-radius: 10px; background: rgba(190, 242, 100, .07); font-size: 25px; white-space: nowrap; }
+  .app .edit small { display: block; margin-bottom: 6px; color: #bef264; font-size: 16px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
   .app .edit i { display: inline-block; width: 3px; height: 30px; margin-left: 3px; vertical-align: -6px; background: #e8eaee; border-radius: 2px; }
   .app .t { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; } .app .t i { width: 22px; height: 22px; border-radius: 6px; border: 2px solid #4a505c; flex: none; } .app .t.on i { background: #bef264; border-color: #bef264; } .app .t .p { margin: 0; flex: 1; }
 </style><body>
   <div class="glow"></div>
   <div class="app"><h1>Launch plan</h1><div class="p" style="width:92%"></div><div class="p" style="width:64%"></div>
-    <div class="edit">We go live on <b>Monday</b><i></i></div>
+    <div class="edit"><small>Written by your AI</small>Checkout passes the test<i></i></div>
     <div class="t on"><i></i><div class="p" style="max-width:250px"></div></div><div class="t on"><i></i><div class="p" style="max-width:310px"></div></div><div class="t"><i></i><div class="p" style="max-width:210px"></div></div><div class="t"><i></i><div class="p" style="max-width:280px"></div></div></div>
   <div class="text">
     <div class="brand"><svg viewBox="8 12 50 40"><path d="M27 16 22 48M41 16 36 48M13 27h30M11 38h30" fill="none" stroke="#bef264" stroke-width="5.5" stroke-linecap="round"/><rect x="48" y="15" width="6" height="34" rx="3" fill="#e8eaee"/></svg>SharpMD</div>
-    <div class="tag">Markdown editor for your <b>files</b>, your <b>cloud</b> and your <b>AI</b></div>
+    <div class="tag">Markdown notes your <b>AI</b> writes and your <b>team</b> reads</div>
   </div>
 </body>`;
 const tmp = path.join(root, 'docs', '_social.html'); fs.writeFileSync(tmp, html);
