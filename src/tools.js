@@ -146,4 +146,8 @@
     icon: svg('<path d="M6.500 3.500h8l4 4v13h-12z"/><path d="M14.500 3.500v4h4M8.800 11.500l1.300 5.500 1.900-4.200 1.900 4.200 1.300-5.500"/>') });
   register({ id: 'linkmap', name: 'Mapa de enlaces', about: 'Qué notas enlazan con cuáles, y cuáles llegan a la nota abierta.', defaultOn: false, lazy: 'linkmap', module: () => LMD.linkmap,
     icon: svg('<circle cx="6" cy="7" r="2.300"/><circle cx="18" cy="6" r="2.300"/><circle cx="12" cy="17.500" r="2.300"/><path d="M8.200 6.800l7.500-.600M7.100 9l3.800 6.500M16.900 8l-3.800 7.500"/>') });
+  // La IA va con la clave de cada persona: las llamadas salen de acá derecho a su proveedor (aikey.js).
+  register({ id: 'assistant', name: 'Asistente de IA (con tu clave)', about: 'Mejora, traduce, genera y responde sobre la nota con tu propia clave de Claude, OpenAI o un servidor compatible.', defaultOn: false, lazy: 'assistant', module: () => LMD.assistant,
+    available: () => (window.crypto && window.crypto.subtle && window.indexedDB ? '' : T('Acá no se puede guardar la clave de forma segura.')),
+    icon: svg('<path d="M12 3.500l1.900 5.100 5.100 1.900-5.100 1.900L12 17.500l-1.900-5.100L5 10.500l5.100-1.900z"/><path d="M18.500 15.500l.800 2.200 2.200.800-2.200.800-.800 2.200-.800-2.200-2.200-.800 2.200-.800z"/>') });
 })();

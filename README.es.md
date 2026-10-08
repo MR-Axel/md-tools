@@ -50,6 +50,7 @@ Gratis y de código abierto. Sin seguimiento: los archivos se leen en tu navegad
 - **Nota diaria** (Ajustes → Herramientas): un botón en el inicio y en el explorador abre la nota de hoy y, si no existe, la crea desde una plantilla, en el navegador, la nube o una carpeta del disco. Un calendario del mes marca los días que tienen nota, y cada nota diaria enlaza al día anterior y al siguiente. Funciona sin conexión. Atajo: Alt+Shift+H.
 - **Exportar a Word** (Ajustes → Herramientas): suma Word (.docx) al menú Exportar. El archivo se arma en el navegador: títulos con estilos que alimentan el índice automático, listas, tareas con casilla, tablas, código, notas al pie, imágenes incrustadas y diagramas como imagen. Las fórmulas van como texto LaTeX.
 - **Mapa de enlaces** (Ajustes → Herramientas): un gráfico de qué notas enlazan con cuáles, por enlaces relativos y `[[wikilinks]]`: se arrastra, se acerca, se filtra por carpeta, se busca, y un clic abre la nota. Bajo la nota abierta, las notas que enlazan a ella. Lee solo lo que ya está en el dispositivo y no envía nada. Atajo: Alt+Shift+G.
+- **Asistente de IA (con tu clave)** (Ajustes → Herramientas, apagado por defecto): conectás tu propia clave de Claude (Anthropic), OpenAI o cualquier servidor compatible con OpenAI (OpenRouter, o Ollama y LM Studio en tu máquina). Sobre lo elegido o un bloque: mejorar la redacción, corregir ortografía y gramática, acortar, expandir, cambiar el tono, traducir, explicar o pedir otra cosa. El resultado llega como propuesta junto al original, con las diferencias marcadas, y elegís: reemplazar, insertar debajo, copiar o descartar. "Escribir con IA" genera Markdown en ese punto, con atajos para una tabla, una lista de tareas, un diagrama Mermaid (se valida con el parser y se reintenta una vez si falla), una fórmula LaTeX, un resumen, los puntos clave y las tareas de la nota. Un panel lateral responde preguntas sobre la nota abierta, y un comentario para la IA suma "Resolver con mi IA". Las llamadas salen de tu navegador derecho a tu proveedor: SharpMD nunca ve la clave ni el texto. La clave queda solo en ese dispositivo, cifrada con una llave que el navegador no deja exportar. Atajos: Alt+Shift+A y Alt+Shift+Q.
 - **Archivos desde el árbol** (página de SharpMD): archivo nuevo, renombrar y eliminar con clic derecho. Los archivos y las carpetas enteras se mueven arrastrándolos, y un archivo soltado adentro de la nota que estás editando queda como enlace (o como imagen) en ese punto.
 - **Pegar imágenes** (página de SharpMD): una imagen del portapapeles se guarda en `assets/`, al lado del documento, y queda insertada.
 - **No solo Markdown** (página de SharpMD): los archivos de código y configuración se ven resaltados y se editan como texto, los CSV y TSV se ven como tabla, y las imágenes como imágenes.
@@ -85,6 +86,8 @@ Hacé clic en el ícono de la extensión: abre SharpMD, donde empezás una nota 
 
 Con la extensión instalada, la app web y la extensión comparten un solo depósito: las mismas notas del navegador y la misma lista de archivos y carpetas abiertos de los dos lados. Una carpeta abierta de un lado figura del otro como "Reconectar": se elige una vez ahí y queda. La sesión de la nube no se comparte: cada lado entra por su cuenta.
 
+**Un enlace que abre un archivo local.** `https://sharpmd.app/src/app.html#open=` seguido de la dirección `file://` codificada abre ese `.md` de tu disco con la extensión, después de que confirmás. La ruta queda en el fragmento, así que no sale del navegador. Se copia desde el menú Copiar o con clic derecho sobre un archivo del explorador.
+
 Abrir un `.md` directo en el navegador sigue funcionando igual que antes. La pestaña Carpeta de la barra lateral tiene un botón que lleva a esta página.
 
 ## Sin instalar nada
@@ -116,6 +119,8 @@ En una Mac, Ctrl es ⌘ y Alt es ⌥ (rehacer es ⇧⌘Z), y la app los muestra 
 | Alt+Shift+P | Modo presentación: empezar y salir (con la herramienta prendida) |
 | Alt+Shift+H | Nota diaria: abrir la nota de hoy (con la herramienta prendida) |
 | Alt+Shift+G | Mapa de enlaces: abrir y cerrar (con la herramienta prendida) |
+| Alt+Shift+A | Asistente de IA: acciones sobre lo elegido o el bloque (con la herramienta prendida) |
+| Alt+Shift+Q | Asistente de IA: abrir y cerrar el panel para preguntar sobre la nota (con la herramienta prendida) |
 | Ctrl+Shift+F | Buscar en el documento |
 
 Se cambian en `chrome://extensions/shortcuts`.
@@ -146,6 +151,8 @@ src/
   daily.js        herramienta: nota diaria, su calendario y los enlaces al día anterior y al siguiente
   docx.js         herramienta: exportar a Word, las partes de OOXML y un zip mínimo
   linkmap.js      herramienta: mapa de enlaces en un canvas y los enlaces a la nota abierta
+  aikey.js        asistente de IA: los proveedores, la clave guardada y las llamadas en streaming (sin interfaz)
+  assistant.js    herramienta: asistente de IA con tu clave (acciones, escribir con IA, el panel, sus opciones)
   home.js         pantalla de inicio de la página propia
   write.js        bloques nuevos, atajos de Markdown y menú de clic derecho
   diagram.js      editor de diagramas con vista previa en vivo

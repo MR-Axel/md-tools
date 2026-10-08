@@ -612,6 +612,13 @@
       "Clic derecho en un .md, Abrir con, Elegir otra aplicación, Chrome, Siempre.": "Right-click a .md file, Open with, Choose another app, Chrome, Always.",
       "El acceso a archivos ya está activado.": "File access is already on.",
       "Detalles de la extensión": "Extension details", "Ayuda": "Help",
+      "¿Abrir este archivo de tu disco?": "Open this file from your disk?", "Copiar la ruta": "Copy path", "Abrir archivo…": "Open file…",
+      "Para abrir archivos del disco desde un enlace hace falta la extensión de Chrome.": "Opening files from your disk by link needs the Chrome extension.",
+      "Falta el acceso a archivos": "File access is off", "Después volvé a abrir el enlace.": "Then open the link again.",
+      "No se encontró el archivo": "File not found", "Puede que se haya movido o que tenga otro nombre.": "It may have been moved or renamed.",
+      "Este enlace no se puede abrir": "This link cannot be opened", "Solo se abren archivos Markdown del disco.": "Only Markdown files from your disk can be opened.",
+      "La extensión no lo pudo abrir. Actualizala o elegí el archivo a mano.": "The extension could not open it. Update it or choose the file by hand.",
+      "Copiar enlace a este archivo": "Copy link to this file",
       "App de Android": "Android app", "La misma app en el teléfono, con tus notas de la nube.": "The same app on your phone, with your cloud notes.", "Conseguir la app": "Get the app",
       "En la computadora": "On a computer",
       "Abrí sharpmd.app en Chrome. Con tu cuenta, las notas de la nube son las mismas.": "Open sharpmd.app in Chrome. With your account, the cloud notes are the same.",
@@ -1495,6 +1502,138 @@
       "Los miembros pueden publicar carpetas del equipo como sitio": "Members can publish team folders as a site", "Preparó un sitio": "Set up a site",
       "Publicó un sitio": "Published a site", "Despublicó un sitio": "Unpublished a site",
       "Publicar sitios": "Publishing sites",
+      // El asistente de IA con clave propia (assistant.js)
+      "Asistente de IA (con tu clave)": "AI assistant (your key)",
+      "Mejora, traduce, genera y responde sobre la nota con tu propia clave de Claude, OpenAI o un servidor compatible.": "Improves, translates, writes and answers about the note with your own key for Claude, OpenAI or a compatible server.",
+      "Acá no se puede guardar la clave de forma segura.": "The key cannot be stored safely here.",
+      "Asistente de IA": "AI assistant",
+      "Resolver con mi IA": "Resolve with my AI",
+      "A qué idioma": "Which language",
+      "Abrir las opciones": "Open the options",
+      "Acortar": "Shorten",
+      "Alemán": "German",
+      "Buscar": "Search",
+      "Cambiar el tono": "Change the tone",
+      "Cercano": "Friendly",
+      "Clave": "Key",
+      "Clave (si el servidor la pide)": "Key (if the server asks for one)",
+      "Cargá la clave de tu proveedor en las opciones del asistente. Queda en este dispositivo.": "Add your provider key in the assistant options. It stays on this device.",
+      "Clave quitada.": "Key removed.",
+      "Compatible con OpenAI": "OpenAI compatible",
+      "Con formato": "With a format",
+      "Contraseña de la clave": "Key password",
+      "Contraseña para la clave": "Password for the key",
+      "Conviene una clave con tope de gasto. Quien use este dispositivo desbloqueado también puede usarla.": "A key with a spending limit is the safer choice. Anyone using this device unlocked can use it too.",
+      "Corregir ortografía y gramática": "Fix spelling and grammar",
+      "Cortado antes de terminar.": "Stopped before the end.",
+      "Directo": "Direct",
+      "El asistente no usa notas de carpetas protegidas. Se cambia en sus opciones.": "The assistant does not use notes from protected folders. You can change that in its options.",
+      "El diagrama no pasó la validación.": "The diagram did not pass validation.",
+      "El modelo no devolvió texto.": "The model returned no text.",
+      "El modelo no respondió este pedido.": "The model declined this request.",
+      "El primer intento no sirvió. Va de nuevo.": "The first attempt was not usable. Trying again.",
+      "El proveedor no aceptó el pedido.": "The provider did not accept the request.",
+      "El proveedor no devolvió modelos. Escribí el id a mano.": "The provider returned no models. Type the id by hand.",
+      "El proveedor no reconoce ese modelo o esa dirección.": "The provider does not recognize that model or that address.",
+      "El proveedor pide esperar: hay muchos pedidos seguidos o se acabó el crédito.": "The provider asks you to wait: too many requests in a row, or the credit ran out.",
+      "El proveedor rechazó la clave. No se guardó.": "The provider rejected the key. It was not saved.",
+      "El proveedor rechazó la clave. Revisala o cargá otra.": "The provider rejected the key. Check it or add another one.",
+      "El proveedor tuvo un error. Probá de nuevo en un rato.": "The provider had an error. Try again in a while.",
+      "El texto es demasiado largo para ese modelo.": "The text is too long for that model.",
+      "Elegí un modelo en las opciones del asistente.": "Choose a model in the assistant options.",
+      "Elegí un texto o un bloque.": "Select some text or a block.",
+      "Elegí uno o escribí su id": "Choose one or type its id",
+      "Enviar esta vez": "Send this time",
+      "Esa clave no tiene la forma esperada.": "That key does not look right.",
+      "Esa dirección no sirve. Tiene que ser https, o http://localhost en esta máquina.": "That address will not work. It has to be https, or http://localhost on this machine.",
+      "Esa nota no se pudo leer.": "That note could not be read.",
+      "Escribir con IA": "Write with AI",
+      "Escribí qué querés que genere.": "Type what you want it to write.",
+      "Escribí un idioma.": "Type a language.",
+      "Ese bloque no se puede cambiar desde acá.": "That block cannot be changed from here.",
+      "Ese texto cambió mientras tanto. La propuesta se puede copiar.": "That text changed in the meantime. You can copy the proposal.",
+      "Español": "Spanish",
+      "Esta nota es de una carpeta protegida": "This note is in a protected folder",
+      "Expandir": "Expand",
+      "Explicar": "Explain",
+      "Falta cargar la clave. Está en Ajustes, en Herramientas.": "The key is missing. It goes in Settings, under Tools.",
+      "Falta conectar tu IA": "Your AI is not connected yet",
+      "Formal": "Formal",
+      "Francés": "French",
+      "Generar": "Generate",
+      "Guardada. Elegí un modelo.": "Saved. Choose a model.",
+      "Guardada. No se pudo traer la lista de modelos: escribí el id a mano.": "Saved. The model list could not be loaded: type the id by hand.",
+      "Guardada. Modelo: {a}.": "Saved. Model: {a}.",
+      "Hace falta la contraseña de la clave.": "The key password is needed.",
+      "Inglés": "English",
+      "Insertado debajo. Ctrl+Z lo deshace": "Inserted below. Ctrl+Z undoes it",
+      "Insertado. Ctrl+Z lo deshace": "Inserted. Ctrl+Z undoes it",
+      "Reemplazado. Ctrl+Z lo deshace": "Replaced. Ctrl+Z undoes it",
+      "Insertar en la nota": "Insert into the note",
+      "Instrucciones propias": "Your own instructions",
+      "Italiano": "Italian",
+      "La clave guardada no se pudo leer. Cargala de nuevo.": "The stored key could not be read. Add it again.",
+      "La clave queda cifrada en este dispositivo y no pasa por SharpMD. Las llamadas van directo a tu proveedor: recibe el texto que le mandes, lo cobra y lo trata según sus condiciones.": "The key is stored encrypted on this device and never goes through SharpMD. Calls go straight to your provider: it receives the text you send, bills it and handles it under its own terms.",
+      "La conversación no se guarda. Lo que quieras conservar, insertalo en la nota.": "The conversation is not saved. Insert into the note whatever you want to keep.",
+      "La fórmula no pasó la validación.": "The formula did not pass validation.",
+      "La nota supera el tope: va el principio.": "The note is over the limit: the beginning is sent.",
+      "La respuesta se cortó por largo.": "The answer was cut off for length.",
+      "Listo. La clave pide contraseña.": "Done. The key now asks for a password.",
+      "Listo. La clave ya no pide contraseña.": "Done. The key no longer asks for a password.",
+      "Lo que llegó no es una lista de tareas.": "What came back is not a task list.",
+      "Lo que llegó no es una tabla.": "What came back is not a table.",
+      "Mejorar la redacción": "Improve the writing",
+      "Modelo": "Model",
+      "Modelo guardado.": "Model saved.",
+      "No coincide con la anterior.": "It does not match the first one.",
+      "No entra: con esa nota se pasa el tope de {a} caracteres.": "It does not fit: with that note the total goes over the {a} character limit.",
+      "No hay otras notas para sumar.": "There are no other notes to add.",
+      "No mandar nunca notas de carpetas protegidas": "Never send notes from protected folders",
+      "No se pudo llegar a ese servidor. Tiene que estar andando y aceptar pedidos desde el navegador (CORS).": "That server could not be reached. It has to be running and accept requests from the browser (CORS).",
+      "No se pudo llegar al proveedor. Revisá la conexión.": "The provider could not be reached. Check your connection.",
+      "Otro idioma": "Another language",
+      "Pedir otra cosa": "Ask for something else",
+      "Pedir una contraseña al abrir": "Ask for a password on open",
+      "Pegá la clave": "Paste the key",
+      "Pegá la clave.": "Paste the key.",
+      "Por ejemplo: escribí en un tono cercano y sin tecnicismos.": "For example: write in a friendly tone, without jargon.",
+      "Portugués": "Portuguese",
+      "Preguntar sobre la nota": "Ask about the note",
+      "Preguntá sobre esta nota": "Ask about this note",
+      "Profesional": "Professional",
+      "Propuesta": "Proposal",
+      "Proveedor": "Provider",
+      "Puntos clave": "Key points",
+      "Quitar la clave": "Remove the key",
+      "Qué querés escribir": "What do you want to write",
+      "Reemplazar": "Replace",
+      "Reintentar": "Try again",
+      "Repetí la contraseña": "Repeat the password",
+      "Resumen de la nota": "Summary of the note",
+      "Se borra de este dispositivo. En tu proveedor sigue activa hasta que la des de baja ahí.": "It is deleted from this device. At your provider it stays active until you revoke it there.",
+      "Se envían unos {a} caracteres (cerca de {b} tokens).": "About {a} characters are sent (around {b} tokens).",
+      "Se pide al abrir la app, antes del primer pedido. No se guarda: si la olvidás, cargá la clave de nuevo.": "It is asked when you open the app, before the first request. It is not stored: if you forget it, add the key again.",
+      "Se suman a las instrucciones fijas. Atajos: {a} abre las acciones, {b} abre el panel.": "They are added to the fixed instructions. Shortcuts: {a} opens the actions, {b} opens the panel.",
+      "Si seguís, este texto sale sin cifrar hacia {a}.": "If you continue, this text leaves unencrypted for {a}.",
+      "Sin conexión. El asistente necesita internet.": "You are offline. The assistant needs a connection.",
+      "Sirve para OpenRouter, Ollama, LM Studio y otros. Tiene que ser https y aceptar pedidos desde el navegador (CORS); en esta máquina también va http://localhost.": "Works with OpenRouter, Ollama, LM Studio and others. It has to be https and accept requests from the browser (CORS); on this machine http://localhost works too.",
+      "Su texto viaja con cada pregunta. Entran hasta {a} caracteres en total.": "Their text is sent with every question. Up to {a} characters fit in total.",
+      "Sumar esta nota como contexto": "Add this note as context",
+      "Sumar notas": "Add notes",
+      "Tareas de esta nota": "Tasks from this note",
+      "Traducir": "Translate",
+      "Traer los modelos del proveedor": "Load the provider's models",
+      "Uso que informa el proveedor: {a} tokens de entrada, {b} de salida.": "Usage reported by the provider: {a} input tokens, {b} output.",
+      "Usá al menos 8 caracteres.": "Use at least 8 characters.",
+      "Vaciar la conversación": "Clear the conversation",
+      "Ver con formato": "Show formatted",
+      "Ver el Markdown": "Show the Markdown",
+      "Ver los cambios": "Show the changes",
+      "{n} modelos disponibles.": "{n} models available.",
+      "sin clave": "no key",
+      "tu proveedor": "your provider",
+      "O a partir de la nota": "Or from the note",
+      "{a} de {b} caracteres": "{a} of {b} characters",
   };
   let current = 'es';
   function setLang(pref) {
@@ -1532,9 +1671,34 @@
   const CLOUD_URL = 'https://sync.sharpmd.app';
   // Dirección pública de la app web: es la que llevan los enlaces para compartir.
   const WEB_APP_URL = 'https://sharpmd.app/src/app.html';
+  // Un archivo Markdown del disco como dirección file:, o '' si no sirve. Acepta la dirección o la ruta del sistema
+  // (C:\Users\me\notes.md, /Users/me/notes.md). Sin servidor (nada de rutas de red), sin "..", sin caracteres de control.
+  // La usan los dos lados de "abrir por enlace": la app, para mostrar qué se va a abrir, y el service worker, para decidir.
+  const MD_FILE = /\.(md|markdown|mdx|mkd|mdown)$/i;
+  const upDir = (t) => /(^|[\\/])\.\.([\\/]|$)/.test(t);
+  function fileUrl(input) {
+    if (typeof input !== 'string' || !input || input.length > 2048 || /[\u0000-\u001f\u007f]/.test(input)) return '';
+    let s = input; let u = null; let path = ''; let plain = input;
+    if (/^[a-z]:[\\/]/i.test(s)) s = 'file:///' + s.replace(/\\/g, '/').split('/').map((p, i) => (i ? encodeURIComponent(p) : p)).join('/');
+    else if (/^\/[^\/\\]/.test(s)) s = 'file://' + s.split('/').map(encodeURIComponent).join('/');
+    else if (!/^file:\/\/\/[^\/\\]/.test(s)) return '';
+    try { plain = decodeURIComponent(input); } catch (e) { /* un % suelto: vale como está */ }
+    try { u = new URL(s); path = decodeURIComponent(u.pathname); } catch (e) { return ''; }
+    if (u.protocol !== 'file:' || u.host || u.username || u.password || u.search || u.hash) return '';
+    if (upDir(input) || upDir(plain) || upDir(path) || /[\u0000-\u001f\u007f\\]/.test(path) || !MD_FILE.test(path)) return '';
+    return u.href.length > 2048 ? '' : u.href;
+  }
+  // La ruta como la escribe el sistema, para mostrarla y copiarla.
+  function filePath(url) {
+    let p = '';
+    try { p = decodeURIComponent(new URL(url).pathname); } catch (e) { return ''; }
+    return /^\/[a-z]:\//i.test(p) ? p.slice(1).replace(/\//g, '\\') : p;
+  }
+  // El enlace https que abre ese archivo: la dirección va tras el #, así no llega al sitio que sirve la app.
+  const fileLink = (url) => WEB_APP_URL + '#open=' + encodeURIComponent(url);
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.56.1';
+  const VERSION = '2.57.0';
 
-  root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
+  root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);

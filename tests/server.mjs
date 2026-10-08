@@ -65,6 +65,8 @@ try {
   check('con plan pago crea un token para la IA', tok.status === 200 && t.startsWith('mdt_') && tok.json.mcp_url.endsWith('/mcp'), tok.json);
   check('la sesión no sirve como token de MCP', (await call('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/list' }, s)).status === 401);
   const init = await call('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'prueba', version: '1' } } }, t);
+  { const said = String(init.json.result.instructions || '');
+    check('MCP: las instrucciones piden el enlace https que abre un archivo local, y la ruta como texto', said.includes('#open=file%3A%2F%2F%2FC%3A%2FUsers%2Fme%2FDesktop%2Fnotes.md)') && said.includes('#open=file%3A%2F%2F%2FUsers%2Fme%2FDesktop%2Fnotes.md)') && /full path as plain text/.test(said) && !/\]\(file:/.test(said) && !/[!¡—–]/.test(said), said.slice(-500)); }
   check('MCP: initialize', init.json.result.serverInfo.name === 'sharpmd' && !!init.json.result.capabilities.tools, init.json);
   check('MCP: las notificaciones no llevan respuesta', (await call('POST', '/mcp', { jsonrpc: '2.0', method: 'notifications/initialized' }, t)).status === 202);
   const tools = await call('POST', '/mcp', { jsonrpc: '2.0', id: 2, method: 'tools/list' }, t);

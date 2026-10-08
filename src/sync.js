@@ -441,8 +441,9 @@
       '## When you finish',
       '',
       '- write_note, append_note and move_note return a link that opens the note in the SharpMD web app. Give me that link.',
-      '- If the document stayed as a local .md file, give me its full path as a clickable file link, so it opens in my browser with the SharpMD extension. Write it as a Markdown link with a file:// address: forward slashes, three slashes after file:, and spaces as %20. Example: [notes.md](file:///C:/Users/me/Desktop/notes.md) on Windows, or [notes.md](file:///Users/me/Desktop/notes.md) on Mac and Linux. I can also drag the file into ' + LMD.WEB_APP_URL,
-      '- Do the same every time you mention a local Markdown file: a file link, not a bare path.',
+      '- If the document stayed as a local .md file, give me a link that opens it in my browser with the SharpMD extension. Build it as ' + LMD.WEB_APP_URL + '#open= followed by the file:// address of the file, percent-encoded as a single value (what encodeURIComponent returns). On Windows: [notes.md](' + LMD.fileLink('file:///C:/Users/me/Desktop/notes.md') + '). On Mac and Linux: [notes.md](' + LMD.fileLink('file:///Users/me/Desktop/notes.md') + ').',
+      '- Under that link, write the full path of the file as plain text, in case the link cannot be clicked.',
+      '- Do the same every time you mention a local Markdown file: the link, then the path.',
     ]).join('\n') + '\n';
   }
   // Copia un texto largo al portapapeles; si el navegador no deja, con el método de antes.

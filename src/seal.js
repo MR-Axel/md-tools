@@ -125,9 +125,15 @@
   const forget = async (who, vault) => { keys.delete(vault.check); await root.LMD.store.vkeyDelete(who, vault.check); };
   const forgetAll = async (who) => { keys.clear(); await root.LMD.store.vkeyClear(who); };
 
+  // ---------- Un secreto chico de este dispositivo ----------
+  // Para algo que no sale del equipo (la clave del asistente de IA, aikey.js): una llave AES-256-GCM que no se
+  // puede exportar, hecha acá (deviceKey) o derivada de una contraseña (passKey). El texto va con seal() y open().
+  const deviceKey = () => subtle().generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  const passKey = (password, salt, iters) => kek(password, salt, iters || ITERS);
+
   root.LMD = root.LMD || {};
   // WebCrypto solo existe en páginas seguras (https, la extensión, localhost).
   const supported = () => !!(root.crypto && root.crypto.subtle);
 
-  root.LMD.seal = { supported, PREFIX, ITERS, b64, unb64, newKey, wrap, unwrap, derive, sealed, seal, open, backupText, backupKey, strength, keyFor, hold, held, remember, remembered, unremember, forget, forgetAll };
+  root.LMD.seal = { supported, PREFIX, ITERS, b64, unb64, newKey, wrap, unwrap, derive, sealed, seal, open, backupText, backupKey, strength, keyFor, hold, held, remember, remembered, unremember, forget, forgetAll, deviceKey, passKey, rand };
 })(typeof self !== 'undefined' ? self : globalThis);

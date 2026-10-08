@@ -367,6 +367,9 @@
     ['table', 'Tabla'], ['code', 'Bloque de código'], ['diagram', 'Diagrama'], ['math', 'Fórmula'],
     ['board', 'Tablero'], ['alert', 'Aviso'], ['image', 'Imagen'], ['link', 'Enlace'], ['hr', 'Separador'],
   ];
+  // Lo que suman las herramientas al menú de edición: cada una devuelve una lista de
+  // [dónde ('insert' o 'block'), id, ícono, texto, qué hacer].
+  const EDIT_MENU = [];
   let menu = null;
   function closeMenu() { if (menu) { menu.remove(); menu = null; } }
 
@@ -376,10 +379,12 @@
     // Lo elegido dentro del bloque es lo que se cita al comentar; sin nada elegido, el bloque.
     const sel = getSelection();
     const picked = block && sel.rangeCount && !sel.isCollapsed && block.contains(sel.anchorNode) && block.contains(sel.focusNode) ? sel.toString().trim() : '';
+    const extra = []; EDIT_MENU.forEach((fn) => { (fn({ block, draft, picked, x, y }) || []).forEach((it) => extra.push(it)); });
+    const more = (where) => extra.filter((it) => it[0] === where).map((it) => '<button type="button" role="menuitem" class="lmd-menu-wide" data-extra="' + it[1] + '">' + it[2] + '<span>' + T(it[3]) + '</span></button>').join('');
     menu = el('div', { class: 'lmd-menu', role: 'menu' });
     menu.innerHTML =
       '<p class="lmd-menu-label">' + T(block ? 'Insertar debajo' : 'Insertar') + '</p>' +
-      '<div class="lmd-menu-grid">' + INSERTS.filter((i) => (i[0] !== 'math' || core.settings.plugins.katex) && (i[0] !== 'board' || LMD.tools.isOn('kanban'))).map((i) => '<button type="button" role="menuitem" data-ins="' + i[0] + '">' + (ICON['b_' + i[0]] || '') + '<span>' + T(i[1]) + '</span></button>').join('') + '</div>' +
+      '<div class="lmd-menu-grid">' + INSERTS.filter((i) => (i[0] !== 'math' || core.settings.plugins.katex) && (i[0] !== 'board' || LMD.tools.isOn('kanban'))).map((i) => '<button type="button" role="menuitem" data-ins="' + i[0] + '">' + (ICON['b_' + i[0]] || '') + '<span>' + T(i[1]) + '</span></button>').join('') + more('insert') + '</div>' +
       (block && !draft && span(block) ?
         (plain ? '<p class="lmd-menu-label">' + T('Convertir en') + '</p><div class="lmd-menu-grid">' +
           [['p', 'Párrafo'], ['h1', 'Título 1'], ['h2', 'Título 2'], ['h3', 'Título 3']].map((i) => '<button type="button" role="menuitem" data-conv="' + i[0] + '">' + ICON['b_' + i[0]] + '<span>' + T(i[1]) + '</span></button>').join('') + '</div>' : '') +
@@ -388,7 +393,7 @@
           '<button type="button" role="menuitem" data-op="down">' + ICON.download + '<span>' + T('Bajar') + '</span></button>' +
           '<button type="button" role="menuitem" data-op="dup">' + ICON.copy + '<span>' + T('Duplicar') + '</span></button>' +
           '<button type="button" role="menuitem" data-op="del" class="lmd-menu-danger">' + ICON.trash + '<span>' + T('Eliminar') + '</span></button>' +
-          (LMD.comments.mode() ? '<button type="button" role="menuitem" data-op="comment" class="lmd-menu-wide">' + ICON.comment + '<span>' + T('Comentar para la IA') + '</span></button>' : '') +
+          (LMD.comments.mode() ? '<button type="button" role="menuitem" data-op="comment" class="lmd-menu-wide">' + ICON.comment + '<span>' + T('Comentar para la IA') + '</span></button>' : '') + more('block') +
         '</div>' : '');
     document.body.appendChild(menu);
     const w = menu.offsetWidth; const h = menu.offsetHeight;
@@ -398,6 +403,8 @@
     menu.addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       closeMenu();
+      const ext = b.dataset.extra && extra.find((it) => it[1] === b.dataset.extra);
+      if (ext) { if (draft) discard(draft); ext[4](); return; }
       if (b.dataset.ins) insert(b.dataset.ins, block, draft);
       else if (b.dataset.conv) convert(block, b.dataset.conv);
       else if (b.dataset.op === 'del') removeBlock(block);
@@ -706,7 +713,11 @@
     sync: syncDraft,
     put: (after, body, then) => insertTemplate(after, body, then),
     // Para las herramientas que escriben por su cuenta (el dictado): abrir un bloque nuevo, cambiarle el tipo, descartarlo.
-    open: (after, kind) => openDraft(after, kind), kind: setKind, discard, top: topBlock, readMenu: READ_MENU,
+    open: (after, kind) => openDraft(after, kind), kind: setKind, discard, top: topBlock, readMenu: READ_MENU, editMenu: EDIT_MENU,
+    // Para las herramientas que proponen texto (el asistente de IA): las líneas de un bloque, dónde va lo que sigue,
+    // y cambiar líneas con los renglones en blanco que hagan falta.
+    span, after: (block) => (block ? lineAfter(block) : lines().length), pad: padded, near: blockNear,
+    splice: (s, count, body) => { put(s, count, body); core.render(); },
     drop: (d) => { d._done = true; unplace(d); },
     settle: (d) => commitDraft(d, 'stay') || null,
     // En una sesión en vivo otra persona cambió líneas más arriba: lo que cada borrador ya escribió en el archivo
