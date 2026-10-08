@@ -11,7 +11,8 @@ const step = async (name, fn) => { console.log(name); try { await fn(); } catch 
 async function open(o) {
   o = o || {};
   const { ctx, page } = await R.open(o.who || null, o.ctx);
-  await page.addInitScript(([base, lang, fold, tools]) => { try { if (localStorage.getItem('fold:listo')) return; localStorage.setItem('fold:listo', '1'); localStorage.setItem('mdtools:settings', JSON.stringify({ cloudUrl: base, language: lang, foldHeadings: fold, tools })); } catch (e) { /* página en blanco */ } }, [R.base, o.lang || 'en', !!o.fold, o.tools || {}]);
+  // El plegado por títulos viene prendido: acá se lo deja como lo pide cada prueba, elegido a mano. Con saved, lo guardado es ese y nada más.
+  await page.addInitScript(([base, lang, fold, tools, raw]) => { try { if (localStorage.getItem('fold:listo')) return; localStorage.setItem('fold:listo', '1'); localStorage.setItem('mdtools:settings', JSON.stringify(Object.assign({ cloudUrl: base, language: lang }, raw || { foldHeadings: fold, foldChosen: true, tools }))); } catch (e) { /* página en blanco */ } }, [R.base, o.lang || 'en', !!o.fold, o.tools || {}, o.saved || null]);
   return { ctx, page };
 }
 const SMALL = { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true };
@@ -280,13 +281,82 @@ await step('Plegado por títulos apagado: nada cambia', async () => {
   await ctx.close();
 });
 
+await step('Plegado por títulos: viene prendido, y se respeta a quien lo apagó', async () => {
+  const togs = (page) => page.evaluate(() => [document.querySelectorAll('.lmd-article > :is(h1,h2,h3) > .lmd-fold-tog').length, document.documentElement.classList.contains('lmd-foldable')]);
+  const kept = (page) => page.evaluate(() => { const s = JSON.parse(localStorage.getItem('mdtools:settings')); return [s.foldHeadings, s.foldChosen]; });
+  // Una instalación nueva: no hay nada guardado sobre el plegado.
+  let w = await open({ saved: {} });
+  await note(w.page, 'd.md', LONG);
+  check('en una instalación nueva viene prendido', J(await togs(w.page)) === J([5, true]), await togs(w.page));
+  await w.page.click('[data-act=settings]'); await w.page.waitForSelector('.lmd-panel-card'); await w.page.click('[data-ptab=read]'); await sleep(200);
+  check('y Ajustes lo muestra prendido', await w.page.isChecked('.lmd-panel [data-key=foldHeadings]'));
+  await w.page.uncheck('.lmd-panel [data-key=foldHeadings]'); await sleep(500); await w.page.keyboard.press('Escape'); await sleep(200);
+  check('apagarlo a mano saca los controles, y queda anotado como una elección', J(await togs(w.page)) === J([0, false]) && J(await kept(w.page)) === J([false, true]), [await togs(w.page), await kept(w.page)]);
+  await w.page.reload(); await w.page.waitForSelector('.lmd-article > *'); await sleep(400);
+  check('al recargar sigue apagado', J(await togs(w.page)) === J([0, false]), await togs(w.page));
+  await w.ctx.close();
+  // Quien viene de una versión anterior y nunca lo tocó: el "apagado" guardado era el valor de fábrica de entonces.
+  w = await open({ saved: { foldHeadings: false, fontSize: 18 } });
+  await note(w.page, 'd.md', LONG);
+  check('con lo guardado por una versión anterior, sin haberlo tocado, pasa a prendido', J(await togs(w.page)) === J([5, true]), await togs(w.page));
+  await w.page.evaluate(() => new Promise((r) => { LMD.patch({ fontSize: 17 }); setTimeout(r, 400); }));
+  check('cambiar otro ajuste no lo anota como elegido', J(await kept(w.page)) === J([true, false]), await kept(w.page));
+  await w.ctx.close();
+});
+
+await step('Plegado por títulos: el chevron va en el margen, a la izquierda del título', async () => {
+  const NUM = '---\nnumbered: true\n---\n\n' + LONG;
+  const geo = (page) => page.evaluate(() => {
+    const art = document.querySelector('.lmd-article'); const h = art.querySelector(':scope > h2'); const a = h.querySelector('.lmd-fold-tog'); const n = h.querySelector('.lmd-hnum');
+    const r = a.getBoundingClientRect(); const hr = h.getBoundingClientRect(); const ar = art.getBoundingClientRect(); const nr = n ? n.getBoundingClientRect() : null; const cs = getComputedStyle(h);
+    const hd = document.querySelector('.lmd-handle'); const k = hd && !hd.hidden ? hd.getBoundingClientRect() : null;
+    return { left: Math.round(r.left - hr.left), right: Math.round(r.right - hr.left), fromEdge: Math.round(r.left - ar.left), pad: cs.paddingLeft + ' ' + cs.paddingRight, op: +getComputedStyle(a).opacity, num: n ? n.textContent : '', gap: nr ? Math.round(nr.left - r.right) : null, mid: nr ? Math.abs(r.top + r.height / 2 - (nr.top + nr.height / 2)) : null,
+      handle: k ? [Math.round(k.left - hr.left), Math.round(k.right - hr.left)] : null, hash: /#/.test(h.textContent), links: art.querySelectorAll('.lmd-anchor[href]').length, wide: document.documentElement.scrollWidth - innerWidth };
+  });
+  const picked = (page) => page.evaluate(() => [...document.querySelectorAll('.lmd-article > .lmd-bsel')].map((n) => n.tagName + ':' + n.id));
+  const a = await open({ fold: true });
+  await note(a.page, 'm.md', NUM);
+  let g = await geo(a.page);
+  check('queda a la izquierda del título, en el margen, y no corre el texto', g.right <= 0 && g.left >= -40 && g.fromEdge >= 0 && g.pad === '0px 0px' && g.wide <= 0, g);
+  check('se ve tenue sin pasar el mouse', g.op > 0.2 && g.op < 0.7, g.op);
+  check('con los títulos numerados va antes del número, a su altura', g.num === '1. ' && g.gap >= 0 && g.mid < 8, g);
+  check('ya no hay un "#" al lado de los títulos', !g.hash && g.links === 0, g);
+  check('el id del título sigue en su lugar para los enlaces', await a.page.evaluate(() => !!document.getElementById('alpha-sub') && document.getElementById('alpha-sub').tagName === 'H3'));
+  // El margen sigue sirviendo para elegir bloques: a la izquierda del chevron, un clic marca el título.
+  const box = await a.page.locator('.lmd-article > h2').first().boundingBox(); const art = await a.page.locator('.lmd-article').boundingBox();
+  await a.page.mouse.click(art.x + 8, box.y + 14); await sleep(200);
+  check('un clic en el margen, al lado del chevron, sigue eligiendo el bloque', J(await picked(a.page)) === J(['H2:alpha']) && !(await a.page.evaluate(() => !!document.querySelector('.lmd-fold-shut'))), await picked(a.page));
+  await a.page.click('.lmd-article > h2 > .lmd-fold-tog'); await sleep(200);
+  check('y el chevron pliega sin elegir nada', J(await picked(a.page)) === J([]) && !(await seen(a.page)).includes('Alpha one.'), [await picked(a.page), await seen(a.page)]);
+  await a.ctx.close();
+
+  // Editando, ese lugar es de la manija del bloque: no se pisan, y la manija ofrece copiar el enlace a la sección.
+  const b = await open({ fold: true });
+  await note(b.page, 'm.md', NUM, true);
+  const hb = await b.page.locator('.lmd-article > h2').first().boundingBox();
+  const overTitle = async () => { await b.page.mouse.move(hb.x + 260, hb.y + 60, { steps: 3 }); await b.page.mouse.move(hb.x + 220, hb.y + 12, { steps: 4 }); await b.page.mouse.move(hb.x + 200, hb.y + 14, { steps: 4 }); await sleep(300); };
+  await b.page.keyboard.press('Escape'); await sleep(200); // al entrar en edición queda abierto el menú de insertar, y con un menú abierto no hay manija
+  await overTitle();
+  g = await geo(b.page);
+  check('editando, el chevron y la manija del bloque no se pisan', !!g.handle && g.right <= g.handle[0] + 1 && g.pad === '0px 0px' && g.wide <= 0, g);
+  await b.page.click('.lmd-handle'); await b.page.waitForSelector('.lmd-menu [data-extra=anchor]');
+  check('el menú del bloque de un título ofrece copiar el enlace a la sección', (await b.page.textContent('.lmd-menu [data-extra=anchor]')).trim() === 'Copy link to this section');
+  await b.page.click('.lmd-menu [data-extra=anchor]'); await sleep(250);
+  const link = await b.page.evaluate(() => navigator.clipboard.readText());
+  check('y lo copia', /#alpha$/.test(link) && /Copied/.test(await b.page.textContent('.lmd-status')), link);
+  await overTitle();
+  await b.page.click('.lmd-article > h2 > .lmd-fold-tog'); await sleep(250);
+  check('editando, el chevron pliega igual', !(await seen(b.page)).includes('Alpha one.'), await seen(b.page));
+  await b.ctx.close();
+});
+
 await step('Plegado por títulos: jerarquía, marca, índice y memoria', async () => {
   const { ctx, page } = await open({ fold: true });
   await note(page, 'i.md', LONG);
   const t0 = await page.evaluate(() => { const a = document.querySelector('.lmd-article > h2 > .lmd-fold-tog'); const r = a.getBoundingClientRect(); return { role: a.getAttribute('role'), tab: a.tabIndex, exp: a.getAttribute('aria-expanded'), label: a.getAttribute('aria-label'), title: a.title, op: getComputedStyle(a).opacity, w: r.width, text: a.textContent }; });
-  check('el control es un botón con nombre, escondido hasta pasar por el título', t0.role === 'button' && t0.tab === 0 && t0.exp === 'true' && t0.label === 'Fold the section' && t0.title === 'Fold the section (Alt+Shift+F)' && t0.op === '0' && t0.w > 20 && t0.text === '', t0);
-  await page.hover('.lmd-article > h2'); await sleep(200);
-  check('aparece al pasar el mouse', await page.evaluate(() => getComputedStyle(document.querySelector('.lmd-article > h2 > .lmd-fold-tog')).opacity) === '1');
+  check('el control es un botón con nombre, tenue hasta pasar por el título', t0.role === 'button' && t0.tab === 0 && t0.exp === 'true' && t0.label === 'Fold the section' && t0.title === 'Fold the section (Alt+Shift+F)' && +t0.op > 0.2 && +t0.op < 0.7 && t0.w > 20 && t0.text === '', t0);
+  await page.hover('.lmd-article > h2'); await sleep(300);
+  check('se ve pleno al pasar el mouse', await page.evaluate(() => getComputedStyle(document.querySelector('.lmd-article > h2 > .lmd-fold-tog')).opacity) === '1');
   await page.click('.lmd-article > h2 > .lmd-fold-tog'); await sleep(200);
   let s = await seen(page);
   check('plegar un título esconde todo hasta el próximo de igual jerarquía, con sus subtítulos', J(s) === J(['Title', 'Intro.', 'Alpha', 'Beta', 'Beta one.', 'a task', 'Gamma', 'See the sub.']), s);

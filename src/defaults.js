@@ -27,7 +27,8 @@
     diagramShape: 'round', // round | square: nodos y flechas de los diagramas de flujo
     focusMode: false, // al editar, atenúa todo menos el bloque en el que se escribe
     typewriter: false, // al editar, mantiene el renglón actual a media altura
-    foldHeadings: false, // cada título puede plegar lo que tiene debajo (fold.js). No cambia la nota
+    foldHeadings: true, // cada título puede plegar lo que tiene debajo (fold.js). No cambia la nota
+    foldChosen: false, // la persona tocó ese ajuste: antes venía apagado, y un "false" guardado sin esto es el de fábrica de entonces
     imageQuality: 'normal', // normal | high | original: cuánto se achica una imagen al insertarla
     refreshInterval: 1000, // ms
     sidebarHidden: false,
@@ -56,7 +57,7 @@
       containers: true,
       frontmatter: true,
       wikilinks: true,
-      anchors: true,
+      anchors: true, // ya no dibuja nada: el enlace a una sección se copia desde el menú del título. Queda por lo ya guardado
       copyCode: true,
       imageViewer: true,
       html: true,
@@ -86,7 +87,6 @@
     containers: 'Bloques ::: tip, warning, details',
     frontmatter: 'Cabecera YAML como ficha',
     wikilinks: 'Links [[nombre]] entre archivos',
-    anchors: 'Ancla en los títulos',
     copyCode: 'Botón de copiar en bloques de código',
     imageViewer: 'Ampliar imágenes al hacer clic',
     html: 'Permitir HTML en el documento',
@@ -115,7 +115,6 @@
     containers: "::: tip, ::: warning y ::: details arman recuadros.",
     frontmatter: "La cabecera YAML del principio se muestra como una ficha.",
     wikilinks: "[[nombre]] abre el archivo con ese nombre en la carpeta.",
-    anchors: "Cada título trae un enlace para copiar su dirección.",
     copyCode: "Un botón en cada bloque de código para copiarlo.",
     imageViewer: "Un clic en una imagen la muestra en grande.",
     html: "Respeta el HTML escrito dentro del documento, ya filtrado.",
@@ -129,6 +128,9 @@
     const out = Object.assign({}, DEFAULTS, saved || {});
     out.plugins = Object.assign({}, DEFAULTS.plugins, (saved && saved.plugins) || {});
     out.tools = Object.assign({}, DEFAULTS.tools, (saved && saved.tools) || {});
+    // Plegar por títulos venía apagado y hoy viene prendido. Lo guardado trae todos los ajustes juntos, así que un
+    // "apagado" solo vale como elección si la persona lo tocó (foldChosen); si no, es el valor de fábrica viejo.
+    if (!out.foldChosen) out.foldHeadings = saved && saved.foldHeadings === true ? true : DEFAULTS.foldHeadings;
     return out;
   }
 
@@ -150,6 +152,7 @@
       const next = Object.assign({}, cur, partial);
       if (partial.plugins) next.plugins = Object.assign({}, cur.plugins, partial.plugins);
       if (partial.tools) next.tools = Object.assign({}, cur.tools, partial.tools);
+      if (Object.prototype.hasOwnProperty.call(partial, 'foldHeadings') && !Object.prototype.hasOwnProperty.call(partial, 'foldChosen')) next.foldChosen = true;
       await save(next);
       return next;
     });
@@ -1393,6 +1396,8 @@
       "Velocidad": "Speed", "Idioma de la lectura": "Reading language", "Voz": "Voice",
       "Atajo: Alt+Shift+S. También con clic derecho, Leer desde acá.": "Shortcut: Alt+Shift+S. Also with right click, Read from here.",
       "Leer esta nota": "Read this note", "Leer la selección": "Read the selection", "Leer desde acá": "Read from here",
+      "Leer las secciones cerradas": "Read collapsed sections", "Saltear las tareas hechas": "Skip completed tasks", "Leer los bloques de código": "Read code blocks",
+      "Bloque anterior": "Previous block", "Bloque siguiente": "Next block",
       // Dictado (dictate.js)
       "Dictado": "Dictation", "Escribí hablando, con órdenes para puntuar, dar formato y armar fórmulas y diagramas.": "Write by speaking, with commands for punctuation, formatting, formulas and diagrams.",
       "El micrófono no está disponible dentro de esta app. Usá el dictado del teclado.": "The microphone is not available inside this app. Use the keyboard dictation.",

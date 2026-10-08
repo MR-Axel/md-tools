@@ -221,15 +221,11 @@
   function postProcess(article, off) {
     const p = settings.plugins;
 
-    // Títulos: id y ancla
+    // Títulos: id. El enlace a la sección se copia desde el menú del título (clic derecho o la manija del bloque).
     const used = new Set();
     const headings = Array.from(article.querySelectorAll('h1,h2,h3,h4,h5,h6'));
     headings.forEach((h) => {
       h.id = slugify(h.textContent, used);
-      if (p.anchors && !editMode && !off) {
-        const a = el('a', { class: 'lmd-anchor', href: '#' + h.id, 'aria-label': T('Enlace a esta sección'), text: '#' });
-        h.appendChild(a);
-      }
     });
 
     // Índice en el texto

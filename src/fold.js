@@ -154,7 +154,8 @@
     for (let n = h.nextElementSibling; n; n = n.nextElementSibling) { if (isHead(n) && +n.tagName[1] <= lv) break; if (!n.matches(KEEP)) out.push(n); }
     return out;
   }
-  // El control va dentro del título con la clase de las anclas: así no cuenta como texto al guardar, copiar ni exportar.
+  // El control va dentro del título con la clase lmd-anchor: es la que se deja afuera al guardar, copiar, exportar y
+  // leer en voz alta, así no cuenta como texto. Se dibuja en el margen, a la izquierda (content.css).
   function toggleOf(h) {
     let a = h.querySelector(':scope > .lmd-fold-tog');
     if (!a) { a = el('a', { class: 'lmd-anchor lmd-fold-tog', role: 'button', tabindex: '0', contenteditable: 'false' }, ICON.chevron); h.insertBefore(a, h.firstChild); }
@@ -322,6 +323,12 @@
     // haberles cambiado el título), y eso es lo que se recuerda.
     core.hooks.patch.push(() => { snapshot(); apply(); });
     const W = LMD.write; const can = () => !core.readOnly && core.blocks && !!core.settings.plugins.containers;
+    // El enlace a una sección se copia desde el menú del título: leyendo lo ofrece el clic derecho, y editando va acá.
+    W.editMenu.push(({ block, draft }) => {
+      if (!block || draft || !isHead(block)) return [];
+      const head = core.links.headings().find((k) => k.el === block); if (!head) return [];
+      return [['block', 'anchor', ICON.link, 'Copiar el enlace a esta sección', () => core.copy(core.sectionLink(head.gh))]];
+    });
     W.editMenu.push(({ block, draft, x, y }) => {
       if (!block || draft || !can()) return [];
       // Lo que se le haga a un título plegado se hace viendo lo que tiene debajo.

@@ -47,15 +47,44 @@ const fakeRecognizer = (conf) => {
 };
 const noRecognizer = () => { ['SpeechRecognition', 'webkitSpeechRecognition'].forEach((k) => Object.defineProperty(window, k, { value: undefined, configurable: true, writable: true })); };
 // El sintetizador: anota lo que se le pide leer y "termina" cada frase enseguida, salvo que se lo frene.
+// Se porta como los de verdad en lo que traba una lectura, así las pruebas lo notan:
+//   - Hablarle con algo sonando deja lo nuevo en la cola (queued); pegado a un cancel, se lo come (swallowed).
+//   - mode 'cut15': como Chrome, una locución de más de 15 segundos (a 15 letras por segundo, por la velocidad)
+//     se corta sola sin avisar y deja la cola trabada hasta el próximo cancel. Un segundo simulado son 4 ms.
+//   - mute: una frase (la que coincide) suena y nunca avisa que terminó. swallow: las primeras n frases no arrancan.
+//   - fail: con una voz remota (la que no es del dispositivo) da error, como cuando no hay conexión.
 const fakeSynth = (conf) => {
-  const V = (name, lang, uri, def) => ({ name, lang, voiceURI: uri, localService: true, default: !!def });
-  const S = window.__tts = { log: [], cancels: 0, hold: false, cur: null, voices: conf.none ? [] : [V('Prueba ES', 'es-ES', 'v-es'), V('Test US', 'en-US', 'v-us', true), V('Test GB', 'en-GB', 'v-gb')] };
+  const V = (name, lang, uri, def, remote) => ({ name, lang, voiceURI: uri, localService: !remote, default: !!def });
+  const S = window.__tts = { log: [], cancels: 0, hold: false, cur: null, queue: [], stuck: false, cuts: 0, lastCancel: -1e9, mode: conf.mode || '', mute: conf.mute || '', swallow: conf.swallow || 0, fail: !!conf.fail,
+    voices: conf.none ? [] : [V('Prueba ES', 'es-ES', 'v-es'), V('Test US', 'en-US', 'v-us', true), V('Test GB', 'en-GB', 'v-gb')].concat(conf.remote ? [V('Remote US', 'en-US', 'v-remote', false, true)] : []) };
   const end = (u) => { if (S.cur !== u) return; S.cur = null; if (u.onend) u.onend({ type: 'end' }); };
+  const seen = () => {
+    const m = document.querySelector('.lmd-speaking'); const hl = window.CSS && CSS.highlights && CSS.highlights.get('lmd-speaking');
+    return { on: m ? m.tagName : '', shown: !!(m && m.offsetParent), boxes: [...document.querySelectorAll('.lmd-article details')].map((d) => d.open), shut: [...document.querySelectorAll('.lmd-article > .lmd-fold-shut')].map((h) => h.id),
+      hl: hl ? [...hl].map((r) => r.toString()).join('|') : '', y: Math.round(window.scrollY), top: m ? Math.round(m.getBoundingClientRect().top) : null };
+  };
   const fake = {
     getVoices: () => S.voices.slice(), addEventListener() {}, removeEventListener() {}, pause() {}, resume() {},
-    get speaking() { return !!S.cur; }, get pending() { return false; }, get paused() { return false; },
-    speak(u) { S.cur = u; S.log.push({ text: u.text, lang: u.lang, voice: u.voice ? u.voice.name : '', rate: u.rate, t: Math.round(performance.now()), on: (document.querySelector('.lmd-speaking') || {}).tagName || '' }); if (!S.hold) setTimeout(() => end(u), 12); },
-    cancel() { S.cancels++; const u = S.cur; S.cur = null; if (u && u.onerror) setTimeout(() => u.onerror({ type: 'error', error: 'interrupted' }), 0); },
+    get speaking() { return !!S.cur || S.stuck; }, get pending() { return S.queue.length > 0; }, get paused() { return false; },
+    speak(u) {
+      const e = Object.assign({ text: u.text, lang: u.lang, voice: u.voice ? u.voice.name : '', rate: u.rate, t: Math.round(performance.now()) }, seen());
+      S.log.push(e);
+      if (S.cur || S.stuck) { e.queued = true; S.queue.push(u); return; }
+      if (performance.now() - S.lastCancel < 50) { e.swallowed = true; return; }
+      if (S.swallow > 0) { S.swallow--; e.swallowed = true; return; }
+      S.cur = u;
+      setTimeout(() => { if (S.cur === u && u.onstart) u.onstart({ type: 'start' }); }, 2);
+      if (S.fail && u.voice && u.voice.localService === false) { setTimeout(() => { if (S.cur !== u) return; S.cur = null; if (u.onerror) u.onerror({ type: 'error', error: 'network' }); }, 6); return; }
+      if (S.hold) return;
+      if (S.mute && new RegExp(S.mute).test(u.text)) { e.muted = true; return; }
+      if (S.mode === 'cut15') {
+        const secs = u.text.length / (15 * (u.rate || 1));
+        if (secs > 15) { e.cut = true; S.cuts++; setTimeout(() => { if (S.cur === u) { S.cur = null; S.stuck = true; } }, 60); return; }
+        setTimeout(() => end(u), Math.max(12, secs * 4)); return;
+      }
+      setTimeout(() => end(u), 12);
+    },
+    cancel() { S.cancels++; S.lastCancel = performance.now(); S.stuck = false; S.queue.length = 0; const u = S.cur; S.cur = null; if (u && u.onerror) setTimeout(() => u.onerror({ type: 'error', error: 'interrupted' }), 0); },
   };
   S.release = () => { const u = S.cur; if (u) end(u); };
   Object.defineProperty(window, 'speechSynthesis', { value: fake, configurable: true });
@@ -296,8 +325,13 @@ try {
     check('queda guardado en las preferencias de siempre', J((await stored(page, 'settings')).tools) === J({ speak: true }), await stored(page, 'settings'));
     await page.click('.lmd-tl-card[data-tool=speak] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-card[data-tool=speak] .lmd-tl-opts select');
     check('sus opciones: velocidad, idioma, voz y leer la nota', await page.evaluate(() => { const o = document.querySelector('.lmd-tl-card[data-tool=speak] .lmd-tl-opts'); return o.querySelectorAll('select').length === 3 && !!o.querySelector('[data-spk=go]') && o.querySelector('[data-spk=voice]').options.length === 3; }));
+    const boxes = () => page.evaluate(() => [...document.querySelectorAll('.lmd-tl-card[data-tool=speak] .lmd-tl-opts [data-spk-opt]')].map((i) => i.closest('label').textContent.trim() + ':' + i.checked));
+    check('y tres interruptores: leer las secciones cerradas (prendido), saltear las tareas hechas y leer el código', J(await boxes()) === J(['Read collapsed sections:true', 'Skip completed tasks:false', 'Read code blocks:false']), await boxes());
+    await page.click('.lmd-tl-opts [data-spk-opt=speakSkipDone]'); await sleep(350);
+    check('un interruptor se guarda con las opciones de la herramienta', (await stored(page, 'settings')).tools.speakSkipDone === true && J(await boxes()) === J(['Read collapsed sections:true', 'Skip completed tasks:true', 'Read code blocks:false']), (await stored(page, 'settings')).tools);
+    await page.click('.lmd-tl-opts [data-spk-opt=speakSkipDone]'); await sleep(350);
     await page.selectOption('.lmd-tl-opts [data-spk=rate]', '1.5'); await sleep(350);
-    check('las opciones se guardan junto al interruptor', J((await stored(page, 'settings')).tools) === J({ speak: true, speakRate: 1.5 }), (await stored(page, 'settings')).tools);
+    check('las opciones se guardan junto al interruptor', J((await stored(page, 'settings')).tools) === J({ speak: true, speakSkipDone: false, speakRate: 1.5 }), (await stored(page, 'settings')).tools);
     await page.click('.lmd-tl-opts [data-spk=go]'); await until(() => page.evaluate(() => window.__tts.log.length >= 3 && !LMD.speak.state().active));
     check('"Read this note" cierra Ajustes y lee la nota, a la velocidad elegida', await page.evaluate(() => document.querySelector('.lmd-panel').hidden && window.__tts.log.map((x) => x.text + '@' + x.rate).join('|') === 'Tools@1.5|A paragraph.@1.5'), await page.evaluate(() => window.__tts.log.map((x) => x.text + '@' + x.rate)));
     await page.click('[data-act=settings]'); await page.waitForSelector('.lmd-tl-card');
@@ -354,15 +388,15 @@ try {
     await page.click('.lmd-menu-read [data-read=speak]');
     await until(async () => !(await page.evaluate(() => LMD.speak.state().active)) && (await log()).length > 5, 12000);
     const all = await log(); const said = all.map((x) => x.text);
-    check('lee desde ese bloque, en orden, de a una oración', J(said.slice(0, 5)) === J(['First paragraph about the budget.', 'It has two sentences.', 'Book the flights', 'Renew the passport', 'Take a photo']), said);
+    check('lee desde ese bloque, en orden; dos oraciones cortas van en un mismo fragmento', J(said.slice(0, 4)) === J(['First paragraph about the budget. It has two sentences.', 'Book the flights', 'Renew the passport', 'Take a photo']), said);
     check('no lee lo de antes del bloque elegido', !said.includes('Trip plan'), said);
-    check('la tabla va fila por fila', J(said.slice(5, 8)) === J(['City, Nights', 'Lima, 3', 'Cusco, 4']), said);
-    check('el código y el diagrama se anuncian en corto, sin leerlos', J(said.slice(8, 10)) === J(['Code block.', 'Diagram.']) && !said.some((t) => /const nights|graph LR|-->/.test(t)), said);
-    check('la fórmula en bloque se anuncia; en línea, la simple se lee y la otra se anuncia', said[10] === 'Formula.' && said[11] === 'The area is Formula and x is x = 2 here.', said.slice(10, 12));
-    check('sigue con la cita, el título y el final', J(said.slice(12)) === J(['A quote to close.', 'The end', 'Last words.']), said.slice(12));
+    check('la tabla va fila por fila', J(said.slice(4, 7)) === J(['City, Nights', 'Lima, 3', 'Cusco, 4']), said);
+    check('el código y el diagrama se anuncian en corto, sin leerlos', J(said.slice(7, 9)) === J(['Code block.', 'Diagram.']) && !said.some((t) => /const nights|graph LR|-->/.test(t)), said);
+    check('la fórmula en bloque se anuncia; en línea, la simple se lee y la otra se anuncia', said[9] === 'Formula.' && said[10] === 'The area is Formula and x is x = 2 here.', said.slice(9, 11));
+    check('sigue con la cita, el título y el final', J(said.slice(11)) === J(['A quote to close.', 'The end', 'Last words.']), said.slice(11));
     const k = said.indexOf('The end');
     check('tras un título hace una pausa antes de seguir', all[k + 1].t - all[k].t >= 400 && all[k].t - all[k - 1].t < 250, [all[k - 1].t, all[k].t, all[k + 1].t]);
-    check('cada bloque estaba marcado mientras se lo leía', J(all.map((x) => x.on)) === J(['P', 'P', 'LI', 'LI', 'LI', 'TR', 'TR', 'TR', 'DIV', 'DIV', 'DIV', 'P', 'P', 'H2', 'P']), all.map((x) => x.on));
+    check('cada bloque estaba marcado mientras se lo leía', J(all.map((x) => x.on)) === J(['P', 'LI', 'LI', 'LI', 'TR', 'TR', 'TR', 'DIV', 'DIV', 'DIV', 'P', 'P', 'H2', 'P']), all.map((x) => x.on));
     check('con el texto en inglés usa una voz en inglés', all.every((x) => x.voice === 'Test US' && x.lang === 'en-US' && x.rate === 1), all[0]);
     check('al terminar se van la marca y los controles', await page.evaluate(() => !document.querySelector('.lmd-speaking, .lmd-spk')));
 
@@ -434,6 +468,267 @@ try {
     const ok = await b.page.evaluate(() => LMD.speak.start({}));
     check('donde no hay voces, lo dice y no arranca', ok === false && /no voices installed/.test(await flashText(b.page)) && await b.page.evaluate(() => !document.querySelector('.lmd-spk') && window.__tts.log.length === 0), await flashText(b.page));
     await b.ctx.close();
+  });
+
+  // Lo que dijo el sintetizador, y esperar a que la lectura termine.
+  const ttsLog = (page) => page.evaluate(() => window.__tts.log.slice());
+  const readAll = async (page, o, ms) => { await page.evaluate((x) => { window.__tts.log.length = 0; return LMD.speak.start(x || {}); }, o || null); await until(async () => !(await page.evaluate(() => LMD.speak.state().active)) && (await page.evaluate(() => window.__tts.log.length)) > 0, ms || 15000); return ttsLog(page); };
+  const speakOpt = async (page, partial) => { await page.evaluate((p) => LMD.tools.setOpt(p), partial); await sleep(350); };
+  // Las pruebas no esperan los tiempos de verdad del motor de voz.
+  const quick = (page, o) => page.evaluate((x) => Object.assign(LMD.speak.limits, x), o || { start: 300, endMin: 500, endPad: 100 });
+
+  const UI_DOC = ['---', 'numbered: true', '---', '', '# Launch plan', '', 'Intro with a [link](https://example.com/a/long/address) and https://sharpmd.app/guide here.[^1]', '', '## First stage', '', '- [x] Book the venue', '- [ ] Send the invites', '  - [x] Print them', '', '::: details See the steps', 'Step one inside.', '', 'Step two inside.', ':::', '', '## Second stage', '', '- [ ] Another task', '', '```js', 'const nights = 7;', 'let total = nights;', '```', '', '| City | Nights |', '| --- | --- |', '| Lima | Three |', '', '> [!NOTE]', '> Keep it short.', '', '[^1]: The small print.', ''].join('\n');
+  const UI_SAID = ['Launch plan', 'Intro with a link and link to sharpmd.app here.', '1. First stage', 'Done: Book the venue', 'Send the invites', 'Done: Print them', 'See the steps', 'Step one inside.', 'Step two inside.', '2. Second stage', 'Another task', 'Code block.', 'City, Nights', 'Lima, Three', 'Note', 'Keep it short.', 'The small print.'];
+  // El vigía: cada palabra que se leería tiene que estar en el Markdown de la nota (o ser un anuncio de la lectura o el
+  // número de un título). Un elemento nuevo de la interfaz que quede dentro del artículo sin marcar trae palabras que
+  // no están en la nota, y esto las nombra.
+  const strays = (page, src) => page.evaluate((text) => {
+    const split = (t) => t.toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+    const known = new Set(split(text + ' Done Code block link to sharpmd app 1 2 3'));
+    const out = [];
+    LMD.speak.segments(document.querySelector('.lmd-article'), 'en', { code: true }).forEach((s) => split(s.text).forEach((w) => { if (!known.has(w)) out.push(w + ' en ' + s.node.tagName + '.' + s.node.className); }));
+    return out;
+  }, src);
+  const segTexts = (page, o) => page.evaluate((x) => LMD.speak.segments(document.querySelector('.lmd-article'), 'en', x || {}).map((s) => s.text), o || null);
+
+  await step('Leer en voz alta: solo el texto de la nota, nada de la interfaz', async () => {
+    const { ctx, page } = await open({ tools: { speak: true } });
+    await note(page, 'ui.md', UI_DOC);
+    await until(() => page.evaluate(() => !!LMD.speak));
+    const ui = await page.evaluate(() => ({ count: (document.querySelector('.lmd-cl-count') || {}).textContent || '', add: (document.querySelector('.lmd-cl-add') || {}).textContent || '', fold: document.querySelectorAll('.lmd-fold-tog').length, num: document.querySelectorAll('.lmd-hnum').length, copy: document.querySelectorAll('.lmd-code-copy').length }));
+    check('la nota de prueba tiene la interfaz que se colaba: contador de tareas, "Add item", plegado, copiar código', /1 of 2/.test(ui.count) && /Add item/.test(ui.add) && ui.fold >= 3 && ui.num >= 2 && ui.copy === 1, ui);
+    const all = await readAll(page); const said = all.map((x) => x.text);
+    check('lee el texto de la nota y nada más', J(said) === J(UI_SAID), said);
+    check('no lee el contador de tareas, "Add item" ni los botones', !said.some((t) => /\d of \d|Add item|Move|Copy|Fold/.test(t)), said);
+    check('un título numerado se lee con su número, de corrido', said.includes('1. First stage') && said.includes('2. Second stage'), said);
+    check('una tarea tildada se anuncia como hecha, y la pendiente va tal cual', said.includes('Done: Book the venue') && said.includes('Send the invites') && said.includes('Done: Print them'), said);
+    check('un enlace se lee por su texto; si el texto es la dirección, dice a dónde va', said[1] === 'Intro with a link and link to sharpmd.app here.' && !said.some((t) => /https?:|example\.com/.test(t)), said[1]);
+    check('el código se anuncia y se saltea', said.includes('Code block.') && !said.some((t) => /const nights|let total/.test(t)), said);
+    check('la tabla va por filas', said.includes('City, Nights') && said.includes('Lima, Three'), said);
+    check('el vigía no encuentra palabras ajenas a la nota', J(await strays(page, UI_DOC)) === '[]', await strays(page, UI_DOC));
+
+    // El vigía tiene que saltar con un elemento de interfaz nuevo sin marcar, y callar con cualquiera de las marcas.
+    const plant = (how) => page.evaluate((h) => {
+      document.querySelectorAll('.lmd-zz').forEach((n) => n.remove());
+      const p = document.querySelector('.lmd-article > p'); const tag = h === 'button' ? 'button' : 'span';
+      const s = document.createElement(tag); s.className = 'lmd-zz'; s.textContent = ' Zzbadge';
+      if (h === 'data-ui') s.setAttribute('data-ui', ''); if (h === 'aria-hidden') s.setAttribute('aria-hidden', 'true'); if (h === 'role') s.setAttribute('role', 'button');
+      if (h === 'noedit') s.setAttribute('contenteditable', 'false'); if (h === 'hidden') s.hidden = true;
+      if (h !== 'none') p.appendChild(s);
+    }, how);
+    await plant('bare');
+    check('un elemento de interfaz nuevo, sin marcar, hace saltar al vigía', (await strays(page, UI_DOC)).some((w) => /^zzbadge/.test(w)), await strays(page, UI_DOC));
+    const quiet = [];
+    for (const how of ['data-ui', 'aria-hidden', 'role', 'noedit', 'hidden', 'button']) { await plant(how); if ((await strays(page, UI_DOC)).length) quiet.push(how); }
+    check('marcado como interfaz (data-ui, aria-hidden, role=button, no editable, hidden, un botón) no se lee', quiet.length === 0, quiet);
+    await plant('none');
+
+    // Editando hay más interfaz dentro del artículo (el renglón nuevo, "Keep writing", las casillas): se lee lo mismo.
+    await page.goto(noteUrl('ui.md', true)); await page.waitForSelector('.lmd-editing .lmd-article'); await sleep(500);
+    await until(() => page.evaluate(() => !!LMD.speak));
+    await page.keyboard.press('Escape'); await sleep(200);
+    const hb = await page.locator('.lmd-article > h2').first().boundingBox(); await page.mouse.move(hb.x + 200, hb.y + 40, { steps: 3 }); await page.mouse.move(hb.x + 180, hb.y + 12, { steps: 3 }); await sleep(250);
+    check('editando se lee exactamente lo mismo', J(await segTexts(page)) === J(UI_SAID), await segTexts(page));
+    check('y el vigía sigue sin encontrar nada', J(await strays(page, UI_DOC)) === '[]', await strays(page, UI_DOC));
+
+    // Las opciones: saltear las tareas hechas, y leer el código si se lo pide.
+    await speakOpt(page, { speakSkipDone: true });
+    let t = await segTexts(page);
+    check('con "Skip completed tasks" las tareas hechas no se leen', !t.some((x) => /Book the venue|Print them/.test(x)) && t.includes('Send the invites') && t.includes('Another task'), t);
+    await speakOpt(page, { speakSkipDone: false, speakCode: true });
+    const code = (await readAll(page, null)).map((x) => x.text); const k = code.indexOf('Code block.');
+    check('con "Read code blocks" el código se anuncia y se lee renglón por renglón', k > 0 && J(code.slice(k, k + 3)) === J(['Code block.', 'const nights = 7;', 'let total = nights;']), code.slice(k, k + 4));
+    check('sin errores de página', R.errors.length === 0, R.errors);
+    await ctx.close();
+  });
+
+  const FOLD_DOC = ['# Guide', '', 'Opening words.', '', '::: details First box', 'Inside the first.', ':::', '', '::: details Second box', 'Inside the second.', ':::', '', '## Folded part', '', 'Hidden under the heading.', '', '### Deeper', '', 'Even deeper.', '', '## Last part', '', 'Closing words.', ''].join('\n');
+  await step('Leer en voz alta: abre las secciones cerradas mientras las lee y las deja como estaban', async () => {
+    const { ctx, page } = await open({ tools: { speak: true } });
+    await note(page, 'fold.md', FOLD_DOC);
+    await until(() => page.evaluate(() => !!LMD.speak));
+    const state = () => page.evaluate(() => ({ boxes: [...document.querySelectorAll('.lmd-article details')].map((d) => d.open), shut: [...document.querySelectorAll('.lmd-article > .lmd-fold-shut')].map((h) => h.id) }));
+    // La persona abre la segunda a mano y pliega un título.
+    await page.click('.lmd-article details:nth-of-type(2) > summary'); await sleep(200);
+    await page.click('.lmd-article > h2#folded-part > .lmd-fold-tog'); await sleep(250);
+    check('antes de leer: la primera cerrada, la segunda abierta a mano y un título plegado', J(await state()) === J({ boxes: [false, true], shut: ['folded-part'] }), await state());
+
+    const all = await readAll(page); const by = {}; all.forEach((x) => { by[x.text] = x; });
+    check('lee todo, también lo que estaba cerrado', J(all.map((x) => x.text)) === J(['Guide', 'Opening words.', 'First box', 'Inside the first.', 'Second box', 'Inside the second.', 'Folded part', 'Hidden under the heading.', 'Deeper', 'Even deeper.', 'Last part', 'Closing words.']), all.map((x) => x.text));
+    check('al llegar a una sección cerrada la abre, desde su título', J(by['Opening words.'].boxes) === J([false, true]) && J(by['First box'].boxes) === J([true, true]) && J(by['Inside the first.'].boxes) === J([true, true]), [by['First box'].boxes, by['Inside the first.'].boxes]);
+    check('lo que lee adentro está marcado y a la vista', by['Inside the first.'].on === 'P' && by['Inside the first.'].shown && by['Hidden under the heading.'].shown && by['Even deeper.'].shown, [by['Inside the first.'], by['Even deeper.']]);
+    check('al terminarla la vuelve a cerrar', J(by['Second box'].boxes) === J([false, true]), by['Second box'].boxes);
+    check('un título plegado se despliega para leer lo que tiene debajo', J(by['Folded part'].shut) === J(['folded-part']) && J(by['Hidden under the heading.'].shut) === '[]' && J(by['Even deeper.'].shut) === '[]', [by['Folded part'].shut, by['Hidden under the heading.'].shut]);
+    check('y al pasar queda plegado otra vez', J(by['Last part'].shut) === J(['folded-part']), by['Last part'].shut);
+    check('al final todo queda como estaba: la que abrió la persona sigue abierta', J(await state()) === J({ boxes: [false, true], shut: ['folded-part'] }), await state());
+    check('la nota no cambió', await saved(page, 'fold.md') === FOLD_DOC);
+
+    // Detener a mitad de una sección también la deja como estaba.
+    await page.evaluate(() => { window.__tts.log.length = 0; window.__tts.hold = true; return LMD.speak.start({ from: [...document.querySelectorAll('.lmd-article details')][0].querySelector('p') }); });
+    await until(async () => (await ttsLog(page)).length === 1);
+    check('leer desde adentro de una sección cerrada la abre', (await ttsLog(page))[0].text === 'Inside the first.' && J((await state()).boxes) === J([true, true]), [await ttsLog(page), await state()]);
+    await page.evaluate(() => LMD.speak.stop()); await sleep(150);
+    check('detener la lectura la vuelve a cerrar', J((await state()).boxes) === J([false, true]), await state());
+
+    // Si mientras tanto la persona la cierra y la abre a mano, queda como la dejó.
+    await page.evaluate(() => { window.__tts.log.length = 0; window.__tts.hold = true; return LMD.speak.start({ from: [...document.querySelectorAll('.lmd-article details')][0].querySelector('p') }); });
+    await until(async () => (await ttsLog(page)).length === 1); await sleep(600);
+    await page.click('.lmd-article details:nth-of-type(1) > summary'); await sleep(200);
+    await page.click('.lmd-article details:nth-of-type(1) > summary'); await sleep(200);
+    await page.evaluate(() => { window.__tts.hold = false; window.__tts.release(); });
+    await until(() => page.evaluate(() => !LMD.speak.state().active), 12000);
+    check('una sección que la persona abrió a mano durante la lectura queda abierta', J((await state()).boxes) === J([true, true]), await state());
+    await page.click('.lmd-article details:nth-of-type(1) > summary'); await sleep(200);
+
+    // Con la opción apagada, las cerradas se saltean: se lee solo el título.
+    await speakOpt(page, { speakCollapsed: false });
+    const off = await readAll(page);
+    check('con "Read collapsed sections" apagado saltea lo cerrado y lee solo su título', J(off.map((x) => x.text)) === J(['Guide', 'Opening words.', 'First box', 'Second box', 'Inside the second.', 'Folded part', 'Last part', 'Closing words.']), off.map((x) => x.text));
+    check('y no abre ni despliega nada', off.every((x) => J(x.boxes) === J([false, true]) && J(x.shut) === J(['folded-part'])), off.map((x) => [x.boxes, x.shut]));
+    check('sin errores de página', R.errors.length === 0, R.errors);
+    await ctx.close();
+  });
+
+  await step('Leer en voz alta: el resalte y la página siguen a la voz, sin pelear con el desplazamiento a mano', async () => {
+    const { ctx, page } = await open({ tools: { speak: true } });
+    const three = 'This first sentence of the closing paragraph is written long enough to be read on its own by the voice. The second sentence is also long enough that it cannot be joined with the one that came before it. And the third sentence closes the paragraph with a similar number of words so it stands alone too.';
+    const names = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+    const body = Array.from({ length: 40 }, (_, i) => 'Paragraph ' + names[Math.floor(i / 10)] + ' ' + names[i % 10] + ' has enough words to fill a line or two of the page while it is read.').join('\n\n');
+    await note(page, 'long.md', '# Long\n\n' + body + '\n\n' + three + '\n');
+    await until(() => page.evaluate(() => !!LMD.speak));
+    const inView = () => page.evaluate(() => { const m = document.querySelector('.lmd-speaking'); if (!m) return false; const r = m.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; });
+    const y = () => page.evaluate(() => Math.round(scrollY));
+    const para = (n) => page.evaluate((k) => { window.__tts.log.length = 0; window.__tts.hold = true; return LMD.speak.start({ from: document.querySelectorAll('.lmd-article > p')[k] }); }, n);
+    await para(30);
+    await until(async () => (await ttsLog(page)).length === 1);
+    check('leer desde un bloque lejano lo trae a la vista', !!(await until(inView, 4000)) && (await y()) > 400, await y());
+    // La persona desplaza a mano hacia arriba: la lectura sigue, pero no la arrastra de vuelta.
+    await sleep(400); await page.evaluate(() => { LMD.speak.limits.hands = 1500; });
+    await page.mouse.move(700, 400); await page.mouse.wheel(0, -6000); await sleep(500);
+    const y0 = await y();
+    await page.evaluate(() => window.__tts.release()); await until(async () => (await ttsLog(page)).length === 2);
+    await sleep(700);
+    check('tras desplazar a mano, pasar al bloque siguiente no arrastra la página', y0 < 200 && Math.abs((await y()) - y0) < 40 && !(await inView()), [y0, await y()]);
+    check('y la marca siguió con la voz', await page.evaluate(() => /Paragraph four two/.test(document.querySelector('.lmd-speaking').textContent)));
+    await sleep(1100);
+    await page.evaluate(() => window.__tts.release()); await until(async () => (await ttsLog(page)).length === 3);
+    check('pasados unos segundos vuelve a seguir a la voz', !!(await until(inView, 4000)), await y());
+    await page.evaluate(() => LMD.speak.stop());
+
+    // Un párrafo de varias oraciones: además del bloque, queda resaltada la que suena.
+    const can = await page.evaluate(() => !!(window.CSS && CSS.highlights && typeof Highlight === 'function'));
+    await para(40);
+    await until(async () => (await ttsLog(page)).length === 1);
+    let l = await ttsLog(page);
+    check('un párrafo largo se lee de a una oración', l[0].text === three.split('. ')[0] + '.' && (await page.evaluate(() => LMD.speak.state().parts)) === 3, [l[0].text, await page.evaluate(() => LMD.speak.state())]);
+    if (can) check('y la oración que suena queda resaltada dentro del bloque marcado', l[0].on === 'P' && l[0].hl === l[0].text, l[0]);
+    await page.evaluate(() => window.__tts.release()); await until(async () => (await ttsLog(page)).length === 2);
+    l = await ttsLog(page);
+    if (can) check('el resalte pasa a la oración siguiente', l[1].hl === l[1].text && /^The second sentence/.test(l[1].text), l[1]);
+    await page.evaluate(() => LMD.speak.stop()); await sleep(100);
+    check('al detener no queda ningún resalte', await page.evaluate(() => !document.querySelector('.lmd-speaking') && !(window.CSS && CSS.highlights && CSS.highlights.has('lmd-speaking'))));
+    check('resaltar no tocó la nota', await page.evaluate(() => !document.querySelector('.lmd-article mark, .lmd-article span[class*=speak]')) && (await saved(page, 'long.md')).endsWith(three + '\n'));
+    check('sin errores de página', R.errors.length === 0, R.errors);
+    await ctx.close();
+  });
+
+  await step('Leer en voz alta: el motor de voz no se cuelga', async () => {
+    // Chrome corta una locución larga: todo sale en fragmentos cortos y nada queda en la cola.
+    const long = 'The plan for the week starts on Monday with a walk through the old town and it keeps going without a single stop for breath through the market and the harbour and the hills behind the city until the evening comes and everyone sits down to eat, ' + 'then the group moves on, '.repeat(14) + 'and it ends. A short one. Another short one follows it. ' + 'Words '.repeat(60).trim() + '.';
+    const a = await open({ tools: { speak: true }, tts: { mode: 'cut15' } });
+    await note(a.page, 'cut.md', '# Cut\n\n' + long + '\n');
+    await until(() => a.page.evaluate(() => !!LMD.speak));
+    const proof = await a.page.evaluate((t) => new Promise((r) => { const s = window.speechSynthesis; s.speak(new SpeechSynthesisUtterance(t)); setTimeout(() => { const out = { cuts: window.__tts.cuts, stuck: s.speaking }; s.cancel(); window.__tts.cuts = 0; setTimeout(() => r(out), 80); }, 140); }), long.slice(0, 400));
+    check('el sintetizador de prueba corta una locución de más de 15 segundos y queda trabado, como Chrome', proof.cuts === 1 && proof.stuck, proof);
+    for (const rate of [1, 0.75, 2]) {
+      await speakOpt(a.page, { speakRate: rate });
+      const all = (await readAll(a.page, null, 40000)).slice(1); const max = Math.max(...all.map((x) => x.text.length));
+      const secs = Math.max(...all.map((x) => x.text.length / (15 * rate)));
+      check('a velocidad ' + rate + ': fragmentos cortos, ninguno se corta y no se pierde texto', (await a.page.evaluate(() => window.__tts.cuts)) === 0 && secs < 12 && all.map((x) => x.text).join(' ') === long && all.length >= 4, { max, secs: Math.round(secs * 10) / 10, n: all.length, cuts: await a.page.evaluate(() => window.__tts.cuts) });
+      check('a velocidad ' + rate + ': nunca habla con algo pendiente ni pegado a un cancel', !all.some((x) => x.queued || x.swallowed), all.filter((x) => x.queued || x.swallowed));
+    }
+    const cut = (t, max) => a.page.evaluate(([x, m]) => LMD.speak.sentences(x, m), [t, max || 0]);
+    check('las oraciones cortas van juntas en un mismo fragmento', J(await cut('A short one. Another short one follows it. Is it? Yes.')) === J(['A short one. Another short one follows it. Is it? Yes.']), await cut('A short one. Another short one follows it. Is it? Yes.'));
+    const dots = 'Version 2.5 of the plan costs 3.75 in total. ' + 'word '.repeat(32) + 'end.';
+    check('un punto dentro de un número no corta la oración', (await cut(dots))[0] === 'Version 2.5 of the plan costs 3.75 in total.' && (await cut(dots)).join(' ') === dots && (await cut(dots)).every((p) => p.length <= 150), await cut(dots));
+    await a.ctx.close();
+
+    // Un final que no llega: el vigilante pasa al fragmento siguiente.
+    const W = '# Watch\n\nFirst words.\n\nSecond words.\n\nThird words.\n';
+    const b = await open({ tools: { speak: true }, tts: { mute: '^Second' } });
+    await note(b.page, 'w.md', W);
+    await until(() => b.page.evaluate(() => !!LMD.speak)); await quick(b.page);
+    let all = await readAll(b.page, null, 20000);
+    const k = all.findIndex((x) => x.text === 'Second words.');
+    check('si una frase nunca avisa que terminó, la lectura sigue con la siguiente', J(all.map((x) => x.text)) === J(['Watch', 'First words.', 'Second words.', 'Third words.']) && all[k].muted && all[k + 1].t - all[k].t >= 450 && all[k + 1].t - all[k].t < 5000 && !all[k + 1].queued && !all[k + 1].swallowed, all.map((x) => [x.text, x.t, !!x.queued, !!x.swallowed]));
+    await b.ctx.close();
+
+    // Una frase que no arranca (la cola trabada): se vacía la cola y se la pide de nuevo.
+    const c = await open({ tools: { speak: true }, tts: { swallow: 1 } });
+    await note(c.page, 'w.md', W);
+    await until(() => c.page.evaluate(() => !!LMD.speak)); await quick(c.page);
+    all = await readAll(c.page, null, 20000);
+    check('si una frase no arranca, se la pide de nuevo y la lectura sigue', J(all.map((x) => x.text)) === J(['Watch', 'Watch', 'First words.', 'Second words.', 'Third words.']) && all[0].swallowed && all[1].t - all[0].t >= 280 && !all.slice(1).some((x) => x.queued || x.swallowed), all.map((x) => [x.text, x.t]));
+    await c.ctx.close();
+    const d = await open({ tools: { speak: true }, tts: { swallow: 99 } });
+    await note(d.page, 'w.md', W);
+    await until(() => d.page.evaluate(() => !!LMD.speak)); await quick(d.page);
+    all = await readAll(d.page, null, 20000);
+    check('si el motor no arranca nunca, lo dice y deja de insistir', all.length === 3 && all.every((x) => x.text === 'Watch') && /could not read aloud/.test(await flashText(d.page)) && await d.page.evaluate(() => !document.querySelector('.lmd-spk, .lmd-speaking')), [all.length, await flashText(d.page)]);
+    await d.ctx.close();
+
+    // Una voz remota que falla: se sigue con una del dispositivo.
+    const e = await open({ tools: { speak: true, speakVoiceEn: 'v-remote' }, tts: { remote: true, fail: true } });
+    await note(e.page, 'w.md', W);
+    await until(() => e.page.evaluate(() => !!LMD.speak));
+    all = await readAll(e.page, null, 20000);
+    check('si la voz remota falla, sigue con una del dispositivo', J(all.map((x) => x.text + '@' + x.voice)) === J(['Watch@Remote US', 'Watch@Test US', 'First words.@Test US', 'Second words.@Test US', 'Third words.@Test US']), all.map((x) => x.text + '@' + x.voice));
+    await e.ctx.close();
+  });
+
+  await step('Leer en voz alta: pausar, seguir, saltar y parar responden al instante', async () => {
+    const two = 'This opening sentence of the second block is long enough to be spoken on its own by the voice engine. And this closing sentence is just as long so that the block is read in two separate fragments.';
+    const { ctx, page } = await open({ tools: { speak: true } });
+    await note(page, 'ctl.md', '# Controls\n\nBlock one.\n\n' + two + '\n\nBlock three.\n\nBlock four.\n');
+    await until(() => page.evaluate(() => !!LMD.speak));
+    const last = async () => { const l = await ttsLog(page); return l[l.length - 1]; };
+    const within = async (n, ms) => { const t0 = Date.now(); await until(async () => (await ttsLog(page)).length >= n, ms || 2000); return Date.now() - t0; };
+    await page.evaluate(() => { window.__tts.log.length = 0; window.__tts.hold = true; return LMD.speak.start({}); });
+    await within(1);
+    const bar = await page.evaluate(() => [...document.querySelectorAll('.lmd-spk button[data-spk]')].map((b) => b.dataset.spk + ':' + b.title));
+    check('los controles: anterior, pausar, siguiente y detener', J(bar) === J(['prev:Previous block', 'play:Pause', 'next:Next block', 'stop:Stop']), bar);
+    let ms = 0;
+    await page.click('.lmd-spk [data-spk=next]'); ms = await within(2);
+    check('"siguiente" pasa al otro bloque enseguida', (await last()).text === 'Block one.' && (await last()).on === 'P' && ms < 1000, [await last(), ms]);
+    await page.click('.lmd-spk [data-spk=next]'); await within(3);
+    await page.evaluate(() => window.__tts.release()); await within(4);
+    check('un bloque de dos oraciones va en dos fragmentos', /^And this closing sentence/.test((await last()).text) && (await page.evaluate(() => LMD.speak.state().part)) === 1, await last());
+    await page.click('.lmd-spk [data-spk=prev]'); await within(5);
+    check('"anterior", con el bloque ya empezado, vuelve a su principio', /^This opening sentence/.test((await last()).text), await last());
+    await page.click('.lmd-spk [data-spk=prev]'); await within(6);
+    check('y otra vez, va al bloque anterior', (await last()).text === 'Block one.', await last());
+    // Muchos toques seguidos: gana el último, y nada queda en la cola.
+    await page.evaluate(() => { const S = LMD.speak; S.next(); S.next(); S.prev(); S.pause(); S.resume(); S.next(); });
+    await within(7); await sleep(500);
+    let l = await ttsLog(page);
+    check('muchos toques seguidos dejan una sola frase sonando, la del último', l.length === 7 && l[6].text === 'Block three.' && !l.some((x) => x.queued || x.swallowed) && (await page.evaluate(() => LMD.speak.state().i)) === 3, l.slice(5).map((x) => [x.text, !!x.queued, !!x.swallowed]));
+    await page.click('.lmd-spk [data-spk=play]'); await sleep(250);
+    const n = (await ttsLog(page)).length;
+    check('pausar corta la voz al instante', await page.evaluate(() => LMD.speak.state().paused && !window.speechSynthesis.speaking) && n === 7);
+    // Otra pestaña del navegador: la voz se calla y queda en pausa, en su lugar.
+    await page.click('.lmd-spk [data-spk=play]'); await within(8);
+    await page.evaluate(() => { Object.defineProperty(document, 'hidden', { value: true, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+    await sleep(200);
+    check('al pasar a otra pestaña la lectura se calla y queda en pausa', await page.evaluate(() => { const s = LMD.speak.state(); return s.active && s.paused && s.i === 3 && !window.speechSynthesis.speaking; }), await page.evaluate(() => LMD.speak.state()));
+    await page.evaluate(() => { Object.defineProperty(document, 'hidden', { value: false, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+    await sleep(300);
+    check('al volver no arranca sola', (await ttsLog(page)).length === 8 && await page.evaluate(() => LMD.speak.state().paused));
+    await page.click('.lmd-spk [data-spk=next]'); await within(9);
+    check('"siguiente" en pausa sigue leyendo desde el otro bloque', (await last()).text === 'Block four.' && !(await page.evaluate(() => LMD.speak.state().paused)), await last());
+    await page.click('.lmd-spk [data-spk=next]'); await sleep(250);
+    check('"siguiente" en el último bloque termina la lectura', await page.evaluate(() => !LMD.speak.state().active && !document.querySelector('.lmd-spk, .lmd-speaking')));
+    check('sin errores de página', R.errors.length === 0, R.errors);
+    await ctx.close();
   });
 
   // ---------- Dictado ----------
