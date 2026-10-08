@@ -38,6 +38,9 @@
 - `write_note`, `append_note` and `move_note` return a link that opens the note in the web app.
 - Five more tools exist only for a token the user created with the sharing permission, which is off by default: `list_shares`, `share_note`, `unshare_note`, `create_public_link`, `revoke_public_link`. They stay inside the folder of the token and do not reach protected folders or team notes.
 - Settings > AI has a "Copy instructions for your AI" button: a message in English with how to connect and how to document work in SharpMD.
+- Automations (paid plan), set up in Settings > Automations and documented at https://sharpmd.app/api.html: a REST API at https://sync.sharpmd.app/api/v1 with the same `mdt_` tokens as MCP (notes, folders, search, history, comments, and kanban boards as JSON with operations to create, move, update and complete a card); OpenAPI 3.1 at https://sync.sharpmd.app/api/v1/openapi.json; outgoing webhooks signed with HMAC-SHA-256 (`X-SharpMD-Signature`) for `note.created`, `note.updated`, `note.deleted`, `note.restored`, `note.moved`, `comment.created`, `comment.resolved`, `card.created`, `card.moved`, `card.updated`, `card.done`, `card.deleted`, scoped to the account, a folder or a note, with ready-made Slack and Discord formats; and inbound addresses (`POST /in/<secret>`) that append text to a note, create a note or create a card.
+- A kanban card can end with attributes in braces: `- [ ] Fix checkout {due=2026-10-20 owner="Ana Paz" id=c8k2m9xq created=2026-10-07T14:03:11Z}`. `id`, `created` and `updated` are written by the app; the rest are free `key=value` pairs. A line `{show=due,owner priority=low|medium|high}` before the first column configures the board.
+- Page settings live in the front matter of a note: `width: normal | wide | full` and `numbered: true`.
 - The user can leave a comment on a passage of a note. The AI reads the open comments with `list_comments`, makes the change and closes each one with `resolve_comment`.
 - Cloud notes are encrypted at rest on the server, which holds the key so it can share them and serve MCP.
 - A folder can be protected with a password. Its notes are encrypted in the browser (AES-256-GCM, key wrapped with PBKDF2) and the server cannot read them. File and folder names stay visible. Protected folders are left out of sharing, public links and MCP, unless the user unlocks one for the AI for a set time; while unlocked, the server holds the key in memory only.
@@ -45,7 +48,7 @@
 ## Plans
 
 - Free: the whole editor, unlimited files and browser notes, 10 notes in the cloud.
-- Paid: USD 3.99 a month or USD 39 a year. Unlimited cloud notes, sharing and public links, live sessions, the MCP connection, 30 days of version history, and colors, fonts and custom CSS.
+- Paid: USD 3.99 a month or USD 39 a year. Unlimited cloud notes, sharing and public links, live sessions, the MCP connection, automations (API, webhooks, inbound addresses), 30 days of version history, and colors, fonts and custom CSS.
 
 ## Privacy
 

@@ -24,6 +24,9 @@ Gratis y de código abierto. Sin seguimiento: los archivos se leen en tu navegad
 - **Edición en el lugar**: pasás a modo Edición y hacés clic en cualquier párrafo, título, ítem o celda para cambiarlo. Negrita, cursiva, tachado, código y enlaces desde una barrita o con los atajos de siempre; agregar y quitar filas y columnas; tildar tareas. El Markdown se reescribe por detrás, sin que veas la sintaxis. Se guarda con Ctrl+S, o con guardado automático.
 - **Escribir contenido nuevo**: Enter cierra un bloque y abre el siguiente, o agrega un ítem a la lista. Una línea que empieza con `#`, `-`, `1.`, `>` o `[]` se convierte en título, lista, cita o tarea mientras escribís. El clic derecho (o el botón +, o `/` en una línea vacía) inserta párrafo, título, lista, tabla, bloque de código, diagrama, fórmula, aviso, imagen o separador, y convierte, mueve, duplica o elimina el bloque donde hiciste clic. Ctrl+Z deshace las operaciones de bloques y Ctrl+Y las rehace. Shift + clic derecho deja el menú del navegador, para la ortografía.
 - **Tableros**: un bloque `kanban` convierte los títulos en columnas y las tareas en tarjetas. Arrastrás tarjetas entre columnas, las tildás, agregás y renombrás. En cualquier otro programa se lee como una lista de tareas común.
+- **Tarjetas con atributos**: cada tarjeta tiene un id estable, fecha de creación y de edición, y atributos propios (vencimiento, responsable, prioridad…). Un clic abre su detalle, y un tablero ancho usa todo el ancho de la nota.
+- **Ajustes de la página**: lo que vale para una nota y no para la persona vive en su encabezado y viaja con el archivo: ancho de la página (normal, ancha, completa) y títulos numerados.
+- **Automatizaciones**: webhooks firmados cuando cambia una nota o una tarjeta (listos para Slack y Discord, JSON para Make, n8n, Activepieces y Zapier), direcciones de entrada secretas que agregan texto a una nota o crean una tarjeta, y una API REST con los mismos tokens que el MCP. Está todo en [la página de la API](https://sharpmd.app/api.html).
 - **Listas de tareas** que se tildan también leyendo; las hechas quedan tachadas.
 - **Totales en tablas**: el botón Σ agrega una fila que suma cada columna con números. Una celda con `=sum`, `=avg`, `=min`, `=max`, `=count` o `=median` muestra el resultado de su columna, con la misma moneda y el mismo formato de decimales que los números de arriba.
 - **Notas en la nube**, opcionales: entrás con un código que llega a tu correo, mandás una nota a la nube y la abrís en cualquier dispositivo, también sin conexión. Se comparten con otra cuenta o con un enlace público de solo lectura. Lo que eliminás de la nube queda 30 días en la papelera, y la cuenta se elimina desde Ajustes.
@@ -178,6 +181,39 @@ Todas van copiadas en `vendor/`, porque Manifest V3 no permite cargar código re
 | Inter (tipografía) | OFL-1.1 |
 
 El HTML que sale del Markdown pasa por DOMPurify antes de entrar a la página.
+
+## Tarjetas del tablero
+
+Un tablero es un bloque de código `kanban`. Cada título es una columna (el estado de sus tarjetas) y cada tarea una tarjeta. Una tarjeta puede terminar con un grupo entre llaves con sus atributos:
+
+````
+```kanban
+{show=vence,responsable prioridad=baja|media|alta puntos=number}
+## Por hacer
+- [ ] Arreglar el pago {vence=2026-10-20 responsable="Ana Paz" id=c8k2m9xq created=2026-10-07T14:03:11Z updated=2026-10-07T15:10:02Z}
+- [ ] Una tarjeta sin nada más
+
+## Hecho
+```
+````
+
+- `id`, `created` y `updated` los escribe SharpMD. El id no cambia nunca; `updated` cambia al mover o editar la tarjeta. Las fechas van en ISO 8601, en UTC.
+- El resto es tuyo: `clave=valor`, con comillas si el valor tiene espacios. Las claves empiezan con una letra y no llevan espacios.
+- Un renglón solo con llaves antes de la primera columna configura el tablero: `show` dice qué atributos se ven en las tarjetas, y `clave=text`, `clave=date`, `clave=number` o `clave=a|b|c` (una lista de opciones) le da un tipo a un atributo.
+- Un tablero sin nada de esto se abre igual. Sus tarjetas reciben id y fecha de creación la primera vez que se edita. Unas llaves que no son `clave=valor` quedan como texto.
+
+## Ajustes de la página
+
+Se guardan en el encabezado de la nota, con claves simples:
+
+```
+---
+width: wide
+numbered: true
+---
+```
+
+`width` es `normal`, `wide` o `full`; `numbered` numera los títulos. La lista de claves es cerrada y cada valor se comprueba: una clave o un valor que no se conoce no hace nada, y una nota nunca puede traer CSS. Valen para quien abra la nota, también por un enlace público o en una sesión en vivo. En la app: el botón de página de la barra de arriba, o "Ajustes de la página" en el menú "más" del teléfono.
 
 ## Notas en la nube y servidor de sincronización
 

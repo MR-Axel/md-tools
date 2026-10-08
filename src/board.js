@@ -194,7 +194,7 @@
     const dis = ro ? ' disabled' : '';
     box.innerHTML = '<div class="lmd-ask-card lmd-dlg-card lmd-cd-card" role="dialog" aria-modal="true" aria-label="' + T('Tarjeta') + '"><h3>' + T('Tarjeta') + '</h3>' +
       '<label class="lmd-dlg-field"><span>' + T('Título') + '</span><input type="text" data-cd="title" spellcheck="false" autocomplete="off"' + dis + '></label>' +
-      '<div class="lmd-cd-row"><label class="lmd-dlg-field"><span>' + T('Estado') + '</span><select data-cd="col"' + dis + '>' + model.columns.map((c, i) => '<option value="' + i + '"' + (i === ci ? ' selected' : '') + '>' + esc(c.title) + '</option>').join('') + '</select></label>' +
+      '<div class="lmd-cd-row"><label class="lmd-dlg-field"><span>' + T('Estado (columna)') + '</span><select data-cd="col"' + dis + '>' + model.columns.map((c, i) => '<option value="' + i + '"' + (i === ci ? ' selected' : '') + '>' + esc(c.title) + '</option>').join('') + '</select></label>' +
       '<label class="lmd-check lmd-cd-done"><input type="checkbox" data-cd="done"' + (card.done ? ' checked' : '') + dis + '><span>' + T('Hecha') + '</span></label></div>' +
       '<div class="lmd-cd-attrs"></div>' +
       (ro ? '' : '<div class="lmd-cd-sug"></div><div class="lmd-cd-new" hidden><input type="text" data-cd="name" placeholder="' + T('Nombre del atributo') + '" aria-label="' + T('Nombre del atributo') + '" spellcheck="false" autocomplete="off">' +

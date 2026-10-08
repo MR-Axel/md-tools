@@ -24,6 +24,13 @@ Then, in SharpMD: Settings → Cloud → Sync server, and type the address (`htt
 |---|---|---|
 | `PORT` | Local port | `8787` |
 | `HOST` | Interface to listen on | `127.0.0.1` |
+| `WEBHOOK_ALLOW_PRIVATE` | `1` lets outgoing webhooks go to `http:` and to private addresses. Only for tests, or for a server of your own inside a network you trust: with it, anyone with an account can make the server call internal addresses | off |
+| `WEBHOOK_RETRY_MS` | Waits between delivery attempts of a webhook, in milliseconds, separated by commas | `60000,300000,900000,2400000` (5 attempts in an hour) |
+| `WEBHOOK_MAX_FAILS` | Failed attempts in a row that turn a webhook off | `15` |
+| `WEBHOOK_TIMEOUT_MS` | How long a delivery waits for the answer | `8000` |
+| `WEBHOOK_UPDATE_WAIT_MS` | How long `note.updated` waits to join the saves of one note into one event | `10000` |
+| `API_PER_MINUTE` | Requests per minute of each token on `/api/v1` | `120` |
+| `INBOX_PER_MINUTE` | Requests per minute of each inbound address | `60` |
 | `DATA_DIR` | Folder for the database | `./data` |
 | `PUBLIC_URL` | Public address, shown to the user when connecting an AI | `http://localhost:PORT` |
 | `ALLOW_ORIGINS` | Web origins allowed to call the API, comma separated. Browser extensions are always allowed | none |
@@ -63,6 +70,8 @@ curl -X POST https://sync.example.com/admin/plan -H "x-admin-key: $ADMIN_KEY" \
 Email, notes, their previous versions (paid plan, 30 days), deleted notes while they are in the trash (30 days), and hashes of sign-in codes, sessions and tokens. Sessions and tokens are stored hashed: the server cannot show a token again after creating it. Of a live session it stores the note, the name its owner chose and the hash of the link's secret; the guests live in memory only (see "Live sessions"). Of a team it stores its name, the accounts that belong to it, the invitations that are waiting (the invited email address, until it is accepted, declined or removed) and the id of the subscription that pays for it (see "Teams").
 
 Of a contribution to the community gallery it stores the type, the name, the description, the language, the public name its sender chose, the content, the account that sent it, its state and how many times it was added (a number, not who). See "Community gallery".
+
+Of an automation it stores the destination address and the signing secret (encrypted with `DATA_KEY` when it is set), what it watches and which events. Of each delivery, the type of event, the path of the note, the result, the response code and the duration, for the last 50 deliveries of each webhook and up to 30 days: the body that was sent is deleted once it is delivered or given up. Of an inbound address, a hash of its secret, its last four characters, how many times it was used and when.
 
 Notes are not end-to-end encrypted by default: the MCP endpoint has to read them to serve an AI, and sharing has to hand them to another account. There are two layers on top of that, and they are independent:
 
@@ -352,6 +361,47 @@ Connecting Claude Code:
 claude mcp add --transport http sharpmd https://sync.example.com/mcp --header "Authorization: Bearer mdt_..."
 ```
 
+### Automations
+
+The public description, with examples for Make, n8n, Activepieces, Zapier and Slack, is at <https://sharpmd.app/api.html>. All of it is part of the paid plan (the same switch as MCP: `MCP_FREE=1` opens it on the free plan). Deploy `openapi.json` next to `server.mjs`: it is what `GET /api/v1/openapi.json` serves (rebuild it with `node tools/build-openapi.mjs`).
+
+**REST API, with a token.** `/api/v1/…` takes `Authorization: Bearer mdt_…`, the same tokens as MCP, and every request ends in the same code as the MCP tools: the folder of the token, the sharing permission, the team space under `@team/` and protected folders (only while unlocked for the AI) behave the same. Answers are `{ ok: true, data }` or `{ ok: false, error: { code, message } }`. It can be called from any origin: there are no cookies, the token travels in the request.
+
+| Call | What it does |
+|---|---|
+| `GET /api/v1/me` | What the token reaches |
+| `GET /api/v1/notes?folder=&limit=&cursor=` | Notes, newest first, in pages (`next_cursor`) |
+| `GET /api/v1/note?path=` | Text, `rev`, `updated` and the URL that opens it in the app |
+| `PUT /api/v1/note` `{ path, text, rev? }` | Creates or replaces. With `rev`, `409 rev_conflict` if the note moved on |
+| `POST /api/v1/note/append` `{ path, text }` · `POST /api/v1/note/move` `{ from, to }` · `DELETE /api/v1/note?path=` | Append, move, send to the trash |
+| `GET /api/v1/folders` · `GET /api/v1/search?q=` · `GET /api/v1/history?path=&version=` | Folders, search, earlier versions |
+| `GET /api/v1/comments?path=` · `POST /api/v1/comments` · `POST /api/v1/comments/:id/resolve` | Comments for the AI |
+| `GET /api/v1/boards?path=` | The kanban boards of a note as JSON: columns, cards, attributes |
+| `POST /api/v1/boards/cards` `{ path, column, title, attrs?, rev? }` | Creates a card |
+| `PATCH /api/v1/boards/cards/:id` · `POST …/:id/move` `{ path, column }` · `POST …/:id/done` · `DELETE …/:id?path=` | Changes, moves, completes or removes a card. `:id` is the id of the card or its position (`board.column.card`) |
+| `GET/POST/DELETE /api/v1/shares` · `POST/DELETE /api/v1/links` | Sharing, only with a token that has that permission |
+| `GET /api/v1/openapi.json` | OpenAPI 3.1, no token needed |
+
+Card operations rewrite the Markdown of the note on the revision they read, and give an id to the cards that had none.
+
+**Outgoing webhooks.** Managed with the session of the account (`o` = the team space, for its admin):
+
+| Call | What it does |
+|---|---|
+| `GET /automations` | Webhooks and inbound addresses, without secrets |
+| `POST /automations/hooks` `{ url, scope: { kind: all / folder / note, path }, events, format: json / slack / discord, include_text, name, lang }` | Creates one. Returns its signing secret once. Up to 20 per account |
+| `PUT /automations/hooks/:id` · `DELETE` | Changes it (`on: false` pauses it), removes it |
+| `POST /automations/hooks/:id/test` · `POST …/secret` · `GET …/deliveries` | Sends a `ping`, replaces the secret, lists the last 50 deliveries (status, code, duration) |
+
+Events: `note.created`, `note.updated`, `note.deleted`, `note.restored`, `note.moved`, `comment.created`, `comment.resolved`, `card.created`, `card.moved`, `card.updated`, `card.done`, `card.deleted`. Card events come from comparing the boards of the note before and after each save, by card id (by text, for boards without ids), whoever saved: the app, the API or MCP. The body is `{ id, type, created, account, note: { path, name, url, space }, actor: { type, name?, via? }, data }`; `account` is an opaque id. The text of the note travels only with `include_text` (up to 64 KB). `X-SharpMD-Signature: t=<seconds>,v1=<hex>` is the HMAC-SHA-256 of `<t>.<body>` with the secret.
+
+- Deliveries wait in the database (`hook_jobs`), so a restart does not lose them. A failed one is retried with growing waits; after `WEBHOOK_MAX_FAILS` failed attempts in a row the webhook is turned off and the app shows it.
+- **SSRF.** Only `https:`, no user or password in the address, no ports under 1024 other than 443. The name is resolved and every address it has must be public: loopback, private, link-local, CGNAT, multicast, cloud metadata and their IPv6 forms (mapped, NAT64, 6to4, Teredo, unique local) are refused. The connection goes to the address that was checked, with no second resolution. Redirects are not followed, the wait is short, the response is read up to 16 KB and dropped, and no header of the request that caused the event is forwarded. The check runs when the webhook is saved and again on every delivery.
+- The address and the secret are stored with `DATA_KEY` when it is set, like the text of the notes. The secret cannot be a hash: it signs every delivery.
+- Notes in a protected folder produce no events, and a webhook or an inbound address cannot point inside one.
+
+**Inbound addresses.** `POST /automations/inboxes` `{ kind: append / create / card, path, template, column, allow_get, name, tz }` returns the address once; the server keeps a hash of its secret. `POST /in/<secret>` then adds to the note (`append`), creates a note in the folder (`create`, named after `title` or the date) or creates a card on the board of the note (`card`). It takes `text/plain`, JSON, `application/x-www-form-urlencoded` and `multipart/form-data` without files, up to 64 KB, and answers `{ ok: true }`: never content of the note. `GET /in/<secret>?text=` works only with `allow_get`. Limits: `INBOX_PER_MINUTE` per address, 5000 a day, and 30 unknown secrets per hour per IP.
+
 ## Tests
 
 ```
@@ -363,4 +413,5 @@ node team.mjs
 node cloud.mjs
 node vault.mjs
 node vaultapp.mjs
+node automation.mjs
 ```

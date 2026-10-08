@@ -1192,7 +1192,7 @@
       "Botón": "Button", "Quitar de mis plantillas": "Remove from my templates",
       "Denunciar este aporte": "Report this contribution", "Avisanos si este aporte tiene algo que no debería estar acá.": "Tell us if this contribution has something that should not be here.",
       // Automatizaciones, atributos de las tarjetas y ajustes de la página.
-      "Abrir la tarjeta": "Open the card", "Opciones del tablero": "Board options",
+      "Abrir la tarjeta": "Open the card", "Estado (columna)": "Status", "Opciones del tablero": "Board options",
       "Título": "Title", "Hecha": "Done",
       "Nombre del atributo": "Attribute name", "Tipo": "Type",
       "Número": "Number", "Lista de opciones": "List of options",

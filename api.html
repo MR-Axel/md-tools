@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SharpMD: API, webhooks and inbound addresses</title>
+<meta name="description" content="Connect SharpMD to Make, n8n, Activepieces, Zapier and Slack: a REST API with a token, signed webhooks when a note or a kanban card changes, and secret addresses that add text to a note.">
+<link rel="canonical" href="https://sharpmd.app/api.html">
+<link rel="icon" href="icons/icon32.png">
+<style>
+  @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
+  :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --line: #dedbd2; --accent: #4d7c0f; --on: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121418; --soft: #1a1d23; --fg: #e6e8ec; --muted: #a0a7b4; --line: #2a2e37; --accent: #bef264; --on: #14161a; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.65 "MDT Inter", -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  html[data-lang="en"] [lang="es"], html[data-lang="es"] [lang="en"] { display: none !important; }
+  main { width: min(760px, 100% - 40px); margin: 0 auto; padding: 46px 0 80px; }
+  .top { display: flex; align-items: center; gap: 14px; margin-bottom: 40px; }
+  .top a { margin-right: auto; color: var(--muted); text-decoration: none; font-weight: 600; }
+  .lang { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); }
+  .lang button { height: 26px; padding: 0 11px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  html[data-lang="en"] .lang [data-set="en"], html[data-lang="es"] .lang [data-set="es"] { background: var(--accent); color: var(--on); }
+  h1 { margin: 0 0 6px; font-size: 38px; letter-spacing: -0.03em; line-height: 1.15; }
+  h2 { margin: 40px 0 8px; font-size: 23px; letter-spacing: -0.015em; }
+  h3 { margin: 26px 0 6px; font-size: 17px; }
+  p, li, td { color: var(--muted); }
+  .date { margin: 0 0 26px; font-size: 14px; }
+  a { color: var(--accent); }
+  code { padding: 1px 6px; border-radius: 5px; background: var(--soft); font: 0.88em ui-monospace, Consolas, monospace; color: var(--fg); }
+  pre { margin: 10px 0 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); overflow-x: auto; font: 13.5px/1.55 ui-monospace, Consolas, monospace; color: var(--fg); }
+  pre code { padding: 0; background: none; font: inherit; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 15px; }
+  th, td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  th { color: var(--fg); font-size: 13px; }
+  .wide { overflow-x: auto; }
+  ol { padding-left: 22px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><a href="./?site">← SharpMD</a><div class="lang"><button type="button" data-set="en">EN</button><button type="button" data-set="es">ES</button></div></div>
+
+  <div lang="en">
+    <h1>API, webhooks and inbound addresses</h1>
+    <p class="date">Version 1 · part of the paid plan · <a href="https://sync.sharpmd.app/api/v1/openapi.json">OpenAPI 3.1</a></p>
+    <p>Three ways to connect your notes to other tools. All three are set up in the app, in <b>Settings &gt; Automations</b>.</p>
+    <ul>
+      <li><a href="#webhooks">Webhooks</a>: SharpMD calls an address when a note or a kanban card changes. Paste a Slack address and it posts a readable line.</li>
+      <li><a href="#inbound">Inbound addresses</a>: a secret address that adds text to a note, creates a note or creates a card. Good for forms, sales and email.</li>
+      <li><a href="#api">API</a>: read and write notes and move cards from a flow, with a token.</li>
+    </ul>
+
+    <h2 id="webhooks">Webhooks</h2>
+    <p>An automation watches the whole account, one folder or one note, and sends the events you pick to an <code>https</code> address. In a team, the admin can watch the team space.</p>
+    <div class="wide"><table>
+      <tr><th>Event</th><th>When</th><th><code>data</code></th></tr>
+      <tr><td><code>note.created</code></td><td>A note is created</td><td><code>rev</code>, <code>size</code>, <code>updated</code></td></tr>
+      <tr><td><code>note.updated</code></td><td>A note changes. Saves in a row arrive as one event</td><td><code>rev</code>, <code>size</code>, <code>updated</code></td></tr>
+      <tr><td><code>note.moved</code></td><td>A note is moved or renamed</td><td><code>from</code>, <code>to</code></td></tr>
+      <tr><td><code>note.deleted</code></td><td>A note goes to the trash</td><td><code>trash</code></td></tr>
+      <tr><td><code>note.restored</code></td><td>A note comes back from the trash</td><td><code>rev</code>, <code>size</code></td></tr>
+      <tr><td><code>comment.created</code></td><td>Someone leaves a comment for the AI</td><td><code>comment</code>: <code>id</code>, <code>text</code>, <code>quote</code></td></tr>
+      <tr><td><code>comment.resolved</code></td><td>A comment is marked as done</td><td><code>comment</code>: <code>id</code>, <code>reply</code></td></tr>
+      <tr><td><code>card.created</code></td><td>A card is added to a board</td><td><code>card</code>, <code>board</code></td></tr>
+      <tr><td><code>card.moved</code></td><td>A card changes column (its status)</td><td><code>card</code>, <code>from</code>, <code>to</code></td></tr>
+      <tr><td><code>card.updated</code></td><td>The title or an attribute of a card changes</td><td><code>card</code>, <code>changes</code>: old and new value per key</td></tr>
+      <tr><td><code>card.done</code></td><td>A card is ticked</td><td><code>card</code></td></tr>
+      <tr><td><code>card.deleted</code></td><td>A card is removed</td><td><code>card</code></td></tr>
+    </table></div>
+    <p>Card events come out whether the change was made in the app, through the API or by an AI over MCP. Notes inside a protected folder never produce events.</p>
+    <h3>What arrives</h3>
+<pre><code>POST /your/address
+Content-Type: application/json
+X-SharpMD-Event: card.moved
+X-SharpMD-Delivery: evt_Zk3v9Q0aXc81LmPq7RtY
+X-SharpMD-Signature: t=1791380591,v1=5f2b…
+
+{
+  "id": "evt_Zk3v9Q0aXc81LmPq7RtY",
+  "type": "card.moved",
+  "created": "2026-10-07T14:03:11Z",
+  "account": "acc_3f1c9a7b2d4e5f601234",
+  "note": { "path": "shop/board.md", "name": "board.md",
+            "url": "https://sharpmd.app/src/app.html?f=cloud%2Fshop%2Fboard.md", "space": "own" },
+  "actor": { "type": "app" },
+  "data": {
+    "card": { "id": "c8k2m9xq", "title": "Fix checkout", "column": "Done", "done": false,
+              "created": "2026-10-01T10:00:00Z", "updated": "2026-10-07T14:03:10Z",
+              "attrs": { "due": "2026-10-20", "owner": "Ana Paz" } },
+    "from": "To do", "to": "Done", "board": 0, "rev": 12
+  }
+}</code></pre>
+    <p><code>account</code> is an opaque id, never an email address. <code>actor.type</code> is <code>app</code>, <code>api</code>, <code>mcp</code>, <code>inbox</code>, or <code>member</code> with a <code>name</code> when a team member did it. The text of the note is not sent unless the automation has "Include the content of the note" on (up to 64 KB, in <code>data.text</code>).</p>
+    <h3>Check the signature</h3>
+    <p>The signature is the HMAC-SHA-256, in hexadecimal, of <code>t + "." + body</code> with the secret shown when the automation was created. Compare it with <code>v1</code> and reject a <code>t</code> older than five minutes.</p>
+<pre><code>const crypto = require('crypto');
+function valid(header, rawBody, secret) {
+  const m = /^t=(\d+),v1=([0-9a-f]{64})$/.exec(header || '');
+  if (!m || Math.abs(Date.now() / 1000 - m[1]) > 300) return false;
+  const want = crypto.createHmac('sha256', secret).update(m[1] + '.' + rawBody).digest('hex');
+  return crypto.timingSafeEqual(Buffer.from(want), Buffer.from(m[2]));
+}</code></pre>
+    <h3>Delivery</h3>
+    <p>Answer with a 2xx within 8 seconds. Anything else is retried up to 5 times within an hour, with the same <code>id</code>. After 15 failed attempts in a row the automation turns itself off and the app says so. Redirects are not followed, and the address has to be public: private networks are refused. The last 50 deliveries are in the app, with status, response code and duration.</p>
+
+    <h2 id="inbound">Inbound addresses</h2>
+    <p>An address like <code>https://sync.sharpmd.app/in/mdi_…</code>. Whoever has it can add to that note and nothing else. It is shown once; you can replace it at any time.</p>
+<pre><code>curl -X POST https://sync.sharpmd.app/in/mdi_YOUR_SECRET \
+  -H "Content-Type: application/json" \
+  -d '{"text": "New order from Ana, $ 120"}'</code></pre>
+    <ul>
+      <li><code>text/plain</code>: the body is the text.</li>
+      <li>JSON with <code>text</code> (and <code>title</code>, for the name of a new note). Any other JSON becomes a table of field and value.</li>
+      <li>Forms (<code>application/x-www-form-urlencoded</code> or <code>multipart/form-data</code>): the fields become a list. Files are skipped.</li>
+      <li>A template per address: <code>- {{date}} {{text}}</code>. It also takes <code>{{time}}</code>, <code>{{title}}</code> and any field by its name.</li>
+      <li>On a board: each request becomes a card in the column you chose, and the other fields become its attributes.</li>
+    </ul>
+    <p>Up to 64 KB and 60 requests per minute. The answer is <code>{"ok": true}</code>.</p>
+
+    <h2 id="api">API</h2>
+    <p>Create a token in <b>Settings &gt; AI (MCP)</b>: the API uses the same tokens. A token limited to a folder only reaches that folder. Send it in every request:</p>
+<pre><code>curl https://sync.sharpmd.app/api/v1/notes?folder=shop \
+  -H "Authorization: Bearer mdt_YOUR_TOKEN"</code></pre>
+    <p>Answers are <code>{"ok": true, "data": …}</code> or <code>{"ok": false, "error": {"code", "message"}}</code>. 120 requests per minute per token. Every write returns the <code>url</code> that opens the note in the app.</p>
+    <div class="wide"><table>
+      <tr><th>Request</th><th>What it does</th></tr>
+      <tr><td><code>GET /api/v1/notes</code></td><td>List notes. <code>folder</code>, <code>limit</code>, <code>cursor</code></td></tr>
+      <tr><td><code>GET /api/v1/note?path=</code></td><td>Read a note: text and <code>rev</code></td></tr>
+      <tr><td><code>PUT /api/v1/note</code></td><td>Create or replace. <code>{path, text, rev?}</code></td></tr>
+      <tr><td><code>POST /api/v1/note/append</code></td><td>Add at the end. <code>{path, text}</code></td></tr>
+      <tr><td><code>POST /api/v1/note/move</code></td><td>Move or rename. <code>{from, to}</code></td></tr>
+      <tr><td><code>DELETE /api/v1/note?path=</code></td><td>Send to the trash</td></tr>
+      <tr><td><code>GET /api/v1/folders</code> · <code>/search?q=</code> · <code>/history?path=</code></td><td>Folders, search, earlier versions</td></tr>
+      <tr><td><code>GET /api/v1/comments</code> · <code>POST /api/v1/comments/{id}/resolve</code></td><td>Comments for the AI</td></tr>
+      <tr><td><code>GET /api/v1/boards?path=</code></td><td>The boards of a note: columns and cards with their attributes</td></tr>
+      <tr><td><code>POST /api/v1/boards/cards</code></td><td>Create a card. <code>{path, column, title, attrs?}</code></td></tr>
+      <tr><td><code>POST /api/v1/boards/cards/{id}/move</code></td><td>Move it. <code>{path, column}</code></td></tr>
+      <tr><td><code>POST /api/v1/boards/cards/{id}/done</code></td><td>Tick it. <code>{path}</code></td></tr>
+      <tr><td><code>PATCH /api/v1/boards/cards/{id}</code></td><td>Change title, column or attributes</td></tr>
+      <tr><td><code>DELETE /api/v1/boards/cards/{id}?path=</code></td><td>Remove it</td></tr>
+    </table></div>
+<pre><code>curl -X POST https://sync.sharpmd.app/api/v1/boards/cards/c8k2m9xq/move \
+  -H "Authorization: Bearer mdt_YOUR_TOKEN" -H "Content-Type: application/json" \
+  -d '{"path": "shop/board.md", "column": "Done"}'</code></pre>
+    <p>Send <code>rev</code> to write only if the note is still at that revision: otherwise the answer is <code>409 rev_conflict</code> and nothing is written. Team notes are under <code>@team/</code>. Protected folders are out of reach while they are locked. The full description, with every field, is in the <a href="https://sync.sharpmd.app/api/v1/openapi.json">OpenAPI file</a>.</p>
+    <h3>Cards in Markdown</h3>
+    <p>A board is a <code>kanban</code> code block. Each heading is a column and each task a card. Attributes go in braces at the end of the card; <code>id</code>, <code>created</code> and <code>updated</code> are written by SharpMD.</p>
+<pre><code>```kanban
+{show=due,owner priority=low|medium|high}
+## To do
+- [ ] Fix checkout {due=2026-10-20 owner="Ana Paz" id=c8k2m9xq created=2026-10-07T14:03:11Z}
+
+## Done
+```</code></pre>
+
+    <h2 id="tools">Make, n8n, Activepieces, Zapier, Slack</h2>
+    <h3>Slack</h3>
+    <ol><li>In Slack, add an incoming webhook to a channel and copy its address.</li><li>In SharpMD: Settings &gt; Automations &gt; New automation. Pick where to watch and the events.</li><li>Choose Slack, paste the address, Create, then Send a test.</li></ol>
+    <p>The channel gets lines like: Card "Fix checkout" moved from To do to Done in shop/board.md. Discord works the same with its webhook address.</p>
+    <h3>Make</h3>
+    <ol><li>Start a scenario with <b>Webhooks &gt; Custom webhook</b> and copy its address.</li><li>In SharpMD, create an automation with the format "Make, n8n, Zapier or other" and that address. Send a test so Make learns the fields.</li><li>To write back, add an <b>HTTP &gt; Make a request</b> module with the header <code>Authorization: Bearer mdt_…</code>, or post to an inbound address.</li></ol>
+    <h3>n8n</h3>
+    <ol><li>Add a <b>Webhook</b> node (POST) and copy its production URL into a SharpMD automation.</li><li>To act on SharpMD, add an <b>HTTP Request</b> node with Header Auth: name <code>Authorization</code>, value <code>Bearer mdt_…</code>.</li><li>The curl examples on this page can be pasted with Import cURL.</li></ol>
+    <h3>Activepieces</h3>
+    <ol><li>Use the <b>Webhook</b> trigger and paste its live URL into a SharpMD automation.</li><li>Use the <b>HTTP</b> piece (Send HTTP request) with the <code>Authorization</code> header to call the API.</li></ol>
+    <h3>Zapier</h3>
+    <ol><li>Trigger: <b>Webhooks by Zapier &gt; Catch Hook</b>. Paste its address into a SharpMD automation and send a test.</li><li>Action: <b>Webhooks by Zapier &gt; POST</b> to an inbound address, or a Custom Request to the API with the <code>Authorization</code> header.</li></ol>
+
+    <h2>Self-hosting</h2>
+    <p>The server is open source. Replace <code>https://sync.sharpmd.app</code> with your own address. The variables are in the <a href="https://github.com/MR-Axel/sharpmd/tree/main/server">server README</a>, and <a href="privacy.html">Privacy</a> says what is sent and what is kept.</p>
+  </div>
+
+  <div lang="es">
+    <h1>API, webhooks y direcciones de entrada</h1>
+    <p class="date">Versión 1 · parte del plan pago · <a href="https://sync.sharpmd.app/api/v1/openapi.json">OpenAPI 3.1</a></p>
+    <p>Tres formas de conectar tus notas con otras herramientas. Las tres se arman en la app, en <b>Ajustes &gt; Automatizaciones</b>.</p>
+    <ul>
+      <li><a href="#webhooks-es">Webhooks</a>: SharpMD llama a una dirección cuando cambia una nota o una tarjeta del tablero. Pegás una dirección de Slack y publica una línea legible.</li>
+      <li><a href="#inbound-es">Direcciones de entrada</a>: una dirección secreta que agrega texto a una nota, crea una nota o crea una tarjeta. Sirve para formularios, ventas y correo.</li>
+      <li><a href="#api-es">API</a>: leer y escribir notas y mover tarjetas desde un flujo, con un token.</li>
+    </ul>
+
+    <h2 id="webhooks-es">Webhooks</h2>
+    <p>Una automatización mira toda la cuenta, una carpeta o una nota, y manda los eventos que elijas a una dirección <code>https</code>. En un equipo, quien lo administra puede mirar el espacio del equipo.</p>
+    <div class="wide"><table>
+      <tr><th>Evento</th><th>Cuándo</th><th><code>data</code></th></tr>
+      <tr><td><code>note.created</code></td><td>Se crea una nota</td><td><code>rev</code>, <code>size</code>, <code>updated</code></td></tr>
+      <tr><td><code>note.updated</code></td><td>Cambia una nota. Los guardados seguidos llegan como un solo evento</td><td><code>rev</code>, <code>size</code>, <code>updated</code></td></tr>
+      <tr><td><code>note.moved</code></td><td>Se mueve o se renombra</td><td><code>from</code>, <code>to</code></td></tr>
+      <tr><td><code>note.deleted</code></td><td>Va a la papelera</td><td><code>trash</code></td></tr>
+      <tr><td><code>note.restored</code></td><td>Vuelve de la papelera</td><td><code>rev</code>, <code>size</code></td></tr>
+      <tr><td><code>comment.created</code></td><td>Alguien deja un comentario para la IA</td><td><code>comment</code>: <code>id</code>, <code>text</code>, <code>quote</code></td></tr>
+      <tr><td><code>comment.resolved</code></td><td>Un comentario queda resuelto</td><td><code>comment</code>: <code>id</code>, <code>reply</code></td></tr>
+      <tr><td><code>card.created</code></td><td>Se agrega una tarjeta a un tablero</td><td><code>card</code>, <code>board</code></td></tr>
+      <tr><td><code>card.moved</code></td><td>Una tarjeta cambia de columna (su estado)</td><td><code>card</code>, <code>from</code>, <code>to</code></td></tr>
+      <tr><td><code>card.updated</code></td><td>Cambia el título o un atributo</td><td><code>card</code>, <code>changes</code>: valor anterior y nuevo por clave</td></tr>
+      <tr><td><code>card.done</code></td><td>Una tarjeta queda tildada</td><td><code>card</code></td></tr>
+      <tr><td><code>card.deleted</code></td><td>Se quita una tarjeta</td><td><code>card</code></td></tr>
+    </table></div>
+    <p>Los eventos de tarjeta salen venga el cambio de la app, de la API o de una IA por MCP. Las notas de una carpeta protegida nunca generan eventos.</p>
+    <h3>Qué llega</h3>
+<pre><code>POST /tu/direccion
+Content-Type: application/json
+X-SharpMD-Event: card.moved
+X-SharpMD-Delivery: evt_Zk3v9Q0aXc81LmPq7RtY
+X-SharpMD-Signature: t=1791380591,v1=5f2b…
+
+{
+  "id": "evt_Zk3v9Q0aXc81LmPq7RtY",
+  "type": "card.moved",
+  "created": "2026-10-07T14:03:11Z",
+  "account": "acc_3f1c9a7b2d4e5f601234",
+  "note": { "path": "tienda/tablero.md", "name": "tablero.md",
+            "url": "https://sharpmd.app/src/app.html?f=cloud%2Ftienda%2Ftablero.md", "space": "own" },
+  "actor": { "type": "app" },
+  "data": {
+    "card": { "id": "c8k2m9xq", "title": "Arreglar el pago", "column": "Hecho", "done": false,
+              "created": "2026-10-01T10:00:00Z", "updated": "2026-10-07T14:03:10Z",
+              "attrs": { "vence": "2026-10-20", "responsable": "Ana Paz" } },
+    "from": "Por hacer", "to": "Hecho", "board": 0, "rev": 12
+  }
+}</code></pre>
+    <p><code>account</code> es un identificador opaco, nunca un correo. <code>actor.type</code> es <code>app</code>, <code>api</code>, <code>mcp</code>, <code>inbox</code>, o <code>member</code> con su <code>name</code> cuando lo hizo alguien del equipo. El texto de la nota no viaja salvo que la automatización tenga prendido "Incluir el contenido de la nota" (hasta 64 KB, en <code>data.text</code>).</p>
+    <h3>Comprobar la firma</h3>
+    <p>La firma es el HMAC-SHA-256, en hexadecimal, de <code>t + "." + cuerpo</code> con el secreto que se muestra al crear la automatización. Comparala con <code>v1</code> y rechazá un <code>t</code> de más de cinco minutos. El ejemplo en JavaScript está en la versión en inglés de esta página.</p>
+    <h3>Entrega</h3>
+    <p>Respondé con un 2xx en menos de 8 segundos. Cualquier otra cosa se reintenta hasta 5 veces en una hora, con el mismo <code>id</code>. Después de 15 intentos fallidos seguidos la automatización se desactiva sola y la app lo avisa. No se siguen redirecciones, y la dirección tiene que ser pública: las redes privadas se rechazan. Las últimas 50 entregas quedan en la app, con estado, código de respuesta y duración.</p>
+
+    <h2 id="inbound-es">Direcciones de entrada</h2>
+    <p>Una dirección como <code>https://sync.sharpmd.app/in/mdi_…</code>. Quien la tiene puede agregar a esa nota y nada más. Se muestra una vez, y la podés cambiar cuando quieras.</p>
+<pre><code>curl -X POST https://sync.sharpmd.app/in/mdi_TU_SECRETO \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Pedido nuevo de Ana, $ 120"}'</code></pre>
+    <ul>
+      <li><code>text/plain</code>: el cuerpo es el texto.</li>
+      <li>JSON con <code>text</code> (y <code>title</code>, para el nombre de una nota nueva). Cualquier otro JSON queda como una tabla de campo y valor.</li>
+      <li>Formularios (<code>application/x-www-form-urlencoded</code> o <code>multipart/form-data</code>): los campos quedan como lista. Los archivos se saltean.</li>
+      <li>Una plantilla por dirección: <code>- {{date}} {{text}}</code>. También acepta <code>{{time}}</code>, <code>{{title}}</code> y cualquier campo por su nombre.</li>
+      <li>En un tablero: cada pedido es una tarjeta en la columna que elegiste, y los demás campos son sus atributos.</li>
+    </ul>
+    <p>Hasta 64 KB y 60 pedidos por minuto. La respuesta es <code>{"ok": true}</code>.</p>
+
+    <h2 id="api-es">API</h2>
+    <p>Creá un token en <b>Ajustes &gt; IA (MCP)</b>: la API usa los mismos tokens. Uno limitado a una carpeta solo llega a esa carpeta. Va en cada pedido:</p>
+<pre><code>curl https://sync.sharpmd.app/api/v1/notes?folder=tienda \
+  -H "Authorization: Bearer mdt_TU_TOKEN"</code></pre>
+    <p>Las respuestas son <code>{"ok": true, "data": …}</code> o <code>{"ok": false, "error": {"code", "message"}}</code>. 120 pedidos por minuto por token. Cada escritura devuelve la <code>url</code> que abre la nota en la app. La tabla de pedidos está en la versión en inglés, y la descripción completa en el <a href="https://sync.sharpmd.app/api/v1/openapi.json">archivo OpenAPI</a>.</p>
+<pre><code>curl -X POST https://sync.sharpmd.app/api/v1/boards/cards/c8k2m9xq/move \
+  -H "Authorization: Bearer mdt_TU_TOKEN" -H "Content-Type: application/json" \
+  -d '{"path": "tienda/tablero.md", "column": "Hecho"}'</code></pre>
+    <p>Mandá <code>rev</code> para escribir solo si la nota sigue en esa revisión: si cambió, la respuesta es <code>409 rev_conflict</code> y no se escribe nada. Las notas del equipo están bajo <code>@team/</code>. Las carpetas protegidas quedan fuera de alcance mientras están bloqueadas.</p>
+    <h3>Las tarjetas en Markdown</h3>
+    <p>Un tablero es un bloque de código <code>kanban</code>. Cada título es una columna y cada tarea una tarjeta. Los atributos van entre llaves al final de la tarjeta; <code>id</code>, <code>created</code> y <code>updated</code> los escribe SharpMD.</p>
+<pre><code>```kanban
+{show=vence,responsable prioridad=baja|media|alta}
+## Por hacer
+- [ ] Arreglar el pago {vence=2026-10-20 responsable="Ana Paz" id=c8k2m9xq created=2026-10-07T14:03:11Z}
+
+## Hecho
+```</code></pre>
+
+    <h2 id="tools-es">Make, n8n, Activepieces, Zapier, Slack</h2>
+    <h3>Slack</h3>
+    <ol><li>En Slack, agregá un webhook entrante a un canal y copiá su dirección.</li><li>En SharpMD: Ajustes &gt; Automatizaciones &gt; Nueva automatización. Elegí dónde mirar y qué eventos.</li><li>Elegí Slack, pegá la dirección, Crear, y después Enviar una prueba.</li></ol>
+    <p>Al canal le llegan líneas como: Tarjeta "Arreglar el pago" pasó de Por hacer a Hecho en tienda/tablero.md. Discord funciona igual con la dirección de su webhook.</p>
+    <h3>Make</h3>
+    <ol><li>Empezá un escenario con <b>Webhooks &gt; Custom webhook</b> y copiá su dirección.</li><li>En SharpMD, creá una automatización con el formato "Make, n8n, Zapier u otro" y esa dirección. Mandá una prueba para que Make conozca los campos.</li><li>Para escribir de vuelta, sumá un módulo <b>HTTP &gt; Make a request</b> con la cabecera <code>Authorization: Bearer mdt_…</code>, o mandá a una dirección de entrada.</li></ol>
+    <h3>n8n</h3>
+    <ol><li>Agregá un nodo <b>Webhook</b> (POST) y copiá su URL de producción en una automatización de SharpMD.</li><li>Para actuar sobre SharpMD, un nodo <b>HTTP Request</b> con Header Auth: nombre <code>Authorization</code>, valor <code>Bearer mdt_…</code>.</li><li>Los ejemplos curl de esta página se pegan con Import cURL.</li></ol>
+    <h3>Activepieces</h3>
+    <ol><li>Usá el disparador <b>Webhook</b> y pegá su URL en una automatización de SharpMD.</li><li>Usá la pieza <b>HTTP</b> (Send HTTP request) con la cabecera <code>Authorization</code> para llamar a la API.</li></ol>
+    <h3>Zapier</h3>
+    <ol><li>Disparador: <b>Webhooks by Zapier &gt; Catch Hook</b>. Pegá su dirección en una automatización de SharpMD y mandá una prueba.</li><li>Acción: <b>Webhooks by Zapier &gt; POST</b> a una dirección de entrada, o un Custom Request a la API con la cabecera <code>Authorization</code>.</li></ol>
+
+    <h2>Servidor propio</h2>
+    <p>El servidor es de código abierto. Cambiá <code>https://sync.sharpmd.app</code> por tu dirección. Las variables están en el <a href="https://github.com/MR-Axel/sharpmd/tree/main/server">README del servidor</a>, y en <a href="privacy.html">Privacidad</a> está qué se manda y qué se guarda.</p>
+  </div>
+</main>
+<script src="site.js"></script>
+</body>
+</html>

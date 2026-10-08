@@ -30,7 +30,8 @@ Free and open source. No tracking: files are read in your browser and never uplo
 | **Formatting as you type** | `**bold**`, `*italic*` and `` `code` `` turn into formatting. A line that starts with `#`, `-`, `1.`, `>` or `[]` becomes a heading, a list, a quote or a task. |
 | **Blocks** | Right-click, the handle next to a block, the + button or `/` on an empty line: insert, turn into, move, duplicate or delete. Undo with Ctrl+Z, redo with Ctrl+Y. |
 | **Tables** | Add and remove rows and columns. A totals row sums each column, and a cell can hold `=sum`, `=avg`, `=min`, `=max`, `=count` or `=median`. |
-| **Boards** | A `kanban` block turns headings into columns and tasks into cards you can drag. Anywhere else it reads as a plain task list. |
+| **Boards** | A `kanban` block turns headings into columns and tasks into cards you can drag. Each card has a stable id, created and edited dates and your own attributes (due date, owner, priority…), and a click opens its detail. Anywhere else it reads as a plain task list. A wide board uses the full width of the note. |
+| **Page settings** | Settings that belong to a note, kept in its front matter so they travel with the file: page width (normal, wide, full) and numbered headings. |
 | **Diagrams** | Mermaid and Graphviz, with an editor that shows the drawing next to the code: templates, pieces to add with a button, color palettes, and errors explained with their line marked. |
 | **Math** | KaTeX, inline and in blocks, with an editor that previews as you type. |
 | **Images** | Insert by address or from a file, pick a size, paste from the clipboard. |
@@ -47,6 +48,7 @@ Free and open source. No tracking: files are read in your browser and never uplo
 | **Sharing** | A note or a folder with another account, to read or to edit, or a read-only public link with a password. |
 | **Live sessions** | Open a session on a cloud note and send the link. Guests join from the browser with a name, without an account, and everyone edits at once. |
 | **AI over MCP** | Claude or any MCP client can list, read, write, append to, move and search your cloud notes, and read their history. Each write returns a link that opens the note in the app. A token can be limited to one folder, and only a token created with the sharing permission can share notes or create public links. A comment on a block tells the AI what to change, and Settings has a ready message to paste into your AI. |
+| **Automations** | Signed webhooks when a note or a card changes (ready-made for Slack and Discord, JSON for Make, n8n, Activepieces and Zapier), secret inbound addresses that add text to a note or create a card, and a REST API with the same tokens as MCP. See [the API page](https://sharpmd.app/api.html). |
 | **Read aloud** | A tool you turn on in Settings → Tools. Reads the whole note, from a block or the selection, with the voices of your device. It marks the block it is reading and announces code and diagrams instead of reading them. |
 | **Community** | In Settings → Tools: templates, themes and diagram palettes shared by people, each one reviewed before it is published. Add one and it works offline; share the open note as a template, your theme or a palette. Content only, never code. |
 | **Dictation** | Also in Settings → Tools. Write by speaking, in English or Spanish, with spoken commands for punctuation, headings, lists, tasks and formatting. "Formula … end formula" builds LaTeX and "flowchart … end diagram" builds a Mermaid flowchart, both drawn while you speak. It uses the speech recognition of the browser, on the device when the browser offers it. |
@@ -121,9 +123,42 @@ A page cannot write to disk on its own, so the first time you save a file opened
 
 No analytics. Settings, reading positions and browser notes are stored in your browser. Files you open are never uploaded. Reading aloud uses the voices of your device, and dictation uses the speech recognition of the browser: SharpMD never receives audio. Cloud notes are optional: a note reaches the sync server only when you send it there. With the extension installed, browser notes, the list of opened files and folders and display preferences pass between the web app and the extension inside your browser, never over the network. Apart from that, the extension makes two network requests: the daily check of the version number published here, which you can turn off, and a short check that the web app answers when you click its button. HTML produced from the Markdown goes through DOMPurify before it reaches the page. Details in the [privacy page](https://sharpmd.app/privacy.html).
 
+## Kanban cards
+
+A board is a `kanban` code block. Each heading is a column (the status of its cards) and each task a card. A card can end with a group in braces that holds its attributes:
+
+````
+```kanban
+{show=due,owner priority=low|medium|high estimate=number}
+## To do
+- [ ] Fix checkout {due=2026-10-20 owner="Ana Paz" id=c8k2m9xq created=2026-10-07T14:03:11Z updated=2026-10-07T15:10:02Z}
+- [ ] A card with nothing else
+
+## Done
+```
+````
+
+- `id`, `created` and `updated` are written by SharpMD. The id never changes; `updated` changes when the card is moved or edited. Dates are ISO 8601 in UTC.
+- Everything else is yours: `key=value`, with quotes when the value has spaces. Keys start with a letter and have no spaces.
+- A line with only braces before the first column sets up the board: `show` lists the attributes drawn on the cards, and `key=text`, `key=date`, `key=number` or `key=a|b|c` (a list of options) gives a type to an attribute.
+- A board without any of this opens the same. Its cards get an id and a created date the first time the board is edited. Braces that are not `key=value` stay as text.
+
+## Page settings
+
+What applies to one note and not to the person lives in the front matter of the note, with plain keys:
+
+```
+---
+width: wide
+numbered: true
+---
+```
+
+`width` is `normal`, `wide` or `full`; `numbered` numbers the headings. The list of keys is closed and each value is checked: an unknown key or value does nothing, and a note can never bring CSS. They apply to whoever opens the note, also through a public link or in a live session. In the app: the page button in the top bar, or "Page settings" in the "more" menu on a phone.
+
 ## Cloud notes and the sync server
 
-`server/` holds SharpMD Sync: accounts, notes in the cloud and an MCP endpoint so an AI can read and write them. Sign in from the start screen with a code sent to your email. The free plan holds 10 cloud notes; the paid plan (USD 3.99 a month or USD 39 a year) has no limit and adds sharing, the MCP connection, 30 days of version history and the appearance options. The team plan (USD 7.98 a month for 2 people, USD 3 a month for each extra one) gives every member the paid plan and a shared space for the team notes: whoever pays invites by email and manages the seats.
+`server/` holds SharpMD Sync: accounts, notes in the cloud, an MCP endpoint so an AI can read and write them, and the automations: a REST API under `/api/v1`, outgoing webhooks and inbound addresses ([docs](https://sharpmd.app/api.html)). Sign in from the start screen with a code sent to your email. The free plan holds 10 cloud notes; the paid plan (USD 3.99 a month or USD 39 a year) has no limit and adds sharing, the MCP connection, 30 days of version history and the appearance options. The team plan (USD 7.98 a month for 2 people, USD 3 a month for each extra one) gives every member the paid plan and a shared space for the team notes: whoever pays invites by email and manages the seats.
 
 The server is one file with no dependencies, and you can host it yourself: set its address in Settings → Account, or type `off` there to use SharpMD with no cloud at all. See [server/README.md](server/README.md).
 
@@ -167,7 +202,9 @@ src/
   sync.js         cloud icon, sharing, history, tokens and plans
   live.js         live sessions: the link, the guests and who is on each block
   team.js         team plan: members, invitations and seats
-  board.js        kanban boards and table formulas
+  board.js        kanban boards (cards with attributes) and table formulas
+  page.js         page settings kept in the front matter of the note
+  automate.js     Settings → Automations and the guided setup, loaded on demand
   extras.js       files from the tree, images, replace, typewriter mode, HTML export
   content.js      the reader: interface, outline, tree, search, editing, saving, settings
   content.css     styles and themes
