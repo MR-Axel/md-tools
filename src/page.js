@@ -3,6 +3,7 @@
 //   ---
 //   width: wide
 //   numbered: true
+//   toc: false
 //   ---
 // Así viajan con el archivo: sirven en el disco, en el navegador y en la nube, y los respeta quien la abra
 // (también por un enlace público o en una sesión en vivo). La lista de claves es cerrada y cada valor se
@@ -15,12 +16,13 @@
   let core = null;
 
   // clave → valores que acepta. El primero es el de siempre, y no se escribe en la nota.
-  const KEYS = { width: ['normal', 'wide', 'full'], numbered: ['no', 'yes'] };
+  const KEYS = { width: ['normal', 'wide', 'full'], numbered: ['no', 'yes'], toc: ['yes', 'no'] };
+  const BOOL = ['numbered', 'toc']; // en la nota se escriben true o false
   const WORDS = { true: 'yes', yes: 'yes', on: 'yes', si: 'yes', 'sí': 'yes', false: 'no', no: 'no', off: 'no' };
   const HEAD = /^(﻿?)---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(\r?\n|$)/;
   const clean = (key, v) => {
     v = String(v == null ? '' : v).trim().replace(/^(["'])(.*)\1$/, '$2').trim().toLowerCase();
-    if (key === 'numbered') v = WORDS[v] || '';
+    if (BOOL.includes(key)) v = WORDS[v] || '';
     return KEYS[key] && KEYS[key].includes(v) ? v : null;
   };
   const rowOf = (line) => { const kv = /^([A-Za-z_][\w-]*):\s*(.*)$/.exec(line); return kv ? [kv[1].toLowerCase(), kv[2]] : null; };
@@ -36,7 +38,7 @@
   function write(raw, key, value) {
     raw = String(raw || ''); const v = clean(key, value); if (!KEYS[key] || v == null) return raw;
     const eol = /\r\n/.test(raw) ? '\r\n' : '\n'; const m = HEAD.exec(raw); const usual = v === KEYS[key][0];
-    const line = key + ': ' + (key === 'numbered' ? String(v === 'yes') : v);
+    const line = key + ': ' + (BOOL.includes(key) ? String(v === 'yes') : v);
     if (!m) return usual ? raw : '---' + eol + line + eol + '---' + eol + (raw && !/^\r?\n/.test(raw) ? eol : '') + raw;
     const rows = m[2].split(/\r?\n/); const at = rows.findIndex((r) => { const x = rowOf(r); return x && x[0] === key; });
     if (usual) { if (at < 0) return raw; rows.splice(at, 1); } else if (at < 0) rows.push(line); else rows[at] = line;
@@ -54,6 +56,8 @@
     root.classList.toggle('lmd-pw-wide', s.width === 'wide');
     root.classList.toggle('lmd-pw-full', s.width === 'full');
     root.classList.toggle('lmd-page-numbered', s.numbered === 'yes');
+    // Sin índice: el panel deja el título y el avance, sin el árbol de secciones.
+    root.classList.toggle('lmd-page-notoc', s.toc === 'no');
   }
   const get = (key) => now()[key];
   function set(key, value) {
@@ -74,6 +78,7 @@
       '<div class="lmd-pg-row"><span id="lmd-pg-w">' + T('Ancho de la página') + '</span><div class="lmd-pg-seg" role="radiogroup" aria-labelledby="lmd-pg-w">' +
       WIDTHS.map((w) => '<button type="button" role="radio" data-pg-width="' + w[0] + '" aria-checked="' + (s.width === w[0]) + '"' + (ro ? ' disabled' : '') + '>' + T(w[1]) + '</button>').join('') + '</div></div>' +
       '<label class="lmd-check lmd-pg-row"><span>' + T('Numerar los títulos') + '</span><input type="checkbox" data-pg="numbered"' + (s.numbered === 'yes' ? ' checked' : '') + (ro ? ' disabled' : '') + '></label>' +
+      '<label class="lmd-check lmd-pg-row"><span>' + T('Mostrar el índice') + '</span><input type="checkbox" data-pg="toc"' + (s.toc === 'yes' ? ' checked' : '') + (ro ? ' disabled' : '') + '></label>' +
       '<div class="lmd-ask-actions"><button type="button" class="lmd-btn lmd-btn-fill" data-pg="ok" data-esc>' + T('Listo') + '</button></div></div>';
     document.body.appendChild(box);
     const close = () => box.remove();
@@ -84,7 +89,7 @@
       if (w && !ro) { set('width', w.dataset.pgWidth); box.querySelectorAll('[data-pg-width]').forEach((b) => b.setAttribute('aria-checked', String(b === w))); return; }
       if (e.target.closest('[data-pg=ok]')) close();
     });
-    box.addEventListener('change', (e) => { if (e.target.dataset.pg === 'numbered' && !ro) set('numbered', e.target.checked ? 'yes' : 'no'); });
+    box.addEventListener('change', (e) => { const k = e.target.dataset.pg; if ((k === 'numbered' || k === 'toc') && !ro) set(k, e.target.checked ? 'yes' : 'no'); });
     box.querySelector('[data-pg=ok]').focus();
   }
 

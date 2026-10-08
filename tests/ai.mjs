@@ -8,7 +8,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'mdsync-'));
 const PORT = 21000 + Math.floor(Math.random() * 900);
 const base = 'http://127.0.0.1:' + PORT;
-const server = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(PORT), DATA_DIR: data, DEV_CODES: '1', ADMIN_KEY: 'clave-de-prueba', PUBLIC_URL: base }, stdio: ['ignore', 'pipe', 'pipe'] });
+const server = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(PORT), DATA_DIR: data, DEV_CODES: '1', ADMIN_KEY: 'clave-de-prueba', PUBLIC_URL: base, AI_SEEN_MS: '4000', AI_WROTE_MS: '6000', AI_WRITING_MS: '2500' }, stdio: ['ignore', 'pipe', 'pipe'] });
 let log = ''; server.stdout.on('data', (d) => { log += d; }); server.stderr.on('data', (d) => { log += d; });
 for (let i = 0; i < 50 && !/puerto/.test(log); i++) await new Promise((r) => setTimeout(r, 100));
 
@@ -255,6 +255,29 @@ try {
   await app.waitForSelector('[data-field=code]'); await app.fill('[data-field=code]', (await started.json()).dev_code); await app.click('[data-cloud=verify]');
   const back = await app.waitForSelector('.lmd-article h1', { timeout: 15000 }).then(() => true, () => false);
   check('y al entrar, se abre la nota que se había pedido', back && /Informe/.test(await app.textContent('.lmd-article h1')) && new URL(app.url()).searchParams.get('f') === 'cloud/proyecto/informe%20final.md', app.url());
+
+  console.log('La IA en la nota');
+  const aiStrip = () => app.evaluate(() => { const s = document.querySelector('.lmd-here'); const avs = [...s.querySelectorAll('.lmd-live-avs > .lmd-live-av')]; return { shown: !s.hidden && s.offsetParent !== null, n: avs.length, ai: avs.filter((a) => a.classList.contains('lmd-here-ai')).map((a) => a.title), busy: avs.some((a) => a.classList.contains('lmd-here-busy')), svg: !!s.querySelector('.lmd-here-ai svg'), img: s.querySelectorAll('img').length, tip: (s.querySelector('.lmd-here-tip') || {}).textContent || '' }; });
+  const aiGone = () => app.waitForFunction(() => document.querySelector('.lmd-here').hidden, null, { timeout: 15000 }).then(() => true, () => false);
+  await aiGone();
+  check('en una nota propia sin compartir no hay tira de avatares', !(await aiStrip()).shown);
+  await fetch(base + '/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + fresh.token }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'Claude Code', version: '1.0' } } }) });
+  await mcp(fresh.token, 'read_note', { path: 'proyecto/informe final.md' });
+  await app.waitForFunction(() => !document.querySelector('.lmd-here').hidden, null, { timeout: 8000 }).catch(() => {});
+  const reading = await aiStrip();
+  check('cuando una IA lee la nota aparece en la tira, con un ícono propio y el nombre del cliente y del token', reading.shown && reading.n === 1 && reading.ai.length === 1 && /^IA · Claude Code \(token "[^"]+"\)$/.test(reading.ai[0]) && reading.svg && reading.img === 0 && !reading.busy, reading);
+  await mcp(fresh.token, 'write_note', { path: 'proyecto/informe final.md', text: '# Informe\n\nLa IA lo cambió.\n' });
+  await app.waitForFunction(() => /La IA lo cambió/.test(document.querySelector('.lmd-article').textContent) && !!document.querySelector('.lmd-here .lmd-here-busy'), null, { timeout: 8000 }).catch(() => {});
+  const writing = await aiStrip();
+  check('cuando escribe, la nota abierta se actualiza y su avatar lo marca', /La IA lo cambió/.test(await app.textContent('.lmd-article')) && writing.shown && writing.busy && / · escribiendo$/.test(writing.ai[0]), writing);
+  check('el cuadrito dice cuándo fue la última edición y que fue la IA, con el nombre de su token', /^Última edición: .+, por IA · .+/.test(writing.tip) && !/@/.test(writing.tip) && plain(writing.tip), writing.tip);
+  await app.hover('.lmd-here');
+  check('y sale al pasar el cursor por la tira', await app.evaluate(() => getComputedStyle(document.querySelector('.lmd-here-tip')).display !== 'none'));
+  await app.mouse.move(600, 500);
+  await app.waitForFunction(() => !document.querySelector('.lmd-here .lmd-here-busy'), null, { timeout: 8000 }).catch(() => {});
+  const calm = await aiStrip();
+  check('al rato deja de figurar escribiendo, y sigue en la nota', calm.shown && !calm.busy && calm.ai.length === 1, calm);
+  check('y se va sola cuando deja de usarla', await aiGone());
 
   check('nada usó prompt, alert ni confirm del navegador', natives.length === 0, natives);
   check('nada salió hacia el servidor de producción', outside.length === 0, outside);

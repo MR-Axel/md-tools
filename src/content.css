@@ -2527,3 +2527,33 @@ html.lmd-ai-open .lmd-ai-card { left: calc(50% - 190px); width: min(860px, calc(
   .lmd-ai-ask textarea, .lmd-ai-free input, .lmd-ai-gen textarea, .lmd-ai-field input, .lmd-ai-field textarea, .lmd-ai-field select { font-size: 16px; }
 }
 @media print { .lmd-ai-card, .lmd-ai-panel, .lmd-ai-menu { display: none !important; } .lmd-ai-at { box-shadow: none; } html.lmd-ai-open .lmd-main { margin-right: 0; } }
+/* Sesión en vivo sobre una nota del equipo: la línea que lo dice, arriba del cuadro. */
+.lmd-ask-card.lmd-live-card p.lmd-live-team { margin: 0 0 12px; color: var(--fg); overflow-wrap: anywhere; }
+/* Ajustes de la página, toc: false. El panel conserva el título y el avance de lectura. */
+.lmd-page-notoc .lmd-o-tree { display: none; }
+/* Tarjeta de un tablero, campo Enlace: el botón para elegir otra nota, al lado del campo. */
+.lmd-cd-link .lmd-cd-note { flex: none; min-height: 32px; white-space: nowrap; }
+@media (pointer: coarse) { .lmd-cd-link .lmd-cd-note { min-height: 44px; } }
+/* Quiénes tienen abierta la nota, personas e IA: una tira de avatares junto a la nube, con el cuadrito de la última edición. */
+.lmd-here { position: relative; display: inline-flex; align-items: center; flex: none; height: 30px; padding: 0 4px; border: 0; border-radius: 999px; background: none; color: var(--fg); font: inherit; cursor: default; }
+.lmd-here[hidden] { display: none; }
+.lmd-here:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lmd-here .lmd-live-av { border-color: var(--bg); }
+.lmd-here-ai { background: var(--bg-soft); color: var(--accent); border-color: var(--line); }
+.lmd-here .lmd-here-ai { border-color: var(--line); }
+.lmd-here-ai svg { width: 13px; height: 13px; fill: currentColor; stroke: none; }
+.lmd-here-busy svg { animation: lmd-here-pulse 1.4s ease-in-out infinite; }
+@keyframes lmd-here-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.82); } }
+@media (prefers-reduced-motion: reduce) { .lmd-here-busy svg { animation: none; opacity: 0.7; } }
+.lmd-here-more-s { display: none; }
+.lmd-here-tip { position: absolute; top: calc(100% + 6px); right: 0; z-index: 60; display: none; flex-direction: column; gap: 3px; width: max-content; max-width: min(320px, calc(100vw - 24px)); padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg-muted); font: 400 12.5px/1.4 var(--lmd-font); text-align: left; white-space: normal; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16); }
+.lmd-here-tip b { color: var(--fg); font-weight: 600; }
+.lmd-here:hover .lmd-here-tip, .lmd-here:focus-visible .lmd-here-tip, .lmd-here.lmd-on .lmd-here-tip { display: flex; }
+.lmd-ask-card.lmd-live-card p.lmd-live-last { margin: 10px 0 0; }
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  /* Entran dos avatares y la cuenta de los demás. */
+  .lmd-here { height: 34px; }
+  .lmd-here .lmd-live-avs > .lmd-live-av:nth-child(n+3) { display: none; }
+  .lmd-here .lmd-live-avs > .lmd-live-av.lmd-here-more-s:nth-child(n) { display: inline-grid; }
+}
+@media print { .lmd-here { display: none !important; } }

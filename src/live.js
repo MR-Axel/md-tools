@@ -1,6 +1,7 @@
 // Sesión en vivo: varias personas editando la misma nota de la nube a la vez, por bloques. Quien tiene la nota (y
 // el plan pago) abre la sesión y pasa un enlace; quien tiene el enlace entra desde la web, sin cuenta y sin la
-// extensión, con el nombre que elija.
+// extensión, con el nombre que elija. En una nota del equipo la abre un miembro que puede editar, si quien
+// administra lo permite: los demás miembros que tienen la nota abierta quedan adentro sin pasar por el enlace.
 // Acá vive lo que se ve de la sesión: el cuadro para abrirla y manejarla, la entrada del invitado, quiénes están
 // (arriba, y con una marca de color al margen del bloque donde está cada uno), el bloque que otro está escribiendo
 // y el aviso cuando dos tocaron lo mismo. Los cambios en sí los aplica el lector (content.js: applyRemote), y de
@@ -11,11 +12,13 @@
   const { el, ICON } = LMD.kit;
   const T = LMD.t;
   let core = null;
-  // La sesión de la nota abierta, o null: { role: 'owner' | 'guest', path, me, by, people, max, up, ended }.
+  // La sesión de la nota abierta, o null: { role: 'owner' | 'guest', path, me, by, people, max, up, ended, team, can }.
+  // role 'owner' es quien está con su cuenta: quien la abrió o, en una nota del equipo, cualquier miembro (me dice
+  // cuál: 'o' o 'm2'). can: la maneja (cambia el enlace, saca a un invitado, la termina).
   // people viene del servidor: [{ id, name, color, block, editing, here }]. El color es un número que asigna él.
   let S = null;
   let turn = 0;
-  let layer = null; let chip = null; let bar = null; let dlg = null; let notice = null;
+  let layer = null; let chip = null; let bar = null; let dlg = null; let notice = null; let strip = null;
   // Doce colores que se leen con letra blanca encima, en tema claro y oscuro.
   const COLORS = ['#d93d42', '#0b7fd6', '#2b9a66', '#d9620f', '#8347b9', '#c8388f', '#0e958a', '#a67c00', '#3a5bc7', '#b54a6f', '#0b8fb0', '#7d6b55'];
   const tint = (p) => COLORS[(p.color | 0) % COLORS.length];
@@ -24,9 +27,24 @@
   const here = () => (S ? S.people.filter((p) => p.here || p.id === S.me) : []);
   const others = () => (S ? S.people.filter((p) => p.id !== S.me && p.here) : []);
   const active = () => !!S && !S.ended;
+  // El color de una persona fuera de una sesión en vivo: siempre el mismo para el mismo correo.
+  const hue = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.codePointAt(0)) >>> 0; return h % COLORS.length; };
+  // Una IA que está en la nota: "IA · Claude Code (token "work")", o "IA · work" si el cliente no dijo quién es.
+  const aiName = (a) => T('IA') + ' · ' + (a.client ? a.client + ' (token "' + (a.token || '') + '")' : a.token || '');
+  const who = (by) => (!by ? '' : by.kind === 'ai' ? T('IA') + (by.name ? ' · ' + by.name : '') : by.kind === 'guest' ? (by.name ? by.name + ' · ' : '') + T('invitado') : by.name || '');
+  // "Última edición: 8 oct, 22:35, por Ana". Las notas guardadas antes de que se anotara el autor dicen solo cuándo.
+  function lastText() {
+    const e = core && core.lastEdit; if (!e || !e.at) return '';
+    const d = new Date(e.at).toLocaleString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const a = who(e.by);
+    return a ? T('Última edición: {d}, por {a}', { d, a }) : T('Última edición: {d}', { d });
+  }
+  // Un miembro del equipo que no eligió un nombre visible llega sin nombre: nunca viaja su correo.
+  const named = (list) => (Array.isArray(list) ? list : []).map((p) => (p.name ? p : Object.assign({}, p, { name: T('Miembro del equipo') })));
   const say = (e) => T({ offline: 'No hay conexión con el servidor.', live_gone: 'Esa sesión en vivo ya terminó.', live_ended: 'Esa sesión en vivo ya terminó.', live_full: 'La sesión está completa. Probá de nuevo en un rato.',
     too_many: 'Demasiados intentos. Probá de nuevo más tarde.', bad_name: 'Escribí un nombre.', not_found: 'Esta nota ya no está en la nube.', no_route: 'Este servidor todavía no tiene sesiones en vivo.',
-    live_vault: 'Las notas de una carpeta protegida no se abren en vivo.', no_server: 'La nube está apagada: sin ella no hay sesiones en vivo.' }[e && e.code] || 'No se pudo completar. Probá de nuevo.');
+    live_vault: 'Las notas de una carpeta protegida no se abren en vivo.', team_policy: 'Quien administra el equipo no habilitó las sesiones en vivo con invitados.', read_only: 'Tu papel en el equipo es de lectura.',
+    not_opener: 'La maneja quien la abrió o quien administra el equipo.', live_team_max: 'El equipo ya tiene varias sesiones en vivo abiertas. Terminá alguna.', no_server: 'La nube está apagada: sin ella no hay sesiones en vivo.' }[e && e.code] || 'No se pudo completar. Probá de nuevo.');
 
   // Lo que se recuerda en este navegador: el nombre elegido y, de las sesiones abiertas acá, su enlace (el servidor
   // guarda solo una huella del secreto, así que no lo puede volver a dar).
@@ -96,7 +114,8 @@
   // ---------- La sesión de la nota abierta ----------
   function start(path, st, role) {
     const g = LMD.cloud.guest();
-    S = { role, path, me: role === 'owner' ? 'o' : g.id, by: role === 'owner' ? st.name || '' : g.by, people: st.people || [], max: st.max || 0, up: true, ended: '' };
+    S = { role, path, me: role === 'owner' ? st.you || 'o' : g.id, by: role === 'owner' ? st.name || '' : g.by, people: named(st.people), max: st.max || 0, up: true, ended: '',
+      team: role === 'owner' && !!st.team, can: role === 'owner' && (!st.team || !!st.can) };
     document.documentElement.classList.add('lmd-live');
     paint();
     // Si ya había un bloque con el cursor, los demás lo ven desde ahora.
@@ -108,13 +127,14 @@
     if (dlg) { dlg.remove(); dlg = null; }
     paint();
   }
-  // Al abrir una nota de la nube: un invitado ya está en su sesión; quien es dueño de la nota pregunta si tiene una abierta.
+  // Al abrir una nota de la nube: un invitado ya está en su sesión; quien es dueño de la nota, o miembro del equipo
+  // al que pertenece, pregunta si tiene una abierta.
   async function attach(path) {
     if (!core || !core.APP) return;
     const mine = ++turn;
     const g = LMD.cloud.guest();
     if (g) { if (!g.ended) start(path, { people: g.people, max: g.max }, 'guest'); return; }
-    if (LMD.cloud.split(path).owner) return;
+    if (LMD.cloud.split(path).owner && !LMD.cloud.isTeam(path)) return;
     try { const st = await LMD.cloud.live.status(path); if (mine === turn && core.cloudPath === path && st.open && !S) start(path, st, 'owner'); }
     catch (e) { /* sin conexión, o un servidor sin sesiones en vivo: la nota se usa como siempre */ }
   }
@@ -134,9 +154,10 @@
     if (ev.type !== 'live') return;
     // 'left': el servidor liberó el lugar de un invitado que estuvo un rato sin conexión; la escucha vuelve a entrar sola.
     if (!ev.open) { if (ev.why !== 'left') end(ev.why); return; }
-    const people = Array.isArray(ev.people) ? ev.people : [];
-    if (!S) { if (LMD.cloud.guest() || !core.cloudPath) return; start(core.cloudPath, { people, name: (people.find((p) => p.id === 'o') || {}).name }, 'owner'); }
+    const people = named(ev.people);
+    if (!S) { if (LMD.cloud.guest() || !core.cloudPath) return; start(core.cloudPath, { people, name: (people.find((p) => p.id === 'o') || {}).name, team: ev.team, you: ev.you, can: ev.can }, 'owner'); }
     S.people = people;
+    if (S.role === 'owner' && ev.team) { S.team = true; S.me = ev.you || S.me; S.can = !!ev.can; }
     if (S.role === 'owner') S.by = (people.find((p) => p.id === 'o') || {}).name || S.by;
     paint();
     if (dlg && dlg._draw) dlg._draw();
@@ -188,8 +209,37 @@
   }
 
   // ---------- Lo que se ve ----------
-  function paint() { paintChip(); paintBar(); paintMarks(); }
+  function paint() { paintChip(); paintBar(); paintMarks(); paintStrip(); }
   const avatar = (p) => { const a = el('span', { class: 'lmd-live-av' }); a.style.setProperty('--lmd-live', tint(p)); a.textContent = initials(p.name); a.title = p.name; return a; };
+  // Una IA no lleva iniciales ni el logotipo de nadie: una chispa, con su nombre al pasar el cursor.
+  const aiAvatar = (a) => { const n = el('span', { class: 'lmd-live-av lmd-here-ai' + (a.writing ? ' lmd-here-busy' : ''), role: 'img', 'aria-label': aiName(a), title: aiName(a) + (a.writing ? ' · ' + T('escribiendo') : '') }, ICON.spark); return n; };
+  // Quiénes tienen abierta la nota ahora, personas e IA, en una tira de avatares junto a la nube. En una sesión en
+  // vivo esa tira es la de la sesión (paintChip), con las IA sumadas. En una nota propia sin compartir no hay nadie
+  // más: la tira aparece solo si hay una IA.
+  function paintStrip() {
+    if (!strip) return;
+    const ai = (core.hereAi || []).slice(0, 6); const me = LMD.cloud.email();
+    const mails = core.cloudPath && !core.noDoc && !LMD.cloud.guest() ? (core.present || []) : [];
+    const people = mails.some((m) => m !== me) ? mails.map((m) => ({ name: (core.presentNames && core.presentNames[m]) || m.split('@')[0], color: hue(m), me: m === me })) : [];
+    const list = people.map((p) => ({ p })).concat(ai.map((a) => ({ a })));
+    strip.hidden = active() || !list.length || !core.cloudPath;
+    strip.classList.remove('lmd-on');
+    if (strip.hidden) { strip.textContent = ''; return; }
+    strip.textContent = '';
+    const row = el('span', { class: 'lmd-live-avs' });
+    list.slice(0, 4).forEach((x) => row.appendChild(x.a ? aiAvatar(x.a) : avatar(x.p)));
+    // Dos cuentas de "y tantos más": la de siempre y la de pantalla chica, donde entran dos avatares.
+    if (list.length > 4) row.appendChild(el('span', { class: 'lmd-live-av lmd-live-more lmd-here-more-w', text: '+' + (list.length - 4) }));
+    if (list.length > 2) row.appendChild(el('span', { class: 'lmd-live-av lmd-live-more lmd-here-more-s', text: '+' + (list.length - 2) }));
+    strip.appendChild(row);
+    const names = list.map((x) => (x.a ? aiName(x.a) : x.p.name + (x.p.me ? ' · ' + T('vos') : '')));
+    const last = lastText();
+    const tip = el('span', { class: 'lmd-here-tip', role: 'tooltip' });
+    if (last) tip.appendChild(el('b', { text: last }));
+    tip.appendChild(el('span', { text: names.join(', ') }));
+    strip.appendChild(tip);
+    strip.setAttribute('aria-label', T('En esta nota: {a}', { a: names.join(', ') }) + (last ? '. ' + last : ''));
+  }
   // Arriba: que la nota está en vivo y quiénes están. Abre el cuadro de la sesión.
   function paintChip() {
     if (!chip) return;
@@ -201,8 +251,11 @@
     const row = el('span', { class: 'lmd-live-avs' });
     list.slice(0, 4).forEach((p) => row.appendChild(avatar(p)));
     if (list.length > 4) row.appendChild(el('span', { class: 'lmd-live-av lmd-live-more', text: '+' + (list.length - 4) }));
+    // Las IA que están en la nota van al final de la misma tira.
+    const ai = (core.hereAi || []).slice(0, 3); ai.forEach((a) => row.appendChild(aiAvatar(a)));
     chip.append(row, el('span', { class: 'lmd-live-n', text: String(list.length) }));
-    chip.title = T('Colaborar en vivo') + ' · ' + list.map((p) => p.name).join(', ');
+    // La última edición de una nota en vivo está en el cuadro de la sesión, que se abre desde acá.
+    chip.title = T('Colaborar en vivo') + ' · ' + list.map((p) => p.name).concat(ai.map(aiName)).join(', ');
   }
   // Para el invitado, una barra bajo la de arriba: de quién es la sesión, cuánta gente hay, si se cortó, y cómo salir.
   function paintBar() {
@@ -300,19 +353,23 @@
     ul.textContent = '';
     here().concat(S ? S.people.filter((p) => !p.here && p.id !== S.me) : []).forEach((p) => {
       const li = el('li'); const name = el('span', { class: 'lmd-live-name' });
-      name.textContent = p.name + (p.id === S.me ? ' · ' + T('vos') : p.id === 'o' ? ' · ' + T('abrió la sesión') : !p.here ? ' · ' + T('sin conexión') : '');
+      name.textContent = p.name + (p.id === S.me ? ' · ' + T('vos') : p.id === 'o' ? ' · ' + T('abrió la sesión') : p.member ? ' · ' + T('del equipo') : !p.here ? ' · ' + T('sin conexión') : '');
       li.append(avatar(p), name);
-      if (kick && p.id !== 'o') li.appendChild(el('button', { type: 'button', 'data-kick': p.id, text: T('Sacar') }));
+      // Se saca a un invitado. Un miembro del equipo no entró por el enlace.
+      if (kick && /^g/.test(p.id)) li.appendChild(el('button', { type: 'button', 'data-kick': p.id, text: T('Sacar') }));
       ul.appendChild(li);
     });
   };
-  function explainVault() {
-    LMD.dialog.confirm({ title: T('Colaborar en vivo'), text: T('Las notas de una carpeta protegida viajan cifradas y el servidor no las puede leer, así que no puede repartir los cambios. Para colaborar en vivo, movela a otra carpeta.'), ok: T('Entendido'), cancel: T('Cerrar') });
+  function explainVault(team) {
+    LMD.dialog.confirm({ title: T('Colaborar en vivo'), text: T(team ? 'En un espacio protegido con contraseña no hay sesiones en vivo: los invitados no tienen la llave.'
+      : 'Las notas de una carpeta protegida viajan cifradas y el servidor no las puede leer, así que no puede repartir los cambios. Para colaborar en vivo, movela a otra carpeta.'), ok: T('Entendido'), cancel: T('Cerrar') });
   }
   async function open() {
     if (!core || !core.APP || !core.cloudPath) return;
     if (dlg) dlg.remove();
-    const path = core.cloudPath; const guest = !!LMD.cloud.guest();
+    const path = core.cloudPath; const guest = !!LMD.cloud.guest(); const team = !guest && LMD.cloud.isTeam(path);
+    // En una nota del equipo, la sesión la maneja quien la abrió o quien administra. Los demás miembros la ven.
+    const watch = () => guest || (!!S && !S.can);
     if (guest && !active()) return; // la sesión terminó: lo que queda por hacer está en la barra
     const box = dlg = el('div', { class: 'lmd-ask' });
     const title = T('Colaborar en vivo');
@@ -323,7 +380,7 @@
     const shut = () => { box.remove(); if (dlg === box) dlg = null; };
     const fail = (e) => {
       if (e && e.code === 'live_needs_plan') { shut(); core.openPanel('plan', T('Colaborar en vivo es parte del plan pago.')); return; }
-      if (e && e.code === 'live_vault') { shut(); explainVault(); return; }
+      if (e && e.code === 'live_vault') { shut(); explainVault(team); return; }
       err.hidden = false; err.textContent = say(e);
     };
     let link = guest ? '' : await linkGet(path); let changed = false;
@@ -333,22 +390,28 @@
       const typed = (body.querySelector('[data-lv=name]') || {}).value;
       if (!active()) {
         // Todavía no hay sesión: qué es, y con qué nombre la ven los demás.
-        body.innerHTML = '<p>' + T('Quien tenga el enlace entra a editar esta nota con vos, sin crear cuenta. Vos ves quién está y terminás la sesión cuando quieras.') + '</p>' +
+        body.innerHTML = '<p>' + T(team ? 'Esta nota es del equipo. Quien tenga el enlace entra a editarla sin crear cuenta, junto a los miembros que la tengan abierta.'
+          : 'Quien tenga el enlace entra a editar esta nota con vos, sin crear cuenta. Vos ves quién está y terminás la sesión cuando quieras.') + '</p>' +
           '<label class="lmd-dlg-field"><span>' + T('Tu nombre') + '</span><input type="text" data-lv="name" maxlength="40" spellcheck="false" autocomplete="nickname"></label>' +
           '<p class="lmd-hint">' + T('Los invitados ven este nombre, no tu correo.') + '</p>';
         body.querySelector('input').value = typed != null ? typed : ((LMD.sync.account() || {}).name) || k.name || '';
         acts.innerHTML = '<button type="button" class="lmd-btn" data-lv="close" data-esc>' + T('Cancelar') + '</button><button type="button" class="lmd-btn lmd-btn-fill" data-lv="start">' + T('Abrir la sesión') + '</button>';
         return;
       }
-      body.innerHTML = (guest ? '' : (link
+      const lead = !team ? '' : '<p class="lmd-hint lmd-live-team"></p>';
+      body.innerHTML = lead + (watch() ? '' : (link
         ? '<div class="lmd-field lmd-live-link"><span>' + T('Enlace') + '</span><input type="text" readonly aria-label="' + T('Enlace') + '"><button type="button" class="lmd-link" data-lv="copy">' + T('Copiar') + '</button></div>' +
           '<p class="lmd-hint">' + T(changed ? 'El enlace cambió: el anterior ya no sirve. Los que siguen adentro no necesitan el nuevo.' : 'Quien lo abre entra a editar esta nota, sin cuenta. Pasáselo solo a quien quieras que entre.') + '</p>'
         : '<p class="lmd-hint">' + T('El enlace se ve solo en el navegador donde se abrió la sesión. Acá podés crear uno nuevo: el anterior deja de servir.') + '</p>')) +
-        '<h4>' + T(here().length === 1 ? '1 persona' : '{n} personas', { n: here().length }) + '</h4><ul class="lmd-live-people"></ul>';
+        '<h4>' + T(here().length === 1 ? '1 persona' : '{n} personas', { n: here().length }) + '</h4><ul class="lmd-live-people"></ul><p class="lmd-hint lmd-live-last"></p>';
+      const lastP = body.querySelector('.lmd-live-last'); lastP.textContent = lastText(); lastP.hidden = !lastP.textContent;
       const input = body.querySelector('.lmd-live-link input'); if (input) input.value = link;
-      peopleList(body.querySelector('ul'), !guest);
+      const told = body.querySelector('.lmd-live-team');
+      if (told) told.textContent = T(S.me === 'o' ? 'Nota del equipo. Los miembros editan desde su cuenta, sin el enlace.' : 'Nota del equipo, en vivo con invitados. La abrió {a}.', { a: S.by });
+      peopleList(body.querySelector('ul'), !watch());
       acts.innerHTML = guest
         ? '<button type="button" class="lmd-btn" data-lv="leave">' + T('Salir de la sesión') + '</button><button type="button" class="lmd-btn lmd-btn-fill" data-lv="close" data-esc>' + T('Cerrar') + '</button>'
+        : watch() ? '<button type="button" class="lmd-btn lmd-btn-fill" data-lv="close" data-esc>' + T('Cerrar') + '</button>'
         : '<button type="button" class="lmd-btn lmd-btn-danger" data-lv="end">' + T('Terminar la sesión') + '</button><button type="button" class="lmd-btn" data-lv="newlink">' + T('Crear un enlace nuevo') + '</button><button type="button" class="lmd-btn lmd-btn-fill" data-lv="close" data-esc>' + T('Cerrar') + '</button>';
     };
     box._draw = draw;
@@ -366,7 +429,7 @@
           const p = person(kick.dataset.kick); if (!p) return;
           if (!(await LMD.dialog.confirm({ title: T('¿Sacar a {a}?', { a: p.name }), text: T('Deja de ver y de editar la nota en el acto. El enlace cambia, para que no vuelva a entrar con el mismo.'), ok: T('Sacar'), danger: true }))) return;
           const r = await LMD.cloud.live.kick(path, p.id);
-          link = await linkPut(path, r.secret); changed = true; if (S) S.people = r.people || S.people;
+          link = await linkPut(path, r.secret); changed = true; if (S) S.people = r.people ? named(r.people) : S.people;
           paint(); draw();
         } else if (b.dataset.lv === 'close') shut();
         else if (b.dataset.lv === 'leave') { shut(); leave(); }
@@ -378,7 +441,7 @@
           try { r = await LMD.cloud.live.open(path, name); } finally { b.disabled = false; }
           await keep({ name }); k.name = name;
           if (r.secret) link = await linkPut(path, r.secret);
-          if (!S) start(path, r, 'owner'); else { S.people = r.people || S.people; paint(); }
+          if (!S) start(path, r, 'owner'); else { S.people = r.people ? named(r.people) : S.people; paint(); }
           draw();
         } else if (b.dataset.lv === 'copy') {
           const input = body.querySelector('.lmd-live-link input'); input.select();
@@ -412,11 +475,23 @@
     if (!c.APP) return;
     chip = el('button', { type: 'button', class: 'lmd-live-chip lmd-doc-only', 'data-act': 'live', hidden: '' });
     c.ui.sync.after(chip);
+    strip = el('button', { type: 'button', class: 'lmd-here lmd-doc-only', hidden: '' });
+    chip.after(strip);
+    // Con el dedo no hay "pasar por encima": el cuadrito sale al tocar, y se va al tocar afuera.
+    // El cuadrito cuelga del borde derecho de la tira; si así se sale de la pantalla, se corre hasta entrar.
+    const placeTip = () => {
+      const t = strip.querySelector('.lmd-here-tip'); if (!t) return;
+      t.style.left = ''; t.style.right = '';
+      if (t.getBoundingClientRect().left < 8) { t.style.right = 'auto'; t.style.left = (8 - strip.getBoundingClientRect().left) + 'px'; }
+    };
+    strip.addEventListener('mouseenter', placeTip); strip.addEventListener('focus', placeTip);
+    strip.addEventListener('click', (e) => { e.stopPropagation(); strip.classList.toggle('lmd-on'); placeTip(); });
+    document.addEventListener('click', () => { if (strip) strip.classList.remove('lmd-on'); });
     layer = el('div', { class: 'lmd-live-layer' });
     c.ui.main.appendChild(layer);
     // Tocar una marca muestra de quién es (con el dedo no hay "pasar por encima").
     layer.addEventListener('click', (e) => { const m = e.target.closest('.lmd-live-mark'); if (!m) return; const on = !m.classList.contains('lmd-live-show'); layer.querySelectorAll('.lmd-live-show').forEach((n) => n.classList.remove('lmd-live-show')); m.classList.toggle('lmd-live-show', on); });
-    c.hooks.render.push(paintMarks); c.hooks.patch.push(paintMarks);
+    c.hooks.render.push(paintMarks); c.hooks.patch.push(paintMarks); c.hooks.doc.push(paintStrip);
     window.addEventListener('resize', place);
     if (window.ResizeObserver) new ResizeObserver(place).observe(c.ui.article);
     LMD.cloud.onGuest((what) => {
@@ -427,7 +502,9 @@
     });
   }
 
-  LMD.live = { init, attach, detach, event, enter, open, at, heldBy, lost, active, explainVault,
+  LMD.live = { init, attach, detach, event, enter, open, at, heldBy, lost, active, explainVault, who,
+    // Cambió quién está en la nota (personas o IA) o su último guardado.
+    strip: () => { if (!core) return; if (active()) paintChip(); paintStrip(); if (dlg && dlg._draw && active()) dlg._draw(); },
     // Cambió el estado del guardado (con conexión, sin ella): la barra del invitado lo dice.
     state: () => { if (S && S.role === 'guest') paintBar(); },
     count: () => here().length,

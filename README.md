@@ -31,7 +31,7 @@ Free and open source. No tracking: files are read in your browser and never uplo
 | **Blocks** | Right-click, the handle next to a block, the + button or `/` on an empty line: insert, turn into, move, duplicate or delete. Undo with Ctrl+Z, redo with Ctrl+Y. |
 | **Tables** | Add and remove rows and columns. A totals row sums each column, and a cell can hold `=sum`, `=avg`, `=min`, `=max`, `=count` or `=median`. |
 | **Boards** | A `kanban` block turns headings into columns and tasks into cards you can drag. Each card has a stable id, created and edited dates and your own attributes (due date, owner, priority…), and a click opens its detail. Anywhere else it reads as a plain task list. A wide board uses the full width of the note. |
-| **Page settings** | Settings that belong to a note, kept in its front matter so they travel with the file: page width (normal, wide, full) and numbered headings. |
+| **Page settings** | Settings that belong to a note, kept in its front matter so they travel with the file: page width (normal, wide, full), numbered headings and whether the outline shows. |
 | **Diagrams** | Mermaid and Graphviz, with an editor that shows the drawing next to the code: templates, pieces to add with a button, color palettes, and errors explained with their line marked. |
 | **Math** | KaTeX, inline and in blocks, with an editor that previews as you type. |
 | **Images** | Insert by address or from a file, pick a size, paste from the clipboard. |
@@ -47,7 +47,8 @@ Free and open source. No tracking: files are read in your browser and never uplo
 | **Protected folders** | A cloud folder can carry a password. Its notes are encrypted in the browser and the server cannot read them. You unlock it for your AI for as long as you choose. On a team plan the administrator can protect the whole team space the same way, with one password for the team. |
 | **Sharing** | A note or a folder with another account, to read or to edit, or a read-only public link with a password. |
 | **Publish a site** | A cloud folder becomes a public website with a menu, search and a theme: one site on the paid plan. Pages are drawn in your browser and served from a separate host, with no script and no style of the notes. A note with `publish: false` stays out, and a protected folder is never published. Offered when the server has a host for sites (`PAGES_URL`). |
-| **Live sessions** | Open a session on a cloud note and send the link. Guests join from the browser with a name, without an account, and everyone edits at once. |
+| **Live sessions** | Open a session on a cloud note and send the link. Guests join from the browser with a name, without an account, and everyone edits at once. On a team note, the members who have it open edit along without the link. |
+| **Who is here** | On a cloud note, small avatars show who has it open now, people and the AI agents working on it with a token, and who edited it last. |
 | **AI over MCP** | Claude or any MCP client can list, read, write, append to, move and search your cloud notes, and read their history. Each write returns a link that opens the note in the app. A token can be limited to one folder, and only a token created with the sharing permission can share notes or create public links. A comment on a block tells the AI what to change, and Settings has a ready message to paste into your AI: it carries the address and the token, and asks the AI to use the notes as the memory of the project (read them before a task, update them when it changes something). |
 | **Automations** | Signed webhooks when a note or a card changes (ready-made for Slack and Discord, JSON for Make, n8n, Activepieces and Zapier), secret inbound addresses that add text to a note or create a card, and a REST API with the same tokens as MCP. See [the API page](https://sharpmd.app/api.html). |
 | **Read aloud** | A tool you turn on in Settings → Tools. Reads the whole note, from a block or the selection, with the voices of your device. It marks the block it is reading and announces code and diagrams instead of reading them. |
@@ -168,10 +169,11 @@ What applies to one note and not to the person lives in the front matter of the 
 ---
 width: wide
 numbered: true
+toc: false
 ---
 ```
 
-`width` is `normal`, `wide` or `full`; `numbered` numbers the headings. The list of keys is closed and each value is checked: an unknown key or value does nothing, and a note can never bring CSS. They apply to whoever opens the note, also through a public link or in a live session. In the app: the page button in the top bar, or "Page settings" in the "more" menu on a phone.
+`width` is `normal`, `wide` or `full`; `numbered` numbers the headings; `toc: false` hides the outline of that note in the side panel and the "On this page" list of its page in a published site. The list of keys is closed and each value is checked: an unknown key or value does nothing, and a note can never bring CSS. They apply to whoever opens the note, also through a public link or in a live session. In the app: the page button in the top bar, or "Page settings" in the "more" menu on a phone.
 
 ## Cloud notes and the sync server
 

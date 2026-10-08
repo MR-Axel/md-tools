@@ -1316,6 +1316,7 @@
   }
 
   let diskStamp = ''; let cloudPoll = 0; let cloudState = 'ok'; let readOnly = false; let present = []; const presentNames = {};
+  let hereAi = []; let lastEdit = null; // las IA que están en la nota abierta, y su último guardado: { at, by }
   let polled = true; // false cuando la nube no se consultó de verdad porque todavía no tocaba
   // La revisión de la nube que corresponde a diskText: sobre esa se guarda. Cambia solo junto con diskText, cuando
   // lo leído ya entró al documento; así un guardado nunca pasa por encima de un cambio que todavía no se juntó.
@@ -3219,7 +3220,7 @@
     get shape() { return settings.diagramShape; },
     get cloudState() { return cloudState; },
     get readOnly() { return readOnly; },
-    get present() { return present; }, get presentNames() { return presentNames; },
+    get present() { return present; }, get presentNames() { return presentNames; }, get hereAi() { return hereAi; }, get lastEdit() { return lastEdit; },
     get cloudPath() { return vParts(HERE).join('/'); },
     get dirty() { return dirty; },
     save: (interactive) => save(interactive),
@@ -3272,7 +3273,7 @@
     dirHandle: async (dirUrl) => { let dir = rootOf(dirUrl).handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, ensure, isDark,
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
-    drawOff, rangeOf, render, softRender, flash, insertLines, spliceLines, replaceLines, commitBlock, undo, redo, editCode, vFile, toHref,
+    drawOff, rangeOf, render, softRender, flash, insertLines, spliceLines, replaceLines, commitBlock, undo, redo, editCode, vFile, toHref, openDoc,
     inline: (text) => DOMPurify.sanitize(buildParser().renderInline(text)),
     // Un Markdown cualquiera, dibujado con el mismo saneado que una nota (la vista previa de una plantilla).
     preview: (text) => homeCtx().preview(text),
@@ -3649,7 +3650,7 @@
     if (unhold) { unhold(); unhold = null; LMD.cloud.flush(); }
     blobUrls.splice(0).forEach((u) => URL.revokeObjectURL(u));
     if (!noDoc) fileCache.delete(HERE);
-    undoStack.length = 0; redoStack.length = 0; collapsed.clear(); spyPin = null; present = [];
+    undoStack.length = 0; redoStack.length = 0; collapsed.clear(); spyPin = null; present = []; hereAi = []; lastEdit = null;
     pendingCell = null; fileHandle = null; stashed = null; opened = null; diskStamp = ''; cloudPoll = 0; cloudState = 'ok'; diskRev = null;
     needsRender = false; core.lastBlock = null; core.hold = false;
     LMD.write.closeMenu(); closeMore(); setDrawer(false);
@@ -3697,6 +3698,7 @@
     raw = doc ? doc.raw : ''; diskText = doc ? doc.disk : ''; dirty = raw !== diskText;
     diskRev = doc && doc.rev != null ? doc.rev : null;
     readOnly = !!(doc && doc.readOnly); opened = (doc && doc.opened) || null;
+    if (opened && opened.updated) lastEdit = { at: opened.updated, by: opened.edited || null };
     rawMode = false; editMode = false;
     if (!opt.pop) {
       // La marca de la vuelta del pago se queda hasta que el servidor confirma: la limpia quien espera.
@@ -3720,6 +3722,10 @@
           if (mine !== docSeq) return;
           if (ev.who) present = ev.who;
           if (ev.who && ev.names) ev.who.forEach((mail, i) => { if (ev.names[i]) presentNames[mail] = ev.names[i]; });
+          // Las IA que están leyendo o escribiendo la nota, y quién hizo el último guardado.
+          if (Array.isArray(ev.ai)) hereAi = ev.ai;
+          if (ev.type === 'saved' && ev.updated) lastEdit = { at: ev.updated, by: ev.edited || null };
+          if (ev.type !== 'link') LMD.live.strip();
           // La escucha se cortó o volvió. Al volver se trae lo que haya cambiado mientras tanto, y sale lo pendiente.
           if (ev.type === 'link') {
             if (ev.up && !linkUp) { if (dirty && cloudState === 'error') { clearTimeout(autosaveTimer); save(false); } else { cloudPoll = 0; checkForChanges(false); } }
@@ -3740,6 +3746,7 @@
       // Quien entró por el enlace de una sesión en vivo no tiene cuenta: no hay comentarios que traerle.
       if (appRoot.kind === 'cloud' && LMD.comments && !LMD.cloud.guest()) LMD.comments.attach(vParts(HERE).join('/'));
       if (appRoot.kind === 'cloud') LMD.live.attach(vParts(HERE).join('/'));
+      LMD.live.strip();
     }
     core.hooks.doc.forEach((fn) => fn());
   }
