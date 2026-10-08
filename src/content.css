@@ -2195,4 +2195,48 @@ html.lmd-ios .lmd-ask, html.lmd-ios .lmd-panel { padding: max(20px, env(safe-are
 @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
   .lmd-two > .lmd-pcol:not(.lmd-look-side) { order: 2; }
   .lmd-two > .lmd-extra { order: 3; }
+/* ---------- Publicar una carpeta como sitio (publish.js) ---------- */
+.lmd-site { width: min(560px, 100%); max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); display: flex; flex-direction: column; }
+.lmd-site-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -6px 14px; padding: 2px 6px; overscroll-behavior: contain; }
+.lmd-ask-card.lmd-site p { margin: 0 0 12px; }
+.lmd-site .lmd-hint { margin: 0 0 12px; }
+.lmd-site-field { display: block; margin: 0 0 12px; }
+.lmd-site-field > span { display: block; margin: 0 0 5px; font-size: 12.5px; color: var(--fg-muted); }
+.lmd-site-field input, .lmd-site-field select { width: 100%; min-width: 0; height: 36px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--fg); font: inherit; font-size: 14px; outline: none; }
+.lmd-site-field input:focus, .lmd-site-field select:focus { border-color: var(--accent-fill); }
+.lmd-site-addr { display: flex; align-items: center; min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); }
+.lmd-site-addr:focus-within { border-color: var(--accent-fill); }
+.lmd-site-addr small { flex: 0 1 auto; min-width: 0; padding-left: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--fg-faint); }
+.lmd-site-addr input { flex: 1 1 110px; border: 0; background: none; padding-left: 2px; }
+.lmd-site-two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.lmd-ask-card.lmd-site p.lmd-site-err { margin: -6px 0 12px; font-size: 12.5px; color: #dc2626; }
+.lmd-ask-card.lmd-site p.lmd-site-folder { display: flex; align-items: center; gap: 8px; color: var(--fg); font-weight: 600; overflow-wrap: anywhere; }
+.lmd-site-folder svg { flex: none; width: 16px; height: 16px; color: var(--fg-faint); }
+.lmd-ask-card.lmd-site p.lmd-site-url { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.lmd-site-url a { min-width: 0; padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); font-size: 14px; }
+.lmd-site-url button { flex: none; padding: 0; }
+.lmd-site-state { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--fg-muted); }
+.lmd-site-state::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--fg-faint); }
+.lmd-site-ok::before { background: #16a34a; } .lmd-site-warn::before { background: #d97706; } .lmd-site-bad::before { background: #dc2626; }
+.lmd-site-pend { margin: 0 0 12px; padding: 10px 12px; list-style: none; border: 1px solid var(--line); border-radius: 9px; font-size: 13px; color: var(--fg-muted); overflow-wrap: anywhere; }
+.lmd-site-pend b { color: var(--fg); font-weight: 600; }
+.lmd-site-more { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.lmd-site-more .lmd-link { padding: 4px 0; color: var(--accent); }
+.lmd-site-more .lmd-site-rm { color: #dc2626; }
+.lmd-ask-card.lmd-site p.lmd-site-step { margin: 0 0 10px; font-size: 13px; color: var(--fg-muted); }
+.lmd-site-pick { display: flex; flex-direction: column; gap: 6px; }
+.lmd-site-pick .lmd-btn { display: flex; align-items: center; gap: 8px; text-align: left; }
+.lmd-site-pick svg { flex: none; width: 16px; height: 16px; }
+.lmd-site-pick span { min-width: 0; overflow-wrap: anywhere; }
+.lmd-site-sec { margin-top: 18px; }
+.lmd-site-sec h4 { margin: 0 0 8px; font-size: 14px; }
+.lmd-site-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.lmd-site-row > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lmd-site-row a { padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
+.lmd-site-row .lmd-btn { flex: none; }
+@media (max-width: 720px) {
+  .lmd-site-two { grid-template-columns: 1fr; }
+  .lmd-site-field input, .lmd-site-field select { height: 42px; font-size: 16px; }
+  .lmd-site-more .lmd-link, .lmd-site-url button { min-height: 40px; }
+  .lmd-site-row { flex-wrap: wrap; }
 }

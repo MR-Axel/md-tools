@@ -22,7 +22,7 @@
     if (asked || !LMD.cloud.signedIn() || !core.APP || LMD.cloud.guest()) return loading || Promise.resolve();
     asked = true;
     // Si falla no se repinta: repintar volvería a consultar y quedaría pidiendo en bucle mientras no haya conexión.
-    loading = (async () => { try { account = await LMD.cloud.account(); } catch (e) { account = null; asked = false; return; } adopt(account); paint(); })();
+    loading = (async () => { try { account = await LMD.cloud.account(); } catch (e) { account = null; asked = false; return; } adopt(account); paint(); siteNotice(account); })();
     return loading;
   }
   // La cuenta, esperando la consulta si todavía está en camino. null sin sesión o sin conexión.
@@ -194,6 +194,44 @@
       '</ul><p class="lmd-sec-foot">' + T('Una nota eliminada queda 30 días en la papelera.') + ' <a href="' + PRIVACY + '" target="_blank" rel="noopener noreferrer">' + T('Cómo funciona') + '</a></p></section>';
   }
 
+  // ---------- Publicar una carpeta como sitio ----------
+  // Lo pesado (dibujar las páginas, la ventana) está en publish.js, que se carga cuando hace falta. Acá queda lo
+  // que tiene que estar siempre: si se ofrece, el estado en una línea, el aviso y volver a publicar al guardar.
+  const pagesOf = (a) => (a && a.pages && a.pages.enabled ? a.pages : null);
+  const siteDay = (ms) => new Date(ms).toLocaleDateString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { day: 'numeric', month: 'long' });
+  // Se ofrece en una carpeta de la nube sin contraseña, si el servidor publica sitios. En el equipo, si su política lo permite.
+  function canPublish(folder) {
+    const pg = pagesOf(account); if (!pg || !folder || /^~\d+$/.test(folder)) return false;
+    if (LMD.cloud.vaultsNow().some((v) => folder === v.folder || folder.startsWith(v.folder + '/'))) return false;
+    return folder[0] === '~' ? !!pg.team : true;
+  }
+  const publish = (folder, id, done) => core.ensure('publish').then((ok) => { if (ok) LMD.publish.open(core, { folder, id, done }); });
+  function siteState(s) {
+    if (s.suspended) return { kind: 'bad', text: T('Suspendido') };
+    if (s.live && s.lapsed) return { kind: 'warn', text: T('Se despublica el {a}', { a: siteDay(s.ends) }) };
+    if (s.live) return { kind: 'ok', text: T('Publicado') };
+    return { kind: 'off', text: T(s.lapsed ? 'Sin publicar: la cuenta ya no tiene el plan pago' : 'Sin publicar') };
+  }
+  // Un sitio suspendido o por despublicarse se avisa una vez por sesión del navegador.
+  function siteNotice(a) {
+    const pg = pagesOf(a); const s = pg && (pg.sites || []).find((x) => x.can && (x.suspended || (x.live && x.lapsed))); if (!s || !core || !core.APP) return;
+    const stamp = s.id + (s.suspended ? 's' : 'l');
+    try { if (sessionStorage.getItem('lmd:site-note') === stamp) return; } catch (e) { /* sin almacenamiento se avisa igual */ }
+    // La cuenta se lee antes de que la nota esté en pantalla: el aviso espera a que haya dónde mostrarlo.
+    setTimeout(() => {
+      try { sessionStorage.setItem('lmd:site-note', stamp); } catch (e) { /* sin almacenamiento */ }
+      core.flash(s.suspended ? T('Tu sitio publicado está suspendido. Los detalles están en Ajustes, en Nube.') : T('Tu sitio se despublica el {a}. Con el plan pago sigue publicado.', { a: siteDay(s.ends) }), 'warn');
+    }, 1500);
+  }
+  function siteBlock(a, host) {
+    const pg = pagesOf(a); if (!pg || host.direct) return '';
+    const rows = (pg.sites || []).map((s) => { const st = siteState(s); return '<div class="lmd-site-row" data-site="' + s.id + '"><div><b>' + esc(s.title || s.slug) + '</b><a class="lmd-link" href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(String(s.url).replace(/^https?:\/\//, '')) + '</a>' +
+      '<span class="lmd-site-state lmd-site-' + st.kind + '">' + esc(st.text) + '</span></div><button type="button" class="lmd-btn" data-c="site" data-id="' + s.id + '">' + T('Administrar') + '</button></div>'; }).join('');
+    const room = (pg.sites || []).filter((s) => !s.team).length < pg.max;
+    return '<section class="lmd-site-sec" aria-label="' + T('Sitio publicado') + '"><h4>' + T('Sitio publicado') + '</h4>' + (rows || hint(T('Una carpeta de notas se convierte en un sitio web público, con menú, buscador y tema.'))) +
+      (room ? actions('<button type="button" class="lmd-btn" data-c="site-new">' + T('Publicar una carpeta') + '</button>') : '') + '</section>';
+  }
+
   async function cloudPane(box, host) {
     await LMD.cloud.ready();
     secRedraw = null;
@@ -207,7 +245,7 @@
         const a = await fetchAccount(host);
         box.innerHTML = acctRow(T('Cuenta'), esc(a.email)) + acctRow(T('Plan'), T(a.plan === 'pro' ? 'Pago' : 'Gratis')) + acctRow(T('Notas en la nube'), quota(a)) +
           actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="open">' + T('Abrir la carpeta Nube') + '</button><button type="button" class="lmd-btn" data-c="out">' + T('Salir') + '</button>') +
-          '<p class="lmd-hint lmd-acct-msg" role="status" hidden></p>' + '<div data-sec>' + secNow(0) + '</div>' +
+          '<p class="lmd-hint lmd-acct-msg" role="status" hidden></p>' + siteBlock(a, host) + '<div data-sec>' + secNow(0) + '</div>' +
           '<p class="lmd-acct-del"><button type="button" class="lmd-link" data-c="delete">' + T('Eliminar la cuenta') + '</button></p>';
       } catch (e) { if (!LMD.cloud.signedIn()) return cloudPane(box, host); box.innerHTML = offline(); }
     }
@@ -239,6 +277,7 @@
       else if (b.dataset.c === 'open') openCloud(Object.assign({ say: (t) => { const m = box.querySelector('.lmd-acct-msg'); if (m) { m.hidden = false; m.textContent = t; } } }, host));
       else if (b.dataset.c === 'out') { await signOut(host); cloudPane(box, host); }
       else if (b.dataset.c === 'delete') { if (await deleteAccount()) cloudPane(box, host); }
+      else if (b.dataset.c === 'site' || b.dataset.c === 'site-new') publish('', b.dataset.id ? +b.dataset.id : 0, () => { if (box.isConnected) cloudPane(box, host); });
       // Proteger una carpeta: sin sesión primero se entra; con una sola carpeta se va directo, con varias se elige.
       else if (b.dataset.c === 'protect') { if (!LMD.cloud.signedIn()) askLogin(); else if (free.length === 1) LMD.vault.pick('v-protect', free[0]); else { picking = true; sec(); } }
       else if (b.dataset.c === 'protect-at') LMD.vault.pick('v-protect', b.dataset.f);
@@ -749,6 +788,12 @@
     document.addEventListener('mousedown', (e) => { if (menu && !menu.contains(e.target)) closeMenu(); });
     // El servidor dejó de mostrar el espacio del equipo: la cuenta se vuelve a leer y el explorador se redibuja sin él.
     LMD.cloud.onTeamLost(() => { account = null; asked = false; if (core.APP) core.reloadTree(); loadAccount(); });
+    // Una nota de un sitio con "publicar al guardar" se guardó: su página se vuelve a subir (publish.js).
+    core.hooks.saved.push((path) => {
+      const pg = pagesOf(account); if (!pg) return;
+      const s = (pg.sites || []).find((x) => x.auto && x.live && !x.suspended && !x.lapsed && x.can && path.startsWith((x.o ? '~' + x.o + '/' : '') + x.folder + '/'));
+      if (s) core.ensure('publish').then((ok) => { if (ok) LMD.publish.saved(core, s, path); });
+    });
     LMD.cloud.ready().then(paint);
   }
 
@@ -759,5 +804,5 @@
   const reload = async () => { account = await LMD.cloud.account(); asked = true; adopt(account, true); paint(); return account; };
 
   LMD.sync = { init, paint, click, panes, reload, dialog, feedback, report, reportRef, awaitPaid, openCloud, quota, PAY, login, me, foldersOf, signOut, aiBrief, account: () => account, why: (text) => { planWhy = text || ''; },
-    repaintAi: () => { if (aiRedraw) aiRedraw(); if (secRedraw) secRedraw(); }, security };
+    repaintAi: () => { if (aiRedraw) aiRedraw(); if (secRedraw) secRedraw(); }, security, canPublish, publish, siteState };
 })();

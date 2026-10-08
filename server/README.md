@@ -38,7 +38,7 @@ Then, in SharpMD: Settings → Cloud → Sync server, and type the address (`htt
 | `MAIL_WEBHOOK` | Or post `{ to, subject, text, html }` to your own mailer | |
 | `FREE_NOTES` | Notes on the free plan | `10` |
 | `MCP_FREE` | `1` gives MCP access to the free plan too | off |
-| `ADMIN_KEY` | Key for `POST /admin/plan`, `POST /admin/team` and `/admin/gallery`. It also signs the review links of the community gallery: without it the gallery takes no contributions | off |
+| `ADMIN_KEY` | Key for `POST /admin/plan`, `POST /admin/team`, `/admin/gallery` and `/admin/sites`. It also signs the review links of the community gallery: without it the gallery takes no contributions | off |
 | `TEST_LOGIN` | `email:123456`. That one account signs in with the fixed code and gets no email. For store reviewers | off |
 | `CHECKOUT_MONTHLY`, `CHECKOUT_YEARLY` | Payment links the app shows in Settings → Plan. The account email is appended as `email=`, and the app adds `back=` with the address to return to | |
 | `PADDLE_WEBHOOK_SECRET` | Turns on `POST /paddle/webhook`: Paddle subscription events switch the plan | off |
@@ -47,6 +47,12 @@ Then, in SharpMD: Settings → Cloud → Sync server, and type the address (`htt
 | `FEEDBACK_TO` | Address that receives what people send from "Send feedback" (`POST /feedback`). It goes out through the same mailer as the sign-in code. Without it the endpoint answers 404 and the app offers a `mailto:` link instead | off |
 | `GALLERY_NOTIFY_URL` | Optional hook for the community gallery: every new contribution posts `{ "text": "..." }` there, one short line with the type and the name, no links and no addresses. Point it at anything that takes a JSON POST | off |
 | `AUTH_PER_IP` | Sign-in codes one IP address may request per hour. Each email is also limited to 5 codes an hour and 15 a day, and wrong codes to 10 an hour per email and 30 per IP. Behind a proxy the IP is the last entry of `x-forwarded-for`: check that your proxy sets it, or every visitor shares one allowance | `20` |
+| `PAGES_URL` | Origin of the second host that serves published sites, for example `https://pages.example.com`: only the origin, and a different host name than `PUBLIC_URL`. Without it publishing is off and the app does not offer it. See "Published sites" | off |
+| `PAGES_PER_ACCOUNT` | Published sites per paid account, and per team space | `1` |
+| `PAGES_GRACE_DAYS` | Days a site stays up after its account leaves the paid plan | `7` |
+| `PAGES_MAX_PAGES`, `PAGES_MAX_MB` | Pages per site, and megabytes of stored HTML per site | `300`, `40` |
+| `PAGES_NEW_DAY`, `PAGES_PUTS_HOUR` | Sites one account may create per day, and pages one site may upload per hour | `3`, `1200` |
+| `PAGES_GRACE_MS` | Tests only: the grace period in milliseconds. Leave it alone in production | |
 | `DATA_KEY` | 32 bytes in base64. Turns on encryption at rest: see below | off |
 | `VAULT_MINUTE_MS` | Tests only: how many milliseconds a minute lasts for a folder unlocked for the AI. Leave it alone in production | `60000` |
 
@@ -70,6 +76,8 @@ curl -X POST https://sync.example.com/admin/plan -H "x-admin-key: $ADMIN_KEY" \
 Email, notes, their previous versions (paid plan, 30 days), deleted notes while they are in the trash (30 days), and hashes of sign-in codes, sessions and tokens. Sessions and tokens are stored hashed: the server cannot show a token again after creating it. Of a live session it stores the note, the name its owner chose and the hash of the link's secret; the guests live in memory only (see "Live sessions"). Of a team it stores its name, the accounts that belong to it, the invitations that are waiting (the invited email address, until it is accepted, declined or removed) the id of the subscription that pays for it, the role of each member, the policies its administrators set and, for 90 days, an activity log of its shared space: who did what and when, with the path of the note, never its text (see "Teams").
 
 Of a contribution to the community gallery it stores the type, the name, the description, the language, the public name its sender chose, the content, the account that sent it, its state and how many times it was added (a number, not who). See "Community gallery".
+
+Of a published site it stores the account it belongs to (its number, never the email address), the folder, the address, its settings (title, description, language, color, font, text logo, author name and its two switches), a preview key, how many times it was reported and, of each page, the path of the note, its address, its title and description, the HTML that is served, its text for the search and the revision of the note it was made from. That content is public: it is not encrypted at rest. See "Published sites".
 
 Of an automation it stores the destination address and the signing secret (encrypted with `DATA_KEY` when it is set), what it watches and which events. Of each delivery, the type of event, the path of the note, the result, the response code and the duration, for the last 50 deliveries of each webhook and up to 30 days: the body that was sent is deleted once it is delivered or given up. Of an inbound address, a hash of its secret, its last four characters, how many times it was used and when.
 
@@ -170,6 +178,8 @@ Sign-in is a six-digit code sent by mail, no passwords.
 | `POST /gallery`, `GET /gallery/mine`, `DELETE /gallery/{id}` | With a session: send a contribution, see the state of your own, withdraw one |
 | `GET` / `POST /gallery/review` | The page behind the signed links of the review email |
 | `GET` / `POST /admin/gallery` | With `x-admin-key`: list, approve, reject, remove |
+| `GET` / `POST /sites`, `GET` / `PUT` / `DELETE /sites/{id}`, `PUT /sites/{id}/pages`, `POST /sites/{id}/publish`, `POST /sites/{id}/unpublish` | With a session: publish a folder as a public site. See "Published sites" |
+| `GET` / `POST /admin/sites` | With `x-admin-key`: list the published sites, suspend, restore, delete |
 | `POST /mcp` | MCP over Streamable HTTP, with `Authorization: Bearer mdt_...` |
 
 MCP tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`, `move_note`, `note_history`.
@@ -250,9 +260,117 @@ Review by email: each new contribution mails `FEEDBACK_TO` its type, name, shown
 
 Reports go through `POST /feedback` with `report: { kind: "gallery", note, owner }`. With `DATA_KEY`, the name, description, author, content and reason of every contribution are encrypted at rest like the notes. Every route here has a request limit: 300 a minute per IP across `/gallery`.
 
+### Published sites
+
+A paid account can publish one cloud folder as a public website: several pages, a menu with the tree of pages, search and a theme. It is off unless `PAGES_URL` is set: without it every `/sites` route answers `404 no_route`, `GET /account` carries `pages: { enabled: false }` and the app does not offer it. That goes for a server of your own too: to publish sites from it you need a second host name.
+
+**Two hosts, one process.** `PAGES_URL` is the origin of a second host name that reaches this same server, for example `https://pages.example.com`. It has to be only the origin, with no path, and a different host than `PUBLIC_URL`: otherwise the server does not start. The server tells the two apart by the `Host` header of each request and by nothing else (`X-Forwarded-Host` and `Forwarded` are ignored):
+
+- On the pages host there is no API. No account route, no session, no token, no MCP, no CORS: `/account`, `/notes`, `/mcp`, `/api/v1/…`, `/admin/…` answer `404` there, and any method other than `GET` and `HEAD` answers `405`. Credentials are never read. The only thing that host writes is a report.
+- On every other host no site is served, nor its stylesheet, its script, the report form or a preview.
+
+That separation of origins is the main defense: a published page runs in an origin that shares nothing with the app or with the sync API. The app and the server use no cookies (a session is a bearer token kept by the origin of the app), so a sibling name such as `pages.example.com` next to `sync.example.com` is enough. Do not add the pages origin to `ALLOW_ORIGINS`.
+
+Behind a proxy, point the second name at the same port. With Caddy:
+
+```
+pages.example.com {
+    reverse_proxy 127.0.0.1:8787
+}
+```
+
+The proxy has to pass the `Host` header as it arrived and set `x-forwarded-for`. Caddy does both. With nginx, add `proxy_set_header Host $host;` and `proxy_set_header X-Forwarded-For $remote_addr;`. In the DNS, the pages name needs its own record (A, AAAA or CNAME) to the same machine, and its own certificate. If you put a cache in front, it has to respect `must-revalidate`: pages are served with `cache-control: public, max-age=0, must-revalidate` and an `ETag`, so unpublishing and suspending take effect at once.
+
+**What the pages host serves.**
+
+| Address | What it is |
+|---|---|
+| `/{slug}/` | The home page of the site. Without a home note it redirects to the first page |
+| `/{slug}/{route}` | One page. The route is the path of the note inside the folder, without the extension, in lowercase letters, digits and hyphens |
+| `/{slug}/search.json` | The search index: `[{ r, t, x }]` (route, title, text) |
+| `/{slug}/sitemap.xml`, `/{slug}/robots.txt` | Per site. With "do not index" the sitemap answers `404` |
+| `/~{key}/…` | The preview of a site that is not published yet, for whoever has that address. Always `noindex` |
+| `/_/site.css`, `/_/site.js` | The one stylesheet and the one script of every site |
+| `/_/report?s={slug}&p={route}`, `POST /_/report` | The report form and where it sends |
+| `/robots.txt`, `/sitemap.xml`, `/` | Of the host: the sitemap is an index of the sites that can be indexed |
+
+An address that does not exist answers `404`, a site that is not published (or whose grace period ended) `410`, and a suspended one `451`, each with a neutral page that says nothing about the site or its owner. An address may only carry letters, digits, hyphens, dots and slashes: anything encoded, a `..` or a double slash is a `404`.
+
+Every response of that host carries:
+
+```
+Content-Security-Policy: default-src 'none'; script-src <PAGES_URL>/_/site.js; style-src <PAGES_URL>/_/site.css; img-src https: data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+X-Content-Type-Options: nosniff
+Referrer-Policy: strict-origin-when-cross-origin
+X-Frame-Options: DENY
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Resource-Policy: same-origin
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+```
+
+No `unsafe-inline`: no inline script, no inline style and no handler runs there, whatever a page contains. `connect-src 'self'` is for the search index and the report. Sites load no analytics, set no cookies and have no forms; the light or dark choice of a visitor is kept in their browser.
+
+**What is stored.** The server cannot turn Markdown into HTML, so each page is rendered in the browser of whoever publishes, through the same path as the HTML export, with formulas as MathML and diagrams already drawn. Only the body of the note travels. The server does not trust it: it reads that HTML tag by tag and writes it again from scratch (`siteClean`), keeping only an allowlist of tags and attributes and escaping every text and every value again:
+
+- No `script`, `style`, `iframe`, `object`, `embed`, `form`, form controls, `svg`, `template`, `base`, `meta` or `link`: they go with everything inside. A tag that is not on the list is dropped and its text stays. Comments are dropped.
+- No `on*` handler, no `style` attribute, no `data-*`. A text alignment written as a style becomes a class. Classes are kept only if they are the ones the reader produces (`lmd-…`, `hljs…`, footnotes); the classes and ids of the site template (`sp-…`) cannot come from the content.
+- Links: `http`, `https`, `mailto`, `tel`, or a section of the same page. Anything else (`javascript:`, `data:`, `blob:`, `file:`) loses its address. A link that leaves the site gets `rel="nofollow ugc noopener"`.
+- Links between notes, relative ones and `[[wikilinks]]`, are resolved when the page is served: to the page of that note if it is published in the same site, and otherwise they stay as text without a link.
+- Images: `https:`, or embedded as `data:` of an image type. A diagram travels as an embedded SVG image, where nothing can run; an SVG with a script, a handler or a frame is refused anyway. An image with a path of the disk of whoever wrote the note does not exist in the cloud: its alternative text is shown instead.
+- MathML: a short list of presentation elements, without `annotation`.
+
+Of each page the server stores the path of the note, its route, title, description, that HTML, its plain text for the search (up to 8,000 characters) and the `rev` of the note it was rendered from. All of it is public, so it is not encrypted at rest with `DATA_KEY`. The `sites` table holds the number of the account, never an email address.
+
+**What is never published.** Only notes inside the chosen folder. Never a folder protected with a password, or one inside it, or a protected team space (`409 vault`); protecting a folder that was published takes its site down and deletes what was stored. Never a note in the trash: a page is served only while its note exists, so deleting or renaming a note removes its page at once. And never a note with `publish: false` in its front matter: the server reads the note itself and refuses that page even if a client sends it.
+
+**Routes, with the session of the account.** An MCP or API token is not accepted on them (`401`).
+
+| Call | What it does |
+|---|---|
+| `GET /sites` | `{ enabled, url, max, max_pages, grace_days, sites }`. Each site is `{ id, o, team, slug, folder, url, preview, title, descr, home, lang, accent, font, logo, author, noindex, auto, live, suspended, reason, lapsed, ends, published, pages, size, can, pending }`. `pending` is `{ changed, added, removed }`, three lists of note paths: what is different from what is published. `o` is the team space, or `0` |
+| `GET /sites/slug?slug=` | `{ ok: true }`, or `{ ok: false, why }` with `bad_slug`, `slug_reserved` or `slug_taken` |
+| `POST /sites` `{ folder, slug, title, o?, descr?, home?, lang?, accent?, font?, logo?, author?, noindex?, auto? }` | Creates the site, not published yet. `slug` takes lowercase letters, digits and hyphens, 3 to 40, and some names are reserved. `lang` is `en` or `es`; `accent` and `font` come from the closed lists of the app (`400 bad_theme`); `author` is a name, never an email (`400 bad_author`); `home` is a note of the folder. `402 site_needs_plan`, `409 site_limit`, `409 vault`, `404 no_notes`, `429 too_many` |
+| `GET /sites/{id}`, `PUT /sites/{id}` | One site, and changing its settings (the same fields, and `slug`) |
+| `PUT /sites/{id}/pages` `{ pages: [{ note, rev, html, title?, descr?, order? }] }` | Uploads up to 20 rendered pages. Each `note` has to exist inside the folder, and `rev` cannot be ahead of the note. `400 bad_note`, `400 bad_rev`, `409 vault`, `409 site_full`, `413 too_large`, `413 site_too_big`. The answer says, per page, its `route`, `images_skipped`, or `excluded: true` |
+| `POST /sites/{id}/publish` | Removes the pages whose note is gone or excluded and puts the site up. `409 site_empty` |
+| `POST /sites/{id}/unpublish` | Deletes every stored page at once. The settings stay |
+| `DELETE /sites/{id}` | Deletes the site and frees its address |
+
+`GET /account` carries `pages`: `{ enabled, url, max, paid, grace_days, max_pages, team, sites }`, with each site in short, so the app can say that a site is suspended or about to be unpublished.
+
+**Unpublished changes.** The server compares the `rev` stored with each page against the current one of its note, and counts new notes and removed ones too. Nothing is rendered on the server: what an AI changes over MCP, the API or an inbound address stays as a pending change until someone with the app publishes it. The app uploads only what changed, and with "publish each note when you save it" it uploads the page of a note right after saving it.
+
+**Plan.** `PAGES_PER_ACCOUNT` sites per paid account (1). When the account leaves the paid plan the site stays up for `PAGES_GRACE_DAYS` (7) and nothing new can be published (`402`); after that it is unpublished and its pages are deleted, and the settings and the address are kept for when the plan comes back.
+
+**Teams.** A folder of the team space can be published too, with `o`. The policy `publish`, off by default, decides whether members who are not administrators may do it; a reader never can (`403 read_only`), and administrators always can. Any member sees the site of the team. Creating, publishing and unpublishing it go to the activity log (`site`, `publish`, `unpublish`) with the folder and the address. A team space has its own allowance of `PAGES_PER_ACCOUNT` sites.
+
+**Limits.** `PAGES_MAX_PAGES` pages per site (300), 1.5 MB of HTML per page and `PAGES_MAX_MB` per site (40), `PAGES_PUTS_HOUR` uploaded pages per site and hour (1,200), 30 publications per site and hour, `PAGES_NEW_DAY` sites created per account and day (3), 900 requests a minute per IP on the pages host and 5 reports an hour per IP.
+
+**Abuse and takedown.** Hosting what other people publish means being able to take it down fast.
+
+1. Every page has a "Report" link in its footer. It opens a form served by the pages host, with no third-party script, that posts `{ s, p, text, email? }` to `POST /_/report`. The report goes out through the same mailer as `POST /feedback`, to `FEEDBACK_TO`, with `report.kind: "site"` and the address of the page. It is also counted on the site, so it shows up even without a mailer.
+2. Look at what was reported. The list, most recently reported first:
+
+```
+curl "https://sync.example.com/admin/sites?status=reported" -H "x-admin-key: $ADMIN_KEY"
+```
+
+   `status` is `reported`, `live`, `suspended` or nothing, and `q` searches the address, the title and the account. Each row is `{ id, slug, url, account, team, folder, title, live, suspended, reason, lapsed, pages, size, reports, reported, created, published }`.
+3. Suspend it. It stops being served at once, preview included, with `451`:
+
+```
+curl -X POST https://sync.example.com/admin/sites -H "x-admin-key: $ADMIN_KEY" \
+  -H "content-type: application/json" -d '{"slug":"some-site","action":"suspend","reason":"Impersonates a bank"}'
+```
+
+   The owner sees in the app that the site is suspended, with the reason, and cannot publish it, change its address or delete it while it is suspended, so the address cannot be taken again to get around it.
+4. Then `"action":"restore"` puts it back as it was, or `"action":"delete"` removes the site and its pages for good. To act on the account itself, `POST /admin/plan`.
+
+These admin routes are called on the API host, never on the pages host.
+
 ### Deleting an account
 
-`DELETE /account` with the session and `{ email }`, the email of that same account, deletes it: its notes, version history, trash, comments, contributions to the community gallery, tokens, sessions, shares in both directions, public links, protected folders, live sessions, pending team invitations to that email and the record of its ended subscriptions. Open connections are closed. Five requests an hour per IP and per account.
+`DELETE /account` with the session and `{ email }`, the email of that same account, deletes it: its notes, version history, trash, comments, contributions to the community gallery, tokens, sessions, shares in both directions, public links, published sites, protected folders, live sessions, pending team invitations to that email and the record of its ended subscriptions. Open connections are closed. Five requests an hour per IP and per account.
 
 It refuses while money is still being charged, with `409` and a `manage` field holding `PORTAL_URL`:
 
@@ -325,7 +443,7 @@ Three levels of settings. Personal settings (appearance, fonts, language, tools,
 
 | Call | What it does |
 |---|---|
-| `GET /team` | The same `team` object that `GET /account` carries: `{ enabled, checkout, included, max, mine, invites }`. `mine` is `null` or `{ id, name, role, owner, active, space, members, solo, vault, policies, can, history_days, history_max, history_choices }`. `role` is `admin`, `editor` or `reader`; `owner` is `true` for the account that pays; `members` are `{ id, email, role, admin, owner }`; `can` says what this account may do in the space (`write`, `share`, `links`, `live`, `tokens`, `automation`). Administrators also get `seats`, `used`, `pending` (each with its `role`) and `log_days`, and the account that pays gets `billing`. `vault` is `null`, or the protection of the team space as `GET /team/vault` returns it. `invites` are the invitations waiting for this account: `{ id, name, by }` |
+| `GET /team` | The same `team` object that `GET /account` carries: `{ enabled, checkout, included, max, mine, invites }`. `mine` is `null` or `{ id, name, role, owner, active, space, members, solo, vault, policies, can, history_days, history_max, history_choices }`. `role` is `admin`, `editor` or `reader`; `owner` is `true` for the account that pays; `members` are `{ id, email, role, admin, owner }`; `can` says what this account may do in the space (`write`, `share`, `links`, `live`, `tokens`, `automation`, `publish`). Administrators also get `seats`, `used`, `pending` (each with its `role`) and `log_days`, and the account that pays gets `billing`. `vault` is `null`, or the protection of the team space as `GET /team/vault` returns it. `invites` are the invitations waiting for this account: `{ id, name, by }` |
 | `PUT /team` `{ name }` | Administrator: the name of the team, up to 40 characters |
 | `POST /team/invite` `{ email, role, lang }` | Administrator: invites that address and mails it, in English or with `lang: "es"` in Spanish. `role` is `admin`, `editor` (the default) or `reader`: `400 bad_role` for anything else. Inviting an address again changes the role of its invitation. `409 team_full` when members plus pending invitations fill the seats, `409 already_member`, `400 own_email`. Limits: `429 invite_day` (per team and day, `TEAM_INVITES_DAY`) and `429 invite_mail_day` (three a day per address, across all teams). The answer and the email are the same whether or not that address has an account |
 | `DELETE /team/invites/{id}` | Administrator: removes a pending invitation |
@@ -334,7 +452,7 @@ Three levels of settings. Personal settings (appearance, fonts, language, tools,
 | `POST /team/role` `{ id, role }` | Administrator: changes the role of a member. `400 bad_role`, `404 not_found` for an account outside the team, `409 owner_stays` for the account that pays. The open connections of that member to team notes are closed, so they come back with the new role |
 | `POST /team/leave` | A member leaves. The account that pays cannot: `409 owner_stays` |
 | `GET /team/policies` | Any member: `{ policies, can, history_days, history_max }` |
-| `PUT /team/policies` `{ share, links, live, tokens, automation, history_days, folder, template }` | Administrator: changes the policies sent, see below. `400 bad_policy` |
+| `PUT /team/policies` `{ share, links, live, tokens, automation, publish, history_days, folder, template }` | Administrator: changes the policies sent, see below. `400 bad_policy` |
 | `GET /team/log` | Administrator: the activity log, see below |
 | `GET /team/tokens`, `POST /team/tokens` `{ name, folder, write, share }`, `DELETE /team/tokens/{id}` | Administrator: team tokens, see below |
 | `POST /team/seats` `{ seats }` | The account that pays (`403 not_owner` for another administrator): changes the subscription in Paddle and then the seats. `409 seats_in_use` below the seats in use, `400 bad_seats`, `502 billing_failed` if Paddle refuses, `409 no_billing` for a team made by hand |
@@ -349,6 +467,7 @@ Team policies. What an administrator decides for the space, stored with the team
 | `links` | off | Public links to team notes: `POST /links` with `o`, `DELETE /links/{id}?o=`, and `create_public_link` and `revoke_public_link` |
 | `tokens` | on | Whether the AI of a member reaches the team space. Off, the tokens of members stop seeing `@team/` at once, and a path there answers with a message for the AI |
 | `automation` | off | Using automations on the team space. Whatever runs an automation asks `teamAllows(team, user, 'automation')` first |
+| `publish` | off | Publishing a folder of the team space as a public site: `POST /sites` with `o`, and every route of that site. See "Published sites" |
 | `live` | off | Opening a live session with guests on a team note. The team space has no live sessions yet: the policy is stored and answered by `teamAllows`, and nothing reads it today |
 | `history_days` | `0` | How long the version history of the space is kept: `30`, `90`, `180` or `365`, never more than `TEAM_HISTORY_DAYS`. `0` is the longest the server allows. Shortening it deletes the older versions right away |
 | `folder` | empty | The folder where the app puts a note created at the top of the team space |
@@ -356,7 +475,7 @@ Team policies. What an administrator decides for the space, stored with the team
 
 What goes out of the team. With `share` or `links` allowed, a team note is shared or linked exactly like a personal one, with `o` naming the space. The account it is shared with sees the name of the team as the sender, never the internal account. A team note cannot be shared with someone who is already in the team (`409 already_member`), and the whole space cannot be shared. A protected space has no sharing and no links. Who a team note is shared with is visible to administrators and editors. Refusals are `403 team_policy`, or `403 read_only` for a reader.
 
-The activity log. For administrators: who did what in the team space and when. Each entry is `{ id, at, who, uid, via, token, action, path, about, detail }`. `via` is empty from the app, `ai` with the token of a person and `team` with a team token, and `token` is the name of that token. Actions: `create`, `edit`, `move`, `delete`, `restore`, `purge`, `empty_trash`, `share`, `unshare`, `link`, `unlink`, `invite`, `uninvite`, `join`, `leave`, `remove`, `role`, `policy`, `team_name`, `protect`, `password`, `rotate`, `rotate_done`, `unprotect`, `destroy`, `ai`, `ai_unlock`, `token_create`, `token_revoke`.
+The activity log. For administrators: who did what in the team space and when. Each entry is `{ id, at, who, uid, via, token, action, path, about, detail }`. `via` is empty from the app, `ai` with the token of a person and `team` with a team token, and `token` is the name of that token. Actions: `create`, `edit`, `move`, `delete`, `restore`, `purge`, `empty_trash`, `share`, `unshare`, `link`, `unlink`, `invite`, `uninvite`, `join`, `leave`, `remove`, `role`, `policy`, `team_name`, `protect`, `password`, `rotate`, `rotate_done`, `unprotect`, `destroy`, `ai`, `ai_unlock`, `token_create`, `token_revoke`, `automation`, `automation_remove`, `site`, `publish`, `unpublish`.
 
 - It never stores the text of a note. It stores the path, the action, the account and the time. `detail` holds a role, the name of a policy with its new value, the new path of a move or the name of a token.
 - It stores no email address. Of the person who acted it stores the account number, and the address is looked up when the log is read: an account that was deleted shows empty. The address a note was shared with and the address that was invited are not written.
@@ -493,4 +612,5 @@ node cloud.mjs
 node vault.mjs
 node vaultapp.mjs
 node automation.mjs
+node sites.mjs
 ```

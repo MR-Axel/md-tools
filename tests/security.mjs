@@ -1,7 +1,7 @@
 // Seguridad: un caso por cada control del servidor, de la página de pago y de la app.
 // Todo corre contra un servidor local con claves inventadas y contra la extensión cargada en un Chromium:
 // ningún pedido sale a sync.sharpmd.app ni a sharpmd.app (lo que apunte ahí se corta y se anota como falla).
-// SHARPMD_SERVER apunta a otro server.mjs, para comparar contra una versión anterior. SEC_ONLY=server|app|live|team|gallery|auto corre una parte.
+// SHARPMD_SERVER apunta a otro server.mjs, para comparar contra una versión anterior. SEC_ONLY=server|app|live|team|gallery|auto|sites corre una parte.
 import { spawn } from 'child_process'; import { createHmac, createHash } from 'crypto'; import { DatabaseSync } from 'node:sqlite';
 import fs from 'fs'; import os from 'os'; import path from 'path'; import http from 'http'; import net from 'net'; import { fileURLToPath, pathToFileURL } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -1728,6 +1728,149 @@ async function automationSuite() {
   await T.stop(); sink.close(); trap.close();
 }
 if (!ONLY || ONLY === 'auto') await automationSuite();
+
+// ---------- Sitios publicados: el host aparte, sus rutas de gestión y lo que se guarda ----------
+// El host de sitios es el mismo servidor pedido con otra cabecera Host. Se comprueba que por ahí no exista nada de la
+// API, que por el host de siempre no se sirva ningún sitio, que una dirección con trucos no llegue a nada, que cada
+// ruta de gestión mire de quién es el sitio, y que el HTML que se guarda salga de la lista blanca del servidor.
+async function sitesSuite() {
+  console.log('\nSitios publicados');
+  const S = await boot({ ADMIN_KEY: ADMIN, FEEDBACK_TO: 'duenio@ejemplo.test', PAGES_URL: 'http://pages.localhost:' + (portSeq + 1) });
+  const { call } = S; const PH = 'pages.localhost:' + S.port; const PAGES = 'http://' + PH;
+  const raw = (host, p, opt) => new Promise((resolve, reject) => {
+    // Una cabecera que Node no deja armar tampoco llega: cuenta como un pedido que no entró.
+    try {
+      const r = http.request({ host: '127.0.0.1', port: S.port, path: p, method: (opt && opt.method) || 'GET', headers: Object.assign({ host }, (opt && opt.headers) || {}) }, (res) => { let b = ''; res.on('data', (c) => { b += c; }); res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: b })); });
+      r.on('error', () => resolve({ status: 0, headers: {}, body: '' })); if (opt && opt.body) r.write(opt.body); r.end();
+    } catch (e) { resolve({ status: 0, headers: {}, body: '' }); }
+  });
+  // Una línea de pedido escrita a mano, para direcciones que un cliente normal arreglaría antes de mandar.
+  const wire = (line, host) => new Promise((resolve) => { const sock = net.connect(S.port, '127.0.0.1', () => sock.write(line + '\r\nHost: ' + host + '\r\nConnection: close\r\n\r\n')); let b = ''; sock.on('data', (c) => { b += c; }); sock.on('end', () => resolve(b)); sock.on('error', () => resolve(b)); setTimeout(() => { sock.destroy(); resolve(b); }, 3000); });
+  try {
+    const A = await signup(S, 'ana-sitio@ejemplo.test'); const B = await signup(S, 'beto-sitio@ejemplo.test'); await makePro(S, A.email); await makePro(S, B.email);
+    await call('PUT', '/notes/' + enc('docs/index.md'), { text: '# Inicio\n\nSECRETO-PUBLICADO' }, A.s);
+    await call('PUT', '/notes/' + enc('docs/otra.md'), { text: '# Otra' }, A.s);
+    await call('PUT', '/notes/' + enc('privado/diario.md'), { text: '# Diario\n\nSECRETO-PRIVADO' }, A.s);
+    const site = (await call('POST', '/sites', { folder: 'docs', slug: 'docs-ana', title: 'Docs de Ana' }, A.s)).json;
+    const putPage = (html, note, who) => call('PUT', '/sites/' + site.id + '/pages', { pages: [{ note: note || 'docs/index.md', rev: 1, html }] }, (who || A).s);
+    await putPage('<h1>Inicio</h1><p>SECRETO-PUBLICADO</p>'); await call('POST', '/sites/' + site.id + '/publish', {}, A.s);
+    const tok = (await call('POST', '/tokens', { name: 'ia' }, A.s)).json.token; secrets.push(tok);
+
+    // ---------- Aislamiento por Host ----------
+    const auth = { authorization: 'Bearer ' + A.s }; const j = { 'content-type': 'application/json' };
+    const apiPaths = ['/health', '/account', '/notes', '/notes/' + enc('docs/index.md'), '/search?q=secreto', '/sites', '/sites/' + site.id, '/tokens', '/trash', '/team', '/shared', '/vaults', '/gallery', '/api/v1/me', '/api/v1/notes', '/api/v1/openapi.json', '/admin/sites', '/admin/gallery', '/events?path=' + enc('docs/index.md'), '/live/events', '/public/abc', '/versions/' + enc('docs/index.md')];
+    const viaPages = []; for (const p of apiPaths) viaPages.push(await raw(PH, p, { headers: Object.assign({ 'x-admin-key': ADMIN, origin: 'https://ejemplo.test' }, auth) }));
+    check('host de sitios: ninguna ruta de la API existe ahí, ni con la sesión ni con la clave de administración (404 en HTML)', viaPages.every((r) => r.status === 404 && /^text\/html/.test(r.headers['content-type'])) && !viaPages.some((r) => /SECRETO|ana-sitio@|"email"|"session"|"plan"/.test(r.body)), viaPages.map((r) => r.status));
+    check('host de sitios: no hay CORS ni se abre a otros orígenes', viaPages.every((r) => !Object.keys(r.headers).some((h) => /^access-control-/.test(h))), Object.keys(viaPages[1].headers));
+    const writes = [];
+    for (const [m, p, b] of [['POST', '/auth/start', { email: 'x@ejemplo.test' }], ['POST', '/auth/verify', { email: A.email, code: '000000' }], ['PUT', '/notes/' + enc('docs/index.md'), { text: 'pisado' }], ['DELETE', '/notes/' + enc('docs/index.md')], ['POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/list' }],
+      ['POST', '/sites', { folder: 'docs', slug: 'otro-mas', title: 'x' }], ['POST', '/sites/' + site.id + '/unpublish', {}], ['DELETE', '/sites/' + site.id], ['POST', '/admin/sites', { slug: 'docs-ana', action: 'delete' }], ['POST', '/feedback', { text: 'hola desde el otro host' }], ['POST', '/docs-ana/', {}], ['PUT', '/_/report', {}], ['PATCH', '/api/v1/boards/cards/1', {}], ['OPTIONS', '/notes']])
+      writes.push(await raw(PH, p, { method: m, headers: Object.assign({ 'x-admin-key': ADMIN, authorization: 'Bearer ' + (p === '/mcp' ? tok : A.s) }, j), body: b ? JSON.stringify(b) : undefined }));
+    const intact = (await call('GET', '/notes/' + enc('docs/index.md'), undefined, A.s)).json;
+    check('host de sitios: no acepta escrituras ni credenciales: todo método que no sea leer responde 405', writes.every((r) => r.status === 405 && r.headers.allow === 'GET, HEAD') && /SECRETO-PUBLICADO/.test(intact.text) && (await raw(PH, '/docs-ana/')).status === 200, writes.map((r) => r.status));
+    const viaApi = [await raw('127.0.0.1:' + S.port, '/docs-ana/'), await raw('127.0.0.1:' + S.port, '/docs-ana/', { headers: auth }), await raw('127.0.0.1:' + S.port, '/_/site.js'), await raw('127.0.0.1:' + S.port, '/_/report?s=docs-ana&p='), await raw('127.0.0.1:' + S.port, '/~' + site.preview.split('~')[1]), await raw('sync.ejemplo.test', '/docs-ana/')];
+    check('host de siempre: no sirve sitios, ni su script, ni el formulario de denuncia, ni la vista previa', viaApi.every((r) => (r.status === 401 || r.status === 404) && /^application\/json/.test(r.headers['content-type']) && !/SECRETO|<html/i.test(r.body)), viaApi.map((r) => r.status));
+    // La cabecera Host falsificada: lo que decide es Host, nunca lo que diga otra cabecera.
+    const spoof = [await raw('127.0.0.1:' + S.port, '/docs-ana/', { headers: { 'x-forwarded-host': PH, forwarded: 'host=' + PH, 'x-host': PH, 'x-original-host': PH } }), await raw('evil.' + PH, '/docs-ana/'), await raw(PH + '.evil.test', '/docs-ana/'), await raw('pages.localhost', '/docs-ana/'), await raw('pages.localhost:1', '/docs-ana/'), await raw(PH + '@evil.test', '/docs-ana/'), await raw('x' + PH, '/docs-ana/')];
+    check('Host falsificado: x-forwarded-host y parecidos no cuentan, y un nombre que se le parece no es el host de sitios', spoof.every((r) => r.status !== 200 && !/SECRETO/.test(r.body)), spoof.map((r) => r.status));
+    const apiSpoof = [await raw(PH, '/account', { headers: Object.assign({ 'x-forwarded-host': '127.0.0.1:' + S.port, forwarded: 'host=127.0.0.1' }, auth) }), await raw(PH.toUpperCase(), '/account', { headers: auth })];
+    const upper = await raw(PH.toUpperCase(), '/docs-ana/');
+    check('y al revés: decir por otra cabecera que se viene por el host de la API no abre la API en el host de sitios', apiSpoof.every((r) => r.status === 404 && !/ana-sitio@/.test(r.body)) && upper.status === 200, [apiSpoof.map((r) => r.status), upper.status]);
+    // Con dos cabeceras Host vale la primera. Llegar por el host de sitios y sumar atrás el de la API no abre la API.
+    const twoHosts = await wire('GET /account HTTP/1.1\r\nHost: ' + PH + '\r\nAuthorization: Bearer ' + A.s, '127.0.0.1:' + S.port);
+    check('dos cabeceras Host en un pedido: agregar la de la API atrás de la de sitios no abre la API', /^HTTP\/1\.1 (404|400)/.test(twoHosts) && !/ana-sitio@/.test(twoHosts), twoHosts.slice(0, 80));
+
+    // ---------- Direcciones con trucos ----------
+    const tricks = ['/docs-ana/../privado/diario', '/docs-ana/..%2f..%2fprivado%2fdiario', '/docs-ana/%2e%2e/%2e%2e/account', '/docs-ana/..;/account', '/docs-ana//index', '/docs-ana/./index', '/docs-ana/index%00', '/docs-ana/index.md', '/docs-ana/privado/diario', '/docs-ana/%69ndex', '/DOCS-ANA/', '/docs-ana%2f', '/docs-ana\\..\\account',
+      '/..%2fdocs-ana/', '/%2e%2e/account', '/_/../account', '/_/site.js/../../account', '/_/%2e%2e/health', '/~/', '/~' + 'a'.repeat(24) + '/', '/~../', '/docs-ana/~' + site.preview.split('~')[1], '/' + 'a'.repeat(700) + '/', '/docs-ana/' + 'a/'.repeat(200), '/docs_ana/', '/docs-ana:80/', '/@docs-ana/', '/docs-ana/?f=../../account', '/1/', '/' + site.id + '/'];
+    const tricked = []; for (const t of tricks) tricked.push(await wire('GET ' + t + ' HTTP/1.1', PH));
+    const okTrick = (r, i) => (/^HTTP\/1\.1 (404|400|308)/.test(r) || (tricks[i] === '/docs-ana/?f=../../account' && /^HTTP\/1\.1 200/.test(r))) && !/SECRETO-PRIVADO|ana-sitio@|"session"/.test(r);
+    check('direcciones con "..", barras codificadas, nulos, mayúsculas o prefijos raros no llegan a ninguna nota ni a la API', tricked.every(okTrick), tricked.map((r, i) => [tricks[i].slice(0, 40), r.slice(9, 12)]).filter((x, i) => !okTrick(tricked[i], i)));
+    await call('PUT', '/notes/' + enc('docs/index.md'), { text: '# De Beto' }, B.s);
+    const slugTricks = ['../docs-ana', 'docs-ana/../x', 'docs%2fana', '_', '~abc', 'a..b', 'a b', 'docs-ana\u0000', 'docs-ana\n', '.well-known', 'xn--', '-ab', 'ab-'];
+    const slugged = []; for (const s of slugTricks) slugged.push((await call('POST', '/sites', { folder: 'docs', slug: s, title: 'x' }, B.s)).json.error);
+    check('un slug con trucos de ruta no se acepta al crear', slugged.every((e, i) => e === (slugTricks[i] === 'docs-ana\n' ? 'slug_taken' : 'bad_slug')), slugged);
+
+    // ---------- Quién puede qué en las rutas de gestión ----------
+    const F = await signup(S, 'fran-sitio@ejemplo.test');
+    const ops = (s) => Promise.all([call('GET', '/sites/' + site.id, undefined, s), call('PUT', '/sites/' + site.id, { title: 'Tomado' }, s), call('PUT', '/sites/' + site.id + '/pages', { pages: [{ note: 'docs/index.md', rev: 1, html: '<p>tomado</p>' }] }, s), call('POST', '/sites/' + site.id + '/publish', {}, s), call('POST', '/sites/' + site.id + '/unpublish', {}, s), call('DELETE', '/sites/' + site.id, undefined, s)]);
+    const asB = await ops(B.s); const asF = await ops(F.s); const asNone = await ops(undefined); const asTok = await ops(tok);
+    check('gestión: otra cuenta (paga o gratis) recibe 404 en cada ruta del sitio, y sin sesión o con un token de IA, 401', asB.every((r) => r.status === 404) && asF.every((r) => r.status === 404) && asNone.every((r) => r.status === 401) && asTok.every((r) => r.status === 401) && /SECRETO-PUBLICADO/.test((await raw(PH, '/docs-ana/')).body), [asB.map((r) => r.status), asNone.map((r) => r.status), asTok.map((r) => r.status)]);
+    const cross = [await putPage('<p>x</p>', 'privado/diario.md'), await putPage('<p>x</p>', 'docs/../privado/diario.md'), await putPage('<p>x</p>', '/etc/passwd'), await putPage('<p>x</p>', 'docs/index.md\u0000.md'), await call('PUT', '/sites/' + site.id, { home: 'privado/diario.md' }, A.s), await call('PUT', '/sites/' + site.id + '/pages', { pages: 'x' }, A.s), await call('PUT', '/sites/' + site.id + '/pages', { pages: [null] }, A.s), await call('PUT', '/sites/' + site.id + '/pages', { pages: [{ note: 'docs/index.md', rev: 1, html: 7 }] }, A.s), await call('PUT', '/sites/' + site.id + '/pages', { pages: [{ note: 'docs/index.md', rev: -1, html: '' }] }, A.s)];
+    check('gestión: ni el dueño publica una nota de afuera de la carpeta, ni elige una portada de afuera, ni manda páginas mal armadas', cross.every((r) => r.status === 400) && !/SECRETO-PRIVADO/.test((await raw(PH, '/docs-ana/search.json')).body), cross.map((r) => [r.status, r.json && r.json.error]));
+    const o = [await call('POST', '/sites', { o: A.id, folder: 'docs', slug: 'de-otro', title: 'x' }, B.s), await call('POST', '/sites', { o: 999999, folder: 'docs', slug: 'de-otro', title: 'x' }, B.s), await call('POST', '/sites', { o: '1 OR 1=1', folder: 'docs', slug: 'de-otro', title: 'x' }, B.s)];
+    check('gestión: nadie crea un sitio sobre las notas de otra cuenta con "o"', o.every((r) => r.status === 403 && r.json.error === 'no_access'), o.map((r) => [r.status, r.json]));
+    const adm = [await call('GET', '/admin/sites'), await call('GET', '/admin/sites', undefined, A.s), await call('POST', '/admin/sites', { slug: 'docs-ana', action: 'delete' }, A.s, { 'x-admin-key': 'x' }), await call('POST', '/admin/sites', { slug: 'docs-ana', action: 'suspend' }, undefined, { 'x-admin-key': '' })];
+    const admBad = [await call('POST', '/admin/sites', { slug: 'docs-ana', action: 'explotar' }, undefined, { 'x-admin-key': ADMIN }), await call('POST', '/admin/sites', { slug: 'no-esta', action: 'suspend' }, undefined, { 'x-admin-key': ADMIN })];
+    check('administración: sin la clave, 403; con la clave, una acción desconocida o un sitio que no existe no hacen nada', adm.every((r) => r.status === 403) && admBad[0].status === 400 && admBad[1].status === 404 && (await raw(PH, '/docs-ana/')).status === 200, [adm.map((r) => r.status), admBad.map((r) => r.status)]);
+    const conf = (await call('PUT', '/sites/' + site.id, { title: '<script>alert(1)</script>"><img src=x onerror=alert(2)>', descr: '"><script>alert(3)</script>', logo: '<svg onload=alert(4)>', author: '</title><script>alert(5)</script>' }, A.s)).json;
+    const confPage = (await raw(PH, '/docs-ana/')).body; const head = confPage.slice(0, confPage.indexOf('<article'));
+    check('la configuración del sitio (título, descripción, logo, autor) sale siempre como texto', !!conf.title && !/<script>alert|<img src=x|<svg onload/.test(confPage) && /&#60;script&#62;alert\(1\)/.test(head) && (confPage.match(/<script/g) || []).length === 1, head.slice(0, 600));
+    const css = [(await call('PUT', '/sites/' + site.id, { accent: '#3b82f6;background:url(https://xss.invalid/a)' }, A.s)).status, (await call('PUT', '/sites/' + site.id, { accent: 'expression(alert(1))' }, A.s)).status, (await call('PUT', '/sites/' + site.id, { font: 'Georgia;}body{display:none' }, A.s)).status, (await call('PUT', '/sites/' + site.id, { font: 'url(https://xss.invalid/f.woff)' }, A.s)).status, (await call('PUT', '/sites/' + site.id, { lang: 'es" onload="x' }, A.s)).status, (await call('PUT', '/sites/' + site.id, { noindex: 'si' }, A.s)).status];
+    const sheet = (await raw(PH, '/_/site.css')).body;
+    check('el tema sale de listas cerradas: un color, una tipografía o un idioma con CSS o con comillas no pasan, y la hoja no trae url()', css.every((x) => x === 400) && !/url\(|@import|expression\(/i.test(sheet) && !/xss\.invalid/.test((await raw(PH, '/docs-ana/')).body), css);
+
+    // ---------- La lista blanca del servidor ----------
+    const P = 'window.__pwn=1'; const served0 = (await raw(PH, '/docs-ana/')).body;
+    const HOSTILE = [
+      '<script>' + P + '</script>', '<SCRIPT SRC=https://xss.invalid/x.js></SCRIPT>', '<scr<script>ipt>' + P + '</scr</script>ipt>', '<script\n>' + P + '</script\n>', '<script/x>' + P + '</script>',
+      '<img src=x onerror="' + P + '">', '<img src="x" OnErRoR=' + P + '>', '<img/src=x/onerror=' + P + '>', '<img src=x onerror\n=' + P + '>', '<img src="https://ok.example/a.png" onload="' + P + '">', '<img src=`x`onerror=' + P + '>', '<img """><script>' + P + '</script>">',
+      '<svg onload="' + P + '"><script>' + P + '</script></svg>', '<svg><a xlink:href="javascript:' + P + '"><text>x</text></a></svg>', '<svg><foreignObject><iframe src="javascript:' + P + '"></iframe></foreignObject></svg>', '<svg><style>*{background:url(https://xss.invalid/s)}</style></svg>', '<svg><use href="data:image/svg+xml,<svg id=x xmlns=http://www.w3.org/2000/svg><script>' + P + '</script></svg>#x"/></svg>', '<svg><animate onbegin="' + P + '" attributeName=x dur=1s>', '<svg><set attributeName="href" to="javascript:' + P + '"/></svg>',
+      '<math><mtext><table><mglyph><style><img src=x onerror="' + P + '"></style></mglyph></table></mtext></math>', '<math><annotation-xml encoding="text/html"><script>' + P + '</script></annotation-xml></math>', '<math href="javascript:' + P + '">x</math>', '<math><mi xlink:href="javascript:' + P + '">x</mi></math>', '<math><mtext></form><form><mglyph><style></math><img src onerror=' + P + '>',
+      '<iframe src="javascript:' + P + '"></iframe>', '<iframe srcdoc="<script>parent.__pwn=1</script>"></iframe>', '<object data="javascript:' + P + '"></object>', '<embed src="javascript:' + P + '">', '<applet code=x></applet>', '<frameset onload=' + P + '><frame src=x></frameset>',
+      '<form action="https://xss.invalid/f"><input name=q><button formaction="javascript:' + P + '">x</button></form>', '<input onfocus=' + P + ' autofocus>', '<select onchange=' + P + '><option>1</option></select>', '<textarea onfocus=' + P + ' autofocus></textarea>', '<button onclick=' + P + '>x</button>', '<label for=x onclick=' + P + '>x</label>', '<isindex action="javascript:' + P + '">',
+      '<a href="javascript:' + P + '">a</a>', '<a href="JaVaScRiPt:' + P + '">a</a>', '<a href=" javascript:' + P + '">a</a>', '<a href="java\tscript:' + P + '">a</a>', '<a href="java\nscript:' + P + '">a</a>', '<a href="java&#x09;script:' + P + '">a</a>', '<a href="&#106;avascript:' + P + '">a</a>', '<a href="&#x6A;avascript&#58;' + P + '">a</a>', '<a href="javascript&colon;' + P + '">a</a>', '<a href="jav&Tab;ascript:' + P + '">a</a>', '<a href="\u0001javascript:' + P + '">a</a>', '<a href="vbscript:msgbox(1)">a</a>',
+      '<a href="data:text/html,<script>' + P + '</script>">a</a>', '<a href="data:text/html;base64,PHNjcmlwdD5wYXJlbnQuX19wd249MTwvc2NyaXB0Pg==">a</a>', '<a href="blob:https://xss.invalid/1">a</a>', '<a href="file:///etc/passwd">a</a>', '<a href="//xss.invalid/x" target="_blank" onclick="' + P + '">a</a>', '<a href="https://user:pass@xss.invalid/">a</a>', '<a href="\\\\xss.invalid\\x">a</a>', '<a href="/\\xss.invalid">a</a>', '<a data-wiki="x&quot; onclick=&quot;' + P + '">w</a>', '<a data-n="javascript:' + P + '" href="#x">n</a>', '<a href="x&quot; onmouseover=&quot;' + P + '">q</a>',
+      '<img src="javascript:' + P + '">', '<img src="data:text/html,<script>' + P + '</script>">', '<img src="data:image/svg+xml,<svg xmlns=http://www.w3.org/2000/svg onload=' + P + '>">', '<img src="data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>' + P + '</script></svg>').toString('base64') + '">', '<img src="data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="' + P + '"/>').toString('base64') + '">', '<img src="http://xss.invalid/claro.png">', '<img src="https://xss.invalid/a.png" srcset="https://xss.invalid/b.png 2x" style="background:url(https://xss.invalid/c)">', '<img src="x" alt="&quot;><script>' + P + '</script>">', '<img src="https://ok.example/a.png" alt="\'&quot;><img src=x onerror=' + P + '>">',
+      '<style>@import "https://xss.invalid/a.css"; body{background:url(https://xss.invalid/b)}</style>', '<p style="background:url(https://xss.invalid/c);position:fixed;inset:0">p</p>', '<div style="background-image:url(javascript:' + P + ')">d</div>', '<p style="width:expression(' + P + ')">e</p>', '<link rel=stylesheet href=https://xss.invalid/l.css>', '<td style="text-align:center;background:url(https://xss.invalid/t)">t</td>', '<p class="sp-top sp-foot sp-made lmd-x" id="sp-main">disfraz</p>',
+      '<base href="https://xss.invalid/">', '<meta http-equiv="refresh" content="0;url=javascript:' + P + '">', '<meta http-equiv="Content-Security-Policy" content="script-src *">', '<title><script>' + P + '</script></title>', '<noscript><p title="</noscript><img src=x onerror=' + P + '>"></noscript>', '<template><script>' + P + '</script></template>', '<xmp><script>' + P + '</script></xmp>', '<plaintext><script>' + P + '</script>', '<listing>&lt;img src=x onerror=' + P + '&gt;</listing>',
+      '<svg>'.repeat(40) + '<script>' + P + '</script>' + '</svg>'.repeat(39) + '<img src=x onerror=' + P + '>', '<form><form><input></form><img src=x onerror=' + P + '></form>', '<select><option></select><img src=x onerror=' + P + '></option></select>', '<svg></p><style><a id="</style><img src=x onerror=' + P + '>">', '<table><tr><td><svg><desc><td></desc><img src=x onerror=' + P + '>', '<math><mi><style></mi><img src=x onerror=' + P + '></style></math>', '<math><mtext><mglyph><style><!--</style><img title="--&gt;&lt;img src=x onerror=' + P + '&gt;">',
+      '<body onload=' + P + '>', '<html onmouseover=' + P + '>', '<details open ontoggle=' + P + '><summary>s</summary>x</details>', '<video src=x onerror=' + P + '><source src=x onerror=' + P + '></video>', '<audio src=x onerror=' + P + '></audio>', '<marquee onstart=' + P + '>m</marquee>', '<div onpointerover=' + P + ' onanimationstart=' + P + ' onfocusin=' + P + ' tabindex=0 autofocus>d</div>', '<p contenteditable onpaste=' + P + ' onbeforeinput=' + P + '>p</p>', '<a href="#" ping="https://xss.invalid/p">ping</a>', '<p xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="javascript:' + P + '">x</p>',
+      '<!--><script>' + P + '</script>-->', '<!-- --!><script>' + P + '</script>', '<![CDATA[<script>' + P + '</script>]]>', '<?xml version="1.0"?><script>' + P + '</script>', '<!DOCTYPE html [<!ENTITY x "<script>' + P + '</script>">]>', '<p>&lt;script&gt;' + P + '&lt;/script&gt;</p>', '<p>&#60;img src=x onerror=' + P + '&#62;</p>', '<p title="--><script>' + P + '</script>">t</p>', '<a href="https://ok.example/?q=</a><script>' + P + '</script>">cierra</a>', '<p>sin cerrar <b <script>' + P + '</script>', '<img src="https://ok.example/a.png" alt="sin cerrar',
+      '\u0000<scr\u0000ipt>' + P + '</scr\u0000ipt>', '<\u0000script>' + P + '</script>', '<img src=x one\u0000rror=' + P + '>', '<a href="java\u0000script:' + P + '">nulo</a>', '<div id="sp-navt"></div><div id="location"></div><a id="sp-main" name="body"></a><form id="forms" name="cookie"></form>', '<h1 id="x&quot; onclick=&quot;' + P + '">título</h1>', '<h2 id="sp-main">otro</h2>', '<h2 onclick=' + P + '>título con manejador</h2>',
+    ];
+    // Cada carga va sola en una página: así una que deja algo sin cerrar no esconde a las que siguen.
+    const arts = [];
+    for (const h of HOSTILE) { const r = await putPage('<div>' + h + '</div><p>fin</p>'); const got = (await raw(PH, '/docs-ana/')).body; arts.push(r.status === 200 ? got.slice(got.indexOf('<article'), got.indexOf('</article>')) : 'NO ENTRÓ ' + r.status); }
+    // De cada página, las etiquetas solas (el texto va escapado, así que entre '>' y '<' no hay etiquetas) y sin los valores.
+    const bare = arts.map((a) => a.replace(/>[^<]*</g, '><')); const names = bare.map((a) => a.replace(/"[^"]*"/g, '""'));
+    const OK_TAGS = new Set('article a abbr b blockquote br caption cite code col colgroup dd del details dfn div dl dt em figcaption figure h1 h2 h3 h4 h5 h6 hr i img ins kbd li mark nav ol p pre q rp rt ruby s samp section small span strong sub summary sup table tbody td tfoot th thead tr u ul var wbr math semantics mrow mi mo mn ms mtext mspace msup msub msubsup mfrac msqrt mroot munder mover munderover mtable mtr mtd mstyle mpadded mphantom menclose merror'.split(' '));
+    const OK_ATTRS = new Set(['class', 'href', 'rel', 'src', 'alt', 'loading', 'decoding', 'id', 'title', 'open']);
+    const which = (bad) => bad.map((x, i) => (x ? [i, HOSTILE[i].slice(0, 50), arts[i].slice(0, 200)] : null)).filter(Boolean).slice(0, 4);
+    const badTag = names.map((a) => (a.match(/<\/?([a-zA-Z][^\s/>]*)/g) || []).some((t) => !OK_TAGS.has(t.replace(/^<\/?/, '').toLowerCase())));
+    check('lista blanca: ' + HOSTILE.length + ' cargas hostiles, cada una en su página, y no queda una etiqueta fuera de la lista', arts.every((a) => /^<article/.test(a)) && !badTag.some(Boolean), which(badTag));
+    const badAttr = names.map((a) => (a.match(/\s([a-zA-Z_:][^\s=>"]*)(?==""|\s|>)/g) || []).some((t) => !OK_ATTRS.has(t.trim().toLowerCase())));
+    check('lista blanca: sin manejadores on*, sin style, srcset, target, ping, name ni data-*: solo atributos de la lista', !badAttr.some(Boolean) && !names.some((a) => /\son[a-z]+\s*=/i.test(a)), which(badAttr));
+    const hrefs = bare.map((a) => (a.match(/href="[^"]*"/g) || []).map((h) => h.slice(6, -1))); const srcs = bare.map((a) => (a.match(/src="[^"]*"/g) || []).map((h) => h.slice(5, -1)));
+    const badHref = hrefs.map((l) => l.some((h) => !/^(https:\/\/|#|\/docs-ana\/)/.test(h) || /user:pass/.test(h)));
+    check('lista blanca: los enlaces que quedan son https, de la misma página o de adentro del sitio; ningún javascript:, data:, blob: ni file:', hrefs.flat().length > 3 && !badHref.some(Boolean), which(badHref));
+    const badSrc = srcs.map((l) => l.some((x) => !/^https:\/\//.test(x)));
+    check('lista blanca: las imágenes que quedan son https: ninguna data: con script, ninguna http', srcs.flat().length >= 2 && !badSrc.some(Boolean), which(badSrc));
+    const badRaw = bare.map((a) => /<!--|<!\[CDATA|<\?|<!doctype/i.test(a) || /url\(|@import|expression\(/i.test(a.replace(/alt="[^"]*"|title="[^"]*"/g, '')));
+    check('lista blanca: sin comentarios, CDATA ni instrucciones, y sin CSS con url() en ningún atributo', !badRaw.some(Boolean), which(badRaw));
+    const all = arts.join('\n');
+    check('lista blanca: los ids no pisan los de la plantilla y las clases sp- del contenido no entran', !/id="sp-|class="[^"]*sp-(top|foot|made)/.test(all) && (served0.match(/id="sp-main"/g) || []).length === 1, (all.match(/id="[^"]*"/g) || []).slice(0, 8));
+    check('lo que llegó como texto escapado sigue siendo texto', /&lt;script&gt;window\.__pwn=1&lt;\/script&gt;/.test(all) && /&lt;img src=x onerror=window\.__pwn=1&gt;/.test(all), null);
+    check('y todo enlace hacia afuera lleva rel="nofollow ugc noopener"', (all.match(/<a href="https:[^>]*>/g) || []).every((t) => / rel="nofollow ugc noopener"/.test(t)), (all.match(/<a href="https:[^>]*>/g) || []).slice(0, 3));
+    // Un cuerpo enorme y enredado no cuelga al servidor.
+    const t0 = Date.now();
+    const heavy = [await putPage('<div>'.repeat(60000) + 'x'), await putPage('<'.repeat(400000)), await putPage('<a href="' + 'a'.repeat(300000)), await putPage('<img src="data:image/svg+xml;base64,' + Buffer.from('<svg>' + '<'.repeat(200000) + ' onload=1></svg>').toString('base64') + '">'), await putPage(('<b ' + 'x=1 '.repeat(50) + '>').repeat(4000)), await putPage('&'.repeat(300000)), await putPage('<!--'.repeat(100000))];
+    check('un cuerpo enredado (anidado, sin cerrar, con miles de "<") se procesa rápido y no rompe nada', heavy.every((r) => r.status === 200) && Date.now() - t0 < 8000 && S.alive() && (await raw(PH, '/docs-ana/')).status === 200, [heavy.map((r) => r.status), Date.now() - t0]);
+    const deep = (await raw(PH, '/docs-ana/')).body;
+    check('y lo que sale sigue bien armado: la plantilla cierra después del cuerpo', /<\/article>/.test(deep) && /<footer class="sp-foot">/.test(deep.slice(deep.indexOf('</article>'))) && /<\/html>\s*$/.test(deep), deep.slice(-200));
+
+    // ---------- Lo que queda guardado ----------
+    const db = S.db(); const rows = db.prepare('SELECT * FROM sites').all(); const dump = JSON.stringify(rows);
+    check('en la tabla de sitios no hay correos: de la cuenta se guarda el número', !/@ejemplo\.test/.test(dump) && rows[0].owner === A.id, dump.slice(0, 300));
+    await call('POST', '/vaults', { folder: 'docs', salt: Buffer.alloc(16, 3).toString('base64'), iters: 200000, wrapped: Buffer.alloc(60, 3).toString('base64'), check: Buffer.alloc(32, 3).toString('base64') }, A.s);
+    const sealed = await raw(PH, '/docs-ana/'); const left = S.db().prepare('SELECT COUNT(*) AS n FROM site_pages WHERE site = ?').get(site.id).n;
+    check('proteger la carpeta con contraseña baja el sitio y borra lo que estaba publicado', sealed.status === 410 && left === 0 && !/SECRETO/.test(sealed.body), [sealed.status, left]);
+    const delA = await call('DELETE', '/account', { email: B.email }, B.s, from(nextIp()));
+    check('sitios: sin errores del servidor', delA.status === 200 && !/error 500|error no capturado|promesa sin atender|sitios: error/.test(S.log()) && S.alive(), (S.log().match(/error[^\n]*/g) || []).slice(0, 3));
+  } catch (e) { check('sitios: sin excepciones en la prueba', false, String(e && e.stack || e)); console.log(S.log().slice(-1500)); }
+  await S.stop();
+}
+if (!ONLY || ONLY === 'sites') await sitesSuite();
 
 const failed = results.filter((r) => !r.ok);
 console.log('\n' + (results.length - failed.length) + ' de ' + results.length + ' pruebas pasaron');
