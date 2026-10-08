@@ -2125,7 +2125,7 @@ function teamLogSweep() {
   for (const t of q('SELECT team, COUNT(*) AS n FROM team_log GROUP BY team HAVING n > ?').all(TEAM_LOG_MAX)) q('DELETE FROM team_log WHERE team = ? AND id NOT IN (SELECT id FROM team_log WHERE team = ? ORDER BY id DESC LIMIT ?)').run(t.team, t.team, TEAM_LOG_MAX);
   for (const [k, at] of logSeen) if (now() - at > HOUR) logSeen.delete(k);
 }
-const TEAM_ACTIONS = ['create', 'edit', 'move', 'delete', 'restore', 'purge', 'empty_trash', 'share', 'unshare', 'link', 'unlink', 'invite', 'uninvite', 'join', 'leave', 'remove', 'role', 'policy', 'team_name', 'protect', 'password', 'rotate', 'rotate_done', 'unprotect', 'destroy', 'ai', 'ai_unlock', 'token_create', 'token_revoke', 'automation', 'automation_remove', 'site', 'publish', 'unpublish', 'live_open', 'live_end', 'live_kick'];
+const TEAM_ACTIONS = ['create', 'edit', 'move', 'delete', 'restore', 'purge', 'empty_trash', 'share', 'unshare', 'link', 'unlink', 'invite', 'uninvite', 'join', 'leave', 'remove', 'role', 'policy', 'team_name', 'protect', 'password', 'rotate', 'rotate_done', 'unprotect', 'destroy', 'ai', 'ai_unlock', 'token_create', 'token_revoke', 'automation', 'automation_remove', 'site', 'publish', 'unpublish', 'live_open', 'live_end', 'live_kick', 'attach', 'detach'];
 // Lo que se pide del registro: who (número de cuenta), token (nombre), action, from y to (milisegundos), before (id, para seguir).
 function teamLogRows(team, url, max) {
   const g = (k) => url.searchParams.get(k) || '';
@@ -2294,6 +2294,7 @@ function accountDelete(req, user, body) {
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
   scrub(); galleryFresh();
+  for (const id of ids) filesDropOwner(id); // sus imágenes adjuntas, del disco y de la tabla
   // Las pestañas que seguían escuchando notas de la cuenta (o del equipo que se fue con ella) se cortan.
   for (const [key, room] of rooms) for (const c of Array.from(room)) if (c.uid === user.id || ids.some((id) => key.startsWith(id + ':'))) c.res.end();
   return { ok: true };
@@ -3436,6 +3437,8 @@ async function apiRoute(req, url, p, m) {
   if (!mcpAllowed(user)) throw new Fail(402, 'api_needs_plan', 'The API is part of the paid plan');
   rate('api:' + user.tokenId, API_PER_MIN, 60000, 'rate_limited');
   ctxSet('via', 'api');
+  // Adjuntos: el cuerpo es la imagen misma, no JSON (bloque ADJUNTOS).
+  if (r === '/files' || r.startsWith('/files/')) return filesApi(req, url, r, m, user);
   const qs = url.searchParams; const body = m === 'GET' || m === 'DELETE' ? {} : await readBody(req);
   const arg = (key) => (body[key] !== undefined ? body[key] : qs.has(key) ? qs.get(key) : undefined);
   const call = (name, args) => callTool(user, name, args, { raw: true });
@@ -4476,6 +4479,377 @@ async function pagesServe(req, res) {
 // Fin de SITIOS PUBLICADOS
 // ====================================================================================================================
 
+// ====================================================================================================================
+// ADJUNTOS
+// Las imágenes de una nota de la nube no viajan dentro del Markdown: se suben como adjuntos y la nota guarda su
+// dirección. Cada adjunto es un archivo bajo DATA_DIR/files/ (nombrado por su identificador, nunca por lo que mandó
+// el cliente) y una fila en la tabla files.
+//   - La dirección es la llave: /f/<40 hexadecimales> (160 bits al azar). Se sirve sin sesión, para que la imagen se
+//     vea en notas compartidas, enlaces públicos, sesiones en vivo, exportaciones y sitios publicados. Quien tiene
+//     la dirección ve la imagen, igual que con un enlace público. Nunca desde el host de sitios, nunca con cookies.
+//   - Solo imágenes: PNG, JPEG, GIF, WebP y AVIF, reconocidas por sus primeros bytes. Lo que diga la cabecera
+//     content-type del pedido no cuenta. SVG no entra: es un documento que puede llevar código.
+//   - Carpetas protegidas y espacio de equipo protegido: el navegador cifra la imagen con la llave de la carpeta y
+//     acá llegan bytes que no se pueden leer (enc = 1). Esos no se sirven por /f/: los baja la app con su sesión
+//     (GET /files/{id}/raw) y los descifra en memoria. Como el servidor no puede leer las notas que los nombran,
+//     la app declara, al guardar cada nota protegida, qué adjuntos cifrados usa (PUT /files/refs: solo identificadores).
+//   - Topes por plan: peso por imagen y almacenamiento total del espacio. El espacio que se va a ocupar se reserva
+//     antes de recibir, para que varias subidas a la vez no pasen el total entre todas.
+//   - Limpieza: un barrido mira qué adjuntos siguen nombrados en alguna nota, versión del historial o nota de la
+//     papelera. El que no, queda marcado y deja de contar en el uso; pasados FILES_GRACE_DAYS se borra. De
+//     los cifrados se mira lo que declaró la app: el que ninguna nota declara corre la misma suerte.
+// Variables:
+//   FILE_MAX_FREE_MB, FILE_MAX_PAID_MB    peso máximo de una imagen (también un GIF) en el plan gratis y en el pago (5, 20)
+//   FILES_FREE_MB, FILES_PAID_MB          almacenamiento de adjuntos de una cuenta gratis y de una paga (100, 5120)
+//   FILES_TEAM_SEAT_MB, FILES_TEAM_MB     lo que suma cada persona a la bolsa común de un equipo, y una base fija si se quiere (10240, 0)
+//   FILE_UPLOAD_KBPS                      velocidad mínima de una subida, en KB por segundo: más lenta que eso se corta (32)
+//   FILES_GRACE_DAYS                      días que un adjunto sin uso espera antes de borrarse (30)
+//   FILES_PER_HOUR                        subidas por hora y por cuenta (300)
+//   FILES_GETS_MINUTE                     pedidos de imágenes por minuto y por IP (600)
+//   FILES_SWEEP_MS, FILES_FRESH_MS, FILES_GRACE_MS   solo para pruebas: cada cuánto corre el barrido, cuánto se
+//                                         espera a que una imagen recién subida aparezca en una nota, y el margen
+// ====================================================================================================================
+const MB = 1048576;
+const envMb = (name, def) => { const n = env[name] == null || env[name] === '' ? def : +env[name]; return Math.round((Number.isFinite(n) && n > 0 ? n : def) * MB); };
+const envMs = (name, def) => { const n = +(env[name] || 0); return Number.isFinite(n) && n > 0 ? n : def; };
+const FILE_MAX = { free: envMb('FILE_MAX_FREE_MB', 5), pro: envMb('FILE_MAX_PAID_MB', 20) };
+// El equipo tiene una bolsa común: lo que suma cada persona. FILES_TEAM_MB le agrega una base fija (0 por defecto).
+const FILES_TOTAL = { free: envMb('FILES_FREE_MB', 100), pro: envMb('FILES_PAID_MB', 5120), team: envMb('FILES_TEAM_MB', 0), seat: envMb('FILES_TEAM_SEAT_MB', 10240) };
+// Una subida no depende del minuto que tiene cualquier otro pedido: tiene el tiempo que lleva su tope a la velocidad
+// mínima, y se corta antes si viene más lenta que eso o deja de mandar.
+const FILE_UPLOAD_BPS = Math.max(1, +(env.FILE_UPLOAD_KBPS || 32) || 32) * 1024;
+const FILE_UPLOAD_MS = Math.max(120000, Math.ceil((FILE_MAX.pro + 65536) / FILE_UPLOAD_BPS) * 1000 + 30000);
+const FILE_STALL_MS = envMs('FILE_STALL_MS', 20000); const FILE_SLOW_AFTER_MS = envMs('FILE_SLOW_AFTER_MS', 15000);
+const fileUploadReq = (req) => req.method === 'POST' && /^\/(api\/v1\/)?files(\?|$)/.test(String(req.url || ''));
+const FILES_GRACE_MS = envMs('FILES_GRACE_MS', Math.max(1, +(env.FILES_GRACE_DAYS || 30) || 30) * DAY);
+const FILES_FRESH_MS = envMs('FILES_FRESH_MS', HOUR);
+const FILES_SWEEP_MS = envMs('FILES_SWEEP_MS', 6 * HOUR);
+const FILES_PER_HOUR = Math.max(1, +(env.FILES_PER_HOUR || 300) || 300);
+const FILES_GETS_MINUTE = Math.max(1, +(env.FILES_GETS_MINUTE || 600) || 600);
+const FILES_MISS_HOUR = 60; // direcciones que no existen, por hora y por IP: después de eso, 429
+const FILES_LIST_MAX = 5000; const FILE_SIDE_MAX = 16384; const FILE_DRAIN = Math.max(32 * MB, FILE_MAX.pro + MB);
+// Lo que suma el cifrado del navegador a una imagen: nonce (12), etiqueta (16) y el byte que dice de qué tipo es.
+const FILE_ENC_EXTRA = 64;
+const FILES_DIR = path.join(DATA_DIR, 'files'); const FILES_TMP = path.join(FILES_DIR, 'tmp');
+fs.mkdirSync(FILES_TMP, { recursive: true });
+// Lo que quedó a medio subir cuando el servidor se detuvo.
+for (const name of fs.readdirSync(FILES_TMP)) { try { fs.unlinkSync(path.join(FILES_TMP, name)); } catch (e) { /* lo saca el próximo arranque */ } }
+// owner: la cuenta o el espacio del equipo. made_by: quién la subió. enc: 1 si llegó cifrada desde el navegador.
+// orphan: desde cuándo ninguna nota la nombra (0 mientras está en uso).
+db.exec('CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, owner INTEGER NOT NULL, made_by INTEGER, type TEXT NOT NULL, size INTEGER NOT NULL, hash TEXT NOT NULL, enc INTEGER NOT NULL DEFAULT 0, w INTEGER NOT NULL DEFAULT 0, h INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL, orphan INTEGER NOT NULL DEFAULT 0)');
+db.exec('CREATE INDEX IF NOT EXISTS files_owner ON files (owner, created)');
+db.exec('CREATE INDEX IF NOT EXISTS files_hash ON files (owner, hash)');
+// Qué adjuntos cifrados usa cada nota protegida, según lo declaró la app. gone: desde cuándo la nota dejó de usarlo
+// (0 mientras lo usa). Lo que dejó de usarse se recuerda mientras pueda seguir nombrado en el historial.
+db.exec('CREATE TABLE IF NOT EXISTS file_refs (owner INTEGER NOT NULL, path TEXT NOT NULL, id TEXT NOT NULL, gone INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (owner, path, id))');
+db.exec('CREATE INDEX IF NOT EXISTS file_refs_id ON file_refs (owner, id)');
+
+const FILE_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/avif': 'avif' };
+const FILE_ID = /^[0-9a-f]{40}$/;
+// Dónde vive un adjunto en el disco. El identificador se revisa acá otra vez: a esta ruta no llega nada del cliente.
+const fileAt = (id) => { if (!FILE_ID.test(id)) throw new Fail(404, 'not_found'); return path.join(FILES_DIR, id.slice(0, 2), id); };
+const fileUrl = (f) => PUBLIC_URL + '/f/' + f.id + '.' + (f.enc ? 'enc' : FILE_EXT[f.type]);
+const fileView = (f) => ({ id: f.id, url: fileUrl(f), type: f.enc ? '' : f.type, size: f.size, width: f.w, height: f.h, created: f.created, encrypted: !!f.enc });
+// De qué tipo es, por sus primeros bytes. null: no es una imagen de las que se aceptan.
+function fileSniff(b) {
+  const txt = (from, to) => b.toString('latin1', from, to);
+  if (b.length >= 24 && txt(0, 8) === '\x89PNG\r\n\x1a\n' && txt(12, 16) === 'IHDR') return { type: 'image/png', w: b.readUInt32BE(16), h: b.readUInt32BE(20) };
+  if (b.length >= 4 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return { type: 'image/jpeg', w: 0, h: 0 };
+  if (b.length >= 10 && /^GIF8[79]a$/.test(txt(0, 6))) return { type: 'image/gif', w: b.readUInt16LE(6), h: b.readUInt16LE(8) };
+  if (b.length >= 16 && txt(0, 4) === 'RIFF' && txt(8, 12) === 'WEBP' && /^VP8[ LX]$/.test(txt(12, 16))) return { type: 'image/webp', w: 0, h: 0, riff: b.readUInt32LE(4) + 8 };
+  if (b.length >= 16 && txt(4, 8) === 'ftyp' && /^avi[fs]$/.test(txt(8, 12)) && b.readUInt32BE(0) >= 16 && b.readUInt32BE(0) <= 4096) return { type: 'image/avif', w: 0, h: 0 };
+  return null;
+}
+// El tope de un espacio: el del plan de la cuenta, o el del equipo más lo que suma cada persona.
+function filesQuota(owner) {
+  if (owner.plan !== 'pro') return FILES_TOTAL.free;
+  const t = teamOfSpace(owner);
+  return t ? FILES_TOTAL.team + FILES_TOTAL.seat * q('SELECT COUNT(*) AS n FROM team_members WHERE team = ?').get(t.id).n : FILES_TOTAL.pro;
+}
+// El uso cuenta lo vivo: lo que ya no nombra ninguna nota espera su borrado sin ocupar lugar.
+const filesUsed = (ownerId) => q('SELECT COALESCE(SUM(size), 0) AS n FROM files WHERE owner = ? AND orphan = 0').get(ownerId).n;
+const filesLimits = (owner) => { const plan = owner.plan === 'pro' ? 'pro' : 'free'; return { plan, file: FILE_MAX[plan], total: filesQuota(owner) }; };
+const mbText = (bytes) => { const n = bytes / MB; return (n >= 1024 ? Math.round(n / 102.4) / 10 + ' GB' : Math.round(n * 10) / 10 + ' MB'); };
+function fileDrop(id) {
+  q('DELETE FROM files WHERE id = ?').run(id); q('DELETE FROM file_refs WHERE id = ?').run(id);
+  try { fs.unlinkSync(fileAt(id)); } catch (e) { /* ya no estaba */ }
+}
+// Todo lo de una cuenta o de un espacio: al eliminar la cuenta.
+function filesDropOwner(ownerId) { for (const f of q('SELECT id FROM files WHERE owner = ?').all(ownerId)) fileDrop(f.id); q('DELETE FROM file_refs WHERE owner = ?').run(ownerId); }
+// Lo que falta leer de un pedido que ya se va a rechazar: se descarta, para que quien sube reciba la respuesta en
+// vez de una conexión cortada. Con un cuerpo enorme no se espera: se corta.
+const fileDrain = (req) => new Promise((resolve) => {
+  if (req.complete || req.destroyed) { resolve(); return; }
+  // Si anuncia más de lo que se está dispuesto a descartar, o deja de mandar, no se lo espera.
+  if (+req.headers['content-length'] > FILE_DRAIN) { resolve(); return; }
+  let n = 0; const stop = setTimeout(resolve, 4000);
+  const done = () => { clearTimeout(stop); resolve(); };
+  req.on('data', (c) => { n += c.length; if (n > FILE_DRAIN) { req.destroy(); done(); } });
+  req.on('end', done); req.on('error', done); req.on('close', done);
+  req.resume();
+});
+// Recibe el cuerpo a un archivo temporal, de a tramos: nunca queda entero en memoria. Pasado max deja de escribir.
+// Devuelve el archivo, el tamaño, el hash y los primeros bytes.
+function fileReceive(req, max) {
+  return new Promise((resolve, reject) => {
+    const tmp = path.join(FILES_TMP, crypto.randomBytes(16).toString('hex'));
+    const out = fs.createWriteStream(tmp, { flags: 'wx' }); const hash = crypto.createHash('sha256');
+    let size = 0; let head = Buffer.alloc(0); let done = false; let big = false; const t0 = now(); let last = t0;
+    // Lenta de más, quieta de más o pasada de tiempo: se corta. Nadie ocupa una conexión mandando de a gotas.
+    const watch = setInterval(() => {
+      const dt = now() - t0;
+      if (now() - last > FILE_STALL_MS || dt > FILE_UPLOAD_MS || (dt > FILE_SLOW_AFTER_MS && size < (dt / 1000) * FILE_UPLOAD_BPS)) { fail(new Fail(408, 'upload_slow', 'The upload was too slow and was cut. Try again on a better connection')); req.destroy(); }
+    }, Math.min(2000, Math.max(100, FILE_STALL_MS / 4)));
+    watch.unref();
+    const fail = (err) => { if (done) return; done = true; clearInterval(watch); out.destroy(); fs.unlink(tmp, () => reject(err)); };
+    out.on('error', () => fail(new Fail(500, 'server_error')));
+    req.on('data', (c) => {
+      if (done) return;
+      size += c.length; last = now();
+      if (size > max) {
+        if (!big) { big = true; out.destroy(); }
+        if (size > FILE_DRAIN) { req.destroy(); fail(new Fail(413, 'file_too_large')); }
+        return;
+      }
+      if (head.length < 64) head = Buffer.concat([head, c.subarray(0, 64 - head.length)]);
+      hash.update(c);
+      if (!out.write(c)) { req.pause(); out.once('drain', () => req.resume()); }
+    });
+    req.on('end', () => {
+      if (done) return;
+      if (big) { fail(new Fail(413, 'file_too_large')); return; }
+      out.end(() => { if (done) return; done = true; clearInterval(watch); resolve({ tmp, size, hash: hash.digest('hex'), head }); });
+    });
+    req.on('error', () => fail(new Fail(400, 'bad_request')));
+    req.on('close', () => { if (!req.complete) fail(new Fail(400, 'bad_request')); });
+  });
+}
+const filesHeld = new Map(); // bytes reservados por las subidas en curso de cada espacio
+// Sube una imagen al espacio de owner. who es quien la sube (para el tope de pedidos y el registro).
+async function fileUpload(req, who, owner, enc) {
+  const lim = filesLimits(owner);
+  const refuse = async (err) => { await fileDrain(req); throw err; };
+  const tooBig = (max) => new Fail(413, 'file_too_large', 'An image can weigh up to ' + mbText(max) + ' on this plan', { max, plan: lim.plan });
+  const full = (used) => new Fail(413, 'storage_full', 'The image storage of this plan is full (' + mbText(lim.total) + ')', { used, max: lim.total, plan: lim.plan });
+  try { rate('files:put:' + who.id, FILES_PER_HOUR, HOUR, 'too_many'); } catch (e) { await refuse(e); }
+  if (enc && !q('SELECT 1 FROM vaults WHERE user = ? LIMIT 1').get(owner.id)) await refuse(new Fail(409, 'vault', 'Encrypted images belong to a folder protected with a password'));
+  // Un espacio de equipo protegido solo recibe imágenes cifradas.
+  if (!enc && sealing(q("SELECT * FROM vaults WHERE user = ? AND folder = ''").get(owner.id))) await refuse(new Fail(409, 'vault', 'This space is protected with a password: its images are encrypted in the browser'));
+  const max = lim.file + (enc ? FILE_ENC_EXTRA : 0);
+  const declared = +req.headers['content-length'];
+  if (Number.isFinite(declared) && declared > max) await refuse(tooBig(lim.file));
+  const hold = Number.isFinite(declared) && declared > 0 ? declared : max;
+  if (filesUsed(owner.id) + (filesHeld.get(owner.id) || 0) + hold > lim.total) await refuse(full(filesUsed(owner.id)));
+  filesHeld.set(owner.id, (filesHeld.get(owner.id) || 0) + hold);
+  let got = null;
+  try {
+    try { got = await fileReceive(req, max); } catch (e) { throw e instanceof Fail && e.code === 'file_too_large' ? tooBig(lim.file) : e; }
+    let kind = { type: 'application/octet-stream', w: 0, h: 0 };
+    if (enc) { if (got.size < 30) throw new Fail(415, 'bad_image', 'That is not an image SharpMD can store'); }
+    else {
+      kind = fileSniff(got.head);
+      const side = (n) => n >= 1 && n <= FILE_SIDE_MAX;
+      if (!kind || ((kind.type === 'image/png' || kind.type === 'image/gif') && !(side(kind.w) && side(kind.h))) || (kind.riff && Math.abs(kind.riff - got.size) > 1)) throw new Fail(415, 'bad_image', 'That is not an image SharpMD can store: PNG, JPEG, GIF, WebP or AVIF');
+    }
+    // La misma imagen subida otra vez al mismo espacio es el mismo adjunto.
+    const twin = enc ? null : q('SELECT * FROM files WHERE owner = ? AND hash = ? AND enc = 0').get(owner.id, got.hash);
+    if (twin) { if (twin.orphan) q('UPDATE files SET orphan = 0, created = ? WHERE id = ?').run(now(), twin.id); return Object.assign(fileView(twin), { used: filesUsed(owner.id), max: lim.total }); }
+    if (filesUsed(owner.id) + got.size > lim.total) throw full(filesUsed(owner.id));
+    const id = crypto.randomBytes(20).toString('hex'); const at = fileAt(id);
+    fs.mkdirSync(path.dirname(at), { recursive: true });
+    fs.renameSync(got.tmp, at); got.tmp = '';
+    const row = { id, owner: owner.id, made_by: who.id || null, type: kind.type, size: got.size, hash: got.hash, enc: enc ? 1 : 0, w: kind.w || 0, h: kind.h || 0, created: now(), orphan: 0 };
+    try { q('INSERT INTO files (id, owner, made_by, type, size, hash, enc, w, h, created, orphan) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)').run(row.id, row.owner, row.made_by, row.type, row.size, row.hash, row.enc, row.w, row.h, row.created); }
+    catch (e) { try { fs.unlinkSync(at); } catch (x) { /* nada que quitar */ } throw e; }
+    return Object.assign(fileView(row), { used: filesUsed(owner.id), max: lim.total });
+  } finally {
+    if (got && got.tmp) { try { fs.unlinkSync(got.tmp); } catch (e) { /* ya no estaba */ } }
+    const left = (filesHeld.get(owner.id) || 0) - hold;
+    if (left > 0) filesHeld.set(owner.id, left); else filesHeld.delete(owner.id);
+  }
+}
+// Qué adjuntos están nombrados en el texto de las notas, del historial y de la papelera. Con ownerId, solo en ese
+// espacio; sin él, en todo el servidor (una nota que se mudó a otro espacio sigue nombrando la imagen del primero).
+// under: solo las notas dentro de esa carpeta. Una fila que no se puede leer corta todo: sin saber qué nombra, no se borra nada.
+const FILE_REF = /\/f\/([0-9a-f]{40})/g;
+const FILE_SCANS = [
+  { column: 'notes.text', all: 'SELECT path, text, e FROM notes', own: 'SELECT path, text, e FROM notes WHERE user = ?' },
+  { column: 'versions.text', all: 'SELECT path, text, e FROM versions', own: 'SELECT path, text, e FROM versions WHERE user = ?' },
+  { column: 'trash.text', all: 'SELECT path, text, e FROM trash', own: 'SELECT path, text, e FROM trash WHERE user = ?' },
+];
+function filesRefs(ownerId, under) {
+  const seen = new Set();
+  for (const scan of under ? FILE_SCANS.slice(0, 1) : FILE_SCANS) {
+    const st = q(ownerId == null ? scan.all : scan.own); const column = scan.column;
+    for (const r of ownerId == null ? st.iterate() : st.iterate(ownerId)) {
+      if (under && !r.path.startsWith(under + '/')) continue;
+      const text = String(unseal(r.text, r.e, column) || '');
+      if (text.indexOf('/f/') === -1) continue;
+      for (const m of text.matchAll(FILE_REF)) seen.add(m[1]);
+    }
+  }
+  return seen;
+}
+let filesSwept = 0; // cuándo corrió el último barrido completo
+// Lo declarado se pone al día: una nota que ya no existe (ni está en la papelera) deja de usar sus adjuntos, y lo
+// que una nota dejó de usar se olvida cuando ya no puede estar en su historial.
+function fileRefsSweep() {
+  q('UPDATE file_refs SET gone = ? WHERE gone = 0 AND NOT EXISTS (SELECT 1 FROM notes n WHERE n.user = file_refs.owner AND n.path = file_refs.path) AND NOT EXISTS (SELECT 1 FROM trash t WHERE t.user = file_refs.owner AND t.path = file_refs.path)').run(now());
+  const keep = env.FILES_GRACE_MS ? FILES_GRACE_MS : Math.max(HISTORY_DAYS, TEAM_HISTORY_DAYS) * DAY;
+  q('DELETE FROM file_refs WHERE gone > 0 AND gone < ? AND NOT EXISTS (SELECT 1 FROM versions v WHERE v.user = file_refs.owner AND v.path = file_refs.path)').run(now() - FILES_FRESH_MS);
+  q('DELETE FROM file_refs WHERE gone > 0 AND gone < ?').run(now() - keep);
+}
+// PUT /files/refs { path, ids }: la app dice qué adjuntos cifrados usa una nota protegida. Solo identificadores.
+function fileRefsPut(owner, body) {
+  const p = cleanPath(body.path);
+  if (!Array.isArray(body.ids) || body.ids.length > 2000 || body.ids.some((x) => typeof x !== 'string' || !FILE_ID.test(x))) throw new Fail(400, 'bad_ids', 'ids is a list of attachment ids');
+  const ids = Array.from(new Set(body.ids));
+  // Con algo que declarar, la nota tiene que existir y estar en una carpeta protegida. Vaciar la lista vale siempre.
+  if (ids.length && (!vaultOf(owner.id, p) || !q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(owner.id, p))) throw new Fail(409, 'vault', 'Only notes of a protected folder declare encrypted images');
+  const mine = new Set(ids.length ? q('SELECT id FROM files WHERE owner = ? AND enc = 1').all(owner.id).map((x) => x.id) : []);
+  const use = ids.filter((x) => mine.has(x));
+  db.exec('BEGIN');
+  try {
+    for (const row of q('SELECT id FROM file_refs WHERE owner = ? AND path = ? AND gone = 0').all(owner.id, p)) if (!use.includes(row.id)) q('UPDATE file_refs SET gone = ? WHERE owner = ? AND path = ? AND id = ?').run(now(), owner.id, p, row.id);
+    for (const id of use) { q('INSERT INTO file_refs (owner, path, id, gone) VALUES (?, ?, ?, 0) ON CONFLICT (owner, path, id) DO UPDATE SET gone = 0').run(owner.id, p, id); q('UPDATE files SET orphan = 0 WHERE id = ? AND orphan != 0').run(id); }
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  return { ok: true, path: p, ids: use };
+}
+function filesSweep() {
+  fileRefsSweep();
+  const rows = q('SELECT id, owner, size, created, orphan, enc FROM files').all();
+  if (rows.length) {
+    let refs = null; const declared = new Set(q('SELECT DISTINCT id FROM file_refs').all().map((x) => x.id));
+    try { refs = filesRefs(null); } catch (e) { console.error('adjuntos: el barrido no pudo leer las notas y no borró nada · ' + String(e && e.message || e).slice(0, 200)); return; }
+    const waiting = new Map();
+    for (const f of rows) {
+      if (f.enc ? declared.has(f.id) : refs.has(f.id)) { if (f.orphan) q('UPDATE files SET orphan = 0 WHERE id = ?').run(f.id); continue; }
+      if (!f.orphan) { if (now() - f.created > FILES_FRESH_MS) { f.orphan = now(); q('UPDATE files SET orphan = ? WHERE id = ?').run(f.orphan, f.id); } else continue; }
+      if (now() - f.orphan > FILES_GRACE_MS) { fileDrop(f.id); continue; }
+      if (!waiting.has(f.owner)) waiting.set(f.owner, []);
+      waiting.get(f.owner).push(f);
+    }
+    // Lo que espera su borrado no puede pasar el tope del espacio: si lo pasa, se van primero los más viejos.
+    for (const [ownerId, list] of waiting) {
+      const owner = userById(ownerId); const max = owner ? filesQuota(owner) : 0;
+      let sum = list.reduce((n, f) => n + f.size, 0);
+      for (const f of list.sort((a, b) => a.orphan - b.orphan)) { if (sum <= max) break; fileDrop(f.id); sum -= f.size; }
+    }
+  }
+  // Los adjuntos de una cuenta que ya no existe, y lo que quedó a medio subir hace más de una hora.
+  for (const f of q('SELECT id FROM files WHERE owner NOT IN (SELECT id FROM users)').all()) fileDrop(f.id);
+  try { for (const name of fs.readdirSync(FILES_TMP)) { const at = path.join(FILES_TMP, name); if (now() - fs.statSync(at).mtimeMs > HOUR) fs.unlinkSync(at); } } catch (e) { /* el próximo barrido */ }
+  filesSwept = now();
+}
+setInterval(() => { try { filesSweep(); } catch (e) { console.error('adjuntos: falló el barrido · ' + String(e && e.stack || e).slice(0, 600)); } }, FILES_SWEEP_MS).unref();
+// La lista de un espacio, con su uso y sus topes. in_use: si alguna nota la nombra (en las cifradas, si alguna la declaró).
+function filesList(owner, under) {
+  const lim = filesLimits(owner); const mine = filesRefs(owner.id, under); const declared = new Set(q('SELECT DISTINCT id FROM file_refs WHERE owner = ? AND gone = 0').all(owner.id).map((x) => x.id));
+  let rows = q('SELECT * FROM files WHERE owner = ? ORDER BY created DESC, id LIMIT ?').all(owner.id, FILES_LIST_MAX);
+  // Un token limitado a una carpeta solo ve las imágenes que nombran las notas de esa carpeta.
+  if (under) rows = rows.filter((f) => !f.enc && mine.has(f.id));
+  const seenElsewhere = (f) => !f.orphan && filesSwept > 0 && f.created < filesSwept - FILES_FRESH_MS;
+  const all = q('SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS size FROM files WHERE owner = ?').get(owner.id);
+  return { used: filesUsed(owner.id), max: lim.total, max_file: lim.file, plan: lim.plan, count: under ? rows.length : all.n, stored: under ? rows.reduce((n, f) => n + f.size, 0) : all.size, grace_days: Math.round(FILES_GRACE_MS / DAY),
+    files: rows.map((f) => Object.assign(fileView(f), { in_use: f.enc ? declared.has(f.id) : mine.has(f.id) || seenElsewhere(f), waiting: !!f.orphan })) };
+}
+// Rutas de la app, con la sesión. o: el espacio del equipo.
+async function filesRoute(req, user, p, m, url) {
+  const o = url.searchParams.get('o');
+  if (p === '/files' && m === 'GET') { rate('files:list:' + user.id, 1200, HOUR, 'too_many'); return filesList(spaceOf(user, o)); }
+  if (p === '/files/refs' && m === 'PUT') { rate('files:refs:' + user.id, 3000, HOUR, 'too_many'); const body = await readBody(req); return fileRefsPut(spaceOf(user, o, 'edit'), body); }
+  if (p === '/files' && m === 'POST') {
+    let owner = null;
+    try { owner = spaceOf(user, o, 'edit'); teamHold(user, owner); } catch (e) { await fileDrain(req); throw e; }
+    const out = await fileUpload(req, user, owner, url.searchParams.get('enc') === '1');
+    if (owner !== user) teamLog(user.team, user, 'attach', '', out.id.slice(0, 8));
+    return out;
+  }
+  const fm = /^\/files\/([0-9a-f]{40})(\/raw)?$/.exec(p);
+  if (!fm) throw new Fail(404, 'no_route');
+  if (fm[2] && m === 'GET') {
+    // Los bytes de una imagen cifrada, para quien puede leer ese espacio. El navegador los descifra.
+    const f = q('SELECT * FROM files WHERE id = ? AND owner = ? AND enc = 1').get(fm[1], spaceOf(user, o).id);
+    if (!f) throw new Fail(404, 'not_found');
+    return { __file: f };
+  }
+  if (!fm[2] && m === 'DELETE') {
+    const owner = spaceOf(user, o, 'edit');
+    const f = q('SELECT id, enc FROM files WHERE id = ? AND owner = ?').get(fm[1], owner.id);
+    if (!f) throw new Fail(404, 'not_found');
+    // unused=1: solo si ninguna nota de ese espacio la nombra (la app lo pide tras cifrar las imágenes de una nota).
+    if (url.searchParams.get('unused') === '1') { rate('files:unused:' + user.id, 6000, HOUR, 'too_many'); if (f.enc ? !!q('SELECT 1 FROM file_refs WHERE owner = ? AND id = ? AND gone = 0 LIMIT 1').get(owner.id, f.id) : filesRefs(owner.id).has(f.id)) throw new Fail(409, 'in_use', 'A note still uses this image'); }
+    fileDrop(f.id);
+    if (owner !== user) teamLog(user.team, user, 'detach', '', f.id.slice(0, 8));
+    return { ok: true, used: filesUsed(owner.id), max: filesQuota(owner) };
+  }
+  throw new Fail(404, 'no_route');
+}
+// La API con token: listar y subir. Con ?space=team, el espacio del equipo de quien es el token (si la política
+// del equipo deja que su IA lo alcance). Un token del equipo trabaja siempre sobre el espacio. No hay imágenes
+// cifradas por acá: un token no tiene la llave de una carpeta protegida.
+async function filesApi(req, url, r, m, user) {
+  const ok = (data) => ({ ok: true, data });
+  const write = m === 'POST';
+  let owner = user; let team = null;
+  try {
+    if (r !== '/files' || (m !== 'GET' && m !== 'POST')) throw new Fail(404, 'no_route');
+    if (user.teamToken) { team = user.teamToken.team; if (write && !user.canWrite) throw new Fail(403, 'read_only', 'This token can only read'); }
+    else if (url.searchParams.get('space') === 'team') {
+      team = user.team;
+      if (!team || !teamAllows(team, user, 'tokens')) throw new Fail(403, 'no_access', 'This token does not reach the team space');
+      if (write && !teamAllows(team, user, 'write')) throw new Fail(403, 'read_only', 'This account can only read the team space');
+      owner = userById(team.space);
+    } else if (url.searchParams.has('space') && url.searchParams.get('space') !== 'me') throw new Fail(400, 'bad_space', 'space is "team", or nothing for your own');
+  } catch (e) { if (write) await fileDrain(req); throw e; }
+  if (m === 'GET') {
+    const out = filesList(owner, user.scope || '');
+    return ok({ used: out.used, max: out.max, max_file: out.max_file, count: out.count, files: out.files.map((f) => ({ id: f.id, url: f.url, type: f.type, size: f.size, created: iso(f.created), encrypted: f.encrypted, in_use: f.in_use })) });
+  }
+  const out = await fileUpload(req, user, owner, false);
+  if (team) teamLog(team, user, 'attach', '', out.id.slice(0, 8));
+  return ok({ id: out.id, url: out.url, type: out.type, size: out.size, markdown: '![](' + out.url + ')' });
+}
+// Las cabeceras de toda imagen servida: el tipo es el que se reconoció al subir, el navegador no adivina otro, y
+// aunque alguien la abra sola en una pestaña no corre nada.
+const FILE_HEADERS = { 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; sandbox", 'cross-origin-resource-policy': 'cross-origin', 'access-control-allow-origin': '*', 'referrer-policy': 'no-referrer', 'x-robots-tag': 'noindex' };
+// GET /f/<id>: sin sesión, sin CORS con credenciales, sin cookies. Devuelve true si el pedido era de acá.
+function fileServe(req, res) {
+  const raw = String(req.url || ''); const qi = raw.indexOf('?'); const p = qi === -1 ? raw : raw.slice(0, qi);
+  if (!p.startsWith('/f/')) return false;
+  const deny = (status, extra) => { res.writeHead(status, Object.assign({}, FILE_HEADERS, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', 'content-length': 0 }, extra || {})); res.end(); return true; };
+  if (req.method === 'OPTIONS') return deny(204, { 'access-control-allow-methods': 'GET, HEAD', 'access-control-max-age': '86400' });
+  if (req.method !== 'GET' && req.method !== 'HEAD') return deny(405, { allow: 'GET, HEAD' });
+  const ip = clientIp(req);
+  try { rate('files:get:' + ip, FILES_GETS_MINUTE, 60000, 'rate_limited'); limit('files:miss:' + ip, FILES_MISS_HOUR, HOUR, 'rate_limited'); }
+  catch (e) { return deny(429, { 'retry-after': String((e.extra && e.extra.retry_after) || 60) }); }
+  const m = /^\/f\/([0-9a-f]{40})(?:\.(png|jpg|gif|webp|avif))?$/.exec(p);
+  // Una cifrada no existe por acá, y la respuesta es la misma que para una dirección inventada.
+  const f = m ? q('SELECT id, type, size, hash FROM files WHERE id = ? AND enc = 0').get(m[1]) : null;
+  if (!f || !FILE_EXT[f.type] || (m[2] && m[2] !== FILE_EXT[f.type])) { mark('files:miss:' + ip); return deny(404); }
+  const etag = '"' + f.hash.slice(0, 32) + '"';
+  const head = Object.assign({}, FILE_HEADERS, { 'content-type': f.type, 'content-disposition': 'inline; filename="image.' + FILE_EXT[f.type] + '"', 'cache-control': 'public, max-age=31536000, immutable', etag });
+  if (String(req.headers['if-none-match'] || '').split(',').map((v) => v.trim().replace(/^W\//, '')).includes(etag)) { res.writeHead(304, head); res.end(); return true; }
+  head['content-length'] = f.size;
+  if (req.method === 'HEAD') { res.writeHead(200, head); res.end(); return true; }
+  const stream = fs.createReadStream(fileAt(f.id));
+  stream.on('open', () => { res.writeHead(200, head); stream.pipe(res); });
+  stream.on('error', () => { if (res.headersSent) res.destroy(); else deny(404); });
+  res.on('close', () => stream.destroy());
+  return true;
+}
+// Los bytes de una imagen cifrada, para la app: un archivo que el navegador no muestra ni interpreta.
+function fileSend(res, f) {
+  const stream = fs.createReadStream(fileAt(f.id));
+  stream.on('open', () => { res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-disposition': 'attachment; filename="image.bin"', 'content-length': f.size, 'content-security-policy': "default-src 'none'; sandbox" }); stream.pipe(res); });
+  stream.on('error', () => { if (res.headersSent) res.destroy(); else { res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ error: 'not_found', message: '' })); } });
+  res.on('close', () => stream.destroy());
+}
+// ====================================================================================================================
+// Fin de ADJUNTOS
+// ====================================================================================================================
+
 async function route(req, url) {
   const p = url.pathname; const m = req.method;
   if (p === '/health') return { ok: true };
@@ -4552,6 +4926,7 @@ async function route(req, url) {
   if (p === '/team' || p.startsWith('/team/')) return teamRoute(user, p, m, req);
   if (p === '/automations' || p.startsWith('/automations/')) return autoRoute(req, user, p, m, url);
   if (p === '/sites' || p.startsWith('/sites/')) return sitesRoute(req, user, p, m, url);
+  if (p === '/files' || p.startsWith('/files/')) return filesRoute(req, user, p, m, url);
   if (p === '/shared' && m === 'GET') return sharedWith(user);
   // Con o (en el cuerpo o en la dirección), compartir y los enlaces trabajan sobre el espacio del equipo, si el
   // papel de quien llama y la política del equipo lo permiten. Sin o, sobre lo propio, como siempre.
@@ -4646,6 +5021,8 @@ const BASE_HEADERS = { 'cache-control': 'no-store', 'x-content-type-options': 'n
 const server = http.createServer(async (req, res) => {
   // El host de los sitios publicados es otro mundo: por ahí no hay API, ni CORS, ni credenciales.
   if (pagesHost(req)) { pagesServe(req, res); return; }
+  // Las imágenes adjuntas se sirven sin sesión y con sus propias cabeceras (bloque ADJUNTOS).
+  if (fileServe(req, res)) return;
   for (const k in BASE_HEADERS) res.setHeader(k, BASE_HEADERS[k]);
   res.setHeader('vary', 'origin');
   cors(req, res);
@@ -4657,6 +5034,7 @@ const server = http.createServer(async (req, res) => {
     const out = await reqCtx.run({ user: null, via: '' }, () => route(req, url));
     // La página de revisión de la galería: HTML sin scripts, que no se puede enmarcar ni mandar su formulario a otro lado.
     if (out && out.__html !== undefined) { res.writeHead(out.__status || 200, { 'content-type': 'text/html; charset=utf-8', 'x-frame-options': 'DENY', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" }); res.end(out.__html); return; }
+    if (out && out.__file) { fileSend(res, out.__file); return; }
     if (out && out.__status) { res.writeHead(out.__status); res.end(); return; }
     if (out && out.__cache) { res.setHeader('cache-control', out.__cache); delete out.__cache; }
     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
@@ -4676,7 +5054,10 @@ const server = http.createServer(async (req, res) => {
 });
 // Conexiones lentas: los encabezados tienen 15 segundos para llegar y el pedido entero, un minuto. /events no
 // entra en esa cuenta: lo que queda abierto ahí es la respuesta.
-server.headersTimeout = 15000; server.requestTimeout = 60000;
+// Una subida de imagen tiene su propio plazo (FILE_UPLOAD_MS, con velocidad mínima); el resto, el minuto de siempre,
+// que se mide por pedido en el manejador.
+server.headersTimeout = 15000; server.requestTimeout = Math.max(60000, FILE_UPLOAD_MS + 30000);
+server.on('request', (req) => { if (fileUploadReq(req)) return; const t = setTimeout(() => { if (!req.complete) req.destroy(); }, 60000); t.unref(); req.on('close', () => clearTimeout(t)); req.on('end', () => clearTimeout(t)); });
 // Un error que se escapa de una ruta se anota y el servicio sigue: no se cae por un pedido.
 process.on('uncaughtException', (e) => console.error('error no capturado · ' + String(e && e.stack || e).slice(0, 1500)));
 process.on('unhandledRejection', (e) => console.error('promesa sin atender · ' + String(e && e.stack || e).slice(0, 1500)));

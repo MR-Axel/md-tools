@@ -34,7 +34,7 @@ Free and open source. No tracking: files are read in your browser and never uplo
 | **Page settings** | Settings that belong to a note, kept in its front matter so they travel with the file: page width (normal, wide, full), numbered headings and whether the outline shows. |
 | **Diagrams** | Mermaid and Graphviz, with an editor that shows the drawing next to the code: templates, pieces to add with a button, color palettes, and errors explained with their line marked. |
 | **Math** | KaTeX, inline and in blocks, with an editor that previews as you type. |
-| **Images** | Insert by address or from a file, pick a size, paste from the clipboard. |
+| **Images** | Insert by address or from a file, pick a size, paste from the clipboard or drop them into the note. Each image is made smaller in the browser and loses its metadata, location included (Settings → Reading and editing → Image quality: Normal, High or Original). In a folder on disk it is saved next to the document. In a cloud note it is uploaded as an attachment and the note keeps its address: 5 MB per image and 100 MB on the free plan, 20 MB and 5 GB on the paid one, 10 GB per member in a shared pool on a team, with the list in Settings → Cloud → Storage. In a protected folder it is encrypted in the browser, and protecting a folder encrypts the images its notes already had. |
 | **Files** | The outline on top and the explorer below, with the folder on disk, the notes kept in the browser and the cloud. Search across all of them, create from a template, rename, delete, and move files and whole folders by dragging. Drag a file from the explorer into the note you are editing and it becomes a link (or an image) where you drop it. |
 | **Links** | Ctrl+K links to a section of the note, to another file or to one of its sections, picked from a list. `[[name]]` works too. |
 | **Outline** | Built from the headings, with the current section and reading progress. |
@@ -231,6 +231,7 @@ src/
   page.js         page settings kept in the front matter of the note
   automate.js     Settings → Automations and the guided setup, loaded on demand
   extras.js       files from the tree, images, replace, typewriter mode, HTML export
+  images.js       shrinking images in the browser, cloud attachments, storage in Settings
   content.js      the reader: interface, outline, tree, search, editing, saving, settings
   content.css     styles and themes
   editors.css     styles of the diagram and formula editors

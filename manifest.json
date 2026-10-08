@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SharpMD: Markdown reader & editor",
-  "version": "2.58.0",
+  "version": "2.59.0",
   "description": "__MSG_ext_desc__",
   "icons": {
     "16": "icons/icon16.png",
@@ -81,6 +81,7 @@
         "src/diagram.js",
         "src/formula.js",
         "src/extras.js",
+        "src/images.js",
         "src/board.js",
         "src/page.js",
         "src/sync.js",

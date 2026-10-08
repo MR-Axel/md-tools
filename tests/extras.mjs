@@ -51,7 +51,7 @@ o.deshecho = (await src()).split('\n')[2];
 
 await app.locator('.lmd-article p.lmd-editable').first().click(); await app.keyboard.press('End');
 await app.evaluate(() => {
-  const dt = new DataTransfer(); dt.items.add(new File([new Uint8Array([137, 80, 78, 71])], 'captura.png', { type: 'image/png' }));
+  const dt = new DataTransfer(); dt.items.add(new File([Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0))], 'captura.png', { type: 'image/png' }));
   document.activeElement.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
 });
 await app.waitForSelector('.lmd-article img[data-lmd-src]', { state: 'attached' }); await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(600);
@@ -169,8 +169,8 @@ const dropOn = async (from, to) => {
   return mark;
 };
 o.soltarImagen = [await dropOn(node('punto.svg'), app.locator('.markdown-body p.lmd-editable').first())];
-await app.waitForFunction(() => !!document.querySelector('.markdown-body p img'));
-o.soltarImagen.push(await app.evaluate(() => document.querySelector('.markdown-body p img').getAttribute('data-lmd-src')));
+await app.waitForFunction(() => !!document.querySelector('.markdown-body p img[data-lmd-src="punto.svg"]'));
+o.soltarImagen.push(await app.evaluate(() => document.querySelector('.markdown-body p img[data-lmd-src="punto.svg"]').getAttribute('data-lmd-src')));
 // y un archivo de otra carpeta, soltado fuera del texto, queda en un renglón propio debajo del último bloque
 for (const d of ['carpeta', 'sub']) { await dirNode(d).click(); await app.waitForSelector('.lmd-node-dir.lmd-open:has-text("' + d + '")'); }
 await app.waitForSelector('.lmd-node-kids .lmd-node:has-text("hoja.md")');

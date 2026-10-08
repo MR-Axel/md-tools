@@ -26,7 +26,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const enc = encodeURIComponent;
 const results = [];
 const check = (name, ok, detail) => { results.push(ok); console.log((ok ? '  ok   ' : '  FALLA ') + name + (ok || detail === undefined ? '' : '  -> ' + JSON.stringify(detail))); };
-const onDisk = (dir, what) => fs.readdirSync(dir).some((f) => fs.readFileSync(path.join(dir, f)).includes(Buffer.isBuffer(what) ? what : Buffer.from(what)));
+const onDisk = (dir, what) => fs.readdirSync(dir).filter((f) => fs.statSync(path.join(dir, f)).isFile()).some((f) => fs.readFileSync(path.join(dir, f)).includes(Buffer.isBuffer(what) ? what : Buffer.from(what)));
 
 console.log('Carpetas con contraseña (servidor)');
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'mdsync-'));

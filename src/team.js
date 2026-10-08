@@ -202,7 +202,7 @@
 
   // ---------- Registro de actividad ----------
   const ACTION = { create: 'Creó', edit: 'Editó', move: 'Movió', delete: 'Eliminó', restore: 'Restauró', purge: 'Borró de la papelera', empty_trash: 'Vació la papelera', share: 'Compartió', unshare: 'Dejó de compartir',
-    link: 'Creó un enlace', unlink: 'Quitó un enlace', invite: 'Invitó', uninvite: 'Quitó una invitación', join: 'Entró al equipo', leave: 'Salió del equipo', remove: 'Sacó a alguien', role: 'Cambió un papel',
+    link: 'Creó un enlace', unlink: 'Quitó un enlace', attach: 'Subió una imagen', detach: 'Eliminó una imagen', invite: 'Invitó', uninvite: 'Quitó una invitación', join: 'Entró al equipo', leave: 'Salió del equipo', remove: 'Sacó a alguien', role: 'Cambió un papel',
     policy: 'Cambió un ajuste', team_name: 'Cambió el nombre del equipo', protect: 'Protegió el espacio', password: 'Cambió la contraseña', rotate: 'Empezó a rotar la llave', rotate_done: 'Rotó la llave', unprotect: 'Quitó la protección',
     destroy: 'Eliminó el contenido', ai: 'Entró una IA', ai_unlock: 'Desbloqueó para su IA', token_create: 'Creó un token', token_revoke: 'Revocó un token', automation: 'Creó una automatización', automation_remove: 'Quitó una automatización',
     site: 'Preparó un sitio', publish: 'Publicó un sitio', unpublish: 'Despublicó un sitio', live_open: 'Abrió una sesión en vivo', live_end: 'Terminó una sesión en vivo', live_kick: 'Sacó a un invitado' };

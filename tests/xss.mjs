@@ -166,6 +166,32 @@ await app.click('.lmd-gal-theme [data-gal=back]'); await app.waitForTimeout(800)
 o.volverTema = await scan(); o.estilo = await app.evaluate(() => (document.documentElement.getAttribute('style') || '') + ' ' + document.querySelector('style[data-lmd-custom], .lmd-custom-css, #lmd-custom')?.textContent);
 await app.click('[data-act=close-panel]'); await app.waitForTimeout(200);
 
+// ---------- Imágenes adjuntas ----------
+// La lista de adjuntos dibuja lo que contesta el servidor, y un SVG que se guarda en la carpeta pasa por un saneado:
+// ninguno de los dos puede correr código. El servidor es un doble que contesta con datos hostiles.
+await app.evaluate(([P]) => {
+  const evil = '"><img src=x onerror="' + P + '">';
+  LMD.cloud.enabled = () => true; LMD.cloud.signedIn = () => true; LMD.cloud.guest = () => null; LMD.cloud.base = () => 'https://xss.invalid';
+  LMD.cloud.binary = async () => ({ used: 5, max: 10, max_file: 3, max_gif: 3, plan: evil, count: 3, stored: 5, grace_days: evil, files: [
+    { id: evil, url: 'javascript:' + P, type: evil, size: 10, created: Date.now(), encrypted: false, in_use: true },
+    { id: 'a'.repeat(40), url: 'javascript:' + P, type: evil, size: evil, created: evil, encrypted: false, in_use: evil },
+    { id: 'b'.repeat(40) + '" onerror="' + P, url: evil, type: 'image/png', size: 4, created: 0, encrypted: true, in_use: null }] });
+  LMD.images.manage('');
+}, [P]);
+await app.waitForSelector('.lmd-st-card .lmd-st-row'); await app.waitForTimeout(500);
+o.adjuntos = await scan();
+o.adjuntosFilas = await app.evaluate(() => ({ rows: document.querySelectorAll('.lmd-st-card .lmd-st-row').length, imgs: [...document.querySelectorAll('.lmd-st-card img')].map((i) => i.getAttribute('src')), dels: [...document.querySelectorAll('.lmd-st-card [data-del]')].map((b) => b.dataset.del) }));
+await app.click('.lmd-st-card [data-st=close]'); await app.waitForTimeout(200);
+o.svgLimpio = await app.evaluate(([P]) => [
+  '<svg xmlns="http://www.w3.org/2000/svg" onload="' + P + '"><script>' + P + '</script><circle r="3"/></svg>',
+  '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><a xlink:href="jAvAsCrIpT:' + P + '"><rect width="9" height="9" onclick="' + P + '"/></a><a href="&#106;avascript:' + P + '"><circle r="3"/></a></svg>',
+  '<svg xmlns="http://www.w3.org/2000/svg"><foreignObject><body xmlns="http://www.w3.org/1999/xhtml" onload="' + P + '"><iframe src="javascript:' + P + '"></iframe></body></foreignObject><circle r="3"/></svg>',
+  '<svg xmlns="http://www.w3.org/2000/svg"><a id="x"><circle r="3"/></a><set href="#x" attributeName="href" to="javascript:' + P + '"/><animate href="#x" attributeName="href" values="javascript:' + P + '"/></svg>',
+  '<svg xmlns="http://www.w3.org/2000/svg"><style>@import url(https://xss.invalid/a.css); circle { background: url(https://xss.invalid/b.png) }</style><image href="https://xss.invalid/c.svg"/><use href="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=#a"/><circle r="3"/></svg>',
+  '<SVG xmlns="http://www.w3.org/2000/svg"><SCRIPT>' + P + '</SCRIPT></SVG>',
+  '<html><body><script>' + P + '</script></body></html>',
+].map((s) => LMD.images.cleanSvg(s)), [P]);
+
 // ---------- Lo que devuelve el modelo del asistente de IA ----------
 // El modelo es un doble que contesta con el mismo Markdown hostil. Lo que se dibuja en la propuesta y en el panel
 // pasa por el saneado de siempre y, además, no pide nada a otro servidor: ni siquiera una imagen.
@@ -306,6 +332,8 @@ const checks = [
   ['sitio publicado: no sale ningún pedido que no sea una imagen, y ninguna página navega fuera del host', sitio.pedidos.length === 0, sitio.pedidos.slice(0, 4)],
   ['sitio publicado: la política de contenido frena por su cuenta un script en línea o de otro lado, un manejador, un javascript:, un estilo en línea, un marco y un pedido a otro servidor', !!sitio.csp && sitio.csp.c1 === undefined && sitio.csp.c2 === undefined && sitio.csp.c3 === undefined && sitio.csp.c4 === undefined && sitio.csp.top !== 'none' && sitio.csp.pos !== 'fixed' && sitio.csp.fetched === 'cortado', sitio.csp],
   ['sitio publicado: las cabeceras no dejan enmarcar la página ni adivinar el tipo', !!sitio.cabeceras && /frame-ancestors 'none'/.test(sitio.cabeceras['content-security-policy']) && /default-src 'none'/.test(sitio.cabeceras['content-security-policy']) && !/unsafe-inline|unsafe-eval|\*/.test(sitio.cabeceras['content-security-policy']) && sitio.cabeceras['x-frame-options'] === 'DENY' && sitio.cabeceras['x-content-type-options'] === 'nosniff' && sitio.log === false, sitio.cabeceras],
+  ['la lista de adjuntos dibuja como texto lo que contesta el servidor, y solo acepta identificadores bien formados', limpio(o.adjuntos) && o.adjuntosFilas.rows === 1 && o.adjuntosFilas.imgs.length === 1 && o.adjuntosFilas.imgs[0] === 'https://xss.invalid/f/' + 'a'.repeat(40) && o.adjuntosFilas.dels.join() === 'a'.repeat(40), [o.adjuntos, o.adjuntosFilas]],
+  ['un SVG saneado no conserva scripts, manejadores, animaciones, contenido ajeno ni direcciones de código o de otro servidor', o.svgLimpio.slice(0, 5).every((s) => typeof s === 'string' && /<circle/.test(s) && !/script|\son\w+\s*=|javascript|xss\.invalid|foreignObject|iframe|<set|<animate|@import|data:image\/svg/i.test(s)) && o.svgLimpio[5] === null && o.svgLimpio[6] === null, o.svgLimpio],
   ['ninguna carga abre un diálogo del navegador', dialogs.length === 0, dialogs],
   ['no sale ningún pedido a otro servidor que no sea una imagen', odd.length === 0, odd],
   ['no navega fuera de la app', new URL(o.url1).protocol === 'chrome-extension:' && new URL(app.url()).protocol === 'chrome-extension:', [o.url1, app.url()]],

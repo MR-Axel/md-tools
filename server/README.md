@@ -57,6 +57,13 @@ Then, in SharpMD: Settings → Cloud → Sync server, and type the address (`htt
 | `PAGES_NEW_DAY`, `PAGES_PUTS_HOUR` | Sites one account may create per day, and pages one site may upload per hour | `3`, `1200` |
 | `PAGES_GRACE_MS` | Tests only: the grace period in milliseconds. Leave it alone in production | |
 | `DATA_KEY` | 32 bytes in base64. Turns on encryption at rest: see below | off |
+| `FILE_MAX_FREE_MB`, `FILE_MAX_PAID_MB` | Megabytes one attached image may weigh, an animated GIF included, on the free plan and on the paid one. See "Attached images" | `5`, `20` |
+| `FILES_FREE_MB`, `FILES_PAID_MB` | Megabytes of attached images per free account and per paid account | `100`, `5120` |
+| `FILES_TEAM_SEAT_MB`, `FILES_TEAM_MB` | Megabytes each member adds to the shared pool of a team space, and a fixed base on top of it if you want one | `10240`, `0` |
+| `FILE_UPLOAD_KBPS` | Slowest upload accepted, in KB per second. An upload gets the time its limit takes at that speed instead of the minute every other request has | `32` |
+| `FILES_GRACE_DAYS` | Days an image that no note uses waits before it is deleted | `30` |
+| `FILES_PER_HOUR`, `FILES_GETS_MINUTE` | Uploads per hour and account, and image requests per minute and IP | `300`, `600` |
+| `FILES_SWEEP_MS`, `FILES_FRESH_MS`, `FILES_GRACE_MS` | Tests only: how often the cleanup runs, how long a new image may wait to appear in a note, and the grace period in milliseconds. Leave them alone in production | |
 | `VAULT_MINUTE_MS` | Tests only: how many milliseconds a minute lasts for a folder unlocked for the AI. Leave it alone in production | `60000` |
 
 Put it behind a reverse proxy with HTTPS. The web app at sharpmd.app needs that: browsers do not let a public site call a server on `localhost` or on the local network without asking. The extension has no such limit, so `http://localhost:8787` works there. With Caddy:
@@ -81,6 +88,8 @@ Email, notes with who made their last save (the number of the account or of the 
 Of a contribution to the community gallery it stores the type, the name, the description, the language, the public name its sender chose, the content, the account that sent it, its state and how many times it was added (a number, not who). See "Community gallery".
 
 Of a published site it stores the account it belongs to (its number, never the email address), the folder, the address, its settings (title, description, language, color, font, text logo, author name and its two switches), a preview key, how many times it was reported and, of each page, the path of the note, its address, its title and description, the HTML that is served, its text for the search and the revision of the note it was made from. That content is public: it is not encrypted at rest. See "Published sites".
+
+Of an attached image it stores the file itself, under `DATA_DIR/files/`, and a row with the account or team space it belongs to, who uploaded it, its type, size, hash and date, and whether it arrived encrypted. Never the name the file had: the app removes the metadata of a photo (camera, date, location) before uploading, unless the person chose to keep the original. `DATA_KEY` does not cover these files. See "Attached images".
 
 Of an automation it stores the destination address and the signing secret (encrypted with `DATA_KEY` when it is set), what it watches and which events. Of each delivery, the type of event, the path of the note, the result, the response code and the duration, for the last 50 deliveries of each webhook and up to 30 days: the body that was sent is deleted once it is delivered or given up. Of an inbound address, a hash of its secret, its last four characters, how many times it was used and when.
 
@@ -183,11 +192,15 @@ Sign-in is a six-digit code sent by mail, no passwords.
 | `GET` / `POST /admin/gallery` | With `x-admin-key`: list, approve, reject, remove |
 | `GET` / `POST /sites`, `GET` / `PUT` / `DELETE /sites/{id}`, `PUT /sites/{id}/pages`, `POST /sites/{id}/publish`, `POST /sites/{id}/unpublish` | With a session: publish a folder as a public site. See "Published sites" |
 | `GET` / `POST /admin/sites` | With `x-admin-key`: list the published sites, suspend, restore, delete |
+| `GET` / `POST /files`, `DELETE /files/{id}`, `GET /files/{id}/raw` | With a session: list the attached images with the storage in use, upload one, delete one, and download the bytes of an encrypted one. See "Attached images" |
+| `GET /f/{id}` | No session: serves an attached image to whoever has its address |
 | `POST /mcp` | MCP over Streamable HTTP, with `Authorization: Bearer mdt_...` |
 
 MCP tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`, `move_note`, `note_history`, `get_guide`, `list_boards`, `create_board`, `add_card`, `move_card`, `update_card`, `delete_card`.
 
 `write_note`, `append_note` and `move_note` end their answer with `Open it: <url>`, the address that opens the note in the app. It is built from `APP_URL` as `?f=cloud/<path>`, the same address the app uses, so point `APP_URL` at the app your users open. Opened without a session, the app asks to sign in and then opens the note.
+
+`read_note` returns the Markdown as it is stored: an attached image is the address of the image, and there is no tool that uploads one. From an automated flow, images go through `POST /api/v1/files`.
 
 `move_note` `{ from, to }` moves or renames a note inside the same space, and its history, comments, shares and public links follow it. `note_history` `{ path, version? }` lists the earlier versions of a note, or returns the text of one. Neither works inside a folder protected with a password.
 
@@ -375,9 +388,78 @@ curl -X POST https://sync.example.com/admin/sites -H "x-admin-key: $ADMIN_KEY" \
 
 These admin routes are called on the API host, never on the pages host.
 
+### Attached images
+
+In a cloud note an image is not kept inside the Markdown. The app uploads it as an attachment and the note stores its address, a short line such as `![](https://sync.example.com/f/3b1f…9c.webp)`. A photo no longer makes a note pass the 1 MB limit of its text, which stays as it was.
+
+Before uploading, the app makes the image smaller in the browser: up to 2000 px on its longest side and about 400 KB ("Normal"), or 3200 px and about 1.5 MB ("High"), as WebP where the browser can encode it and JPEG otherwise. It applies the EXIF rotation and drops the metadata, the location included. A PNG stays a PNG when recompressing does not make it smaller. Animated GIF and animated WebP are not recompressed. With "Original" the file travels untouched, metadata included, and the limits below still apply. None of this is trusted by the server.
+
+**Who can see an image.** The address is the key. `GET /f/{id}` takes no session: the id is 160 random bits, it cannot be guessed and nothing lists it. Whoever has the address of an image can see it, exactly like a public link, and for the same reason: that is what lets the image show in a note shared with another account, in a public link, to the guests of a live session, in an exported file and in a published site, without checking permissions on every request. What follows from it:
+
+- Sharing a note shares the addresses of its images. Someone who had access and copied an address keeps seeing that image after the access ends, until the image is deleted.
+- Deleting an attachment, or the account, makes its address answer `404` at once. A browser or a proxy that already cached it may still show it: images are served as immutable for a year.
+- Images of a folder protected with a password do not work this way. See below.
+
+**What is accepted.** PNG, JPEG, GIF, WebP and AVIF, recognised by the first bytes of the file. The `Content-Type` of the upload is ignored, and so is any file name. SVG is refused: it is a document that can carry code. A PNG or a GIF with impossible dimensions and a WebP whose declared size is not its real size are refused (`415 bad_image`). The body is written to a temporary file as it arrives and the upload is cut when it passes the limit, so it is never held whole in memory. The file is stored as `DATA_DIR/files/<first two characters>/<id>`, a name the server makes; nothing sent by the client reaches a path.
+
+**How it is served.** Only `GET` and `HEAD`, only from the API host (the pages host answers `404`), and always with:
+
+```
+Content-Type: image/png | image/jpeg | image/gif | image/webp | image/avif   (the type recognised at upload)
+X-Content-Type-Options: nosniff
+Content-Security-Policy: default-src 'none'; sandbox
+Content-Disposition: inline; filename="image.<ext>"
+Cross-Origin-Resource-Policy: cross-origin
+Access-Control-Allow-Origin: *
+Cache-Control: public, max-age=31536000, immutable
+```
+
+No cookie is read or set, and credentials are never allowed across origins. A file that starts like an image and continues as something else is still served as that image type and nothing in it runs, even opened alone in a tab. `FILES_GETS_MINUTE` requests a minute per IP, and 60 addresses that do not exist per hour and IP before `429`.
+
+| Call | What it does |
+|---|---|
+| `POST /files` | With a session. The body is the image, not JSON. Answers `{ id, url, type, size, width, height, created, encrypted, used, max }`. The same image uploaded twice to the same space is one attachment. `415 bad_image`, `413 file_too_large` (with `max` and `plan`), `413 storage_full` (with `used` and `max`), `408 upload_slow`, `429 too_many` |
+| `POST /files?enc=1` | An image encrypted in the browser, for a protected folder. `409 vault` when the space has no protected folder |
+| `GET /files` | `{ used, max, max_file, plan, count, stored, grace_days, files }`. Each file is `{ id, url, type, size, width, height, created, encrypted, in_use, waiting }`. `used` counts what notes use; `stored` everything that is on disk. For an encrypted image `in_use` says whether a note declared it (see below) |
+| `DELETE /files/{id}` | Deletes the image now. With `?unused=1`, only if no note of that space uses it (`409 in_use`): for an encrypted one, if no note declares it |
+| `PUT /files/refs` `{ path, ids }` | The app tells which encrypted images a note of a protected folder uses. Only ids travel, never content. Ids that are not encrypted images of that space are dropped; `409 vault` for a note outside a protected folder, `400 bad_ids` |
+| `GET /files/{id}/raw` | The bytes of an encrypted image, for the account or the team it belongs to |
+
+With `?o=` and the number of the team space, the same calls work on the team: any member lists, administrators and editors upload and delete (`403 read_only` for a reader), and the storage used is that of the team. Uploading and deleting go to the activity log as `attach` and `detach`.
+
+**Folders protected with a password, and a protected team space.** The browser encrypts the image with the key of the folder before uploading it: AES-256-GCM, a random 96-bit nonce, the same key that encrypts the notes of that folder. The server stores bytes it cannot read, without type or dimensions, and never serves them on `/f/`: that address answers `404`. The app downloads them with the session (`GET /files/{id}/raw`), decrypts them in memory and shows them from there. They cannot be in a published site or behind a public link, because notes of a protected folder cannot. A protected team space refuses images that are not encrypted (`409 vault`).
+
+Images follow their note whenever the way the note is stored changes, in the same step that encrypts or decrypts its text:
+
+- Protecting a folder, or a team space, that already had images: for each note, each readable attachment is downloaded, encrypted with the key of the folder and uploaded, the note is saved naming the encrypted copy, and the readable copy is deleted from the server at once unless a note outside the folder uses it (then it stays for that note). It goes note by note with its progress, it can be resumed if it is interrupted, and the app does not report the folder as protected until it has finished.
+- Removing the protection does the reverse: the encrypted images become ordinary attachments again and their encrypted copies are deleted.
+- Rotating the key of a team space encrypts every image again with the new key and deletes the copies made with the old one.
+- Moving a note into or out of a protected folder converts its images at that moment.
+
+An attachment is recognised by its path, `/f/<id>`, whatever origin the stored address has, and only if it belongs to a space of the account: an image hosted anywhere else is left as the web address it is. What is still to delete is kept in the browser until it is done. As a last net, opening a protected note that names a readable attachment converts it then.
+
+Since the server cannot read protected notes, the app declares what they use: after saving or opening a note of a protected folder it sends `PUT /files/refs` with the ids of the encrypted images in it.
+
+**Limits per plan.** Checked on every upload, after the app has made the image smaller.
+
+| | Free | Paid | Team |
+|---|---|---|---|
+| One image, an animated GIF included | 5 MB | 20 MB | 20 MB |
+| Storage | 100 MB | 5 GB | 10 GB per member, in one pool for the team |
+
+The space an upload is going to take is reserved before its body is read, so uploads sent at the same time cannot pass the total together. When an account leaves the paid plan nothing is deleted and its images keep being served; it cannot upload again until it is under the limit of its plan. The members of a team keep their own allowance for their own notes.
+
+**Slow connections.** Every other request has a minute to arrive. An upload has the time its limit takes at `FILE_UPLOAD_KBPS` (about eleven minutes for 20 MB at 32 KB per second) and is cut earlier with `408 upload_slow` if, after the first fifteen seconds, it comes in slower than that on average, or if nothing arrives for twenty seconds. A connection cannot be held open by sending a byte now and then.
+
+**Cleanup.** Every six hours the server reads which images are named in a note, in a version of the history or in a note in the trash, across the whole server (a note moved to another space still names the image of the first). An image nobody names for an hour is marked: it stops counting as storage in use and, after `FILES_GRACE_DAYS` (30), it is deleted from the disk. Named again before that, it is kept. What waits to be deleted cannot pass the limit of its space: if it does, the oldest go first. Deleting an account deletes its images. Moving, renaming or copying a note changes nothing, since the note carries the addresses. If a row cannot be read (a wrong `DATA_KEY`), the cleanup deletes nothing. Encrypted images go through the same cleanup with what the app declared instead of what the server reads: one that no note declares is marked and deleted after the same `FILES_GRACE_DAYS`. A note that stops using an image keeps it declared while a version of its history could still name it (30 days, or the history of the team space), and a deleted note while it is in the trash.
+
+**Older notes.** A note that carries images embedded as `data:` keeps working. The app offers "Move embedded images to attachments" in the menu of the note and in Settings > Cloud, and does it by itself when a note from the browser is sent to the cloud.
+
+**Running it.** `DATA_DIR/files/` is data, like the database: put it in the backup, and restore the two together. A database restored without its files shows notes with missing images; files without their rows are deleted by the next cleanup. Plan the disk for it: the worst case is the sum of the limits of the accounts (100 MB per free account, 5 GB per paid one and 10 GB per team member by default: lower them with the variables above if the disk is smaller), twice over while deleted images wait out their grace period. These files are not encrypted with `DATA_KEY`: the readable ones are reachable by address anyway, and the ones of protected folders are already encrypted by the browser. If you put a cache or a CDN in front, it may keep an image after it was deleted. Do not serve `/f/` from the pages host.
+
 ### Deleting an account
 
-`DELETE /account` with the session and `{ email }`, the email of that same account, deletes it: its notes, version history, trash, comments, contributions to the community gallery, tokens, sessions, shares in both directions, public links, published sites, protected folders, live sessions, pending team invitations to that email and the record of its ended subscriptions. Open connections are closed. Five requests an hour per IP and per account.
+`DELETE /account` with the session and `{ email }`, the email of that same account, deletes it: its notes, version history, trash, attached images, comments, contributions to the community gallery, tokens, sessions, shares in both directions, public links, published sites, protected folders, live sessions, pending team invitations to that email and the record of its ended subscriptions. Open connections are closed. Five requests an hour per IP and per account.
 
 It refuses while money is still being charged, with `409` and a `manage` field holding `PORTAL_URL`:
 
@@ -603,6 +685,7 @@ The public description, with examples for Make, n8n, Activepieces, Zapier and Sl
 | `POST /api/v1/boards/cards` `{ path, column, title, attrs?, rev? }` | Creates a card |
 | `PATCH /api/v1/boards/cards/:id` · `POST …/:id/move` `{ path, column }` · `POST …/:id/done` · `DELETE …/:id?path=` | Changes, moves, completes or removes a card. `:id` is the id of the card or its position (`board.column.card`) |
 | `GET/POST/DELETE /api/v1/shares` · `POST/DELETE /api/v1/links` | Sharing, only with a token that has that permission |
+| `GET /api/v1/files` · `POST /api/v1/files` | The attached images with the storage in use, and uploading one: the body is the image, and the answer carries its `url` and the `markdown` to put in a note. `?space=team` works on the team space, when the `tokens` policy lets the token reach it and the role can write. A token limited to a folder lists only the images that the notes of that folder use. A team token that cannot write cannot upload. No encrypted images here: a token has no key of a protected folder |
 | `GET /api/v1/openapi.json` | OpenAPI 3.1, no token needed |
 
 Card operations rewrite the Markdown of the note on the revision they read, and give an id to the cards that had none.
@@ -641,4 +724,5 @@ node vault.mjs
 node vaultapp.mjs
 node automation.mjs
 node sites.mjs
+node images.mjs
 ```

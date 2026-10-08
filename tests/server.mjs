@@ -343,7 +343,7 @@ try {
 
   // ---------- Cifrado en reposo (DATA_KEY) ----------
   // Lo que hay en el disco: el archivo de la base y su WAL, tal como los vería quien se lleva un respaldo.
-  const onDisk = (dir, word) => fs.readdirSync(dir).some((f) => fs.readFileSync(path.join(dir, f)).includes(Buffer.from(word)));
+  const onDisk = (dir, word) => fs.readdirSync(dir).filter((f) => fs.statSync(path.join(dir, f)).isFile()).some((f) => fs.readFileSync(path.join(dir, f)).includes(Buffer.from(word)));
   const K1 = Buffer.alloc(32, 7).toString('base64'); const K2 = Buffer.alloc(32, 9).toString('base64');
   const encDir = tmp();
   let srv = await boot(encDir, {});

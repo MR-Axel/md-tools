@@ -495,15 +495,31 @@
   const fresh = (vault) => { if (vault && vault.team) delete otherLists[vault.folder.slice(1)]; listCache = null; };
   // Cifra lo que todavía está en claro dentro de una carpeta protegida: las notas que ya estaban al protegerla,
   // o las que quedaron a medias si se cortó. onStep(hechas, total). Se puede llamar las veces que haga falta.
+  // Las imágenes de una nota acompañan a su texto: en claro o cifradas con la llave de su carpeta (images.js).
+  const noImg = (text) => ({ text, finish: async () => {} });
+  const imgIn = (vault, path, text, fromKeys, toKey) => { const sp = vault.team ? vault.folder.slice(1) : ''; const at = split(path).path; return LMD.images ? LMD.images.convert(text, { fromSpace: sp, toSpace: sp, fromKeys, toKey, fromPath: at, toPath: at }) : noImg(text); };
+  // Al mover una nota: de dónde sale y a dónde va, cada lado con su espacio y su llave.
+  async function imgMove(text, from, to) {
+    if (!LMD.images) return noImg(text);
+    const side = async (p) => { const v = await vaultFor(p); return { space: isTeam(p) ? split(p).owner : '', key: sealing(v) ? await keyOf(v) : null, path: split(p).path }; };
+    const a = await side(from); const b = await side(to);
+    if (!a.key && !b.key) return noImg(text);
+    return LMD.images.convert(text, { fromSpace: a.space, toSpace: b.space, fromKeys: a.key ? [a.key] : [], toKey: b.key, fromPath: a.path, toPath: b.path });
+  }
   async function sealFolder(vault, onStep) {
     const key = await keyOf(vault);
+    if (LMD.images) await LMD.images.purgeFlush();
     const rows = (await under(vault)).filter((n) => !n.v);
     let done = 0;
     if (onStep) onStep(0, rows.length);
     for (const n of rows) {
       await locked(n.path, async () => {
         const got = await api('GET', notePath(n.path));
-        if (!Z.sealed(got.text)) await api('PUT', notePath(n.path), Object.assign({ text: await Z.seal(key, n.path, got.text) }, got.rev == null ? {} : { rev: got.rev }));
+        if (Z.sealed(got.text)) return;
+        // Primero sus imágenes: se suben cifradas y la nota pasa a nombrar esas. Recién después se cifra el texto.
+        const img = await imgIn(vault, n.path, got.text, [key], key);
+        await api('PUT', notePath(n.path), Object.assign({ text: await Z.seal(key, n.path, img.text) }, got.rev == null ? {} : { rev: got.rev }));
+        await img.finish();
       });
       if (onStep) onStep(++done, rows.length);
     }
@@ -524,7 +540,11 @@
     for (const n of rows) {
       await locked(n.path, async () => {
         const got = await api('GET', notePath(n.path));
-        if (Z.sealed(got.text)) await api('PUT', notePath(n.path), Object.assign({ text: await Z.open(key, n.path, got.text) }, got.rev == null ? {} : { rev: got.rev }));
+        if (!Z.sealed(got.text)) return;
+        // Sus imágenes cifradas vuelven a ser adjuntos comunes, y la nota pasa a nombrar esos.
+        const img = await imgIn(vault, n.path, await Z.open(key, n.path, got.text), [key], null);
+        await api('PUT', notePath(n.path), Object.assign({ text: img.text }, got.rev == null ? {} : { rev: got.rev }));
+        await img.finish();
       });
       if (onStep) onStep(++done, rows.length);
     }
@@ -556,7 +576,10 @@
             try { await Z.open(next, n.path, got.text); return; } catch (e) { /* todavía con la llave anterior */ }
             try { text = await Z.open(old, n.path, got.text); } catch (e) { bad++; return; }
           }
-          await api('PUT', notePath(n.path), Object.assign({ text: await Z.seal(next, n.path, text) }, got.rev == null ? {} : { rev: got.rev }));
+          // Las imágenes pasan a la llave nueva antes que el texto: una que ya lo estaba se deja como está.
+          const img = await imgIn(vault, n.path, text, [next, old], next);
+          await api('PUT', notePath(n.path), Object.assign({ text: await Z.seal(next, n.path, img.text) }, got.rev == null ? {} : { rev: got.rev }));
+          await img.finish();
           changed++;
         });
         if (onStep) onStep(++done, rows.length);
@@ -609,8 +632,8 @@
       const a = split(from); const b = split(to);
       if (a.owner !== b.owner) {
         // De lo propio al equipo, o al revés: son notas de dueños distintos. Se guarda en el destino y se quita el original.
-        const n = await getNote(from);
-        await putNote(to, n.text); await keep(to, n.text, n.text, false);
+        const n = await getNote(from); const img = await imgMove(n.text, from, to); n.text = img.text;
+        await putNote(to, n.text); await keep(to, n.text, n.text, false); await img.finish();
         // La nota sigue existiendo, en otro lado: el original no pasa por la papelera.
         await api('DELETE', notePath(from) + (a.owner ? '&' : '?') + 'forever=1'); await S.cloudDelete(email, from);
         listCache = null; delete otherLists[a.owner]; delete otherLists[b.owner];
@@ -618,9 +641,10 @@
       }
       if (a.owner) {
         // En el espacio del equipo protegido, mover es volver a cifrar para la ruta nueva.
-        const tv = await vaultFor(from); let extra = {};
-        if (tv) { const n = await getNote(from); extra = { text: await wire(to, n.text), updated: n.updated }; }
+        const tv = await vaultFor(from); let extra = {}; let img = null;
+        if (tv) { const n = await getNote(from); img = await imgMove(n.text, from, to); extra = { text: await wire(to, img.text), updated: n.updated }; }
         const r = await api('POST', '/rename', Object.assign({ from: a.path, to: b.path, o: +a.owner }, extra));
+        if (img) await img.finish();
         delete otherLists[a.owner];
         let copy = null;
         try { copy = await copyOf(from); } catch (e) { /* sin la llave la copia no se puede llevar: se vuelve a bajar */ }
@@ -631,7 +655,7 @@
       const crossing = (await vaultFor(from)) || (await vaultFor(to));
       let r;
       if (!crossing) r = await api('POST', '/rename', { from, to });
-      else { const n = await getNote(from); r = await api('POST', '/rename', { from, to, text: await wire(to, n.text), updated: n.updated }); }
+      else { const n = await getNote(from); const img = await imgMove(n.text, from, to); r = await api('POST', '/rename', { from, to, text: await wire(to, img.text), updated: n.updated }); await img.finish(); }
       listCache = null;
       let copy = null;
       try { copy = await copyOf(from); } catch (e) { /* sin la llave la copia no se puede llevar: se vuelve a bajar */ }
@@ -714,7 +738,25 @@
     report: (text, ref, context) => api('POST', '/feedback', { text, report: ref, context }),
     // Cambió la dirección del servidor en Ajustes: se vuelve a leer.
     reset: () => { loaded = null; listCache = null; vaultCache = null; },
-    write: (path, text) => putNote(path, text).then((r) => { listCache = null; delete otherLists[split(path).owner]; return r; }),
+    // Adjuntos (images.js). binary: un pedido cuyo cuerpo es la imagen, no JSON; con bytes, la respuesta son bytes.
+    binary: async (method, path, body, type, bytes) => {
+      await ready();
+      if (!base || !session || guest) throw Object.assign(new Error('no_session'), { code: guest ? 'guest' : 'no_session', status: 401 });
+      let res;
+      try { res = await fetch(base + path, { method, headers: Object.assign({ authorization: 'Bearer ' + session }, type ? { 'content-type': type } : {}), body }); }
+      catch (e) { throw Object.assign(new Error('offline'), { code: 'offline' }); }
+      if (res.ok && bytes) return new Uint8Array(await res.arrayBuffer());
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw Object.assign(new Error((json && json.error) || 'failed'), { code: (json && json.error) || 'failed', status: res.status, body: json });
+      return json;
+    },
+    base: () => base,
+    // La carpeta protegida que cubre esa ruta, con su llave abierta: null si la ruta no está protegida, y sale con
+    // vault_locked si lo está y falta desbloquearla. vaultKeys: las llaves abiertas en esta pestaña.
+    vaultKey: async (path) => { const v = await vaultFor(path); return v && sealing(v) ? { vault: v, key: await keyOf(v) } : null; },
+    vaultKeys: async () => { const out = []; for (const v of await vaults()) { try { out.push(await keyOf(v)); } catch (e) { /* bloqueada */ } } return out; },
+    // Una nota que llega a la nube con imágenes incrustadas las deja como adjuntos (si no se puede, va como estaba).
+    write: async (path, text) => putNote(path, LMD.images ? await LMD.images.liftQuiet(text, path) : text).then((r) => { listCache = null; delete otherLists[split(path).owner]; return r; }),
     // Una versión del historial, en claro. Las de una nota protegida están cifradas con la ruta que tenía entonces.
     version: async (id, path) => {
       const v = await api('GET', '/version/' + id + (isTeam(path) ? '?o=' + team.space : ''));

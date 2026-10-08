@@ -27,6 +27,7 @@
     diagramShape: 'round', // round | square: nodos y flechas de los diagramas de flujo
     focusMode: false, // al editar, atenúa todo menos el bloque en el que se escribe
     typewriter: false, // al editar, mantiene el renglón actual a media altura
+    imageQuality: 'normal', // normal | high | original: cuánto se achica una imagen al insertarla
     refreshInterval: 1000, // ms
     sidebarHidden: false,
     sidebarWidth: 300,
@@ -348,8 +349,6 @@
       "Descripción (para quien no ve la imagen)": "Description (for people who cannot see the image)", "Tamaño": "Size",
       "Original": "Original", "Chica": "Small", "Mediana": "Medium", "Grande": "Large",
       "Ese archivo no es una imagen que se pueda insertar.": "That file is not an image that can be inserted.",
-      "La imagen pesa más de 10 MB.": "The image is larger than 10 MB.",
-      "Sin una carpeta abierta la imagen va dentro del documento, y esta es muy grande para eso. Abrí la carpeta desde SharpMD, o usá una dirección web.": "Without an open folder the image goes inside the document, and this one is too large for that. Open the folder from SharpMD, or use a web address.",
       "Falta la dirección o el archivo.": "The address or the file is missing.", "Esa dirección no sirve para una imagen.": "That address cannot be used for an image.",
       "Color de los bloques de código": "Code block color", "Vista previa": "Preview", "Notas de lanzamiento": "Launch notes", "Así se ve el texto de tus documentos con esta letra, este tamaño y este interlineado.": "This is how the text of your documents looks with this font, size and line height.", "Forma de los diagramas": "Diagram shape", "Redondeados": "Rounded", "Rectos": "Straight",
       "Verde": "Green",
@@ -580,7 +579,6 @@
       "Nuevo archivo acá": "New file here", "Nuevo archivo": "New file", "Renombrar": "Rename",
       "Nombre del archivo": "File name", "Doble clic o F2 para cambiar el nombre": "Double-click or press F2 to rename",
       "No se pudo mover": "Could not move",
-      "Para pegar imágenes abrí la carpeta desde la página de SharpMD": "To paste images, open the folder from the SharpMD page",
       "imagen": "image", "Imagen guardada en {a}": "Image saved to {a}", "No se pudo guardar la imagen": "Could not save the image",
       "Sin coincidencias": "No matches", "Reemplazado. Quedan {n}": "Replaced. {n} left",
       "{n} reemplazo. Ctrl+Z lo deshace": "{n} replacement. Ctrl+Z undoes it", "{n} reemplazos. Ctrl+Z los deshace": "{n} replacements. Ctrl+Z undoes them",
@@ -1661,6 +1659,46 @@
       "tu proveedor": "your provider",
       "O a partir de la nota": "Or from the note",
       "{a} de {b} caracteres": "{a} of {b} characters",
+      // Imágenes y adjuntos (images.js)
+      "Subió una imagen": "Uploaded an image", "Eliminó una imagen": "Deleted an image",
+      "Mis notas": "My notes",
+      "Las imágenes de esta nota ahora están cifradas": "The images of this note are now encrypted",
+      "Calidad de las imágenes": "Image quality",
+      "Alta": "High",
+      "Al insertar una imagen se achica y se le quitan los metadatos, como la ubicación. Con Original queda como es.": "An inserted image is made smaller and loses its metadata, such as the location. Original keeps it as it is.",
+      "Almacenamiento": "Storage",
+      "Ver adjuntos": "See attachments",
+      "Adjuntos": "Attachments",
+      "Pasar las imágenes incrustadas a adjuntos": "Move embedded images to attachments",
+      "Se pasó 1 imagen a adjuntos": "1 image moved to attachments",
+      "Se pasaron {n} imágenes a adjuntos": "{n} images moved to attachments",
+      "1 imagen": "1 image",
+      "{n} imágenes": "{n} images",
+      "Pasaste el tope. Nada se borra, pero no se pueden subir imágenes hasta liberar lugar.": "You are over the limit. Nothing is deleted, but no image can be uploaded until you free some space.",
+      "Cada imagen pesa hasta {a}. Lo que ninguna nota usa se borra a los {n} días.": "Each image can weigh up to {a}. What no note uses is deleted after {n} days.",
+      "Quien tiene la dirección de una imagen puede verla, salvo en carpetas protegidas.": "Anyone with the address of an image can see it, except in protected folders.",
+      "No se pudo leer el almacenamiento.": "Could not read the storage.",
+      "Todavía no hay imágenes.": "No images yet.",
+      "Cifrada": "Encrypted",
+      "En uso": "In use",
+      "Sin uso": "Not used",
+      "¿Eliminar esta imagen?": "Delete this image?",
+      "Una nota la usa: va a quedar sin imagen. No se puede deshacer.": "A note uses it and will lose the image. This cannot be undone.",
+      "La imagen pesa {a} y el tope es {b} por imagen.": "The image weighs {a} and the limit is {b} per image.",
+      "Elegí otra calidad de imagen en Ajustes.": "Pick another image quality in Settings.",
+      "Probá con una más chica.": "Try a smaller one.",
+      "El plan pago admite imágenes más pesadas.": "The paid plan takes heavier images.",
+      "El almacenamiento de imágenes está lleno. Borrá adjuntos en Ajustes, en Nube.": "Image storage is full. Delete attachments in Settings, under Cloud.",
+      "El plan pago tiene más lugar.": "The paid plan has more room.",
+      "Un SVG no se guarda dentro de una nota. Usá un PNG, o una dirección web.": "An SVG is not stored inside a note. Use a PNG, or a web address.",
+      "La imagen es muy pesada para ir dentro del documento. Subí la nota a la nube o abrí una carpeta.": "The image is too heavy to go inside the document. Upload the note to the cloud or open a folder.",
+      "Demasiadas imágenes seguidas. Probá más tarde.": "Too many images in a row. Try later.",
+      "En este espacio solo podés leer.": "You can only read in this space.",
+      "No hay lugar para esta imagen": "No room for this image",
+      "Imagen de una carpeta protegida": "Image from a protected folder",
+      "La imagen pesa más de 40 MB.": "The image is over 40 MB.",
+      "Sacar una foto": "Take a photo",
+      "La nota pesa más de 1 MB y no se guardó en la nube. Pasá sus imágenes incrustadas a adjuntos desde el menú de la nota.": "The note is over 1 MB and was not saved to the cloud. Move its embedded images to attachments from the note menu.",
       "Última edición: {d}, por {a}": "Last edited {d} by {a}", "Última edición: {d}": "Last edited {d}", "En esta nota: {a}": "In this note: {a}", "escribiendo": "writing",
       "Los miembros pueden abrir sesiones en vivo con invitados": "Members can open live sessions with guests", "Miembro del equipo": "Team member", "del equipo": "team", "invitado": "guest",
       "Abrió una sesión en vivo": "Opened a live session", "Terminó una sesión en vivo": "Ended a live session", "Sacó a un invitado": "Removed a guest",
@@ -1735,7 +1773,7 @@
   const fileLink = (url) => WEB_APP_URL + '#open=' + encodeURIComponent(url);
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.58.0';
+  const VERSION = '2.59.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);
