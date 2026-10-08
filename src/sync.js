@@ -202,19 +202,35 @@
   const secRow = (id, icon, title, text, tech, extra) => '<li data-sec-row="' + id + '"><span class="lmd-sec-ico">' + icon + '</span><div><b>' + T(title) + '</b><p>' + T(text) + '</p>' + (extra || '') + (tech ? '<small>' + tech + '</small>' : '') + '</div></li>';
   // own: un servidor propio. can: se ofrece proteger una carpeta. count: carpetas protegidas de la cuenta.
   // pick: se está eligiendo cuál proteger, entre folders.
+  // ai: la clave del asistente de este dispositivo, si se sabe: { hasKey, provider, last4, off }. De la clave solo
+  // se muestran el proveedor y los últimos cuatro caracteres, lo mismo que en la tarjeta del asistente.
+  const AI_NAMES = { anthropic: 'Anthropic (Claude)', openai: 'OpenAI' };
+  // Lo que se sabe de la clave sin cargar el asistente: lo lee de donde él la guarda. off: la herramienta está
+  // apagada y hay una pestaña Herramientas donde prenderla.
+  async function aiKeyInfo() {
+    let st = null;
+    try { st = LMD.ai && LMD.ai.status ? await LMD.ai.status() : await LMD.store.aiGet(); } catch (e) { /* sin base local: se informa igual, sin el dato */ }
+    return { hasKey: !!(st && (st.hasKey || st.data)), provider: (st && st.provider) || '', last4: (st && st.last4) || '', off: !(LMD.tools && LMD.tools.isOn('assistant')) && !!document.querySelector('[data-ptab=tools]') };
+  }
   function security(o) {
     o = o || {};
-    const n = o.count || 0;
+    const n = o.count || 0; const ai = o.ai || null;
     const choose = !o.pick ? '' : !(o.folders || []).length ? '<p class="lmd-sec-pick" role="status">' + T('Primero creá una carpeta en la Nube. Después la protegés desde acá o desde el menú de la carpeta.') + '</p>'
       : '<div class="lmd-sec-pick"><span>' + T('Elegí la carpeta') + '</span>' + o.folders.map((f) => '<button type="button" class="lmd-btn" data-c="protect-at" data-f="' + esc(f) + '">' + ICON.folder + '<span>' + esc(f) + '</span></button>').join('') + '</div>';
     return '<section class="lmd-sec" aria-label="' + T('Seguridad') + '"><h4>' + T('Seguridad') + '</h4><ul>' +
       (o.own ? secRow('notes', ICON.lock, 'Notas en la nube', 'En un servidor propio, el cifrado en tránsito y en el servidor depende de cómo esté instalado. El servidor puede leerlas, para compartirlas y atender a tu IA.', 'HTTPS · DATA_KEY')
         : secRow('notes', ICON.lock, 'Notas en la nube', 'Viajan cifradas y se guardan cifradas en el servidor. El servidor tiene la llave, para poder compartirlas y atender a tu IA.', 'HTTPS · AES-256-GCM')) +
+      // El orden es el de las columnas en una ventana ancha: la cuenta (notas, entrar), las carpetas protegidas, y la
+      // clave de IA con el código abierto. Ver los estilos de .lmd-sec en content.css.
+      secRow('signin', ICON.key, 'Entrar sin contraseña', 'Entrás con un código de un solo uso que llega a tu correo. No hay contraseña de cuenta que se pueda filtrar.', T('Las sesiones y los tokens se guardan como hash')) +
       secRow('vaults', ICON.shield, 'Carpetas protegidas', 'Se cifran en tu dispositivo con tu contraseña. Ni el servidor puede leerlas.', 'AES-256-GCM · PBKDF2 · ' + T('En el plan gratis y en el pago'),
         '<p>' + T('Los nombres de archivos y carpetas quedan visibles. Sin la contraseña y sin la clave de respaldo, esas notas no se pueden recuperar.') + '</p>' +
         (n ? '<p class="lmd-sec-count">' + T(n === 1 ? 'Tenés 1 carpeta protegida.' : 'Tenés {n} carpetas protegidas.', { n }) + '</p>' : '') +
         (o.can ? '<p class="lmd-sec-act"><button type="button" class="lmd-link" data-c="protect">' + T('Proteger una carpeta') + '</button></p>' + choose : '')) +
-      secRow('signin', ICON.key, 'Entrar sin contraseña', 'Entrás con un código de un solo uso que llega a tu correo. No hay contraseña de cuenta que se pueda filtrar.', T('Las sesiones y los tokens se guardan como hash')) +
+      // La clave del asistente (aikey.js): dónde queda y por dónde viaja. Informa aunque el asistente esté apagado.
+      secRow('aikey', ICON.spark, 'Tu clave de IA', 'Se guarda cifrada solo en este dispositivo. No pasa por el servidor de SharpMD ni se sincroniza, y las llamadas van directo a tu proveedor.',
+        'AES-256-GCM · ' + T('llave no exportable') + (ai && ai.off ? ' · <button type="button" class="lmd-link" data-c="ai-tools">' + T('Prender en Herramientas') + '</button>' : ''),
+        ai && ai.hasKey ? '<p class="lmd-sec-key">' + esc(ai.provider === 'compat' ? T('Compatible con OpenAI') : AI_NAMES[ai.provider] || ai.provider) + ' · ••••' + esc(ai.last4 ? ' ' + ai.last4 : '') + '</p>' : '') +
       secRow('open', ICON.code, 'Sin analítica y con código abierto', 'No hay analítica. El código es abierto y podés usar tu propio servidor.', T('App MIT · Servidor AGPL')) +
       '</ul><p class="lmd-sec-foot">' + T('Una nota eliminada queda 30 días en la papelera.') + ' <a href="' + PRIVACY + '" target="_blank" rel="noopener noreferrer">' + T('Cómo funciona') + '</a></p></section>';
   }
@@ -260,8 +276,8 @@
   async function cloudPane(box, host) {
     await LMD.cloud.ready();
     secRedraw = null;
-    const canProtect = !host.direct && LMD.vault.can(); let picking = false; let free = [];
-    const secNow = (count) => security({ own: LMD.cloud.own(), can: canProtect, count, pick: picking, folders: free });
+    const canProtect = !host.direct && LMD.vault.can(); let picking = false; let free = []; let ai = null;
+    const secNow = (count) => security({ own: LMD.cloud.own(), can: canProtect, count, pick: picking, folders: free, ai });
     if (!LMD.cloud.enabled()) box.innerHTML = hint(T('La nube está apagada: SharpMD funciona sin cuenta y sin sincronizar.')) + actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="on">' + T('Prender la nube') + '</button>');
     else if (host.direct) box.innerHTML = direct(host, 'cloud') + '<div data-sec>' + secNow(0) + '</div>';
     else if (!LMD.cloud.signedIn()) box.innerHTML = LMD.home.perks() + actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="login">' + T('Crear cuenta o entrar') + '</button>') + '<div data-sec>' + secNow(0) + '</div>';
@@ -278,6 +294,7 @@
     const sec = async () => {
       const slot = box.querySelector('[data-sec]'); if (!slot) return;
       let count = 0;
+      ai = await aiKeyInfo();
       if (LMD.cloud.signedIn() && !host.direct) {
         try {
           count = (await LMD.vault.load()).filter((v) => v.state === 'on').length;
@@ -307,6 +324,7 @@
       else if (b.dataset.c === 'name-ok') { const row = box.querySelector('.lmd-acct-name'); if (row && row._save) row._save(); }
       else if (b.dataset.c === 'name-no') cloudPane(box, host);
       // Proteger una carpeta: sin sesión primero se entra; con una sola carpeta se va directo, con varias se elige.
+      else if (b.dataset.c === 'ai-tools') host.tab('tools');
       else if (b.dataset.c === 'protect') { if (!LMD.cloud.signedIn()) askLogin(); else if (free.length === 1) LMD.vault.pick('v-protect', free[0]); else { picking = true; sec(); } }
       else if (b.dataset.c === 'protect-at') LMD.vault.pick('v-protect', b.dataset.f);
     };

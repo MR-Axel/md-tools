@@ -2530,3 +2530,25 @@ html.lmd-ai-open .lmd-ai-card { left: calc(50% - 190px); width: min(860px, calc(
 
 /* Ajustes > IA (MCP): el interruptor de las instrucciones del espacio de proyecto, junto al botón que copia el mensaje. */
 .lmd-acct .lmd-ai-ws { margin: 6px 0 0; font-size: 13px; color: var(--fg); }
+
+/* Ajustes > Nube, bloque Seguridad: de la clave de IA guardada, el proveedor y sus últimos caracteres. */
+.lmd-sec li p.lmd-sec-key { color: var(--fg); font-weight: 600; }
+/* Con el renglón de la clave son cinco. En una ventana ancha van en tres columnas, para que la pestaña siga entrando
+   sin scroll: la cuenta a la izquierda, las carpetas protegidas (el más largo) al medio, y la clave y el código a la
+   derecha. El orden de lectura no cambia: solo dónde cae cada uno. */
+.lmd-sec li small .lmd-link { padding: 0; color: var(--accent); font-size: inherit; text-decoration: underline; }
+@media (min-width: 1000px) {
+  [data-acct=cloud] .lmd-sec { margin-top: 8px; padding-top: 8px; }
+  [data-acct=cloud] .lmd-sec h4 { margin-bottom: 4px; }
+  [data-acct=cloud] .lmd-sec ul { display: block; columns: 3; column-gap: 16px; }
+  [data-acct=cloud] .lmd-sec li { gap: 8px; margin-bottom: 5px; break-inside: avoid; }
+  [data-acct=cloud] .lmd-sec li p { font-size: 12.5px; line-height: 1.35; }
+  [data-acct=cloud] .lmd-sec li small { margin-top: 2px; }
+  [data-acct=cloud] .lmd-sec-ico { width: 24px; height: 24px; border-radius: 7px; }
+  [data-acct=cloud] .lmd-sec li[data-sec-row=vaults], [data-acct=cloud] .lmd-sec li[data-sec-row=aikey] { break-before: column; }
+  [data-acct=cloud] .lmd-sec-foot { margin-top: 2px; }
+  [data-acct=cloud] .lmd-acct-del { margin-top: 4px; }
+}
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  .lmd-sec li small .lmd-link { display: inline-flex; align-items: center; min-height: 40px; }
+}
