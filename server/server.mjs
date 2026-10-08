@@ -342,7 +342,7 @@ const account = (user) => ({ id: user.id, share: shareAllowed(user), live: user.
   manage: ((user.own || user.plan) === 'pro' || (user.team && user.team.owner === user.id && user.team.sub)) && env.PORTAL_URL ? env.PORTAL_URL : '',
   // billing: si a esta cuenta se le muestra algo de cobro. A quien tiene el plan por un equipo que paga otra persona, no:
   // ni enlaces de pago ni precios. Lo que paga por su lado (su suscripción individual) lo sigue administrando.
-  billing: !teamGuest(user), checkout: teamGuest(user) ? { monthly: '', yearly: '' } : { monthly: withEmail(env.CHECKOUT_MONTHLY, user), yearly: withEmail(env.CHECKOUT_YEARLY, user) }, team: teamView(user) });
+  billing: !teamGuest(user), checkout: teamGuest(user) ? { monthly: '', yearly: '' } : { monthly: withEmail(env.CHECKOUT_MONTHLY, user), yearly: withEmail(env.CHECKOUT_YEARLY, user) }, team: teamView(user), pages: pagesView(user) });
 
 // ---------- Comentarios ----------
 // Lo que alguien escribe desde "Enviar comentarios" llega por correo a FEEDBACK_TO. Entra con o sin sesión.
@@ -365,7 +365,7 @@ async function feedback(req, body) {
   const c = body.context && typeof body.context === 'object' ? body.context : {};
   const field = (v, max) => String(v == null ? '' : v).replace(/[\r\n]+/g, ' ').trim().slice(0, max) || '-';
   const mail = { to: env.FEEDBACK_TO, subject: rep ? 'SharpMD report' : 'SharpMD feedback',
-    text: (rep ? 'Reported note: ' + field(rep.note, 300) + '\nOwner: ' + field(rep.owner, 120) + '\nKind: ' + (['link', 'shared', 'live', 'gallery'].includes(rep.kind) ? rep.kind : '-') + '\n\n' : '') +
+    text: (rep ? 'Reported note: ' + field(rep.note, 300) + '\nOwner: ' + field(rep.owner, 120) + '\nKind: ' + (['link', 'shared', 'live', 'gallery', 'site'].includes(rep.kind) ? rep.kind : '-') + '\n\n' : '') +
       (text || '(no reason given)') + '\n\n---\nFrom: ' + (from || 'anonymous') + (user ? ' (signed in, ' + user.plan + ' plan)' : '') +
       '\nVersion: ' + field(c.version, 40) + '\nWhere: ' + (c.where === 'extension' ? 'extension' : 'web') +
       '\nBrowser: ' + field(c.browser, 300) + '\nLanguage: ' + field(c.lang, 20) + '\n' };
@@ -1869,8 +1869,8 @@ for (const col of ['team INTEGER', 'can_write INTEGER NOT NULL DEFAULT 1', 'made
 db.exec("CREATE TABLE IF NOT EXISTS team_log (id INTEGER PRIMARY KEY, team INTEGER NOT NULL, at INTEGER NOT NULL, uid INTEGER, via TEXT NOT NULL DEFAULT '', token TEXT NOT NULL DEFAULT '', action TEXT NOT NULL, path TEXT NOT NULL DEFAULT '', about INTEGER, detail TEXT NOT NULL DEFAULT '')");
 db.exec('CREATE INDEX IF NOT EXISTS team_log_at ON team_log (team, at)');
 
-const POLICY_BOOLS = ['share', 'links', 'live', 'tokens', 'automation'];
-const POLICY_DEFAULT = { share: false, links: false, live: false, tokens: true, automation: false, history_days: 0, folder: '', template: '' };
+const POLICY_BOOLS = ['share', 'links', 'live', 'tokens', 'automation', 'publish'];
+const POLICY_DEFAULT = { share: false, links: false, live: false, tokens: true, automation: false, publish: false, history_days: 0, folder: '', template: '' };
 function teamPolicies(t) {
   let raw = {}; try { raw = JSON.parse((t && t.policies) || '{}') || {}; } catch (e) { raw = {}; }
   const out = Object.assign({}, POLICY_DEFAULT);
@@ -1950,7 +1950,7 @@ function teamLogSweep() {
   for (const t of q('SELECT team, COUNT(*) AS n FROM team_log GROUP BY team HAVING n > ?').all(TEAM_LOG_MAX)) q('DELETE FROM team_log WHERE team = ? AND id NOT IN (SELECT id FROM team_log WHERE team = ? ORDER BY id DESC LIMIT ?)').run(t.team, t.team, TEAM_LOG_MAX);
   for (const [k, at] of logSeen) if (now() - at > HOUR) logSeen.delete(k);
 }
-const TEAM_ACTIONS = ['create', 'edit', 'move', 'delete', 'restore', 'purge', 'empty_trash', 'share', 'unshare', 'link', 'unlink', 'invite', 'uninvite', 'join', 'leave', 'remove', 'role', 'policy', 'team_name', 'protect', 'password', 'rotate', 'rotate_done', 'unprotect', 'destroy', 'ai', 'ai_unlock', 'token_create', 'token_revoke', 'automation', 'automation_remove'];
+const TEAM_ACTIONS = ['create', 'edit', 'move', 'delete', 'restore', 'purge', 'empty_trash', 'share', 'unshare', 'link', 'unlink', 'invite', 'uninvite', 'join', 'leave', 'remove', 'role', 'policy', 'team_name', 'protect', 'password', 'rotate', 'rotate_done', 'unprotect', 'destroy', 'ai', 'ai_unlock', 'token_create', 'token_revoke', 'automation', 'automation_remove', 'site', 'publish', 'unpublish'];
 // Lo que se pide del registro: who (número de cuenta), token (nombre), action, from y to (milisegundos), before (id, para seguir).
 function teamLogRows(team, url, max) {
   const g = (k) => url.searchParams.get(k) || '';
@@ -2077,6 +2077,7 @@ const ACCOUNT_DELETES = 5; // pedidos por hora, por IP y por cuenta
 // Todo lo que cuelga de una cuenta, tabla por tabla. La cuenta misma va al final.
 const ACCOUNT_ROWS = ['DELETE FROM notes WHERE user = ?', 'DELETE FROM versions WHERE user = ?', 'DELETE FROM trash WHERE user = ?', 'DELETE FROM comments WHERE user = ?', 'DELETE FROM gallery WHERE user = ?', 'DELETE FROM tokens WHERE user = ?',
   'DELETE FROM sessions WHERE user = ?', 'DELETE FROM vaults WHERE user = ?', 'DELETE FROM paddle_subs WHERE user = ?', 'DELETE FROM shares WHERE owner = ?', 'DELETE FROM links WHERE owner = ?', 'DELETE FROM lives WHERE owner = ?',
+  'DELETE FROM site_pages WHERE site IN (SELECT id FROM sites WHERE owner = ?)', 'DELETE FROM sites WHERE owner = ?',
   'DELETE FROM users WHERE id = ?'];
 function accountDelete(req, user, body) {
   const keys = ['accdel:ip:' + clientIp(req), 'accdel:user:' + user.id];
@@ -3139,6 +3140,980 @@ function autoCors(req, res) {
 // Fin de AUTOMATIZACIONES
 // ====================================================================================================================
 
+// ====================================================================================================================
+// SITIOS PUBLICADOS ("Publicar"): una carpeta de notas servida como sitio web público
+// ====================================================================================================================
+// Dónde. El mismo servidor atiende un segundo nombre de host, el de PAGES_URL, y por ahí salen solo los sitios:
+//   <PAGES_URL>/<slug>/            la portada del sitio
+//   <PAGES_URL>/<slug>/<ruta>      cada página
+// Quién es quién lo dice la cabecera Host. Por ese host no existe ninguna otra ruta del servidor (ni API, ni
+// sesiones, ni MCP): no se leen credenciales y lo único que se escribe es una denuncia. Por el host de siempre no se
+// sirve ningún sitio. Ese es el resguardo principal: aunque alguien lograra meter un script en su sitio, corre en un
+// origen que no comparte nada con la app ni con este servidor. Sin PAGES_URL todo esto queda apagado.
+// Qué se guarda. El HTML de cada página lo arma el navegador de quien publica (acá no hay con qué convertir
+// Markdown). Llega solo el cuerpo de la nota y se vuelve a filtrar con una lista blanca escrita a mano (siteClean):
+// sin script, style, iframe, object, form ni svg en línea, sin manejadores on*, sin javascript:, y data: solo en
+// imágenes. Los diagramas viajan como imagen (data:image/svg+xml), así que la página no necesita estilos en línea.
+// De cada página queda la ruta, el título, el cuerpo, el texto para el buscador y la revisión de la nota.
+// Qué no se publica. Carpetas con contraseña, notas de la papelera (una página se sirve solo mientras su nota
+// existe) y las notas con publish: false en su encabezado. Solo lo que está dentro de la carpeta elegida.
+// Lo guardado de un sitio es público: con DATA_KEY queda sin cifrar en reposo. De la cuenta se guarda el número,
+// nunca el correo.
+const PAGES = (() => {
+  const raw = String(env.PAGES_URL || '').trim().replace(/\/+$/, ''); if (!raw) return null;
+  let u = null; try { u = new URL(raw); } catch (e) { fatal('PAGES_URL no es una dirección: ' + raw); }
+  if (!/^https?:$/.test(u.protocol) || u.pathname !== '/' || u.search || u.hash || u.username || u.password) fatal('PAGES_URL es solo el origen del host de sitios, sin ruta: por ejemplo https://pages.example.com');
+  let mine = ''; try { mine = new URL(PUBLIC_URL).host.toLowerCase(); } catch (e) { /* PUBLIC_URL mal escrita: no hay con qué comparar */ }
+  if (u.host.toLowerCase() === mine) fatal('PAGES_URL tiene que ser otro nombre de host que PUBLIC_URL: los sitios publicados no comparten origen con la API');
+  return { url: u.origin, host: u.host.toLowerCase(), port: u.protocol === 'https:' ? ':443' : ':80' };
+})();
+const PAGES_PER_ACCOUNT = Math.max(0, Math.floor(+(env.PAGES_PER_ACCOUNT == null || env.PAGES_PER_ACCOUNT === '' ? 1 : env.PAGES_PER_ACCOUNT)) || 0);
+// Al bajar al plan gratis el sitio sigue este tiempo y después se despublica. PAGES_GRACE_MS es para las pruebas.
+const PAGES_GRACE_MS = env.PAGES_GRACE_MS ? Math.max(0, +env.PAGES_GRACE_MS || 0) : Math.max(0, +(env.PAGES_GRACE_DAYS == null || env.PAGES_GRACE_DAYS === '' ? 7 : env.PAGES_GRACE_DAYS) || 0) * DAY;
+const SITE_MAX_PAGES = Math.max(1, Math.floor(+(env.PAGES_MAX_PAGES || 300)) || 300); // páginas por sitio
+const SITE_PAGE_MAX = 1536 * 1024; // caracteres del cuerpo de una página, con sus imágenes incrustadas
+const SITE_TOTAL_MAX = Math.max(1, +(env.PAGES_MAX_MB || 40) || 40) * 1048576; // y de todo el sitio
+const SITE_PUTS_HOUR = Math.max(1, Math.floor(+(env.PAGES_PUTS_HOUR || 1200)) || 1200); // páginas subidas por hora y por sitio
+const SITE_PUBLISH_HOUR = 30; // publicaciones por hora y por sitio
+const SITE_NEW_DAY = Math.max(1, Math.floor(+(env.PAGES_NEW_DAY || 3)) || 3); // sitios creados por día y por cuenta
+const SITE_REPORTS_HOUR = 5; // denuncias por hora y por IP
+const SITE_HITS_MINUTE = 900; // pedidos por minuto y por IP al host de sitios
+const SITE_TEXT_MAX = 8000; // caracteres de cada página en el índice del buscador
+
+db.exec("CREATE TABLE IF NOT EXISTS sites (id INTEGER PRIMARY KEY, owner INTEGER NOT NULL, made_by INTEGER, slug TEXT NOT NULL UNIQUE, folder TEXT NOT NULL, conf TEXT NOT NULL DEFAULT '{}', live INTEGER NOT NULL DEFAULT 0, pkey TEXT NOT NULL, suspended INTEGER NOT NULL DEFAULT 0, reason TEXT NOT NULL DEFAULT '', lapsed INTEGER NOT NULL DEFAULT 0, reports INTEGER NOT NULL DEFAULT 0, reported INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL, updated INTEGER NOT NULL, published INTEGER NOT NULL DEFAULT 0)");
+db.exec('CREATE INDEX IF NOT EXISTS sites_owner ON sites (owner)');
+db.exec('CREATE INDEX IF NOT EXISTS sites_pkey ON sites (pkey)');
+db.exec("CREATE TABLE IF NOT EXISTS site_pages (site INTEGER NOT NULL, note TEXT NOT NULL, route TEXT NOT NULL, title TEXT NOT NULL, descr TEXT NOT NULL DEFAULT '', html TEXT NOT NULL, text TEXT NOT NULL DEFAULT '', toc TEXT NOT NULL DEFAULT '[]', rev INTEGER NOT NULL, ord REAL, size INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (site, note))");
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS site_pages_route ON site_pages (site, route)');
+
+// ---------- La lista blanca ----------
+// Lo que entra es HTML que mandó un navegador, o cualquier cosa que mande quien llame a la ruta a mano. No se
+// "limpia" ese texto: se lo lee etiqueta por etiqueta y se escribe de nuevo, desde cero, solo con etiquetas y
+// atributos de la lista y con todo el texto y los valores vueltos a escapar. Lo que el navegador reciba es
+// exactamente lo que se validó acá.
+const SAN_HTML = new Set('a abbr b blockquote br caption cite code col colgroup dd del details dfn div dl dt em figcaption figure h1 h2 h3 h4 h5 h6 hr i img ins kbd li mark nav ol p pre q rp rt ruby s samp section small span strong sub summary sup table tbody td tfoot th thead tr u ul var wbr'.split(' '));
+const SAN_MATH = new Set('math semantics mrow mi mo mn ms mtext mspace msup msub msubsup mfrac msqrt mroot munder mover munderover mtable mtr mtd mstyle mpadded mphantom menclose merror'.split(' '));
+const SAN_VOID = new Set(['br', 'hr', 'img', 'wbr', 'col']);
+// Se saltean con todo lo que traen adentro. Las primeras, además, llevan texto crudo: se busca su cierre a mano.
+const SAN_RAW = new Set('script style textarea title xmp iframe noembed noframes noscript plaintext'.split(' '));
+const SAN_SKIP = new Set('svg form object select button option optgroup template head applet audio video canvas map dialog slot portal annotation annotation-xml datalist frameset marquee picture'.split(' '));
+const SAN_SKIP_VOID = new Set('input meta link base embed source track area frame keygen bgsound param'.split(' '));
+const SAN_MATH_ATTR = new Set('mathvariant display displaystyle scriptlevel stretchy fence separator lspace rspace columnalign rowalign rowspacing columnspacing accent accentunder linethickness width height depth minsize maxsize movablelimits largeop symmetric form columnlines rowlines notation mathcolor mathbackground mathsize voffset columnspan rowspan'.split(' '));
+const SAN_ID_ON = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'sup', 'a', 'section']);
+const SAN_BLOCK = new Set('p div li h1 h2 h3 h4 h5 h6 td th tr br pre blockquote dt dd summary figcaption table section hr'.split(' '));
+// Clases: las que arma el propio lector (lmd-), las del resaltado de código y las de las notas al pie. Las de la
+// plantilla del sitio empiezan con sp- y no entran: el contenido no se puede disfrazar de menú ni de pie.
+const SAN_CLASS = /^(hljs(-[A-Za-z0-9_-]{1,40})?|[a-z]{1,20}_|language-[\w+#-]{1,30}|lmd-[a-z0-9-]{1,40}|footnotes?[a-z-]{0,20}|task-list[a-z-]{0,20}|contains-task-list)$/;
+const SAN_ENT = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', colon: ':', Tab: '\t', NewLine: '\n', sol: '/', bsol: '\\', lpar: '(', rpar: ')', num: '#', period: '.', comma: ',', semi: ';', equals: '=', quest: '?', excl: '!', commat: '@', lowbar: '_', hyphen: '-', dollar: '$', percnt: '%', plus: '+', ast: '*', grave: '`', lcub: '{', rcub: '}', lsqb: '[', rsqb: ']', verbar: '|' };
+// El valor de un atributo como lo va a leer el navegador. Lo que no se sabe decodificar queda como texto, y como al
+// escribir se escapa cada &, el navegador tampoco lo decodifica: no hay un "javascript&colon;" que pase de largo.
+const sanDecode = (v) => String(v).replace(/&(?:#[xX]([0-9a-fA-F]{1,6})|#([0-9]{1,7})|([A-Za-z][A-Za-z0-9]{1,31}));?/g, (m, hex, dec, name) => {
+  if (name) return m.endsWith(';') && Object.prototype.hasOwnProperty.call(SAN_ENT, name) ? SAN_ENT[name] : m;
+  const n = hex ? parseInt(hex, 16) : parseInt(dec, 10);
+  return !n || n > 0x10ffff || (n >= 0xd800 && n <= 0xdfff) ? '�' : String.fromCodePoint(n);
+});
+const sanAttr = (v) => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const sanUnattr = (v) => String(v).replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+const sanText = (t) => t.replace(/&(?!(?:[A-Za-z][A-Za-z0-9]{1,31}|#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6});)/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// Un enlace: a una sección de la misma página (same), hacia afuera (out, solo http, https, mailto y tel) o relativo
+// (rel: a otra nota del sitio, se resuelve al servir). Cualquier otro esquema no pasa.
+function sanHref(raw) {
+  const v = String(raw).trim();
+  if (!v || v.length > 2000 || /[\u0000-\u001f\u007f\\]/.test(v)) return null;
+  if (v[0] === '#') return { same: v };
+  const m = /^([A-Za-z][A-Za-z0-9+.-]*):/.exec(v);
+  if (m) {
+    const s = m[1].toLowerCase();
+    if (s === 'mailto' || s === 'tel') return { out: v };
+    if (s !== 'http' && s !== 'https') return null;
+    try { const u = new URL(v); return u.username || u.password ? null : { out: u.href }; } catch (e) { return null; }
+  }
+  if (v.startsWith('//')) { try { const u = new URL('https:' + v); return u.username || u.password ? null : { out: u.href }; } catch (e) { return null; } }
+  return { rel: v };
+}
+// Una imagen: https, o incrustada como data: de un tipo de imagen. Un SVG incrustado se dibuja como imagen (ahí no
+// corre nada), pero igual no pasa si trae un script, un manejador o un marco.
+const SAN_IMG_DATA = /^data:image\/(png|jpeg|gif|webp|avif|svg\+xml);base64,([A-Za-z0-9+/]+={0,2})$/;
+function sanImg(raw) {
+  const v = String(raw == null ? '' : raw).trim();
+  if (/^https:\/\//i.test(v)) {
+    if (v.length > 2000 || /[\u0000- \u007f\\"<>]/.test(v)) return null;
+    try { const u = new URL(v); return u.protocol === 'https:' && !u.username && !u.password ? u.href : null; } catch (e) { return null; }
+  }
+  const m = SAN_IMG_DATA.exec(v); if (!m) return null;
+  if (m[1] === 'svg+xml') {
+    const xml = Buffer.from(m[2], 'base64').toString('utf8');
+    if (/<\s*script|<[^>]*\son[a-z]+\s*=|javascript\s*:|<\s*(iframe|object|embed)\b/i.test(xml)) return null;
+  }
+  return v;
+}
+// Una etiqueta de apertura desde s[i] ('<' y una letra): su nombre, sus atributos (el primero de cada nombre, como
+// hace el navegador) y dónde termina. Sin su '>' no es una etiqueta: se descarta todo lo que sigue.
+function sanTag(s, i) {
+  const n = s.length; let j = i + 1;
+  while (j < n && !/[\s/>]/.test(s[j])) j++;
+  const name = s.slice(i + 1, j).toLowerCase(); const attrs = new Map(); let self = false;
+  for (;;) {
+    while (j < n && /[\s/]/.test(s[j])) { if (s[j] === '/') self = true; j++; }
+    if (j >= n) return null;
+    if (s[j] === '>') return { name, attrs, self, end: j + 1 };
+    self = false;
+    let k = j; if (s[k] === '=') k++;
+    while (k < n && !/[\s/>=]/.test(s[k])) k++;
+    const an = s.slice(j, k).toLowerCase(); j = k;
+    while (j < n && /\s/.test(s[j])) j++;
+    let val = '';
+    if (s[j] === '=') {
+      j++; while (j < n && /\s/.test(s[j])) j++;
+      if (j >= n) return null;
+      const quote = s[j];
+      if (quote === '"' || quote === "'") { const e = s.indexOf(quote, j + 1); if (e === -1) return null; val = s.slice(j + 1, e); j = e + 1; }
+      else { k = j; while (k < n && !/[\s>]/.test(s[k])) k++; val = s.slice(j, k); j = k; }
+    }
+    if (an && !attrs.has(an) && attrs.size < 40) attrs.set(an, sanDecode(val));
+  }
+}
+// Los atributos que quedan de una etiqueta de la lista. De un enlace a otra nota queda data-n (la ruta relativa) o
+// data-w (el nombre de un [[enlace]]), siempre primero: al servir se cambian por la dirección de la página.
+function sanAttrs(name, a, math, ids) {
+  let out = ''; let id = '';
+  const put = (k, v) => { out += ' ' + k + '="' + sanAttr(v) + '"'; };
+  if (math) { for (const [k, v] of a) if (SAN_MATH_ATTR.has(k) && /^[\w .%#+-]{0,40}$/.test(v)) put(k, v); return { out, id }; }
+  if (name === 'a') {
+    const wiki = a.get('data-wiki');
+    if (wiki != null && wiki.trim() && wiki.length <= 300 && !/[\u0000-\u001f]/.test(wiki)) put('data-w', wiki.trim());
+    else if (a.has('href')) {
+      const r = sanHref(a.get('href'));
+      if (r && r.same) put('href', r.same);
+      else if (r && r.out) { put('href', r.out); put('rel', 'nofollow ugc noopener'); }
+      else if (r && r.rel) put('data-n', r.rel);
+    }
+  }
+  const cls = String(a.get('class') || '').split(/\s+/).filter((c) => SAN_CLASS.test(c)).slice(0, 12);
+  // La alineación de una celda llega como estilo en línea: acá no hay estilos en línea, queda como clase.
+  if (/^(td|th|p|div|h[1-6])$/.test(name)) {
+    const al = /(?:^|;)\s*text-align\s*:\s*(left|center|right)\s*(?:;|$)/i.exec(a.get('style') || '') || /^(left|center|right)$/i.exec(a.get('align') || '');
+    if (al) cls.push('sp-al-' + al[1].toLowerCase());
+  }
+  if (cls.length) put('class', cls.join(' '));
+  if (SAN_ID_ON.has(name)) {
+    const v = a.get('id');
+    if (v && /^[\p{L}\p{N}_][\p{L}\p{N}_:.-]{0,119}$/u.test(v) && !/^sp-/i.test(v) && !ids.has(v)) { ids.add(v); id = v; put('id', v); }
+  }
+  if (a.has('title') && a.get('title').length <= 300) put('title', a.get('title'));
+  if (/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(a.get('lang') || '')) put('lang', a.get('lang'));
+  if (/^(ltr|rtl|auto)$/i.test(a.get('dir') || '')) put('dir', a.get('dir').toLowerCase());
+  if (name === 'td' || name === 'th') for (const k of ['colspan', 'rowspan']) if (/^[1-9]\d?$/.test(a.get(k) || '')) put(k, a.get(k));
+  if (name === 'ol' && /^-?\d{1,6}$/.test(a.get('start') || '')) put('start', a.get('start'));
+  if (name === 'li' && /^-?\d{1,6}$/.test(a.get('value') || '')) put('value', a.get('value'));
+  if ((name === 'col' || name === 'colgroup') && /^[1-9]\d?$/.test(a.get('span') || '')) put('span', a.get('span'));
+  if (name === 'details' && a.has('open')) out += ' open';
+  return { out, id };
+}
+// El slug de un título, igual al que arma la app para sus anclas.
+const siteSlugify = (t) => String(t).trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\p{L}\p{N}\s-]/gu, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'seccion';
+// Devuelve el cuerpo ya filtrado, su texto plano, sus títulos (para el índice y las anclas), el primer párrafo y
+// cuántas imágenes quedaron afuera.
+function siteClean(input) {
+  const s = String(input == null ? '' : input).replace(/\u0000/g, ''); const low = s.toLowerCase(); const n = s.length;
+  const out = []; const stack = []; const words = []; const toc = []; const ids = new Set();
+  let i = 0; let heading = null; let para = null; let first = ''; let skipped = 0;
+  const CLOSE = /<\/([A-Za-z][A-Za-z0-9:-]*)[^>]*>/y;
+  const text = (t) => { if (!t) return; out.push(sanText(t)); const plain = sanDecode(t); words.push(plain); if (heading) heading.text += plain; if (para != null) para += plain; };
+  const ended = (name) => {
+    if (SAN_BLOCK.has(name)) words.push(' ');
+    if (heading && name === heading.name) {
+      const t = heading.text.replace(/\s+/g, ' ').trim().slice(0, 200); let id = heading.id;
+      if (!id && t) { const base = siteSlugify(t); id = base; let k = 1; while (ids.has(id) || /^sp-/.test(id)) id = base + '-' + k++; ids.add(id); out[heading.at] = out[heading.at].replace(/>$/, ' id="' + sanAttr(id) + '">'); }
+      if (id && t && toc.length < 400) toc.push({ id, t, l: +name[1] });
+      heading = null;
+    }
+    if (para != null && name === 'p') { const t = para.replace(/\s+/g, ' ').trim(); if (t && !first) first = t.slice(0, 300); para = null; }
+  };
+  const closeTo = (at) => { while (stack.length > at) { const t = stack.pop(); out.push('</' + t + '>'); ended(t); } };
+  while (i < n) {
+    const lt = s.indexOf('<', i);
+    if (lt === -1) { text(s.slice(i)); break; }
+    if (lt > i) text(s.slice(i, lt));
+    i = lt;
+    if (s.startsWith('<!--', i)) { const e = s.indexOf('-->', i + 4); i = e === -1 ? n : e + 3; continue; }
+    const c = s[i + 1];
+    if (c === '!' || c === '?') { const e = s.indexOf('>', i); i = e === -1 ? n : e + 1; continue; }
+    if (c === '/') {
+      CLOSE.lastIndex = i; const m = CLOSE.exec(s);
+      if (!m) { const e = s.indexOf('>', i); i = e === -1 ? n : e + 1; continue; }
+      i += m[0].length; const at = stack.lastIndexOf(m[1].toLowerCase()); if (at !== -1) closeTo(at);
+      continue;
+    }
+    if (!c || !/[A-Za-z]/.test(c)) { text('<'); i++; continue; }
+    const tag = sanTag(s, i); if (!tag) break;
+    i = tag.end; const name = tag.name;
+    if (SAN_RAW.has(name)) { const e = low.indexOf('</' + name, i); const g = e === -1 ? -1 : s.indexOf('>', e); i = g === -1 ? n : g + 1; continue; }
+    if (SAN_SKIP.has(name)) {
+      if (tag.self) continue;
+      let depth = 1;
+      while (depth && i < n) {
+        const o = low.indexOf('<' + name, i); const e = low.indexOf('</' + name, i);
+        if (e === -1) { i = n; break; }
+        if (o !== -1 && o < e) { depth++; i = o + name.length + 1; } else { depth--; const g = s.indexOf('>', e); i = g === -1 ? n : g + 1; }
+      }
+      continue;
+    }
+    if (SAN_SKIP_VOID.has(name)) {
+      // La casilla de una tarea: queda dibujada, sin ser un control.
+      if (name === 'input' && String(tag.attrs.get('type') || '').toLowerCase() === 'checkbox') out.push('<span class="sp-check' + (tag.attrs.has('checked') ? ' sp-on' : '') + '"></span>');
+      continue;
+    }
+    const math = SAN_MATH.has(name);
+    if (!SAN_HTML.has(name) && !math) continue; // una etiqueta que no está en la lista: queda su texto, sin ella
+    if (name === 'img') {
+      const src = sanImg(tag.attrs.get('src')); const alt = String(tag.attrs.get('alt') || '').slice(0, 300);
+      // Una imagen que no es https ni viene incrustada (una ruta del disco de quien escribió) no existe acá: queda su texto.
+      if (!src) { skipped++; if (alt.trim()) { out.push('<span class="sp-noimg">' + sanAttr(alt) + '</span>'); words.push(' ' + alt + ' '); } continue; }
+      let extra = '';
+      for (const k of ['width', 'height']) if (/^[1-9]\d{0,3}$/.test(tag.attrs.get(k) || '')) extra += ' ' + k + '="' + tag.attrs.get(k) + '"';
+      if (tag.attrs.has('title') && tag.attrs.get('title').length <= 300) extra += ' title="' + sanAttr(tag.attrs.get('title')) + '"';
+      out.push('<img src="' + sanAttr(src) + '" alt="' + sanAttr(alt) + '"' + extra + ' loading="lazy" decoding="async">');
+      continue;
+    }
+    if (stack.length >= 120 && !SAN_VOID.has(name)) continue;
+    const at = sanAttrs(name, tag.attrs, math, ids);
+    if (SAN_BLOCK.has(name)) words.push(' ');
+    out.push('<' + name + at.out + '>');
+    if (SAN_VOID.has(name)) continue;
+    if (math && tag.self) { out.push('</' + name + '>'); continue; }
+    stack.push(name);
+    if (/^h[1-6]$/.test(name) && !heading) heading = { name, id: at.id, text: '', at: out.length - 1 };
+    if (name === 'p' && !first && para == null && stack.length === 1) para = '';
+  }
+  closeTo(0);
+  return { html: out.join(''), text: words.join('').replace(/\s+/g, ' ').trim(), toc, first, skipped };
+}
+
+// ---------- Qué entra en un sitio ----------
+const SITE_SLUG = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
+// Nombres que no puede tener un sitio: se confundirían con algo del servicio.
+const SITE_RESERVED = new Set('www api app apps admin administrator mail email static assets asset sharpmd sharp-md support help about blog docs doc status login signin signup sign-in sign-up logout account accounts billing pay payment pricing plans legal privacy terms tos security abuse report reports robots sitemap favicon search public pages page site sites null undefined test demo example root system official team teams dashboard settings mcp auth oauth health feed rss new edit cdn img images js css fonts download downloads store home index news press contact careers jobs'.split(' '));
+const SITE_ACCENTS = { '': '', '#3b82f6': 'blue', '#6c7ee1': 'indigo', '#a855f7': 'violet', '#ec4899': 'pink', '#ef4444': 'red', '#f97316': 'orange', '#eab308': 'amber', '#14b8a6': 'teal' };
+const SITE_FONTS = { '': '', System: 'system', Arial: 'arial', Calibri: 'calibri', Verdana: 'verdana', 'Trebuchet MS': 'trebuchet', Georgia: 'georgia', Cambria: 'cambria', Palatino: 'palatino', 'Times New Roman': 'times', Consolas: 'consolas', 'Courier New': 'courier' };
+const SITE_MD = /\.(md|mdx|mkd|mdown|markdown|txt)$/i;
+const siteNoteOk = (p) => { const base = p.slice(p.lastIndexOf('/') + 1); return SITE_MD.test(base) || !base.includes('.'); };
+const siteWikiKey = (v) => String(v).toLowerCase().replace(/\.(md|mdx|mkd|mdown|markdown)$/i, '').replace(/[\s_-]+/g, '');
+// Un tramo de la dirección de una página: minúsculas, números y guiones. Un nombre que no deja nada, una huella.
+const siteSeg = (t) => { const v = String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60).replace(/-+$/, ''); return v || 'p-' + sha(String(t)).slice(0, 8); };
+const siteLine = (v, max) => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f​-‏‪-‮⁦-⁩﻿]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+const siteConfOf = (site) => { let c = {}; try { c = JSON.parse(site.conf || '{}') || {}; } catch (e) { c = {}; } return Object.assign({ title: '', descr: '', home: '', lang: 'en', accent: '', font: '', logo: '', author: '', noindex: false, auto: false }, c); };
+// publish: false en el encabezado de la nota la deja afuera del sitio.
+const siteExcluded = (text) => { const m = /^﻿?---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(\r?\n|$)/.exec(String(text || '')); return !!m && /^publish:[ \t]*["']?(false|no|off|0)["']?[ \t]*$/mi.test(m[1]); };
+// Una carpeta con contraseña que cubre la del sitio (o el espacio del equipo protegido): de ahí no se publica nada.
+const siteVaulted = (ownerId, folder) => vaultsOf(ownerId).some((v) => !v.folder || v.folder === folder || inside(folder, v.folder));
+const siteFolderNotes = (site) => { const vs = vaultsOf(site.owner); return q('SELECT path, rev, v FROM notes WHERE user = ? AND substr(path, 1, length(?)) = ?').all(site.owner, site.folder + '/', site.folder + '/').filter((x) => !x.v && siteNoteOk(x.path) && !vs.some((v) => inside(x.path, v.folder))); };
+// La nota que hace de portada: la elegida, o la que se llama index, readme, home o inicio en la raíz de la carpeta.
+function siteHome(site, conf) {
+  if (conf.home && q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(site.owner, conf.home)) return conf.home;
+  const names = new Map(q('SELECT path FROM notes WHERE user = ? AND substr(path, 1, length(?)) = ?').all(site.owner, site.folder + '/', site.folder + '/').map((x) => x.path.slice(site.folder.length + 1)).filter((r) => !r.includes('/')).map((r) => [r.replace(SITE_MD, '').toLowerCase(), r]));
+  for (const k of ['index', 'readme', 'home', 'inicio']) if (names.has(k)) return site.folder + '/' + names.get(k);
+  return '';
+}
+const siteRouteOf = (site, home, note) => (note === home ? '' : note.slice(site.folder.length + 1).replace(SITE_MD, '').split('/').map(siteSeg).join('/'));
+// Las direcciones de todas las páginas, de nuevo: cambió la portada, o se quitaron páginas. Dos notas que darían la
+// misma dirección se distinguen con un número.
+function siteReroute(site) {
+  const conf = siteConfOf(site); const home = siteHome(site, conf); const used = new Set();
+  const rows = q('SELECT note, route FROM site_pages WHERE site = ? ORDER BY note').all(site.id);
+  const next = rows.map((r) => { const base = siteRouteOf(site, home, r.note); let route = base; let k = 2; while (used.has(route)) route = (base || 'index') + '-' + k++; used.add(route); return { note: r.note, route, was: r.route }; });
+  if (!next.some((r) => r.route !== r.was)) return;
+  q("UPDATE site_pages SET route = '~' || note WHERE site = ?").run(site.id);
+  for (const r of next) q('UPDATE site_pages SET route = ? WHERE site = ? AND note = ?').run(r.route, site.id, r.note);
+}
+const siteTouch = (site) => { site.updated = now(); q('UPDATE sites SET updated = ? WHERE id = ?').run(site.updated, site.id); };
+// Baja todo lo servido de un sitio. La configuración queda.
+function siteTakeDown(site) {
+  q('DELETE FROM site_pages WHERE site = ?').run(site.id);
+  q('UPDATE sites SET live = 0, updated = ? WHERE id = ?').run(now(), site.id); site.live = 0;
+}
+// El plan de quien tiene las notas. Al bajar a gratis empieza a correr el margen; al volver al plan pago se
+// olvida. Vencido el margen, el sitio se despublica y queda su configuración.
+function siteLapse(site, owner) {
+  const paid = !!owner && owner.plan === 'pro';
+  if (paid && site.lapsed) { q('UPDATE sites SET lapsed = 0 WHERE id = ?').run(site.id); site.lapsed = 0; }
+  if (!paid && !site.lapsed) { site.lapsed = now(); q('UPDATE sites SET lapsed = ? WHERE id = ?').run(site.lapsed, site.id); }
+  const has = () => site.live || q('SELECT 1 FROM site_pages WHERE site = ? LIMIT 1').get(site.id);
+  if (!paid && site.lapsed && now() - site.lapsed >= PAGES_GRACE_MS && has()) siteTakeDown(site);
+  // La carpeta pasó a tener contraseña: lo que estaba publicado de ella se borra, como sus enlaces públicos.
+  else if (siteVaulted(site.owner, site.folder) && has()) siteTakeDown(site);
+  return site;
+}
+function sitesSweep() { for (const s of q('SELECT * FROM sites').all()) { try { siteLapse(s, userById(s.owner)); } catch (e) { console.error('sitios: no se pudo revisar el plan · ' + String(e && e.message || e).slice(0, 200)); } } }
+if (PAGES) setInterval(sitesSweep, Math.min(600000, Math.max(1000, PAGES_GRACE_MS / 4 || 600000))).unref();
+
+// Lo que cambió desde la última publicación: notas con otra revisión, notas nuevas en la carpeta y páginas cuya
+// nota ya no está, salió de la carpeta o pasó a publish: false. De cada una va la ruta, nunca el texto.
+function sitePending(site) {
+  const notes = siteFolderNotes(site); const at = new Map(notes.map((x) => [x.path, x.rev]));
+  const pages = new Map(q('SELECT note, rev FROM site_pages WHERE site = ?').all(site.id).map((x) => [x.note, x.rev]));
+  const textOf = (p) => { const r = q('SELECT text, e FROM notes WHERE user = ? AND path = ?').get(site.owner, p); return r ? unseal(r.text, r.e, 'notes.text') : ''; };
+  const changed = []; const added = []; const removed = [];
+  for (const x of notes) {
+    if (pages.has(x.path)) { if (pages.get(x.path) !== x.rev) { if (siteExcluded(textOf(x.path))) removed.push(x.path); else changed.push(x.path); } }
+    else if (!siteExcluded(textOf(x.path))) added.push(x.path);
+  }
+  for (const p of pages.keys()) if (!at.has(p)) removed.push(p);
+  return { changed, added, removed };
+}
+// Un sitio como lo ve quien lo maneja. full suma lo que falta publicar.
+function siteView(site, user, full) {
+  const c = siteConfOf(site); const team = site.owner !== user.id;
+  const n = q('SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS size FROM site_pages WHERE site = ?').get(site.id);
+  const out = { id: site.id, o: team ? site.owner : 0, team, slug: site.slug, folder: site.folder, url: PAGES.url + '/' + site.slug + '/', preview: PAGES.url + '/~' + site.pkey + '/',
+    title: c.title, descr: c.descr, home: c.home, lang: c.lang, accent: c.accent, font: c.font, logo: c.logo, author: c.author, noindex: !!c.noindex, auto: !!c.auto,
+    live: !!site.live, suspended: !!site.suspended, reason: site.suspended ? site.reason : '', lapsed: site.lapsed || 0, ends: site.lapsed ? site.lapsed + PAGES_GRACE_MS : 0,
+    published: site.published || 0, pages: n.n, size: n.size, can: !team || (teamAllows(user.team, user, 'publish') && teamAllows(user.team, user, 'write')) };
+  if (full) out.pending = sitePending(site);
+  return out;
+}
+// Los sitios que alcanza una cuenta: los suyos y los del espacio de su equipo.
+function sitesOf(user) {
+  const ids = [user.id].concat(user.team ? [user.team.space] : []);
+  const rows = q('SELECT * FROM sites WHERE owner IN (' + ids.map(() => '?').join(',') + ') ORDER BY id').all(...ids);
+  return rows.map((s) => siteLapse(s, s.owner === user.id ? user : userById(s.owner)));
+}
+// Va en GET /account: si el servidor publica sitios, cuántos entran y los que hay. La app lee de acá si el sitio
+// está suspendido o por despublicarse, sin pedir nada más.
+function pagesView(user) {
+  if (!PAGES) return { enabled: false };
+  const t = user.team && user.team.status === 'active' ? user.team : null;
+  return { enabled: true, url: PAGES.url, max: PAGES_PER_ACCOUNT, paid: user.plan === 'pro', grace_days: Math.round(PAGES_GRACE_MS / DAY), max_pages: SITE_MAX_PAGES,
+    team: !!t && !teamVault(t) && teamAllows(t, user, 'publish') && teamAllows(t, user, 'write'), sites: sitesOf(user).map((s) => siteView(s, user, false)) };
+}
+// De quién son las notas que se publican: de la cuenta, o del espacio de su equipo si el papel y la política
+// "publish" lo permiten. Quien administra el equipo puede siempre; quien solo lee, nunca.
+function siteOwner(user, o) {
+  if (o == null || o === '' || o === 0 || +o === user.id) return { owner: user, team: null };
+  const t = user.team;
+  if (!t || +o !== t.space) throw new Fail(403, 'no_access');
+  if (!teamAllows(t, user, 'write')) throw new Fail(403, 'read_only');
+  if (!teamAllows(t, user, 'publish')) throw new Fail(403, 'team_policy', 'The administrator of the team has not allowed members to publish sites');
+  if (teamVault(t)) throw new Fail(409, 'vault', 'A team space protected with a password cannot be published');
+  return { owner: userById(t.space), team: t };
+}
+function siteFor(user, id, need) {
+  const site = q('SELECT * FROM sites WHERE id = ?').get(+id);
+  if (!site) throw new Fail(404, 'not_found');
+  if (site.owner === user.id) return { site: siteLapse(site, user), owner: user, team: null };
+  const t = user.team;
+  if (!t || site.owner !== t.space) throw new Fail(404, 'not_found');
+  if (need !== 'see') { if (!teamAllows(t, user, 'write')) throw new Fail(403, 'read_only'); if (!teamAllows(t, user, 'publish')) throw new Fail(403, 'team_policy', 'The administrator of the team has not allowed members to publish sites'); }
+  const owner = userById(t.space);
+  return { site: siteLapse(site, owner), owner, team: t };
+}
+const siteNeedsPlan = (owner) => { if (!owner || owner.plan !== 'pro') throw new Fail(402, 'site_needs_plan', 'Publishing a site is part of the paid plan'); };
+const siteNotHeld = (site) => { if (site.suspended) throw new Fail(403, 'site_suspended', 'This site was suspended'); };
+function siteSlug(v, mine) {
+  const slug = String(v == null ? '' : v).trim().toLowerCase();
+  if (!SITE_SLUG.test(slug)) throw new Fail(400, 'bad_slug', 'The address takes lowercase letters, numbers and hyphens, 3 to 40');
+  if (SITE_RESERVED.has(slug)) throw new Fail(409, 'slug_reserved');
+  const row = q('SELECT id FROM sites WHERE slug = ?').get(slug);
+  if (row && row.id !== mine) throw new Fail(409, 'slug_taken');
+  return slug;
+}
+// La configuración: cada dato contra su lista o su largo. Nada de acá llega a la página como CSS ni como HTML.
+function siteConfClean(b, prev, site, owner) {
+  const c = Object.assign({}, prev);
+  if (b.title !== undefined) { c.title = siteLine(b.title, 80); if (!c.title) throw new Fail(400, 'bad_title'); }
+  if (b.descr !== undefined) c.descr = siteLine(b.descr, 200);
+  if (b.logo !== undefined) c.logo = siteLine(b.logo, 30);
+  if (b.author !== undefined) { c.author = siteLine(b.author, 60); if (c.author.includes('@')) throw new Fail(400, 'bad_author', 'The author name cannot be an email address'); }
+  if (b.lang !== undefined) { if (b.lang !== 'en' && b.lang !== 'es') throw new Fail(400, 'bad_lang'); c.lang = b.lang; }
+  if (b.accent !== undefined) { const v = String(b.accent || '').toLowerCase(); if (!Object.prototype.hasOwnProperty.call(SITE_ACCENTS, v)) throw new Fail(400, 'bad_theme'); c.accent = v; }
+  if (b.font !== undefined) { const v = String(b.font || ''); if (!Object.prototype.hasOwnProperty.call(SITE_FONTS, v)) throw new Fail(400, 'bad_theme'); c.font = v; }
+  if (b.noindex !== undefined) { if (typeof b.noindex !== 'boolean') throw new Fail(400, 'bad_value'); c.noindex = b.noindex; }
+  if (b.auto !== undefined) { if (typeof b.auto !== 'boolean') throw new Fail(400, 'bad_value'); c.auto = b.auto; }
+  if (b.home !== undefined) {
+    const h = String(b.home || '').trim() ? cleanPath(b.home) : '';
+    if (h && (!inside(h, site.folder) || !siteNoteOk(h) || !q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(owner.id, h))) throw new Fail(400, 'bad_home');
+    c.home = h;
+  }
+  if (!c.title) throw new Fail(400, 'bad_title');
+  return c;
+}
+function siteCreate(user, b) {
+  const { owner, team } = siteOwner(user, b.o);
+  siteNeedsPlan(owner);
+  if (q('SELECT COUNT(*) AS n FROM sites WHERE owner = ?').get(owner.id).n >= PAGES_PER_ACCOUNT) throw new Fail(409, 'site_limit', 'This plan includes ' + PAGES_PER_ACCOUNT + ' published site' + (PAGES_PER_ACCOUNT === 1 ? '' : 's'));
+  const folder = cleanPath(String(b.folder == null ? '' : b.folder).replace(/\/+$/, ''));
+  if (siteVaulted(owner.id, folder)) throw new Fail(409, 'vault', 'A folder protected with a password cannot be published');
+  const site = { id: 0, owner: owner.id, folder, slug: '', conf: '{}' };
+  if (!siteFolderNotes(site).length) throw new Fail(404, 'no_notes', 'That folder has no notes to publish');
+  const slug = siteSlug(b.slug, 0);
+  const conf = siteConfClean(b, siteConfOf(site), site, owner);
+  limit('site:new:' + user.id, SITE_NEW_DAY, DAY, 'too_many'); mark('site:new:' + user.id);
+  const id = Number(q('INSERT INTO sites (owner, made_by, slug, folder, conf, live, pkey, created, updated) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)').run(owner.id, user.id, slug, folder, JSON.stringify(conf), random(18), now(), now()).lastInsertRowid);
+  if (team) teamLog(team, user, 'site', folder, slug);
+  return siteView(q('SELECT * FROM sites WHERE id = ?').get(id), user, true);
+}
+// Sube páginas ya dibujadas. De cada una se comprueba la nota: que exista, que esté en la carpeta del sitio, que no
+// esté cifrada ni excluida, y que la revisión que dice quien publica no sea de más adelante que la que hay.
+function sitePut(user, x, b) {
+  const { site, owner } = x;
+  siteNeedsPlan(owner); siteNotHeld(site);
+  if (siteVaulted(owner.id, site.folder)) throw new Fail(409, 'vault', 'A folder protected with a password cannot be published');
+  const list = Array.isArray(b.pages) ? b.pages : null;
+  if (!list || !list.length || list.length > 20) throw new Fail(400, 'bad_pages');
+  const conf = siteConfOf(site); const home = siteHome(site, conf); const done = [];
+  for (const p of list) {
+    if (!p || typeof p !== 'object') throw new Fail(400, 'bad_pages');
+    limit('site:put:' + site.id, SITE_PUTS_HOUR, HOUR, 'too_many'); mark('site:put:' + site.id);
+    const note = cleanPath(p.note);
+    if (!inside(note, site.folder) || !siteNoteOk(note)) throw new Fail(400, 'bad_note', 'That note is not inside the folder of the site');
+    const row = q('SELECT text, e, v, rev FROM notes WHERE user = ? AND path = ?').get(owner.id, note);
+    if (!row) throw new Fail(404, 'not_found');
+    if (row.v || vaultOf(owner.id, note)) throw new Fail(409, 'vault', 'A note protected with a password cannot be published');
+    if (siteExcluded(unseal(row.text, row.e, 'notes.text'))) { q('DELETE FROM site_pages WHERE site = ? AND note = ?').run(site.id, note); done.push({ note, excluded: true }); continue; }
+    const rev = cleanRev(p.rev);
+    if (rev == null || rev > row.rev) throw new Fail(400, 'bad_rev');
+    if (typeof p.html !== 'string') throw new Fail(400, 'bad_pages');
+    if (p.html.length > SITE_PAGE_MAX) throw new Fail(413, 'too_large', 'That page is too big to publish');
+    const clean = siteClean(p.html);
+    const had = q('SELECT size FROM site_pages WHERE site = ? AND note = ?').get(site.id, note);
+    const tot = q('SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS size FROM site_pages WHERE site = ?').get(site.id);
+    if (!had && tot.n >= SITE_MAX_PAGES) throw new Fail(409, 'site_full', 'A site holds up to ' + SITE_MAX_PAGES + ' pages');
+    if (tot.size - (had ? had.size : 0) + clean.html.length > SITE_TOTAL_MAX) throw new Fail(413, 'site_too_big', 'The site is over its size limit');
+    const h1 = clean.toc.find((h) => h.l === 1);
+    const title = siteLine(p.title, 120) || (h1 && h1.t.slice(0, 120)) || note.slice(note.lastIndexOf('/') + 1).replace(SITE_MD, '');
+    const descr = siteLine(p.descr, 300) || clean.first.slice(0, 200);
+    const ord = typeof p.order === 'number' && Number.isFinite(p.order) ? p.order : null;
+    let route = siteRouteOf(site, home, note); const base = route; let k = 2;
+    while (q('SELECT 1 FROM site_pages WHERE site = ? AND route = ? AND note != ?').get(site.id, route, note)) route = (base || 'index') + '-' + k++;
+    q('INSERT INTO site_pages (site, note, route, title, descr, html, text, toc, rev, ord, size, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (site, note) DO UPDATE SET route = excluded.route, title = excluded.title, descr = excluded.descr, html = excluded.html, text = excluded.text, toc = excluded.toc, rev = excluded.rev, ord = excluded.ord, size = excluded.size, at = excluded.at')
+      .run(site.id, note, route, title, descr, clean.html, clean.text.slice(0, SITE_TEXT_MAX), JSON.stringify(clean.toc), rev, ord, clean.html.length, now());
+    done.push({ note, route, images_skipped: clean.skipped });
+  }
+  siteTouch(site);
+  return { ok: true, pages: done };
+}
+// Publicar: se quitan las páginas cuya nota ya no corresponde, se reparten las direcciones y el sitio queda a la vista.
+function sitePublish(user, x) {
+  const { site, owner, team } = x;
+  siteNeedsPlan(owner); siteNotHeld(site);
+  if (siteVaulted(owner.id, site.folder)) throw new Fail(409, 'vault', 'A folder protected with a password cannot be published');
+  limit('site:pub:' + site.id, SITE_PUBLISH_HOUR, HOUR, 'too_many'); mark('site:pub:' + site.id);
+  const keep = new Set(siteFolderNotes(site).map((n) => n.path));
+  for (const p of q('SELECT note FROM site_pages WHERE site = ?').all(site.id)) {
+    const row = keep.has(p.note) ? q('SELECT text, e FROM notes WHERE user = ? AND path = ?').get(owner.id, p.note) : null;
+    if (!row || siteExcluded(unseal(row.text, row.e, 'notes.text'))) q('DELETE FROM site_pages WHERE site = ? AND note = ?').run(site.id, p.note);
+  }
+  if (!q('SELECT 1 FROM site_pages WHERE site = ? LIMIT 1').get(site.id)) throw new Fail(409, 'site_empty', 'There are no pages to publish yet');
+  siteReroute(site);
+  const first = !site.live;
+  q('UPDATE sites SET live = 1, published = ?, updated = ? WHERE id = ?').run(now(), now(), site.id);
+  if (team) teamLog(team, user, 'publish', site.folder, site.slug + (first ? '' : ' (update)'));
+  return siteView(q('SELECT * FROM sites WHERE id = ?').get(site.id), user, true);
+}
+function sitesRoute(req, user, p, m, url) {
+  if (!PAGES) throw new Fail(404, 'no_route');
+  const body = () => readBody(req);
+  if (p === '/sites' && m === 'GET') return { enabled: true, url: PAGES.url, max: PAGES_PER_ACCOUNT, max_pages: SITE_MAX_PAGES, grace_days: Math.round(PAGES_GRACE_MS / DAY), sites: sitesOf(user).map((s) => siteView(s, user, true)) };
+  if (p === '/sites/slug' && m === 'GET') { limit('site:slug:' + user.id, 300, HOUR, 'too_many'); mark('site:slug:' + user.id); try { return { ok: true, slug: siteSlug(url.searchParams.get('slug'), +(url.searchParams.get('id') || 0)) }; } catch (e) { if (e instanceof Fail) return { ok: false, why: e.code }; throw e; } }
+  if (p === '/sites' && m === 'POST') return body().then((b) => siteCreate(user, b));
+  const sm = /^\/sites\/(\d{1,12})(?:\/(pages|publish|unpublish))?$/.exec(p);
+  if (!sm) throw new Fail(404, 'no_route');
+  if (!sm[2] && m === 'GET') return siteView(siteFor(user, sm[1], 'see').site, user, true);
+  const x = siteFor(user, sm[1], 'manage');
+  if (!sm[2] && m === 'PUT') return body().then((b) => {
+    const prev = siteConfOf(x.site); const conf = siteConfClean(b, prev, x.site, x.owner);
+    let slug = x.site.slug;
+    if (b.slug !== undefined && String(b.slug).trim().toLowerCase() !== slug) { siteNotHeld(x.site); slug = siteSlug(b.slug, x.site.id); }
+    q('UPDATE sites SET conf = ?, slug = ?, updated = ? WHERE id = ?').run(JSON.stringify(conf), slug, now(), x.site.id);
+    const site = q('SELECT * FROM sites WHERE id = ?').get(x.site.id);
+    if (conf.home !== prev.home) siteReroute(site);
+    return siteView(site, user, true);
+  });
+  if (!sm[2] && m === 'DELETE') {
+    // Un sitio suspendido no se elimina desde la app: volver a crearlo con la misma dirección sería saltarse la suspensión.
+    siteNotHeld(x.site);
+    q('DELETE FROM site_pages WHERE site = ?').run(x.site.id); q('DELETE FROM sites WHERE id = ?').run(x.site.id);
+    if (x.team) teamLog(x.team, user, 'unpublish', x.site.folder, x.site.slug);
+    return { ok: true };
+  }
+  if (sm[2] === 'pages' && m === 'PUT') return body().then((b) => sitePut(user, x, b));
+  if (sm[2] === 'publish' && m === 'POST') return sitePublish(user, x);
+  if (sm[2] === 'unpublish' && m === 'POST') {
+    const was = x.site.live; siteTakeDown(x.site);
+    if (x.team && was) teamLog(x.team, user, 'unpublish', x.site.folder, x.site.slug);
+    return siteView(q('SELECT * FROM sites WHERE id = ?').get(x.site.id), user, true);
+  }
+  throw new Fail(404, 'no_route');
+}
+// Administración, con ADMIN_KEY: ver los sitios, suspender uno (deja de servirse en el acto, con 451), volver a
+// ponerlo y eliminarlo. Acá sí se ve el correo de la cuenta: es para quien opera el servidor.
+function sitesAdmin(m, url, b) {
+  if (!PAGES) throw new Fail(404, 'no_route');
+  const row = (s) => { const u = q('SELECT email FROM users WHERE id = ?').get(s.owner); const t = q('SELECT t.name, u.email FROM teams t JOIN users u ON u.id = t.owner WHERE t.space = ?').get(s.owner); const n = q('SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS size FROM site_pages WHERE site = ?').get(s.id); const c = siteConfOf(s);
+    return { id: s.id, slug: s.slug, url: PAGES.url + '/' + s.slug + '/', account: t ? t.email : u ? u.email : '', team: t ? (t.name || 'Team') : '', folder: s.folder, title: c.title, live: !!s.live, suspended: !!s.suspended, reason: s.reason, lapsed: s.lapsed, pages: n.n, size: n.size, reports: s.reports, reported: s.reported, created: s.created, published: s.published }; };
+  if (m === 'GET') {
+    const st = url.searchParams.get('status') || ''; const find = String(url.searchParams.get('q') || '').toLowerCase().slice(0, 80);
+    let rows = q('SELECT * FROM sites ORDER BY reported DESC, id DESC LIMIT 2000').all();
+    if (st === 'live') rows = rows.filter((s) => s.live && !s.suspended); else if (st === 'suspended') rows = rows.filter((s) => s.suspended); else if (st === 'reported') rows = rows.filter((s) => s.reports > 0);
+    const out = rows.map(row).filter((r) => !find || r.slug.includes(find) || r.account.toLowerCase().includes(find) || r.title.toLowerCase().includes(find));
+    return { sites: out.slice(0, 500), total: out.length };
+  }
+  if (m !== 'POST') throw new Fail(405, 'method_not_allowed');
+  const s = b.id != null ? q('SELECT * FROM sites WHERE id = ?').get(+b.id) : q('SELECT * FROM sites WHERE slug = ?').get(String(b.slug || '').toLowerCase());
+  if (!s) throw new Fail(404, 'not_found');
+  if (b.action === 'suspend') q('UPDATE sites SET suspended = ?, reason = ?, updated = ? WHERE id = ?').run(now(), siteLine(b.reason, 300), now(), s.id);
+  else if (b.action === 'restore') q("UPDATE sites SET suspended = 0, reason = '', updated = ? WHERE id = ?").run(now(), s.id);
+  else if (b.action === 'delete') { q('DELETE FROM site_pages WHERE site = ?').run(s.id); q('DELETE FROM sites WHERE id = ?').run(s.id); return { ok: true, deleted: s.slug }; }
+  else throw new Fail(400, 'bad_action');
+  console.log('sitios: ' + b.action + ' · ' + s.slug);
+  return { ok: true, site: row(q('SELECT * FROM sites WHERE id = ?').get(s.id)) };
+}
+
+// ---------- Lo que se sirve ----------
+const SITE_STR = {
+  en: { search: 'Search', menu: 'Menu', pages: 'Pages', toc: 'On this page', prev: 'Previous', next: 'Next', made: 'Published with SharpMD', report: 'Report', skip: 'Skip to content', theme: 'Light or dark', none: 'No results',
+    by: 'By {a}', updated: 'Updated {a}', preview: 'Preview. Only people with this link see it.', gone_t: 'Not published', gone: 'This site is no longer published.', missing_t: 'Page not found', missing: 'This page does not exist.',
+    back: 'Go to the start of the site', held_t: 'Not available', held: 'This site is not available.', r_title: 'Report this site', r_lead: 'Tell us if this site has something that should not be here. We get the address of the page and what you write.',
+    r_why: 'Reason', r_mail: 'Your email (optional)', r_send: 'Send report', r_ok: 'Sent. Thank you.', r_fail: 'It could not be sent. Try again later.', r_many: 'Too many reports from here for now. Try again later.',
+    r_short: 'Write a few words about the reason.', r_js: 'This form needs JavaScript. You can also write from sharpmd.app/support.html.', r_back: 'Back to the site', root_t: 'Sites published with SharpMD', root: 'This address hosts sites that people publish from their notes with SharpMD.', what: 'What is SharpMD' },
+  es: { search: 'Buscar', menu: 'Menú', pages: 'Páginas', toc: 'En esta página', prev: 'Anterior', next: 'Siguiente', made: 'Publicado con SharpMD', report: 'Denunciar', skip: 'Ir al contenido', theme: 'Claro u oscuro', none: 'Sin resultados',
+    by: 'Por {a}', updated: 'Actualizado {a}', preview: 'Vista previa. Solo la ve quien tiene este enlace.', gone_t: 'Sin publicar', gone: 'Este sitio ya no está publicado.', missing_t: 'No existe esa página', missing: 'Esta página no existe.',
+    back: 'Ir al inicio del sitio', held_t: 'No disponible', held: 'Este sitio no está disponible.', r_title: 'Denunciar este sitio', r_lead: 'Avisanos si este sitio tiene algo que no debería estar acá. Nos llega la dirección de la página y lo que escribas.',
+    r_why: 'Motivo', r_mail: 'Tu correo (opcional)', r_send: 'Enviar denuncia', r_ok: 'Enviado. Gracias.', r_fail: 'No se pudo enviar. Probá más tarde.', r_many: 'Llegaste al tope de denuncias por ahora. Probá más tarde.',
+    r_short: 'Escribí en pocas palabras el motivo.', r_js: 'Este formulario necesita JavaScript. También podés escribir desde sharpmd.app/support.html.', r_back: 'Volver al sitio', root_t: 'Sitios publicados con SharpMD', root: 'En esta dirección están los sitios que la gente publica desde sus notas con SharpMD.', what: 'Qué es SharpMD' },
+};
+const SITE_DARK = '--bg:#121418;--panel:#1a1d23;--ink:#e6e8ec;--soft:#a0a7b4;--faint:#7b8290;--line:#2a2e37;--ac0:#bef264;--mix:#fff;--code:#1d2027;--card:#f6f5f1;--k:#f0a8d0;--s:#b5e48c;--n:#f6c177;--t:#8cc8ff;color-scheme:dark';
+const SITE_CSS = String.raw`
+:root{--bg:#fbfaf7;--panel:#f4f2ec;--ink:#1d2026;--soft:#5c6370;--faint:#8a909c;--line:#dedbd2;--ac0:#4d7c0f;--mix:#000;--code:#f1efe9;--card:transparent;--k:#a8327e;--s:#3f6b0c;--n:#a35a00;--t:#1f5fb0;--ac:var(--ac0);--link:color-mix(in srgb,var(--ac) 76%,var(--mix));--font:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;--mono:ui-monospace,"Cascadia Mono",Consolas,Menlo,monospace;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){DARK}}
+:root[data-theme=dark]{DARK}
+:root[data-accent=blue]{--ac:#3b82f6}:root[data-accent=indigo]{--ac:#6c7ee1}:root[data-accent=violet]{--ac:#a855f7}:root[data-accent=pink]{--ac:#ec4899}:root[data-accent=red]{--ac:#ef4444}:root[data-accent=orange]{--ac:#f97316}:root[data-accent=amber]{--ac:#eab308}:root[data-accent=teal]{--ac:#14b8a6}
+:root[data-font=arial]{--font:Arial,Helvetica,sans-serif}:root[data-font=calibri]{--font:Calibri,Candara,"Segoe UI",sans-serif}:root[data-font=verdana]{--font:Verdana,Geneva,sans-serif}:root[data-font=trebuchet]{--font:"Trebuchet MS","Lucida Grande",sans-serif}:root[data-font=georgia]{--font:Georgia,"Times New Roman",serif}:root[data-font=cambria]{--font:Cambria,Georgia,serif}:root[data-font=palatino]{--font:"Palatino Linotype",Palatino,"Book Antiqua",serif}:root[data-font=times]{--font:"Times New Roman",Times,serif}:root[data-font=consolas]{--font:Consolas,"Cascadia Mono",Menlo,monospace}:root[data-font=courier]{--font:"Courier New",Courier,monospace}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;scroll-padding-top:76px}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.7 var(--font);overflow-wrap:break-word}
+a{color:var(--link);text-underline-offset:.18em;text-decoration-thickness:1px}
+a:not([href]){color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--ac);outline-offset:2px;border-radius:4px}
+[hidden]{display:none!important}
+.sp-skip{position:absolute;left:-999px;top:8px;padding:8px 14px;background:var(--ink);color:var(--bg);border-radius:8px;z-index:30}
+.sp-skip:focus{left:8px}
+.sp-top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;height:58px;padding:0 20px;background:color-mix(in srgb,var(--bg) 88%,transparent);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.sp-brand{display:flex;align-items:baseline;gap:8px;min-width:0;margin-right:auto;font-weight:700;font-size:17px;letter-spacing:-.01em;color:var(--ink);text-decoration:none}
+.sp-brand span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp-mark{color:var(--ac);font-family:var(--mono);font-weight:700}
+.sp-search{position:relative;flex:0 1 260px;min-width:0}
+.sp-search input{width:100%;height:36px;padding:0 12px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--ink);font:15px var(--font)}
+.sp-search input::placeholder{color:var(--faint)}
+.sp-hits{position:absolute;right:0;top:44px;width:min(440px,calc(100vw - 24px));max-height:70vh;overflow:auto;padding:6px;border:1px solid var(--line);border-radius:12px;background:var(--bg);box-shadow:0 14px 40px rgba(0,0,0,.18)}
+.sp-hit{display:block;padding:9px 11px;border-radius:8px;color:var(--ink);text-decoration:none}
+.sp-hit:hover,.sp-hit:focus{background:var(--panel)}
+.sp-hit b{display:block;font-size:15px}
+.sp-hit span{display:block;font-size:13.5px;line-height:1.45;color:var(--soft)}
+.sp-empty{margin:0;padding:10px 12px;font-size:14px;color:var(--soft)}
+.sp-theme{flex:none;width:36px;height:36px;padding:0;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--ink);cursor:pointer}
+.sp-theme::before{content:"";display:block;width:16px;height:16px;margin:auto;border-radius:50%;border:2px solid currentColor;background:linear-gradient(90deg,currentColor 50%,transparent 50%)}
+.sp-navt{position:absolute;opacity:0;width:1px;height:1px}
+.sp-navb{display:none;flex:none;height:36px;padding:0 12px;border:1px solid var(--line);border-radius:9px;font-size:14.5px;line-height:34px;cursor:pointer;-webkit-user-select:none;user-select:none}
+.sp-navt:focus-visible+.sp-top .sp-navb{outline:2px solid var(--ac);outline-offset:2px}
+.sp-shell{display:grid;grid-template-columns:270px minmax(0,1fr) 230px;max-width:1340px;margin:0 auto}
+.sp-nav{position:sticky;top:58px;align-self:start;height:calc(100vh - 58px);overflow:auto;padding:22px 14px 40px 20px;border-right:1px solid var(--line);font-size:15px;line-height:1.4}
+.sp-nav ul{list-style:none;margin:0;padding:0}
+.sp-nav ul ul{margin-left:10px;padding-left:10px;border-left:1px solid var(--line)}
+.sp-nav a{display:block;padding:6px 10px;border-radius:7px;color:var(--soft);text-decoration:none}
+.sp-nav a:hover{color:var(--ink);background:var(--panel)}
+.sp-nav a[aria-current]{color:var(--ink);font-weight:600;background:color-mix(in srgb,var(--ac) 15%,transparent)}
+.sp-nav summary{padding:6px 10px;border-radius:7px;font-weight:600;color:var(--ink);cursor:pointer}
+.sp-nav details{margin:4px 0}
+.sp-main{min-width:0;padding:38px 44px 70px}
+.sp-body{max-width:740px;margin:0 auto}
+.sp-toc{position:sticky;top:58px;align-self:start;max-height:calc(100vh - 58px);overflow:auto;padding:38px 18px 40px 6px;font-size:14px;line-height:1.4}
+.sp-toc h2{margin:0 0 10px;font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:600}
+.sp-toc ul{list-style:none;margin:0;padding:0}
+.sp-toc a{display:block;padding:4px 0;color:var(--soft);text-decoration:none}
+.sp-toc a:hover{color:var(--ink)}
+.sp-toc .sp-l3{padding-left:14px}
+.sp-preview{margin:0;padding:8px 20px;background:var(--ac);color:#fff;font-size:14px;text-align:center}
+.sp-body h1,.sp-body h2,.sp-body h3,.sp-body h4,.sp-body h5,.sp-body h6{line-height:1.25;margin:1.7em 0 .55em;letter-spacing:-.012em;scroll-margin-top:76px}
+.sp-body h1{font-size:2.05em;margin-top:0;letter-spacing:-.022em}
+.sp-body h2{font-size:1.45em;padding-bottom:.3em;border-bottom:1px solid var(--line)}
+.sp-body h3{font-size:1.2em}.sp-body h4{font-size:1.05em}
+.sp-body p,.sp-body ul,.sp-body ol,.sp-body dl,.sp-body blockquote,.sp-body pre,.sp-body figure{margin:0 0 1.05em}
+.sp-body ul,.sp-body ol{padding-left:1.4em}
+.sp-body li{margin:.2em 0}
+.sp-body li>p{margin:0 0 .4em}
+.sp-body img{max-width:100%;height:auto;border-radius:8px}
+.sp-body hr{border:0;border-top:1px solid var(--line);margin:2.2em 0}
+.sp-body blockquote{padding:.1em 1.1em;border-left:3px solid var(--line);color:var(--soft)}
+.sp-body code,.sp-body kbd,.sp-body samp{font:.88em/1.5 var(--mono)}
+.sp-body :not(pre)>code{padding:.14em .4em;border-radius:5px;background:var(--code)}
+.sp-body kbd{padding:.1em .45em;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px}
+.sp-body pre{padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:auto;-webkit-overflow-scrolling:touch;tab-size:2}
+.sp-body pre code{font-size:14.5px}
+.sp-body mark{padding:.05em .25em;border-radius:4px;background:color-mix(in srgb,#facc15 45%,transparent);color:inherit}
+.sp-body table{border-collapse:collapse;font-size:.94em}
+.sp-body th,.sp-body td{padding:7px 12px;border:1px solid var(--line);text-align:left;vertical-align:top}
+.sp-body th{background:var(--panel);font-weight:600}
+.sp-body .lmd-table{overflow-x:auto;margin:0 0 1.05em;-webkit-overflow-scrolling:touch}
+.sp-al-left{text-align:left!important}.sp-al-center{text-align:center!important}.sp-al-right{text-align:right!important}
+.sp-body .lmd-diagram{margin:0 0 1.2em;padding:14px;text-align:center;overflow-x:auto;border-radius:12px;background:var(--card)}
+.sp-body .lmd-diagram img{border-radius:0}
+.sp-body math{font-size:1.1em}
+.sp-body math[display=block]{display:block;margin:0 0 1.05em;overflow-x:auto;overflow-y:hidden;padding:4px 0}
+.sp-body .lmd-math-block{overflow-x:auto}
+.sp-body .lmd-box,.sp-body .lmd-alert{margin:0 0 1.05em;padding:.7em 1.1em;border:0;border-left:3px solid var(--faint);border-radius:0 10px 10px 0;background:var(--panel);color:var(--ink)}
+.sp-body .lmd-box>:last-child,.sp-body .lmd-alert>:last-child{margin-bottom:0}
+.sp-body .lmd-box-title,.sp-body .lmd-alert-title{margin:0 0 .3em;font-weight:700}
+.sp-body .lmd-box summary{font-weight:700;cursor:pointer}
+.sp-body .lmd-box-tip,.sp-body .lmd-alert-tip{border-left-color:#16a34a}.sp-body .lmd-box-info,.sp-body .lmd-alert-note,.sp-body .lmd-box-note{border-left-color:#3b82f6}.sp-body .lmd-alert-important{border-left-color:#a855f7}.sp-body .lmd-box-warning,.sp-body .lmd-alert-warning{border-left-color:#eab308}.sp-body .lmd-box-danger,.sp-body .lmd-alert-caution{border-left-color:#ef4444}
+.sp-body .lmd-task-list{list-style:none;padding-left:.2em}
+.sp-check{display:inline-block;width:1em;height:1em;margin-right:.5em;vertical-align:-.14em;border:1.5px solid var(--faint);border-radius:4px}
+.sp-check.sp-on{border-color:var(--ac);background:var(--ac);box-shadow:inset 0 0 0 2.5px var(--bg)}
+.sp-noimg{padding:.1em .5em;border:1px dashed var(--line);border-radius:6px;font-size:.9em;color:var(--soft)}
+.sp-body .lmd-toc{display:block;margin:0 0 1.05em;padding:.7em 1.1em;border:1px solid var(--line);border-radius:10px}
+.sp-body .lmd-toc a{display:block;padding:2px 0}
+.sp-body .lmd-toc-l3{padding-left:1em}.sp-body .lmd-toc-l4,.sp-body .lmd-toc-l5,.sp-body .lmd-toc-l6{padding-left:2em}
+.sp-body .lmd-front{display:none}
+.sp-body .lmd-kanban{white-space:pre-wrap}
+.sp-body .footnotes{margin-top:2.4em;padding-top:.6em;border-top:1px solid var(--line);font-size:.92em;color:var(--soft)}
+.hljs-comment,.hljs-quote{color:var(--faint);font-style:italic}
+.hljs-keyword,.hljs-selector-tag,.hljs-literal,.hljs-built_in,.hljs-type,.hljs-doctag{color:var(--k)}
+.hljs-string,.hljs-attr,.hljs-regexp,.hljs-addition,.hljs-template-tag{color:var(--s)}
+.hljs-number,.hljs-symbol,.hljs-bullet,.hljs-meta,.hljs-variable,.hljs-template-variable{color:var(--n)}
+.hljs-title,.hljs-section,.hljs-name,.hljs-selector-id,.hljs-selector-class,.hljs-attribute{color:var(--t)}
+.hljs-deletion{color:#ef4444}.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}
+.sp-step{display:flex;gap:14px;max-width:740px;margin:3em auto 0}
+.sp-step a{flex:1 1 0;min-width:0;padding:12px 16px;border:1px solid var(--line);border-radius:12px;color:var(--ink);text-decoration:none}
+.sp-step a:hover{border-color:var(--ac)}
+.sp-step small{display:block;font-size:12.5px;color:var(--faint)}
+.sp-step b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.sp-step .sp-next{text-align:right;margin-left:auto}
+.sp-step .sp-next:only-child{flex:0 1 50%}
+.sp-foot{display:flex;flex-wrap:wrap;gap:6px 18px;max-width:740px;margin:2.6em auto 0;padding-top:16px;border-top:1px solid var(--line);font-size:13.5px;color:var(--faint)}
+.sp-foot a{color:var(--soft)}
+.sp-foot .sp-made{margin-left:auto}
+.sp-note{max-width:560px;margin:14vh auto 0;padding:0 22px;text-align:center}
+.sp-note h1{font-size:1.6em;margin:0 0 .4em;letter-spacing:-.02em}
+.sp-note p{color:var(--soft);margin:0 0 1.2em}
+.sp-report{max-width:560px;margin:8vh auto 0;padding:0 22px}
+.sp-report h1{font-size:1.5em;margin:0 0 .4em;letter-spacing:-.02em}
+.sp-report p{color:var(--soft);margin:0 0 1em}
+.sp-report label{display:block;margin:0 0 12px;font-size:14px;color:var(--soft)}
+.sp-report textarea,.sp-report input{display:block;width:100%;margin-top:5px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);font:16px/1.5 var(--font)}
+.sp-report textarea{min-height:130px;resize:vertical}
+.sp-btn{display:inline-block;height:42px;padding:0 20px;border:0;border-radius:10px;background:var(--ink);color:var(--bg);font:600 15px/42px var(--font);cursor:pointer;text-decoration:none}
+.sp-btn[disabled]{opacity:.5;cursor:default}
+.sp-msg{min-height:1.6em;margin-top:12px;color:var(--ink)}
+@media (max-width:1180px){.sp-shell{grid-template-columns:260px minmax(0,1fr)}.sp-toc{display:none}}
+@media (max-width:860px){
+body{font-size:16.5px}
+.sp-top{padding:0 12px;gap:8px}
+.sp-navb{display:block}
+.sp-search{flex:1 1 120px}
+.sp-shell{display:block}
+.sp-nav{display:none;position:static;height:auto;padding:12px 12px 16px;border-right:0;border-bottom:1px solid var(--line);background:var(--panel)}
+.sp-navt:checked~.sp-shell .sp-nav{display:block}
+.sp-nav a,.sp-nav summary{padding:10px}
+.sp-main{padding:24px 18px 56px}
+.sp-body h1{font-size:1.75em}
+.sp-step{flex-direction:column}.sp-step .sp-next:only-child{flex:1 1 auto}
+.sp-foot .sp-made{margin-left:0}
+}
+@media print{.sp-top,.sp-nav,.sp-toc,.sp-step,.sp-preview,.sp-skip{display:none}.sp-shell{display:block}.sp-main{padding:0}}
+`.split('DARK').join(SITE_DARK).replace(/\r?\n/g, '');
+const SITE_JS = String.raw`(function () {
+  'use strict';
+  var d = document, root = d.documentElement, KEY = 'sp-theme', saved = '';
+  try { saved = localStorage.getItem(KEY) || ''; } catch (e) { saved = ''; }
+  if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+  function norm(t) { return String(t).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+  function make(tag, cls, text) { var n = d.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+  function start() {
+    var tb = d.querySelector('.sp-theme');
+    if (tb) {
+      tb.hidden = false;
+      tb.addEventListener('click', function () {
+        var now = root.getAttribute('data-theme');
+        var dark = now ? now === 'dark' : !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+        var next = dark ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        try { localStorage.setItem(KEY, next); } catch (e) { /* no storage */ }
+      });
+    }
+    var box = d.querySelector('.sp-search');
+    if (box) {
+      box.hidden = false;
+      var input = box.querySelector('input'), hits = box.querySelector('.sp-hits'), docs = null, asked = false;
+      var close = function () { hits.hidden = true; hits.textContent = ''; };
+      var run = function () {
+        var terms = norm(input.value).split(/\s+/).filter(Boolean);
+        hits.textContent = '';
+        if (!terms.length || !docs) { hits.hidden = true; return; }
+        var found = [];
+        docs.forEach(function (doc) {
+          var score = 0, ok = terms.every(function (t) { var a = doc.nt.indexOf(t) !== -1, b = doc.nx.indexOf(t) !== -1; score += a ? 10 : b ? 1 : 0; return a || b; });
+          if (ok) found.push({ doc: doc, score: score });
+        });
+        found.sort(function (a, b) { return b.score - a.score; });
+        found.slice(0, 10).forEach(function (f) {
+          var a = make('a', 'sp-hit'); a.href = box.getAttribute('data-base') + '/' + f.doc.r;
+          a.appendChild(make('b', '', f.doc.t));
+          var at = f.doc.nx.indexOf(terms[0]), from = Math.max(0, at - 50);
+          if (f.doc.x) a.appendChild(make('span', '', (from ? '…' : '') + f.doc.x.slice(from, from + 150)));
+          hits.appendChild(a);
+        });
+        if (!found.length) hits.appendChild(make('p', 'sp-empty', box.getAttribute('data-none')));
+        hits.hidden = false;
+      };
+      var load = function () {
+        if (asked) return; asked = true;
+        fetch(box.getAttribute('data-index'), { credentials: 'omit' }).then(function (r) { return r.ok ? r.json() : []; }).then(function (list) {
+          docs = (Array.isArray(list) ? list : []).map(function (x) { return { r: String(x.r || ''), t: String(x.t || ''), x: String(x.x || ''), nt: norm(x.t || ''), nx: norm(x.x || '') }; });
+          run();
+        }).catch(function () { asked = false; });
+      };
+      input.addEventListener('focus', load);
+      input.addEventListener('input', function () { load(); run(); });
+      box.addEventListener('keydown', function (e) {
+        var list = Array.prototype.slice.call(hits.querySelectorAll('.sp-hit')), at = list.indexOf(d.activeElement);
+        if (e.key === 'Escape') { close(); input.blur(); }
+        else if (e.key === 'ArrowDown' && list.length) { e.preventDefault(); list[Math.min(list.length - 1, at + 1)].focus(); }
+        else if (e.key === 'ArrowUp' && list.length) { e.preventDefault(); if (at <= 0) input.focus(); else list[at - 1].focus(); }
+        else if (e.key === 'Enter' && d.activeElement === input && list.length) { e.preventDefault(); location.href = list[0].href; }
+      });
+      d.addEventListener('click', function (e) { if (!box.contains(e.target)) close(); });
+      d.addEventListener('keydown', function (e) {
+        var t = e.target;
+        if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !(t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) { e.preventDefault(); input.focus(); }
+      });
+    }
+    var rep = d.querySelector('.sp-report[data-s]');
+    if (rep) {
+      var btn = rep.querySelector('button'), msg = rep.querySelector('.sp-msg'), why = rep.querySelector('textarea'), mail = rep.querySelector('input');
+      rep.querySelector('.sp-form').hidden = false;
+      btn.addEventListener('click', function () {
+        var text = why.value.trim();
+        if (text.length < 5) { msg.textContent = rep.getAttribute('data-short'); why.focus(); return; }
+        btn.disabled = true; msg.textContent = '';
+        fetch('/_/report', { method: 'POST', credentials: 'omit', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ s: rep.getAttribute('data-s'), p: rep.getAttribute('data-p'), text: text, email: mail.value.trim() }) })
+          .then(function (r) {
+            if (r.ok) { rep.querySelector('.sp-form').hidden = true; msg.textContent = rep.getAttribute('data-ok'); return; }
+            btn.disabled = false; msg.textContent = rep.getAttribute(r.status === 429 ? 'data-many' : 'data-fail');
+          }).catch(function () { btn.disabled = false; msg.textContent = rep.getAttribute('data-fail'); });
+      });
+    }
+  }
+  if (d.readyState !== 'loading') start(); else d.addEventListener('DOMContentLoaded', start);
+})();
+`;
+const SITE_VER = sha(SITE_CSS + SITE_JS).slice(0, 12);
+// La política de cada respuesta del host de sitios: nada por defecto; el único script y la única hoja de estilos
+// son los propios, por su dirección exacta; imágenes por https o incrustadas; el buscador y la denuncia hablan solo
+// con este host. Sin estilos ni scripts en línea, sin marcos, sin formularios que salgan.
+const SITE_CSP = PAGES ? "default-src 'none'; script-src " + PAGES.url + "/_/site.js; style-src " + PAGES.url + "/_/site.css; img-src https: data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" : '';
+const SITE_HEADERS = { 'content-security-policy': SITE_CSP, 'x-content-type-options': 'nosniff', 'referrer-policy': 'strict-origin-when-cross-origin', 'x-frame-options': 'DENY', 'cross-origin-opener-policy': 'same-origin', 'cross-origin-resource-policy': 'same-origin', 'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()' };
+const SITE_ICON = 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#1d2026"/><text x="16" y="23" font-family="monospace" font-size="22" font-weight="700" text-anchor="middle" fill="#bef264">#</text></svg>').toString('base64');
+const siteDay = (ms) => new Date(ms).toISOString().slice(0, 10);
+// El documento entero, con su cabecera. Todo lo que no es el cuerpo ya filtrado pasa por html().
+function siteDoc(o) {
+  const c = o.conf || {}; const accent = SITE_ACCENTS[c.accent] || ''; const font = SITE_FONTS[c.font] || '';
+  const meta = (k, v, prop) => (v ? '<meta ' + (prop ? 'property' : 'name') + '="' + k + '" content="' + html(v) + '">\n' : '');
+  return '<!doctype html>\n<html lang="' + (o.lang === 'es' ? 'es' : 'en') + '"' + (accent ? ' data-accent="' + accent + '"' : '') + (font ? ' data-font="' + font + '"' : '') + '>\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n' +
+    '<title>' + html(o.title) + '</title>\n' + meta('description', o.descr) + (o.noindex ? '<meta name="robots" content="noindex">\n' : '') + (o.canonical ? '<link rel="canonical" href="' + html(o.canonical) + '">\n' : '') +
+    (o.og ? meta('og:type', o.og.type, true) + meta('og:title', o.og.title, true) + meta('og:description', o.descr, true) + meta('og:url', o.canonical, true) + meta('og:site_name', o.og.site, true) + meta('twitter:card', 'summary') : '') +
+    (o.author ? meta('author', o.author) : '') + '<meta name="generator" content="SharpMD">\n<link rel="icon" href="' + SITE_ICON + '">\n<link rel="stylesheet" href="/_/site.css?v=' + SITE_VER + '">\n<script src="/_/site.js?v=' + SITE_VER + '"></script>\n</head>\n<body>\n' + o.body + '\n</body>\n</html>\n';
+}
+// Una página que solo avisa: no existe, ya no está publicada, o no está disponible. No dice nada del sitio ni de quién es.
+function siteNote(lang, kind, back) {
+  const t = SITE_STR[lang === 'es' ? 'es' : 'en'];
+  return siteDoc({ lang, title: t[kind + '_t'], noindex: true, body: '<main class="sp-note"><h1>' + html(t[kind + '_t']) + '</h1><p>' + html(t[kind]) + '</p>' + (back ? '<p><a href="' + html(back) + '">' + html(t.back) + '</a></p>' : '') +
+    '<p><a href="https://sharpmd.app">' + html(t.made) + '</a></p></main>' });
+}
+// Las páginas que se pueden servir de un sitio: las que tienen su nota en pie y sin cifrar. Una nota eliminada (está
+// en la papelera) o cambiada de nombre saca su página en el acto, sin esperar a que alguien vuelva a publicar.
+const siteLivePages = (site) => q('SELECT p.note, p.route, p.title, p.descr, p.toc, p.ord, p.at FROM site_pages p JOIN notes n ON n.user = ? AND n.path = p.note AND n.v = 0 WHERE p.site = ?').all(site.owner, site.id);
+// El árbol del menú y el orden de lectura: en cada carpeta, primero sus páginas (por order del encabezado, después
+// por título) y después sus subcarpetas. La portada va primera.
+function siteTree(site, pages) {
+  const dir = (name) => ({ name, dirs: new Map(), pages: [] }); const top = dir('');
+  for (const p of pages) { const parts = p.note.slice(site.folder.length + 1).split('/'); parts.pop(); let at = top; for (const d of parts) { if (!at.dirs.has(d)) at.dirs.set(d, dir(d)); at = at.dirs.get(d); } at.pages.push(p); }
+  const ab = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  const cmp = (a, b) => (a.route === '' ? -1 : b.route === '' ? 1 : 0) || ((a.ord == null ? 1e12 : a.ord) - (b.ord == null ? 1e12 : b.ord)) || ab(a.title, b.title);
+  const flat = [];
+  const walk = (node) => { node.pages.sort(cmp); node.pages.forEach((p) => flat.push(p)); node.list = Array.from(node.dirs.values()).sort((a, b) => ab(a.name, b.name)); node.list.forEach(walk); };
+  walk(top);
+  return { top, flat };
+}
+function siteContext(site, base, preview) {
+  const pages = siteLivePages(site); const tree = siteTree(site, pages);
+  const byNote = new Map(); const byLower = new Map(); const wiki = new Map(); const byRoute = new Map();
+  for (const p of tree.flat) { byNote.set(p.note, p); byRoute.set(p.route, p); if (!byLower.has(p.note.toLowerCase())) byLower.set(p.note.toLowerCase(), p); const k = siteWikiKey(p.note.slice(p.note.lastIndexOf('/') + 1)); if (!wiki.has(k)) wiki.set(k, p); }
+  const conf = siteConfOf(site);
+  return { site, conf, base, preview, tree, byNote, byLower, wiki, byRoute, t: SITE_STR[conf.lang === 'es' ? 'es' : 'en'] };
+}
+// El ancla de una sección en la página de destino: la que tiene ese id, o la del título que se parece.
+function siteAnchor(target, frag) {
+  let f = frag; try { f = decodeURIComponent(frag); } catch (e) { f = frag; }
+  let list = []; try { list = JSON.parse(target.toc || '[]'); } catch (e) { list = []; }
+  if (list.some((h) => h.id === f)) return f;
+  const norm = (v) => String(v).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+  const hit = list.find((h) => norm(h.id) === norm(f) || norm(h.t) === norm(f));
+  return hit ? hit.id : siteSlugify(f);
+}
+// Adónde lleva un enlace entre notas: a la página de esa nota si está publicada en este sitio, o a ningún lado.
+function siteTarget(ctx, page, kind, value) {
+  let ref = value; let frag = ''; const h = ref.indexOf('#'); if (h !== -1) { frag = ref.slice(h + 1); ref = ref.slice(0, h); }
+  let target = null;
+  if (kind === 'w') target = ref.trim() ? ctx.wiki.get(siteWikiKey(ref.split('/').pop())) : page;
+  else {
+    const qm = ref.indexOf('?'); if (qm !== -1) ref = ref.slice(0, qm);
+    try { ref = decodeURIComponent(ref); } catch (e) { return ''; }
+    if (!ref) target = page;
+    else {
+      const parts = ref[0] === '/' ? ctx.site.folder.split('/') : page.note.split('/').slice(0, -1);
+      for (const seg of ref.split('/')) { if (!seg || seg === '.') continue; if (seg === '..') parts.pop(); else parts.push(seg); }
+      const p = parts.join('/'); const l = p.toLowerCase();
+      target = ctx.byNote.get(p) || ctx.byNote.get(p + '.md') || ctx.byLower.get(l) || ctx.byLower.get(l + '.md') || null;
+    }
+  }
+  if (!target) return '';
+  return ctx.base + '/' + target.route + (frag ? '#' + encodeURIComponent(siteAnchor(target, frag)) : '');
+}
+// En el cuerpo guardado, un enlace a otra nota es <a data-n="…"> o <a data-w="…">, que solo puede haber escrito
+// siteClean (el texto y los valores van escapados). Acá toma su dirección, o queda como texto sin enlace.
+const siteLinks = (ctx, page, body) => body.replace(/<a data-([nw])="([^"]*)"/g, (m, kind, v) => { const href = siteTarget(ctx, page, kind, sanUnattr(v)); return href ? '<a href="' + sanAttr(href) + '"' : '<a'; });
+function siteNav(ctx, node, here) {
+  let out = '<ul>';
+  for (const p of node.pages) out += '<li><a href="' + html(ctx.base + '/' + p.route) + '"' + (p === here ? ' aria-current="page"' : '') + '>' + html(p.title) + '</a></li>';
+  for (const d of node.list) out += '<li><details open><summary>' + html(d.name) + '</summary>' + siteNav(ctx, d, here) + '</details></li>';
+  return out + '</ul>';
+}
+function sitePage(ctx, page) {
+  const { site, conf, t, base } = ctx; const row = q('SELECT html FROM site_pages WHERE site = ? AND note = ?').get(site.id, page.note);
+  let toc = []; try { toc = JSON.parse(page.toc || '[]'); } catch (e) { toc = []; }
+  const home = page.route === ''; const brand = conf.logo || conf.title;
+  const at = ctx.tree.flat.indexOf(page); const prev = ctx.tree.flat[at - 1]; const next = ctx.tree.flat[at + 1];
+  const side = toc.filter((h) => h.l === 2 || h.l === 3);
+  const report = '/_/report?s=' + encodeURIComponent(site.slug) + '&p=' + encodeURIComponent(page.route);
+  const step = (p, cls, label) => (p ? '<a class="' + cls + '" href="' + html(base + '/' + p.route) + '"' + (cls === 'sp-prev' ? ' rel="prev"' : ' rel="next"') + '><small>' + html(label) + '</small><b>' + html(p.title) + '</b></a>' : '');
+  const body = '<a class="sp-skip" href="#sp-main">' + html(t.skip) + '</a>\n' + (ctx.preview ? '<p class="sp-preview">' + html(t.preview) + '</p>\n' : '') +
+    '<input type="checkbox" class="sp-navt" id="sp-navt" aria-label="' + html(t.menu) + '">\n' +
+    '<header class="sp-top"><label class="sp-navb" for="sp-navt">' + html(t.menu) + '</label><a class="sp-brand" href="' + html(base + '/') + '"><span class="sp-mark" aria-hidden="true">#</span><span>' + html(brand) + '</span></a>' +
+    '<div class="sp-search" role="search" data-index="' + html(base + '/search.json') + '" data-base="' + html(base) + '" data-none="' + html(t.none) + '" hidden><input type="search" placeholder="' + html(t.search) + '" aria-label="' + html(t.search) + '" autocomplete="off" spellcheck="false"><div class="sp-hits" hidden></div></div>' +
+    '<button type="button" class="sp-theme" aria-label="' + html(t.theme) + '" title="' + html(t.theme) + '" hidden></button></header>\n' +
+    '<div class="sp-shell">\n<nav class="sp-nav" aria-label="' + html(t.pages) + '">' + siteNav(ctx, ctx.tree.top, page) + '</nav>\n' +
+    '<main class="sp-main" id="sp-main"><article class="sp-body">' + (toc.some((h) => h.l === 1) ? '' : '<h1>' + html(page.title) + '</h1>') + siteLinks(ctx, page, row ? row.html : '') + '</article>' +
+    (prev || next ? '<nav class="sp-step" aria-label="' + html(t.prev + ' / ' + t.next) + '">' + step(prev, 'sp-prev', t.prev) + step(next, 'sp-next', t.next) + '</nav>' : '') +
+    '<footer class="sp-foot">' + (conf.author ? '<span>' + html(t.by.replace('{a}', conf.author)) + '</span>' : '') + '<span>' + html(t.updated.replace('{a}', '')) + '<time datetime="' + siteDay(page.at) + '">' + siteDay(page.at) + '</time></span>' +
+    '<a class="sp-made" href="https://sharpmd.app">' + html(t.made) + '</a><a href="' + html(report) + '" rel="nofollow">' + html(t.report) + '</a></footer></main>\n' +
+    (side.length > 1 ? '<aside class="sp-toc" aria-label="' + html(t.toc) + '"><h2>' + html(t.toc) + '</h2><ul>' + side.map((h) => '<li><a class="sp-l' + h.l + '" href="#' + html(encodeURIComponent(h.id)) + '">' + html(h.t) + '</a></li>').join('') + '</ul></aside>\n' : '') + '</div>';
+  const url = PAGES.url + '/' + site.slug + '/' + page.route;
+  return siteDoc({ lang: conf.lang, conf, title: home ? conf.title : page.title + ' · ' + conf.title, descr: page.descr || conf.descr, noindex: ctx.preview || !!conf.noindex, canonical: ctx.preview ? '' : url, author: conf.author,
+    og: { type: home ? 'website' : 'article', title: home ? conf.title : page.title, site: conf.title }, body });
+}
+function siteReportPage(query) {
+  const slug = String(query.get('s') || ''); const route = String(query.get('p') || '');
+  const site = SITE_SLUG.test(slug) ? q('SELECT * FROM sites WHERE slug = ?').get(slug) : null;
+  if (!site || !/^[a-z0-9/-]{0,300}$/.test(route)) return null;
+  const conf = siteConfOf(site); const t = SITE_STR[conf.lang === 'es' ? 'es' : 'en'];
+  return siteDoc({ lang: conf.lang, title: t.r_title, noindex: true, body: '<main class="sp-report" data-s="' + html(slug) + '" data-p="' + html(route) + '" data-ok="' + html(t.r_ok) + '" data-fail="' + html(t.r_fail) + '" data-many="' + html(t.r_many) + '" data-short="' + html(t.r_short) + '">' +
+    '<h1>' + html(t.r_title) + '</h1><p>' + html(t.r_lead) + '</p><p><code>' + html(PAGES.url + '/' + slug + '/' + route) + '</code></p>' +
+    '<div class="sp-form" hidden><label>' + html(t.r_why) + '<textarea maxlength="2000"></textarea></label><label>' + html(t.r_mail) + '<input type="email" maxlength="200" autocomplete="email"></label><button type="button" class="sp-btn">' + html(t.r_send) + '</button></div>' +
+    '<noscript><p>' + html(t.r_js) + '</p></noscript><p class="sp-msg" role="status"></p><p><a href="' + html('/' + slug + '/') + '">' + html(t.r_back) + '</a></p></main>' });
+}
+// La denuncia de un sitio: lo único que el host de sitios escribe. Sale por el mismo camino que POST /feedback, con
+// report.kind "site". De quien denuncia no se lee ninguna credencial: llega como anónimo, con su IP para el tope.
+async function siteReport(req) {
+  if (!/^application\/json\b/i.test(req.headers['content-type'] || '')) throw new Fail(415, 'bad_type');
+  let b = null; try { b = JSON.parse(await readRaw(req, 8192)); } catch (e) { if (e instanceof Fail) throw e; throw new Fail(400, 'bad_json'); }
+  if (!b || typeof b !== 'object' || Array.isArray(b)) throw new Fail(400, 'bad_json');
+  const slug = String(b.s || ''); const route = String(b.p || ''); const text = String(b.text == null ? '' : b.text).trim().slice(0, 2000);
+  const site = SITE_SLUG.test(slug) ? q('SELECT * FROM sites WHERE slug = ?').get(slug) : null;
+  if (!site || !/^[a-z0-9/-]{0,300}$/.test(route)) throw new Fail(404, 'not_found');
+  if (text.length < 5) throw new Fail(400, 'bad_text');
+  const ip = 'site:report:' + clientIp(req);
+  limit(ip, SITE_REPORTS_HOUR, HOUR, 'too_many'); mark(ip);
+  q('UPDATE sites SET reports = reports + 1, reported = ? WHERE id = ?').run(now(), site.id);
+  let email = ''; try { email = String(b.email || '').trim() ? cleanEmail(b.email) : ''; } catch (e) { email = ''; }
+  const plain = { headers: { 'x-forwarded-for': req.headers['x-forwarded-for'] || '' }, socket: req.socket };
+  try {
+    await feedback(plain, { text, email, report: { kind: 'site', note: PAGES.url + '/' + slug + '/' + route, owner: 'site ' + site.id }, context: { where: 'web', browser: req.headers['user-agent'] || '', lang: siteConfOf(site).lang } });
+  } catch (e) { if (e instanceof Fail && e.status === 429) throw e; /* sin correo configurado, o el correo falló: la denuncia ya quedó contada en el sitio */ }
+  return { ok: true };
+}
+const pagesHost = (req) => { if (!PAGES) return false; const h = String(req.headers.host || '').toLowerCase(); return h === PAGES.host || h === PAGES.host + PAGES.port; };
+// Todo lo que entra por el host de sitios termina acá. No se llama a userFrom ni a route: por este host no hay API.
+async function pagesServe(req, res) {
+  const head = req.method === 'HEAD';
+  const send = (status, type, body, extra) => {
+    const h = Object.assign({}, SITE_HEADERS, { 'content-type': type, 'cache-control': status === 200 ? 'public, max-age=0, must-revalidate' : 'no-store' }, extra || {});
+    if (status === 200 && body) {
+      const tag = '"' + sha(body).slice(0, 24) + '"'; h.etag = tag;
+      if (String(req.headers['if-none-match'] || '').split(',').map((v) => v.trim().replace(/^W\//, '')).includes(tag)) { res.writeHead(304, h); res.end(); return; }
+    }
+    h['content-length'] = Buffer.byteLength(body || '');
+    res.writeHead(status, h); res.end(head ? undefined : body);
+  };
+  const page = (status, body, extra) => send(status, 'text/html; charset=utf-8', body, extra);
+  try {
+    rate('pages:' + clientIp(req), SITE_HITS_MINUTE, 60000, 'too_many');
+    const raw = String(req.url || '/'); const qi = raw.indexOf('?'); const p = qi === -1 ? raw : raw.slice(0, qi); const query = new URLSearchParams(qi === -1 ? '' : raw.slice(qi + 1));
+    if (p === '/_/report' && req.method === 'POST') { const out = await siteReport(req); send(200, 'application/json; charset=utf-8', JSON.stringify(out), { 'cache-control': 'no-store' }); return; }
+    if (req.method !== 'GET' && !head) { send(405, 'text/plain; charset=utf-8', 'Method not allowed', { allow: 'GET, HEAD' }); return; }
+    // Una dirección de acá lleva solo letras, números, guiones, puntos y barras. Nada codificado, nada con "..".
+    if (p.length > 600 || !/^\/[A-Za-z0-9._~/-]*$/.test(p) || /\/\/|(^|\/)\.\.?(\/|$)/.test(p)) { page(404, siteNote('en', 'missing')); return; }
+    if (p === '/_/site.css') { send(200, 'text/css; charset=utf-8', SITE_CSS, { 'cache-control': 'public, max-age=86400' }); return; }
+    if (p === '/_/site.js') { send(200, 'text/javascript; charset=utf-8', SITE_JS, { 'cache-control': 'public, max-age=86400' }); return; }
+    if (p === '/_/report') { const body = siteReportPage(query); if (body) page(200, body, { 'cache-control': 'no-store', 'x-robots-tag': 'noindex' }); else page(404, siteNote('en', 'missing')); return; }
+    if (p === '/') { const t = SITE_STR.en; page(200, siteDoc({ lang: 'en', title: t.root_t, descr: t.root, body: '<main class="sp-note"><h1>' + html(t.root_t) + '</h1><p>' + html(t.root) + '</p><p><a href="https://sharpmd.app">' + html(t.what) + '</a></p></main>' })); return; }
+    if (p === '/robots.txt') { send(200, 'text/plain; charset=utf-8', 'User-agent: *\nDisallow: /_/\nDisallow: /~\nSitemap: ' + PAGES.url + '/sitemap.xml\n'); return; }
+    if (p === '/sitemap.xml') {
+      const rows = q('SELECT slug, conf, lapsed FROM sites WHERE live = 1 AND suspended = 0 ORDER BY id LIMIT 20000').all().filter((s) => !siteConfOf(s).noindex && !(s.lapsed && now() - s.lapsed >= PAGES_GRACE_MS));
+      send(200, 'application/xml; charset=utf-8', '<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + rows.map((s) => '<sitemap><loc>' + PAGES.url + '/' + s.slug + '/sitemap.xml</loc></sitemap>\n').join('') + '</sitemapindex>\n');
+      return;
+    }
+    const parts = p.slice(1).split('/'); const first = parts[0]; const rest = parts.slice(1).join('/');
+    const preview = first[0] === '~';
+    const site = preview ? (/^~[A-Za-z0-9_-]{16,48}$/.test(first) ? q('SELECT * FROM sites WHERE pkey = ?').get(first.slice(1)) : null) : (SITE_SLUG.test(first) ? q('SELECT * FROM sites WHERE slug = ?').get(first) : null);
+    if (!site) { page(404, siteNote('en', 'missing')); return; }
+    const lang = siteConfOf(site).lang; const base = '/' + first;
+    if (parts.length === 1) { res.writeHead(308, Object.assign({}, SITE_HEADERS, { location: base + '/', 'cache-control': 'no-store' })); res.end(); return; }
+    if (site.suspended) { page(451, siteNote(lang, 'held'), { 'x-robots-tag': 'noindex' }); return; }
+    if (siteVaulted(site.owner, site.folder)) siteTakeDown(site);
+    if ((!preview && (!site.live || (site.lapsed && now() - site.lapsed >= PAGES_GRACE_MS))) || siteVaulted(site.owner, site.folder)) { page(410, siteNote(lang, 'gone'), { 'x-robots-tag': 'noindex' }); return; }
+    const ctx = siteContext(site, base, preview); const conf = ctx.conf;
+    const robots = preview || conf.noindex ? { 'x-robots-tag': 'noindex' } : {};
+    if (!ctx.tree.flat.length) { page(410, siteNote(lang, 'gone'), { 'x-robots-tag': 'noindex' }); return; }
+    if (rest === 'search.json') {
+      const text = new Map(q('SELECT note, text FROM site_pages WHERE site = ?').all(site.id).map((r) => [r.note, r.text]));
+      send(200, 'application/json; charset=utf-8', JSON.stringify(ctx.tree.flat.map((x) => ({ r: x.route, t: x.title, x: text.get(x.note) || '' }))), robots); return;
+    }
+    if (rest === 'robots.txt' && !preview) { send(200, 'text/plain; charset=utf-8', 'User-agent: *\n' + (conf.noindex ? 'Disallow: /' + site.slug + '/\n' : 'Allow: /' + site.slug + '/\nSitemap: ' + PAGES.url + '/' + site.slug + '/sitemap.xml\n')); return; }
+    if (rest === 'sitemap.xml' && !preview) {
+      if (conf.noindex) { page(404, siteNote(lang, 'missing', base + '/')); return; }
+      send(200, 'application/xml; charset=utf-8', '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + ctx.tree.flat.map((x) => '<url><loc>' + PAGES.url + '/' + site.slug + '/' + x.route + '</loc><lastmod>' + siteDay(x.at) + '</lastmod></url>\n').join('') + '</urlset>\n');
+      return;
+    }
+    const route = rest.replace(/\/+$/, '');
+    if (route && !/^[a-z0-9-]+(\/[a-z0-9-]+)*$/.test(route)) { page(404, siteNote(lang, 'missing', base + '/'), robots); return; }
+    const hit = ctx.byRoute.get(route);
+    // Sin una nota de portada, la dirección del sitio lleva a su primera página.
+    if (!hit && route === '') { res.writeHead(302, Object.assign({}, SITE_HEADERS, { location: base + '/' + ctx.tree.flat[0].route, 'cache-control': 'no-store' })); res.end(); return; }
+    if (!hit) { page(404, siteNote(lang, 'missing', base + '/'), robots); return; }
+    page(200, sitePage(ctx, hit), robots);
+  } catch (e) {
+    const status = e instanceof Fail ? e.status : 500;
+    if (status >= 500) console.error('sitios: error ' + status + ' en ' + req.method + ' ' + String(req.url).split('?')[0].slice(0, 80) + ' · ' + String(e && e.stack || e).slice(0, 800));
+    if (res.headersSent) { res.end(); return; }
+    const extra = e instanceof Fail && e.extra && e.extra.retry_after ? { 'retry-after': String(e.extra.retry_after) } : {};
+    if (String(req.url || '').startsWith('/_/report')) send(status, 'application/json; charset=utf-8', JSON.stringify({ error: e instanceof Fail ? e.code : 'server_error' }), extra);
+    else send(status, 'text/plain; charset=utf-8', status === 429 ? 'Too many requests' : 'Error', extra);
+  }
+}
+// ====================================================================================================================
+// Fin de SITIOS PUBLICADOS
+// ====================================================================================================================
+
 async function route(req, url) {
   const p = url.pathname; const m = req.method;
   if (p === '/health') return { ok: true };
@@ -3149,12 +4124,13 @@ async function route(req, url) {
   if (p === '/auth/verify' && m === 'POST') return authVerify(req, await readBody(req));
   if (p === '/paddle/webhook' && m === 'POST') return paddleWebhook(req);
   if (p === '/feedback' && m === 'POST') return feedback(req, await readBody(req));
-  if (((p === '/admin/plan' || p === '/admin/team') && m === 'POST') || p === '/admin/gallery') {
+  if (((p === '/admin/plan' || p === '/admin/team') && m === 'POST') || p === '/admin/gallery' || p === '/admin/sites') {
     // La misma respuesta sin clave configurada, sin clave en el pedido o con una equivocada. Diez fallos por hora por IP.
     const ip = 'admin:' + clientIp(req);
     limit(ip, 10, HOUR, 'too_many');
     if (!env.ADMIN_KEY || !same(req.headers['x-admin-key'] || '', env.ADMIN_KEY)) { mark(ip); throw new Fail(403, 'forbidden'); }
     if (p === '/admin/gallery') return galleryAdmin(m, url, m === 'POST' ? await readBody(req) : {});
+    if (p === '/admin/sites') return sitesAdmin(m, url, m === 'POST' ? await readBody(req) : {});
     const b = await readBody(req);
     if (p === '/admin/team') {
       // Un equipo armado a mano, sin cobro: para quien aloja su propio servidor. seats: 0 lo deja sin plan pago.
@@ -3201,6 +4177,7 @@ async function route(req, url) {
   }
   if (p === '/team' || p.startsWith('/team/')) return teamRoute(user, p, m, req);
   if (p === '/automations' || p.startsWith('/automations/')) return autoRoute(req, user, p, m, url);
+  if (p === '/sites' || p.startsWith('/sites/')) return sitesRoute(req, user, p, m, url);
   if (p === '/shared' && m === 'GET') return sharedWith(user);
   // Con o (en el cuerpo o en la dirección), compartir y los enlaces trabajan sobre el espacio del equipo, si el
   // papel de quien llama y la política del equipo lo permiten. Sin o, sobre lo propio, como siempre.
@@ -3289,6 +4266,8 @@ async function route(req, url) {
 // En todas las respuestas: nada se guarda en caché, el navegador no adivina el tipo y no viaja la dirección de origen.
 const BASE_HEADERS = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' };
 const server = http.createServer(async (req, res) => {
+  // El host de los sitios publicados es otro mundo: por ahí no hay API, ni CORS, ni credenciales.
+  if (pagesHost(req)) { pagesServe(req, res); return; }
   for (const k in BASE_HEADERS) res.setHeader(k, BASE_HEADERS[k]);
   res.setHeader('vary', 'origin');
   cors(req, res);
