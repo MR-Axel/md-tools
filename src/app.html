@@ -8,13 +8,23 @@
 <meta name="description" content="Read and edit Markdown files in the browser. Nothing is uploaded: files stay on your machine.">
 <link rel="icon" href="../icons/icon32.png">
 <link rel="manifest" href="../manifest.webmanifest">
-<meta name="theme-color" content="#121418">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
 <meta name="mobile-web-app-capable" content="yes">
-<link rel="apple-touch-icon" href="../icons/icon192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SharpMD">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon-180.png">
+<link rel="apple-touch-icon" sizes="152x152" href="../icons/apple-touch-icon-152.png">
+<link rel="apple-touch-icon" sizes="167x167" href="../icons/apple-touch-icon-167.png">
+<link rel="apple-touch-icon" sizes="180x180" href="../icons/apple-touch-icon-180.png">
 <script src="boot.js"></script>
 <link rel="preload" href="../vendor/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
 <style>
   /* Pantalla de carga: el logo con el cursor sobre el fondo del tema (los colores los deja boot.js), hasta que la app está lista. */
+  html { background: #fbfaf7; } @media (prefers-color-scheme: dark) { html { background: #121418; } } /* antes de boot.js: que Safari no destelle en blanco al abrir la app instalada */
   .lmd-splash { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: var(--lmd-boot-bg, #121418); }
   .lmd-splash svg { width: 72px; height: 72px; opacity: 0; animation: lmd-splash-in .18s ease-out .12s forwards; }
   .lmd-splash path { fill: none; stroke: var(--lmd-boot-hash, #bef264); stroke-width: 5.5; stroke-linecap: round; }

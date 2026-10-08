@@ -2150,3 +2150,44 @@ html.lmd-dark:not(.lmd-themed) .hljs .hljs-section { color: #58a6ff; }
 .lmd-gal-view .lmd-th-page b { font-size: 17px; } .lmd-gal-view .lmd-th-page > i { height: 4px; }
 .lmd-gal-view .lmd-th-code { height: 20px; padding: 0 6px; gap: 4px; } .lmd-gal-view .lmd-th-code i { height: 4px; }
 .lmd-gal-view .lmd-th-row u { width: 26px; height: 3px; } .lmd-gal-view .lmd-th-row em { width: 44px; height: 18px; }
+
+/* ---------- iPhone, iPad y Mac (Safari) ---------- */
+/* touch.js deja en <html> las clases lmd-ios, lmd-mac y lmd-standalone (la app instalada). */
+.lmd-root { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+/* Sin el destello gris al tocar y sin el zoom del doble toque sobre los controles. */
+.lmd-root button, .lmd-root a, .lmd-root label, .lmd-root summary, .lmd-root select, .lmd-root [role=button], .lmd-root [role=tab], .lmd-root [role=radio], .lmd-root [role=menuitem] { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+/* Safari agranda la página al enfocar un campo con letra de menos de 16 px. */
+html.lmd-ios input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]), html.lmd-ios select, html.lmd-ios textarea { font-size: max(16px, 1em); }
+/* La página no rebota al arrastrar más allá del borde; las listas largas conservan su inercia. */
+html.lmd-ios, html.lmd-ios .lmd-body, html.lmd-standalone, html.lmd-standalone .lmd-body { overscroll-behavior-y: none; }
+.lmd-pane, .lmd-panel-body, .lmd-ask-card, .lmd-menu, .lmd-ptabs { -webkit-overflow-scrolling: touch; }
+.lmd-panel-body, .lmd-ptabs { overscroll-behavior: contain; }
+/* Áreas seguras donde faltaban: los diálogos y Ajustes en pantalla grande (un iPad acostado), y las barras flotantes. */
+html.lmd-ios .lmd-ask, html.lmd-ios .lmd-panel { padding: max(20px, env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-right, 0px)) max(20px, env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px)); }
+.lmd-docked { max-width: calc(100vw - 16px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)); }
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  html.lmd-ios .lmd-ask { padding: max(12px, 5vh, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)); }
+  html.lmd-ios .lmd-panel { padding: 0; }
+  /* En iPhone el teclado no achica la página: el diálogo se corre para quedar arriba de él. */
+  html.lmd-ios.lmd-kb .lmd-ask { padding-bottom: calc(12px + var(--lmd-kb, 0px)); }
+}
+/* El alto de la ventana sin contar las barras de Safari, donde el navegador lo sabe medir. */
+@supports (height: 100dvh) {
+  .lmd-main { min-height: 100dvh; }
+  .lmd-raw-edit { min-height: calc(100dvh - 96px); }
+  .lmd-home { min-height: calc(100dvh - 49px - env(safe-area-inset-top, 0px)); }
+  .lmd-dct-help .lmd-ask-card, .lmd-gal-dlg .lmd-ask-card { max-height: calc(100dvh - 40px - var(--lmd-kb, 0px)); }
+  @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+    .lmd-dct-help .lmd-ask-card { max-height: calc(100dvh - 14vh - 24px - var(--lmd-kb, 0px)); }
+    .lmd-gal-dlg .lmd-ask-card { max-height: calc(100dvh - 20px - var(--lmd-kb, 0px)); }
+  }
+}
+/* Ajustes > Instalar: los pasos de iPhone, iPad y Mac, con el ícono de compartir dibujado. */
+.lmd-inst-steps .lmd-inst-ico { display: inline-flex; vertical-align: -4px; margin: 0 2px; color: var(--accent); }
+.lmd-inst-steps .lmd-inst-ico svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-inst-keep { margin: 8px 0 0; font-size: 12.5px; color: var(--fg-faint); }
+/* En pantalla chica Apariencia es una sola columna: la grilla de temas va arriba, debajo del modo claro u oscuro. */
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  .lmd-two > .lmd-pcol:not(.lmd-look-side) { order: 2; }
+  .lmd-two > .lmd-extra { order: 3; }
+}

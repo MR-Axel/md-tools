@@ -15,7 +15,7 @@
     full: svg('<path d="M4.500 9.500v-5h5M19.500 9.500v-5h-5M4.500 14.500v5h5M19.500 14.500v5h-5"/>'),
     pdf: LMD.kit.ICON.doc, close: LMD.kit.ICON.close,
   };
-  const KEY = 'Alt+Shift+P';
+  const KEY = LMD.keys('Alt+Shift+P');
   let core = null; let on = false; let wired = false;
   let st = null; // la presentación abierta: { box, slides, i, ... }
 

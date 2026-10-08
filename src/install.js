@@ -18,7 +18,22 @@
   // ---------- Instalar la app ----------
   // Chrome avisa cuando la app se puede instalar; el aviso se guarda para dispararlo desde el botón de Ajustes.
   let offer = null; let repaint = null;
-  const standalone = () => ['standalone', 'window-controls-overlay', 'minimal-ui'].some((m) => window.matchMedia && window.matchMedia('(display-mode: ' + m + ')').matches);
+  const standalone = () => navigator.standalone === true || ['standalone', 'window-controls-overlay', 'minimal-ui'].some((m) => window.matchMedia && window.matchMedia('(display-mode: ' + m + ')').matches);
+  const IOS = LMD.device.ios; const MAC = LMD.device.mac;
+  // El ícono de Compartir de Safari, dibujado: es lo que hay que buscar en la barra.
+  const SHARE = '<span class="lmd-inst-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4M8 10H6.5A1.5 1.5 0 0 0 5 11.5v8A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-8a1.5 1.5 0 0 0-1.5-1.5H16"/></svg></span>';
+
+  // ---------- Que el navegador no borre las notas ----------
+  // Se pide guardado persistente. Safari en iPhone borra lo de un sitio sin uso por semanas si la app no está
+  // instalada: ahí se avisa una sola vez.
+  function keep(core) {
+    if (!WEB || !navigator.storage || !navigator.storage.persist) return;
+    navigator.storage.persist().then((kept) => {
+      if (kept || !IOS || standalone()) return;
+      try { if (localStorage.getItem('sharpmd:keep-told') === '1') return; localStorage.setItem('sharpmd:keep-told', '1'); } catch (e) { return; }
+      setTimeout(() => core.flash(T('Safari puede borrar las notas de este navegador tras semanas sin uso. Conviene instalar la app o usar la nube.'), 'warn'), 1500);
+    }).catch(() => { /* el navegador no responde: queda como estaba */ });
+  }
   const wasInstalled = () => { try { return localStorage.getItem('sharpmd:installed') === '1'; } catch (e) { return false; } };
   const markInstalled = (on) => { try { if (on) localStorage.setItem('sharpmd:installed', '1'); else localStorage.removeItem('sharpmd:installed'); } catch (e) { /* sin almacenamiento */ } };
   if (WEB) {
@@ -50,6 +65,7 @@
   function init(core, homeCtx) {
     if (!APP) return;
     offlineChip();
+    keep(core);
     if (WEB && window.launchQueue && window.launchQueue.setConsumer) window.launchQueue.setConsumer((params) => { openLaunched(params, homeCtx); });
   }
 
@@ -74,7 +90,7 @@
     if (OWN) { try { fileAccess = await chrome.extension.isAllowedFileSchemeAccess(); } catch (e) { fileAccess = null; } }
     else if (EXT && location.protocol === 'file:') fileAccess = true;
     // En un teléfono no hay extensiones ni doble clic.
-    const desktop = !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const desktop = !IOS && !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     const web = s.openIn !== 'ext';
     let html = '';
     if (ext) {
@@ -88,15 +104,18 @@
         ? line(esc(T('Instalada, versión {v}', { v: version })))
         : line(esc(T('No está en este navegador.')) + ' ' + esc(T('Abre los .md del disco y de cualquier sitio, también sin conexión.')), out(EXTENSION_URL, 'Conseguir la extensión')));
     }
-    html += head('Instalar como app');
-    const gives = esc(T('Ventana propia y "Abrir con" para los .md en Windows.'));
+    html += head(IOS ? 'En iPhone y iPad' : MAC ? 'En Mac' : 'Instalar como app');
+    const gives = esc(T(MAC ? 'Ventana propia y su ícono en el Dock.' : 'Ventana propia y "Abrir con" para los .md en Windows.'));
     if (EXT) html += line(gives + ' ' + esc(T('Se instala desde la app web.')), out(LMD.WEB_APP_URL, 'Abrir la app web'));
     else if (standalone() || (wasInstalled() && !offer)) html += line(esc(T('Ya está instalada.')));
     else if (offer) html += line(gives, '<button type="button" class="lmd-btn lmd-btn-fill" data-inst="app">' + esc(T('Instalar')) + '</button>');
+    else if (IOS) html += '<ol class="lmd-inst-steps" data-inst-ios><li>' + esc(T('En Safari, tocá Compartir')) + ' ' + SHARE + '</li><li>' + esc(T('Elegí "Agregar a inicio".')) + '</li><li>' + esc(T('Abrila desde su ícono: pantalla completa, también sin conexión.')) + '</li></ol>' +
+      '<p class="lmd-inst-keep">' + esc(T('Sin instalar, Safari puede borrar las notas del navegador tras semanas sin uso.')) + '</p>';
+    else if (MAC) html += '<ol class="lmd-inst-steps" data-inst-mac><li>' + esc(T('En Safari: menú Archivo, Agregar al Dock.')) + '</li><li>' + esc(T('En Chrome o Edge: el ícono de instalar, en la barra de direcciones.')) + '</li></ol>' + '<p class="lmd-inst-keep">' + gives + '</p>';
     else html += line(gives + ' ' + esc(T('Desde el menú del navegador: Instalar SharpMD. En iPhone: Compartir, Agregar a inicio.')));
     if (desktop) {
       html += head('Abrir los .md con doble clic') +
-        '<ol class="lmd-inst-steps"><li>' + esc(T('Clic derecho en un .md, Abrir con, Elegir otra aplicación, Chrome, Siempre.')) + '</li>' +
+        '<ol class="lmd-inst-steps"><li>' + esc(T(MAC ? 'En Finder: clic derecho en un .md, Obtener información, Abrir con, Chrome, Cambiar todo.' : 'Clic derecho en un .md, Abrir con, Elegir otra aplicación, Chrome, Siempre.')) + '</li>' +
         '<li>' + esc(T(fileAccess === true ? 'El acceso a archivos ya está activado.' : 'En los detalles de la extensión, activá "Permitir acceso a URL de archivo".')) + '</li></ol>' +
         '<div class="lmd-inst-links">' + (OWN && fileAccess !== true ? '<button type="button" class="lmd-btn" data-inst="details">' + esc(T('Detalles de la extensión')) + '</button>' : '') + out(HELP_URL, 'Ayuda', 'lmd-link') + '</div>';
     }

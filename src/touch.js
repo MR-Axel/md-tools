@@ -125,8 +125,17 @@
   // Se va a abrir otra nota. Si arriba del historial está la entrada de más, la nota la reemplaza en vez de sumarse.
   const backMark = () => { if (!marked()) return false; armed = false; return true; };
 
+  // Dónde corre, para lo que el CSS resuelve distinto en Safari: lmd-ios, lmd-mac y lmd-standalone (la app instalada).
+  const standalone = () => navigator.standalone === true || ['standalone', 'window-controls-overlay', 'minimal-ui'].some((m) => window.matchMedia && window.matchMedia('(display-mode: ' + m + ')').matches);
+  function mark() {
+    const root = document.documentElement; const d = LMD.device || {};
+    root.classList.toggle('lmd-ios', !!d.ios); root.classList.toggle('lmd-mac', !!d.mac); root.classList.toggle('lmd-standalone', standalone());
+  }
+  mark();
+
   function init() {
     const v = vv();
+    mark();
     measure();
     watchBack();
     if (!v) return;
@@ -140,5 +149,5 @@
   // Lo que ocupan arriba del teclado las barras flotantes y el pie: ahí arriba va el botón del dictado (dictate.js).
   const above = () => { const foot = document.querySelector('.lmd-foot'); return docked() + (kb || !foot ? 0 : foot.getBoundingClientRect().height + (foot.offsetParent ? 4 : 0)); };
 
-  LMD.touch = { small, coarse, touched, dock, longPress, init, caretIntoView, visible, backMark, above };
+  LMD.touch = { small, coarse, touched, dock, longPress, init, caretIntoView, visible, backMark, above, standalone };
 })();

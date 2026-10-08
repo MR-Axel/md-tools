@@ -1315,7 +1315,14 @@
       "Atajo: Alt+Shift+D, o el micrófono al lado del bloque que estás escribiendo.": "Shortcut: Alt+Shift+D, or the microphone next to the block you are writing.",
       "Comunidad": "Community", "Plantillas, temas y paletas que comparte la gente. Cada aporte se revisa antes de publicarse.": "Templates, themes and palettes shared by people. Each one is reviewed before it is published.",
       "Compartí el tuyo": "Share yours", "Todo": "All",
-      "Temas": "Themes", "Personalizado": "Custom", "Incluido": "Included", "Aplicado": "Applied", "Temas incluidos": "Included themes",
+      "Temas": "Themes", "Personalizado": "Custom", "Incluido": "Included",
+      "En iPhone y iPad": "On iPhone and iPad", "En Mac": "On Mac", "Ventana propia y su ícono en el Dock.": "Its own window and an icon in the Dock.", "En Safari, tocá Compartir": "In Safari, tap Share",
+      "Elegí \"Agregar a inicio\".": "Choose \"Add to Home Screen\".", "Abrila desde su ícono: pantalla completa, también sin conexión.": "Open it from its icon: full screen, offline too.",
+      "Sin instalar, Safari puede borrar las notas del navegador tras semanas sin uso.": "Until it is installed, Safari can delete the notes kept in the browser after weeks without use.",
+      "En Safari: menú Archivo, Agregar al Dock.": "In Safari: File menu, Add to Dock.", "En Chrome o Edge: el ícono de instalar, en la barra de direcciones.": "In Chrome or Edge: the install icon, in the address bar.",
+      "En Finder: clic derecho en un .md, Obtener información, Abrir con, Chrome, Cambiar todo.": "In Finder: right click a .md, Get Info, Open with, Chrome, Change All.",
+      "Safari puede borrar las notas de este navegador tras semanas sin uso. Conviene instalar la app o usar la nube.": "Safari can delete the notes in this browser after weeks without use. Install the app or use the cloud to keep them.",
+      "Compartir o guardar": "Share or save", "Aplicado": "Applied", "Temas incluidos": "Included themes",
       "Lima": "Lime", "Arena": "Sand", "Tiza": "Chalk", "Salvia": "Sage", "Bruma": "Mist", "Noche": "Night", "Carbón": "Coal", "Marea": "Tide", "Bosque": "Forest", "Laguna": "Lagoon", "Ciruela": "Plum",
       "Papel claro con acento verde, el de siempre.": "Light paper with a green accent, the usual one.", "Papel cálido color arena.": "Warm sand colored paper.", "Gris neutro de alto contraste.": "Neutral gray with high contrast.",
       "Verde suave para leer mucho rato.": "Soft green for long reads.", "Azul frío y despejado.": "Cool, clear blue.", "Blanco y negro, pensado para imprimir.": "Black and white, made for printing.",
@@ -1443,10 +1450,23 @@
     }
     return current;
   }
+  // En qué corre: un iPhone o iPad (el iPad se presenta como Mac, con pantalla táctil) o una Mac.
+  const NAV = typeof navigator !== 'undefined' ? navigator : {};
+  const UA = String(NAV.userAgent || '');
+  const IOS = /iPhone|iPad|iPod/.test(UA) || (/Macintosh/.test(UA) && NAV.maxTouchPoints > 1);
+  const device = { ios: IOS, mac: !IOS && /Macintosh|Mac OS X/.test(UA), apple: IOS || /Macintosh|Mac OS X/.test(UA) };
+  // Los atajos como los muestra una Mac: Ctrl+S pasa a ⌘S, rehacer es ⇧⌘Z, y Alt es ⌥. En el resto queda como está.
+  function keys(text) {
+    if (!device.apple || typeof text !== 'string' || !/Ctrl\+|Alt\+/.test(text)) return text;
+    return text.replace(/Ctrl\+Y\b/g, '⇧⌘Z').replace(/Ctrl\+Shift\+(\w+)/g, '⇧⌘$1').replace(/Ctrl\+Enter\b/g, '⌘↩').replace(/Ctrl\+(\w+)/g, '⌘$1').replace(/Alt\+Shift\+(\w)\b/g, '⌥⇧$1');
+  }
+  // La tecla que acompaña a un atajo: ⌘ en Mac, iPhone y iPad, donde Ctrl+letra ya mueve el cursor en un texto
+  // (Ctrl+K borra hasta el fin del renglón, Ctrl+B retrocede una letra); Ctrl, o ⌘, en el resto.
+  const mod = (e) => (device.apple ? !!e.metaKey && !e.ctrlKey : !!(e.ctrlKey || e.metaKey));
   function t(text, vars) {
     let out = current === 'en' && Object.prototype.hasOwnProperty.call(EN, text) ? EN[text] : text;
     if (vars) for (const k in vars) out = out.split('{' + k + '}').join(vars[k]);
-    return out;
+    return keys(out);
   }
   const lang = () => current;
 
@@ -1458,5 +1478,5 @@
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
   const VERSION = '2.55.0';
 
-  root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang };
+  root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);

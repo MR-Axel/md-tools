@@ -822,9 +822,9 @@
         else if (drawerOpen()) setDrawer(false);
         else if (ui.searchInput.value || document.activeElement === ui.searchInput) toggleSearch(false);
       }
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 's' && (editMode || dirty || (appRoot && appRoot.kind === 'local'))) { e.preventDefault(); save(true); }
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); toggleSearch(true); }
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k' && editMode && !rawMode && docKind() === 'md') { e.preventDefault(); LMD.links.open(); }
+      if (LMD.mod(e) && !e.shiftKey && e.key.toLowerCase() === 's' && (editMode || dirty || (appRoot && appRoot.kind === 'local'))) { e.preventDefault(); save(true); }
+      if (LMD.mod(e) && e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); toggleSearch(true); }
+      if (LMD.mod(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k' && editMode && !rawMode && docKind() === 'md') { e.preventDefault(); LMD.links.open(); }
     });
 
     ui.searchInput.addEventListener('input', debounce(() => runSearch(ui.searchInput.value, true), 180));
@@ -946,7 +946,7 @@
     });
     if (keys) moreMenu.querySelector('button').focus();
   }
-  const PRINT_KEY = /Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘P' : 'Ctrl+P';
+  const PRINT_KEY = LMD.keys('Ctrl+P');
   const hasLink = () => !!appRoot && (appRoot.kind === 'cloud' || appRoot.kind === 'pub');
   // Lo que suman las herramientas prendidas (tools.js) a un menú de la barra: cada una devuelve su renglón o nada.
   const toolItems = (menu) => core.menus[menu].map((fn) => fn()).filter(Boolean);
@@ -993,10 +993,7 @@
   const diskDoc = () => !APP || !appRoot || appRoot.kind === 'dir' || appRoot.kind === 'file';
   function downloadDoc() {
     flushTyping();
-    const a = el('a', { download: DOC_NAME || 'nota.md' });
-    a.href = URL.createObjectURL(new Blob([raw], { type: 'text/markdown' }));
-    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    flash(T('Archivo descargado'));
+    if (LMD.kit.saveFile(new Blob([raw], { type: 'text/markdown' }), DOC_NAME || 'nota.md') === 'download') flash(T('Archivo descargado'));
   }
 
   function onAction(act, source, keys) {
@@ -3228,9 +3225,7 @@
       // La nota como está acá, con lo que no llegó a enviarse.
       download: () => {
         flushTyping();
-        const a = el('a', { download: DOC_NAME || 'nota.md' });
-        a.href = URL.createObjectURL(new Blob([raw], { type: 'text/markdown' }));
-        a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        LMD.kit.saveFile(new Blob([raw], { type: 'text/markdown' }), DOC_NAME || 'nota.md');
       },
       flush: async () => { flushTyping(); if (dirty) { clearTimeout(autosaveTimer); await save(false); } return !dirty; },
       typing: () => typingNode(),
@@ -3348,9 +3343,7 @@
   async function saveNoteToDisk() {
     clearTimeout(autosaveTimer);
     if (!window.showSaveFilePicker) {
-      const a = el('a', { download: DOC_NAME });
-      a.href = URL.createObjectURL(new Blob([raw], { type: 'text/markdown' }));
-      a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      LMD.kit.saveFile(new Blob([raw], { type: 'text/markdown' }), DOC_NAME);
       flash(T('Se descargó una copia. La nota sigue guardada en este navegador'));
       return true;
     }
@@ -3415,9 +3408,7 @@
         }
         if (!window.showOpenFilePicker) {
           const name = DOC_NAME || 'documento.md';
-          const a = el('a', { download: name });
-          a.href = URL.createObjectURL(new Blob([raw], { type: 'text/markdown' }));
-          a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+          LMD.kit.saveFile(new Blob([raw], { type: 'text/markdown' }), name);
           flash(T('Este navegador no deja escribir el archivo: se descargó una copia'), 'warn');
           if (appRoot && appRoot.id === 'mem') {
             diskText = raw; dirty = false; updateSaveState();

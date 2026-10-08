@@ -173,11 +173,20 @@
   }
 
   // start({ from: nodo desde el que se lee, text: lo elegido }): sin nada, la nota entera.
+  // Safari en iPhone solo deja hablar si la primera frase sale dentro del toque. Lo que sigue (esperar las voces,
+  // armar la barra) ya queda fuera: por eso, la primera vez, sale ahí mismo una frase vacía y sin volumen.
+  let primed = false;
+  function prime(s) {
+    if (primed || !LMD.device.ios) return;
+    primed = true;
+    try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; s.speak(u); } catch (e) { /* sin voz */ }
+  }
   async function start(o) {
     o = o || {};
     const s = synth();
     if (!s || !on || core.noDoc) return false;
     halt();
+    prime(s);
     const article = core.ui.article;
     const segs = o.text ? [{ node: o.from || null, text: o.text.replace(/\s+/g, ' ').trim() }] : segments(article);
     if (!segs.some((x) => x.text || x.say)) { core.flash(T('No hay texto para leer.'), 'warn'); return false; }

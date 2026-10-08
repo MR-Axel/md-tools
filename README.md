@@ -56,8 +56,8 @@ Free and open source. No tracking: files are read in your browser and never uplo
 | **Daily note** | A tool in Settings → Tools. A button on the home screen and in the file explorer opens today's note and creates it from a template when it does not exist, in the browser, the cloud or a folder on disk. A month calendar marks the days that have a note, and each daily note links to the day before and the day after. Works offline. |
 | **Word export** | A tool in Settings → Tools. Adds Word (.docx) to the Export menu. The file is built in the browser: heading styles that feed an automatic table of contents, lists, task checkboxes, tables, code, footnotes, embedded images and diagrams as images. Formulas go as LaTeX text. |
 | **Link map** | A tool in Settings → Tools. A graph of which notes link to which, from relative links and `[[wikilinks]]`: drag, zoom, filter by folder, search, and click a note to open it. Under the open note, the notes that link to it. It reads only what is already on the device and sends nothing. |
-| **Phone** | The same app on a small screen, and the web app opens without a connection. |
-| **Yours to adjust** | Light and dark themes, width, font size, code block color, custom CSS, English and Spanish. |
+| **Phone** | The same app on a small screen, and the web app opens without a connection. On iPhone and iPad it installs from Safari (Share, Add to Home Screen): it respects the notch and the home bar, keeps the format bar above the keyboard and exports through the share sheet. |
+| **Yours to adjust** | Twelve built-in themes, six light and six dark, picked from a grid of thumbnails with a live preview (four are free; the rest, like accent color, font and custom CSS, come with the paid plan). Each one sets the page, panels, text, borders, links, selection, code syntax and diagrams, and is checked for AA contrast (`tests/themes.mjs`). Also width, font size, code block color, English and Spanish. |
 
 | Editing a table | Blocks menu |
 |---|---|
@@ -75,7 +75,7 @@ Free and open source. No tracking: files are read in your browser and never uplo
 
 **Both at once.** With the extension installed, the web app and the extension share one store: the same browser notes and the same list of opened files and folders on both sides. A folder opened on one side shows on the other as "Reconnect": pick it once there and it stays. The extension button opens the web app, or the extension's own page when there is no connection; Settings → Install chooses which. Cloud sessions are not shared: each side signs in on its own.
 
-**As an installed app.** From Settings → Install the web app installs with its own window, and Windows offers it under "Open with" for `.md` files.
+**As an installed app.** From Settings → Install the web app installs with its own window, and Windows offers it under "Open with" for `.md` files. The same tab shows the steps for iPhone and iPad (Safari: Share, Add to Home Screen) and for Mac (Safari: File, Add to Dock; Chrome or Edge: the install icon). Safari can delete the notes kept in the browser after weeks without use unless the app is installed, so install it or use the cloud.
 
 ## Android app
 
@@ -103,6 +103,8 @@ It works the same in Edge, Brave and Arc.
 Chrome cannot update an extension loaded from a folder, so SharpMD checks this repository once a day (or once a week, or never: Settings → Updates) and tells you in the sidebar when there is a newer version. Download the ZIP, replace the folder and click **Apply**. If you cloned the repository, `git pull` and **Apply** is enough.
 
 ## Shortcuts
+
+On a Mac, Ctrl is ⌘ and Alt is ⌥ (redo is ⇧⌘Z), and the app shows them that way.
 
 | Shortcut | Action |
 |---|---|
@@ -180,7 +182,7 @@ src/
   defaults.js     default settings, storage access and the English/Spanish dictionary
   kit.js          icons and shared helpers
   markdown.js     the parser and its plugins: [[wiki]] links, math, YAML front matter
-  theme.js        light or dark theme and accent color
+  theme.js        the twelve built-in themes, light or dark mode and accent color
   serialize.js    from an edited block back to Markdown
   store.js        file and folder permissions and browser notes, kept in IndexedDB
   bridge.js       one store for the web app and the extension: keeps both sides equal, reconnects folders
@@ -245,7 +247,8 @@ They need a Playwright Chromium (`npx playwright install chromium`) or `CHROME_B
 
 Two more scripts run by hand, outside `npm test`:
 
-- `BROWSER=firefox node browsers.mjs` (or `webkit`) walks the landing page and the web app in the other engines. Install them once with `npx playwright-core install firefox webkit`.
+- `node themes.mjs` checks the contrast of the twelve built-in themes, with no browser.
+- `BROWSER=firefox node browsers.mjs` (or `webkit`) walks the landing page and the web app in the other engines. In WebKit it also walks the app as an iPhone, an iPad and a Mac see it (screenshots prefixed `iphone-` and `ipad-`); that engine is not Safari, so a real device still has to be checked. Install them once with `npx playwright-core install firefox webkit`.
 - `node tools.mjs` covers presentation mode, the daily note, Word export and the link map (`ONLY=docx` runs one). `KEEP_DOCX=path ONLY=docx node tools.mjs` leaves the generated file there to open it by hand.
 - `node perf.mjs` measures the web app load, cold and warm, on a throttled network and CPU. Run it before and after touching what `src/app.html` loads.
 

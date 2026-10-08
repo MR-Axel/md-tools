@@ -12,7 +12,7 @@
     plus: svg('<path d="M12 6v12M6 12h12"/>'), minus: svg('<path d="M6 12h12"/>'),
     fit: svg('<path d="M4.500 9.500v-5h5M19.500 9.500v-5h-5M4.500 14.500v5h5M19.500 14.500v5h-5"/>'),
   };
-  const KEY = 'Alt+Shift+G';
+  const KEY = LMD.keys('Alt+Shift+G');
   const MAX_NOTES = 1500;
   const MD_RE = /\.(md|mdx|mkd|mdown|markdown)$/i;
   let core = null; let on = false; let wired = false;
