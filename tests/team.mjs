@@ -311,7 +311,7 @@ try {
   check('y esas notas no se mezclan con las de la nube propia', !root.inCloud.includes('plan.md') && !root.inCloud.some((n) => /^~/.test(n)), root.inCloud);
   await olga.page.click('.lmd-sync'); await olga.page.waitForSelector('.lmd-menu [data-s]');
   const menu = await olga.page.evaluate(() => [...document.querySelectorAll('.lmd-menu [data-s]')].map((b) => b.dataset.s + (b.classList.contains('lmd-locked') ? ':locked' : '')));
-  check('en una nota del equipo el menú de la nube ofrece el historial y, a quien administra, compartir; la sesión en vivo no', menu.includes('history') && menu.includes('share') && !menu.some((m) => /^live/.test(m)), menu);
+  check('en una nota del equipo el menú de la nube ofrece el historial y, a quien administra, compartir y la sesión en vivo', menu.includes('history') && menu.includes('share') && menu.includes('live'), menu);
   await olga.page.keyboard.press('Escape'); await olga.page.mouse.click(700, 500);
 
   // Ajustes → Plan: la columna del equipo y la gestión de quien administra.

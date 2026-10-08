@@ -1495,6 +1495,15 @@
       "Los miembros pueden publicar carpetas del equipo como sitio": "Members can publish team folders as a site", "Preparó un sitio": "Set up a site",
       "Publicó un sitio": "Published a site", "Despublicó un sitio": "Unpublished a site",
       "Publicar sitios": "Publishing sites",
+      "Los miembros pueden abrir sesiones en vivo con invitados": "Members can open live sessions with guests", "Miembro del equipo": "Team member", "del equipo": "team", "invitado": "guest",
+      "Abrió una sesión en vivo": "Opened a live session", "Terminó una sesión en vivo": "Ended a live session", "Sacó a un invitado": "Removed a guest",
+      "Quien administra el equipo no habilitó las sesiones en vivo con invitados.": "The team admin has not turned on live sessions with guests.",
+      "La maneja quien la abrió o quien administra el equipo.": "Whoever opened it or a team admin manages it.",
+      "El equipo ya tiene varias sesiones en vivo abiertas. Terminá alguna.": "The team already has several live sessions open. End one.",
+      "En un espacio protegido con contraseña no hay sesiones en vivo: los invitados no tienen la llave.": "A space protected with a password has no live sessions: guests do not have the key.",
+      "Esta nota es del equipo. Quien tenga el enlace entra a editarla sin crear cuenta, junto a los miembros que la tengan abierta.": "This note belongs to the team. Anyone with the link joins to edit it without an account, next to the members who have it open.",
+      "Nota del equipo. Los miembros editan desde su cuenta, sin el enlace.": "Team note. Members edit from their account, without the link.",
+      "Nota del equipo, en vivo con invitados. La abrió {a}.": "Team note, live with guests. Opened by {a}.",
   };
   let current = 'es';
   function setLang(pref) {

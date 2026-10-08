@@ -2418,3 +2418,5 @@ button.lmd-cd-pill-name { cursor: pointer; border-radius: 4px; }
   .lmd-cl-toast .lmd-link { min-height: 32px; }
 }
 @media print { .lmd-cl-bar, .lmd-cl-add, .lmd-cl-grip, .lmd-cl-toast { display: none !important; } }
+/* Sesión en vivo sobre una nota del equipo: la línea que lo dice, arriba del cuadro. */
+.lmd-ask-card.lmd-live-card p.lmd-live-team { margin: 0 0 12px; color: var(--fg); overflow-wrap: anywhere; }

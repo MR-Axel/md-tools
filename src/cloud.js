@@ -124,6 +124,9 @@
 
   // Una ruta que empieza con ~12/ es una nota de otra cuenta (la 12) que nos compartieron.
   const split = (p) => { const m = /^~(\d+)\/(.*)$/.exec(p); return m ? { owner: m[1], path: m[2] } : { owner: '', path: p }; };
+  // La nota de una sesión en vivo, como la espera el servidor: propia, o del espacio del equipo.
+  const liveNote = (p) => (isTeam(p) ? { path: split(p).path, o: +team.space } : { path: p });
+  const liveQuery = (p) => '?path=' + encodeURIComponent(liveNote(p).path) + (isTeam(p) ? '&o=' + team.space : '');
   // Para un invitado hay una sola nota, la de la sesión: cualquier otra ruta no existe.
   const notePath = (p) => { if (guest) return p === guest.note ? '/live/note' : '/live/none'; const s = split(p); return '/notes/' + s.path.split('/').map(encodeURIComponent).join('%2F') + (s.owner ? '?o=' + s.owner : ''); };
 
@@ -585,12 +588,13 @@
       look: (secret) => api('POST', '/live/look', { secret }),
       join: async (secret, name) => adopt(secret, await api('POST', '/live/join', { secret, name })),
       resume: resumeGuest, leave: leaveGuest,
-      status: (p) => api('GET', '/live?path=' + encodeURIComponent(p)),
-      open: (p, name) => api('POST', '/live', { path: p, name }),
-      close: (p) => api('DELETE', '/live?path=' + encodeURIComponent(p)),
-      rotate: (p) => api('POST', '/live/rotate', { path: p }),
-      kick: (p, id) => api('POST', '/live/kick', { path: p, id }),
-      at: (p, body) => api('POST', '/live/presence', guest ? body : Object.assign({ path: p }, body)),
+      // Una nota del equipo va con su ruta dentro del espacio y o: el servidor mira el papel y la política.
+      status: (p) => api('GET', '/live' + liveQuery(p)),
+      open: (p, name) => api('POST', '/live', Object.assign(liveNote(p), { name })),
+      close: (p) => api('DELETE', '/live' + liveQuery(p)),
+      rotate: (p) => api('POST', '/live/rotate', liveNote(p)),
+      kick: (p, id) => api('POST', '/live/kick', Object.assign(liveNote(p), { id })),
+      at: (p, body) => api('POST', '/live/presence', guest ? body : Object.assign(liveNote(p), body)),
     },
     // Guarda la nota abierta sobre la revisión que tiene como base. Sale con rev_conflict si otro guardó antes.
     save: async (p, text, rev) => { const r = await putNote(p, text, rev); listCache = null; await keep(p, text, text, false); return r; },

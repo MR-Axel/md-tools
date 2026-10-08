@@ -897,7 +897,7 @@ function tellSaved(ownerId, p, saved, who, text) {
   }
   const list = whoIn(room); const pid = who.pid || 'x';
   for (const c of room) {
-    const member = !!live && (c.gid ? c.live === live.id : c.uid === ownerId);
+    const member = !!live && (c.gid ? c.live === live.id : !!c.lm);
     if (c.gid && !member) continue;
     const ev = c.gid ? { type: 'saved', pid, updated: saved.updated, rev: saved.rev } : { who: list, type: 'saved', by: who.by, updated: saved.updated, rev: saved.rev, pid };
     push(c, member && change ? Object.assign(ev, change) : ev);
@@ -917,18 +917,20 @@ function listen(req, res, user, url) {
   mine.forEach((k) => liveAdd(k, 1));
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', 'x-accel-buffering': 'no' });
   res.on('error', () => { /* la conexión se cortó: de limpiar se ocupa close */ });
-  const client = { res, email: user.email, uid: user.id, name: nameOf(user) };
+  // lm: es de la sesión en vivo de esa nota sin haber entrado por el enlace (la nota es suya, o es de su equipo).
+  const lm = owner.id === user.id || (!!user.team && user.team.space === owner.id);
+  const client = { res, email: user.email, uid: user.id, name: nameOf(user), lm, shown: user.name || '', admin: owner.id !== user.id && teamRoleOf(user) === 'admin' };
   if (!rooms.has(key)) rooms.set(key, new Set());
   rooms.get(key).add(client);
   announce(key, { type: 'presence' });
-  // Si la nota tiene una sesión en vivo y quien entra es quien la abrió, recibe quiénes están.
-  const session = owner.id === user.id ? liveRow(owner.id, p) : null;
-  if (session) { push(client, { type: 'live', open: true, people: livePeople(session) }); tellLive(session); }
+  // Si la nota tiene una sesión en vivo y quien entra es quien la abrió, o un miembro del equipo, recibe quiénes están.
+  const session = lm ? liveRow(owner.id, p) : null;
+  if (session) { push(client, liveEvent(session, client, livePeople(session))); tellLive(session); }
   const beat = setInterval(() => { if (!res.destroyed) res.write(': ping\n\n'); }, 25000);
   req.on('close', () => {
     clearInterval(beat); mine.forEach((k) => liveAdd(k, -1));
     const room = rooms.get(key); if (room) { room.delete(client); if (!room.size) rooms.delete(key); else announce(key, { type: 'presence' }); }
-    if (owner.id === user.id) { const now_ = liveRow(owner.id, p); if (now_) { liveTouch(now_); tellLive(now_); } }
+    if (lm) { const now_ = liveRow(owner.id, p); if (now_) { liveTouch(now_); tellLive(now_); } }
   });
 }
 
@@ -948,13 +950,30 @@ const LIVE_IDLE_MS = +(env.LIVE_IDLE_MS || 12 * HOUR); // sin nadie conectado, l
 const LIVE_GUEST_MS = +(env.LIVE_GUEST_MS || 120000); // un invitado sin conexión ni pedidos deja su lugar
 const LIVE_EDIT_MS = 8000; // "está escribiendo en este bloque" vale este tiempo si no se renueva
 const MAX_LIVES = 20; const LIVE_PER_GUEST = 4; const LIVE_COLORS = 12;
+const MAX_TEAM_LIVES = 10; // sesiones abiertas a la vez en el espacio de un equipo
+const LIVE_TEAM_HOUR = 120; // abrir, cambiar el enlace, sacar y terminar: por hora y por equipo
 db.exec('CREATE TABLE IF NOT EXISTS lives (id INTEGER PRIMARY KEY, hash TEXT UNIQUE NOT NULL, owner INTEGER NOT NULL, path TEXT NOT NULL, name TEXT NOT NULL, created INTEGER NOT NULL, seen INTEGER NOT NULL, UNIQUE (owner, path))');
+// owner es de quién es la nota: una cuenta, o la cuenta interna del espacio de un equipo. opener, quién abrió la
+// sesión cuando la nota es de un equipo (un miembro); en una nota propia queda vacío: la abrió su dueño.
+try { db.exec('ALTER TABLE lives ADD COLUMN opener INTEGER'); } catch (e) { /* ya estaba */ }
 // Quien ya entró guarda una contraseña de reingreso propia (acá, su hash): si su pase se pierde (el servidor se
 // reinició, o estuvo un rato largo sin conexión) vuelve a entrar con ella aunque el enlace haya cambiado mientras
 // tanto. Se borra al sacarlo, al salir por su cuenta y al cerrar la sesión.
 db.exec('CREATE TABLE IF NOT EXISTS live_tickets (hash TEXT PRIMARY KEY, live INTEGER NOT NULL, created INTEGER NOT NULL)');
 db.exec('DELETE FROM live_tickets WHERE live NOT IN (SELECT id FROM lives)');
 const liveAllowed = (user) => user.plan === 'pro' || !!env.LIVE_FREE;
+const teamBySpace = (spaceId) => q('SELECT * FROM teams WHERE space = ?').get(spaceId) || null;
+// ¿La sesión puede seguir? La de una nota propia, mientras su dueño tenga el plan. La de una nota de un equipo,
+// mientras el equipo esté al día y sin contraseña, y quien la abrió siga adentro, pueda editar y tenga permitido
+// invitar gente de afuera (quien administra, siempre; los demás, si la política live está prendida).
+function liveCan(row) {
+  if (!row.opener) { const o = userById(row.owner); return !!o && liveAllowed(o); }
+  const t = teamBySpace(row.owner); const u = userById(row.opener);
+  return !!t && t.status === 'active' && !!u && !!u.team && u.team.id === t.id && teamAllows(u.team, u, 'write') && teamAllows(u.team, u, 'live') && !teamVault(t);
+}
+// Cambió algo en el equipo (un papel, una política, alguien salió, se cayó el cobro): las sesiones que ya no pueden
+// seguir terminan en el acto.
+function liveTeamSweep(t) { if (t) for (const row of q('SELECT * FROM lives WHERE owner = ?').all(t.space)) if (!liveCan(row)) liveEnd(row, 'closed'); }
 // En una sesión en vivo, el rechazo por revisión dice además quién hizo el guardado que quedó (su número dentro
 // de la sesión, nunca un correo): así al otro se le puede avisar con nombre.
 function liveWrite(owner, p, text, rev) {
@@ -964,11 +983,29 @@ function liveWrite(owner, p, text, rev) {
     throw e;
   }
 }
-const liveMem = new Map(); // id de la sesión → { guests: Map(id → invitado), owner: { block, editing, timer }, seq, tick }
+const liveMem = new Map(); // id de la sesión → { guests: Map(id → invitado), owner: { block, editing, timer }, members: Map(cuenta → lugar), seq, mseq, tick }
 const passes = new Map(); // hash del pase → { live, gid }
-const memOf = (row) => { let m = liveMem.get(row.id); if (!m) { m = { guests: new Map(), owner: { block: null, editing: false, timer: null }, seq: 0, tick: null }; liveMem.set(row.id, m); } return m; };
+const memOf = (row) => { let m = liveMem.get(row.id); if (!m) { m = { guests: new Map(), owner: { block: null, editing: false, timer: null }, members: new Map(), seq: 0, mseq: 0, tick: null }; liveMem.set(row.id, m); } return m; };
+const liveOpener = (row) => row.opener || row.owner;
+// Un color que nadie de la sesión esté usando (el 0 es de quien la abrió).
+function liveColor(m) {
+  const used = new Set(Array.from(m.guests.values()).concat(Array.from(m.members.values())).map((x) => x.color));
+  let color = 1; while (used.has(color) && color < LIVE_COLORS - 1) color++;
+  return color;
+}
+// El lugar de una cuenta en la sesión: el de quien la abrió, o el de otro miembro del equipo que tiene la nota
+// abierta. Un miembro no entra por el enlace ni ocupa el lugar de un invitado: figura mientras tenga la nota abierta.
+function liveSeat(row, uid) {
+  const m = memOf(row);
+  if (uid === liveOpener(row)) return m.owner;
+  let s = m.members.get(uid);
+  if (!s) { s = { n: ++m.mseq, color: liveColor(m), block: null, editing: false, timer: null }; m.members.set(uid, s); }
+  return s;
+}
+// Quién es dentro de la sesión: 'o' quien la abrió, 'm2' otro miembro del equipo. Nunca un número de cuenta.
+const livePid = (row, uid) => (uid === liveOpener(row) ? 'o' : 'm' + liveSeat(row, uid).n);
 const liveRoom = (row) => rooms.get(roomKey(row.owner, row.path)) || new Set();
-const liveMembers = (row) => Array.from(liveRoom(row)).filter((c) => (c.gid ? c.live === row.id : c.uid === row.owner));
+const liveMembers = (row) => Array.from(liveRoom(row)).filter((c) => (c.gid ? c.live === row.id : !!c.lm));
 // Tope de ritmo liviano, por ventana fija: para lo que llega muchas veces por segundo (presencia, guardados de invitados).
 const windows = new Map();
 function rate(key, max, span, code) {
@@ -992,20 +1029,32 @@ function freeName(name, taken) {
 }
 function livePeople(row) {
   const m = memOf(row); const room = liveRoom(row);
-  const here = Array.from(room).some((c) => c.uid === row.owner);
+  const opener = liveOpener(row);
+  const here = Array.from(room).some((c) => !c.gid && c.uid === opener);
   const out = [{ id: 'o', name: row.name, color: 0, block: here ? m.owner.block : null, editing: here && m.owner.editing, here }];
+  if (row.opener) {
+    // Los demás miembros del equipo que tienen la nota abierta, con el nombre visible que eligieron (nunca el correo:
+    // sin nombre elegido viaja vacío y la app dice "miembro del equipo").
+    const open = new Map(); for (const c of room) if (!c.gid && c.lm && c.uid !== opener) open.set(c.uid, c.shown || '');
+    for (const [uid, s] of Array.from(m.members)) if (!open.has(uid)) { clearTimeout(s.timer); m.members.delete(uid); }
+    for (const [uid, name] of open) { const s = liveSeat(row, uid); out.push({ id: 'm' + s.n, name, color: s.color, block: s.block, editing: s.editing, here: true, member: true }); }
+  }
   for (const g of m.guests.values()) out.push({ id: 'g' + g.id, name: g.name, color: g.color, block: g.conns ? g.block : null, editing: !!g.conns && g.editing, here: g.conns > 0 });
   return out;
 }
-const liveView = (row) => ({ open: true, name: row.name, created: row.created, max: LIVE_PEOPLE, people: livePeople(row) });
+// who: la cuenta que pregunta. En una nota de un equipo se le dice además quién es ahí adentro (you) y si la maneja
+// (can: quien la abrió y quien administra el equipo cambian el enlace, sacan a un invitado y la terminan).
+const liveView = (row, who) => Object.assign({ open: true, name: row.name, created: row.created, max: LIVE_PEOPLE, people: livePeople(row) },
+  row.opener && who ? { team: true, you: livePid(row, who.id), can: who.id === row.opener || teamRoleOf(who) === 'admin' } : {});
+const liveEvent = (row, c, people) => Object.assign({ type: 'live', open: true, people }, row.opener && !c.gid ? { team: true, you: livePid(row, c.uid), can: c.uid === row.opener || !!c.admin } : {});
 // Quiénes están y en qué bloque, a todos los de la sesión. Junta los cambios de un instante en un solo aviso.
 function tellLive(row) {
   const m = memOf(row); if (m.tick) return;
   m.tick = setTimeout(() => {
     m.tick = null;
     if (!liveMem.has(row.id)) return;
-    const ev = { type: 'live', open: true, people: livePeople(row) };
-    for (const c of liveMembers(row)) push(c, ev);
+    const people = livePeople(row);
+    for (const c of liveMembers(row)) push(c, liveEvent(row, c, people));
   }, 120);
   m.tick.unref();
 }
@@ -1019,12 +1068,14 @@ function dropGuest(row, g, why, forget) {
   for (const c of Array.from(liveRoom(row))) if (c.gid === g.id && c.live === row.id) { push(c, { type: 'live', open: false, why }); c.res.end(); }
 }
 // Cierra la sesión: los pases dejan de servir en el acto y a cada conexión se le avisa por qué antes de cortarla.
-function liveEnd(row, why) {
-  q('DELETE FROM lives WHERE id = ?').run(row.id);
+// by: quién la terminó, si fue alguien. En una nota de un equipo queda en el registro de actividad.
+function liveEnd(row, why, by) {
+  if (!q('DELETE FROM lives WHERE id = ?').run(row.id).changes) return;
+  if (row.opener) teamLog(teamBySpace(row.owner), by || { auto: true }, 'live_end', row.path);
   q('DELETE FROM live_tickets WHERE live = ?').run(row.id);
   const m = liveMem.get(row.id);
-  if (m) { clearTimeout(m.tick); clearTimeout(m.owner.timer); for (const g of Array.from(m.guests.values())) dropGuest(row, g, why); liveMem.delete(row.id); }
-  for (const c of liveRoom(row)) if (c.uid === row.owner) push(c, { type: 'live', open: false, why });
+  if (m) { clearTimeout(m.tick); clearTimeout(m.owner.timer); for (const s of m.members.values()) clearTimeout(s.timer); for (const g of Array.from(m.guests.values())) dropGuest(row, g, why); liveMem.delete(row.id); }
+  for (const c of liveRoom(row)) if (!c.gid && c.lm) push(c, { type: 'live', open: false, why });
 }
 const liveStale = (row) => !liveMembers(row).length && now() - row.seen > LIVE_IDLE_MS;
 // La sesión abierta sobre esa nota, o nada. Una vencida se cierra acá mismo.
@@ -1043,7 +1094,7 @@ function liveBySecret(req, secret, ticket) {
   const row = fits(ticket) ? q('SELECT l.* FROM live_tickets t JOIN lives l ON l.id = t.live WHERE t.hash = ?').get(sha(ticket))
     : fits(secret) ? q('SELECT * FROM lives WHERE hash = ?').get(sha(secret)) : null;
   const owner = row && userById(row.owner);
-  if (row && (liveStale(row) || !owner || !liveAllowed(owner))) liveEnd(row, liveStale(row) ? 'expired' : 'closed');
+  if (row && (liveStale(row) || !owner || !liveCan(row))) liveEnd(row, liveStale(row) ? 'expired' : 'closed');
   else if (row) return { row, owner };
   // El mismo aviso para un secreto que nunca existió y para una sesión que ya terminó. Veinte fallos por hora por red.
   mark('lbad:' + ip);
@@ -1051,40 +1102,55 @@ function liveBySecret(req, secret, ticket) {
 }
 const noteName = (p) => p.split('/').pop();
 
+// Con o, la nota es del espacio del equipo de quien llama: la abre un miembro que puede editar, si quien administra
+// lo permitió (política live), y nunca en un espacio protegido con contraseña (un invitado no tiene la llave).
 function liveOpen(user, body) {
-  if (!liveAllowed(user)) throw new Fail(402, 'live_needs_plan');
+  const owner = spaceOf(user, body.o, 'edit'); const team = owner.id !== user.id ? user.team : null;
+  if (team) {
+    if (team.status !== 'active') throw new Fail(402, 'live_needs_plan');
+    if (!teamAllows(team, user, 'live')) throw new Fail(403, 'team_policy', 'The administrator of the team has not allowed members to open live sessions with guests');
+    if (teamVault(team)) throw new Fail(409, 'live_vault', 'A team space protected with a password has no live sessions with guests');
+    rate('lteam:' + team.id, LIVE_TEAM_HOUR, HOUR, 'too_many');
+  } else if (!liveAllowed(user)) throw new Fail(402, 'live_needs_plan');
   const p = cleanPath(body.path); const name = cleanName(body.name);
-  const n = q('SELECT v FROM notes WHERE user = ? AND path = ?').get(user.id, p);
+  const n = q('SELECT v FROM notes WHERE user = ? AND path = ?').get(owner.id, p);
   if (!n) throw new Fail(404, 'not_found');
   // El servidor aplica y reparte los cambios: una nota cifrada desde el navegador no la puede leer.
-  if (n.v || vaultOf(user.id, p)) throw new Fail(409, 'live_vault', 'A note in a folder protected with a password cannot be edited live');
-  let row = liveRow(user.id, p);
+  if (n.v || vaultOf(owner.id, p)) throw new Fail(409, 'live_vault', 'A note in a folder protected with a password cannot be edited live');
+  let row = liveRow(owner.id, p);
+  if (row && !liveCan(row)) { liveEnd(row, 'closed'); row = null; }
   if (row) {
     // Ya estaba abierta: el enlace no se vuelve a dar (solo se guarda su hash). Para uno nuevo está /live/rotate.
-    const taken = Array.from(memOf(row).guests.values()).map((g) => g.name);
-    row.name = freeName(name, taken); q('UPDATE lives SET name = ? WHERE id = ?').run(row.name, row.id);
-    tellLive(row);
-    return liveView(row);
+    // En un equipo, el nombre con que figura la sesión lo cambia solo quien la abrió.
+    if (liveOpener(row) === user.id) {
+      const taken = Array.from(memOf(row).guests.values()).map((g) => g.name);
+      row.name = freeName(name, taken); q('UPDATE lives SET name = ? WHERE id = ?').run(row.name, row.id);
+      tellLive(row);
+    }
+    return liveView(row, user);
   }
-  if (q('SELECT COUNT(*) AS n FROM lives WHERE owner = ?').get(user.id).n >= MAX_LIVES) throw new Fail(429, 'too_many');
+  if (q('SELECT COUNT(*) AS n FROM lives WHERE owner = ?').get(owner.id).n >= (team ? MAX_TEAM_LIVES : MAX_LIVES)) throw new Fail(429, team ? 'live_team_max' : 'too_many', '', team ? { max: MAX_TEAM_LIVES } : undefined);
   const secret = random(32);
-  q('INSERT INTO lives (hash, owner, path, name, created, seen) VALUES (?, ?, ?, ?, ?, ?)').run(sha(secret), user.id, p, name, now(), now());
-  row = q('SELECT * FROM lives WHERE owner = ? AND path = ?').get(user.id, p);
+  q('INSERT INTO lives (hash, owner, path, name, created, seen, opener) VALUES (?, ?, ?, ?, ?, ?, ?)').run(sha(secret), owner.id, p, name, now(), now(), team ? user.id : null);
+  row = q('SELECT * FROM lives WHERE owner = ? AND path = ?').get(owner.id, p);
+  if (team) teamLog(team, user, 'live_open', p);
   tellLive(row);
-  return Object.assign(liveView(row), { secret });
+  return Object.assign(liveView(row, user), { secret });
 }
 function liveRotate(row) {
   const secret = random(32);
   q('UPDATE lives SET hash = ? WHERE id = ?').run(sha(secret), row.id);
   return secret;
 }
-function liveKick(row, id) {
-  const g = memOf(row).guests.get(+String(id || '').replace(/^g/, ''));
+function liveKick(row, id, by) {
+  // Solo a un invitado: un miembro del equipo no entró por el enlace, y se lo saca del equipo, no de la sesión.
+  const g = /^g\d+$/.test(String(id || '')) ? memOf(row).guests.get(+String(id).slice(1)) : null;
   if (!g) throw new Fail(404, 'not_found');
   dropGuest(row, g, 'kicked', true);
+  if (row.opener) teamLog(teamBySpace(row.owner), by, 'live_kick', row.path, g.name);
   const secret = liveRotate(row);
   tellLive(row);
-  return Object.assign(liveView(row), { secret });
+  return Object.assign(liveView(row, by), { secret });
 }
 // Lo que se ve antes de entrar: de quién es la sesión, el nombre de la nota y si hay lugar.
 function liveLook(req, body) {
@@ -1105,8 +1171,7 @@ function liveJoin(req, body) {
   // Los que se fueron sin avisar le dejan el lugar a quien entra.
   for (const g of Array.from(m.guests.values())) if (!g.conns && now() - g.at > LIVE_GUEST_MS) dropGuest(row, g, 'left');
   if (m.guests.size + 1 >= LIVE_PEOPLE) throw new Fail(429, 'live_full');
-  const used = new Set(Array.from(m.guests.values()).map((g) => g.color));
-  let color = 1; while (used.has(color) && color < LIVE_COLORS - 1) color++;
+  const color = liveColor(m);
   const pass = 'mdl_' + random(32); const id = ++m.seq;
   const ticket = back || 'mdk_' + random(32);
   if (!back) {
@@ -1129,7 +1194,7 @@ function guestFrom(req) {
   const g = row && memOf(row).guests.get(hit.gid);
   const owner = g && userById(row.owner);
   if (!owner) throw new Fail(401, 'bad_auth');
-  if (!liveAllowed(owner)) { liveEnd(row, 'closed'); throw new Fail(401, 'bad_auth'); }
+  if (!liveCan(row)) { liveEnd(row, 'closed'); throw new Fail(401, 'bad_auth'); }
   g.at = now();
   return { row, g, owner };
 }
@@ -1161,6 +1226,8 @@ async function liveGuest(req, p, m) {
     const text = String(body.text == null ? '' : body.text);
     const saved = liveWrite(owner, row.path, text, rev);
     tellSaved(owner.id, row.path, saved, { by: 'guest', pid: 'g' + g.id }, text);
+    // En una nota de un equipo, lo que guarda un invitado queda en el registro como una edición, con su nombre.
+    if (row.opener) teamLog(teamBySpace(row.owner), { guest: g.name }, 'edit', row.path);
     return { updated: saved.updated, size: saved.size, rev: saved.rev };
   }
   if (p === '/live/presence' && m === 'POST') return livePresence(row, g, 'g' + g.id, await readBody(req));
@@ -1573,6 +1640,7 @@ function teamOpen(user, seats, sub) {
 function teamShut(t) {
   q("UPDATE teams SET status = 'ended' WHERE id = ?").run(t.id);
   q("UPDATE users SET plan = 'free' WHERE id = ?").run(t.space);
+  liveTeamSweep(q('SELECT * FROM teams WHERE id = ?').get(t.id));
 }
 // Un aviso de Paddle sobre la suscripción de un equipo. Los lugares salen de la suscripción: los que cubre el
 // precio base más la cantidad del precio por lugar adicional.
@@ -1680,6 +1748,7 @@ function teamDrop(t, userId, by) {
   if (!r.changes) throw new Fail(404, 'not_found');
   if (by && by.id !== userId) teamLog(t, by, 'remove', '', '', userId); else teamLog(t, { id: userId }, 'leave', '');
   teamCut(t.space, userId);
+  liveTeamSweep(t);
   teamVaultLeft(t, userId);
   // Si tenía paga una suscripción de equipo que esperaba a que saliera de este, su equipo nace ahora, con los lugares
   // que cubre el precio base. El próximo aviso de Paddle trae la cantidad real.
@@ -1957,9 +2026,11 @@ function teamLog(team, user, action, path, detail, about) {
   if (!team) return;
   try {
     const tt = user && user.teamToken; const uid = user && !tt && user.id ? user.id : null;
-    const via = tt ? 'team' : user && user.tokenName != null ? 'ai' : ''; const token = via ? String(user.tokenName || '').slice(0, 60) : '';
+    // guest: un invitado de una sesión en vivo, con el nombre que eligió. auto: nadie, lo hizo el servidor.
+    const guest = user && user.guest ? String(user.guest) : '';
+    const via = guest ? 'guest' : user && user.auto ? 'auto' : tt ? 'team' : user && user.tokenName != null ? 'ai' : ''; const token = guest ? guest.slice(0, 60) : via === 'team' || via === 'ai' ? String(user.tokenName || '').slice(0, 60) : '';
     if (action === 'edit' || action === 'ai') {
-      const key = team.id + '|' + action + '|' + (uid || '') + '|' + via + '|' + (user && user.tokenId || '') + '|' + (action === 'edit' ? path : '');
+      const key = team.id + '|' + action + '|' + (uid || '') + '|' + via + '|' + (user && user.tokenId || guest) + '|' + (action === 'edit' ? path : '');
       const last = logSeen.get(key) || 0; const gap = action === 'edit' ? TEAM_EDIT_GAP : HOUR;
       if (now() - last < gap) return;
       logSeen.set(key, now());
@@ -1974,7 +2045,7 @@ function teamLogSweep() {
   for (const t of q('SELECT team, COUNT(*) AS n FROM team_log GROUP BY team HAVING n > ?').all(TEAM_LOG_MAX)) q('DELETE FROM team_log WHERE team = ? AND id NOT IN (SELECT id FROM team_log WHERE team = ? ORDER BY id DESC LIMIT ?)').run(t.team, t.team, TEAM_LOG_MAX);
   for (const [k, at] of logSeen) if (now() - at > HOUR) logSeen.delete(k);
 }
-const TEAM_ACTIONS = ['create', 'edit', 'move', 'delete', 'restore', 'purge', 'empty_trash', 'share', 'unshare', 'link', 'unlink', 'invite', 'uninvite', 'join', 'leave', 'remove', 'role', 'policy', 'team_name', 'protect', 'password', 'rotate', 'rotate_done', 'unprotect', 'destroy', 'ai', 'ai_unlock', 'token_create', 'token_revoke', 'automation', 'automation_remove', 'site', 'publish', 'unpublish'];
+const TEAM_ACTIONS = ['create', 'edit', 'move', 'delete', 'restore', 'purge', 'empty_trash', 'share', 'unshare', 'link', 'unlink', 'invite', 'uninvite', 'join', 'leave', 'remove', 'role', 'policy', 'team_name', 'protect', 'password', 'rotate', 'rotate_done', 'unprotect', 'destroy', 'ai', 'ai_unlock', 'token_create', 'token_revoke', 'automation', 'automation_remove', 'site', 'publish', 'unpublish', 'live_open', 'live_end', 'live_kick'];
 // Lo que se pide del registro: who (número de cuenta), token (nombre), action, from y to (milisegundos), before (id, para seguir).
 function teamLogRows(team, url, max) {
   const g = (k) => url.searchParams.get(k) || '';
@@ -2043,6 +2114,7 @@ async function teamAdminRoute(user, p, m, req, after) {
       teamLog(t, user, 'role', '', b.role, id);
       // Quien pasa a solo leer deja de recibir en vivo como alguien que edita: vuelve a entrar con su papel nuevo.
       teamCut(t.space, id);
+      liveTeamSweep(t);
     }
     return after({ ok: true });
   }
@@ -2065,6 +2137,8 @@ async function teamAdminRoute(user, p, m, req, after) {
       // Del cambio queda cuál fue y, si es un sí o un no o los días, a qué pasó. De la plantilla y la carpeta, solo que cambiaron.
       for (const k of changed) teamLog(t, user, 'policy', '', k === 'template' || k === 'folder' ? k : k + '=' + (typeof change[k] === 'boolean' ? (change[k] ? 'on' : 'off') : change[k] || TEAM_HISTORY_DAYS));
       if (changed.includes('history_days')) historySweep(t);
+      // Sin la política, las sesiones en vivo que abrió quien no administra terminan.
+      if (changed.includes('live')) liveTeamSweep(t);
     }
     return after({ ok: true, policies: teamPolicies(t) });
   }
@@ -2121,6 +2195,8 @@ function accountDelete(req, user, body) {
     for (const row of q('SELECT * FROM lives WHERE owner = ?').all(id)) liveEnd(row, 'closed');
     for (const v of vaultsOf(id)) aiForgetAll(v);
   }
+  // Y las que abrió sobre notas de un equipo del que es miembro.
+  for (const row of q('SELECT * FROM lives WHERE opener = ?').all(user.id)) liveEnd(row, 'closed');
   // Quien era miembro de un equipo con el espacio protegido: su llave abierta para la IA se olvida, y queda anotado que salió.
   if (!own && user.team) teamVaultLeft(user.team, user.id);
   db.exec('BEGIN');
@@ -4226,13 +4302,25 @@ async function route(req, url) {
   if (p === '/live' && m === 'POST') return liveOpen(user, await readBody(req));
   if (p === '/live' || p === '/live/rotate' || p === '/live/kick' || p === '/live/presence') {
     const body = m === 'POST' ? await readBody(req) : {};
-    const row = liveRow(user.id, cleanPath(m === 'POST' ? body.path : url.searchParams.get('path')));
-    if (p === '/live' && m === 'GET') return row ? liveView(row) : { open: false };
+    // De quién es la nota: propia, o del espacio del equipo de quien llama (o). Un miembro ve la sesión y dice en
+    // qué bloque está; la maneja quien la abrió y quien administra el equipo.
+    const owner = spaceOf(user, m === 'POST' ? body.o : url.searchParams.get('o')); const team = owner.id !== user.id ? user.team : null;
+    let row = liveRow(owner.id, cleanPath(m === 'POST' ? body.path : url.searchParams.get('path')));
+    if (row && team && !liveCan(row)) { liveEnd(row, 'closed'); row = null; }
+    if (p === '/live' && m === 'GET') return row ? liveView(row, user) : { open: false };
     if (!row) throw new Fail(404, 'live_gone');
-    if (p === '/live' && m === 'DELETE') { liveEnd(row, 'closed'); return { ok: true }; }
+    if (p === '/live/presence' && m === 'POST') {
+      // Quien solo lee figura en el bloque que mira, sin tomarlo.
+      if (team && !teamAllows(team, user, 'write')) body.editing = false;
+      return livePresence(row, liveSeat(row, user.id), livePid(row, user.id), body);
+    }
+    if (team) {
+      if (liveOpener(row) !== user.id && !teamAllows(team, user, 'admin')) throw new Fail(403, teamAllows(team, user, 'write') ? 'not_opener' : 'read_only', 'Only whoever opened the session or an administrator of the team can do that');
+      rate('lteam:' + team.id, LIVE_TEAM_HOUR, HOUR, 'too_many');
+    }
+    if (p === '/live' && m === 'DELETE') { liveEnd(row, 'closed', user); return { ok: true }; }
     if (p === '/live/rotate' && m === 'POST') return { secret: liveRotate(row) };
-    if (p === '/live/kick' && m === 'POST') return liveKick(row, body.id);
-    if (p === '/live/presence' && m === 'POST') return livePresence(row, memOf(row).owner, 'o', body);
+    if (p === '/live/kick' && m === 'POST') return liveKick(row, body.id, user);
   }
   if (p === '/team' || p.startsWith('/team/')) return teamRoute(user, p, m, req);
   if (p === '/automations' || p.startsWith('/automations/')) return autoRoute(req, user, p, m, url);
@@ -4305,8 +4393,11 @@ async function route(req, url) {
       const t = target(user, url, clean, 'edit');
       teamHold(user, t.owner);
       const body = await readBody(req);
-      const saved = t.role === 'owner' ? liveWrite(t.owner, clean, body.text, cleanRev(body.rev)) : writeNote(t.owner, clean, body.text, cleanRev(body.rev));
-      tellSaved(t.owner.id, clean, saved, { by: user.email, pid: t.role === 'owner' ? 'o' : 'x' }, String(body.text == null ? '' : body.text));
+      const mine = t.role === 'owner' || t.role === 'team';
+      const saved = mine ? liveWrite(t.owner, clean, body.text, cleanRev(body.rev)) : writeNote(t.owner, clean, body.text, cleanRev(body.rev));
+      // Dentro de una sesión en vivo, quién fue: quien la abrió ('o') u otro miembro del equipo ('m2').
+      const session = mine ? liveRow(t.owner.id, clean) : null;
+      tellSaved(t.owner.id, clean, saved, { by: user.email, pid: session ? livePid(session, user.id) : t.role === 'owner' ? 'o' : 'x' }, String(body.text == null ? '' : body.text));
       if (t.role === 'team') teamLog(user.team, user, saved.rev === 1 ? 'create' : 'edit', clean);
       return saved;
     }

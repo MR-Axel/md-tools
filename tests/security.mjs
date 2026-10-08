@@ -1301,6 +1301,139 @@ async function teamSuite() {
       check('tope: los cambios de administración de un equipo tienen límite por hora', capped > 0 && capped <= 120, capped);
     }
 
+    console.log(' Sesiones en vivo sobre notas del equipo');
+    {
+      const { randomBytes } = await import('crypto');
+      const LSECRET = 'REMOLACHA-EN-VIVO-DEL-EQUIPO-5512'; const OSECRET = 'ACELGA-DE-OTRA-NOTA-DEL-EQUIPO-9034'; secrets.push(LSECRET, OSECRET);
+      const T = await signup(S, 'tina@ejemplo.test'); const Ed = await signup(S, 'vivoedi@ejemplo.test'); const Rd = await signup(S, 'vivolector@ejemplo.test'); const Ad = await signup(S, 'vivoadmin@ejemplo.test'); const Ex = await signup(S, 'vivosale@ejemplo.test');
+      await hook(teamEv('sub_vivo', 'active', T.email, 4));
+      const SP = (await acct(T)).team.mine.space; const o = '?o=' + SP; const n = (p) => '/notes/' + enc(p) + o;
+      const joinAs = async (who, role) => { await call('POST', '/team/invite', { email: who.email, role }, T.s); return call('POST', '/team/accept', { id: (await acct(who)).team.invites[0].id }, who.s); };
+      await joinAs(Ed, 'editor'); await joinAs(Rd, 'reader'); await joinAs(Ad, 'admin'); await joinAs(Ex, 'editor');
+      await call('PUT', n('vivo.md'), { text: 'uno ' + LSECRET }, T.s); await call('PUT', n('otra.md'), { text: 'dos ' + OSECRET }, T.s);
+      await call('PUT', '/notes/' + enc('propia.md'), { text: 'mía' }, Ed.s);
+      const live = (who, path, name) => call('POST', '/live', { path, name: name || 'Alguien', o: SP }, who.s);
+      const state = async (who, path) => (await call('GET', '/live?path=' + enc(path || 'vivo.md') + '&o=' + SP, undefined, who.s));
+      const end = (who, path) => call('DELETE', '/live?path=' + enc(path || 'vivo.md') + '&o=' + SP, undefined, who.s);
+      const enter = async (secret, name) => (await call('POST', '/live/join', { secret, name }, undefined, from(nextIp()))).json;
+      const entries = async () => (await call('GET', '/team/log', undefined, T.s)).json.entries;
+      const lastOf = async (action) => (await entries()).find((e) => e.action === action);
+
+      // Quién la abre.
+      const can0 = [(await acct(Ed)).team.mine.can.live, (await acct(Rd)).team.mine.can.live, (await acct(Ad)).team.mine.can.live];
+      check('en vivo del equipo: la política nace apagada; quien administra puede igual', can0[0] === false && can0[1] === false && can0[2] === true, can0);
+      const offEd = await live(Ed, 'vivo.md'); const offRd = await live(Rd, 'vivo.md'); const offX = await live(X, 'vivo.md'); const offNo = await call('POST', '/live', { path: 'vivo.md', name: 'x', o: SP });
+      check('en vivo del equipo: sin la política quien edita no la abre (team_policy), quien lee tampoco (read_only), y alguien de afuera o sin cuenta menos', offEd.status === 403 && offEd.json.error === 'team_policy' && offRd.status === 403 && offRd.json.error === 'read_only' && offX.status === 403 && offX.json.error === 'no_access' && offNo.status === 401, [offEd.json, offRd.json, offX.json, offNo.status]);
+      check('en vivo del equipo: sin o, la ruta se busca entre las notas propias: no hay atajo al espacio', (await call('POST', '/live', { path: 'vivo.md', name: 'x' }, Ed.s)).status === 404 && (await call('POST', '/live', { path: 'vivo.md', name: 'x', o: T.id }, Ed.s)).status === 403);
+      const first = await live(T, 'vivo.md', 'Tina'); secrets.push(first.json.secret);
+      check('en vivo del equipo: quien administra la abre sobre una nota del espacio', first.status === 200 && typeof first.json.secret === 'string' && first.json.team === true && first.json.you === 'o' && first.json.can === true, first.json);
+      { const db = S.db(); const row = db.prepare('SELECT * FROM lives WHERE owner = ?').get(SP); db.close();
+        check('en vivo del equipo: se guarda de quién es la nota (el espacio) y quién la abrió, y del enlace solo el hash', !!row && row.opener === T.id && row.path === 'vivo.md' && !JSON.stringify(row).includes(first.json.secret), row); }
+      check('en vivo del equipo: queda en el registro quién la abrió y sobre qué nota', await (async () => { const e = await lastOf('live_open'); return !!e && e.who === T.email && e.path === 'vivo.md'; })());
+
+      // Quién la ve y quién la maneja.
+      const sEd = (await state(Ed)).json; const sRd = (await state(Rd)).json; const sAd = (await state(Ad)).json; const sX = await state(X);
+      check('en vivo del equipo: los miembros la ven, cada uno con su lugar; la maneja quien la abrió o administra', sEd.open === true && sEd.team === true && /^m\d+$/.test(sEd.you) && sEd.can === false && sRd.open === true && sRd.can === false && sAd.can === true && sX.status === 403, [sEd, sRd, sAd, sX.status]);
+      check('en vivo del equipo: lo que ven no trae correos ni números de cuenta', !/@ejemplo\.test/.test(JSON.stringify([sEd, sRd, sAd])) && !JSON.stringify(sEd.people).includes(String(T.id) + '"'), sEd);
+      const noManage = [];
+      for (const [who, code] of [[Ed, 'not_opener'], [Rd, 'read_only'], [X, 'no_access']]) for (const [m, u, b2] of [['DELETE', '/live?path=vivo.md&o=' + SP], ['POST', '/live/rotate', { path: 'vivo.md', o: SP }], ['POST', '/live/kick', { path: 'vivo.md', id: 'g1', o: SP }]]) { const r = await call(m, u, b2, who.s); noManage.push(r.status === 403 && r.json.error === code); }
+      check('en vivo del equipo: otro editor, un lector y alguien de afuera no la terminan, no cambian el enlace ni sacan a nadie', noManage.every(Boolean) && (await state(T)).json.open === true, noManage);
+      const rot = await call('POST', '/live/rotate', { path: 'vivo.md', o: SP }, Ad.s); secrets.push(rot.json.secret);
+      check('en vivo del equipo: otro administrador cambia el enlace, y el anterior deja de servir', rot.status === 200 && (await call('POST', '/live/look', { secret: first.json.secret }, undefined, from(nextIp()))).status === 404 && (await call('POST', '/live/look', { secret: rot.json.secret }, undefined, from(nextIp()))).status === 200);
+
+      // El invitado: su pase, y hasta dónde llega.
+      const edEv = await stream('/events?path=vivo.md&o=' + SP, Ed.s); const rdEv = await stream('/events?path=vivo.md&o=' + SP, Rd.s);
+      const look = (await call('POST', '/live/look', { secret: rot.json.secret }, undefined, from(nextIp()))).json;
+      check('en vivo del equipo: antes de entrar se ve quién invita y el nombre de la nota, nada del equipo', look.by === 'Tina' && look.note === 'vivo.md' && !/@|ejemplo/.test(JSON.stringify(look)), look);
+      const g = await enter(rot.json.secret, 'Gabi'); const PASS = g.pass; secrets.push(PASS, g.ticket);
+      check('en vivo del equipo: el invitado entra sin cuenta y recibe la nota del espacio', typeof PASS === 'string' && g.note.text === 'uno ' + LSECRET && g.note.name === 'vivo.md' && !/@ejemplo\.test/.test(JSON.stringify(g)), g && g.note);
+      const gEv = await stream('/live/events', PASS);
+      const gSave = await call('PUT', '/live/note', { text: 'uno ' + LSECRET + '\n\nlínea de Gabi', rev: g.note.rev }, PASS);
+      const afterG = (await call('GET', n('vivo.md'), undefined, Ed.s)).json;
+      check('en vivo del equipo: el invitado guarda con revisión sobre la nota del espacio', gSave.status === 200 && afterG.text.endsWith('línea de Gabi') && afterG.rev === gSave.json.rev && (await call('PUT', '/live/note', { text: 'a ciegas' }, PASS)).status === 400 && (await call('PUT', '/live/note', { text: 'vieja', rev: g.note.rev }, PASS)).status === 409, [gSave.status, afterG.rev]);
+      check('en vivo del equipo: lo que guarda el invitado queda en el registro como una edición, con su nombre marcado como invitado', await (async () => { const e = (await entries()).find((x) => x.action === 'edit' && x.via === 'guest'); return !!e && e.token === 'Gabi' && e.path === 'vivo.md' && !e.who; })(), (await entries()).slice(0, 3));
+      const edSave = await call('PUT', n('vivo.md'), { text: afterG.text + '\n\nlínea de Edi', rev: afterG.rev }, Ed.s);
+      const stale = await call('PUT', n('vivo.md'), { text: 'pisada', rev: afterG.rev }, Ex.s);
+      await sleep(400);
+      const evs = (st) => st.text.split('\n\n').filter((x) => x.startsWith('data: ')).map((x) => JSON.parse(x.slice(6)));
+      const edLive = evs(edEv).filter((e) => e.type === 'live').pop(); const rdLive = evs(rdEv).filter((e) => e.type === 'live').pop();
+      check('en vivo del equipo: los miembros con la nota abierta ven la sesión y a los invitados sin entrar a ella; el lector también', !!edLive && edLive.team === true && edLive.can === false && edLive.people.some((p2) => p2.name === 'Gabi' && /^g/.test(p2.id)) && edLive.people.some((p2) => p2.id === edLive.you && p2.member) && !!rdLive && rdLive.people.some((p2) => p2.name === 'Gabi'), [edLive, rdLive]);
+      check('en vivo del equipo: a un miembro le llega el cambio del invitado con el texto, sin pedir la nota', evs(edEv).some((e) => e.type === 'saved' && e.pid === 'g' + String(g.you).slice(1) && typeof e.text === 'string' && e.text.endsWith('línea de Gabi')), evs(edEv).filter((e) => e.type === 'saved'));
+      check('en vivo del equipo: al invitado le llega lo que guarda un miembro, con su lugar y sin su correo', edSave.status === 200 && evs(gEv).some((e) => e.type === 'saved' && /^m\d+$/.test(e.pid) && e.text.endsWith('línea de Edi')) && !/@ejemplo\.test|"who"|"by"/.test(gEv.text) && !gEv.text.includes(String(SP)), gEv.text.slice(0, 400));
+      check('en vivo del equipo: entre miembros el guardado sigue yendo con revisión', stale.status === 409 && stale.json.error === 'rev_conflict', stale.json);
+      const rdPres = await call('POST', '/live/presence', { path: 'vivo.md', o: SP, block: 'b1.0', editing: true }, Rd.s); await sleep(250);
+      check('en vivo del equipo: quien solo lee figura en un bloque sin tomarlo', rdPres.status === 200 && (await state(T)).json.people.some((p2) => p2.member && p2.block === 'b1.0' && p2.editing === false), (await state(T)).json.people);
+      // Con el pase, cada ruta del espacio y de la cuenta.
+      const spaceRoutes = [['GET', '/notes' + o], ['GET', n('vivo.md')], ['GET', n('otra.md')], ['PUT', n('otra.md'), { text: 'pisada' }], ['PUT', n('nueva.md'), { text: 'x' }], ['DELETE', n('otra.md')], ['GET', '/search' + o + '&q=ACELGA'], ['POST', '/rename', { from: 'otra.md', to: 'robada.md', o: SP }],
+        ['GET', '/trash' + o], ['DELETE', '/trash' + o], ['GET', '/versions/' + enc('otra.md') + o], ['GET', '/version/1' + o], ['GET', '/shares' + o], ['POST', '/shares', { path: 'otra.md', email: X.email, role: 'edit', o: SP }], ['POST', '/links', { path: 'otra.md', o: SP }], ['GET', '/shared'],
+        ['GET', '/team'], ['GET', '/team/policies'], ['PUT', '/team/policies', { share: true }], ['GET', '/team/log'], ['GET', '/team/log?format=csv'], ['GET', '/team/tokens'], ['POST', '/team/tokens', { name: 'x', write: true }], ['POST', '/team/invite', { email: 'z9@ejemplo.test' }], ['POST', '/team/role', { id: Ed.id, role: 'admin' }],
+        ['POST', '/team/remove', { id: Ed.id }], ['POST', '/team/leave', {}], ['PUT', '/team', { name: 'x' }], ['GET', '/team/vault'], ['POST', '/team/vault', {}], ['POST', '/team/vault/unlock', {}], ['GET', '/account'], ['GET', '/notes'], ['GET', '/tokens'], ['POST', '/tokens', { name: 'x' }], ['GET', '/automations' + o], ['GET', '/sites'],
+        ['GET', '/comments?path=otra.md&o=' + SP], ['GET', '/live?path=vivo.md&o=' + SP], ['GET', '/live?path=otra.md&o=' + SP], ['POST', '/live', { path: 'otra.md', name: 'x', o: SP }], ['DELETE', '/live?path=vivo.md&o=' + SP], ['POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/list' }], ['GET', '/events?path=otra.md&o=' + SP], ['GET', '/events?path=vivo.md&o=' + SP]];
+      const reach = []; for (const [m, u, b2] of spaceRoutes) { const r = await call(m, u, b2, PASS); if (r.status !== 401 || JSON.stringify(r.json).includes(OSECRET)) reach.push(m + ' ' + u + ' ' + r.status); }
+      const inside = [await call('POST', '/live/rotate', { path: 'vivo.md', o: SP }, PASS), await call('POST', '/live/kick', { path: 'vivo.md', id: 'g1', o: SP }, PASS), await call('GET', '/live/notes', undefined, PASS), await call('GET', '/live/note/otra.md', undefined, PASS), await call('DELETE', '/live/note', undefined, PASS), await call('POST', '/live/look', {}, PASS)];
+      const tricks = [await call('GET', '/live/note?path=otra.md&o=' + SP, undefined, PASS), await call('PUT', '/live/note?path=otra.md&o=' + SP, { text: 'x', rev: 1, path: 'otra.md', o: SP }, PASS)];
+      check('pase de invitado: ninguna ruta del espacio, del equipo ni de la cuenta lo acepta (' + spaceRoutes.length + ' rutas)', reach.length === 0, reach);
+      check('pase de invitado: dentro de /live/ no maneja la sesión ni alcanza otra nota', inside.every((r) => r.status === 404 || r.status === 401) && !inside.some((r) => JSON.stringify(r.json).includes(OSECRET)), inside.map((r) => r.status));
+      check('pase de invitado: pedir otra ruta por parámetro no cambia de nota', tricks[0].json.name === 'vivo.md' && !JSON.stringify(tricks[0].json).includes(OSECRET) && tricks[1].status !== 200 && (await call('GET', n('otra.md'), undefined, T.s)).json.text === 'dos ' + OSECRET, tricks.map((r) => r.status));
+      check('pase de invitado: un token o una sesión de cuenta no entran como pase, ni el pase como sesión de otro', (await call('GET', '/live/note', undefined, Ed.s)).status !== 200 && (await call('GET', '/live/events', undefined, Ed.s)).status === 401);
+
+      // Sacar a un invitado, y terminarla.
+      const kickM = await call('POST', '/live/kick', { path: 'vivo.md', id: sEd.you, o: SP }, T.s); const kickO = await call('POST', '/live/kick', { path: 'vivo.md', id: 'o', o: SP }, T.s);
+      check('en vivo del equipo: sacar es para invitados: a un miembro o a quien la abrió no se lo saca', kickM.status === 404 && kickO.status === 404, [kickM.status, kickO.status]);
+      const kicked = await call('POST', '/live/kick', { path: 'vivo.md', id: g.you, o: SP }, Ad.s); secrets.push(kicked.json.secret);
+      check('en vivo del equipo: un administrador saca al invitado: su pase y su reingreso mueren, el enlace cambia y queda en el registro', kicked.status === 200 && (await call('GET', '/live/note', undefined, PASS)).status === 401 && (await call('POST', '/live/join', { ticket: g.ticket, name: 'Gabi' }, undefined, from(nextIp()))).status === 404 && (await call('POST', '/live/look', { secret: rot.json.secret }, undefined, from(nextIp()))).status === 404
+        && await (async () => { const e = await lastOf('live_kick'); return !!e && e.who === Ad.email && e.detail === 'Gabi' && e.path === 'vivo.md'; })(), kicked.status);
+      const g2 = await enter(kicked.json.secret, 'Hache'); secrets.push(g2.pass, g2.ticket);
+      const ended = await end(Ad);
+      check('en vivo del equipo: la termina un administrador que no la abrió: el pase, el reingreso y el enlace dejan de servir en el acto', ended.status === 200 && (await state(T)).json.open === false && (await call('GET', '/live/note', undefined, g2.pass)).status === 401 && (await call('PUT', '/live/note', { text: 'tarde', rev: 9 }, g2.pass)).status === 401
+        && (await call('POST', '/live/join', { ticket: g2.ticket, name: 'Hache' }, undefined, from(nextIp()))).status === 404 && (await call('POST', '/live/look', { secret: kicked.json.secret }, undefined, from(nextIp()))).status === 404, ended.status);
+      check('en vivo del equipo: y queda en el registro quién la terminó', await (async () => { const e = await lastOf('live_end'); return !!e && e.who === Ad.email && e.via === '' && e.path === 'vivo.md'; })());
+      await sleep(200);
+      check('en vivo del equipo: a los miembros que la tenían abierta se les avisa que terminó', evs(edEv).some((e) => e.type === 'live' && e.open === false) && evs(rdEv).some((e) => e.type === 'live' && e.open === false));
+      edEv.stop(); rdEv.stop(); gEv.stop();
+
+      // Con la política prendida, y lo que pasa cuando quien la abrió pierde el permiso.
+      await call('PUT', '/team/policies', { live: true }, T.s);
+      const byEd = await live(Ed, 'vivo.md', 'Edi'); secrets.push(byEd.json.secret);
+      check('en vivo del equipo: con la política, quien edita la abre; quien solo lee sigue sin poder', byEd.status === 200 && !!byEd.json.secret && (await live(Rd, 'otra.md')).json.error === 'read_only' && (await acct(Ed)).team.mine.can.live === true && (await acct(Rd)).team.mine.can.live === false, byEd.json);
+      const again = await live(Ex, 'vivo.md', 'Otro');
+      check('en vivo del equipo: abrirla de nuevo desde otra cuenta no da el enlace ni le cambia el nombre', again.status === 200 && again.json.secret === undefined && again.json.name === 'Edi' && again.json.can === false, again.json);
+      const g3 = await enter(byEd.json.secret, 'Iris'); secrets.push(g3.pass, g3.ticket);
+      await call('PUT', '/team/policies', { live: false }, T.s);
+      check('en vivo del equipo: al apagar la política, la sesión de quien no administra termina sola y el pase muere', (await state(T)).json.open === false && (await call('GET', '/live/note', undefined, g3.pass)).status === 401 && await (async () => { const e = await lastOf('live_end'); return !!e && e.via === 'auto' && !e.who; })());
+      const byT = await live(T, 'otra.md', 'Tina'); secrets.push(byT.json.secret);
+      await call('PUT', '/team/policies', { live: true }, T.s); await call('PUT', '/team/policies', { live: false }, T.s);
+      check('en vivo del equipo: la de quien administra no depende de la política', (await state(T, 'otra.md')).json.open === true);
+      await call('PUT', '/team/policies', { live: true }, T.s);
+      const byEd2 = await live(Ed, 'vivo.md', 'Edi'); const g4 = await enter(byEd2.json.secret, 'Juli'); secrets.push(byEd2.json.secret, g4.pass, g4.ticket);
+      await call('POST', '/team/role', { id: Ed.id, role: 'reader' }, T.s);
+      check('en vivo del equipo: si quien la abrió pasa a lector, termina sola', (await state(T)).json.open === false && (await call('GET', '/live/note', undefined, g4.pass)).status === 401);
+      await call('POST', '/team/role', { id: Ed.id, role: 'editor' }, T.s);
+      const byEx = await live(Ex, 'vivo.md', 'Sale'); const g5 = await enter(byEx.json.secret, 'Kiko'); secrets.push(byEx.json.secret, g5.pass, g5.ticket);
+      await call('POST', '/team/remove', { id: Ex.id }, T.s);
+      check('en vivo del equipo: si quien la abrió sale del equipo, termina sola, y ya no la ve', (await state(T)).json.open === false && (await call('GET', '/live/note', undefined, g5.pass)).status === 401 && (await state(Ex)).status === 403 && (await live(Ex, 'vivo.md')).status === 403);
+
+      // Tope por equipo.
+      for (let i = 0; i < 12; i++) await call('PUT', n('tope-' + i + '.md'), { text: 'x' }, T.s);
+      const many = []; for (let i = 0; i < 12; i++) many.push(await live(Ed, 'tope-' + i + '.md', 'Edi'));
+      many.forEach((r) => { if (r.json && r.json.secret) secrets.push(r.json.secret); });
+      check('en vivo del equipo: tope de sesiones abiertas a la vez por equipo (10, contando la de quien administra)', many.filter((r) => r.status === 200).length === 9 && many[9].status === 429 && many[9].json.error === 'live_team_max' && many[11].status === 429, many.map((r) => r.status));
+      check('en vivo del equipo: y no gasta el cupo de sesiones propias de quien la abre', (await call('POST', '/live', { path: 'propia.md', name: 'Edi' }, Ed.s)).status === 200);
+
+      // El equipo deja de estar al día, y el espacio protegido.
+      const g6 = await enter(byT.json.secret, 'Lola'); secrets.push(g6.pass, g6.ticket);
+      await hook(teamEv('sub_vivo', 'canceled', T.email, 4));
+      check('en vivo del equipo: si el equipo deja de estar al día, sus sesiones terminan y los pases mueren', (await call('GET', '/live/note', undefined, g6.pass)).status === 401 && (await call('POST', '/live/look', { secret: byT.json.secret }, undefined, from(nextIp()))).status === 404 && S.db().prepare('SELECT COUNT(*) AS n FROM lives WHERE owner = ?').get(SP).n === 0);
+      await hook(teamEv('sub_vivo', 'active', T.email, 4));
+      const byT2 = await live(T, 'otra.md', 'Tina'); const g7 = await enter(byT2.json.secret, 'Mora'); secrets.push(byT2.json.secret, g7.pass, g7.ticket);
+      const guard = await call('POST', '/team/vault', { salt: randomBytes(16).toString('base64'), iters: 600000, wrapped: randomBytes(60).toString('base64'), check: randomBytes(32).toString('base64') }, T.s);
+      const inVault = await live(T, 'otra.md', 'Tina');
+      check('en vivo del equipo: al proteger el espacio con contraseña la sesión termina, y no se abre otra (los invitados no tienen la llave)', guard.status === 200 && (await call('GET', '/live/note', undefined, g7.pass)).status === 401 && inVault.status === 409 && inVault.json.error === 'live_vault', [guard.status, inVault.json]);
+      { const db = S.db(); const dump = JSON.stringify(db.prepare('SELECT * FROM team_log WHERE team = (SELECT id FROM teams WHERE space = ?)').all(SP)); const tickets = db.prepare('SELECT COUNT(*) AS n FROM live_tickets WHERE live NOT IN (SELECT id FROM lives)').get().n; db.close();
+        check('en vivo del equipo: el registro guarda el nombre que eligió el invitado, y nunca texto de la nota, secretos ni correos', dump.includes('Gabi') && !dump.includes(LSECRET) && !dump.includes('línea de') && !/@ejemplo\.test/.test(dump) && !dump.includes(first.json.secret) && !dump.includes(PASS), dump.slice(0, 300));
+        check('en vivo del equipo: no quedan contraseñas de reingreso de sesiones terminadas', tickets === 0, tickets); }
+    }
+
     const logged = secrets.filter((x) => x && S.log().includes(x));
     check('equipo: la salida del servidor no trae texto de notas, tokens ni la clave de Paddle', logged.length === 0, logged.map((x) => String(x).slice(0, 8)));
     check('equipo: nada de esto se anotó como error del servidor, y sigue arriba', !/error 500|error no capturado|promesa sin atender/.test(S.log()) && S.alive() && (await call('GET', '/health')).status === 200, (S.log().match(/error[^\n]*/g) || []).slice(0, 4));

@@ -81,6 +81,7 @@
 
   // Ajustes del equipo: lo que quien administra decide para el espacio. Quien no administra los ve, bloqueados.
   const POLICIES = [['share', 'Los miembros pueden compartir notas del equipo con otras cuentas'], ['links', 'Los miembros pueden crear enlaces públicos de notas del equipo'],
+    ['live', 'Los miembros pueden abrir sesiones en vivo con invitados'],
     ['tokens', 'Los miembros pueden conectar su IA al espacio del equipo'], ['automation', 'Los miembros pueden usar automatizaciones en el espacio del equipo'],
     ['publish', 'Los miembros pueden publicar carpetas del equipo como sitio']];
   const days = (n) => (n === 365 ? T('1 año') : T('{n} días', { n }));
@@ -204,7 +205,7 @@
     link: 'Creó un enlace', unlink: 'Quitó un enlace', invite: 'Invitó', uninvite: 'Quitó una invitación', join: 'Entró al equipo', leave: 'Salió del equipo', remove: 'Sacó a alguien', role: 'Cambió un papel',
     policy: 'Cambió un ajuste', team_name: 'Cambió el nombre del equipo', protect: 'Protegió el espacio', password: 'Cambió la contraseña', rotate: 'Empezó a rotar la llave', rotate_done: 'Rotó la llave', unprotect: 'Quitó la protección',
     destroy: 'Eliminó el contenido', ai: 'Entró una IA', ai_unlock: 'Desbloqueó para su IA', token_create: 'Creó un token', token_revoke: 'Revocó un token', automation: 'Creó una automatización', automation_remove: 'Quitó una automatización',
-    site: 'Preparó un sitio', publish: 'Publicó un sitio', unpublish: 'Despublicó un sitio' };
+    site: 'Preparó un sitio', publish: 'Publicó un sitio', unpublish: 'Despublicó un sitio', live_open: 'Abrió una sesión en vivo', live_end: 'Terminó una sesión en vivo', live_kick: 'Sacó a un invitado' };
   const POLICY_NAME = { share: 'Compartir', links: 'Enlaces públicos', live: 'Sesiones en vivo', tokens: 'IA de los miembros', automation: 'Automatizaciones', publish: 'Publicar sitios', history_days: 'Historial de versiones', folder: 'Carpeta de las notas nuevas', template: 'Plantilla de las notas nuevas', ai_unlock: 'Desbloqueo para la IA' };
   // El detalle de una fila, en palabras: a quién, hacia dónde, qué ajuste y a qué valor.
   function detail(e) {
@@ -217,7 +218,8 @@
     if (e.about) out.push(e.about);
     return out.join(' · ');
   }
-  const actor = (e) => (e.via === 'team' ? T('Token del equipo') + ' · ' + e.token : (e.who_name || e.who || T('Cuenta eliminada')) + (e.via === 'ai' ? ' · ' + T('IA') + ' ' + e.token : ''));
+  // guest: un invitado de una sesión en vivo, con el nombre que eligió. auto: lo hizo el servidor (la sesión venció o perdió su permiso).
+  const actor = (e) => (e.via === 'guest' ? e.token + ' · ' + T('invitado') : e.via === 'auto' ? T('Automático') : e.via === 'team' ? T('Token del equipo') + ' · ' + e.token : (e.who_name || e.who || T('Cuenta eliminada')) + (e.via === 'ai' ? ' · ' + T('IA') + ' ' + e.token : ''));
   async function logDialog(mine) {
     const C = LMD.cloud.team; const when = (ms) => new Date(ms).toLocaleString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { dateStyle: 'medium', timeStyle: 'short' });
     const box = el('div', { class: 'lmd-ask lmd-tlog-ask' });

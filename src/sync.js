@@ -102,15 +102,18 @@
     const notes = LMD.comments.mode(); // '' no se ofrece, 'plan' hace falta el plan pago, 'on' disponible, 'vault' carpeta protegida
     // En una carpeta protegida no hay compartir ni comentarios para la IA: se dice por qué, con el camino a seguir.
     const vaulted = !mine().owner && !!LMD.vault.of(core.cloudPath);
-    // Una nota del equipo ya es de todos sus miembros: la sesión en vivo no se ofrece ahí. Compartirla hacia afuera,
-    // solo si el papel de la cuenta y lo que decidió quien administra lo permiten, y nunca en un espacio protegido.
+    // Una nota del equipo ya es de todos sus miembros. Compartirla hacia afuera, o abrirle una sesión en vivo con
+    // invitados, solo si el papel de la cuenta y lo que decidió quien administra lo permiten, y nunca en un espacio protegido.
     const team = LMD.cloud.isTeam(core.cloudPath);
     const teamShare = team && !LMD.vault.of(core.cloudPath) && (LMD.cloud.teamCan('share') || LMD.cloud.teamCan('links'));
+    const teamVaulted = team && !!LMD.vault.of(core.cloudPath);
+    const teamLive = team && (LMD.live.active() || (LMD.cloud.teamCan('write') && LMD.cloud.teamCan('live')));
     menu = el('div', { class: 'lmd-menu lmd-menu-narrow', role: 'menu' });
     menu.innerHTML = '<div class="lmd-menu-list">' +
       (core.readOnly || (team && !teamShare) ? '' : '<button type="button" role="menuitem" data-s="share"' + (account && account.share && (teamShare || (!mine().owner && !vaulted)) ? '' : ' class="lmd-locked"') + '>' + ICON.link + '<span>' + T('Compartir') + '</span></button>') +
-      // Sesión en vivo: quien tiene el enlace entra a editar sin cuenta. La abre quien creó la nota, con el plan pago.
-      (core.readOnly || team ? '' : '<button type="button" role="menuitem" data-s="live"' + (account && account.live && !mine().owner && !vaulted ? '' : ' class="lmd-locked"') + '>' + ICON.people + '<span>' + T('Colaborar en vivo') + '</span>' + (LMD.live.active() ? '<b class="lmd-menu-n">' + LMD.live.count() + '</b>' : '') + '</button>') +
+      // Sesión en vivo: quien tiene el enlace entra a editar sin cuenta. La abre quien creó la nota, con el plan pago,
+      // o en una nota del equipo un miembro que puede editar.
+      (core.readOnly || (team && !teamLive) ? '' : '<button type="button" role="menuitem" data-s="live"' + (team || (account && account.live && !mine().owner && !vaulted) ? '' : ' class="lmd-locked"') + '>' + ICON.people + '<span>' + T('Colaborar en vivo') + '</span>' + (LMD.live.active() ? '<b class="lmd-menu-n">' + LMD.live.count() + '</b>' : '') + '</button>') +
       '<button type="button" role="menuitem" data-s="history"' + (pro ? '' : ' class="lmd-locked"') + '>' + ICON.reload + '<span>' + T('Historial de versiones') + '</span></button>' +
       '<button type="button" role="menuitem" data-s="ai"' + (account && account.mcp ? '' : ' class="lmd-locked"') + '>' + ICON.link + '<span>' + T('Conectar una IA') + '</span></button>' +
       (notes ? '<button type="button" role="menuitem" data-s="comments"' + (notes === 'on' ? '' : ' class="lmd-locked"') + '>' + ICON.comment + '<span>' + T('Comentarios para la IA') + '</span>' + (LMD.comments.count() ? '<b class="lmd-menu-n">' + LMD.comments.count() + '</b>' : '') + '</button>' : '') +
@@ -128,7 +131,7 @@
       if (b.dataset.s === 'comments') { LMD.comments.list(); return; } // sin plan, lleva a Ajustes → Plan
       if (vaulted && b.dataset.s === 'share') { LMD.vault.explain(); return; }
       // En una carpeta protegida el servidor no puede leer la nota, así que no puede repartir los cambios.
-      if (vaulted && b.dataset.s === 'live') { LMD.live.explainVault(); return; }
+      if ((vaulted || teamVaulted) && b.dataset.s === 'live') { LMD.live.explainVault(teamVaulted); return; }
       if (b.classList.contains('lmd-locked')) {
         if (mine().owner) core.flash(T('Solo quien creó la nota puede hacer eso.'), 'warn');
         else core.openPanel('plan', T(b.dataset.s === 'history' ? 'El historial de versiones es parte del plan pago.' : b.dataset.s === 'live' ? 'Colaborar en vivo es parte del plan pago.' : 'Compartir es parte del plan pago.'));

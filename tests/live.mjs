@@ -505,6 +505,107 @@ try {
   check('ningún invitado llegó al tope de guardados por minuto', stats[429] === 0, stats);
   for (const [, c] of team) await c.ctx.close();
 
+  // ---------- Notas del equipo ----------
+  console.log('Notas del equipo');
+  {
+    const T = await R.signup('tere@ejemplo.test'); const E = await R.signup('emi@ejemplo.test'); const L = await R.signup('leo@ejemplo.test');
+    await api('POST', '/admin/team', { email: T.email, seats: 4 }, undefined, { 'x-admin-key': R.ADMIN });
+    const mine = async (who) => (await api('GET', '/account', undefined, who.s)).json.team;
+    for (const [who, role] of [[E, 'editor'], [L, 'reader']]) { await api('POST', '/team/invite', { email: who.email, role }, T.s); await api('POST', '/team/accept', { id: (await mine(who)).invites[0].id }, who.s); }
+    const SP = (await mine(T)).mine.space; const tNote = (p) => '/notes/' + enc(p) + '?o=' + SP; const tUrl = (p) => R.noteUrl('~' + SP + '/' + p, true);
+    await api('PUT', tNote('equipo.md'), { text: NOTE }, T.s); await api('PUT', tNote('otra.md'), { text: '# Otra\n\nUna nota del equipo.\n' }, T.s);
+    const menuOf = async (page) => { await page.click('[data-act=sync]'); await page.waitForSelector('.lmd-menu [data-s]'); const m = await page.evaluate(() => [...document.querySelectorAll('.lmd-menu [data-s]')].map((b) => b.dataset.s + (b.classList.contains('lmd-locked') ? ':locked' : ''))); await page.keyboard.press('Escape'); await page.evaluate(() => { const x = document.querySelector('.lmd-menu'); if (x) x.remove(); }); return m; };
+    const card = (page) => page.evaluate(() => { const c = document.querySelector('.lmd-live-card'); return { text: c.innerText.replace(/\s+/g, ' ').trim(), team: (c.querySelector('.lmd-live-team') || {}).textContent || '', link: !!c.querySelector('.lmd-live-link input'), acts: [...c.querySelectorAll('.lmd-ask-actions [data-lv]')].map((b) => b.dataset.lv), kicks: c.querySelectorAll('[data-kick]').length, people: [...c.querySelectorAll('.lmd-live-people li')].map((li) => li.innerText.replace(/\s+/g, ' ').trim()) }; });
+    const chipOn = (page) => page.waitForFunction(() => { const c = document.querySelector('.lmd-live-chip'); return c && !c.hidden; }, null, { timeout: 8000 }).then(() => true, () => false);
+    const openPlan = async (page) => { await page.evaluate(() => document.querySelector('[data-act=settings]').click()); await page.waitForSelector('.lmd-panel-card'); await page.click('[data-ptab=plan]'); await page.waitForSelector('.lmd-panel .lmd-team-pol'); };
+
+    // Quien edita, sin la política: no se le ofrece. Quien administra, siempre.
+    const emi0 = await R.open(E); await emi0.page.goto(tUrl('otra.md')); await emi0.page.waitForSelector('.lmd-article .lmd-editable');
+    check('equipo: sin la política, a quien edita el menú no le ofrece la sesión en vivo', !(await menuOf(emi0.page)).some((m) => /^live/.test(m)), await menuOf(emi0.page));
+    await openPlan(emi0.page);
+    const lockedRow = await emi0.page.evaluate(() => { const i = document.querySelector('.lmd-team-pol [data-p=live]'); return { there: !!i, off: i && i.disabled, locked: !!i && !!i.closest('.lmd-team-locked'), label: i ? i.closest('label').innerText.trim() : '' }; });
+    check('equipo: en los ajustes ve el renglón de las sesiones en vivo, bloqueado', lockedRow.there && lockedRow.off && lockedRow.locked && lockedRow.label === 'Members can open live sessions with guests', lockedRow);
+    await emi0.ctx.close();
+
+    const tere = await R.open(T); await tere.page.goto(tUrl('equipo.md')); await tere.page.waitForSelector('.lmd-article .lmd-editable');
+    const tMenu = await menuOf(tere.page);
+    check('equipo: a quien administra el menú de una nota del equipo le ofrece "Colaborar en vivo", sin candado', tMenu.includes('live'), tMenu);
+    await tere.page.click('[data-act=sync]'); await tere.page.click('.lmd-menu [data-s=live]'); await tere.page.waitForSelector('.lmd-live-card [data-lv=name]');
+    const before = await card(tere.page);
+    check('equipo: el mismo cuadro, diciendo que la nota es del equipo', /^Collaborate live This note belongs to the team\. Anyone with the link joins to edit it without an account, next to the members who have it open\./.test(before.text) && before.acts.join() === 'close,start', before);
+    await tere.page.fill('[data-lv=name]', 'Tere'); await tere.page.click('[data-lv=start]'); await tere.page.waitForSelector('.lmd-live-link input');
+    const link = await tere.page.inputValue('.lmd-live-link input'); const opened = await card(tere.page);
+    check('equipo: abierta, da el enlace y dice que los miembros no lo necesitan', /#live=/.test(link) && opened.team === 'Team note. Members edit from their account, without the link.' && opened.acts.join() === 'end,newlink,close', opened);
+    check('equipo: los textos nuevos no llevan signos de admiración ni rayas largas', !/[!¡—–]/.test(before.text + opened.text), opened.text);
+    await tere.page.click('.lmd-live-card [data-lv=close]');
+
+    // Los demás miembros la ven sin entrar: el editor edita, el lector mira.
+    const emi = await R.open(E); await emi.page.goto(tUrl('equipo.md')); await emi.page.waitForSelector('.lmd-article .lmd-editable');
+    const leo = await R.open(L); await leo.page.goto(tUrl('equipo.md')); await leo.page.waitForFunction(() => /First paragraph/.test((document.querySelector('.lmd-article') || {}).innerText || ''));
+    check('equipo: otro miembro con la nota abierta ve que está en vivo, sin entrar por el enlace', (await chipOn(emi.page)) && (await chipOn(leo.page)));
+    const guest = await joinLive(link, 'Gabi');
+    await emi.page.waitForFunction(() => /Gabi/.test(document.querySelector('.lmd-live-chip').title), null, { timeout: 8000 }).catch(() => {});
+    await emi.page.click('.lmd-live-chip'); await emi.page.waitForSelector('.lmd-live-card .lmd-live-people li');
+    const seen = await card(emi.page);
+    check('equipo: ve quién la abrió y quiénes son los invitados, sin enlace ni botones para manejarla', seen.team === 'Team note, live with guests. Opened by Tere.' && !seen.link && seen.acts.join() === 'close' && seen.kicks === 0 && seen.people.some((p) => /^.{0,3}Gabi$/.test(p)) && seen.people.some((p) => /Tere · opened the session/.test(p)) && seen.people.some((p) => /· you$/.test(p)), seen);
+    await emi.page.click('.lmd-live-card [data-lv=close]');
+    await leo.page.click('.lmd-live-chip'); await leo.page.waitForSelector('.lmd-live-card .lmd-live-people li');
+    const seenL = await card(leo.page);
+    check('equipo: quien solo lee la ve y no la maneja', seenL.acts.join() === 'close' && !seenL.link && seenL.kicks === 0 && seenL.people.some((p) => /Gabi/.test(p)) && (await leo.page.evaluate(() => document.documentElement.classList.contains('lmd-readonly') && !document.querySelector('.lmd-article .lmd-editable'))), seenL);
+    await leo.page.click('.lmd-live-card [data-lv=close]');
+    const gChip = await guest.page.evaluate(() => document.querySelector('.lmd-live-chip').title);
+    check('equipo: el invitado ve a los miembros por su nombre visible o como "miembro del equipo", nunca por su correo', /Tere/.test(gChip) && /Team member/.test(gChip) && !/@|ejemplo|emi|leo/.test(gChip), gChip);
+    check('equipo: el invitado no pidió nada fuera de /live/', guest.calls.every((c) => / \/live\//.test(c)), guest.calls.filter((c) => !/ \/live\//.test(c)).slice(0, 5));
+
+    // Editan juntos: lo del invitado aparece en el miembro sin recargar, y al revés.
+    await typeIn(guest.page, 'First paragraph', ' Gabi was here.', 15); await leave(guest.page);
+    check('equipo: lo que escribe el invitado aparece en el editor y en quien abrió, sin recargar', (await sees(emi.page, 'Gabi was here.')) && (await sees(tere.page, 'Gabi was here.')) && (await sees(leo.page, 'Gabi was here.')));
+    await typeIn(emi.page, 'Last paragraph', ' Emi too.', 15); await leave(emi.page);
+    check('equipo: y lo que escribe un miembro aparece en el invitado', (await sees(guest.page, 'Emi too.')) && (await sees(tere.page, 'Emi too.')));
+    await saved(emi.page); await sleep(600);
+    const srv = (await api('GET', tNote('equipo.md'), undefined, T.s)).json.text;
+    check('equipo: en el servidor quedó lo de los dos', /Gabi was here\./.test(srv) && /Emi too\./.test(srv), srv.slice(0, 200));
+    const logRows = (await api('GET', '/team/log', undefined, T.s)).json.entries;
+    check('equipo: el registro tiene la apertura y la edición del invitado, con su nombre', logRows.some((e) => e.action === 'live_open' && e.who === T.email) && logRows.some((e) => e.action === 'edit' && e.via === 'guest' && e.token === 'Gabi'), logRows.slice(0, 4));
+
+    // Pantalla chica: el cuadro de quien la maneja entra en el ancho.
+    const tph = await R.open(T, PHONE); await tph.page.goto(tUrl('equipo.md')); await tph.page.waitForSelector('.lmd-article .lmd-editable'); await chipOn(tph.page);
+    await tph.page.tap('[data-act=more]'); await tph.page.tap('.lmd-menu-more [data-more=sync]'); await tph.page.tap('.lmd-menu [data-s=live]'); await tph.page.waitForSelector('.lmd-live-card .lmd-live-people li');
+    const small = await overflow(tph.page); const smallCard = await card(tph.page);
+    const tapSize = await tph.page.evaluate(() => Math.min(...[...document.querySelectorAll('.lmd-live-card .lmd-ask-actions button, .lmd-live-card [data-kick]')].map((b) => b.getBoundingClientRect().height)));
+    check('equipo: en un teléfono el cuadro entra en la pantalla, dice que es del equipo y sacar es solo para el invitado', small.page <= 0 && !small.bad.length && tapSize >= 40 && /^Team note\./.test(smallCard.team) && smallCard.kicks === 1 && smallCard.people.some((p) => /· team/.test(p)), [small, tapSize, smallCard.people]);
+    await tph.ctx.close();
+
+    // El registro, y el interruptor de quien administra.
+    await openPlan(tere.page);
+    const row = await tere.page.evaluate(() => { const i = document.querySelector('.lmd-team-pol [data-p=live]'); return { there: !!i, on: i && i.checked, off: i && i.disabled, label: i ? i.closest('label').innerText.trim() : '' }; });
+    check('equipo: quien administra tiene el interruptor de las sesiones en vivo, apagado al nacer', row.there && !row.on && !row.off && row.label === 'Members can open live sessions with guests', row);
+    await tere.page.click('.lmd-team-pol [data-p=live]');
+    for (let i = 0; i < 40 && !(await mine(T)).mine.policies.live; i++) await sleep(100);
+    check('equipo: al prenderlo la política queda guardada', (await mine(T)).mine.policies.live === true && (await mine(E)).mine.can.live === true);
+    await tere.page.click('.lmd-team [data-t=log]'); await tere.page.waitForSelector('.lmd-tlog [data-l=list] li time');
+    const logUi = await tere.page.evaluate(() => [...document.querySelectorAll('.lmd-tlog [data-l=list] li')].map((li) => li.innerText.replace(/\s+/g, ' ').trim()));
+    check('equipo: el registro muestra la sesión y al invitado marcado como invitado', logUi.some((t) => /Opened a live session/.test(t) && /equipo\.md/.test(t)) && logUi.some((t) => /Gabi · guest/.test(t) && /Edited/.test(t)), logUi.slice(0, 5));
+    await tere.page.click('.lmd-tlog [data-l=close]'); await tere.page.click('[data-act=close-panel]');
+    const emi2 = await R.open(E); await emi2.page.goto(tUrl('otra.md')); await emi2.page.waitForSelector('.lmd-article .lmd-editable');
+    check('equipo: con la política, a quien edita el menú le ofrece la sesión en vivo', (await menuOf(emi2.page)).includes('live'));
+    await emi2.page.evaluate(() => LMD.live.explainVault(true)); await emi2.page.waitForSelector('.lmd-ask-card');
+    const vaultLine = await emi2.page.evaluate(() => [...document.querySelectorAll('.lmd-ask-card')].pop().innerText.replace(/\s+/g, ' '));
+    check('equipo: en un espacio protegido lo dice en una línea', /A space protected with a password has no live sessions: guests do not have the key\./.test(vaultLine), vaultLine);
+    await emi2.ctx.close();
+
+    // Terminarla: los miembros siguen con su nota, el invitado se queda sin poder seguir.
+    await tere.page.click('.lmd-live-chip'); await tere.page.waitForSelector('.lmd-live-card [data-lv=end]');
+    await tere.page.click('.lmd-live-card [data-lv=end]'); await tere.page.waitForSelector('.lmd-dlg-card, .lmd-ask-card [data-ok], .lmd-confirm', { timeout: 3000 }).catch(() => {});
+    await tere.page.evaluate(() => { const b = [...document.querySelectorAll('button')].filter((x) => x.textContent.trim() === 'End the session' && !x.closest('.lmd-live-card')).pop(); if (b) b.click(); });
+    await guest.page.waitForSelector('.lmd-live-bar.lmd-live-over', { timeout: 8000 }).catch(() => {});
+    await emi.page.waitForFunction(() => document.querySelector('.lmd-live-chip').hidden, null, { timeout: 8000 }).catch(() => {});
+    check('equipo: al terminarla, al invitado se le corta y los miembros siguen con la nota como siempre', !!(await guest.page.$('.lmd-live-bar.lmd-live-over')) && (await emi.page.evaluate(() => document.querySelector('.lmd-live-chip').hidden && !!document.querySelector('.lmd-article .lmd-editable'))) && (await api('GET', '/live?path=equipo.md&o=' + SP, undefined, T.s)).json.open === false);
+    await typeIn(emi.page, 'Second paragraph', ' After the session.', 10); await leave(emi.page); await saved(emi.page);
+    check('equipo: y el miembro sigue guardando', /After the session\./.test((await api('GET', tNote('equipo.md'), undefined, T.s)).json.text));
+    for (const c of [tere, emi, leo, guest]) await c.ctx.close();
+  }
+
   check('sin errores de página', !R.errors.length, R.errors.slice(0, 5));
   check('ningún pedido salió a producción', !R.outside.length, R.outside.slice(0, 5));
 } catch (e) { check('sin excepciones', false, String(e && e.stack || e)); console.log(R.log().slice(-1500)); }
