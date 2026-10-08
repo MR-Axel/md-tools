@@ -196,7 +196,7 @@
       "Palabras y caracteres": "Words and characters",
       "Vista": "View",
       // La hoja de atajos de teclado (shortcuts.js).
-      "Atajos de teclado": "Keyboard shortcuts", "Ver los atajos": "Show shortcuts", "Todas las teclas de la app, en una hoja.": "Every key in the app, on one sheet.",
+      "Atajos de teclado": "Keyboard shortcuts",
       "Buscar una acción o una tecla": "Search an action or a key", "Ningún atajo coincide.": "No shortcut matches.",
       "Esta hoja se abre con {a}, o con {b} mientras escribís.": "Open this sheet with {a}, or with {b} while typing.",
       "Prendela en Ajustes > Herramientas": "Turn on in Settings > Tools",
