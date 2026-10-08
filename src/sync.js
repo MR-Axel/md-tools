@@ -445,7 +445,7 @@
       '- Move it to In progress when you start, to Paused when you need something from me (say exactly what in a field needs, and tell me), and to Done when it is finished, with a field link to the note or the change.',
       '- One card per task, and finished cards stay. With subagents, each one moves its own card.',
       '',
-      'Do both without being asked. Call get_guide once before you start, for the layout of each note and the full board rules. If this token cannot write, or I prefer local files, keep the same structure as local .md files.',
+      'Do both without being asked. Call get_guide once before you start, for the layout of each note and the full board rules. If this token cannot write, or I prefer local files, keep the same structure as local .md files, linked as "When you finish" says.',
     ], [
       '',
       '## How to write',
