@@ -102,6 +102,7 @@
         "src/linkmap.js",
         "src/aikey.js",
         "src/assistant.js",
+        "src/shortcuts.js",
         "vendor/markdown-it.min.js",
         "vendor/markdown-it-emoji.min.js",
         "vendor/markdown-it-sub.min.js",

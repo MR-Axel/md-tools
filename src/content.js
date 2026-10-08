@@ -187,12 +187,15 @@
     // Ajustes > Automatizaciones y el alta guiada: se piden al abrir esa pestaña o al elegir "Automatizar…".
     automate: { js: ['src/automate.js'] },
     publish: { js: ['src/publish.js'] },
+    // La hoja de atajos de teclado: se pide al abrirla.
+    shortcuts: { js: ['src/shortcuts.js'] },
   };
   const LAZY_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, tools: () => !!(LMD.diagram && LMD.formula && LMD.templates && LMD.community) };
   LAZY_HAVE.gallery = () => !!LMD.gallery; LAZY_HAVE.automate = () => !!LMD.automate; LAZY_HAVE.publish = () => !!LMD.publish;
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
   ['present', 'daily', 'docx', 'linkmap'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
   LAZY_HAVE.assistant = () => !!(LMD.ai && LMD.assistant);
+  LAZY_HAVE.shortcuts = () => !!LMD.shortcuts;
   async function appLazy(what) {
     const spec = LAZY_APP[what];
     try {
@@ -672,7 +675,7 @@
     ui.main.innerHTML =
       '<div class="lmd-topbar">' +
         '<div class="lmd-top-left">' +
-          '<button class="lmd-icon-btn" data-act="sidebar" title="' + T('Barra lateral (Alt+Shift+B)') + '">' + ICON.side + '</button>' +
+          '<button class="lmd-icon-btn" data-act="sidebar" title="' + T(window.__MDT_WEB ? 'Barra lateral' : 'Barra lateral (Alt+Shift+B)') + '">' + ICON.side + '</button>' +
           '<span class="lmd-docname lmd-doc-only"></span>' +
           '<button class="lmd-icon-btn lmd-sync lmd-doc-only" data-act="sync" hidden></button>' +
         '</div>' +
@@ -734,7 +737,9 @@
 
     // En pantalla chica la barra lateral se abre encima del contenido; esto oscurece lo que queda detrás.
     ui.scrim = el('div', { class: 'lmd-scrim' });
-    document.body.append(ui.sidebar, ui.scrim, ui.main, ui.toTop, ui.panel, ui.viewer, ui.format, ui.tableBar);
+    // Los atajos de teclado, a mano y sin ocupar la barra de arriba: solo donde hay teclado físico (lo decide el CSS).
+    ui.keysBtn = el('button', { class: 'lmd-keys-btn', type: 'button', 'data-act': 'shortcuts', title: T('Atajos de teclado') + ' (?)', 'aria-label': T('Atajos de teclado') }, ICON.keyboard);
+    document.body.append(ui.sidebar, ui.scrim, ui.main, ui.toTop, ui.keysBtn, ui.panel, ui.viewer, ui.format, ui.tableBar);
 
     ui.article = ui.main.querySelector('.lmd-article');
     ui.rawPre = ui.main.querySelector('pre.lmd-raw');
@@ -847,6 +852,10 @@
       if (LMD.mod(e) && !e.shiftKey && e.key.toLowerCase() === 's' && (editMode || dirty || (appRoot && appRoot.kind === 'local'))) { e.preventDefault(); save(true); }
       if (LMD.mod(e) && e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); toggleSearch(true); }
       if (LMD.mod(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k' && editMode && !rawMode && docKind() === 'md') { e.preventDefault(); LMD.links.open(); }
+      // La hoja de atajos: "?" fuera de un campo de texto, o Ctrl+/ en cualquier lado. Por la letra y no por la tecla:
+      // en un teclado en español la barra va con Shift, y su tecla sola con Ctrl es el zoom del navegador.
+      const t = e.target; const typing = !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+      if (!e.altKey && ((e.key === '?' && !e.ctrlKey && !e.metaKey && !typing) || (e.key === '/' && LMD.mod(e))) && !document.querySelector('.lmd-ask, .lmd-dgm, .lmd-pres')) { e.preventDefault(); openKeys(); }
     });
 
     ui.searchInput.addEventListener('input', debounce(() => runSearch(ui.searchInput.value, true), 180));
@@ -1012,6 +1021,7 @@
       diskDoc() && ['reload', ICON.reload, 'Recargar ahora'],
       md && !shown('[data-act=page]') && ['page', ICON.doc, 'Ajustes de la página'],
       ['settings', ICON.sliders, 'Ajustes'],
+      ['shortcuts', ICON.keyboard, 'Atajos de teclado'],
       // En pantalla chica el pie no tiene lugar para el enlace: denunciar una nota ajena va acá, al final.
       LMD.touch.small() && APP && LMD.sync.reportRef() && ['report', ICON.flag, 'Denunciar esta nota'],
     ].concat(toolItems('more')));
@@ -1023,8 +1033,11 @@
     if (LMD.kit.saveFile(new Blob([raw], { type: 'text/markdown' }), DOC_NAME || 'nota.md') === 'download') flash(T('Archivo descargado'));
   }
 
+  // La hoja de atajos de teclado (shortcuts.js) se pide recién al abrirla.
+  const openKeys = (from) => ensure('shortcuts').then((ok) => { if (ok) LMD.shortcuts.open(core, from); });
   function onAction(act, source, keys) {
-    if (act === 'sidebar') { if (LMD.touch.small()) setDrawer(!drawerOpen()); else LMD.patch({ sidebarHidden: !settings.sidebarHidden }); }
+    if (act === 'shortcuts') openKeys(source);
+    else if (act === 'sidebar') { if (LMD.touch.small()) setDrawer(!drawerOpen()); else LMD.patch({ sidebarHidden: !settings.sidebarHidden }); }
     else if (act === 'more') openMore();
     else if (act === 'page') { if (LMD.page) LMD.page.open(); }
     else if (act === 'copy') openCopy(source, keys);
@@ -2476,7 +2489,8 @@
             '<p class="lmd-update-msg" role="status" hidden></p>' +
             '<p class="lmd-hint">' + T('Lo único que se consulta es el número de versión publicado en GitHub. No se manda ningún dato.') + '</p>' +
           '</section>') +
-          '<section class="lmd-panel-foot" data-tab="adv"><button type="button" class="lmd-btn" data-act="reset">' + T('Restablecer todo') + '</button></section>' +
+          // Al pie de Avanzado, junto a restablecer: la hoja de atajos de teclado, sin sumar una sección.
+          '<section class="lmd-panel-foot" data-tab="adv"><button type="button" class="lmd-btn" data-act="reset">' + T('Restablecer todo') + '</button> <button type="button" class="lmd-btn" data-act="shortcuts">' + ICON.keyboard + '<span>' + T('Atajos de teclado') + '</span></button></section>' +
         '</div>' +
       '</div>';
     ui.panel.hidden = false;
