@@ -224,10 +224,10 @@ try {
   const lateAt = await fresh2.evaluate(() => [...document.querySelectorAll('video.clip[data-poster]')].map((v) => v.getAttribute('poster')));
   await fresh2.locator('video.clip[data-poster]').first().scrollIntoViewIfNeeded(); await fresh2.waitForFunction(() => !!document.querySelector('video.clip[data-poster]').getAttribute('poster'), null, { timeout: 5000 }).catch(() => {});
   check('portada: el póster de un clip de más abajo no se pide al cargar, y llega cuando el clip se acerca a la pantalla', lateAt.length >= 3 && lateAt.every((p) => !p) && (await fresh2.evaluate(() => { const v = document.querySelector('video.clip[data-poster]'); return v.getAttribute('poster') === v.getAttribute('data-poster'); })), lateAt);
-  // En un teléfono no hay nada que elegir: cada ítem tiene su visual debajo.
+  // En un teléfono los ítems van en una fila que se desliza: cada uno con su visual debajo.
   await fresh2.setViewportSize({ width: 390, height: 800 }); await fresh2.goto(origin + '/?site'); await fresh2.waitForSelector('.pick'); await fresh2.waitForTimeout(300);
-  const narrow = await fresh2.evaluate(() => ({ all: [...document.querySelectorAll('.pick .vis')].map((v) => { const r = v.getBoundingClientRect(); const t = v.parentElement.querySelector('h3').getBoundingClientRect(); return r.height > 60 && r.top >= t.bottom && r.right <= innerWidth + 1; }), over: document.documentElement.scrollWidth - innerWidth }));
-  check('portada en un teléfono: cada ítem muestra su visual debajo de su texto, sin desbordar', narrow.all.length >= 12 && narrow.all.every(Boolean) && narrow.over <= 0, narrow);
+  const narrow = await fresh2.evaluate(() => ({ all: [...document.querySelectorAll('.pick .vis')].map((v) => { const r = v.getBoundingClientRect(); const t = v.parentElement.querySelector('h3').getBoundingClientRect(); return r.height > 60 && r.top >= t.bottom && r.right <= v.closest('li').getBoundingClientRect().right + 1; }), over: document.documentElement.scrollWidth - innerWidth }));
+  check('portada en un teléfono: cada ítem muestra su visual debajo de su texto, en una fila que se desliza, sin desbordar la página', narrow.all.length >= 12 && narrow.all.every(Boolean) && narrow.over <= 0, narrow);
   await fresh2.close();
   // "También trae": al pasar el cursor por una función con vista previa, la caja aparece al lado del cursor con su escena.
   const row = web.locator('.more li[data-peek=table]'); await row.scrollIntoViewIfNeeded(); await row.hover(); await web.waitForTimeout(500);
