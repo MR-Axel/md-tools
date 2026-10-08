@@ -102,18 +102,20 @@
     const notes = LMD.comments.mode(); // '' no se ofrece, 'plan' hace falta el plan pago, 'on' disponible, 'vault' carpeta protegida
     // En una carpeta protegida no hay compartir ni comentarios para la IA: se dice por qué, con el camino a seguir.
     const vaulted = !mine().owner && !!LMD.vault.of(core.cloudPath);
-    // Una nota del equipo ya es de todos sus miembros: compartir y la sesión en vivo no se ofrecen ahí.
+    // Una nota del equipo ya es de todos sus miembros: la sesión en vivo no se ofrece ahí. Compartirla hacia afuera,
+    // solo si el papel de la cuenta y lo que decidió quien administra lo permiten, y nunca en un espacio protegido.
     const team = LMD.cloud.isTeam(core.cloudPath);
+    const teamShare = team && !LMD.vault.of(core.cloudPath) && (LMD.cloud.teamCan('share') || LMD.cloud.teamCan('links'));
     menu = el('div', { class: 'lmd-menu lmd-menu-narrow', role: 'menu' });
     menu.innerHTML = '<div class="lmd-menu-list">' +
-      (core.readOnly || team ? '' : '<button type="button" role="menuitem" data-s="share"' + (account && account.share && !mine().owner && !vaulted ? '' : ' class="lmd-locked"') + '>' + ICON.link + '<span>' + T('Compartir') + '</span></button>') +
+      (core.readOnly || (team && !teamShare) ? '' : '<button type="button" role="menuitem" data-s="share"' + (account && account.share && (teamShare || (!mine().owner && !vaulted)) ? '' : ' class="lmd-locked"') + '>' + ICON.link + '<span>' + T('Compartir') + '</span></button>') +
       // Sesión en vivo: quien tiene el enlace entra a editar sin cuenta. La abre quien creó la nota, con el plan pago.
       (core.readOnly || team ? '' : '<button type="button" role="menuitem" data-s="live"' + (account && account.live && !mine().owner && !vaulted ? '' : ' class="lmd-locked"') + '>' + ICON.people + '<span>' + T('Colaborar en vivo') + '</span>' + (LMD.live.active() ? '<b class="lmd-menu-n">' + LMD.live.count() + '</b>' : '') + '</button>') +
       '<button type="button" role="menuitem" data-s="history"' + (pro ? '' : ' class="lmd-locked"') + '>' + ICON.reload + '<span>' + T('Historial de versiones') + '</span></button>' +
       '<button type="button" role="menuitem" data-s="ai"' + (account && account.mcp ? '' : ' class="lmd-locked"') + '>' + ICON.link + '<span>' + T('Conectar una IA') + '</span></button>' +
       (notes ? '<button type="button" role="menuitem" data-s="comments"' + (notes === 'on' ? '' : ' class="lmd-locked"') + '>' + ICON.comment + '<span>' + T('Comentarios para la IA') + '</span>' + (LMD.comments.count() ? '<b class="lmd-menu-n">' + LMD.comments.count() + '</b>' : '') + '</button>' : '') +
       (vaulted ? '<p class="lmd-menu-note">' + ICON.lock + '<span>' + T('Carpeta protegida: sin compartir, enlaces públicos ni comentarios para la IA. Para eso, movela a otra carpeta.') + '</span></p>' : '') +
-      (account ? '<p class="lmd-menu-label">' + esc(account.email) + ' · ' + T(pro ? 'Plan pago' : 'Plan gratis') + '</p>' : '') + '</div>';
+      (account ? '<p class="lmd-menu-label">' + esc(account.email) + ' · ' + esc(LMD.team.planLabel(account)) + '</p>' : '') + '</div>';
     document.body.appendChild(menu);
     const box = btn.getBoundingClientRect();
     menu.style.left = Math.max(8, Math.min(window.innerWidth - menu.offsetWidth - 8, box.left)) + 'px';
@@ -336,6 +338,12 @@
       '- Keep a record of your work as you go: what changed, progress, decisions and why, open questions, what is left to do. I read it to follow along without asking.',
       '- When I ask you to explain a situation, write a document for it: context, what you found, the options and your recommendation.',
       '',
+      '## Use it as project memory',
+      '',
+      '- Before you start a task, call search_notes and read the notes of the project, so you know the system: its architecture, the decisions already made and its conventions.',
+      '- Keep one index note per project, for example ' + (scope ? scope : 'project') + '/README.md, with a link to every other note of that project.',
+      '- When you build or change something, add or update a note about it and link it from the index. The next session, whether it is Claude, Codex or another agent, starts from that context.',
+      '',
       '## How to write',
       '',
       'Write for a person who reads fast.',
@@ -502,6 +510,16 @@
     const btn = (url, label, kind) => (url ? '<a class="lmd-btn lmd-btn-fill" data-pay="' + (kind || '') + '" href="' + esc(payUrl(url)) + '">' + label + '</a>' : '<button type="button" class="lmd-btn" disabled>' + label + ' · ' + T('pronto') + '</button>');
     const teamCol = LMD.team.column(a, btn);
     const state = wait && (wait.state !== 'done' || pro) ? wait.state : '';
+    // Quien tiene el plan por un equipo que paga otra persona no ve planes, precios ni botones de compra: ve su
+    // equipo y su papel. El cobro es de quien paga.
+    if (a && a.billing === false) {
+      box.innerHTML = note + LMD.team.guestCard(a) + LMD.team.section(a);
+      LMD.team.mount(box, a);
+      box.onclick = (e) => { if (LMD.team.owns(e, box)) LMD.team.click(e, box, a, () => planPane(box, host)); };
+      box.onchange = (e) => LMD.team.change(e, box, a, () => planPane(box, host));
+      return;
+    }
+    box.onchange = (e) => LMD.team.change(e, box, a, () => planPane(box, host));
     box.innerHTML =
       (state ? '<p class="lmd-paywait lmd-paywait-' + state + '" role="status"><span>' + T({ wait: 'Esperando la confirmación del pago…', late: 'La confirmación del pago todavía no llegó. Volvé a revisar en unos minutos.', done: wait.team ? 'Pago confirmado. Tu equipo está listo.' : 'Pago confirmado. Ya tenés el plan pago.' }[state]) + '</span>' +
         (state === 'late' ? '<button type="button" class="lmd-link" data-c="recheck">' + T('Revisar ahora') + '</button>' : '') + '</p>' : '') + note +
@@ -514,6 +532,7 @@
             : a ? '<div class="lmd-plan-buy">' + btn(pay.monthly, 'USD 3.99 / ' + T('mes')) + btn(pay.yearly, 'USD 39 / ' + T('año')) + '</div>'
             // Sobre un archivo abierto directo se paga en la app: los mismos dos botones la abren en una pestaña nueva, ya en los planes.
             : host.direct && LMD.cloud.enabled() ? '<div class="lmd-plan-buy">' + ['USD 3.99 / ' + T('mes'), 'USD 39 / ' + T('año')].map((label) => '<button type="button" class="lmd-btn lmd-btn-fill" data-c="app" data-at="' + DIRECT_AT.plan + '">' + label + '</button>').join('') + '</div>' : '') + '</div>' + teamCol + '</div>' + LMD.team.section(a);
+    LMD.team.mount(box, a);
     box.onclick = async (e) => {
       // Lo del equipo se atiende aparte. Se decide sin esperar nada: el enlace de pago, más abajo, frena su navegación en este mismo turno.
       if (LMD.team.owns(e, box)) { LMD.team.click(e, box, a, () => planPane(box, host)); return; }
@@ -630,28 +649,34 @@
 
   // Compartir: con otra cuenta (ver o editar), o con un enlace público de solo lectura, con contraseña opcional.
   async function share() {
-    const path = core.cloudPath; const folder = path.indexOf('/') > 0 ? path.slice(0, path.lastIndexOf('/')) : '';
+    // full es la ruta como la lleva la app (la de una nota del equipo empieza con ~espacio/); path, la que conoce
+    // el servidor dentro de esa cuenta o de ese espacio. En el equipo, cada mitad se ofrece si la política lo permite.
+    const full = core.cloudPath; const tm = LMD.cloud.isTeam(full); const pre = tm ? full.slice(0, full.indexOf('/') + 1) : '';
+    const path = full.slice(pre.length); const folder = path.indexOf('/') > 0 ? path.slice(0, path.lastIndexOf('/')) : '';
+    const people = !tm || LMD.cloud.teamCan('share'); const links = !tm || LMD.cloud.teamCan('links');
     const box = el('div', { class: 'lmd-ask' });
     box.innerHTML = '<div class="lmd-ask-card lmd-share" role="dialog" aria-label="' + T('Compartir') + '"><h3>' + T('Compartir') + '</h3>' +
-      '<h4>' + T('Con otra cuenta') + '</h4>' +
+      (tm ? '<p class="lmd-hint lmd-share-team">' + T('Esta nota es del equipo. Acá la compartís con alguien de afuera.') + '</p>' : '') +
+      (people ? '<h4>' + T('Con otra cuenta') + '</h4>' +
       '<div class="lmd-share-row"><input type="email" data-sh="email" placeholder="' + T('correo de la otra persona') + '">' +
         '<select data-sh="role"><option value="edit">' + T('Puede editar') + '</option><option value="view">' + T('Solo ver') + '</option></select>' +
         '<button type="button" class="lmd-btn lmd-btn-fill" data-sh="invite">' + T('Compartir') + '</button></div>' +
-      (folder ? '<label class="lmd-check"><input type="checkbox" data-sh="folder"><span>' + T('Compartir toda la carpeta "{a}"', { a: esc(folder) }) + '</span></label>' : '') +
-      '<ul data-sh="people"></ul>' +
-      '<h4>' + T('Con un enlace de solo lectura') + '</h4>' +
-      '<div class="lmd-share-row"><input type="text" data-sh="pass" placeholder="' + T('contraseña (opcional)') + '"><button type="button" class="lmd-btn" data-sh="link">' + T('Crear enlace') + '</button></div>' +
-      '<ul data-sh="links"></ul>' +
+      (folder ? '<label class="lmd-check"><input type="checkbox" data-sh="folder"><span>' + T('Compartir toda la carpeta "{a}"', { a: esc(folder) }) + '</span></label>' : '') : '') +
+      '<ul data-sh="people"' + (people ? '' : ' hidden') + '></ul>' +
+      (links ? '<h4>' + T('Con un enlace de solo lectura') + '</h4>' +
+      '<div class="lmd-share-row"><input type="text" data-sh="pass" placeholder="' + T('contraseña (opcional)') + '"><button type="button" class="lmd-btn" data-sh="link">' + T('Crear enlace') + '</button></div>' : '') +
+      '<ul data-sh="links"' + (links ? '' : ' hidden') + '></ul>' +
+      (tm && !(people && links) ? '<p class="lmd-hint lmd-managed">' + T('Lo administra quien administra el equipo') + '</p>' : '') +
       '<p class="lmd-hint" data-sh="linknote" hidden>' + T('Copiá el enlace ahora: no se vuelve a mostrar.') + '</p>' +
       '<p class="lmd-img-err" role="alert" hidden></p>' +
       '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-sh="close" data-esc>' + T('Cerrar') + '</button></div></div>';
     document.body.appendChild(box);
     const q = (n) => box.querySelector('[data-sh=' + n + ']'); const err = box.querySelector('.lmd-img-err');
-    const fail = (e) => { err.hidden = false; err.textContent = T({ bad_email: 'Ese correo no parece válido.', own_email: 'Ese es tu propio correo.', offline: 'No hay conexión con el servidor.', share_needs_plan: 'Compartir es parte del plan pago.', too_many: 'Llegaste al tope de lo que se puede compartir. Quitá algo para sumar más.', not_found: 'Esta nota ya no está en la nube.' }[e && e.code] || 'No se pudo completar. Probá de nuevo.'); };
+    const fail = (e) => { err.hidden = false; err.textContent = T({ bad_email: 'Ese correo no parece válido.', own_email: 'Ese es tu propio correo.', offline: 'No hay conexión con el servidor.', share_needs_plan: 'Compartir es parte del plan pago.', already_member: 'Esa persona ya está en el equipo.', team_policy: 'Lo administra quien administra el equipo', read_only: 'En este equipo solo podés leer.', too_many: 'Llegaste al tope de lo que se puede compartir. Quitá algo para sumar más.', not_found: 'Esta nota ya no está en la nube.' }[e && e.code] || 'No se pudo completar. Probá de nuevo.'); };
     const made = {}; // enlaces creados en esta ventana: el token solo se conoce al crearlo
     const draw = async () => {
       try {
-        const all = await LMD.cloud.api('GET', '/shares');
+        const all = await LMD.cloud.sharesAll(full);
         const people = all.people.filter((s) => s.path === path || (s.kind === 'folder' && path.startsWith(s.path + '/')));
         q('people').innerHTML = people.map((s) => '<li><span>' + esc(s.email) + ' · ' + T(s.role === 'edit' ? 'Puede editar' : 'Solo ver') + (s.kind === 'folder' ? ' · ' + esc(s.path) + '/' : '') + '</span><button type="button" data-rm="s' + s.id + '">' + T('Quitar') + '</button></li>').join('');
         const fresh = all.links.some((l) => l.path === path && made[l.id]);
@@ -672,15 +697,15 @@
           return;
         }
         const rm = e.target.closest('[data-rm]');
-        if (rm) { if (rm.dataset.rm[0] === 's') await LMD.cloud.unshare(rm.dataset.rm.slice(1)); else await LMD.cloud.unlink(rm.dataset.rm.slice(1)); return draw(); }
+        if (rm) { if (rm.dataset.rm[0] === 's') await LMD.cloud.unshare(rm.dataset.rm.slice(1), full); else await LMD.cloud.unlink(rm.dataset.rm.slice(1), full); return draw(); }
         if (e.target.closest('[data-sh=invite]')) {
           const whole = q('folder') && q('folder').checked;
-          await LMD.cloud.share(whole ? folder : path, q('email').value.trim(), q('role').value, whole ? 'folder' : 'note');
+          await LMD.cloud.share(pre + (whole ? folder : path), q('email').value.trim(), q('role').value, whole ? 'folder' : 'note');
           q('email').value = ''; return draw();
         }
         if (e.target.closest('[data-sh=link]')) {
-          const r = await LMD.cloud.link(path, q('pass').value);
-          const all = await LMD.cloud.api('GET', '/shares?path=' + encodeURIComponent(path));
+          const r = await LMD.cloud.link(full, q('pass').value);
+          const all = await LMD.cloud.shares(full);
           const newest = all.links.sort((a, b) => b.id - a.id)[0];
           if (newest) made[newest.id] = LMD.WEB_APP_URL + '?f=' + encodeURIComponent('pub/' + r.token);
           q('pass').value = ''; return draw();

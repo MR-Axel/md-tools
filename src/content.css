@@ -1756,3 +1756,57 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
   .lmd-team .lmd-team-lost { min-height: 40px; }
 }
 @media print { .lmd-team-lock { display: none !important; } }
+
+/* Equipo: papeles, ajustes que decide quien administra, tokens del equipo y registro de actividad. */
+.lmd-scope { color: var(--fg-faint); }
+.lmd-plans-guest { grid-template-columns: minmax(0, 1fr); }
+.lmd-plans-guest .lmd-plan .lmd-hint { margin: 0; }
+.lmd-managed { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 12.5px; color: var(--fg-muted); }
+.lmd-managed::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--fg-faint); }
+.lmd-team-locked .lmd-check, .lmd-team-locked .lmd-pick { cursor: default; opacity: 0.7; }
+.lmd-team select, .lmd-tlog select, .lmd-tlog input[type=date], .lmd-team-pol input[type=text], .lmd-team-tok input { height: 34px; min-width: 0; padding: 0 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--fg); font: inherit; font-size: 13px; outline: none; }
+.lmd-team select:focus, .lmd-tlog select:focus, .lmd-tlog input[type=date]:focus, .lmd-team-pol input[type=text]:focus, .lmd-team-tok input:focus { border-color: var(--accent-fill); }
+.lmd-team select:disabled, .lmd-team-pol input:disabled { cursor: default; }
+.lmd-team-acts { align-items: center; }
+.lmd-team-acts select { height: 30px; font-size: 12.5px; }
+.lmd-team-invite select { flex: none; height: 36px; }
+.lmd-team-pol .lmd-check { margin-bottom: 4px; }
+.lmd-team-pol .lmd-pick { margin-top: 10px; }
+.lmd-team-pol .lmd-pick span { flex: 0 0 190px; }
+.lmd-team-pol .lmd-pick select, .lmd-team-pol .lmd-pick input { flex: 0 1 220px; }
+.lmd-team-tpl b { font-weight: 600; font-size: 13px; }
+.lmd-team-tpl .lmd-btn { margin-left: auto; }
+.lmd-team-tok { margin-top: 10px; }
+.lmd-team-tok input { flex: 1 1 0; height: 36px; }
+.lmd-team .lmd-field { margin-top: 8px; }
+.lmd-team-tpl-ask .lmd-ask-card { width: min(620px, 100%); }
+.lmd-team-tpl-text { display: block; width: 100%; box-sizing: border-box; margin: 0 0 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--fg); font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; resize: vertical; outline: none; }
+.lmd-team-tpl-text:focus { border-color: var(--accent-fill); }
+.lmd-ask-card.lmd-tlog { width: min(860px, 100%); display: flex; flex-direction: column; max-height: min(680px, 100%); }
+.lmd-tlog-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.lmd-tlog-filters select { flex: 1 1 160px; }
+.lmd-tlog-filters label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--fg-muted); }
+.lmd-tlog-list { flex: 1 1 auto; min-height: 120px; margin: 0 0 10px; padding: 0; list-style: none; overflow: auto; scrollbar-width: thin; border-top: 1px solid var(--line); }
+.lmd-tlog-list li { display: grid; grid-template-columns: 150px minmax(0, 1.1fr) minmax(0, 0.9fr) minmax(0, 1.6fr); gap: 4px 12px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.lmd-tlog-list time, .lmd-tlog-list small { color: var(--fg-muted); font-size: 12.5px; }
+.lmd-tlog-list b { font-weight: 600; }
+.lmd-tlog-list b, .lmd-tlog-list small { min-width: 0; overflow-wrap: anywhere; }
+.lmd-tlog-list li.lmd-tlog-none { display: block; padding: 18px 0; color: var(--fg-muted); }
+.lmd-ask-card.lmd-tlog p.lmd-hint { margin: 0 0 12px; font-size: 12.5px; }
+.lmd-tlog .lmd-ask-actions { flex-wrap: wrap; }
+@media (max-width: 720px) {
+  .lmd-team-list li { flex-wrap: wrap; }
+  .lmd-team-acts select, .lmd-team-invite select { height: 40px; font-size: 16px; }
+  .lmd-team-invite select { flex: 1 1 auto; }
+  .lmd-team-pol .lmd-pick { flex-wrap: wrap; gap: 6px; }
+  .lmd-team-pol .lmd-pick span { flex: 1 1 100%; }
+  .lmd-team-pol .lmd-pick select, .lmd-team-pol .lmd-pick input { flex: 1 1 100%; height: 40px; font-size: 16px; }
+  .lmd-team-tok { flex-wrap: wrap; }
+  .lmd-team-tok input { flex: 1 1 100%; height: 40px; font-size: 16px; }
+  .lmd-team-tpl-text { font-size: 16px; }
+  .lmd-tlog-filters select, .lmd-tlog-filters label { flex: 1 1 100%; }
+  .lmd-tlog-filters select, .lmd-tlog-filters input[type=date] { height: 40px; font-size: 16px; }
+  .lmd-tlog-filters label input { flex: 1; }
+  .lmd-tlog-list li { grid-template-columns: minmax(0, 1fr); gap: 1px; }
+  .lmd-tlog .lmd-ask-actions .lmd-btn { flex: 1 1 auto; min-height: 40px; }
+}

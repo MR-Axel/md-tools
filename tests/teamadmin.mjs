@@ -294,7 +294,148 @@ try {
   check('y las políticas vuelven a las de fábrica', mig.policies.share === false && mig.policies.tokens === true && mig.history_days === 365, mig.policies);
   check('los tokens del equipo siguen entrando después de reiniciar', (await tools(full.token)).includes('list_notes'));
 
-  //UI
+  // ---------- En la app ----------
+  console.log('En la app');
+  const U = await R.signup('olga@ejemplo.test'); const P = await R.signup('pedro@ejemplo.test'); const L = await R.signup('lucia@ejemplo.test');
+  await adminTeam(U.email, 5);
+  await api('POST', '/team/invite', { email: P.email }, U.s); await api('POST', '/team/invite', { email: L.email, role: 'reader' }, U.s);
+  for (const w of [P, L]) await api('POST', '/team/accept', { id: (await acct(w)).team.invites[0].id }, w.s);
+  await api('PUT', '/team', { name: 'Taller' }, U.s);
+  const SP = (await mine(U)).space; const OS = '?o=' + SP;
+  await api('PUT', '/notes/' + enc('plan.md') + OS, { text: '# Plan\n\nPrimer párrafo.\n' }, U.s);
+  const tUrl = (p, edit) => R.noteUrl('~' + SP + '/' + p, edit);
+  const natives = [];
+  const watch = (c) => { c.page.on('dialog', (d) => { natives.push(d.type() + ': ' + d.message()); d.dismiss().catch(() => {}); }); return c; };
+  const openPlan = async (page) => { await page.evaluate(() => document.querySelector('[data-act=settings]').click()); await page.waitForSelector('.lmd-panel-card'); await page.click('[data-ptab=plan]'); await page.waitForSelector('.lmd-panel .lmd-team [data-team=members]'); await page.waitForTimeout(300); };
+  const closePanel = (page) => page.click('[data-act=close-panel]');
+  const said = (page, text) => page.waitForFunction((t) => { const m = document.querySelector('.lmd-team-msg'); return !!m && !m.hidden && m.textContent === t; }, text, { timeout: 10000 });
+  const pols = async () => (await api('GET', '/team/policies', undefined, U.s)).json.policies;
+
+  const olga = watch(await R.open(U));
+  await olga.page.goto(tUrl('plan.md')); await olga.page.waitForSelector('[data-root=team] .lmd-node');
+  await openPlan(olga.page);
+  const adminView = await olga.page.evaluate(() => { const t = document.querySelector('.lmd-panel .lmd-team'); return { text: t.innerText, roles: [...t.querySelectorAll('[data-team=members] select[data-t=role]')].map((s) => s.value), invRole: !!t.querySelector('select[data-t=invite-role]'), heads: [...t.querySelectorAll('h4')].map((h) => h.textContent.trim()), locked: !!t.querySelector('.lmd-managed'), enabled: [...t.querySelectorAll('[data-team=policies] input, [data-team=policies] select')].every((i) => !i.disabled) }; });
+  check('quien administra ve a cada miembro con su papel y lo puede cambiar, menos el propio', /olga@ejemplo\.test · Administrator/.test(adminView.text) && /pedro@ejemplo\.test · Editor/.test(adminView.text) && /lucia@ejemplo\.test · Reader/.test(adminView.text) && adminView.roles.join() === 'editor,reader' && adminView.invRole, adminView);
+  check('Plan tiene las secciones del equipo: ajustes, protección, tokens y registro', ['Team settings', 'Space protection', 'Team tokens', 'Activity log'].every((h) => adminView.heads.includes(h)) && adminView.enabled && !adminView.locked, adminView.heads);
+  check('y dice que quien solo lee ocupa un lugar', /A reader takes a seat too\./.test(adminView.text));
+  // Cada cambio vuelve a dibujar la gestión: se espera su aviso, borrando antes el del cambio anterior.
+  const does = async (page, fn, text) => { await page.evaluate(() => { const m = document.querySelector('.lmd-team-msg'); if (m) { m.hidden = true; m.textContent = ''; } }); await fn(); await said(page, text); };
+  await does(olga.page, () => olga.page.selectOption('.lmd-team select[data-t=role][data-id="' + P.id + '"]', 'reader'), 'Role changed.');
+  check('cambiar el papel desde la lista lo cambia en el servidor', (await mine(P)).role === 'reader');
+  await does(olga.page, () => olga.page.selectOption('.lmd-team select[data-t=role][data-id="' + P.id + '"]', 'editor'), 'Role changed.');
+  await olga.page.fill('.lmd-team [data-t=email]', 'nueva@ejemplo.test'); await olga.page.selectOption('.lmd-team select[data-t=invite-role]', 'reader');
+  await does(olga.page, () => olga.page.click('.lmd-team [data-t=invite]'), 'Invitation sent.');
+  check('al invitar se elige el papel, y la invitación pendiente lo muestra', /nueva@ejemplo\.test · Reader/.test(await olga.page.innerText('.lmd-team [data-team=pending]')) && (await mine(U)).pending[0].role === 'reader');
+  await does(olga.page, () => olga.page.check('.lmd-team [data-p=share]'), 'Setting saved.');
+  await does(olga.page, () => olga.page.selectOption('.lmd-team [data-p=history_days]', '90'), 'Setting saved.');
+  await does(olga.page, async () => { await olga.page.fill('.lmd-team [data-p=folder]', 'notas'); await olga.page.press('.lmd-team [data-p=folder]', 'Enter'); }, 'Setting saved.');
+  await olga.page.click('.lmd-team [data-t=template]'); await olga.page.waitForSelector('.lmd-team-tpl-ask textarea');
+  await olga.page.fill('.lmd-team-tpl-ask textarea', '# Título\n\n## Contexto\n');
+  await does(olga.page, () => olga.page.click('.lmd-team-tpl-ask [data-d=ok]'), 'Setting saved.');
+  const p1 = await pols();
+  check('los ajustes del equipo se guardan desde Plan: compartir, historial, carpeta y plantilla de las notas nuevas', p1.share === true && p1.links === false && p1.history_days === 90 && p1.folder === 'notas' && p1.template === '# Título\n\n## Contexto\n', p1);
+  check('y la plantilla figura como puesta', /Template for new notes\s+Set/.test(await olga.page.innerText('.lmd-team [data-team=policies]')));
+  // Tokens del equipo.
+  await olga.page.fill('.lmd-team [data-t=tok-name]', 'Bot del taller'); await olga.page.click('.lmd-team [data-t=tok-new]');
+  await olga.page.waitForSelector('.lmd-team .lmd-ai-new'); await olga.page.waitForFunction(() => /Bot del taller/.test(document.querySelector('.lmd-team [data-team=tokens]').innerText));
+  const tokUi = await olga.page.evaluate(() => { const t = document.querySelector('.lmd-team'); return { token: [...t.querySelectorAll('.lmd-field')].find((f) => f.querySelector('span').textContent === 'Token').querySelector('input').value, row: t.querySelector('[data-team=tokens]').innerText }; });
+  check('un token del equipo se crea desde Plan, se muestra una vez y queda en la lista con lo que puede', /^mdt_/.test(tokUi.token) && /Bot del taller · All team notes · reads and writes · never used/.test(tokUi.row), tokUi);
+  check('y entra al espacio del equipo', /"plan\.md"/.test(text(await tool(tokUi.token, 'list_notes', {}))));
+  await olga.page.click('.lmd-team [data-t=tok-rm]'); await olga.page.waitForSelector('.lmd-dlg'); await olga.page.click('.lmd-dlg [data-dlg=ok]');
+  await olga.page.waitForFunction(() => /No tokens yet\./.test(document.querySelector('.lmd-team [data-team=tokens]').innerText));
+  check('revocarlo pide confirmar con un diálogo propio, y deja de entrar', (await api('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/list' }, tokUi.token)).status === 401 && !(await olga.page.$('.lmd-team .lmd-ai-new')));
+  // Registro de actividad.
+  await olga.page.click('.lmd-team [data-t=log]'); await olga.page.waitForSelector('.lmd-tlog [data-l=list] li time');
+  const logUi = await olga.page.evaluate(() => ({ rows: [...document.querySelectorAll('.lmd-tlog [data-l=list] li')].map((li) => li.innerText.replace(/\n+/g, ' | ')), hint: document.querySelector('.lmd-tlog p.lmd-hint').textContent, people: [...document.querySelectorAll('.lmd-tlog [data-l=who] option')].map((o) => o.textContent) }));
+  check('el registro muestra quién hizo qué, con palabras', logUi.rows.some((r) => /olga@ejemplo\.test \| Changed a setting \| Share: yes/.test(r)) && logUi.rows.some((r) => /Changed a role \| Reader · pedro@ejemplo\.test/.test(r)) && logUi.rows.some((r) => /Team token · Bot del taller \| An AI connected/.test(r)) && logUi.rows.some((r) => /Created \| plan\.md/.test(r)) && logUi.rows.some((r) => /Version history: 90 days/.test(r)), logUi.rows);
+  check('dice qué guarda y por cuánto tiempo', /It does not keep the content of the notes\. Entries are deleted after 90 days\./.test(logUi.hint) && logUi.people.includes('pedro@ejemplo.test'), logUi.hint);
+  await olga.page.selectOption('.lmd-tlog [data-l=action]', 'role'); await olga.page.waitForFunction(() => { const li = [...document.querySelectorAll('.lmd-tlog [data-l=list] li')]; return li.length > 0 && li.every((x) => /Changed a role/.test(x.innerText)); });
+  check('filtra por tipo', (await olga.page.$$('.lmd-tlog [data-l=list] li')).length === 2);
+  await olga.page.selectOption('.lmd-tlog [data-l=who]', String(L.id)); await olga.page.waitForSelector('.lmd-tlog .lmd-tlog-none');
+  check('y por persona, y dice cuando no hay nada', /No activity matches those filters\./.test(await olga.page.innerText('.lmd-tlog [data-l=list]')));
+  await olga.page.selectOption('.lmd-tlog [data-l=who]', '');
+  const [dl] = await Promise.all([olga.page.waitForEvent('download'), olga.page.click('.lmd-tlog [data-l=csv]')]);
+  const csvFile = fs.readFileSync(await dl.path(), 'utf8');
+  check('exporta un CSV con los filtros puestos', dl.suggestedFilename() === 'sharpmd-team-activity.csv' && csvFile.replace(/^﻿/, '').startsWith('when,who,via,token,action,path,about,detail\r\n') && csvFile.trim().split('\r\n').length === 3 && /,role,/.test(csvFile), csvFile.slice(0, 300));
+  const logBox = await olga.page.evaluate(() => { const c = document.querySelector('.lmd-tlog').getBoundingClientRect(); return c.right <= innerWidth && c.bottom <= innerHeight; });
+  await olga.page.click('.lmd-tlog [data-l=close]');
+  check('la ventana del registro entra en la pantalla y se cierra', logBox && !(await olga.page.$('.lmd-tlog')));
+  const adminAll = await olga.page.innerText('.lmd-panel [data-acct=plan]');
+  check('los textos nuevos no llevan signos de admiración ni rayas largas', !/[!¡—–]/.test(adminAll), adminAll.match(/.{0,30}[!¡—–].{0,30}/));
+  // Lo personal y lo de cada nota, dicho en Ajustes.
+  await olga.page.click('[data-ptab=look]'); const lookHint = await olga.page.innerText('.lmd-panel section[data-tab=look] .lmd-scope');
+  await olga.page.click('[data-ptab=read]'); const readHint = await olga.page.innerText('.lmd-panel section[data-tab=read] .lmd-scope');
+  check('Ajustes dice qué es personal, dónde está lo del equipo y que lo de una nota va en su menú', lookHint === 'These settings are yours. Nobody else sees or changes them.' && /The width and other options of a single note are changed from the menu of that note\./.test(readHint) && /What applies to the whole team is in Plan, under Team settings\./.test(readHint), [lookHint, readHint]);
+  await closePanel(olga.page);
+
+  // Quien edita: comparte porque la política lo permite, y no crea enlaces porque no.
+  const pedro = watch(await R.open(P));
+  await pedro.page.goto(tUrl('plan.md')); await pedro.page.waitForSelector('[data-root=team] .lmd-node');
+  await pedro.page.click('.lmd-sync'); await pedro.page.waitForSelector('.lmd-menu [data-s]');
+  const pMenu = await pedro.page.evaluate(() => [...document.querySelectorAll('.lmd-menu [data-s]')].map((b) => b.dataset.s + (b.classList.contains('lmd-locked') ? ':locked' : '')));
+  await pedro.page.click('.lmd-menu [data-s=share]'); await pedro.page.waitForSelector('.lmd-share');
+  const shareUi = await pedro.page.evaluate(() => { const s = document.querySelector('.lmd-share'); return { people: !!s.querySelector('[data-sh=invite]'), link: !!s.querySelector('[data-sh=link]'), text: s.innerText }; });
+  check('a quien edita se le ofrece compartir una nota del equipo, solo la mitad que el equipo permite', pMenu.includes('share') && shareUi.people && !shareUi.link && /This note belongs to the team/.test(shareUi.text) && /Managed by your team administrator/.test(shareUi.text), [pMenu, shareUi]);
+  await pedro.page.fill('.lmd-share [data-sh=email]', Z.email); await pedro.page.click('.lmd-share [data-sh=invite]');
+  await pedro.page.waitForFunction((m) => document.querySelector('.lmd-share [data-sh=people]').innerText.includes(m), Z.email);
+  check('y la comparte con una cuenta de afuera', (await api('GET', '/shared', undefined, Z.s)).json.some((n) => n.owner === SP && n.path === 'plan.md' && n.by === 'Taller'));
+  await pedro.page.click('.lmd-share [data-rm]'); await pedro.page.waitForFunction(() => !document.querySelector('.lmd-share [data-sh=people] li'));
+  check('y deja de compartirla', !(await api('GET', '/shared', undefined, Z.s)).json.length);
+  await pedro.page.click('.lmd-share [data-sh=close]');
+  // Una nota nueva del equipo nace en la carpeta y con la plantilla que eligió quien administra.
+  await pedro.page.click('[data-root=team] .lmd-tree-new'); await pedro.page.waitForSelector('.lmd-menu [data-f=new]'); await pedro.page.click('.lmd-menu [data-f=new]');
+  await pedro.page.waitForSelector('.lmd-dlg input'); await pedro.page.fill('.lmd-dlg input', 'idea'); await pedro.page.click('.lmd-dlg [data-dlg=ok]');
+  await pedro.page.waitForFunction(() => /Contexto/.test((document.querySelector('.lmd-article') || {}).innerText || ''), null, { timeout: 15000 });
+  const born = await api('GET', '/notes/' + enc('notas/idea.md') + OS, undefined, U.s);
+  check('una nota nueva del equipo nace en la carpeta y con la plantilla del equipo', born.status === 200 && born.json.text === '# Título\n\n## Contexto\n', born.json);
+  await openPlan(pedro.page);
+  const edView = await pedro.page.evaluate(() => { const b = document.querySelector('.lmd-panel [data-acct=plan]'); const t = b.querySelector('.lmd-team'); return { all: b.innerText, role: t.querySelector('[data-team=role]').innerText, managed: !!t.querySelector('[data-team=policies] .lmd-managed'), off: [...t.querySelectorAll('[data-team=policies] input, [data-team=policies] select')].every((i) => i.disabled), on: t.querySelector('[data-p=share]').checked, admin: !!t.querySelector('[data-t=log], [data-t=tok-new], [data-t=invite], [data-t=template], select[data-t=role], [data-t=name]'), cols: b.querySelectorAll('.lmd-plan').length, pay: !!b.querySelector('[data-pay], .lmd-plan-buy, .lmd-team-seats') }; });
+  check('quien edita ve su equipo, su papel y los ajustes del equipo bloqueados, con lo que decidió quien administra', /Your role\s+Editor/.test(edView.role) && edView.managed && edView.off && edView.on && !edView.admin, edView);
+  check('y nada de cobro: ni planes, ni precios, ni lugares, ni botones de compra', edView.cols === 1 && !edView.pay && !/USD|\$|\/ month|Seats|seats|Subscribe|subscription/i.test(edView.all), edView.all);
+  await closePanel(pedro.page);
+  await pedro.ctx.close();
+
+  // Quien solo lee: lee, y la app no le ofrece cambiar nada en el espacio. Plan, después, en el ancho de un teléfono.
+  const lucia = watch(await R.open(L));
+  const puts = []; lucia.page.on('response', (r) => { if (/^(PUT|DELETE|POST)$/.test(r.request().method()) && /\/(notes|rename|trash|shares|links)\b/.test(new URL(r.url()).pathname)) puts.push(r.request().method() + ' ' + r.status()); });
+  await lucia.page.goto(tUrl('plan.md', true)); await lucia.page.waitForFunction(() => /Primer párrafo/.test((document.querySelector('.lmd-article') || {}).innerText || ''), null, { timeout: 15000 });
+  await lucia.page.waitForSelector('[data-root=team] .lmd-node');
+  const roUi = await lucia.page.evaluate(() => ({ readonly: document.documentElement.classList.contains('lmd-readonly'), editable: !!document.querySelector('.lmd-article .lmd-editable'), root: !!document.querySelector('[data-root=team]'), plus: !!document.querySelector('[data-root=team] .lmd-tree-new'), cloudPlus: !!document.querySelector('[data-root=cloud] .lmd-tree-new') }));
+  check('quien solo lee abre la nota del equipo en solo lectura, aunque pida editar', roUi.readonly && !roUi.editable, roUi);
+  check('el explorador le muestra el espacio sin el botón de crear ahí, y sí en su nube', roUi.root && !roUi.plus && roUi.cloudPlus, roUi);
+  await lucia.page.evaluate(() => document.querySelector('.lmd-sync').click()); await lucia.page.waitForSelector('.lmd-menu [data-s]');
+  const lMenu = await lucia.page.evaluate(() => [...document.querySelectorAll('.lmd-menu [data-s]')].map((b) => b.dataset.s));
+  const lLabel = await lucia.page.evaluate(() => document.querySelector('.lmd-menu .lmd-menu-label').textContent);
+  check('el menú de la nota no le ofrece compartir ni la sesión en vivo, y dice su equipo y su papel en vez de un plan', !lMenu.includes('share') && !lMenu.includes('live') && lMenu.includes('history') && lLabel === 'lucia@ejemplo.test · Taller · Reader', [lMenu, lLabel]);
+  await lucia.page.keyboard.press('Escape'); await lucia.page.evaluate(() => { const m = document.querySelector('.lmd-menu'); if (m) m.remove(); });
+  await lucia.page.evaluate(() => { const n = document.querySelector('[data-root=team] .lmd-node'); n.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 200 })); }); await sleep(300);
+  check('en una nota del equipo no hay menú para renombrar ni eliminar', !(await lucia.page.$('.lmd-menu [data-f]')));
+  await api('PUT', '/notes/' + enc('borrada.md') + OS, { text: 'x' }, U.s); await api('DELETE', '/notes/' + enc('borrada.md') + OS, undefined, U.s);
+  await lucia.page.evaluate((s) => document.querySelector('[data-trash="' + s + '"]').click(), String(SP)); await lucia.page.waitForSelector('.lmd-trash li');
+  const trashUi = await lucia.page.evaluate(() => { const t = document.querySelector('.lmd-trash'); return { rows: t.querySelectorAll('li').length, acts: t.querySelectorAll('[data-tr=back], [data-tr=del], [data-tr=empty]').length }; });
+  check('ve la papelera del equipo sin restaurar, eliminar ni vaciar', trashUi.rows === 1 && trashUi.acts === 0, trashUi);
+  await lucia.page.click('.lmd-trash [data-tr=no]');
+  check('y la app no mandó ningún cambio al espacio', puts.length === 0, puts);
+  await lucia.page.setViewportSize({ width: 390, height: 780 });
+  await openPlan(lucia.page);
+  const rdView = await lucia.page.evaluate(() => { const b = document.querySelector('.lmd-panel [data-acct=plan]'); const body = document.querySelector('.lmd-panel-body'); const out = [...b.querySelectorAll('button, input, select, a')].filter((n) => n.offsetParent).filter((n) => { const r = n.getBoundingClientRect(); return r.left < -0.5 || r.right > innerWidth + 0.5; }).length; return { all: b.innerText, sideways: body.scrollWidth - body.clientWidth, out, pay: !!b.querySelector('[data-pay], .lmd-plan-buy, .lmd-team-seats'), leave: !!b.querySelector('[data-t=leave]') }; });
+  check('en Plan ve su equipo y su papel, con cómo pedir más, y puede salir', /Taller/.test(rdView.all) && /Your role\s+Reader/.test(rdView.all) && /To edit them, ask an administrator to change your role\./.test(rdView.all) && rdView.leave, rdView.all);
+  check('sin nada de cobro, y entra en el ancho del teléfono', !rdView.pay && !/USD|\$|\/ month|Seats|Subscribe|subscription/i.test(rdView.all) && rdView.sideways <= 0 && rdView.out === 0, rdView);
+  await closePanel(lucia.page);
+  await lucia.ctx.close();
+
+  // Quien administra, en un teléfono: la gestión y el registro entran en el ancho.
+  const phone = watch(await R.open(U, { viewport: { width: 390, height: 780 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }));
+  await phone.page.goto(tUrl('plan.md')); await phone.page.waitForSelector('[data-root=team] .lmd-node', { state: 'attached' });
+  await openPlan(phone.page);
+  const phAdmin = await phone.page.evaluate(() => { const b = document.querySelector('.lmd-panel [data-acct=plan]'); const body = document.querySelector('.lmd-panel-body'); const ctl = [...b.querySelectorAll('.lmd-team button, .lmd-team input:not([type=checkbox]), .lmd-team select')].filter((n) => n.offsetParent); return { sideways: body.scrollWidth - body.clientWidth, out: ctl.filter((n) => { const r = n.getBoundingClientRect(); return r.left < -0.5 || r.right > innerWidth + 0.5; }).map((n) => n.dataset.t || n.dataset.p), low: ctl.filter((n) => n.getBoundingClientRect().height < 36).map((n) => n.dataset.t || n.dataset.p || n.textContent) }; });
+  check('en un teléfono la gestión del equipo no se desborda y sus controles se pueden tocar', phAdmin.sideways <= 0 && !phAdmin.out.length && !phAdmin.low.length, phAdmin);
+  await phone.page.click('.lmd-team [data-t=log]'); await phone.page.waitForSelector('.lmd-tlog [data-l=list] li time');
+  const phLog = await phone.page.evaluate(() => { const c = document.querySelector('.lmd-tlog'); const r = c.getBoundingClientRect(); return { fits: r.left >= 0 && r.right <= innerWidth + 0.5 && r.bottom <= innerHeight + 0.5, wide: [...c.querySelectorAll('select, input, button, li')].filter((n) => n.getBoundingClientRect().right > innerWidth + 0.5).length }; });
+  check('y el registro también', phLog.fits && phLog.wide === 0, phLog);
+  await phone.page.click('.lmd-tlog [data-l=close]');
+  await phone.ctx.close(); await olga.ctx.close();
+  check('nunca se usó alert, confirm ni prompt del navegador', !natives.length, natives);
   check('sin errores de página', !R.errors.length, R.errors);
   check('ningún pedido salió a producción', !R.outside.length, R.outside);
 } catch (e) { check('sin excepciones', false, String(e && e.stack || e)); console.log(R.log().slice(-1500)); }

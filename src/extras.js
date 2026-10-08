@@ -24,6 +24,8 @@
   // y renombrar con otra ruta es mover.
   const inCloud = (url) => kindOf(url) === 'cloud';
   const canTree = (url) => canManage(url) || inCloud(url);
+  // Una ruta del espacio del equipo para una cuenta que ahí solo lee.
+  const teamReader = (url) => inCloud(url) && LMD.cloud.isTeam(core.pathOf(url) + '/') && !LMD.cloud.teamCan('write');
   // Las notas del navegador no tienen carpetas: se renombran y se eliminan, no se mueven.
   const inLocal = (url) => kindOf(url) === 'local';
   // Abrir sin recargar la página. Lo que se movió o se borró ya no vive en su dirección vieja: no se guarda al salir.
@@ -40,7 +42,12 @@
   const cloudFail = (e, fallback) => { if (e && e.code === 'note_limit') core.openPanel('plan', cloudWhy(e)); else core.flash(cloudWhy(e, fallback), 'error'); };
   // Renombrar y eliminar son de quien creó la nota: lo compartido se puede leer o editar, no mover.
   // Las del equipo son de todos sus miembros: cualquiera las mueve y las elimina.
-  const notMine = (path) => { if (!LMD.cloud.split(path).owner || LMD.cloud.isTeam(path)) return false; core.flash(T('Solo quien creó la nota puede hacer eso.'), 'warn'); return true; };
+  const notMine = (path) => {
+    // En el espacio del equipo decide el papel: quien solo lee no cambia nada ahí.
+    if (LMD.cloud.isTeam(path + '/')) { if (LMD.cloud.teamCan('write')) return false; core.flash(T('En este equipo solo podés leer.'), 'warn'); return true; }
+    if (!LMD.cloud.split(path).owner) return false;
+    core.flash(T('Solo quien creó la nota puede hacer eso.'), 'warn'); return true;
+  };
   // Una nota del equipo lleva adelante de su ruta de qué espacio es (~12/): eso no se muestra ni se escribe.
   const ownerPre = (path) => { const o = LMD.cloud.split(path).owner; return o ? '~' + o + '/' : ''; };
 
@@ -51,13 +58,20 @@
   const askName = (title, value, validate, ok, label) => LMD.dialog.prompt({ title: T(title), value, validate, ok: T(ok), label: label ? T(label) : '', stem: true });
   const askDelete = (name) => LMD.dialog.confirm({ title: T('¿Eliminar "{a}"?', { a: name }), text: T('No se puede deshacer.'), ok: T('Eliminar'), danger: true });
 
+  const notMineTeam = (path) => LMD.cloud.isTeam(path + '/') && notMine(path);
   async function cloudNew(dirUrl, folder) {
+    if (notMineTeam(core.pathOf(dirUrl))) return;
     const typed = await askName(folder ? 'Nombre de la carpeta nueva' : 'Nombre del archivo nuevo', folder ? T('carpeta') : T('nota') + '.md', badPath, 'Crear');
     if (!typed) return;
     let name = cloudName(typed);
     // Una carpeta existe mientras tenga algo adentro: nace con su primera nota.
     if (folder) name += '/' + T('nota') + '.md'; else if (!/\.[A-Za-z0-9]+$/.test(name)) name += '.md';
-    const dir = core.pathOf(dirUrl); const path = (dir ? dir + '/' : '') + name; const s = LMD.cloud.split(path);
+    let dir = core.pathOf(dirUrl);
+    // En el espacio del equipo, lo que decidió quien administra: una nota creada en la raíz va a la carpeta de las
+    // notas nuevas, y nace con la plantilla del equipo.
+    const tm = LMD.cloud.teamNow(); const inTeam = !!tm && LMD.cloud.isTeam(dir + '/');
+    if (inTeam && !folder && tm.folder && dir === '~' + tm.space && !name.includes('/')) dir += '/' + tm.folder;
+    const path = (dir ? dir + '/' : '') + name; const s = LMD.cloud.split(path);
     try {
       // Dentro de una carpeta protegida la nota nace cifrada: hace falta tenerla desbloqueada.
       if (!(await LMD.vault.unlockFor(path))) return;
@@ -65,7 +79,7 @@
       if (folder && all.some((n) => n.path.startsWith(s.path.slice(0, s.path.lastIndexOf('/') + 1)))) { core.flash(T('Ya hay una carpeta con ese nombre'), 'error'); return; }
       if (all.some((n) => n.path === s.path || n.path.startsWith(s.path + '/'))) { core.flash(T('Ya hay un archivo con ese nombre'), 'error'); return; }
       const file = name.split('/').pop();
-      await LMD.cloud.write(path, MD_RE.test(file) ? '# ' + file.replace(/\.[^.]+$/, '') + '\n' : '');
+      await LMD.cloud.write(path, MD_RE.test(file) ? (inTeam && !folder && tm.template ? tm.template : '# ' + file.replace(/\.[^.]+$/, '') + '\n') : '');
       openNew(core.urlOf(path));
     } catch (e) { cloudFail(e, 'No se pudo crear el archivo'); }
   }
@@ -123,15 +137,17 @@
     const C = LMD.cloud; let rows = [];
     try { rows = await C.trash(owner); } catch (e) { core.flash(cloudWhy(e, 'No se pudo abrir la papelera'), 'error'); return; }
     const title = T(owner ? 'Papelera del equipo' : 'Papelera');
+    // Quien solo lee en su equipo ve la papelera, sin restaurar ni borrar.
+    const ro = !!owner && !LMD.cloud.teamCan('write');
     const left = (r) => { const d = Math.max(1, Math.ceil((r.expires - Date.now()) / 86400000)); return d === 1 ? T('Se borra en 1 día') : T('Se borra en {n} días', { n: d }); };
     const box = el('div', { class: 'lmd-ask' });
     const draw = (msg) => {
       box.innerHTML = '<div class="lmd-ask-card lmd-trash" role="dialog" aria-label="' + esc(title) + '"><h3>' + esc(title) + '</h3>' +
         (rows.length ? '<ul class="lmd-trash-list">' + rows.map((r) => '<li data-id="' + r.id + '"><span class="lmd-trash-name">' + (r.protected ? ICON.lock : '') + '<b>' + esc(r.path) + '</b><small>' + esc(left(r)) + '</small></span>' +
-          '<span class="lmd-trash-acts"><button type="button" class="lmd-link" data-tr="back">' + T('Restaurar') + '</button><button type="button" class="lmd-link lmd-trash-del" data-tr="del">' + T('Eliminar') + '</button></span></li>').join('') + '</ul>'
+          (ro ? '' : '<span class="lmd-trash-acts"><button type="button" class="lmd-link" data-tr="back">' + T('Restaurar') + '</button><button type="button" class="lmd-link lmd-trash-del" data-tr="del">' + T('Eliminar') + '</button></span>') + '</li>').join('') + '</ul>'
           : '<p class="lmd-trash-none">' + T('La papelera está vacía.') + '</p>') +
         '<p class="lmd-dlg-err" role="alert"' + (msg ? '' : ' hidden') + '>' + esc(msg || '') + '</p>' +
-        '<div class="lmd-ask-actions">' + (rows.length ? '<button type="button" class="lmd-btn" data-tr="empty">' + T('Vaciar la papelera') + '</button>' : '') + '<button type="button" class="lmd-btn lmd-btn-fill" data-tr="no" data-esc>' + T('Cerrar') + '</button></div></div>';
+        '<div class="lmd-ask-actions">' + (rows.length && !ro ? '<button type="button" class="lmd-btn" data-tr="empty">' + T('Vaciar la papelera') + '</button>' : '') + '<button type="button" class="lmd-btn lmd-btn-fill" data-tr="no" data-esc>' + T('Cerrar') + '</button></div></div>';
     };
     draw(); document.body.appendChild(box);
     let busy = false;
@@ -267,6 +283,7 @@
   // Mueve un archivo a otra carpeta del árbol, con el mismo nombre.
   async function moveTo(url, dirUrl) {
     const name = nameOf(url);
+    if (teamReader(url) || teamReader(dirUrl)) { core.flash(T('En este equipo solo podés leer.'), 'warn'); return; }
     if (inCloud(url)) {
       const old = core.pathOf(url); const dir = core.pathOf(dirUrl);
       if (!notMine(old)) await cloudMove(old, (dir ? dir + '/' : '') + name, false, 'No se pudo mover');
@@ -327,6 +344,7 @@
   // por su propio camino, con su confirmación. En el disco no hay papelera: se confirma y se borra.
   async function removeDir(url) {
     const name = nameOf(url);
+    if (teamReader(url)) { core.flash(T('En este equipo solo podés leer.'), 'warn'); return; }
     if (!inCloud(url)) {
       if (!(await askDelete(name))) return;
       try {
@@ -370,6 +388,8 @@
   function treeMenu(x, y, node) {
     const url = node.dataset.url; const isDir = node.classList.contains('lmd-node-dir'); const cloud = inCloud(url); const local = inLocal(url);
     const at = isDir ? url : parentOf(url);
+    // Quien solo lee en su equipo no crea, renombra ni elimina ahí: no hay menú que ofrecer.
+    if (teamReader(url)) return;
     // Una carpeta propia de la nube suma lo de las carpetas con contraseña: proteger, desbloquear, abrir para la IA.
     const folder = isDir && cloud ? core.pathOf(url) : '';
     showMenu(x, y, [
