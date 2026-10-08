@@ -166,6 +166,28 @@ await app.click('.lmd-gal-theme [data-gal=back]'); await app.waitForTimeout(800)
 o.volverTema = await scan(); o.estilo = await app.evaluate(() => (document.documentElement.getAttribute('style') || '') + ' ' + document.querySelector('style[data-lmd-custom], .lmd-custom-css, #lmd-custom')?.textContent);
 await app.click('[data-act=close-panel]'); await app.waitForTimeout(200);
 
+// ---------- Lo que devuelve el modelo del asistente de IA ----------
+// El modelo es un doble que contesta con el mismo Markdown hostil. Lo que se dibuja en la propuesta y en el panel
+// pasa por el saneado de siempre y, además, no pide nada a otro servidor: ni siquiera una imagen.
+await open('hostil.md');
+await app.evaluate(() => LMD.tools.set('assistant', true)); await app.waitForFunction(() => window.LMD && LMD.ai && LMD.assistant && LMD.assistant.state().on);
+await app.evaluate((text) => {
+  LMD.ai.status = async () => ({ has: true, provider: 'compat', host: 'modelo.invalid', model: 'doble', hasKey: false, open: true });
+  LMD.ai.stream = async (q, onDelta) => { onDelta(text); return { text, usage: { input: 1, output: 1 }, stop: 'end', model: 'doble' }; };
+}, HOSTIL);
+let iaPedidos = 0; const contar = (r) => { if (/xss\.invalid/.test(r.url())) iaPedidos++; }; app.on('request', contar);
+const dentro = (sel) => app.evaluate((s) => { const p = document.querySelector(s); return ['script', 'iframe', 'object', 'embed', 'form', 'base', 'meta', 'link', 'style', 'img', 'video', 'audio', 'image', 'foreignObject'].filter((t) => p.querySelector(t)).concat([...p.querySelectorAll('[style], [srcset]')].map((n) => n.tagName + '[style]')); }, sel);
+await app.evaluate(() => LMD.assistant.generate()); await app.waitForSelector('.lmd-ai-gen textarea'); await app.fill('.lmd-ai-gen textarea', 'algo'); await app.click('.lmd-ai-gen [data-ai=go]');
+await app.waitForSelector('.lmd-ai-card:not(.lmd-ai-busy) [data-ai=copy]'); await app.waitForTimeout(600);
+o.iaPropuesta = await scan(); o.iaPropuestaMal = await dentro('.lmd-ai-card .lmd-ai-new');
+await app.evaluate(() => { document.querySelectorAll('.lmd-ai-card .lmd-ai-new a, .lmd-ai-card .lmd-ai-new summary').forEach((n) => { n.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); if (n.tagName !== 'A') n.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); }); });
+await app.click('.lmd-ai-card [data-ai=discard]');
+await app.evaluate(() => LMD.assistant.ask()); await app.waitForSelector('.lmd-ai-panel textarea'); await app.fill('.lmd-ai-panel textarea', 'qué dice'); await app.keyboard.press('Enter');
+await app.waitForSelector('.lmd-ai-bot [data-ai=cp]'); await app.waitForTimeout(600);
+o.iaPanel = await scan(); o.iaPanelMal = await dentro('.lmd-ai-bot .lmd-ai-out');
+await app.click('.lmd-ai-panel [data-ai=fold]'); app.off('request', contar); o.iaPedidos = iaPedidos;
+await app.evaluate(() => LMD.tools.set('assistant', false)); await app.waitForTimeout(200);
+
 // ---------- Un sitio publicado con HTML hostil ----------
 // Lo que llega al servidor para publicar lo arma un navegador, pero la ruta la puede llamar cualquiera con su sesión:
 // acá se le manda HTML hostil a mano, sin pasar por la app, y se abre cada página en el host de sitios. Ninguna
@@ -276,6 +298,9 @@ const checks = [
   ['la galería descarta lo que llega con CSS, url(), claves de más o un tipo que no existe', o.tarjetas.join() === '7,13', o.tarjetas],
   ['y muestra como texto los nombres, autores, estados y motivos', limpio(o.galeria) && limpio(o.vistaTema) && limpio(o.vistaPlantilla) && o.vistaMal.length === 0, [o.galeria, o.vistaTema, o.vistaPlantilla, o.vistaMal]],
   ['volver de un tema guardado con valores hostiles no mete nada en los estilos', limpio(o.volverTema) && !/xss\.invalid|display/.test(o.estilo), [o.volverTema, o.estilo]],
+  ['asistente de IA: lo que devuelve el modelo no ejecuta nada en la propuesta ni en el panel', limpio(o.iaPropuesta) && limpio(o.iaPanel), [o.iaPropuesta, o.iaPanel]],
+  ['asistente de IA: de esa respuesta no queda ningún script, marco, formulario, estilo ni imagen', o.iaPropuestaMal.length === 0 && o.iaPanelMal.length === 0, [o.iaPropuestaMal, o.iaPanelMal]],
+  ['asistente de IA: dibujarla no pide nada a otro servidor, tampoco una imagen', o.iaPedidos === 0, o.iaPedidos],
   ['sitio publicado: ninguna de las cargas mandadas a mano al servidor ejecuta código en el host de sitios', sitio.paginas >= 20 && sitio.pwn.length === 0 && sitio.dialogs.length === 0 && sitio.errores.length === 0, [sitio.paginas, sitio.pwn, sitio.dialogs, sitio.errores.slice(0, 2)]],
   ['sitio publicado: en cada página queda solo lo de la lista blanca, con el único script y la única hoja del host, y la plantilla intacta', sitio.malas.length === 0, sitio.malas.slice(0, 2)],
   ['sitio publicado: no sale ningún pedido que no sea una imagen, y ninguna página navega fuera del host', sitio.pedidos.length === 0, sitio.pedidos.slice(0, 4)],

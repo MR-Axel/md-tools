@@ -12,6 +12,9 @@
   let core = null;
   let cur = null; // la nota en curso: { path, items }
   let layer = null; let pop = null; let dlg = null;
+  // El asistente de IA con clave propia (assistant.js), cuando está prendido, atiende un comentario acá mismo.
+  const SOLVERS = [];
+  const solver = () => { for (const fn of SOLVERS) { const s = fn(); if (s) return s; } return null; };
 
   // '' no se ofrece (no es una nota propia de la nube, o no se sabe el plan), 'plan' falta el plan pago, 'on' anda.
   function mode() {
@@ -147,11 +150,17 @@
   function view(mark) {
     const box = openPop(mark, 'view', T('Comentarios para la IA'),
       mark._list.map((c) => '<div class="lmd-cm-item"><p class="lmd-cm-text">' + esc(c.text) + '</p>' +
-        '<div class="lmd-cm-meta"><small>' + esc(when(c.created)) + '</small><button type="button" class="lmd-link" data-cm="rm" data-id="' + c.id + '">' + T('Borrar') + '</button></div></div>').join('') +
+        '<div class="lmd-cm-meta"><small>' + esc(when(c.created)) + '</small>' + (solver() ? '<button type="button" class="lmd-link" data-cm="ai" data-id="' + c.id + '">' + T('Resolver con mi IA') + '</button>' : '') + '<button type="button" class="lmd-link" data-cm="rm" data-id="' + c.id + '">' + T('Borrar') + '</button></div></div>').join('') +
       '<div class="lmd-cm-foot"><button type="button" class="lmd-link" data-cm="all">' + T('Ver todos') + '</button></div>', true);
     box.addEventListener('click', (e) => {
       const b = e.target.closest('[data-cm]'); if (!b) return;
-      if (b.dataset.cm === 'rm') remove(+b.dataset.id); else list();
+      if (b.dataset.cm === 'rm') remove(+b.dataset.id);
+      else if (b.dataset.cm === 'ai') {
+        const c = mark._list.find((x) => x.id === +b.dataset.id); const fn = solver(); const block = mark._block;
+        closePop();
+        // Si la propuesta reemplaza al bloque, el comentario ya está atendido y se borra.
+        if (c && fn) fn({ block, text: c.text, quote: c.quote, done: () => remove(c.id) });
+      } else list();
     });
   }
 
@@ -244,5 +253,5 @@
     window.addEventListener('keydown', (e) => { if (e.key !== 'Escape') return; if (pop) closePop(); else if (dlg) closeList(); });
   }
 
-  LMD.comments = { init, attach, detach, onEvent, mode, compose, list, count: () => (mode() === 'on' ? opened().length : 0), textOf };
+  LMD.comments = { init, attach, detach, onEvent, mode, compose, list, count: () => (mode() === 'on' ? opened().length : 0), textOf, solvers: SOLVERS };
 })();
