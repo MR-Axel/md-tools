@@ -7,6 +7,8 @@
   if (dark === null) dark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
   var root = document.documentElement;
   var bg = dark ? '#121418' : '#fbfaf7';
+  // Con un tema incluido o un fondo propio, el color que dejó anotado theme.js.
+  try { var kept = localStorage.getItem('lmd:bg'); if (/^#[0-9a-f]{6}$/i.test(kept || '')) bg = kept; } catch (e) { /* sin almacenamiento */ }
   root.style.background = bg;
   root.style.colorScheme = dark ? 'dark' : 'light';
   root.style.setProperty('--lmd-boot-bg', bg);

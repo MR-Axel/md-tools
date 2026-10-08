@@ -139,6 +139,49 @@ try {
   check('un tema que no toca lo del plan pago se aplica en vivo', on.dark && on.tint === '#22c55e' && on.square && /Night code/.test(on.strip), on);
   check('y se vuelve al anterior', off.light && off.tint === '' && off.round && off.strip, off);
 
+  // ---------- Claves nuevas del tema: paneles, texto, secundario, bordes y enlaces ----------
+  const FULL = { mode: 'dark', paperDark: '#0d1524', accent: '#7cc4ff', surface: '#152036', text: '#dfe7f5', muted: '#9aa9c2', border: '#24324d', link: '#8fb8ff' };
+  const WRONG = [['sin modo fijo', { text: '#dfe7f5' }], ['con modo automático', { mode: 'auto', text: '#dfe7f5' }], ['texto que no se lee', { mode: 'dark', text: '#30343c' }], ['secundario que no se lee', { mode: 'light', muted: '#c9c9c9' }],
+    ['panel que tapa el texto', { mode: 'dark', surface: '#d0d0d0' }], ['borde más fuerte que el texto', { mode: 'light', text: '#6a6a6a', border: '#000000' }], ['enlace que no se lee', { mode: 'light', link: '#ffe08a' }],
+    ['color con url()', { mode: 'dark', surface: 'url(https://x.invalid/a.png)' }], ['color con CSS pegado', { mode: 'dark', text: '#dfe7f5;background:red' }], ['una clave parecida', { mode: 'dark', background: '#000000' }]];
+  const local = await pg.evaluate(([full, wrong]) => ({ ok: LMD.community.checkData('theme', full), bad: wrong.filter((w) => LMD.community.checkData('theme', w[1]) !== null).map((w) => w[0]), paid: LMD.community.needsPlan({ mode: 'dark', text: '#dfe7f5' }),
+    to: LMD.community.toSettings(full) }), [FULL, WRONG]);
+  check('la app acepta un tema con las claves nuevas y rechaza el que no deja leer (' + WRONG.length + ' casos)', JSON.stringify(local.ok) === JSON.stringify(FULL) && local.bad.length === 0, local);
+  check('las claves nuevas son del plan pago y van a ajustes propios, sin CSS', local.paid && local.to.colSurface === '#152036' && local.to.colText === '#dfe7f5' && local.to.colMuted === '#9aa9c2' && local.to.colBorder === '#24324d' && local.to.colLink === '#8fb8ff' && local.to.preset === '', local.to);
+  const tem = await R.signup('temas@ejemplo.test', true);
+  const okPost = await api('POST', '/gallery', { type: 'theme', name: 'Deep tide', about: '', lang: 'en', author: 'Tema T.', data: FULL }, tem.s);
+  const badPost = []; for (const w of WRONG) { const r = await api('POST', '/gallery', { type: 'theme', name: 'Wrong one', about: '', lang: 'en', author: 'Tema T.', data: w[1] }, tem.s); if (r.status !== 400 || r.json.error !== 'bad_data') badPost.push([w[0], r.status]); }
+  check('el servidor acepta las mismas claves y rechaza los mismos casos', okPost.status === 200 && badPost.length === 0 && JSON.stringify((await api('GET', '/gallery/mine', undefined, tem.s)).json.map((x) => x.name)) === '["Deep tide"]', [okPost.status, okPost.json, badPost]);
+  await api('DELETE', '/gallery/' + okPost.json.id, undefined, tem.s);
+
+  // ---------- Temas incluidos ----------
+  await pg.click('[data-gtype=theme]'); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card[data-gkind=included]').length === 12 && document.querySelectorAll('.lmd-gal-card[data-gkind=theme]').length === 2);
+  const inc = await pg.evaluate(() => { const all = [...document.querySelectorAll('.lmd-gal-card')]; const own = all.filter((c) => c.dataset.gkind === 'included');
+    return { first: all.slice(0, 12).every((c) => c.dataset.gkind === 'included'), names: own.map((c) => c.querySelector('b').textContent).join(), tags: own.every((c) => c.querySelector('.lmd-tag').textContent === 'Included'), thumbs: own.every((c) => c.querySelector('.lmd-th-page')), about: own.every((c) => c.querySelector('.lmd-gal-about').textContent.length > 8 && !/[!¡—–]/.test(c.textContent)),
+      paid: own.filter((c) => /Paid plan/.test(c.querySelector('.lmd-gal-by').textContent)).length, report: own.some((c) => c.querySelector('[data-gal=report]')), on: own.filter((c) => c.querySelector('[data-gal=add]').disabled).map((c) => c.dataset.gid).join() }; });
+  check('en Temas, la galería arranca con los doce incluidos, marcados y con su miniatura', inc.first && inc.names === 'Lime,Sand,Chalk,Sage,Mist,Ink,Night,Coal,Tide,Forest,Lagoon,Plum' && inc.tags && inc.thumbs && inc.about && inc.paid === 8 && !inc.report && inc.on === 'lima', inc);
+  await pg.fill('.lmd-gal-q', 'plum'); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card').length === 1);
+  const found = await pg.evaluate(() => document.querySelector('.lmd-gal-card').dataset.gid);
+  await pg.fill('.lmd-gal-q', ''); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card[data-gkind=included]').length === 12);
+  check('el buscador también los encuentra', found === 'ciruela', found);
+  const reqs = []; const spy = (r) => { if (r.url().startsWith(R.base) && /\/gallery\//.test(r.url())) reqs.push(r.method() + ' ' + new URL(r.url()).pathname); }; pg.on('request', spy);
+  await pg.click(card('arena') + ' [data-gal=add]'); await pg.waitForFunction(() => document.documentElement.classList.contains('lmd-themed'));
+  await pg.waitForFunction((sel) => document.querySelector(sel + ' [data-gal=add]').disabled, card('arena'));
+  const sand = await pg.evaluate(() => ({ bg: document.documentElement.style.getPropertyValue('--bg'), btn: document.querySelector('.lmd-gal-card[data-gid=arena] [data-gal=add]').textContent }));
+  check('uno gratis se aplica desde la galería, sin pasar por el servidor', sand.bg === '#f6efe0' && sand.btn === 'Applied' && (await cfg(pg)).preset === 'arena' && reqs.length === 0, [sand, reqs]);
+  pg.off('request', spy);
+  await pg.click(card('marea') + ' [data-gal=add]'); await pg.waitForSelector('.lmd-gal-view .lmd-extra');
+  const incLocked = await pg.evaluate(() => ({ note: document.querySelector('.lmd-gal-view .lmd-extra p').textContent, add: !!document.querySelector('.lmd-gal-view [data-gv=add]'), thumb: getComputedStyle(document.querySelector('.lmd-gal-view .lmd-th-page')).backgroundColor, pay: !!document.querySelector('.lmd-gal-view [data-pay] [data-gv=plans]') }));
+  await pg.evaluate(() => document.documentElement.classList.add('lmd-store-app'));
+  const incPayHidden = await pg.evaluate(() => getComputedStyle(document.querySelector('.lmd-gal-view [data-pay]')).display === 'none');
+  await pg.evaluate(() => document.documentElement.classList.remove('lmd-store-app'));
+  await pg.click('.lmd-gal-view [data-gv=close]');
+  check('uno del plan pago muestra su vista previa y el aviso del plan, y no se aplica', /paid plan/.test(incLocked.note) && !/[!¡—–]/.test(incLocked.note) && !incLocked.add && incLocked.thumb === 'rgb(13, 21, 36)' && incLocked.pay && incPayHidden && (await cfg(pg)).preset === 'arena', incLocked);
+  await pg.click(card('lima') + ' [data-gal=add]'); await pg.waitForFunction(() => !document.documentElement.classList.contains('lmd-themed'));
+  check('y el de siempre vuelve con un clic', (await cfg(pg)).preset === '' && (await cfg(pg)).theme === 'light');
+  await pg.evaluate(() => { const s = JSON.parse(localStorage.getItem('mdtools:settings')); s.theme = 'auto'; localStorage.setItem('mdtools:settings', JSON.stringify(s)); });
+  await pg.click('[data-gtype=""]'); await pg.waitForFunction(() => document.querySelectorAll('.lmd-gal-card[data-gkind=included]').length === 0 && document.querySelectorAll('.lmd-gal-card').length === 4);
+
   // Denunciar un aporte
   const nMail = mails.length;
   await pg.click(card(PID) + ' [data-gal=report]'); await pg.waitForSelector('.lmd-report-card');

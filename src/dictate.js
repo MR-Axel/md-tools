@@ -213,7 +213,7 @@
         view.textContent = ''; view.appendChild(holder);
       } else {
         if (!(await core.ensure('mermaid')) || !window.mermaid || mine !== drawSeq) return;
-        window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: core.isDark() ? 'dark' : 'default', flowchart: { curve: core.shape === 'square' ? 'linear' : 'basis' } });
+        window.mermaid.initialize(Object.assign({ startOnLoad: false, securityLevel: 'strict', flowchart: { curve: core.shape === 'square' ? 'linear' : 'basis' } }, LMD.theme.mermaid(core.settings)));
         const out = await window.mermaid.render('lmd-dct-dgm-' + mine, src);
         if (mine !== drawSeq) return;
         view.innerHTML = out.svg; view.scrollTop = view.scrollHeight;

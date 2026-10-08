@@ -61,7 +61,7 @@
     return parser;
   };
   const isDark = () => LMD.theme.isDark(settings);
-  const applyAccent = (root, dark) => LMD.theme.applyAccent(root, dark, settings);
+  let themePreview = ''; // el tema que se está mirando en Ajustes sin haberlo aplicado
   // Lo que el estado vacío (home.js) necesita del lector: dónde dibujarse y cómo abrir una nota sin recargar.
   const homeCtx = () => ({ settings, APP_URL, box: ui.home, open: (f, opt) => go(f, opt), refresh: () => core.reloadTree(), say: (text) => flash(text, 'error'), warn: (text) => flash(text, 'warn'), plan: (why) => openPanel('plan', why),
     // El pie de la barra lateral, donde vive la cuenta: dónde dibujarse, cómo quedar a la vista y cómo guardar antes de salir.
@@ -449,7 +449,7 @@
     if (!nodes.length) return;
     if (!(await ensure('mermaid')) || !window.mermaid) return;
     await tools();
-    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: isDark() ? 'dark' : 'default', flowchart: { curve: settings.diagramShape === 'square' ? 'linear' : 'basis' } });
+    mermaid.initialize(Object.assign({ startOnLoad: false, securityLevel: 'strict', flowchart: { curve: settings.diagramShape === 'square' ? 'linear' : 'basis' } }, LMD.theme.mermaid(settings)));
     for (const n of nodes) {
       const code = n.textContent;
       try {
@@ -1086,11 +1086,16 @@
     updateCount();
   }
 
+  // El tema solo: los colores, el modo y la barra del sistema. Con una vista previa abierta en Ajustes, ese tema.
+  function paintTheme() {
+    const painted = LMD.theme.apply(document.documentElement, settings, themePreview);
+    document.querySelectorAll('meta[name=theme-color]').forEach((bar) => { bar.removeAttribute('media'); bar.content = painted.bg; });
+    const status = document.querySelector('meta[name=apple-mobile-web-app-status-bar-style]'); if (status) status.content = painted.dark ? 'black-translucent' : 'default';
+  }
+
   function applySettings() {
     const root = document.documentElement;
-    const dark = isDark();
-    root.classList.toggle('lmd-dark', dark);
-    root.classList.toggle('lmd-light', !dark);
+    paintTheme();
     root.classList.toggle('lmd-centered', !!settings.centered);
     root.classList.toggle('lmd-wrap', !!settings.wrapCode);
     root.classList.toggle('lmd-focus', !!settings.focusMode);
@@ -1102,8 +1107,6 @@
     root.style.setProperty('--lmd-side-w', settings.sidebarWidth + 'px');
     if (settings.supporter && settings.fontFamily && settings.fontFamily.trim()) root.style.setProperty('--lmd-font', settings.fontFamily);
     else root.style.removeProperty('--lmd-font');
-    applyAccent(root, dark);
-    const bar = document.querySelector('meta[name=theme-color]'); if (bar) bar.content = dark ? '#121418' : '#fbfaf7';
     root.classList.toggle('lmd-dgm-round', settings.diagramShape !== 'square');
     if (/^#[0-9a-f]{6}$/i.test(settings.codeColor || '')) root.style.setProperty('--code-tint', settings.codeColor); else root.style.removeProperty('--code-tint');
     ui.customStyle.textContent = settings.supporter ? (settings.customCSS || '') : '';
@@ -1113,6 +1116,7 @@
 
     ui.status.textContent = idleStatus();
     setupRefresh();
+    markThemes();
   }
 
   // ---------- Render ----------
@@ -2308,8 +2312,24 @@
   PANEL_TABS.splice(PANEL_TABS.findIndex((t) => t[0] === 'ai') + 1, 0, ['auto', 'Automatizaciones', '<svg viewBox="0 0 24 24"><path d="M13 3 5 13.5h6L10 21l8-10.5h-6z"/></svg>']);
   // Al cerrar Ajustes el foco vuelve a donde estaba al abrirlos.
   let panelBack = null;
+  // La grilla de temas de Apariencia: cuál está puesto, cuál se eligió para mirar y qué botón le toca.
+  let themePicked = '';
+  function markThemes() {
+    const box = ui.panel && !ui.panel.hidden ? ui.panel.querySelector('[data-themes]') : null; if (!box) return;
+    const now = LMD.theme.active(settings);
+    box.querySelectorAll('[data-th]').forEach((b) => {
+      const on = b.dataset.th === now.id;
+      b.classList.toggle('lmd-on', on); b.setAttribute('aria-checked', String(on)); b.classList.toggle('lmd-th-picked', b.dataset.th === themePicked);
+    });
+    const p = LMD.theme.byId(themePicked); const locked = !!p && LMD.theme.locked(p.id, settings);
+    box.querySelector('.lmd-th-custom').hidden = !now.custom || !!p;
+    box.querySelector('.lmd-th-note').textContent = p ? T(p.name) + (locked ? ' · ' + T('Plan pago') : '') : now.custom ? '' : T(LMD.theme.byId(now.id).name);
+    box.querySelector('[data-th-apply]').hidden = !p || locked;
+    box.querySelector('.lmd-th-plans').hidden = !locked;
+  }
   function closePanel() {
     ui.panel.hidden = true;
+    if (themePreview) { themePreview = ''; themePicked = ''; paintTheme(); }
     const back = panelBack; panelBack = null;
     if (back && back.isConnected && back !== document.body) { try { back.focus({ preventScroll: true }); } catch (e) { /* ya no recibe foco */ } }
   }
@@ -2371,7 +2391,15 @@
             '<div class="lmd-row"><span>' + T('Forma de los diagramas') + '</span><div class="lmd-seg" data-seg="diagramShape" role="radiogroup">' +
               [['round', 'Redondeados'], ['square', 'Rectos']].map((o) => '<button type="button" role="radio" data-val="' + o[0] + '" aria-checked="' + ((s.diagramShape || 'round') === o[0]) + '"' + ((s.diagramShape || 'round') === o[0] ? ' class="lmd-on"' : '') + '>' + T(o[1]) + '</button>').join('') +
             '</div></div>' +
-            '</div>' + PREVIEW +
+            '</div>' +
+            '<div class="lmd-pcol lmd-look-side"><div class="lmd-themes" data-themes>' +
+              '<div class="lmd-themes-head"><span>' + T('Temas') + '</span><em class="lmd-th-custom" hidden>' + T('Personalizado') + '</em><small class="lmd-th-note"></small>' +
+                '<button type="button" class="lmd-btn lmd-btn-fill" data-th-apply hidden>' + T('Aplicar') + '</button>' +
+                '<button type="button" class="lmd-btn lmd-th-plans" data-th-plans data-pay hidden>' + T('Ver planes') + '</button></div>' +
+              '<div class="lmd-th-grid" role="radiogroup" aria-label="' + T('Temas') + '">' +
+                LMD.theme.PRESETS.map((p) => '<button type="button" role="radio" class="lmd-th' + (p.free || s.supporter ? '' : ' lmd-th-paid') + '" data-th="' + p.id + '" aria-checked="false" aria-label="' + esc(T(p.name)) + '" title="' + esc(T(p.name) + ' · ' + T(p.dark ? 'Oscuro' : 'Claro') + (p.free ? '' : ' · ' + T('Plan pago'))) + '">' +
+                  LMD.theme.thumb(Object.assign({}, p, { name: esc(T(p.name)) })) + (p.free || s.supporter ? '' : '<span class="lmd-th-lock" style="color:' + p.c.muted + '">' + ICON.lock + '</span>') + '</button>').join('') +
+              '</div></div>' + PREVIEW + '</div>' +
             (s.supporter ? '' : '<div class="lmd-extra"><p>' + T('Los colores, la tipografía y el CSS propio vienen con el plan pago.') + '</p>' +
                 '<div class="lmd-extra-actions"><button type="button" class="lmd-btn lmd-btn-fill" data-act="see-plans">' + T('Ver planes') + '</button></div></div>') +
           '</section>' +
@@ -2444,6 +2472,7 @@
       // En pantalla chica las pestañas son una fila que se desliza: la elegida queda a la vista.
       const on = ui.panel.querySelector('[data-ptab].lmd-on'); if (on && LMD.touch.small()) on.scrollIntoView({ block: 'nearest', inline: 'center' });
       ui.panel.querySelectorAll('.lmd-panel-body > section').forEach((sec) => { sec.hidden = sec.dataset.tab !== tab; });
+      if (tab !== 'look' && (themePreview || themePicked)) { themePreview = ''; themePicked = ''; paintTheme(); markThemes(); }
       ui.panel.querySelector('.lmd-panel-body').scrollTop = 0;
       const acct = ui.panel.querySelector('[data-acct=' + tab + ']');
       if (acct) LMD.sync.panes[tab](acct, host);
@@ -2465,6 +2494,33 @@
         LMD.patch({ [seg.dataset.seg]: b.dataset.val });
       });
     });
+    // Temas: pasar por encima o enfocar muestra el tema en toda la app; tocar lo deja elegido, y Aplicar lo guarda.
+    const thGrid = ui.panel.querySelector('.lmd-th-grid');
+    const lookAt = (id) => { const next = id || themePicked; if (next === themePreview) return; themePreview = next; paintTheme(); };
+    thGrid.querySelectorAll('[data-th]').forEach((b) => {
+      b.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') lookAt(b.dataset.th); });
+      b.addEventListener('focus', () => { if (b.matches(':focus-visible')) lookAt(b.dataset.th); });
+      b.addEventListener('blur', () => lookAt(''));
+      b.addEventListener('click', () => {
+        const now = LMD.theme.active(settings);
+        themePicked = b.dataset.th === now.id && !now.custom ? '' : b.dataset.th;
+        themePreview = themePicked; paintTheme(); markThemes();
+      });
+    });
+    thGrid.addEventListener('pointerleave', () => lookAt(''));
+    thGrid.addEventListener('keydown', (e) => {
+      const d = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key]; if (!d) return;
+      const all = Array.from(thGrid.querySelectorAll('[data-th]')); const i = all.indexOf(document.activeElement); if (i < 0) return;
+      e.preventDefault(); all[(i + d + all.length) % all.length].focus();
+    });
+    ui.panel.querySelector('[data-th-apply]').addEventListener('click', () => {
+      const id = themePicked; if (!id || LMD.theme.locked(id, settings)) return;
+      themePicked = ''; themePreview = ''; panelStale = true;
+      if (LMD.community) LMD.community.setTheme(null); // un tema de la comunidad que estuviera puesto deja de estarlo
+      LMD.patch(LMD.theme.patchFor(id)).then(() => flash(T('Tema aplicado')));
+    });
+    ui.panel.querySelector('[data-th-plans]').addEventListener('click', () => openPanel('plan'));
+    markThemes();
     const markSwatch = (node) => ui.panel.querySelectorAll('.lmd-swatch:not([data-code-color])').forEach((x) => x.classList.toggle('lmd-on', x === node));
     ui.panel.querySelectorAll('[data-code-color]').forEach((b) => {
       b.addEventListener('click', () => {
@@ -3721,7 +3777,7 @@
   }
 
   // ---------- Arranque ----------
-  const RENDER_KEYS = ['plugins', 'theme', 'diagramShape'];
+  const RENDER_KEYS = ['plugins', 'theme', 'diagramShape', 'preset', 'supporter'];
   const TREE_KEYS = ['filesOnlyMarkdown', 'filesShowHidden'];
 
   Promise.all([LMD.load(), loadSide()]).then(async ([s, saved]) => {

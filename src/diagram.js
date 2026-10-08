@@ -459,7 +459,7 @@
       return;
     }
     await core.ensure('mermaid');
-    window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: core.isDark() ? 'dark' : 'default', flowchart: { curve: core.shape === 'square' ? 'linear' : 'basis' } });
+    window.mermaid.initialize(Object.assign({ startOnLoad: false, securityLevel: 'strict', flowchart: { curve: core.shape === 'square' ? 'linear' : 'basis' } }, LMD.theme.mermaid(core.settings)));
     const id = 'lmd-dgm-' + (++seq);
     try {
       const out = await window.mermaid.render(id, code);

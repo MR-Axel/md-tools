@@ -5,8 +5,9 @@
   'use strict';
   const HEX = /^#[0-9a-f]{6}$/i;
   const TYPES = ['template', 'theme', 'palette'];
-  const THEME = ['mode', 'accent', 'paperLight', 'paperDark', 'font', 'codeColor', 'diagramShape'];
-  const PAID = ['accent', 'paperLight', 'paperDark', 'font']; // lo que hoy viene con el plan pago en Apariencia
+  const THEME = ['mode', 'accent', 'paperLight', 'paperDark', 'font', 'codeColor', 'diagramShape', 'surface', 'text', 'muted', 'border', 'link'];
+  const INK = Object.keys(LMD.theme.CUSTOM); // surface, text, muted, border, link: colores de un modo solo, que tienen que dejar leer
+  const PAID = ['accent', 'paperLight', 'paperDark', 'font'].concat(INK); // lo que hoy viene con el plan pago en Apariencia
   const COLORS = ['fill', 'text', 'border', 'line', 'second', 'third'];
   const MAX_TEMPLATE = 20 * 1024; const MAX_KEPT = 100;
   // Las tipografías viajan por nombre y se traducen acá a las que la app ya trae. Ninguna otra vale.
@@ -39,6 +40,16 @@
         if (v === null) return null;
         out[k] = v;
       }
+      // Texto, secundario y enlace a 4.5 o más sobre el fondo; el panel sin tapar el texto; el borde, más suave que el texto.
+      if (INK.some((k) => k in out)) {
+        if (out.mode !== 'light' && out.mode !== 'dark') return null;
+        const dark = out.mode === 'dark'; const ratio = LMD.theme.contrast; const base = LMD.theme.byId(dark ? LMD.theme.BASE.dark : LMD.theme.BASE.light).c;
+        const paper = (dark ? out.paperDark : out.paperLight) || base.bg; const text = out.text || base.fg; const muted = out.muted || base.muted;
+        if (ratio(text, paper) < 4.5 || ratio(muted, paper) < 4.5) return null;
+        if (out.surface && (ratio(text, out.surface) < 4.5 || ratio(muted, out.surface) < 4.5)) return null;
+        if (out.border && ratio(out.border, paper) > ratio(text, paper)) return null;
+        if (out.link && ratio(out.link, paper) < 4.5) return null;
+      }
       return out;
     }
     if (!only(d, ['colors']) || !only(d.colors, COLORS) || Object.keys(d.colors).length !== COLORS.length) return null;
@@ -57,9 +68,10 @@
     return { id, type: raw.type, name, about, lang: raw.lang, author, data };
   }
 
-  // Un tema, pasado a los ajustes de la app y al revés. Solo las siete claves de la lista.
+  // Un tema, pasado a los ajustes de la app y al revés. Solo las claves de la lista.
   function toSettings(data) {
-    const s = {};
+    const s = { preset: '' }; // un tema de la comunidad reemplaza al tema incluido que hubiera
+    INK.forEach((k) => { if (k in data) s[LMD.theme.CUSTOM[k]] = data[k]; });
     if ('mode' in data) s.theme = data.mode;
     if ('accent' in data) s.accent = data.accent;
     if ('paperLight' in data) s.paperLight = data.paperLight;
@@ -76,6 +88,10 @@
     if (HEX.test(s.codeColor || '')) d.codeColor = s.codeColor.toLowerCase();
     if (s.diagramShape === 'square') d.diagramShape = 'square';
     if (s.supporter) {
+      // Con un tema incluido puesto, sale con sus colores: el fondo, los paneles, el texto, los bordes, los enlaces y el acento.
+      const p = LMD.theme.chosen(s);
+      if (p) { d.mode = p.dark ? 'dark' : 'light'; d[p.dark ? 'paperDark' : 'paperLight'] = p.c.bg; d.accent = p.c.fill; d.surface = p.c.soft; d.text = p.c.fg; d.muted = p.c.muted; d.border = p.c.line; d.link = p.c.link; }
+      if (d.mode) INK.forEach((k) => { const v = s[LMD.theme.CUSTOM[k]]; if (HEX.test(v || '')) d[k] = v.toLowerCase(); });
       if (HEX.test(s.accent || '')) d.accent = s.accent.toLowerCase();
       if (paperOk(s.paperLight, false)) d.paperLight = s.paperLight.toLowerCase();
       if (paperOk(s.paperDark, true)) d.paperDark = s.paperDark.toLowerCase();
@@ -85,13 +101,17 @@
   }
   const needsPlan = (data) => PAID.some((k) => k in data);
   // Lo que había puesto antes de aplicar un tema, para volver: las claves de ajustes que un tema puede tocar.
-  const KEPT = ['theme', 'accent', 'paperLight', 'paperDark', 'fontFamily', 'codeColor', 'diagramShape'];
+  const KEPT = ['theme', 'accent', 'paperLight', 'paperDark', 'fontFamily', 'codeColor', 'diagramShape', 'preset'].concat(Object.values(LMD.theme.CUSTOM));
   // Cada valor se guarda solo si tiene la forma que le toca: un color es un #rrggbb, y una tipografía, una lista de nombres.
-  const snapshot = (s) => ({
+  const snapshot = (s) => Object.assign({ preset: LMD.theme.byId(s.preset) ? s.preset : '' }, ...Object.values(LMD.theme.CUSTOM).map((k) => ({ [k]: HEX.test(s[k] || '') ? s[k] : '' })), {
     theme: ['light', 'dark'].includes(s.theme) ? s.theme : 'auto', diagramShape: s.diagramShape === 'square' ? 'square' : 'round',
     accent: HEX.test(s.accent || '') ? s.accent : '', codeColor: HEX.test(s.codeColor || '') ? s.codeColor : '', paperLight: HEX.test(s.paperLight || '') ? s.paperLight : '', paperDark: HEX.test(s.paperDark || '') ? s.paperDark : '',
     fontFamily: typeof s.fontFamily === 'string' && /^[\w\s",.-]{0,200}$/.test(s.fontFamily) ? s.fontFamily : '',
   });
+  // Los temas incluidos, con la forma de un aporte para listarlos en la galería. No pasan por el servidor.
+  const ABOUT = { lima: 'Papel claro con acento verde, el de siempre.', arena: 'Papel cálido color arena.', tiza: 'Gris neutro de alto contraste.', salvia: 'Verde suave para leer mucho rato.', bruma: 'Azul frío y despejado.', tinta: 'Blanco y negro, pensado para imprimir.',
+    noche: 'Oscuro con acento lima, el de siempre.', carbon: 'Negro neutro de alto contraste.', marea: 'Azul noche.', bosque: 'Verde bosque.', laguna: 'Verde azulado profundo con texto cálido.', ciruela: 'Violeta oscuro con acento rosa.' };
+  const included = () => LMD.theme.PRESETS.map((p) => ({ id: p.id, type: 'theme', included: true, name: p.name, about: ABOUT[p.id] || '', free: p.free, dark: p.dark, preset: p }));
 
   // ---------- Lo guardado en el dispositivo ----------
   let state = { templates: [], palettes: [], theme: null, author: '' };
@@ -133,7 +153,7 @@
   async function setAuthor(name) { await ready(); state.author = line(name).slice(0, 40); await save(); }
 
   LMD.community = {
-    check, checkData, toSettings, fromSettings, needsPlan, snapshot, paperOk, fontValue, ready, add, remove, has, setTheme, setAuthor,
+    check, checkData, toSettings, fromSettings, needsPlan, snapshot, paperOk, fontValue, ready, add, remove, has, setTheme, setAuthor, included,
     TYPES, COLORS, MAX_TEMPLATE, bytes,
     templates: () => state.templates.map((t) => ({ id: t.id, name: t.name, about: t.about, author: t.author, file: fileOf(t.name), text: t.data.text })),
     palettes: () => state.palettes.map((p) => ({ id: p.id, name: p.name, author: p.author, colors: p.data.colors })),

@@ -190,6 +190,53 @@ try {
   const backOf = (href) => new URL(href).searchParams.get('back');
   check('Plan: las dos tarjetas, con la gratis marcada como actual', freePlan.cards === 'Gratis*!|Pago' && !freePlan.manage, freePlan);
   check('los botones de pago abren en la misma pestaña y llevan a dónde volver', freePlan.pay.length === 2 && freePlan.pay.every((p) => p.target === null && backOf(p.href) === here && new URL(p.href).searchParams.get('email') === mail) && /plan=monthly/.test(freePlan.pay[0].href) && /plan=yearly/.test(freePlan.pay[1].href), [here, freePlan.pay]);
+  // ---------- Temas incluidos, en el plan gratis ----------
+  await tab('look');
+  const paint = () => app.evaluate(() => { const r = document.documentElement; return { themed: r.classList.contains('lmd-themed'), dark: r.classList.contains('lmd-dark'), bg: r.style.getPropertyValue('--bg'), body: getComputedStyle(document.body).backgroundColor, bar: document.querySelector('meta[name=theme-color]').content }; });
+  const head = () => app.evaluate(() => { const b = document.querySelector('[data-themes]'); return { on: [...b.querySelectorAll('.lmd-th.lmd-on')].map((x) => x.dataset.th).join(), picked: [...b.querySelectorAll('.lmd-th-picked')].map((x) => x.dataset.th).join(), note: b.querySelector('.lmd-th-note').textContent,
+    custom: !b.querySelector('.lmd-th-custom').hidden, apply: !b.querySelector('[data-th-apply]').hidden, plans: !b.querySelector('[data-th-plans]').hidden }; });
+  const grid = await app.evaluate(() => { const g = document.querySelector('.lmd-th-grid'); const body = document.querySelector('.lmd-panel-body'); const all = [...g.querySelectorAll('[data-th]')]; const gr = g.getBoundingClientRect(); const br = body.getBoundingClientRect();
+    return { ids: all.map((b) => b.dataset.th).join(), names: all.map((b) => b.querySelector('b').textContent).join(','), locked: all.filter((b) => b.querySelector('.lmd-th-lock')).map((b) => b.dataset.th).join(), on: all.filter((b) => b.getAttribute('aria-checked') === 'true').map((b) => b.dataset.th).join(),
+      colors: all.map((b) => getComputedStyle(b.querySelector('.lmd-th-page')).backgroundColor).join('|'), parts: all.every((b) => b.querySelector('.lmd-th-page b') && b.querySelectorAll('.lmd-th-page > i').length === 2 && b.querySelector('.lmd-th-code') && b.querySelector('.lmd-th-row em')),
+      inside: gr.left >= br.left && gr.right <= br.right, wide: body.scrollWidth - body.clientWidth, page: document.documentElement.scrollWidth - document.documentElement.clientWidth, tall: all.every((b) => b.getBoundingClientRect().height >= 44) }; });
+  const table = await app.evaluate(() => LMD.theme.PRESETS.map((p) => { const n = parseInt(p.c.bg.slice(1), 16); return 'rgb(' + (n >> 16 & 255) + ', ' + (n >> 8 & 255) + ', ' + (n & 255) + ')'; }).join('|'));
+  check('Apariencia: una grilla con los doce temas, cada miniatura con su título, texto, código y acento en sus colores', grid.ids === 'lima,arena,tiza,salvia,bruma,tinta,noche,carbon,marea,bosque,laguna,ciruela' && grid.names === 'Lima,Arena,Tiza,Salvia,Bruma,Tinta,Noche,Carbón,Marea,Bosque,Laguna,Ciruela' && grid.parts && grid.colors === table, grid);
+  check('en el plan gratis, ocho llevan el candado y cuatro no', grid.locked === 'tiza,salvia,bruma,tinta,marea,bosque,laguna,ciruela', grid.locked);
+  const startDark = (await paint()).dark;
+  check('el tema puesto va marcado, y es el de siempre', grid.on === (startDark ? 'noche' : 'lima') && (await head()).note === (startDark ? 'Noche' : 'Lima') && !(await head()).custom, [grid.on, await head()]);
+  check('la grilla entra en la pestaña, sin scroll horizontal', grid.inside && grid.wide <= 0 && grid.page <= 0 && grid.tall, grid);
+  await app.hover('[data-th=arena]'); await app.waitForTimeout(150);
+  const hov = await paint();
+  check('pasar por encima muestra el tema en toda la app, sin guardarlo', hov.themed && !hov.dark && hov.bg === '#f6efe0' && hov.body === 'rgb(246, 239, 224)' && hov.bar === '#f6efe0' && !(await stored('settings')).preset, hov);
+  await app.hover('[data-th=marea]'); await app.waitForTimeout(150);
+  const hovPaid = await paint();
+  check('la vista previa vale también para un tema del plan pago', hovPaid.themed && hovPaid.dark && hovPaid.bg === '#0d1524', hovPaid);
+  await app.hover('.lmd-panel-card header h2'); await app.waitForTimeout(150);
+  const left = await paint();
+  check('al salir de la grilla vuelve el tema que estaba', !left.themed && left.dark === startDark && left.bg === '', left);
+  await app.click('[data-th=marea]'); await app.waitForTimeout(150);
+  const paidPick = await head();
+  check('elegir uno del plan pago lo deja en vista previa con el aviso del plan, sin botón de aplicar', paidPick.picked === 'marea' && paidPick.note === 'Marea · Plan pago' && !paidPick.apply && paidPick.plans && (await paint()).bg === '#0d1524' && !(await stored('settings')).preset, paidPick);
+  await app.click('[data-th-plans]'); await app.waitForTimeout(450);
+  check('el aviso lleva a Plan y la vista previa se suelta', (await app.evaluate(() => document.querySelector('[data-ptab].lmd-on').dataset.ptab)) === 'plan' && !(await paint()).themed);
+  await tab('look');
+  await app.click('[data-th=arena]'); await app.waitForTimeout(150);
+  const freePick = await head();
+  await app.click('[data-th-apply]'); await app.waitForTimeout(600);
+  const applied = await stored('settings'); const afterApply = await head(); const painted = await paint();
+  check('uno gratis se aplica: queda guardado, pintado y marcado', freePick.apply && !freePick.plans && freePick.note === 'Arena' && applied.preset === 'arena' && applied.theme === 'light' && afterApply.on === 'arena' && afterApply.picked === '' && !afterApply.apply && painted.themed && painted.bg === '#f6efe0', [freePick, applied.preset, afterApply, painted]);
+  const syn = await app.evaluate(() => getComputedStyle(document.querySelector('.lmd-prev-code .k')).color);
+  check('el código de la vista previa toma la sintaxis del tema', syn === 'rgb(156, 53, 38)', syn);
+  await app.click('[data-code-color="#3b82f6"]'); await app.waitForTimeout(500);
+  const custom = await head();
+  check('cambiar un color a mano lo deja en "Personalizado"', custom.custom && custom.note === '' && custom.on === 'arena', custom);
+  await app.click('[data-th=arena]'); await app.waitForTimeout(150); await app.click('[data-th-apply]'); await app.waitForTimeout(600);
+  check('volver a aplicar el tema saca lo que se cambió a mano', !(await head()).custom && (await stored('settings')).codeColor === '' && (await head()).note === 'Arena', await head());
+  await app.evaluate(() => new Promise((resolve) => chrome.storage.local.get('settings', (r) => chrome.storage.local.set({ settings: Object.assign({}, r.settings, { preset: 'marea', theme: 'dark' }) }, resolve)))); await app.waitForTimeout(500);
+  const sneaked = await paint();
+  check('un tema del plan pago guardado a mano no se aplica sin el plan', !sneaked.themed && sneaked.dark && sneaked.bg === '' && (await head()).on === 'noche', sneaked);
+  await app.evaluate(() => new Promise((resolve) => chrome.storage.local.get('settings', (r) => chrome.storage.local.set({ settings: Object.assign({}, r.settings, { preset: '', theme: 'auto' }) }, resolve)))); await app.waitForTimeout(500);
+  check('y el tema de siempre vuelve como estaba', !(await paint()).themed && (await head()).on === (startDark ? 'noche' : 'lima'), await head());
   await tab('look'); await app.click('[data-act=see-plans]'); await app.waitForTimeout(450);
   check('"Ver planes" abre Ajustes directo en Plan', (await app.evaluate(() => document.querySelector('[data-ptab].lmd-on').dataset.ptab + ':' + [...document.querySelectorAll('.lmd-panel-body > section:not([hidden]) h3')].map((h) => h.textContent).join())) === 'plan:Plan');
   await tab('adv');
@@ -228,6 +275,13 @@ try {
   const file = await ctx.newPage(); file.on('pageerror', (e) => errors.push('archivo: ' + e.message));
   const asked = []; file.on('request', (r) => { if (r.url().startsWith(base)) asked.push(r.method() + ' ' + new URL(r.url()).pathname); });
   await file.goto(pathToFileURL(path.join(root, 'examples', 'sample.md')).href); await file.waitForSelector('.markdown-body h1');
+  // Un tema incluido vale también acá: es la misma tabla, pintada sobre la página del archivo.
+  await app.evaluate(() => new Promise((resolve) => chrome.storage.local.get('settings', (r) => chrome.storage.local.set({ settings: Object.assign({}, r.settings, { preset: 'arena', theme: 'light' }) }, resolve))));
+  const fileThemed = await file.waitForFunction(() => document.documentElement.classList.contains('lmd-themed') && getComputedStyle(document.body).backgroundColor === 'rgb(246, 239, 224)', null, { timeout: 3000 }).then(() => true, () => false);
+  const fileCode = await file.evaluate(() => { const k = document.querySelector('.markdown-body .hljs-keyword, .markdown-body .hljs-built_in, .markdown-body .hljs-string'); return k ? getComputedStyle(k).color : ''; });
+  await app.evaluate(() => new Promise((resolve) => chrome.storage.local.get('settings', (r) => chrome.storage.local.set({ settings: Object.assign({}, r.settings, { preset: '', theme: 'auto' }) }, resolve))));
+  await file.waitForFunction(() => !document.documentElement.classList.contains('lmd-themed'));
+  check('un .md abierto con la extensión toma el tema incluido, con su sintaxis', fileThemed && ['rgb(156, 53, 38)', 'rgb(125, 71, 0)', 'rgb(53, 96, 26)'].includes(fileCode), [fileThemed, fileCode]);
   await file.click('[data-act=settings]'); await file.waitForSelector('.lmd-panel-card');
   const direct = {};
   for (const t of ['cloud', 'ai', 'plan']) { await file.click('[data-ptab=' + t + ']'); await file.waitForTimeout(500); direct[t] = await file.evaluate((k) => document.querySelector('[data-acct=' + k + ']').textContent, t); }
@@ -313,6 +367,27 @@ try {
   await tab('look');
   const unlocked = await app.evaluate(() => ({ font: !document.querySelector('select[data-key=fontFamily]').disabled, swatches: !document.querySelector('.lmd-swatches').classList.contains('lmd-locked'), tags: document.querySelectorAll('.lmd-panel .lmd-tag').length, css: !document.querySelector('[data-key=customCSS]').disabled }));
   check('las personalizaciones quedan desbloqueadas', (await stored('settings')).supporter === true && unlocked.font && unlocked.swatches && unlocked.css && unlocked.tags === 0, unlocked);
+  // ---------- Temas incluidos, con el plan pago ----------
+  const proGrid = await app.evaluate(() => document.querySelectorAll('.lmd-th-lock').length);
+  await app.click('[data-th=marea]'); await app.waitForTimeout(150);
+  const proPick = await head();
+  await app.click('[data-th-apply]'); await app.waitForTimeout(700);
+  const proRoot = await paint(); const proSet = await stored('settings');
+  check('con el plan pago no hay candados y los doce se aplican', proGrid === 0 && proPick.apply && !proPick.plans && proPick.note === 'Marea' && proSet.preset === 'marea' && proSet.theme === 'dark' && proRoot.themed && proRoot.dark && proRoot.bg === '#0d1524' && (await head()).on === 'marea', [proGrid, proPick, proRoot]);
+  const ink = await app.evaluate(() => { const cs = getComputedStyle(document.documentElement); const v = (k) => cs.getPropertyValue(k).trim(); return [v('--fg'), v('--fg-muted'), v('--line'), v('--link'), v('--accent-fill'), v('--bg-soft'), v('--bg-code'), v('--syn-k'), v('--sel')].join(); });
+  check('el tema fija texto, secundario, bordes, enlaces, acento, paneles, código, sintaxis y selección', ink === '#dfe7f5,#9aa9c2,#24324d,#8fb8ff,#7cc4ff,#152036,#121c30,#ff8fb1,#24406e', ink);
+  const [themedDl] = await Promise.all([app.waitForEvent('download'), app.evaluate(() => LMD.extras.exportHtml())]);
+  const themedHtml = fs.readFileSync(await themedDl.path(), 'utf8');
+  check('la exportación a HTML sale con el tema: fondo, texto, enlaces, paneles y sintaxis', /body\{background:#0d1524;color:#dfe7f5;color-scheme:dark\}a\{color:#8fb8ff\}/.test(themedHtml) && /\.hljs-keyword[^}]*\{color:#ff8fb1\}/.test(themedHtml) && !/url\(/.test(themedHtml.split('</style>')[0]), themedHtml.slice(0, 300));
+  await app.emulateMedia({ media: 'print' });
+  const printed = await app.evaluate(() => ({ page: getComputedStyle(document.documentElement).backgroundColor, text: getComputedStyle(document.querySelector('.markdown-body')).color }));
+  await app.emulateMedia({ media: null });
+  check('al imprimir o guardar como PDF, el documento sale con el papel y el texto del tema', printed.page === 'rgb(13, 21, 36)' && printed.text === 'rgb(223, 231, 245)', printed);
+  await app.click('[data-accent="#ec4899"]'); await app.waitForTimeout(600);
+  const proCustom = await head();
+  check('un acento propio encima del tema lo deja en "Personalizado", con el tema todavía debajo', proCustom.custom && proCustom.on === 'marea' && (await paint()).bg === '#0d1524' && (await app.evaluate(() => document.documentElement.style.getPropertyValue('--accent-fill'))) === '#ec4899', proCustom);
+  await app.evaluate(() => new Promise((resolve) => chrome.storage.local.get('settings', (r) => chrome.storage.local.set({ settings: Object.assign({}, r.settings, { preset: '', theme: 'auto', accent: '' }) }, resolve)))); await app.waitForTimeout(600);
+  check('sin tema ni colores propios, vuelve el de siempre', !(await paint()).themed && !(await head()).custom, await head());
 
   // Si la confirmación no llega: se dice, sin signos de admiración, y se puede volver a revisar.
   await setPlan('free'); await tab('plan');

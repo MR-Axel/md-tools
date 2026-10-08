@@ -8,6 +8,8 @@
     supporter: false, // personalizaciones desbloqueadas: vienen con el plan pago y se conservan
     paperLight: '', // fondo de la página en el tema claro (#rrggbb); lo pone un tema de la comunidad. Vacío = el del tema
     paperDark: '', // lo mismo para el tema oscuro
+    preset: '', // tema incluido que hay puesto (theme.js); vacío = el de siempre
+    colSurface: '', colText: '', colMuted: '', colBorder: '', colLink: '', // colores sueltos de un tema de la comunidad (#rrggbb)
     centered: true,
     contentWidth: 1040, // px
     fontSize: 16, // px
@@ -1313,7 +1315,13 @@
       "Atajo: Alt+Shift+D, o el micrófono al lado del bloque que estás escribiendo.": "Shortcut: Alt+Shift+D, or the microphone next to the block you are writing.",
       "Comunidad": "Community", "Plantillas, temas y paletas que comparte la gente. Cada aporte se revisa antes de publicarse.": "Templates, themes and palettes shared by people. Each one is reviewed before it is published.",
       "Compartí el tuyo": "Share yours", "Todo": "All",
-      "Temas": "Themes", "Paletas": "Palettes",
+      "Temas": "Themes", "Personalizado": "Custom", "Incluido": "Included", "Aplicado": "Applied", "Temas incluidos": "Included themes",
+      "Lima": "Lime", "Arena": "Sand", "Tiza": "Chalk", "Salvia": "Sage", "Bruma": "Mist", "Noche": "Night", "Carbón": "Coal", "Marea": "Tide", "Bosque": "Forest", "Laguna": "Lagoon", "Ciruela": "Plum",
+      "Papel claro con acento verde, el de siempre.": "Light paper with a green accent, the usual one.", "Papel cálido color arena.": "Warm sand colored paper.", "Gris neutro de alto contraste.": "Neutral gray with high contrast.",
+      "Verde suave para leer mucho rato.": "Soft green for long reads.", "Azul frío y despejado.": "Cool, clear blue.", "Blanco y negro, pensado para imprimir.": "Black and white, made for printing.",
+      "Oscuro con acento lima, el de siempre.": "Dark with a lime accent, the usual one.", "Negro neutro de alto contraste.": "Neutral black with high contrast.", "Azul noche.": "Night blue.", "Verde bosque.": "Forest green.",
+      "Verde azulado profundo con texto cálido.": "Deep teal with warm text.", "Violeta oscuro con acento rosa.": "Dark purple with a pink accent.", "Este tema viene con el plan pago.": "This theme comes with the paid plan.",
+      "Fondo de paneles": "Panel background", "Texto secundario": "Secondary text", "Bordes": "Borders", "Enlaces": "Links", "Paletas": "Palettes",
       "Plantilla": "Template", "Paleta": "Palette",
       "Buscar en la comunidad": "Search the community", "por {a}": "by {a}",
       "Agregado {n} veces": "Added {n} times", "Agregado": "Added",

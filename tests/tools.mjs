@@ -93,6 +93,10 @@ await suite('present', async () => {
     check('una diapositiva por título de nivel 1 o 2, y el separador corta', s.total === 5 && J(s.titles.slice(0, 3)) === J(['Charla de prueba', 'Uno', 'Dos']) && s.titles[3].startsWith('Texto suelto') && s.titles[4] === 'Largo', s);
     check('arranca en la primera, con su contenido', s.i === 0 && await page.evaluate(() => { const t = document.querySelector('.lmd-pres-stage').textContent; return t.includes('Charla de prueba') && t.includes('Una línea de entrada') && !t.includes('primero'); }));
     check('la diapositiva entra entera en la pantalla', await inView(page));
+    await page.evaluate(() => LMD.patch(LMD.theme.patchFor('arena'))); await page.waitForFunction(() => document.documentElement.classList.contains('lmd-themed'));
+    const themedPres = await page.evaluate(() => ({ bg: getComputedStyle(document.querySelector('.lmd-pres')).backgroundColor, fg: getComputedStyle(document.querySelector('.lmd-pres-slide')).color }));
+    await page.evaluate(() => LMD.patch({ preset: '', theme: 'auto' })); await page.waitForFunction(() => !document.documentElement.classList.contains('lmd-themed'));
+    check('la presentación sale con el tema incluido que hay puesto', themedPres.bg === 'rgb(246, 239, 224)' && themedPres.fg === 'rgb(43, 36, 25)', themedPres);
     check('el indicador dice por dónde va', await page.evaluate(() => document.querySelector('.lmd-pres-count').textContent === '1 / 5' && Math.round(parseFloat(document.querySelector('.lmd-pres-progress i').style.width)) === 20));
     await page.keyboard.press('ArrowRight'); s = await pres(page);
     check('flecha derecha avanza', s.i === 1 && await page.evaluate(() => document.querySelectorAll('.lmd-pres-stage li').length === 2));
