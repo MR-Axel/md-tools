@@ -134,6 +134,20 @@ try {
   check('con una revisión vieja no se reescribe', r.status === 409 && r.json.error.code === 'rev_conflict', r.json);
   r = await v1('DELETE', '/boards/cards/' + card.id + '?path=' + encodeURIComponent('shop/board.md'), undefined, token);
   check('eliminar una tarjeta', r.status === 200 && !/Call the supplier/.test((await noteOf('shop/board.md')).text), r.json);
+  // "Hecha" es un estado: la columna de hechas tilda la tarjeta y salir la destilda; un done explícito manda.
+  await v1('PUT', '/note', { path: 'shop/done.md', text: '# Done\n\n```kanban\n## To do\n- [ ] One {id=dddddddd}\n- [x] Old {id=oooooooo}\n\n## Doing\n\n## Done\n```\n' }, token);
+  const dn = async (method, url, body) => (await v1(method, '/boards/cards' + url, Object.assign({ path: 'shop/done.md' }, body), token)).json.data.card;
+  const dSteps = [];
+  dSteps.push((await dn('POST', '/dddddddd/move', { column: 'Done' })).done);
+  dSteps.push(/## Done\n- \[x\] One \{/.test((await noteOf('shop/done.md')).text));
+  dSteps.push((await dn('POST', '/dddddddd/move', { column: 'Doing' })).done);
+  dSteps.push((await dn('PATCH', '/dddddddd', { column: 'Done', done: false })).done);
+  dSteps.push((await dn('PATCH', '/dddddddd', { column: 'To do', done: true })).done);
+  dSteps.push((await dn('POST', '/oooooooo/move', { column: 'Doing' })).done);
+  dSteps.push((await dn('POST', '', { column: 'Done', title: 'Born done' })).done);
+  dSteps.push((await dn('POST', '', { column: 'Done', title: 'Born open', done: false })).done);
+  dSteps.push((await dn('POST', '', { column: 'To do', title: 'Plain' })).done);
+  check('mover a la columna de hechas marca la tarjeta, sacarla la desmarca, y un done explícito manda', J(dSteps) === J([true, true, false, false, true, true, true, false, false]), dSteps);
   r = await v1('POST', '/boards/cards', { path: 'shop/notes.md', title: 'X' }, token);
   const r3 = await v1('POST', '/boards/cards/zzzzzzzz/done', { path: 'shop/board.md' }, token);
   check('una nota sin tablero y una tarjeta que no existe: 404', r.status === 404 && r.json.error.code === 'no_board' && r3.status === 404 && r3.json.error.code === 'card_not_found', [r.json, r3.json]);
@@ -232,7 +246,10 @@ try {
   g = await until(() => at('/slack')[0]); const gd = await until(() => at('/one')[0]); const gt = await until(() => at('/text')[0]); await sleep(300);
   check('formato Slack: un mensaje listo, con la línea legible y el enlace', !!g && J(Object.keys(g.json)) === J(['text']) && /^Card "Write the copy" moved from To do to Done in <http[^|]+\|shop\/plan\.md>$/.test(g.json.text), g && g.json);
   check('formato Discord, en español', !!gd && /^Tarjeta "Write the copy" pasó de To do a Done en \[shop\/plan\.md\]\(http[^)]+\)$/.test(gd.json.content), gd && gd.json);
-  check('el de una carpeta no recibe lo de afuera; el de una nota, solo esa nota', at('/slack').length === 1 && at('/one').length === 1, [at('/slack').length, at('/one').length]);
+  // Mover a la columna de hechas es un movimiento y además deja la tarjeta hecha: salen card.moved y card.done.
+  const gDoneLine = at('/slack').map((x) => x.json.text).find((t) => / done in /.test(t));
+  check('mover a la columna de hechas por la API emite card.moved y card.done, en ese orden', at('/slack').length === 2 && /^Card "Write the copy" done in <http[^|]+\|shop\/plan\.md>$/.test(gDoneLine || '') && / moved from /.test(at('/slack')[0].json.text), at('/slack').map((x) => x.json.text));
+  check('el de una carpeta no recibe lo de afuera; el de una nota, solo esa nota', at('/slack').length === 2 && at('/one').length === 1, [at('/slack').length, at('/one').length]);
   check('con "incluir el contenido" viaja el texto; sin eso, no', !!gt && gt.json.data.text === '# Old\n\nNow with text.\n' && gt.json.data.truncated === false && at('/ok').filter((x) => x.json.type === 'note.updated').every((x) => x.json.data.text === undefined), gt && gt.json);
   r = await api('PUT', '/automations/hooks/' + slack.id, { on: false }, ana.s);
   got.length = 0; await v1('PUT', '/note', { path: 'shop/more.md', text: '# More\n' }, token); await sleep(400);
@@ -375,6 +392,20 @@ async function uiTests(K) {
   const again = (await api('GET', '/notes/' + encodeURIComponent('ui/parity.md'), undefined, K.ana.s)).json.text;
   const appWrites = await page.evaluate((t) => LMD.board.model.serialize(LMD.board.model.parse(t)).join('\n'), again.split('\n').slice(1, -2).join('\n'));
   check('y lo que escribe el servidor, la app lo vuelve a escribir igual', rewritten.card.done === true && appWrites === again.split('\n').slice(1, -2).join('\n') && /^\{show=due,owner priority=low\|medium\|high n=number done=Done tags=bug:red,idea:blue\}$/m.test(again) && / created=2026-10-01T10:00:00Z by=Ana\}$/m.test(again), [again, appWrites]);
+
+  // La columna de hechas es la misma para la app y para el servidor: la que dice el tablero o la que se llama como una.
+  const doneCases = ['## To do\n- [ ] P {id=pppppppp}\n\n## Listo', '{done=""}\n## A\n- [ ] P {id=pppppppp}\n\n## Done', '{done=A}\n## B\n- [ ] P {id=pppppppp}\n\n## A\n\n## Done', '{done=Nope}\n## A\n- [ ] P {id=pppppppp}\n\n## Done',
+    '## A\n- [ ] P {id=pppppppp}\n\n## Hechas ✅\n\n## Done', '{done=review}\n## A\n- [ ] P {id=pppppppp}\n\n## REVIEW\n\n## Done', '## A\n- [ ] P {id=pppppppp}\n\n## Not done yet\n\n## B'];
+  const doneBoth = [];
+  for (let i = 0; i < doneCases.length; i++) {
+    const dp = 'ui/done' + i + '.md'; await v1('PUT', '/note', { path: dp, text: '```kanban\n' + doneCases[i] + '\n```\n' }, K.token);
+    const appSays = await page.evaluate((x) => { const b = LMD.board.model.parse(x); const d = LMD.board.model.doneIndex(b); return d < 0 ? null : b.columns[d].title; }, doneCases[i]);
+    const titles = (await v1('GET', '/boards?path=' + encodeURIComponent(dp), undefined, K.token)).json.data.boards[0].columns.map((c) => c.title);
+    let serverSays = null;
+    for (const c of titles) { const mv = await v1('POST', '/boards/cards/pppppppp/move', { path: dp, column: c }, K.token); if (mv.json.data.card.done) serverSays = c; }
+    doneBoth.push([appSays, serverSays]);
+  }
+  check('la app y el servidor eligen la misma columna de hechas', doneBoth.every((x) => x[0] === x[1]) && J(doneBoth.map((x) => x[0])) === J(['Listo', null, 'A', 'Done', 'Hechas ✅', 'REVIEW', null]), doneBoth);
 
   console.log('Interfaz: alta guiada desde el tablero');
   await page.click('.lmd-board-menu'); await page.waitForSelector('.lmd-menu-board');

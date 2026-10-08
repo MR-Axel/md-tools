@@ -63,7 +63,7 @@
       <tr><td><code>card.created</code></td><td>A card is added to a board</td><td><code>card</code>, <code>board</code></td></tr>
       <tr><td><code>card.moved</code></td><td>A card changes column (its status)</td><td><code>card</code>, <code>from</code>, <code>to</code></td></tr>
       <tr><td><code>card.updated</code></td><td>The title or an attribute of a card changes</td><td><code>card</code>, <code>changes</code>: old and new value per key</td></tr>
-      <tr><td><code>card.done</code></td><td>A card is ticked</td><td><code>card</code></td></tr>
+      <tr><td><code>card.done</code></td><td>A card becomes done. Moving it into the done column sends <code>card.moved</code> and then this one</td><td><code>card</code></td></tr>
       <tr><td><code>card.deleted</code></td><td>A card is removed</td><td><code>card</code></td></tr>
     </table></div>
     <p>Card events come out whether the change was made in the app, through the API or by an AI over MCP. Notes inside a protected folder never produce events.</p>
@@ -193,7 +193,7 @@ function valid(header, rawBody, secret) {
       <tr><td><code>card.created</code></td><td>Se agrega una tarjeta a un tablero</td><td><code>card</code>, <code>board</code></td></tr>
       <tr><td><code>card.moved</code></td><td>Una tarjeta cambia de columna (su estado)</td><td><code>card</code>, <code>from</code>, <code>to</code></td></tr>
       <tr><td><code>card.updated</code></td><td>Cambia el título o un atributo</td><td><code>card</code>, <code>changes</code>: valor anterior y nuevo por clave</td></tr>
-      <tr><td><code>card.done</code></td><td>Una tarjeta queda tildada</td><td><code>card</code></td></tr>
+      <tr><td><code>card.done</code></td><td>Una tarjeta queda hecha. Moverla a la columna de hechas manda <code>card.moved</code> y después este</td><td><code>card</code></td></tr>
       <tr><td><code>card.deleted</code></td><td>Se quita una tarjeta</td><td><code>card</code></td></tr>
     </table></div>
     <p>Los eventos de tarjeta salen venga el cambio de la app, de la API o de una IA por MCP. Las notas de una carpeta protegida nunca generan eventos.</p>

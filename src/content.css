@@ -2195,6 +2195,7 @@ html.lmd-ios .lmd-ask, html.lmd-ios .lmd-panel { padding: max(20px, env(safe-are
 @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
   .lmd-two > .lmd-pcol:not(.lmd-look-side) { order: 2; }
   .lmd-two > .lmd-extra { order: 3; }
+}
 /* ---------- Publicar una carpeta como sitio (publish.js) ---------- */
 .lmd-site { width: min(560px, 100%); max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); display: flex; flex-direction: column; }
 .lmd-site-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -6px 14px; padding: 2px 6px; overscroll-behavior: contain; }
@@ -2295,7 +2296,7 @@ html.lmd-ios .lmd-ask, html.lmd-ios .lmd-panel { padding: max(20px, env(safe-are
 .lmd-cd-edit { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--fg-faint); cursor: pointer; flex: none; }
 .lmd-cd-edit:hover { background: var(--bg-soft); color: var(--accent); }
 .lmd-cd-edit svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.lmd-cd-link { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.lmd-cd-link { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 36px; }
 .lmd-cd-url { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lmd-cd-multi { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 .lmd-cd-multi .lmd-cd-multi-in { flex: 1 1 80px; width: auto; }
@@ -2347,6 +2348,7 @@ button.lmd-cd-pill-name { cursor: pointer; border-radius: 4px; }
   .lmd-cd-switch::after { width: 20px; height: 20px; }
   .lmd-cd-switch:checked::after { transform: translateX(16px); }
   .lmd-cd-rm, .lmd-cd-edit { width: 36px; height: 36px; opacity: 1; }
+  .lmd-cd-link { min-height: 44px; }
   .lmd-cd-pop { width: 26px; height: 26px; }
   .lmd-cd-pill { font-size: 14px; }
   .lmd-cd-type, .lmd-cd-add-open, .lmd-cd-me { min-height: 40px; }
@@ -2395,6 +2397,8 @@ button.lmd-cd-pill-name { cursor: pointer; border-radius: 4px; }
 .markdown-body ul.lmd-cl > li { position: relative; }
 .markdown-body ul.lmd-cl > li.lmd-task-item:has(> input.lmd-task:checked, > .lmd-li-text > input.lmd-task:checked, > p > input.lmd-task:checked) { color: var(--fg-faint); }
 .lmd-cl-grip { float: right; margin: 1px 0 0 8px; display: inline-grid; place-items: center; width: 20px; height: 24px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--fg-faint); cursor: grab; opacity: 0; touch-action: none; }
+/* Gana a la regla general de los botones (touch-action: manipulation): con el dedo, la manija arrastra en vez de deslizar la página. */
+.lmd-root button.lmd-cl-grip { touch-action: none; }
 .lmd-cl > li:hover > .lmd-cl-grip, .lmd-cl-grip:focus-visible { opacity: 1; }
 .lmd-cl-grip:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 1px; }
 .lmd-cl-grip:hover { background: var(--bg-soft); color: var(--accent); }

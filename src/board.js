@@ -328,9 +328,10 @@
       if (add) { e.preventDefault(); e.lmdDone = true; commit(); input.focus(); }
       else if (e.key === 'Backspace' && !input.value && items.length) { items.pop(); emit(); draw(); input.focus(); }
     });
-    // Elegir una sugerencia de la lista la agrega enseguida; salir del campo, también lo que quedó escrito.
-    input.addEventListener('input', (e) => { if ((e.inputType === 'insertReplacementText' || e.inputType === undefined) && input.value.trim()) { commit(); input.focus(); } });
-    input.addEventListener('change', () => { commit(); });
+    // Elegir una sugerencia de la lista la agrega enseguida. Lo que queda escrito al salir del campo no se convierte
+    // en pastilla ahí mismo: eso corre los botones de lugar justo cuando se los está tocando, y el clic se pierde.
+    // Entra al agregar el campo o al guardar la tarjeta.
+    input.addEventListener('input', (e) => { if (e.inputType === 'insertReplacementText' && input.value.trim()) { commit(); input.focus(); } });
     wrap.addEventListener('click', (e) => {
       const t = e.target; const pop = t.closest('[data-cd-pop]'); const tag = t.closest('[data-cd-tag]'); const color = t.closest('[data-cd-color]');
       if (pop) { items = items.filter((i) => i !== pop.dataset.cdPop); if (open === pop.dataset.cdPop) open = ''; emit(); draw(); input.focus(); }
@@ -358,7 +359,8 @@
     };
     input._commit = fix;
     input.addEventListener('input', () => set(input.value.trim()));
-    input.addEventListener('change', () => { fix(); if (isUrl(input.value)) draw(false); });
+    // En el renglón de alta no se redibuja al salir del campo: correría el botón Agregar justo cuando se lo toca.
+    input.addEventListener('change', () => { fix(); if (isUrl(input.value) && !input.closest('.lmd-cd-new')) draw(false); });
     wrap.addEventListener('click', (e) => { if (e.target.closest('[data-cd-edit]')) { draw(true); input.focus(); input.select(); } });
     draw(false);
     return wrap;
@@ -519,7 +521,7 @@
 
     drawAttrs(); drawAdd();
     document.body.appendChild(box);
-    const snap = () => JSON.stringify([title.value.trim(), col.value, draft.attrs, draft.show, draft.fields, draft.tags]);
+    const snap = () => JSON.stringify([title.value.trim(), col.value, draft.attrs, draft.show, draft.fields, draft.tags, Array.from(list.querySelectorAll('.lmd-cd-multi-in')).map((i) => i.value.trim()).join('|')]);
     const first = snap(); let asking = false; let escAt = 0;
     const close = () => { box.remove(); };
     // Con cambios sin guardar, Escape pregunta antes de perderlos.
