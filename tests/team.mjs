@@ -89,7 +89,7 @@ try {
   check('ni la rechaza por ella', (await api('POST', '/team/decline', { id: b0.team.invites[0].id }, Z.s)).status === 200 && (await pendingFor(B)).length === 1);
   const yes = await api('POST', '/team/accept', { id: b0.team.invites[0].id }, B.s);
   const b1 = await acct(B);
-  check('al aceptar entra al equipo y tiene el plan pago', yes.status === 200 && b1.plan === 'pro' && b1.own_plan === 'free' && b1.team.mine.role === 'member' && b1.team.mine.space === SPACE && b1.limit === null && b1.mcp === true, b1);
+  check('al aceptar entra al equipo y tiene el plan pago', yes.status === 200 && b1.plan === 'pro' && b1.own_plan === 'free' && b1.team.mine.role === 'editor' && b1.team.mine.space === SPACE && b1.limit === null && b1.mcp === true, b1);
   check('un miembro ve quiénes están, y nada del cobro ni de las invitaciones', b1.team.mine.members.map((m) => m.email).join() === 'ana@ejemplo.test,beto@ejemplo.test' && b1.team.mine.pending === undefined && b1.team.mine.billing === undefined && b1.manage === '', b1);
   // Carla: se le hace lugar, se la invita en castellano y rechaza.
   const sin = (await acct(A)).team.mine.pending.find((i) => i.email === 'sin-cuenta@ejemplo.test');
@@ -311,14 +311,14 @@ try {
   check('y esas notas no se mezclan con las de la nube propia', !root.inCloud.includes('plan.md') && !root.inCloud.some((n) => /^~/.test(n)), root.inCloud);
   await olga.page.click('.lmd-sync'); await olga.page.waitForSelector('.lmd-menu [data-s]');
   const menu = await olga.page.evaluate(() => [...document.querySelectorAll('.lmd-menu [data-s]')].map((b) => b.dataset.s + (b.classList.contains('lmd-locked') ? ':locked' : '')));
-  check('en una nota del equipo el menú de la nube ofrece el historial, y no compartir ni la sesión en vivo', menu.includes('history') && !menu.some((m) => /^share|^live/.test(m)), menu);
+  check('en una nota del equipo el menú de la nube ofrece el historial y, a quien administra, compartir; la sesión en vivo no', menu.includes('history') && menu.includes('share') && !menu.some((m) => /^live/.test(m)), menu);
   await olga.page.keyboard.press('Escape'); await olga.page.mouse.click(700, 500);
 
   // Ajustes → Plan: la columna del equipo y la gestión de quien administra.
   await openPlan(olga.page);
   const pane = await olga.page.evaluate(() => { const b = document.querySelector('.lmd-panel [data-acct=plan]'); return { cols: b.querySelectorAll('.lmd-plan').length, teamOn: !!b.querySelector('.lmd-plan-team.lmd-plan-on'), price: b.querySelector('.lmd-plan-team h4').textContent, text: b.querySelector('.lmd-team').innerText, invite: !!b.querySelector('[data-t=invite]'), seats: b.querySelector('.lmd-team-cost').textContent, manage: (b.querySelector('.lmd-team a.lmd-btn') || {}).href || '', all: b.innerText }; });
   check('Plan muestra el equipo como tercera columna, con su precio, y es el plan actual', pane.cols === 3 && pane.teamOn && /Team\s+USD 7\.98 \/ month/.test(pane.price) && /2 people included, USD 3 for each extra one/.test(pane.all), pane);
-  check('quien administra ve miembros, lugares con su costo, invitar y el enlace para administrar el cobro', /olga@ejemplo\.test · admin/.test(pane.text) && /1 of 3 taken/.test(pane.text) && pane.invite && pane.seats === '3 seats: USD 10.98 a month' && pane.manage.startsWith(PORTAL), pane);
+  check('quien administra ve miembros, lugares con su costo, invitar y el enlace para administrar el cobro', /olga@ejemplo\.test · Administrator/.test(pane.text) && /1 of 3 taken/.test(pane.text) && pane.invite && pane.seats === '3 seats: USD 10.98 a month' && pane.manage.startsWith(PORTAL), pane);
   check('los textos del equipo no llevan signos de admiración ni rayas largas', !/[!¡—–]/.test(pane.all), pane.all);
   mails.length = 0;
   await olga.page.fill('.lmd-team [data-t=email]', P.email); await olga.page.click('.lmd-team [data-t=invite]');
@@ -389,9 +389,11 @@ try {
 
   // Lo que ve un miembro en Plan, y salir del equipo.
   await openPlan(pedro.page);
-  const member = await pedro.page.evaluate(() => { const b = document.querySelector('.lmd-panel [data-acct=plan]'); return { text: b.querySelector('.lmd-team').innerText, invite: !!b.querySelector('[data-t=invite]'), seats: !!b.querySelector('.lmd-team-seats'), remove: !!b.querySelector('[data-t=remove]'), paid: b.querySelectorAll('.lmd-plan')[1].innerText, buy: !!b.querySelectorAll('.lmd-plan')[1].querySelector('[data-pay]') }; });
+  const member = await pedro.page.evaluate(() => { const b = document.querySelector('.lmd-panel [data-acct=plan]'); return { text: b.querySelector('.lmd-team').innerText, invite: !!b.querySelector('[data-t=invite]'), seats: !!b.querySelector('.lmd-team-seats'), remove: !!b.querySelector('[data-t=remove]'), paid: b.querySelector('.lmd-plans-guest').innerText, cols: b.querySelectorAll('.lmd-plan').length, buy: !!b.querySelector('[data-pay], .lmd-plan-buy'), all: b.innerText }; });
   check('un miembro ve en qué equipo está y quién lo administra, sin nada de gestión', /Managed by olga@ejemplo\.test/.test(member.text) && /Leave the team/.test(member.text) && !member.invite && !member.seats && !member.remove, member);
-  check('y que el plan pago lo tiene por el equipo', /You have it through the team\./.test(member.paid) && !member.buy, member.paid);
+  check('y que el plan pago lo tiene por el equipo, con su papel', /You have everything in the paid plan through your team\./.test(member.paid) && /Your role\s+Editor/.test(member.text), [member.paid, member.text.slice(0, 200)]);
+  check('sin planes, precios ni botones de compra: el cobro es de quien paga', member.cols === 1 && !member.buy && !/USD|\$|\/ month|Subscribe|seats?\b/i.test(member.all), member.all);
+  check('los ajustes del equipo le aparecen bloqueados, con quién los administra', await pedro.page.evaluate(() => { const p = document.querySelector('.lmd-team [data-team=policies]'); return !!p && /Managed by your team administrator/.test(p.innerText) && [...p.querySelectorAll('input, select')].every((i) => i.disabled) && !p.querySelector('button'); }));
   await closePanel(pedro.page);
 
   // Olga saca a Pedro desde Plan, con confirmación propia.
@@ -492,7 +494,7 @@ try {
   await carla.page.waitForSelector('.lmd-paywait-done', { timeout: 20000 });
   await carla.page.waitForSelector('[data-root=team]');
   const paid = await carla.page.evaluate(() => ({ msg: document.querySelector('.lmd-paywait').innerText.trim(), on: !!document.querySelector('.lmd-plan-team.lmd-plan-on'), team: document.querySelector('.lmd-team') ? document.querySelector('.lmd-team').innerText : '' }));
-  check('cuando llega el aviso de Paddle confirma el pago y aparece el equipo, con su gestión y su espacio', paid.msg === 'Payment confirmed. Your team is ready.' && paid.on && /carla@ejemplo\.test · admin/.test(paid.team) && /1 of 2 taken/.test(paid.team), paid);
+  check('cuando llega el aviso de Paddle confirma el pago y aparece el equipo, con su gestión y su espacio', paid.msg === 'Payment confirmed. Your team is ready.' && paid.on && /carla@ejemplo\.test · Administrator/.test(paid.team) && /1 of 2 taken/.test(paid.team), paid);
   await carla.ctx.close();
 
   // ---------- Página de pago y portada ----------

@@ -30,7 +30,7 @@ Gratis y de código abierto. Sin seguimiento: los archivos se leen en tu navegad
 - **Listas de tareas** que se tildan también leyendo; las hechas quedan tachadas.
 - **Totales en tablas**: el botón Σ agrega una fila que suma cada columna con números. Una celda con `=sum`, `=avg`, `=min`, `=max`, `=count` o `=median` muestra el resultado de su columna, con la misma moneda y el mismo formato de decimales que los números de arriba.
 - **Notas en la nube**, opcionales: entrás con un código que llega a tu correo, mandás una nota a la nube y la abrís en cualquier dispositivo, también sin conexión. Se comparten con otra cuenta o con un enlace público de solo lectura. Lo que eliminás de la nube queda 30 días en la papelera, y la cuenta se elimina desde Ajustes.
-- **Carpetas con contraseña**: una carpeta de la nube puede llevar contraseña. Sus notas se cifran en el navegador y el servidor no puede leerlas. La desbloqueás para tu IA por el tiempo que elijas.
+- **Carpetas con contraseña**: una carpeta de la nube puede llevar contraseña. Sus notas se cifran en el navegador y el servidor no puede leerlas. La desbloqueás para tu IA por el tiempo que elijas. En un plan de equipo, quien administra puede proteger igual el espacio entero, con una sola contraseña para el equipo.
 - **Sesiones en vivo**: abrís una sesión sobre una nota de la nube y mandás el enlace. Quien lo tiene entra desde el navegador con un nombre, sin cuenta, y editan todos a la vez.
 - **IA por MCP**: Claude o cualquier cliente MCP puede listar, leer, escribir, agregar, mover y buscar en tus notas de la nube, y leer su historial. Cada escritura devuelve un enlace que abre la nota en la app. Un token puede quedar limitado a una carpeta, y solo un token creado con el permiso de compartir puede compartir notas o crear enlaces públicos. Un comentario sobre un bloque le dice a la IA qué cambiar, y en Ajustes hay un mensaje listo para pegar en tu IA.
 - **Plantillas y enlaces**: 26 plantillas para arrancar una nota, y Ctrl+K para enlazar a una sección o a otro archivo eligiendo de una lista.
@@ -45,6 +45,10 @@ Gratis y de código abierto. Sin seguimiento: los archivos se leen en tu navegad
 - **Leer en voz alta** (Ajustes → Herramientas): lee la nota entera, desde un bloque o lo elegido, con las voces de tu dispositivo. Marca el bloque que va leyendo y anuncia el código y los diagramas en vez de leerlos. Atajo: Alt+Shift+S.
 - **Comunidad** (Ajustes → Herramientas): plantillas, temas y paletas de diagramas que comparte la gente, cada una revisada antes de publicarse. Lo que agregás funciona sin conexión, y podés compartir la nota abierta como plantilla, tu tema o una paleta. Solo contenido, nunca código.
 - **Dictado** (Ajustes → Herramientas): escribís hablando, en español o en inglés, con órdenes para puntuar, poner títulos, listas, tareas y formato. "Fórmula … fin fórmula" arma LaTeX y "diagrama de flujo … fin diagrama" arma un diagrama de Mermaid, los dos a la vista mientras hablás. Usa el reconocimiento de voz del navegador, en el dispositivo cuando el navegador lo ofrece. Atajo: Alt+Shift+D.
+- **Modo presentación** (Ajustes → Herramientas): la nota abierta como diapositivas a pantalla completa, una por cada título de nivel 1 o 2; un separador (`---`) corta a mano. Flechas, espacio, Inicio y Fin para moverte, O para la vista general, F para pantalla completa y L para el puntero láser. Una cita `> [!NOTE]` es una nota del orador y no se proyecta. Las diapositivas se exportan a PDF, una por página apaisada. Atajo: Alt+Shift+P.
+- **Nota diaria** (Ajustes → Herramientas): un botón en el inicio y en el explorador abre la nota de hoy y, si no existe, la crea desde una plantilla, en el navegador, la nube o una carpeta del disco. Un calendario del mes marca los días que tienen nota, y cada nota diaria enlaza al día anterior y al siguiente. Funciona sin conexión. Atajo: Alt+Shift+H.
+- **Exportar a Word** (Ajustes → Herramientas): suma Word (.docx) al menú Exportar. El archivo se arma en el navegador: títulos con estilos que alimentan el índice automático, listas, tareas con casilla, tablas, código, notas al pie, imágenes incrustadas y diagramas como imagen. Las fórmulas van como texto LaTeX.
+- **Mapa de enlaces** (Ajustes → Herramientas): un gráfico de qué notas enlazan con cuáles, por enlaces relativos y `[[wikilinks]]`: se arrastra, se acerca, se filtra por carpeta, se busca, y un clic abre la nota. Bajo la nota abierta, las notas que enlazan a ella. Lee solo lo que ya está en el dispositivo y no envía nada. Atajo: Alt+Shift+G.
 - **Archivos desde el árbol** (página de SharpMD): archivo nuevo, renombrar y eliminar con clic derecho. Los archivos y las carpetas enteras se mueven arrastrándolos, y un archivo soltado adentro de la nota que estás editando queda como enlace (o como imagen) en ese punto.
 - **Pegar imágenes** (página de SharpMD): una imagen del portapapeles se guarda en `assets/`, al lado del documento, y queda insertada.
 - **No solo Markdown** (página de SharpMD): los archivos de código y configuración se ven resaltados y se editan como texto, los CSV y TSV se ven como tabla, y las imágenes como imágenes.
@@ -105,6 +109,9 @@ Lee el número de versión publicado y no manda ningún dato. El otro pedido de 
 | Alt+Shift+T | Cambiar el tema |
 | Alt+Shift+S | Leer en voz alta: empezar, pausar y seguir (con la herramienta prendida) |
 | Alt+Shift+D | Dictado: empezar y cortar (con la herramienta prendida) |
+| Alt+Shift+P | Modo presentación: empezar y salir (con la herramienta prendida) |
+| Alt+Shift+H | Nota diaria: abrir la nota de hoy (con la herramienta prendida) |
+| Alt+Shift+G | Mapa de enlaces: abrir y cerrar (con la herramienta prendida) |
 | Ctrl+Shift+F | Buscar en el documento |
 
 Se cambian en `chrome://extensions/shortcuts`.
@@ -131,6 +138,10 @@ src/
   speak.js        herramienta: leer en voz alta con las voces del dispositivo
   voice.js        la gramática del dictado: órdenes de texto, fórmulas y diagramas, por idioma
   dictate.js      herramienta: dictado, el botón del micrófono y el indicador de escucha
+  present.js      herramienta: modo presentación, las diapositivas de la nota abierta
+  daily.js        herramienta: nota diaria, su calendario y los enlaces al día anterior y al siguiente
+  docx.js         herramienta: exportar a Word, las partes de OOXML y un zip mínimo
+  linkmap.js      herramienta: mapa de enlaces en un canvas y los enlaces a la nota abierta
   home.js         pantalla de inicio de la página propia
   write.js        bloques nuevos, atajos de Markdown y menú de clic derecho
   diagram.js      editor de diagramas con vista previa en vivo
@@ -217,7 +228,7 @@ numbered: true
 
 ## Notas en la nube y servidor de sincronización
 
-En `server/` está SharpMD Sync: cuentas, notas en la nube y un servidor MCP para que una IA las lea y las escriba. Entrás desde la pantalla de inicio con un código que llega a tu correo. El plan gratis guarda 10 notas en la nube; el pago (USD 3,99 por mes o USD 39 por año) no tiene límite y suma compartir, la conexión MCP, 30 días de historial y las opciones de apariencia. El plan de equipo (USD 7,98 por mes para 2 personas, USD 3 por mes por cada una más) le da a cada miembro el plan pago y un espacio compartido para las notas del equipo: quien paga invita por correo y administra los lugares.
+En `server/` está SharpMD Sync: cuentas, notas en la nube y un servidor MCP para que una IA las lea y las escriba. Entrás desde la pantalla de inicio con un código que llega a tu correo. El plan gratis guarda 10 notas en la nube; el pago (USD 3,99 por mes o USD 39 por año) no tiene límite y suma compartir, la conexión MCP, 30 días de historial y las opciones de apariencia. El plan de equipo (USD 7,98 por mes para 2 personas, USD 3 por mes por cada una más) le da a cada miembro el plan pago y un espacio compartido para las notas del equipo: quien paga invita por correo y administra los lugares. Cada miembro es administrador, editor o lector. Quienes administran deciden los ajustes del equipo (si los miembros comparten notas del equipo hacia afuera, crean enlaces públicos, conectan su IA o usan automatizaciones en el espacio, cuánto dura su historial, y la carpeta y la plantilla de las notas nuevas), crean tokens del equipo, que son del equipo y no de una persona, y leen un registro de actividad con quién hizo qué, sin el contenido de las notas. El espacio del equipo guarda un año de historial de versiones. Los ajustes personales son de cada persona, y solo quien paga ve precios y cobro. Esa persona puede proteger el espacio del equipo con una sola contraseña: las notas del equipo se cifran en el navegador de cada miembro y el servidor no las puede leer. Los miembros reciben la contraseña de quien administra, por fuera de la app.
 
 El servidor es un solo archivo, sin dependencias, y lo podés alojar vos: cargás su dirección en Ajustes → Cuenta, o escribís `off` ahí para usar SharpMD sin nada de nube. El detalle está en [server/README.md](server/README.md).
 

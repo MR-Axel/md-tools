@@ -126,7 +126,9 @@
         const prefix = parts.map((p) => p + '/').join(''); const rows = []; const seen = new Set();
         // Carpetas con contraseña: una bloqueada no muestra lo que tiene adentro, ni al explorador ni a la búsqueda.
         let vaults = [];
-        if (!other) { try { vaults = await LMD.vault.load(); } catch (e) { /* sin la lista, se dibuja como siempre */ } }
+        try { vaults = await LMD.vault.load(); } catch (e) { /* sin la lista, se dibuja como siempre */ }
+        // El espacio del equipo protegido se bloquea entero: es una sola "carpeta", la raíz.
+        if (other) { if (vaults.some((v) => v.team && v.folder === '~' + other) && LMD.vault.teamShut()) return []; vaults = []; }
         const at = prefix.slice(0, -1);
         if (vaults.some((v) => (at === v.folder || at.startsWith(v.folder + '/')) && !LMD.vault.isOpen(v))) return [];
         (await LMD.cloud.list(false, other)).forEach((n) => {
@@ -173,6 +175,10 @@
     // Las herramientas de Ajustes > Herramientas (tools.js): cada una se pide recién cuando está prendida.
     speak: { js: ['src/speak.js'] },
     dictate: { js: ['src/voice.js', 'src/dictate.js'] },
+    present: { js: ['src/present.js'] },
+    daily: { js: ['src/daily.js'] },
+    docx: { js: ['src/docx.js'] },
+    linkmap: { js: ['src/linkmap.js'] },
     // La galería de la comunidad, en Ajustes > Herramientas: se pide al abrir esa pestaña.
     gallery: { js: ['src/gallery.js'] },
     // Ajustes > Automatizaciones y el alta guiada: se piden al abrir esa pestaña o al elegir "Automatizar…".
@@ -181,6 +187,7 @@
   const LAZY_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, tools: () => !!(LMD.diagram && LMD.formula && LMD.templates && LMD.community) };
   LAZY_HAVE.gallery = () => !!LMD.gallery; LAZY_HAVE.automate = () => !!LMD.automate;
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
+  ['present', 'daily', 'docx', 'linkmap'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
   async function appLazy(what) {
     const spec = LAZY_APP[what];
     try {
@@ -941,6 +948,8 @@
   }
   const PRINT_KEY = /Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘P' : 'Ctrl+P';
   const hasLink = () => !!appRoot && (appRoot.kind === 'cloud' || appRoot.kind === 'pub');
+  // Lo que suman las herramientas prendidas (tools.js) a un menú de la barra: cada una devuelve su renglón o nada.
+  const toolItems = (menu) => core.menus[menu].map((fn) => fn()).filter(Boolean);
   function openCopy(btn, keys) {
     const md = docKind() === 'md';
     barMenu(btn, 'lmd-menu-narrow lmd-menu-top lmd-menu-copy', [
@@ -957,7 +966,7 @@
       md && ['export-html', ICON.code, 'Archivo HTML'],
       ['export-md', ICON.file, md ? 'Archivo Markdown (.md)' : 'Descargar el archivo'],
       ['print', ICON.print, 'Imprimir', PRINT_KEY],
-    ], keys);
+    ].concat(toolItems('export')), keys);
   }
   // En pantalla chica, lo que en escritorio está a la vista en la barra de arriba, acá en una lista.
   function openMore() {
@@ -978,7 +987,7 @@
       ['settings', ICON.sliders, 'Ajustes'],
       // En pantalla chica el pie no tiene lugar para el enlace: denunciar una nota ajena va acá, al final.
       LMD.touch.small() && APP && LMD.sync.reportRef() && ['report', ICON.flag, 'Denunciar esta nota'],
-    ]);
+    ].concat(toolItems('more')));
   }
   // Una nota del disco puede cambiar por fuera; las del navegador y las de la nube no se recargan a mano.
   const diskDoc = () => !APP || !appRoot || appRoot.kind === 'dir' || appRoot.kind === 'file';
@@ -1014,6 +1023,7 @@
     else if (act === 'reload') { if (orphan || !alive()) location.reload(); else checkForChanges(true); }
     else if (act === 'print') window.print();
     else if (act === 'export-html') LMD.extras.exportHtml();
+    else if (core.actions[act]) core.actions[act](source, keys);
     else if (act === 'close-panel') closePanel();
     else if (act === 'reset') { panelStale = true; LMD.save(LMD.merge({ supporter: settings.supporter })); }
     else if (act === 'check-update') checkUpdate(true);
@@ -1834,7 +1844,12 @@
         // Sin sesión, un renglón que invita a entrar.
         else add('cloud', { name: T('Nube'), icon: ICON.cloud }).appendChild(el('button', { type: 'button', class: 'lmd-link lmd-root-hint', text: T('Entrar para ver tus notas') }));
         // El espacio del equipo: lo que hay ahí lo leen y lo editan todos sus miembros.
-        if (LMD.cloud.signedIn() && teamUrl()) add('team', { name: LMD.cloud.teamNow().name || T('Equipo'), title: T('Notas del equipo'), icon: ICON.people, url: teamUrl(), add: true }).after(trashLink(LMD.cloud.teamNow().space));
+        if (LMD.cloud.signedIn() && teamUrl()) {
+          const list = add('team', { name: LMD.cloud.teamNow().name || T('Equipo'), title: T('Notas del equipo'), icon: ICON.people, url: teamUrl(), add: LMD.cloud.teamCan('write') });
+          list.after(trashLink(LMD.cloud.teamNow().space));
+          // Protegido con contraseña: el candado, el estado y sus acciones van arriba de las notas.
+          fills.push(LMD.vault.load().then(() => { const line = LMD.vault.teamLine(); if (line) list.before(line); }).catch(() => { /* sin la lista, se dibuja como siempre */ }));
+        }
       }
       // Las otras carpetas y archivos del disco que se abrieron antes: un clic los trae de vuelta.
       if (others.length) {
@@ -1941,7 +1956,8 @@
     if (!rows.length) {
       // Una raíz sin nada dice cómo empezar; una carpeta del disco, que no tiene Markdown.
       const fresh = APP && depth === 0 && sectionOf(dirUrl) !== 'disk';
-      container.appendChild(el('p', { class: 'lmd-empty', text: T(fresh ? 'Creá una nota con el botón +.' : 'Carpeta sin archivos Markdown.') }));
+      const shut = APP && depth === 0 && dirUrl === teamUrl() && LMD.vault.teamShut();
+      container.appendChild(el('p', { class: 'lmd-empty', text: T(shut ? 'Desbloqueá el espacio para ver sus notas.' : fresh ? 'Creá una nota con el botón +.' : 'Carpeta sin archivos Markdown.') }));
       return;
     }
     const here = noDoc ? '' : HERE;
@@ -2331,7 +2347,10 @@
           '<small class="lmd-ptabs-ver">SharpMD ' + LMD.VERSION + '</small>' +
         '</nav>' +
         '<div class="lmd-panel-body">' +
+          // Tres niveles: esto es personal. Lo del equipo lo decide quien lo administra y está en Plan; las opciones
+          // de una nota sola, en el menú de esa nota.
           '<section class="lmd-two" data-tab="look"><h3>' + T('Apariencia') + '</h3>' +
+            '<p class="lmd-hint lmd-scope">' + T('Estos ajustes son tuyos. Nadie más los ve ni los cambia.') + '</p>' +
             '<div class="lmd-row"><span>' + T('Idioma') + '</span><div class="lmd-seg" data-seg="language" role="radiogroup">' +
               ['auto', 'es', 'en'].map((l) => '<button type="button" role="radio" data-val="' + l + '" aria-checked="' + (s.language === l) + '"' + (s.language === l ? ' class="lmd-on"' : '') + '>' + { auto: T('Automático'), es: 'Español', en: 'English' }[l] + '</button>').join('') +
             '</div></div>' +
@@ -2357,6 +2376,8 @@
                 '<div class="lmd-extra-actions"><button type="button" class="lmd-btn lmd-btn-fill" data-act="see-plans">' + T('Ver planes') + '</button></div></div>') +
           '</section>' +
           '<section class="lmd-two" data-tab="read"><h3>' + T('Lectura') + '</h3>' +
+            '<p class="lmd-hint lmd-scope">' + T('Estos ajustes son tuyos. Nadie más los ve ni los cambia.') + ' ' + T('El ancho y otras opciones de una nota se cambian desde el menú de la nota.') +
+              (APP && LMD.cloud.teamNow() ? ' ' + T('Lo que vale para todo el equipo está en Plan, en Ajustes del equipo.') : '') + '</p>' +
             '<label class="lmd-check"><input type="checkbox" data-key="centered"' + (s.centered ? ' checked' : '') + '><span>' + T('Centrar el contenido') + '</span></label>' +
             '<label class="lmd-row"><span>' + T('Ancho del contenido') + ' <output>' + s.contentWidth + ' px</output></span><input type="range" min="560" max="1800" step="20" data-key="contentWidth" data-unit=" px" value="' + s.contentWidth + '"></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="wrapCode"' + (s.wrapCode ? ' checked' : '') + '><span>' + T('Ajustar las líneas largas del código') + '</span></label>' +
@@ -3132,7 +3153,8 @@
     openApp: (query) => bg({ type: 'openApp', query }),
     openPanel: (tab, why) => openPanel(tab, why),
     // patch: se dibujó en el lugar un cambio de otra persona (sesión en vivo), sin pasar por render.
-    ui, hooks: { render: [], tree: [], doc: [], patch: [] }, lastBlock: null, appUrl: APP_URL, hold: false,
+    ui, hooks: { render: [], tree: [], doc: [], patch: [], home: [] }, menus: { export: [], more: [] }, actions: {},
+    get treeRoot() { return treeRoot; }, collect: (root) => collectFiles(root), readFile: (url) => readFile(url), wikiKey, lastBlock: null, appUrl: APP_URL, hold: false,
     // Lo que la sesión en vivo (live.js) necesita del lector.
     live: {
       blockId, locate,
@@ -3647,7 +3669,7 @@
     ui.main.querySelector('.lmd-report').hidden = !(APP && LMD.sync.reportRef());
     if (settings && !ui.status.classList.contains('lmd-flash')) ui.status.textContent = idleStatus();
   }
-  function showEmpty(note) { ui.home.hidden = false; LMD.home.show(homeCtx(), note); unsplash(); }
+  function showEmpty(note) { ui.home.hidden = false; LMD.home.show(homeCtx(), note); core.hooks.home.forEach((fn) => fn(ui.home)); unsplash(); }
 
   // Dibuja la nota recién abierta y la deja donde corresponde: en edición si toca, y en la sección o búsqueda pedida.
   function afterOpen(opt) {

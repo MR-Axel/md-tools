@@ -18,7 +18,7 @@
           const mine = !c.at || c.at === base;
           session = mine ? c.session || '' : ''; email = mine ? c.email || '' : ''; parked = mine ? null : c;
           if (session && !c.at) remember();
-          team = session && mine && c.team && c.team.space ? { space: String(c.team.space), name: c.team.name || '' } : null;
+          team = session && mine && c.team && c.team.space ? teamRec(c.team) : null;
           resolve();
         });
       });
@@ -29,11 +29,20 @@
   // El equipo de la cuenta: { space, name }. space es el número con el que se piden sus notas, que acá llevan rutas
   // ~space/..., como las que comparte otra cuenta. Se guarda lo último que se supo para dibujar el explorador sin
   // esperar al servidor, también sin conexión. setTeam devuelve si cambió.
+  // Lleva también el papel de la cuenta ('admin', 'editor' o 'reader'), lo que puede hacer en el espacio (can) y con
+  // qué nace una nota nueva del equipo (folder, template). Lo decide el servidor: acá solo se usa para dibujar.
   let team = null; const teamFns = [];
+  const teamRec = (m) => ({ space: String(m.space), name: m.name || '', role: m.role || 'editor', can: Object.assign({ write: true }, m.can || {}),
+    folder: (m.policies && m.policies.folder) || m.folder || '', template: (m.policies && m.policies.template) || m.template || '' });
   function setTeam(mine) {
-    const next = mine && mine.space ? { space: String(mine.space), name: mine.name || '' } : null;
-    if ((team ? team.space + '|' + team.name : '') === (next ? next.space + '|' + next.name : '')) return false;
+    const next = mine && mine.space ? teamRec(mine) : null;
+    if (JSON.stringify(team) === JSON.stringify(next)) return false;
+    // Solo el espacio, el nombre o el papel cambian el explorador; lo demás se guarda sin redibujar.
+    const shown = (t) => (t ? t.space + '|' + t.name + '|' + t.role + '|' + (t.can.write ? 1 : 0) : '');
+    const drawn = shown(team) !== shown(next);
     team = next; if (team) delete otherLists[team.space];
+    if (!drawn) { remember(); return false; }
+    vaultAt = 0; // la protección del espacio del equipo viene con la lista de carpetas
     remember();
     return true;
   }
@@ -160,7 +169,16 @@
     await ready();
     if (!base || !session || guest) return [];
     if (!fresh && vaultCache && Date.now() - vaultAt < 30000) return vaultCache;
-    try { vaultCache = await api('GET', '/vaults'); vaultAt = Date.now(); vaultOk = true; S.vaultsPut(email, vaultCache); }
+    try {
+      const list = await api('GET', '/vaults');
+      // El espacio del equipo, si está protegido, es una más: su "carpeta" es la raíz ~espacio, con la que el resto
+      // de la app ya nombra a esas notas. Un servidor sin actualizar no tiene la ruta: se sigue sin ella.
+      if (team) {
+        try { const r = await api('GET', '/team/vault'); if (r && r.vault) list.push(Object.assign(r.vault, { team: true, folder: '~' + team.space })); }
+        catch (e) { if (e.code === 'offline') throw e; }
+      }
+      vaultCache = list; vaultAt = Date.now(); vaultOk = true; S.vaultsPut(email, vaultCache);
+    }
     catch (e) {
       // Sin conexión vale lo último que se supo, guardado en este navegador. Un servidor propio sin actualizar no las tiene.
       if (e.code === 'offline') vaultCache = vaultCache || (await S.vaultsGet(email)) || [];
@@ -169,19 +187,38 @@
     }
     return vaultCache;
   }
-  const vaultFor = async (path) => (path[0] === '~' ? null : (await vaults()).find((v) => path.startsWith(v.folder + '/')) || null);
+  const vaultFor = async (path) => (await vaults()).find((v) => path.startsWith(v.folder + '/')) || null;
   const lockedErr = (vault) => Object.assign(new Error('vault_locked'), { code: 'vault_locked', vault });
-  const keyOf = async (vault) => { const key = await Z.keyFor(email, vault); if (!key) throw lockedErr(vault); return key; };
+  // Mientras quien administra rota la llave del equipo (rotating), lo nuevo se cifra con la llave nueva (next), que
+  // solo tiene su navegador. Para los demás el espacio queda cerrado hasta que termine.
+  const sealing = (vault) => !!vault && (vault.state === 'on' || vault.state === 'rotating');
+  const turning = (vault) => !!vault && vault.state === 'rotating';
+  const keyOf = async (vault) => {
+    if (turning(vault) && !vault.next) throw lockedErr(vault);
+    const key = await Z.keyFor(email, turning(vault) ? vault.next : vault);
+    if (!key) throw lockedErr(vault);
+    return key;
+  };
+  // Abre un texto cifrado con la llave de su carpeta. A mitad de una rotación puede estar con la nueva o con la anterior.
+  async function unsealWith(vault, path, text) {
+    const key = await keyOf(vault);
+    try { return await Z.open(key, path, text); }
+    catch (e) {
+      const old = turning(vault) ? await Z.keyFor(email, vault) : null;
+      if (!old) throw e;
+      return Z.open(old, path, text);
+    }
+  }
   // Lo que llegó del servidor, en claro.
   async function plain(path, text) {
     if (!Z.sealed(text)) return text;
     const vault = (await vaultFor(path)) || (await vaults(true), await vaultFor(path));
-    return Z.open(await keyOf(vault), path, text);
+    return unsealWith(vault, path, text);
   }
   // Lo que sale hacia el servidor: cifrado si la ruta está en una carpeta protegida.
   async function wire(path, text) {
     const vault = await vaultFor(path);
-    return vault && vault.state === 'on' ? Z.seal(await keyOf(vault), path, text) : text;
+    return sealing(vault) ? Z.seal(await keyOf(vault), path, text) : text;
   }
   const getNote = async (path) => { const n = await api('GET', notePath(path)); n.text = await plain(path, n.text); return n; };
   // rev es la revisión sobre la que se escribió (la que vino al leer). Si la nota ya va por otra, el servidor no
@@ -193,8 +230,9 @@
       try { return await send(); }
       catch (e) {
         // La carpeta se protegió, o dejó de estarlo, desde otra pestaña: se vuelve a mirar y se manda como corresponde.
-        if (e.code !== 'vault' && e.code !== 'vault_text') throw e;
+        if (e.code !== 'vault' && e.code !== 'vault_text' && e.code !== 'vault_rotating') throw e;
         await vaults(true);
+        if (e.code === 'vault_rotating') throw lockedErr(await vaultFor(path));
         return await send();
       }
     } catch (e) {
@@ -208,7 +246,7 @@
   async function keep(path, text, was, pending, role) {
     const rec = { text, base: was, pending: !!pending, role: role || roles[path] || 'owner' };
     const vault = await vaultFor(path);
-    if (vault && vault.state === 'on') {
+    if (sealing(vault)) {
       const key = await keyOf(vault);
       rec.text = await Z.seal(key, path, text); rec.base = was === text ? rec.text : await Z.seal(key, path, was == null ? '' : was); rec.sealed = true;
     }
@@ -217,9 +255,17 @@
   async function copyOf(path) {
     const c = await S.cloudGet(email, path);
     if (!c || !c.sealed) return c;
-    const key = await keyOf(await vaultFor(path));
-    const text = await Z.open(key, path, c.text);
-    return Object.assign({}, c, { text, base: c.base === c.text ? text : await Z.open(key, path, c.base) });
+    const vault = await vaultFor(path);
+    try {
+      const text = await unsealWith(vault, path, c.text);
+      return Object.assign({}, c, { text, base: c.base === c.text ? text : await unsealWith(vault, path, c.base) });
+    } catch (e) {
+      // La copia quedó cifrada con una llave del equipo que ya se rotó: no se puede abrir nunca más. Se descarta y se
+      // vuelve a bajar la nota.
+      if (e.code !== 'vault_unreadable' || !vault || !vault.team) throw e;
+      await S.cloudDelete(email, path);
+      return null;
+    }
   }
   const kept = async () => (await S.cloudAll(email)).map((c) => ({ path: c.path, updated: c.at, size: c.text.length }));
   // Lo que ya no está en el servidor deja de guardarse acá, salvo que tenga cambios sin subir.
@@ -437,12 +483,17 @@
   const roles = {};
 
   // Las notas de una carpeta, tal como las lista el servidor (sin caché: se usa al cifrar y al descifrar todo).
-  const under = async (folder) => (await api('GET', '/notes')).filter((n) => n.path.startsWith(folder + '/'));
+  const under = async (vault) => (vault.team ? (await api('GET', '/notes?o=' + vault.folder.slice(1))).map((n) => Object.assign(n, { path: vault.folder + '/' + n.path }))
+    : (await api('GET', '/notes')).filter((n) => n.path.startsWith(vault.folder + '/')));
+  // Dónde se piden los cambios de una bóveda: las propias por su número, la del equipo en su ruta.
+  const vp = (vault) => (vault && vault.team ? '/team/vault' : '/vaults/' + vault.id);
+  const vById = (id) => (vaultCache || []).find((v) => v.id === +id) || { id };
+  const fresh = (vault) => { if (vault && vault.team) delete otherLists[vault.folder.slice(1)]; listCache = null; };
   // Cifra lo que todavía está en claro dentro de una carpeta protegida: las notas que ya estaban al protegerla,
   // o las que quedaron a medias si se cortó. onStep(hechas, total). Se puede llamar las veces que haga falta.
   async function sealFolder(vault, onStep) {
     const key = await keyOf(vault);
-    const rows = (await under(vault.folder)).filter((n) => !n.v);
+    const rows = (await under(vault)).filter((n) => !n.v);
     let done = 0;
     if (onStep) onStep(0, rows.length);
     for (const n of rows) {
@@ -454,16 +505,16 @@
     }
     // Las copias locales que estaban en claro pasan a estar cifradas.
     for (const c of await S.cloudAll(email)) if (!c.sealed && c.path.startsWith(vault.folder + '/')) await keep(c.path, c.text, c.base, c.pending, c.role);
-    listCache = null;
+    fresh(vault);
     return rows.length;
   }
   // Quita la protección: el servidor vuelve a aceptar texto en claro en la carpeta, cada nota se descifra acá y
   // se guarda de nuevo, y al final se borra la bóveda. Si se corta, queda a medias y se retoma con la misma llamada.
   async function openFolder(vault, onStep) {
     const key = await keyOf(vault);
-    if (vault.state !== 'opening') await api('POST', '/vaults/' + vault.id + '/open', {});
+    if (vault.state !== 'opening') await api('POST', vp(vault) + '/open', {});
     await vaults(true);
-    const rows = (await under(vault.folder)).filter((n) => n.v);
+    const rows = (await under(vault)).filter((n) => n.v);
     let done = 0;
     if (onStep) onStep(0, rows.length);
     for (const n of rows) {
@@ -478,8 +529,48 @@
       const text = await Z.open(key, c.path, c.text);
       await S.cloudPut(email, c.path, { text, base: c.base === c.text ? text : await Z.open(key, c.path, c.base), pending: c.pending, role: c.role });
     }
-    await api('DELETE', '/vaults/' + vault.id);
-    await Z.forget(email, vault); await vaults(true); listCache = null;
+    await api('DELETE', vp(vault));
+    await Z.forget(email, vault); await vaults(true); fresh(vault);
+  }
+  // Rotar la llave del espacio del equipo: cada nota se abre con la llave anterior y se guarda cifrada con la nueva.
+  // Las dos llaves ya están abiertas en esta pestaña (la anterior por vault.check, la nueva por vault.next.check) y el
+  // servidor ya tiene el espacio en 'rotating'. Se repasa hasta que una vuelta no cambie nada, y recién entonces se
+  // confirma. Si se corta, queda a medias y se retoma con la misma llamada. Devuelve cuántas notas no abrieron con
+  // ninguna de las dos (dañadas): esas se dejan como están.
+  async function rotateSpace(vault, onStep) {
+    const next = await Z.keyFor(email, vault.next); const old = await Z.keyFor(email, vault);
+    if (!next || !old) throw lockedErr(vault);
+    let bad = 0;
+    for (let pass = 0; pass < 6; pass++) {
+      const rows = await under(vault); let changed = 0; let done = 0; bad = 0;
+      if (onStep) onStep(0, rows.length);
+      for (const n of rows) {
+        await locked(n.path, async () => {
+          const got = await api('GET', notePath(n.path)); let text = null;
+          if (!Z.sealed(got.text)) text = got.text; // quedó en claro de cuando se protegió el espacio
+          else {
+            try { await Z.open(next, n.path, got.text); return; } catch (e) { /* todavía con la llave anterior */ }
+            try { text = await Z.open(old, n.path, got.text); } catch (e) { bad++; return; }
+          }
+          await api('PUT', notePath(n.path), Object.assign({ text: await Z.seal(next, n.path, text) }, got.rev == null ? {} : { rev: got.rev }));
+          changed++;
+        });
+        if (onStep) onStep(++done, rows.length);
+      }
+      if (!changed) break;
+    }
+    // Las copias de este navegador pasan a la llave nueva.
+    for (const c of await S.cloudAll(email)) {
+      if (!c.sealed || !c.path.startsWith(vault.folder + '/')) continue;
+      try {
+        const text = await Z.open(old, c.path, c.text); const was = c.base === c.text ? text : await Z.open(old, c.path, c.base);
+        const sealed = await Z.seal(next, c.path, text);
+        await S.cloudPut(email, c.path, { text: sealed, base: was === text ? sealed : await Z.seal(next, c.path, was), pending: c.pending, role: c.role, sealed: true });
+      } catch (e) { /* ya estaba con la llave nueva */ }
+    }
+    await api('POST', '/team/vault/rotate/done', {});
+    await Z.forget(email, vault); await vaults(true); fresh(vault);
+    return bad;
   }
 
   LMD.cloud = {
@@ -521,9 +612,14 @@
         return { path: to };
       }
       if (a.owner) {
-        const r = await api('POST', '/rename', { from: a.path, to: b.path, o: +a.owner });
+        // En el espacio del equipo protegido, mover es volver a cifrar para la ruta nueva.
+        const tv = await vaultFor(from); let extra = {};
+        if (tv) { const n = await getNote(from); extra = { text: await wire(to, n.text), updated: n.updated }; }
+        const r = await api('POST', '/rename', Object.assign({ from: a.path, to: b.path, o: +a.owner }, extra));
         delete otherLists[a.owner];
-        const copy = await copyOf(from); await S.cloudDelete(email, from);
+        let copy = null;
+        try { copy = await copyOf(from); } catch (e) { /* sin la llave la copia no se puede llevar: se vuelve a bajar */ }
+        await S.cloudDelete(email, from);
         if (copy) await keep(to, copy.text, copy.base, copy.pending, copy.role);
         return r;
       }
@@ -540,11 +636,14 @@
     },
     roleOf: (p) => roles[p] || 'owner',
     shared: () => api('GET', '/shared'),
-    shares: (p) => api('GET', '/shares?path=' + encodeURIComponent(p)),
-    share: (p, mail, role, kind) => api('POST', '/shares', { path: p, email: mail, role, kind }),
-    unshare: (id) => api('DELETE', '/shares/' + id),
-    link: (p, password) => api('POST', '/links', { path: p, password }),
-    unlink: (id) => api('DELETE', '/links/' + id),
+    // Con una ruta del equipo (~espacio/...) trabajan sobre el espacio: el servidor mira el papel y la política.
+    // Las rutas que devuelven shares y sharesAll son las de adentro del espacio, sin el prefijo.
+    shares: (p) => api('GET', '/shares?path=' + encodeURIComponent(isTeam(p) ? split(p).path : p) + (isTeam(p) ? '&o=' + team.space : '')),
+    sharesAll: (p) => api('GET', '/shares' + (isTeam(p) ? '?o=' + team.space : '')),
+    share: (p, mail, role, kind) => api('POST', '/shares', Object.assign({ path: isTeam(p) ? split(p).path : p, email: mail, role, kind }, isTeam(p) ? { o: +team.space } : {})),
+    unshare: (id, p) => api('DELETE', '/shares/' + id + (isTeam(p) ? '?o=' + team.space : '')),
+    link: (p, password) => api('POST', '/links', Object.assign({ path: isTeam(p) ? split(p).path : p, password }, isTeam(p) ? { o: +team.space } : {})),
+    unlink: (id, p) => api('DELETE', '/links/' + id + (isTeam(p) ? '?o=' + team.space : '')),
     publicNote: async (token, password) => {
       await ready();
       let res;
@@ -579,9 +678,10 @@
         // Una nota protegida que vuelve con otro nombre (el suyo está ocupado): el texto cifrado está atado a su
         // ruta, así que se descifra con la de antes y se cifra para la nueva, acá, con la carpeta desbloqueada.
         if (e.code !== 'trash_rekey' || !e.body) throw e;
-        const vault = (await vaultFor(e.body.path)) || (await vaults(true), await vaultFor(e.body.path));
+        const pre = owner ? '~' + owner + '/' : '';
+        const vault = (await vaultFor(pre + e.body.path)) || (await vaults(true), await vaultFor(pre + e.body.path));
         const key = await keyOf(vault);
-        r = await api('POST', at, { to: e.body.to, text: await Z.seal(key, e.body.to, await Z.open(key, e.body.path, e.body.text)) });
+        r = await api('POST', at, { to: e.body.to, text: await Z.seal(key, pre + e.body.to, await unsealWith(vault, pre + e.body.path, e.body.text)) });
       }
       listCache = null; delete otherLists[owner || ''];
       return r;
@@ -612,16 +712,25 @@
     // Una versión del historial, en claro. Las de una nota protegida están cifradas con la ruta que tenía entonces.
     version: async (id, path) => {
       const v = await api('GET', '/version/' + id + (isTeam(path) ? '?o=' + team.space : ''));
-      if (Z.sealed(v.text)) v.text = await Z.open(await keyOf(await vaultFor(path)), v.aad || v.path, v.text);
+      // La ruta con la que se cifró viene como la guarda el servidor: en el equipo, sin el ~espacio de adelante.
+      if (Z.sealed(v.text)) v.text = await unsealWith(await vaultFor(path), (isTeam(path) ? '~' + team.space + '/' : '') + (v.aad || v.path), v.text);
       return v;
     },
     // El historial de una nota. El de una nota del equipo se pide al espacio del equipo.
     versions: (path) => (isTeam(path) ? api('GET', '/versions/' + encodeURIComponent(split(path).path) + '?o=' + team.space) : api('GET', '/versions/' + encodeURIComponent(path))),
     // Equipo. team() es lo último que se supo ({ space, name } o null); las llamadas devuelven el equipo como quedó.
     setTeam, isTeam, teamNow: () => team, onTeamLost: (fn) => { teamFns.push(fn); },
+    // Si la cuenta puede eso en el espacio de su equipo: 'write', 'share', 'links', 'tokens', 'automation'.
+    teamCan: (what) => !!team && !!team.can[what],
     team: {
       get: () => api('GET', '/team'),
-      invite: (mail) => api('POST', '/team/invite', { email: mail, lang: LMD.lang() }),
+      invite: (mail, role) => api('POST', '/team/invite', Object.assign({ email: mail, lang: LMD.lang() }, role ? { role } : {})),
+      role: (id, role) => api('POST', '/team/role', { id, role }),
+      policies: (change) => api('PUT', '/team/policies', change),
+      log: (qs) => api('GET', '/team/log' + (qs ? '?' + qs : '')),
+      tokens: () => api('GET', '/team/tokens'),
+      newToken: (body) => api('POST', '/team/tokens', body),
+      revoke: (id) => api('DELETE', '/team/tokens/' + id),
       uninvite: (id) => api('DELETE', '/team/invites/' + id),
       accept: (id) => api('POST', '/team/accept', { id }),
       decline: (id) => api('POST', '/team/decline', { id }),
@@ -631,7 +740,12 @@
       rename: (name) => api('PUT', '/team', { name }),
     },
     // Carpetas con contraseña.
-    vaults, vaultFor, sealFolder, openFolder,
+    vaults, vaultFor, sealFolder, openFolder, rotateSpace,
+    // La protección del espacio del equipo. Crear, rotar y decidir sobre la IA son de quien administra: lo mira el servidor.
+    teamVaultCreate: async (body) => { await api('POST', '/team/vault', body); const list = await vaults(true); delete otherLists[team.space]; return list.find((v) => v.team) || null; },
+    teamVaultRotate: async (body) => { await api('POST', '/team/vault/rotate', body); const list = await vaults(true); return list.find((v) => v.team) || null; },
+    teamVaultAi: async (members) => { await api('PUT', '/team/vault/ai', { members: !!members }); await vaults(true); },
+    teamVaultSeen: () => api('DELETE', '/team/vault/gone'),
     vaultStale: () => { vaultAt = 0; },
     // Lo último que se supo, sin esperar: para dibujar. vaultOk dice si el servidor las tiene (uno propio sin actualizar, no).
     vaultsNow: () => vaultCache || [],
@@ -639,17 +753,17 @@
     // Un servidor que no es el de SharpMD: cómo cifra depende de quien lo instaló.
     own: () => !!base && base !== String(LMD.CLOUD_URL || '').trim().replace(/\/+$/, ''),
     vaultCreate: async (body) => { const v = await api('POST', '/vaults', body); await vaults(true); listCache = null; return v; },
-    vaultRewrap: async (id, body) => { const v = await api('PUT', '/vaults/' + id, body); await vaults(true); return v; },
+    vaultRewrap: async (id, body) => { const v = await api('PUT', vp(vById(id)), body); await vaults(true); return v; },
     // Desbloquear para la IA: la única vez que la llave de datos sale de este navegador.
-    vaultAi: async (id, key, minutes) => { const v = await api('POST', '/vaults/' + id + '/unlock', { key, minutes }); await vaults(true); return v; },
+    vaultAi: async (id, key, minutes) => { const v = await api('POST', vp(vById(id)) + '/unlock', { key, minutes }); await vaults(true); return v; },
     // Elimina la carpeta protegida con sus notas, sin su llave. Las copias de este navegador se van con ella.
     vaultDestroy: async (vault) => {
-      const r = await api('POST', '/vaults/' + vault.id + '/destroy', { folder: vault.folder });
+      const r = await api('POST', vp(vault) + '/destroy', vault.team ? { name: vault.confirm } : { folder: vault.folder });
       for (const c of await S.cloudAll(email)) if (c.path.startsWith(vault.folder + '/')) await S.cloudDelete(email, c.path);
       try { await Z.forget(email, vault); } catch (e) { /* no había llave guardada */ }
-      await vaults(true); listCache = null;
+      await vaults(true); fresh(vault);
       return r;
     },
-    vaultAiLock: async (id) => { const v = await api('POST', '/vaults/' + id + '/lock', {}); await vaults(true); return v; },
+    vaultAiLock: async (id) => { const v = await api('POST', vp(vById(id)) + '/lock', {}); await vaults(true); return v; },
   };
 })();

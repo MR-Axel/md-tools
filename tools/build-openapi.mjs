@@ -93,7 +93,7 @@ const doc = {
         type: { type: 'string', enum: ['note.created', 'note.updated', 'note.deleted', 'note.restored', 'note.moved', 'comment.created', 'comment.resolved', 'card.created', 'card.moved', 'card.updated', 'card.done', 'card.deleted', 'ping'] },
         created: str('ISO date and time', '2026-10-07T14:03:11Z'), account: str('Opaque id of the account. Never the email address', 'acc_3f1c9a7b2d4e5f601234'),
         note: { type: ['object', 'null'], properties: { path: str(null, 'shop/board.md'), name: str(null, 'board.md'), url: str('Opens the note in the app'), space: { type: 'string', enum: ['own', 'team'] } } },
-        actor: { type: 'object', properties: { type: { type: 'string', enum: ['app', 'api', 'mcp', 'inbox', 'member'] }, name: str('For member: the name the team sees'), via: { type: 'string', enum: ['app', 'api', 'mcp'] } } },
+        actor: { type: 'object', properties: { type: { type: 'string', enum: ['app', 'api', 'mcp', 'inbox', 'member'] }, id: str('For member: an opaque id of the team member', 'mem_3f1c9a7b2d4e5f60'), role: { type: 'string', enum: ['admin', 'editor', 'reader'] }, via: { type: 'string', enum: ['app', 'api', 'mcp'] } } },
         data: { type: 'object', description: 'note.created, note.updated: rev, size, updated, and text only if the automation includes the content (up to 64 KB, with truncated). note.moved: from, to. note.deleted: trash. comment.*: comment { id, text, quote | reply }. card.*: card, board, and from/to (card.moved) or changes { key: { from, to } } (card.updated).', additionalProperties: true } } },
     },
   },

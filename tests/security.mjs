@@ -976,7 +976,7 @@ async function teamSuite() {
     check('equipo: una invitación sirve una sola vez', twice.join() === '200,404' && (await acct(A)).team.mine.members.length === 3, twice);
     // Una cuenta que ya es miembro no sale de su equipo porque alguien pague una suscripción de equipo a su nombre.
     const pull = await hook(teamEv('sub_t9', 'active', B.email, 0));
-    check('equipo: un pago a nombre de quien ya está en un equipo no lo saca de ahí', pull.json.ignored === 'in_team' && (await acct(B)).team.mine.space === SPACE && (await acct(B)).team.mine.role === 'member', pull.json);
+    check('equipo: un pago a nombre de quien ya está en un equipo no lo saca de ahí', pull.json.ignored === 'in_team' && (await acct(B)).team.mine.space === SPACE && (await acct(B)).team.mine.role === 'editor', pull.json);
     // Avisos desordenados: uno viejo no revive un equipo dado de baja.
     const late = clock + 50000;
     await hook(teamEv('sub_t2', 'canceled', null, 3, late)); const old = await hook(teamEv('sub_t2', 'active', null, 3, late - 20000));
@@ -1086,6 +1086,212 @@ async function teamSuite() {
       const untouched = n('SELECT COUNT(*) AS n FROM notes WHERE user = ?', SPACE);
       db.close();
       check('eliminar la cuenta: quien queda sola en su equipo se borra con el equipo y su espacio, sin tocar otros equipos', ownerGone.every((r) => r.status === 200) && rest.join() === '0,0,0,0' && untouched > 0, [ownerGone.map((r) => r.json), rest, untouched]);
+    }
+
+    // ---------- El espacio del equipo protegido con contraseña ----------
+    console.log(' El espacio protegido');
+    {
+      const { hkdfSync, randomBytes, createCipheriv } = await import('crypto');
+      const hk = (K, info) => Buffer.from(hkdfSync('sha256', K, Buffer.alloc(0), info, 32));
+      const b = (n) => randomBytes(n).toString('base64');
+      // Una llave de datos y lo que el navegador mandaría: sal, vueltas, llave envuelta (acá, bytes al azar) y comprobación.
+      const mk = () => { const K = randomBytes(32); return { K, key: hk(K, 'sharpmd vault enc v1'), body: { salt: b(16), iters: 600000, wrapped: b(60), check: hk(K, 'sharpmd vault check v1').toString('base64') } }; };
+      const sealFor = (key, aad, text) => { const iv = randomBytes(12); const c = createCipheriv('aes-256-gcm', key, iv); c.setAAD(Buffer.from(aad)); const body = Buffer.concat([c.update(text, 'utf8'), c.final()]); return 'vault1:' + Buffer.concat([iv, body, c.getAuthTag()]).toString('base64'); };
+      const G = await signup(S, 'gala@ejemplo.test'); const H = await signup(S, 'hugo@ejemplo.test'); const I2 = await signup(S, 'ines@ejemplo.test'); const J = await signup(S, 'juan@ejemplo.test');
+      await call('POST', '/admin/team', { email: G.email, seats: 4 }, undefined, { 'x-admin-key': ADMIN });
+      await join(G, H); await join(G, I2);
+      const SP3 = (await acct(G)).team.mine.space; const t3 = (p) => '/notes/' + enc(p) + '?o=' + SP3; const aad3 = (p) => '~' + SP3 + '/' + p;
+      const VSECRET = 'ALCAUCIL-PROTEGIDO-7781'; secrets.push(VSECRET);
+      await call('PUT', t3('caja.md'), { text: 'antes ' + VSECRET }, G.s);
+      const k1 = mk(); secrets.push(k1.K.toString('base64'));
+      const tv = async (who) => (await call('GET', '/team/vault', undefined, who.s));
+      // Lo que solo hace quien administra, pedido por un miembro, por alguien de afuera, por quien administra otro equipo y sin sesión.
+      const adminOnly = (w) => [
+        ['proteger', () => call('POST', '/team/vault', k1.body, w)], ['cambiar la contraseña', () => call('PUT', '/team/vault', { salt: b(16), iters: 600000, wrapped: b(60) }, w)],
+        ['empezar a quitar', () => call('POST', '/team/vault/open', {}, w)], ['quitar', () => call('DELETE', '/team/vault', undefined, w)], ['eliminar', () => call('POST', '/team/vault/destroy', { name: G.email }, w)],
+        ['rotar', () => call('POST', '/team/vault/rotate', mk().body, w)], ['terminar de rotar', () => call('POST', '/team/vault/rotate/done', {}, w)], ['permitir la IA', () => call('PUT', '/team/vault/ai', { members: true }, w)],
+        ['descartar el aviso', () => call('DELETE', '/team/vault/gone', undefined, w)],
+      ];
+      const pre = []; for (const [what, fn] of adminOnly(H.s)) { const r = await fn(); if (r.status !== 403 || r.json.error !== 'not_admin') pre.push(what + ' ' + r.status); }
+      check('espacio protegido: un miembro no lo protege ni toca nada de la protección antes de que exista', pre.length === 0 && (await tv(G)).json.vault === null, pre);
+      const made = await call('POST', '/team/vault', k1.body, G.s);
+      await call('PUT', t3('caja.md'), { text: sealFor(k1.key, aad3('caja.md'), 'adentro ' + VSECRET), rev: 1 }, G.s);
+      const state = async () => { const v = (await tv(G)).json.vault; return v ? [v.state, v.wrapped, v.check, v.ai_members, v.gone].join('|') : 'null'; };
+      const s0 = await state();
+      const holes = [];
+      for (const [who, w, code] of [['miembro', H.s, 403], ['ajena', J.s, 404], ['sin sesión', undefined, 401], ['token de MCP', null, 401]]) {
+        const auth = w === null ? (await call('POST', '/tokens', { name: 'ia' }, G.s)).json.token : w;
+        for (const [what, fn] of adminOnly(auth)) { const r = await fn(); if (r.status !== code) holes.push(who + ': ' + what + ' ' + r.status); }
+      }
+      check('espacio protegido: proteger, cambiar la contraseña, quitar la protección, eliminar, rotar y decidir sobre la IA son de quien administra, con su sesión', made.status === 200 && holes.length === 0 && (await state()) === s0 && (await call('GET', t3('caja.md'), undefined, G.s)).json.text.startsWith('vault1:'), holes);
+      // Quien administra OTRO equipo trabaja sobre el suyo: al de Gala no lo toca.
+      await call('PUT', '/team/vault', { salt: b(16), iters: 600000, wrapped: b(60) }, D.s); await call('POST', '/team/vault/destroy', { name: G.email }, D.s); await call('POST', '/team/vault/open', {}, A.s);
+      check('espacio protegido: quien administra otro equipo no llega a este', (await state()) === s0 && (await call('GET', t3('caja.md'), undefined, G.s)).status === 200);
+      // Por las rutas de las carpetas propias tampoco: la protección del equipo no es de ninguna persona.
+      const vid3 = made.json.vault.id; const side = [];
+      for (const w of [G, H, J]) for (const [m, u, body] of [['PUT', '/vaults/' + vid3, { salt: b(16), iters: 600000, wrapped: b(60) }], ['DELETE', '/vaults/' + vid3], ['POST', '/vaults/' + vid3 + '/open', {}], ['POST', '/vaults/' + vid3 + '/destroy', { folder: '' }], ['POST', '/vaults/' + vid3 + '/unlock', { key: k1.K.toString('base64'), minutes: 0 }], ['POST', '/vaults/' + vid3 + '/lock', {}]]) { const r = await call(m, u, body, w.s); if (r.status !== 404) side.push(w.email + ' ' + m + ' ' + u + ' ' + r.status); }
+      check('espacio protegido: nadie la cambia por las rutas de las carpetas propias, ni quien administra', side.length === 0 && (await state()) === s0 && (await call('GET', '/vaults', undefined, G.s)).json.length === 0, side);
+      // La clave de respaldo es la llave escrita para una persona: no hay ruta que la entregue, y el servidor no la tiene.
+      const fish = []; for (const u of ['/team/vault/backup', '/team/vault/key', '/team/vault/recover', '/team/vault/rotate', '/team/vault/next']) { const r = await call('GET', u, undefined, H.s); if (r.status === 200) fish.push(u); }
+      const seen = JSON.stringify([(await tv(H)).json, await acct(H), (await call('GET', '/team', undefined, H.s)).json]);
+      check('espacio protegido: un miembro no tiene de dónde leer la clave de respaldo, ni usa la suya para poner otra contraseña', fish.length === 0 && !seen.includes(k1.K.toString('base64')) && !seen.includes('"gone"') && !seen.includes('"next"') && (await call('PUT', '/team/vault', { salt: b(16), iters: 600000, wrapped: b(60) }, H.s)).status === 403);
+      const out = []; for (const w of [J, X, D, M]) { const r = await tv(w); if (JSON.stringify(r.json || '').includes(k1.body.wrapped) || (r.status === 200 && r.json.vault && r.json.vault.id === vid3)) out.push(w.email); }
+      check('espacio protegido: quien no es miembro no recibe la llave envuelta', out.length === 0, out);
+      // Texto en claro en un espacio protegido, y cifrado en uno sin proteger.
+      const plainIn = [await call('PUT', t3('caja.md'), { text: 'en claro' }, H.s), await call('PUT', t3('nueva.md'), { text: 'en claro' }, G.s), await call('POST', '/rename', { from: 'caja.md', to: 'otra.md', o: SP3 }, H.s), await call('POST', '/rename', { from: 'caja.md', to: 'otra.md', o: SP3, text: 'en claro' }, H.s)];
+      const junk = [await call('PUT', t3('caja.md'), { text: 'vault1:no-es-base64!' }, H.s), await call('PUT', t3('caja.md'), { text: 'vault1:' }, H.s)];
+      const sealedOut = [await call('PUT', t('secreta.md'), { text: sealFor(k1.key, '~' + SPACE + '/secreta.md', 'x') }, B.s), await call('PUT', '/notes/' + enc('propia.md'), { text: sealFor(k1.key, 'propia.md', 'x') }, H.s)];
+      check('espacio protegido: no entra texto en claro, ni cifrado en un espacio o una carpeta sin proteger', plainIn.every((r) => r.status === 409 && r.json.error === 'vault') && junk.every((r) => r.status === 400) && sealedOut.every((r) => r.status === 409 && r.json.error === 'vault_text') && (await call('GET', t3('nueva.md'), undefined, G.s)).status === 404, [plainIn.map((r) => r.status), junk.map((r) => r.status), sealedOut.map((r) => r.json)]);
+      check('espacio protegido: la búsqueda del servidor y el MCP bloqueado no devuelven nada de adentro', (await call('GET', '/search?q=' + enc(VSECRET) + '&o=' + SP3, undefined, H.s)).json.length === 0 && (await call('GET', '/search?q=ALCAUCIL&o=' + SP3, undefined, G.s)).json.length === 0);
+      // Desbloquear para la IA: sin permiso de quien administra un miembro no puede, ni con la llave correcta.
+      const hTok = (await call('POST', '/tokens', { name: 'ia' }, H.s)).json.token; const gTok = (await call('POST', '/tokens', { name: 'ia' }, G.s)).json.token; secrets.push(hTok, gTok);
+      const key64 = k1.K.toString('base64');
+      const noAi = await call('POST', '/team/vault/unlock', { key: key64, minutes: 0 }, H.s);
+      const outAi = [await call('POST', '/team/vault/unlock', { key: key64, minutes: 0 }, J.s), await call('POST', '/team/vault/unlock', { key: key64, minutes: 0 }, D.s), await call('POST', '/team/vault/unlock', { key: key64, minutes: 0 }, hTok)];
+      const rdH = await tool(S, hTok, 'read_note', { path: '@team/caja.md' }); const wrH = await tool(S, hTok, 'write_note', { path: '@team/caja.md', text: 'pisada desde la IA' });
+      check('espacio protegido: desbloqueo para la IA sin permiso: un miembro no puede aunque tenga la llave, y nadie de afuera', noAi.status === 403 && noAi.json.error === 'ai_not_allowed' && outAi.map((r) => r.status).join() === '404,404,401' && rdH.err && wrH.err && !JSON.stringify([rdH, wrH]).includes(VSECRET) && (await call('GET', t3('caja.md'), undefined, G.s)).json.rev === 2, [noAi.json, outAi.map((r) => [r.status, r.json])]);
+      await call('POST', '/team/vault/unlock', { key: key64, minutes: 0 }, G.s);
+      const rdG = await tool(S, gTok, 'read_note', { path: '@team/caja.md' }); const rdH2 = await tool(S, hTok, 'read_note', { path: '@team/caja.md' });
+      check('espacio protegido: lo que desbloquea quien administra es para su IA, no para la de los demás', !rdG.err && String(rdG.v).includes(VSECRET) && rdH2.err && (await tv(H)).json.vault.ai === null);
+      await call('PUT', '/team/vault/ai', { members: true }, G.s); await call('POST', '/team/vault/unlock', { key: key64, minutes: 0 }, I2.s);
+      const iTok = (await call('POST', '/tokens', { name: 'ia' }, I2.s)).json.token; secrets.push(iTok);
+      const rdI = await tool(S, iTok, 'read_note', { path: '@team/caja.md' });
+      // Diez llaves equivocadas por hora y por cuenta.
+      let guess = null; for (let i = 0; i < 11; i++) guess = await call('POST', '/team/vault/unlock', { key: b(32), minutes: 0 }, H.s);
+      check('espacio protegido: adivinar la llave tiene tope', guess.status === 429 && (await tool(S, hTok, 'read_note', { path: '@team/caja.md' })).err, [guess.status, guess.json]);
+      // Sale una persona que tenía la llave abierta para su IA.
+      const drop = await call('POST', '/team/remove', { id: I2.id }, G.s);
+      await makePro(S, I2.email);
+      const iTok2 = (await call('POST', '/tokens', { name: 'ia2' }, I2.s)).json.token;
+      const after = [await tv(I2), await call('GET', t3('caja.md'), undefined, I2.s), await call('POST', '/team/vault/unlock', { key: key64, minutes: 0 }, I2.s), await call('PUT', t3('caja.md'), { text: sealFor(k1.key, aad3('caja.md'), 'del ex miembro') }, I2.s)];
+      const rdI2 = await tool(S, iTok, 'read_note', { path: '@team/caja.md' }); const rdI3 = await tool(S, iTok2, 'read_note', { path: '@team/caja.md' });
+      check('espacio protegido: al salir un miembro se cierra lo que tenía abierto para su IA, y con su llave ya no pide ni guarda nada', !rdI.err && drop.status === 200 && drop.json.team.mine.vault.gone > 0 && after.map((r) => r.status).join() === '404,403,404,403' && rdI2.err && rdI3.err && !JSON.stringify([rdI2, rdI3, after.map((r) => r.json)]).includes(VSECRET), [after.map((r) => r.status), rdI2.v, rdI3.v]);
+      // Rotar la llave: el ex miembro se llevó la anterior. Con ella no se abre nada de lo que queda, ni vale como llave del espacio.
+      const k2 = mk(); secrets.push(k2.K.toString('base64'));
+      await call('POST', '/team/vault/rotate', k2.body, G.s);
+      const midH = [await call('PUT', t3('caja.md'), { text: sealFor(k1.key, aad3('caja.md'), 'con la vieja'), rev: 2 }, H.s), await call('POST', '/rename', { from: 'caja.md', to: 'x.md', o: SP3, text: sealFor(k1.key, aad3('x.md'), 'x') }, H.s), await call('POST', '/team/vault/rotate/done', {}, H.s)];
+      const hView = (await tv(H)).json.vault;
+      await call('PUT', t3('caja.md'), { text: sealFor(k2.key, aad3('caja.md'), 'rotada ' + VSECRET), rev: 2 }, G.s);
+      const fin = await call('POST', '/team/vault/rotate/done', {}, G.s);
+      check('espacio protegido: mientras se rota la llave un miembro no guarda con la anterior, no ve la nueva y no puede dar la rotación por terminada', midH.map((r) => r.status).join() === '423,423,403' && hView.state === 'rotating' && !('next' in hView) && fin.status === 200 && fin.json.vault.check === k2.body.check, [midH.map((r) => r.json), hView]);
+      const cur = (await call('GET', t3('caja.md'), undefined, G.s)).json.text;
+      const { createDecipheriv } = await import('crypto');
+      const opens = (key) => { try { const raw = Buffer.from(cur.slice(7), 'base64'); const d = createDecipheriv('aes-256-gcm', key, raw.subarray(0, 12)); d.setAAD(Buffer.from(aad3('caja.md'))); d.setAuthTag(raw.subarray(raw.length - 16)); return Buffer.concat([d.update(raw.subarray(12, raw.length - 16)), d.final()]).toString('utf8'); } catch (e) { return null; } };
+      const stale = [await call('POST', '/team/vault/unlock', { key: key64, minutes: 0 }, G.s), await tv(I2), await call('GET', t3('caja.md'), undefined, I2.s), await call('GET', '/versions/' + enc('caja.md') + '?o=' + SP3, undefined, I2.s), await call('GET', '/trash?o=' + SP3, undefined, I2.s)];
+      check('espacio protegido: ex miembro tras rotar la llave: su llave ya no abre lo que hay, no vale para la IA, y no llega al espacio', opens(k1.key) === null && opens(k2.key) === 'rotada ' + VSECRET && stale.map((r) => r.status).join() === '403,404,403,403,403' && stale[0].json.error === 'bad_key' && (await call('GET', '/versions/' + enc('caja.md') + '?o=' + SP3, undefined, G.s)).json.length === 0, stale.map((r) => [r.status, r.json]));
+      // Los cambios sobre la protección tienen tope por equipo.
+      let burst = null; for (let i = 0; i < 45 && (!burst || burst.status !== 429); i++) burst = await call('PUT', '/team/vault/ai', { members: i % 2 === 0 }, G.s);
+      check('espacio protegido: los cambios sobre la protección tienen tope por hora', burst.status === 429 && burst.json.error === 'too_many' && burst.json.retry_after > 0, [burst.status, burst.json]);
+      const disk = S.db(); const rowsOf = disk.prepare('SELECT text FROM notes WHERE user = ?').all(SP3).map((r) => String(r.text)).join('\n'); const vrow = disk.prepare('SELECT * FROM vaults WHERE user = ?').get(SP3); disk.close();
+      check('espacio protegido: en la base quedan la sal, las vueltas, la llave envuelta y la comprobación, y ninguna llave ni texto', !rowsOf.includes(VSECRET) && vrow.folder === '' && vrow.wrapped === k2.body.wrapped && vrow.verify === k2.body.check && vrow.next === null && !JSON.stringify(vrow).includes(k2.K.toString('base64')) && !JSON.stringify(vrow).includes(key64), Object.keys(vrow));
+    }
+
+    // ---------- Papeles, políticas, registro de actividad y tokens del equipo ----------
+    console.log(' Papeles, políticas, registro y tokens del equipo');
+    {
+      const RSECRET = 'ZANAHORIA-DEL-ESPACIO-CON-PAPELES-7719'; secrets.push(RSECRET);
+      const N = await signup(S, 'nora@ejemplo.test'); const Ed = await signup(S, 'edi@ejemplo.test'); const Rd = await signup(S, 'lector@ejemplo.test'); const Ad = await signup(S, 'admin2@ejemplo.test'); const Ex = await signup(S, 'exmiembro@ejemplo.test');
+      await hook(teamEv('sub_roles', 'active', N.email, 4));
+      const SP = (await acct(N)).team.mine.space; const o = '?o=' + SP; const n = (p) => '/notes/' + enc(p) + o;
+      const joinAs = async (who, role) => { await call('POST', '/team/invite', { email: who.email, role }, N.s); return call('POST', '/team/accept', { id: (await acct(who)).team.invites[0].id }, who.s); };
+      await joinAs(Ed, 'editor'); await joinAs(Rd, 'reader'); await joinAs(Ad, 'admin'); await joinAs(Ex, 'editor');
+      await call('PUT', n('secreta.md'), { text: 'uno ' + RSECRET }, N.s); await call('PUT', n('otra.md'), { text: 'dos' }, N.s);
+      await call('PUT', n('borrada.md'), { text: 'x' }, N.s); await call('DELETE', n('borrada.md'), undefined, N.s);
+      const bin = (await call('GET', '/trash' + o, undefined, N.s)).json[0].id;
+      const intact = async () => (await call('GET', n('secreta.md'), undefined, N.s)).json.text === 'uno ' + RSECRET && (await call('GET', '/notes' + o, undefined, N.s)).json.length === 2 && (await call('GET', '/trash' + o, undefined, N.s)).json.length === 1;
+
+      // Quien solo lee, por cada vía que escribe.
+      const tokR = (await call('POST', '/tokens', { name: 'IA', share: true }, Rd.s)).json.token; secrets.push(tokR);
+      await call('PUT', '/team/policies', { share: true, links: true }, N.s);
+      const http1 = [['PUT', n('secreta.md'), { text: 'pisada' }], ['PUT', n('secreta.md'), { text: 'pisada', rev: 1 }], ['PUT', n('nueva.md'), { text: 'x' }], ['DELETE', n('secreta.md')], ['DELETE', n('secreta.md') + '&forever=1'], ['POST', '/rename', { from: 'secreta.md', to: 'robada.md', o: SP }],
+        ['POST', '/rename', { from: 'secreta.md', to: 'robada.md', o: String(SP) }], ['POST', '/trash/' + bin + '/restore' + o, {}], ['DELETE', '/trash/' + bin + o], ['DELETE', '/trash' + o], ['POST', '/shares', { path: 'secreta.md', email: X.email, role: 'edit', o: SP }], ['POST', '/links', { path: 'secreta.md', o: SP }],
+        ['GET', '/shares' + o], ['DELETE', '/shares/1' + o], ['DELETE', '/links/1' + o]];
+      const leaks = []; for (const [m, u, b] of http1) { const r = await call(m, u, b, Rd.s); if (r.status !== 403 || r.json.error !== 'read_only') leaks.push(m + ' ' + u + ' ' + r.status + ' ' + (r.json && r.json.error)); }
+      check('papeles: quien solo lee no escribe, crea, elimina, mueve, restaura, vacía, comparte ni enlaza por HTTP (403 read_only en cada ruta)', leaks.length === 0 && await intact(), leaks);
+      const mcp1 = []; for (const [name, a] of [['write_note', { path: '@team/secreta.md', text: 'pisada' }], ['append_note', { path: '@team/secreta.md', text: 'más' }], ['write_note', { path: '@team/nueva.md', text: 'x' }], ['move_note', { from: '@team/secreta.md', to: '@team/robada.md' }], ['share_note', { path: '@team/secreta.md', email: X.email }], ['create_public_link', { path: '@team/secreta.md' }], ['unshare_note', { path: '@team/secreta.md', email: X.email }], ['revoke_public_link', { path: '@team/secreta.md' }]]) { const r = await tool(S, tokR, name, a); if (!r.err) mcp1.push(name); }
+      check('papeles: tampoco por MCP, aunque su token tenga permiso de compartir', mcp1.length === 0 && await intact() && (await call('GET', '/shared', undefined, X.s)).json.length === 0, mcp1);
+      check('papeles: sí lee, por HTTP, por MCP y por los avisos en vivo', (await call('GET', n('secreta.md'), undefined, Rd.s)).json.role === 'view' && JSON.stringify((await tool(S, tokR, 'read_note', { path: '@team/secreta.md' })).v).includes(RSECRET) && (await (async () => { const st = await stream('/events?path=secreta.md&o=' + SP, Rd.s); const ok = st.status === 200; st.stop(); return ok; })()));
+      // Un papel que no existe, o subirse el propio.
+      const esc1 = []; for (const [who, body] of [[Rd, { id: Rd.id, role: 'admin' }], [Ed, { id: Ed.id, role: 'admin' }], [Ed, { id: Rd.id, role: 'editor' }], [X, { id: Rd.id, role: 'admin' }]]) { const r = await call('POST', '/team/role', body, who.s); if (r.status !== 403 && r.status !== 404) esc1.push(who.email + ' ' + r.status); }
+      const badRoles = []; for (const role of ['owner', 'ADMIN', '', null, 1, ['admin'], { role: 'admin' }, 'admin\u0000']) { const r = await call('POST', '/team/role', { id: Rd.id, role }, N.s); if (r.status !== 400) badRoles.push(JSON.stringify(role) + ' ' + r.status); }
+      const overOwner = [await call('POST', '/team/role', { id: N.id, role: 'reader' }, Ad.s), await call('POST', '/team/remove', { id: N.id }, Ad.s), await call('POST', '/team/role', { id: N.id, role: 'reader' }, N.s)];
+      check('papeles: nadie se sube el papel ni cambia el de otro sin administrar, y un papel inventado se rechaza', esc1.length === 0 && badRoles.length === 0 && (await acct(Rd)).team.mine.role === 'reader' && (await acct(Ed)).team.mine.role === 'editor', [esc1, badRoles]);
+      check('papeles: a quien paga no lo baja ni lo saca otra persona que administra, ni se baja solo', overOwner.every((r) => r.status === 409 && r.json.error === 'owner_stays') && (await acct(N)).team.mine.role === 'admin' && (await acct(N)).team.mine.owner === true, overOwner.map((r) => r.status));
+      const invBad = await call('POST', '/team/invite', { email: 'otra@ejemplo.test', role: 'owner' }, N.s); const invByEd = await call('POST', '/team/invite', { email: 'otra@ejemplo.test', role: 'admin' }, Ed.s);
+      check('papeles: al invitar no se cuela un papel inventado, y quien edita no invita administradores', invBad.status === 400 && invByEd.status === 403, [invBad.status, invByEd.status]);
+
+      // Políticas: solo quien administra las cambia, y se miran en cada pedido.
+      await call('PUT', '/team/policies', { share: false, links: false }, N.s);
+      const polBy = []; for (const who of [Ed, Rd, X, P]) { for (const body of [{ share: true }, { links: true, tokens: true, automation: true }, { history_days: 30 }, { template: 'x' }]) { const r = await call('PUT', '/team/policies', body, who.s); if (r.status !== 403 && r.status !== 404) polBy.push(who.email + ' ' + r.status); } }
+      const polNow = (await call('GET', '/team/policies', undefined, N.s)).json.policies;
+      check('políticas: un miembro o una cuenta de afuera no las cambia', polBy.length === 0 && polNow.share === false && polNow.links === false && polNow.automation === false && polNow.history_days === 0 && polNow.template === '', [polBy, polNow]);
+      check('políticas: sin sesión, o con un token de IA, no se leen ni se cambian', (await call('GET', '/team/policies')).status === 401 && (await call('PUT', '/team/policies', { share: true })).status === 401 && (await call('PUT', '/team/policies', { share: true }, tokR)).status === 401);
+      const badPol = []; for (const body of [{ share: 1 }, { share: 'true' }, { links: null }, { history_days: -1 }, { history_days: 99999 }, { history_days: '30' }, { folder: '../..' }, { folder: 5 }, { template: 'x'.repeat(20001) }, { template: 'enc1:AAAA' }, { template: 'vault1:AAAA' }, { template: 7 }]) { const r = await call('PUT', '/team/policies', body, N.s); if (r.status !== 400) badPol.push(JSON.stringify(body).slice(0, 40) + ' ' + r.status); }
+      check('políticas: un valor mal formado se rechaza entero', badPol.length === 0, badPol);
+      const tokEd = (await call('POST', '/tokens', { name: 'IA', share: true }, Ed.s)).json.token; secrets.push(tokEd);
+      const offOut = [await call('POST', '/shares', { path: 'secreta.md', email: X.email, o: SP }, Ed.s), await call('POST', '/links', { path: 'secreta.md', o: SP }, Ed.s)];
+      const offMcp = [await tool(S, tokEd, 'share_note', { path: '@team/secreta.md', email: X.email }), await tool(S, tokEd, 'create_public_link', { path: '@team/secreta.md' })];
+      check('políticas: con compartir y enlaces apagados, quien edita no saca una nota del equipo ni por HTTP ni por MCP', offOut.every((r) => r.status === 403 && r.json.error === 'team_policy') && offMcp.every((r) => r.err) && (await call('GET', '/shared', undefined, X.s)).json.length === 0 && (() => { const d = S.db(); const c = d.prepare('SELECT COUNT(*) AS c FROM links WHERE owner = ?').get(SP).c; d.close(); return c === 0; })(), [offOut.map((r) => r.status), offMcp.map((r) => r.err)]);
+      const otherSpace = [await call('POST', '/shares', { path: 'secreta.md', email: X.email, o: SPACE }, N.s), await call('POST', '/links', { path: 'secreta.md', o: SPACE }, N.s), await call('GET', '/shares?o=' + SPACE, undefined, N.s), await call('POST', '/shares', { path: 'secreta.md', email: X.email, o: A.id }, N.s), await call('GET', '/shares?o=' + A.id, undefined, N.s)];
+      check('políticas: administrar un equipo no da nada sobre el espacio de otro equipo ni sobre la cuenta de otra persona', otherSpace.every((r) => r.status === 403 && r.json.error === 'no_access'), otherSpace.map((r) => r.status));
+      await call('PUT', '/team/policies', { tokens: false }, N.s);
+      const hidden = [await tool(S, tokEd, 'read_note', { path: '@team/secreta.md' }), await tool(S, tokEd, 'search_notes', { query: RSECRET }), await tool(S, tokEd, 'list_notes', {}), await tool(S, tokEd, 'write_note', { path: '@team/secreta.md', text: 'pisada' })];
+      check('políticas: si los miembros no pueden conectar su IA al espacio, su token no lo lee, no lo busca, no lo lista ni escribe ahí', !hidden.some((r) => JSON.stringify(r.v).includes(RSECRET) || /@team/.test(JSON.stringify(r.v)) && !r.err) && await intact(), hidden.map((r) => JSON.stringify(r.v).slice(0, 80)));
+      await call('PUT', '/team/policies', { tokens: true }, N.s);
+
+      // Cobro: solo quien paga.
+      const views = []; for (const who of [Ed, Rd, Ad]) { const a = await acct(who); const raw = JSON.stringify(a); if (a.billing !== false || a.checkout.monthly || a.checkout.yearly || a.team.checkout || a.team.enabled || a.manage || 'billing' in a.team.mine || /sub_roles|pri_prueba/.test(raw)) views.push(who.email); if (who !== Ad && ('seats' in a.team.mine || 'pending' in a.team.mine)) views.push(who.email + ' lugares'); }
+      const seatTry = []; for (const who of [Ed, Rd, Ad, X]) { const r = await call('POST', '/team/seats', { seats: 9 }, who.s); if (r.status !== 403 && r.status !== 404) seatTry.push(who.email + ' ' + r.status); }
+      check('cobro: un miembro no ve enlaces de pago, portal, suscripción ni lugares, y no cambia los lugares aunque administre', views.length === 0 && seatTry.length === 0 && (await acct(N)).team.mine.seats === 6 && !paddleCalls.some((c) => /sub_roles/.test(c.url)), [views, seatTry]);
+      check('cobro: la cuenta nunca recibe el id de la suscripción', !JSON.stringify(await acct(N)).includes('sub_roles'));
+
+      // Registro de actividad.
+      const logTry = []; for (const [who, st] of [[Ed, 403], [Rd, 403], [X, 404], [A, 200]]) { for (const u of ['/team/log', '/team/log?format=csv']) { const r = await call('GET', u, undefined, who.s); if (r.status !== st) logTry.push(who.email + ' ' + r.status); } }
+      const logA = JSON.stringify((await call('GET', '/team/log', undefined, A.s)).json); const logN = (await call('GET', '/team/log', undefined, N.s)).json; const csvN = (await call('GET', '/team/log?format=csv', undefined, N.s)).json.csv;
+      check('registro: solo lo lee quien administra, y el de su equipo, no el de otro', logTry.length === 0 && !logA.includes('nora@') && !logA.includes('lector@') && logN.entries.length > 5 && !JSON.stringify(logN).includes('ana@ejemplo.test') && (await call('GET', '/team/log')).status === 401, logTry);
+      check('registro: no guarda texto de notas ni correos de afuera del equipo, tampoco en la base ni en el CSV', !JSON.stringify(logN).includes(RSECRET) && !csvN.includes(RSECRET) && !JSON.stringify(logN).includes(X.email) && !csvN.includes(X.email) && !csvN.includes('otra@ejemplo.test') && (() => { const d = S.db(); const rows = JSON.stringify(d.prepare('SELECT * FROM team_log').all()); d.close(); return !rows.includes(RSECRET) && !rows.includes('@'); })());
+      const inj = []; for (const qs of ["who=1%20OR%201=1", "action=role'--", 'action[]=role', 'from=1e99', 'to=-1', 'before=abc', 'token=' + enc("x' OR '1'='1"), 'who=' + A.id]) { const r = await call('GET', '/team/log?' + qs, undefined, N.s); if (r.status === 500 || (r.json && r.json.entries && r.json.entries.some((e) => e.who === 'ana@ejemplo.test'))) inj.push(qs + ' ' + r.status); }
+      check('registro: los filtros no se pueden usar para leer otro equipo ni romper la consulta', inj.length === 0, inj);
+      const noWrite = [await call('POST', '/team/log', { action: 'edit' }, N.s), await call('DELETE', '/team/log', undefined, N.s), await call('PUT', '/team/log', {}, N.s)];
+      check('registro: nadie lo edita ni lo borra, ni quien administra', noWrite.every((r) => r.status === 404) && (await call('GET', '/team/log', undefined, N.s)).json.entries.length >= logN.entries.length, noWrite.map((r) => r.status));
+
+      // Tokens del equipo.
+      const ttBy = []; for (const who of [Ed, Rd, X]) { for (const [m, u, b] of [['GET', '/team/tokens'], ['POST', '/team/tokens', { name: 'x', write: true, share: true }], ['DELETE', '/team/tokens/1']]) { const r = await call(m, u, b, who.s); if (r.status !== 403 && r.status !== 404) ttBy.push(who.email + ' ' + m + ' ' + r.status); } }
+      check('token del equipo: solo quien administra los crea, los ve y los revoca', ttBy.length === 0, ttBy);
+      const tt = (await call('POST', '/team/tokens', { name: 'Docs', folder: 'docs', write: true, share: true }, Ad.s)).json; const ttRo = (await call('POST', '/team/tokens', { name: 'Lee', share: true }, N.s)).json; secrets.push(tt.token, ttRo.token);
+      await call('PUT', n('docs/guia.md'), { text: 'guía' }, N.s);
+      const outScope = []; for (const [name, a] of [['read_note', { path: 'secreta.md' }], ['read_note', { path: 'docs/../secreta.md' }], ['read_note', { path: '../secreta.md' }], ['read_note', { path: '@team/secreta.md' }], ['write_note', { path: 'secreta.md', text: 'pisada' }], ['append_note', { path: 'secreta.md', text: 'x' }], ['move_note', { from: 'docs/guia.md', to: 'fuera.md' }], ['move_note', { from: 'secreta.md', to: 'docs/robada.md' }], ['note_history', { path: 'secreta.md' }], ['share_note', { path: 'secreta.md', email: X.email }], ['create_public_link', { path: 'secreta.md' }], ['search_notes', { query: RSECRET }], ['list_notes', {}], ['list_folders', {}]]) { const r = await tool(S, tt.token, name, a); if (JSON.stringify(r.v).includes(RSECRET) || /secreta|otra\.md/.test(JSON.stringify(r.v)) && !r.err || (!r.err && !/^(search_notes|list_notes|list_folders)$/.test(name))) outScope.push(name + ' ' + JSON.stringify(a)); }
+      check('token del equipo: fuera de su carpeta no lee, no escribe, no mueve, no comparte, no busca ni lista', outScope.length === 0 && await (async () => (await call('GET', n('secreta.md'), undefined, N.s)).json.text === 'uno ' + RSECRET)(), outScope);
+      check('token del equipo: adentro de su carpeta sí', JSON.stringify((await tool(S, tt.token, 'read_note', { path: 'docs/guia.md' })).v).includes('guía') && !(await tool(S, tt.token, 'write_note', { path: 'docs/nueva.md', text: 'x' })).err);
+      const roTry = []; for (const [name, a] of [['write_note', { path: 'otra.md', text: 'pisada' }], ['append_note', { path: 'otra.md', text: 'x' }], ['move_note', { from: 'otra.md', to: 'o2.md' }], ['share_note', { path: 'otra.md', email: X.email }], ['create_public_link', { path: 'otra.md' }]]) { const r = await tool(S, ttRo.token, name, a); if (!r.err) roTry.push(name); }
+      check('token del equipo: el de solo lectura no cambia nada, aunque al crearlo se haya pedido compartir', roTry.length === 0 && ttRo.share === false && (await call('GET', n('otra.md'), undefined, N.s)).json.text === 'dos', roTry);
+      const noPerson = []; for (const [name, a] of [['read_note', { path: '~' + N.id + '/x.md' }], ['list_comments', {}]]) { const r = await tool(S, ttRo.token, name, a); if (JSON.stringify(r.v).includes('nora@')) noPerson.push(name); }
+      const asSession = [await call('GET', '/account', undefined, tt.token), await call('GET', '/notes', undefined, tt.token), await call('GET', '/team/log', undefined, tt.token), await call('POST', '/team/tokens', { name: 'otro', write: true }, tt.token), await call('PUT', '/team/policies', { share: true }, tt.token), await call('POST', '/tokens', { name: 'x' }, tt.token)];
+      check('token del equipo: no es una sesión: no administra, no crea tokens ni cambia políticas, y no llega a nada de ninguna persona', asSession.every((r) => r.status === 401) && noPerson.length === 0, asSession.map((r) => r.status));
+      await call('PUT', '/team/policies', { share: false, links: false }, N.s);
+      const ttPol = [await tool(S, tt.token, 'share_note', { path: 'docs/guia.md', email: X.email }), await tool(S, tt.token, 'create_public_link', { path: 'docs/guia.md' })];
+      check('token del equipo: con permiso de compartir igual respeta la política del equipo', ttPol.every((r) => r.err) && (await call('GET', '/shared', undefined, X.s)).json.length === 0, ttPol.map((r) => JSON.stringify(r.v).slice(0, 80)));
+      const cross = await call('DELETE', '/team/tokens/' + tt.id, undefined, A.s);
+      check('token del equipo: quien administra otro equipo no lo revoca', cross.status === 404 && !(await tool(S, tt.token, 'read_note', { path: 'docs/guia.md' })).err);
+      const revoked = await call('DELETE', '/team/tokens/' + tt.id, undefined, N.s);
+      const dead = await call('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'read_note', arguments: { path: 'docs/guia.md' } } }, tt.token);
+      check('token del equipo: revocado, no entra más', revoked.status === 200 && dead.status === 401 && !JSON.stringify(dead.json).includes('guía'), dead.status);
+      check('token del equipo: en la base queda su hash, no el token', (() => { const d = S.db(); const rows = JSON.stringify(d.prepare('SELECT * FROM tokens WHERE team IS NOT NULL').all()); d.close(); return !rows.includes(ttRo.token) && !rows.includes(ttRo.token.slice(4)); })());
+
+      // Ex miembro: por cada vía.
+      const tokEx = (await call('POST', '/tokens', { name: 'IA', folder: '@team', share: true }, Ex.s)).json.token; secrets.push(tokEx);
+      const earEx = await stream('/events?path=secreta.md&o=' + SP, Ex.s); await sleep(120);
+      await call('POST', '/team/remove', { id: Ex.id }, Ad.s); await sleep(150);
+      const exHttp = []; for (const [m, u, b] of [['GET', n('secreta.md')], ['PUT', n('secreta.md'), { text: 'pisada' }], ['DELETE', n('secreta.md')], ['GET', '/search?q=' + RSECRET + '&o=' + SP], ['GET', '/versions/secreta.md' + o], ['GET', '/trash' + o], ['POST', '/rename', { from: 'secreta.md', to: 'r.md', o: SP }], ['GET', '/events?path=secreta.md&o=' + SP], ['GET', '/shares' + o], ['POST', '/shares', { path: 'secreta.md', email: X.email, o: SP }], ['POST', '/links', { path: 'secreta.md', o: SP }], ['GET', '/team/policies'], ['GET', '/team/log'], ['GET', '/team/tokens'], ['PUT', '/team/policies', { share: true }], ['POST', '/team/role', { id: Ex.id, role: 'admin' }]]) { const r = await call(m, u, b, Ex.s); if (r.status !== 403 && r.status !== 404) exHttp.push(m + ' ' + u + ' ' + r.status); if (JSON.stringify(r.json).includes(RSECRET)) exHttp.push('fuga ' + u); }
+      const exList = (await call('GET', '/notes' + o, undefined, Ex.s)).json;
+      const exMcp = await call('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'read_note', arguments: { path: '@team/secreta.md' } } }, tokEx);
+      check('ex miembro: no llega al espacio por ninguna ruta, su conexión abierta se corta y su token deja de entrar', exHttp.length === 0 && Array.isArray(exList) && exList.length === 0 && earEx.done === true && !JSON.stringify(exMcp.json).includes(RSECRET) && (exMcp.status === 402 || (exMcp.json.result && exMcp.json.result.isError)), [exHttp, exList, earEx.done, exMcp.status]);
+      const demoted = await call('POST', '/team/role', { id: Ad.id, role: 'reader' }, N.s);
+      const afterDemote = [await call('PUT', '/team/policies', { share: true }, Ad.s), await call('GET', '/team/log', undefined, Ad.s), await call('POST', '/team/tokens', { name: 'x', write: true }, Ad.s), await call('POST', '/team/invite', { email: 'z@ejemplo.test' }, Ad.s), await call('PUT', n('secreta.md'), { text: 'pisada' }, Ad.s)];
+      check('papeles: quien deja de administrar pierde la administración y la escritura en el mismo pedido siguiente', demoted.status === 200 && afterDemote.every((r) => r.status === 403) && await (async () => (await call('GET', n('secreta.md'), undefined, N.s)).json.text === 'uno ' + RSECRET)(), afterDemote.map((r) => r.status));
+      // Tope de cambios de administración.
+      let capped = 0; for (let i = 0; i < 130 && !capped; i++) { const r = await call('PUT', '/team/policies', { automation: i % 2 === 0 }, N.s); if (r.status === 429) capped = i; }
+      check('tope: los cambios de administración de un equipo tienen límite por hora', capped > 0 && capped <= 120, capped);
     }
 
     const logged = secrets.filter((x) => x && S.log().includes(x));
@@ -1414,12 +1620,15 @@ async function automationSuite() {
   try {
     const { call } = T;
     const A = await signup(T, 'ana.duenia+equipo@ejemplo.test'); const M = await signup(T, 'marcos.perez@ejemplo.test');
-    await call('POST', '/admin/team', { email: A.email, seats: 3 }, undefined, { 'x-admin-key': ADMIN });
+    await call('POST', '/admin/team', { email: A.email, seats: 4 }, undefined, { 'x-admin-key': ADMIN });
     await call('POST', '/team/invite', { email: M.email }, A.s);
     const inv = (await call('GET', '/account', undefined, M.s)).json.team.invites[0]; await call('POST', '/team/accept', { id: inv.id }, M.s);
     const space = (await call('GET', '/account', undefined, A.s)).json.team.mine.space;
-    const member = [await call('POST', '/automations/hooks', { o: space, url: SINK + '/t', events: ['note.created'] }, M.s), await call('GET', '/automations?o=' + space, undefined, M.s), await call('POST', '/automations/inboxes', { o: space, kind: 'append', path: 'x.md' }, M.s)];
-    check('equipo: las automatizaciones del espacio las maneja solo quien administra', member.every((r) => r.status === 403 && r.json.error === 'team_admin_only'), member.map((r) => r.status));
+    const R = await signup(T, 'rita.lectora@ejemplo.test'); await call('POST', '/team/invite', { email: R.email }, A.s);
+    await call('POST', '/team/accept', { id: (await call('GET', '/account', undefined, R.s)).json.team.invites[0].id }, R.s); await call('POST', '/team/role', { id: R.id, role: 'reader' }, A.s);
+    const tryAuto = async (who) => [await call('POST', '/automations/hooks', { o: space, url: SINK + '/t', events: ['note.created'] }, who.s), await call('GET', '/automations?o=' + space, undefined, who.s), await call('POST', '/automations/inboxes', { o: space, kind: 'append', path: 'x.md' }, who.s)];
+    const member = await tryAuto(M); const reader = await tryAuto(R);
+    check('equipo: con la política de automatizaciones apagada (así nace), un miembro no las crea ni las ve sobre el espacio', member.every((r) => r.status === 403 && r.json.error === 'team_policy') && reader.every((r) => r.status === 403), member.map((r) => r.status + ' ' + r.json.error));
     const mine = (await call('POST', '/automations/hooks', { url: SINK + '/own', events: ['note.created', 'note.updated', 'card.moved'], include_text: true }, A.s)).json;
     const team = (await call('POST', '/automations/hooks', { o: space, url: SINK + '/team', events: ['note.created', 'card.moved', 'note.deleted'], scope: { kind: 'folder', path: 'ventas' } }, A.s)).json;
     got.length = 0;
@@ -1429,9 +1638,9 @@ async function automationSuite() {
     await call('PUT', '/notes/' + enc('propia.md'), { text: '# Propia\n\nCuerpo propio.\n' }, A.s);
     const mv = await until(() => got.find((g) => g.url === '/team' && g.json.type === 'card.moved')); await until(() => got.find((g) => g.url === '/own')); await sleep(300);
     const teamGot = got.filter((g) => g.url === '/team'); const ownGot = got.filter((g) => g.url === '/own');
-    check('equipo: lo que hace un miembro en el espacio sale con su nombre visible, sin su correo', !!mv && mv.json.actor.type === 'member' && mv.json.actor.name === 'marcos.perez' && mv.json.note.path === '@team/ventas/tablero.md' && mv.json.note.space === 'team' && /~\d+%2Fventas/.test(mv.json.note.url), mv && mv.json);
+    check('equipo: lo que hace un miembro en el espacio sale con un id opaco y su papel, sin nombre ni correo', !!mv && mv.json.actor.type === 'member' && /^mem_[0-9a-f]{16}$/.test(mv.json.actor.id) && mv.json.actor.role === 'editor' && !('name' in mv.json.actor) && mv.json.actor.via === 'app' && mv.json.note.path === '@team/ventas/tablero.md' && mv.json.note.space === 'team' && /~\d+%2Fventas/.test(mv.json.note.url), mv && mv.json);
     const everything = got.filter((g) => g.url !== '/mail').map((g) => g.raw + J(g.headers)).join('\n');
-    check('ninguna carga ni cabecera lleva un correo, el número interno de la cuenta, la sesión ni un token', !/@ejemplo\.test|ejemplo\.test|ana\.duenia/.test(everything) && !everything.includes(A.s) && !everything.includes(M.s) && !/"account":\s*\d/.test(everything) && got.filter((g) => g.url !== '/mail').every((g) => /^acc_[0-9a-f]{20}$/.test(g.json.account) && !g.headers.authorization && !g.headers.cookie && !g.headers['x-forwarded-for']), everything.slice(0, 400));
+    check('ninguna carga ni cabecera lleva un correo, el número interno de la cuenta, la sesión ni un token', !/@ejemplo\.test|ejemplo\.test|ana\.duenia|marcos|perez|rita/.test(everything) && !everything.includes(A.s) && !everything.includes(M.s) && !/"account":\s*\d/.test(everything) && got.filter((g) => g.url !== '/mail').every((g) => /^acc_[0-9a-f]{20}$/.test(g.json.account) && !g.headers.authorization && !g.headers.cookie && !g.headers['x-forwarded-for']), everything.slice(0, 400));
     check('cada cuenta tiene su id opaco, y el del espacio del equipo es otro', new Set(teamGot.map((g) => g.json.account)).size === 1 && new Set(ownGot.map((g) => g.json.account)).size === 1 && teamGot[0].json.account !== ownGot[0].json.account);
     check('el ámbito se respeta: lo de afuera de la carpeta no sale, y lo propio no va al webhook del equipo', teamGot.every((g) => g.json.note.path.startsWith('@team/ventas/')) && ownGot.every((g) => g.json.note.path === 'propia.md') && ownGot.length >= 1, [teamGot.map((g) => g.json.note.path), ownGot.map((g) => g.json.note.path)]);
     const g0 = ownGot[0];
@@ -1440,10 +1649,69 @@ async function automationSuite() {
     check('firma: HMAC-SHA-256 del cuerpo con el secreto de ese webhook y la marca de tiempo', sigOf(g0, mine.secret) && !sigOf(g0, team.secret) && !sigOf(g0, 'whsec_x') && !sigOf(Object.assign({}, g0, { raw: g0.raw.replace('propia', 'Propia') }), mine.secret) && sigOf(teamGot[0], team.secret));
     check('repetición: la marca de tiempo es de ahora y está dentro de lo firmado (cambiarla rompe la firma)', Math.abs(Date.now() / 1000 - tOf(g0)) < 30 && !sigOf(g0, mine.secret, String(tOf(g0) + 600)) && /^evt_/.test(g0.headers['x-sharpmd-delivery']));
     check('el contenido viaja solo donde se pidió', ownGot.some((g) => g.json.data.text === '# Propia\n\nCuerpo propio.\n') && teamGot.every((g) => g.json.data.text === undefined));
+    // --- Lo nuevo del equipo: papeles, políticas, registro de actividad, tokens del equipo y espacio protegido ---
+    const logOf = async () => (await call('GET', '/team/log', undefined, A.s)).json.entries;
+    const teamNote = async (p) => (await call('GET', '/notes/' + enc(p) + '?o=' + space, undefined, A.s)).json;
+    await call('PUT', '/team/policies', { automation: true }, A.s);
+    const mIn = await call('POST', '/automations/inboxes', { o: space, name: 'Formulario', kind: 'append', path: 'ventas/buzon.md' }, M.s);
+    const mHook = await call('POST', '/automations/hooks', { o: space, url: SINK + '/mh', events: ['note.created'], scope: { kind: 'folder', path: 'ventas' } }, M.s);
+    const rStill = await tryAuto(R);
+    check('equipo: con la política prendida un editor crea automatizaciones sobre el espacio; un lector sigue sin poder', mIn.status === 200 && mHook.status === 200 && rStill.every((r) => r.status === 403), [mIn.status, mHook.status, rStill.map((r) => r.status)]);
+    const inOk = await fetch(mIn.json.url, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: 'pedido 1' });
+    await until(() => got.find((g) => g.url === '/mh'));
+    let log = await logOf();
+    check('equipo: lo que entra por una dirección de entrada queda en el registro, con el nombre de la entrada', inOk.status === 200 && (await teamNote('ventas/buzon.md')).text === 'pedido 1\n' && log.some((e) => e.action === 'create' && e.path === 'ventas/buzon.md' && e.token === 'Inbound: Formulario') && log.filter((e) => e.action === 'automation').length >= 3 && !JSON.stringify(log).includes('pedido 1'), log.slice(0, 4));
+    // El papel manda sobre lo ya creado: con quien la creó pasado a lector, su entrada no escribe y su webhook no sale.
+    await call('POST', '/team/role', { id: M.id, role: 'reader' }, A.s);
+    const before = got.filter((g) => g.url === '/mh').length;
+    const inRo = await fetch(mIn.json.url, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: 'pedido 2' });
+    await call('PUT', '/notes/' + enc('ventas/otra.md') + '?o=' + space, { text: '# Otra\n' }, A.s); await sleep(500);
+    check('equipo: un lector no escribe por ninguna vía: su entrada deja de escribir y su webhook deja de salir', inRo.status === 403 && (await teamNote('ventas/buzon.md')).text === 'pedido 1\n' && got.filter((g) => g.url === '/mh').length === before && got.some((g) => g.url === '/team' && g.json.note.path === '@team/ventas/otra.md'), [inRo.status, before]);
+    const tokR = (await call('POST', '/tokens', { name: 'IA de Rita' }, R.s)).json.token; secrets.push(tokR);
+    const ro = [await call('PUT', '/api/v1/note', { path: '@team/ventas/de-rita.md', text: 'x' }, tokR), await call('POST', '/api/v1/note/append', { path: '@team/ventas/tablero.md', text: 'x' }, tokR), await call('DELETE', '/api/v1/note?path=' + enc('@team/ventas/tablero.md'), undefined, tokR),
+      await call('POST', '/api/v1/note/move', { from: '@team/ventas/tablero.md', to: '@team/ventas/t2.md' }, tokR), await call('POST', '/api/v1/boards/cards', { path: '@team/ventas/tablero.md', title: 'x' }, tokR), await call('POST', '/api/v1/boards/cards/aaaaaaaa/move', { path: '@team/ventas/tablero.md', column: 'A' }, tokR),
+      await call('POST', '/api/v1/boards/cards/aaaaaaaa/done', { path: '@team/ventas/tablero.md' }, tokR), await call('DELETE', '/api/v1/boards/cards/aaaaaaaa?path=' + enc('@team/ventas/tablero.md'), undefined, tokR)];
+    const roRead = await call('GET', '/api/v1/boards?path=' + enc('@team/ventas/tablero.md'), undefined, tokR);
+    check('API: con el token de un lector se lee el espacio del equipo, y nada lo cambia (notas ni tableros)', ro.every((r) => r.status === 403 && r.json.error.code === 'read_only') && roRead.status === 200 && roRead.json.data.boards[0].columns[1].cards[0].id === 'aaaaaaaa' && (await teamNote('ventas/tablero.md')).text.includes('## B\n- [ ] Uno {id=aaaaaaaa}'), ro.map((r) => r.status + ' ' + (r.json.error && r.json.error.code)));
+    await call('PUT', '/team/policies', { tokens: false }, A.s);
+    await call('POST', '/team/role', { id: M.id, role: 'editor' }, A.s); const tokM = (await call('POST', '/tokens', { name: 'IA de Marcos' }, M.s)).json.token; secrets.push(tokM);
+    const barredApi = [await call('GET', '/api/v1/note?path=' + enc('@team/ventas/tablero.md'), undefined, tokM), await call('POST', '/api/v1/boards/cards', { path: '@team/ventas/tablero.md', title: 'x' }, tokM)];
+    check('API: si el equipo no deja que la IA de los miembros entre al espacio, su token tampoco entra por la API', barredApi.every((r) => r.status === 403 && r.json.error.code === 'team_policy') && !JSON.stringify((await call('GET', '/api/v1/notes', undefined, tokM)).json.data).includes('@team'), barredApi.map((r) => r.status));
+    await call('PUT', '/team/policies', { tokens: true }, A.s);
+    // Tokens del equipo: sirven en la API como los personales, con el espacio como raíz.
+    const tt = (await call('POST', '/team/tokens', { name: 'Flujo de ventas', write: true }, A.s)).json; const ttRo = (await call('POST', '/team/tokens', { name: 'Tablero en la tele', folder: 'ventas' }, A.s)).json; secrets.push(tt.token, ttRo.token);
+    const ttList = await call('GET', '/api/v1/notes', undefined, tt.token); const ttMe = await call('GET', '/api/v1/me', undefined, tt.token);
+    got.length = 0;
+    const ttMove = await call('POST', '/api/v1/boards/cards/aaaaaaaa/move', { path: 'ventas/tablero.md', column: 'A' }, tt.token);
+    const viaTt = await until(() => got.find((g) => g.url === '/team' && g.json.type === 'card.moved'));
+    log = await logOf();
+    check('API: un token del equipo ve el espacio como raíz, mueve una tarjeta, y eso dispara el evento y queda en el registro con su nombre', ttList.status === 200 && ttList.json.data.some((n) => n.path === 'ventas/tablero.md') && !JSON.stringify(ttList.json).includes('@team') && ttMe.json.data.team_token === true && ttMove.status === 200 && ttMove.json.data.card.column === 'A' && /~\d+%2Fventas%2Ftablero\.md$/.test(ttMove.json.data.url)
+      && !!viaTt && viaTt.json.actor.type === 'api' && viaTt.json.data.to === 'A' && log.some((e) => e.via === 'team' && e.token === 'Flujo de ventas' && e.action === 'edit' && e.path === 'ventas/tablero.md'), [ttList.json, ttMove.json, viaTt && viaTt.json.actor, log.slice(0, 3)]);
+    const ttNo = [await call('PUT', '/api/v1/note', { path: 'ventas/nueva.md', text: 'x' }, ttRo.token), await call('POST', '/api/v1/boards/cards', { path: 'ventas/tablero.md', title: 'x' }, ttRo.token), await call('GET', '/api/v1/note?path=' + enc('otra/afuera.md'), undefined, ttRo.token), await call('POST', '/api/v1/links', { path: 'ventas/tablero.md' }, tt.token), await call('GET', '/automations?o=' + space, undefined, tt.token)];
+    check('API: un token del equipo de solo lectura no escribe, uno limitado a una carpeta no sale de ella, y ninguno comparte sin ese permiso ni maneja automatizaciones', ttNo[0].status === 403 && ttNo[0].json.error.code === 'read_only' && ttNo[1].status === 403 && ttNo[2].status === 403 && ttNo[2].json.error.code === 'out_of_scope' && ttNo[3].status === 403 && ttNo[4].status === 401 && (await call('GET', '/api/v1/boards?path=' + enc('ventas/tablero.md'), undefined, ttRo.token)).status === 200, ttNo.map((r) => r.status));
+    // Un espacio protegido con contraseña: ningún evento, ninguna entrada, ninguna escritura en claro.
+    const V = await signup(T, 'vera@ejemplo.test'); await call('POST', '/admin/team', { email: V.email, seats: 2 }, undefined, { 'x-admin-key': ADMIN });
+    const vs = (await call('GET', '/account', undefined, V.s)).json.team.mine.space;
+    await call('PUT', '/notes/' + enc('plan.md') + '?o=' + vs, { text: '# Plan\n' }, V.s);
+    const vHook = (await call('POST', '/automations/hooks', { o: vs, url: SINK + '/vault', events: ['note.created', 'note.updated', 'note.deleted', 'note.moved', 'card.created'] }, V.s)).json;
+    const vIn = (await call('POST', '/automations/inboxes', { o: vs, kind: 'append', path: 'plan.md' }, V.s)).json; const vIn2 = (await call('POST', '/automations/inboxes', { o: vs, kind: 'create', path: '' }, V.s)).json;
+    const vTok = (await call('POST', '/team/tokens', { name: 'Flujo', write: true }, V.s)).json.token; secrets.push(vTok);
+    const vb2 = (n) => Buffer.alloc(n, 5).toString('base64');
+    const prot = await call('POST', '/team/vault', { salt: vb2(16), iters: 200000, wrapped: vb2(60), check: vb2(32) }, V.s);
+    got.length = 0;
+    const shut = [await call('POST', '/automations/hooks', { o: vs, url: SINK + '/vault2', events: ['note.created'] }, V.s), await call('POST', '/automations/hooks', { o: vs, url: SINK + '/vault2', events: ['note.created'], scope: { kind: 'note', path: 'plan.md' } }, V.s), await call('POST', '/automations/inboxes', { o: vs, kind: 'append', path: 'plan.md' }, V.s), await call('POST', '/automations/inboxes', { o: vs, kind: 'create', path: '' }, V.s), await call('POST', '/automations/inboxes', { o: vs, kind: 'card', path: 'tablero.md' }, V.s)];
+    const clear = [(await fetch(vIn.url, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: 'en claro' })).status, (await fetch(vIn2.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Nueva', text: 'en claro' }) })).status,
+      (await call('PUT', '/api/v1/note', { path: 'plan.md', text: 'en claro' }, vTok)).status, (await call('POST', '/api/v1/note/append', { path: 'plan.md', text: 'en claro' }, vTok)).status, (await call('GET', '/api/v1/note?path=plan.md', undefined, vTok)).status, (await call('POST', '/api/v1/boards/cards', { path: 'plan.md', title: 'x' }, vTok)).status,
+      (await call('PUT', '/notes/' + enc('otra.md') + '?o=' + vs, { text: 'en claro' }, V.s)).status];
+    await call('DELETE', '/notes/' + enc('plan.md') + '?o=' + vs, undefined, V.s); await sleep(500);
+    const vNotes = (await call('GET', '/notes?o=' + vs, undefined, V.s)).json;
+    check('espacio del equipo protegido: no se le pueden crear automatizaciones ni entradas', prot.status === 200 && shut.every((r) => r.status === 409 && r.json.error === 'vault'), [prot.status, shut.map((r) => r.status + ' ' + r.json.error)]);
+    check('espacio del equipo protegido: ninguna entrada ni la API escriben en claro, y un token del equipo no lo lee', clear[0] === 409 && clear[1] === 409 && clear[2] === 423 && clear[3] === 423 && clear[4] === 423 && clear[5] === 423 && clear[6] === 409 && !vNotes.some((n) => n.path === 'Nueva.md' || n.path === 'otra.md'), [clear, vNotes]);
+    check('espacio del equipo protegido: ningún evento sale, ni con la ruta', got.filter((g) => g.url === '/vault' || g.url === '/vault2').length === 0 && !!vHook.hook, got.filter((g) => g.url.startsWith('/vault')).map((g) => g.json.type));
     // Un miembro que sale deja de poder tocar nada, y borrar la cuenta se lleva sus automatizaciones.
     const inb = (await call('POST', '/automations/inboxes', { kind: 'append', path: 'buzon.md' }, A.s)).json;
     await call('DELETE', '/automations/hooks/' + team.hook.id + '?o=' + space, undefined, A.s);
-    await call('POST', '/team/remove', { id: M.id }, A.s); await call('POST', '/admin/team', { email: A.email, seats: 0 }, undefined, { 'x-admin-key': ADMIN });
+    await call('POST', '/team/remove', { id: M.id }, A.s); await call('POST', '/team/remove', { id: R.id }, A.s); await call('POST', '/admin/team', { email: A.email, seats: 0 }, undefined, { 'x-admin-key': ADMIN });
     const del = await call('DELETE', '/account', { email: A.email }, A.s, from(nextIp()));
     const gone = await fetch(inb.url, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: 'x' });
     const left = (() => { const db = T.db(); const n = { hooks: db.prepare('SELECT COUNT(*) AS n FROM hooks WHERE user = ?').get(A.id).n, inboxes: db.prepare('SELECT COUNT(*) AS n FROM inboxes WHERE user = ?').get(A.id).n, jobs: db.prepare('SELECT COUNT(*) AS n FROM hook_jobs WHERE hook = ?').get(mine.hook.id).n }; db.close(); return n; })();

@@ -67,7 +67,7 @@ curl -X POST https://sync.example.com/admin/plan -H "x-admin-key: $ADMIN_KEY" \
 
 ## What it stores
 
-Email, notes, their previous versions (paid plan, 30 days), deleted notes while they are in the trash (30 days), and hashes of sign-in codes, sessions and tokens. Sessions and tokens are stored hashed: the server cannot show a token again after creating it. Of a live session it stores the note, the name its owner chose and the hash of the link's secret; the guests live in memory only (see "Live sessions"). Of a team it stores its name, the accounts that belong to it, the invitations that are waiting (the invited email address, until it is accepted, declined or removed) and the id of the subscription that pays for it (see "Teams").
+Email, notes, their previous versions (paid plan, 30 days), deleted notes while they are in the trash (30 days), and hashes of sign-in codes, sessions and tokens. Sessions and tokens are stored hashed: the server cannot show a token again after creating it. Of a live session it stores the note, the name its owner chose and the hash of the link's secret; the guests live in memory only (see "Live sessions"). Of a team it stores its name, the accounts that belong to it, the invitations that are waiting (the invited email address, until it is accepted, declined or removed) the id of the subscription that pays for it, the role of each member, the policies its administrators set and, for 90 days, an activity log of its shared space: who did what and when, with the path of the note, never its text (see "Teams").
 
 Of a contribution to the community gallery it stores the type, the name, the description, the language, the public name its sender chose, the content, the account that sent it, its state and how many times it was added (a number, not who). See "Community gallery".
 
@@ -146,7 +146,7 @@ Sign-in is a six-digit code sent by mail, no passwords.
 |---|---|
 | `POST /auth/start` `{ email, lang }` | Sends the code, in English or with `lang: "es"` in Spanish. A limit answers `429` with its own code (`code_gap`, `code_mail_hour`, `code_mail_day`, `code_ip_hour`), `retry_after` in the body and a `Retry-After` header, both in seconds |
 | `POST /auth/verify` `{ email, code }` | Returns `{ session, account }`. Limits: `tries_mail_hour`, `tries_mail_day`, `tries_ip_hour`, with the wait, and `tries_code` when that code is used up and a new one is needed |
-| `GET /account` | Plan, note count and limit. `plan` is what the account has now; `own_plan` what it pays for by itself (a member of a team can have `plan: "pro"` and `own_plan: "free"`); `team` is described in "Teams" |
+| `GET /account` | Plan, note count and limit. `plan` is what the account has now; `own_plan` what it pays for by itself (a member of a team can have `plan: "pro"` and `own_plan: "free"`); `billing` is `false` when the plan comes from a team someone else pays, and then no payment link is sent; `team` is described in "Teams" |
 | `GET /notes` | List |
 | `GET` / `PUT` / `DELETE /notes/{path}` | Read (`{ text, rev, updated, role }`), write `{ text, rev? }`, delete. Deleting moves the note to the trash; `?forever=1` skips it. See "Revisions" and "Trash" below |
 | `DELETE /account` `{ email }` | Deletes the account of the session. See "Deleting an account" below |
@@ -188,7 +188,7 @@ Sharing from an AI is a way out for the notes if the AI is fed instructions by s
 | `create_public_link` `{ path, password? }` | Creates a read-only public link and returns its URL, once |
 | `revoke_public_link` `{ id }` or `{ path }` | Revokes one link, or every link to a note |
 
-Without the permission these tools are not in `tools/list` and calling them fails. With it, they go through the same code as `POST /shares` and `POST /links`, so the same rules and limits apply. They stay inside the folder of the token, and they do not reach folders protected with a password or the team space.
+Without the permission these tools are not in `tools/list` and calling them fails. With it, they go through the same code as `POST /shares` and `POST /links`, so the same rules and limits apply. They stay inside the folder of the token, and they do not reach folders protected with a password. On team notes they work only when the policies of the team allow it (see "Teams").
 
 ### Trash
 
@@ -309,24 +309,98 @@ The connection limits of `/events` apply to `/live/events` too: 60 open connecti
 
 ### Teams
 
-One account pays for a team and manages it. It is the only one that invites, removes people and changes the number of seats, and it takes one of the seats. Everyone else joins with their usual account by accepting an invitation sent to the email they sign in with. Nobody is added without accepting. While the team is paid, every member has the paid plan. A person is in one team at a time.
+One account pays for a team. It is an administrator of the team, always, and it takes one of the seats. Everyone else joins with their usual account by accepting an invitation sent to the email they sign in with. Nobody is added without accepting. While the team is paid, every member has the paid plan. A person is in one team at a time.
+
+Roles. Every member has one of three roles, chosen when inviting and changed later:
+
+| Role | What it does |
+|---|---|
+| `admin` | Invites and removes people, changes roles, sets the team policies, creates team tokens and reads the activity log. The account that pays is an administrator and nobody can change its role or remove it. It can name other administrators: they manage people and settings, not the billing |
+| `editor` | Reads and writes in the team space |
+| `reader` | Reads the team space. Every route that changes something there answers `403 read_only` |
+
+All three take a seat, the reader too. Members that existed before roles are editors.
+
+Three levels of settings. Personal settings (appearance, fonts, language, tools, reading and editing preferences) live in each person's browser: the server never sees them and no administrator can set them. Team settings are the policies below: an administrator decides them, they apply to the team space, and the server checks them on every request. Billing is only for the account that pays: `GET /account` carries `billing: false` for a member of a paid team that someone else pays, with empty `checkout` links, `team.enabled: false`, an empty `team.checkout` and no `seats`, `used` or `billing` in `team.mine`. The app shows that member their team and their role, and nothing about plans or prices.
 
 | Call | What it does |
 |---|---|
-| `GET /team` | The same `team` object that `GET /account` carries: `{ enabled, checkout, included, max, mine, invites }`. `mine` is `null` or `{ id, name, role, active, space, seats, used, members, solo }`, plus `pending` and `billing` for the administrator. `invites` are the invitations waiting for this account: `{ id, name, by }` |
+| `GET /team` | The same `team` object that `GET /account` carries: `{ enabled, checkout, included, max, mine, invites }`. `mine` is `null` or `{ id, name, role, owner, active, space, members, solo, vault, policies, can, history_days, history_max, history_choices }`. `role` is `admin`, `editor` or `reader`; `owner` is `true` for the account that pays; `members` are `{ id, email, role, admin, owner }`; `can` says what this account may do in the space (`write`, `share`, `links`, `live`, `tokens`, `automation`). Administrators also get `seats`, `used`, `pending` (each with its `role`) and `log_days`, and the account that pays gets `billing`. `vault` is `null`, or the protection of the team space as `GET /team/vault` returns it. `invites` are the invitations waiting for this account: `{ id, name, by }` |
 | `PUT /team` `{ name }` | Administrator: the name of the team, up to 40 characters |
-| `POST /team/invite` `{ email, lang }` | Administrator: invites that address and mails it, in English or with `lang: "es"` in Spanish. `409 team_full` when members plus pending invitations fill the seats, `409 already_member`, `400 own_email`. Limits: `429 invite_day` (per team and day, `TEAM_INVITES_DAY`) and `429 invite_mail_day` (three a day per address, across all teams). The answer and the email are the same whether or not that address has an account |
+| `POST /team/invite` `{ email, role, lang }` | Administrator: invites that address and mails it, in English or with `lang: "es"` in Spanish. `role` is `admin`, `editor` (the default) or `reader`: `400 bad_role` for anything else. Inviting an address again changes the role of its invitation. `409 team_full` when members plus pending invitations fill the seats, `409 already_member`, `400 own_email`. Limits: `429 invite_day` (per team and day, `TEAM_INVITES_DAY`) and `429 invite_mail_day` (three a day per address, across all teams). The answer and the email are the same whether or not that address has an account |
 | `DELETE /team/invites/{id}` | Administrator: removes a pending invitation |
 | `POST /team/accept` `{ id }`, `POST /team/decline` `{ id }` | The invited account answers. Only the account whose email was invited can accept. `409 in_team` if it already belongs to a team |
-| `POST /team/remove` `{ id }` | Administrator: removes a member (`id` as in `members`) |
-| `POST /team/leave` | A member leaves. The administrator cannot: `409 owner_stays` |
-| `POST /team/seats` `{ seats }` | Administrator: changes the subscription in Paddle and then the seats. `409 seats_in_use` below the seats in use, `400 bad_seats`, `502 billing_failed` if Paddle refuses, `409 no_billing` for a team made by hand |
+| `POST /team/remove` `{ id }` | Administrator: removes a member (`id` as in `members`). `409 owner_stays` for the account that pays |
+| `POST /team/role` `{ id, role }` | Administrator: changes the role of a member. `400 bad_role`, `404 not_found` for an account outside the team, `409 owner_stays` for the account that pays. The open connections of that member to team notes are closed, so they come back with the new role |
+| `POST /team/leave` | A member leaves. The account that pays cannot: `409 owner_stays` |
+| `GET /team/policies` | Any member: `{ policies, can, history_days, history_max }` |
+| `PUT /team/policies` `{ share, links, live, tokens, automation, history_days, folder, template }` | Administrator: changes the policies sent, see below. `400 bad_policy` |
+| `GET /team/log` | Administrator: the activity log, see below |
+| `GET /team/tokens`, `POST /team/tokens` `{ name, folder, write, share }`, `DELETE /team/tokens/{id}` | Administrator: team tokens, see below |
+| `POST /team/seats` `{ seats }` | The account that pays (`403 not_owner` for another administrator): changes the subscription in Paddle and then the seats. `409 seats_in_use` below the seats in use, `400 bad_seats`, `502 billing_failed` if Paddle refuses, `409 no_billing` for a team made by hand |
 
-The team space. The notes of a team belong to the team, not to a person: they stay when someone leaves. They are stored under an internal account of the team (its email is `team:...`, which is not an address: nobody can sign in as it or share with it), so they get revisions, history, events and encryption at rest exactly like any other note. `mine.space` is the number of that account, and a member reaches the team notes with `o=`: `GET /notes?o=`, `GET` / `PUT` / `DELETE /notes/{path}?o=`, `GET /events?path=&o=`, `GET /search?q=&o=`, `GET /versions/{path}?o=`, `GET /version/{id}?o=`, and `POST /rename` with `o` in the body. Every member reads, edits, moves and deletes. Anyone else gets `403 no_access`. A member cannot read anything personal of another member.
+The team space. The notes of a team belong to the team, not to a person: they stay when someone leaves. They are stored under an internal account of the team (its email is `team:...`, which is not an address: nobody can sign in as it or share with it), so they get revisions, history, events and encryption at rest exactly like any other note. `mine.space` is the number of that account, and a member reaches the team notes with `o=`: `GET /notes?o=`, `GET` / `PUT` / `DELETE /notes/{path}?o=`, `GET /events?path=&o=`, `GET /search?q=&o=`, `GET /versions/{path}?o=`, `GET /version/{id}?o=`, and `POST /rename` with `o` in the body. Administrators and editors read, edit, move and delete. A reader reads: `GET /notes/{path}?o=` answers with `role: "view"`, `GET /events`, `GET /search`, the versions and the list of the trash work, and `PUT`, `DELETE`, `POST /rename`, restoring from the trash, deleting from it and emptying it answer `403 read_only`. Anyone else gets `403 no_access`. A member cannot read anything personal of another member.
 
-What the team space does not have in this version: folders protected with a password (text that starts with `vault1:` is refused there with `409 vault_text`), sharing with accounts outside the team, public links, comments for the AI and live sessions. Those routes work on the caller's own notes.
+Team policies. What an administrator decides for the space, stored with the team and checked by one function, `teamAllows(team, user, what)`, on every route. Administrators are always allowed. A reader is only ever allowed `tokens`.
 
-MCP. The token of a member reaches the team notes under the prefix `@team/`: `list_notes` and `list_folders` show them with `team: true`, and `read_note`, `write_note`, `append_note` and `search_notes` work on them. The folder limit of a token is checked on the whole path, prefix included: a token limited to one of the person's own folders does not see the team, and a token limited to `@team` or `@team/some/folder` sees only that. While someone belongs to a team, a personal folder literally named `@team` is hidden from their MCP tools. `move_note` and `note_history` work on team notes; a note cannot be moved between the team space and personal notes. The sharing tools do not work on team notes.
+| Policy | Default | What it decides for members who are not administrators |
+|---|---|---|
+| `share` | off | Sharing a team note or folder with an account outside the team: `POST /shares` with `o` in the body, `GET /shares?o=`, `DELETE /shares/{id}?o=` and the MCP tools `share_note` and `unshare_note` on `@team/` paths |
+| `links` | off | Public links to team notes: `POST /links` with `o`, `DELETE /links/{id}?o=`, and `create_public_link` and `revoke_public_link` |
+| `tokens` | on | Whether the AI of a member reaches the team space. Off, the tokens of members stop seeing `@team/` at once, and a path there answers with a message for the AI |
+| `automation` | off | Using automations on the team space. Whatever runs an automation asks `teamAllows(team, user, 'automation')` first |
+| `live` | off | Opening a live session with guests on a team note. The team space has no live sessions yet: the policy is stored and answered by `teamAllows`, and nothing reads it today |
+| `history_days` | `0` | How long the version history of the space is kept: `30`, `90`, `180` or `365`, never more than `TEAM_HISTORY_DAYS`. `0` is the longest the server allows. Shortening it deletes the older versions right away |
+| `folder` | empty | The folder where the app puts a note created at the top of the team space |
+| `template` | empty | The text a new team note starts with, up to 20,000 characters. It is stored on the server, encrypted at rest with `DATA_KEY` like a note, and readable by the server: a protected space has no template (`409 vault`), and protecting a space clears it |
+
+What goes out of the team. With `share` or `links` allowed, a team note is shared or linked exactly like a personal one, with `o` naming the space. The account it is shared with sees the name of the team as the sender, never the internal account. A team note cannot be shared with someone who is already in the team (`409 already_member`), and the whole space cannot be shared. A protected space has no sharing and no links. Who a team note is shared with is visible to administrators and editors. Refusals are `403 team_policy`, or `403 read_only` for a reader.
+
+The activity log. For administrators: who did what in the team space and when. Each entry is `{ id, at, who, uid, via, token, action, path, about, detail }`. `via` is empty from the app, `ai` with the token of a person and `team` with a team token, and `token` is the name of that token. Actions: `create`, `edit`, `move`, `delete`, `restore`, `purge`, `empty_trash`, `share`, `unshare`, `link`, `unlink`, `invite`, `uninvite`, `join`, `leave`, `remove`, `role`, `policy`, `team_name`, `protect`, `password`, `rotate`, `rotate_done`, `unprotect`, `destroy`, `ai`, `ai_unlock`, `token_create`, `token_revoke`.
+
+- It never stores the text of a note. It stores the path, the action, the account and the time. `detail` holds a role, the name of a policy with its new value, the new path of a move or the name of a token.
+- It stores no email address. Of the person who acted it stores the account number, and the address is looked up when the log is read: an account that was deleted shows empty. The address a note was shared with and the address that was invited are not written.
+- Several saves of one note by the same account within ten minutes are one `edit` entry. An AI reaching the space is one `ai` entry per token and hour.
+- With a protected space, the paths of the notes are in the log as they are everywhere else: names are not encrypted.
+- `GET /team/log` takes `who` (account number), `token` (name), `action`, `from` and `to` (milliseconds) and `before` (an entry id, to continue): `{ entries, more, days }`, 100 entries a page, newest first. With `format=csv` it answers `{ csv, days }` with up to 5,000 rows and the same filters; cells that start like a formula are neutralised.
+- Entries older than `TEAM_LOG_DAYS` (90) are not returned and are deleted. Nobody can edit or delete entries. The log is deleted with the team.
+
+Team tokens. A token that belongs to the team, not to a person: for an AI or a service that works for the team. An administrator creates it with a name, an optional folder, and the permissions to write and to share (reading is always there; sharing needs writing). It is shown once and stored hashed. It keeps working when the person who created it leaves. `POST /mcp` with it works on the team space as its root, with plain paths and no `@team/` prefix, and reaches nothing of any person. It is not a session: every other route answers `401`. It respects the policies as an editor or a reader would (`share` and `links`), and it cannot open a protected space, because the key of a protected space is unlocked per person. In the activity log its entries carry its name. At most 30 per team. When the subscription of the team ends it answers `402` until the team is paid again.
+
+History. In the team space the version history is kept for `TEAM_HISTORY_DAYS` (365), or less if the `history_days` policy says so. Personal notes keep 30 days. `GET /versions/{path}?o=` returns up to 500 versions.
+
+What the team space does not have in this version: comments for the AI and live sessions. Those routes work on the caller's own notes. A member cannot protect a folder inside the team space: `/vaults` only works on the caller's own notes. The whole space can be protected by its administrator, see below. Until then, text that starts with `vault1:` is refused there with `409 vault_text`.
+
+Protecting the team space. The administrator can protect the whole team space with one password. It is not per folder, and members cannot add passwords of their own, so nobody can lock the rest of the team out. It is a protected folder like the ones above: the same data key, the same wrapping with the password, the same backup key and the same `vault1:` format, stored as one more row of the same table under the internal account of the team. The only difference in the encryption is the associated data of each note, which is `~{space}/{path}` instead of the bare path, so a ciphertext of a team note does not open as a personal note or in another team. Members receive the password from the administrator, outside the app. Anyone who knows it can unwrap the data key in their browser, read and write.
+
+| Call | Who | What it does |
+|---|---|---|
+| `GET /team/vault` | Any member | `{ vault }`: `null`, or `{ id, team, admin, salt, iters, wrapped, check, state, ai, ai_members }`. The administrator also gets `gone` (when a member last left since the password changed, or `0`) and, while a rotation is running, `next` |
+| `POST /team/vault` `{ salt, iters, wrapped, check }` | Administrator | Protects the space. `409 vault_exists`. Deletes the plain-text history and trash of the space |
+| `PUT /team/vault` `{ salt, iters, wrapped }` | Administrator | Changes the password: the same data key, wrapped again. The notes are not touched. Clears `gone` |
+| `POST /team/vault/rotate` `{ salt, iters, wrapped, check }` | Administrator | Starts a key rotation with a new data key, already wrapped with a new password. `state` becomes `rotating` |
+| `POST /team/vault/rotate/done` | Administrator | Ends it: the new key replaces the old one, and the history and trash encrypted with the old key are deleted |
+| `POST /team/vault/open`, `DELETE /team/vault` | Administrator | Remove the protection, as for a folder: `409 vault_not_empty` while encrypted notes remain |
+| `POST /team/vault/destroy` `{ name }` | Administrator | Deletes every note of the space, their history and trash, and the protection, without the key. `name` has to be the exact name of the team, or the administrator's email if the team has no name: `400 bad_confirm` |
+| `PUT /team/vault/ai` `{ members }` | Administrator | Whether members may unlock the space for their AI. Off by default. Turning it off forgets the keys members had unlocked |
+| `DELETE /team/vault/gone` | Administrator | Dismisses the notice that a member left |
+| `POST /team/vault/unlock` `{ key, minutes }`, `POST /team/vault/lock` | Administrator, or a member when `ai_members` is on (`403 ai_not_allowed` otherwise) | Unlock for the caller's own AI, with the same times and limits as a folder |
+
+In this table "Administrator" is the account that pays for the team: it holds the backup key, and a key rotation is done by one browser. Another administrator gets `403 not_owner` on those routes and counts as a member for `ai_members`.
+
+Every route checks membership and role on the server: `404 no_team` for an account that is not in a team, `403 not_admin` for a member on an administrator route, `401` without a session (an MCP token is not a session). The administrator routes share a limit of 40 changes an hour per team. The server stores the salt, the rounds, the wrapped key and the check value. It never receives the password or the data key, except in `unlock`. With `DATA_KEY`, encryption at rest is applied on top, as for any note.
+
+What the server enforces in a protected space: only text that starts with `vault1:` is accepted, from any member (`409 vault`). `GET /search?o=` returns nothing from it. History and trash hold ciphertext. `POST /rename` with `o` needs `text` for the new path. The names of notes and folders are not encrypted. `GET /notes?o=` adds `v: 1` to the notes that are already encrypted, so the browser of the administrator knows which ones are left after protecting a space that had notes. `GET /events` sends `vault` to the members who have a team note open whenever the protection changes.
+
+MCP on a protected space. `@team/` notes are listed with `protected: true` and `locked: true`, and reading, writing and searching them answers with a message for the AI. `unlock` keeps the encryption key in memory for the account that sent it, not for the team: one member unlocking does not open the space for the tokens of the others. The token has to reach the whole `@team`. `move_note` and `note_history` do not work on a protected space.
+
+Key rotation. While `state` is `rotating`, the browser of the administrator reads each note with the old key and saves it with the new one. Other members cannot save, rename or restore (`423 vault_rotating`), so nothing new is written with the old key, and nobody can unlock for the AI. If it stops halfway it stays in `rotating` and the administrator resumes it with both passwords. The new key has a new backup key.
+
+When a member leaves or is removed, their AI key is forgotten at once, they stop receiving the wrapped key and the notes, and `gone` is set so the app tells the administrator, with two actions. Changing the password stops someone who only knew the password: the server no longer hands out a wrapped key that opens with it. Rotating the key covers someone who kept the data key, or a copy of the old wrapped key: nothing saved from then on opens with it. The honest limit: neither takes back what that person already read, copied or downloaded, and a copy of the old ciphertext taken before the rotation still opens with the old key.
+
+The backup key is the data key written for a person. The server never has it and no route returns it. The app shows it to the administrator only, and only the administrator can use it to set a new password (`PUT /team/vault`). A member who knows the password does hold the data key in their browser, which is what lets them read: the restriction on members is on what they can change, not on a secret they could not derive.
+
+MCP. The token of a member reaches the team notes under the prefix `@team/`: `list_notes` and `list_folders` show them with `team: true`, and `read_note`, `write_note`, `append_note` and `search_notes` work on them. The folder limit of a token is checked on the whole path, prefix included: a token limited to one of the person's own folders does not see the team, and a token limited to `@team` or `@team/some/folder` sees only that. While someone belongs to a team, a personal folder literally named `@team` is hidden from their MCP tools. `move_note` and `note_history` work on team notes; a note cannot be moved between the team space and personal notes. The token of a reader reads team notes and cannot change them. The sharing tools work on team notes only when the `share` or `links` policy allows it for that member, and never on a protected space. With the `tokens` policy off, the token of a member who is not an administrator does not see `@team/`.
 
 Leaving and cancelling. A member who leaves or is removed goes back to their own plan and keeps their notes; their open connections to team notes are closed at once. When the subscription of the team ends, the team stays with its people and its notes but no longer gives the paid plan: the team notes can still be read and edited, new ones are refused past the free limit (`402 team_ended`) and no history is kept. Nothing is deleted. A new payment by the same account brings the team back. Someone who already pays an individual subscription and joins a team keeps that subscription: the server never cancels it, `mine.solo` is `true` and the app tells them it is still active and links to `PORTAL_URL`.
 
@@ -341,6 +415,8 @@ Billing. A team is one Paddle subscription with two items: the base price, quant
 | `CHECKOUT_TEAM` | Payment link for the team plan that the app shows in Settings → Plan. The account email is appended as `email=` | |
 | `TEAM_MAX_SEATS` | Most seats a team can have | `50` |
 | `TEAM_INVITES_DAY` | Invitations one team may send per day | `20` |
+| `TEAM_HISTORY_DAYS` | Days of version history kept in a team space. The `history_days` policy can only shorten it | `365` |
+| `TEAM_LOG_DAYS` | Days the activity log of a team is kept | `90` |
 | `APP_URL` | Address of the app: the invitation email links to it, and the MCP tools build on it the link that opens a note | `https://sharpmd.app/src/app.html` |
 | `TRASH_DAYS` | Days a deleted note stays in the trash. `0` turns the trash off: deleting is final | `30` |
 
@@ -384,7 +460,7 @@ The public description, with examples for Make, n8n, Activepieces, Zapier and Sl
 
 Card operations rewrite the Markdown of the note on the revision they read, and give an id to the cards that had none.
 
-**Outgoing webhooks.** Managed with the session of the account (`o` = the team space, for its admin):
+**Outgoing webhooks.** Managed with the session of the account (`o` = the team space: for whoever can write there and has the `automation` policy, which is off by default and always on for admins):
 
 | Call | What it does |
 |---|---|
@@ -393,12 +469,13 @@ Card operations rewrite the Markdown of the note on the revision they read, and 
 | `PUT /automations/hooks/:id` · `DELETE` | Changes it (`on: false` pauses it), removes it |
 | `POST /automations/hooks/:id/test` · `POST …/secret` · `GET …/deliveries` | Sends a `ping`, replaces the secret, lists the last 50 deliveries (status, code, duration) |
 
-Events: `note.created`, `note.updated`, `note.deleted`, `note.restored`, `note.moved`, `comment.created`, `comment.resolved`, `card.created`, `card.moved`, `card.updated`, `card.done`, `card.deleted`. Card events come from comparing the boards of the note before and after each save, by card id (by text, for boards without ids), whoever saved: the app, the API or MCP. The body is `{ id, type, created, account, note: { path, name, url, space }, actor: { type, name?, via? }, data }`; `account` is an opaque id. The text of the note travels only with `include_text` (up to 64 KB). `X-SharpMD-Signature: t=<seconds>,v1=<hex>` is the HMAC-SHA-256 of `<t>.<body>` with the secret.
+Events: `note.created`, `note.updated`, `note.deleted`, `note.restored`, `note.moved`, `comment.created`, `comment.resolved`, `card.created`, `card.moved`, `card.updated`, `card.done`, `card.deleted`. Card events come from comparing the boards of the note before and after each save, by card id (by text, for boards without ids), whoever saved: the app, the API or MCP. The body is `{ id, type, created, account, note: { path, name, url, space }, actor: { type, id?, role?, via? }, data }`; `account` is an opaque id. The text of the note travels only with `include_text` (up to 64 KB). `X-SharpMD-Signature: t=<seconds>,v1=<hex>` is the HMAC-SHA-256 of `<t>.<body>` with the secret.
 
 - Deliveries wait in the database (`hook_jobs`), so a restart does not lose them. A failed one is retried with growing waits; after `WEBHOOK_MAX_FAILS` failed attempts in a row the webhook is turned off and the app shows it.
 - **SSRF.** Only `https:`, no user or password in the address, no ports under 1024 other than 443. The name is resolved and every address it has must be public: loopback, private, link-local, CGNAT, multicast, cloud metadata and their IPv6 forms (mapped, NAT64, 6to4, Teredo, unique local) are refused. The connection goes to the address that was checked, with no second resolution. Redirects are not followed, the wait is short, the response is read up to 16 KB and dropped, and no header of the request that caused the event is forwarded. The check runs when the webhook is saved and again on every delivery.
 - The address and the secret are stored with `DATA_KEY` when it is set, like the text of the notes. The secret cannot be a hash: it signs every delivery.
-- Notes in a protected folder produce no events, and a webhook or an inbound address cannot point inside one.
+- Notes in a protected folder produce no events, and a webhook or an inbound address cannot point inside one. The same goes for a team space protected with a password: no events, no inbound addresses, nothing written in clear.
+- **Teams.** A team member appears in an event as `{ type: "member", id: "mem_…", role, via }`: an opaque id, never a name or an address. Writing to the team space through the API follows the role (a reader gets `403 read_only`, also on board operations) and the `tokens` policy. Team tokens (`/team/tokens`) work on `/api/v1` like personal ones, with the team space as the root. A webhook or an inbound address on the team space works while the account that created it can still write and automate there. What the API or an inbound address changes in the space goes to the activity log with the name of the token or of the address, and creating or removing an automation is logged too (`automation`, `automation_remove`).
 
 **Inbound addresses.** `POST /automations/inboxes` `{ kind: append / create / card, path, template, column, allow_get, name, tz }` returns the address once; the server keeps a hash of its secret. `POST /in/<secret>` then adds to the note (`append`), creates a note in the folder (`create`, named after `title` or the date) or creates a card on the board of the note (`card`). It takes `text/plain`, JSON, `application/x-www-form-urlencoded` and `multipart/form-data` without files, up to 64 KB, and answers `{ ok: true }`: never content of the note. `GET /in/<secret>?text=` works only with `allow_get`. Limits: `INBOX_PER_MINUTE` per address, 5000 a day, and 30 unknown secrets per hour per IP.
 
@@ -410,6 +487,8 @@ node server.mjs
 node revision.mjs
 node live.mjs
 node team.mjs
+node teamvault.mjs
+node teamadmin.mjs
 node cloud.mjs
 node vault.mjs
 node vaultapp.mjs

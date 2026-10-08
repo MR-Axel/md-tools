@@ -50,7 +50,7 @@
     </ul>
 
     <h2 id="webhooks">Webhooks</h2>
-    <p>An automation watches the whole account, one folder or one note, and sends the events you pick to an <code>https</code> address. In a team, the admin can watch the team space.</p>
+    <p>An automation watches the whole account, one folder or one note, and sends the events you pick to an <code>https</code> address. In a team, the admin can watch the team space, and so can the editors if the admin turns that on in the team settings.</p>
     <div class="wide"><table>
       <tr><th>Event</th><th>When</th><th><code>data</code></th></tr>
       <tr><td><code>note.created</code></td><td>A note is created</td><td><code>rev</code>, <code>size</code>, <code>updated</code></td></tr>
@@ -89,7 +89,7 @@ X-SharpMD-Signature: t=1791380591,v1=5f2b…
     "from": "To do", "to": "Done", "board": 0, "rev": 12
   }
 }</code></pre>
-    <p><code>account</code> is an opaque id, never an email address. <code>actor.type</code> is <code>app</code>, <code>api</code>, <code>mcp</code>, <code>inbox</code>, or <code>member</code> with a <code>name</code> when a team member did it. The text of the note is not sent unless the automation has "Include the content of the note" on (up to 64 KB, in <code>data.text</code>).</p>
+    <p><code>account</code> is an opaque id, never an email address. <code>actor.type</code> is <code>app</code>, <code>api</code>, <code>mcp</code>, <code>inbox</code>, or <code>member</code> with an opaque <code>id</code> and the <code>role</code> when a team member did it. The text of the note is not sent unless the automation has "Include the content of the note" on (up to 64 KB, in <code>data.text</code>).</p>
     <h3>Check the signature</h3>
     <p>The signature is the HMAC-SHA-256, in hexadecimal, of <code>t + "." + body</code> with the secret shown when the automation was created. Compare it with <code>v1</code> and reject a <code>t</code> older than five minutes.</p>
 <pre><code>const crypto = require('crypto');
@@ -141,7 +141,7 @@ function valid(header, rawBody, secret) {
 <pre><code>curl -X POST https://sync.sharpmd.app/api/v1/boards/cards/c8k2m9xq/move \
   -H "Authorization: Bearer mdt_YOUR_TOKEN" -H "Content-Type: application/json" \
   -d '{"path": "shop/board.md", "column": "Done"}'</code></pre>
-    <p>Send <code>rev</code> to write only if the note is still at that revision: otherwise the answer is <code>409 rev_conflict</code> and nothing is written. Team notes are under <code>@team/</code>. Protected folders are out of reach while they are locked. The full description, with every field, is in the <a href="https://sync.sharpmd.app/api/v1/openapi.json">OpenAPI file</a>.</p>
+    <p>Send <code>rev</code> to write only if the note is still at that revision: otherwise the answer is <code>409 rev_conflict</code> and nothing is written. Team notes are under <code>@team/</code>; with a token of the team, the team space is the root. A reader of a team cannot write through the API either. Protected folders are out of reach while they are locked. The full description, with every field, is in the <a href="https://sync.sharpmd.app/api/v1/openapi.json">OpenAPI file</a>.</p>
     <h3>Cards in Markdown</h3>
     <p>A board is a <code>kanban</code> code block. Each heading is a column and each task a card. Attributes go in braces at the end of the card; <code>id</code>, <code>created</code> and <code>updated</code> are written by SharpMD.</p>
 <pre><code>```kanban
@@ -180,7 +180,7 @@ function valid(header, rawBody, secret) {
     </ul>
 
     <h2 id="webhooks-es">Webhooks</h2>
-    <p>Una automatización mira toda la cuenta, una carpeta o una nota, y manda los eventos que elijas a una dirección <code>https</code>. En un equipo, quien lo administra puede mirar el espacio del equipo.</p>
+    <p>Una automatización mira toda la cuenta, una carpeta o una nota, y manda los eventos que elijas a una dirección <code>https</code>. En un equipo, quien lo administra puede mirar el espacio del equipo, y también quienes editan si lo habilita en los ajustes del equipo.</p>
     <div class="wide"><table>
       <tr><th>Evento</th><th>Cuándo</th><th><code>data</code></th></tr>
       <tr><td><code>note.created</code></td><td>Se crea una nota</td><td><code>rev</code>, <code>size</code>, <code>updated</code></td></tr>
@@ -219,7 +219,7 @@ X-SharpMD-Signature: t=1791380591,v1=5f2b…
     "from": "Por hacer", "to": "Hecho", "board": 0, "rev": 12
   }
 }</code></pre>
-    <p><code>account</code> es un identificador opaco, nunca un correo. <code>actor.type</code> es <code>app</code>, <code>api</code>, <code>mcp</code>, <code>inbox</code>, o <code>member</code> con su <code>name</code> cuando lo hizo alguien del equipo. El texto de la nota no viaja salvo que la automatización tenga prendido "Incluir el contenido de la nota" (hasta 64 KB, en <code>data.text</code>).</p>
+    <p><code>account</code> es un identificador opaco, nunca un correo. <code>actor.type</code> es <code>app</code>, <code>api</code>, <code>mcp</code>, <code>inbox</code>, o <code>member</code> con un <code>id</code> opaco y su <code>role</code> cuando lo hizo alguien del equipo. El texto de la nota no viaja salvo que la automatización tenga prendido "Incluir el contenido de la nota" (hasta 64 KB, en <code>data.text</code>).</p>
     <h3>Comprobar la firma</h3>
     <p>La firma es el HMAC-SHA-256, en hexadecimal, de <code>t + "." + cuerpo</code> con el secreto que se muestra al crear la automatización. Comparala con <code>v1</code> y rechazá un <code>t</code> de más de cinco minutos. El ejemplo en JavaScript está en la versión en inglés de esta página.</p>
     <h3>Entrega</h3>
@@ -247,7 +247,7 @@ X-SharpMD-Signature: t=1791380591,v1=5f2b…
 <pre><code>curl -X POST https://sync.sharpmd.app/api/v1/boards/cards/c8k2m9xq/move \
   -H "Authorization: Bearer mdt_TU_TOKEN" -H "Content-Type: application/json" \
   -d '{"path": "tienda/tablero.md", "column": "Hecho"}'</code></pre>
-    <p>Mandá <code>rev</code> para escribir solo si la nota sigue en esa revisión: si cambió, la respuesta es <code>409 rev_conflict</code> y no se escribe nada. Las notas del equipo están bajo <code>@team/</code>. Las carpetas protegidas quedan fuera de alcance mientras están bloqueadas.</p>
+    <p>Mandá <code>rev</code> para escribir solo si la nota sigue en esa revisión: si cambió, la respuesta es <code>409 rev_conflict</code> y no se escribe nada. Las notas del equipo están bajo <code>@team/</code>; con un token del equipo, el espacio del equipo es la raíz. Quien solo lee en un equipo tampoco escribe por la API. Las carpetas protegidas quedan fuera de alcance mientras están bloqueadas.</p>
     <h3>Las tarjetas en Markdown</h3>
     <p>Un tablero es un bloque de código <code>kanban</code>. Cada título es una columna y cada tarea una tarjeta. Los atributos van entre llaves al final de la tarjeta; <code>id</code>, <code>created</code> y <code>updated</code> los escribe SharpMD.</p>
 <pre><code>```kanban

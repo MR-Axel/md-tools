@@ -24,7 +24,7 @@
   const FORMATS = [['slack', 'Slack', 'https://hooks.slack.com/services/…', 'Pegá la dirección del webhook entrante de tu canal.'], ['discord', 'Discord', 'https://discord.com/api/webhooks/…', 'Pegá la dirección del webhook del canal.'],
     ['json', 'Make, n8n, Zapier u otro', 'https://', 'Pegá la dirección del webhook de tu flujo. Recibe los datos en JSON.']];
   const ERRORS = { offline: 'No hay conexión con el servidor.', bad_destination: 'Esa dirección no sirve. Tiene que empezar con https:// y ser pública.', too_many: 'Llegaste al tope. Eliminá una para crear otra.', automation_needs_plan: 'Las automatizaciones son parte del plan pago.',
-    vault: 'Una carpeta protegida no se puede automatizar.', bad_events: 'Elegí al menos un evento.', bad_path: 'Elegí una nota o una carpeta.', team_admin_only: 'Las automatizaciones del equipo las maneja quien lo administra.' };
+    vault: 'Una carpeta protegida no se puede automatizar.', bad_events: 'Elegí al menos un evento.', bad_path: 'Elegí una nota o una carpeta.', team_policy: 'Quien administra el equipo no habilitó las automatizaciones para los miembros.', read_only: 'Tu papel en el equipo es de lectura.' };
   const why = (e) => T(ERRORS[e && e.code] || 'No se pudo completar. Probá de nuevo.');
   const day = (ms) => new Date(ms).toLocaleString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   const fmtName = (f) => (FORMATS.find((x) => x[0] === f) || FORMATS[2])[1];
@@ -53,7 +53,8 @@
   const options = (list, picked, tail) => list.map((p) => '<option value="' + esc(p) + '"' + (p === picked ? ' selected' : '') + '>' + esc(p) + (tail || '') + '</option>').join('');
   // La cuenta, como la dio el servidor la última vez: de ahí sale si quien mira administra un equipo.
   let acct = null;
-  const teamAdmin = () => { const mine = acct && acct.team && acct.team.mine; return mine && mine.role === 'admin' && mine.space ? { space: String(mine.space) } : null; };
+  // Quién puede automatizar el espacio del equipo lo decide el servidor (el papel y la política del equipo): viene en can.automation.
+  const teamAdmin = () => { const mine = acct && acct.team && acct.team.mine; return mine && mine.space && mine.can && mine.can.automation && mine.can.write ? { space: String(mine.space) } : null; };
 
   // ---------- Alta guiada de un aviso ----------
   // preset: { kind: 'all' | 'folder' | 'note', path, cards }. La ruta puede venir con el prefijo del equipo (~12/…).

@@ -44,7 +44,7 @@ Free and open source. No tracking: files are read in your browser and never uplo
 | **Export** | One standalone HTML file, or PDF through print. |
 | **More than Markdown** | Code and config files open highlighted, CSV as a table, images as images. |
 | **Cloud notes** | Optional. Sign in with a code sent to your email, move a note to the cloud and open it on any device, also without a connection. A deleted cloud note stays in the trash for 30 days. The account can be deleted from Settings. |
-| **Protected folders** | A cloud folder can carry a password. Its notes are encrypted in the browser and the server cannot read them. You unlock it for your AI for as long as you choose. |
+| **Protected folders** | A cloud folder can carry a password. Its notes are encrypted in the browser and the server cannot read them. You unlock it for your AI for as long as you choose. On a team plan the administrator can protect the whole team space the same way, with one password for the team. |
 | **Sharing** | A note or a folder with another account, to read or to edit, or a read-only public link with a password. |
 | **Live sessions** | Open a session on a cloud note and send the link. Guests join from the browser with a name, without an account, and everyone edits at once. |
 | **AI over MCP** | Claude or any MCP client can list, read, write, append to, move and search your cloud notes, and read their history. Each write returns a link that opens the note in the app. A token can be limited to one folder, and only a token created with the sharing permission can share notes or create public links. A comment on a block tells the AI what to change, and Settings has a ready message to paste into your AI. |
@@ -52,6 +52,10 @@ Free and open source. No tracking: files are read in your browser and never uplo
 | **Read aloud** | A tool you turn on in Settings → Tools. Reads the whole note, from a block or the selection, with the voices of your device. It marks the block it is reading and announces code and diagrams instead of reading them. |
 | **Community** | In Settings → Tools: templates, themes and diagram palettes shared by people, each one reviewed before it is published. Add one and it works offline; share the open note as a template, your theme or a palette. Content only, never code. |
 | **Dictation** | Also in Settings → Tools. Write by speaking, in English or Spanish, with spoken commands for punctuation, headings, lists, tasks and formatting. "Formula … end formula" builds LaTeX and "flowchart … end diagram" builds a Mermaid flowchart, both drawn while you speak. It uses the speech recognition of the browser, on the device when the browser offers it. |
+| **Presentation mode** | A tool in Settings → Tools. The open note as full screen slides: one per level 1 or 2 heading, and a divider (`---`) splits by hand. Arrows, space, Home and End move, O shows an overview, F goes full screen and L is a laser pointer. A `> [!NOTE]` quote is a speaker note and is not projected. Slides export to PDF, one per landscape page. |
+| **Daily note** | A tool in Settings → Tools. A button on the home screen and in the file explorer opens today's note and creates it from a template when it does not exist, in the browser, the cloud or a folder on disk. A month calendar marks the days that have a note, and each daily note links to the day before and the day after. Works offline. |
+| **Word export** | A tool in Settings → Tools. Adds Word (.docx) to the Export menu. The file is built in the browser: heading styles that feed an automatic table of contents, lists, task checkboxes, tables, code, footnotes, embedded images and diagrams as images. Formulas go as LaTeX text. |
+| **Link map** | A tool in Settings → Tools. A graph of which notes link to which, from relative links and `[[wikilinks]]`: drag, zoom, filter by folder, search, and click a note to open it. Under the open note, the notes that link to it. It reads only what is already on the device and sends nothing. |
 | **Phone** | The same app on a small screen, and the web app opens without a connection. |
 | **Yours to adjust** | Light and dark themes, width, font size, code block color, custom CSS, English and Spanish. |
 
@@ -112,6 +116,9 @@ Chrome cannot update an extension loaded from a folder, so SharpMD checks this r
 | Alt+Shift+T | Switch theme |
 | Alt+Shift+S | Read aloud: start, pause and resume (with the tool on) |
 | Alt+Shift+D | Dictation: start and stop (with the tool on) |
+| Alt+Shift+P | Presentation mode: start and exit (with the tool on) |
+| Alt+Shift+H | Daily note: open today's note (with the tool on) |
+| Alt+Shift+G | Link map: open and close (with the tool on) |
 
 The first four Alt+Shift shortcuts can be changed at `chrome://extensions/shortcuts`.
 
@@ -158,7 +165,7 @@ numbered: true
 
 ## Cloud notes and the sync server
 
-`server/` holds SharpMD Sync: accounts, notes in the cloud, an MCP endpoint so an AI can read and write them, and the automations: a REST API under `/api/v1`, outgoing webhooks and inbound addresses ([docs](https://sharpmd.app/api.html)). Sign in from the start screen with a code sent to your email. The free plan holds 10 cloud notes; the paid plan (USD 3.99 a month or USD 39 a year) has no limit and adds sharing, the MCP connection, 30 days of version history and the appearance options. The team plan (USD 7.98 a month for 2 people, USD 3 a month for each extra one) gives every member the paid plan and a shared space for the team notes: whoever pays invites by email and manages the seats.
+`server/` holds SharpMD Sync: accounts, notes in the cloud, an MCP endpoint so an AI can read and write them, and the automations: a REST API under `/api/v1`, outgoing webhooks and inbound addresses ([docs](https://sharpmd.app/api.html)). Sign in from the start screen with a code sent to your email. The free plan holds 10 cloud notes; the paid plan (USD 3.99 a month or USD 39 a year) has no limit and adds sharing, the MCP connection, 30 days of version history and the appearance options. The team plan (USD 7.98 a month for 2 people, USD 3 a month for each extra one) gives every member the paid plan and a shared space for the team notes: whoever pays invites by email and manages the seats. Each member is an administrator, an editor or a reader. Administrators decide the team settings (whether members share team notes outside, create public links, connect their AI or use automations on the space, how long its history is kept, and the folder and template of new notes), create team tokens that belong to the team and not to a person, and read an activity log of who did what, without the content of the notes. The team space keeps a year of version history. Personal settings stay with each person, and only whoever pays sees prices and billing. That person can protect the team space with one password: the team notes are then encrypted in each member's browser and the server cannot read them. Members get the password from the administrator, outside the app.
 
 The server is one file with no dependencies, and you can host it yourself: set its address in Settings → Account, or type `off` there to use SharpMD with no cloud at all. See [server/README.md](server/README.md).
 
@@ -186,6 +193,10 @@ src/
   speak.js        tool: read aloud with the device voices
   voice.js        the dictation grammar: text commands, formulas and flowcharts, per language
   dictate.js      tool: dictation, the microphone button and the listening indicator
+  present.js      tool: presentation mode, slides from the open note
+  daily.js        tool: daily note, its calendar and the links to the previous and next day
+  docx.js         tool: Word export, the OOXML parts and a small zip writer
+  linkmap.js      tool: link map on a canvas and the links to the open note
   cloud.js        client for the optional sync server
   home.js         the empty state of the app and the sign-in form
   write.js        new blocks, Markdown shortcuts and the block menu
@@ -194,14 +205,14 @@ src/
   links.js        link picker for sections, other files and web addresses
   comments.js     comments left on a block for the AI
   seal.js         encryption of protected folders (WebCrypto)
-  vault.js        protected folders: password, backup key, unlock for the AI
+  vault.js        protected folders and the protected team space: password, backup key, key rotation, unlock for the AI
   templates.js    note templates, in English and Spanish
   emoji.js        emoji list while typing
   dialog.js       the app's own prompt and confirm dialogs
   touch.js        touch editing and the small-screen layout
   sync.js         cloud icon, sharing, history, tokens and plans
   live.js         live sessions: the link, the guests and who is on each block
-  team.js         team plan: members, invitations and seats
+  team.js         team plan: members and roles, invitations, seats, team settings, team tokens and the activity log
   board.js        kanban boards (cards with attributes) and table formulas
   page.js         page settings kept in the front matter of the note
   automate.js     Settings → Automations and the guided setup, loaded on demand
@@ -235,9 +246,10 @@ They need a Playwright Chromium (`npx playwright install chromium`) or `CHROME_B
 Two more scripts run by hand, outside `npm test`:
 
 - `BROWSER=firefox node browsers.mjs` (or `webkit`) walks the landing page and the web app in the other engines. Install them once with `npx playwright-core install firefox webkit`.
+- `node tools.mjs` covers presentation mode, the daily note, Word export and the link map (`ONLY=docx` runs one). `KEEP_DOCX=path ONLY=docx node tools.mjs` leaves the generated file there to open it by hand.
 - `node perf.mjs` measures the web app load, cold and warm, on a throttled network and CPU. Run it before and after touching what `src/app.html` loads.
 
-The kanban board is one of those tools: on by default, and when it is off a kanban block shows as a code block and the note is not changed. A tool for Settings → Tools is one file plus one `LMD.tools.register({ id, name, about, icon, defaultOn, lazy, module })` line in `src/tools.js`. Its file is requested only while the tool is on. The dictation phrases are tables in `src/voice.js`, one per language, and `LMD.voice.parse(text, mode, lang)` is a pure function that `tests/voice.mjs` exercises without a microphone.
+The kanban board is one of those tools: on by default, and when it is off a kanban block shows as a code block and the note is not changed. A tool for Settings → Tools is one file plus one `LMD.tools.register({ id, name, about, icon, defaultOn, lazy, module })` line in `src/tools.js`. Its file is requested only while the tool is on. The dictation phrases are tables in `src/voice.js`, one per language, and `LMD.voice.parse(text, mode, lang)` is a pure function that `tests/voice.mjs` exercises without a microphone. A tool adds its rows to the top bar menus with `core.menus.export` and `core.menus.more`, and what they run with `core.actions`.
 
 A script that the first paint does not need is not added to `src/app.html`: it goes in `LAZY_APP` (`src/content.js`) and in the `LATE` list of `sw.js`, and stays in `manifest.json` for the extension.
 
