@@ -19,7 +19,7 @@ const SHELL = [
   'src/app.html', 'src/content.css', 'src/editors.css', 'vendor/hljs-themes.css', 'manifest.webmanifest',
   'src/boot.js', 'src/web.js', 'src/defaults.js', 'src/storeapp.js', 'src/kit.js', 'src/touch.js', 'src/dialog.js', 'src/markdown.js',
   'src/theme.js', 'src/serialize.js', 'src/store.js', 'src/bridge.js', 'src/seal.js', 'src/cloud.js', 'src/home.js', 'src/write.js', 'src/links.js',
-  'src/extras.js', 'src/board.js', 'src/sync.js', 'src/comments.js', 'src/vault.js', 'src/live.js', 'src/team.js', 'src/install.js', 'src/tools.js', 'src/content.js',
+  'src/extras.js', 'src/board.js', 'src/page.js', 'src/sync.js', 'src/comments.js', 'src/vault.js', 'src/live.js', 'src/team.js', 'src/install.js', 'src/tools.js', 'src/content.js',
   'vendor/markdown-it.min.js', 'vendor/markdown-it-sub.min.js', 'vendor/markdown-it-sup.min.js',
   'vendor/markdown-it-ins.min.js', 'vendor/markdown-it-mark.min.js', 'vendor/markdown-it-abbr.min.js', 'vendor/markdown-it-deflist.min.js',
   'vendor/markdown-it-footnote.min.js', 'vendor/markdown-it-multimd-table.min.js', 'vendor/markdown-it-container.min.js',
@@ -30,7 +30,7 @@ const SHELL = [
 // Se guarda con el service worker ya activo, de a uno, para no competir con la primera carga.
 const LATE = [
   'src/emoji-data.js', 'src/emoji.js', 'src/community.js', 'src/templates.js', 'src/diagram.js', 'src/formula.js',
-  'src/speak.js', 'src/voice.js', 'src/dictate.js', 'src/gallery.js',
+  'src/speak.js', 'src/voice.js', 'src/dictate.js', 'src/gallery.js', 'src/automate.js',
   'vendor/highlight.min.js', 'vendor/markdown-it-emoji.min.js',
   'vendor/fonts/inter-italic.woff2',
   'vendor/katex/katex.min.js', 'vendor/katex/katex.min.css',

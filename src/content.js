@@ -175,9 +175,11 @@
     dictate: { js: ['src/voice.js', 'src/dictate.js'] },
     // La galería de la comunidad, en Ajustes > Herramientas: se pide al abrir esa pestaña.
     gallery: { js: ['src/gallery.js'] },
+    // Ajustes > Automatizaciones y el alta guiada: se piden al abrir esa pestaña o al elegir "Automatizar…".
+    automate: { js: ['src/automate.js'] },
   };
   const LAZY_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, tools: () => !!(LMD.diagram && LMD.formula && LMD.templates && LMD.community) };
-  LAZY_HAVE.gallery = () => !!LMD.gallery;
+  LAZY_HAVE.gallery = () => !!LMD.gallery; LAZY_HAVE.automate = () => !!LMD.automate;
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
   async function appLazy(what) {
     const spec = LAZY_APP[what];
@@ -665,6 +667,8 @@
           '<button class="lmd-icon-btn lmd-doc-only" data-act="export" aria-haspopup="menu" aria-expanded="false" title="' + T('Exportar') + '">' + ICON.download + '</button>' +
           // Recargar solo sirve para lo que vive en el disco: lo demás se actualiza solo.
           '<button class="lmd-icon-btn lmd-doc-only lmd-reload" data-act="reload" title="' + T('Recargar ahora') + '">' + ICON.reload + '</button>' +
+          // Lo que vale para esta nota y no para la persona: el ancho de la página y lo que siga (page.js).
+          '<button class="lmd-icon-btn lmd-doc-only lmd-page-btn" data-act="page" aria-haspopup="dialog" title="' + T('Ajustes de la página') + '"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 12h8M10 9.5 7.5 12l2.5 2.5M14 9.5l2.5 2.5-2.5 2.5"/></svg></button>' +
           '<span class="lmd-sep lmd-doc-only"></span>' +
           '<button class="lmd-icon-btn" data-act="settings" title="' + T('Ajustes') + '">' + ICON.sliders + '</button>' +
           // En pantalla chica todo lo de este grupo, y la nube, se abre desde acá.
@@ -736,6 +740,7 @@
     else { const later = () => (window.requestIdleCallback ? requestIdleCallback(tools, { timeout: 2500 }) : setTimeout(tools, 300)); if (document.readyState === 'complete') later(); else window.addEventListener('load', later); }
     LMD.extras.init(core);
     LMD.board.init(core);
+    LMD.page.init(core);
     ui.sync = ui.main.querySelector('.lmd-sync');
     LMD.sync.init(core);
     LMD.comments.init(core);
@@ -968,6 +973,7 @@
       ['copy', ICON.copy, 'Copiar'],
       ['export', ICON.download, 'Exportar'],
       diskDoc() && ['reload', ICON.reload, 'Recargar ahora'],
+      md && !shown('[data-act=page]') && ['page', ICON.doc, 'Ajustes de la página'],
       ['settings', ICON.sliders, 'Ajustes'],
       // En pantalla chica el pie no tiene lugar para el enlace: denunciar una nota ajena va acá, al final.
       LMD.touch.small() && APP && LMD.sync.reportRef() && ['report', ICON.flag, 'Denunciar esta nota'],
@@ -986,6 +992,7 @@
   function onAction(act, source, keys) {
     if (act === 'sidebar') { if (LMD.touch.small()) setDrawer(!drawerOpen()); else LMD.patch({ sidebarHidden: !settings.sidebarHidden }); }
     else if (act === 'more') openMore();
+    else if (act === 'page') LMD.page.open();
     else if (act === 'copy') openCopy(source, keys);
     else if (act === 'export') openExport(source, keys);
     else if (act === 'copy-html') { copyText(LMD.extras.htmlOf(), source); flash(T('HTML copiado')); }
@@ -1152,7 +1159,9 @@
     ui.article.innerHTML = html;
     spyHeadings = postProcess(ui.article);
     if (editMode && kind === 'md') enableEditing(ui.article);
-    if (fm.rows && fm.rows.length) ui.article.insertBefore(frontmatterNode(fm.rows), ui.article.firstChild);
+    // Los ajustes de la página (page.js) viven en el encabezado, pero no son datos de la nota: no se listan.
+    const fmRows = fm.rows ? fm.rows.filter((r) => !LMD.page.owns(r[0], r[1])) : [];
+    if (fmRows.length) ui.article.insertBefore(frontmatterNode(fmRows), ui.article.firstChild);
     buildOutline(spyHeadings);
     if (rawMode) { ui.rawPre.textContent = raw; if (document.activeElement !== ui.rawEdit) ui.rawEdit.value = raw; }
     window.scrollTo(0, y);
@@ -2278,6 +2287,8 @@
   const PANEL_TABS = [['look', 'Apariencia', ICON.eye], ['read', 'Lectura y edición', ICON.pencil], ['plug', 'Plugins', ICON.b_code], ['cloud', 'Nube', ICON.cloud], ['ai', 'IA (MCP)', ICON.spark], ['plan', 'Plan', ICON.card], ['inst', 'Instalar', ICON.download], ['adv', 'Avanzado', ICON.gear]];
   // Herramientas (tools.js) va después de Plugins. El invitado de una sesión en vivo no la ve.
   PANEL_TABS.splice(3, 0, ['tools', 'Herramientas', LMD.tools.ICON.tools]);
+  // Automatizaciones (automate.js) va después de IA: avisos hacia afuera, direcciones de entrada y la API.
+  PANEL_TABS.splice(PANEL_TABS.findIndex((t) => t[0] === 'ai') + 1, 0, ['auto', 'Automatizaciones', '<svg viewBox="0 0 24 24"><path d="M13 3 5 13.5h6L10 21l8-10.5h-6z"/></svg>']);
   // Al cerrar Ajustes el foco vuelve a donde estaba al abrirlos.
   let panelBack = null;
   function closePanel() {
@@ -2367,6 +2378,7 @@
           // Nube, IA y Plan los dibuja sync.js al entrar a cada pestaña, con la cuenta recién consultada.
           '<section data-tab="cloud"><h3>' + T('Nube') + '</h3><div class="lmd-acct" data-acct="cloud"></div></section>' +
           '<section data-tab="ai"><h3>' + T('Conectar una IA') + '</h3><div class="lmd-acct" data-acct="ai"></div></section>' +
+          '<section data-tab="auto"><h3>' + T('Automatizaciones') + '</h3><div class="lmd-acct lmd-au-pane" data-auto-pane></div></section>' +
           '<section data-tab="plan"><h3>' + T('Plan') + '</h3><div class="lmd-acct" data-acct="plan"></div></section>' +
           '<section data-tab="inst"><h3>' + T('Instalar') + '</h3><div class="lmd-acct lmd-inst" data-inst-pane></div></section>' +
           '<section data-tab="adv"><h3>' + T('CSS propio') + (s.supporter ? '' : EXTRA) + '</h3>' +
@@ -2415,6 +2427,7 @@
       if (acct) LMD.sync.panes[tab](acct, host);
       if (tab === 'inst') LMD.install.pane(ui.panel.querySelector('[data-inst-pane]'));
       if (tab === 'tools') LMD.tools.pane(ui.panel.querySelector('[data-tools-pane]'));
+      if (tab === 'auto') { const pane = ui.panel.querySelector('[data-auto-pane]'); ensure('automate').then((ok) => { if (ok && pane.isConnected) LMD.automate.pane(pane, host); }); }
     };
     ui.panel.querySelectorAll('[data-ptab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.ptab)));
     showTab(panelTab);
@@ -3701,7 +3714,7 @@
     if (APP && withDoc && location.hash === '#lmd-paid') { openPanel('plan'); LMD.sync.awaitPaid(); }
     // Desde la portada, el botón del plan pago llega acá: Ajustes en Plan, donde se entra a la cuenta y se paga.
     // Ajustes sobre un archivo abierto directo manda igual, y también a la pestaña de IA.
-    const hashTab = APP && { '#lmd-plans': 'plan', '#lmd-ai': 'ai' }[location.hash];
+    const hashTab = APP && { '#lmd-plans': 'plan', '#lmd-ai': 'ai', '#lmd-auto': 'auto' }[location.hash];
     if (hashTab) { history.replaceState(history.state, '', location.href.split('#')[0]); openPanel(hashTab); }
     updateSaveState();
     checkUpdate(false);

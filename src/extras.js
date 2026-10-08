@@ -378,8 +378,11 @@
       !local && ['dir', 'Nueva carpeta'],
       (!isDir || cloud) && ['ren', 'Renombrar'],
       !isDir && ['del', 'Eliminar', true],
+      // Una carpeta o una nota de la nube: avisar afuera cuando algo cambie ahí (automate.js).
+      cloud && core.APP && core.pathOf(url) && ['auto', 'Automatizar…', false, 'spark'],
     ].concat(folder ? LMD.vault.menu(folder) : []).filter(Boolean), (f) => {
       if (/^v-/.test(f)) LMD.vault.pick(f, folder);
+      else if (f === 'auto') core.ensure('automate').then((ok) => { if (ok) LMD.automate.wizard(core, { kind: isDir ? 'folder' : 'note', path: core.pathOf(url) }); });
       else if (f === 'new') newFile(at);
       else if (f === 'tpl') fromTemplate(at);
       else if (f === 'dir') newFolder(at);
