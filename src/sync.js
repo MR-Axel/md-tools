@@ -45,7 +45,7 @@
     btn.className = 'lmd-icon-btn lmd-sync ' + cls;
     const others = isCloud() ? core.present.filter((m) => m !== LMD.cloud.email()) : [];
     btn.innerHTML = icon + (others.length ? '<b class="lmd-sync-n">' + (others.length + 1) + '</b>' : '');
-    btn.title = title + (others.length ? ' · ' + T('También acá: {a}', { a: others.join(', ') }) : '');
+    btn.title = title + (others.length ? ' · ' + T('También acá: {a}', { a: others.map((m) => (core.presentNames && core.presentNames[m]) || m).join(', ') }) : '');
     loadAccount();
   }
 
@@ -142,6 +142,31 @@
   // Se dibujan dentro de Ajustes y, desde el inicio, en una ventana propia. host dice cómo moverse desde
   // donde están: { tab(nombre), login(), leave(), close(), unlocked(cuenta), back, appUrl, direct }.
   const hint = (text) => '<p class="lmd-hint">' + text + '</p>';
+  // El nombre visible: se cambia en el lugar. Vacío vuelve a lo que va antes de la arroba del correo.
+  const nameRow = (a) => (a.name === undefined ? '' : '<div class="lmd-acct-row lmd-acct-name"><span>' + T('Nombre visible') + '</span><b data-name title="' + esc(a.name) + '">' + esc(a.name) + '</b>' +
+    '<button type="button" class="lmd-link" data-c="name">' + T('Cambiar') + '</button></div><p class="lmd-hint lmd-acct-name-hint">' + T('Los demás ven este nombre en notas compartidas y equipos') + '</p>');
+  function editName(box, host) {
+    const row = box.querySelector('.lmd-acct-name'); if (!row || row.querySelector('input')) return;
+    const now = (account && account.name) || '';
+    row.innerHTML = '<span>' + T('Nombre visible') + '</span><input type="text" data-name-in maxlength="40" spellcheck="false" autocomplete="nickname" aria-label="' + T('Nombre visible') + '">' +
+      '<button type="button" class="lmd-btn lmd-btn-fill" data-c="name-ok">' + T('Guardar') + '</button><button type="button" class="lmd-btn" data-c="name-no">' + T('Cancelar') + '</button>';
+    const input = row.querySelector('input'); input.value = now; input.focus(); input.select();
+    const hintLine = box.querySelector('.lmd-acct-name-hint'); const base = hintLine ? hintLine.textContent : '';
+    const fail = (text) => { if (hintLine) { hintLine.textContent = text; hintLine.classList.add('lmd-acct-name-bad'); hintLine.setAttribute('role', 'alert'); } input.setAttribute('aria-invalid', 'true'); input.focus(); };
+    input.addEventListener('input', () => { input.removeAttribute('aria-invalid'); if (hintLine) { hintLine.textContent = base; hintLine.classList.remove('lmd-acct-name-bad'); hintLine.removeAttribute('role'); } });
+    let busy = false;
+    const save = async () => {
+      if (busy) return;
+      const v = input.value.replace(/\s+/g, ' ').trim();
+      if (v === now) { cloudPane(box, host); return; }
+      if (v && (v.length < 2 || v.length > 40 || v.includes('@'))) { fail(T('De 2 a 40 caracteres, sin arroba.')); return; }
+      busy = true;
+      try { account = await LMD.cloud.setName(v); adopt(account, true); paint(); cloudPane(box, host); }
+      catch (e) { busy = false; fail(T(e.code === 'too_many' ? 'Demasiados cambios por ahora. Probá más tarde.' : e.code === 'bad_name' ? 'De 2 a 40 caracteres, sin arroba.' : 'No se pudo guardar. Probá de nuevo.')); }
+    };
+    row._save = save;
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); save(); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cloudPane(box, host); } });
+  }
   const acctRow = (label, value) => '<div class="lmd-acct-row"><span>' + label + '</span><b title="' + value + '">' + value + '</b></div>';
   const actions = (html) => '<div class="lmd-acct-actions">' + html + '</div>';
   const loginBtn = (host) => (host.login ? actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="login">' + T('Crear cuenta o entrar') + '</button>') : '');
@@ -205,7 +230,7 @@
     else {
       try {
         const a = await fetchAccount(host);
-        box.innerHTML = acctRow(T('Cuenta'), esc(a.email)) + acctRow(T('Plan'), T(a.plan === 'pro' ? 'Pago' : 'Gratis')) + acctRow(T('Notas en la nube'), quota(a)) +
+        box.innerHTML = acctRow(T('Cuenta'), esc(a.email)) + nameRow(a) + acctRow(T('Plan'), T(a.plan === 'pro' ? 'Pago' : 'Gratis')) + acctRow(T('Notas en la nube'), quota(a)) +
           actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="open">' + T('Abrir la carpeta Nube') + '</button><button type="button" class="lmd-btn" data-c="out">' + T('Salir') + '</button>') +
           '<p class="lmd-hint lmd-acct-msg" role="status" hidden></p>' + '<div data-sec>' + secNow(0) + '</div>' +
           '<p class="lmd-acct-del"><button type="button" class="lmd-link" data-c="delete">' + T('Eliminar la cuenta') + '</button></p>';
@@ -239,6 +264,9 @@
       else if (b.dataset.c === 'open') openCloud(Object.assign({ say: (t) => { const m = box.querySelector('.lmd-acct-msg'); if (m) { m.hidden = false; m.textContent = t; } } }, host));
       else if (b.dataset.c === 'out') { await signOut(host); cloudPane(box, host); }
       else if (b.dataset.c === 'delete') { if (await deleteAccount()) cloudPane(box, host); }
+      else if (b.dataset.c === 'name') editName(box, host);
+      else if (b.dataset.c === 'name-ok') { const row = box.querySelector('.lmd-acct-name'); if (row && row._save) row._save(); }
+      else if (b.dataset.c === 'name-no') cloudPane(box, host);
       // Proteger una carpeta: sin sesión primero se entra; con una sola carpeta se va directo, con varias se elige.
       else if (b.dataset.c === 'protect') { if (!LMD.cloud.signedIn()) askLogin(); else if (free.length === 1) LMD.vault.pick('v-protect', free[0]); else { picking = true; sec(); } }
       else if (b.dataset.c === 'protect-at') LMD.vault.pick('v-protect', b.dataset.f);

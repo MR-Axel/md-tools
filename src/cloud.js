@@ -667,6 +667,7 @@
       session = ''; email = ''; listCache = null; vaultCache = null; setTeam(null); await remember();
     },
     account: () => api('GET', '/account'),
+    setName: (name) => api('PUT', '/account', { name }),
     create: (path) => putNote(path, '').then((r) => { listCache = null; delete otherLists[split(path).owner]; return r; }),
     remove: (path) => api('DELETE', notePath(path)).then(async (r) => { listCache = null; delete otherLists[split(path).owner]; await S.cloudDelete(email, path); return r; }),
     // Papelera: lo eliminado de la nube, hasta que vence. owner es el espacio del equipo, o nada para lo propio.

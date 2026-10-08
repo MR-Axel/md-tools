@@ -338,7 +338,29 @@ const mcpAllowed = (user) => user.plan === 'pro' || !!env.MCP_FREE;
 const shareAllowed = (user) => user.plan === 'pro' || !!env.SHARE_FREE;
 // plan es el que vale ahora; own_plan, el que la cuenta paga por su lado (un miembro de un equipo puede tener los dos).
 // Administra una suscripción quien la paga: la propia, o la del equipo si es quien lo administra.
-const account = (user) => ({ id: user.id, share: shareAllowed(user), live: user.plan === 'pro' || !!env.LIVE_FREE, email: user.email, plan: user.plan, own_plan: user.own || user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, mcp: mcpAllowed(user), mcp_url: PUBLIC_URL + '/mcp',
+// ---------- Nombre visible de la cuenta ----------
+// Lo que los demás ven de una persona en notas compartidas y equipos. Sin elegir, es lo que va antes de la arroba
+// de su correo. Es texto plano: quien lo muestra lo pone como texto, nunca como HTML. Hacia afuera (webhooks, API)
+// no viaja: ahí el actor sigue siendo su identificador y su papel.
+try { db.exec('ALTER TABLE users ADD COLUMN name TEXT'); } catch (e) { /* ya estaba */ }
+const NAME_PER_HOUR = Math.max(1, +(env.NAME_PER_HOUR || 10));
+const nameOf = (u) => (u && u.name ? u.name : String((u && u.email) || '').split('@')[0]);
+// PUT /account { name }: de 2 a 40 caracteres, sin arroba ni saltos de línea. Vacío o null vuelve al nombre por defecto.
+function accountName(user, body) {
+  const raw = body ? body.name : undefined;
+  if (raw !== null && typeof raw !== 'string') throw new Fail(400, 'bad_name');
+  rate('name:' + user.id, NAME_PER_HOUR, HOUR, 'too_many');
+  let name = null;
+  if (raw !== null && raw.trim() !== '') {
+    if (/[\r\n]/.test(raw) || raw.includes('@') || raw.length > 200) throw new Fail(400, 'bad_name', 'A display name has 2 to 40 characters, no @ and no line breaks');
+    name = cleanName(raw);
+    if (name.length < 2 || name !== raw.replace(/\s+/g, ' ').trim()) throw new Fail(400, 'bad_name', 'A display name has 2 to 40 characters, no @ and no line breaks');
+  }
+  q('UPDATE users SET name = ? WHERE id = ?').run(name, user.id);
+  return account(userById(user.id));
+}
+// ---------- fin del nombre visible ----------
+const account = (user) => ({ id: user.id, share: shareAllowed(user), live: user.plan === 'pro' || !!env.LIVE_FREE, email: user.email, name: nameOf(user), name_default: !user.name, plan: user.plan, own_plan: user.own || user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, mcp: mcpAllowed(user), mcp_url: PUBLIC_URL + '/mcp',
   manage: ((user.own || user.plan) === 'pro' || (user.team && user.team.owner === user.id && user.team.sub)) && env.PORTAL_URL ? env.PORTAL_URL : '',
   // billing: si a esta cuenta se le muestra algo de cobro. A quien tiene el plan por un equipo que paga otra persona, no:
   // ni enlaces de pago ni precios. Lo que paga por su lado (su suscripción individual) lo sigue administrando.
@@ -843,10 +865,12 @@ const rooms = new Map();
 const roomKey = (ownerId, p) => ownerId + ':' + p;
 const push = (c, event) => { if (!c.res.destroyed) c.res.write('data: ' + JSON.stringify(event) + '\n\n'); };
 const whoIn = (room) => Array.from(new Set(Array.from(room).filter((c) => c.email).map((c) => c.email)));
+// Sus nombres visibles, en el mismo orden: los recibe quien ya ve esos correos por tener abierta la misma nota.
+const namesIn = (room, who) => who.map((mail) => { const c = Array.from(room).find((x) => x.email === mail); return (c && c.name) || ''; });
 function announce(key, event, skip) {
   const room = rooms.get(key); if (!room) return;
-  const who = whoIn(room);
-  for (const c of room) if (c !== skip && !c.gid) push(c, Object.assign({ who }, event));
+  const who = whoIn(room); const names = namesIn(room, who);
+  for (const c of room) if (c !== skip && !c.gid) push(c, Object.assign({ who, names }, event));
 }
 // Qué cambió entre dos textos, por líneas: de la línea at se sacan del y entran lines. Lo usa el aviso de guardado
 // de una sesión en vivo cuando el texto es grande, para no mandar la nota entera con cada cambio.
@@ -893,7 +917,7 @@ function listen(req, res, user, url) {
   mine.forEach((k) => liveAdd(k, 1));
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', 'x-accel-buffering': 'no' });
   res.on('error', () => { /* la conexión se cortó: de limpiar se ocupa close */ });
-  const client = { res, email: user.email, uid: user.id };
+  const client = { res, email: user.email, uid: user.id, name: nameOf(user) };
   if (!rooms.has(key)) rooms.set(key, new Set());
   rooms.get(key).add(client);
   announce(key, { type: 'presence' });
@@ -1507,8 +1531,8 @@ function teamView(user) {
   const out = { enabled: TEAM_BILLING && !guest, checkout: TEAM_BILLING && !guest ? withEmail(env.CHECKOUT_TEAM, user) : '', included: TEAM_INCLUDED, max: TEAM_MAX_SEATS, mine: null, invites };
   if (!t) return out;
   const owner = t.owner === user.id; const role = teamRoleOf(user); const admin = role === 'admin';
-  const members = q('SELECT u.id, u.email, m.role FROM team_members m JOIN users u ON u.id = m.user WHERE m.team = ? ORDER BY m.joined, u.id').all(t.id)
-    .map((x) => { const r = x.id === t.owner ? 'admin' : TEAM_ROLES.includes(x.role) ? x.role : 'editor'; return { id: x.id, email: x.email, role: r, admin: r === 'admin', owner: x.id === t.owner }; });
+  const members = q('SELECT u.id, u.email, u.name, m.role FROM team_members m JOIN users u ON u.id = m.user WHERE m.team = ? ORDER BY m.joined, u.id').all(t.id)
+    .map((x) => { const r = x.id === t.owner ? 'admin' : TEAM_ROLES.includes(x.role) ? x.role : 'editor'; return { id: x.id, email: x.email, name: nameOf(x), role: r, admin: r === 'admin', owner: x.id === t.owner }; });
   // solo: además paga un plan individual por su lado. La app le avisa que sigue activo y cómo darlo de baja.
   // owner: es quien paga. role: 'admin', 'editor' o 'reader'. can: lo que esta cuenta puede hacer en el espacio.
   out.mine = { id: t.id, name: t.name, role, owner, active: t.status === 'active', space: t.space, members, solo: user.own === 'pro' };
@@ -1960,9 +1984,9 @@ function teamLogRows(team, url, max) {
   const token = g('token') ? g('token').slice(0, 60) : null; const action = g('action') || null;
   if (action && !TEAM_ACTIONS.includes(action)) throw new Fail(400, 'bad_filter');
   // El correo sale de la cuenta, al leer: en el registro no hay ninguno.
-  return q('SELECT l.id, l.at, l.uid, l.via, l.token, l.action, l.path, l.detail, u.email AS who, a.email AS about FROM team_log l LEFT JOIN users u ON u.id = l.uid LEFT JOIN users a ON a.id = l.about WHERE l.team = ? AND l.at >= ? AND (? IS NULL OR l.uid = ?) AND (? IS NULL OR l.token = ?) AND (? IS NULL OR l.action = ?) AND (? IS NULL OR l.at >= ?) AND (? IS NULL OR l.at <= ?) AND (? IS NULL OR l.id < ?) ORDER BY l.id DESC LIMIT ?')
+  return q('SELECT l.id, l.at, l.uid, l.via, l.token, l.action, l.path, l.detail, u.email AS who, u.name AS who_name, a.email AS about, a.name AS about_name FROM team_log l LEFT JOIN users u ON u.id = l.uid LEFT JOIN users a ON a.id = l.about WHERE l.team = ? AND l.at >= ? AND (? IS NULL OR l.uid = ?) AND (? IS NULL OR l.token = ?) AND (? IS NULL OR l.action = ?) AND (? IS NULL OR l.at >= ?) AND (? IS NULL OR l.at <= ?) AND (? IS NULL OR l.id < ?) ORDER BY l.id DESC LIMIT ?')
     .all(team.id, now() - TEAM_LOG_DAYS * DAY, who, who, token, token, action, action, from, from, to, to, before, before, max)
-    .map((r) => ({ id: r.id, at: r.at, uid: r.uid, who: r.who || '', via: r.via, token: r.token, action: r.action, path: r.path, about: r.about || '', detail: r.detail }));
+    .map((r) => ({ id: r.id, at: r.at, uid: r.uid, who: r.who || '', who_name: r.who_name || '', about_name: r.about_name || '', via: r.via, token: r.token, action: r.action, path: r.path, about: r.about || '', detail: r.detail }));
 }
 // Una celda de CSV. Lo que empieza como una fórmula se guarda con un apóstrofo delante: una planilla no lo ejecuta.
 const csvCell = (v) => { let s = String(v == null ? '' : v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
@@ -3224,6 +3248,7 @@ async function route(req, url) {
     return { ok: true };
   }
   if (p === '/account' && m === 'GET') return account(user);
+  if (p === '/account' && m === 'PUT') return accountName(user, await readBody(req));
   if (p === '/account' && m === 'DELETE') return accountDelete(req, user, await readBody(req));
   if (p === '/trash' || p.startsWith('/trash/')) return trashRoute(user, p, m, url, m === 'POST' ? await readBody(req) : {});
   if (p === '/vaults' && m === 'GET') return vaultsOf(user.id).map(vaultView);

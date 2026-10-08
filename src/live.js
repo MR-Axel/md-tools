@@ -76,7 +76,7 @@
       const input = box.querySelector('input'); const err = box.querySelector('.lmd-dlg-err');
       const fail = (text) => { err.hidden = false; err.textContent = text; };
       document.body.appendChild(box);
-      kept().then((k) => { if (k.name && !input.value) { input.value = k.name; input.select(); } });
+      kept().then((k) => { const a = LMD.sync && LMD.sync.account && LMD.sync.account(); const name = (a && a.name) || k.name; if (name && !input.value) { input.value = name; input.select(); } });
       if (look.full) fail(say({ code: 'live_full' }));
       input.focus();
       let busy = false;
@@ -336,7 +336,7 @@
         body.innerHTML = '<p>' + T('Quien tenga el enlace entra a editar esta nota con vos, sin crear cuenta. Vos ves quién está y terminás la sesión cuando quieras.') + '</p>' +
           '<label class="lmd-dlg-field"><span>' + T('Tu nombre') + '</span><input type="text" data-lv="name" maxlength="40" spellcheck="false" autocomplete="nickname"></label>' +
           '<p class="lmd-hint">' + T('Los invitados ven este nombre, no tu correo.') + '</p>';
-        body.querySelector('input').value = typed != null ? typed : k.name || '';
+        body.querySelector('input').value = typed != null ? typed : ((LMD.sync.account() || {}).name) || k.name || '';
         acts.innerHTML = '<button type="button" class="lmd-btn" data-lv="close" data-esc>' + T('Cancelar') + '</button><button type="button" class="lmd-btn lmd-btn-fill" data-lv="start">' + T('Abrir la sesión') + '</button>';
         return;
       }

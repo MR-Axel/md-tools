@@ -77,6 +77,9 @@ try {
   await own.page.click('[data-act=sync]'); await own.page.click('.lmd-menu [data-s=live]'); await own.page.waitForSelector('.lmd-live-card [data-lv=name]');
   const intro = await own.page.evaluate(() => ({ text: document.querySelector('.lmd-live-card').innerText, bang: /[!¡—–]/.test(document.querySelector('.lmd-live-card').innerText) }));
   check('el cuadro dice qué es antes de abrirla, sin signos de admiración ni rayas', /Anyone with the link can edit this note with you, without an account/.test(intro.text) && /Guests see this name, not your email/.test(intro.text) && !intro.bang, intro.text);
+  const proposed = await own.page.inputValue('[data-lv=name]');
+  check('el nombre propuesto es el nombre visible de la cuenta', proposed === (await api('GET', '/account', undefined, A.s)).json.name && proposed.length > 0, proposed);
+  await own.page.fill('[data-lv=name]', '');
   await own.page.click('[data-lv=start]'); await own.page.waitForSelector('.lmd-live-card .lmd-dlg-err:not([hidden])');
   check('sin nombre no se abre', (await own.page.textContent('.lmd-live-card .lmd-dlg-err')) === 'Type a name.' && (await api('GET', '/live?path=' + enc('team/plan.md'), undefined, A.s)).json.open === false, await own.page.textContent('.lmd-live-card .lmd-dlg-err'));
   await own.page.fill('[data-lv=name]', 'Ana'); await own.page.click('[data-lv=start]'); await own.page.waitForSelector('.lmd-live-link input');
