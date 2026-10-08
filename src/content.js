@@ -1362,12 +1362,12 @@
   let polled = true; // false cuando la nube no se consultó de verdad porque todavía no tocaba
   // La revisión de la nube que corresponde a diskText: sobre esa se guarda. Cambia solo junto con diskText, cuando
   // lo leído ya entró al documento; así un guardado nunca pasa por encima de un cambio que todavía no se juntó.
-  let diskRev = null; let readRev = null;
+  let diskRev = null; let readRev = null; let readBy = null; let readFresh = false;
   const isCloud = () => !!appRoot && appRoot.kind === 'cloud';
 
   async function readCurrent() {
     // La nube se consulta cada diez segundos: alcanza para ver lo que escribió una IA sin martillar el servidor.
-    polled = true; readRev = null; const seq = docSeq;
+    polled = true; readRev = null; readBy = null; readFresh = false; const seq = docSeq;
     if (APP && appRoot && appRoot.kind === 'cloud') { if (Date.now() - cloudPoll < (cloudState === 'error' ? 5000 : 10000)) { polled = false; return diskText; } cloudPoll = Date.now(); }
     if (APP) {
       // Con el permiso de la carpeta alcanza con mirar fecha y tamaño: el archivo se lee solo si cambió.
@@ -1376,7 +1376,7 @@
         const stamp = file.lastModified + ':' + file.size;
         if (stamp === diskStamp) return diskText;
         const text = await file.text();
-        if (seq === docSeq) { diskStamp = stamp; if (file.rev != null) readRev = file.rev; }
+        if (seq === docSeq) { diskStamp = stamp; readFresh = true; if (file.rev != null) readRev = file.rev; readBy = file.edited || null; }
         return text;
       } catch (e) { return null; }
     }
@@ -1412,27 +1412,111 @@
         // Con el cursor en un bloque no se toca nada: ni el texto ni el dibujo. Lo de afuera queda esperando
         // (y el guardado automático también, para no pisarlo) hasta que la persona sale del bloque.
         if (typingNode()) { outside = true; diskStamp = ''; return; }
-        await takeOutside(text, readRev);
-      } else { if (polled) { outside = false; if (readRev != null) diskRev = readRev; } if (manual) flash(T('Sin cambios')); }
+        await takeOutside(text, readRev, whoIs(readBy));
+      } else {
+        if (polled) { outside = false; if (readRev != null) diskRev = readRev; }
+        // Lo de afuera volvió a ser la base: el choque que esperaba una decisión ya no existe.
+        if (held && readFresh) { held = null; markDirty(); }
+        if (manual) flash(T('Sin cambios'));
+      }
     } finally { checking = false; }
   }
 
-  // Lo que cambió afuera entra al documento. En una nota de la nube con cambios propios sin subir, se juntan las dos
-  // ediciones; si tocaron lo mismo queda lo del servidor y lo de acá va aparte, a una nota del navegador: nada se
-  // pierde y el próximo guardado no pisa a nadie. Quien llama ya comprobó que no hay un bloque con el cursor.
-  async function takeOutside(text, rev) {
-    const seq = docSeq; outside = false;
-    if (dirty && isCloud()) {
-      const r = await LMD.cloud.settle(vParts(HERE).join('/'), diskText, raw, text);
-      if (seq !== docSeq) return;
-      diskText = text; if (rev != null) diskRev = rev;
-      if (r.text !== raw) { raw = r.text; syncSource(); }
-      markDirty(); render(); offlineNote(r, true);
-      return;
-    }
+  // Lo que cambió afuera (el archivo del disco, la nota de la nube) entra al documento. Sin cambios propios se toma
+  // tal cual: la página, lo plegado y la selección quedan donde estaban. Con cambios
+  // propios sin guardar se unen las dos ediciones (joinOutside). Quien llama ya comprobó que no hay un bloque con
+  // el cursor. who: el nombre de quien cambió afuera, si se sabe. Devuelve false si quedó un choque sin decidir.
+  async function takeOutside(text, rev, who) {
+    outside = false;
+    if (dirty) return joinOutside(text, rev, who);
+    held = null;
     diskText = text; if (rev != null) diskRev = rev;
-    if (dirty) flash(T('El archivo cambió en el disco. Tus cambios sin guardar se mantienen'), 'warn');
-    else { raw = text; render(); flash(T('Documento actualizado')); }
+    if (raw !== text) drawDoc(text);
+    dirty = false; updateSaveState();
+    flash(who ? T('Documento actualizado por {a}', { a: who }) : T('Documento actualizado'));
+    return true;
+  }
+
+  // ---------- Unir en vez de pisar (merge.js) ----------
+  // diskText es la base: el texto tal como se cargó o se guardó por última vez. Cuando lo de afuera cambió y acá hay
+  // cambios sin guardar, se unen las tres versiones por líneas. Lo que no choca entra solo, con un aviso y un paso
+  // de deshacer que vuelve a lo de acá. Lo que choca lo decide la persona: mientras no decida queda en held y no se
+  // guarda nada encima, ni a mano ni solo. En una sesión en vivo no pasa por acá: ahí une applyRemote.
+  let held = null; // un choque sin decidir: { text, rev, who, later }
+  // Lo que quien lee tenía seleccionado sobrevive a un redibujo entero: se anota en qué bloque está (por su texto y
+  // su orden entre los que dicen lo mismo) y a qué altura, y se repone si ese bloque sigue estando.
+  function keepSelection(draw) {
+    const sel = getSelection(); let mark = null;
+    const blocks = (text) => Array.from(ui.article.querySelectorAll('[data-l]')).filter((x) => x.textContent === text);
+    if (sel.rangeCount && !sel.isCollapsed && !typingNode() && ui.article.contains(sel.anchorNode) && ui.article.contains(sel.focusNode)) {
+      const at = (node, off) => {
+        const host = (node.nodeType === 1 ? node : node.parentElement).closest('[data-l]'); if (!host || !ui.article.contains(host)) return null;
+        const r = document.createRange(); r.selectNodeContents(host); r.setEnd(node, off);
+        return { text: host.textContent, n: blocks(host.textContent).indexOf(host), off: r.toString().length };
+      };
+      const a = at(sel.anchorNode, sel.anchorOffset); const f = at(sel.focusNode, sel.focusOffset);
+      if (a && f) mark = { a, f };
+    }
+    draw();
+    if (!mark || (sel.rangeCount && !sel.isCollapsed)) return; // no había nada, o el dibujo no la tocó
+    const point = (m) => {
+      const host = blocks(m.text)[m.n]; if (!host) return null;
+      const walk = document.createTreeWalker(host, NodeFilter.SHOW_TEXT); let left = m.off; let last = null;
+      for (let t = walk.nextNode(); t; t = walk.nextNode()) { last = t; if (left <= t.nodeValue.length) return [t, left]; left -= t.nodeValue.length; }
+      return last ? [last, last.nodeValue.length] : [host, 0];
+    };
+    const a = point(mark.a); const f = point(mark.f);
+    if (a && f) { try { sel.setBaseAndExtent(a[0], a[1], f[0], f[1]); } catch (e) { /* ese lugar ya no existe */ } }
+  }
+  let asking = false;
+  // Pone next como texto del documento. Con el cursor en un bloque, o en la vista de código, lo hace patchDoc, que
+  // no saca a nadie de donde está. Si no, se redibuja entero, para que corra todo lo que cuelga del dibujo (las
+  // marcas de comentarios, los tableros, las listas): la página no se mueve y la selección se repone.
+  function drawDoc(next) {
+    if (rawMode || typingNode()) { patchDoc(next, ''); return; }
+    rebaseUndo(raw, next); raw = next; syncSource();
+    keepSelection(render);
+  }
+  // Quién guardó, en palabras: el nombre de la persona, o el del token de la IA.
+  const whoIs = (by) => (by && typeof by === 'object' ? String(by.name || '') || (by.kind === 'ai' ? T('la IA') : '') : '');
+  // Lo unido pasa al documento. theirs queda como base: lo próximo que se guarde va sobre eso.
+  function landMerge(next, theirs, rev, note) {
+    const mine = raw;
+    diskText = theirs; if (rev != null) diskRev = rev; outside = false; held = null;
+    if (next !== mine) {
+      drawDoc(next);
+      // Un paso de deshacer vuelve a lo de acá, tal como estaba antes de unir.
+      undoStack.push(mine); if (undoStack.length > 100) undoStack.shift(); redoStack.length = 0;
+      if (note) LMD.merge3.say(note, () => { if (undoStack[undoStack.length - 1] === mine) undo(); });
+    }
+    dirty = raw !== diskText;
+    if (dirty) markDirty(); else { clearTimeout(autosaveTimer); if (cloudState === 'saving') cloudState = 'ok'; updateSaveState(); }
+  }
+  // ask: la persona pidió guardar, así que la pregunta vuelve a salir aunque antes la haya dejado para después.
+  // Devuelve true si lo de afuera ya quedó unido, false si falta que la persona decida.
+  async function joinOutside(text, rev, who, ask) {
+    const seq = docSeq;
+    const m = LMD.merge3.three(diskText, raw, text);
+    if (m.clean) {
+      landMerge(m.text, text, rev, who ? T('Se unieron los cambios de {a}', { a: who }) : T('Se unieron cambios hechos afuera'));
+      if (m.ticked) flash(T('Una tarea quedó tildada: la casilla cambió de los dos lados'), 'warn');
+      return true;
+    }
+    const later = !!held && held.later && held.text === text;
+    held = { text, rev, who, later };
+    updateSaveState();
+    if (asking || (later && !ask)) return false;
+    asking = true;
+    let pick = null;
+    try { pick = await LMD.merge3.ask(m, { who }); } finally { asking = false; }
+    if (seq !== docSeq) return false;
+    if (!held) return true; // mientras se preguntaba, lo de afuera volvió atrás o se unió solo
+    if (!pick) { held.later = true; updateSaveState(); return false; }
+    // Mientras la pregunta estuvo abierta pudo llegar algo más: se une sobre lo último que se supo.
+    const h = held; const last = h.text === text ? m : LMD.merge3.three(diskText, raw, h.text);
+    landMerge(last.resolve(pick), h.text, h.rev, '');
+    flash(T(pick === 'mine' ? 'Quedó lo tuyo' : pick === 'theirs' ? 'Quedó lo de afuera' : 'Quedaron las dos versiones'));
+    return true;
   }
 
   // ---------- Sesión en vivo: lo que escriben los demás entra en el lugar ----------
@@ -2836,6 +2920,7 @@
     if (LMD.live) LMD.live.state();
     const root = document.documentElement;
     root.classList.toggle('lmd-dirty', dirty);
+    root.classList.toggle('lmd-held', !!held);
     root.classList.toggle('lmd-editing', editMode);
     ui.main.querySelectorAll('.lmd-modeseg button').forEach((b) => {
       const on = (b.dataset.act === 'mode-edit') === editMode;
@@ -2846,11 +2931,11 @@
     const state = ui.main.querySelector('.lmd-savestate');
     const local = !!appRoot && appRoot.kind === 'local';
     const cloud = !!appRoot && appRoot.kind === 'cloud';
-    state.textContent = cloud ? T(cloudState === 'error' ? 'Sin conexión' : dirty ? 'Guardando…' : 'Guardado en la nube') : local ? T(dirty ? 'Guardando…' : 'Guardado en este navegador')
+    state.textContent = held ? T('Guardado en pausa: falta decidir un choque') : cloud ? T(cloudState === 'error' ? 'Sin conexión' : dirty ? 'Guardando…' : 'Guardado en la nube') : local ? T(dirty ? 'Guardando…' : 'Guardado en este navegador')
       : (dirty ? T('Cambios sin guardar') : (editMode ? T(settings.autosave ? 'Guardado · autoguardado activo' : 'Todo guardado') : ''));
     const save = ui.main.querySelector('[data-act=save]');
     save.hidden = !local && !editMode && !dirty;
-    save.title = local ? T('Guardar como archivo en el disco (Ctrl+S)') : (dirty ? T('Guardar (Ctrl+S). Hay cambios sin guardar') : T('Guardar (Ctrl+S)'));
+    save.title = held ? T('Decidir qué queda y guardar (Ctrl+S)') : local ? T('Guardar como archivo en el disco (Ctrl+S)') : (dirty ? T('Guardar (Ctrl+S). Hay cambios sin guardar') : T('Guardar (Ctrl+S)'));
   }
 
   // El modo edición se recuerda por pestaña: recargar o pasar a otra nota no lo saca mientras se siga
@@ -3498,6 +3583,11 @@
     // Guardar no saca el foco: lo escrito en el bloque abierto pasa al Markdown y la persona sigue escribiendo.
     flushTyping();
     if (ui.rawEdit && !ui.rawEdit.hidden) { raw = ui.rawEdit.value.replace(/\r?\n/g, eol); syncSource(); dirty = raw !== diskText; }
+    // Un choque sin decidir frena el guardado. El automático espera; el pedido a mano vuelve a preguntar.
+    if (held && !liveOn()) {
+      if (!interactive) return false;
+      if (!(await joinOutside(held.text, held.rev, held.who, true)) || seq !== docSeq) return false;
+    }
     if (interactive && appRoot && appRoot.kind === 'local') return saveNoteToDisk();
     if (!dirty && fileHandle) { if (interactive) flash(T('Sin cambios para guardar')); return true; }
     try {
@@ -3548,6 +3638,23 @@
       if (outside && (!interactive || isCloud())) { if (!typingNode()) { cloudPoll = 0; checkForChanges(false); } return later(); }
       // Mientras se escribe en el archivo la persona puede seguir tecleando: se da por guardado lo que salió,
       // no lo que haya ahora.
+      // Justo antes de escribir en el disco se vuelve a leer el archivo: si otro programa lo cambió desde la base,
+      // se une en vez de pisar. Si choca, no se escribe hasta que la persona decida.
+      if (!isCloud() && fileHandle.getFile) {
+        // null: el archivo ya no está, y se escribe de nuevo. undefined: está pero no se pudo leer.
+        const fresh = async () => { try { return await (await fileHandle.getFile()).text(); } catch (e) { return e && e.name === 'NotFoundError' ? null : undefined; } };
+        let now = await fresh();
+        // Ilegible o vacío de golpe suele ser otro programa a medio escribir: se mira una vez más.
+        if (now === undefined || (now === '' && diskText !== '')) { await new Promise((r) => setTimeout(r, 250)); now = await fresh(); }
+        if (seq !== docSeq) return false;
+        // Sin poder leerlo no se escribe a ciegas: se reintenta enseguida.
+        if (now === undefined) { if (interactive) flash(T('No se pudo releer el archivo. Recargá la pestaña con F5'), 'error'); return later(); }
+        if (now != null && now !== diskText) {
+          if (!interactive && typingNode()) { outside = true; diskStamp = ''; return later(); }
+          if (!(await joinOutside(now, null, '', interactive)) || seq !== docSeq) return false;
+          if (!dirty) { updateSaveState(); return true; }
+        }
+      }
       const sent = raw; let savedRev = null;
       saving = true;
       try {
@@ -3568,8 +3675,7 @@
             }
             // Con el cursor en un bloque, juntar espera a que se lo suelte (lo escrito ya quedó en la copia local).
             if (typingNode() || (turn || 0) >= 4) { outside = true; diskStamp = ''; return later(); }
-            await takeOutside(e.theirs, e.rev);
-            if (seq !== docSeq) return false;
+            if (!(await takeOutside(e.theirs, e.rev, whoIs(lastEdit && lastEdit.by))) || seq !== docSeq) return false;
             return dirty ? save(interactive, (turn || 0) + 1) : true;
           }
         } else {
@@ -3722,7 +3828,7 @@
     blobUrls.splice(0).forEach((u) => URL.revokeObjectURL(u));
     if (!noDoc) fileCache.delete(HERE);
     undoStack.length = 0; redoStack.length = 0; collapsed.clear(); spyPin = null; present = []; hereAi = []; lastEdit = null;
-    pendingCell = null; fileHandle = null; stashed = null; opened = null; diskStamp = ''; cloudPoll = 0; cloudState = 'ok'; diskRev = null;
+    pendingCell = null; fileHandle = null; stashed = null; opened = null; held = null; diskStamp = ''; cloudPoll = 0; cloudState = 'ok'; diskRev = null;
     needsRender = false; core.lastBlock = null; core.hold = false;
     LMD.write.closeMenu(); closeMore(); setDrawer(false);
     // El aviso de una invitación a un equipo es de la cuenta, no de la nota: sigue al cambiar de nota.

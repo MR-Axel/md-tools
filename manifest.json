@@ -73,6 +73,7 @@
         "src/bridge.js",
         "src/seal.js",
         "src/cloud.js",
+        "src/merge.js",
         "src/home.js",
         "src/write.js",
         "src/lists.js",

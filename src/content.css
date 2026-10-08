@@ -2512,6 +2512,16 @@ button.lmd-cd-pill-name { cursor: pointer; border-radius: 4px; }
 .lmd-cl-add:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 1px; }
 .lmd-cl-toast { position: fixed; left: 50%; bottom: calc(22px + var(--lmd-kb, 0px)); transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 24px); padding: 9px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--fg); box-shadow: var(--shadow); font-family: var(--lmd-font); font-size: 13.5px; }
 .lmd-cl-toast .lmd-link { padding: 0; color: var(--accent); font-weight: 600; }
+/* Unir en vez de pisar (merge.js): la pregunta cuando los dos cambiaron lo mismo, y el guardado en pausa. */
+.lmd-mrg-card { width: min(720px, 100%); }
+.lmd-mrg-list { display: grid; gap: 10px; max-height: min(52vh, 460px); margin: 0 0 18px; overflow-y: auto; overscroll-behavior: contain; }
+.lmd-mrg-hunk { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.lmd-mrg-side { min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-soft); }
+.lmd-mrg-label { display: block; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--fg-muted); }
+.lmd-mrg-text { margin: 0; font: 12.5px/1.5 var(--lmd-mono, ui-monospace, monospace); color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; }
+.lmd-ask-card p.lmd-mrg-more { margin: 0; font-size: 13px; }
+.lmd-held .lmd-savestate { color: #d97706; font-weight: 600; }
+@media (max-width: 640px) { .lmd-mrg-hunk { grid-template-columns: 1fr; } }
 @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
   .lmd-cl-bar .lmd-link { opacity: 1; min-height: 32px; }
   .lmd-cl-grip { width: 36px; height: 32px; margin: -4px -6px 0 4px; opacity: 0.7; }

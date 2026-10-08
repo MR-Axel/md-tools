@@ -1349,16 +1349,230 @@ const within = (user, p) => !user.scope || p === user.scope || p.startsWith(user
 function scoped(user, p) { p = cleanPath(p); if (!within(user, p)) throw new Fail(403, 'out_of_scope', 'This token only reaches the folder ' + user.scope + '/'); return p; }
 const inFolder = (p, folder) => !folder || p.startsWith(folder.replace(/\/+$/, '') + '/');
 
+// ---------- Unir en vez de pisar ----------
+// Una IA que manda una nota entera la escribió sobre la versión que leyó. Si la persona cambió la nota mientras
+// tanto (tildó una tarea, corrigió un renglón), se unen las dos ediciones por líneas sobre esa versión común, con
+// las mismas reglas que usa la app (src/merge.js): el tramo que sigue es copia de aquel.
+// merge3:begin (el mismo tramo está en server/server.mjs: tests/merge.mjs comprueba que no se separen)
+// Qué cambió x respecto de b, como tramos sobre las líneas de b: [{ s, e, lines }] (de s a e pasan a ser lines).
+// Camino más corto de Myers, con tope de trabajo: si las diferencias son demasiadas va todo el medio como un solo
+// tramo (coarse), y quien une lo trata como un choque en vez de quedarse pensando.
+function mergeDiff(b, x) {
+  const nb = b.length; const nx = x.length;
+  let s = 0; while (s < nb && s < nx && b[s] === x[s]) s++;
+  let t = 0; while (t < nb - s && t < nx - s && b[nb - 1 - t] === x[nx - 1 - t]) t++;
+  const N = nb - s - t; const M = nx - s - t;
+  if (!N && !M) return [];
+  const whole = [{ s, e: nb - t, lines: x.slice(s, nx - t) }];
+  if (!N || !M) return whole;
+  const max = Math.min(N + M, 2000, Math.max(8, Math.floor(40000000 / (N + M))));
+  const off = max + 1; const V = new Int32Array(2 * max + 3); const trace = []; let found = -1;
+  for (let d = 0; d <= max && found < 0; d++) {
+    for (let k = -d; k <= d; k += 2) {
+      let i = k === -d || (k !== d && V[off + k - 1] < V[off + k + 1]) ? V[off + k + 1] : V[off + k - 1] + 1;
+      let j = i - k;
+      while (i < N && j < M && b[s + i] === x[s + j]) { i++; j++; }
+      V[off + k] = i;
+      if (i >= N && j >= M) { found = d; break; }
+    }
+    trace.push(V.slice(off - d - 1, off + d + 2));
+  }
+  if (found < 0) { whole.coarse = true; return whole; }
+  // De atrás para adelante: qué líneas de b se fueron y cuáles de x entraron.
+  const del = new Uint8Array(N); const ins = new Uint8Array(M); let i = N; let j = M;
+  for (let d = found; d > 0; d--) {
+    const P = trace[d - 1]; const k = i - j; const at = (q) => P[q + d];
+    const pk = k === -d || (k !== d && at(k - 1) < at(k + 1)) ? k + 1 : k - 1;
+    const pi = at(pk); const pj = pi - pk;
+    if (pk === k + 1) ins[pj] = 1; else del[pi] = 1;
+    i = pi; j = pj;
+  }
+  const out = []; let cur = null; i = 0; j = 0;
+  while (i < N || j < M) {
+    if (i < N && j < M && !del[i] && !ins[j]) { cur = null; i++; j++; continue; }
+    if (!cur) { cur = { s: s + i, e: s + i, lines: [] }; out.push(cur); }
+    if (i < N && del[i]) { i++; cur.e = s + i; } else { cur.lines.push(x[s + j]); j++; }
+  }
+  return out;
+}
+// Una línea de tarea, partida en lo que va antes de la casilla, la casilla y lo que sigue. null si no es una tarea.
+function mergeTask(line) {
+  const m = /^(\s*(?:>\s?)*\s*(?:[-*+]|\d{1,9}[.)])\s+\[)([ xX])(\](?:\s.*)?)$/.exec(line);
+  return m ? { pre: m[1], box: m[2], post: m[3], text: m[1] + m[3], done: m[2] !== ' ' } : null;
+}
+// Unión de tres vías por líneas: base es el texto común, mine lo de acá y theirs lo de afuera.
+// Devuelve { clean, text, conflicts, ticked, coarse, resolve }:
+//   clean     no quedó nada por decidir, y text es el resultado.
+//   conflicts los tramos que los dos cambiaron distinto: [{ base, mine, theirs }], cada uno el texto de ese tramo.
+//   ticked    en cuántas tareas los dos dejaron la casilla distinta sin una base que desempate: quedó tildada.
+//   resolve   (qué) arma el texto con los choques resueltos: 'mine', 'theirs' o 'both' (lo de acá, una línea en
+//             blanco y lo de afuera, sin marcas), uno para todos o una lista con uno por tramo.
+// Reglas: lo que cambió un solo lado entra. En una tarea, la casilla y el texto se unen por separado: si uno
+// tildó y el otro cambió el texto quedan las dos cosas. El resultado sale con los saltos de línea de mine.
+function mergeThree(base, mine, theirs) {
+  base = String(base == null ? '' : base); mine = String(mine == null ? '' : mine); theirs = String(theirs == null ? '' : theirs);
+  const lf = (v) => (v.indexOf('\r') === -1 ? v : v.replace(/\r\n/g, '\n'));
+  const done = (text) => ({ clean: true, text, conflicts: [], ticked: 0, coarse: false, resolve: () => text });
+  const B = lf(base); const Mi = lf(mine); const Th = lf(theirs);
+  if (Mi === B || Mi === Th) return done(theirs);
+  if (Th === B) return done(mine);
+  const eol = mine.indexOf('\r\n') !== -1 || (mine.indexOf('\n') === -1 && theirs.indexOf('\r\n') !== -1) ? '\r\n' : '\n';
+  // El salto del final del archivo no es una línea: se une aparte, como una casilla.
+  const end = (v) => v.endsWith('\n'); const body = (v) => (end(v) ? v.slice(0, -1) : v);
+  const tail = end(Mi) === end(Th) || end(Th) === end(B) ? end(Mi) : end(Th);
+  const b = body(B).split('\n'); const m = body(Mi).split('\n'); const t = body(Th).split('\n');
+  const same = (x, y) => x.length === y.length && x.every((l, k) => l === y[k]);
+  // Un reemplazo de n líneas por n líneas se mira renglón por renglón: así dos cambios en renglones vecinos no chocan.
+  const fine = (H) => { if (H.coarse) return H; const out = []; for (const h of H) { if (h.e - h.s !== h.lines.length || h.e - h.s < 2) { out.push(h); continue; } for (let k = 0; k < h.lines.length; k++) if (b[h.s + k] !== h.lines[k]) out.push({ s: h.s + k, e: h.s + k + 1, lines: [h.lines[k]] }); } return out; };
+  const Am = mergeDiff(b, m); const Ct = mergeDiff(b, t); const A = fine(Am); const C = fine(Ct);
+  let ticked = 0;
+  const words = (v) => new Set(v.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean));
+  // Dos tareas que dicen casi lo mismo: comparten al menos la mitad de las palabras.
+  const near = (x, y) => { const p = words(x); const r = words(y); let n = 0; for (const w of p) if (r.has(w)) n++; const all = p.size + r.size - n; return all > 0 && n / all >= 0.5; };
+  // Una línea que los dos cambiaron. En una tarea se unen aparte el texto y la casilla; si no, null (choque).
+  const line = (bl, ml, tl) => {
+    if (ml === tl) return ml;
+    const tm = mergeTask(ml); const tt = mergeTask(tl); const tb = bl == null ? null : mergeTask(bl);
+    if (!tm || !tt) return null;
+    let from = null;
+    if (tm.text === tt.text) from = tm; else if (tb && tm.text === tb.text) from = tt; else if (tb && tt.text === tb.text) from = tm;
+    if (!from) return null;
+    let box;
+    if (tm.done === tt.done) box = from.box; else if (tb && tm.done === tb.done) box = tt.box; else if (tb && tt.done === tb.done) box = tm.box;
+    else { box = tm.done ? tm.box : tt.box; ticked++; }
+    return from.pre + box + from.post;
+  };
+  // X cambió solo casillas respecto de la base (las mismas líneas, con otra casilla): esos tildes se llevan a Y,
+  // que cambió otra cosa. Cada tarea se busca en Y por su lugar o por su texto. null si alguna no aparece.
+  const boxOnly = (bs, xs) => bs.length === xs.length && bs.every((l, k) => { if (l === xs[k]) return true; const p = mergeTask(l); const r = mergeTask(xs[k]); return !!p && !!r && p.text === r.text; });
+  // Si en el tramo no está porque Y la mudó a otra parte, vale cuando esa tarea es una sola en la base y en todo
+  // el texto de Y (all): el tilde se le pone al final, donde haya quedado (moved).
+  const moved = [];
+  const once = (list, text) => { let n = 0; for (const l of list) { const q = mergeTask(l); if (q && q.text === text) n++; } return n === 1; };
+  const carry = (bs, xs, ys, all) => {
+    const H = mergeDiff(bs, ys); if (H.coarse) return null;
+    const res = ys.slice(); const used = new Set(); const far = [];
+    for (let k = 0; k < bs.length; k++) {
+      if (bs[k] === xs[k]) continue;
+      const tb = mergeTask(bs[k]); const tx = mergeTask(xs[k]); let shift = 0; let hit = -1; let inside = null;
+      for (const h of H) { if (h.e <= k) shift += h.lines.length - (h.e - h.s); else if (h.s <= k) { inside = h; break; } else break; }
+      if (!inside) hit = k + shift;
+      else {
+        const y0 = inside.s + shift; const cand = []; for (let n = 0; n < inside.lines.length; n++) { const ty = mergeTask(inside.lines[n]); if (ty) cand.push({ at: y0 + n, ty, n }); }
+        const here = inside.e - inside.s === inside.lines.length ? cand.find((c) => c.n === k - inside.s) : null;
+        const exact = cand.filter((c) => c.ty.text === tb.text); const close = cand.filter((c) => near(c.ty.text, tb.text));
+        if (here && (here.ty.text === tb.text || near(here.ty.text, tb.text))) hit = here.at; else if (exact.length === 1) hit = exact[0].at; else if (!exact.length && close.length === 1) hit = close[0].at;
+      }
+      const ty = hit < 0 ? null : mergeTask(res[hit]);
+      if (!ty && once(b, tb.text) && once(all, tb.text)) { far.push({ text: tb.text, was: tb.done, box: tx.box }); continue; }
+      if (!ty || used.has(hit)) return null;
+      used.add(hit);
+      if (ty.done === tb.done) res[hit] = ty.pre + tx.box + ty.post;
+    }
+    for (const f of far) moved.push(f);
+    return res;
+  };
+  // Un tramo que los dos tocaron: las líneas de la base, lo de acá y lo de afuera. Devuelve las líneas unidas, o null.
+  const region = (bs, ms, ts) => {
+    if (same(ms, ts)) return ms;
+    if (bs.length === ms.length && bs.length === ts.length) {
+      const keep = ticked; const out = [];
+      for (let k = 0; k < bs.length; k++) { const l = ms[k] === bs[k] ? ts[k] : ts[k] === bs[k] ? ms[k] : line(bs[k], ms[k], ts[k]); if (l == null) { out.length = 0; break; } out.push(l); }
+      if (out.length === bs.length && bs.length) return out;
+      ticked = keep;
+    }
+    if (boxOnly(bs, ms)) { const r = carry(bs, ms, ts, t); if (r) return r; }
+    if (boxOnly(bs, ts)) { const r = carry(bs, ts, ms, m); if (r) return r; }
+    return null;
+  };
+  // Los dos agregaron en el mismo lugar: si uno contiene lo del otro al principio o al final, va una sola vez; la
+  // misma tarea con la casilla distinta queda tildada; si no, primero lo de acá y después lo de afuera.
+  const both = (ms, ts) => {
+    const starts = (x, y) => y.length <= x.length && y.every((l, k) => l === x[k]); const ends = (x, y) => y.length <= x.length && y.every((l, k) => l === x[x.length - y.length + k]);
+    if (starts(ms, ts) || ends(ms, ts)) return ms;
+    if (starts(ts, ms) || ends(ts, ms)) return ts;
+    if (ms.length === ts.length) { const keep = ticked; const out = ms.map((l, k) => line(null, l, ts[k])); if (out.every((l) => l != null)) return out; ticked = keep; }
+    return ms.concat(ts);
+  };
+  const parts = []; let pos = 0; let i = 0; let j = 0;
+  const put = (lines) => { const last = parts[parts.length - 1]; if (Array.isArray(last)) { for (const l of lines) last.push(l); } else parts.push(lines.slice()); };
+  const take = (h, lines) => { put(b.slice(pos, h.s)); put(lines || h.lines); pos = h.e; };
+  const side = (list, gs, ge) => { const o = []; let p = gs; for (const h of list) { for (let k = p; k < h.s; k++) o.push(b[k]); for (const l of h.lines) o.push(l); p = h.e; } for (let k = p; k < ge; k++) o.push(b[k]); return o; };
+  while (i < A.length || j < C.length) {
+    const a = A[i]; const c = C[j];
+    if (!c) { take(a); i++; continue; }
+    if (!a) { take(c); j++; continue; }
+    if (a.s === a.e && c.s === c.e && a.s === c.s) { take(a, both(a.lines, c.lines)); i++; j++; continue; }
+    if (a.e <= c.s) { take(a); i++; continue; }
+    if (c.e <= a.s) { take(c); j++; continue; }
+    // Se pisan: se junta todo lo que se encadena con ese tramo, de un lado y del otro.
+    const gs = Math.min(a.s, c.s); let ge = Math.max(a.e, c.e); const ga = []; const gc = [];
+    for (;;) {
+      if (i < A.length && A[i].s < ge) { ge = Math.max(ge, A[i].e); ga.push(A[i++]); }
+      else if (j < C.length && C[j].s < ge) { ge = Math.max(ge, C[j].e); gc.push(C[j++]); }
+      else break;
+    }
+    const bs = b.slice(gs, ge); const ms = side(ga, gs, ge); const ts = side(gc, gs, ge);
+    const r = region(bs, ms, ts);
+    put(b.slice(pos, gs)); pos = ge;
+    if (r) put(r); else parts.push({ base: bs, mine: ms, theirs: ts });
+  }
+  put(b.slice(pos));
+  // Los tildes de las tareas mudadas, ya con todo en su lugar.
+  const settle = (lines) => { for (let k = 0; k < lines.length; k++) { const q = mergeTask(lines[k]); if (!q) continue; const f = moved.find((x) => x.text === q.text && x.was === q.done); if (f) lines[k] = q.pre + f.box + q.post; } };
+  if (moved.length) for (const p of parts) { if (Array.isArray(p)) settle(p); else { settle(p.mine); settle(p.theirs); } }
+  const open = parts.filter((p) => !Array.isArray(p));
+  const resolve = (how) => {
+    const out = []; let n = 0;
+    for (const p of parts) {
+      if (Array.isArray(p)) { for (const l of p) out.push(l); continue; }
+      const pick = (Array.isArray(how) ? how[n] : how) || 'both'; n++;
+      const lines = pick === 'mine' ? p.mine : pick === 'theirs' ? p.theirs : p.mine.concat(p.mine.length && p.theirs.length ? [''] : [], p.theirs);
+      for (const l of lines) out.push(l);
+    }
+    return out.join(eol) + (tail ? eol : '');
+  };
+  return { clean: !open.length, text: open.length ? null : resolve(), conflicts: open.map((p) => ({ base: p.base.join('\n'), mine: p.mine.join('\n'), theirs: p.theirs.join('\n') })), ticked, coarse: !!(Am.coarse || Ct.coarse), resolve };
+}
+// merge3:end
+// Lo último que cada token leyó o escribió de cada nota: su revisión y su texto. Es la base de esa unión. Vive en
+// memoria y con tope; si falta, a la IA le vuelve el texto de ahora para que una ella. El texto de una nota de una
+// carpeta con contraseña no se guarda acá: solo su revisión.
+const AI_READS_MAX = 2000; const AI_READS_CHARS = 48 * 1024 * 1024; const aiReads = new Map(); let aiReadsChars = 0;
+function aiReadSet(user, ownerId, p, rev, text) {
+  if (!user || user.tokenId == null) return;
+  const key = user.tokenId + '|' + ownerId + ':' + p; const old = aiReads.get(key);
+  if (old) { aiReadsChars -= old.text == null ? 0 : old.text.length; aiReads.delete(key); }
+  aiReads.set(key, { rev, text }); aiReadsChars += text == null ? 0 : text.length;
+  for (const [k, v] of aiReads) { if (aiReads.size <= AI_READS_MAX && aiReadsChars <= AI_READS_CHARS) break; aiReads.delete(k); aiReadsChars -= v.text == null ? 0 : v.text.length; }
+}
+const aiReadGet = (user, ownerId, p) => (user && user.tokenId != null ? aiReads.get(user.tokenId + '|' + ownerId + ':' + p) || null : null);
+// Una respuesta del MCP en varios bloques de texto: el primero es el contenido, los demás lo que hay que saber de él.
+class Parts { constructor(list) { this.list = list; } }
+// Las tareas de una nota (- [ ] y - [x]) fuera de los bloques de código: las tarjetas de un tablero no cuentan.
+function taskLines(lines) {
+  const out = []; let fence = '';
+  lines.forEach((l, i) => {
+    const f = /^\s*(`{3,}|~{3,})/.exec(l);
+    if (f) { if (!fence) fence = f[1][0]; else if (f[1][0] === fence) fence = ''; return; }
+    if (fence) return;
+    const t = mergeTask(l); if (t) out.push({ i, t, label: t.post.slice(1).replace(/\s+/g, ' ').trim() });
+  });
+  return out;
+}
+
 // ---------- MCP (Streamable HTTP, respuestas JSON) ----------
 const TOOLS = [
   { name: 'list_notes', description: 'List the Markdown notes in the SharpMD cloud folder, newest first. Pass a folder to list only what is inside it.', inputSchema: { type: 'object', properties: { folder: { type: 'string', description: 'Optional folder, for example projects/launch' } } } },
   { name: 'list_folders', description: 'List the folders that hold notes, with how many notes each one has. A top-level folder is usually a project.', inputSchema: { type: 'object', properties: {} } },
-  { name: 'read_note', description: 'Read one note by its path.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path of the note, for example ideas/launch.md' } }, required: ['path'] } },
-  { name: 'write_note', description: 'Create a note or replace its whole content with Markdown text.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, text: { type: 'string', description: 'Full Markdown content' } }, required: ['path', 'text'] } },
+  { name: 'read_note', description: 'Read one note by its path. The answer ends with the version of the note: pass it as base_rev when you replace the note with write_note.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path of the note, for example ideas/launch.md' } }, required: ['path'] } },
+  { name: 'write_note', description: 'Create a note or replace its whole content with Markdown text. To change part of an existing note, prefer edit_note, set_task or append_note. When you replace a note, pass base_rev with the version read_note gave you: if the person changed the note in the meantime, their changes are merged with yours instead of being overwritten, and if both changed the same lines nothing is saved and you get the current text back.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, text: { type: 'string', description: 'Full Markdown content' }, base_rev: { type: 'number', description: 'Optional: the version of the note your text is based on, from read_note' } }, required: ['path', 'text'] } },
   { name: 'append_note', description: 'Append Markdown text to the end of a note, creating it if it does not exist.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, text: { type: 'string' } }, required: ['path', 'text'] } },
+  { name: 'edit_note', description: 'Replace one exact passage of a note with new text, without sending the whole note. old_text must appear exactly once in the note: copy it as it is written, with enough of the text around it to be unique. Everything else in the note stays as the person left it.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, old_text: { type: 'string', description: 'The exact passage to replace' }, new_text: { type: 'string', description: 'What goes in its place. Empty to delete the passage' } }, required: ['path', 'old_text', 'new_text'] } },
+  { name: 'set_task', description: 'Check or uncheck one task of a note (a line like - [ ] Buy bread) without rewriting the note. The task is found by its text. Only uncheck a task when the person asks for it.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, task: { type: 'string', description: 'The text of the task, as written in the note' }, done: { type: 'boolean', description: 'true to check it (default), false to uncheck it' }, occurrence: { type: 'number', description: 'Optional: which one, from 1, when several tasks have that text' } }, required: ['path', 'task'] } },
   { name: 'search_notes', description: 'Search the text of every note. Returns matching notes with the lines that match.', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
   { name: 'list_comments', description: 'List the comments the user left for you and that are still open. Each one has the note path, the quoted passage it refers to and what the user asks. Check this when the user says they left comments, and before editing a note.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Optional: only the comments on this note' } } } },
-  { name: 'resolve_comment', description: 'Mark a comment as done after making the change it asks for with write_note. Add a short reply saying what you changed.', inputSchema: { type: 'object', properties: { id: { type: 'number' }, reply: { type: 'string', description: 'One or two sentences on what was changed' } }, required: ['id'] } },
+  { name: 'resolve_comment', description: 'Mark a comment as done after making the change it asks for with edit_note or write_note. Add a short reply saying what you changed.', inputSchema: { type: 'object', properties: { id: { type: 'number' }, reply: { type: 'string', description: 'One or two sentences on what was changed' } }, required: ['id'] } },
   { name: 'move_note', description: 'Move or rename a note. Its history, comments, shares and public links follow it. Fails if a note already exists at the new path.', inputSchema: { type: 'object', properties: { from: { type: 'string', description: 'Current path' }, to: { type: 'string', description: 'New path, for example archive/2025/plan.md' } }, required: ['from', 'to'] } },
   { name: 'note_history', description: 'List the earlier versions kept for a note, newest first. Pass version to read the text of one of them.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, version: { type: 'number', description: 'Optional: id of the version to read' } }, required: ['path'] } },
   // El modo de trabajo completo, a demanda: la estructura del proyecto y las reglas del tablero (ver guide).
@@ -1379,7 +1593,7 @@ const TOOLS = [
 ];
 // A un token del equipo que solo lee no se le ofrecen las que cambian algo.
 const BOARD_TOOLS = new Set(['list_boards', 'create_board', 'add_card', 'move_card', 'update_card', 'delete_card']);
-const WRITE_TOOLS = new Set(['write_note', 'append_note', 'move_note', 'resolve_comment', 'create_board', 'add_card', 'move_card', 'update_card', 'delete_card', 'share_note', 'unshare_note', 'create_public_link', 'revoke_public_link']);
+const WRITE_TOOLS = new Set(['write_note', 'append_note', 'edit_note', 'set_task', 'move_note', 'resolve_comment', 'create_board', 'add_card', 'move_card', 'update_card', 'delete_card', 'share_note', 'unshare_note', 'create_public_link', 'revoke_public_link']);
 const toolsFor = (user) => TOOLS.filter((t) => (!t.share || user.canShare) && !(user.canWrite === false && WRITE_TOOLS.has(t.name))).map(({ share, ...t }) => t);
 const SHARE_TOOLS = new Set(TOOLS.filter((t) => t.share).map((t) => t.name));
 const NO_SHARE = 'This token cannot share notes or create public links. Ask the person to do it from the SharpMD app, or to create a token with that permission in Settings > AI.';
@@ -1445,6 +1659,7 @@ function callTool(user, name, args, opt) {
   const read = (a, key) => {
     const n = readNote(a.who, a.p);
     aiTouch(user, a.who.id, a.p, false);
+    aiReadSet(user, a.who.id, a.p, n.rev, key ? null : n.text);
     if (!key) return n.text;
     if (!n.text.startsWith(VAULT)) throw new Fail(423, 'vault_locked', 'This note is still being encrypted by SharpMD. Try again in a moment.');
     return vaultOpen(key, aadOf(a), n.text);
@@ -1461,8 +1676,13 @@ function callTool(user, name, args, opt) {
     const saved = writeNote(a.who, a.p, key ? vaultSeal(key, aadOf(a), text) : text, base === undefined ? revOf(a) : base);
     tellSaved(a.who.id, a.p, saved, { by: 'mcp', ed: user.tokenId != null ? 't:' + user.tokenId : null }, text);
     aiTouch(user, a.who.id, a.p, true);
+    aiReadSet(user, a.who.id, a.p, saved.rev, key ? null : text);
     return saved;
   };
+  // Quién hizo el último guardado de la nota, para decírselo a la IA sin nombres: ella misma, una persona, otra IA.
+  const lastBy = (a) => { const r = q('SELECT by, updated FROM notes WHERE user = ? AND path = ?').get(a.who.id, a.p); const by = (r && r.by) || ''; return { self: user.tokenId != null && by === 't:' + user.tokenId, who: by[0] === 'u' ? 'a person' : by[0] === 'g' ? 'a guest' : by[0] === 't' ? 'another AI' : 'someone', updated: r ? r.updated : 0 }; };
+  // La versión que manda la IA: un entero, también si llega como texto.
+  const revArg = (v) => (v == null || v === '' ? null : cleanRev(typeof v === 'string' && /^\d+$/.test(v) ? +v : v));
   // La dirección para abrir esa nota en la app, con el mismo formato que usa la app al navegar.
   const appLink = (f) => APP_URL + '?f=' + encodeURIComponent(f);
   const openUrl = (a) => appLink('cloud/' + (a.who === user && !isSpace(a.who) ? '' : '~' + a.who.id + '/') + a.p.split('/').map(encodeURIComponent).join('/'));
@@ -1470,8 +1690,60 @@ function callTool(user, name, args, opt) {
   if (opt.raw) { const out = apiTool(name, args, k); if (out !== undefined) return out; }
   if (name === 'get_guide') return guide(user);
   if (BOARD_TOOLS.has(name)) return boardTool(name, args, k);
-  if (name === 'read_note') { const a = at(args.path); seen(a); return read(a, gate(a)); }
-  if (name === 'write_note') { const a = at(args.path); mayWrite(a); const had = revOf(a) != null; write(a, gate(a), args.text); noted(had ? 'edit' : 'create', a); return 'Saved ' + a.full + ' (' + String(args.text == null ? '' : args.text).length + ' characters). Open it: ' + openUrl(a); }
+  if (name === 'read_note') {
+    const a = at(args.path); seen(a); const text = read(a, gate(a)); const rev = revOf(a); const last = lastBy(a);
+    // El texto va solo en el primer bloque, como siempre. El segundo dice sobre qué versión se está parado.
+    return new Parts([text, 'Version ' + rev + ' of ' + a.full + ', last saved ' + iso(last.updated) + ' by ' + (last.self ? 'you' : last.who) + '. To change part of it use edit_note, set_task or append_note. If you replace it with write_note, pass base_rev: ' + rev + ' so that what the person changes in the meantime is merged instead of overwritten.']);
+  }
+  if (name === 'write_note') {
+    const a = at(args.path); mayWrite(a); const key = gate(a); const cur = revOf(a); const had = cur != null;
+    const mine = String(args.text == null ? '' : args.text); const baseRev = revArg(args.base_rev);
+    const mem = aiReadGet(user, a.who.id, a.p); const last = had ? lastBy(a) : null; let text = mine; let said = '';
+    if (had && baseRev != null && baseRev !== cur) {
+      // La nota cambió desde la versión sobre la que la IA escribió: se unen las dos ediciones, o no se guarda nada.
+      const now = read(a, key);
+      const m = mem && mem.rev === baseRev && mem.text != null ? mergeThree(mem.text, mine, now) : null;
+      if (!m || !m.clean) throw new Fail(409, 'rev_conflict', 'Nothing was saved. ' + a.full + ' changed since version ' + baseRev + ' (' + last.who + ' edited it)' + (m ? ' and your text changes the same lines' : ' and that version is no longer at hand to merge with') + '. It is now at version ' + cur + '. Apply your change to the current text below and call write_note again with base_rev ' + cur + ', or make the change with edit_note or set_task. Keep everything the person wrote or checked.\n\nCurrent text of ' + a.full + ':\n\n' + now, { rev: cur });
+      text = m.text;
+      said = ' The note had changed since version ' + baseRev + ' (' + last.who + ' edited it): those changes were merged with yours' + (m.ticked ? ', and a task that both sides left with a different box stayed checked' : '') + '. Read it again before the next change.';
+    } else if (had && baseRev == null && !last.self && !(mem && mem.rev === cur)) {
+      // Sin versión de base se guarda como siempre, pisando. Si en el medio guardó otro, la IA se entera.
+      said = ' Warning: ' + last.who + (mem ? ' changed this note after you last read it' : ' saved this note last and you had not read it') + ', and this write replaced the whole note. Read it again and put back anything they wrote or checked that is now missing. Next time pass base_rev, or use edit_note or set_task.';
+    }
+    const saved = write(a, key, text, cur); noted(had ? 'edit' : 'create', a);
+    return 'Saved ' + a.full + ' (' + text.length + ' characters). Open it: ' + openUrl(a) + (baseRev == null ? '' : ' Now at version ' + saved.rev + '.') + said;
+  }
+  if (name === 'edit_note') {
+    // Leer, cambiar el tramo y escribir pasan sobre la misma revisión: lo demás queda como lo dejó la persona.
+    const a = at(args.path); mayWrite(a); const key = gate(a); const rev = revOf(a); const text = read(a, key);
+    const lf = (v) => String(v).replace(/\r\n/g, '\n'); const from = typeof args.old_text === 'string' ? lf(args.old_text) : ''; const to = lf(args.new_text == null ? '' : args.new_text);
+    if (!from) throw new Fail(400, 'bad_text', 'old_text is the exact passage to replace, copied from the note');
+    const crlf = text.includes('\r\n'); const body = lf(text); const n = body.split(from).length - 1;
+    if (!n) throw new Fail(409, 'no_match', 'Nothing was saved. old_text was not found in ' + a.full + '. Read the note again: the person may have changed it, and the passage has to be copied exactly as it is written.');
+    if (n > 1) throw new Fail(409, 'many_matches', 'Nothing was saved. old_text appears ' + n + ' times in ' + a.full + '. Add more of the text around it, so that it matches only once.');
+    if (from === to) return 'Nothing to change in ' + a.full + ': old_text and new_text are the same.';
+    const next = body.replace(from, () => to);
+    const saved = write(a, key, crlf ? next.replace(/\n/g, '\r\n') : next, rev); noted('edit', a);
+    return 'Edited ' + a.full + ' (now at version ' + saved.rev + '). Open it: ' + openUrl(a);
+  }
+  if (name === 'set_task') {
+    const a = at(args.path); mayWrite(a); const key = gate(a); const rev = revOf(a); const text = read(a, key);
+    const want = String(args.task == null ? '' : args.task).replace(/^\s*(?:[-*+]|\d{1,9}[.)])\s+\[[ xX]\]\s*/, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!want) throw new Fail(400, 'bad_task', 'task is the text of the task, as written in the note');
+    const done = !(args.done === false || args.done === 'false');
+    const lines = text.split(/\r?\n/); const all = taskLines(lines);
+    let hits = all.filter((x) => x.label.toLowerCase() === want); if (!hits.length) hits = all.filter((x) => x.label.toLowerCase().includes(want));
+    const show = (list) => list.slice(0, 20).map((x, n) => '\n' + (n + 1) + '. ' + (x.t.done ? '[x] ' : '[ ] ') + x.label).join('');
+    if (!hits.length) throw new Fail(404, 'task_not_found', 'Nothing was saved. There is no task with that text in ' + a.full + '. Read the note again: the person may have changed it.' + (all.length ? ' Its tasks:' + show(all) : ''));
+    const nth = args.occurrence == null || args.occurrence === '' ? null : +args.occurrence;
+    if (nth != null && (!Number.isInteger(nth) || nth < 1 || nth > hits.length)) throw new Fail(400, 'bad_occurrence', 'occurrence goes from 1 to ' + hits.length + ' for that text:' + show(hits));
+    if (hits.length > 1 && nth == null) throw new Fail(409, 'task_ambiguous', 'Nothing was saved. ' + hits.length + ' tasks match that text. Pass occurrence with the number of the one you mean, or more of its text:' + show(hits));
+    const hit = hits[(nth || 1) - 1];
+    if (hit.t.done === done) return 'Nothing to change: "' + hit.label + '" in ' + a.full + ' is already ' + (done ? 'checked' : 'unchecked') + '.';
+    lines[hit.i] = hit.t.pre + (done ? 'x' : ' ') + hit.t.post;
+    write(a, key, lines.join(text.includes('\r\n') ? '\r\n' : '\n'), rev); noted('edit', a, 'task');
+    return (done ? 'Checked' : 'Unchecked') + ' "' + hit.label + '" in ' + a.full + ' (line ' + (hit.i + 1) + '). Open it: ' + openUrl(a);
+  }
   if (name === 'append_note') {
     // Lo que se lee y lo que se escribe son de la misma revisión: si no coincidiera, no se agrega sobre un texto viejo.
     const a = at(args.path); mayWrite(a); const key = gate(a); let prev = ''; const base = revOf(a);
@@ -1581,13 +1853,14 @@ function mcp(user, msg) {
   if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } };
   const reply = (result) => ({ jsonrpc: '2.0', id: msg.id, result });
   if (msg.method === 'initialize') return reply({ protocolVersion: (msg.params && msg.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'sharpmd', version: '1.0.0' },
-    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with write_note, then resolve_comment. A folder marked as protected and locked is encrypted with a password: you cannot read it until the person unlocks it for the AI from SharpMD. If the person belongs to a team, the notes the team shares are under @team/ and every member can read and edit them. write_note, append_note and move_note return a link that opens the note in the SharpMD app: give it to the person. ' + (user.canWrite === false ? '' : 'Work this way without being asked. Keep the project documented in one folder: README.md as the index, architecture.md, features/ with one note per feature, epics.md, decisions.md and log.md. Keep its task board in board.md, one card per task: To do when you plan it, In progress when you start, Paused when you need something from the person (say what in a field called needs), Done when it is finished. Change the board with create_board, add_card, move_card and update_card instead of rewriting the note. Keep what only the person can do in pending.md: a task list where each item has numbered steps with the direct link to the page where each one is done. Call get_guide once per session for the full structure and rules. ') + (user.teamToken ? 'This token belongs to a team, not to a person: every note it reaches is in the shared space of the team' + (user.canWrite ? '. ' : ', and it can only read. ') : '') + (user.canShare ? 'This token can share notes with other accounts and create public links: only do that when the person asks.' : 'This token cannot share notes or create public links: the person does that from the SharpMD app.') + (user.scope ? ' This token only reaches the folder ' + user.scope + '/.' : '') + ' When you mention a Markdown file that lives on the person\'s disk instead of here, give it as a link that opens it in their browser with the SharpMD extension: ' + APP_URL + '#open= followed by the file:// address of the file, percent-encoded as a single value (what encodeURIComponent returns). For example [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///C:/Users/me/Desktop/notes.md') + ') on Windows, or [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///Users/me/Desktop/notes.md') + ') on Mac and Linux. Under the link, write the full path as plain text, in case the link cannot be clicked.' });
+    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with edit_note or write_note, then resolve_comment. The person edits the same notes while you work, and checks tasks in them: read a note right before you change it, prefer edit_note, set_task, append_note and the board tools over write_note, pass base_rev from read_note when you do use write_note, and never uncheck or delete what the person checked or wrote. A folder marked as protected and locked is encrypted with a password: you cannot read it until the person unlocks it for the AI from SharpMD. If the person belongs to a team, the notes the team shares are under @team/ and every member can read and edit them. write_note, edit_note, set_task, append_note and move_note return a link that opens the note in the SharpMD app: give it to the person. ' + (user.canWrite === false ? '' : 'Work this way without being asked. Keep the project documented in one folder: README.md as the index, architecture.md, features/ with one note per feature, epics.md, decisions.md and log.md. Keep its task board in board.md, one card per task: To do when you plan it, In progress when you start, Paused when you need something from the person (say what in a field called needs), Done when it is finished. Change the board with create_board, add_card, move_card and update_card instead of rewriting the note. Keep what only the person can do in pending.md: a task list where each item has numbered steps with the direct link to the page where each one is done. Call get_guide once per session for the full structure and rules. ') + (user.teamToken ? 'This token belongs to a team, not to a person: every note it reaches is in the shared space of the team' + (user.canWrite ? '. ' : ', and it can only read. ') : '') + (user.canShare ? 'This token can share notes with other accounts and create public links: only do that when the person asks.' : 'This token cannot share notes or create public links: the person does that from the SharpMD app.') + (user.scope ? ' This token only reaches the folder ' + user.scope + '/.' : '') + ' When you mention a Markdown file that lives on the person\'s disk instead of here, give it as a link that opens it in their browser with the SharpMD extension: ' + APP_URL + '#open= followed by the file:// address of the file, percent-encoded as a single value (what encodeURIComponent returns). For example [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///C:/Users/me/Desktop/notes.md') + ') on Windows, or [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///Users/me/Desktop/notes.md') + ') on Mac and Linux. Under the link, write the full path as plain text, in case the link cannot be clicked.' });
   if (msg.method === 'ping') return reply({});
   if (msg.method === 'tools/list') return reply({ tools: toolsFor(user) });
   if (msg.method === 'tools/call') {
     try {
       const out = callTool(user, msg.params && msg.params.name, msg.params && msg.params.arguments);
-      return reply({ content: [{ type: 'text', text: typeof out === 'string' ? out : JSON.stringify(out, null, 2) }] });
+      const blocks = out instanceof Parts ? out.list : [typeof out === 'string' ? out : JSON.stringify(out, null, 2)];
+      return reply({ content: blocks.map((text) => ({ type: 'text', text })) });
     } catch (e) { return reply({ content: [{ type: 'text', text: 'Error: ' + (e.message || e.code || 'failed') }], isError: true }); }
   }
   if (msg.id === undefined) return null; // notificación: no lleva respuesta
@@ -3388,7 +3661,7 @@ function guide(user) {
     '- Create the structure in the first session, from what you can learn in the code and the conversation. Leave a section empty instead of inventing its content.',
     '- Keep it current as you work. A feature that changes updates its note, a choice between options adds an entry to decisions.md, and each session adds an entry to log.md.',
     '- Link the notes with relative paths: [Architecture](architecture.md) from the README, [README](../README.md) from a feature note.',
-    '- Call read_note before you replace a note with write_note.',
+    '- Read a note right before you change it. The rules for changing notes are in the next section.',
     '',
     '### Feature note',
     '',
@@ -3432,6 +3705,16 @@ function guide(user) {
     '',
     '- What changed, with a link to the note or the commit.',
     F,
+    '',
+    '## Changing a note the person also edits',
+    '',
+    'The person has the same notes open, writes in them and checks tasks while you work. What they wrote or checked always stays.',
+    '',
+    '- Read a note right before you change it, not at the start of the session.',
+    '- Change only the part you need: edit_note replaces one exact passage, set_task checks or unchecks one task, append_note adds at the end, and the board tools move one card.',
+    '- Use write_note to create a note or to rewrite it whole, and then pass base_rev with the version read_note gave you. If the person changed the note in the meantime, their changes are merged with yours. If both changed the same lines nothing is saved and you get the current text: apply your change to it and try again.',
+    '- Never uncheck a task the person checked, and never delete or reword what they wrote, unless they ask for it.',
+    '- The same goes for Markdown files on the disk: read the file again right before each edit, make small edits to the lines you need, and never rewrite the whole file.',
     '',
     '## The task board',
     '',
