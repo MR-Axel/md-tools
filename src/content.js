@@ -181,6 +181,7 @@
     daily: { js: ['src/daily.js'] },
     docx: { js: ['src/docx.js'] },
     linkmap: { js: ['src/linkmap.js'] },
+    assistant: { js: ['src/aikey.js', 'src/assistant.js'] },
     // La galería de la comunidad, en Ajustes > Herramientas: se pide al abrir esa pestaña.
     gallery: { js: ['src/gallery.js'] },
     // Ajustes > Automatizaciones y el alta guiada: se piden al abrir esa pestaña o al elegir "Automatizar…".
@@ -191,6 +192,7 @@
   LAZY_HAVE.gallery = () => !!LMD.gallery; LAZY_HAVE.automate = () => !!LMD.automate; LAZY_HAVE.publish = () => !!LMD.publish;
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
   ['present', 'daily', 'docx', 'linkmap'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
+  LAZY_HAVE.assistant = () => !!(LMD.ai && LMD.assistant);
   async function appLazy(what) {
     const spec = LAZY_APP[what];
     try {

@@ -57,6 +57,7 @@ Free and open source. No tracking: files are read in your browser and never uplo
 | **Daily note** | A tool in Settings → Tools. A button on the home screen and in the file explorer opens today's note and creates it from a template when it does not exist, in the browser, the cloud or a folder on disk. A month calendar marks the days that have a note, and each daily note links to the day before and the day after. Works offline. |
 | **Word export** | A tool in Settings → Tools. Adds Word (.docx) to the Export menu. The file is built in the browser: heading styles that feed an automatic table of contents, lists, task checkboxes, tables, code, footnotes, embedded images and diagrams as images. Formulas go as LaTeX text. |
 | **Link map** | A tool in Settings → Tools. A graph of which notes link to which, from relative links and `[[wikilinks]]`: drag, zoom, filter by folder, search, and click a note to open it. Under the open note, the notes that link to it. It reads only what is already on the device and sends nothing. |
+| **AI assistant (your key)** | A tool in Settings → Tools, off by default. Connect your own key for Claude (Anthropic), OpenAI or any OpenAI-compatible server (OpenRouter, or Ollama and LM Studio on your machine). On a selection or a block: improve the writing, fix spelling and grammar, shorten, expand, change the tone, translate, explain, or ask for something else. The result is a proposal next to the original with the differences marked, and you choose: replace, insert below, copy or discard. "Write with AI" generates Markdown at that point, with shortcuts for a table, a task list, a Mermaid diagram (checked with the parser, retried once if it fails), a LaTeX formula, a summary, key points and tasks from the note. A side panel answers questions about the open note, and a comment for the AI gets "Resolve with my AI". Calls go straight from your browser to your provider: SharpMD never sees the key or the text. |
 | **Phone** | The same app on a small screen, and the web app opens without a connection. On iPhone and iPad it installs from Safari (Share, Add to Home Screen): it respects the notch and the home bar, keeps the format bar above the keyboard and exports through the share sheet. |
 | **Yours to adjust** | Twelve built-in themes, six light and six dark, picked from a grid of thumbnails with a live preview (four are free; the rest, like accent color, font and custom CSS, come with the paid plan). Each one sets the page, panels, text, borders, links, selection, code syntax and diagrams, and is checked for AA contrast (`tests/themes.mjs`). Also width, font size, code block color, English and Spanish. |
 
@@ -124,6 +125,8 @@ On a Mac, Ctrl is ⌘ and Alt is ⌥ (redo is ⇧⌘Z), and the app shows them t
 | Alt+Shift+P | Presentation mode: start and exit (with the tool on) |
 | Alt+Shift+H | Daily note: open today's note (with the tool on) |
 | Alt+Shift+G | Link map: open and close (with the tool on) |
+| Alt+Shift+A | AI assistant: actions on the selection or the block (with the tool on) |
+| Alt+Shift+Q | AI assistant: open and close the panel to ask about the note (with the tool on) |
 
 The first four Alt+Shift shortcuts can be changed at `chrome://extensions/shortcuts`.
 
@@ -134,6 +137,8 @@ A page cannot write to disk on its own, so the first time you save a file opened
 ## Privacy
 
 No analytics. Settings, reading positions and browser notes are stored in your browser. Files you open are never uploaded. Reading aloud uses the voices of your device, and dictation uses the speech recognition of the browser: SharpMD never receives audio. Cloud notes are optional: a note reaches the sync server only when you send it there. With the extension installed, browser notes, the list of opened files and folders and display preferences pass between the web app and the extension inside your browser, never over the network. Apart from that, the extension makes two network requests: the daily check of the version number published here, which you can turn off, and a short check that the web app answers when you click its button. HTML produced from the Markdown goes through DOMPurify before it reaches the page. Details in the [privacy page](https://sharpmd.app/privacy.html).
+
+The AI assistant is off until you turn it on and add your own key. The key is stored only on that device, encrypted with a key the browser will not export (optionally derived from a password that is never stored), and it is never part of the settings that sync, of a note or of an export. Requests go from your browser straight to the provider you chose, which receives the text you send, bills it and handles it under its own terms. A key in a browser is protected from other sites and from our server, not from someone using your unlocked device: prefer a key with a spending limit. Text from a protected folder is sent only if you confirm it that time, and you can turn that off for good.
 
 ## Kanban cards
 
@@ -202,6 +207,8 @@ src/
   daily.js        tool: daily note, its calendar and the links to the previous and next day
   docx.js         tool: Word export, the OOXML parts and a small zip writer
   linkmap.js      tool: link map on a canvas and the links to the open note
+  aikey.js        AI assistant: the provider adapters, the stored key and the streaming calls (no UI)
+  assistant.js    tool: AI assistant with your own key (actions, write with AI, the panel, its options)
   cloud.js        client for the optional sync server
   home.js         the empty state of the app and the sign-in form
   write.js        new blocks, Markdown shortcuts and the block menu
@@ -253,6 +260,7 @@ Two more scripts run by hand, outside `npm test`:
 - `node themes.mjs` checks the contrast of the twelve built-in themes, with no browser.
 - `BROWSER=firefox node browsers.mjs` (or `webkit`) walks the landing page and the web app in the other engines. In WebKit it also walks the app as an iPhone, an iPad and a Mac see it (screenshots prefixed `iphone-` and `ipad-`); that engine is not Safari, so a real device still has to be checked. Install them once with `npx playwright-core install firefox webkit`.
 - `node tools.mjs` covers presentation mode, the daily note, Word export and the link map (`ONLY=docx` runs one). `KEEP_DOCX=path ONLY=docx node tools.mjs` leaves the generated file there to open it by hand.
+- `node assistant.mjs` covers the AI assistant against a local server that imitates the Anthropic and OpenAI streaming formats: no real provider and no real key (`ONLY=key` runs one part: key, actions, gen, panel, comments, errors, vault, small, safe, ext).
 - `node perf.mjs` measures the web app load, cold and warm, on a throttled network and CPU. Run it before and after touching what `src/app.html` loads.
 
 The kanban board is one of those tools: on by default, and when it is off a kanban block shows as a code block and the note is not changed. A tool for Settings → Tools is one file plus one `LMD.tools.register({ id, name, about, icon, defaultOn, lazy, module })` line in `src/tools.js`. Its file is requested only while the tool is on. The dictation phrases are tables in `src/voice.js`, one per language, and `LMD.voice.parse(text, mode, lang)` is a pure function that `tests/voice.mjs` exercises without a microphone. A tool adds its rows to the top bar menus with `core.menus.export` and `core.menus.more`, and what they run with `core.actions`.

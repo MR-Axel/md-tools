@@ -97,5 +97,11 @@
   const vkeyDelete = (who, check) => handlesDelete(vkeyKey(who, check));
   const vkeyClear = async (who) => { for (const r of await handlesAll()) if ((r.vkey || r.vaults) && r.who === who) await handlesDelete(r.key); };
 
-  LMD.store = { handlesAll, handlesPut, handlesDelete, canWrite, walk, rootsAll, notesAll, noteGet, notePut, noteDelete, noteHandle, cloudAll, cloudGet, cloudPut, cloudDelete, vaultsGet, vaultsPut, vkeyGet, vkeyPut, vkeyDelete, vkeyClear };
+  // La conexión del asistente de IA (aikey.js): proveedor, modelo y la clave cifrada. Es de este dispositivo: no es
+  // una nota ni una carpeta, así que el puente con la extensión y la nube no la ven.
+  const aiGet = () => handlesGet('ai:key');
+  const aiPut = (rec) => handlesPut(Object.assign({}, rec, { key: 'ai:key', ai: true }));
+  const aiDelete = () => handlesDelete('ai:key');
+
+  LMD.store = { handlesAll, handlesPut, handlesDelete, canWrite, walk, rootsAll, notesAll, noteGet, notePut, noteDelete, noteHandle, cloudAll, cloudGet, cloudPut, cloudDelete, vaultsGet, vaultsPut, vkeyGet, vkeyPut, vkeyDelete, vkeyClear, aiGet, aiPut, aiDelete };
 })();

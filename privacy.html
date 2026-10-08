@@ -93,11 +93,22 @@
       <li>The microphone turns on only when you press its button or its shortcut. While it listens there is a fixed indicator with a button to stop. It stops by itself when you switch notes, leave the tab or stay silent for a while.</li>
       <li>What is stored: your choices (the tools turned on, the language, the voice, the speed) and that you accepted the notice, in your browser.</li>
     </ul>
+    <h2 id="ai-assistant">AI assistant with your own key</h2>
+    <p>A tool you turn on in Settings, Tools. It is off until you do, and SharpMD provides no AI of its own: you connect a key from your provider (Anthropic, OpenAI or an OpenAI-compatible server).</p>
+    <ul>
+      <li>What is stored: the provider, the model and your key, only in the browser of that device. The key is encrypted with a key the browser does not let anyone export. If you choose to be asked for a password, that key comes from the password, which is not stored.</li>
+      <li>The key is not sent to SharpMD, is not part of the settings shared between the web app and the extension, and is not written to notes, exports or feedback. On screen only its last four characters are shown.</li>
+      <li>The text you send to the assistant (the selection, the block or the note you ask about) goes from your browser straight to the provider you chose. That provider bills it and handles it under its own terms. Nothing of it goes through <code>sync.sharpmd.app</code>.</li>
+      <li>Text from a protected folder is sent only if you confirm it that time, and an option stops it for good.</li>
+      <li>The conversation in the panel is kept in memory and is gone when you close it. Only what you insert into the note is saved.</li>
+      <li>The limit: a key in a browser is protected from other sites and from our server, not from someone using your unlocked device. A key with a spending limit is the safer choice, and you can remove it in the same place where you added it.</li>
+    </ul>
     <h2>Network requests</h2>
     <ul>
       <li>The extension installed from its ZIP checks once a day the version number published on GitHub, to tell you when there is an update. It sends no data, and you can make it weekly or turn it off in Settings. The Chrome Web Store version does not make this request.</li>
       <li>Images that a document links from the web are loaded from where the document points.</li>
       <li>With cloud notes in use, the app talks to <code>sync.sharpmd.app</code>.</li>
+      <li>With the AI assistant on and your key added, the app talks to the provider you chose (<code>api.anthropic.com</code>, <code>api.openai.com</code> or the server address you typed), and only when you ask it for something.</li>
       <li>The web version is a static page hosted on GitHub Pages. GitHub, as the host, may log the address of the visitor like any web server.</li>
     </ul>
     <h2>Permissions of the extension</h2>
@@ -172,11 +183,22 @@
       <li>El micrófono se prende solo cuando apretás su botón o su atajo. Mientras escucha hay un indicador fijo con un botón para cortar. Se corta solo al cambiar de nota, al salir de la pestaña y tras un rato de silencio.</li>
       <li>Qué se guarda: tus elecciones (las herramientas prendidas, el idioma, la voz, la velocidad) y que aceptaste el aviso, en tu navegador.</li>
     </ul>
+    <h2 id="asistente-ia" data-same="ai-assistant">Asistente de IA con tu clave</h2>
+    <p>Una herramienta que prendés en Ajustes, Herramientas. Hasta entonces está apagada, y SharpMD no da IA propia: conectás una clave de tu proveedor (Anthropic, OpenAI o un servidor compatible con OpenAI).</p>
+    <ul>
+      <li>Qué se guarda: el proveedor, el modelo y tu clave, solo en el navegador de ese dispositivo. La clave va cifrada con una llave que el navegador no deja exportar. Si elegís que te pida una contraseña, esa llave sale de la contraseña, que no se guarda.</li>
+      <li>La clave no se manda a SharpMD, no forma parte de las preferencias que comparten la app web y la extensión, y no se escribe en notas, exportaciones ni comentarios. En pantalla se ven solo sus últimos cuatro caracteres.</li>
+      <li>El texto que le mandás al asistente (lo elegido, el bloque o la nota sobre la que preguntás) va de tu navegador derecho al proveedor que elegiste. Ese proveedor lo cobra y lo trata según sus condiciones. Nada de eso pasa por <code>sync.sharpmd.app</code>.</li>
+      <li>El texto de una carpeta protegida se envía solo si lo confirmás esa vez, y hay una opción para que no salga nunca.</li>
+      <li>La conversación del panel queda en memoria y se pierde al cerrarlo. Se guarda solo lo que insertes en la nota.</li>
+      <li>El límite: una clave en un navegador está protegida de otros sitios y de nuestro servidor, y no de alguien que use tu dispositivo desbloqueado. Conviene una clave con tope de gasto, y se quita en el mismo lugar donde la cargaste.</li>
+    </ul>
     <h2>Pedidos de red</h2>
     <ul>
       <li>La extensión instalada desde el ZIP mira una vez por día el número de versión publicado en GitHub, para avisarte cuando hay una actualización. No manda ningún dato, y desde Ajustes lo podés pasar a semanal o apagar. La versión de la tienda de Chrome no hace este pedido.</li>
       <li>Las imágenes que un documento enlaza desde la web se cargan desde donde apunta el documento.</li>
       <li>Con las notas en la nube en uso, la app habla con <code>sync.sharpmd.app</code>.</li>
+      <li>Con el asistente de IA prendido y tu clave cargada, la app habla con el proveedor que elegiste (<code>api.anthropic.com</code>, <code>api.openai.com</code> o la dirección del servidor que escribiste), y solo cuando le pedís algo.</li>
       <li>La versión web es una página estática alojada en GitHub Pages. GitHub, como alojamiento, puede registrar la dirección de quien la visita, como cualquier servidor web.</li>
     </ul>
     <h2>Permisos de la extensión</h2>

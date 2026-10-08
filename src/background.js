@@ -1,6 +1,6 @@
 // Service worker: lee archivos y carpetas por la página (que no puede hacer fetch de file://),
 // inyecta las librerías pesadas solo cuando el documento las usa, y reparte los atajos.
-importScripts('defaults.js', 'store.js', 'bridge-sw.js');
+importScripts('defaults.js', 'store.js', 'bridge-sw.js', 'seal.js', 'aikey.js');
 
 const LAZY = {
   katex: { js: ['vendor/katex/katex.min.js'], css: 'vendor/katex/katex.min.css' },
