@@ -76,6 +76,8 @@ Free and open source. No tracking: files are read in your browser and never uplo
 
 **Both at once.** With the extension installed, the web app and the extension share one store: the same browser notes and the same list of opened files and folders on both sides. A folder opened on one side shows on the other as "Reconnect": pick it once there and it stays. The extension button opens the web app, or the extension's own page when there is no connection; Settings → Install chooses which. Cloud sessions are not shared: each side signs in on its own.
 
+**A link that opens a local file.** `https://sharpmd.app/src/app.html#open=` followed by the encoded `file://` address opens that `.md` from your disk with the extension, after you confirm. The path stays in the fragment, so it never leaves the browser. Copy one from the Copy menu or with a right-click on a file in the explorer.
+
 **As an installed app.** From Settings → Install the web app installs with its own window, and Windows offers it under "Open with" for `.md` files. The same tab shows the steps for iPhone and iPad (Safari: Share, Add to Home Screen) and for Mac (Safari: File, Add to Dock; Chrome or Edge: the install icon). Safari can delete the notes kept in the browser after weeks without use unless the app is installed, so install it or use the cloud.
 
 ## Android app

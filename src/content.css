@@ -2418,3 +2418,7 @@ button.lmd-cd-pill-name { cursor: pointer; border-radius: 4px; }
   .lmd-cl-toast .lmd-link { min-height: 32px; }
 }
 @media print { .lmd-cl-bar, .lmd-cl-add, .lmd-cl-grip, .lmd-cl-toast { display: none !important; } }
+
+/* Abrir un archivo del disco por enlace: la ruta dentro de la pregunta. */
+.lmd-ask-card .lmd-dlg-path { margin: 0 0 18px; }
+.lmd-ask-card p + .lmd-dlg-path { margin-top: -6px; }

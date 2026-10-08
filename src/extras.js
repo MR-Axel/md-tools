@@ -790,6 +790,9 @@
       const node = e.target.closest('.lmd-node');
       // Sobre un archivo o una carpeta, sus acciones; sobre el resto de una raíz, crear ahí.
       const at = node ? node.dataset.url : rootUrl(e.target);
+      // Un archivo del disco abierto por su dirección: el enlace https que lo abre desde un chat o un documento.
+      const disk = node && !core.APP && !node.classList.contains('lmd-node-dir') ? LMD.fileUrl(at || '') : '';
+      if (disk) { e.preventDefault(); showMenu(e.clientX, e.clientY, [['flink', 'Copiar enlace a este archivo', false, 'link']], () => core.copy(LMD.fileLink(disk))); return; }
       if (!at || !(canTree(at) || inLocal(at))) return;
       e.preventDefault();
       if (node) treeMenu(e.clientX, e.clientY, node); else createMenu(e.clientX, e.clientY, at);

@@ -85,6 +85,8 @@ Hacé clic en el ícono de la extensión: abre SharpMD, donde empezás una nota 
 
 Con la extensión instalada, la app web y la extensión comparten un solo depósito: las mismas notas del navegador y la misma lista de archivos y carpetas abiertos de los dos lados. Una carpeta abierta de un lado figura del otro como "Reconectar": se elige una vez ahí y queda. La sesión de la nube no se comparte: cada lado entra por su cuenta.
 
+**Un enlace que abre un archivo local.** `https://sharpmd.app/src/app.html#open=` seguido de la dirección `file://` codificada abre ese `.md` de tu disco con la extensión, después de que confirmás. La ruta queda en el fragmento, así que no sale del navegador. Se copia desde el menú Copiar o con clic derecho sobre un archivo del explorador.
+
 Abrir un `.md` directo en el navegador sigue funcionando igual que antes. La pestaña Carpeta de la barra lateral tiene un botón que lleva a esta página.
 
 ## Sin instalar nada

@@ -612,6 +612,13 @@
       "Clic derecho en un .md, Abrir con, Elegir otra aplicación, Chrome, Siempre.": "Right-click a .md file, Open with, Choose another app, Chrome, Always.",
       "El acceso a archivos ya está activado.": "File access is already on.",
       "Detalles de la extensión": "Extension details", "Ayuda": "Help",
+      "¿Abrir este archivo de tu disco?": "Open this file from your disk?", "Copiar la ruta": "Copy path", "Abrir archivo…": "Open file…",
+      "Para abrir archivos del disco desde un enlace hace falta la extensión de Chrome.": "Opening files from your disk by link needs the Chrome extension.",
+      "Falta el acceso a archivos": "File access is off", "Después volvé a abrir el enlace.": "Then open the link again.",
+      "No se encontró el archivo": "File not found", "Puede que se haya movido o que tenga otro nombre.": "It may have been moved or renamed.",
+      "Este enlace no se puede abrir": "This link cannot be opened", "Solo se abren archivos Markdown del disco.": "Only Markdown files from your disk can be opened.",
+      "La extensión no lo pudo abrir. Actualizala o elegí el archivo a mano.": "The extension could not open it. Update it or choose the file by hand.",
+      "Copiar enlace a este archivo": "Copy link to this file",
       "App de Android": "Android app", "La misma app en el teléfono, con tus notas de la nube.": "The same app on your phone, with your cloud notes.", "Conseguir la app": "Get the app",
       "En la computadora": "On a computer",
       "Abrí sharpmd.app en Chrome. Con tu cuenta, las notas de la nube son las mismas.": "Open sharpmd.app in Chrome. With your account, the cloud notes are the same.",
@@ -1532,9 +1539,34 @@
   const CLOUD_URL = 'https://sync.sharpmd.app';
   // Dirección pública de la app web: es la que llevan los enlaces para compartir.
   const WEB_APP_URL = 'https://sharpmd.app/src/app.html';
+  // Un archivo Markdown del disco como dirección file:, o '' si no sirve. Acepta la dirección o la ruta del sistema
+  // (C:\Users\me\notes.md, /Users/me/notes.md). Sin servidor (nada de rutas de red), sin "..", sin caracteres de control.
+  // La usan los dos lados de "abrir por enlace": la app, para mostrar qué se va a abrir, y el service worker, para decidir.
+  const MD_FILE = /\.(md|markdown|mdx|mkd|mdown)$/i;
+  const upDir = (t) => /(^|[\\/])\.\.([\\/]|$)/.test(t);
+  function fileUrl(input) {
+    if (typeof input !== 'string' || !input || input.length > 2048 || /[\u0000-\u001f\u007f]/.test(input)) return '';
+    let s = input; let u = null; let path = ''; let plain = input;
+    if (/^[a-z]:[\\/]/i.test(s)) s = 'file:///' + s.replace(/\\/g, '/').split('/').map((p, i) => (i ? encodeURIComponent(p) : p)).join('/');
+    else if (/^\/[^\/\\]/.test(s)) s = 'file://' + s.split('/').map(encodeURIComponent).join('/');
+    else if (!/^file:\/\/\/[^\/\\]/.test(s)) return '';
+    try { plain = decodeURIComponent(input); } catch (e) { /* un % suelto: vale como está */ }
+    try { u = new URL(s); path = decodeURIComponent(u.pathname); } catch (e) { return ''; }
+    if (u.protocol !== 'file:' || u.host || u.username || u.password || u.search || u.hash) return '';
+    if (upDir(input) || upDir(plain) || upDir(path) || /[\u0000-\u001f\u007f\\]/.test(path) || !MD_FILE.test(path)) return '';
+    return u.href.length > 2048 ? '' : u.href;
+  }
+  // La ruta como la escribe el sistema, para mostrarla y copiarla.
+  function filePath(url) {
+    let p = '';
+    try { p = decodeURIComponent(new URL(url).pathname); } catch (e) { return ''; }
+    return /^\/[a-z]:\//i.test(p) ? p.slice(1).replace(/\//g, '\\') : p;
+  }
+  // El enlace https que abre ese archivo: la dirección va tras el #, así no llega al sitio que sirve la app.
+  const fileLink = (url) => WEB_APP_URL + '#open=' + encodeURIComponent(url);
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
   const VERSION = '2.56.1';
 
-  root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
+  root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);

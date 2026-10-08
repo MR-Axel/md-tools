@@ -5,7 +5,7 @@
 // de la app web es la del servidor de la prueba. El código publicado no tiene ninguna puerta para eso.
 // Uso: node bridge.mjs
 import { chromium } from 'playwright-core';
-import http from 'http'; import fs from 'fs'; import os from 'os'; import path from 'path';
+import http from 'http'; import fs from 'fs'; import os from 'os'; import path from 'path'; import { pathToFileURL } from 'url';
 import { rig, tally, sleep, typeIn, leave, root } from './rig.mjs';
 
 const { check, done } = tally();
@@ -43,6 +43,8 @@ const real = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'
 }
 
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'sharpmd-bridge-'));
+// Una carpeta del disco con un .md de verdad, para el enlace que abre un archivo local.
+const disk = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'sharpmd-disk-')));
 const ctx = await chromium.launchPersistentContext(profile, { headless: false, executablePath: process.env.CHROME_BIN || chromium.executablePath(), viewport: { width: 1280, height: 800 }, locale: 'en-US', colorScheme: 'dark', ignoreDefaultArgs: ['--disable-extensions'],
   args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`, '--headless=new', '--disable-features=DisableLoadExtensionCommandLineSwitch', '--lang=en-US'] });
 const R = await rig();
@@ -241,6 +243,126 @@ try {
   const fromOwn = await extPage.evaluate(() => new Promise((resolve) => chrome.runtime.sendMessage({ type: 'bridge', op: 'notes.list', args: {} }, resolve)));
   check('una página de la extensión no pasa por el puente', fromOwn && fromOwn.ok === false && fromOwn.error === 'refused', fromOwn);
 
+  // ---------- Un enlace https que abre un archivo del disco ----------
+  console.log('Un enlace que abre un archivo del disco');
+  const diskFile = path.join(disk, 'my notes.md'); fs.writeFileSync(diskFile, '# Local note\n\nfrom the disk, SECRET-DISK-TEXT\n');
+  fs.writeFileSync(path.join(disk, 'other.md'), '# Other\n');
+  const fileAt = pathToFileURL(diskFile).href; const linkTo = (base, target) => base + '#open=' + encodeURIComponent(target);
+  const dlg = (p) => p.evaluate(() => {
+    const c = document.querySelector('.lmd-dlg-card'); if (!c) return null; const code = c.querySelector('.lmd-dlg-path code'); const a = c.querySelector('.lmd-dlg-link a');
+    return { title: c.querySelector('h3').textContent, text: [...c.querySelectorAll('p')].map((x) => x.textContent.trim()).join(' | '), path: code ? code.textContent : null, kids: code ? code.children.length : -1, buttons: [...c.querySelectorAll('.lmd-ask-actions button')].map((b) => b.textContent), link: a ? a.textContent + ' ' + a.href : '', copy: (c.querySelector('[data-dlg-copy]') || {}).textContent || '', all: c.textContent };
+  }).catch(() => null);
+  const gone = (p) => p.waitForSelector('.lmd-dlg-card', { state: 'detached', timeout: 4000 }).catch(() => {});
+  const lk = watch(await ctx.newPage());
+  await lk.goto(linkTo(WEB, fileAt)); await lk.waitForSelector('.lmd-dlg-card');
+  const d1 = await dlg(lk);
+  check('el fragmento desaparece de la barra de direcciones', lk.url() === WEB && await lk.evaluate(() => location.hash === ''), lk.url());
+  check('pregunta antes, con la ruta legible y dos botones', !!d1 && d1.title === 'Open this file from your disk?' && d1.path === diskFile && J(d1.buttons) === J(['Cancel', 'Open']) && d1.copy === 'Copy path' && !/[!¡—–]/.test(d1.all), d1);
+  await lk.waitForTimeout(900);
+  check('sin el clic no se navega', lk.url() === WEB && !!(await dlg(lk)));
+  await lk.keyboard.press('Escape'); await gone(lk); await lk.waitForTimeout(500);
+  check('al cancelar tampoco', lk.url() === WEB && !(await dlg(lk)));
+  // Con la app ya abierta en la pestaña el enlace solo cambia el fragmento: se atiende igual. Y vale la ruta del sistema.
+  await lk.goto(linkTo(WEB, diskFile)); await lk.waitForSelector('.lmd-dlg-card');
+  const d2 = await dlg(lk);
+  check('con la app ya abierta y la ruta del sistema tal cual, pregunta lo mismo', lk.url() === WEB && !!d2 && d2.path === diskFile && d2.title === d1.title, [lk.url(), d2]);
+  await lk.click('.lmd-dlg-card [data-dlg=ok]');
+  await lk.waitForURL((u) => u.protocol === 'file:', { timeout: 8000 }).catch(() => {});
+  await lk.waitForSelector('.markdown-body h1', { timeout: 8000 }).catch(() => {});
+  check('con el clic, la pestaña pasa al archivo y el lector lo muestra', lk.url() === fileAt && (await lk.textContent('.markdown-body h1').catch(() => '')).startsWith('Local note'), lk.url());
+  const webSide = await web.evaluate(async () => ({ at: location.href, notes: JSON.stringify(await LMD.store.notesAll()), roots: (await LMD.store.rootsAll()).map((r) => r.name), local: JSON.stringify(Object.entries(localStorage)), session: JSON.stringify(Object.entries(sessionStorage)) }));
+  check('la app web no recibe nada del archivo: ni su texto ni su nombre quedan de su lado', !/SECRET-DISK-TEXT/.test(J(webSide)) && !/my notes/.test(J(webSide)) && !/my%20notes/.test(J(webSide)), webSide.roots);
+
+  // El ayudante: en el archivo abierto, el menú Copiar y el clic derecho del explorador dan ese mismo enlace.
+  await ctx.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
+  const clip = async (p) => { await p.bringToFront(); return p.evaluate(() => navigator.clipboard.readText()).catch((e) => 'sin portapapeles: ' + e.message); };
+  await lk.bringToFront(); await lk.click('[data-act=copy]'); await lk.waitForSelector('.lmd-menu-copy');
+  const copyItems = await lk.evaluate(() => [...document.querySelectorAll('.lmd-menu-copy button')].map((b) => b.textContent.trim()));
+  await lk.click('.lmd-menu-copy [data-more=copy-flink]'); await lk.waitForTimeout(300);
+  check('el menú Copiar ofrece el enlace a este archivo y copia el https', copyItems.includes('Copy link to this file') && (await clip(lk)) === linkTo(WEB, fileAt), [copyItems, await clip(lk)]);
+  const sibling = lk.locator('.lmd-tree-box .lmd-node:not(.lmd-node-dir)', { hasText: 'other.md' });
+  await sibling.waitFor({ timeout: 8000 }).catch(() => {});
+  await sibling.click({ button: 'right' }).catch(() => {}); await lk.waitForSelector('.lmd-menu-narrow [data-f=flink]', { timeout: 4000 }).catch(() => {});
+  const treeItems = await lk.evaluate(() => [...document.querySelectorAll('.lmd-menu [data-f]')].map((b) => b.textContent.trim()));
+  await lk.click('.lmd-menu [data-f=flink]').catch(() => {}); await lk.waitForTimeout(300);
+  check('y el clic derecho sobre un archivo del explorador, el de ese archivo', J(treeItems) === J(['Copy link to this file']) && (await clip(lk)) === linkTo(WEB, pathToFileURL(path.join(disk, 'other.md')).href), [treeItems, await clip(lk)]);
+  await lk.close();
+
+  // Un archivo que no está, y un nombre que quiere ser HTML: la ruta se muestra siempre como texto.
+  const evil = path.join(disk, '<img src=x onerror=window.__pwn=1>.md');
+  const lm = watch(await ctx.newPage());
+  await lm.goto(linkTo(WEB, pathToFileURL(evil).href)); await lm.waitForSelector('.lmd-dlg-card');
+  const d3 = await dlg(lm);
+  check('un nombre con HTML se muestra como texto', !!d3 && d3.path === evil && d3.kids === 0 && await lm.evaluate(() => window.__pwn === undefined && !document.querySelector('.lmd-dlg-card img')), d3);
+  await lm.click('.lmd-dlg-card [data-dlg=ok]'); await lm.waitForFunction(() => /not found/.test((document.querySelector('.lmd-dlg-card h3') || {}).textContent || ''), null, { timeout: 6000 }).catch(() => {});
+  const d4 = await dlg(lm);
+  check('si el archivo no existe lo dice, con la ruta y el selector de archivos, sin salir de la app', lm.url() === WEB && !!d4 && d4.title === 'File not found' && d4.text === 'It may have been moved or renamed.' && d4.path === evil && d4.kids === 0 && J(d4.buttons) === J(['Close', 'Open file…']) && await lm.evaluate(() => window.__pwn === undefined), d4);
+  await lm.keyboard.press('Escape'); await gone(lm);
+  // Sin "Permitir acceso a URL de archivo": Chrome no deja, y la app dice cómo activarlo.
+  await bg(() => { self.__allowed = chrome.extension.isAllowedFileSchemeAccess; chrome.extension.isAllowedFileSchemeAccess = async () => false; });
+  const stubbed = await bg(() => chrome.extension.isAllowedFileSchemeAccess());
+  await lm.goto(linkTo(WEB, fileAt)); await lm.waitForSelector('.lmd-dlg-card'); await lm.click('.lmd-dlg-card [data-dlg=ok]');
+  await lm.waitForFunction(() => /access/.test((document.querySelector('.lmd-dlg-card h3') || {}).textContent || ''), null, { timeout: 6000 }).catch(() => {});
+  const d5 = await dlg(lm);
+  check('sin el acceso a archivos dice cómo activarlo, con la ruta para copiar', stubbed === false && lm.url() === WEB && !!d5 && d5.title === 'File access is off' && d5.text === 'In the extension details, turn on "Allow access to file URLs". Then open the link again.' && d5.path === diskFile && J(d5.buttons) === J(['Close', 'Extension details']) && !/[!¡—–]/.test(d5.all), d5);
+  const tabs = ctx.pages().length;
+  await lm.click('.lmd-dlg-card [data-dlg=ok]');
+  const details = await until(() => ctx.pages().find((p) => p.url().startsWith('chrome://extensions')), 6000);
+  check('y el botón abre los detalles de esta extensión', !!details && details.url() === 'chrome://extensions/?id=' + id && ctx.pages().length === tabs + 1, ctx.pages().map((p) => p.url()));
+  if (details) await details.close();
+  await bg(() => { if (self.__allowed) chrome.extension.isAllowedFileSchemeAccess = self.__allowed; });
+
+  // Lo que el service worker rechaza, pida quien pida.
+  const badUrls = ['javascript:alert(1)//a.md', 'data:text/html,<script>alert(1)</script>.md', 'chrome://extensions/a.md', 'chrome-extension://' + id + '/src/app.html?a.md', 'http://127.0.0.1:' + PORT + '/README.md', 'https://example.com/a.md', 'blob:' + W + '/a.md', 'view-source:' + fileAt, 'FILE:///C:/a.md', 'file://server/share/a.md', 'file:////server/share/a.md',
+    fileAt.replace(/\.md$/, '.html'), fileAt.replace(/\.md$/, '.exe'), fileAt.replace(/\.md$/, '.js'), fileAt.replace(/\.md$/, ''), fileAt + '/', fileAt + '?x=1', fileAt + '#frag', fileAt.replace(/\.md$/, '.md.html'),
+    fileAt.replace(/my%20notes/, '../my%20notes'), fileAt.replace(/my%20notes/, '%2e%2e/my%20notes'), fileAt.replace(/my%20notes/, '..%5Cmy%20notes'), fileAt.replace(/my%20notes/, 'a%0Ab'), fileAt.replace(/my%20notes/, 'a\nb'), fileAt.replace(/my%20notes/, 'a%00b'), fileAt.replace(/my%20notes/, 'a'.repeat(3000)), diskFile, ' ' + fileAt, ''];
+  const badRes = []; for (const u of badUrls) badRes.push(await ask(web, 'file.open', { url: u }));
+  const shapeless = [await ask(web, 'file.open', {}), await ask(web, 'file.open', { url: 5 }), await ask(web, 'file.open', { url: [fileAt] }), await ask(web, 'file.open', { url: { href: fileAt } }), await ask(web, 'file.open', fileAt)];
+  check('otros esquemas, otras extensiones, "..", saltos, rutas de red y rutas enormes se rechazan', badRes.concat(shapeless).every((r) => r && r.ok === false && r.error === 'shape') && web.url() === WEB, badUrls.filter((u, i) => !(badRes[i] && badRes[i].ok === false && badRes[i].error === 'shape')).map((u) => u.slice(0, 80)));
+  const miss = await ask(web, 'file.open', { url: pathToFileURL(path.join(disk, 'gone.md')).href });
+  check('la respuesta solo dice si se abrió y por qué no', J(miss) === J({ ok: true, opened: false, why: 'missing' }) && web.url() === WEB, miss);
+  // Otro origen, un marco dentro de la app, y la app dentro de un marco.
+  const out = watch(await ctx.newPage());
+  await out.goto(OTHER); await out.waitForSelector('.lmd-home');
+  const outAsk = [await ask(out, 'file.open', { url: fileAt }), await ask(out, 'file.setup', {})];
+  await out.goto(linkTo(OTHER, fileAt)); await out.waitForSelector('.lmd-dlg-card');
+  const d6 = await dlg(out);
+  check('otro origen no puede pedirlo: su enlace cae en el aviso de sin extensión', outAsk.every((r) => r === 'timeout' || (r && r.ok === false)) && out.url() === OTHER && !!d6 && J(d6.buttons) === J(['Cancel', 'Open file…']) && !ctx.pages().some((p) => p.url().startsWith('chrome://extensions')), [outAsk, d6]);
+  await out.close();
+  const inner = await web.evaluate(() => new Promise((resolve) => { const f = document.createElement('iframe'); f.id = 'intruso'; f.onload = () => resolve(true); document.body.appendChild(f); setTimeout(() => resolve(false), 1500); }));
+  const frame = web.frames().find((f) => f !== web.mainFrame());
+  const heard = web.evaluate(() => new Promise((resolve) => { const on = (e) => { const d = e.data; if (d && d.lmdBridge === 1 && d.dir === 'res' && d.id === 777001) { removeEventListener('message', on); resolve(d.res); } }; addEventListener('message', on); setTimeout(() => resolve('silencio'), 1800); }));
+  if (frame) await frame.evaluate((u) => { parent.postMessage({ lmdBridge: 1, dir: 'req', id: 777001, op: 'file.open', args: { url: u } }, '*'); }, fileAt);
+  check('un marco dentro de la app no puede pedirlo', !!frame && (await heard) === 'silencio' && web.url() === WEB, [inner, !!frame]);
+  await web.evaluate(() => { const f = document.getElementById('intruso'); if (f) f.remove(); });
+  const host = watch(await ctx.newPage());
+  await host.goto(W + '/privacy.html');
+  await host.evaluate((src) => new Promise((resolve) => { const f = document.createElement('iframe'); f.src = src; f.onload = () => resolve(); document.body.appendChild(f); setTimeout(resolve, 5000); }), linkTo(WEB, fileAt));
+  const framed = host.frames().find((f) => f !== host.mainFrame());
+  const framedState = framed ? await framed.evaluate(() => ({ mark: document.documentElement.dataset.lmdExt, can: !!(window.LMD && LMD.bridge && LMD.bridge.canOpen()) })).catch(() => ({ blocked: true })) : { none: true };
+  const framedAsk = framed ? await ask(framed, 'file.open', { url: fileAt }).catch(() => 'timeout') : 'timeout';
+  check('la app dentro de un marco no tiene puente', framedState.mark === undefined && !framedState.can && framedAsk === 'timeout' && host.url() === W + '/privacy.html', [framedState, framedAsk]);
+  await host.close();
+
+  // La app como página de la extensión: el mismo enlace, navegando directo.
+  const op = watch(await ctx.newPage());
+  await op.goto(linkTo(OWN, fileAt)); await op.waitForSelector('.lmd-dlg-card');
+  const d7 = await dlg(op);
+  const ownBad = await op.evaluate((u) => Promise.all(u.map((url) => new Promise((resolve) => chrome.runtime.sendMessage({ type: 'openFile', url }, resolve)))), ['javascript:alert(1)//a.md', fileAt.replace(/\.md$/, '.html'), 'https://example.com/a.md']);
+  check('en la página de la extensión pregunta igual y valida igual', op.url() === OWN && !!d7 && d7.title === 'Open this file from your disk?' && d7.path === diskFile && ownBad.every((r) => r && r.ok === false && r.error === 'shape'), [d7, ownBad]);
+  await op.click('.lmd-dlg-card [data-dlg=ok]');
+  await op.waitForURL((u) => u.protocol === 'file:', { timeout: 8000 }).catch(() => {});
+  await op.waitForSelector('.markdown-body h1', { timeout: 8000 }).catch(() => {});
+  check('y con el clic abre el archivo', op.url() === fileAt && (await op.textContent('.markdown-body h1').catch(() => '')).startsWith('Local note'), op.url());
+  const fromFile = await op.evaluate(() => typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage);
+  check('la página del archivo no tiene cómo pedirle nada a la extensión', fromFile === true);
+  await op.close();
+  // El tope: muchos pedidos seguidos dejan de atenderse.
+  const burst = []; for (let i = 0; i < 14; i++) burst.push(await ask(web, 'file.open', { url: pathToFileURL(path.join(disk, 'gone-' + i + '.md')).href }));
+  const capped = await ask(web, 'file.open', { url: fileAt });
+  check('hay un tope de pedidos: pasado, ni un archivo que existe se abre', burst.some((r) => r && r.why === 'limit') && J(capped) === J({ ok: true, opened: false, why: 'limit' }) && web.url() === WEB, [burst.map((r) => r && r.why), capped]);
+  await lm.close();
+
   // ---------- Sin conexión, con la extensión ----------
   console.log('Sin conexión, con la extensión');
   await web.goto(WEB); await web.waitForSelector('.lmd-home');
@@ -351,6 +473,24 @@ try {
   check('cuando el navegador lo permite, aparece el botón Instalar', (await paneOf(sp)).buttons.includes('Install'));
   await sp.click('[data-inst=app]'); await sp.waitForFunction(() => /Already installed\./.test(document.querySelector('[data-inst-pane]').textContent), null, { timeout: 4000 }).catch(() => {});
   check('el botón dispara la instalación y después dice que ya está instalada', (await sp.evaluate(() => window.__prompted === true)) && /Already installed\./.test((await paneOf(sp)).text));
+  // ---------- Un enlace que abre un archivo del disco, sin la extensión ----------
+  console.log('Un enlace que abre un archivo del disco, sin la extensión');
+  await sp.evaluate(() => { window.__copied = []; Object.defineProperty(navigator.clipboard, 'writeText', { configurable: true, value: async (t) => { window.__copied.push(t); } }); window.showOpenFilePicker = async (o) => { window.__picker = o; throw Object.assign(new Error('cancelado'), { name: 'AbortError' }); }; });
+  await sp.goto(R.home + '#open=' + encodeURIComponent('file:///C:/Users/me/Desktop/my%20notes.md')); await sp.waitForSelector('.lmd-dlg-card');
+  const nd = await sp.evaluate(() => { const c = document.querySelector('.lmd-dlg-card'); const a = c.querySelector('.lmd-dlg-link a'); return { at: location.href, title: c.querySelector('h3').textContent, text: c.querySelector('p').textContent, path: c.querySelector('.lmd-dlg-path code').textContent, buttons: [...c.querySelectorAll('.lmd-ask-actions button')].map((b) => b.textContent), link: a.textContent + ' ' + a.href, copy: c.querySelector('[data-dlg-copy]').textContent, all: c.textContent }; });
+  check('sin la extensión: una línea que lo explica, la ruta, y el fragmento fuera de la barra', nd.at === R.home && nd.title === 'Open this file from your disk?' && nd.text === 'Opening files from your disk by link needs the Chrome extension.' && nd.path === 'C:\\Users\\me\\Desktop\\my notes.md' && !/[!¡—–]/.test(nd.all), nd);
+  check('con copiar la ruta, abrir archivo y el enlace a la extensión', nd.copy === 'Copy path' && J(nd.buttons) === J(['Cancel', 'Open file…']) && nd.link === 'Get the extension https://github.com/MR-Axel/sharpmd#install', nd);
+  await sp.click('.lmd-dlg-card [data-dlg-copy]'); await sp.waitForFunction(() => document.querySelector('[data-dlg-copy]').textContent === 'Copied', null, { timeout: 3000 }).catch(() => {});
+  check('"Copiar la ruta" copia la ruta y lo dice', J(await sp.evaluate(() => window.__copied)) === J(['C:\\Users\\me\\Desktop\\my notes.md']) && (await sp.textContent('[data-dlg-copy]')) === 'Copied' && (await sp.locator('.lmd-dlg-card').count()) === 1);
+  await sp.click('.lmd-dlg-card [data-dlg=ok]'); await sp.waitForFunction(() => !!window.__picker, null, { timeout: 4000 }).catch(() => {});
+  check('"Abrir archivo…" abre el selector de siempre', await sp.evaluate(() => !!window.__picker && window.__picker.id === 'lmd-abrir' && !document.querySelector('.lmd-dlg-card')) && sp.url() === R.home, sp.url());
+  const refusedLinks = [];
+  for (const target of ['https://example.com/notes.md', 'javascript:alert(1)//a.md', 'file:///C:/Users/me/Desktop/run.exe', 'file:///C:/Users/me/../secret.md', '%E0%A4%A']) {
+    await sp.goto(R.home + '#open=' + (target.startsWith('%') ? target : encodeURIComponent(target))); await sp.waitForSelector('.lmd-dlg-card', { timeout: 4000 }).catch(() => {});
+    refusedLinks.push(await sp.evaluate(() => { const c = document.querySelector('.lmd-dlg-card'); return c ? c.querySelector('h3').textContent + ' / ' + [...c.querySelectorAll('.lmd-ask-actions button')].map((b) => b.textContent).join(',') + ' / ' + !!c.querySelector('.lmd-dlg-path') + ' / ' + location.hash : 'sin aviso'; }));
+    await sp.keyboard.press('Escape'); await sp.waitForSelector('.lmd-dlg-card', { state: 'detached', timeout: 3000 }).catch(() => {});
+  }
+  check('un enlace que no es a un Markdown del disco no ofrece abrir nada', refusedLinks.every((r) => r === 'This link cannot be opened / Close / false / '), refusedLinks);
   await solo.ctx.close();
 
   // ---------- "Abrir con" ----------
@@ -384,6 +524,6 @@ try {
   await ctx.close().catch(() => {});
   await R.close().catch(() => {});
   await shut(site).catch(() => {}); await shut(other).catch(() => {});
-  for (const d of [ext, profile]) { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* Windows suelta la carpeta después */ } }
+  for (const d of [ext, profile, disk]) { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* Windows suelta la carpeta después */ } }
 }
 process.exit(bad ? 1 : 0);

@@ -74,7 +74,9 @@
     return real;
   }
 
-  const api = { present: () => false, info: () => null, reconnect, adopt, settle: () => Promise.resolve(), sync: () => Promise.resolve(), hash };
+  // canOpen: si de este lado hay una extensión que pueda llevar la pestaña a un archivo del disco. openFile lo pide.
+  const api = { present: () => false, info: () => null, reconnect, adopt, settle: () => Promise.resolve(), sync: () => Promise.resolve(), hash,
+    canOpen: () => false, openFile: () => Promise.resolve({ ok: false, error: 'none' }), setup: () => Promise.resolve({ ok: false, error: 'none' }) };
   LMD.bridge = api;
   if (!APP) return;
 
@@ -96,6 +98,9 @@
     touched.note = bump; touched.root = bump;
     try { chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes.bridgeRev && (changes.bridgeRev.newValue || {}).by !== me) changed(); }); } catch (e) { /* sin extensión */ }
     api.present = () => true;
+    api.canOpen = () => true;
+    api.openFile = (url) => new Promise((resolve) => { try { chrome.runtime.sendMessage({ type: 'openFile', url }, (res) => resolve(chrome.runtime.lastError || !res ? { ok: false, error: 'gone' } : res)); } catch (e) { resolve({ ok: false, error: 'gone' }); } });
+    api.setup = async () => { try { await chrome.tabs.create({ url: 'chrome://extensions/?id=' + chrome.runtime.id }); return { ok: true, opened: true }; } catch (e) { return { ok: false, error: 'gone' }; } };
     return;
   }
   if (!WEB) return;
@@ -105,6 +110,9 @@
   let info = null;
   api.present = () => present() && !!info;
   api.info = () => info;
+  api.canOpen = () => present() && !!info;
+  api.openFile = (url) => call('file.open', { url });
+  api.setup = () => call('file.setup');
 
   let seq = 0; const waits = new Map();
   const call = (op, args) => new Promise((resolve) => {

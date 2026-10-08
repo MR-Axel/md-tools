@@ -102,7 +102,7 @@
     </ul>
     <h2>Permissions of the extension</h2>
     <ul>
-      <li><code>file:///*</code> and all sites: to render a Markdown file wherever it lives, local or served by a website. The extension only acts on addresses that end in a Markdown extension, and on the SharpMD web app, to share the browser notes with it. When you click its button it checks that the web app answers before opening it.</li>
+      <li><code>file:///*</code> and all sites: to render a Markdown file wherever it lives, local or served by a website. The extension only acts on addresses that end in a Markdown extension, and on the SharpMD web app, to share the browser notes with it. When you click its button it checks that the web app answers before opening it. A link to the web app can ask to open a Markdown file from your disk: the path travels in the fragment of the address (after the #), which the browser does not send to any server, and the extension only takes that tab to the file after you confirm. The web app does not get the contents of the file.</li>
       <li><code>storage</code>: to keep your settings and browser notes in the browser.</li>
       <li><code>scripting</code>: to load the math and diagram libraries only when a document uses them.</li>
     </ul>
@@ -181,7 +181,7 @@
     </ul>
     <h2>Permisos de la extensión</h2>
     <ul>
-      <li><code>file:///*</code> y todos los sitios: para mostrar un archivo Markdown esté donde esté, local o servido por un sitio web. La extensión solo actúa sobre direcciones que terminan en una extensión de Markdown, y sobre la app web de SharpMD, para compartir con ella las notas del navegador. Al tocar su botón consulta si la app web contesta antes de abrirla.</li>
+      <li><code>file:///*</code> y todos los sitios: para mostrar un archivo Markdown esté donde esté, local o servido por un sitio web. La extensión solo actúa sobre direcciones que terminan en una extensión de Markdown, y sobre la app web de SharpMD, para compartir con ella las notas del navegador. Al tocar su botón consulta si la app web contesta antes de abrirla. Un enlace a la app web puede pedir que se abra un archivo Markdown de tu disco: la ruta viaja en el fragmento de la dirección (después del #), que el navegador no manda a ningún servidor, y la extensión solo lleva esa pestaña al archivo después de que confirmás. La app web no recibe el contenido del archivo.</li>
       <li><code>storage</code>: para guardar tus ajustes y las notas del navegador.</li>
       <li><code>scripting</code>: para cargar las librerías de matemática y diagramas solo cuando un documento las usa.</li>
     </ul>

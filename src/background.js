@@ -75,6 +75,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   // Pedidos de la app web, que comparte el depósito de la extensión (bridge-sw.js valida de dónde vienen).
   if (msg.type === 'bridge') return LMD.bridgeHost.onMessage(msg, sender, sendResponse);
+  // La app abierta como página de la extensión, con un enlace que abre un archivo del disco.
+  if (msg.type === 'openFile') return LMD.bridgeHost.onOwn(msg, sender, sendResponse);
   if (msg.type === 'openApp') {
     const own = chrome.runtime.getURL('src/app.html');
     const go = (base) => chrome.tabs.create({ url: base + (msg.fresh ? '?new=1' : (msg.query || '')) });

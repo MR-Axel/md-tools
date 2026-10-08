@@ -887,7 +887,9 @@
       if (settings.theme === 'auto') { applySettings(); render(); }
     });
     // Atrás y adelante del navegador: la dirección ya cambió, falta traer la nota que le toca.
+    if (APP) window.addEventListener('hashchange', () => { const open = takeOpen(); if (open) LMD.install.openLink(open, homeCtx()); });
     if (APP) window.addEventListener('popstate', () => {
+      if (/^#open=/.test(location.hash)) return; // lo atiende hashchange
       const f = new URLSearchParams(location.search).get('f') || '';
       if (noDoc ? !f : VBASE + f === HERE) { const frag = unesc(location.hash.slice(1)); const t = frag && !/^lmd-/.test(frag) ? findAnchor(frag) : null; if (t) t.scrollIntoView(); return; }
       go(f, { pop: true, hash: location.hash });
@@ -970,6 +972,8 @@
   const hasLink = () => !!appRoot && (appRoot.kind === 'cloud' || appRoot.kind === 'pub');
   // Lo que suman las herramientas prendidas (tools.js) a un menú de la barra: cada una devuelve su renglón o nada.
   const toolItems = (menu) => core.menus[menu].map((fn) => fn()).filter(Boolean);
+  // Un archivo del disco abierto por su dirección: el enlace https que lo abre desde un chat o un documento.
+  const fileHere = () => (!APP && location.protocol === 'file:' ? LMD.fileUrl(HERE) : '');
   function openCopy(btn, keys) {
     const md = docKind() === 'md';
     barMenu(btn, 'lmd-menu-narrow lmd-menu-top lmd-menu-copy', [
@@ -977,6 +981,7 @@
       md && ['copy-rich', ICON.rich, 'Texto con formato'],
       md && ['copy-html', ICON.code, 'HTML'],
       hasLink() && ['copy-link', ICON.link, 'Enlace a la nota'],
+      fileHere() && ['copy-flink', ICON.link, 'Copiar enlace a este archivo'],
     ], keys);
   }
   function openExport(btn, keys) {
@@ -1024,6 +1029,7 @@
     else if (act === 'export') openExport(source, keys);
     else if (act === 'copy-html') { copyText(LMD.extras.htmlOf(), source); flash(T('HTML copiado')); }
     else if (act === 'copy-link') { copyText(location.href.split('#')[0], source); flash(T('Enlace copiado')); }
+    else if (act === 'copy-flink') { copyText(LMD.fileLink(fileHere()), source); flash(T('Enlace copiado')); }
     else if (act === 'export-pdf') window.print();
     else if (act === 'export-md') downloadDoc();
     else if (act === 'mode-read') { if (editMode) setEditMode(false); }
@@ -3778,6 +3784,15 @@
     } else restorePosition();
   }
 
+  // Un enlace que abre un archivo del disco (app.html#open=...): lo pedido sale de la barra de direcciones apenas se
+  // lee, y antes de abrir se pregunta (install.js).
+  function takeOpen() {
+    const m = APP && /^#open=(.*)$/.exec(location.hash);
+    if (!m) return '';
+    history.replaceState(history.state, '', location.href.split('#')[0]);
+    return m[1];
+  }
+
   // ---------- Arranque de la página propia ----------
   async function appBoot() {
     const params = new URLSearchParams(location.search);
@@ -3821,7 +3836,8 @@
     if (hashTab) { history.replaceState(history.state, '', location.href.split('#')[0]); openPanel(hashTab); }
     updateSaveState();
     checkUpdate(false);
-    if (APP) appBoot().finally(unsplash);
+    const openAt = takeOpen();
+    if (APP) appBoot().finally(unsplash).then(() => { if (openAt) LMD.install.openLink(openAt, homeCtx()); }, () => {});
     else {
       afterOpen({ hash: location.hash });
       // El árbol arranca donde lo dejó la persona, o en la raíz del repositorio si el archivo está dentro de uno.

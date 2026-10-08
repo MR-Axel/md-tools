@@ -134,7 +134,42 @@
     },
     // La web avisa que su service worker ya la tiene guardada: desde ahí el botón la abre también sin conexión.
     'web.ready': async () => { await chrome.storage.local.set({ webReady: { at: Date.now() } }); return {}; },
+    // Un enlace https que abre un archivo del disco: la app ya preguntó, y la pestaña que pide pasa a esa dirección.
+    'file.open': (a, by, sender) => openFile(a, sender),
+    // La pantalla de la extensión donde se activa "Permitir acceso a URL de archivo".
+    'file.setup': async () => { if (tooMany()) return { opened: false, why: 'limit' }; await chrome.tabs.create({ url: 'chrome://extensions/?id=' + chrome.runtime.id }); return { opened: true }; },
   };
+
+  // ---------- Abrir un archivo del disco por enlace ----------
+  // Acá se vuelve a validar todo, venga de donde venga: solo file:, sin servidor, con extensión de Markdown, sin "..",
+  // sin caracteres de control y de un largo razonable (LMD.fileUrl), y con un tope de pedidos por minuto. La página
+  // no recibe nada del archivo: solo si se pudo abrir, y si no, por qué.
+  const OPEN_MAX = 10; const opened = [];
+  function tooMany() {
+    const now = Date.now();
+    while (opened.length && now - opened[0] > 60000) opened.shift();
+    if (opened.length >= OPEN_MAX) return true;
+    opened.push(now); return false;
+  }
+  async function openFile(a, sender) {
+    const url = a && typeof a.url === 'string' && a.url.startsWith('file:///') ? LMD.fileUrl(a.url) : '';
+    if (!url || !sender || !sender.tab || typeof sender.tab.id !== 'number') return null;
+    if (tooMany()) return { opened: false, why: 'limit' };
+    let allowed = false;
+    try { allowed = await chrome.extension.isAllowedFileSchemeAccess(); } catch (e) { /* no se pudo saber */ }
+    if (!allowed) return { opened: false, why: 'access' };
+    try { const res = await fetch(url, { cache: 'no-store' }); if (res.body) res.body.cancel().catch(() => {}); if (!res.ok && res.status !== 0) throw new Error('HTTP ' + res.status); }
+    catch (e) { return { opened: false, why: 'missing' }; }
+    try { await chrome.tabs.update(sender.tab.id, { url }); } catch (e) { return { opened: false, why: 'access' }; }
+    return { opened: true };
+  }
+  // La página de la app dentro de la extensión pide lo mismo, sin pasar por el puente.
+  function onOwn(msg, sender, sendResponse) {
+    const mine = !!sender && sender.id === chrome.runtime.id && !!sender.tab && sender.frameId === 0 && isApp(sender.url, OWN);
+    if (!mine) { sendResponse({ ok: false, error: 'refused' }); return false; }
+    openFile(msg, sender).then((r) => sendResponse(r ? Object.assign({ ok: true }, r) : { ok: false, error: 'shape' }), () => sendResponse({ ok: false, error: 'failed' }));
+    return true;
+  }
 
   // Solo la pestaña de la app web, en su marco principal, y solo a través del script de contenido de esta extensión.
   function trusted(sender) {
@@ -149,7 +184,7 @@
     const op = msg && typeof msg.op === 'string' && Object.prototype.hasOwnProperty.call(OPS, msg.op) ? OPS[msg.op] : null;
     if (!op || !trusted(sender)) { sendResponse({ ok: false, error: 'refused' }); return false; }
     const args = msg.args && typeof msg.args === 'object' ? msg.args : {};
-    line = line.then(() => op(args, msg.by)).then((r) => sendResponse(r ? Object.assign({ ok: true }, r) : { ok: false, error: 'shape' }), (e) => sendResponse({ ok: false, error: String(e && e.message || e).slice(0, 120) }));
+    line = line.then(() => op(args, msg.by, sender)).then((r) => sendResponse(r ? Object.assign({ ok: true }, r) : { ok: false, error: 'shape' }), (e) => sendResponse({ ok: false, error: String(e && e.message || e).slice(0, 120) }));
     return true;
   }
 
@@ -210,5 +245,5 @@
   }
   chrome.action.onClicked.addListener(() => { openSharp().catch(() => chrome.tabs.create({ url: OWN })); });
 
-  LMD.bridgeHost = { onMessage, openSharp, PREFS };
+  LMD.bridgeHost = { onMessage, onOwn, openSharp, PREFS };
 })();
