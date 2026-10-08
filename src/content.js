@@ -523,7 +523,7 @@
     const box = el('div');
     if (sel && !sel.isCollapsed && ui.article.contains(sel.anchorNode)) box.appendChild(sel.getRangeAt(0).cloneContents());
     else box.innerHTML = ui.article.innerHTML;
-    box.querySelectorAll('.lmd-anchor, .lmd-code-copy, .lmd-code-lang, .lmd-kanban-off, .lmd-front').forEach((n) => n.remove());
+    box.querySelectorAll('.lmd-anchor, .lmd-code-copy, .lmd-code-lang, .lmd-kanban-off, .lmd-front, .lmd-cl-bar, .lmd-cl-add, .lmd-cl-grip').forEach((n) => n.remove());
     box.querySelectorAll('table').forEach((t) => { t.setAttribute('style', 'border-collapse:collapse'); });
     box.querySelectorAll('th, td').forEach((c) => c.setAttribute('style', 'border:1px solid #c9c9c9;padding:6px 10px;vertical-align:top'));
     box.querySelectorAll('pre').forEach((p) => p.setAttribute('style', 'font-family:Consolas,monospace;background:#f3f3f3;padding:10px;white-space:pre-wrap'));
@@ -1286,7 +1286,7 @@
     refreshTimer = setInterval(() => { if (!document.hidden) checkForChanges(false); }, Math.max(300, settings.refreshInterval | 0));
   }
 
-  let diskStamp = ''; let cloudPoll = 0; let cloudState = 'ok'; let readOnly = false; let present = [];
+  let diskStamp = ''; let cloudPoll = 0; let cloudState = 'ok'; let readOnly = false; let present = []; const presentNames = {};
   let polled = true; // false cuando la nube no se consultó de verdad porque todavía no tocaba
   // La revisión de la nube que corresponde a diskText: sobre esa se guarda. Cambia solo junto con diskText, cuando
   // lo leído ya entró al documento; así un guardado nunca pasa por encima de un cambio que todavía no se juntó.
@@ -3138,7 +3138,7 @@
     get shape() { return settings.diagramShape; },
     get cloudState() { return cloudState; },
     get readOnly() { return readOnly; },
-    get present() { return present; },
+    get present() { return present; }, get presentNames() { return presentNames; },
     get cloudPath() { return vParts(HERE).join('/'); },
     get dirty() { return dirty; },
     save: (interactive) => save(interactive),
@@ -3632,6 +3632,7 @@
         stopEvents = LMD.cloud.events(path, (ev) => {
           if (mine !== docSeq) return;
           if (ev.who) present = ev.who;
+          if (ev.who && ev.names) ev.who.forEach((mail, i) => { if (ev.names[i]) presentNames[mail] = ev.names[i]; });
           // La escucha se cortó o volvió. Al volver se trae lo que haya cambiado mientras tanto, y sale lo pendiente.
           if (ev.type === 'link') {
             if (ev.up && !linkUp) { if (dirty && cloudState === 'error') { clearTimeout(autosaveTimer); save(false); } else { cloudPoll = 0; checkForChanges(false); } }

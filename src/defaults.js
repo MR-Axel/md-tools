@@ -1372,6 +1372,13 @@
       "Hay cambios sin guardar": "There are unsaved changes", "Descartarlos": "Discard", "Seguir editando": "Keep editing",
       "¿Eliminar la tarjeta \"{a}\"?": "Delete the card \"{a}\"?", "Campos en las tarjetas": "Fields on the cards", "Campos en las tarjetas…": "Fields on the cards…",
       "Todavía no hay campos. Abrí una tarjeta para agregar el primero.": "There are no fields yet. Open a card to add the first one.", "Hasta 120 caracteres.": "Up to 120 characters.",
+      // Listas de tareas: contador, renglón de agregar, reordenar y quitar los hechos.
+      "{a} de {b}": "{a} of {b}", "Agregar elemento": "Add item", "Quitar los hechos": "Clear done", "Mover los hechos abajo": "Move done to the bottom",
+      "Mover el elemento": "Move the item", "Hechos quitados: {a}": "Done items removed: {a}",
+      // El nombre visible de la cuenta.
+      "Nombre visible": "Display name", "Los demás ven este nombre en notas compartidas y equipos": "Others see this name in shared notes and teams",
+      "De 2 a 40 caracteres, sin arroba.": "2 to 40 characters, no @ sign.", "Demasiados cambios por ahora. Probá más tarde.": "Too many changes for now. Try again later.",
+      "No se pudo guardar. Probá de nuevo.": "It could not be saved. Try again.",
       "Ajustes de la página": "Page settings", "Ancho de la página": "Page width",
       "Normal": "Normal", "Ancha": "Wide",
       "Completa": "Full", "Numerar los títulos": "Number the headings",

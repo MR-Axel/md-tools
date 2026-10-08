@@ -94,6 +94,15 @@
 ## Done
 - [x]
 `],
+    ['checklist', 'day', 'Lista', 'Checklist', 'checklist',
+`# Lista
+
+- [ ]
+`,
+`# Checklist
+
+- [ ]
+`],
     ['meeting', 'day', 'Notas de reunión', 'Meeting notes', 'meeting-{{date}}',
 `# Reunión:
 

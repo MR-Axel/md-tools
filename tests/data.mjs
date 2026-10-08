@@ -206,6 +206,46 @@ await app.click('.lmd-pg [data-pg-width=normal]'); await app.check('.lmd-pg [dat
 o.numerada = await app.evaluate(() => ({ clase: document.documentElement.classList.contains('lmd-page-numbered') && !document.documentElement.classList.contains('lmd-pw-wide'), antes: getComputedStyle(document.querySelector('.lmd-article > h2') || document.body, '::before').content, otraVez: !!document.querySelector('.lmd-page-nudge') }));
 o.numeradaFuente = (await src()).split('\n').slice(0, 3);
 
+// listas de tareas: contador, renglón de agregar con Enter encadenado, reordenar y quitar los hechos
+const lista = async () => { const l = (await src()).split('\n'); return l.slice(0, l.indexOf('```kanban')).filter((x) => /^[-*+] \[/.test(x)); };
+const clBar = () => app.evaluate(() => ({ cuenta: document.querySelector('.lmd-cl-bar .lmd-cl-count').textContent, acciones: [...document.querySelectorAll('.lmd-cl-bar button')].map((b) => b.textContent), agregar: (document.querySelector('.lmd-cl-add') || {}).textContent, manijas: document.querySelectorAll('.lmd-cl .lmd-cl-grip').length, otras: document.querySelectorAll('.lmd-cl-bar').length }));
+o.cl0 = await clBar();
+await app.click('.lmd-cl-add'); await app.waitForSelector('.lmd-draft-li .lmd-draft');
+o.clAbre = await app.evaluate(() => ({ editando: document.documentElement.classList.contains('lmd-editing'), foco: document.activeElement.classList.contains('lmd-draft'), casilla: !!document.querySelector('.lmd-draft-li input.lmd-task') }));
+await app.keyboard.type('Leche'); await app.keyboard.press('Enter'); await app.waitForSelector('.lmd-draft-li .lmd-draft');
+await app.keyboard.type('Huevos'); await app.keyboard.press('Enter'); await app.waitForSelector('.lmd-draft-li .lmd-draft');
+o.clSigue = await app.evaluate(() => document.activeElement.classList.contains('lmd-draft') && !!document.activeElement.closest('.lmd-draft-li'));
+await app.keyboard.press('Enter'); await app.waitForTimeout(300);
+o.clTermina = await app.evaluate(() => !document.querySelector('.lmd-draft-li'));
+await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(600);
+o.cl1 = await lista();
+// Backspace en un elemento vacío lo borra y sube
+await app.click('.lmd-cl-add'); await app.waitForSelector('.lmd-draft-li .lmd-draft'); await app.keyboard.type('x'); await app.keyboard.press('Backspace'); await app.keyboard.press('Backspace'); await app.waitForTimeout(200);
+o.clBorra = await app.evaluate(() => ({ borrador: !!document.querySelector('.lmd-draft-li'), foco: (document.activeElement.textContent || '').trim() }));
+await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(600);
+o.cl2 = [await lista(), await clBar()];
+// tildar pone al día el contador, y los hechos se pueden pasar abajo
+await app.locator('.lmd-cl li.lmd-task-item', { hasText: 'Leche' }).locator('input.lmd-task').check(); await app.waitForTimeout(300);
+o.clTilde = (await clBar()).cuenta;
+await app.locator('.lmd-cl li.lmd-task-item', { hasText: 'Pagar la luz' }).locator('input.lmd-task').uncheck(); await app.waitForTimeout(300);
+await app.click('.lmd-cl-bar [data-cl=sink]'); await app.waitForTimeout(400);
+o.clAbajo = [await lista(), (await clBar()).acciones];
+// reordenar: con las flechas sobre la manija, y arrastrándola
+await app.locator('.lmd-cl li.lmd-task-item', { hasText: 'Huevos' }).locator('.lmd-cl-grip').focus(); await app.keyboard.press('ArrowUp'); await app.waitForTimeout(300);
+o.clFlecha = [await lista(), await app.evaluate(() => document.activeElement.classList.contains('lmd-cl-grip') && /Huevos/.test(document.activeElement.closest('li').textContent))];
+const gripBox = await app.locator('.lmd-cl li.lmd-task-item', { hasText: 'Leche' }).locator('.lmd-cl-grip').boundingBox(); const firstBox = await app.locator('.lmd-cl li.lmd-task-item').first().boundingBox();
+await app.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2); await app.mouse.down(); await app.mouse.move(gripBox.x + 4, gripBox.y - 20, { steps: 4 }); await app.mouse.move(firstBox.x + 10, firstBox.y + 2, { steps: 6 });
+o.clMarca = await app.evaluate(() => !!document.querySelector('.lmd-cl li.lmd-cl-before') && !!document.querySelector('.lmd-cl li.lmd-cl-moving'));
+await app.mouse.up(); await app.waitForTimeout(400);
+o.clArrastre = await lista();
+// quitar los hechos, con deshacer
+await app.click('.lmd-cl-bar [data-cl=clear]'); await app.waitForSelector('.lmd-cl-toast');
+o.clQuita = [await lista(), await app.evaluate(() => document.querySelector('.lmd-cl-toast').textContent), (await clBar()).cuenta];
+await app.click('.lmd-cl-toast button'); await app.waitForTimeout(400);
+o.clDeshace = [await lista(), await app.evaluate(() => !document.querySelector('.lmd-cl-toast'))];
+// el tablero es otra cosa: solo la lista de tareas suelta gana el renglón de agregar
+o.clSolo = await app.evaluate(() => document.querySelectorAll('.lmd-cl-add').length);
+
 const J = (v) => JSON.stringify(v);
 const checks = [
   ['una tarea hecha se ve tachada', J(o.tachadoInicial) === J(['none', 'line-through']), o.tachadoInicial],
@@ -269,6 +309,16 @@ const checks = [
   ['aceptarla escribe width: wide en la nota y no se lista entre sus datos', o.ancha.clase && !o.ancha.aviso && !o.ancha.front && o.ancha.get === 'wide' && J(o.anchaFuente) === J(['---', 'width: wide', '---', '']), [o.ancha, o.anchaFuente]],
   ['la ventana de ajustes de la página muestra el ancho de ahora', o.dialogoPagina.marcado === 'wide' && J(o.dialogoPagina.opciones) === J(['Normal', 'Ancha', 'Completa']), o.dialogoPagina],
   ['numerar los títulos, y el aviso no vuelve a salir en esa nota', o.numerada.clase && !o.numerada.otraVez && J(o.numeradaFuente) === J(['---', 'numbered: true', '---']), [o.numerada, o.numeradaFuente]],
+  ['una lista de tareas muestra cuántas van, con un renglón para agregar y una manija por elemento', o.cl0.cuenta === '2 de 2' && J(o.cl0.acciones) === J(['Quitar los hechos']) && o.cl0.agregar === '+ Agregar elemento' && o.cl0.manijas === 2 && o.cl0.otras === 1, o.cl0],
+  ['el renglón de agregar abre un elemento con casilla, listo para escribir', o.clAbre.editando && o.clAbre.foco && o.clAbre.casilla, o.clAbre],
+  ['Enter agrega y deja el cursor en el siguiente; Enter en uno vacío termina', o.clSigue === true && o.clTermina === true && J(o.cl1) === J(['- [x] Comprar pan', '- [x] Pagar la luz', '- [ ] Leche', '- [ ] Huevos']), [o.clSigue, o.clTermina, o.cl1]],
+  ['Backspace en un elemento vacío lo borra y sube al anterior', o.clBorra.borrador === false && o.clBorra.foco === 'Huevos' && o.cl2[0].length === 4 && o.cl2[1].cuenta === '2 de 4', [o.clBorra, o.cl2]],
+  ['tildar pone al día el contador sin redibujar', o.clTilde === '3 de 4', o.clTilde],
+  ['los hechos se pasan abajo, y después ya no se ofrece', J(o.cl2[1].acciones) === J(['Mover los hechos abajo', 'Quitar los hechos']) && J(o.clAbajo[0]) === J(['- [ ] Pagar la luz', '- [ ] Huevos', '- [x] Comprar pan', '- [x] Leche']) && J(o.clAbajo[1]) === J(['Quitar los hechos']), [o.cl2[1], o.clAbajo]],
+  ['con el foco en la manija, las flechas mueven el elemento y el foco lo sigue', J(o.clFlecha[0]) === J(['- [ ] Huevos', '- [ ] Pagar la luz', '- [x] Comprar pan', '- [x] Leche']) && o.clFlecha[1] === true, o.clFlecha],
+  ['arrastrar la manija reordena, marcando dónde cae', o.clMarca === true && J(o.clArrastre) === J(['- [x] Leche', '- [ ] Huevos', '- [ ] Pagar la luz', '- [x] Comprar pan']), [o.clMarca, o.clArrastre]],
+  ['quitar los hechos avisa cuántos fueron y deja deshacer', J(o.clQuita[0]) === J(['- [ ] Huevos', '- [ ] Pagar la luz']) && o.clQuita[1] === 'Hechos quitados: 2Deshacer' && o.clQuita[2] === '0 de 2' && J(o.clDeshace[0]) === J(['- [x] Leche', '- [ ] Huevos', '- [ ] Pagar la luz', '- [x] Comprar pan']) && o.clDeshace[1] === true, [o.clQuita, o.clDeshace]],
+  ['los tableros no ganan renglón de agregar: solo las listas de tareas sueltas', o.clSolo === 1, o.clSolo],
   ['la fila de totales guarda fórmulas', o.totalFuente === '| **Total** | =sum | =sum |', o.totalFuente],
   ['y muestra las sumas con el formato de la columna', J(o.totalVista) === J(['Total', '$ 5.500,50', '6']), o.totalVista],
   ['al entrar a la celda se ve la fórmula', o.alEditar === '=sum', o.alEditar],

@@ -20,7 +20,7 @@
   let st = null; // la presentación abierta: { box, slides, i, ... }
 
   // ---------- De la nota a las diapositivas ----------
-  const DROP = '.lmd-anchor, .lmd-code-copy, .lmd-dgm-tools, .lmd-add, .lmd-draft, .lmd-draft-li, .lmd-board-edit, .lmd-front, .lmd-toc, .lmd-cm-layer, .lmd-live-layer, .lmd-voice-ghost, .lmd-handle, .lmd-daily-nav, .lmd-back, script, style';
+  const DROP = '.lmd-anchor, .lmd-code-copy, .lmd-dgm-tools, .lmd-add, .lmd-draft, .lmd-draft-li, .lmd-board-edit, .lmd-cl-bar, .lmd-cl-add, .lmd-cl-grip, .lmd-front, .lmd-toc, .lmd-cm-layer, .lmd-live-layer, .lmd-voice-ghost, .lmd-handle, .lmd-daily-nav, .lmd-back, script, style';
   const isNote = (n) => n.tagName === 'BLOCKQUOTE' && (n.classList.contains('lmd-alert-note') || /^\s*\[!note\]/i.test(n.textContent));
   // [{ nodes, notes, title }]: los nodos son copias, sin nada de la edición.
   function slidesOf(article) {
