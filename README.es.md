@@ -2,14 +2,14 @@
 
 [English](README.md) · Español
 
-Editá Markdown sin escribir Markdown. Tus archivos quedan en tu disco, y tu IA puede trabajar sobre las mismas notas.
+Notas en Markdown que tu IA escribe y tu equipo lee. Un editor de Markdown en la nube con la conexión MCP ya andando, que se edita sobre la página ya formateada, sin escribir sintaxis.
 
 - **Sin escribir sintaxis.** Hacés clic en un título, una tabla, una lista de tareas, un diagrama o una fórmula y lo cambiás ahí mismo, con botones. El código está a un clic.
-- **Tus archivos, en tu disco.** Abrís un `.md` o una carpeta entera. No se sube nada ni hay que crear una cuenta.
-- **Nube cuando la quieras.** Las mismas notas en cada dispositivo, compartir, y editar entre varios en vivo con un enlace.
-- **Tu IA sobre las mismas notas.** Por MCP lee, escribe, documenta lo que hace y responde los comentarios que le dejás.
-- **Privado.** Carpetas con contraseña que el servidor no puede leer, código abierto y servidor propio si querés.
-- **Web, Chrome y celular.** App web, extensión de Chrome y app en el celular. También anda sin conexión.
+- **Nada que instalar.** Abre en el navegador, y las mismas notas están en cada dispositivo donde entrás. También hay extensión de Chrome y app en el celular.
+- **Tu IA sobre las mismas notas.** Por MCP, Claude, Codex u otro cliente lee las notas del proyecto antes de una tarea, documenta lo que cambió y resuelve los comentarios que le dejás. O prendés el asistente dentro de la nota con tu propia clave.
+- **Compartido con un enlace.** Una nota o una carpeta con otra cuenta, un enlace público, o una sesión en vivo donde todos escriben a la vez.
+- **Conectado a tus herramientas.** API, webhooks firmados y direcciones de entrada para Make, n8n, Activepieces, Zapier y Slack.
+- **Tus archivos siguen siendo tuyos.** Un `.md` de tu disco abre sin subirse. Carpetas con contraseña que el servidor no puede leer, código abierto y servidor propio si querés.
 
 ![SharpMD](docs/store/1-reader.png)
 

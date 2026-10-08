@@ -2,7 +2,7 @@
 
 <h1 align="center">SharpMD</h1>
 
-<p align="center">Edit Markdown without writing Markdown.<br>Your files stay on your disk, and your AI can work on the same notes.</p>
+<p align="center">Markdown notes your AI writes and your team reads.<br>A Markdown editor in the cloud with the MCP endpoint already running. You edit on the formatted page, with no syntax to type.</p>
 
 <p align="center">
   <a href="https://sharpmd.app/"><strong>Website</strong></a> ·
@@ -12,11 +12,11 @@
 </p>
 
 - **No syntax to type.** Click a heading, a table, a task list, a diagram or a formula and change it right there, with buttons. The source is one click away.
-- **Your files, on your disk.** Open a `.md` or a whole folder. Nothing is uploaded and there is no account to create.
-- **A cloud when you want one.** The same notes on every device, sharing, and editing together live through a link.
-- **Your AI on the same notes.** Over MCP it reads, writes, documents what it does and answers the comments you leave.
-- **Private.** Folders with a password that the server cannot read, open source, and your own server if you want one.
-- **Web, Chrome and phone.** A web app, a Chrome extension and an app on the phone. It also works without a connection.
+- **Nothing to install.** It opens in the browser, and the same notes are on every device you sign in on. There is also a Chrome extension and an app on the phone.
+- **Your AI on the same notes.** Over MCP, Claude, Codex or another client reads the notes of the project before a task, documents what it changed and resolves the comments you leave. Or turn on the assistant inside the note with your own key.
+- **Shared by link.** A note or a folder with another account, a public link, or a live session where everyone writes at once.
+- **Wired to your tools.** An API, signed webhooks and inbound addresses for Make, n8n, Activepieces, Zapier and Slack.
+- **Your files stay yours.** A `.md` on your disk opens without being uploaded. Folders with a password that the server cannot read, open source, and your own server if you want one.
 
 ![SharpMD showing a Markdown document with its outline](docs/store/1-reader.png)
 
@@ -48,7 +48,7 @@ Free and open source. No tracking: files are read in your browser and never uplo
 | **Sharing** | A note or a folder with another account, to read or to edit, or a read-only public link with a password. |
 | **Publish a site** | A cloud folder becomes a public website with a menu, search and a theme: one site on the paid plan. Pages are drawn in your browser and served from a separate host, with no script and no style of the notes. A note with `publish: false` stays out, and a protected folder is never published. Offered when the server has a host for sites (`PAGES_URL`). |
 | **Live sessions** | Open a session on a cloud note and send the link. Guests join from the browser with a name, without an account, and everyone edits at once. |
-| **AI over MCP** | Claude or any MCP client can list, read, write, append to, move and search your cloud notes, and read their history. Each write returns a link that opens the note in the app. A token can be limited to one folder, and only a token created with the sharing permission can share notes or create public links. A comment on a block tells the AI what to change, and Settings has a ready message to paste into your AI. |
+| **AI over MCP** | Claude or any MCP client can list, read, write, append to, move and search your cloud notes, and read their history. Each write returns a link that opens the note in the app. A token can be limited to one folder, and only a token created with the sharing permission can share notes or create public links. A comment on a block tells the AI what to change, and Settings has a ready message to paste into your AI: it carries the address and the token, and asks the AI to use the notes as the memory of the project (read them before a task, update them when it changes something). |
 | **Automations** | Signed webhooks when a note or a card changes (ready-made for Slack and Discord, JSON for Make, n8n, Activepieces and Zapier), secret inbound addresses that add text to a note or create a card, and a REST API with the same tokens as MCP. See [the API page](https://sharpmd.app/api.html). |
 | **Read aloud** | A tool you turn on in Settings → Tools. Reads the whole note, from a block or the selection, with the voices of your device. It marks the block it is reading and announces code and diagrams instead of reading them. |
 | **Community** | In Settings → Tools: templates, themes and diagram palettes shared by people, each one reviewed before it is published. Add one and it works offline; share the open note as a template, your theme or a palette. Content only, never code. |
@@ -177,7 +177,7 @@ numbered: true
 
 `server/` holds SharpMD Sync: accounts, notes in the cloud, an MCP endpoint so an AI can read and write them, and the automations: a REST API under `/api/v1`, outgoing webhooks and inbound addresses ([docs](https://sharpmd.app/api.html)). Sign in from the start screen with a code sent to your email. The free plan holds 10 cloud notes; the paid plan (USD 3.99 a month or USD 39 a year) has no limit and adds sharing, the MCP connection, 30 days of version history and the appearance options. The team plan (USD 7.98 a month for 2 people, USD 3 a month for each extra one) gives every member the paid plan and a shared space for the team notes: whoever pays invites by email and manages the seats. Each member is an administrator, an editor or a reader. Administrators decide the team settings (whether members share team notes outside, create public links, connect their AI or use automations on the space, how long its history is kept, and the folder and template of new notes), create team tokens that belong to the team and not to a person, and read an activity log of who did what, without the content of the notes. The team space keeps a year of version history. Personal settings stay with each person, and only whoever pays sees prices and billing. That person can protect the team space with one password: the team notes are then encrypted in each member's browser and the server cannot read them. Members get the password from the administrator, outside the app.
 
-The server is one file with no dependencies, and you can host it yourself: set its address in Settings → Account, or type `off` there to use SharpMD with no cloud at all. See [server/README.md](server/README.md).
+The server is one file with no dependencies, and you can host it yourself: set its address in Settings → Account, or type `off` there to use SharpMD with no cloud at all. On sharpmd.app the accounts, the sign-in mail, the backups, the updates and the MCP endpoint are already running; on your own server you set up the domain with HTTPS, a mailer for the sign-in codes, the encryption key, the backups and each update. See [server/README.md](server/README.md).
 
 ## Development
 

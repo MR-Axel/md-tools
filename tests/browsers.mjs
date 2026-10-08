@@ -40,7 +40,7 @@ try {
         const before = R.errors.length;
         await page.goto(R.origin + rel); await page.waitForSelector('h1');
         const top = await page.evaluate(() => ({ h1: document.querySelector('h1').innerText.trim(), lang: document.documentElement.lang, font: document.fonts.check('16px "MDT Inter"'), clips: document.querySelectorAll('video.clip').length,
-          poster: [...document.querySelectorAll('video.clip')].map((v) => !!v.poster), sources: [...document.querySelectorAll('video.clip')].map((v) => [...v.querySelectorAll('source')].map((s) => s.type).join()) }));
+          poster: [...document.querySelectorAll('video.clip')].map((v) => !!(v.getAttribute('poster') || v.getAttribute('data-poster'))), sources: [...document.querySelectorAll('video.clip')].map((v) => [...v.querySelectorAll('source')].map((s) => s.type).join()) }));
         check('portada ' + lang + ' ' + size + ': título, idioma y tipografía', top.h1.length > 10 && top.lang === lang && top.font, top);
         check('portada ' + lang + ' ' + size + ': no se pasa de ancho', (await fits(page)) <= 1, await fits(page));
         check('portada ' + lang + ' ' + size + ': cada clip trae su imagen y los dos formatos, primero el MP4 (el que Safari reproduce, y el más liviano)', top.clips >= 4 && top.poster.every(Boolean) && top.sources.every((s) => s === 'video/mp4,video/webm'), top.sources);

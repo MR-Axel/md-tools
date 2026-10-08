@@ -1,6 +1,6 @@
 # SharpMD
 
-> SharpMD is a free, open source Markdown editor that runs in the browser, as a web app, a Chrome extension and an app on the phone. You open a .md file or a whole folder from your disk and edit on the formatted page, with no syntax to type: headings, tables, task lists, diagrams and formulas change in place. Cloud notes on every device, sharing, live editing through a link and an MCP server that lets an AI work on the same notes are optional. Folders with a password are encrypted in the browser, and the sync server can be self-hosted.
+> SharpMD is a Markdown editor in the cloud where an AI and a team work on the same notes. It runs in the browser as a web app, a Chrome extension and an app on the phone, with an MCP endpoint, a REST API and webhooks already running: Claude, Codex or any other MCP client reads the notes before it works and writes down what it did. People edit on the formatted page, with no syntax to type, share by link and edit together live. The editor is free and open source, and a .md file or a folder from the disk opens without being uploaded. Folders with a password are encrypted in the browser, and the sync server can be self-hosted.
 
 - Web app: https://sharpmd.app/src/app.html
 - Site: https://sharpmd.app/ (Spanish: https://sharpmd.app/es/)
@@ -58,7 +58,7 @@
 ## Plans
 
 - Free: the whole editor, unlimited files and browser notes, 10 notes in the cloud.
-- Paid: USD 3.99 a month or USD 39 a year. Unlimited cloud notes, sharing and public links, live sessions, the MCP connection, automations (API, webhooks, inbound addresses), 30 days of version history, and colors, fonts and custom CSS., and one published site (a folder of notes as a public website at pages.sharpmd.app).
+- Paid: USD 3.99 a month or USD 39 a year. Unlimited cloud notes, sharing and public links, live sessions, the MCP connection, automations (API, webhooks, inbound addresses), 30 days of version history, colors, fonts and custom CSS, and one published site (a folder of notes as a public website at pages.sharpmd.app).
 
 ## Privacy
 

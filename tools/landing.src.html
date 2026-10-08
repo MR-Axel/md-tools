@@ -69,6 +69,7 @@
   .six h3 { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
   .six h3::before { content: ""; flex: none; width: 7px; height: 16px; border-radius: 3px; background: var(--fill); }
   .six p { margin: 0; color: var(--muted); font-size: 15.5px; }
+  .six.duo { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 26px; }
   .two { display: grid; grid-template-columns: 1fr 1fr; }
   .two > div { padding: 4px 48px 4px 0; }
   .two > div + div { padding: 4px 0 4px 48px; border-left: 1px solid var(--line); }
@@ -210,7 +211,7 @@
   .rows svg { flex: none; width: 18px; height: 18px; fill: none; stroke: var(--accent); stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
   .rows li.no { color: var(--faint); }
   .rows li.grp { min-height: 0; padding: 18px 0 7px; color: var(--faint); font-size: 12px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
-  .rows li.no::after { content: ""; flex: none; width: 12px; height: 2px; margin-right: 3px; border-radius: 1px; background: var(--line); }
+  .rows li.no::after { content: ""; flex: none; width: 12px; height: 2px; margin: 0 3px; border-radius: 1px; background: var(--line); }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
   /* Dónde corre */
@@ -269,7 +270,7 @@
     .pick { display: block; margin-top: 30px; } .stage { display: none; } .opts { gap: 34px; }
     .opts > li, .opts > li.on, .band .opts > li.on { padding: 0; border: 0; background: none; animation: none; cursor: auto; }
     .vis { display: block; position: static; width: auto; grid-column: 1 / -1; }
-    .two.host { margin-top: 30px; }
+    .two.host { margin-top: 30px; } .six.duo { grid-template-columns: minmax(0, 1fr); }
   }
   @media (max-width: 640px) { nav .btn { display: none; } .term pre { font-size: 10.5px; padding: 12px; } .vis .term, .ill { aspect-ratio: auto; } .ill { flex-direction: column; align-items: stretch; padding: 14px; } .pn { flex: none; } .arrow { align-self: center; transform: rotate(90deg); margin: 4px 0; } .cols > div { min-height: 76px; } .plans, .plans.three, .use { grid-template-columns: minmax(0, 1fr); max-width: none; } .use > div + div { border-left: 0; border-top: 1px solid var(--line); } .cta .btn { flex: 1 1 auto; } footer span { flex-basis: 100%; } }
   @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .pk *, .cd, .msg, .opts > li.on, html.go body::after { animation: none !important; } .cd.from { display: none; } .pk .src { width: auto !important; } .pk .out, .pk .box, .pk .new { opacity: 1 !important; max-height: none !important; } .pk .b { display: none; } .btn, .more li, .more li b { transition: none; } }
@@ -351,7 +352,17 @@
 
 <section id="ai"><div class="wrap">
   <h2><span lang="en">Your AI on the same notes</span><span lang="es">Tu IA sobre las mismas notas</span></h2>
-  <p class="sub"><span lang="en">Claude, Codex or any other MCP client, working on the notes you keep in the cloud. It reaches as far as the token you give it.</span><span lang="es">Claude, Codex o cualquier otro cliente MCP, trabajando sobre las notas que tenés en la nube. Llega hasta donde llega el token que le das.</span></p>
+  <p class="sub"><span lang="en">SharpMD has no AI of its own. There are two ways to bring yours.</span><span lang="es">SharpMD no trae una IA propia. Hay dos formas de usar la tuya.</span></p>
+  <div class="two host ways">
+    <div>
+      <h3><span lang="en">Your agent, connected over MCP</span><span lang="es">Tu agente, conectado por MCP</span></h3>
+      <p><span lang="en">Claude, Codex or any other MCP client reads and writes the notes you keep in the cloud, from wherever it works. It reaches as far as the token you give it.</span><span lang="es">Claude, Codex o cualquier otro cliente MCP lee y escribe las notas que tenés en la nube, desde donde trabaja. Llega hasta donde llega el token que le das.</span></p>
+    </div>
+    <div>
+      <h3><span lang="en">An assistant inside the note, with your own key</span><span lang="es">Un asistente dentro de la nota, con tu propia clave</span></h3>
+      <p><span lang="en">Turn on the tool and add your key for Claude, OpenAI or a compatible server. It rewrites a selection, writes where the cursor is and answers about the open note. Each result is a proposal you accept or discard.</span><span lang="es">Prendés la herramienta y cargás tu clave de Claude, OpenAI o un servidor compatible. Reescribe una selección, escribe donde está el cursor y responde sobre la nota abierta. Cada resultado es una propuesta que aceptás o descartás.</span></p>
+    </div>
+  </div>
   <div class="pick">
     <div class="stage"></div>
     <ul class="opts">
@@ -457,10 +468,11 @@
 
 <section class="band" id="private"><div class="wrap">
   <h2><span lang="en">What the server can read, and what it cannot</span><span lang="es">Qué puede leer el servidor y qué no</span></h2>
-  <ul class="six three">
+  <ul class="six duo">
     <li><h3><span lang="en">Files on your disk</span><span lang="es">Los archivos de tu disco</span></h3><p><span lang="en">They are read in your browser and never uploaded. No account and no analytics.</span><span lang="es">Se leen en tu navegador y no se suben. Sin cuenta y sin analítica.</span></p></li>
     <li><h3><span lang="en">Notes in the cloud</span><span lang="es">Las notas de la nube</span></h3><p><span lang="en">Stored encrypted. The server holds that key, because it has to share them and hand them to your AI.</span><span lang="es">Se guardan cifradas. El servidor tiene esa llave, porque tiene que compartirlas y dárselas a tu IA.</span></p></li>
     <li><h3><span lang="en">Folders with a password</span><span lang="es">Las carpetas con contraseña</span></h3><p><span lang="en">Encrypted end to end: the server stores text it cannot read. Your AI gets in only while you unlock the folder, for the time you set.</span><span lang="es">Cifradas de extremo a extremo: el servidor guarda texto que no puede leer. Tu IA entra solo mientras desbloqueás la carpeta, por el tiempo que elijas.</span></p></li>
+    <li><h3><span lang="en">Your AI key stays on your device</span><span lang="es">Tu clave de IA queda en tu dispositivo</span></h3><p><span lang="en">Stored encrypted on that device only, with a key the browser will not export. It never goes through our server, is not synced and is not shown whole again. Calls go from your browser straight to the provider you chose, which receives what you send it. Text from a protected folder is sent only if you confirm.</span><span lang="es">Se guarda cifrada solo en ese dispositivo, con una llave que el navegador no deja exportar. Nunca pasa por nuestro servidor, no se sincroniza y no se vuelve a mostrar entera. Las llamadas van de tu navegador directo al proveedor que elegiste, que recibe lo que le mandás. El texto de una carpeta protegida se manda solo si lo confirmás.</span></p></li>
   </ul>
   <p class="note"><span lang="en">The detail is in <a href="privacy.html">Privacy</a>, and the code is on <a href="https://github.com/MR-Axel/sharpmd">GitHub</a>: the app under MIT, the server under AGPL.</span><span lang="es">El detalle está en <a href="privacy.html">Privacidad</a>, y el código en <a href="https://github.com/MR-Axel/sharpmd">GitHub</a>: la app con licencia MIT, el servidor con AGPL.</span></p>
 </div></section>
@@ -527,6 +539,7 @@
       <li><span><span lang="en">The whole editor</span><span lang="es">Todo el editor</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Files and browser notes</span><span lang="es">Archivos y notas del navegador</span></span><em><span lang="en">No limit</span><span lang="es">Sin límite</span></em></li>
       <li><span><span lang="en">Dictation, slides, daily note and Word export</span><span lang="es">Dictado, diapositivas, nota diaria y exportar a Word</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span><span lang="en">The AI assistant with your own key</span><span lang="es">El asistente de IA con tu propia clave</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li class="grp"><span><span lang="en">On our server</span><span lang="es">En nuestro servidor</span></span></li>
       <li><span><span lang="en">Notes in the cloud</span><span lang="es">Notas en la nube</span></span><em>10</em></li>
       <li><span><span lang="en">Protected folders</span><span lang="es">Carpetas protegidas</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
@@ -558,6 +571,7 @@
       <li><span><span lang="en">The whole editor</span><span lang="es">Todo el editor</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Files and browser notes</span><span lang="es">Archivos y notas del navegador</span></span><em><span lang="en">No limit</span><span lang="es">Sin límite</span></em></li>
       <li><span><span lang="en">Dictation, slides, daily note and Word export</span><span lang="es">Dictado, diapositivas, nota diaria y exportar a Word</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span><span lang="en">The AI assistant with your own key</span><span lang="es">El asistente de IA con tu propia clave</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li class="grp"><span><span lang="en">On our server</span><span lang="es">En nuestro servidor</span></span></li>
       <li><span><span lang="en">Notes in the cloud</span><span lang="es">Notas en la nube</span></span><em><span lang="en">No limit</span><span lang="es">Sin límite</span></em></li>
       <li><span><span lang="en">Protected folders</span><span lang="es">Carpetas protegidas</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
@@ -590,13 +604,14 @@
       <li><span><span lang="en">The whole editor</span><span lang="es">Todo el editor</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Files and browser notes</span><span lang="es">Archivos y notas del navegador</span></span><em><span lang="en">No limit</span><span lang="es">Sin límite</span></em></li>
       <li><span><span lang="en">Dictation, slides, daily note and Word export</span><span lang="es">Dictado, diapositivas, nota diaria y exportar a Word</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span><span lang="en">The AI assistant with your own key</span><span lang="es">El asistente de IA con tu propia clave</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li class="grp"><span><span lang="en">On our server</span><span lang="es">En nuestro servidor</span></span></li>
       <li><span><span lang="en">Notes in the cloud</span><span lang="es">Notas en la nube</span></span><em><span lang="en">No limit</span><span lang="es">Sin límite</span></em></li>
       <li><span><span lang="en">Protected folders</span><span lang="es">Carpetas protegidas</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Trash for 30 days</span><span lang="es">Papelera de 30 días</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Sharing and public links</span><span lang="es">Compartir y enlaces públicos</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Live sessions by link</span><span lang="es">Sesiones en vivo por enlace</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
-      <li><span><span lang="en">Publish a site</span><span lang="es">Publicar un sitio</span></span><em><span lang="en">Yours and the team's</span><span lang="es">El tuyo y el del equipo</span></em></li>
+      <li><span><span lang="en">Publish a site</span><span lang="es">Publicar un sitio</span></span><em><span lang="en">1 + the team site</span><span lang="es">1 + el del equipo</span></em></li>
       <li><span><span lang="en">The MCP connection for your AI</span><span lang="es">La conexión MCP para tu IA</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">Comments your AI resolves</span><span lang="es">Comentarios que resuelve tu IA</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li><span><span lang="en">API, webhooks and inbound addresses</span><span lang="es">API, webhooks y direcciones de entrada</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
@@ -645,7 +660,8 @@
   </div>
   <div class="faqs">
     <details class="faq"><summary><span lang="en">What is free and what is paid?</span><span lang="es">¿Qué es gratis y qué se paga?</span></summary><p><span lang="en">The editor is free and open source, with no limit on files or on notes kept in the browser, and 10 notes in the cloud. The paid plan, %%PAID_LINE%%, covers what runs on our server: unlimited cloud notes, sharing, live sessions, a published site, the connection for your AI, the API and webhooks, and version history.</span><span lang="es">El editor es gratis y de código abierto, sin límite de archivos ni de notas guardadas en el navegador, y con 10 notas en la nube. El plan pago, %%PAID_LINE%%, cubre lo que corre en nuestro servidor: notas en la nube sin límite, compartir, sesiones en vivo, un sitio publicado, la conexión para tu IA, la API y los webhooks, y el historial de versiones.</span></p></details>
-    <details class="faq"><summary><span lang="en">Does SharpMD come with its own AI?</span><span lang="es">¿SharpMD trae una IA propia?</span></summary><p><span lang="en">No. You connect the one you already use: Claude, Codex or any other MCP client. SharpMD gives it your notes and the tools to read and write them.</span><span lang="es">No. Conectás la que ya usás: Claude, Codex o cualquier otro cliente MCP. SharpMD le da tus notas y las herramientas para leerlas y escribirlas.</span></p></details>
+    <details class="faq"><summary><span lang="en">Does SharpMD come with its own AI?</span><span lang="es">¿SharpMD trae una IA propia?</span></summary><p><span lang="en">No. You bring yours, in one of two ways: connect the agent you already use over MCP (Claude, Codex or another client), or turn on the assistant inside the note with your own key for Claude, OpenAI or a compatible server.</span><span lang="es">No. Usás la tuya, de una de dos formas: conectás por MCP el agente que ya usás (Claude, Codex u otro cliente), o prendés el asistente dentro de la nota con tu propia clave de Claude, OpenAI o un servidor compatible.</span></p></details>
+    <details class="faq"><summary><span lang="en">Does SharpMD see my AI key or what I send to the AI?</span><span lang="es">¿SharpMD ve mi clave de IA o lo que le mando?</span></summary><p><span lang="en">No. The key is stored encrypted on your device and the requests go from your browser straight to the provider you chose. That provider receives the text you send and handles it under its own terms.</span><span lang="es">No. La clave se guarda cifrada en tu dispositivo y los pedidos van de tu navegador directo al proveedor que elegiste. Ese proveedor recibe el texto que le mandás y lo trata según sus propios términos.</span></p></details>
     <details class="faq"><summary><span lang="en">How does my AI get to my notes?</span><span lang="es">¿Cómo llega mi IA a mis notas?</span></summary><p><span lang="en">You create a token in the app and add SharpMD as an MCP server in Claude or another client. It only sees the notes you keep in the cloud, or one folder if you limit the token.</span><span lang="es">Creás un token en la app y agregás SharpMD como servidor MCP en Claude u otro cliente. Solo ve las notas que tenés en la nube, o una sola carpeta si limitás el token.</span></p></details>
     <details class="faq"><summary><span lang="en">How is it different from a local editor with plugins?</span><span lang="es">¿En qué se diferencia de un editor local con complementos?</span></summary><p><span lang="en">A local editor keeps the notes on one machine. To share them or reach them from an AI you add plugins and a sync service, and each person repeats the setup. SharpMD opens in the browser with the sharing, the MCP endpoint and the API already running. A file on your disk still opens without being uploaded.</span><span lang="es">Un editor local guarda las notas en una sola máquina. Para compartirlas o llegar a ellas desde una IA sumás complementos y un servicio de sincronización, y cada persona repite la instalación. SharpMD abre en el navegador con el compartir, la conexión MCP y la API ya andando. Un archivo de tu disco igual abre sin subirse.</span></p></details>
     <details class="faq"><summary><span lang="en">Can the server read my notes?</span><span lang="es">¿El servidor puede leer mis notas?</span></summary><p><span lang="en">Cloud notes are stored encrypted on the server, which holds the key so it can share them and serve your AI. A folder you protect with a password is different: it is encrypted in your browser and nobody else can read it. To let your AI in, you unlock that folder for a set time. If you lose the password and the backup key, those notes cannot be recovered.</span><span lang="es">Las notas de la nube se guardan cifradas en el servidor, que tiene la llave para poder compartirlas y dárselas a tu IA. Una carpeta que protegés con contraseña es distinta: se cifra en tu navegador y nadie más puede leerla. Para dejar entrar a tu IA, desbloqueás esa carpeta por un tiempo. Si perdés la contraseña y la clave de respaldo, esas notas no se pueden recuperar.</span></p></details>
