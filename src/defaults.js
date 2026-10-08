@@ -1384,7 +1384,7 @@
       "Creada por {a} el {b}": "Created by {a} · {b}", "Quitar el campo": "Remove the field", "Campo quitado: {a}": "Field removed: {a}", "Deshacer": "Undo",
       "Agregar campo": "Add field", "Usar un campo de este tablero": "Use a field from this board", "Campo nuevo": "New field", "Nombre del campo": "Field name",
       "Ese nombre no sirve: empezá con una letra.": "That name does not work: start with a letter.", "La tarjeta ya tiene ese campo.": "The card already has that field.",
-      "Una tarjeta tiene hasta 30 campos.": "A card holds up to 30 fields.", "El enlace empieza con http:// o https://": "A link starts with http:// or https://",
+      "Una tarjeta tiene hasta 30 campos.": "A card holds up to 30 fields.", "El enlace empieza con http:// o https://": "A link starts with http:// or https://", "Elegir una nota": "Choose a note",
       "Hay cambios sin guardar": "There are unsaved changes", "Descartarlos": "Discard", "Seguir editando": "Keep editing",
       "¿Eliminar la tarjeta \"{a}\"?": "Delete the card \"{a}\"?", "Campos en las tarjetas": "Fields on the cards", "Campos en las tarjetas…": "Fields on the cards…",
       "Todavía no hay campos. Abrí una tarjeta para agregar el primero.": "There are no fields yet. Open a card to add the first one.", "Hasta 120 caracteres.": "Up to 120 characters.",

@@ -133,13 +133,16 @@
   let dlg = null;
 
   // Devuelve { href, label } con lo elegido, { remove: true } para quitar el enlace, o null si se canceló.
-  function dialog(ctx) {
+  // opt: { tabs: ['file', 'web'], cur } para elegir un destino fuera del texto (el campo Enlace de una tarjeta).
+  function dialog(ctx, opt) {
     return new Promise((resolve) => {
       if (dlg || picking) { resolve(null); return; }
       LMD.write.closeMenu();
       core.hold = true;
-      const cur = ctx && ctx.link ? LMD.serialize.niceHref(ctx.link.getAttribute('data-lmd-href') || ctx.link.getAttribute('href') || '') : '';
+      const cur = opt && opt.cur != null ? String(opt.cur) : ctx && ctx.link ? LMD.serialize.niceHref(ctx.link.getAttribute('data-lmd-href') || ctx.link.getAttribute('href') || '') : '';
+      const tabs = opt && opt.tabs ? TABS.filter((t) => opt.tabs.includes(t[0])) : TABS;
       let tab = !cur || cur[0] === '#' ? 'here' : isInner(cur) ? 'file' : 'web';
+      if (!tabs.some((t) => t[0] === tab)) tab = tabs[0][0];
       const heads = core.links.headings();
       let files; // sin pedir todavía; null mientras se lee; false si no se pudo
       const opened = new Map(); // archivo desplegado -> sus títulos, o null mientras se lee
@@ -150,7 +153,7 @@
         '<div class="lmd-ask-card lmd-lk-card" role="dialog" aria-label="' + T(cur ? 'Editar el enlace' : 'Enlace') + '">' +
           '<h3>' + T(cur ? 'Editar el enlace' : 'Enlace') + '</h3>' +
           (cur ? '<p class="lmd-lk-now">' + T('Ahora lleva a') + ' <code>' + esc(cur) + '</code></p>' : '') +
-          '<div class="lmd-seg" role="radiogroup" aria-label="' + T('Destino') + '">' + TABS.map((t) => '<button type="button" role="radio" data-val="' + t[0] + '">' + T(t[1]) + '</button>').join('') + '</div>' +
+          '<div class="lmd-seg" role="radiogroup" aria-label="' + T('Destino') + '">' + tabs.map((t) => '<button type="button" role="radio" data-val="' + t[0] + '">' + T(t[1]) + '</button>').join('') + '</div>' +
           '<input type="text" class="lmd-lk-q" spellcheck="false" autocomplete="off">' +
           '<div class="lmd-lk-list" role="listbox"></div>' +
           '<p class="lmd-img-err" hidden></p>' +

@@ -2422,3 +2422,6 @@ button.lmd-cd-pill-name { cursor: pointer; border-radius: 4px; }
 .lmd-ask-card.lmd-live-card p.lmd-live-team { margin: 0 0 12px; color: var(--fg); overflow-wrap: anywhere; }
 /* Ajustes de la página, toc: false. El panel conserva el título y el avance de lectura. */
 .lmd-page-notoc .lmd-o-tree { display: none; }
+/* Tarjeta de un tablero, campo Enlace: el botón para elegir otra nota, al lado del campo. */
+.lmd-cd-link .lmd-cd-note { flex: none; min-height: 32px; white-space: nowrap; }
+@media (pointer: coarse) { .lmd-cd-link .lmd-cd-note { min-height: 44px; } }

@@ -3264,7 +3264,7 @@
     dirHandle: async (dirUrl) => { let dir = rootOf(dirUrl).handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, ensure, isDark,
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
-    drawOff, rangeOf, render, softRender, flash, insertLines, spliceLines, replaceLines, commitBlock, undo, redo, editCode, vFile, toHref,
+    drawOff, rangeOf, render, softRender, flash, insertLines, spliceLines, replaceLines, commitBlock, undo, redo, editCode, vFile, toHref, openDoc,
     inline: (text) => DOMPurify.sanitize(buildParser().renderInline(text)),
     // Un Markdown cualquiera, dibujado con el mismo saneado que una nota (la vista previa de una plantilla).
     preview: (text) => homeCtx().preview(text),
