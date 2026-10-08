@@ -202,6 +202,7 @@
   // ---------- Seguridad de la nube: qué se cifra, dónde, y quién tiene la llave ----------
   // Va en Ajustes → Nube, con sesión y sin ella. Cada renglón es un hecho que se puede comprobar en el código.
   const PRIVACY = 'https://sharpmd.app/privacy.html#cloud-notes';
+  const TERMS = 'https://sharpmd.app/terms.html';
   let secRedraw = null;
   const secRow = (id, icon, title, text, tech, extra) => '<li data-sec-row="' + id + '"><span class="lmd-sec-ico">' + icon + '</span><div><b>' + T(title) + '</b><p>' + T(text) + '</p>' + (extra || '') + (tech ? '<small>' + tech + '</small>' : '') + '</div></li>';
   // own: un servidor propio. can: se ofrece proteger una carpeta. count: carpetas protegidas de la cuenta.
@@ -236,7 +237,9 @@
         'AES-256-GCM · ' + T('llave no exportable') + (ai && ai.off ? ' · <button type="button" class="lmd-link" data-c="ai-tools">' + T('Prender en Herramientas') + '</button>' : ''),
         ai && ai.hasKey ? '<p class="lmd-sec-key">' + esc(ai.provider === 'compat' ? T('Compatible con OpenAI') : AI_NAMES[ai.provider] || ai.provider) + ' · ••••' + esc(ai.last4 ? ' ' + ai.last4 : '') + '</p>' : '') +
       secRow('open', ICON.code, 'Sin analítica y con código abierto', 'No hay analítica. El código es abierto y podés usar tu propio servidor.', T('App MIT · Servidor AGPL')) +
-      '</ul><p class="lmd-sec-foot">' + T('Una nota eliminada queda 30 días en la papelera.') + ' <a href="' + PRIVACY + '" target="_blank" rel="noopener noreferrer">' + T('Cómo funciona') + '</a></p></section>';
+      '</ul><p class="lmd-sec-foot">' + T('Una nota eliminada queda 30 días en la papelera.') + ' <a href="' + PRIVACY + '" target="_blank" rel="noopener noreferrer">' + T('Cómo funciona') + '</a>' +
+      // Los términos regulan el servicio alojado: con un servidor propio no se muestran.
+      (o.own ? '' : ' · <a href="' + TERMS + '" target="_blank" rel="noopener noreferrer">' + T('Términos') + '</a>') + '</p></section>';
   }
 
   // ---------- Publicar una carpeta como sitio ----------

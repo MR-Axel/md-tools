@@ -25,6 +25,9 @@
   .date { margin: 0 0 26px; font-size: 14px; }
   a { color: var(--accent); }
   code { padding: 1px 6px; border-radius: 5px; background: var(--soft); font: 0.88em ui-monospace, Consolas, monospace; color: var(--fg); }
+  .legal { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 52px 0 0; padding-top: 18px; border-top: 1px solid var(--line); font-size: 14px; }
+  .legal a { color: var(--muted); text-decoration: none; }
+  .legal a:hover, .legal a[aria-current] { color: var(--fg); }
 </style>
 </head>
 <body>
@@ -125,7 +128,7 @@
       <li><code>scripting</code>: to load the math and diagram libraries only when a document uses them.</li>
     </ul>
     <h2>Questions</h2>
-    <p>Write to <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>. <a href="support.html">Support</a> has the common fixes.</p>
+    <p>Write to <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>. <a href="support.html">Support</a> has the common fixes. The rules of the hosted service are in the <a href="terms.html">Terms</a>.</p>
   </div>
 
   <div lang="es">
@@ -222,8 +225,9 @@
       <li><code>scripting</code>: para cargar las librerías de matemática y diagramas solo cuando un documento las usa.</li>
     </ul>
     <h2>Consultas</h2>
-    <p>Escribí a <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>. En <a href="support.html">Ayuda</a> están los arreglos más comunes.</p>
+    <p>Escribí a <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>. En <a href="support.html">Ayuda</a> están los arreglos más comunes. Las reglas del servicio alojado están en los <a href="terms.html">Términos</a>.</p>
   </div>
+  <p class="legal"><a href="terms.html"><span lang="en">Terms</span><span lang="es">Términos</span></a><a href="privacy.html" aria-current="page"><span lang="en">Privacy</span><span lang="es">Privacidad</span></a><a href="refunds.html"><span lang="en">Refunds</span><span lang="es">Reembolsos</span></a><a href="acceptable-use.html"><span lang="en">Acceptable use</span><span lang="es">Uso aceptable</span></a><a href="copyright.html"><span lang="en">Copyright</span><span lang="es">Derechos de autor</span></a><a href="support.html"><span lang="en">Support</span><span lang="es">Ayuda</span></a></p>
 </main>
 <script src="site.js"></script>
 </body>

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SharpMD: acceptable use</title>
+<meta name="description" content="What cannot be stored or published with SharpMD, the rules for public links, published sites and the gallery, and how to report content.">
+<link rel="canonical" href="https://sharpmd.app/acceptable-use.html">
+<link rel="icon" href="icons/icon32.png">
+<style>
+  @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
+  :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --line: #dedbd2; --accent: #4d7c0f; --on: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121418; --soft: #1a1d23; --fg: #e6e8ec; --muted: #a0a7b4; --line: #2a2e37; --accent: #bef264; --on: #14161a; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.65 "MDT Inter", -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  html[data-lang="en"] [lang="es"], html[data-lang="es"] [lang="en"] { display: none !important; }
+  main { width: min(720px, 100% - 40px); margin: 0 auto; padding: 46px 0 80px; }
+  .top { display: flex; align-items: center; gap: 14px; margin-bottom: 40px; }
+  .top a { margin-right: auto; color: var(--muted); text-decoration: none; font-weight: 600; }
+  .lang { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); }
+  .lang button { height: 26px; padding: 0 11px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  html[data-lang="en"] .lang [data-set="en"], html[data-lang="es"] .lang [data-set="es"] { background: var(--accent); color: var(--on); }
+  h1 { margin: 0 0 6px; font-size: 38px; letter-spacing: -0.03em; line-height: 1.15; }
+  h2 { margin: 34px 0 8px; font-size: 21px; letter-spacing: -0.015em; scroll-margin-top: 16px; }
+  p, li { color: var(--muted); overflow-wrap: break-word; }
+  .date { margin: 0 0 26px; font-size: 14px; }
+  a { color: var(--accent); }
+  code { padding: 1px 6px; border-radius: 5px; background: var(--soft); font: 0.88em ui-monospace, Consolas, monospace; color: var(--fg); }
+  .legal { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 52px 0 0; padding-top: 18px; border-top: 1px solid var(--line); font-size: 14px; }
+  .legal a { color: var(--muted); text-decoration: none; }
+  .legal a:hover, .legal a[aria-current] { color: var(--fg); }
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><a href="./?site">← SharpMD</a><div class="lang"><button type="button" data-set="en">EN</button><button type="button" data-set="es">ES</button></div></div>
+
+  <div lang="en">
+    <h1>Acceptable use and content removal</h1>
+    <p class="date">Effective: October 8, 2026</p>
+    <p>SharpMD hosts what people write: cloud notes, shared notes, public links, published sites and contributions to the community gallery. These rules say what cannot be there, what we do when someone reports it, and how to report. They are part of the <a href="terms.html">Terms</a>.</p>
+
+    <h2>What you cannot store, share or publish</h2>
+    <ul>
+      <li>Content that is illegal, or that helps someone commit a crime.</li>
+      <li>Sexual content involving minors, in any form. We remove it, close the account and report it to the authorities where the law requires it.</li>
+      <li>Content that infringes the rights of someone else: copyright, trademarks, trade secrets or privacy. For copyright there is a <a href="copyright.html">separate procedure</a>.</li>
+      <li>Malware, or pages and files made to damage a device, take control of it or get into an account.</li>
+      <li>Impersonation and phishing: pretending to be a person, a company or a service to deceive, or collecting passwords, card numbers or other credentials under false pretenses.</li>
+      <li>Spam: notes, sites or links made in bulk to promote something, to manipulate search results or to send people somewhere else.</li>
+      <li>Harassment, threats, or content that calls for violence against a person or a group.</li>
+      <li>Personal data of other people that you have no legal basis to hold or publish: home addresses, identity documents, health or financial records, private messages.</li>
+    </ul>
+
+    <h2>What you cannot use the service for</h2>
+    <ul>
+      <li>Attacking others: scanning, flooding, hosting the pages or the instructions of an attack, or controlling compromised machines through notes, tokens or automations.</li>
+      <li>Mining cryptocurrency, or running any workload that has nothing to do with notes.</li>
+      <li>Storing files in disguise: using notes, embedded images or sites as a general file store or a place to distribute them.</li>
+      <li>Getting around the limits of a plan, creating accounts in bulk or sharing one account between several people.</li>
+      <li>Probing or breaking the security of the service or of another account. If you found a vulnerability, write to <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a> before telling anyone else.</li>
+    </ul>
+
+    <h2>What is public</h2>
+    <p>A public link, a published site and an approved gallery contribution can be seen by people who never agreed to anything with you. More care applies there.</p>
+    <ul>
+      <li>Public links: whoever has the link reads the note. Do not use one to distribute what these rules forbid, also when it has a password.</li>
+      <li>Published sites: a site has to say what it is. No sites that pretend to belong to someone else, no pages whose only purpose is to send visitors to another address, no doorway pages for search engines. Every page of a published site carries a Report link at the bottom, and it cannot be removed.</li>
+      <li>Community gallery: a person reviews every contribution before it is published. Only templates, themes and palettes are accepted, never code. A contribution can be rejected or taken down later, and its sender sees the reason.</li>
+      <li>Live sessions: whoever opens the session is responsible for what the guests write in the note.</li>
+    </ul>
+
+    <h2>Automations</h2>
+    <ul>
+      <li>Do not use outgoing notices, the API or inbound addresses to send email or messages that the people who receive them did not ask for.</li>
+      <li>Do not point a webhook at an address you do not control or have no permission to call.</li>
+      <li>Stay within the request limits in the <a href="api.html">API page</a>. An inbound address is a secret: do not publish it.</li>
+    </ul>
+
+    <h2 id="report">How to report</h2>
+    <ul>
+      <li>A published site: the Report link at the bottom of each of its pages. It opens a short form that sends us the address of the page and your reason.</li>
+      <li>A note someone shared with you, one you opened from a public link or the note of a live session you joined as a guest: "Report this note", in the app. It sends us which note it is and your reason, not its content.</li>
+      <li>A gallery contribution: its Report link, in the gallery.</li>
+      <li>Anything else, or if you prefer email: <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>, with the address of what you are reporting and the reason.</li>
+    </ul>
+    <p>For a copyright complaint, follow the steps in <a href="copyright.html">Copyright</a>, so that the notice has what the law asks for.</p>
+
+    <h2>What we do with a report</h2>
+    <ul>
+      <li>A person looks at each report. We do not review notes or sites before they are saved or published. The gallery is the exception.</li>
+      <li>If what was reported breaks these rules, we take it down or suspend it. A suspended site stops being served at once. Its owner sees in the app that it is suspended and why, and cannot publish it again, change its address or delete it while the suspension lasts.</li>
+      <li>We tell the owner what was taken down and why, unless the law does not let us, or telling them would put someone at risk or help them repeat it.</li>
+      <li>If the case is serious, or the account does it again, we suspend or close the account, as the <a href="terms.html">Terms</a> say.</li>
+      <li>If you think we took something down by mistake, answer that email or write to <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a> and a person looks at it again.</li>
+    </ul>
+
+    <h2>What we cannot see</h2>
+    <p>A folder protected with a password is encrypted in the browser of its owner. Nobody without the password or the backup key can read its notes, and that includes us. The one exception is set by the owner: unlocking the folder for their own AI lets the server read it for the time they chose. Of those folders the server sees only the names of the notes and folders, their size and when they changed. Their notes cannot be shared, have no public links and are never published, so they cannot reach other people through SharpMD.</p>
+
+    <h2>Questions</h2>
+    <p>Write to <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>. This page is written in English and in Spanish. If the two differ, the English version applies.</p>
+  </div>
+
+  <div lang="es">
+    <h1>Uso aceptable y baja de contenido</h1>
+    <p class="date">Vigencia: 8 de octubre de 2026</p>
+    <p>SharpMD aloja lo que la gente escribe: notas en la nube, notas compartidas, enlaces públicos, sitios publicados y aportes a la galería de la comunidad. Estas reglas dicen qué no puede estar ahí, qué hacemos cuando alguien lo denuncia y cómo denunciar. Son parte de los <a href="terms.html">Términos</a>.</p>
+
+    <h2>Qué no podés guardar, compartir ni publicar</h2>
+    <ul>
+      <li>Contenido ilegal, o que ayude a alguien a cometer un delito.</li>
+      <li>Contenido sexual con menores, en cualquier forma. Lo quitamos, cerramos la cuenta y lo denunciamos a las autoridades donde la ley lo exige.</li>
+      <li>Contenido que infrinja derechos de otra persona: derechos de autor, marcas, secretos comerciales o privacidad. Para derechos de autor hay un <a href="copyright.html">procedimiento aparte</a>.</li>
+      <li>Malware, o páginas y archivos hechos para dañar un dispositivo, tomar su control o entrar a una cuenta.</li>
+      <li>Suplantación y phishing: hacerse pasar por una persona, una empresa o un servicio para engañar, o juntar contraseñas, números de tarjeta u otras credenciales con un pretexto falso.</li>
+      <li>Spam: notas, sitios o enlaces hechos en masa para promocionar algo, manipular los resultados de los buscadores o mandar gente a otro lado.</li>
+      <li>Acoso, amenazas, o contenido que llame a la violencia contra una persona o un grupo.</li>
+      <li>Datos personales de otras personas que no tenés base legal para guardar o publicar: domicilios, documentos de identidad, datos de salud o financieros, mensajes privados.</li>
+    </ul>
+
+    <h2>Para qué no podés usar el servicio</h2>
+    <ul>
+      <li>Atacar a otros: escanear, saturar, alojar las páginas o las instrucciones de un ataque, o controlar máquinas comprometidas por medio de notas, tokens o automatizaciones.</li>
+      <li>Minar criptomonedas, o correr cualquier carga que no tenga que ver con notas.</li>
+      <li>Guardar archivos de forma encubierta: usar las notas, las imágenes incrustadas o los sitios como almacenamiento general de archivos o como lugar para distribuirlos.</li>
+      <li>Esquivar los límites de un plan, crear cuentas en masa o compartir una cuenta entre varias personas.</li>
+      <li>Probar o romper la seguridad del servicio o de otra cuenta. Si encontraste una vulnerabilidad, escribí a <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a> antes de contárselo a nadie más.</li>
+    </ul>
+
+    <h2>Lo que es público</h2>
+    <p>Un enlace público, un sitio publicado y un aporte aprobado de la galería los puede ver gente que nunca acordó nada con vos. Ahí hace falta más cuidado.</p>
+    <ul>
+      <li>Enlaces públicos: quien tiene el enlace lee la nota. No uses uno para distribuir lo que estas reglas prohíben, tampoco si tiene contraseña.</li>
+      <li>Sitios publicados: un sitio tiene que decir lo que es. Nada de sitios que se hacen pasar por los de otro, ni páginas cuyo único fin es mandar a quien visita a otra dirección, ni páginas armadas solo para los buscadores. Cada página de un sitio publicado lleva al pie un enlace Denunciar, y no se puede quitar.</li>
+      <li>Galería de la comunidad: una persona revisa cada aporte antes de que se publique. Se aceptan solo plantillas, temas y paletas, nunca código. Un aporte se puede rechazar o bajar después, y quien lo mandó ve el motivo.</li>
+      <li>Sesiones en vivo: quien abre la sesión es responsable de lo que los invitados escriban en la nota.</li>
+    </ul>
+
+    <h2>Automatizaciones</h2>
+    <ul>
+      <li>No uses los avisos salientes, la API ni las direcciones de entrada para mandar correo o mensajes que quien los recibe no pidió.</li>
+      <li>No apuntes un webhook a una dirección que no controlás o a la que no tenés permiso de llamar.</li>
+      <li>Respetá los topes de pedidos de la <a href="api.html">página de la API</a>. Una dirección de entrada es un secreto: no la publiques.</li>
+    </ul>
+
+    <h2 id="denunciar" data-same="report">Cómo denunciar</h2>
+    <ul>
+      <li>Un sitio publicado: el enlace Denunciar al pie de cada una de sus páginas. Abre un formulario corto que nos manda la dirección de la página y tu motivo.</li>
+      <li>Una nota que te compartieron, una que abriste desde un enlace público o la de una sesión en vivo a la que entraste como invitado: "Denunciar esta nota", en la app. Nos manda qué nota es y tu motivo, no su contenido.</li>
+      <li>Un aporte de la galería: su enlace Denunciar, en la galería.</li>
+      <li>Cualquier otra cosa, o si preferís el correo: <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>, con la dirección de lo que denunciás y el motivo.</li>
+    </ul>
+    <p>Para un reclamo por derechos de autor, seguí los pasos de <a href="copyright.html">Derechos de autor</a>, así el aviso trae lo que pide la ley.</p>
+
+    <h2>Qué hacemos con una denuncia</h2>
+    <ul>
+      <li>Una persona mira cada denuncia. No revisamos las notas ni los sitios antes de que se guarden o se publiquen. La galería es la excepción.</li>
+      <li>Si lo denunciado incumple estas reglas, lo bajamos o lo suspendemos. Un sitio suspendido deja de servirse en el momento. Su dueño ve en la app que está suspendido y por qué, y no puede volver a publicarlo, cambiarle la dirección ni eliminarlo mientras dure la suspensión.</li>
+      <li>Le decimos al dueño qué se bajó y por qué, salvo que la ley no nos deje, o que avisarle ponga a alguien en riesgo o lo ayude a repetirlo.</li>
+      <li>Si el caso es grave, o la cuenta reincide, suspendemos o cerramos la cuenta, como dicen los <a href="terms.html">Términos</a>.</li>
+      <li>Si creés que bajamos algo por error, respondé ese correo o escribí a <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a> y una persona lo vuelve a mirar.</li>
+    </ul>
+
+    <h2>Lo que no podemos ver</h2>
+    <p>Una carpeta protegida con contraseña se cifra en el navegador de su dueño. Nadie que no tenga la contraseña o la clave de respaldo puede leer sus notas, y eso nos incluye. La única excepción la decide su dueño: si desbloquea la carpeta para su propia IA, el servidor la puede leer por el tiempo que eligió. De esas carpetas el servidor ve solo los nombres de las notas y de las carpetas, su tamaño y cuándo cambiaron. Sus notas no se pueden compartir, no tienen enlaces públicos y no se publican nunca, así que no pueden llegar a otra gente por medio de SharpMD.</p>
+
+    <h2>Consultas</h2>
+    <p>Escribí a <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>. Esta página está escrita en inglés y en español. Si hay diferencia entre las dos, vale la versión en inglés.</p>
+  </div>
+
+  <p class="legal"><a href="terms.html"><span lang="en">Terms</span><span lang="es">Términos</span></a><a href="privacy.html"><span lang="en">Privacy</span><span lang="es">Privacidad</span></a><a href="refunds.html"><span lang="en">Refunds</span><span lang="es">Reembolsos</span></a><a href="acceptable-use.html" aria-current="page"><span lang="en">Acceptable use</span><span lang="es">Uso aceptable</span></a><a href="copyright.html"><span lang="en">Copyright</span><span lang="es">Derechos de autor</span></a><a href="support.html"><span lang="en">Support</span><span lang="es">Ayuda</span></a></p>
+</main>
+<script src="site.js"></script>
+</body>
+</html>

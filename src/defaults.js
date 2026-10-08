@@ -368,7 +368,7 @@
       "Ese código se probó demasiadas veces y ya no sirve. Pedí uno nuevo.": "That code was tried too many times and no longer works. Ask for a new one.",
       // Seguridad de la nube, en Ajustes → Nube
       "Tu clave de IA": "Your AI key", "Se guarda cifrada solo en este dispositivo. No pasa por el servidor de SharpMD ni se sincroniza, y las llamadas van directo a tu proveedor.": "Stored encrypted on this device only. It does not go through the SharpMD server and is not synced, and calls go straight to your provider.", "llave no exportable": "non-exportable key", "Prender en Herramientas": "Turn on in Tools",
-      "Seguridad": "Security","Cómo funciona": "How it works", "Seguridad de la nube": "Cloud security",
+      "Seguridad": "Security","Cómo funciona": "How it works", "Términos": "Terms","Seguridad de la nube": "Cloud security",
       "Viajan cifradas y se guardan cifradas en el servidor. El servidor tiene la llave, para poder compartirlas y atender a tu IA.": "Encrypted in transit and on the server. The server holds the key, so it can share them and serve your AI.",
       "En un servidor propio, el cifrado en tránsito y en el servidor depende de cómo esté instalado. El servidor puede leerlas, para compartirlas y atender a tu IA.": "On your own server, encryption in transit and on the server depends on how it is set up. The server can read them, to share them and serve your AI.",
       "Se cifran en tu dispositivo con tu contraseña. Ni el servidor puede leerlas.": "Encrypted on your device with your password. Not even the server can read them.",

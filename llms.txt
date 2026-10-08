@@ -67,3 +67,7 @@
 ## Privacy
 
 - No analytics. Details: https://sharpmd.app/privacy.html
+
+## Terms and policies
+
+- Terms of the hosted service: https://sharpmd.app/terms.html · Refunds (14 days): https://sharpmd.app/refunds.html · Acceptable use and reporting content: https://sharpmd.app/acceptable-use.html · Copyright notices: https://sharpmd.app/copyright.html

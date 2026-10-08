@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SharpMD: terms of service</title>
+<meta name="description" content="The terms of the hosted SharpMD service: accounts, your content, plans and billing, teams, AI connections, availability and liability.">
+<link rel="canonical" href="https://sharpmd.app/terms.html">
+<link rel="icon" href="icons/icon32.png">
+<style>
+  @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
+  :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --line: #dedbd2; --accent: #4d7c0f; --on: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121418; --soft: #1a1d23; --fg: #e6e8ec; --muted: #a0a7b4; --line: #2a2e37; --accent: #bef264; --on: #14161a; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.65 "MDT Inter", -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  html[data-lang="en"] [lang="es"], html[data-lang="es"] [lang="en"] { display: none !important; }
+  main { width: min(720px, 100% - 40px); margin: 0 auto; padding: 46px 0 80px; }
+  .top { display: flex; align-items: center; gap: 14px; margin-bottom: 40px; }
+  .top a { margin-right: auto; color: var(--muted); text-decoration: none; font-weight: 600; }
+  .lang { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); }
+  .lang button { height: 26px; padding: 0 11px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  html[data-lang="en"] .lang [data-set="en"], html[data-lang="es"] .lang [data-set="es"] { background: var(--accent); color: var(--on); }
+  h1 { margin: 0 0 6px; font-size: 38px; letter-spacing: -0.03em; line-height: 1.15; }
+  h2 { margin: 34px 0 8px; font-size: 21px; letter-spacing: -0.015em; scroll-margin-top: 16px; }
+  p, li { color: var(--muted); overflow-wrap: break-word; }
+  .date { margin: 0 0 26px; font-size: 14px; }
+  a { color: var(--accent); }
+  code { padding: 1px 6px; border-radius: 5px; background: var(--soft); font: 0.88em ui-monospace, Consolas, monospace; color: var(--fg); }
+  .legal { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 52px 0 0; padding-top: 18px; border-top: 1px solid var(--line); font-size: 14px; }
+  .legal a { color: var(--muted); text-decoration: none; }
+  .legal a:hover, .legal a[aria-current] { color: var(--fg); }
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><a href="./?site">← SharpMD</a><div class="lang"><button type="button" data-set="en">EN</button><button type="button" data-set="es">ES</button></div></div>
+
+  <div lang="en">
+    <h1>Terms of service</h1>
+    <p class="date">Effective: October 8, 2026</p>
+    <p>These terms are the agreement between you and [COMPANY LEGAL NAME], a limited liability company organized in [STATE], United States, which runs SharpMD ("SharpMD", "we"). By creating an account or using the hosted service you accept them. If you do not agree, do not use the hosted service.</p>
+
+    <h2>1. What these terms cover</h2>
+    <p>They cover the hosted service: the cloud account and its notes at <code>sync.sharpmd.app</code>, sharing, public links, live sessions, the connection for an AI (MCP), the API and the automations, the community gallery, the sites published at <code>pages.sharpmd.app</code> and the website at <code>sharpmd.app</code>.</p>
+    <p>They do not cover the software. The app is open source under the MIT license and the sync server under AGPL-3.0, and those licenses are what apply to the code. If you run your own server, these terms do not apply to it: you are the one who operates it.</p>
+    <p>The editor works without an account. Files you open from your disk stay on your device and never reach us.</p>
+
+    <h2>2. Your account</h2>
+    <ul>
+      <li>You sign in with a one-time code sent to your email address. There is no account password, so whoever can read that mailbox can sign in. Keep it safe.</li>
+      <li>An account is for one person. Do not share it. To work with other people, share notes or use a team.</li>
+      <li>You must be at least 13 years old, or 16 where the law of your country requires it. If you use SharpMD for an organization, you confirm that you can accept these terms for it.</li>
+      <li>You are responsible for what is done with your account, and with the tokens, the inbound addresses and the links you create. Whoever has one of them can do what it allows. You can revoke a token, remove an address or a link, and end a live session at any time from the app.</li>
+      <li>If you think someone else got into your account, write to <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>.</li>
+    </ul>
+
+    <h2>3. Your content is yours</h2>
+    <p>The notes and everything else you put in SharpMD belong to you. We claim no ownership of them.</p>
+    <p>To run the service we need a limited permission: to store your content, back it up, send it between your devices and show it to the people and tools you choose. That means the accounts you share a note with, anyone who has a public link you created, the visitors of a site you published, the guests of a live session you opened, the AI or service you connected with a token, and everyone in the case of a contribution to the community gallery once it is approved. The permission exists only to provide the service, and it ends when you delete the content or your account, apart from the time it may take for backups to be replaced.</p>
+    <ul>
+      <li>SharpMD does not use your content to train AI models, and does not hand it to anyone for that purpose.</li>
+      <li>We do not sell your content and we do not use it for advertising.</li>
+      <li>We do not look at the text of your notes, except when you ask us for help with it, when we need to in order to review a report or an abuse of the service, or when the law requires it.</li>
+      <li>You are responsible for your content, and for having the right to store, share or publish it. The rules are in <a href="acceptable-use.html">Acceptable use</a>.</li>
+      <li>What you contribute to the community gallery can be added and used by anyone. You can withdraw it at any time. Copies other people already added stay on their devices.</li>
+    </ul>
+    <p><a href="privacy.html">Privacy</a> lists what the server stores and for how long.</p>
+
+    <h2>4. Protected folders</h2>
+    <p>A folder protected with a password is encrypted in your browser before it is uploaded. We cannot read it, unless you unlock it for your own AI, and then only for the time you chose. If you lose both the password and the backup key, its notes cannot be recovered, by you or by us. There is no back door and no reset. The names of its notes and folders, their size and the date they changed stay visible to the server.</p>
+
+    <h2>5. Plans, payment and renewal</h2>
+    <ul>
+      <li>There is a free plan and paid plans. What each one includes and what it costs is on the <a href="./?site#plans">plans section of the home page</a>.</li>
+      <li>Payments are handled by Paddle, which sells the subscription as the merchant of record. Paddle charges you, adds the taxes that apply in your country and issues the receipt in its own name. Paddle's own terms for buyers apply to the payment. SharpMD never sees your card.</li>
+      <li>A paid plan is a subscription. It renews by itself every month or every year, at the price in force, until you cancel it.</li>
+      <li>You cancel whenever you want, from the link in the Paddle receipt or from Settings, Plan in the app. Cancelling stops the next renewal, and the plan stays active until the end of the period you already paid for.</li>
+      <li>When a paid plan ends, the account goes back to the free plan. Your notes are not deleted, and you can still read and edit them. While the account holds more notes than the free plan allows, no new cloud notes can be added. What belongs to the paid plan stops working, and a published site is taken down 7 days later, with its settings and its address kept for when the plan comes back.</li>
+      <li>If a price changes, we tell you by email at least 30 days before the renewal it applies to, so you can cancel first.</li>
+      <li>Refunds are in the <a href="refunds.html">Refund policy</a>.</li>
+    </ul>
+
+    <h2>6. Teams</h2>
+    <p>Where a team plan is available, the account that pays for the team manages it: invitations, members and seats. Administrators set the role of each member and the settings of the team space.</p>
+    <ul>
+      <li>The notes in the team space belong to the team, not to a person. Every member reads them, and administrators and editors edit them. They stay with the team when someone leaves or is removed.</li>
+      <li>Administrators can read an activity log of the team space: who did what and on which note. It never holds the text of a note.</li>
+      <li>Members see the email addresses of the other members.</li>
+      <li>Your own notes stay yours. Nobody in the team, including whoever manages it, can read them. If you leave the team, you keep them and go back to your own plan.</li>
+      <li>If the subscription of the team ends, the team keeps its people and its notes. They can still be read and edited, and nothing is deleted.</li>
+      <li>Whoever manages a team is responsible for inviting people who are allowed to use it, and for what the team does with its space.</li>
+    </ul>
+
+    <h2>7. AI and other connections</h2>
+    <p>SharpMD provides no AI of its own. You decide what to connect.</p>
+    <ul>
+      <li>An AI agent or a service that you connect with a token acts for you. It can read and write whatever that token reaches, and what it does counts as done by you. Give each token the smallest reach that does the job. A token can be limited to one folder.</li>
+      <li>The assistant with your own key sends the text you ask about from your browser straight to the provider you chose. That provider handles it and bills it under its own terms.</li>
+      <li>An automation sends data to the address you set. What happens to it there depends on the service behind that address.</li>
+      <li>We are not responsible for what a third party that you connected does with your notes, or for the availability, the answers or the charges of that third party.</li>
+    </ul>
+
+    <h2>8. Automations and the API</h2>
+    <p>Use them reasonably. Each token, automation and inbound address has request limits, which are in the <a href="api.html">API page</a>, and we may slow down or pause one that overloads the service. A webhook that keeps failing is turned off, and the app shows it.</p>
+    <p>We do not guarantee that a notice reaches a destination run by someone else. A failed delivery is retried a few times and then dropped.</p>
+
+    <h2>9. Availability and your own copies</h2>
+    <p>We work to keep the service running, but we do not promise that it will always be available or free of errors. It can stop for maintenance or because something failed, on our side or on the side of a provider we depend on.</p>
+    <p>The database is backed up every day. Those backups are there to restore the service after a failure, not to recover one note you deleted: for that there are the trash and, on the paid plan, the version history. Keep a copy of what matters to you. A note is a Markdown file, you can save it to your disk from the app at any time, and on the paid plan the API reads all of them.</p>
+
+    <h2>10. Changes to the service, and closing it</h2>
+    <p>The service changes over time: features are added, changed and sometimes removed. If we remove something important from a plan you pay for, or if we decide to close the service, we tell you by email with reasonable notice, at least 30 days, and during that time you can take your notes out.</p>
+
+    <h2>11. Suspension and closing of accounts</h2>
+    <p>You can delete your account at any time from Settings, Cloud, "Delete account". If it pays a subscription, cancel it first.</p>
+    <p>We may suspend or close an account, or take down what it shared or published, when it breaks these terms or the <a href="acceptable-use.html">Acceptable use</a> rules, when the law requires it, or when it puts the service or other people at risk. We tell you why by email, unless the law does not let us or the account exists only to abuse the service. When we can, you get the chance to take your notes out first. That does not include content that is illegal to keep or to hand over.</p>
+
+    <h2>12. No warranties</h2>
+    <p>The service is provided as it is and as it is available. To the extent the law allows, we give no warranties beyond what these terms say, including implied warranties of merchantability, fitness for a particular purpose and non-infringement.</p>
+
+    <h2>13. Limit of liability</h2>
+    <p>To the extent the law allows, SharpMD is not liable for indirect or consequential damages, or for lost profits, lost data or lost business, that come from using the service or from not being able to use it. Our total liability for any claim about the service is limited to what you paid for it in the 12 months before the event that caused the claim.</p>
+    <p>Nothing in these terms limits the rights that the consumer law of your country does not allow to be limited, or a liability that the law does not allow to be excluded.</p>
+
+    <h2>14. Law and courts</h2>
+    <p>These terms are governed by the laws of [STATE], United States, and disputes go to the courts located there. If you are a consumer and the law of your country gives you the right to its protections and to its courts, these terms do not take that away.</p>
+
+    <h2>15. Changes to these terms</h2>
+    <p>When we change these terms we update the date at the top. If a change is important, we tell the accounts by email at least 30 days before it takes effect. If you keep using the service after that date, you accept the new terms. If you do not agree, you can cancel and delete your account. Earlier versions of this page are in the history of the <a href="https://github.com/MR-Axel/sharpmd">public repository</a>.</p>
+
+    <h2>16. The rest</h2>
+    <p>This page is written in English and in Spanish. If the two differ, the English version applies. If a court finds a part of these terms invalid, the rest still applies. These terms, with the <a href="privacy.html">Privacy</a>, <a href="refunds.html">Refund policy</a>, <a href="acceptable-use.html">Acceptable use</a> and <a href="copyright.html">Copyright</a> pages, are the whole agreement between you and SharpMD about the service.</p>
+
+    <h2>Contact</h2>
+    <p>Write to <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>.</p>
+  </div>
+
+  <div lang="es">
+    <h1>Términos del servicio</h1>
+    <p class="date">Vigencia: 8 de octubre de 2026</p>
+    <p>Estos términos son el acuerdo entre vos y [COMPANY LEGAL NAME], una sociedad de responsabilidad limitada constituida en [STATE], Estados Unidos, que opera SharpMD ("SharpMD", "nosotros"). Al crear una cuenta o usar el servicio alojado los aceptás. Si no estás de acuerdo, no uses el servicio alojado.</p>
+
+    <h2>1. Qué cubren estos términos</h2>
+    <p>Cubren el servicio alojado: la cuenta de la nube y sus notas en <code>sync.sharpmd.app</code>, compartir, los enlaces públicos, las sesiones en vivo, la conexión para una IA (MCP), la API y las automatizaciones, la galería de la comunidad, los sitios publicados en <code>pages.sharpmd.app</code> y el sitio web <code>sharpmd.app</code>.</p>
+    <p>No cubren el software. La app es de código abierto con licencia MIT y el servidor de sincronización con AGPL-3.0, y esas licencias son las que valen para el código. Si usás tu propio servidor, estos términos no se le aplican: lo operás vos.</p>
+    <p>El editor funciona sin cuenta. Los archivos que abrís desde tu disco quedan en tu dispositivo y nunca nos llegan.</p>
+
+    <h2>2. Tu cuenta</h2>
+    <ul>
+      <li>Entrás con un código de un solo uso que llega a tu correo. No hay contraseña de cuenta, así que quien pueda leer esa casilla puede entrar. Cuidala.</li>
+      <li>Una cuenta es para una sola persona. No la compartas. Para trabajar con otra gente, compartí notas o usá un equipo.</li>
+      <li>Tenés que tener al menos 13 años, o 16 donde la ley de tu país lo exija. Si usás SharpMD para una organización, confirmás que podés aceptar estos términos en su nombre.</li>
+      <li>Sos responsable de lo que se haga con tu cuenta, y con los tokens, las direcciones de entrada y los enlaces que crees. Quien tenga uno puede hacer lo que ese permite. Podés revocar un token, quitar una dirección o un enlace y terminar una sesión en vivo cuando quieras, desde la app.</li>
+      <li>Si creés que alguien más entró a tu cuenta, escribí a <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>.</li>
+    </ul>
+
+    <h2>3. Tu contenido es tuyo</h2>
+    <p>Las notas y todo lo demás que ponés en SharpMD son tuyos. No reclamamos ninguna propiedad sobre eso.</p>
+    <p>Para dar el servicio necesitamos un permiso acotado: guardar tu contenido, respaldarlo, llevarlo entre tus dispositivos y mostrárselo a las personas y herramientas que vos elijas. Es decir, las cuentas con las que compartís una nota, quien tenga un enlace público que creaste, quienes visitan un sitio que publicaste, los invitados de una sesión en vivo que abriste, la IA o el servicio que conectaste con un token, y todo el mundo en el caso de un aporte a la galería de la comunidad una vez aprobado. El permiso existe solo para dar el servicio, y termina cuando eliminás el contenido o tu cuenta, salvo el tiempo que tarden en reemplazarse los respaldos.</p>
+    <ul>
+      <li>SharpMD no usa tu contenido para entrenar modelos de IA, y no se lo entrega a nadie con ese fin.</li>
+      <li>No vendemos tu contenido y no lo usamos para publicidad.</li>
+      <li>No miramos el texto de tus notas, salvo que nos pidas ayuda con eso, que haga falta para revisar una denuncia o un abuso del servicio, o que la ley lo exija.</li>
+      <li>Sos responsable de tu contenido, y de tener derecho a guardarlo, compartirlo o publicarlo. Las reglas están en <a href="acceptable-use.html">Uso aceptable</a>.</li>
+      <li>Lo que aportás a la galería de la comunidad lo puede agregar y usar cualquiera. Podés retirarlo cuando quieras. Las copias que otra gente ya agregó quedan en sus dispositivos.</li>
+    </ul>
+    <p>En <a href="privacy.html">Privacidad</a> está qué guarda el servidor y por cuánto tiempo.</p>
+
+    <h2>4. Carpetas protegidas</h2>
+    <p>Una carpeta protegida con contraseña se cifra en tu navegador antes de subir. No la podemos leer, salvo que la desbloquees para tu propia IA, y entonces solo por el tiempo que elegiste. Si perdés la contraseña y también la clave de respaldo, sus notas no se pueden recuperar, ni vos ni nosotros. No hay puerta trasera ni forma de restablecerla. Los nombres de sus notas y carpetas, su tamaño y la fecha en que cambiaron siguen visibles para el servidor.</p>
+
+    <h2>5. Planes, pago y renovación</h2>
+    <ul>
+      <li>Hay un plan gratis y planes pagos. Qué trae cada uno y cuánto cuesta está en la <a href="./es/?site#plans">sección de planes de la portada</a>.</li>
+      <li>Los pagos los maneja Paddle, que vende la suscripción como comerciante registrado. Paddle te cobra, suma los impuestos que correspondan en tu país y emite el recibo a su nombre. Al pago se le aplican las condiciones de Paddle para compradores. SharpMD nunca ve tu tarjeta.</li>
+      <li>Un plan pago es una suscripción. Se renueva sola cada mes o cada año, al precio vigente, hasta que la canceles.</li>
+      <li>Cancelás cuando quieras, desde el enlace del recibo de Paddle o desde Ajustes, Plan en la app. Cancelar corta la próxima renovación, y el plan sigue activo hasta el final del período que ya pagaste.</li>
+      <li>Cuando un plan pago termina, la cuenta vuelve al plan gratis. Tus notas no se borran, y las podés seguir leyendo y editando. Mientras la cuenta tenga más notas de las que admite el plan gratis, no se pueden sumar notas nuevas a la nube. Lo que es del plan pago deja de funcionar, y un sitio publicado se baja 7 días después, con sus ajustes y su dirección guardados para cuando vuelva el plan.</li>
+      <li>Si cambia un precio, te avisamos por correo al menos 30 días antes de la renovación a la que se aplica, para que puedas cancelar antes.</li>
+      <li>Los reembolsos están en la <a href="refunds.html">Política de reembolsos</a>.</li>
+    </ul>
+
+    <h2>6. Equipos</h2>
+    <p>Donde haya un plan de equipo, la cuenta que paga el equipo lo administra: invitaciones, miembros y lugares. Quienes administran definen el papel de cada miembro y los ajustes del espacio del equipo.</p>
+    <ul>
+      <li>Las notas del espacio del equipo son del equipo, no de una persona. Todos los miembros las leen, y quienes administran o editan las cambian. Quedan en el equipo cuando alguien sale o lo sacan.</li>
+      <li>Quienes administran pueden leer un registro de actividad del espacio del equipo: quién hizo qué y sobre qué nota. Nunca guarda el texto de una nota.</li>
+      <li>Los miembros ven el correo de los demás miembros.</li>
+      <li>Tus notas propias siguen siendo tuyas. Nadie del equipo, tampoco quien lo administra, puede leerlas. Si salís del equipo, te las quedás y volvés a tu propio plan.</li>
+      <li>Si la suscripción del equipo termina, el equipo conserva su gente y sus notas. Se pueden seguir leyendo y editando, y no se borra nada.</li>
+      <li>Quien administra un equipo es responsable de invitar a gente que pueda usarlo, y de lo que el equipo haga con su espacio.</li>
+    </ul>
+
+    <h2>7. IA y otras conexiones</h2>
+    <p>SharpMD no da IA propia. Vos decidís qué conectar.</p>
+    <ul>
+      <li>Un agente de IA o un servicio que conectás con un token actúa por vos. Puede leer y escribir todo lo que ese token alcanza, y lo que haga cuenta como hecho por vos. Dale a cada token el alcance más chico que sirva. Un token se puede limitar a una carpeta.</li>
+      <li>El asistente con tu propia clave manda el texto sobre el que preguntás desde tu navegador derecho al proveedor que elegiste. Ese proveedor lo trata y lo cobra según sus condiciones.</li>
+      <li>Una automatización manda datos a la dirección que cargaste. Qué pasa con ellos ahí depende del servicio que está detrás de esa dirección.</li>
+      <li>No respondemos por lo que haga con tus notas un tercero que vos conectaste, ni por la disponibilidad, las respuestas o los cobros de ese tercero.</li>
+    </ul>
+
+    <h2>8. Automatizaciones y API</h2>
+    <p>Usalas de forma razonable. Cada token, automatización y dirección de entrada tiene topes de pedidos, que están en la <a href="api.html">página de la API</a>, y podemos frenar o pausar una que sobrecargue el servicio. Un webhook que falla una y otra vez se apaga, y la app lo muestra.</p>
+    <p>No garantizamos que un aviso llegue a un destino que opera otra persona. Una entrega fallida se reintenta algunas veces y después se descarta.</p>
+
+    <h2>9. Disponibilidad y tus propias copias</h2>
+    <p>Trabajamos para que el servicio esté andando, pero no prometemos que vaya a estar siempre disponible ni libre de errores. Puede detenerse por mantenimiento o porque algo falló, de nuestro lado o del lado de un proveedor del que dependemos.</p>
+    <p>La base se respalda todos los días. Esos respaldos están para restaurar el servicio después de una falla, no para recuperar una nota que eliminaste: para eso están la papelera y, en el plan pago, el historial de versiones. Guardá una copia de lo que te importa. Una nota es un archivo Markdown, la podés guardar en tu disco desde la app cuando quieras, y en el plan pago la API las lee todas.</p>
+
+    <h2>10. Cambios en el servicio, y su cierre</h2>
+    <p>El servicio cambia con el tiempo: se suman funciones, se modifican y a veces se quitan. Si quitamos algo importante de un plan que pagás, o si decidimos cerrar el servicio, te avisamos por correo con una anticipación razonable, de al menos 30 días, y durante ese tiempo podés sacar tus notas.</p>
+
+    <h2>11. Suspensión y cierre de cuentas</h2>
+    <p>Podés eliminar tu cuenta cuando quieras desde Ajustes, Nube, "Eliminar la cuenta". Si paga una suscripción, primero cancelala.</p>
+    <p>Podemos suspender o cerrar una cuenta, o bajar lo que compartió o publicó, cuando incumple estos términos o las reglas de <a href="acceptable-use.html">Uso aceptable</a>, cuando la ley lo exige, o cuando pone en riesgo al servicio o a otras personas. Te decimos por qué por correo, salvo que la ley no nos deje o que la cuenta exista solo para abusar del servicio. Cuando se puede, antes tenés la posibilidad de sacar tus notas. Eso no incluye el contenido que es ilegal conservar o entregar.</p>
+
+    <h2>12. Sin garantías</h2>
+    <p>El servicio se ofrece como está y según esté disponible. En la medida en que la ley lo permite, no damos más garantías que las que dicen estos términos, incluidas las garantías implícitas de comerciabilidad, de aptitud para un fin determinado y de no infracción.</p>
+
+    <h2>13. Límite de responsabilidad</h2>
+    <p>En la medida en que la ley lo permite, SharpMD no responde por daños indirectos o consecuentes, ni por ganancias, datos o negocios perdidos, que surjan de usar el servicio o de no poder usarlo. Nuestra responsabilidad total por cualquier reclamo sobre el servicio se limita a lo que pagaste por él en los 12 meses anteriores al hecho que originó el reclamo.</p>
+    <p>Nada de estos términos limita los derechos que la ley del consumidor de tu país no permite limitar, ni una responsabilidad que la ley no permite excluir.</p>
+
+    <h2>14. Ley y tribunales</h2>
+    <p>Estos términos se rigen por las leyes de [STATE], Estados Unidos, y las disputas van a los tribunales ubicados ahí. Si sos consumidor y la ley de tu país te da derecho a sus protecciones y a sus tribunales, estos términos no te lo quitan.</p>
+
+    <h2>15. Cambios en estos términos</h2>
+    <p>Cuando cambiamos estos términos actualizamos la fecha de arriba. Si el cambio es importante, avisamos a las cuentas por correo al menos 30 días antes de que entre en vigencia. Si seguís usando el servicio después de esa fecha, aceptás los términos nuevos. Si no estás de acuerdo, podés cancelar y eliminar tu cuenta. Las versiones anteriores de esta página están en el historial del <a href="https://github.com/MR-Axel/sharpmd">repositorio público</a>.</p>
+
+    <h2>16. Lo demás</h2>
+    <p>Esta página está escrita en inglés y en español. Si hay diferencia entre las dos, vale la versión en inglés. Si un tribunal declara inválida una parte de estos términos, el resto sigue valiendo. Estos términos, junto con las páginas de <a href="privacy.html">Privacidad</a>, <a href="refunds.html">Política de reembolsos</a>, <a href="acceptable-use.html">Uso aceptable</a> y <a href="copyright.html">Derechos de autor</a>, son todo el acuerdo entre vos y SharpMD sobre el servicio.</p>
+
+    <h2>Contacto</h2>
+    <p>Escribí a <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>.</p>
+  </div>
+
+  <p class="legal"><a href="terms.html" aria-current="page"><span lang="en">Terms</span><span lang="es">Términos</span></a><a href="privacy.html"><span lang="en">Privacy</span><span lang="es">Privacidad</span></a><a href="refunds.html"><span lang="en">Refunds</span><span lang="es">Reembolsos</span></a><a href="acceptable-use.html"><span lang="en">Acceptable use</span><span lang="es">Uso aceptable</span></a><a href="copyright.html"><span lang="en">Copyright</span><span lang="es">Derechos de autor</span></a><a href="support.html"><span lang="en">Support</span><span lang="es">Ayuda</span></a></p>
+</main>
+<script src="site.js"></script>
+</body>
+</html>

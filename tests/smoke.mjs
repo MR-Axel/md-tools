@@ -246,6 +246,28 @@ try {
   const delEs = await inView();
   await web.click('.lang [data-set=en]');
   check('privacy.html#delete-account lleva a cómo eliminar la cuenta, en inglés y en castellano', JSON.stringify([delEn, delEs]) === JSON.stringify([['Deleting your account', true, true], ['Eliminar tu cuenta', true, true]]) && (await web.locator('#delete-account').count()) === 1, [delEn, delEs]);
+  // Las páginas legales (términos, reembolsos, uso aceptable, derechos de autor): las dos versiones en la misma página,
+  // el botón cambia de idioma, sin signos de admiración ni rayas, y enlazadas desde el pie de la portada y desde el pago.
+  const LEGAL = ['terms', 'refunds', 'acceptable-use', 'copyright'];
+  const legalSeen = [];
+  for (const p of LEGAL) {
+    const look = () => web.evaluate(() => { const part = (l) => document.querySelector('main > div[lang=' + l + ']'); const vis = [...document.querySelectorAll('h1')].filter((h) => h.offsetParent);
+      return { lang: document.documentElement.getAttribute('data-lang'), h1: vis.map((h) => h.textContent).join('|'), en: part('en') ? part('en').textContent.length : 0, es: part('es') ? part('es').textContent.length : 0,
+        h2: [part('en'), part('es')].map((d) => (d ? d.querySelectorAll('h2').length : -1)), bad: (document.querySelector('main').textContent.match(/[!¡—–]/g) || []).join(''),
+        prevails: /English version applies/.test(part('en').textContent) && /vale la versión en inglés/.test(part('es').textContent), foot: [...document.querySelectorAll('.legal a')].filter((a) => a.offsetParent).map((a) => a.getAttribute('href')).join() }; });
+    await web.goto(origin + '/' + p + '.html'); await web.waitForSelector('h1:visible');
+    const en = await look(); await web.click('.lang [data-set=es]'); const es = await look(); await web.click('.lang [data-set=en]');
+    legalSeen.push({ p, ok: en.lang === 'en' && es.lang === 'es' && !!en.h1 && !!es.h1 && en.h1 !== es.h1 && !/\|/.test(en.h1 + es.h1) && en.en > 1500 && en.es > 1500 && en.h2[0] === en.h2[1] && en.h2[0] >= 5 && !en.bad && en.prevails
+      && en.foot === 'terms.html,privacy.html,refunds.html,acceptable-use.html,copyright.html,support.html', en, es: es.h1 });
+  }
+  check('las cuatro páginas legales existen, traen inglés y castellano con las mismas secciones, cambian de idioma y no tienen signos de admiración ni rayas', legalSeen.every((x) => x.ok), legalSeen.filter((x) => !x.ok));
+  const rawOf = (f) => fs.readFileSync(path.join(root, f), 'utf8');
+  const footOf = (html) => (html.match(/<footer>[\s\S]*?<\/footer>/) || [''])[0];
+  const payRaw = rawOf('pay.html'); const agree = (payRaw.match(/<p class="fine agree">[\s\S]*?<\/p>/) || [''])[0];
+  const linked = { home: LEGAL.every((p) => footOf(rawOf('index.html')).includes('href="' + p + '.html"')), es: LEGAL.every((p) => footOf(rawOf('es/index.html')).includes('href="../' + p + '.html"')),
+    pay: ['en', 'es'].every((l) => new RegExp('<span lang="' + l + '">[^\\n]*?href="terms\\.html"[^\\n]*?href="refunds\\.html"').test(agree)), near: payRaw.indexOf('id="go"') > 0 && payRaw.indexOf('class="fine agree"') > payRaw.indexOf('id="go"') && payRaw.indexOf('class="fine agree"') < payRaw.indexOf('id="other"'),
+    map: LEGAL.every((p) => rawOf('sitemap.xml').includes('https://sharpmd.app/' + p + '.html') && rawOf('llms.txt').includes('https://sharpmd.app/' + p + '.html')) };
+  check('las páginas legales están enlazadas desde el pie de la portada en los dos idiomas, junto al botón de pagar, y figuran en el sitemap y en llms.txt', linked.home && linked.es && linked.pay && linked.near && linked.map, linked);
   // La pantalla de carga: viene en el HTML (se ve desde el primer pintado) y se va cuando la app está lista.
   const rawApp = fs.readFileSync(path.join(root, 'src', 'app.html'), 'utf8');
   await web.goto(origin + '/src/app.html'); await web.waitForSelector('.lmd-home');
