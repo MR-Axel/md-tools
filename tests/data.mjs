@@ -15,6 +15,8 @@ await app.evaluate(async () => {
   const h = await dir.getFileHandle('doc.md', { create: true }); const s = await h.createWritable();
   await s.write('# Doc\n\n- [ ] Comprar pan\n- [x] Pagar la luz\n\n| Item | Precio | Cantidad |\n| --- | --- | --- |\n| Pan | $ 1.200,50 | 2 |\n| Leche | $ 900,00 | 3 |\n| Yerba | $ 3.400,00 | 1 |\n\n```kanban\n## Por hacer\n- [ ] Diseñar\n- [ ] Probar\n\n## Hecho\n- [x] Planear\n```\n'); await s.close();
   const g = await dir.getFileHandle('guia.md', { create: true }); const gs = await g.createWritable(); await gs.write('# Guía\n\nLa otra nota.\n'); await gs.close();
+  const pg = await dir.getFileHandle('pagina.md', { create: true }); const ps = await pg.createWritable();
+  await ps.write('# Página\n\n[toc]\n\n' + 'Un renglón largo para llenar el ancho de la página. '.repeat(12) + '\n\n## Uno\n\nTexto.\n\n### Sub\n\n## 4. Tienda de Chrome\n\n### Detalle\n\n### 4.5 Propio\n\n### Sigue\n\n## Otra\n\n## IV) Romano\n\n## Sin número\n'); await ps.close();
   window.showDirectoryPicker = async () => dir;
 });
 await Promise.all([app.waitForNavigation(), app.click('[data-home=dir]')]); await app.waitForSelector('.lmd-board');
@@ -207,18 +209,19 @@ o.dialogoPagina = await app.evaluate(() => ({ marcado: document.querySelector('.
 await app.click('.lmd-pg [data-pg-width=normal]'); await app.check('.lmd-pg [data-pg=numbered]'); await app.click('.lmd-pg [data-pg=ok]'); await app.waitForTimeout(400);
 o.numerada = await app.evaluate(() => ({ clase: document.documentElement.classList.contains('lmd-page-numbered') && !document.documentElement.classList.contains('lmd-pw-wide'), antes: getComputedStyle(document.querySelector('.lmd-article > h2') || document.body, '::before').content, otraVez: !!document.querySelector('.lmd-page-nudge') }));
 o.numeradaFuente = (await src()).split('\n').slice(0, 3);
-// el índice de esta nota: se oculta desde la misma ventana
-// (esta nota no tiene secciones: para medir la regla se pone un árbol de prueba en el panel y se lo saca)
+// "Mostrar el índice" ya no está en esa ventana: el índice lateral se muestra u oculta con su propio botón.
+// (esta nota no tiene secciones: para ver si el árbol se oculta se pone uno de prueba en el panel y se lo saca)
 const arbol = () => app.evaluate(() => { const pane = document.querySelector('.lmd-pane-outline'); const had = pane.querySelector('.lmd-o-tree'); const t = had || pane.appendChild(Object.assign(document.createElement('div'), { className: 'lmd-o-tree' })); const on = getComputedStyle(t).display !== 'none'; if (!had) t.remove(); return on; });
-o.sinIndice = { antes: await arbol() };
 await app.click('[data-act=page]'); await app.waitForSelector('.lmd-pg');
-o.sinIndice.marcado = await app.isChecked('.lmd-pg [data-pg=toc]');
-await app.uncheck('.lmd-pg [data-pg=toc]'); await app.click('.lmd-pg [data-pg=ok]'); await app.waitForTimeout(400);
-o.sinIndice.clase = await app.evaluate(() => document.documentElement.classList.contains('lmd-page-notoc')); o.sinIndice.arbol = await arbol();
-o.sinIndice.cabecera = await app.evaluate(() => !!document.querySelector('.lmd-pane-outline .lmd-o-head .lmd-o-title'));
-o.sinIndice.fuente = (await src()).split('\n').slice(0, 5);
-await app.click('[data-act=page]'); await app.waitForSelector('.lmd-pg'); await app.check('.lmd-pg [data-pg=toc]'); await app.click('.lmd-pg [data-pg=ok]'); await app.waitForTimeout(400);
-o.sinIndice.vuelve = await arbol(); o.sinIndice.fuenteDespues = (await src()).split('\n').slice(0, 5);
+o.sinToc = await app.evaluate(() => ({ casilla: !!document.querySelector('.lmd-pg [data-pg=toc]'), texto: document.querySelector('.lmd-pg').textContent, casillas: document.querySelectorAll('.lmd-pg input[type=checkbox]').length }));
+await app.click('.lmd-pg [data-pg=ok]');
+// Una nota que ya traía toc: false de antes: no se aplica, no se lista entre sus datos y no se reescribe.
+await app.click('[data-act=mode-edit]'); await app.click('[data-act=view-raw]'); await app.waitForSelector('.lmd-raw-edit:not([hidden])');
+await app.evaluate(() => { const t = document.querySelector('.lmd-raw-edit'); t.focus(); t.value = t.value.replace('numbered: true', 'numbered: true\ntoc: false'); t.dispatchEvent(new Event('input', { bubbles: true })); });
+await app.waitForTimeout(400); await app.click('[data-act=view-doc]'); await app.click('[data-act=mode-read]'); await app.waitForTimeout(700);
+o.tocViejo = { clase: await app.evaluate(() => document.documentElement.classList.contains('lmd-page-notoc')), arbol: await arbol(), front: await app.evaluate(() => !!document.querySelector('.lmd-front')), fuente: (await src()).split('\n').slice(0, 4) };
+await app.click('[data-act=page]'); await app.waitForSelector('.lmd-pg'); await app.click('.lmd-pg [data-pg-width=wide]'); await app.click('.lmd-pg [data-pg-width=normal]'); await app.click('.lmd-pg [data-pg=ok]'); await app.waitForTimeout(400);
+o.tocViejo.despues = (await src()).split('\n').slice(0, 4);
 
 // listas de tareas: contador, renglón de agregar con Enter encadenado, reordenar y quitar los hechos
 const lista = async () => { const l = (await src()).split('\n'); return l.slice(0, l.indexOf('```kanban')).filter((x) => /^[-*+] \[/.test(x)); };
@@ -279,6 +282,55 @@ await app.locator('.lmd-card', { hasText: 'Planear' }).first().locator('a.lmd-ch
 await app.waitForFunction(() => /La otra nota/.test((document.querySelector('.lmd-article') || {}).innerText || ''), null, { timeout: 8000 }).catch(() => {});
 o.notaAbre = await app.evaluate(() => ({ titulo: (document.querySelector('.lmd-article h1') || {}).textContent || '', sinRecargar: window.__sigue === 1, detalle: !!document.querySelector('.lmd-cd') }));
 
+// ---------- Ajustes de la página en una nota con títulos (pagina.md) ----------
+await ctx.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
+await app.evaluate(() => { const n = [...document.querySelectorAll('.lmd-node')].find((x) => /pagina/.test(x.textContent)); n.click(); });
+await app.waitForFunction(() => /Tienda de Chrome/.test((document.querySelector('.lmd-article') || {}).innerText || ''), null, { timeout: 8000 });
+if (await app.evaluate(() => document.documentElement.classList.contains('lmd-editing'))) { await app.click('[data-act=mode-read]'); await app.waitForTimeout(400); }
+const anchoDe = () => app.evaluate(() => Math.round(document.querySelector('.lmd-article').getBoundingClientRect().width));
+// Elige un ancho en la ventana y mide el artículo ahí mismo, con la ventana todavía abierta.
+const pone = async (w) => { await app.click('[data-act=page]'); await app.waitForSelector('.lmd-pg'); await app.click('.lmd-pg [data-pg-width=' + w + ']'); const now = await anchoDe(); await app.click('.lmd-pg [data-pg=ok]'); await app.waitForTimeout(150); return now; };
+const tres = async () => [await pone('normal'), await pone('wide'), await pone('full')];
+const lateral = (on) => app.evaluate((want) => { const r = document.documentElement; if (r.classList.contains('lmd-side-hidden') === want) document.querySelector('[data-act=sidebar]').click(); }, on);
+o.anchos = {};
+for (const w of [1500, 1280]) {
+  await app.setViewportSize({ width: w, height: 950 }); await lateral(true); await app.waitForTimeout(350);
+  o.anchos['abierto' + w] = await tres();
+  await lateral(false); await app.waitForTimeout(350);
+  o.anchos['cerrado' + w] = await tres();
+}
+await app.setViewportSize({ width: 1500, height: 950 }); await lateral(true); await app.waitForTimeout(300);
+await pone('wide'); await app.waitForTimeout(300);
+o.anchoGuardado = { fuente: (await src()).split('\n').slice(0, 3), clase: await app.evaluate(() => document.documentElement.classList.contains('lmd-pw-wide')) };
+await app.keyboard.press('Control+s'); await app.waitForTimeout(900);
+o.anchoGuardado.disco = (await app.evaluate(async () => { const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('datos'); return (await (await dir.getFileHandle('pagina.md')).getFile()).text(); })).split(/\r?\n/).slice(0, 3);
+await pone('normal');
+// títulos numerados: los que ya traen su número lo conservan, y los demás siguen la cuenta
+await app.click('[data-act=page]'); await app.waitForSelector('.lmd-pg'); await app.check('.lmd-pg [data-pg=numbered]'); await app.click('.lmd-pg [data-pg=ok]'); await app.waitForTimeout(400);
+const titulos = () => app.evaluate(() => { const txt = (n) => { const c = n.cloneNode(true); c.querySelectorAll('.lmd-anchor').forEach((a) => a.remove()); return c.textContent; };
+  return { doc: [...document.querySelectorAll('.lmd-article > h2, .lmd-article > h3')].map(txt), indice: [...document.querySelectorAll('.lmd-pane-outline .lmd-o-link')].map(txt), toc: [...document.querySelectorAll('.lmd-article .lmd-toc a')].map(txt).slice(1),
+    css: getComputedStyle(document.querySelector('.lmd-article > h2'), '::before').content, spans: document.querySelectorAll('.lmd-article .lmd-hnum').length }; });
+o.numeros = await titulos();
+o.numerosFuente = (await src()).split('\n').filter((l) => /^#{2,3} /.test(l));
+// copiar: lo elegido con Ctrl+C y las tres acciones de la barra llevan los números que se ven
+const clip = async () => (await app.evaluate(() => navigator.clipboard.readText())).replace(/\r/g, '');
+await app.evaluate(() => { const hs = [...document.querySelectorAll('.lmd-article > h2')]; const a = hs.find((h) => /Otra/.test(h.textContent)); const r = document.createRange(); r.setStartBefore(a.firstChild); r.setEndAfter(hs[hs.length - 1].lastChild); const s = getSelection(); s.removeAllRanges(); s.addRange(r); });
+await app.keyboard.press('Control+c'); await app.waitForTimeout(200);
+o.copia = { seleccion: await clip() };
+await app.evaluate(() => getSelection().removeAllRanges());
+const copiar = async (what) => { await app.click('[data-act=copy]'); await app.waitForSelector('.lmd-menu-copy'); await app.click('.lmd-menu-copy [data-more=' + what + ']'); await app.waitForTimeout(350); return clip(); };
+o.copia.md = await copiar('copy-md'); o.copia.rico = await copiar('copy-rich'); o.copia.html = await copiar('copy-html');
+o.copia.fuenteIgual = JSON.stringify((await src()).split('\n').filter((l) => /^#{2,3} /.test(l))) === JSON.stringify(o.numerosFuente);
+// editando: el número no entra en lo que se guarda del título
+await app.click('[data-act=mode-edit]'); await app.waitForTimeout(400);
+await app.locator('.lmd-article > h2', { hasText: 'Otra' }).click(); await app.keyboard.press('End'); await app.keyboard.type(' más', { delay: 15 });
+await app.click('.lmd-foot .lmd-status', { force: true }); await app.waitForTimeout(700);
+o.editado = { fuente: (await src()).split('\n').filter((l) => /Otra/.test(l)), doc: (await titulos()).doc.filter((t) => /Otra/.test(t)), editable: await app.evaluate(() => [...document.querySelectorAll('.lmd-article > h2, .lmd-article > h3')].every((h) => h.classList.contains('lmd-editable'))) };
+await app.click('[data-act=mode-read]'); await app.waitForTimeout(500);
+// y si se pide, quedan escritos en la nota
+await app.click('[data-act=page]'); await app.waitForSelector('.lmd-pg'); await app.click('.lmd-pg [data-pg=write]'); await app.click('.lmd-pg [data-pg=ok]'); await app.waitForTimeout(400);
+o.escritos = { fuente: (await src()).split('\n').filter((l) => /^#{2,3} /.test(l)), doc: (await titulos()).doc, spans: (await titulos()).spans };
+
 const J = (v) => JSON.stringify(v);
 const checks = [
   ['una tarea hecha se ve tachada', J(o.tachadoInicial) === J(['none', 'line-through']), o.tachadoInicial],
@@ -338,8 +390,18 @@ const checks = [
   ['quitarle la marca deja el tablero sin columna de hechas y las destilda', / done=""/.test(o.desmarcada.cfg) && o.desmarcada.linea === '- [ ] Planear' && o.desmarcada.col === 0, o.desmarcada],
   ['y se puede volver a marcar otra', / done=Hecho /.test(o.remarcada), o.remarcada],
   ['ajustes de la página: se escriben en el encabezado con claves simples', o.pagina.a === '---\nwidth: wide\n---\n\n# Hola\n' && o.pagina.b === '---\nwidth: wide\nnumbered: true\n---\n\n# Hola\n' && o.pagina.c === '# Hola\n' && o.pagina.d === '---\ntitle: Plan\nwidth: full\n---\n\n# Hola\n' && J(o.pagina.read) === J({ width: 'wide', numbered: 'yes', toc: 'yes' }), o.pagina],
-  ['toc: false oculta el índice de esa nota: se escribe en el encabezado y el valor de siempre lo saca', o.pagina.toc === '---\ntoc: false\n---\n\n# Hola\n' && o.pagina.tocRead === 'no' && o.pagina.tocBack === '# Hola\n' && o.pagina.tocWords === 'no,no,yes,yes', o.pagina],
-  ['desde la ventana: el índice del panel se oculta, queda el título, y la nota lleva toc: false', o.sinIndice.antes && o.sinIndice.marcado && o.sinIndice.clase && !o.sinIndice.arbol && o.sinIndice.cabecera && o.sinIndice.fuente.includes('toc: false') && o.sinIndice.vuelve && !o.sinIndice.fuenteDespues.includes('toc:'), o.sinIndice],
+  ['toc sigue siendo una clave conocida de versiones anteriores: se lee y se escribe igual', o.pagina.toc === '---\ntoc: false\n---\n\n# Hola\n' && o.pagina.tocRead === 'no' && o.pagina.tocBack === '# Hola\n' && o.pagina.tocWords === 'no,no,yes,yes', o.pagina],
+  ['"Mostrar el índice" ya no está entre los ajustes de la página', !o.sinToc.casilla && !/índice/i.test(o.sinToc.texto) && o.sinToc.casillas === 1, o.sinToc],
+  ['una nota que ya traía toc: false se abre igual: el índice se ve, el renglón no se lista y no se reescribe', !o.tocViejo.clase && o.tocViejo.arbol && !o.tocViejo.front && o.tocViejo.fuente.includes('toc: false') && o.tocViejo.despues.includes('toc: false'), o.tocViejo],
+  ['el ancho de la página cambia de verdad y en el momento: normal, ancha y completa miden distinto, con el panel abierto y cerrado', Object.values(o.anchos).every((a) => a[0] + 40 < a[1] && a[1] + 40 < a[2]), o.anchos],
+  ['el ancho elegido queda en la nota, y en el archivo al guardar', o.anchoGuardado.clase && J(o.anchoGuardado.fuente) === J(['---', 'width: wide', '---']) && J(o.anchoGuardado.disco) === J(['---', 'width: wide', '---']), o.anchoGuardado],
+  ['numerar los títulos respeta el número que ya traen: "4. Tienda de Chrome" no se duplica', J(o.numeros.doc) === J(['1. Uno', '1.1 Sub', '4. Tienda de Chrome', '4.1 Detalle', '4.5 Propio', '4.6 Sigue', '5. Otra', 'IV) Romano', 'V) Sin número']), o.numeros.doc],
+  ['el índice lateral y el índice del texto muestran lo mismo que el documento', J(o.numeros.indice) === J(o.numeros.doc) && J(o.numeros.toc) === J(o.numeros.doc), [o.numeros.indice, o.numeros.toc]],
+  ['el número es texto de verdad (no contenido de CSS) y no se escribe en el archivo', o.numeros.css === 'none' && o.numeros.spans >= 6 && J(o.numerosFuente) === J(['## Uno', '### Sub', '## 4. Tienda de Chrome', '### Detalle', '### 4.5 Propio', '### Sigue', '## Otra', '## IV) Romano', '## Sin número']), [o.numeros.css, o.numeros.spans, o.numerosFuente]],
+  ['el número va en lo que se copia con Ctrl+C', /^5\. Otra#?\s+IV\) Romano#?\s+V\) Sin número#?\s*$/.test(o.copia.seleccion), o.copia.seleccion],
+  ['y en las acciones de copiar: Markdown, texto con formato y HTML', /^## 1\. Uno$/m.test(o.copia.md) && /^### 4\.6 Sigue$/m.test(o.copia.md) && /^## 4\. Tienda de Chrome$/m.test(o.copia.md) && /^## V\) Sin número$/m.test(o.copia.md) && /5\. Otra/.test(o.copia.rico) && /4\.1 Detalle/.test(o.copia.rico) && /5\. <\/span>Otra/.test(o.copia.html) && !/4\. (<[^>]+>)*4\. /.test(o.copia.html + o.copia.md + o.copia.rico) && o.copia.fuenteIgual, [o.copia.md.slice(0, 400), o.copia.rico.slice(0, 200), o.copia.html.slice(0, 300), o.copia.fuenteIgual]],
+  ['editando un título numerado, el número no entra en lo que se guarda', J(o.editado.fuente) === J(['## Otra más']) && J(o.editado.doc) === J(['5. Otra más']) && o.editado.editable, o.editado],
+  ['"Escribir los números en la nota" los deja escritos, y no se duplican', J(o.escritos.fuente) === J(['## 1. Uno', '### 1.1 Sub', '## 4. Tienda de Chrome', '### 4.1 Detalle', '### 4.5 Propio', '### 4.6 Sigue', '## 5. Otra más', '## IV) Romano', '## V) Sin número']) && J(o.escritos.doc) === J(o.escritos.fuente.map((l) => l.replace(/^#+ /, ''))) && o.escritos.spans === 0, o.escritos],
   ['un valor que no está en la lista no hace nada', J(o.pagina.malo) === J({ width: 'normal', numbered: 'no', toc: 'yes' }) && o.pagina.noToca === true, o.pagina.malo],
   ['un tablero ancho se sale de la columna de texto sin salirse del área de la nota', o.ancho.sale && o.ancho.adentro && o.ancho.pagina, o.ancho],
   ['si aun así no entra, se desliza con una barra fina y el borde se desvanece', o.ancho.desliza && o.ancho.sombra && o.ancho.fina === 'thin', o.ancho],

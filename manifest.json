@@ -75,6 +75,7 @@
         "src/cloud.js",
         "src/home.js",
         "src/write.js",
+        "src/lists.js",
         "src/links.js",
         "src/emoji-data.js",
         "src/emoji.js",

@@ -26,6 +26,8 @@
     ['undo', 'write', 'Ctrl+Z', 'Deshacer', { ctx: 'Editando' }],
     ['redo', 'write', 'Ctrl+Y / Ctrl+Shift+Z', 'Rehacer', { ctx: 'Editando' }],
     ['cell', 'write', 'Tab / Shift+Tab', 'Celda siguiente o anterior', { ctx: 'En una tabla' }],
+    ['list-level', 'write', 'Tab / Shift+Tab', 'Sangrar un ítem o sacarlo un nivel, con sus hijos', { ctx: 'En una lista' }],
+    ['list-move', 'write', 'Alt+Up / Alt+Down', 'Mover un ítem entre sus hermanos', { ctx: 'En una lista' }],
     ['md-title', 'write', '#+Space', 'Título, de # a ####', { ctx: 'En un bloque nuevo' }],
     ['md-list', 'write', '-+Space', 'Lista', { ctx: 'En un bloque nuevo' }],
     ['md-num', 'write', '1.+Space', 'Lista numerada', { ctx: 'En un bloque nuevo' }],

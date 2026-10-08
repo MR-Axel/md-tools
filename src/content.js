@@ -348,7 +348,7 @@
 
   function headingText(h) {
     const c = h.cloneNode(true);
-    c.querySelectorAll('.lmd-anchor').forEach((a) => a.remove());
+    c.querySelectorAll('.lmd-anchor, .lmd-hnum').forEach((a) => a.remove());
     return c.textContent.trim();
   }
 
@@ -773,6 +773,8 @@
     LMD.touch.longPress(ui.article, () => !editMode);
     LMD.touch.longPress(ui.treeBox);
     LMD.write.init(core);
+    // lists.js es un archivo aparte: si una copia guardada de la app todavía no lo trae, el resto arranca igual.
+    if (LMD.lists) LMD.lists.init(core);
     LMD.links.init(core);
     if (LAZY_HAVE.tools()) { LMD.diagram.init(core); LMD.formula.init(core); toolsReady = Promise.resolve(true); }
     else { const later = () => (window.requestIdleCallback ? requestIdleCallback(tools, { timeout: 2500 }) : setTimeout(tools, 300)); if (document.readyState === 'complete') later(); else window.addEventListener('load', later); }
@@ -1062,7 +1064,8 @@
     else if (act === 'view-doc') { rawMode = false; applyRawMode(); }
     else if (act === 'view-raw') { rawMode = true; applyRawMode(); }
     else if (act === 'settings') openPanel();
-    else if (act === 'copy-md') copyText(raw, source);
+    // Con los títulos numerados, lo copiado lleva los números que se ven (page.js); el archivo no cambia.
+    else if (act === 'copy-md') { if (needsRender && !typingNode() && !core.hold) render(); copyText(LMD.page && LMD.page.md && !needsRender && docKind() === 'md' ? LMD.page.md() : raw, source); }
     else if (act === 'copy-rich') copyRich(source);
     else if (act === 'reload') { if (orphan || !alive()) location.reload(); else checkForChanges(true); }
     else if (act === 'print') window.print();
@@ -1248,6 +1251,9 @@
   const collapsed = new Set();
 
   function buildOutline(headings) {
+    // Los títulos numerados de la nota (page.js): el índice muestra el mismo número que el documento.
+    if (LMD.page && LMD.page.number) LMD.page.number(headings);
+    const numOf = (h) => { const n = h.querySelector(':scope > .lmd-hnum'); return n ? el('span', { class: 'lmd-hnum', text: n.textContent }) : null; };
     ui.paneOutline.textContent = '';
     if (!headings.length) {
       ui.paneOutline.appendChild(el('p', { class: 'lmd-empty', text: T('Este documento no tiene títulos.') }));
@@ -1294,7 +1300,9 @@
         });
         line.appendChild(tog);
       } else line.appendChild(el('span', { class: 'lmd-o-dot' }));
-      line.appendChild(el('a', { href: '#' + h.id, class: 'lmd-o-link', text: headingText(h), title: headingText(h) }));
+      const link = el('a', { href: '#' + h.id, class: 'lmd-o-link', text: headingText(h), title: headingText(h) });
+      const num = numOf(h); if (num) link.insertBefore(num, link.firstChild);
+      line.appendChild(link);
       item.appendChild(line);
       const kids = el('div', { class: 'lmd-o-kids' });
       if (hasKids) item.appendChild(kids);
@@ -2761,6 +2769,14 @@
     markDirty();
   }
 
+  // Los números de la lista que ocupa esa línea, puestos al día dentro del cambio que se acaba de hacer (no suma
+  // un paso de deshacer). No cambia la cantidad de líneas: lo dibujado sigue apuntando a las suyas.
+  function tidyList(at) {
+    const next = LMD.lists ? LMD.lists.renumber(srcLines, fmOffset, at) : null; if (!next) return false;
+    srcLines = next; raw = srcLines.join(eol); markDirty();
+    return true;
+  }
+
   // Cambia líneas del fuente. Quien lo llama redibuja.
   function spliceLines(s, count, newLines) {
     pushUndo();
@@ -3322,7 +3338,7 @@
     dirHandle: async (dirUrl) => { let dir = rootOf(dirUrl).handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, ensure, isDark,
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
-    drawOff, rangeOf, render, softRender, flash, insertLines, spliceLines, replaceLines, commitBlock, undo, redo, editCode, vFile, toHref, openDoc,
+    drawOff, rangeOf, render, softRender, flash, insertLines, spliceLines, replaceLines, tidyList, commitBlock, undo, redo, editCode, vFile, toHref, openDoc,
     inline: (text) => DOMPurify.sanitize(buildParser().renderInline(text)),
     // Un Markdown cualquiera, dibujado con el mismo saneado que una nota (la vista previa de una plantilla).
     preview: (text) => homeCtx().preview(text),

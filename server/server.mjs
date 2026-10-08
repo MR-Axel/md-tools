@@ -4177,6 +4177,7 @@ a:not([href]){color:inherit;text-decoration:none}
 .sp-body h3{font-size:1.2em}.sp-body h4{font-size:1.05em}
 .sp-body p,.sp-body ul,.sp-body ol,.sp-body dl,.sp-body blockquote,.sp-body pre,.sp-body figure{margin:0 0 1.05em}
 .sp-body ul,.sp-body ol{padding-left:1.4em}
+.sp-body ol ol,.sp-body ol ol ol ol ol{list-style-type:lower-alpha}.sp-body ol ol ol,.sp-body ol ol ol ol ol ol{list-style-type:lower-roman}.sp-body ol ol ol ol{list-style-type:decimal}
 .sp-body li{margin:.2em 0}
 .sp-body li>p{margin:0 0 .4em}
 .sp-body img{max-width:100%;height:auto;border-radius:8px}
