@@ -27,7 +27,7 @@ try {
     article: getComputedStyle(document.querySelector('.lmd-article')).display, bar: [...document.querySelectorAll('.lmd-topbar [data-act]')].filter((b) => b.offsetParent).map((b) => b.dataset.act), title: document.title,
   }));
   check('sin nota abierta: la barra lateral y el centro con las acciones', empty.side && empty.acts.includes('new') && empty.acts.includes('file') && empty.acts.includes('dir') && empty.article === 'none' && empty.title === 'SharpMD', empty);
-  check('sin nota abierta la barra de arriba deja solo lo que sirve', J(empty.bar) === J(['sidebar', 'settings']), empty.bar);
+  check('sin nota abierta la barra de arriba deja solo lo que sirve', J(empty.bar) === J(['sidebar', 'theme-flip', 'settings']), empty.bar);
 
   await app.evaluate(async () => {
     const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('pantalla', { create: true });

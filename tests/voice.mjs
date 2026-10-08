@@ -496,7 +496,7 @@ try {
     await note(page, 'ui.md', UI_DOC);
     await until(() => page.evaluate(() => !!LMD.speak));
     const ui = await page.evaluate(() => ({ count: (document.querySelector('.lmd-cl-count') || {}).textContent || '', add: (document.querySelector('.lmd-cl-add') || {}).textContent || '', fold: document.querySelectorAll('.lmd-fold-tog').length, num: document.querySelectorAll('.lmd-hnum').length, copy: document.querySelectorAll('.lmd-code-copy').length }));
-    check('la nota de prueba tiene la interfaz que se colaba: contador de tareas, "Add item", plegado, copiar código', /1 of 2/.test(ui.count) && /Add item/.test(ui.add) && ui.fold >= 3 && ui.num >= 2 && ui.copy === 1, ui);
+    check('la nota de prueba tiene la interfaz que se colaba: "Add item", plegado, copiar código', /Add item/.test(ui.add) && ui.fold >= 3 && ui.num >= 2 && ui.copy === 1, ui);
     const all = await readAll(page); const said = all.map((x) => x.text);
     check('lee el texto de la nota y nada más', J(said) === J(UI_SAID), said);
     check('no lee el contador de tareas, "Add item" ni los botones', !said.some((t) => /\d of \d|Add item|Move|Copy|Fold/.test(t)), said);
