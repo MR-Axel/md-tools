@@ -1315,6 +1315,22 @@
       "Exportar a Word": "Export to Word", "Suma Word (.docx) al menú Exportar.": "Adds Word (.docx) to the Export menu.",
       "Documento de Word descargado": "Word document downloaded", "No se pudo armar el documento de Word.": "Could not build the Word document.", "Exportar esta nota": "Export this note", "documento": "document",
       "Está en el menú Exportar de la barra de arriba. Las fórmulas van como texto LaTeX y los diagramas como imagen.": "It is in the Export menu of the top bar. Formulas go as LaTeX text and diagrams as images.",
+      // Importar a Markdown (import.js)
+      "Importar a Markdown": "Import to Markdown", "Convierte Word, Excel, PowerPoint, PDF, EPUB, HTML y CSV en una nota, sin subir el archivo.": "Turns Word, Excel, PowerPoint, PDF, EPUB, HTML and CSV into a note, without uploading the file.",
+      "Word, Excel, PowerPoint, EPUB, PDF, HTML, CSV y TSV. El archivo se convierte en este dispositivo y no se sube. También podés soltarlo en la ventana. Del PDF sale solo el texto.": "Word, Excel, PowerPoint, EPUB, PDF, HTML, CSV and TSV. The file is converted on this device and is not uploaded. You can also drop it on the window. From a PDF only the text comes out.",
+      "Importar a Markdown se usa desde la app.": "Import to Markdown works from the app.", "Pegar HTML": "Paste HTML", "No hay HTML en el portapapeles.": "There is no HTML on the clipboard.",
+      "Cargando": "Loading", "Convirtiendo": "Converting", "Abrir como nota nueva": "Open as a new note", "Agregar a la nota abierta": "Add to the open note",
+      "Agregado al final de la nota": "Added at the end of the note", "Importación cancelada": "Import cancelled", "La nota es grande: quedó guardada en este navegador.": "The note is large: it was saved in this browser.",
+      "importado": "imported", "pegado": "pasted", "Hoja {a}": "Sheet {a}", "Hoja vacía": "Empty sheet", "Diapositiva {a}": "Slide {a}",
+      "1 página convertida": "1 page converted", "{a} páginas convertidas": "{a} pages converted", "1 hoja convertida": "1 sheet converted", "{a} hojas convertidas": "{a} sheets converted",
+      "1 diapositiva convertida": "1 slide converted", "{a} diapositivas convertidas": "{a} slides converted", "1 capítulo convertido": "1 chapter converted", "{a} capítulos convertidos": "{a} chapters converted",
+      "1 fila convertida": "1 row converted", "{a} filas convertidas": "{a} rows converted", "1 palabra convertida": "1 word converted", "{a} palabras convertidas": "{a} words converted",
+      "Se convirtió solo el principio: {a} de {b}.": "Only the beginning was converted: {a} of {b}.", "1 imagen omitida.": "1 image left out.", "{a} imágenes omitidas.": "{a} images left out.",
+      "Tablas cortadas: {a} filas quedaron afuera.": "Tables cut: {a} rows were left out.", "Tablas cortadas: {a} columnas quedaron afuera.": "Tables cut: {a} columns were left out.",
+      "1 enlace descartado.": "1 link dropped.", "{a} enlaces descartados.": "{a} links dropped.", "1 página sin texto.": "1 page with no text.", "{a} páginas sin texto.": "{a} pages with no text.", "El texto se cortó por su tamaño.": "The text was cut because of its size.",
+      "El archivo pesa más de {a} MB.": "The file is larger than {a} MB.", "Ese tipo de archivo no se puede convertir.": "That kind of file cannot be converted.", "El archivo es demasiado grande al descomprimirlo.": "The file is too large once unpacked.",
+      "Este PDF no tiene texto. Parece escaneado.": "This PDF has no text. It looks scanned.", "El PDF pide contraseña.": "The PDF asks for a password.", "No se pudo cargar el lector de PDF. Probá de nuevo.": "Could not load the PDF reader. Try again.",
+      "El archivo no tiene texto para convertir.": "The file has no text to convert.", "Este navegador no puede abrir ese archivo.": "This browser cannot open that file.", "El archivo está dañado o no es lo que dice su nombre.": "The file is damaged or is not what its name says.",
       // JSON y YAML (jsonyaml.js)
       "JSON y YAML": "JSON and YAML", "Un bloque o un archivo JSON o YAML se ve como un árbol plegable que se edita.": "A JSON or YAML block or file shows as a collapsible tree you can edit.",
       "Los bloques json, jsonc, yaml y yml, y los archivos .json, .yaml y .yml, se ven como un árbol que se edita. Teclas: flechas para moverse y plegar, Enter para editar, F2 para la clave, Supr para borrar, + para agregar.": "json, jsonc, yaml and yml blocks, and .json, .yaml and .yml files, show as a tree you can edit. Keys: arrows to move and collapse, Enter to edit, F2 for the key, Delete to remove, + to add.",
@@ -1795,7 +1811,7 @@
   const fileLink = (url) => WEB_APP_URL + '#open=' + encodeURIComponent(url);
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.62.0';
+  const VERSION = '2.63.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);

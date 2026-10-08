@@ -2726,3 +2726,20 @@ html.lmd-ai-open .lmd-ai-card { left: calc(50% - 190px); width: min(860px, calc(
 @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
   .lmd-sec li small .lmd-link { display: inline-flex; align-items: center; min-height: 40px; }
 }
+/* Importar a Markdown (import.js): el diálogo con sus dos etapas */
+.lmd-imp-card { width: min(460px, 100%); }
+.lmd-imp-card h3 { margin-bottom: 4px; }
+.lmd-ask-card p.lmd-imp-name { margin: 0 0 16px; font-size: 13.5px; overflow-wrap: anywhere; }
+.lmd-imp-stage { margin: 0 0 14px; }
+.lmd-imp-stage[hidden], .lmd-imp-out[hidden], .lmd-imp-warn[hidden], .lmd-imp-file { display: none; }
+.lmd-imp-row { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; font-size: 13.5px; }
+.lmd-imp-n { color: var(--fg-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lmd-imp-bar { height: 6px; border-radius: 3px; background: var(--bg-soft); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.lmd-imp-bar i { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--accent); transition: width 0.15s linear; }
+.lmd-ask-card p.lmd-imp-live { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.lmd-ask-card p.lmd-imp-sum { margin: 2px 0 8px; color: var(--fg); font-weight: 600; }
+.lmd-imp-warn { margin: 0 0 6px; padding-left: 18px; color: var(--fg-muted); font-size: 13.5px; }
+.lmd-imp-warn li { margin: 2px 0; }
+.lmd-ask-card p.lmd-imp-err { margin: 0 0 16px; }
+.lmd-imp-card .lmd-ask-actions { margin-top: 16px; justify-content: flex-end; }
+@media (prefers-reduced-motion: reduce) { .lmd-imp-bar i { transition: none; } }
