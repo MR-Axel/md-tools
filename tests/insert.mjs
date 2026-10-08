@@ -41,7 +41,7 @@ o.achicada = (await src()).split('\n').filter((l) => l.includes('logo.png'))[0];
 
 // imagen subida: queda en assets/
 await app.locator('.lmd-article p', { hasText: 'Texto final' }).click({ button: 'right' }); await app.click('.lmd-menu [data-ins=image]'); await app.waitForSelector('.lmd-img-card');
-await app.setInputFiles('.lmd-img-card input[type=file]', { name: 'foto.png', mimeType: 'image/png', buffer: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]) });
+await app.setInputFiles('.lmd-img-card input[type=file]', { name: 'foto.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64') });
 await app.click('[data-i=ok]'); await app.waitForTimeout(700);
 o.subida = (await src()).split('\n').filter((l) => l.includes('assets/'))[0];
 

@@ -239,7 +239,7 @@ try {
   check('portada: la imagen para compartir es de 1200x630, con dirección absoluta, y el archivo existe y pesa menos de 300 KB', /^https:\/\/sharpmd\.app\/docs\/social-card/.test(social.og || '') && social.tw === social.og && social.card === 'summary_large_image' && social.w === '1200' && social.h === '630' && !!social.alt && fs.existsSync(cardFile) && fs.statSync(cardFile).size < 300 * 1024, social);
   await web.goto(origin + '/privacy.html'); check('página de privacidad', /Privac/.test(await web.textContent('h1:visible')));
   // El enlace a cómo eliminar la cuenta (lo pide la tienda) lleva a esa sección, en el idioma que se esté viendo.
-  const inView = () => web.evaluate(() => { const h = [...document.querySelectorAll('h3')].find((x) => x.offsetParent); const r = h ? h.getBoundingClientRect() : null; return h ? [h.textContent, r.top >= 0 && r.top < window.innerHeight, /hello@sharpmd\.app/.test(h.nextElementSibling.innerHTML)] : null; });
+  const inView = () => web.evaluate(() => { const h = [...document.querySelectorAll('h3')].find((x) => x.offsetParent && (x.id === 'delete-account' || x.dataset.same === 'delete-account')); const r = h ? h.getBoundingClientRect() : null; return h ? [h.textContent, r.top >= 0 && r.top < window.innerHeight, /hello@sharpmd\.app/.test(h.nextElementSibling.innerHTML)] : null; });
   await web.goto(origin + '/privacy.html#delete-account'); await web.waitForTimeout(300);
   const delEn = await inView();
   await web.click('.lang [data-set=es]'); await web.goto('about:blank'); await web.goto(origin + '/privacy.html#delete-account'); await web.waitForSelector('h1:visible'); await web.waitForTimeout(300);

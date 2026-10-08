@@ -1366,7 +1366,8 @@ async function teamSuite() {
       check('en vivo del equipo: lo que guarda el invitado queda en el registro como una edición, con su nombre marcado como invitado', await (async () => { const e = (await entries()).find((x) => x.action === 'edit' && x.via === 'guest'); return !!e && e.token === 'Gabi' && e.path === 'vivo.md' && !e.who; })(), (await entries()).slice(0, 3));
       const edSave = await call('PUT', n('vivo.md'), { text: afterG.text + '\n\nlínea de Edi', rev: afterG.rev }, Ed.s);
       const stale = await call('PUT', n('vivo.md'), { text: 'pisada', rev: afterG.rev }, Ex.s);
-      await sleep(400);
+      for (let i = 0; i < 40 && !/de Edi/.test(gEv.text); i++) await sleep(150); // el aviso al invitado llega por su canal de eventos: se espera, no se supone
+      await sleep(200);
       const evs = (st) => st.text.split('\n\n').filter((x) => x.startsWith('data: ')).map((x) => JSON.parse(x.slice(6)));
       const edLive = evs(edEv).filter((e) => e.type === 'live').pop(); const rdLive = evs(rdEv).filter((e) => e.type === 'live').pop();
       check('en vivo del equipo: los miembros con la nota abierta ven la sesión y a los invitados sin entrar a ella; el lector también', !!edLive && edLive.team === true && edLive.can === false && edLive.people.some((p2) => p2.name === 'Gabi' && /^g/.test(p2.id)) && edLive.people.some((p2) => p2.id === edLive.you && p2.member) && !!rdLive && rdLive.people.some((p2) => p2.name === 'Gabi'), [edLive, rdLive]);
