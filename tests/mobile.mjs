@@ -582,10 +582,11 @@ try {
     const fresh = await page.evaluate(() => ({ page: document.body.dataset.published || '', script: window.__published || '' }));
     check('y la visita siguiente ya abre la versión nueva, página y scripts', fresh.page === 'v2' && fresh.script === 'v2', fresh);
     published.mark = '';
-    // Una versión nueva arma su caché y borra la anterior.
+    // Una versión nueva arma su caché y borra la anterior. La app registra la suya en reposo tras cargar (hasta 3 s): se espera, o pisa la de la prueba.
+    await page.waitForTimeout(3800);
     const next = await page.evaluate(async () => {
       const r = await navigator.serviceWorker.register('../sw.js?v=9.9.9', { scope: '../' });
-      await new Promise((resolve) => { const w = r.installing || r.waiting; if (!w) return resolve(); w.addEventListener('statechange', () => { if (w.state === 'activated') resolve(); }); setTimeout(resolve, 8000); });
+      await new Promise((resolve) => { const watch = (w) => { if (w.state === 'activated') return resolve(); w.addEventListener('statechange', () => { if (w.state === 'activated') resolve(); }); }; const w = r.installing || r.waiting; if (w) watch(w); else r.addEventListener('updatefound', () => watch(r.installing)); setTimeout(resolve, 20000); });
       await new Promise((resolve) => setTimeout(resolve, 300));
       return caches.keys();
     });
