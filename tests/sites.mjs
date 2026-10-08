@@ -235,6 +235,19 @@ try {
   await ana.page.evaluate(() => { const a = document.activeElement; if (a && a.blur) a.blur(); });
   let auto = ''; for (let i = 0; i < 80 && !/lágrima/.test(auto); i++) { await sleep(250); auto = (await site('/cafetera/recetas')).body; }
   check('con "publicar al guardar", lo que se guarda desde la app llega solo a su página', /Un cortado\. Y una lágrima\./.test(auto), auto.slice(auto.indexOf('<article'), auto.indexOf('<article') + 300));
+  // En un teléfono: la ventana del sitio entra en la pantalla, y sus campos se pueden tocar.
+  const tel = await R.open(A, { viewport: { width: 390, height: 780 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  await tel.page.goto(R.noteUrl('manual/guia.md')); await tel.page.waitForSelector('.markdown-body h1');
+  await tel.page.evaluate(() => document.querySelector('[data-act=settings]').click()); await tel.page.waitForSelector('.lmd-panel-card'); await tel.page.click('[data-ptab=cloud]');
+  await tel.page.waitForSelector('.lmd-site-row [data-c=site]'); await tel.page.click('.lmd-site-row [data-c=site]'); await tel.page.waitForSelector('.lmd-site [data-site-state]');
+  const fit = () => tel.page.evaluate(() => { const c = document.querySelector('.lmd-site'); const r = c.getBoundingClientRect(); const body = c.querySelector('.lmd-site-body'); const out = [...c.querySelectorAll('input, select, button, a, p, label')].filter((n) => n.offsetParent && (n.getBoundingClientRect().right > r.right + 1 || n.getBoundingClientRect().left < r.left - 1)).map((n) => n.tagName + ' ' + (n.textContent || n.value || '').slice(0, 30));
+    return { left: Math.round(r.left), right: Math.round(r.right), bottom: Math.round(r.bottom), w: innerWidth, h: innerHeight, sideways: body.scrollWidth - body.clientWidth, out, fields: [...c.querySelectorAll('.lmd-site-field input, .lmd-site-field select')].map((n) => Math.round(n.getBoundingClientRect().height)), links: [...c.querySelectorAll('.lmd-site-more .lmd-link')].map((n) => Math.round(n.getBoundingClientRect().height)) }; });
+  const telState = await fit(); await shot(tel.page, 'ventana-telefono');
+  await tel.page.tap('.lmd-site [data-st=edit]'); await tel.page.waitForSelector('.lmd-site [data-f=slug]');
+  const telForm = await fit(); await shot(tel.page, 'ventana-telefono-ajustes');
+  check('en un teléfono la ventana del sitio entra en la pantalla, sin desbordar de costado', [telState, telForm].every((x) => x.left >= 0 && x.right <= x.w && x.bottom <= x.h && x.sideways <= 0 && !x.out.length), [telState, telForm]);
+  check('y sus campos y enlaces tienen alto para el dedo', telForm.fields.length >= 8 && telForm.fields.every((h) => h >= 40) && telState.links.every((h) => h >= 40), [telForm.fields, telState.links]);
+  await tel.ctx.close();
   // Una nota eliminada (queda en la papelera) deja de servirse en el acto, sin esperar a nadie.
   await api('DELETE', '/notes/' + enc('manual/recetas.md'), undefined, A.s);
   const trashed = await site('/cafetera/recetas'); const pend3 = (await api('GET', '/sites/' + S.id, undefined, A.s)).json;
