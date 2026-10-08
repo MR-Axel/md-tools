@@ -87,6 +87,8 @@ Free and open source. No tracking: files are read in your browser and never uplo
 
 The Android app is the web app in a package (a Trusted Web Activity): it opens `sharpmd.app` full screen, with the same notes, the same account and the same offline cache. Nothing else is bundled, so it is always the current version of the site.
 
+Other apps can send things to it. Sharing a Markdown, text, JSON or YAML file opens it as an unsaved document, and sharing a text or a link starts a new note. The manifest declares a `share_target`, `sw.js` receives the POST at `src/share` without touching the network, and the app picks it up when it opens, so it works offline. The installed web app on Android gets the same share entry. The app also registers as a viewer for those file types ("Open with"), which hands the file to the same queue the desktop app uses.
+
 `.well-known/assetlinks.json` lists the fingerprint of the key that signs the app, and that is what lets it open the site without the browser bar. `src/storeapp.js` sets `LMD.storeApp` when the page runs inside the app.
 
 ## Install
@@ -199,7 +201,7 @@ src/
   bridge.js       one store for the web app and the extension: keeps both sides equal, reconnects folders
   bridge-cs.js    content script on the web app that relays its requests to the extension
   bridge-sw.js    the extension side of the bridge, and what the extension button opens
-  install.js      Settings → Install, installing the app, files from "Open with", the offline mark
+  install.js      Settings → Install, installing the app, files from "Open with", what other apps share, the offline mark
   tools.js        Settings → Tools: the registry of tools and their switches
   community.js    what was added from the community gallery, and the rule that validates a contribution
   gallery.js      Settings → Tools → Community: browse, preview, add and share

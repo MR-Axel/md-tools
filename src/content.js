@@ -3841,6 +3841,8 @@
     const params = new URLSearchParams(location.search);
     // Desde el popup: una nota nueva, sin pasar por el estado vacío.
     if (params.has('new')) { LMD.home.account(homeCtx()); LMD.home.create(homeCtx(), { replace: true }); return; }
+    // Lo que otra app mandó con "Compartir" (install.js): se abre, o el inicio dice por qué no se pudo.
+    if (params.has('share')) { const got = await LMD.install.takeShared(homeCtx()); if (got === true) return; showEmpty(got); loadTree(); return; }
     // El enlace de una sesión en vivo: se pide un nombre y se abre la nota de esa sesión, sin cuenta.
     // El secreto viaja tras el # (no llega al alojamiento de la web); los enlaces viejos con ?live= siguen sirviendo.
     let liveKey = decodeURIComponent((/^#live=([^&]+)/.exec(location.hash) || [])[1] || '') || params.get('live'); let kept = false;

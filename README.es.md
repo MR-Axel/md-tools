@@ -98,7 +98,7 @@ La página de SharpMD es HTML y JavaScript, así que también funciona servida d
 
 Está publicada en [sharpmd.app](https://sharpmd.app/). Desde Ajustes → Instalar se instala como app, con ventana propia, y Windows la ofrece en "Abrir con" para los `.md`. Ahí mismo están los pasos para iPhone y iPad (en Safari: Compartir, Agregar a inicio) y para Mac (en Safari: Archivo, Agregar al Dock; en Chrome o Edge: el ícono de instalar). En iPhone respeta la muesca y la barra de inicio, deja la barra de formato arriba del teclado y exporta por la hoja de compartir. Safari puede borrar las notas del navegador tras semanas sin uso si la app no está instalada: conviene instalarla o usar la nube. Para correr tu propia copia, serví esta carpeta (`npx serve .`) y abrí la dirección que te muestra.
 
-La app de Android es esta misma web empaquetada (Trusted Web Activity): abre `sharpmd.app` a pantalla completa, con las mismas notas y la misma cuenta. `.well-known/assetlinks.json` lleva la huella de la llave que firma la app.
+La app de Android es esta misma web empaquetada (Trusted Web Activity): abre `sharpmd.app` a pantalla completa, con las mismas notas y la misma cuenta. Otras apps le pueden mandar cosas con "Compartir": un archivo Markdown, de texto, JSON o YAML se abre como documento sin guardar, y un texto o un enlace arranca una nota nueva; anda sin conexión. También figura en "Abrir con" para esos archivos. `.well-known/assetlinks.json` lleva la huella de la llave que firma la app.
 
 ## Actualizar
 

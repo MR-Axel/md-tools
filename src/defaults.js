@@ -652,6 +652,8 @@
       "Quitar de la lista": "Remove from the list",
       "Esa carpeta no tiene archivos Markdown.": "That folder has no Markdown files.",
       "No se pudo abrir. Probá de nuevo.": "Could not open it. Try again.",
+      "Solo se abren archivos Markdown, de texto, JSON o YAML.": "Only Markdown, text, JSON or YAML files can be opened.", "Ese archivo es demasiado grande para abrirlo acá.": "That file is too large to open here.",
+      "Ese texto es demasiado grande para abrirlo acá.": "That text is too large to open here.", "Llegaron {n} archivos. Se abrió el primero.": "{n} files arrived. The first one was opened.",
       "Chrome pide que confirmes el acceso antes de seguir.": "Chrome asks you to confirm access before continuing.",
       "Continuar": "Continue",
       "Ese acceso ya no está guardado. Abrí el archivo o la carpeta de nuevo.": "That access is no longer saved. Open the file or folder again.",

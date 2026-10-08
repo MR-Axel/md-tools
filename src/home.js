@@ -145,7 +145,7 @@
     if (!file) return;
     try { sessionStorage.setItem('mdt-mem', JSON.stringify({ name: file.name, text: await file.text() })); }
     catch (e) { say(T('No se pudo abrir. Probá de nuevo.')); return; }
-    ctx.open('mem/' + encodeURIComponent(file.name));
+    return ctx.open('mem/' + encodeURIComponent(file.name));
   }
 
   // Elegir un archivo o una carpeta del disco. Lo usan el estado vacío y la cabecera del explorador.
@@ -557,6 +557,8 @@
     account: (c) => { if (c) { ctx = c; bindAcct(); } return paintAcct(); },
     say: (text) => { if (sayNow) sayNow(text); },
     pick: (c, what) => { ctx = c; return pick(what, c.say); },
+    // Un archivo que llega ya leído (compartido desde otra app): el mismo camino que el selector sin acceso a archivos.
+    openFile: (c, file, say) => { ctx = c; return openInMemory(file, say); },
     pickTemplate: (c) => { ctx = c; return pickTemplate(); },
     perks, signIn, waitText, login,
     gate: (c, rec, mode) => { ctx = c; return gate(rec, mode); },
