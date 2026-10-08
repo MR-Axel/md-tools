@@ -34,6 +34,8 @@
 //   CHECKOUT_TEAM   enlace de pago del plan de equipo que la app muestra en Ajustes → Plan
 //   TEAM_MAX_SEATS  lugares que puede tener un equipo como máximo (50)
 //   TEAM_INVITES_DAY  invitaciones que un equipo puede mandar por día (20)
+//   TEAM_HISTORY_DAYS días de historial de versiones en el espacio de un equipo (365)
+//   TEAM_LOG_DAYS   días que dura el registro de actividad de un equipo (90)
 //   APP_URL         dirección de la app: a ella llevan el correo de invitación y los enlaces que el MCP devuelve
 //                   para abrir una nota (https://sharpmd.app/src/app.html)
 //   TRASH_DAYS      días que una nota eliminada queda en la papelera antes de borrarse del todo (30)
@@ -318,8 +320,10 @@ function userFrom(req, kind) {
     if (s) { q('UPDATE sessions SET seen = ? WHERE hash = ?').run(now(), sha(m[1])); return userById(s.user); }
   }
   if (kind === 'token' && m[1].startsWith('mdt_')) {
-    const t = q('SELECT id, user, scope, share FROM tokens WHERE hash = ?').get(sha(m[1]));
-    if (t) { q('UPDATE tokens SET used = ? WHERE id = ?').run(now(), t.id); const u = userById(t.user); if (u) { u.scope = t.scope || ''; u.canShare = !!t.share; } return u; }
+    const t = q('SELECT * FROM tokens WHERE hash = ?').get(sha(m[1]));
+    // Un token del equipo no es de una persona: entra como el espacio del equipo, con lo que se le dio al crearlo.
+    if (t && t.team) { const u = teamTokenUser(t); if (u) { q('UPDATE tokens SET used = ? WHERE id = ?').run(now(), t.id); return u; } }
+    else if (t) { q('UPDATE tokens SET used = ? WHERE id = ?').run(now(), t.id); const u = userById(t.user); if (u) { u.scope = t.scope || ''; u.canShare = !!t.share; u.tokenName = t.name; u.tokenId = t.id; } return u; }
   }
   throw new Fail(401, 'bad_auth');
 }
@@ -331,7 +335,9 @@ const shareAllowed = (user) => user.plan === 'pro' || !!env.SHARE_FREE;
 // Administra una suscripción quien la paga: la propia, o la del equipo si es quien lo administra.
 const account = (user) => ({ id: user.id, share: shareAllowed(user), live: user.plan === 'pro' || !!env.LIVE_FREE, email: user.email, plan: user.plan, own_plan: user.own || user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, mcp: mcpAllowed(user), mcp_url: PUBLIC_URL + '/mcp',
   manage: ((user.own || user.plan) === 'pro' || (user.team && user.team.owner === user.id && user.team.sub)) && env.PORTAL_URL ? env.PORTAL_URL : '',
-  checkout: { monthly: withEmail(env.CHECKOUT_MONTHLY, user), yearly: withEmail(env.CHECKOUT_YEARLY, user) }, team: teamView(user) });
+  // billing: si a esta cuenta se le muestra algo de cobro. A quien tiene el plan por un equipo que paga otra persona, no:
+  // ni enlaces de pago ni precios. Lo que paga por su lado (su suscripción individual) lo sigue administrando.
+  billing: !teamGuest(user), checkout: teamGuest(user) ? { monthly: '', yearly: '' } : { monthly: withEmail(env.CHECKOUT_MONTHLY, user), yearly: withEmail(env.CHECKOUT_YEARLY, user) }, team: teamView(user) });
 
 // ---------- Comentarios ----------
 // Lo que alguien escribe desde "Enviar comentarios" llega por correo a FEEDBACK_TO. Entra con o sin sesión.
@@ -654,12 +660,19 @@ function trashRestore(owner, id, body) {
   return { path: to, from: row.path, updated: at, size: kind.size, rev };
 }
 function trashRoute(user, p, m, url, body) {
-  const owner = spaceOf(user, url.searchParams.get('o'));
+  // En la papelera del equipo: listar, cualquier miembro; restaurar, vaciar y borrar, quien puede escribir.
+  const owner = spaceOf(user, url.searchParams.get('o'), m === 'GET' ? 'view' : 'edit');
+  const team = owner.id === user.id ? null : user.team;
   if (p === '/trash' && m === 'GET') return trashList(owner);
-  if (p === '/trash' && m === 'DELETE') return { ok: true, removed: Number(q('DELETE FROM trash WHERE user = ?').run(owner.id).changes) };
+  if (p === '/trash' && m === 'DELETE') { const removed = Number(q('DELETE FROM trash WHERE user = ?').run(owner.id).changes); if (team && removed) teamLog(team, user, 'empty_trash', ''); return { ok: true, removed }; }
   const tm = /^\/trash\/(\d+)(\/restore)?$/.exec(p);
-  if (tm && tm[2] && m === 'POST') { teamHold(user, owner); return trashRestore(owner, tm[1], body); }
-  if (tm && !tm[2] && m === 'DELETE') { if (!q('DELETE FROM trash WHERE id = ? AND user = ?').run(+tm[1], owner.id).changes) throw new Fail(404, 'not_found'); return { ok: true }; }
+  if (tm && tm[2] && m === 'POST') { teamHold(user, owner); const r = trashRestore(owner, tm[1], body); if (team) teamLog(team, user, 'restore', r.path); return r; }
+  if (tm && !tm[2] && m === 'DELETE') {
+    const row = q('SELECT path FROM trash WHERE id = ? AND user = ?').get(+tm[1], owner.id);
+    if (!q('DELETE FROM trash WHERE id = ? AND user = ?').run(+tm[1], owner.id).changes) throw new Fail(404, 'not_found');
+    if (team) teamLog(team, user, 'purge', row ? row.path : '');
+    return { ok: true };
+  }
   throw new Fail(404, 'no_route');
 }
 function renameNote(user, from, to, body) {
@@ -727,8 +740,9 @@ function searchNotes(user, text, reach, aadPre) {
 const covers = (share, p) => (share.kind === 'folder' ? p.startsWith(share.path + '/') : p === share.path);
 function roleOn(user, ownerId, p) {
   if (ownerId === user.id) return 'owner';
-  // El espacio del equipo: cualquier miembro lee, edita, mueve y elimina sus notas.
-  if (user.team && user.team.space === ownerId) return 'team';
+  // El espacio del equipo: quien administra y quien edita leen, editan, mueven y eliminan sus notas. Quien solo lee
+  // entra como a algo compartido para ver.
+  if (user.team && user.team.space === ownerId) return teamAllows(user.team, user, 'write') ? 'team' : 'view';
   // Lo que está en una carpeta con contraseña no se comparte: ni por haberla compartido antes, ni por una carpeta de más arriba.
   if (vaultOf(ownerId, p)) return null;
   const hit = q('SELECT path, kind, role FROM shares WHERE owner = ? AND email = ?').all(ownerId, user.email).filter((s) => covers(s, p));
@@ -739,12 +753,16 @@ function roleOn(user, ownerId, p) {
 function target(user, url, p, need) {
   const ownerId = +(url.searchParams.get('o') || user.id);
   const role = roleOn(user, ownerId, p);
-  if (!role || (need === 'edit' && role === 'view') || (need === 'owner' && role !== 'owner' && role !== 'team')) throw new Fail(403, 'no_access');
+  // A quien solo lee en su equipo se le dice eso (read_only), no que no tiene acceso.
+  if (!role || (need === 'edit' && role === 'view') || (need === 'owner' && role !== 'owner' && role !== 'team')) throw new Fail(403, role && user.team && user.team.space === ownerId ? 'read_only' : 'no_access');
   return { owner: ownerId === user.id ? user : userById(ownerId), role };
 }
 function sharedWith(user) {
   const out = []; const seen = new Set();
   for (const s of q('SELECT s.owner, s.path, s.kind, s.role, u.email AS by FROM shares s JOIN users u ON u.id = s.owner WHERE s.email = ?').all(user.email)) {
+    // Lo que comparte un equipo sale con el nombre del equipo (su cuenta interna no es un correo). A un miembro no
+    // se le repite acá lo que ya ve en el espacio.
+    if (s.by.startsWith('team:')) { if (user.team && user.team.space === s.owner) continue; s.by = teamLabel(s.owner); }
     const notes = s.kind === 'folder' ? q("SELECT path, updated, size FROM notes WHERE user = ? AND path LIKE ? ESCAPE '!'").all(s.owner, s.path.replace(/[!%_]/g, '!$&') + '/%')
       : q('SELECT path, updated, size FROM notes WHERE user = ? AND path = ?').all(s.owner, s.path);
     // LIKE no distingue mayúsculas: sin este filtro, compartir "Proy" listaría también lo de "proy".
@@ -1181,7 +1199,9 @@ const TOOLS = [
   { share: true, name: 'create_public_link', description: 'Create a read-only public link to a note and return its URL. Anyone with the URL can read the note, so only do this when the person asks for it. Pass a password to protect it. The URL is only returned once.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, password: { type: 'string', description: 'Optional password the reader must type' } }, required: ['path'] } },
   { share: true, name: 'revoke_public_link', description: 'Revoke public links: one by its id, or every link to a note by its path.', inputSchema: { type: 'object', properties: { id: { type: 'number' }, path: { type: 'string' } } } },
 ];
-const toolsFor = (user) => TOOLS.filter((t) => !t.share || user.canShare).map(({ share, ...t }) => t);
+// A un token del equipo que solo lee no se le ofrecen las que cambian algo.
+const WRITE_TOOLS = new Set(['write_note', 'append_note', 'move_note', 'resolve_comment', 'share_note', 'unshare_note', 'create_public_link', 'revoke_public_link']);
+const toolsFor = (user) => TOOLS.filter((t) => (!t.share || user.canShare) && !(user.canWrite === false && WRITE_TOOLS.has(t.name))).map(({ share, ...t }) => t);
 const SHARE_TOOLS = new Set(TOOLS.filter((t) => t.share).map((t) => t.name));
 const NO_SHARE = 'This token cannot share notes or create public links. Ask the person to do it from the SharpMD app, or to create a token with that permission in Settings > AI.';
 
@@ -1194,6 +1214,8 @@ const aiReach = (user, vault) => { const k = vault.state === 'on' && within(user
 const TEAM_LOCKED = 'The team space is protected with a password and is locked for the AI, so its notes cannot be read, searched or changed right now. The person can unlock it for the AI from SharpMD: in the file explorer, the menu next to the team, then "Unlock for the AI". A member who is not the administrator can only do that if the administrator of the team allowed it. Ask them to do that, then try again.';
 function vaultGate(user, p) {
   const vault = vaultOf(user.id, p); if (!vault) return null;
+  // Un token del equipo no abre un espacio protegido: la llave se desbloquea por persona, y él no es ninguna.
+  if (user.teamToken) throw new Fail(423, 'vault_locked', TEAM_TOKEN_LOCKED);
   const key = aiReach(user, vault);
   if (!key) throw new Fail(423, 'vault_locked', LOCKED(vault.folder));
   return key;
@@ -1205,10 +1227,22 @@ function callTool(user, name, args) {
   // El espacio del equipo, si la cuenta está en uno: sus notas figuran bajo @team/ y se leen y escriben como las
   // demás. El alcance del token se mira sobre la ruta entera, con @team/ incluido: un token limitado a una carpeta
   // propia no ve el equipo, y uno limitado a @team o a @team/algo ve solo eso.
-  const space = user.team ? userById(user.team.space) : null;
-  const teamPath = (p) => !!space && (p === TEAM_PRE.slice(0, -1) || p.startsWith(TEAM_PRE));
+  // Si quien administra no deja que los miembros conecten su IA al espacio, el token de un miembro no lo ve.
+  // tt: un token del equipo. Ahí user es el espacio mismo y sus notas son la raíz, sin @team/.
+  const tt = user.teamToken || null; const theTeam = tt ? tt.team : user.team;
+  const space = !tt && user.team && teamAllows(user.team, user, 'tokens') ? userById(user.team.space) : null;
+  const inTeam = (a) => !!tt || a.who !== user;
+  const mayWrite = (a) => { if (inTeam(a) && !teamAllows(theTeam, user, 'write')) throw new Fail(403, 'read_only', tt ? 'This token can only read the notes of the team.' : 'Your role in this team is reader: you can read the team notes but not change them.'); };
+  // Lo que pasa en el espacio del equipo queda en su registro de actividad: la ruta y qué se hizo, nunca el texto.
+  const noted = (action, a, detail) => { if (inTeam(a)) teamLog(theTeam, user, action, a.p, detail); };
+  const seen = (a) => { if (!a || inTeam(a)) teamAiSeen(theTeam, user); };
+  if (tt) seen();
+  // barred: es miembro, pero el equipo no deja que su IA entre al espacio. @team/ no es entonces una carpeta propia:
+  // se rechaza diciendo por qué, para que la IA no crea que guardó algo en el equipo.
+  const barred = !tt && !!user.team && !space;
+  const teamPath = (p) => (!!space || barred) && (p === TEAM_PRE.slice(0, -1) || p.startsWith(TEAM_PRE));
   // at: de quién es la nota de esa ruta y cómo se llama ahí. full es la ruta como la ve la IA.
-  const at = (raw) => { const full = scoped(user, raw); return teamPath(full) && full.length > TEAM_PRE.length ? { who: space, p: cleanPath(full.slice(TEAM_PRE.length)), full } : { who: user, p: full, full }; };
+  const at = (raw) => { const full = scoped(user, raw); if (barred && teamPath(full)) throw new Fail(403, 'team_policy', 'The administrator of the team has not allowed members to connect their AI to the team space.'); return teamPath(full) && full.length > TEAM_PRE.length ? { who: space, p: cleanPath(full.slice(TEAM_PRE.length)), full } : { who: user, p: full, full }; };
   // El espacio del equipo protegido: su llave, si quien llama lo desbloqueó para su IA y el token alcanza todo @team.
   const tv = space ? teamVault(user.team) : null;
   const teamKey = () => { const k = tv && tv.state === 'on' && within(user, TEAM_PRE.slice(0, -1)) ? aiKey(tv, user.id) : null; return k ? k.key : null; };
@@ -1221,7 +1255,7 @@ function callTool(user, name, args) {
     const count = new Map();
     for (const n of mine()) { const parts = n.path.split('/'); for (let i = 1; i < parts.length; i++) { const f = parts.slice(0, i).join('/'); count.set(f, (count.get(f) || 0) + 1); } }
     // Una carpeta con contraseña figura aunque esté vacía.
-    for (const v of vaults) if (within(user, v.folder) && !count.has(v.folder)) count.set(v.folder, 0);
+    for (const v of vaults) if (v.folder && within(user, v.folder) && !count.has(v.folder)) count.set(v.folder, 0);
     // La del equipo también, para que la IA sepa que existe.
     if (space && within(user, TEAM_PRE.slice(0, -1)) && !count.has(TEAM_PRE.slice(0, -1))) count.set(TEAM_PRE.slice(0, -1), 0);
     return [...count].sort((a, b) => a[0].localeCompare(b[0])).map(([folder, notes]) => Object.assign({ folder, notes }, tag(folder)));
@@ -1250,19 +1284,21 @@ function callTool(user, name, args) {
   // La dirección para abrir esa nota en la app, con el mismo formato que usa la app al navegar.
   const appLink = (f) => APP_URL + '?f=' + encodeURIComponent(f);
   const openUrl = (a) => appLink('cloud/' + (a.who === user ? '' : '~' + a.who.id + '/') + a.p.split('/').map(encodeURIComponent).join('/'));
-  if (name === 'read_note') { const a = at(args.path); return read(a, gate(a)); }
-  if (name === 'write_note') { const a = at(args.path); write(a, gate(a), args.text); return 'Saved ' + a.full + ' (' + String(args.text == null ? '' : args.text).length + ' characters). Open it: ' + openUrl(a); }
+  if (name === 'read_note') { const a = at(args.path); seen(a); return read(a, gate(a)); }
+  if (name === 'write_note') { const a = at(args.path); mayWrite(a); const had = revOf(a) != null; write(a, gate(a), args.text); noted(had ? 'edit' : 'create', a); return 'Saved ' + a.full + ' (' + String(args.text == null ? '' : args.text).length + ' characters). Open it: ' + openUrl(a); }
   if (name === 'append_note') {
     // Lo que se lee y lo que se escribe son de la misma revisión: si no coincidiera, no se agrega sobre un texto viejo.
-    const a = at(args.path); const key = gate(a); let prev = ''; const base = revOf(a);
+    const a = at(args.path); mayWrite(a); const key = gate(a); let prev = ''; const base = revOf(a);
     try { prev = read(a, key); } catch (e) { if (e.code !== 'not_found') throw e; }
     write(a, key, prev + (prev && !prev.endsWith('\n') ? '\n' : '') + (prev ? '\n' : '') + String(args.text || ''), base);
+    noted(base == null ? 'create' : 'edit', a);
     return 'Appended to ' + a.full + '. Open it: ' + openUrl(a);
   }
   if (name === 'search_notes') {
     const results = searchNotes(user, args.query, (v) => aiReach(user, v)).filter((r) => !teamPath(r.path))
       .concat(space ? searchNotes(space, args.query, tv ? teamKey : undefined, tv ? teamAad(space.id, '') : '').map((r) => Object.assign(r, { path: TEAM_PRE + r.path })) : []).filter((r) => within(user, r.path)).slice(0, 30);
     // Si quedó alguna carpeta bloqueada al alcance del token, se dice: lo que hay adentro no se buscó.
+    if (tt && vaults.length) return { results, locked_folders: ['/'], note: 'The notes were not searched. ' + TEAM_TOKEN_LOCKED };
     const shut = vaults.filter((v) => !aiReach(user, v) && (within(user, v.folder) || inside(user.scope, v.folder) || user.scope === v.folder)).map((v) => v.folder);
     const teamShut = !!tv && !teamKey() && (within(user, TEAM_PRE.slice(0, -1)) || (user.scope || '').startsWith(TEAM_PRE));
     if (teamShut) shut.push(TEAM_PRE.slice(0, -1));
@@ -1281,14 +1317,17 @@ function callTool(user, name, args) {
   if (name === 'move_note') {
     const a = at(args.from); const b = at(args.to);
     if (a.who !== b.who) throw new Fail(409, 'other_space', 'A note cannot be moved between your own notes and the team space. Write it in the new place instead.');
+    mayWrite(a);
+    if (tt && vaults.length) throw new Fail(409, 'vault', 'Notes in a team space protected with a password can only be moved from the SharpMD app.');
     // Mover hacia, desde o dentro de una carpeta con contraseña pide volver a cifrar el texto: eso lo hace la app.
     if (a.who === user && (vaultOf(user.id, a.p) || vaultOf(user.id, b.p))) throw new Fail(409, 'vault', 'Notes in a folder protected with a password can only be moved from the SharpMD app.');
     if (a.who !== user && tv) throw new Fail(409, 'vault', 'Notes in a team space protected with a password can only be moved from the SharpMD app.');
     try { renameNote(a.who, a.p, b.p); } catch (e) { if (e.code === 'exists') throw new Fail(409, 'exists', 'There is already a note at ' + b.full + '.'); throw e; }
+    noted('move', a, b.p);
     return 'Moved ' + a.full + ' to ' + b.full + '. Open it: ' + openUrl(b);
   }
   if (name === 'note_history') {
-    const a = at(args.path);
+    const a = at(args.path); seen(a);
     // El historial de una carpeta con contraseña está cifrado desde el navegador: no se entrega.
     if (a.who === user && vaultOf(user.id, a.p)) throw new Fail(409, 'vault', 'The history of a note in a folder protected with a password can only be read from the SharpMD app.');
     if (a.who !== user && tv) throw new Fail(409, 'vault', 'The history of a note in a team space protected with a password can only be read from the SharpMD app.');
@@ -1300,37 +1339,51 @@ function callTool(user, name, args) {
   }
   if (SHARE_TOOLS.has(name)) {
     if (!user.canShare) throw new Fail(403, 'no_share_permission', NO_SHARE);
-    // Solo lo propio y dentro del alcance del token. Lo del equipo no se comparte hacia afuera (la app tampoco lo
-    // ofrece), y lo que está en una carpeta con contraseña lo rechazan addShare y addLink.
-    const own = (raw) => { const a = at(raw); if (teamPath(a.full)) throw new Fail(403, 'team', 'Team notes are open to every member of the team and cannot be shared or linked from here.'); return a.p; };
+    // Lo propio, dentro del alcance del token. Lo del equipo sale hacia afuera solo si quien administra lo permite
+    // (y nunca el espacio entero): what es la política que se mira, 'share' o 'links'. Lo que está en una carpeta
+    // con contraseña, o en un espacio protegido, lo rechazan addShare y addLink.
+    const NO_TEAM_SHARE = 'The administrator of the team has not allowed sharing team notes outside the team.';
+    const own = (raw, what) => {
+      const a = at(raw);
+      if (a.who === user && !tt && teamPath(a.full)) throw new Fail(403, 'team', 'The whole team space cannot be shared. Share a note or a folder inside it.');
+      if (inTeam(a) && !teamAllows(theTeam, user, what)) throw new Fail(403, 'team_policy', NO_TEAM_SHARE);
+      return a;
+    };
+    const pre = (a) => (a.who === user ? '' : TEAM_PRE);
     if (name === 'list_shares') {
-      const all = sharesOf(user, args.path ? own(args.path) : '');
-      return { people: all.people.filter((s) => within(user, s.path)).map((s) => ({ path: s.path, kind: s.kind, email: s.email, role: s.role })), links: all.links.filter((l) => within(user, l.path)).map((l) => ({ id: l.id, path: l.path, protected: !!l.protected, created: new Date(l.created).toISOString() })) };
+      const a = args.path ? own(args.path, 'share') : { who: user, p: '' };
+      const all = sharesOf(a.who, a.p);
+      return { people: all.people.filter((s) => within(user, pre(a) + s.path)).map((s) => ({ path: pre(a) + s.path, kind: s.kind, email: s.email, role: s.role })), links: all.links.filter((l) => within(user, pre(a) + l.path)).map((l) => ({ id: l.id, path: pre(a) + l.path, protected: !!l.protected, created: new Date(l.created).toISOString() })) };
     }
     if (name === 'share_note') {
-      const p = own(args.path);
+      const a = own(args.path, 'share'); const p = a.p;
       // Una nota si existe con esa ruta; si no, la carpeta que tenga notas adentro.
-      const kind = q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(user.id, p) ? 'note' : listNotes(user).some((n) => inside(n.path, p)) ? 'folder' : '';
-      if (!kind) throw new Fail(404, 'not_found', 'There is no note or folder at ' + p + '.');
+      const kind = q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(a.who.id, p) ? 'note' : listNotes(a.who).some((n) => inside(n.path, p)) ? 'folder' : '';
+      if (!kind) throw new Fail(404, 'not_found', 'There is no note or folder at ' + a.full + '.');
       const role = args.role === 'edit' ? 'edit' : 'view';
-      addShare(user, { path: p, email: args.email, kind, role });
-      return 'Shared the ' + kind + ' ' + p + ' with ' + cleanEmail(args.email) + ' (' + (role === 'edit' ? 'can edit' : 'can view') + '). They see it in SharpMD after signing in with that address.';
+      if (inTeam(a)) teamShare(theTeam, user, a.who, { path: p, email: args.email, kind, role }); else addShare(user, { path: p, email: args.email, kind, role });
+      return 'Shared the ' + kind + ' ' + a.full + ' with ' + cleanEmail(args.email) + ' (' + (role === 'edit' ? 'can edit' : 'can view') + '). They see it in SharpMD after signing in with that address.';
     }
     if (name === 'unshare_note') {
-      const p = own(args.path); const email = cleanEmail(args.email);
-      if (!q('DELETE FROM shares WHERE owner = ? AND path = ? AND email = ?').run(user.id, p, email).changes) throw new Fail(404, 'not_found', p + ' is not shared with ' + email + '.');
-      return 'Stopped sharing ' + p + ' with ' + email + '.';
+      const a = own(args.path, 'share'); const email = cleanEmail(args.email);
+      if (!q('DELETE FROM shares WHERE owner = ? AND path = ? AND email = ?').run(a.who.id, a.p, email).changes) throw new Fail(404, 'not_found', a.full + ' is not shared with ' + email + '.');
+      noted('unshare', a);
+      return 'Stopped sharing ' + a.full + ' with ' + email + '.';
     }
     if (name === 'create_public_link') {
-      const p = own(args.path); const made = addLink(user, { path: p, password: args.password == null || args.password === '' ? null : String(args.password) });
-      return { path: p, url: appLink('pub/' + made.token), id: made.id, protected: made.protected, note: 'Anyone with this URL can read the note' + (made.protected ? ' after typing the password.' : '.') + ' The URL is not shown again.' };
+      const a = own(args.path, 'links'); const body = { path: a.p, password: args.password == null || args.password === '' ? null : String(args.password) };
+      const made = inTeam(a) ? teamLink(theTeam, user, a.who, body) : addLink(user, body);
+      return { path: a.full, url: appLink('pub/' + made.token), id: made.id, protected: made.protected, note: 'Anyone with this URL can read the note' + (made.protected ? ' after typing the password.' : '.') + ' The URL is not shown again.' };
     }
-    // revoke_public_link: uno por id, o todos los de una nota.
-    const of = args.id == null ? own(args.path) : '';
-    const hit = q('SELECT id, path FROM links WHERE owner = ?').all(user.id).filter((l) => within(user, l.path) && (args.id == null ? l.path === of : l.id === +args.id));
+    // revoke_public_link: uno por id, o todos los de una nota. Por id se busca en lo propio y, si se puede, en lo del equipo.
+    const of = args.id == null ? own(args.path, 'links') : null;
+    const owners = of ? [of.who] : [user].concat(space && teamAllows(theTeam, user, 'links') ? [space] : []);
+    if (tt && !teamAllows(theTeam, user, 'links')) throw new Fail(403, 'team_policy', NO_TEAM_SHARE);
+    const hit = owners.flatMap((w) => q('SELECT id, path FROM links WHERE owner = ?').all(w.id).map((l) => ({ id: l.id, p: l.path, who: w, full: (w === user ? '' : TEAM_PRE) + l.path })))
+      .filter((l) => within(user, l.full) && (of ? l.p === of.p : l.id === +args.id));
     if (!hit.length) throw new Fail(404, 'not_found', 'There is no public link there.');
-    for (const l of hit) q('DELETE FROM links WHERE id = ? AND owner = ?').run(l.id, user.id);
-    return 'Revoked ' + hit.length + ' public link' + (hit.length === 1 ? '' : 's') + ' to ' + hit[0].path + '.';
+    for (const l of hit) { q('DELETE FROM links WHERE id = ? AND owner = ?').run(l.id, l.who.id); noted('unlink', l); }
+    return 'Revoked ' + hit.length + ' public link' + (hit.length === 1 ? '' : 's') + ' to ' + hit[0].full + '.';
   }
   throw new Fail(400, 'unknown_tool');
 }
@@ -1339,7 +1392,7 @@ function mcp(user, msg) {
   if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } };
   const reply = (result) => ({ jsonrpc: '2.0', id: msg.id, result });
   if (msg.method === 'initialize') return reply({ protocolVersion: (msg.params && msg.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'sharpmd', version: '1.0.0' },
-    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with write_note, then resolve_comment. A folder marked as protected and locked is encrypted with a password: you cannot read it until the person unlocks it for the AI from SharpMD. If the person belongs to a team, the notes the team shares are under @team/ and every member can read and edit them. write_note, append_note and move_note return a link that opens the note in the SharpMD app: give it to the person. ' + (user.canShare ? 'This token can share notes with other accounts and create public links: only do that when the person asks.' : 'This token cannot share notes or create public links: the person does that from the SharpMD app.') + (user.scope ? ' This token only reaches the folder ' + user.scope + '/.' : '') });
+    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with write_note, then resolve_comment. A folder marked as protected and locked is encrypted with a password: you cannot read it until the person unlocks it for the AI from SharpMD. If the person belongs to a team, the notes the team shares are under @team/ and every member can read and edit them. write_note, append_note and move_note return a link that opens the note in the SharpMD app: give it to the person. ' + (user.teamToken ? 'This token belongs to a team, not to a person: every note it reaches is in the shared space of the team' + (user.canWrite ? '. ' : ', and it can only read. ') : '') + (user.canShare ? 'This token can share notes with other accounts and create public links: only do that when the person asks.' : 'This token cannot share notes or create public links: the person does that from the SharpMD app.') + (user.scope ? ' This token only reaches the folder ' + user.scope + '/.' : '') });
   if (msg.method === 'ping') return reply({});
   if (msg.method === 'tools/list') return reply({ tools: toolsFor(user) });
   if (msg.method === 'tools/call') {
@@ -1392,8 +1445,8 @@ const dec = (s) => { try { return decodeURIComponent(s); } catch (e) { throw new
 //     las piden con o = el número de esa cuenta, igual que lo compartido entre cuentas.
 //   - Con el cobro caído no se borra nada: las notas del equipo se siguen leyendo y editando, pero no se crean
 //     nuevas pasado el tope gratis y no se guarda historial. Es la misma regla de quien baja del plan pago.
-//   - En el espacio del equipo no hay enlaces públicos, compartir hacia afuera ni sesiones en vivo: esas rutas
-//     trabajan sobre las notas propias de quien llama. Tampoco carpetas con contraseña de cada miembro: el espacio
+//   - Compartir hacia afuera y los enlaces públicos de una nota del equipo dependen del papel y de la política del
+//     equipo (más abajo). Sesiones en vivo no hay todavía. Tampoco carpetas con contraseña de cada miembro: el espacio
 //     se protege entero, con una sola contraseña que pone quien administra (más abajo, "Espacio del equipo protegido").
 //   - Lugares: los miembros más las invitaciones pendientes nunca superan los lugares pagos.
 const TEAM_BASE = String(env.PADDLE_TEAM_BASE || '').trim(); const TEAM_SEAT = String(env.PADDLE_TEAM_SEAT || '').trim();
@@ -1411,7 +1464,14 @@ db.exec('CREATE TABLE IF NOT EXISTS team_invites (id INTEGER PRIMARY KEY, team I
 // kind: 'solo' la suscripción individual, 'team' la de un equipo. Se decide la primera vez que se ve la suscripción.
 try { db.exec("ALTER TABLE paddle_subs ADD COLUMN kind TEXT NOT NULL DEFAULT 'solo'"); } catch (e) { /* ya estaba */ }
 
-const teamOf = (userId) => q('SELECT t.* FROM team_members m JOIN teams t ON t.id = m.team WHERE m.user = ?').get(userId) || null;
+// Papeles: 'admin' administra (quien paga lo es siempre, y puede nombrar a otros), 'editor' lee y escribe en el
+// espacio, 'reader' solo lee. Los tres ocupan un lugar. Quienes ya eran miembros quedan como editores.
+// policies: lo que quien administra decide para el espacio (más abajo, "Equipos: papeles, políticas...").
+for (const [table, col] of [['team_members', "role TEXT NOT NULL DEFAULT 'editor'"], ['team_invites', "role TEXT NOT NULL DEFAULT 'editor'"], ['teams', "policies TEXT NOT NULL DEFAULT '{}'"]]) { try { db.exec('ALTER TABLE ' + table + ' ADD COLUMN ' + col); } catch (e) { /* ya estaba */ } }
+db.exec("UPDATE team_members SET role = 'admin' WHERE role != 'admin' AND user IN (SELECT owner FROM teams)");
+
+// my_role: el papel de esa cuenta en su equipo.
+const teamOf = (userId) => q('SELECT t.*, m.role AS my_role FROM team_members m JOIN teams t ON t.id = m.team WHERE m.user = ?').get(userId) || null;
 // La cuenta tal como la usa el resto del servidor: plan es el que vale ahora (pago si lo paga ella o si está en un
 // equipo al día), own el que paga por su lado y team su equipo. Toda cuenta que se lee para decidir algo sale de acá.
 function userById(id) {
@@ -1427,15 +1487,23 @@ const teamUsed = (t) => q('SELECT COUNT(*) AS n FROM team_members WHERE team = ?
 // pendientes y el cobro, solo quien administra. invites son las invitaciones que esperan a esta cuenta.
 function teamView(user) {
   const t = user.team || null;
-  const invites = q("SELECT i.id, t.name, u.email AS by FROM team_invites i JOIN teams t ON t.id = i.team JOIN users u ON u.id = t.owner WHERE i.email = ? AND t.status = 'active' ORDER BY i.created").all(user.email);
-  const out = { enabled: TEAM_BILLING, checkout: TEAM_BILLING ? withEmail(env.CHECKOUT_TEAM, user) : '', included: TEAM_INCLUDED, max: TEAM_MAX_SEATS, mine: null, invites };
+  const invites = q("SELECT i.id, t.name, u.email AS by, i.role FROM team_invites i JOIN teams t ON t.id = i.team JOIN users u ON u.id = t.owner WHERE i.email = ? AND t.status = 'active' ORDER BY i.created").all(user.email);
+  // Quien tiene el plan por un equipo que paga otra persona no recibe nada de cobro: ni la oferta ni el enlace de pago.
+  const guest = teamGuest(user);
+  const out = { enabled: TEAM_BILLING && !guest, checkout: TEAM_BILLING && !guest ? withEmail(env.CHECKOUT_TEAM, user) : '', included: TEAM_INCLUDED, max: TEAM_MAX_SEATS, mine: null, invites };
   if (!t) return out;
-  const admin = t.owner === user.id;
-  const members = q('SELECT u.id, u.email FROM team_members m JOIN users u ON u.id = m.user WHERE m.team = ? ORDER BY m.joined, u.id').all(t.id).map((x) => ({ id: x.id, email: x.email, admin: x.id === t.owner }));
+  const owner = t.owner === user.id; const role = teamRoleOf(user); const admin = role === 'admin';
+  const members = q('SELECT u.id, u.email, m.role FROM team_members m JOIN users u ON u.id = m.user WHERE m.team = ? ORDER BY m.joined, u.id').all(t.id)
+    .map((x) => { const r = x.id === t.owner ? 'admin' : TEAM_ROLES.includes(x.role) ? x.role : 'editor'; return { id: x.id, email: x.email, role: r, admin: r === 'admin', owner: x.id === t.owner }; });
   // solo: además paga un plan individual por su lado. La app le avisa que sigue activo y cómo darlo de baja.
-  out.mine = { id: t.id, name: t.name, role: admin ? 'admin' : 'member', active: t.status === 'active', space: t.space, seats: t.seats, used: teamUsed(t), members, solo: user.own === 'pro' };
+  // owner: es quien paga. role: 'admin', 'editor' o 'reader'. can: lo que esta cuenta puede hacer en el espacio.
+  out.mine = { id: t.id, name: t.name, role, owner, active: t.status === 'active', space: t.space, members, solo: user.own === 'pro' };
   out.mine.vault = teamVaultView(user, t);
-  if (admin) { out.mine.pending = q('SELECT id, email, created FROM team_invites WHERE team = ? ORDER BY created').all(t.id); out.mine.billing = TEAM_BILLING && !!t.sub; }
+  out.mine.policies = teamPolicies(t); out.mine.history_days = teamHistoryDays(t); out.mine.history_max = TEAM_HISTORY_DAYS; out.mine.history_choices = TEAM_HISTORY_CHOICES.filter((d) => d <= TEAM_HISTORY_DAYS);
+  out.mine.can = Object.fromEntries(['write'].concat(POLICY_BOOLS).map((k) => [k, teamAllows(t, user, k)]));
+  // Los lugares y las invitaciones pendientes, para quien administra personas. El cobro, solo para quien paga.
+  if (admin) { out.mine.seats = t.seats; out.mine.used = teamUsed(t); out.mine.pending = q('SELECT id, email, role, created FROM team_invites WHERE team = ? ORDER BY created').all(t.id); out.mine.log_days = TEAM_LOG_DAYS; }
+  if (owner) out.mine.billing = TEAM_BILLING && !!t.sub;
   return out;
 }
 // Quien deja de ser miembro deja de escuchar las notas del equipo en el acto.
@@ -1457,7 +1525,7 @@ function teamOpen(user, seats, sub) {
     } else {
       const space = Number(q("INSERT INTO users (email, plan, created) VALUES (?, 'pro', ?)").run('team:' + random(12), now()).lastInsertRowid);
       const id = Number(q("INSERT INTO teams (owner, space, seats, sub, status, created) VALUES (?, ?, ?, ?, 'active', ?)").run(user.id, space, seats, sub || null, now()).lastInsertRowid);
-      q('INSERT INTO team_members (team, user, joined) VALUES (?, ?, ?)').run(id, user.id, now());
+      q("INSERT INTO team_members (team, user, joined, role) VALUES (?, ?, ?, 'admin')").run(id, user.id, now());
     }
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
@@ -1486,10 +1554,18 @@ function teamBilled(user, sub, active, items) {
   return { team: t.id, ended: true };
 }
 
+// Administra quien tiene ese papel: quien paga, y quienes nombró. Lo que toca el cobro (los lugares) y la llave del
+// espacio protegido es solo de quien paga: ownerTeam.
 function adminTeam(user) {
   const t = user.team;
   if (!t) throw new Fail(404, 'no_team');
-  if (t.owner !== user.id) throw new Fail(403, 'not_admin');
+  if (teamRoleOf(user) !== 'admin') throw new Fail(403, 'not_admin');
+  return t;
+}
+function ownerTeam(user) {
+  const t = user.team;
+  if (!t) throw new Fail(404, 'no_team');
+  if (t.owner !== user.id) throw new Fail(403, teamRoleOf(user) === 'admin' ? 'not_owner' : 'not_admin');
   return t;
 }
 // El correo de la invitación, con el mismo aspecto que el del código. Es el mismo tenga o no cuenta quien lo
@@ -1522,6 +1598,9 @@ async function teamInvite(user, body) {
   if (t.status !== 'active') throw new Fail(402, 'team_ended');
   if (seatBusy.has(t.id)) throw new Fail(409, 'team_busy');
   const email = cleanEmail(body.email);
+  // El papel se elige al invitar. Sin role entra como editor, que es lo que era un miembro hasta ahora.
+  const role = body.role == null ? 'editor' : body.role;
+  if (!TEAM_ROLES.includes(role)) throw new Fail(400, 'bad_role');
   if (email === user.email) throw new Fail(400, 'own_email');
   if (q('SELECT 1 FROM team_members m JOIN users u ON u.id = m.user WHERE m.team = ? AND u.email = ?').get(t.id, email)) throw new Fail(409, 'already_member');
   const had = q('SELECT id FROM team_invites WHERE team = ? AND email = ?').get(t.id, email);
@@ -1529,7 +1608,10 @@ async function teamInvite(user, body) {
   const day = 'tinv:team:' + t.id; const to = 'tinv:to:' + email;
   limit(day, TEAM_INVITES_DAY, DAY, 'invite_day'); limit(to, 3, DAY, 'invite_mail_day');
   mark(day); mark(to);
-  if (!had) q('INSERT INTO team_invites (team, email, created) VALUES (?, ?, ?)').run(t.id, email, now());
+  if (!had) q('INSERT INTO team_invites (team, email, created, role) VALUES (?, ?, ?, ?)').run(t.id, email, now(), role);
+  else q('UPDATE team_invites SET role = ? WHERE id = ?').run(role, had.id);
+  // En el registro queda que se invitó y con qué papel, no a qué dirección: todavía no es del equipo.
+  teamLog(t, user, 'invite', '', role);
   const m = INVITE[body.lang === 'es' ? 'es' : 'en'];
   // Sin correo configurado la invitación igual queda: aparece al entrar a la app con esa cuenta.
   try { await sendMail({ to: email, subject: m.subject(user.email), text: m.text(user.email, t.name), html: inviteHtml(m, user.email, t.name) }); }
@@ -1547,15 +1629,18 @@ function teamAccept(user, id) {
   if (seatBusy.has(t.id)) throw new Fail(409, 'team_busy');
   // La invitación ya ocupaba un lugar; solo falta si los lugares bajaron desde entonces.
   if (q('SELECT COUNT(*) AS n FROM team_members WHERE team = ?').get(t.id).n >= t.seats) throw new Fail(409, 'team_full');
-  q('INSERT INTO team_members (team, user, joined) VALUES (?, ?, ?)').run(t.id, user.id, now());
+  const role = TEAM_ROLES.includes(inv.role) ? inv.role : 'editor';
+  q('INSERT INTO team_members (team, user, joined, role) VALUES (?, ?, ?, ?)').run(t.id, user.id, now(), role);
   q('DELETE FROM team_invites WHERE id = ?').run(inv.id);
+  teamLog(t, user, 'join', '', role);
   return { ok: true };
 }
 // Sacar a alguien o salir: deja de ser miembro. Sus notas propias no se tocan y las del equipo quedan en el equipo.
-function teamDrop(t, userId) {
+function teamDrop(t, userId, by) {
   if (userId === t.owner) throw new Fail(409, 'owner_stays');
   const r = q('DELETE FROM team_members WHERE team = ? AND user = ?').run(t.id, userId);
   if (!r.changes) throw new Fail(404, 'not_found');
+  if (by && by.id !== userId) teamLog(t, by, 'remove', '', '', userId); else teamLog(t, { id: userId }, 'leave', '');
   teamCut(t.space, userId);
   teamVaultLeft(t, userId);
   // Si tenía paga una suscripción de equipo que esperaba a que saliera de este, su equipo nace ahora, con los lugares
@@ -1567,7 +1652,7 @@ function teamDrop(t, userId) {
 // Cambiar los lugares es cambiar la suscripción en Paddle, con prorrateo en el momento: un ítem con el precio base
 // y, si hay más de los que cubre, otro con el precio por lugar y esa cantidad. Nunca menos que los ocupados.
 async function teamSeats(user, body) {
-  const t = adminTeam(user); const n = body.seats;
+  const t = ownerTeam(user); const n = body.seats;
   if (!Number.isInteger(n) || n < TEAM_INCLUDED || n > TEAM_MAX_SEATS) throw new Fail(400, 'bad_seats');
   if (t.status !== 'active') throw new Fail(402, 'team_ended');
   if (!TEAM_BILLING || !t.sub) throw new Fail(409, 'no_billing');
@@ -1594,15 +1679,19 @@ async function teamRoute(user, p, m, req) {
   if (p === '/team' && m === 'PUT') {
     const t = adminTeam(user); const b = await readBody(req);
     q('UPDATE teams SET name = ? WHERE id = ?').run(String(b.name == null ? '' : b.name).trim() ? cleanName(b.name) : '', t.id);
+    teamLog(t, user, 'team_name', '');
     return after({ ok: true });
   }
   if (p === '/team/invite' && m === 'POST') return after(await teamInvite(user, await readBody(req)));
-  if (p.startsWith('/team/invites/') && m === 'DELETE') { const t = adminTeam(user); q('DELETE FROM team_invites WHERE id = ? AND team = ?').run(+p.slice(14), t.id); return after({ ok: true }); }
+  if (p.startsWith('/team/invites/') && m === 'DELETE') { const t = adminTeam(user); if (q('DELETE FROM team_invites WHERE id = ? AND team = ?').run(+p.slice(14), t.id).changes) teamLog(t, user, 'uninvite', ''); return after({ ok: true }); }
   if (p === '/team/accept' && m === 'POST') return after(teamAccept(user, (await readBody(req)).id));
   if (p === '/team/decline' && m === 'POST') { q('DELETE FROM team_invites WHERE id = ? AND email = ?').run(+(await readBody(req)).id, user.email); return after({ ok: true }); }
-  if (p === '/team/remove' && m === 'POST') { const t = adminTeam(user); return after(teamDrop(t, +(await readBody(req)).id)); }
+  if (p === '/team/remove' && m === 'POST') { const t = adminTeam(user); return after(teamDrop(t, +(await readBody(req)).id, user)); }
   if (p === '/team/leave' && m === 'POST') { if (!user.team) throw new Fail(404, 'no_team'); return after(teamDrop(user.team, user.id)); }
   if (p === '/team/seats' && m === 'POST') return after(await teamSeats(user, await readBody(req)));
+  // Papeles, políticas, registro de actividad y tokens del equipo: más abajo.
+  const more = await teamAdminRoute(user, p, m, req, after);
+  if (more) return more;
   if (p === '/team/vault' || p.startsWith('/team/vault/')) return teamVaultRoute(user, p, m, m === 'GET' ? {} : await readBody(req));
   throw new Fail(404, 'no_route');
 }
@@ -1641,7 +1730,17 @@ function teamHold(user, owner) {
   if (v && v.state === 'rotating') throw new Fail(423, 'vault_rotating', 'The key of this team space is being changed. Try again in a moment.');
 }
 const wrapOk = (body) => { const iters = +body.iters; return !!b64(body.salt, 16) && !!b64(body.wrapped, 60) && Number.isInteger(iters) && iters >= 100000 && iters <= 10000000; };
+// Lo que cambia en la protección queda en el registro de actividad del equipo.
+const TEAM_VAULT_ACTS = { 'POST /team/vault': 'protect', 'PUT /team/vault': 'password', 'PUT /team/vault/ai': 'policy', 'POST /team/vault/rotate': 'rotate', 'POST /team/vault/rotate/done': 'rotate_done', 'DELETE /team/vault': 'unprotect', 'POST /team/vault/destroy': 'destroy', 'POST /team/vault/unlock': 'ai_unlock' };
 function teamVaultRoute(user, p, m, body) {
+  const out = teamVaultDo(user, p, m, body);
+  const act = TEAM_VAULT_ACTS[m + ' ' + p];
+  if (act) teamLog(user.team, user, act, '', act === 'policy' ? 'ai_unlock=' + (body.members === true ? 'on' : 'off') : '');
+  // La plantilla de las notas nuevas se guarda en el servidor, legible: en un espacio protegido no queda.
+  if (act === 'protect') teamPolicySave(user.team, { template: '' });
+  return out;
+}
+function teamVaultDo(user, p, m, body) {
   const t = user.team;
   if (!t) throw new Fail(404, 'no_team');
   const view = () => teamVaultView(userById(user.id), t);
@@ -1657,8 +1756,8 @@ function teamVaultRoute(user, p, m, body) {
     return { vault: view() };
   }
   if (p === '/team/vault/lock' && m === 'POST') { if (!v) throw new Fail(404, 'not_found'); aiForget(v, true, user.id); return { vault: view() }; }
-  // Todo lo demás es de quien administra.
-  adminTeam(user);
+  // Todo lo demás es de quien paga el equipo: guarda la clave de respaldo, y la rotación la hace un solo navegador.
+  ownerTeam(user);
   limit('tvault:' + t.id, TEAM_VAULT_HOUR, HOUR, 'too_many'); mark('tvault:' + t.id);
   if (p === '/team/vault' && m === 'POST') {
     if (v) throw new Fail(409, 'vault_exists');
@@ -1716,10 +1815,240 @@ function teamVaultRoute(user, p, m, body) {
   throw new Fail(404, 'no_route');
 }
 // De quién son las notas de un pedido que trae o: propias, o del espacio del equipo de quien llama.
-function spaceOf(user, o) {
+// need 'edit': lo que se pide cambia algo, y en el espacio del equipo eso es de quien administra o edita.
+function spaceOf(user, o, need) {
   if (o == null || o === '' || +o === user.id) return user;
-  if (user.team && +o === user.team.space) return userById(user.team.space);
+  if (user.team && +o === user.team.space) {
+    if (need === 'edit' && !teamAllows(user.team, user, 'write')) throw new Fail(403, 'read_only');
+    return userById(user.team.space);
+  }
   throw new Fail(403, 'no_access');
+}
+
+// ---------- Equipos: papeles, políticas, registro de actividad y tokens del equipo ----------
+// Tres niveles. Lo personal (apariencia, idioma, herramientas) no pasa por acá: vive en el navegador de cada uno.
+// Lo del equipo lo decide quien administra y vale para el espacio: se guarda en teams.policies y se mira en el
+// servidor en cada pedido, con teamAllows. El cobro es solo de quien paga (ownerTeam, y teamGuest para no mostrarlo).
+//   - Papeles: 'admin', 'editor', 'reader' (ver arriba). Quien paga es admin siempre: no se lo saca ni se le cambia.
+//   - Políticas, para quien no administra: share (compartir notas del equipo con cuentas de afuera), links (enlaces
+//     públicos), live (sesiones en vivo con invitados), tokens (que su IA alcance el espacio), automation
+//     (automatizaciones sobre el espacio). Quien administra puede siempre; quien solo lee, solo 'tokens'. Lo que
+//     saca notas del equipo hacia afuera nace apagado. Además: history_days (cuánto dura el historial, hasta
+//     TEAM_HISTORY_DAYS), folder y template (la carpeta y el texto con que nace una nota nueva del equipo).
+//   - Registro de actividad: quién hizo qué y cuándo en el espacio. Guarda la ruta, la acción, la cuenta y el
+//     momento. Nunca el texto de una nota ni el correo de alguien de afuera: de quien actúa guarda el número de
+//     cuenta (el correo se busca al leer; si la cuenta ya no existe, sale vacío). Dura TEAM_LOG_DAYS días.
+//   - Tokens del equipo: son del equipo, no de una persona. Entran como el espacio (sus notas son la raíz), con
+//     carpeta, permiso de escribir y de compartir. Siguen andando si quien los creó se va. No abren un espacio protegido.
+const TEAM_ROLES = ['admin', 'editor', 'reader'];
+const TEAM_HISTORY_DAYS = Math.max(1, Math.floor(+(env.TEAM_HISTORY_DAYS || 365)) || 365); // historial del espacio del equipo
+const TEAM_HISTORY_CHOICES = [30, 90, 180, 365]; // a cuánto lo puede acortar quien administra
+const TEAM_LOG_DAYS = Math.max(1, Math.floor(+(env.TEAM_LOG_DAYS || 90)) || 90); // cuánto dura el registro de actividad
+const TEAM_ADMIN_HOUR = 120; // cambios de administración por hora y por equipo
+const TEAM_LOG_HOUR = 240; // lecturas del registro por hora y por cuenta
+const TEAM_LOG_PAGE = 100; const TEAM_LOG_CSV = 5000; const TEAM_LOG_MAX = 200000; // filas por página, por exportación y por equipo
+const MAX_TEAM_TOKENS = 30; const TEAM_TEMPLATE_MAX = 20000;
+const TEAM_EDIT_GAP = 10 * 60000; // ediciones seguidas de la misma nota por la misma cuenta: una fila cada tanto
+for (const col of ['team INTEGER', 'can_write INTEGER NOT NULL DEFAULT 1', 'made_by INTEGER']) { try { db.exec('ALTER TABLE tokens ADD COLUMN ' + col); } catch (e) { /* ya estaba */ } }
+// via: '' desde la app, 'ai' con el token de una persona, 'team' con un token del equipo. token: el nombre del token.
+// about: la cuenta sobre la que se actuó (a quién se le cambió el papel, a quién se sacó).
+db.exec("CREATE TABLE IF NOT EXISTS team_log (id INTEGER PRIMARY KEY, team INTEGER NOT NULL, at INTEGER NOT NULL, uid INTEGER, via TEXT NOT NULL DEFAULT '', token TEXT NOT NULL DEFAULT '', action TEXT NOT NULL, path TEXT NOT NULL DEFAULT '', about INTEGER, detail TEXT NOT NULL DEFAULT '')");
+db.exec('CREATE INDEX IF NOT EXISTS team_log_at ON team_log (team, at)');
+
+const POLICY_BOOLS = ['share', 'links', 'live', 'tokens', 'automation'];
+const POLICY_DEFAULT = { share: false, links: false, live: false, tokens: true, automation: false, history_days: 0, folder: '', template: '' };
+function teamPolicies(t) {
+  let raw = {}; try { raw = JSON.parse((t && t.policies) || '{}') || {}; } catch (e) { raw = {}; }
+  const out = Object.assign({}, POLICY_DEFAULT);
+  for (const k of POLICY_BOOLS) if (typeof raw[k] === 'boolean') out[k] = raw[k];
+  if (Number.isInteger(raw.history_days) && raw.history_days > 0) out.history_days = Math.min(raw.history_days, TEAM_HISTORY_DAYS);
+  if (typeof raw.folder === 'string') out.folder = raw.folder;
+  // La plantilla es texto que escribió alguien: con DATA_KEY se guarda cifrada en reposo, como una nota.
+  if (typeof raw.template === 'string') { try { out.template = raw.template.startsWith(ENC) ? unseal(raw.template, 1, 'teams.template') : raw.template; } catch (e) { out.template = ''; } }
+  return out;
+}
+// Guarda las políticas con esos cambios encima. Devuelve cómo quedaron.
+function teamPolicySave(t, change) {
+  const next = Object.assign(teamPolicies(q('SELECT * FROM teams WHERE id = ?').get(t.id)), change);
+  q('UPDATE teams SET policies = ? WHERE id = ?').run(JSON.stringify(Object.assign({}, next, { template: next.template ? seal(next.template, 'teams.template') : '' })), t.id);
+  t.policies = q('SELECT policies FROM teams WHERE id = ?').get(t.id).policies;
+  return next;
+}
+// El papel de quien llama. Un token del equipo vale como editor o como lector, según se haya creado.
+const teamRoleOf = (user) => { if (user.teamToken) return user.canWrite ? 'editor' : 'reader'; const t = user.team; return !t ? null : t.owner === user.id ? 'admin' : TEAM_ROLES.includes(t.my_role) ? t.my_role : 'editor'; };
+// Tiene el plan por un equipo que paga otra persona: no se le muestra nada de cobro.
+const teamGuest = (user) => !!user.team && user.team.status === 'active' && user.team.owner !== user.id;
+const teamLabel = (spaceId) => { const t = q('SELECT name FROM teams WHERE space = ?').get(spaceId); return (t && t.name) || 'Team'; };
+// La pregunta que hace todo el servidor antes de dejar hacer algo en el espacio de un equipo: ¿esta cuenta (o este
+// token del equipo) puede what? what: 'read', 'write', 'admin', o una política ('share', 'links', 'live', 'tokens',
+// 'automation'). Quien no es de ese equipo no puede nada.
+function teamAllows(team, user, what) {
+  if (!team || !user) return false;
+  const mine = user.teamToken ? user.teamToken.team : user.team;
+  if (!mine || mine.id !== team.id) return false;
+  const role = teamRoleOf(user);
+  if (what === 'read') return true;
+  if (what === 'admin') return role === 'admin';
+  if (what === 'write') return role !== 'reader';
+  if (!POLICY_BOOLS.includes(what)) return false;
+  if (role === 'admin') return true;
+  if (role === 'reader' && what !== 'tokens') return false;
+  return teamPolicies(team)[what] === true;
+}
+const teamHistoryDays = (t) => { const d = teamPolicies(t).history_days; return d ? Math.min(d, TEAM_HISTORY_DAYS) : TEAM_HISTORY_DAYS; };
+// El historial vencido: 30 días para las cuentas, y para el espacio de cada equipo lo que diga su política.
+function historySweep(only) {
+  if (!only) q('DELETE FROM versions WHERE saved < ? AND user NOT IN (SELECT space FROM teams)').run(now() - HISTORY_DAYS * DAY);
+  for (const t of only ? [only] : q('SELECT * FROM teams').all()) q('DELETE FROM versions WHERE user = ? AND saved < ?').run(t.space, now() - teamHistoryDays(t) * DAY);
+}
+
+// Un token del equipo entra como la cuenta interna del espacio. Con el equipo vencido deja de servir (402, como
+// cualquier token sin plan pago); con el equipo eliminado, 401.
+function teamTokenUser(tok) {
+  const team = q('SELECT * FROM teams WHERE id = ?').get(tok.team);
+  const u = team ? userById(team.space) : null; if (!u) return null;
+  u.scope = tok.scope || ''; u.canShare = !!tok.share; u.canWrite = !!tok.can_write; u.tokenName = tok.name; u.tokenId = tok.id;
+  u.teamToken = { id: tok.id, name: tok.name, team };
+  return u;
+}
+const TEAM_TOKEN_LOCKED = 'The team space is protected with a password, so a token of the team cannot read, search or change its notes. A member can connect their own AI and unlock the space for it from SharpMD.';
+
+// Una fila del registro. Nunca recibe texto de una nota. Una falla al anotar no frena lo que se estaba haciendo.
+const logSeen = new Map();
+function teamLog(team, user, action, path, detail, about) {
+  if (!team) return;
+  try {
+    const tt = user && user.teamToken; const uid = user && !tt && user.id ? user.id : null;
+    const via = tt ? 'team' : user && user.tokenName != null ? 'ai' : ''; const token = via ? String(user.tokenName || '').slice(0, 60) : '';
+    if (action === 'edit' || action === 'ai') {
+      const key = team.id + '|' + action + '|' + (uid || '') + '|' + via + '|' + (user && user.tokenId || '') + '|' + (action === 'edit' ? path : '');
+      const last = logSeen.get(key) || 0; const gap = action === 'edit' ? TEAM_EDIT_GAP : HOUR;
+      if (now() - last < gap) return;
+      logSeen.set(key, now());
+    }
+    q('INSERT INTO team_log (team, at, uid, via, token, action, path, about, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(team.id, now(), uid, via, token, action, String(path || '').slice(0, 300), about || null, String(detail || '').slice(0, 300));
+  } catch (e) { console.error('registro del equipo: no se pudo anotar · ' + String(e && e.message || e).slice(0, 200)); }
+}
+// La IA entró al espacio: una fila por token y por hora, con el nombre del token.
+const teamAiSeen = (team, user) => teamLog(team, user, 'ai', '');
+function teamLogSweep() {
+  q('DELETE FROM team_log WHERE at < ?').run(now() - TEAM_LOG_DAYS * DAY);
+  for (const t of q('SELECT team, COUNT(*) AS n FROM team_log GROUP BY team HAVING n > ?').all(TEAM_LOG_MAX)) q('DELETE FROM team_log WHERE team = ? AND id NOT IN (SELECT id FROM team_log WHERE team = ? ORDER BY id DESC LIMIT ?)').run(t.team, t.team, TEAM_LOG_MAX);
+  for (const [k, at] of logSeen) if (now() - at > HOUR) logSeen.delete(k);
+}
+const TEAM_ACTIONS = ['create', 'edit', 'move', 'delete', 'restore', 'purge', 'empty_trash', 'share', 'unshare', 'link', 'unlink', 'invite', 'uninvite', 'join', 'leave', 'remove', 'role', 'policy', 'team_name', 'protect', 'password', 'rotate', 'rotate_done', 'unprotect', 'destroy', 'ai', 'ai_unlock', 'token_create', 'token_revoke'];
+// Lo que se pide del registro: who (número de cuenta), token (nombre), action, from y to (milisegundos), before (id, para seguir).
+function teamLogRows(team, url, max) {
+  const g = (k) => url.searchParams.get(k) || '';
+  // Cada filtro es un número o un texto ya comprobado, o null si no se pidió. La consulta es fija: no se arma con lo que llega.
+  const num = (k, max15) => { const v = g(k); if (!v) return null; if (!(max15 ? /^\d{1,15}$/ : /^\d{1,12}$/).test(v)) throw new Fail(400, 'bad_filter'); return +v; };
+  const who = num('who'); const from = num('from', true); const to = num('to', true); const before = num('before');
+  const token = g('token') ? g('token').slice(0, 60) : null; const action = g('action') || null;
+  if (action && !TEAM_ACTIONS.includes(action)) throw new Fail(400, 'bad_filter');
+  // El correo sale de la cuenta, al leer: en el registro no hay ninguno.
+  return q('SELECT l.id, l.at, l.uid, l.via, l.token, l.action, l.path, l.detail, u.email AS who, a.email AS about FROM team_log l LEFT JOIN users u ON u.id = l.uid LEFT JOIN users a ON a.id = l.about WHERE l.team = ? AND l.at >= ? AND (? IS NULL OR l.uid = ?) AND (? IS NULL OR l.token = ?) AND (? IS NULL OR l.action = ?) AND (? IS NULL OR l.at >= ?) AND (? IS NULL OR l.at <= ?) AND (? IS NULL OR l.id < ?) ORDER BY l.id DESC LIMIT ?')
+    .all(team.id, now() - TEAM_LOG_DAYS * DAY, who, who, token, token, action, action, from, from, to, to, before, before, max)
+    .map((r) => ({ id: r.id, at: r.at, uid: r.uid, who: r.who || '', via: r.via, token: r.token, action: r.action, path: r.path, about: r.about || '', detail: r.detail }));
+}
+// Una celda de CSV. Lo que empieza como una fórmula se guarda con un apóstrofo delante: una planilla no lo ejecuta.
+const csvCell = (v) => { let s = String(v == null ? '' : v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+const teamLogCsv = (rows) => ['when,who,via,token,action,path,about,detail'].concat(rows.map((r) => [new Date(r.at).toISOString(), r.who, r.via, r.token, r.action, r.path, r.about, r.detail].map(csvCell).join(','))).join('\r\n') + '\r\n';
+
+// Compartir y crear un enlace público sobre una nota del equipo. owner es la cuenta interna del espacio. Ya se miró
+// que quien llama puede (teamAllows). Con alguien del equipo no se comparte: ya la tiene.
+function teamShare(team, user, owner, body) {
+  const email = cleanEmail(body.email);
+  if (q('SELECT 1 FROM team_members m JOIN users u ON u.id = m.user WHERE m.team = ? AND u.email = ?').get(team.id, email)) throw new Fail(409, 'already_member', 'That person is already in the team');
+  const r = addShare(owner, body);
+  teamLog(team, user, 'share', cleanPath(body.path), (body.kind === 'folder' ? 'folder ' : '') + (body.role === 'edit' ? 'edit' : 'view'));
+  return r;
+}
+function teamLink(team, user, owner, body) {
+  const r = addLink(owner, body);
+  teamLog(team, user, 'link', cleanPath(body.path), r.protected ? 'password' : '');
+  return r;
+}
+// De quién es lo que se comparte en un pedido que trae o. Con el espacio del equipo, what dice qué se necesita:
+// 'share' o 'links' (el papel y la política), o 'see' para ver con quién está compartido (quien administra o edita).
+function shareOwner(user, o, what) {
+  if (o == null || o === '' || +o === user.id) return user;
+  const t = user.team;
+  if (!t || +o !== t.space) throw new Fail(403, 'no_access');
+  if (what === 'see' ? !teamAllows(t, user, 'write') : !teamAllows(t, user, what)) throw new Fail(403, teamRoleOf(user) === 'reader' ? 'read_only' : 'team_policy', 'The administrator of the team has not allowed this');
+  return userById(t.space);
+}
+
+async function teamAdminRoute(user, p, m, req, after) {
+  const t = user.team; const url = new URL(req.url, 'http://x');
+  // Las políticas las lee cualquier miembro (necesita saber con qué nace una nota y qué puede hacer); las cambia quien administra.
+  if (p === '/team/policies' && m === 'GET') { if (!t) throw new Fail(404, 'no_team'); return { policies: teamPolicies(t), can: Object.fromEntries(['write'].concat(POLICY_BOOLS).map((k) => [k, teamAllows(t, user, k)])), history_days: teamHistoryDays(t), history_max: TEAM_HISTORY_DAYS }; }
+  const known = p === '/team/policies' || p === '/team/role' || p === '/team/log' || p === '/team/tokens' || p.startsWith('/team/tokens/');
+  if (!known) return null;
+  adminTeam(user);
+  if (p === '/team/log' && m === 'GET') {
+    const key = 'tlog:' + user.id; limit(key, TEAM_LOG_HOUR, HOUR, 'too_many'); mark(key);
+    if (url.searchParams.get('format') === 'csv') return { csv: teamLogCsv(teamLogRows(t, url, TEAM_LOG_CSV)), days: TEAM_LOG_DAYS };
+    const rows = teamLogRows(t, url, TEAM_LOG_PAGE + 1);
+    return { entries: rows.slice(0, TEAM_LOG_PAGE), more: rows.length > TEAM_LOG_PAGE, days: TEAM_LOG_DAYS };
+  }
+  if (p === '/team/tokens' && m === 'GET') return q('SELECT k.id, k.name, k.scope, k.share, k.can_write, k.created, k.used, u.email AS by FROM tokens k LEFT JOIN users u ON u.id = k.made_by WHERE k.team = ? ORDER BY k.created DESC, k.id DESC').all(t.id).map((k) => ({ id: k.id, name: k.name, scope: k.scope || '', write: !!k.can_write, share: !!k.share, created: k.created, used: k.used, by: k.by || '' }));
+  if (m === 'GET') throw new Fail(404, 'no_route');
+  limit('tadm:' + t.id, TEAM_ADMIN_HOUR, HOUR, 'too_many'); mark('tadm:' + t.id);
+  if (p === '/team/role' && m === 'POST') {
+    const b = await readBody(req); const id = +b.id;
+    if (!TEAM_ROLES.includes(b.role)) throw new Fail(400, 'bad_role');
+    if (id === t.owner) throw new Fail(409, 'owner_stays');
+    const row = q('SELECT role FROM team_members WHERE team = ? AND user = ?').get(t.id, id);
+    if (!row) throw new Fail(404, 'not_found');
+    if (row.role !== b.role) {
+      q('UPDATE team_members SET role = ? WHERE team = ? AND user = ?').run(b.role, t.id, id);
+      teamLog(t, user, 'role', '', b.role, id);
+      // Quien pasa a solo leer deja de recibir en vivo como alguien que edita: vuelve a entrar con su papel nuevo.
+      teamCut(t.space, id);
+    }
+    return after({ ok: true });
+  }
+  if (p === '/team/policies' && m === 'PUT') {
+    const b = await readBody(req); const now_ = teamPolicies(t); const change = {};
+    for (const k of POLICY_BOOLS) if (b[k] !== undefined) { if (typeof b[k] !== 'boolean') throw new Fail(400, 'bad_policy'); change[k] = b[k]; }
+    if (b.history_days !== undefined) {
+      if (b.history_days !== 0 && !(TEAM_HISTORY_CHOICES.includes(b.history_days) && b.history_days <= TEAM_HISTORY_DAYS)) throw new Fail(400, 'bad_policy');
+      change.history_days = b.history_days === TEAM_HISTORY_DAYS ? 0 : b.history_days;
+    }
+    if (b.folder !== undefined) { if (typeof b.folder !== 'string') throw new Fail(400, 'bad_policy'); const f = b.folder.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').trim(); change.folder = f ? cleanPath(f) : ''; }
+    if (b.template !== undefined) {
+      if (typeof b.template !== 'string' || b.template.length > TEAM_TEMPLATE_MAX || b.template.startsWith(ENC) || b.template.startsWith(VAULT)) throw new Fail(400, 'bad_policy');
+      if (b.template && teamVault(t)) throw new Fail(409, 'vault', 'A protected team space has no template: the server would store it readable');
+      change.template = b.template;
+    }
+    const changed = Object.keys(change).filter((k) => change[k] !== now_[k]);
+    if (changed.length) {
+      teamPolicySave(t, change);
+      // Del cambio queda cuál fue y, si es un sí o un no o los días, a qué pasó. De la plantilla y la carpeta, solo que cambiaron.
+      for (const k of changed) teamLog(t, user, 'policy', '', k === 'template' || k === 'folder' ? k : k + '=' + (typeof change[k] === 'boolean' ? (change[k] ? 'on' : 'off') : change[k] || TEAM_HISTORY_DAYS));
+      if (changed.includes('history_days')) historySweep(t);
+    }
+    return after({ ok: true, policies: teamPolicies(t) });
+  }
+  if (p === '/team/tokens' && m === 'POST') {
+    if (t.status !== 'active') throw new Fail(402, 'team_ended');
+    if (q('SELECT COUNT(*) AS n FROM tokens WHERE team = ?').get(t.id).n >= MAX_TEAM_TOKENS) throw new Fail(429, 'too_many');
+    const b = await readBody(req); const name = cleanName(b.name).slice(0, 60);
+    const scope = String(b.folder || '').trim() ? cleanPath(String(b.folder).replace(/\/+$/, '')) : '';
+    // Leer siempre. Escribir y compartir se piden al crearlo; compartir sin escribir no tiene sentido.
+    const write = b.write === true; const share = write && b.share === true; const token = 'mdt_' + random(30);
+    const r = q('INSERT INTO tokens (hash, user, name, scope, share, created, team, can_write, made_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(sha(token), t.space, name, scope, share ? 1 : 0, now(), t.id, write ? 1 : 0, user.id);
+    teamLog(t, user, 'token_create', scope, name + (write ? (share ? ' · write, share' : ' · write') : ' · read'));
+    return { id: Number(r.lastInsertRowid), token, name, scope, write, share, mcp_url: PUBLIC_URL + '/mcp' };
+  }
+  if (p.startsWith('/team/tokens/') && m === 'DELETE') {
+    const row = q('SELECT id, name FROM tokens WHERE id = ? AND team = ?').get(+p.slice(13), t.id);
+    if (!row) throw new Fail(404, 'not_found');
+    q('DELETE FROM tokens WHERE id = ?').run(row.id);
+    teamLog(t, user, 'token_revoke', '', row.name);
+    return { ok: true };
+  }
+  throw new Fail(404, 'no_route');
 }
 
 // ---------- Eliminar la cuenta ----------
@@ -1758,7 +2087,10 @@ function accountDelete(req, user, body) {
   db.exec('BEGIN');
   try {
     if (!own && user.team) q('DELETE FROM team_members WHERE team = ? AND user = ?').run(user.team.id, user.id);
-    if (own) { q('DELETE FROM team_members WHERE team = ?').run(own.id); q('DELETE FROM team_invites WHERE team = ?').run(own.id); q('DELETE FROM teams WHERE id = ?').run(own.id); }
+    if (own) { q('DELETE FROM team_members WHERE team = ?').run(own.id); q('DELETE FROM team_invites WHERE team = ?').run(own.id); q('DELETE FROM team_log WHERE team = ?').run(own.id); q('DELETE FROM tokens WHERE team = ?').run(own.id); q('DELETE FROM teams WHERE id = ?').run(own.id); }
+    // En el registro de otros equipos, lo que hizo esta cuenta queda sin nombre.
+    q('UPDATE team_log SET uid = NULL WHERE uid = ?').run(user.id); q('UPDATE team_log SET about = NULL WHERE about = ?').run(user.id);
+    q('UPDATE tokens SET made_by = NULL WHERE made_by = ?').run(user.id);
     for (const id of ids) for (const sql of ACCOUNT_ROWS) q(sql).run(id);
     q('DELETE FROM shares WHERE email = ?').run(user.email);
     q('DELETE FROM team_invites WHERE email = ?').run(user.email);
@@ -2079,11 +2411,23 @@ async function route(req, url) {
   }
   if (p === '/team' || p.startsWith('/team/')) return teamRoute(user, p, m, req);
   if (p === '/shared' && m === 'GET') return sharedWith(user);
-  if (p === '/shares' && m === 'POST') return addShare(user, await readBody(req));
-  if (p === '/shares' && m === 'GET') return sharesOf(user, url.searchParams.get('path'));
-  if (p.startsWith('/shares/') && m === 'DELETE') { q('DELETE FROM shares WHERE id = ? AND owner = ?').run(+p.slice(8), user.id); return { ok: true }; }
-  if (p === '/links' && m === 'POST') return addLink(user, await readBody(req));
-  if (p.startsWith('/links/') && m === 'DELETE') { q('DELETE FROM links WHERE id = ? AND owner = ?').run(+p.slice(7), user.id); return { ok: true }; }
+  // Con o (en el cuerpo o en la dirección), compartir y los enlaces trabajan sobre el espacio del equipo, si el
+  // papel de quien llama y la política del equipo lo permiten. Sin o, sobre lo propio, como siempre.
+  if (p === '/shares' && m === 'POST') { const b = await readBody(req); const owner = shareOwner(user, b.o, 'share'); return owner === user ? addShare(user, b) : teamShare(user.team, user, owner, b); }
+  if (p === '/shares' && m === 'GET') return sharesOf(shareOwner(user, url.searchParams.get('o'), 'see'), url.searchParams.get('path'));
+  if (p.startsWith('/shares/') && m === 'DELETE') {
+    const owner = shareOwner(user, url.searchParams.get('o'), 'share'); const row = q('SELECT path FROM shares WHERE id = ? AND owner = ?').get(+p.slice(8), owner.id);
+    q('DELETE FROM shares WHERE id = ? AND owner = ?').run(+p.slice(8), owner.id);
+    if (row && owner !== user) teamLog(user.team, user, 'unshare', row.path);
+    return { ok: true };
+  }
+  if (p === '/links' && m === 'POST') { const b = await readBody(req); const owner = shareOwner(user, b.o, 'links'); return owner === user ? addLink(user, b) : teamLink(user.team, user, owner, b); }
+  if (p.startsWith('/links/') && m === 'DELETE') {
+    const owner = shareOwner(user, url.searchParams.get('o'), 'links'); const row = q('SELECT path FROM links WHERE id = ? AND owner = ?').get(+p.slice(7), owner.id);
+    q('DELETE FROM links WHERE id = ? AND owner = ?').run(+p.slice(7), owner.id);
+    if (row && owner !== user) teamLog(user.team, user, 'unlink', row.path);
+    return { ok: true };
+  }
   if (p === '/account' && m === 'GET') return account(user);
   if (p === '/account' && m === 'DELETE') return accountDelete(req, user, await readBody(req));
   if (p === '/trash' || p.startsWith('/trash/')) return trashRoute(user, p, m, url, m === 'POST' ? await readBody(req) : {});
@@ -2124,7 +2468,7 @@ async function route(req, url) {
   }
   // Con o, estas cuatro trabajan sobre el espacio del equipo de quien llama. Cualquier otro o se rechaza.
   if (p === '/search' && m === 'GET') return searchNotes(spaceOf(user, url.searchParams.get('o')), url.searchParams.get('q'));
-  if (p === '/rename' && m === 'POST') { const b = await readBody(req); const owner = spaceOf(user, b.o); teamHold(user, owner); return renameNote(owner, b.from, b.to, b); }
+  if (p === '/rename' && m === 'POST') { const b = await readBody(req); const owner = spaceOf(user, b.o, 'edit'); teamHold(user, owner); const r = renameNote(owner, b.from, b.to, b); if (owner !== user) teamLog(user.team, user, 'move', cleanPath(b.from), r.path); return r; }
   if (p.startsWith('/notes/')) {
     const note = dec(p.slice(7));
     const clean = cleanPath(note);
@@ -2135,11 +2479,13 @@ async function route(req, url) {
       const body = await readBody(req);
       const saved = t.role === 'owner' ? liveWrite(t.owner, clean, body.text, cleanRev(body.rev)) : writeNote(t.owner, clean, body.text, cleanRev(body.rev));
       tellSaved(t.owner.id, clean, saved, { by: user.email, pid: t.role === 'owner' ? 'o' : 'x' }, String(body.text == null ? '' : body.text));
+      if (t.role === 'team') teamLog(user.team, user, saved.rev === 1 ? 'create' : 'edit', clean);
       return saved;
     }
-    if (m === 'DELETE') return deleteNote(target(user, url, clean, 'owner').owner, clean, url.searchParams.get('forever') === '1');
+    if (m === 'DELETE') { const t = target(user, url, clean, 'owner'); const r = deleteNote(t.owner, clean, url.searchParams.get('forever') === '1'); if (t.role === 'team') teamLog(user.team, user, 'delete', clean); return r; }
   }
-  if (p.startsWith('/versions/') && m === 'GET') return q('SELECT id, saved, size FROM versions WHERE user = ? AND path = ? ORDER BY saved DESC LIMIT 100').all(spaceOf(user, url.searchParams.get('o')).id, cleanPath(dec(p.slice(10))));
+  // El historial del espacio de un equipo dura más (TEAM_HISTORY_DAYS): su lista trae más versiones.
+  if (p.startsWith('/versions/') && m === 'GET') { const owner = spaceOf(user, url.searchParams.get('o')); return q('SELECT id, saved, size FROM versions WHERE user = ? AND path = ? ORDER BY saved DESC LIMIT ?').all(owner.id, cleanPath(dec(p.slice(10))), owner === user ? 100 : 500); }
   if (p.startsWith('/version/') && m === 'GET') {
     const v = q('SELECT id, path, text, saved, e, aad FROM versions WHERE id = ? AND user = ?').get(+p.slice(9), spaceOf(user, url.searchParams.get('o')).id);
     if (!v) throw new Fail(404, 'not_found');
@@ -2190,7 +2536,7 @@ process.on('unhandledRejection', (e) => console.error('promesa sin atender · ' 
 // Limpieza: códigos vencidos, historial viejo, lo que venció en la papelera y sesiones sin uso, cada seis horas; los topes en memoria, cada diez minutos.
 setInterval(() => {
   q('DELETE FROM codes WHERE expires < ?').run(now());
-  q('DELETE FROM versions WHERE saved < ?').run(now() - HISTORY_DAYS * DAY);
+  historySweep(); teamLogSweep();
   trashSweep();
   q('DELETE FROM sessions WHERE seen < ?').run(now() - SESSION_DAYS * DAY);
 }, 6 * HOUR).unref();

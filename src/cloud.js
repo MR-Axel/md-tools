@@ -18,7 +18,7 @@
           const mine = !c.at || c.at === base;
           session = mine ? c.session || '' : ''; email = mine ? c.email || '' : ''; parked = mine ? null : c;
           if (session && !c.at) remember();
-          team = session && mine && c.team && c.team.space ? { space: String(c.team.space), name: c.team.name || '' } : null;
+          team = session && mine && c.team && c.team.space ? teamRec(c.team) : null;
           resolve();
         });
       });
@@ -29,11 +29,19 @@
   // El equipo de la cuenta: { space, name }. space es el número con el que se piden sus notas, que acá llevan rutas
   // ~space/..., como las que comparte otra cuenta. Se guarda lo último que se supo para dibujar el explorador sin
   // esperar al servidor, también sin conexión. setTeam devuelve si cambió.
+  // Lleva también el papel de la cuenta ('admin', 'editor' o 'reader'), lo que puede hacer en el espacio (can) y con
+  // qué nace una nota nueva del equipo (folder, template). Lo decide el servidor: acá solo se usa para dibujar.
   let team = null; const teamFns = [];
+  const teamRec = (m) => ({ space: String(m.space), name: m.name || '', role: m.role || 'editor', can: Object.assign({ write: true }, m.can || {}),
+    folder: (m.policies && m.policies.folder) || m.folder || '', template: (m.policies && m.policies.template) || m.template || '' });
   function setTeam(mine) {
-    const next = mine && mine.space ? { space: String(mine.space), name: mine.name || '' } : null;
-    if ((team ? team.space + '|' + team.name : '') === (next ? next.space + '|' + next.name : '')) return false;
+    const next = mine && mine.space ? teamRec(mine) : null;
+    if (JSON.stringify(team) === JSON.stringify(next)) return false;
+    // Solo el espacio, el nombre o el papel cambian el explorador; lo demás se guarda sin redibujar.
+    const shown = (t) => (t ? t.space + '|' + t.name + '|' + t.role + '|' + (t.can.write ? 1 : 0) : '');
+    const drawn = shown(team) !== shown(next);
     team = next; if (team) delete otherLists[team.space];
+    if (!drawn) { remember(); return false; }
     vaultAt = 0; // la protección del espacio del equipo viene con la lista de carpetas
     remember();
     return true;
@@ -628,11 +636,14 @@
     },
     roleOf: (p) => roles[p] || 'owner',
     shared: () => api('GET', '/shared'),
-    shares: (p) => api('GET', '/shares?path=' + encodeURIComponent(p)),
-    share: (p, mail, role, kind) => api('POST', '/shares', { path: p, email: mail, role, kind }),
-    unshare: (id) => api('DELETE', '/shares/' + id),
-    link: (p, password) => api('POST', '/links', { path: p, password }),
-    unlink: (id) => api('DELETE', '/links/' + id),
+    // Con una ruta del equipo (~espacio/...) trabajan sobre el espacio: el servidor mira el papel y la política.
+    // Las rutas que devuelven shares y sharesAll son las de adentro del espacio, sin el prefijo.
+    shares: (p) => api('GET', '/shares?path=' + encodeURIComponent(isTeam(p) ? split(p).path : p) + (isTeam(p) ? '&o=' + team.space : '')),
+    sharesAll: (p) => api('GET', '/shares' + (isTeam(p) ? '?o=' + team.space : '')),
+    share: (p, mail, role, kind) => api('POST', '/shares', Object.assign({ path: isTeam(p) ? split(p).path : p, email: mail, role, kind }, isTeam(p) ? { o: +team.space } : {})),
+    unshare: (id, p) => api('DELETE', '/shares/' + id + (isTeam(p) ? '?o=' + team.space : '')),
+    link: (p, password) => api('POST', '/links', Object.assign({ path: isTeam(p) ? split(p).path : p, password }, isTeam(p) ? { o: +team.space } : {})),
+    unlink: (id, p) => api('DELETE', '/links/' + id + (isTeam(p) ? '?o=' + team.space : '')),
     publicNote: async (token, password) => {
       await ready();
       let res;
@@ -709,9 +720,17 @@
     versions: (path) => (isTeam(path) ? api('GET', '/versions/' + encodeURIComponent(split(path).path) + '?o=' + team.space) : api('GET', '/versions/' + encodeURIComponent(path))),
     // Equipo. team() es lo último que se supo ({ space, name } o null); las llamadas devuelven el equipo como quedó.
     setTeam, isTeam, teamNow: () => team, onTeamLost: (fn) => { teamFns.push(fn); },
+    // Si la cuenta puede eso en el espacio de su equipo: 'write', 'share', 'links', 'tokens', 'automation'.
+    teamCan: (what) => !!team && !!team.can[what],
     team: {
       get: () => api('GET', '/team'),
-      invite: (mail) => api('POST', '/team/invite', { email: mail, lang: LMD.lang() }),
+      invite: (mail, role) => api('POST', '/team/invite', Object.assign({ email: mail, lang: LMD.lang() }, role ? { role } : {})),
+      role: (id, role) => api('POST', '/team/role', { id, role }),
+      policies: (change) => api('PUT', '/team/policies', change),
+      log: (qs) => api('GET', '/team/log' + (qs ? '?' + qs : '')),
+      tokens: () => api('GET', '/team/tokens'),
+      newToken: (body) => api('POST', '/team/tokens', body),
+      revoke: (id) => api('DELETE', '/team/tokens/' + id),
       uninvite: (id) => api('DELETE', '/team/invites/' + id),
       accept: (id) => api('POST', '/team/accept', { id }),
       decline: (id) => api('POST', '/team/decline', { id }),

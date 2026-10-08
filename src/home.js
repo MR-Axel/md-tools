@@ -261,7 +261,8 @@
     box.textContent = '';
     const pro = !!a && a.plan === 'pro';
     if (a) acctHost().unlocked(a);
-    const sub = a ? T(pro ? 'Plan pago' : 'Plan gratis') + ' · ' + (a.limit ? T('{n} de {m} notas', { n: a.notes, m: a.limit }) : T(a.notes === 1 ? '1 nota, sin límite' : '{n} notas, sin límite', { n: a.notes })) : why;
+    // Quien tiene el plan por un equipo que paga otra persona ve su equipo y su papel, no un plan.
+    const sub = a ? LMD.team.planLabel(a) + ' · ' + (a.limit ? T('{n} de {m} notas', { n: a.notes, m: a.limit }) : T(a.notes === 1 ? '1 nota, sin límite' : '{n} notas, sin límite', { n: a.notes })) : why;
     const b = row('menu', ICON.cloudOk, LMD.cloud.email(), sub);
     b.setAttribute('aria-haspopup', 'menu'); b.setAttribute('aria-expanded', 'false'); b.title = LMD.cloud.email();
     b.querySelector('b').title = LMD.cloud.email();

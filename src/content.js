@@ -1835,7 +1835,7 @@
         else add('cloud', { name: T('Nube'), icon: ICON.cloud }).appendChild(el('button', { type: 'button', class: 'lmd-link lmd-root-hint', text: T('Entrar para ver tus notas') }));
         // El espacio del equipo: lo que hay ahí lo leen y lo editan todos sus miembros.
         if (LMD.cloud.signedIn() && teamUrl()) {
-          const list = add('team', { name: LMD.cloud.teamNow().name || T('Equipo'), title: T('Notas del equipo'), icon: ICON.people, url: teamUrl(), add: true });
+          const list = add('team', { name: LMD.cloud.teamNow().name || T('Equipo'), title: T('Notas del equipo'), icon: ICON.people, url: teamUrl(), add: LMD.cloud.teamCan('write') });
           list.after(trashLink(LMD.cloud.teamNow().space));
           // Protegido con contraseña: el candado, el estado y sus acciones van arriba de las notas.
           fills.push(LMD.vault.load().then(() => { const line = LMD.vault.teamLine(); if (line) list.before(line); }).catch(() => { /* sin la lista, se dibuja como siempre */ }));
@@ -2335,7 +2335,10 @@
           '<small class="lmd-ptabs-ver">SharpMD ' + LMD.VERSION + '</small>' +
         '</nav>' +
         '<div class="lmd-panel-body">' +
+          // Tres niveles: esto es personal. Lo del equipo lo decide quien lo administra y está en Plan; las opciones
+          // de una nota sola, en el menú de esa nota.
           '<section class="lmd-two" data-tab="look"><h3>' + T('Apariencia') + '</h3>' +
+            '<p class="lmd-hint lmd-scope">' + T('Estos ajustes son tuyos. Nadie más los ve ni los cambia.') + '</p>' +
             '<div class="lmd-row"><span>' + T('Idioma') + '</span><div class="lmd-seg" data-seg="language" role="radiogroup">' +
               ['auto', 'es', 'en'].map((l) => '<button type="button" role="radio" data-val="' + l + '" aria-checked="' + (s.language === l) + '"' + (s.language === l ? ' class="lmd-on"' : '') + '>' + { auto: T('Automático'), es: 'Español', en: 'English' }[l] + '</button>').join('') +
             '</div></div>' +
@@ -2361,6 +2364,8 @@
                 '<div class="lmd-extra-actions"><button type="button" class="lmd-btn lmd-btn-fill" data-act="see-plans">' + T('Ver planes') + '</button></div></div>') +
           '</section>' +
           '<section class="lmd-two" data-tab="read"><h3>' + T('Lectura') + '</h3>' +
+            '<p class="lmd-hint lmd-scope">' + T('Estos ajustes son tuyos. Nadie más los ve ni los cambia.') + ' ' + T('El ancho y otras opciones de una nota se cambian desde el menú de la nota.') +
+              (APP && LMD.cloud.teamNow() ? ' ' + T('Lo que vale para todo el equipo está en Plan, en Ajustes del equipo.') : '') + '</p>' +
             '<label class="lmd-check"><input type="checkbox" data-key="centered"' + (s.centered ? ' checked' : '') + '><span>' + T('Centrar el contenido') + '</span></label>' +
             '<label class="lmd-row"><span>' + T('Ancho del contenido') + ' <output>' + s.contentWidth + ' px</output></span><input type="range" min="560" max="1800" step="20" data-key="contentWidth" data-unit=" px" value="' + s.contentWidth + '"></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="wrapCode"' + (s.wrapCode ? ' checked' : '') + '><span>' + T('Ajustar las líneas largas del código') + '</span></label>' +
