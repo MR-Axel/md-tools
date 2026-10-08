@@ -168,7 +168,7 @@ try {
   const forever = await unlock(V.id, Kb64, 0);
   check('"hasta bloquear" no tiene vencimiento', forever.json.ai && forever.json.ai.until === 0 && !(await tool(full, 'read_note', { path: 'secreta/diario.md' })).err);
   const free = await unlock((await srv.ask('POST', '/vaults', { folder: 'de-beto', ...(await Z.wrap(K2, 'la de beto, bien larga')), check: made2.check }, b)).json.id, Z.b64(K2), 15, b);
-  check('la carpeta protegida está en el plan gratis; desbloquear para la IA es del plan pago', free.status === 402 && free.json.error === 'mcp_needs_plan' && (await srv.ask('GET', '/vaults', undefined, b)).json.length === 1, free.json);
+  check('la carpeta protegida está en el plan gratis, y desbloquearla para la IA también: va con el MCP', free.status === 200 && !!free.json.ai && (await srv.ask('GET', '/vaults', undefined, b)).json.length === 1, free.json);
   await srv.stop();
   srv = await boot(data, {});
   const afterRestart = await tool(full, 'read_note', { path: 'secreta/diario.md' });

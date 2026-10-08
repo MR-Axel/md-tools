@@ -158,8 +158,9 @@ try {
   const out = await api('POST', '/team/remove', { id: C.id }, A.s);
   const gone = out.json.team.mine.vault.gone;
   check('al sacar a un miembro, quien administra recibe el aviso en la misma respuesta', out.status === 200 && gone > 0 && (await acct(A)).team.mine.vault.gone === gone);
-  const tC = (await api('POST', '/tokens', { name: 'caro' }, C.s)).json; // ya sin plan: no hay token
-  check('quien salió ya no recibe la llave envuelta, ni lee las notas, ni usa lo que tenía abierto para su IA', (await deny(api('GET', '/team/vault', undefined, C.s))) === '404:no_team' && (await api('GET', tn('plan.md'), undefined, C.s)).status === 403 && (await api('GET', '/notes?o=' + SP, undefined, C.s)).json.length === 0 && !tC.token);
+  const tC = (await api('POST', '/tokens', { name: 'caro' }, C.s)).json; // el MCP es de todos los planes: el token existe, pero ya no llega al espacio
+  const aiC = await api('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'read_note', arguments: { path: '@team/plan.md' } } }, tC.token);
+  check('quien salió ya no recibe la llave envuelta, ni lee las notas, ni usa lo que tenía abierto para su IA', (await deny(api('GET', '/team/vault', undefined, C.s))) === '404:no_team' && (await api('GET', tn('plan.md'), undefined, C.s)).status === 403 && (await api('GET', '/notes?o=' + SP, undefined, C.s)).json.length === 0 && !!tC.token && aiC.json.result.isError === true && /not_found|no_access|no_team/.test(JSON.stringify(aiC.json)), aiC.json);
   check('un miembro no ve el aviso ni lo puede descartar', !('gone' in (await acct(B)).team.mine.vault) && (await deny(api('DELETE', '/team/vault/gone', undefined, B.s))) === '403:not_admin');
   // Cambiar la contraseña ya apaga el aviso: quien salió no entra más con la que conocía.
   await api('PUT', '/team/vault', await Z.wrap(K, PASS), A.s);

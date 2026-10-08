@@ -100,7 +100,7 @@
   function openMenu(btn) {
     closeMenu();
     const pro = !!account && account.plan === 'pro';
-    const notes = LMD.comments.mode(); // '' no se ofrece, 'plan' hace falta el plan pago, 'on' disponible, 'vault' carpeta protegida
+    const notes = LMD.comments.mode(); // '' no se ofrece, 'on' disponible, 'vault' carpeta protegida
     // En una carpeta protegida no hay compartir ni comentarios para la IA: se dice por qué, con el camino a seguir.
     const vaulted = !mine().owner && !!LMD.vault.of(core.cloudPath);
     // Una nota del equipo ya es de todos sus miembros. Compartirla hacia afuera, o abrirle una sesión en vivo con
@@ -116,7 +116,7 @@
       // o en una nota del equipo un miembro que puede editar.
       (core.readOnly || (team && !teamLive) ? '' : '<button type="button" role="menuitem" data-s="live"' + (team || (account && account.live && !mine().owner && !vaulted) ? '' : ' class="lmd-locked"') + '>' + ICON.people + '<span>' + T('Colaborar en vivo') + '</span>' + (LMD.live.active() ? '<b class="lmd-menu-n">' + LMD.live.count() + '</b>' : '') + '</button>') +
       '<button type="button" role="menuitem" data-s="history"' + (pro ? '' : ' class="lmd-locked"') + '>' + ICON.reload + '<span>' + T('Historial de versiones') + '</span></button>' +
-      '<button type="button" role="menuitem" data-s="ai"' + (account && account.mcp ? '' : ' class="lmd-locked"') + '>' + ICON.link + '<span>' + T('Conectar una IA') + '</span></button>' +
+      '<button type="button" role="menuitem" data-s="ai">' + ICON.link + '<span>' + T('Conectar una IA') + '</span></button>' +
       (notes ? '<button type="button" role="menuitem" data-s="comments"' + (notes === 'on' ? '' : ' class="lmd-locked"') + '>' + ICON.comment + '<span>' + T('Comentarios para la IA') + '</span>' + (LMD.comments.count() ? '<b class="lmd-menu-n">' + LMD.comments.count() + '</b>' : '') + '</button>' : '') +
       (vaulted ? '<p class="lmd-menu-note">' + ICON.lock + '<span>' + T('Carpeta protegida: sin compartir, enlaces públicos ni comentarios para la IA. Para eso, movela a otra carpeta.') + '</span></p>' : '') +
       (account ? '<p class="lmd-menu-label">' + esc(account.email) + ' · ' + esc(LMD.team.planLabel(account)) + '</p>' : '') + '</div>';
@@ -202,6 +202,7 @@
   // ---------- Seguridad de la nube: qué se cifra, dónde, y quién tiene la llave ----------
   // Va en Ajustes → Nube, con sesión y sin ella. Cada renglón es un hecho que se puede comprobar en el código.
   const PRIVACY = 'https://sharpmd.app/privacy.html#cloud-notes';
+  const TERMS = 'https://sharpmd.app/terms.html';
   let secRedraw = null;
   const secRow = (id, icon, title, text, tech, extra) => '<li data-sec-row="' + id + '"><span class="lmd-sec-ico">' + icon + '</span><div><b>' + T(title) + '</b><p>' + T(text) + '</p>' + (extra || '') + (tech ? '<small>' + tech + '</small>' : '') + '</div></li>';
   // own: un servidor propio. can: se ofrece proteger una carpeta. count: carpetas protegidas de la cuenta.
@@ -236,7 +237,9 @@
         'AES-256-GCM · ' + T('llave no exportable') + (ai && ai.off ? ' · <button type="button" class="lmd-link" data-c="ai-tools">' + T('Prender en Herramientas') + '</button>' : ''),
         ai && ai.hasKey ? '<p class="lmd-sec-key">' + esc(ai.provider === 'compat' ? T('Compatible con OpenAI') : AI_NAMES[ai.provider] || ai.provider) + ' · ••••' + esc(ai.last4 ? ' ' + ai.last4 : '') + '</p>' : '') +
       secRow('open', ICON.code, 'Sin analítica y con código abierto', 'No hay analítica. El código es abierto y podés usar tu propio servidor.', T('App MIT · Servidor AGPL')) +
-      '</ul><p class="lmd-sec-foot">' + T('Una nota eliminada queda 30 días en la papelera.') + ' <a href="' + PRIVACY + '" target="_blank" rel="noopener noreferrer">' + T('Cómo funciona') + '</a></p></section>';
+      '</ul><p class="lmd-sec-foot">' + T('Una nota eliminada queda 30 días en la papelera.') + ' <a href="' + PRIVACY + '" target="_blank" rel="noopener noreferrer">' + T('Cómo funciona') + '</a>' +
+      // Los términos regulan el servicio alojado: con un servidor propio no se muestran.
+      (o.own ? '' : ' · <a href="' + TERMS + '" target="_blank" rel="noopener noreferrer">' + T('Términos') + '</a>') + '</p></section>';
   }
 
   // ---------- Publicar una carpeta como sitio ----------
@@ -522,7 +525,8 @@
       const kept = (box.querySelector('[data-c=folder]') || {}).value || '';
       // El permiso de compartir vuelve a quedar apagado después de crear un token.
       const keptShare = !fresh && !!(box.querySelector('[data-c=share]') || {}).checked;
-      box.innerHTML = intro + field('URL', a.mcp_url) +
+      // En el plan gratis la IA trabaja sobre las mismas notas, con el mismo tope.
+      box.innerHTML = intro + (a.limit ? hint(T('En el plan gratis tu IA trabaja con las {a} notas de tu nube.', { a: a.limit })) : '') + field('URL', a.mcp_url) +
         (made ? '<p class="lmd-ai-new">' + T('Copiá estos datos ahora: el token no se vuelve a mostrar.') + '</p>' + field('Token', made.token) +
           longField('Claude Code', 'claude mcp add --transport http sharpmd ' + made.mcp_url + ' --header "Authorization: Bearer ' + made.token + '"') +
           actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="brief">' + T('Copiar instrucciones para tu IA') + '</button>') + wsRow() : '') +
@@ -531,23 +535,22 @@
         // Un token puede alcanzar toda la nube o una sola carpeta, que suele ser un proyecto.
         (folders.length ? '<label class="lmd-pick"><span>' + T('Carpeta') + '</span><select data-c="folder"><option value="">' + T('Todas las notas') + '</option>' +
           folders.map((d) => '<option value="' + esc(d) + '"' + (d === kept ? ' selected' : '') + '>' + esc(d) + '/</option>').join('') + '</select></label>' : '') +
-        // Compartir hacia afuera es un permiso aparte, apagado si no se pide.
-        '<label class="lmd-check lmd-tok-share"><input type="checkbox" data-c="share"' + (keptShare ? ' checked' : '') + '><span>' + T('Puede compartir y crear enlaces') + '</span></label>' +
+        // Compartir hacia afuera es un permiso aparte, apagado si no se pide. Sin compartir en el plan, no se ofrece.
+        (a.share === false ? '' : '<label class="lmd-check lmd-tok-share"><input type="checkbox" data-c="share"' + (keptShare ? ' checked' : '') + '><span>' + T('Puede compartir y crear enlaces') + '</span></label>') +
         actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="token">' + T('Crear un token') + '</button>') + LMD.vault.tokenNote() + '<p class="lmd-hint lmd-acct-msg" role="status" hidden></p>' +
         // Carpetas con contraseña: cuáles puede leer la IA ahora, hasta cuándo, y cómo abrirlas o cerrarlas.
         LMD.vault.aiSection();
     };
     // Cuando cambia el estado de una carpeta protegida, este panel se vuelve a dibujar si está a la vista.
     // No pisa un token recién creado (no se vuelve a mostrar) ni un campo que tiene el foco.
-    aiRedraw = () => { const f = document.activeElement; if (a && a.mcp && box.isConnected && box.offsetParent && !box.querySelector('.lmd-ai-new') && !(f && box.contains(f) && /^(INPUT|TEXTAREA|SELECT)$/.test(f.tagName))) draw(); };
+    aiRedraw = () => { const f = document.activeElement; if (a && box.isConnected && box.offsetParent && !box.querySelector('.lmd-ai-new') && !(f && box.contains(f) && /^(INPUT|TEXTAREA|SELECT)$/.test(f.tagName))) draw(); };
     if (!LMD.cloud.enabled()) box.innerHTML = hint(T('La nube está apagada: sin ella no hay notas para conectar.'));
     else if (host.direct) box.innerHTML = intro + direct(host, 'ai');
     else if (!LMD.cloud.signedIn()) box.innerHTML = intro + hint(T('Entrá a tu cuenta para conectar una IA.')) + loginBtn(host);
     else {
       try {
         a = await fetchAccount(host);
-        if (a.mcp) await draw();
-        else box.innerHTML = intro + '<div class="lmd-extra"><p>' + T('Conectar una IA es parte del plan pago.') + '</p><div class="lmd-extra-actions"><button type="button" class="lmd-btn lmd-btn-fill" data-c="plans">' + T('Ver planes') + '</button></div></div>';
+        await draw();
       } catch (e) { if (!LMD.cloud.signedIn()) return aiPane(box, host); box.innerHTML = offline(); }
     }
     box.onclick = async (e) => {
@@ -567,7 +570,6 @@
         else if (!b) return;
         else if (b.dataset.c === 'ws') ws = !!b.checked;
         else if (b.dataset.c === 'login') goLogin(host);
-        else if (b.dataset.c === 'plans') host.tab('plan');
         else if (b.dataset.c === 'token') await draw(await LMD.cloud.newToken(T('IA'), (box.querySelector('[data-c=folder]') || {}).value || '', !!(box.querySelector('[data-c=share]') || {}).checked));
         else if (b.dataset.c === 'copy') {
           const input = b.parentNode.querySelector('input, textarea'); input.select();
@@ -640,9 +642,9 @@
       (state ? '<p class="lmd-paywait lmd-paywait-' + state + '" role="status"><span>' + T({ wait: 'Esperando la confirmación del pago…', late: 'La confirmación del pago todavía no llegó. Volvé a revisar en unos minutos.', done: wait.team ? 'Pago confirmado. Tu equipo está listo.' : 'Pago confirmado. Ya tenés el plan pago.' }[state]) + '</span>' +
         (state === 'late' ? '<button type="button" class="lmd-link" data-c="recheck">' + T('Revisar ahora') + '</button>' : '') + '</p>' : '') + note +
       '<div class="lmd-plans' + (teamCol ? ' lmd-plans-3' : '') + '">' +
-        '<div class="lmd-plan' + (a && !pro ? ' lmd-plan-on' : '') + '"><h4>' + T('Gratis') + '</h4><ul><li>' + T('Todo el editor') + '</li><li>' + T('Hasta 10 notas en la nube') + '</li><li>' + T('Notas en el navegador y en tu disco, sin límite') + '</li><li>' + T('Carpetas protegidas') + '</li></ul>' +
+        '<div class="lmd-plan' + (a && !pro ? ' lmd-plan-on' : '') + '"><h4>' + T('Gratis') + '</h4><ul><li>' + T('Todo el editor') + '</li><li>' + T('Hasta 10 notas en la nube') + '</li><li>' + T('Notas en el navegador y en tu disco, sin límite') + '</li><li>' + T('Carpetas protegidas') + '</li><li>' + T('Conectar una IA por MCP') + '</li><li>' + T('Los 12 temas') + '</li></ul>' +
           (a && !pro ? '<p class="lmd-hint">' + T('Es tu plan actual.') + '</p>' : '') + '</div>' +
-        '<div class="lmd-plan' + (own ? ' lmd-plan-on' : '') + '"><h4>' + T('Pago') + ' <small>USD 3.99 / ' + T('mes') + '</small></h4><ul><li>' + T('Notas en la nube sin límite') + '</li><li>' + T('Carpetas protegidas') + '</li><li>' + T('Compartir y editar entre varios') + '</li><li>' + T('Sesiones en vivo: quien invitás entra sin cuenta') + '</li><li>' + T('Conectar una IA por MCP') + '</li><li>' + T('Historial de versiones de 30 días') + '</li><li>' + T('Colores, tipografía y CSS propio') + '</li></ul>' +
+        '<div class="lmd-plan' + (own ? ' lmd-plan-on' : '') + '"><h4>' + T('Pago') + ' <small>USD 3.99 / ' + T('mes') + '</small></h4><ul><li>' + T('Notas en la nube sin límite') + '</li><li>' + T('Carpetas protegidas') + '</li><li>' + T('Compartir y editar entre varios') + '</li><li>' + T('Sesiones en vivo: quien invitás entra sin cuenta') + '</li><li>' + T('API y automatizaciones') + '</li><li>' + T('Historial de versiones de 30 días') + '</li><li>' + T('Colores, tipografía y CSS propio') + '</li></ul>' +
           (own ? '<p class="lmd-hint">' + T('Es tu plan actual.') + (a.manage ? ' <a href="' + esc(a.manage) + '" target="_blank" rel="noopener noreferrer">' + T('Administrar la suscripción') + '</a>' : '') + '</p>'
             : pro ? '<p class="lmd-hint">' + T('Lo tenés con el equipo.') + '</p>'
             : a ? '<div class="lmd-plan-buy">' + btn(pay.monthly, 'USD 3.99 / ' + T('mes')) + btn(pay.yearly, 'USD 39 / ' + T('año')) + '</div>'

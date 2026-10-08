@@ -111,7 +111,7 @@
   // Los temas incluidos, con la forma de un aporte para listarlos en la galería. No pasan por el servidor.
   const ABOUT = { lima: 'Papel claro con acento verde, el de siempre.', arena: 'Papel cálido color arena.', tiza: 'Gris neutro de alto contraste.', salvia: 'Verde suave para leer mucho rato.', bruma: 'Azul frío y despejado.', tinta: 'Blanco y negro, pensado para imprimir.',
     noche: 'Oscuro con acento lima, el de siempre.', carbon: 'Negro neutro de alto contraste.', marea: 'Azul noche.', bosque: 'Verde bosque.', laguna: 'Verde azulado profundo con texto cálido.', ciruela: 'Violeta oscuro con acento rosa.' };
-  const included = () => LMD.theme.PRESETS.map((p) => ({ id: p.id, type: 'theme', included: true, name: p.name, about: ABOUT[p.id] || '', free: p.free, dark: p.dark, preset: p }));
+  const included = () => LMD.theme.PRESETS.map((p) => ({ id: p.id, type: 'theme', included: true, name: p.name, about: ABOUT[p.id] || '', dark: p.dark, preset: p }));
 
   // ---------- Lo guardado en el dispositivo ----------
   let state = { templates: [], palettes: [], theme: null, author: '' };

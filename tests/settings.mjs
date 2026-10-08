@@ -48,7 +48,7 @@ const overflow = async () => { const out = []; for (const t of TABS) { await tab
 // Los dos renglones que dicen qué anda sin cuenta y qué suma tenerla: sin signos de admiración ni rayas largas. Van en Ajustes → Nube.
 // En el inicio, la cuenta vive al pie de la barra lateral: sin sesión, la invitación a entrar con una línea de qué suma.
 const perks = () => app.evaluate(() => [...document.querySelectorAll('.lmd-perks dt, .lmd-perks dd')].filter((n) => n.offsetWidth > 0).map((n) => n.textContent));
-const claro = (p) => p.length === 4 && p[0] === 'Sin cuenta' && /editor/.test(p[1]) && /disco/.test(p[1]) && /navegador/.test(p[1]) && p[2] === 'Con cuenta' && /nube \(10 gratis\)/.test(p[3]) && /Compartir, historial/.test(p[3]) && /IA en el plan pago/.test(p[3]) && !/[!¡—]/.test(p.join(''));
+const claro = (p) => p.length === 4 && p[0] === 'Sin cuenta' && /editor/.test(p[1]) && /disco/.test(p[1]) && /navegador/.test(p[1]) && p[2] === 'Con cuenta' && /nube \(10 gratis\), con tu IA conectada\./.test(p[3]) && /Compartir e historial en el plan pago\./.test(p[3]) && !/[!¡—]/.test(p.join(''));
 const text = (sel) => app.evaluate((s) => { const n = document.querySelector(s); return n ? n.textContent.trim() : null; }, sel);
 
 try {
@@ -194,9 +194,10 @@ try {
   await app.click('[data-acct=cloud] [data-c=name]'); await app.fill('[data-acct=cloud] [data-name-in]', ''); await app.click('[data-acct=cloud] [data-c=name-ok]'); await app.waitForSelector('[data-acct=cloud] [data-name]');
   check('vacío vuelve a lo que va antes de la arroba', (await text('[data-acct=cloud] [data-name]')) === mail.split('@')[0], await text('[data-acct=cloud] [data-name]'));
   await tab('ai');
+  await app.waitForSelector('[data-acct=ai] [data-c=token]');
   const freeAi = await text('[data-acct=ai]');
-  await app.click('[data-acct=ai] [data-c=plans]'); await app.waitForTimeout(450);
-  check('IA en el plan gratis: una línea que lo explica y lleva a Plan', /Conectar una IA es parte del plan pago\./.test(freeAi) && !/[!¡—]/.test(freeAi) && (await app.evaluate(() => document.querySelector('[data-ptab].lmd-on').dataset.ptab)) === 'plan' && (await app.locator('[data-acct=ai] .lmd-field').count()) === 0, freeAi);
+  check('IA en el plan gratis: la dirección y el botón para crear un token, sin aviso del plan', !/plan pago/i.test(freeAi) && /En el plan gratis tu IA trabaja con las \d+ notas de tu nube\./.test(freeAi) && !/[!¡—]/.test(freeAi) && (await app.locator('[data-acct=ai] [data-c=plans]').count()) === 0 && (await app.locator('[data-acct=ai] .lmd-field').count()) === 1 && (await app.locator('[data-acct=ai] [data-c=share]').count()) === 0, freeAi);
+  await tab('plan');
   const here = app.url();
   const freePlan = await app.evaluate(() => ({ cards: [...document.querySelectorAll('[data-acct=plan] .lmd-plan')].map((c) => c.querySelector('h4').firstChild.nodeValue.trim() + (c.classList.contains('lmd-plan-on') ? '*' : '') + (/Es tu plan actual/.test(c.textContent) ? '!' : '')).join('|'),
     pay: [...document.querySelectorAll('[data-acct=plan] [data-pay]')].map((a) => ({ label: a.textContent, href: a.href, target: a.getAttribute('target') })), manage: /Administrar/.test(document.querySelector('[data-acct=plan]').textContent) }));
@@ -207,14 +208,14 @@ try {
   await tab('look');
   const paint = () => app.evaluate(() => { const r = document.documentElement; return { themed: r.classList.contains('lmd-themed'), dark: r.classList.contains('lmd-dark'), bg: r.style.getPropertyValue('--bg'), body: getComputedStyle(document.body).backgroundColor, bar: document.querySelector('meta[name=theme-color]').content }; });
   const head = () => app.evaluate(() => { const b = document.querySelector('[data-themes]'); return { on: [...b.querySelectorAll('.lmd-th.lmd-on')].map((x) => x.dataset.th).join(), picked: [...b.querySelectorAll('.lmd-th-picked')].map((x) => x.dataset.th).join(), note: b.querySelector('.lmd-th-note').textContent,
-    custom: !b.querySelector('.lmd-th-custom').hidden, apply: !b.querySelector('[data-th-apply]').hidden, plans: !b.querySelector('[data-th-plans]').hidden }; });
+    custom: !b.querySelector('.lmd-th-custom').hidden, apply: !b.querySelector('[data-th-apply]').hidden, plans: b.querySelectorAll('[data-th-plans]').length }; });
   const grid = await app.evaluate(() => { const g = document.querySelector('.lmd-th-grid'); const body = document.querySelector('.lmd-panel-body'); const all = [...g.querySelectorAll('[data-th]')]; const gr = g.getBoundingClientRect(); const br = body.getBoundingClientRect();
     return { ids: all.map((b) => b.dataset.th).join(), names: all.map((b) => b.querySelector('b').textContent).join(','), locked: all.filter((b) => b.querySelector('.lmd-th-lock')).map((b) => b.dataset.th).join(), on: all.filter((b) => b.getAttribute('aria-checked') === 'true').map((b) => b.dataset.th).join(),
       colors: all.map((b) => getComputedStyle(b.querySelector('.lmd-th-page')).backgroundColor).join('|'), parts: all.every((b) => b.querySelector('.lmd-th-page b') && b.querySelectorAll('.lmd-th-page > i').length === 2 && b.querySelector('.lmd-th-code') && b.querySelector('.lmd-th-row em')),
       inside: gr.left >= br.left && gr.right <= br.right, wide: body.scrollWidth - body.clientWidth, page: document.documentElement.scrollWidth - document.documentElement.clientWidth, tall: all.every((b) => b.getBoundingClientRect().height >= 44) }; });
   const table = await app.evaluate(() => LMD.theme.PRESETS.map((p) => { const n = parseInt(p.c.bg.slice(1), 16); return 'rgb(' + (n >> 16 & 255) + ', ' + (n >> 8 & 255) + ', ' + (n & 255) + ')'; }).join('|'));
   check('Apariencia: una grilla con los doce temas, cada miniatura con su título, texto, código y acento en sus colores', grid.ids === 'lima,arena,tiza,salvia,bruma,tinta,noche,carbon,marea,bosque,laguna,ciruela' && grid.names === 'Lima,Arena,Tiza,Salvia,Bruma,Tinta,Noche,Carbón,Marea,Bosque,Laguna,Ciruela' && grid.parts && grid.colors === table, grid);
-  check('en el plan gratis, ocho llevan el candado y cuatro no', grid.locked === 'tiza,salvia,bruma,tinta,marea,bosque,laguna,ciruela', grid.locked);
+  check('en el plan gratis ninguno lleva candado ni dice "Plan pago"', grid.locked === '' && (await app.evaluate(() => [...document.querySelectorAll('.lmd-th-grid [data-th]')].every((b) => !/Plan pago/.test(b.title) && !b.classList.contains('lmd-th-paid')))), grid.locked);
   const startDark = (await paint()).dark;
   check('el tema puesto va marcado, y es el de siempre', grid.on === (startDark ? 'noche' : 'lima') && (await head()).note === (startDark ? 'Noche' : 'Lima') && !(await head()).custom, [grid.on, await head()]);
   check('la grilla entra en la pestaña, sin scroll horizontal', grid.inside && grid.wide <= 0 && grid.page <= 0 && grid.tall, grid);
@@ -223,15 +224,17 @@ try {
   check('pasar por encima muestra el tema en toda la app, sin guardarlo', hov.themed && !hov.dark && hov.bg === '#f6efe0' && hov.body === 'rgb(246, 239, 224)' && hov.bar === '#f6efe0' && !(await stored('settings')).preset, hov);
   await app.hover('[data-th=marea]'); await app.waitForTimeout(150);
   const hovPaid = await paint();
-  check('la vista previa vale también para un tema del plan pago', hovPaid.themed && hovPaid.dark && hovPaid.bg === '#0d1524', hovPaid);
+  check('la vista previa vale para cualquiera de los doce', hovPaid.themed && hovPaid.dark && hovPaid.bg === '#0d1524', hovPaid);
   await app.hover('.lmd-panel-card header h2'); await app.waitForTimeout(150);
   const left = await paint();
   check('al salir de la grilla vuelve el tema que estaba', !left.themed && left.dark === startDark && left.bg === '', left);
   await app.click('[data-th=marea]'); await app.waitForTimeout(150);
   const paidPick = await head();
-  check('elegir uno del plan pago lo deja en vista previa con el aviso del plan, sin botón de aplicar', paidPick.picked === 'marea' && paidPick.note === 'Marea · Plan pago' && !paidPick.apply && paidPick.plans && (await paint()).bg === '#0d1524' && !(await stored('settings')).preset, paidPick);
-  await app.click('[data-th-plans]'); await app.waitForTimeout(450);
-  check('el aviso lleva a Plan y la vista previa se suelta', (await app.evaluate(() => document.querySelector('[data-ptab].lmd-on').dataset.ptab)) === 'plan' && !(await paint()).themed);
+  check('elegir uno que antes era del plan pago lo deja en vista previa con el botón de aplicar, sin aviso del plan', paidPick.picked === 'marea' && paidPick.note === 'Marea' && paidPick.apply && paidPick.plans === 0 && (await paint()).bg === '#0d1524' && !(await stored('settings')).preset, paidPick);
+  await app.click('[data-th-apply]'); await app.waitForTimeout(450);
+  const freeApplied = await paint();
+  check('y en el plan gratis se aplica y queda guardado', freeApplied.themed && freeApplied.dark && freeApplied.bg === '#0d1524' && (await stored('settings')).preset === 'marea' && (await stored('settings')).theme === 'dark' && (await head()).on === 'marea', [freeApplied, await head()]);
+  await app.evaluate(() => new Promise((resolve) => chrome.storage.local.get('settings', (r) => chrome.storage.local.set({ settings: Object.assign({}, r.settings, { preset: '', theme: 'auto' }) }, resolve)))); await app.waitForTimeout(500);
   await tab('look');
   await app.click('[data-th=arena]'); await app.waitForTimeout(150);
   const freePick = await head();
@@ -247,7 +250,7 @@ try {
   check('volver a aplicar el tema saca lo que se cambió a mano', !(await head()).custom && (await stored('settings')).codeColor === '' && (await head()).note === 'Arena', await head());
   await app.evaluate(() => new Promise((resolve) => chrome.storage.local.get('settings', (r) => chrome.storage.local.set({ settings: Object.assign({}, r.settings, { preset: 'marea', theme: 'dark' }) }, resolve)))); await app.waitForTimeout(500);
   const sneaked = await paint();
-  check('un tema del plan pago guardado a mano no se aplica sin el plan', !sneaked.themed && sneaked.dark && sneaked.bg === '' && (await head()).on === 'noche', sneaked);
+  check('un tema guardado a mano se aplica también sin el plan', sneaked.themed && sneaked.dark && sneaked.bg === '#0d1524' && (await head()).on === 'marea', sneaked);
   await app.evaluate(() => new Promise((resolve) => chrome.storage.local.get('settings', (r) => chrome.storage.local.set({ settings: Object.assign({}, r.settings, { preset: '', theme: 'auto' }) }, resolve)))); await app.waitForTimeout(500);
   check('y el tema de siempre vuelve como estaba', !(await paint()).themed && (await head()).on === (startDark ? 'noche' : 'lima'), await head());
   await tab('look'); await app.click('[data-act=see-plans]'); await app.waitForTimeout(450);
@@ -542,6 +545,10 @@ try {
     const en = plain(LMD.sync.security({ can: true, count: 2 })); const en1 = plain(LMD.sync.security({ count: 1 })); const enOwn = plain(LMD.sync.security({ own: true })); LMD.setLang('es');
     return { es, en, en1, enOwn };
   });
+  // Los términos son del servicio alojado: el enlace va junto al de privacidad, y con un servidor propio no aparece.
+  const terms = await app.evaluate(() => { const links = (o, l) => { LMD.setLang(l); const d = document.createElement('div'); d.innerHTML = LMD.sync.security(o); const out = [...d.querySelectorAll('.lmd-sec-foot a')].map((a) => a.textContent + ' ' + a.getAttribute('href') + ' ' + a.target); LMD.setLang('es'); return out; };
+    return { es: links({}, 'es'), en: links({}, 'en'), own: links({ own: true }, 'es') }; });
+  check('junto a "Cómo funciona" hay un enlace a los Términos, en los dos idiomas, y con un servidor propio no está', terms.es.length === 2 && terms.es[1] === 'Términos ' + SITE + '/terms.html _blank' && terms.en[1] === 'Terms ' + SITE + '/terms.html _blank' && terms.own.length === 1 && fs.existsSync(path.join(root, 'terms.html')), terms);
   check('en español: las notas comunes viajan y se guardan cifradas, y el servidor tiene la llave', limpio(lit.es) && /Viajan cifradas y se guardan cifradas en el servidor\. El servidor tiene la llave, para poder compartirlas y atender a tu IA\./.test(lit.es) && /HTTPS · AES-256-GCM/.test(lit.es) && /Tenés 2 carpetas protegidas\./.test(lit.es) && /Proteger una carpeta/.test(lit.es), lit.es);
   check('en inglés dice lo mismo, sin español suelto', limpio(lit.en) && !/[áéíóúñ]/i.test(lit.en + lit.en1 + lit.enOwn) && /^Security/.test(lit.en) && /Cloud notes|Notes in the cloud/.test(lit.en) && /Encrypted in transit and on the server\. The server holds the key, so it can share them and serve your AI\./.test(lit.en) &&
     /Protected folders/.test(lit.en) && /Encrypted on your device with your password\. Not even the server can read them\./.test(lit.en) && /On the free and paid plans/.test(lit.en) && /You have 2 protected folders\./.test(lit.en) && /Protect a folder/.test(lit.en) && /How it works/.test(lit.en) && /one-time code/.test(lit.en) && /App MIT · Server AGPL/.test(lit.en), lit.en);

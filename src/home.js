@@ -13,7 +13,7 @@
   // Qué se puede hacer sin cuenta y qué suma tenerla, en dos renglones. Lo muestran el inicio y Ajustes → Nube.
   const perks = () => '<dl class="lmd-perks">' +
     '<dt>' + T('Sin cuenta') + '</dt><dd>' + T('Todo el editor, tus archivos del disco y las notas guardadas en este navegador.') + '</dd>' +
-    '<dt>' + T('Con cuenta') + '</dt><dd>' + T('Notas en la nube (10 gratis). Compartir, historial y conexión con una IA en el plan pago.') + '</dd></dl>';
+    '<dt>' + T('Con cuenta') + '</dt><dd>' + T('Notas en la nube (10 gratis), con tu IA conectada. Compartir e historial en el plan pago.') + '</dd></dl>';
 
   // Entrar a la cuenta: primero el correo, después el código que llega. Es el mismo formulario en el inicio y en Ajustes → Nube.
   // Lo que contesta el servidor al pedir o probar un código. Cada tope (429) llega con su código y con los segundos

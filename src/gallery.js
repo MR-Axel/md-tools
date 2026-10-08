@@ -105,7 +105,6 @@
   // Vienen con la app (theme.js) y se listan junto a los de la comunidad. No pasan por el servidor ni cuentan agregados.
   const includedOn = (it) => { const now = LMD.theme.active(settings()); return now.id === it.id && !now.custom; };
   async function applyIncluded(it) {
-    if (LMD.theme.locked(it.id, settings())) { previewIncluded(it); return; }
     await C.setTheme(null);
     await LMD.patch(LMD.theme.patchFor(it.id));
     core.flash(T('Tema aplicado')); setTimeout(draw, 250);
@@ -114,7 +113,7 @@
     const c = el('div', { class: 'lmd-gal-card', 'data-gid': it.id, 'data-gkind': 'included' });
     const h = el('div', { class: 'lmd-gal-head' }); h.appendChild(el('b', { text: T(it.name) })); h.appendChild(el('em', { class: 'lmd-tag', text: T('Incluido') })); c.appendChild(h);
     c.appendChild(el('p', { class: 'lmd-gal-about', text: T(it.about) }));
-    c.appendChild(el('p', { class: 'lmd-gal-by', text: T(it.dark ? 'Oscuro' : 'Claro') + (it.free ? '' : ' · ' + T('Plan pago')) }));
+    c.appendChild(el('p', { class: 'lmd-gal-by', text: T(it.dark ? 'Oscuro' : 'Claro') }));
     const th = el('div'); th.innerHTML = LMD.theme.thumb(Object.assign({}, it.preset, { name: esc(T(it.name)) })); c.appendChild(th);
     const acts = el('div', { class: 'lmd-gal-acts' }); const on = includedOn(it);
     acts.appendChild(el('button', { type: 'button', class: 'lmd-btn', 'data-gal': 'view', text: T('Vista previa') }));
@@ -127,22 +126,15 @@
     const h = el('h3', { text: T(it.name) }); h.appendChild(el('em', { class: 'lmd-tag', text: T('Incluido') })); card.appendChild(h);
     card.appendChild(el('p', { class: 'lmd-gal-about', text: T(it.about) }));
     const prev = el('div', { class: 'lmd-gal-prev' }); prev.innerHTML = LMD.theme.thumb(Object.assign({}, it.preset, { name: esc(T(it.name)) })); card.appendChild(prev);
-    const locked = LMD.theme.locked(it.id, settings());
-    if (locked) {
-      const extra = el('div', { class: 'lmd-extra' }); extra.appendChild(el('p', { text: T('Este tema viene con el plan pago.') }));
-      const pay = el('div', { class: 'lmd-extra-actions', 'data-pay': '' }); pay.appendChild(el('button', { type: 'button', class: 'lmd-btn lmd-btn-fill', 'data-gv': 'plans', text: T('Ver planes') }));
-      extra.appendChild(pay); card.appendChild(extra);
-    }
     const acts = el('div', { class: 'lmd-ask-actions' });
     acts.appendChild(el('button', { type: 'button', class: 'lmd-btn', 'data-gv': 'close', 'data-esc': '', text: T('Cerrar') }));
-    if (!locked) { const b = el('button', { type: 'button', class: 'lmd-btn lmd-btn-fill', 'data-gv': 'add', text: T(includedOn(it) ? 'Aplicado' : 'Aplicar') }); b.disabled = includedOn(it); acts.appendChild(b); }
+    const b = el('button', { type: 'button', class: 'lmd-btn lmd-btn-fill', 'data-gv': 'add', text: T(includedOn(it) ? 'Aplicado' : 'Aplicar') }); b.disabled = includedOn(it); acts.appendChild(b);
     card.appendChild(acts);
     (acts.querySelector('[data-gv=add]:not(:disabled)') || acts.querySelector('[data-gv=close]')).focus();
     card.addEventListener('click', (e) => {
       const b = e.target.closest('[data-gv]'); if (!b) return;
       m.remove();
-      if (b.dataset.gv === 'plans') core.openPanel('plan');
-      else if (b.dataset.gv === 'add') applyIncluded(it);
+      if (b.dataset.gv === 'add') applyIncluded(it);
     });
   }
 

@@ -32,7 +32,18 @@
 <link rel="preload" href="docs/clips/hero.jpg" as="image" fetchpriority="high">
 <link rel="icon" href="icons/icon32.png">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"SharpMD","url":"https://sharpmd.app/","applicationCategory":"ProductivityApplication","operatingSystem":"Web, Chrome, Edge, Brave","description":"A Markdown editor in the cloud with MCP ready: your AI reads the notes and writes down what it did. Edit with no syntax, share by link, connect an API.","featureList":["Edit Markdown on the formatted page, with no syntax to type","MCP endpoint so an AI reads and writes the notes","Comments on a block that the AI resolves","An assistant inside the note with your own API key, stored encrypted on the device","Tokens limited to one folder","Sharing, public links and live sessions by link","REST API, signed webhooks and inbound addresses","Kanban boards with fields per card","Folders with a password, encrypted in the browser","Open source, with a server you can host yourself"],"inLanguage":"en","image":"https://sharpmd.app/docs/social-card-3.png","screenshot":"https://sharpmd.app/docs/store/2-editing.png","isAccessibleForFree":true,"offers":[{"@type":"Offer","name":"Free","price":"0","priceCurrency":"USD"},{"@type":"Offer","name":"Paid","price":"3.99","priceCurrency":"USD"}],"license":"https://opensource.org/licenses/MIT","codeRepository":"https://github.com/MR-Axel/sharpmd"}</script>
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is free and what is paid?","acceptedAnswer":{"@type":"Answer","text":"The editor is free and open source, with no limit on files or on notes kept in the browser, and 10 notes in the cloud. The paid plan, USD 3.99 a month or USD 39 a year, covers what runs on our server: unlimited cloud notes, sharing, live sessions, a published site, the connection for your AI, the API and webhooks, and version history."}},{"@type":"Question","name":"Does SharpMD come with its own AI?","acceptedAnswer":{"@type":"Answer","text":"No. You bring yours, in one of two ways: connect the agent you already use over MCP (Claude, Codex or another client), or turn on the assistant inside the note with your own key for Claude, OpenAI or a compatible server."}},{"@type":"Question","name":"Does SharpMD see my AI key or what I send to the AI?","acceptedAnswer":{"@type":"Answer","text":"No. The key is stored encrypted on your device and the requests go from your browser straight to the provider you chose. That provider receives the text you send and handles it under its own terms."}},{"@type":"Question","name":"How does my AI get to my notes?","acceptedAnswer":{"@type":"Answer","text":"You create a token in the app and add SharpMD as an MCP server in Claude or another client. It only sees the notes you keep in the cloud, or one folder if you limit the token."}},{"@type":"Question","name":"How is it different from a local editor with plugins?","acceptedAnswer":{"@type":"Answer","text":"A local editor keeps the notes on one machine. To share them or reach them from an AI you add plugins and a sync service, and each person repeats the setup. SharpMD opens in the browser with the sharing, the MCP endpoint and the API already running. A file on your disk still opens without being uploaded."}},{"@type":"Question","name":"Can the server read my notes?","acceptedAnswer":{"@type":"Answer","text":"Cloud notes are stored encrypted on the server, which holds the key so it can share them and serve your AI. A folder you protect with a password is different: it is encrypted in your browser and nobody else can read it. To let your AI in, you unlock that folder for a set time. If you lose the password and the backup key, those notes cannot be recovered."}},{"@type":"Question","name":"Can several people edit a note at once?","acceptedAnswer":{"@type":"Answer","text":"Open a live session on a cloud note and send the link. Up to 12 people write at once. You end the session when you want, or make a new link to leave the old one out."}},{"@type":"Question","name":"What happens to a cloud note I delete?","acceptedAnswer":{"@type":"Answer","text":"It stays in the trash for 30 days and you can restore it. While it is there it is not searched, shared or reachable by your AI."}},{"@type":"Question","name":"Does it work without a connection?","acceptedAnswer":{"@type":"Answer","text":"Yes. The extension always does, and the web app does once you have opened it. Cloud notes you have already opened are there too, and what you write uploads when the connection is back."}},{"@type":"Question","name":"Which Markdown does it support?","acceptedAnswer":{"@type":"Answer","text":"GitHub Flavored Markdown, plus KaTeX math, Mermaid and Graphviz diagrams, footnotes, task lists, callouts, definition lists and YAML front matter."}},{"@type":"Question","name":"How do I open a .md file with a double-click?","acceptedAnswer":{"@type":"Answer","text":"Install the extension, turn on \"Allow access to file URLs\" in its details, and set Chrome as the default app for .md files."}}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is free and what is paid?","acceptedAnswer":{"@type":"Answer","text":"The editor is free and open source, with no limit on files or on notes kept in the browser. The free plan adds 10 notes in the cloud, the MCP connection for your AI over those notes and the twelve themes. The paid plan, USD 3.99 a month or USD 39 a year, covers the rest of what runs on our server: unlimited cloud notes, image uploads, sharing, live sessions, a published site, the API and webhooks, and version history."}},{"@type":"Question","name":"Does SharpMD come with its own AI?","acceptedAnswer":{"@type":"Answer","text":"No. You bring yours, in one of two ways: connect the agent you already use over MCP (Claude, Codex or another client), or turn on the assistant inside the note with your own key for Claude, OpenAI or a compatible server."}},{"@type":"Question","name":"Does SharpMD see my AI key or what I send to the AI?","acceptedAnswer":{"@type":"Answer","text":"No. The key is stored encrypted on your device and the requests go from your browser straight to the provider you chose. That provider receives the text you send and handles it under its own terms."}},{"@type":"Question","name":"How does my AI get to my notes?","acceptedAnswer":{"@type":"Answer","text":"You create a token in the app and add SharpMD as an MCP server in Claude or another client. It only sees the notes you keep in the cloud, or one folder if you limit the token."}},{"@type":"Question","name":"How is it different from a local editor with plugins?","acceptedAnswer":{"@type":"Answer","text":"A local editor keeps the notes on one machine. To share them or reach them from an AI you add plugins and a sync service, and each person repeats the setup. SharpMD opens in the browser with the sharing, the MCP endpoint and the API already running. A file on your disk still opens without being uploaded."}},{"@type":"Question","name":"Can the server read my notes?","acceptedAnswer":{"@type":"Answer","text":"Cloud notes are stored encrypted on the server, which holds the key so it can share them and serve your AI. A folder you protect with a password is different: it is encrypted in your browser and nobody else can read it. To let your AI in, you unlock that folder for a set time. If you lose the password and the backup key, those notes cannot be recovered."}},{"@type":"Question","name":"Can several people edit a note at once?","acceptedAnswer":{"@type":"Answer","text":"Open a live session on a cloud note and send the link. Up to 12 people write at once. You end the session when you want, or make a new link to leave the old one out."}},{"@type":"Question","name":"What happens to a cloud note I delete?","acceptedAnswer":{"@type":"Answer","text":"It stays in the trash for 30 days and you can restore it. While it is there it is not searched, shared or reachable by your AI."}},{"@type":"Question","name":"Does it work without a connection?","acceptedAnswer":{"@type":"Answer","text":"Yes. The extension always does, and the web app does once you have opened it. Cloud notes you have already opened are there too, and what you write uploads when the connection is back."}},{"@type":"Question","name":"Which Markdown does it support?","acceptedAnswer":{"@type":"Answer","text":"GitHub Flavored Markdown, plus KaTeX math, Mermaid and Graphviz diagrams, footnotes, task lists, callouts, definition lists and YAML front matter."}},{"@type":"Question","name":"How do I open a .md file with a double-click?","acceptedAnswer":{"@type":"Answer","text":"Install the extension, turn on \"Allow access to file URLs\" in its details, and set Chrome as the default app for .md files."}}]}</script>
+<script>
+// Two headlines on trial. The HTML carries B. The first visit draws A or B, half and half, and keeps it in this browser.
+// Whoever is being sent to the app (class go) takes no part.
+(function () {
+  var d = document.documentElement, v = null;
+  if (d.classList.contains('go')) return;
+  try { v = localStorage.getItem('sharpmd:hero'); } catch (e) { /* no storage */ }
+  if (v !== 'a' && v !== 'b') { v = Math.random() < 0.5 ? 'a' : 'b'; try { localStorage.setItem('sharpmd:hero', v); } catch (e) { /* no storage */ } }
+  d.setAttribute('data-ab', v);
+})();
+</script>
 <style>
   @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
   :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --faint: #8a909c; --line: #dedbd2; --accent: #3f6b0c; --fill: #4d7c0f; --on: #fff; --shadow: 0 24px 60px rgba(30, 32, 38, .16); --mono: ui-monospace, "Cascadia Code", Consolas, monospace; }
@@ -86,6 +97,8 @@
   .lede { margin: 0 0 28px; max-width: 30em; color: var(--muted); font-size: clamp(17px, 1.7vw, 19.5px); }
   .cta { display: flex; flex-wrap: wrap; gap: 12px; }
   .under { margin: 20px 0 0; color: var(--faint); font-size: 14px; }
+  /* Headline A is written in by the script below the hero: until then its place is kept and nothing shows. */
+  html[data-ab="a"]:not(.ab-on) .hero h1, html[data-ab="a"]:not(.ab-on) .hero .lede { visibility: hidden; }
   /* Un clip: la app grabada, en bucle. Mientras no se reproduce se ve el póster. */
   .clip { display: block; width: 100%; height: auto; aspect-ratio: 8 / 5; border: 1px solid var(--line); border-radius: 12px; background: #0c0d10; box-shadow: var(--shadow); object-fit: cover; }
 
@@ -320,8 +333,8 @@
 
 <header class="hero" id="top"><div class="wrap">
   <div>
-    <h1>Markdown notes your AI writes and your team reads.</h1>
-    <p class="lede">
+    <h1 data-a="Edit Markdown without writing Markdown.">Markdown notes your AI writes and your team reads.</h1>
+    <p class="lede" data-a="Click a heading, a table or a diagram and change it right there, on the formatted page. No syntax to type and nothing to install. Your AI reads and writes the same notes over MCP.">
       A Markdown editor in the cloud, with the MCP endpoint already running. Claude, Codex or any other MCP client reads your notes before it works and writes down what it did. You edit on the formatted page, with no syntax to type.
       
     </p>
@@ -330,6 +343,25 @@
       <a class="btn" href="#ai">Connect your AI</a>
     </div>
     <p class="under">The editor is free and open source. Nothing to install, and no account needed to write.</p>
+    <script>
+    // Puts headline A in place before the hero is painted, and counts: one view per load, and one open the first time
+    // a link to the app or to the plans is used. What is sent is the variant and the event. No cookie and no identifier.
+    // Only the published site counts.
+    (function () {
+      var d = document.documentElement, v = d.getAttribute('data-ab'), opened = false;
+      if (v !== 'a' && v !== 'b') return;
+      if (v === 'a') [].forEach.call(document.querySelectorAll('.hero h1[data-a], .hero .lede[data-a]'), function (n) { n.textContent = n.getAttribute('data-a'); });
+      d.classList.add('ab-on');
+      if (location.hostname !== 'sharpmd.app' || !navigator.sendBeacon) return;
+      function tell(e) { try { navigator.sendBeacon('https://sync.sharpmd.app/landing', JSON.stringify({ v: v, e: e })); } catch (x) { /* not counted */ } }
+      tell('view');
+      document.addEventListener('click', function (ev) {
+        var a = ev.target.closest ? ev.target.closest('a[href]') : null; if (!a || opened) return;
+        var h = a.getAttribute('href') || '';
+        if (/src\/app\.html/.test(h) || /#plans$/.test(h)) { opened = true; tell('open'); }
+      }, true);
+    })();
+    </script>
   </div>
   <video class="clip" muted loop playsinline preload="none" poster="docs/clips/hero.jpg" width="880" height="550" aria-label="SharpMD: a sentence typed on the formatted page of a cloud note, and then the summary an AI wrote arrives in the same note"><source src="docs/clips/hero.mp4" type="video/mp4"><source src="docs/clips/hero.webm" type="video/webm"></video>
 </div></header>
@@ -531,7 +563,7 @@
 
 <section class="band center yours"><div class="wrap">
   <h2>Make it yours</h2>
-  <p class="lede">Twelve built-in themes, six light and six dark. Four of them are free.</p>
+  <p class="lede">Twelve built-in themes, six light and six dark, on every plan.</p>
   <ul class="strip" aria-hidden="true">
     <li data-theme="lima" style="--b:#fbfaf7;--f:#1d2026;--m:#5c6370;--c:#f1efe9;--l:#dedbd2;--a:#3f6a0a"><b>Lime</b><i></i><i></i><u><s></s><em></em></u></li>
     <li data-theme="arena" style="--b:#f6efe0;--f:#2b2419;--m:#5f5443;--c:#ece2cc;--l:#d9cdb4;--a:#874710"><b>Sand</b><i></i><i></i><u><s></s><em></em></u></li>
@@ -568,12 +600,12 @@
       <li class="no"><span>Sharing and public links</span><i class="sr">not included</i></li>
       <li class="no"><span>Live sessions by link</span><i class="sr">not included</i></li>
       <li class="no"><span>Publish a site</span><i class="sr">not included</i></li>
-      <li class="no"><span>The MCP connection for your AI</span><i class="sr">not included</i></li>
-      <li class="no"><span>Comments your AI resolves</span><i class="sr">not included</i></li>
+      <li><span>The MCP connection for your AI</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
+      <li><span>Comments your AI resolves</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></li>
       <li class="no"><span>API, webhooks and inbound addresses</span><i class="sr">not included</i></li>
       <li class="no"><span>Version history</span><i class="sr">not included</i></li>
       <li class="grp"><span>Appearance</span></li>
-      <li><span>Built-in themes</span><em>4</em></li>
+      <li><span>Built-in themes</span><em>12</em></li>
       <li class="no"><span>Colors, fonts and your own CSS</span><i class="sr">not included</i></li>
     </ul></div>
     <div class="plan paid"><h3>Paid</h3><p class="price">USD 3.99 <small>a month</small></p><p class="alt">or USD 39 a year</p>
@@ -631,7 +663,7 @@
     <p class="muted">Something else? Write to <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>.</p>
   </div>
   <div class="faqs">
-    <details class="faq"><summary>What is free and what is paid?</summary><p>The editor is free and open source, with no limit on files or on notes kept in the browser, and 10 notes in the cloud. The paid plan, USD 3.99 a month or USD 39 a year, covers what runs on our server: unlimited cloud notes, sharing, live sessions, a published site, the connection for your AI, the API and webhooks, and version history.</p></details>
+    <details class="faq"><summary>What is free and what is paid?</summary><p>The editor is free and open source, with no limit on files or on notes kept in the browser. The free plan adds 10 notes in the cloud, the MCP connection for your AI over those notes and the twelve themes. The paid plan, USD 3.99 a month or USD 39 a year, covers the rest of what runs on our server: unlimited cloud notes, image uploads, sharing, live sessions, a published site, the API and webhooks, and version history.</p></details>
     <details class="faq"><summary>Does SharpMD come with its own AI?</summary><p>No. You bring yours, in one of two ways: connect the agent you already use over MCP (Claude, Codex or another client), or turn on the assistant inside the note with your own key for Claude, OpenAI or a compatible server.</p></details>
     <details class="faq"><summary>Does SharpMD see my AI key or what I send to the AI?</summary><p>No. The key is stored encrypted on your device and the requests go from your browser straight to the provider you chose. That provider receives the text you send and handles it under its own terms.</p></details>
     <details class="faq"><summary>How does my AI get to my notes?</summary><p>You create a token in the app and add SharpMD as an MCP server in Claude or another client. It only sees the notes you keep in the cloud, or one folder if you limit the token.</p></details>
@@ -658,6 +690,10 @@
   <a href="privacy.html">Privacy</a>
   <a href="api.html">API</a>
   <a href="support.html">Support</a>
+  <a href="terms.html">Terms</a>
+  <a href="refunds.html">Refunds</a>
+  <a href="acceptable-use.html">Acceptable use</a>
+  <a href="copyright.html">Copyright</a>
 </div></footer>
 
 <!-- Las vistas previas de "También trae": una sola caja que sigue al cursor, con una escena por función. -->

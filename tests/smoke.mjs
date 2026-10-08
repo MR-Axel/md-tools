@@ -246,6 +246,28 @@ try {
   const delEs = await inView();
   await web.click('.lang [data-set=en]');
   check('privacy.html#delete-account lleva a cómo eliminar la cuenta, en inglés y en castellano', JSON.stringify([delEn, delEs]) === JSON.stringify([['Deleting your account', true, true], ['Eliminar tu cuenta', true, true]]) && (await web.locator('#delete-account').count()) === 1, [delEn, delEs]);
+  // Las páginas legales (términos, reembolsos, uso aceptable, derechos de autor): las dos versiones en la misma página,
+  // el botón cambia de idioma, sin signos de admiración ni rayas, y enlazadas desde el pie de la portada y desde el pago.
+  const LEGAL = ['terms', 'refunds', 'acceptable-use', 'copyright'];
+  const legalSeen = [];
+  for (const p of LEGAL) {
+    const look = () => web.evaluate(() => { const part = (l) => document.querySelector('main > div[lang=' + l + ']'); const vis = [...document.querySelectorAll('h1')].filter((h) => h.offsetParent);
+      return { lang: document.documentElement.getAttribute('data-lang'), h1: vis.map((h) => h.textContent).join('|'), en: part('en') ? part('en').textContent.length : 0, es: part('es') ? part('es').textContent.length : 0,
+        h2: [part('en'), part('es')].map((d) => (d ? d.querySelectorAll('h2').length : -1)), bad: (document.querySelector('main').textContent.match(/[!¡—–]/g) || []).join(''),
+        prevails: /English version applies/.test(part('en').textContent) && /vale la versión en inglés/.test(part('es').textContent), foot: [...document.querySelectorAll('.legal a')].filter((a) => a.offsetParent).map((a) => a.getAttribute('href')).join() }; });
+    await web.goto(origin + '/' + p + '.html'); await web.waitForSelector('h1:visible');
+    const en = await look(); await web.click('.lang [data-set=es]'); const es = await look(); await web.click('.lang [data-set=en]');
+    legalSeen.push({ p, ok: en.lang === 'en' && es.lang === 'es' && !!en.h1 && !!es.h1 && en.h1 !== es.h1 && !/\|/.test(en.h1 + es.h1) && en.en > 1500 && en.es > 1500 && en.h2[0] === en.h2[1] && en.h2[0] >= 5 && !en.bad && en.prevails
+      && en.foot === 'terms.html,privacy.html,refunds.html,acceptable-use.html,copyright.html,support.html', en, es: es.h1 });
+  }
+  check('las cuatro páginas legales existen, traen inglés y castellano con las mismas secciones, cambian de idioma y no tienen signos de admiración ni rayas', legalSeen.every((x) => x.ok), legalSeen.filter((x) => !x.ok));
+  const rawOf = (f) => fs.readFileSync(path.join(root, f), 'utf8');
+  const footOf = (html) => (html.match(/<footer>[\s\S]*?<\/footer>/) || [''])[0];
+  const payRaw = rawOf('pay.html'); const agree = (payRaw.match(/<p class="fine agree">[\s\S]*?<\/p>/) || [''])[0];
+  const linked = { home: LEGAL.every((p) => footOf(rawOf('index.html')).includes('href="' + p + '.html"')), es: LEGAL.every((p) => footOf(rawOf('es/index.html')).includes('href="../' + p + '.html"')),
+    pay: ['en', 'es'].every((l) => new RegExp('<span lang="' + l + '">[^\\n]*?href="terms\\.html"[^\\n]*?href="refunds\\.html"').test(agree)), near: payRaw.indexOf('id="go"') > 0 && payRaw.indexOf('class="fine agree"') > payRaw.indexOf('id="go"') && payRaw.indexOf('class="fine agree"') < payRaw.indexOf('id="other"'),
+    map: LEGAL.every((p) => rawOf('sitemap.xml').includes('https://sharpmd.app/' + p + '.html') && rawOf('llms.txt').includes('https://sharpmd.app/' + p + '.html')) };
+  check('las páginas legales están enlazadas desde el pie de la portada en los dos idiomas, junto al botón de pagar, y figuran en el sitemap y en llms.txt', linked.home && linked.es && linked.pay && linked.near && linked.map, linked);
   // La pantalla de carga: viene en el HTML (se ve desde el primer pintado) y se va cuando la app está lista.
   const rawApp = fs.readFileSync(path.join(root, 'src', 'app.html'), 'utf8');
   await web.goto(origin + '/src/app.html'); await web.waitForSelector('.lmd-home');
@@ -263,6 +285,63 @@ try {
   const landed = await ret.evaluate(() => { document.documentElement.classList.add('go'); return { seen: [...document.body.children].filter((n) => n.offsetParent || n.offsetWidth).length, bg: getComputedStyle(document.body).backgroundColor, logo: getComputedStyle(document.body, '::before').backgroundImage.slice(0, 20), blink: getComputedStyle(document.body, '::after').animationName }; });
   check('mientras redirige se ve solo el logo con el cursor, sobre el fondo de la app', landed.seen === 0 && landed.bg === 'rgb(18, 20, 24)' && /^url\("data:image\/svg/.test(landed.logo) && landed.blink === 'go-blink', landed);
   await ret.close();
+  // Dos titulares a prueba. El HTML trae el B (el de siempre), para buscadores y sin JavaScript; un script en línea elige
+  // A o B la primera vez, lo recuerda en este navegador y pone el A antes de pintar. La portada publicada avisa al
+  // servidor qué titular mostró y si se abrió la app o se fue a los planes: la variante y el evento, y nada más.
+  {
+    const HERO = { en: { a: 'Edit Markdown without writing Markdown.', b: 'Markdown notes your AI writes and your team reads.', pa: /^Click a heading, a table or a diagram and change it right there/, pb: /^A Markdown editor in the cloud, with the MCP endpoint already running/ },
+      es: { a: 'Editá Markdown sin escribir Markdown.', b: 'Notas en Markdown que tu IA escribe y tu equipo lee.', pa: /^Hacés clic en un título, una tabla o un diagrama y lo cambiás ahí mismo/, pb: /^Un editor de Markdown en la nube, con la conexión MCP ya andando/ } };
+    const pages = { en: fs.readFileSync(path.join(root, 'index.html'), 'utf8'), es: fs.readFileSync(path.join(root, 'es', 'index.html'), 'utf8') };
+    const inHtml = ['en', 'es'].map((l) => { const h = pages[l]; const h1 = (h.match(/<h1[^>]*>([\s\S]*?)<\/h1>/) || [])[1]; const pick = h.indexOf("localStorage.getItem('sharpmd:hero')");
+      return { l, h1, a: h.includes('<h1 data-a="' + HERO[l].a + '">'), title: !h.match(/<title>[^<]*<\/title>/)[0].includes(HERO[l].a), early: pick > 0 && pick < h.indexOf('<style>') && pick < h.indexOf('<body'),
+        safe: /try \{ v = localStorage\.getItem\('sharpmd:hero'\); \} catch/.test(h) && /try \{ localStorage\.setItem\('sharpmd:hero', v\); \} catch/.test(h), half: /Math\.random\(\) < 0\.5 \? 'a' : 'b'/.test(h), plain: !/[!¡—–]/.test(HERO[l].a + h.match(/class="lede" data-a="([^"]*)"/)[1]) }; });
+    check('titulares a prueba: el HTML sale con el B en los dos idiomas, y el A viaja como dato', inHtml.every((x) => x.h1 === HERO[x.l].b && x.a && x.title && x.plain), inHtml);
+    check('titulares a prueba: la elección va en un script en línea antes de los estilos, mitad y mitad, y con el almacenamiento entre try y catch', inHtml.every((x) => x.early && x.safe && x.half), inHtml);
+    const ab = await ctx.newPage(); watch(ab);
+    const sentOut = []; ab.on('request', (r) => { if (/sync\.sharpmd\.app/.test(r.url())) sentOut.push(r.url()); });
+    const hero = () => ab.evaluate(() => { const d = document.documentElement; const h = document.querySelector('.hero h1'); const p = document.querySelector('.hero .lede'); let kept = null; try { kept = localStorage.getItem('sharpmd:hero'); } catch (e) { /* sin almacenamiento */ }
+      return { v: d.getAttribute('data-ab'), kept, on: d.classList.contains('ab-on'), h1: h.textContent.trim(), p: p.textContent.trim(), seen: getComputedStyle(h).visibility === 'visible' && getComputedStyle(p).visibility === 'visible' && h.offsetHeight > 0 }; });
+    const open = async (url, v) => { await ab.goto(url); await ab.waitForSelector('.hero h1'); if (v !== undefined) { await ab.evaluate((x) => { if (x) localStorage.setItem('sharpmd:hero', x); else localStorage.removeItem('sharpmd:hero'); }, v); await ab.goto(url); await ab.waitForSelector('.hero h1'); } return hero(); };
+    const first = await open(origin + '/?site', ''); const again = await open(origin + '/?site'); const third = await open(origin + '/?site');
+    check('titulares a prueba: la primera visita elige uno, lo guarda y las siguientes muestran el mismo', /^[ab]$/.test(first.v) && first.kept === first.v && first.on && first.seen && first.h1 === HERO.en[first.v] && again.v === first.v && third.v === first.v && again.h1 === first.h1, [first, again.v, third.v]);
+    const seenA = await open(origin + '/?site', 'a'); const seenB = await open(origin + '/?site', 'b'); const esA = await open(origin + '/es/?site', 'a'); const esB = await open(origin + '/es/?site', 'b');
+    check('titulares a prueba: el A cambia el titular y la bajada, y el B deja los del HTML, en inglés y en castellano', seenA.h1 === HERO.en.a && HERO.en.pa.test(seenA.p) && seenA.seen && seenB.h1 === HERO.en.b && HERO.en.pb.test(seenB.p) && seenB.seen && esA.h1 === HERO.es.a && HERO.es.pa.test(esA.p) && esB.h1 === HERO.es.b && HERO.es.pb.test(esB.p), [seenA, seenB, esA, esB]);
+    await open(origin + '/?site', 'a');
+    const flash = await ab.evaluate(() => { const d = document.documentElement; const h = document.querySelector('.hero h1'); const p = document.querySelector('.hero .lede'); const size = h.offsetHeight; d.classList.remove('ab-on'); const hid = getComputedStyle(h).visibility === 'hidden' && getComputedStyle(p).visibility === 'hidden' && h.offsetHeight === size;
+      d.setAttribute('data-ab', 'b'); const b = getComputedStyle(h).visibility === 'visible'; d.setAttribute('data-ab', 'a'); d.classList.add('ab-on'); return { hid, b, back: getComputedStyle(h).visibility === 'visible' }; });
+    check('titulares a prueba: hasta que el A está puesto su lugar queda guardado y no se ve el otro, y el B nunca se esconde', flash.hid && flash.b && flash.back, flash);
+    const drawn = new Set(); for (let i = 0; i < 16 && drawn.size < 2; i++) drawn.add((await open(origin + '/?site', '')).v);
+    check('titulares a prueba: de visitas nuevas salen los dos', drawn.has('a') && drawn.has('b'), [...drawn]);
+    check('titulares a prueba: fuera del sitio publicado no se avisa nada al servidor', sentOut.length === 0, sentOut);
+    // El sitio publicado, servido desde esta carpeta: nada sale de esta máquina.
+    const beats = [];
+    await ab.route('https://sharpmd.app/**', (r) => { const rel = decodeURIComponent(new URL(r.request().url()).pathname); const file = path.join(root, rel.endsWith('/') ? rel + 'index.html' : rel);
+      if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return r.fulfill({ status: 404, body: '' });
+      return r.fulfill({ status: 200, contentType: TYPES[path.extname(file)] || 'application/octet-stream', body: fs.readFileSync(file) }); });
+    await ab.route('https://sharpmd.app/src/app.html**', (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>app</title><p id="app">app</p>' }));
+    await ab.route('https://sync.sharpmd.app/**', (r) => { const q = r.request(); beats.push({ url: q.url(), method: q.method(), body: q.postData(), type: q.headers()['content-type'] || '', cookie: q.headers().cookie || '', auth: q.headers().authorization || '' }); return r.fulfill({ status: 204, body: '' }); });
+    const live = await open('https://sharpmd.app/?site', 'a'); await ab.waitForTimeout(300);
+    beats.length = 0;
+    await ab.goto('https://sharpmd.app/?site'); await ab.waitForSelector('.hero h1'); await ab.waitForTimeout(400);
+    const views = beats.slice();
+    check('titulares a prueba: al cargar, la portada publicada manda un aviso con la variante y el evento, y nada más', live.h1 === HERO.en.a && views.length === 1 && views[0].url === 'https://sync.sharpmd.app/landing' && views[0].method === 'POST' && views[0].body === '{"v":"a","e":"view"}' && /^text\/plain/.test(views[0].type) && !views[0].cookie && !views[0].auth, views);
+    // Los botones se tocan sin dejar que naveguen: lo que se mira es el aviso.
+    await ab.evaluate(() => document.addEventListener('click', (e) => e.preventDefault()));
+    const tap = async (sel) => { await ab.evaluate((s) => document.querySelector(s).click(), sel); await ab.waitForTimeout(150); return beats.length; };
+    const afterFaq = await tap('nav a[href="#faq"]'); const afterOpen = await tap('.hero a.btn.fill[href="src/app.html"]'); const afterMore = (await tap('nav a[href="#plans"]'), await tap('#plans a[href^="src/app.html"]'));
+    check('titulares a prueba: un botón que abre la app avisa "open" una vez por visita, y un enlace cualquiera no avisa', afterFaq === 1 && afterOpen === 2 && afterMore === 2 && beats[1].body === '{"v":"a","e":"open"}', [afterFaq, afterOpen, afterMore, beats.map((b) => b.body)]);
+    beats.length = 0; await open('https://sharpmd.app/?site', 'b'); await ab.waitForTimeout(300); beats.length = 0;
+    await ab.goto('https://sharpmd.app/es/?site'); await ab.waitForSelector('.hero h1'); await ab.waitForTimeout(300);
+    await ab.evaluate(() => document.addEventListener('click', (e) => e.preventDefault())); await tap('nav a[href="#plans"]');
+    const kept = await ab.evaluate(() => ({ cookie: document.cookie, keys: Object.keys(localStorage).sort().join() }));
+    check('titulares a prueba: ir a los planes también cuenta, con la variante B y en la portada en castellano', beats.map((b) => b.body).join() === '{"v":"b","e":"view"},{"v":"b","e":"open"}', beats.map((b) => b.body));
+    check('titulares a prueba: no deja cookies, y en el navegador guarda solo la variante junto al idioma', kept.cookie === '' && kept.keys === 'mdtools:site-lang,sharpmd:hero', kept);
+    // Quien ya usó la app va directo a ella: no se le elige titular ni cuenta como visita.
+    await ab.evaluate(() => { localStorage.setItem('sharpmd:app', '1'); localStorage.removeItem('sharpmd:hero'); }); beats.length = 0;
+    await ab.goto('https://sharpmd.app/').catch(() => {}); await ab.waitForSelector('#app', { timeout: 10000 }).catch(() => {}); await ab.waitForTimeout(300);
+    check('titulares a prueba: quien entra directo a la app no cuenta como visita ni recibe un titular', /src\/app\.html/.test(ab.url()) && beats.length === 0 && (await ab.evaluate(() => localStorage.getItem('sharpmd:hero'))) === null, [ab.url(), beats.length]);
+    await ab.close();
+  }
   await web.evaluate(async () => {
     const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('web', { create: true });
     const h = await dir.getFileHandle('nota.md', { create: true }); const w = await h.createWritable();

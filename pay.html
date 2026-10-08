@@ -31,6 +31,11 @@
   .seats button { width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--fg); font: inherit; font-size: 20px; line-height: 1; cursor: pointer; }
   .seats button:disabled { opacity: 0.4; cursor: default; }
   .fine { margin: 16px 0 0; font-size: 13px; color: var(--faint); }
+  .fine.agree { margin-top: 10px; text-align: center; color: var(--muted); }
+  .fine a { color: var(--accent); }
+  .legal { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; margin: 18px 0 0; font-size: 12.5px; }
+  .legal a { color: var(--faint); text-decoration: none; }
+  .legal a:hover { color: var(--fg); }
   .back { display: block; margin-top: 14px; text-align: center; font-size: 14px; color: var(--muted); }
   .back:hover { color: var(--accent); }
   [hidden] { display: none !important; }
@@ -43,11 +48,12 @@
   <section id="buy" hidden>
     <h1><span data-for="solo"><span lang="en">Paid plan</span><span lang="es">Plan pago</span></span><span data-for="team" hidden><span lang="en">Team plan</span><span lang="es">Plan de equipo</span></span></h1>
     <p class="price"><span id="amount"></span> <small id="cycle"></small></p>
-    <p data-for="solo"><span lang="en">Unlimited cloud notes, sharing, the MCP connection, 30 days of version history, and colors, fonts and your own CSS.</span><span lang="es">Notas en la nube sin límite, compartir, la conexión MCP, 30 días de historial, y colores, tipografías y tu propio CSS.</span></p>
+    <p data-for="solo"><span lang="en">Unlimited cloud notes, image uploads, sharing, the API and webhooks, 30 days of version history, and colors, fonts and your own CSS.</span><span lang="es">Notas en la nube sin límite, subir imágenes, compartir, la API y los webhooks, 30 días de historial, y colores, tipografías y tu propio CSS.</span></p>
     <p data-for="team" hidden><span lang="en">Everything in the paid plan for each person, and a shared space for the team notes with roles, team settings, an activity log and a year of version history. 2 people included, USD 3 a month for each extra one.</span><span lang="es">Todo lo del plan pago para cada persona y un espacio compartido para las notas del equipo, con papeles, ajustes del equipo, registro de actividad y un año de historial de versiones. 2 personas incluidas, USD 3 por mes por cada una más.</span></p>
     <div class="seats" data-for="team" hidden><span><span lang="en">People</span><span lang="es">Personas</span></span><button type="button" id="less" aria-label="-">-</button><b id="seats" aria-live="polite">2</b><button type="button" id="more" aria-label="+">+</button></div>
     <div class="who"><small><span lang="en">For the account</span><span lang="es">Para la cuenta</span></small><span id="email"></span></div>
     <button type="button" class="btn" id="go"><span lang="en">Pay with card</span><span lang="es">Pagar con tarjeta</span></button>
+    <p class="fine agree"><span lang="en">By subscribing you agree to the <a href="terms.html" target="_blank" rel="noopener">Terms</a> and the <a href="refunds.html" target="_blank" rel="noopener">Refund policy</a>.</span><span lang="es">Al suscribirte aceptás los <a href="terms.html" target="_blank" rel="noopener">Términos</a> y la <a href="refunds.html" target="_blank" rel="noopener">Política de reembolsos</a>.</span></p>
     <a class="btn ghost" id="other" href="#"></a>
     <a class="btn ghost" id="team" href="#" hidden><span lang="en">Team plan: USD 7.98 a month for 2 people</span><span lang="es">Plan de equipo: USD 7.98 por mes para 2 personas</span></a>
     <p class="fine" data-for="team" hidden><span lang="en">You invite people and change the number of seats from Settings, Plan.</span><span lang="es">Invitás a la gente y cambiás la cantidad de lugares desde Ajustes, Plan.</span></p>
@@ -73,6 +79,8 @@
     <p id="stay" hidden><span lang="en">Your account moves to the paid plan in about a minute. You can close this tab and go back to SharpMD.</span><span lang="es">Tu cuenta pasa al plan pago en un minuto, más o menos. Podés cerrar esta pestaña y volver a SharpMD.</span></p>
     <a class="btn" data-paid href="src/app.html"><span lang="en">Back to SharpMD</span><span lang="es">Volver a SharpMD</span></a>
   </section>
+
+  <p class="legal"><a href="terms.html"><span lang="en">Terms</span><span lang="es">Términos</span></a><a href="refunds.html"><span lang="en">Refunds</span><span lang="es">Reembolsos</span></a><a href="privacy.html"><span lang="en">Privacy</span><span lang="es">Privacidad</span></a><a href="acceptable-use.html"><span lang="en">Acceptable use</span><span lang="es">Uso aceptable</span></a><a href="copyright.html"><span lang="en">Copyright</span><span lang="es">Derechos de autor</span></a></p>
 </main>
 <script src="site.js"></script>
 <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>

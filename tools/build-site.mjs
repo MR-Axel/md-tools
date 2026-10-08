@@ -121,5 +121,6 @@ fs.writeFileSync(path.join(root, 'sitemap.xml'), '<?xml version="1.0" encoding="
   '  <url><loc>' + META.es.url + '</loc><lastmod>' + today + '</lastmod>' + alt + '</url>\n' +
   '  <url><loc>' + SITE + '/privacy.html</loc><lastmod>' + today + '</lastmod></url>\n' +
   '  <url><loc>' + SITE + '/api.html</loc><lastmod>' + today + '</lastmod></url>\n' +
-  '  <url><loc>' + SITE + '/support.html</loc><lastmod>' + today + '</lastmod></url>\n</urlset>\n');
+  '  <url><loc>' + SITE + '/support.html</loc><lastmod>' + today + '</lastmod></url>\n' +
+  ['terms', 'refunds', 'acceptable-use', 'copyright'].map((p) => '  <url><loc>' + SITE + '/' + p + '.html</loc><lastmod>' + today + '</lastmod></url>\n').join('') + '</urlset>\n');
 console.log('escrito: index.html (en), es/index.html, sitemap.xml');

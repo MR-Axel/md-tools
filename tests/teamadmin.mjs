@@ -272,7 +272,7 @@ try {
   const ex = [await api('GET', '/notes' + O, undefined, B.s), await api('GET', '/notes/plan.md' + O, undefined, B.s), await put(B, 'plan.md', 'x'), await api('GET', '/team/policies', undefined, B.s), await api('GET', '/shares' + O, undefined, B.s), await api('POST', '/links', { path: 'plan.md', o: SPACE }, B.s)];
   check('un ex miembro no llega a nada del espacio', ex[0].json.length === 0 && ex[1].status === 403 && ex[2].status === 403 && ex[3].status === 404 && ex[4].status === 403 && ex[5].status === 403, ex.map((r) => r.status));
   const exAi = await api('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'read_note', arguments: { path: '@team/plan.md' } } }, tB);
-  check('su IA tampoco: sin el equipo ya no tiene el plan que la conecta', exAi.status === 402 && !/tres|vault1/.test(JSON.stringify(exAi.json)), exAi.json);
+  check('su IA tampoco: sigue conectada a su cuenta, pero del espacio no lee nada', exAi.json.result.isError === true && /not_found|no_access|no_team/.test(JSON.stringify(exAi.json)) && !/tres|vault1/.test(JSON.stringify(exAi.json)), exAi.json);
   check('y vuelve a ver lo de cobro de su propia cuenta', (await acct(B)).billing === true && /plan=monthly/.test((await acct(B)).checkout.monthly));
   const logEnd = (await log(A)).json.entries;
   check('en el registro sigue figurando lo que hizo', logEnd.some((e) => e.who === B.email && e.action === 'create'));

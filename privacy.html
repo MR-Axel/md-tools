@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SharpMD: privacy</title>
-<meta name="description" content="SharpMD has no analytics. Files are read in your browser and never uploaded. Cloud notes are optional.">
+<meta name="description" content="The app has no analytics. Files are read in your browser and never uploaded. Cloud notes are optional.">
 <link rel="icon" href="icons/icon32.png">
 <style>
   @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
@@ -25,6 +25,9 @@
   .date { margin: 0 0 26px; font-size: 14px; }
   a { color: var(--accent); }
   code { padding: 1px 6px; border-radius: 5px; background: var(--soft); font: 0.88em ui-monospace, Consolas, monospace; color: var(--fg); }
+  .legal { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 52px 0 0; padding-top: 18px; border-top: 1px solid var(--line); font-size: 14px; }
+  .legal a { color: var(--muted); text-decoration: none; }
+  .legal a:hover, .legal a[aria-current] { color: var(--fg); }
 </style>
 </head>
 <body>
@@ -34,7 +37,7 @@
   <div lang="en">
     <h1>Privacy</h1>
     <p class="date">Last updated: October 8, 2026</p>
-    <p>SharpMD works without an account and has no analytics. Cloud notes are optional, and they are the only thing that leaves your machine.</p>
+    <p>SharpMD works without an account, and the app has no analytics. Cloud notes are optional, and they are the only thing that leaves your machine.</p>
     <h2>Your files</h2>
     <p>The files you open are read by your browser, on your machine. They are never uploaded. When you save, the browser writes to the file or folder you picked.</p>
     <h2>What is stored, and where</h2>
@@ -116,6 +119,7 @@
       <li>Images that a document links from the web are loaded from where the document points.</li>
       <li>With cloud notes in use, the app talks to <code>sync.sharpmd.app</code>.</li>
       <li>With the AI assistant on and your key added, the app talks to the provider you chose (<code>api.anthropic.com</code>, <code>api.openai.com</code> or the server address you typed), and only when you ask it for something.</li>
+      <li>The home page at <code>sharpmd.app</code> counts visits and clicks on its buttons anonymously. It sends <code>sync.sharpmd.app</code> which of two headlines was shown and whether a button was used. No cookie, no identifier and no address is stored: only a count per day.</li>
       <li>The web version is a static page hosted on GitHub Pages. GitHub, as the host, may log the address of the visitor like any web server.</li>
     </ul>
     <h2>Permissions of the extension</h2>
@@ -125,13 +129,13 @@
       <li><code>scripting</code>: to load the math and diagram libraries only when a document uses them.</li>
     </ul>
     <h2>Questions</h2>
-    <p>Write to <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>. <a href="support.html">Support</a> has the common fixes.</p>
+    <p>Write to <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>. <a href="support.html">Support</a> has the common fixes. The rules of the hosted service are in the <a href="terms.html">Terms</a>.</p>
   </div>
 
   <div lang="es">
     <h1>Privacidad</h1>
     <p class="date">Última actualización: 8 de octubre de 2026</p>
-    <p>SharpMD funciona sin cuenta y no tiene analítica. Las notas en la nube son opcionales, y son lo único que sale de tu máquina.</p>
+    <p>SharpMD funciona sin cuenta, y la app no tiene analítica. Las notas en la nube son opcionales, y son lo único que sale de tu máquina.</p>
     <h2>Tus archivos</h2>
     <p>Los archivos que abrís los lee tu navegador, en tu máquina. Nunca se suben. Al guardar, el navegador escribe en el archivo o la carpeta que elegiste.</p>
     <h2>Qué se guarda y dónde</h2>
@@ -213,6 +217,7 @@
       <li>Las imágenes que un documento enlaza desde la web se cargan desde donde apunta el documento.</li>
       <li>Con las notas en la nube en uso, la app habla con <code>sync.sharpmd.app</code>.</li>
       <li>Con el asistente de IA prendido y tu clave cargada, la app habla con el proveedor que elegiste (<code>api.anthropic.com</code>, <code>api.openai.com</code> o la dirección del servidor que escribiste), y solo cuando le pedís algo.</li>
+      <li>La portada de <code>sharpmd.app</code> cuenta visitas y clics en sus botones de forma anónima. Le manda a <code>sync.sharpmd.app</code> cuál de dos titulares se mostró y si se usó un botón. No se guarda ninguna cookie, identificador ni dirección: solo una cuenta por día.</li>
       <li>La versión web es una página estática alojada en GitHub Pages. GitHub, como alojamiento, puede registrar la dirección de quien la visita, como cualquier servidor web.</li>
     </ul>
     <h2>Permisos de la extensión</h2>
@@ -222,8 +227,9 @@
       <li><code>scripting</code>: para cargar las librerías de matemática y diagramas solo cuando un documento las usa.</li>
     </ul>
     <h2>Consultas</h2>
-    <p>Escribí a <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>. En <a href="support.html">Ayuda</a> están los arreglos más comunes.</p>
+    <p>Escribí a <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a>. En <a href="support.html">Ayuda</a> están los arreglos más comunes. Las reglas del servicio alojado están en los <a href="terms.html">Términos</a>.</p>
   </div>
+  <p class="legal"><a href="terms.html"><span lang="en">Terms</span><span lang="es">Términos</span></a><a href="privacy.html" aria-current="page"><span lang="en">Privacy</span><span lang="es">Privacidad</span></a><a href="refunds.html"><span lang="en">Refunds</span><span lang="es">Reembolsos</span></a><a href="acceptable-use.html"><span lang="en">Acceptable use</span><span lang="es">Uso aceptable</span></a><a href="copyright.html"><span lang="en">Copyright</span><span lang="es">Derechos de autor</span></a><a href="support.html"><span lang="en">Support</span><span lang="es">Ayuda</span></a></p>
 </main>
 <script src="site.js"></script>
 </body>

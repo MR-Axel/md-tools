@@ -56,14 +56,42 @@ try {
 
   await openNote('proyecto/plan.md');
   await para('Lanzamos el lunes').click({ button: 'right' }); await app.waitForSelector('.lmd-menu-read [data-read=comment]');
-  await app.click('.lmd-menu [data-read=comment]'); await app.waitForSelector('.lmd-plan-why');
-  const why = await app.evaluate(() => ({ line: document.querySelector('.lmd-plan-why').textContent, tab: document.querySelector('[data-ptab].lmd-on').dataset.ptab, pop: document.querySelectorAll('.lmd-cm-pop').length }));
-  check('en el plan gratis comentar lleva a Ajustes → Plan con una línea que lo explica', why.tab === 'plan' && /comentarios para la IA son parte del plan pago/.test(why.line) && plain(why.line) && why.pop === 0, why);
-  check('y el servidor no recibió ningún comentario', !sent.includes('POST /comments'), sent.filter((x) => /comments/.test(x)));
-  await app.click('[data-act=close-panel]');
+  // Los comentarios para la IA van con el MCP, que está en todos los planes: en el gratis se comenta igual.
+  await app.click('.lmd-menu [data-read=comment]'); await app.waitForSelector('.lmd-cm-pop textarea');
+  const freeCm = await app.evaluate(() => ({ pop: document.querySelectorAll('.lmd-cm-pop').length, why: document.querySelectorAll('.lmd-plan-why').length, mode: LMD.comments.mode(), plan: LMD.sync.account().plan }));
+  check('en el plan gratis comentar abre el cuadro del comentario, sin pasar por Plan', freeCm.plan === 'free' && freeCm.pop === 1 && freeCm.why === 0 && freeCm.mode === 'on', freeCm);
+  await app.fill('.lmd-cm-pop textarea', 'Decilo más corto.'); await app.click('.lmd-cm-pop [data-cm=send]'); await app.waitForFunction(() => document.querySelectorAll('.lmd-cm-mark').length === 1);
+  const freeSent = (await api('GET', '/comments', undefined, session)).json;
+  check('y el comentario llega al servidor', sent.includes('POST /comments') && freeSent.length === 1 && freeSent[0].text === 'Decilo más corto.', freeSent);
+  await api('DELETE', '/comments/' + freeSent[0].id, undefined, session);
+  for (let i = sent.length - 1; i >= 0; i--) if (sent[i] === 'POST /comments') sent.splice(i, 1); // lo que sigue mira los envíos desde acá
   await app.click('.lmd-sync'); await app.waitForSelector('.lmd-menu [data-s=comments]');
-  check('en el menú de la nube, la lista aparece bloqueada en el plan gratis', await app.evaluate(() => document.querySelector('.lmd-menu [data-s=comments]').classList.contains('lmd-locked')));
+  check('en el menú de la nube, ni los comentarios ni conectar una IA aparecen bloqueados en el plan gratis', await app.evaluate(() => !document.querySelector('.lmd-menu [data-s=comments]').classList.contains('lmd-locked') && !document.querySelector('.lmd-menu [data-s=ai]').classList.contains('lmd-locked')));
   await app.keyboard.press('Escape'); await app.mouse.click(640, 600);
+
+  console.log('Conectar una IA en el plan gratis');
+  await app.click('[data-act=settings]'); await app.waitForSelector('.lmd-panel-card'); await app.click('[data-ptab=ai]'); await app.waitForSelector('[data-acct=ai] [data-c=token]');
+  const freePane = await app.evaluate(() => { const b = document.querySelector('[data-acct=ai]'); return { text: b.textContent, url: (b.querySelector('.lmd-field input') || {}).value, plans: b.querySelectorAll('[data-c=plans]').length, locked: b.querySelectorAll('.lmd-locked, .lmd-extra').length, share: b.querySelectorAll('[data-c=share]').length }; });
+  check('Ajustes, IA (MCP): sin aviso del plan ni candado, con la dirección y el botón para crear un token', freePane.url === base + '/mcp' && freePane.plans === 0 && freePane.locked === 0 && !/plan pago/i.test(freePane.text) && /En el plan gratis tu IA trabaja con las 10 notas de tu nube\./.test(freePane.text) && plain(freePane.text), freePane);
+  check('compartir no se ofrece al crear el token: sigue siendo del plan pago', freePane.share === 0, freePane.share);
+  await app.evaluate(() => { window.__freeCopied = []; Object.defineProperty(navigator.clipboard, 'writeText', { configurable: true, value: async (t) => { window.__freeCopied.push(t); } }); });
+  await app.click('[data-acct=ai] [data-c=token]'); await app.waitForSelector('.lmd-ai-new');
+  const freeTok = await app.evaluate(() => [...document.querySelectorAll('[data-acct=ai] .lmd-field')].find((f) => f.querySelector('span').textContent === 'Token').querySelector('input').value);
+  await app.click('[data-acct=ai] [data-c=brief]'); await app.waitForFunction(() => window.__freeCopied.length === 1);
+  const freeBrief = await app.evaluate(() => window.__freeCopied[0]); const freeSay = await app.textContent('[data-acct=ai] .lmd-acct-msg');
+  check('la cuenta gratis crea el token y copia las instrucciones para su IA', /^mdt_/.test(freeTok) && freeBrief.includes(freeTok) && freeBrief.includes(base + '/mcp') && freeSay === 'Instrucciones copiadas. Pegalas en tu IA.', [freeTok.slice(0, 6), freeBrief.slice(0, 200), freeSay]);
+  const freeList = JSON.parse((await mcp(freeTok, 'list_notes')).content[0].text).map((n) => n.path).sort();
+  const freeWrite = await mcp(freeTok, 'write_note', { path: 'ia/gratis.md', text: '# De la IA\n' });
+  check('con ese token la IA lee y escribe las notas de la cuenta gratis', J(freeList) === J(['proyecto/docs/notas.md', 'proyecto/plan.md', 'suelta.md']) && freeWrite.isError !== true && (await noteText('ia/gratis.md', session)) === '# De la IA\n', [freeList, freeWrite]);
+  for (let i = 0; i < 6; i++) await notePut('relleno/' + i + '.md', 'x', session);
+  const freeFull = await mcp(freeTok, 'write_note', { path: 'ia/una-mas.md', text: 'x' }); const freeEdit = await mcp(freeTok, 'append_note', { path: 'ia/gratis.md', text: 'Otra línea.' });
+  check('en el tope de 10 notas la herramienta dice por qué, en inglés, y las que ya están se siguen editando', freeFull.isError === true && /free plan holds 10 notes/.test(freeFull.content[0].text) && /paid plan/.test(freeFull.content[0].text) && plain(freeFull.content[0].text) && !/[áéíóúñ]/.test(freeFull.content[0].text) && freeEdit.isError !== true && (await api('GET', '/notes', undefined, session)).json.length === 10, [freeFull, freeEdit]);
+  const freeApi = await fetch(base + '/api/v1/notes', { headers: { authorization: 'Bearer ' + freeTok } });
+  check('y ese mismo token no abre la API, que sigue siendo del plan pago', freeApi.status === 402 && (await freeApi.json()).error.code === 'api_needs_plan');
+  for (let i = 0; i < 6; i++) await api('DELETE', '/notes/' + encodeURIComponent('relleno/' + i + '.md'), undefined, session);
+  await api('DELETE', '/notes/' + encodeURIComponent('ia/gratis.md'), undefined, session);
+  for (const t of (await api('GET', '/tokens', undefined, session)).json) await api('DELETE', '/tokens/' + t.id, undefined, session);
+  await app.click('[data-act=close-panel]');
 
   console.log('Comentarios: dejar uno');
   await api('POST', '/admin/plan', { email: mail, plan: 'pro' }, undefined, { 'x-admin-key': 'clave-de-prueba' });

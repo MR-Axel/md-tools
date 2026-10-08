@@ -4,34 +4,34 @@
   'use strict';
   const HEX = /^#[0-9a-f]{6}$/i;
 
-  // Doce temas de fábrica, seis claros y seis oscuros. Los dos primeros de cada grupo vienen con el plan gratis.
+  // Doce temas de fábrica, seis claros y seis oscuros, en todos los planes.
   // Lima y Noche son los de siempre: sus colores están en content.css y acá se repiten para dibujar la miniatura.
   // k s n f c t b: palabra clave, texto, número, función, comentario, etiqueta y nombre propio del lenguaje.
-  const P = (id, name, dark, free, c) => ({ id, name, dark, free, c });
+  const P = (id, name, dark, c) => ({ id, name, dark, c });
   const PRESETS = [
-    P('lima', 'Lima', false, true, { bg: '#fbfaf7', side: '#f2f0ea', soft: '#f1efe9', code: '#f1efe9', fg: '#1d2026', muted: '#5c6370', faint: '#646b78', line: '#dedbd2', accent: '#3f6a0a', fill: '#3f6a0a', fillFg: '#ffffff', link: '#1a5fd0', sel: '#d5e6b4', danger: '#c62020',
+    P('lima', 'Lima', false, { bg: '#fbfaf7', side: '#f2f0ea', soft: '#f1efe9', code: '#f1efe9', fg: '#1d2026', muted: '#5c6370', faint: '#646b78', line: '#dedbd2', accent: '#3f6a0a', fill: '#3f6a0a', fillFg: '#ffffff', link: '#1a5fd0', sel: '#d5e6b4', danger: '#c62020',
       k: '#c5303f', s: '#032f62', n: '#005cc5', f: '#6f42c1', c: '#646b78', t: '#1d7a33', b: '#a84a00' }),
-    P('arena', 'Arena', false, true, { bg: '#f6efe0', side: '#ede4d0', soft: '#efe6d3', code: '#ece2cc', fg: '#2b2419', muted: '#5f5443', faint: '#675b48', line: '#d9cdb4', accent: '#874710', fill: '#874710', fillFg: '#ffffff', link: '#1b5585', sel: '#e6d3a8', danger: '#a8231b',
+    P('arena', 'Arena', false, { bg: '#f6efe0', side: '#ede4d0', soft: '#efe6d3', code: '#ece2cc', fg: '#2b2419', muted: '#5f5443', faint: '#675b48', line: '#d9cdb4', accent: '#874710', fill: '#874710', fillFg: '#ffffff', link: '#1b5585', sel: '#e6d3a8', danger: '#a8231b',
       k: '#9c3526', s: '#35601a', n: '#1b5585', f: '#73429a', c: '#675b48', t: '#255f50', b: '#7d4700' }),
-    P('tiza', 'Tiza', false, false, { bg: '#f4f4f5', side: '#e8e8ea', soft: '#eaeaec', code: '#e6e6e9', fg: '#0b0b0c', muted: '#3f3f46', faint: '#4b4b53', line: '#85858e', accent: '#1a44c2', fill: '#1a44c2', fillFg: '#ffffff', link: '#1a44c2', sel: '#c7d2fe', danger: '#b91c1c',
+    P('tiza', 'Tiza', false, { bg: '#f4f4f5', side: '#e8e8ea', soft: '#eaeaec', code: '#e6e6e9', fg: '#0b0b0c', muted: '#3f3f46', faint: '#4b4b53', line: '#85858e', accent: '#1a44c2', fill: '#1a44c2', fillFg: '#ffffff', link: '#1a44c2', sel: '#c7d2fe', danger: '#b91c1c',
       k: '#a8004a', s: '#0b5d1e', n: '#0747a6', f: '#5b21b6', c: '#4b4b53', t: '#0f5e63', b: '#873a00' }),
-    P('salvia', 'Salvia', false, false, { bg: '#f3f6ef', side: '#e6ecdf', soft: '#e9efe2', code: '#e4ebdc', fg: '#1c2a20', muted: '#4d5e50', faint: '#556557', line: '#cdd8c5', accent: '#2a6535', fill: '#2a6535', fillFg: '#ffffff', link: '#0d5f6c', sel: '#cfe5c8', danger: '#b42318',
+    P('salvia', 'Salvia', false, { bg: '#f3f6ef', side: '#e6ecdf', soft: '#e9efe2', code: '#e4ebdc', fg: '#1c2a20', muted: '#4d5e50', faint: '#556557', line: '#cdd8c5', accent: '#2a6535', fill: '#2a6535', fillFg: '#ffffff', link: '#0d5f6c', sel: '#cfe5c8', danger: '#b42318',
       k: '#952856', s: '#2a6535', n: '#1c5890', f: '#673c9b', c: '#556557', t: '#0d5f6c', b: '#7f4b00' }),
-    P('bruma', 'Bruma', false, false, { bg: '#f2f5f9', side: '#e4e9f0', soft: '#e8edf4', code: '#e3e9f1', fg: '#18222e', muted: '#4a5868', faint: '#536171', line: '#cbd5e1', accent: '#2456a6', fill: '#2456a6', fillFg: '#ffffff', link: '#0a5ba3', sel: '#c9dcf5', danger: '#b91c1c',
+    P('bruma', 'Bruma', false, { bg: '#f2f5f9', side: '#e4e9f0', soft: '#e8edf4', code: '#e3e9f1', fg: '#18222e', muted: '#4a5868', faint: '#536171', line: '#cbd5e1', accent: '#2456a6', fill: '#2456a6', fillFg: '#ffffff', link: '#0a5ba3', sel: '#c9dcf5', danger: '#b91c1c',
       k: '#a02268', s: '#0d6347', n: '#1d55a8', f: '#6a35ae', c: '#536171', t: '#0c5c6f', b: '#864500' }),
-    P('tinta', 'Tinta', false, false, { bg: '#ffffff', side: '#f5f5f5', soft: '#f2f2f2', code: '#f2f2f2', fg: '#000000', muted: '#404040', faint: '#595959', line: '#b3b3b3', accent: '#000000', fill: '#111111', fillFg: '#ffffff', link: '#000000', sel: '#d9d9d9', danger: '#a11212',
+    P('tinta', 'Tinta', false, { bg: '#ffffff', side: '#f5f5f5', soft: '#f2f2f2', code: '#f2f2f2', fg: '#000000', muted: '#404040', faint: '#595959', line: '#b3b3b3', accent: '#000000', fill: '#111111', fillFg: '#ffffff', link: '#000000', sel: '#d9d9d9', danger: '#a11212',
       k: '#000000', s: '#3d3d3d', n: '#262626', f: '#000000', c: '#5c5c5c', t: '#1a1a1a', b: '#333333' }),
-    P('noche', 'Noche', true, true, { bg: '#121418', side: '#0c0d10', soft: '#1a1d23', code: '#181b21', fg: '#e6e8ec', muted: '#a0a7b4', faint: '#828999', line: '#2a2e37', accent: '#bef264', fill: '#bef264', fillFg: '#14161a', link: '#7aa7ff', sel: '#3d4a22', danger: '#f87171',
+    P('noche', 'Noche', true, { bg: '#121418', side: '#0c0d10', soft: '#1a1d23', code: '#181b21', fg: '#e6e8ec', muted: '#a0a7b4', faint: '#828999', line: '#2a2e37', accent: '#bef264', fill: '#bef264', fillFg: '#14161a', link: '#7aa7ff', sel: '#3d4a22', danger: '#f87171',
       k: '#ff7b72', s: '#a5d6ff', n: '#79c0ff', f: '#d2a8ff', c: '#8b949e', t: '#7ee787', b: '#ffa657' }),
-    P('carbon', 'Carbón', true, true, { bg: '#0e0e0f', side: '#050505', soft: '#1b1b1d', code: '#18181a', fg: '#f5f5f5', muted: '#bdbdc2', faint: '#9b9ba1', line: '#66666d', accent: '#ffd166', fill: '#ffd166', fillFg: '#111111', link: '#8ab4ff', sel: '#3a3a40', danger: '#ff8a80',
+    P('carbon', 'Carbón', true, { bg: '#0e0e0f', side: '#050505', soft: '#1b1b1d', code: '#18181a', fg: '#f5f5f5', muted: '#bdbdc2', faint: '#9b9ba1', line: '#66666d', accent: '#ffd166', fill: '#ffd166', fillFg: '#111111', link: '#8ab4ff', sel: '#3a3a40', danger: '#ff8a80',
       k: '#ff8fa3', s: '#b5e48c', n: '#8ab4ff', f: '#d6b4fc', c: '#9b9ba1', t: '#7ee0c3', b: '#ffb86b' }),
-    P('marea', 'Marea', true, false, { bg: '#0d1524', side: '#080e1a', soft: '#152036', code: '#121c30', fg: '#dfe7f5', muted: '#9aa9c2', faint: '#8494b0', line: '#24324d', accent: '#7cc4ff', fill: '#7cc4ff', fillFg: '#06121f', link: '#8fb8ff', sel: '#24406e', danger: '#ff8a8a',
+    P('marea', 'Marea', true, { bg: '#0d1524', side: '#080e1a', soft: '#152036', code: '#121c30', fg: '#dfe7f5', muted: '#9aa9c2', faint: '#8494b0', line: '#24324d', accent: '#7cc4ff', fill: '#7cc4ff', fillFg: '#06121f', link: '#8fb8ff', sel: '#24406e', danger: '#ff8a8a',
       k: '#ff8fb1', s: '#9be3c0', n: '#7cc4ff', f: '#c9a8ff', c: '#8494b0', t: '#6fe0d6', b: '#ffc27a' }),
-    P('bosque', 'Bosque', true, false, { bg: '#0f1712', side: '#0a100c', soft: '#17231b', code: '#142019', fg: '#e2ebe2', muted: '#9db3a2', faint: '#84998a', line: '#26372b', accent: '#8fe0a0', fill: '#8fe0a0', fillFg: '#08130b', link: '#86c8ff', sel: '#244a30', danger: '#ff8f85',
+    P('bosque', 'Bosque', true, { bg: '#0f1712', side: '#0a100c', soft: '#17231b', code: '#142019', fg: '#e2ebe2', muted: '#9db3a2', faint: '#84998a', line: '#26372b', accent: '#8fe0a0', fill: '#8fe0a0', fillFg: '#08130b', link: '#86c8ff', sel: '#244a30', danger: '#ff8f85',
       k: '#ffa07a', s: '#b8e986', n: '#86c8ff', f: '#e0b0ff', c: '#84998a', t: '#6fe3c1', b: '#f2cf66' }),
-    P('laguna', 'Laguna', true, false, { bg: '#0b2027', side: '#071619', soft: '#123038', code: '#0f2a32', fg: '#e6ded0', muted: '#a3b3ad', faint: '#8fa09b', line: '#21434c', accent: '#f2b84b', fill: '#f2b84b', fillFg: '#1a1204', link: '#6fd3e6', sel: '#1f5560', danger: '#ff9080',
+    P('laguna', 'Laguna', true, { bg: '#0b2027', side: '#071619', soft: '#123038', code: '#0f2a32', fg: '#e6ded0', muted: '#a3b3ad', faint: '#8fa09b', line: '#21434c', accent: '#f2b84b', fill: '#f2b84b', fillFg: '#1a1204', link: '#6fd3e6', sel: '#1f5560', danger: '#ff9080',
       k: '#f59a63', s: '#a8d672', n: '#6fd3e6', f: '#f2b84b', c: '#8fa09b', t: '#7fd9b8', b: '#e59ad0' }),
-    P('ciruela', 'Ciruela', true, false, { bg: '#1a1220', side: '#120c17', soft: '#251a2e', code: '#21172a', fg: '#efe6f2', muted: '#b5a5bd', faint: '#a191aa', line: '#3a2a45', accent: '#f0a6ca', fill: '#f0a6ca', fillFg: '#24101c', link: '#a9b8ff', sel: '#4a2f5c', danger: '#ff8d8d',
+    P('ciruela', 'Ciruela', true, { bg: '#1a1220', side: '#120c17', soft: '#251a2e', code: '#21172a', fg: '#efe6f2', muted: '#b5a5bd', faint: '#a191aa', line: '#3a2a45', accent: '#f0a6ca', fill: '#f0a6ca', fillFg: '#24101c', link: '#a9b8ff', sel: '#4a2f5c', danger: '#ff8d8d',
       k: '#ff8fb8', s: '#c3e88d', n: '#a9b8ff', f: '#e6b3ff', c: '#a191aa', t: '#7fdcc7', b: '#ffc27a' }),
   ];
   const BASE = { light: 'lima', dark: 'noche' };
@@ -56,17 +56,16 @@
     if (settings.theme === 'light') return false;
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
   }
-  // El tema incluido que hay puesto, o null si rige el de siempre. Uno del plan pago sin el plan no se aplica,
-  // y tampoco uno claro con el modo oscuro elegido a mano (o al revés).
+  // El tema incluido que hay puesto, o null si rige el de siempre. Uno claro con el modo oscuro elegido a mano
+  // (o al revés) no se aplica.
   function chosen(settings) {
     const p = byId(settings.preset);
     if (!p || p.id === BASE.light || p.id === BASE.dark) return null;
-    if (!p.free && !settings.supporter) return null;
     return p.dark === modeDark(settings) ? p : null;
   }
   const isDark = (settings, previewId) => { const p = byId(previewId); return p ? p.dark : modeDark(settings); };
 
-  // Los colores a medida que valen sobre este fondo. Un tema entra con el plan pago y solo si deja leer.
+  // Los colores a medida que valen sobre este fondo. Entran con el plan pago y solo si dejan leer.
   function overrides(settings, dark, pal) {
     const out = {};
     if (!settings.supporter) return out;
@@ -106,7 +105,7 @@
     root.style.setProperty('--accent-fg', lum > 0.36 ? '#14161a' : '#ffffff');
   }
 
-  // Pinta el tema en la página. Con previewId se ve ese tema sin guardarlo ni mirar el plan: es la vista previa.
+  // Pinta el tema en la página. Con previewId se ve ese tema sin guardarlo: es la vista previa.
   function apply(root, settings, previewId) {
     const dark = isDark(settings, previewId);
     root.classList.toggle('lmd-dark', dark);
@@ -149,7 +148,6 @@
     Object.values(CUSTOM).forEach((k) => { out[k] = ''; });
     return out;
   }
-  const locked = (id, settings) => { const p = byId(id); return !!p && !p.free && !settings.supporter; };
 
   // Los diagramas de Mermaid con los colores del tema. Con los temas de siempre, sus dos temas propios.
   function mermaid(settings) {
@@ -189,5 +187,5 @@
     apply(root, settings);
   }
 
-  LMD.theme = { PRESETS, BASE, CUSTOM, byId, isDark, chosen, active, apply, palette, patchFor, locked, mermaid, thumb, exportCss, themeOnly, luminance, contrast, paperOk };
+  LMD.theme = { PRESETS, BASE, CUSTOM, byId, isDark, chosen, active, apply, palette, patchFor, mermaid, thumb, exportCss, themeOnly, luminance, contrast, paperOk };
 })();

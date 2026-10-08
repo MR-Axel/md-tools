@@ -10,7 +10,7 @@
 //   MAIL_WEBHOOK    o lo manda a un webhook propio: POST { to, subject, text }
 //   DEV_CODES=1     sin correo: el código vuelve en la respuesta (solo para pruebas)
 //   FREE_NOTES      notas del plan gratis (10)
-//   MCP_FREE=1      habilita el MCP también en el plan gratis
+//   API_FREE=1      opens the API and the automations on the free plan too (MCP_FREE=1, the older name, does the same)
 //   SHARE_FREE=1    habilita compartir también en el plan gratis
 //   CHECKOUT_MONTHLY, CHECKOUT_YEARLY   enlaces de pago que la app muestra en Ajustes → Plan
 //   ADMIN_KEY       clave para cambiar el plan de una cuenta desde /admin/plan
@@ -338,7 +338,10 @@ function userFrom(req, kind) {
 }
 
 const countNotes = (user) => q('SELECT COUNT(*) AS n FROM notes WHERE user = ?').get(user.id).n;
-const mcpAllowed = (user) => user.plan === 'pro' || !!env.MCP_FREE;
+// MCP (the endpoint, its tokens, the comments for the AI and unlocking a folder for it) is on every plan: on the free
+// one it works over the same notes, with the same limit. The REST API, the webhooks, the inbound addresses and the
+// automations belong to the paid plan.
+const apiAllowed = (user) => user.plan === 'pro' || !!env.API_FREE || !!env.MCP_FREE;
 const shareAllowed = (user) => user.plan === 'pro' || !!env.SHARE_FREE;
 // plan es el que vale ahora; own_plan, el que la cuenta paga por su lado (un miembro de un equipo puede tener los dos).
 // Administra una suscripción quien la paga: la propia, o la del equipo si es quien lo administra.
@@ -364,7 +367,7 @@ function accountName(user, body) {
   return account(userById(user.id));
 }
 // ---------- fin del nombre visible ----------
-const account = (user) => ({ id: user.id, share: shareAllowed(user), live: user.plan === 'pro' || !!env.LIVE_FREE, email: user.email, name: nameOf(user), name_default: !user.name, plan: user.plan, own_plan: user.own || user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, mcp: mcpAllowed(user), mcp_url: PUBLIC_URL + '/mcp',
+const account = (user) => ({ id: user.id, share: shareAllowed(user), live: user.plan === 'pro' || !!env.LIVE_FREE, email: user.email, name: nameOf(user), name_default: !user.name, plan: user.plan, own_plan: user.own || user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, mcp: true, api: apiAllowed(user), mcp_url: PUBLIC_URL + '/mcp',
   manage: ((user.own || user.plan) === 'pro' || (user.team && user.team.owner === user.id && user.team.sub)) && env.PORTAL_URL ? env.PORTAL_URL : '',
   // billing: si a esta cuenta se le muestra algo de cobro. A quien tiene el plan por un equipo que paga otra persona, no:
   // ni enlaces de pago ni precios. Lo que paga por su lado (su suscripción individual) lo sigue administrando.
@@ -557,10 +560,9 @@ function vaultWipe(user, v) {
   return { ok: true, notes: Number(notes) };
 }
 // Desbloquear para la IA: llega la llave de datos, se comprueba contra el valor guardado y queda en memoria.
-// Es parte del MCP: plan pago. Diez llaves equivocadas por hora por cuenta.
+// Es parte del MCP, que está en todos los planes. Diez llaves equivocadas por hora por cuenta.
 function vaultUnlock(user, v, body) { aiOpen(user, v, body); return vaultView(v); }
 function aiOpen(user, v, body, uid) {
-  if (!mcpAllowed(user)) throw new Fail(402, 'mcp_needs_plan');
   if (v.state !== 'on') throw new Fail(409, 'vault', 'This folder is having its protection removed');
   const minutes = +body.minutes;
   if (!VAULT_MINUTES.includes(minutes)) throw new Fail(400, 'bad_minutes');
@@ -599,7 +601,7 @@ const cleanRev = (v) => { if (v == null) return null; if (!Number.isInteger(v) |
 function roomFor(user) {
   if (user.plan === 'pro' || countNotes(user) < FREE_NOTES) return;
   if (user.email.startsWith('team:')) throw new Fail(402, 'team_ended', 'This team is no longer on the paid plan: its notes can still be read and edited, but no new ones can be added');
-  throw new Fail(402, 'note_limit', 'The free plan holds ' + FREE_NOTES + ' notes');
+  throw new Fail(402, 'note_limit', 'The free plan holds ' + FREE_NOTES + ' notes and this account already has ' + FREE_NOTES + '. Nothing was saved. Existing notes can still be read and edited. To add a new one, delete a note or move to the paid plan.');
 }
 function writeNote(user, p, text, base) {
   p = cleanPath(p); text = String(text == null ? '' : text);
@@ -812,7 +814,7 @@ function sharesOf(user, of) {
   return { people, links };
 }
 function addShare(user, body) {
-  if (!shareAllowed(user)) throw new Fail(402, 'share_needs_plan');
+  if (!shareAllowed(user)) throw new Fail(402, 'share_needs_plan', 'Sharing notes and creating public links are part of the paid plan');
   const p = cleanPath(body.path); const email = cleanEmail(body.email);
   const kind = body.kind === 'folder' ? 'folder' : 'note'; const role = body.role === 'edit' ? 'edit' : 'view';
   if (email === user.email) throw new Fail(400, 'own_email');
@@ -826,7 +828,7 @@ function addShare(user, body) {
 // Enlace público de solo lectura, con contraseña opcional. La contraseña se guarda con scrypt.
 const passHash = (pass, salt) => crypto.scryptSync(String(pass), salt, 32).toString('hex');
 function addLink(user, body) {
-  if (!shareAllowed(user)) throw new Fail(402, 'share_needs_plan');
+  if (!shareAllowed(user)) throw new Fail(402, 'share_needs_plan', 'Sharing notes and creating public links are part of the paid plan');
   const p = cleanPath(body.path);
   if (vaultOf(user.id, p)) throw new Fail(409, 'vault', 'A note in a folder protected with a password cannot have a public link');
   if (!q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(user.id, p)) throw new Fail(404, 'not_found');
@@ -1324,7 +1326,6 @@ function listenGuest(req, res) {
 // Comentarios para la IA: la persona marca un bloque de una nota y escribe qué quiere cambiar.
 // Quedan pendientes hasta que la IA los lee con list_comments y los cierra con resolve_comment.
 function addComment(user, body) {
-  if (!mcpAllowed(user)) throw new Fail(402, 'mcp_needs_plan');
   const p = cleanPath(body.path);
   // Un comentario cita el texto de la nota: en una carpeta con contraseña quedaría en claro en el servidor.
   if (vaultOf(user.id, p)) throw new Fail(409, 'vault', 'Notes in a folder protected with a password do not take comments for the AI');
@@ -2794,7 +2795,7 @@ ACCOUNT_ROWS.unshift('DELETE FROM hook_jobs WHERE hook IN (SELECT id FROM hooks 
 // El identificador de la cuenta que viaja en los eventos: opaco y estable, nunca el correo ni el número interno.
 const AUTO_SALT = (() => { const row = q("SELECT value FROM meta WHERE key = 'auto_salt'").get(); if (row) return row.value; const v = random(24); q("INSERT INTO meta (key, value) VALUES ('auto_salt', ?)").run(v); return v; })();
 const autoAcct = (id) => 'acc_' + sha(AUTO_SALT + ':' + id).slice(0, 20);
-const autoAllowed = (owner) => !!owner && mcpAllowed(owner);
+const autoAllowed = (owner) => !!owner && apiAllowed(owner);
 const isSpace = (owner) => String(owner.email || '').startsWith('team:');
 // Un miembro, en un evento: un identificador opaco y estable, y su papel. Ni su correo ni parte de él salen hacia un tercero.
 const memberId = (u) => 'mem_' + sha(AUTO_SALT + ':m:' + u.id).slice(0, 16);
@@ -3434,7 +3435,7 @@ async function apiRoute(req, url, p, m) {
   const r = p.slice(7) || '/';
   if (r === '/openapi.json' && m === 'GET') { if (!OPENAPI) throw new Fail(404, 'not_found'); return Object.assign({ __cache: 'public, max-age=300' }, OPENAPI); }
   const user = userFrom(req, 'token');
-  if (!mcpAllowed(user)) throw new Fail(402, 'api_needs_plan', 'The API is part of the paid plan');
+  if (!apiAllowed(user)) throw new Fail(402, 'api_needs_plan', 'The API is part of the paid plan');
   rate('api:' + user.tokenId, API_PER_MIN, 60000, 'rate_limited');
   ctxSet('via', 'api');
   // Adjuntos: el cuerpo es la imagen misma, no JSON (bloque ADJUNTOS).
@@ -4852,9 +4853,36 @@ function fileSend(res, f) {
 // Fin de ADJUNTOS
 // ====================================================================================================================
 
+// ---------- Home page: two headlines on trial ----------
+// The home page says which headline it showed (a or b) and whether the app or the plans were opened from it. That adds
+// one to a counter per day, variant and event, and nothing else: no IP, no header and no identifier is stored.
+// The limit per IP lives in memory, like the others, and is lost on restart.
+db.exec('CREATE TABLE IF NOT EXISTS landing_stats (day TEXT NOT NULL, v TEXT NOT NULL, e TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, v, e))');
+const LANDING_PER_HOUR = +(env.LANDING_PER_HOUR || 60);
+async function landingHit(req) {
+  rate('landing:' + clientIp(req), LANDING_PER_HOUR, HOUR, 'too_many');
+  // The body arrives as plain text (sendBeacon cannot send application/json without a preflight): it is read anyway.
+  let b = null; try { b = JSON.parse(String(await readRaw(req, 200))); } catch (e) { if (e instanceof Fail) throw e; throw new Fail(400, 'bad_json'); }
+  if (!b || (b.v !== 'a' && b.v !== 'b') || (b.e !== 'view' && b.e !== 'open')) throw new Fail(400, 'bad_event');
+  q('INSERT INTO landing_stats (day, v, e, n) VALUES (?, ?, ?, 1) ON CONFLICT (day, v, e) DO UPDATE SET n = n + 1').run(new Date(now()).toISOString().slice(0, 10), b.v, b.e);
+  return { __status: 204 };
+}
+// The totals per variant, with the open/view rate. ?days=N looks at the last N days only.
+function landingAdmin(url) {
+  const days = Math.min(3650, Math.max(0, Math.floor(+url.searchParams.get('days') || 0)));
+  const from = days ? new Date(now() - (days - 1) * DAY).toISOString().slice(0, 10) : '';
+  const rows = q('SELECT v, e, SUM(n) AS n, MIN(day) AS first, MAX(day) AS last FROM landing_stats WHERE day >= ? GROUP BY v, e').all(from);
+  const variants = { a: { view: 0, open: 0, rate: null }, b: { view: 0, open: 0, rate: null } };
+  let first = null; let last = null;
+  for (const r of rows) { if (!variants[r.v]) continue; variants[r.v][r.e] = Number(r.n); if (!first || r.first < first) first = r.first; if (!last || r.last > last) last = r.last; }
+  for (const k in variants) variants[k].rate = variants[k].view ? Math.round((variants[k].open / variants[k].view) * 10000) / 10000 : null;
+  return { from: first, to: last, variants };
+}
+
 async function route(req, url) {
   const p = url.pathname; const m = req.method;
   if (p === '/health') return { ok: true };
+  if (p === '/landing' && m === 'POST') return landingHit(req);
   // Automatizaciones: la API con token y las direcciones de entrada.
   if (p.startsWith('/api/v1/')) return apiRoute(req, url, p, m);
   if (p.startsWith('/in/')) return inboxRoute(req, url, p, m);
@@ -4862,13 +4890,14 @@ async function route(req, url) {
   if (p === '/auth/verify' && m === 'POST') return authVerify(req, await readBody(req));
   if (p === '/paddle/webhook' && m === 'POST') return paddleWebhook(req);
   if (p === '/feedback' && m === 'POST') return feedback(req, await readBody(req));
-  if (((p === '/admin/plan' || p === '/admin/team') && m === 'POST') || p === '/admin/gallery' || p === '/admin/sites') {
+  if (((p === '/admin/plan' || p === '/admin/team') && m === 'POST') || p === '/admin/gallery' || p === '/admin/sites' || (p === '/admin/landing' && m === 'GET')) {
     // La misma respuesta sin clave configurada, sin clave en el pedido o con una equivocada. Diez fallos por hora por IP.
     const ip = 'admin:' + clientIp(req);
     limit(ip, 10, HOUR, 'too_many');
     if (!env.ADMIN_KEY || !same(req.headers['x-admin-key'] || '', env.ADMIN_KEY)) { mark(ip); throw new Fail(403, 'forbidden'); }
     if (p === '/admin/gallery') return galleryAdmin(m, url, m === 'POST' ? await readBody(req) : {});
     if (p === '/admin/sites') return sitesAdmin(m, url, m === 'POST' ? await readBody(req) : {});
+    if (p === '/admin/landing') return landingAdmin(url);
     const b = await readBody(req);
     if (p === '/admin/team') {
       // Un equipo armado a mano, sin cobro: para quien aloja su propio servidor. seats: 0 lo deja sin plan pago.
@@ -4887,7 +4916,6 @@ async function route(req, url) {
   if (p === '/mcp') {
     if (m !== 'POST') throw new Fail(405, 'method_not_allowed');
     const user = userFrom(req, 'token');
-    if (!mcpAllowed(user)) throw new Fail(402, 'mcp_needs_plan');
     const body = await readAny(req);
     // Un lote largo son muchas consultas seguidas a la base, que atiende de a un pedido: tiene tope.
     if (Array.isArray(body) && body.length > MAX_BATCH) throw new Fail(413, 'too_large');
@@ -4970,7 +4998,6 @@ async function route(req, url) {
   if (p === '/comments' && m === 'POST') { const c = addComment(user, await readBody(req)); announce(roomKey(user.id, c.path), { type: 'comments' }); return c; }
   if (p.startsWith('/comments/') && m === 'DELETE') { q('DELETE FROM comments WHERE id = ? AND user = ?').run(+p.slice(10), user.id); return { ok: true }; }
   if (p === '/tokens' && m === 'POST') {
-    if (!mcpAllowed(user)) throw new Fail(402, 'mcp_needs_plan');
     if (q('SELECT COUNT(*) AS n FROM tokens WHERE user = ?').get(user.id).n >= MAX_TOKENS) throw new Fail(429, 'too_many');
     const b = await readBody(req); const token = 'mdt_' + random(30);
     const scope = String(b.folder || '').trim() ? cleanPath(String(b.folder).replace(/\/+$/, '')) : '';

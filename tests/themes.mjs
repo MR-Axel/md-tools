@@ -15,7 +15,7 @@ const VERBOSE = process.argv.includes('-v');
 
 console.log('La tabla');
 check('doce temas: seis claros y seis oscuros', P.length === 12 && P.filter((p) => p.dark).length === 6, P.map((p) => p.id));
-check('cuatro vienen con el plan gratis, dos claros y dos oscuros, con los dos de siempre', P.filter((p) => p.free).map((p) => p.id).join() === 'lima,arena,noche,carbon');
+check('los doce son de todos los planes: ninguno pide el plan pago, y sin el plan se aplican igual', P.every((p) => !('free' in p)) && typeof TH.locked === 'undefined' && P.every((p) => { const got = TH.chosen({ preset: p.id, theme: p.dark ? 'dark' : 'light', supporter: false }); return p.id === 'lima' || p.id === 'noche' ? got === null : got === p; }));
 check('ids y nombres únicos y cortos', new Set(P.map((p) => p.id)).size === 12 && new Set(P.map((p) => p.name)).size === 12 && P.every((p) => /^[a-z]{3,10}$/.test(p.id) && p.name.length <= 10));
 const KEYS = 'bg side soft code fg muted faint line accent fill fillFg link sel danger k s n f c t b'.split(' ');
 check('cada tema trae los mismos colores, todos #rrggbb', P.every((p) => Object.keys(p.c).join() === KEYS.join() && KEYS.every((k) => HEX.test(p.c[k]))), P.filter((p) => !KEYS.every((k) => HEX.test(p.c[k] || ''))).map((p) => p.id));
@@ -52,7 +52,7 @@ for (const p of P) {
   need('diagrama: texto/nodo', c.fg, c.soft, 7); need('diagrama: trazo/fondo', c.muted, c.bg, 3); need('diagrama: borde del nodo/nodo', c.muted, c.soft, 3);
   // Los dos de alto contraste: los bordes de los controles se distinguen del fondo.
   if (p.id === 'tiza' || p.id === 'carbon') { need('borde/fondo', c.line, c.bg, 3); need('borde/panel', c.line, c.soft, 3); }
-  check(p.name + (p.dark ? ' (oscuro' : ' (claro') + (p.free ? ', gratis)' : ', plan pago)') + ': ' + all.length + ' pares', bad.length === 0, bad);
+  check(p.name + (p.dark ? ' (oscuro)' : ' (claro)') + ': ' + all.length + ' pares', bad.length === 0, bad);
   if (VERBOSE) console.log('       ' + all.join(' · '));
 }
 
@@ -65,7 +65,7 @@ for (const [id, cls] of [['lima', 'lmd-light'], ['noche', 'lmd-dark']]) {
   check(p.name + ' es el tema de siempre: mismos colores que content.css', off.length === 0, off);
 }
 const mer = TH.mermaid({ preset: 'marea', theme: 'dark', supporter: true });
-check('un tema incluido arma los diagramas con sus colores, y el de siempre deja los de Mermaid', mer.theme === 'base' && mer.themeVariables.primaryTextColor === TH.byId('marea').c.fg && TH.mermaid({ preset: '', theme: 'dark' }).theme === 'dark' && TH.mermaid({ preset: 'marea', theme: 'dark', supporter: false }).theme === 'dark');
+check('un tema incluido arma los diagramas con sus colores, y el de siempre deja los de Mermaid', mer.theme === 'base' && mer.themeVariables.primaryTextColor === TH.byId('marea').c.fg && TH.mermaid({ preset: '', theme: 'dark' }).theme === 'dark' && TH.mermaid({ preset: 'marea', theme: 'dark', supporter: false }).theme === 'base');
 const landing = fs.readFileSync(path.join(root, 'tools', 'landing.src.html'), 'utf8');
 const strip = P.filter((p) => !new RegExp('data-theme="' + p.id + '"[^>]*--b:' + p.c.bg + ';--f:' + p.c.fg + ';--m:' + p.c.muted + ';--c:' + p.c.code + ';--l:' + p.c.line + ';--a:' + p.c.fill).test(landing)).map((p) => p.id);
 check('la tira de la portada dibuja los doce con los mismos colores', strip.length === 0, strip);

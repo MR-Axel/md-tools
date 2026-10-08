@@ -16,13 +16,14 @@
   const SOLVERS = [];
   const solver = () => { for (const fn of SOLVERS) { const s = fn(); if (s) return s; } return null; };
 
-  // '' no se ofrece (no es una nota propia de la nube, o no se sabe el plan), 'plan' falta el plan pago, 'on' anda.
+  // '' no se ofrece (no es una nota propia de la nube, o no hay cuenta), 'on' anda.
   function mode() {
     if (!cur || !core.blocks) return '';
     if (cur.vault) return 'vault'; // carpeta protegida: el servidor no puede leer la nota, así que no hay comentarios
     const a = LMD.sync.account();
-    return a ? (a.mcp ? 'on' : 'plan') : '';
+    return a ? 'on' : '';
   }
+  // Solo lo pide un servidor propio sin actualizar: en los demás, conectar una IA es de todos los planes.
   const needsPlan = () => core.openPanel('plan', T('Los comentarios para la IA son parte del plan pago.'));
   const opened = () => (cur ? cur.items.filter((c) => c.status === 'open') : []);
   const when = (ms) => new Date(ms).toLocaleString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -103,7 +104,6 @@
   function compose(block, picked) {
     const m = mode(); if (!m) return;
     if (m === 'vault') { LMD.vault.explain(); return; }
-    if (m === 'plan') { needsPlan(); return; }
     const mine = cur;
     // Se cita lo elegido; sin nada elegido, el bloque, recortado.
     const quote = picked ? picked.replace(/\s+/g, ' ').trim().slice(0, 1000) : textOf(block).slice(0, 400).trim();
@@ -181,7 +181,6 @@
   function list() {
     const m = mode(); if (!m) return;
     if (m === 'vault') { LMD.vault.explain(); return; }
-    if (m === 'plan') { needsPlan(); return; }
     closePop(); closeList();
     const title = T('Comentarios para la IA');
     dlg = el('div', { class: 'lmd-ask' });
