@@ -84,8 +84,10 @@
     orphan = true;
     clearInterval(refreshTimer);
     const bar = el('div', { class: 'lmd-orphan', role: 'alert' });
-    bar.appendChild(el('span', { text: 'SharpMD se actualizó. Recargá esta pestaña para seguir. · SharpMD was updated. Reload this tab to continue.' }));
-    const b = el('button', { type: 'button', text: 'Recargar · Reload' });
+    // El idioma ya está en memoria: sin la extensión no se puede volver a leer, y el diccionario tampoco hace falta.
+    let es = false; try { es = LMD.lang() === 'es'; } catch (e) { /* queda en inglés */ }
+    bar.appendChild(el('span', { text: es ? 'SharpMD se actualizó. Recargá esta pestaña para seguir.' : 'SharpMD was updated. Reload this tab to continue.' }));
+    const b = el('button', { type: 'button', text: es ? 'Recargar' : 'Reload' });
     b.addEventListener('click', () => location.reload());
     bar.appendChild(b);
     document.body.appendChild(bar);
