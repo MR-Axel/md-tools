@@ -268,6 +268,26 @@ try {
     pay: ['en', 'es'].every((l) => new RegExp('<span lang="' + l + '">[^\\n]*?href="terms\\.html"[^\\n]*?href="refunds\\.html"').test(agree)), near: payRaw.indexOf('id="go"') > 0 && payRaw.indexOf('class="fine agree"') > payRaw.indexOf('id="go"') && payRaw.indexOf('class="fine agree"') < payRaw.indexOf('id="other"'),
     map: LEGAL.every((p) => rawOf('sitemap.xml').includes('https://sharpmd.app/' + p + '.html') && rawOf('llms.txt').includes('https://sharpmd.app/' + p + '.html')) };
   check('las páginas legales están enlazadas desde el pie de la portada en los dos idiomas, junto al botón de pagar, y figuran en el sitemap y en llms.txt', linked.home && linked.es && linked.pay && linked.near && linked.map, linked);
+  // Las páginas que explican un uso (editor para agentes por MCP, editor WYSIWYG): una por idioma, generadas, con sus metadatos,
+  // un solo h1, de 4 a 6 secciones, el botón a la app, y enlazadas entre sí, desde el pie de la portada, el sitemap y llms.txt.
+  const USES = ['markdown-editor-mcp', 'wysiwyg-markdown-editor'];
+  const useSeen = [];
+  for (const p of USES) for (const l of ['en', 'es']) {
+    const rel = (l === 'es' ? 'es/' : '') + p + '.html'; const url = 'https://sharpmd.app/' + rel; const raw = fs.existsSync(path.join(root, rel)) ? rawOf(rel) : '';
+    const meta = raw.includes('<link rel="canonical" href="' + url + '">') && ['en', 'es'].every((x) => raw.includes('hreflang="' + x + '" href="https://sharpmd.app/' + (x === 'es' ? 'es/' : '') + p + '.html"')) && raw.includes('<meta property="og:url" content="' + url + '">') && /<meta name="description" content="[^"]{120,158}">/.test(raw) && /<meta property="og:image" content="https:\/\/sharpmd\.app\/docs\/social-card/.test(raw) && !/noindex/.test(raw);
+    await web.goto(origin + '/' + rel); await web.waitForSelector('h1');
+    const seen = await web.evaluate(() => ({ lang: document.documentElement.lang, h1: document.querySelectorAll('h1').length, h2: document.querySelectorAll('h2').length, bad: (document.querySelector('main').textContent.match(/[!¡—–]/g) || []).join(''), spaced: /Sharp MD/.test(document.documentElement.innerHTML),
+      hrefs: [...document.querySelectorAll('main a[href]')].filter((a) => a.origin === location.origin).map((a) => new URL(a.href).pathname), mails: [...document.querySelectorAll('a[href^="mailto:"]')].map((a) => a.getAttribute('href')).filter((h) => h !== 'mailto:hello@sharpmd.app') }));
+    const home = l === 'es' ? '/es/' : '/'; const other = home + USES.find((x) => x !== p) + '.html';
+    const missing = []; for (const h of [...new Set(seen.hrefs)].filter((h) => !/^\/(es\/)?$/.test(h))) { if (!fs.existsSync(path.join(root, h))) missing.push(h); }
+    useSeen.push({ rel, ok: meta && seen.lang === l && seen.h1 === 1 && seen.h2 >= 4 && seen.h2 <= 6 && !seen.bad && !seen.spaced && !seen.mails.length && seen.hrefs.includes('/src/app.html') && seen.hrefs.includes(home) && seen.hrefs.includes(other) && !missing.length, meta, seen, missing });
+  }
+  const useLinked = { home: USES.every((p) => footOf(rawOf('index.html')).includes('href="' + p + '.html"')), es: USES.every((p) => footOf(rawOf('es/index.html')).includes('href="./' + p + '.html"')),
+    map: USES.every((p) => ['', 'es/'].every((d) => rawOf('sitemap.xml').includes('<loc>https://sharpmd.app/' + d + p + '.html</loc>') && rawOf('llms.txt').includes('https://sharpmd.app/' + d + p + '.html'))) };
+  check('las páginas de uso (editor para agentes por MCP y editor WYSIWYG) existen en inglés y en castellano con sus metadatos, un h1, de 4 a 6 secciones, el botón a la app y enlaces que existen, sin signos de admiración ni rayas', useSeen.length === 4 && useSeen.every((x) => x.ok), useSeen.filter((x) => !x.ok));
+  check('las páginas de uso están enlazadas desde el pie de la portada en los dos idiomas, y figuran en el sitemap y en llms.txt', useLinked.home && useLinked.es && useLinked.map, useLinked);
+  const ld = JSON.parse((rawOf('index.html').match(/<script type="application\/ld\+json">(\{"@context":"https:\/\/schema\.org","@type":"SoftwareApplication"[\s\S]*?)<\/script>/) || [0, '{}'])[1]);
+  check('portada: los datos estructurados de la app llevan "Sharp MD" como nombre alternativo, y el plan gratis en USD 0', ld.name === 'SharpMD' && JSON.stringify(ld.alternateName) === JSON.stringify(['Sharp MD', 'SharpMD Markdown editor']) && ld.url === 'https://sharpmd.app/' && !!ld.applicationCategory && !!ld.operatingSystem && ld.offers[0].price === '0' && !/Sharp MD/.test(rawOf('index.html').replace(/"alternateName":\[[^\]]*\]/, '')), [ld.alternateName, ld.operatingSystem, ld.offers]);
   // La pantalla de carga: viene en el HTML (se ve desde el primer pintado) y se va cuando la app está lista.
   const rawApp = fs.readFileSync(path.join(root, 'src', 'app.html'), 'utf8');
   await web.goto(origin + '/src/app.html'); await web.waitForSelector('.lmd-home');

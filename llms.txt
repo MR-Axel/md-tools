@@ -4,6 +4,8 @@
 
 - Web app: https://sharpmd.app/src/app.html
 - Site: https://sharpmd.app/ (Spanish: https://sharpmd.app/es/)
+- Markdown editor for Claude, Codex and other AI agents over MCP: https://sharpmd.app/markdown-editor-mcp.html (Spanish: https://sharpmd.app/es/markdown-editor-mcp.html)
+- WYSIWYG Markdown editor, editing with no syntax to type: https://sharpmd.app/wysiwyg-markdown-editor.html (Spanish: https://sharpmd.app/es/wysiwyg-markdown-editor.html)
 - Source code: https://github.com/MR-Axel/sharpmd (app under MIT, sync server under AGPL-3.0)
 - Contact: hello@sharpmd.app
 

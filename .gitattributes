@@ -26,5 +26,7 @@
 /refunds.html export-ignore
 /acceptable-use.html export-ignore
 /copyright.html export-ignore
+/markdown-editor-mcp.html export-ignore
+/wysiwyg-markdown-editor.html export-ignore
 /manifest.webmanifest export-ignore
 /sw.js export-ignore

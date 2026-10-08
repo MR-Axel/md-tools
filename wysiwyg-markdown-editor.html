@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{localStorage.setItem("mdtools:site-lang","en")}catch(e){}</script>
+<title>WYSIWYG Markdown editor online, no syntax: SharpMD</title>
+<meta name="description" content="Edit Markdown on the formatted page: paragraphs, tables, tasks, formulas and diagrams. The file stays plain Markdown. Free, with no account, and offline.">
+<link rel="canonical" href="https://sharpmd.app/wysiwyg-markdown-editor.html">
+<link rel="alternate" hreflang="en" href="https://sharpmd.app/wysiwyg-markdown-editor.html">
+<link rel="alternate" hreflang="es" href="https://sharpmd.app/es/wysiwyg-markdown-editor.html">
+<link rel="alternate" hreflang="x-default" href="https://sharpmd.app/wysiwyg-markdown-editor.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="SharpMD">
+<meta property="og:title" content="WYSIWYG Markdown editor online, no syntax: SharpMD">
+<meta property="og:description" content="Edit Markdown on the formatted page: paragraphs, tables, tasks, formulas and diagrams. The file stays plain Markdown. Free, with no account, and offline.">
+<meta property="og:url" content="https://sharpmd.app/wysiwyg-markdown-editor.html">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://sharpmd.app/docs/social-card-3.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="SharpMD: Markdown notes your AI writes and your team reads">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="WYSIWYG Markdown editor online, no syntax: SharpMD">
+<meta name="twitter:description" content="Edit Markdown on the formatted page: paragraphs, tables, tasks, formulas and diagrams. The file stays plain Markdown. Free, with no account, and offline.">
+<meta name="twitter:image" content="https://sharpmd.app/docs/social-card-3.png">
+<meta name="twitter:image:alt" content="SharpMD: Markdown notes your AI writes and your team reads">
+<meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<link rel="icon" href="icons/icon32.png">
+<style>
+  @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
+  :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --line: #dedbd2; --accent: #4d7c0f; --on: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121418; --soft: #1a1d23; --fg: #e6e8ec; --muted: #a0a7b4; --line: #2a2e37; --accent: #bef264; --on: #14161a; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.65 "MDT Inter", -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  main { width: min(720px, 100% - 40px); margin: 0 auto; padding: 46px 0 80px; }
+  .top { display: flex; align-items: center; gap: 14px; margin-bottom: 40px; }
+  .top > a { margin-right: auto; color: var(--muted); text-decoration: none; font-weight: 600; }
+  .lang { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); }
+  .lang a { display: flex; align-items: center; height: 26px; padding: 0 11px; border-radius: 999px; color: var(--muted); font-size: 12.5px; font-weight: 600; text-decoration: none; }
+  .lang a.on { background: var(--accent); color: var(--on); }
+  h1 { margin: 0 0 14px; font-size: 38px; line-height: 1.15; letter-spacing: -0.03em; }
+  h2 { margin: 34px 0 8px; font-size: 21px; letter-spacing: -0.015em; }
+  p, li { color: var(--muted); }
+  .lede { margin: 0 0 22px; font-size: 19px; }
+  a { color: var(--accent); }
+  code { padding: 1px 6px; border-radius: 5px; background: var(--soft); font: 0.88em ui-monospace, Consolas, monospace; color: var(--fg); }
+  .btn { display: inline-flex; align-items: center; height: 44px; padding: 0 20px; border-radius: 10px; background: var(--accent); color: var(--on); font-weight: 650; text-decoration: none; }
+  .under { margin: 10px 0 0; font-size: 14px; }
+  .next { margin-top: 40px; }
+  .legal { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 52px 0 0; padding-top: 18px; border-top: 1px solid var(--line); font-size: 14px; }
+  .legal a { color: var(--muted); text-decoration: none; }
+  .legal a:hover, .legal a[aria-current] { color: var(--fg); }
+  @media (max-width: 640px) { h1 { font-size: 31px; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><a href="./">← SharpMD</a><div class="lang"><a href="wysiwyg-markdown-editor.html" class="on" aria-current="true" hreflang="en">EN</a><a href="es/wysiwyg-markdown-editor.html" hreflang="es">ES</a></div></div>
+
+  <h1>A WYSIWYG Markdown editor online: edit Markdown without typing syntax</h1>
+  <p class="lede">Click a heading, a table or a diagram and change it right there, on the formatted page. The file is still plain Markdown.</p>
+  <p><a class="btn" href="src/app.html">Open the app</a></p>
+  <p class="under">Free and open source. Nothing to install, and no account needed to write.</p>
+
+  <h2>You edit the element itself</h2>
+  <p>Click a paragraph, a heading, a list item or a table cell and type. Right-click a block to insert a table, a code block, a diagram, a formula or a callout below it, or to turn it into a heading, move it, duplicate it or delete it.</p>
+  <p><code>/</code> on an empty line opens the same menu.</p>
+
+  <h2>Tables, tasks, formulas and diagrams</h2>
+  <ul>
+    <li>Tables get rows and columns with a button, and a row that sums each column.</li>
+    <li>A task list turns into a board: columns with cards you drag.</li>
+    <li>Formulas have an editor with live preview and buttons for fractions, sums and symbols.</li>
+    <li>A Mermaid or Graphviz diagram opens with the drawing next to the code. You add steps and arrows with a button.</li>
+  </ul>
+
+  <h2>The file stays plain Markdown</h2>
+  <p>The Markdown is rewritten behind the page, block by block, and the source is one click away. If you like the syntax, type <code>**bold**</code> or start a line with <code>#</code> and the marks turn into formatting.</p>
+  <p>It reads GitHub Flavored Markdown, plus KaTeX math, Mermaid and Graphviz diagrams, footnotes, task lists, callouts, definition lists and YAML front matter.</p>
+
+  <h2>Your files open without being uploaded</h2>
+  <p>A <code>.md</code> file or a folder on your disk is read in your browser and never uploaded. Chrome, Edge and Brave open folders and save in place. Firefox and Safari open one file at a time, and saving downloads a copy.</p>
+  <p>With a folder open, the sidebar lists its files and the search box looks through the text of all of them at once.</p>
+
+  <h2>No account, and no connection needed</h2>
+  <p>The editor asks for no account, with no limit on files or on notes kept in the browser. The web app opens without a connection once you have used it, and the extension always does.</p>
+
+  <h2>Web app, Chrome extension and phone</h2>
+  <p>The web app runs in the browser with nothing to install. With the <a href="https://github.com/MR-Axel/sharpmd#install">extension</a>, set Chrome as the default app for <code>.md</code> files and a double-click opens them rendered. On the phone the web app fits a small screen and installs from the browser, and the Android app is that same app in a package.</p>
+
+  <p class="next"><a class="btn" href="src/app.html">Open the app</a></p>
+  <p>Your AI can work on the same notes: see the <a href="markdown-editor-mcp.html">Markdown editor for Claude and other AI agents</a>. Plans and everything else are on the <a href="./">SharpMD home page</a>.</p>
+  <p class="legal"><a href="./">Home</a><a href="markdown-editor-mcp.html">Markdown editor for AI agents</a><a href="wysiwyg-markdown-editor.html" aria-current="page">WYSIWYG Markdown editor</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="support.html">Support</a></p>
+</main>
+</body>
+</html>

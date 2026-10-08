@@ -286,6 +286,19 @@
     .two.host { margin-top: 30px; } .six.duo { grid-template-columns: minmax(0, 1fr); }
   }
   @media (max-width: 640px) { nav .btn { display: none; } .term pre { font-size: 10.5px; padding: 12px; } .vis .term, .ill { aspect-ratio: auto; } .ill { flex-direction: column; align-items: stretch; padding: 14px; } .pn { flex: none; } .arrow { align-self: center; transform: rotate(90deg); margin: 4px 0; } .cols > div { min-height: 76px; } .plans, .plans.three, .use { grid-template-columns: minmax(0, 1fr); max-width: none; } .use > div + div { border-left: 0; border-top: 1px solid var(--line); } .cta .btn { flex: 1 1 auto; } footer span { flex-basis: 100%; } }
+  /* En el telefono, lo que se apilaba pasa a una fila que se desliza: la pagina queda mas corta. */
+  @media (max-width: 640px) {
+    .six, .six.duo, .plans, .plans.three, .more, .use { display: flex; gap: 12px; max-width: none; margin-left: -20px; margin-right: -20px; padding: 0 20px 4px; border: 0; background: none; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scroll-padding: 0 20px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+    .six::-webkit-scrollbar, .plans::-webkit-scrollbar, .more::-webkit-scrollbar, .use::-webkit-scrollbar { display: none; }
+    .six > li, .plans > .plan, .more > div, .use > div { flex: 0 0 84%; min-width: 0; scroll-snap-align: start; }
+    .six > li, .more > div, .use > div, .use > div + div, .use > div:nth-child(n+3) { padding: 20px 18px 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); }
+    .band .six > li { background: var(--bg); }
+    .more h3 { padding: 0 0 10px; }
+    section h2 + .six, .gains .six { margin-top: 0; }
+    .opts { display: flex; gap: 12px; margin-left: -20px; margin-right: -20px; padding: 0 20px 4px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scroll-padding: 0 20px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+    .opts::-webkit-scrollbar { display: none; }
+    .opts > li, .opts > li.on, .band .opts > li.on { flex: 0 0 86%; min-width: 0; scroll-snap-align: start; padding: 18px 16px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); }
+  }
   @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .pk *, .cd, .msg, .opts > li.on, html.go body::after { animation: none !important; } .cd.from { display: none; } .pk .src { width: auto !important; } .pk .out, .pk .box, .pk .new { opacity: 1 !important; max-height: none !important; } .pk .b { display: none; } .btn, .more li, .more li b { transition: none; } }
 </style>
 <noscript><style>video[data-poster] { display: none; }</style></noscript>
@@ -720,6 +733,8 @@
   <a href="https://github.com/MR-Axel/sharpmd">GitHub</a>
   <a href="privacy.html"><span lang="en">Privacy</span><span lang="es">Privacidad</span></a>
   <a href="api.html">API</a>
+  <a href="[[markdown-editor-mcp.html||./markdown-editor-mcp.html]]"><span lang="en">Markdown editor for AI agents</span><span lang="es">Editor de Markdown para agentes de IA</span></a>
+  <a href="[[wysiwyg-markdown-editor.html||./wysiwyg-markdown-editor.html]]"><span lang="en">WYSIWYG Markdown editor</span><span lang="es">Editor de Markdown WYSIWYG</span></a>
   <a href="support.html"><span lang="en">Support</span><span lang="es">Ayuda</span></a>
   <a href="terms.html"><span lang="en">Terms</span><span lang="es">Términos</span></a>
   <a href="refunds.html"><span lang="en">Refunds</span><span lang="es">Reembolsos</span></a>
