@@ -2404,7 +2404,9 @@ const iso = (ms) => new Date(ms).toISOString().replace(/\.\d+Z$/, 'Z');
 // Lo que no se entiende se deja como texto: una tarjeta sin llaves es una tarjeta sin atributos.
 const KB_NAMES = /^(kanban|tablero|board)$/i;
 const KB_KEY = /^[\p{L}_][\p{L}\p{N}_.-]{0,39}$/u;
-const KB_RESERVED = new Set(['id', 'created', 'updated', 'show']);
+const KB_RESERVED = new Set(['id', 'created', 'updated', 'show', 'by']);
+// En el renglón de configuración: done= es la columna de hechas y tags= el color de cada etiqueta. No son campos.
+const KB_TAGCFG = /^[^:,]+:(?:gray|red|orange|yellow|green|teal|blue|purple|pink)(?:,[^:,]+:(?:gray|red|orange|yellow|green|teal|blue|purple|pink))*$/;
 const KB_ALPHA = 'abcdefghijkmnpqrstuvwxyz23456789';
 const kbId = () => { let s = ''; for (const b of crypto.randomBytes(8)) s += KB_ALPHA[b % 32]; return s; };
 function kbPairs(inner) {
@@ -2427,26 +2429,28 @@ function kbParse(lines) {
     const c = /^\s*[-*+]\s+(?:\[([ xX])\]\s+)?(.*)$/.exec(line);
     if (!c) {
       const cfg = !cur && /^\s*\{([^{}]*)\}\s*$/.exec(line); const pairs = cfg && kbPairs(cfg[1]);
-      if (pairs) for (const [k, v] of pairs) { if (k === 'show') board.show = v.split(',').map((s) => s.trim()).filter(Boolean); else if (!KB_RESERVED.has(k)) board.fields[k] = kbType(v); }
+      if (pairs) for (const [k, v] of pairs) { if (k === 'show') board.show = v.split(',').map((s) => s.trim()).filter(Boolean); else if (k === 'done') board.done = v; else if (k === 'tags' && KB_TAGCFG.test(v)) board.tags = v; else if (!KB_RESERVED.has(k)) board.fields[k] = kbType(v); }
       continue;
     }
     if (!c[2].trim()) continue;
     if (!cur) { cur = { title: 'To do', cards: [] }; board.columns.push(cur); }
-    const s = kbSplit(c[2].trim()); const card = { id: '', text: s.text, done: !!c[1] && c[1] !== ' ', created: '', updated: '', attrs: {} };
-    for (const [k, v] of s.pairs) { if (k === 'id') card.id = v; else if (k === 'created') card.created = v; else if (k === 'updated') card.updated = v; else if (k !== 'show') card.attrs[k] = v; }
+    const s = kbSplit(c[2].trim()); const card = { id: '', text: s.text, done: !!c[1] && c[1] !== ' ', created: '', updated: '', by: '', attrs: {} };
+    for (const [k, v] of s.pairs) { if (k === 'id') card.id = v; else if (k === 'created') card.created = v; else if (k === 'updated') card.updated = v; else if (k === 'by') card.by = v; else if (k !== 'show') card.attrs[k] = v; }
     cur.cards.push(card);
   }
   return board;
 }
 function kbCardLine(card) {
   const pairs = Object.keys(card.attrs).map((k) => k + '=' + kbVal(card.attrs[k]));
-  if (card.id) pairs.push('id=' + kbVal(card.id)); if (card.created) pairs.push('created=' + kbVal(card.created)); if (card.updated) pairs.push('updated=' + kbVal(card.updated));
+  if (card.id) pairs.push('id=' + kbVal(card.id)); if (card.created) pairs.push('created=' + kbVal(card.created)); if (card.by) pairs.push('by=' + kbVal(card.by)); if (card.updated) pairs.push('updated=' + kbVal(card.updated));
   return '- [' + (card.done ? 'x' : ' ') + '] ' + card.text.replace(/\s*\n\s*/g, ' ').trim() + (pairs.length ? ' {' + pairs.join(' ') + '}' : '');
 }
 function kbWrite(board) {
   const out = []; const cfg = [];
   if (board.show.length) cfg.push('show=' + kbVal(board.show.join(',')));
   for (const k of Object.keys(board.fields)) { const f = board.fields[k]; cfg.push(k + '=' + kbVal(f.type === 'select' ? f.options.join('|') : f.type)); }
+  if (board.done != null) cfg.push('done=' + kbVal(board.done));
+  if (board.tags) cfg.push('tags=' + kbVal(board.tags));
   if (cfg.length) out.push('{' + cfg.join(' ') + '}');
   board.columns.forEach((col, i) => {
     if (i) out.push('');

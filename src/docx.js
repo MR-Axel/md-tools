@@ -344,7 +344,7 @@
         return Array.from(n.querySelectorAll('.lmd-col')).map((col) => {
           const title = col.querySelector('.lmd-col-title');
           return para(pPrOf(c), textRun(title ? title.textContent.trim() : '', { b: true })) +
-            Array.from(col.querySelectorAll('.lmd-card')).map((card) => { const t = card.querySelector('.lmd-card-text'); const box = card.querySelector('.lmd-card-check'); return para(pPrOf(Object.assign({}, c, { list: { depth: 0 } }), { left: 720, hanging: 360 }), checkbox(!!(box && box.checked)) + textRun(' ' + (t ? t.textContent : card.textContent).trim(), {})); }).join('');
+            Array.from(col.querySelectorAll('.lmd-card')).map((card) => { const t = card.querySelector('.lmd-card-text'); return para(pPrOf(Object.assign({}, c, { list: { depth: 0 } }), { left: 720, hanging: 360 }), checkbox(card.classList.contains('lmd-card-done')) + textRun(' ' + (t ? t.textContent : card.textContent).trim(), {})); }).join('');
         }).join('');
       }
       if (tag === 'TABLE') return table(n, c);
