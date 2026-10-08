@@ -18,7 +18,7 @@ const ROOT = new URL('./', self.location.href);
 const SHELL = [
   'src/app.html', 'src/content.css', 'src/editors.css', 'vendor/hljs-themes.css', 'manifest.webmanifest',
   'src/boot.js', 'src/web.js', 'src/defaults.js', 'src/storeapp.js', 'src/kit.js', 'src/touch.js', 'src/dialog.js', 'src/markdown.js',
-  'src/theme.js', 'src/serialize.js', 'src/store.js', 'src/bridge.js', 'src/seal.js', 'src/cloud.js', 'src/home.js', 'src/write.js', 'src/links.js',
+  'src/theme.js', 'src/serialize.js', 'src/store.js', 'src/bridge.js', 'src/seal.js', 'src/cloud.js', 'src/home.js', 'src/write.js', 'src/lists.js', 'src/links.js',
   'src/extras.js', 'src/images.js', 'src/board.js', 'src/page.js', 'src/sync.js', 'src/comments.js', 'src/vault.js', 'src/live.js', 'src/team.js', 'src/install.js', 'src/tools.js', 'src/content.js',
   'vendor/markdown-it.min.js', 'vendor/markdown-it-sub.min.js', 'vendor/markdown-it-sup.min.js',
   'vendor/markdown-it-ins.min.js', 'vendor/markdown-it-mark.min.js', 'vendor/markdown-it-abbr.min.js', 'vendor/markdown-it-deflist.min.js',

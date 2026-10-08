@@ -16,7 +16,7 @@
       if (n.nodeType === 3) { out += escText(n.nodeValue); return; }
       if (n.nodeType !== 1) return;
       const tag = n.tagName;
-      if (tag === 'INPUT' || n.classList.contains('lmd-anchor')) return;
+      if (tag === 'INPUT' || n.classList.contains('lmd-anchor') || n.classList.contains('lmd-hnum')) return;
       if (n.classList.contains('lmd-math')) { out += '$' + n.getAttribute('data-tex') + '$'; return; }
       if (n.classList.contains('lmd-wiki')) {
         const target = n.getAttribute('data-wiki'); const label = n.textContent;
@@ -48,7 +48,7 @@
       if (child.closest('.lmd-math') && !child.classList.contains('lmd-math')) continue;
       if (!INLINE_OK.has(child.tagName)) return false;
       if (child.classList.contains('footnote-ref') || child.closest('.footnote-ref')) return false;
-      if (child.tagName === 'SPAN' && !child.classList.contains('lmd-math') && child.attributes.length) return false;
+      if (child.tagName === 'SPAN' && !child.classList.contains('lmd-math') && !child.classList.contains('lmd-hnum') && child.attributes.length) return false;
     }
     return true;
   }

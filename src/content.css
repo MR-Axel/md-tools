@@ -268,6 +268,12 @@
 .markdown-body img.lmd-zoomable { cursor: zoom-in; }
 .markdown-body ul, .markdown-body ol { padding-left: 1.7em; }
 .markdown-body li { margin: 0.25em 0; }
+/* El estilo de cada nivel de una lista numerada, como en un procesador de textos: 1, a, i y de nuevo 1. En el
+   archivo todas llevan números (Markdown no tiene otra marca). Las viñetas ya van con disco, círculo y cuadrado:
+   es lo que hace el navegador por su cuenta. */
+.markdown-body ol, .markdown-body ol ol ol ol { list-style-type: decimal; }
+.markdown-body ol ol, .markdown-body ol ol ol ol ol { list-style-type: lower-alpha; }
+.markdown-body ol ol ol, .markdown-body ol ol ol ol ol ol { list-style-type: lower-roman; }
 .markdown-body li > p { margin-bottom: 0.5em; }
 /* solo los ítems con casilla pierden la viñeta: una lista común pegada a una de tareas la conserva */
 .markdown-body li.lmd-task-item { list-style: none; margin-left: -1.3em; }
@@ -2062,13 +2068,18 @@ textarea.lmd-jy-in { resize: vertical; }
 .lmd-cd-pick { display: grid; gap: 4px; margin-bottom: 14px; }
 
 /* ---------- Ajustes de la página ---------- */
-.lmd-pw-wide { --lmd-content-w: 1500px !important; }
+.lmd-pw-wide { --lmd-content-w: var(--lmd-page-wide, 1500px) !important; }
 .lmd-pw-full .lmd-article, .lmd-pw-full .lmd-raw { max-width: none; }
-.lmd-page-numbered .lmd-article { counter-reset: lmd-h2; }
-.lmd-page-numbered .lmd-article > h2 { counter-increment: lmd-h2; counter-reset: lmd-h3; }
-.lmd-page-numbered .lmd-article > h3 { counter-increment: lmd-h3; }
-.lmd-page-numbered .lmd-article > h2::before { content: counter(lmd-h2) ". "; color: var(--fg-faint); font-weight: 500; }
-.lmd-page-numbered .lmd-article > h3::before { content: counter(lmd-h2) "." counter(lmd-h3) " "; color: var(--fg-faint); font-weight: 500; }
+/* Los tres anchos se distinguen siempre. Donde el ancho normal ya llenaría la zona de lectura (una ventana angosta,
+   o la barra lateral abierta), la normal y la ancha dejan margen a los lados y la completa va de borde a borde. */
+@media (min-width: 821px) {
+  .lmd-centered .lmd-article, .lmd-centered .lmd-raw, .lmd-centered .lmd-daily-nav, .lmd-centered .lmd-back { max-width: min(calc(var(--lmd-content-w) + 96px), 84%); }
+  .lmd-centered.lmd-pw-wide .lmd-article, .lmd-centered.lmd-pw-wide .lmd-raw, .lmd-centered.lmd-pw-wide .lmd-daily-nav, .lmd-centered.lmd-pw-wide .lmd-back { max-width: min(calc(var(--lmd-content-w) + 96px), 92%); }
+  .lmd-centered.lmd-pw-full .lmd-article, .lmd-centered.lmd-pw-full .lmd-raw, .lmd-centered.lmd-pw-full .lmd-daily-nav, .lmd-centered.lmd-pw-full .lmd-back { max-width: none; }
+}
+/* El número de un título numerado: texto de verdad (se elige y se copia), que no se edita ni se guarda. */
+.lmd-hnum { color: var(--fg-faint); font-weight: 500; }
+.lmd-ask-card p.lmd-pg-note { margin: -6px 0 14px; font-size: 13px; }
 .lmd-page-btn svg { fill: none; }
 .lmd-ask-card p.lmd-pg-lead { margin: 0 0 14px; font-size: 13px; }
 .lmd-pg-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 0 0 14px; }
@@ -2635,8 +2646,6 @@ html.lmd-ai-open .lmd-ai-card { left: calc(50% - 190px); width: min(860px, calc(
 @media print { .lmd-st-dlg { display: none !important; } }
 /* Sesión en vivo sobre una nota del equipo: la línea que lo dice, arriba del cuadro. */
 .lmd-ask-card.lmd-live-card p.lmd-live-team { margin: 0 0 12px; color: var(--fg); overflow-wrap: anywhere; }
-/* Ajustes de la página, toc: false. El panel conserva el título y el avance de lectura. */
-.lmd-page-notoc .lmd-o-tree { display: none; }
 /* Tarjeta de un tablero, campo Enlace: el botón para elegir otra nota, al lado del campo. */
 .lmd-cd-link .lmd-cd-note { flex: none; min-height: 32px; white-space: nowrap; }
 @media (pointer: coarse) { .lmd-cd-link .lmd-cd-note { min-height: 44px; } }

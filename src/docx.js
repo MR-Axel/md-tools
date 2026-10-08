@@ -88,17 +88,19 @@
       '</w:styles>';
   }
   const BULLETS = ['•', '◦', '▪'];
-  const NUMFMT = ['decimal', 'decimal', 'decimal']; // como en la nota: números en todos los niveles
+  // Como en la nota: una lista numerada dentro de otra va con letras, la que sigue con romanos, y vuelve a números.
+  const NUMFMT = ['decimal', 'lowerLetter', 'lowerRoman'];
   function numberingXml(nums) {
     const lvl = (i, fmt, text, extra) => '<w:lvl w:ilvl="' + i + '"><w:start w:val="1"/><w:numFmt w:val="' + fmt + '"/><w:lvlText w:val="' + text + '"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="' + (720 * (i + 1)) + '" w:hanging="360"/></w:pPr>' + (extra || '') + '</w:lvl>';
-    let bullets = ''; let numbers = '';
-    for (let i = 0; i < 9; i++) { bullets += lvl(i, 'bullet', BULLETS[i % 3]); numbers += lvl(i, NUMFMT[i % 3], '%' + (i + 1) + '.'); }
+    let bullets = ''; const numbers = ['', '', ''];
+    // Una numeración por estilo: el nivel dice la sangría, y el estilo sale de cuántas listas numeradas la contienen.
+    for (let i = 0; i < 9; i++) { bullets += lvl(i, 'bullet', BULLETS[i % 3]); NUMFMT.forEach((f, k) => { numbers[k] += lvl(i, f, '%' + (i + 1) + '.'); }); }
     return XML + '<w:numbering ' + NS + '>' +
       '<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="hybridMultilevel"/>' + bullets + '</w:abstractNum>' +
-      '<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="hybridMultilevel"/>' + numbers + '</w:abstractNum>' +
+      numbers.map((n, k) => '<w:abstractNum w:abstractNumId="' + (k + 1) + '"><w:multiLevelType w:val="hybridMultilevel"/>' + n + '</w:abstractNum>').join('') +
       '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>' +
       // Cada lista numerada es una numeración propia, que arranca en su número.
-      nums.map((n) => '<w:num w:numId="' + n.id + '"><w:abstractNumId w:val="1"/><w:lvlOverride w:ilvl="' + n.lvl + '"><w:startOverride w:val="' + n.start + '"/></w:lvlOverride></w:num>').join('') +
+      nums.map((n) => '<w:num w:numId="' + n.id + '"><w:abstractNumId w:val="' + (1 + (n.style || 0) % 3) + '"/><w:lvlOverride w:ilvl="' + n.lvl + '"><w:startOverride w:val="' + n.start + '"/></w:lvlOverride></w:num>').join('') +
       '</w:numbering>';
   }
 
@@ -295,9 +297,9 @@
     }
     function listOf(listEl, c) {
       const depth = c.list ? c.list.depth + 1 : 0; const lvl = Math.min(depth, 8); const ordered = listEl.tagName === 'OL';
-      let numId = 1;
-      if (ordered) { numId = nums.length + 2; nums.push({ id: numId, lvl, start: Math.max(1, parseInt(listEl.getAttribute('start'), 10) || 1) }); }
-      const cc = Object.assign({}, c, { list: { depth, numId } });
+      let numId = 1; const ol = (c.list ? c.list.ol || 0 : 0) + (ordered ? 1 : 0);
+      if (ordered) { numId = nums.length + 2; nums.push({ id: numId, lvl, style: ol - 1, start: Math.max(1, parseInt(listEl.getAttribute('start'), 10) || 1) }); }
+      const cc = Object.assign({}, c, { list: { depth, numId, ol } });
       const num = '<w:numPr><w:ilvl w:val="' + lvl + '"/><w:numId w:val="' + numId + '"/></w:numPr>';
       const left = 720 * (lvl + 1);
       let out = '';

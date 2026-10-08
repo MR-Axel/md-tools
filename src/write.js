@@ -12,7 +12,7 @@
   const KINDS = { p: '', h1: '# ', h2: '## ', h3: '### ', h4: '#### ', ul: '- ', ol: '1. ', task: '- [ ] ', quote: '> ' };
   // Lo que se escribe al empezar una línea y en qué tipo la convierte.
   const SHORTCUTS = [
-    [/^#{1,4}$/, (m) => 'h' + m[0].length], [/^[-*+]$/, () => 'ul'], [/^1[.)]$/, () => 'ol'],
+    [/^#{1,4}$/, (m) => 'h' + m[0].length], [/^[-*+]$/, () => 'ul'], [/^\d{1,9}[.)]$/, () => 'ol'],
     [/^>$/, () => 'quote'], [/^(\[\s?\]|[-*+]\s\[\s?\])$/, () => 'task'],
   ];
   const ITEM_RE = /^((?:\s{0,3}>\s?)*\s*)([-*+]|\d{1,9}[.)])(\s+|$)(\[[ xX]\](?:\s+|$))?/;
@@ -60,7 +60,7 @@
   // ---------- Borradores ----------
   // Un bloque nuevo no existe en el archivo hasta que tiene texto: mientras tanto es un borrador en pantalla.
   function setKind(d, kind) {
-    d.dataset.kind = kind;
+    d.dataset.kind = kind; delete d.dataset.mark;
     d.className = 'lmd-editable lmd-draft lmd-draft-' + kind;
     d.dataset.ph = kind === 'p' ? T('Escribí acá, o / para insertar') : T({ h1: 'Título 1', h2: 'Título 2', h3: 'Título 3', h4: 'Título 4', ul: 'Lista', ol: 'Lista numerada', task: 'Tarea', quote: 'Cita' }[kind]);
   }
@@ -113,13 +113,18 @@
       while (at - 1 > s && blank(at - 1)) at--;
       const m = ITEM_RE.exec(lines()[s] || '') || ['', '', '-', ' ', ''];
       const marker = /\d/.test(m[2]) ? (parseInt(m[2], 10) + 1) + m[2].slice(-1) : m[2];
-      for (let n = d._li.parentNode; n && n !== core.ui.article; n = n.parentNode) owners.push(n);
-      body = [m[1] + marker + (m[3] || ' ') + (m[4] ? (d.dataset.done ? '[x] ' : '[ ] ') : '') + text.replace(/\n/g, ' ')];
+      // Las listas y los ítems que contienen al nuevo, que crecen con él (sangrado con Tab, cuelga del de arriba).
+      const item = d.parentNode;
+      for (let n = item && item.isConnected ? item.parentNode : d._li.parentNode; n && n !== core.ui.article; n = n.parentNode) owners.push(n);
+      // Un ítem que se sangró antes de escribirlo nace como primer hijo del de arriba (lists.js arma su marca).
+      const child = d._child && LMD.lists ? LMD.lists.childMark(lines()[s] || '') : '';
+      const lead = child ? child.replace(/\[ \] $/, '') : m[1] + marker + (m[3] || ' ');
+      body = [lead + (m[4] ? (d.dataset.done ? '[x] ' : '[ ] ') : '') + text.replace(/\n/g, ' ')];
       kind = 'item';
     } else {
       at = lineAfter(d._anchor);
       // Una tarea dictada como hecha (dictate.js) nace tildada.
-      const prefix = kind === 'ul' || kind === 'task' ? listPrefix(kind, at).replace('[ ]', d.dataset.done ? '[x]' : '[ ]') : (KINDS[kind] || '');
+      const prefix = kind === 'ul' || kind === 'task' ? listPrefix(kind, at).replace('[ ]', d.dataset.done ? '[x]' : '[ ]') : kind === 'ol' && d.dataset.mark ? d.dataset.mark + ' ' : (KINDS[kind] || '');
       const parts = text.split('\n');
       if (kind === 'p') body = parts.map((p, i) => p.trim() + (i < parts.length - 1 ? '\\' : ''));
       else if (kind === 'quote') body = parts.map((p) => '> ' + p.trim());
@@ -127,11 +132,13 @@
     }
     const y = d._syn;
     if (y) {
-      if (y.text !== text) { core.replaceLines(y.at, y.at + y.n, y.fix(body)); y.n = body.length; y.text = text; }
+      if (y.text !== text) { core.replaceLines(y.at, y.at + y.n, y.fix(body)); y.n = body.length; y.text = text; if (d._li) core.tidyList(y.at); }
       return { at: y.at, kind };
     }
     const out = d._li ? body : padded(at, body);
     core.insertLines(at, out, owners);
+    // Un ítem en el medio de una lista numerada: los que siguen se renumeran, en el mismo paso de deshacer.
+    if (d._li) core.tidyList(at);
     const pre = out[0] === '' && body[0] !== '' ? 1 : 0;
     // El marcador de un ítem se decidió mirando las líneas de al lado antes de escribirlo: al reescribir se mantiene.
     const lead = /^(\s*(?:[-*+]|\d{1,9}[.)])\s+)/.exec(body[0]);
@@ -145,6 +152,36 @@
     const y = d._syn; if (!y) return;
     d._syn = null;
     core.replaceLines(y.s, y.at + y.n + y.post, []);
+    if (d._li) core.tidyList(y.s);
+  }
+
+  // Tab o Shift+Tab en un ítem nuevo que todavía no tiene texto (no está en el archivo): cambia de nivel en pantalla
+  // y, al escribirse, nace ahí. dir > 0 lo cuelga del ítem de arriba; dir < 0 lo saca un nivel.
+  function nest(d, dir) {
+    const item = d.parentNode; const list = item && item.parentNode;
+    if (!d._li || d._syn || !list || !item.classList.contains('lmd-draft-li')) return false;
+    const isList = (n) => !!n && (n.tagName === 'UL' || n.tagName === 'OL');
+    let to; let child = false; let host = null;
+    if (dir > 0) {
+      const prev = item.previousElementSibling; if (!prev || prev.tagName !== 'LI' || !core.rangeOf(prev)) return false;
+      // Si el de arriba ya tiene una sublista al final, el nuevo se suma a ella; si no, abre una.
+      const sub = isList(prev.lastElementChild) ? prev.lastElementChild : null; const last = sub && sub.lastElementChild;
+      if (last && core.rangeOf(last)) { to = last; host = sub; }
+      else { to = prev; child = true; host = el(list.tagName.toLowerCase()); host.className = list.className.replace(/\blmd-cl\b/, '').trim(); if (!host.className) host.removeAttribute('class'); prev.appendChild(host); }
+    } else {
+      const up = list.parentNode; if (!up || up.tagName !== 'LI' || !core.rangeOf(up)) return false;
+      to = up;
+    }
+    // Mover el ítem le saca el foco: mientras tanto no cuenta como un borrador que se abandona.
+    d._done = true;
+    if (host) host.appendChild(item); else { to.after(item); if (!list.children.length) list.remove(); }
+    d._li = to; d._child = child;
+    const task = to.classList.contains('lmd-task-item'); const box = item.querySelector(':scope > input.lmd-task');
+    item.classList.toggle('lmd-task-item', task);
+    if (task && !box) item.insertBefore(el('input', { type: 'checkbox', class: 'lmd-task', disabled: '' }), d); else if (!task && box) box.remove();
+    d._done = false;
+    caretTo(d, true);
+    return true;
   }
 
   // Lo escrito en un borrador pasa al archivo tras una pausa, sin cerrarlo ni redibujar: el foco sigue ahí.
@@ -256,7 +293,8 @@
     if (!m) return;
     for (const [re, to] of SHORTCUTS) {
       const hit = re.exec(m[1]);
-      if (hit) { d.textContent = ''; setKind(d, to(hit)); return; }
+      // Una lista numerada arranca en el número que se escribió ("3. " empieza en 3).
+      if (hit) { d.textContent = ''; setKind(d, to(hit)); if (d.dataset.kind === 'ol') d.dataset.mark = hit[0]; return; }
     }
   }
 
@@ -707,7 +745,7 @@
   }
 
   LMD.write = {
-    init, enter, onKey, append, closeMenu,
+    init, enter, onKey, append, closeMenu, nest,
     remove: (node) => { const b = topBlock(node); if (b) removeBlock(b); },
     blur: (d) => commitDraft(d, false),
     sync: syncDraft,
