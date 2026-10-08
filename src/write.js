@@ -27,6 +27,15 @@
     while (n && n.parentNode !== core.ui.article) n = n.parentNode;
     return n || null;
   }
+  // Dónde sigue lo que se escribe: dentro de una sección desplegable, un bloque nuevo queda adentro de ella.
+  const HOST = 'details.lmd-box[data-l]';
+  const isHost = (n) => !!n && (n === core.ui.article || (n.nodeType === 1 && n.matches(HOST)));
+  function hostBlock(node) {
+    let n = node;
+    while (n && !isHost(n.parentNode)) n = n.parentNode;
+    return n || null;
+  }
+  const shown = (node) => { if (node && LMD.fold) LMD.fold.reveal(node); };
 
   // Líneas del fuente que ocupa un bloque, sin los renglones vacíos del final.
   function span(block) {
@@ -34,7 +43,9 @@
     const r = core.rangeOf(block) || (block.querySelector('[data-l]') && core.rangeOf(block.querySelector('[data-l]')));
     if (!r) return null;
     const s = r[0] + fm(); let e = r[1] + fm();
-    while (e - 1 > s && blank(e - 1)) e--;
+    // El rango de un recuadro (::: … :::) termina antes de la línea que lo cierra: esa línea también es suya.
+    if (block.matches('.lmd-box[data-l]') && /^\s*:{3,}\s*$/.test(lines()[e] || '')) e++;
+    else while (e - 1 > s && blank(e - 1)) e--;
     return { s, e };
   }
 
@@ -118,6 +129,8 @@
       kind = 'item';
     } else {
       at = lineAfter(d._anchor);
+      // Dentro de una sección desplegable, lo que se escribe justo antes de la línea que la cierra es de ella.
+      for (let n = d.parentNode; n && n !== core.ui.article; n = n.parentNode) if (n.nodeType === 1 && n.matches(HOST)) owners.push(n);
       // Una tarea dictada como hecha (dictate.js) nace tildada.
       const prefix = kind === 'ul' || kind === 'task' ? listPrefix(kind, at).replace('[ ]', d.dataset.done ? '[x]' : '[ ]') : (KINDS[kind] || '');
       const parts = text.split('\n');
@@ -166,11 +179,14 @@
     const text = draftText(d);
     if (!text) {
       const li = d._li; const anchor = d._anchor;
+      // Enter en un renglón vacío dentro de una sección desplegable sale de ella, como de una lista.
+      const box = !li && d.parentNode && d.parentNode !== core.ui.article && isHost(d.parentNode) ? d.parentNode : null;
       discard(d);
+      if (follow && box) { openDraft(box, 'p'); return; }
       // Enter en un ítem vacío sale de la lista.
       // El párrafo va justo después de ese ítem, aunque la lista siga más abajo.
       // Si era el último de una lista suelta en el documento, el párrafo se abre ya afuera, donde va a quedar.
-      if (follow && li) { const list = li.parentNode; openDraft(list && list.parentNode === core.ui.article && !li.nextElementSibling ? list : li, 'p'); }
+      if (follow && li) { const list = li.parentNode; openDraft(list && isHost(list.parentNode) && !li.nextElementSibling ? list : li, 'p'); }
       else if (follow) openDraft(anchor, 'p');
       return;
     }
@@ -191,10 +207,11 @@
     core.render();
     const made = blockAtLine(at);
     if (!made) return;
+    shown(made);
     if (kind === 'item' || kind === 'ul' || kind === 'ol' || kind === 'task') {
       const li = made.tagName === 'LI' ? made : made.querySelector('li');
       if (li) openItemDraft(li);
-    } else openDraft(topBlock(made), 'p');
+    } else openDraft(hostBlock(made), 'p');
   }
 
   // Enter dentro de un bloque: lo que queda después del cursor pasa a un bloque nuevo.
@@ -213,7 +230,7 @@
     core.commitBlock(node);
     // En una lista con renglones en blanco el texto del ítem es un párrafo adentro del <li>.
     const li = node.classList.contains('lmd-li-text') ? node.closest('li') : (node.parentNode.tagName === 'LI' ? node.parentNode : null);
-    const d = li ? openItemDraft(li) : openDraft(topBlock(node), 'p');
+    const d = li ? openItemDraft(li) : openDraft(hostBlock(node), 'p');
     if (tail) { d.appendChild(tail); caretTo(d, false); }
   }
 
@@ -295,7 +312,8 @@
     const moved = put(at, 0, out);
     core.render();
     const made = blockAtLine(moved(at + (out[0] === '' && body[0] !== '' ? 1 : 0)));
-    if (made && then) then(topBlock(made) || made, made);
+    shown(made);
+    if (made && then) then(hostBlock(made) || made, made);
   }
 
   const TEMPLATES = {
@@ -303,6 +321,8 @@
     code: { body: () => ['```', '', '```'], then: (top) => core.editCode(top) },
     diagram: { body: () => ['```mermaid', 'graph LR', '  A[' + T('Inicio') + '] --> B[' + T('Fin') + ']', '```'], then: (top) => { core.tools().then((ok) => { if (ok) LMD.diagram.edit(top.matches('.lmd-diagram, pre.lmd-mermaid') ? top : top.querySelector('.lmd-diagram, pre.lmd-mermaid')); }); } },
     alert: { body: () => ['> [!NOTE]', '> ' + T('Texto del aviso')], then: (top) => { const p = top.querySelector('.lmd-editable'); if (p) { p.focus(); getSelection().selectAllChildren(p); } } },
+    // Una sección desplegable. Dentro de otra, la de afuera pasa a llevar más dos puntos (fold.js).
+    details: { before: (after) => { if (LMD.fold) LMD.fold.widen(after); }, body: () => ['::: details ' + T('Detalles'), T('Texto de la sección'), ':::'], then: (top, made) => { if (LMD.fold) LMD.fold.inserted(made); } },
     hr: { body: () => ['---'] },
     board: { body: () => ['```kanban', '## ' + T('Por hacer'), '- [ ] ' + T('Primera tarjeta'), '', '## ' + T('En curso'), '', '## ' + T('Hecho'), '```'] },
   };
@@ -322,7 +342,8 @@
     // Una fórmula no se inserta con un ejemplo: abre su editor, y recién se escribe al aplicar.
     if (what === 'math') { core.tools().then((ok) => { if (ok) LMD.formula.create(after); }); return; }
     const t = TEMPLATES[what];
-    if (t) insertTemplate(after, t.body(), t.then);
+    // Lo que haya que acomodar antes (before) y lo insertado se deshacen juntos.
+    if (t) core.oneUndo(() => { if (t.before) t.before(after); insertTemplate(after, t.body(), t.then); });
   }
 
   function removeBlock(block) {
@@ -350,6 +371,7 @@
     core.render();
     const at = shifted(dir < 0 ? a.s : a.s + second.length + gap.length);
     const moved = blockAtLine(at);
+    shown(moved);
     if (moved) (topBlock(moved) || moved).scrollIntoView({ block: 'nearest' });
   }
 
@@ -365,7 +387,7 @@
     ['p', 'Párrafo'], ['h1', 'Título 1'], ['h2', 'Título 2'], ['h3', 'Título 3'],
     ['ul', 'Lista con viñetas'], ['ol', 'Lista numerada'], ['task', 'Lista de tareas'], ['quote', 'Cita'],
     ['table', 'Tabla'], ['code', 'Bloque de código'], ['diagram', 'Diagrama'], ['math', 'Fórmula'],
-    ['board', 'Tablero'], ['alert', 'Aviso'], ['image', 'Imagen'], ['link', 'Enlace'], ['hr', 'Separador'],
+    ['board', 'Tablero'], ['alert', 'Aviso'], ['details', 'Sección desplegable'], ['image', 'Imagen'], ['link', 'Enlace'], ['hr', 'Separador'],
   ];
   // Lo que suman las herramientas al menú de edición: cada una devuelve una lista de
   // [dónde ('insert' o 'block'), id, ícono, texto, qué hacer].
@@ -384,7 +406,7 @@
     menu = el('div', { class: 'lmd-menu', role: 'menu' });
     menu.innerHTML =
       '<p class="lmd-menu-label">' + T(block ? 'Insertar debajo' : 'Insertar') + '</p>' +
-      '<div class="lmd-menu-grid">' + INSERTS.filter((i) => (i[0] !== 'math' || core.settings.plugins.katex) && (i[0] !== 'board' || LMD.tools.isOn('kanban'))).map((i) => '<button type="button" role="menuitem" data-ins="' + i[0] + '">' + (ICON['b_' + i[0]] || '') + '<span>' + T(i[1]) + '</span></button>').join('') + more('insert') + '</div>' +
+      '<div class="lmd-menu-grid">' + INSERTS.filter((i) => (i[0] !== 'math' || core.settings.plugins.katex) && (i[0] !== 'board' || LMD.tools.isOn('kanban')) && (i[0] !== 'details' || core.settings.plugins.containers)).map((i) => '<button type="button" role="menuitem" data-ins="' + i[0] + '">' + (ICON['b_' + i[0]] || '') + '<span>' + T(i[1]) + '</span></button>').join('') + more('insert') + '</div>' +
       (block && !draft && span(block) ?
         (plain ? '<p class="lmd-menu-label">' + T('Convertir en') + '</p><div class="lmd-menu-grid">' +
           [['p', 'Párrafo'], ['h1', 'Título 1'], ['h2', 'Título 2'], ['h3', 'Título 3']].map((i) => '<button type="button" role="menuitem" data-conv="' + i[0] + '">' + ICON['b_' + i[0]] + '<span>' + T(i[1]) + '</span></button>').join('') + '</div>' : '') +
@@ -624,7 +646,8 @@
       openMenu(e.clientX, e.clientY, block && block.isConnected ? block : blockNear(e.clientY));
     });
     article.addEventListener('input', (e) => {
-      if (e.inputType === 'insertText' && e.target.closest && e.target.closest('.lmd-editable')) inlineShortcut();
+      // El título de una sección desplegable es texto sin formato: ahí los asteriscos quedan como se escriben.
+      if (e.inputType === 'insertText' && e.target.closest && e.target.closest('.lmd-editable') && !e.target.closest('.lmd-sum-title')) inlineShortcut();
       const d = e.target.closest && e.target.closest('.lmd-draft'); if (d) onInput(d);
     });
     article.addEventListener('click', (e) => {
@@ -717,7 +740,7 @@
     // Para las herramientas que proponen texto (el asistente de IA): las líneas de un bloque, dónde va lo que sigue,
     // y cambiar líneas con los renglones en blanco que hagan falta.
     span, after: (block) => (block ? lineAfter(block) : lines().length), pad: padded, near: blockNear,
-    splice: (s, count, body) => { put(s, count, body); core.render(); },
+    splice: (s, count, body) => { const moved = put(s, count, body); core.render(); return moved; },
     drop: (d) => { d._done = true; unplace(d); },
     settle: (d) => commitDraft(d, 'stay') || null,
     // En una sesión en vivo otra persona cambió líneas más arriba: lo que cada borrador ya escribió en el archivo

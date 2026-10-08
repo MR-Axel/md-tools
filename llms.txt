@@ -15,6 +15,7 @@
 - Reads GitHub Flavored Markdown plus KaTeX math, Mermaid and Graphviz diagrams, footnotes, task lists, callouts, definition lists and YAML front matter.
 - Opens a whole folder: file tree, search across every file, `[[name]]` links, create, rename, move and delete. Files and folders move by dragging, and a file dragged into the note being edited becomes a link.
 - Block menu on right-click: insert a table, code block, diagram, formula or callout; turn into, move, duplicate, delete.
+- Collapsible sections (`::: details Title`) inserted from the menu or with `/`, renamed in place, wrapped around blocks and unwrapped. Optional folding by heading, a reading setting that never changes the file.
 - Tables with totals and formulas (`=sum`, `=avg`, `=min`, `=max`, `=count`, `=median`), kanban boards from task lists, images pasted, dropped or picked, made smaller in the browser with their metadata removed, and saved next to the document.
 - Exports one standalone HTML file, or PDF through print.
 - Read aloud (a tool turned on in Settings > Tools): reads the note, from a block or the selection, with the voices of the device. Code and diagrams are announced, not read.

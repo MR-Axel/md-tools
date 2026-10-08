@@ -391,8 +391,9 @@
   // El mensaje que la persona pega en su IA para conectarla y decirle cómo documentar acá. Va siempre en inglés,
   // en cualquier idioma de la app: lo lee una IA. Es el único lugar donde está ese texto.
   // o: { url, token, scope, share, workspace }. Sin token (uno viejo, que ya no se muestra) lleva el marcador
-  // AI_TOKEN_MARK. workspace: false saca las secciones del espacio de proyecto (documentar y llevar el tablero);
-  // el detalle de esas dos está en la guía que el servidor entrega con get_guide.
+  // AI_TOKEN_MARK. workspace: false saca las secciones del espacio de proyecto (documentar, llevar el tablero y
+  // llevar la lista de lo que le toca a la persona); el detalle de las tres está en la guía que el servidor
+  // entrega con get_guide.
   const AI_TOKEN_MARK = 'PASTE_YOUR_TOKEN';
   function aiBrief(o) {
     const url = String(o.url || ''); const token = o.token || AI_TOKEN_MARK; const scope = String(o.scope || '').replace(/\/+$/, '');
@@ -452,7 +453,19 @@
       '- Move it to In progress when you start, to Paused when you need something from me (say exactly what in a field needs, and tell me), and to Done when it is finished, with a field link to the note or the change.',
       '- One card per task, and finished cards stay. With subagents, each one moves its own card.',
       '',
-      'Do both without being asked. Call get_guide once before you start, for the layout of each note and the full board rules. If this token cannot write, or I prefer local files, keep the same structure as local .md files, linked as "When you finish" says.',
+      '## Keep a list of what I have to do',
+      '',
+      '- The board is for your tasks. What only I can do goes in ' + dir + '/pending.md: a task list (- [ ] and - [x]) grouped by topic, the most urgent first.',
+      '- One short line per item. Put its steps right under it, in a collapsible section (::: details Steps), so the list stays clean.',
+      '- Number the steps and make each one concrete: the direct link to the exact page where it is done (the link, not "go to the console"), what I have to bring back and where to leave it.',
+      '- If it costs money, say how much and where it is paid.',
+      '- If you are not sure of a menu path, say so and ask me for a screenshot. Do not invent it.',
+      '- Never ask me for a secret in the chat: name the file or the screen where I enter it.',
+      '- Tick an item as soon as you learn it is done, and move what got decided to a section Decided, with the date.',
+      '- Your own tasks go on the board, or marked as yours. Do not mix them with mine.',
+      '- Link the note from the README of the project, and at the end of every session tell me what is left for me.',
+      '',
+      'Do all three without being asked. Call get_guide once before you start, for the layout of each note, the full board rules and the format of pending.md. If this token cannot write, or I prefer local files, keep the same structure as local .md files, linked as "When you finish" says.',
     ], [
       '',
       '## How to write',
@@ -461,6 +474,7 @@
       '',
       '- Open with a short summary, then use clear headings.',
       '- Tables to compare options. Task lists (- [ ] and - [x]) for pending and done work.',
+      '- Collapsible sections for steps and long detail: a line ::: details Title, the content, and a line ::: to close. Callouts the same way, with ::: tip and ::: warning.',
       '- Mermaid diagrams for flows and architecture, in a ' + fence + 'mermaid code block.',
       '- Formulas in LaTeX: $inline$ or $$block$$.',
       '- Code blocks with the language name.',

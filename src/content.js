@@ -360,6 +360,8 @@
     return headings.map((h) => { const text = headingText(h); return { el: h, id: h.id, level: +h.tagName[1], text, gh: ghSlug(text, used) || h.id }; });
   }
   const unesc = (s) => { try { return decodeURIComponent(s); } catch (e) { return s; } };
+  // Antes de llevar la página a un lugar del documento: si está dentro de algo plegado, se despliega (fold.js).
+  const shown = (node) => { if (LMD.fold) LMD.fold.reveal(node); };
   function findAnchor(frag) {
     const direct = frag && document.getElementById(frag);
     if (direct || !frag) return direct || null;
@@ -779,7 +781,8 @@
     LMD.board.init(core);
     // page.js es un archivo aparte: si una copia guardada de la app todavía no lo trae, el resto arranca igual.
     if (LMD.page) LMD.page.init(core);
-    ui.sync = ui.main.querySelector('.lmd-sync');
+    if (LMD.fold) LMD.fold.init(core);
+    ui.sync =ui.main.querySelector('.lmd-sync');
     LMD.sync.init(core);
     LMD.comments.init(core);
     LMD.vault.init(core);
@@ -818,7 +821,7 @@
         const frag = unesc(href.slice(1));
         const target = findAnchor(frag);
         e.preventDefault();
-        if (target) { spyPin = a.closest('.lmd-pane-outline') ? target.id : null; target.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', '#' + target.id); }
+        if (target) { spyPin = a.closest('.lmd-pane-outline') ? target.id : null; shown(target); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', '#' + target.id); }
         else if (frag) noSection(frag); else window.scrollTo({ top: 0, behavior: 'smooth' });
       } else if (APP && (a.hasAttribute('data-lmd-href') || a.classList.contains('lmd-wiki'))) {
         // Otro archivo de la carpeta. Leyendo, Ctrl o Shift lo abren aparte, como cualquier enlace.
@@ -905,7 +908,7 @@
     if (APP) window.addEventListener('popstate', () => {
       if (/^#open=/.test(location.hash)) return; // lo atiende hashchange
       const f = new URLSearchParams(location.search).get('f') || '';
-      if (noDoc ? !f : VBASE + f === HERE) { const frag = unesc(location.hash.slice(1)); const t = frag && !/^lmd-/.test(frag) ? findAnchor(frag) : null; if (t) t.scrollIntoView(); return; }
+      if (noDoc ? !f : VBASE + f === HERE) { const frag = unesc(location.hash.slice(1)); const t = frag && !/^lmd-/.test(frag) ? findAnchor(frag) : null; if (t) { shown(t); t.scrollIntoView(); } return; }
       go(f, { pop: true, hash: location.hash });
     });
   }
@@ -1286,6 +1289,8 @@
           e.stopPropagation();
           const shut = item.classList.toggle('lmd-o-shut');
           if (shut) collapsed.add(h.id); else collapsed.delete(h.id);
+          // Con el plegado por títulos prendido, el documento pliega la misma sección.
+          if (LMD.fold) LMD.fold.outline(h, shut);
         });
         line.appendChild(tog);
       } else line.appendChild(el('span', { class: 'lmd-o-dot' }));
@@ -1598,6 +1603,8 @@
     const put = (parent, olds, news, ref) => {
       const at = olds.length ? olds[0].node : ref;
       news.forEach((k) => { parent.insertBefore(k.node, at && at.parentNode === parent ? at : null); if (hasHead(k.node)) heads = true; glow(k.node); });
+      // Una sección desplegable que se vuelve a dibujar queda como estaba: abierta o cerrada.
+      if (olds.length === news.length) olds.forEach((k, i) => { if (k.node.tagName === 'DETAILS' && news[i].node.tagName === 'DETAILS') news[i].node.open = k.node.open; });
       olds.forEach((k) => { if (hasHead(k.node)) heads = true; k.node.remove(); });
     };
     // El texto nuevo de un bloque, dentro del mismo nodo que tiene el cursor.
@@ -1689,7 +1696,7 @@
     const ok = apply(art, O, N, pairs, 0);
     if (heads) {
       const used = new Set(); const hs = Array.from(art.querySelectorAll(HEADS)).filter((h) => !h.closest('.lmd-front'));
-      hs.forEach((h) => { h.id = slugify(headingText(h), used); const a = h.querySelector(':scope > .lmd-anchor'); if (a) a.setAttribute('href', '#' + h.id); });
+      hs.forEach((h) => { h.id = slugify(headingText(h), used); const a = h.querySelector(':scope > .lmd-anchor[href]'); if (a) a.setAttribute('href', '#' + h.id); });
       spyHeadings = hs; buildOutline(hs);
     }
     if (pin && pin.isConnected) { const dy = pin.getBoundingClientRect().top - pinTop; if (Math.abs(dy) >= 1) window.scrollBy(0, dy); }
@@ -2179,6 +2186,7 @@
     if (!searchHits.length) return;
     searchIndex = (searchIndex + dir + searchHits.length) % searchHits.length;
     const r = searchHits[searchIndex];
+    shown(r.startContainer);
     CSS.highlights.set('lmd-hit-current', new Highlight(r));
     const rect = r.getBoundingClientRect();
     window.scrollTo({ top: window.scrollY + rect.top - window.innerHeight / 3, behavior: 'smooth' });
@@ -2463,6 +2471,7 @@
             '<label class="lmd-row"><span>' + T('Ancho del contenido') + ' <output>' + s.contentWidth + ' px</output></span><input type="range" min="560" max="1800" step="20" data-key="contentWidth" data-unit=" px" value="' + s.contentWidth + '"></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="wrapCode"' + (s.wrapCode ? ' checked' : '') + '><span>' + T('Ajustar las líneas largas del código') + '</span></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="rememberPosition"' + (s.rememberPosition ? ' checked' : '') + '><span>' + T('Recordar por dónde iba en cada archivo') + '</span></label>' +
+            '<label class="lmd-check"><input type="checkbox" data-key="foldHeadings"' + (s.foldHeadings ? ' checked' : '') + '><span>' + T('Plegar secciones por título') + '</span></label>' +
             '<label class="lmd-check"><input type="checkbox" data-key="autoRefresh"' + (s.autoRefresh ? ' checked' : '') + '><span>' + T('Recargar solo cuando el archivo cambia') + '</span></label>' +
             '<label class="lmd-row"><span>' + T('Revisar cada') + ' <output>' + s.refreshInterval + ' ms</output></span><input type="range" min="300" max="5000" step="100" data-key="refreshInterval" data-unit=" ms" value="' + s.refreshInterval + '"></label>' +
           '</section>' +
@@ -2648,7 +2657,7 @@
   let softTimer = null;
   let pendingCell = null;
 
-  const BLOCKS_INSIDE = 'UL,OL,P,PRE,BLOCKQUOTE,DIV,TABLE,DL,H1,H2,H3,H4,H5,H6';
+  const BLOCKS_INSIDE = 'UL,OL,P,PRE,BLOCKQUOTE,DIV,TABLE,DL,DETAILS,H1,H2,H3,H4,H5,H6';
 
   // REGLA: mientras hay un elemento editable con foco dentro del artículo (un bloque, una celda, un bloque nuevo
   // o el cuadro de un bloque de código), nada lo reemplaza ni le saca el foco: ni un guardado, ni el sondeo de
@@ -2700,6 +2709,8 @@
     const s = r[0] + fmOffset; const e = r[1] + fmOffset;
     const md = inlineMd(elm).replace(/\n+$/, '');
     const first = srcLines[s] || '';
+    // El título de una sección desplegable: cambia solo la línea que la abre (fold.js).
+    if (elm.classList.contains('lmd-sum-title')) { const out = LMD.fold ? LMD.fold.titleLines(elm, first) : null; return out ? { s, e, lines: out } : null; }
     if (/^H[1-6]$/.test(elm.tagName)) {
       const quote = /^((?:\s{0,3}>\s?)*)/.exec(first)[1];
       return { s, e, lines: [quote + '#'.repeat(+elm.tagName[1]) + ' ' + md.replace(/\n/g, ' ').trim()] };
@@ -2901,6 +2912,8 @@
       span.dataset.ph = T('Ítem nuevo');
       li.appendChild(span); make(span);
     });
+    // El título de cada sección desplegable.
+    if (LMD.fold) LMD.fold.editable(article, make);
     article.querySelectorAll('.lmd-math, .lmd-wiki').forEach((n) => { n.contentEditable = 'false'; });
     article.querySelectorAll('input.lmd-task').forEach((box) => { box.contentEditable = 'false'; });
 
@@ -3062,7 +3075,8 @@
     const host = at && at.closest('.lmd-editable');
     // Con el cursor apoyado en un enlace, sin seleccionar nada, la barra ofrece solo editarlo.
     const link = host && sel.isCollapsed ? at.closest('a:not(.lmd-wiki)') : null;
-    if (!editMode || !host || core.hold || (sel.isCollapsed && !(link && host.contains(link)))) { ui.format.hidden = true; LMD.touch.dock(); return; }
+    // El título de una sección desplegable es texto sin formato.
+    if (!editMode || !host || host.classList.contains('lmd-sum-title') || core.hold || (sel.isCollapsed && !(link && host.contains(link)))) { ui.format.hidden = true; LMD.touch.dock(); return; }
     const rect = (link || sel.getRangeAt(0)).getBoundingClientRect();
     ui.format.classList.toggle('lmd-format-link', !!link);
     ui.format.querySelector('[data-fmt=math]').hidden = !settings.plugins.katex;
@@ -3313,6 +3327,10 @@
     // Un Markdown cualquiera, dibujado con el mismo saneado que una nota (la vista previa de una plantilla).
     preview: (text) => homeCtx().preview(text),
     setRaw(text) { pushUndo(); raw = text; syncSource(); markDirty(); render(); },
+    // Varios cambios seguidos que para la persona son uno solo: un solo Ctrl+Z los deshace.
+    oneUndo(fn) { const n = undoStack.length; try { return fn(); } finally { if (undoStack.length > n + 1) undoStack.length = n + 1; } },
+    // Las secciones plegadas en el índice lateral, por ancla.
+    outlineShut: collapsed,
   };
 
   // ---------- Permiso para escribir ----------
@@ -3826,7 +3844,7 @@
     } else if (hash && !/^#lmd-/.test(hash)) {
       // Se llegó por un enlace a una sección: si no existe, se avisa en vez de quedar arriba sin decir nada.
       const frag = unesc(hash.slice(1)); const t = findAnchor(frag);
-      if (t) t.scrollIntoView(); else noSection(frag);
+      if (t) { shown(t); t.scrollIntoView(); } else noSection(frag);
     } else restorePosition();
   }
 
@@ -3864,7 +3882,7 @@
   }
 
   // ---------- Arranque ----------
-  const RENDER_KEYS = ['plugins', 'theme', 'diagramShape', 'preset', 'supporter'];
+  const RENDER_KEYS = ['plugins', 'theme', 'diagramShape', 'preset', 'supporter', 'foldHeadings'];
   const TREE_KEYS = ['filesOnlyMarkdown', 'filesShowHidden'];
 
   Promise.all([LMD.load(), loadSide()]).then(async ([s, saved]) => {

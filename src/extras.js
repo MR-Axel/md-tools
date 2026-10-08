@@ -806,6 +806,8 @@
     const copy = (from || core.ui.article).cloneNode(true);
     copy.querySelectorAll('.lmd-anchor, .lmd-code-copy, .lmd-code-lang, .lmd-jy, .lmd-dgm-tools, .lmd-add, .lmd-draft, .lmd-draft-li, .lmd-board-edit, .lmd-cl-bar, .lmd-cl-add, .lmd-cl-grip').forEach((n) => n.remove());
     copy.querySelectorAll('[contenteditable]').forEach((n) => n.removeAttribute('contenteditable'));
+    // Lo plegado sale a la vista, y al exportar o copiar la nota las secciones desplegables van abiertas (fold.js).
+    if (LMD.fold) LMD.fold.clean(copy, !from);
     copy.querySelectorAll('[data-l], [data-p]').forEach((n) => { n.removeAttribute('data-l'); n.removeAttribute('data-p'); });
     // La matemática viaja como MathML, que el navegador dibuja solo, sin la hoja de estilos de KaTeX.
     copy.querySelectorAll('.katex').forEach((k) => { const m = k.querySelector('math'); if (m) k.replaceWith(m); });

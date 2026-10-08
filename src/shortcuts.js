@@ -42,6 +42,9 @@
     ['follow', 'nav', 'Ctrl+Click', 'Seguir un enlace', { ctx: 'Editando' }],
     ['menu', 'nav', 'Up / Down', 'Recorrer un menú o una lista'],
     ['menu-ends', 'nav', 'Home / End', 'Primera o última opción de un menú'],
+    ['fold', 'nav', 'Alt+Shift+F', 'Plegar o desplegar la sección del cursor', { ctx: 'Con el plegado por títulos prendido' }],
+    ['fold-all', 'nav', 'Alt+Shift+M', 'Plegar todas las secciones', { ctx: 'Con el plegado por títulos prendido' }],
+    ['unfold-all', 'nav', 'Alt+Shift+U', 'Desplegar todas las secciones', { ctx: 'Con el plegado por títulos prendido' }],
 
     ['save', 'files', 'Ctrl+S', 'Guardar'],
     ['rename', 'files', 'F2', 'Cambiar el nombre de la nota, o del archivo elegido en el árbol'],
