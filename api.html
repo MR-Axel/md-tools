@@ -66,7 +66,7 @@
       <tr><td><code>card.done</code></td><td>A card becomes done. Moving it into the done column sends <code>card.moved</code> and then this one</td><td><code>card</code></td></tr>
       <tr><td><code>card.deleted</code></td><td>A card is removed</td><td><code>card</code></td></tr>
     </table></div>
-    <p>Card events come out whether the change was made in the app, through the API or by an AI over MCP. Notes inside a protected folder never produce events.</p>
+    <p>Card events come out whether the change was made in the app, through the API or by an AI over MCP. Over MCP the AI has the same card operations as tools: <code>list_boards</code>, <code>create_board</code>, <code>add_card</code>, <code>move_card</code>, <code>update_card</code> and <code>delete_card</code>. Notes inside a protected folder never produce events.</p>
     <h3>What arrives</h3>
 <pre><code>POST /your/address
 Content-Type: application/json
@@ -196,7 +196,7 @@ function valid(header, rawBody, secret) {
       <tr><td><code>card.done</code></td><td>Una tarjeta queda hecha. Moverla a la columna de hechas manda <code>card.moved</code> y después este</td><td><code>card</code></td></tr>
       <tr><td><code>card.deleted</code></td><td>Se quita una tarjeta</td><td><code>card</code></td></tr>
     </table></div>
-    <p>Los eventos de tarjeta salen venga el cambio de la app, de la API o de una IA por MCP. Las notas de una carpeta protegida nunca generan eventos.</p>
+    <p>Los eventos de tarjeta salen venga el cambio de la app, de la API o de una IA por MCP. Por MCP la IA tiene las mismas operaciones de tarjetas como herramientas: <code>list_boards</code>, <code>create_board</code>, <code>add_card</code>, <code>move_card</code>, <code>update_card</code> y <code>delete_card</code>. Las notas de una carpeta protegida nunca generan eventos.</p>
     <h3>Qué llega</h3>
 <pre><code>POST /tu/direccion
 Content-Type: application/json

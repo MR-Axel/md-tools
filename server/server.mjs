@@ -1356,6 +1356,15 @@ const TOOLS = [
   { name: 'resolve_comment', description: 'Mark a comment as done after making the change it asks for with write_note. Add a short reply saying what you changed.', inputSchema: { type: 'object', properties: { id: { type: 'number' }, reply: { type: 'string', description: 'One or two sentences on what was changed' } }, required: ['id'] } },
   { name: 'move_note', description: 'Move or rename a note. Its history, comments, shares and public links follow it. Fails if a note already exists at the new path.', inputSchema: { type: 'object', properties: { from: { type: 'string', description: 'Current path' }, to: { type: 'string', description: 'New path, for example archive/2025/plan.md' } }, required: ['from', 'to'] } },
   { name: 'note_history', description: 'List the earlier versions kept for a note, newest first. Pass version to read the text of one of them.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, version: { type: 'number', description: 'Optional: id of the version to read' } }, required: ['path'] } },
+  // El modo de trabajo completo, a demanda: la estructura del proyecto y las reglas del tablero (ver guide).
+  { name: 'get_guide', description: 'Read the SharpMD working guide: the folder structure to document a project (README, architecture, features, epics, decisions, log) and the rules of its task board. Call it once at the start of a session, before you create notes or cards.', inputSchema: { type: 'object', properties: {} } },
+  // Tableros: las mismas operaciones que la API (apiTool), con nombres para un modelo.
+  { name: 'list_boards', description: 'List the kanban boards of a note: each board with its columns, which column holds finished cards, and every card with its id, title and fields. Call it before moving or updating cards, to get their ids and the exact column names.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path of the note that holds the board, for example project/board.md' } }, required: ['path'] } },
+  { name: 'create_board', description: 'Create a kanban board. If the note does not exist it is created with the board; if it exists, the board is added at its end. Without columns it gets To do, In progress, Paused and Done, and cards moved to Done are marked as done.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path of the note, for example project/board.md' }, title: { type: 'string', description: 'Optional heading written above the board' }, columns: { type: 'array', items: { type: 'string' }, description: 'Optional column names, in order' }, done: { type: 'string', description: 'Optional: the column that holds finished cards. By default the one called Done or similar' } }, required: ['path'] } },
+  { name: 'add_card', description: 'Add a card to a board. Returns the id of the card, which move_card, update_card and delete_card take. Use fields for anything beyond the title, for example {"agent": "claude", "due": "2026-01-31"}.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, title: { type: 'string', description: 'Short title of the task' }, column: { type: 'string', description: 'Column name. By default the first column' }, fields: { type: 'object', description: 'Optional fields of the card, as key and value', additionalProperties: { type: ['string', 'number', 'boolean'] } }, position: { type: 'string', enum: ['top', 'bottom'], description: 'Where in the column. By default bottom' }, board: { type: 'number', description: 'Optional: which board of the note, from 0, when it has more than one' } }, required: ['path', 'title'] } },
+  { name: 'move_card', description: 'Move a card to another column. Moving it to the column of finished cards marks it as done, and moving it out unmarks it. A column that does not exist is created, so take the names from list_boards.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, id: { type: 'string', description: 'Id of the card, from add_card or list_boards' }, column: { type: 'string', description: 'Name of the column to move it to' }, position: { type: 'string', enum: ['top', 'bottom'], description: 'Where in the column. By default bottom' } }, required: ['path', 'id', 'column'] } },
+  { name: 'update_card', description: 'Change the title or the fields of a card. Only the fields you pass change: a field with an empty value is removed, the others stay. To change its column use move_card.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, id: { type: 'string', description: 'Id of the card, from add_card or list_boards' }, title: { type: 'string' }, fields: { type: 'object', description: 'Fields to set, as key and value. An empty value removes the field', additionalProperties: { type: ['string', 'number', 'boolean', 'null'] } }, done: { type: 'boolean', description: 'Optional: mark or unmark the card as done without moving it' } }, required: ['path', 'id'] } },
+  { name: 'delete_card', description: 'Delete a card from a board. Finished cards are the record of the work: move them to Done instead, and delete only a card that was added by mistake.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, id: { type: 'string', description: 'Id of the card, from add_card or list_boards' } }, required: ['path', 'id'] } },
   // Las que sacan notas hacia afuera: existen solo para un token creado con el permiso de compartir.
   { share: true, name: 'list_shares', description: 'List who the notes are shared with and which public links exist. Pass a path to see only that note or folder.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Optional note or folder' } } } },
   { share: true, name: 'share_note', description: 'Share a note, or a whole folder, with another SharpMD account by its email address. Only do this when the person asks for it. They open it after signing in to SharpMD with that address.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path of a note, or of a folder to share everything inside it' }, email: { type: 'string' }, role: { type: 'string', enum: ['view', 'edit'], description: 'view (default) or edit' } }, required: ['path', 'email'] } },
@@ -1364,7 +1373,8 @@ const TOOLS = [
   { share: true, name: 'revoke_public_link', description: 'Revoke public links: one by its id, or every link to a note by its path.', inputSchema: { type: 'object', properties: { id: { type: 'number' }, path: { type: 'string' } } } },
 ];
 // A un token del equipo que solo lee no se le ofrecen las que cambian algo.
-const WRITE_TOOLS = new Set(['write_note', 'append_note', 'move_note', 'resolve_comment', 'share_note', 'unshare_note', 'create_public_link', 'revoke_public_link']);
+const BOARD_TOOLS = new Set(['list_boards', 'create_board', 'add_card', 'move_card', 'update_card', 'delete_card']);
+const WRITE_TOOLS = new Set(['write_note', 'append_note', 'move_note', 'resolve_comment', 'create_board', 'add_card', 'move_card', 'update_card', 'delete_card', 'share_note', 'unshare_note', 'create_public_link', 'revoke_public_link']);
 const toolsFor = (user) => TOOLS.filter((t) => (!t.share || user.canShare) && !(user.canWrite === false && WRITE_TOOLS.has(t.name))).map(({ share, ...t }) => t);
 const SHARE_TOOLS = new Set(TOOLS.filter((t) => t.share).map((t) => t.name));
 const NO_SHARE = 'This token cannot share notes or create public links. Ask the person to do it from the SharpMD app, or to create a token with that permission in Settings > AI.';
@@ -1451,7 +1461,10 @@ function callTool(user, name, args, opt) {
   // La dirección para abrir esa nota en la app, con el mismo formato que usa la app al navegar.
   const appLink = (f) => APP_URL + '?f=' + encodeURIComponent(f);
   const openUrl = (a) => appLink('cloud/' + (a.who === user && !isSpace(a.who) ? '' : '~' + a.who.id + '/') + a.p.split('/').map(encodeURIComponent).join('/'));
-  if (opt.raw) { const out = apiTool(name, args, { user, at, gate, read, write, revOf, openUrl, seen, mayWrite, noted, mcp: (n, x) => callTool(user, n, x) }); if (out !== undefined) return out; }
+  const k = { user, at, gate, read, write, revOf, openUrl, seen, mayWrite, noted, mcp: (n, x) => callTool(user, n, x) };
+  if (opt.raw) { const out = apiTool(name, args, k); if (out !== undefined) return out; }
+  if (name === 'get_guide') return guide(user);
+  if (BOARD_TOOLS.has(name)) return boardTool(name, args, k);
   if (name === 'read_note') { const a = at(args.path); seen(a); return read(a, gate(a)); }
   if (name === 'write_note') { const a = at(args.path); mayWrite(a); const had = revOf(a) != null; write(a, gate(a), args.text); noted(had ? 'edit' : 'create', a); return 'Saved ' + a.full + ' (' + String(args.text == null ? '' : args.text).length + ' characters). Open it: ' + openUrl(a); }
   if (name === 'append_note') {
@@ -1563,7 +1576,7 @@ function mcp(user, msg) {
   if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } };
   const reply = (result) => ({ jsonrpc: '2.0', id: msg.id, result });
   if (msg.method === 'initialize') return reply({ protocolVersion: (msg.params && msg.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'sharpmd', version: '1.0.0' },
-    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with write_note, then resolve_comment. A folder marked as protected and locked is encrypted with a password: you cannot read it until the person unlocks it for the AI from SharpMD. If the person belongs to a team, the notes the team shares are under @team/ and every member can read and edit them. write_note, append_note and move_note return a link that opens the note in the SharpMD app: give it to the person. ' + (user.teamToken ? 'This token belongs to a team, not to a person: every note it reaches is in the shared space of the team' + (user.canWrite ? '. ' : ', and it can only read. ') : '') + (user.canShare ? 'This token can share notes with other accounts and create public links: only do that when the person asks.' : 'This token cannot share notes or create public links: the person does that from the SharpMD app.') + (user.scope ? ' This token only reaches the folder ' + user.scope + '/.' : '') + ' When you mention a Markdown file that lives on the person\'s disk instead of here, give it as a link that opens it in their browser with the SharpMD extension: ' + APP_URL + '#open= followed by the file:// address of the file, percent-encoded as a single value (what encodeURIComponent returns). For example [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///C:/Users/me/Desktop/notes.md') + ') on Windows, or [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///Users/me/Desktop/notes.md') + ') on Mac and Linux. Under the link, write the full path as plain text, in case the link cannot be clicked.' });
+    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with write_note, then resolve_comment. A folder marked as protected and locked is encrypted with a password: you cannot read it until the person unlocks it for the AI from SharpMD. If the person belongs to a team, the notes the team shares are under @team/ and every member can read and edit them. write_note, append_note and move_note return a link that opens the note in the SharpMD app: give it to the person. ' + (user.canWrite === false ? '' : 'Work this way without being asked. Keep the project documented in one folder: README.md as the index, architecture.md, features/ with one note per feature, epics.md, decisions.md and log.md. Keep its task board in board.md, one card per task: To do when you plan it, In progress when you start, Paused when you need something from the person (say what in a field called needs), Done when it is finished. Change the board with create_board, add_card, move_card and update_card instead of rewriting the note, and call get_guide once per session for the full structure and rules. ') + (user.teamToken ? 'This token belongs to a team, not to a person: every note it reaches is in the shared space of the team' + (user.canWrite ? '. ' : ', and it can only read. ') : '') + (user.canShare ? 'This token can share notes with other accounts and create public links: only do that when the person asks.' : 'This token cannot share notes or create public links: the person does that from the SharpMD app.') + (user.scope ? ' This token only reaches the folder ' + user.scope + '/.' : '') + ' When you mention a Markdown file that lives on the person\'s disk instead of here, give it as a link that opens it in their browser with the SharpMD extension: ' + APP_URL + '#open= followed by the file:// address of the file, percent-encoded as a single value (what encodeURIComponent returns). For example [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///C:/Users/me/Desktop/notes.md') + ') on Windows, or [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///Users/me/Desktop/notes.md') + ') on Mac and Linux. Under the link, write the full path as plain text, in case the link cannot be clicked.' });
   if (msg.method === 'ping') return reply({});
   if (msg.method === 'tools/list') return reply({ tools: toolsFor(user) });
   if (msg.method === 'tools/call') {
@@ -3269,6 +3282,152 @@ function apiTool(name, args, k) {
     return Object.assign({ card: out.card, board: out.board }, meta(a));
   }
   return undefined;
+}
+// Las herramientas de tablero del MCP. Son las operaciones de arriba (card_create, card_update, card_delete) con otro
+// nombre: las reglas de las tarjetas viven en kbApply y las de acceso en callTool. La respuesta lleva la tarjeta con
+// su id y su columna, y la dirección para abrir la nota.
+const KB_DEFAULT_COLUMNS = ['To do', 'In progress', 'Paused', 'Done'];
+function boardTool(name, args, k) {
+  const a = k.at(args.path); const where = () => ({ path: a.full, url: k.openUrl(a) });
+  if (name === 'list_boards') {
+    k.seen(a); const text = k.read(a, k.gate(a));
+    const boards = kbBlocks(text).blocks.map((b, bi) => { const done = kbDoneColumn(b.board); return { board: bi, done_column: done ? done.title : null,
+      columns: b.board.columns.map((col, ci) => ({ column: col.title, cards: col.cards.map((c, ki) => Object.assign({ id: c.id || bi + '.' + ci + '.' + ki, title: c.text, done: c.done }, Object.keys(c.attrs).length ? { fields: Object.assign({}, c.attrs) } : {})) })) }; });
+    return Object.assign(where(), { boards }, boards.length ? {} : { note: 'This note has no kanban board. Create one with create_board.' });
+  }
+  if (name === 'create_board') {
+    // Leer y escribir sobre la misma revisión, como las tarjetas: no pisa un guardado que entró en el medio.
+    k.mayWrite(a); const key = k.gate(a); const rev = k.revOf(a); const prev = rev == null ? '' : k.read(a, key);
+    const names = args.columns == null ? KB_DEFAULT_COLUMNS : args.columns;
+    if (!Array.isArray(names) || !names.length || names.length > 20) throw new Fail(400, 'bad_columns', 'columns is a list of 1 to 20 column names');
+    const board = { show: [], fields: {}, columns: [] };
+    for (const n of names) { const title = kbText(n, 120, 'bad_column'); if (board.columns.some((c) => c.title.toLowerCase() === title.toLowerCase())) throw new Fail(400, 'bad_columns', 'Two columns have the same name: ' + title); board.columns.push({ title, cards: [] }); }
+    const done = args.done == null || args.done === '' ? kbDoneColumn(board) : kbColumn(board, args.done);
+    if (done) board.done = done.title;
+    const head = args.title == null || args.title === '' ? '' : kbText(args.title, 200, 'bad_title');
+    const top = rev == null ? '# ' + (head || a.p.split('/').pop().replace(/\.[^.]+$/, '')) + '\n\n' : (prev.trim() ? prev.replace(/\s+$/, '') + '\n\n' : '') + (head ? '## ' + head + '\n\n' : '');
+    k.write(a, key, top + ['```kanban'].concat(kbWrite(board), '```').join('\n') + '\n', rev);
+    k.noted(rev == null ? 'create' : 'edit', a);
+    return Object.assign({ result: (rev == null ? 'Created the note with a board' : 'Added a board to the note') + ': ' + board.columns.map((c) => c.title).join(', ') + '.' + (done ? ' Cards moved to ' + done.title + ' are marked as done.' : '') }, where(), { board: kbBlocks(prev).blocks.length, columns: board.columns.map((c) => c.title), done_column: done ? done.title : null });
+  }
+  const fields = args.fields === undefined ? args.attrs : args.fields; const path = args.path; const id = args.id; let out; let did;
+  if (name === 'add_card') { out = apiTool('card_create', { path, board: args.board, column: args.column, title: args.title, attrs: fields, position: args.position }, k); did = 'Card added to ' + out.card.column; }
+  else if (name === 'move_card') {
+    if (args.column == null || args.column === '') throw new Fail(400, 'bad_column', 'column is the name of the column to move the card to');
+    out = apiTool('card_update', { path, id, column: args.column, position: args.position }, k); did = 'Card moved to ' + out.card.column + (out.card.done ? ' and marked as done' : '');
+  } else if (name === 'update_card') { out = apiTool('card_update', { path, id, title: args.title, attrs: fields, done: args.done }, k); did = 'Card updated'; }
+  else { out = apiTool('card_delete', { path, id }, k); did = 'Card deleted'; }
+  const c = out.card;
+  return Object.assign({ result: did + '.', card: { id: c.id, title: c.title, column: c.column, done: c.done, fields: c.attrs } }, where(), { board: out.board });
+}
+// La guía que una IA lee a demanda (get_guide): cómo documentar un proyecto y cómo llevar su tablero. El mensaje que
+// se copia desde la app (aiBrief, en src/sync.js) trae el resumen; el detalle está solo acá.
+function guide(user) {
+  const F = '```'; const dir = user.scope || '<project>'; const ro = user.canWrite === false;
+  return [
+    '# Working in SharpMD',
+    '',
+    'Two jobs, done without being asked: keep the project documented, and keep a task board the person can follow.',
+    '',
+    '## The project folder',
+    '',
+    user.teamToken ? 'This token reaches the shared notes of a team. Use one top-level folder per project.' : user.scope ? 'This token only reaches ' + user.scope + '/, so that folder is the project folder.' : 'One top-level folder per project. If its name is not evident from the conversation or from list_folders, ask the person once.',
+    'Before you create anything, call list_notes on the folder and search_notes, and read what is there. Update what exists instead of writing a second copy.',
+    '',
+    '| Note | What it holds |',
+    '| --- | --- |',
+    '| ' + dir + '/README.md | What the project is, how to run it, and an index with a link to every other note. |',
+    '| ' + dir + '/architecture.md | The components and how they connect, with a Mermaid diagram. |',
+    '| ' + dir + '/features/<name>.md | One note per feature: what it does, how it is used, acceptance criteria, where it lives in the code, what is pending. |',
+    '| ' + dir + '/epics.md | The epics, each with its features and its status. |',
+    '| ' + dir + '/decisions.md | Decision log, newest last: date, context, decision, consequence. |',
+    '| ' + dir + '/log.md | Dated work log. Add entries with append_note, do not rewrite it. |',
+    '| ' + dir + '/board.md | The task board. |',
+    '',
+    '- Create the structure in the first session, from what you can learn in the code and the conversation. Leave a section empty instead of inventing its content.',
+    '- Keep it current as you work. A feature that changes updates its note, a choice between options adds an entry to decisions.md, and each session adds an entry to log.md.',
+    '- Link the notes with relative paths: [Architecture](architecture.md) from the README, [README](../README.md) from a feature note.',
+    '- Call read_note before you replace a note with write_note.',
+    '',
+    '### Feature note',
+    '',
+    F + 'markdown',
+    '# Feature name',
+    '',
+    'Status: planned, in progress or done. Epic: [name](../epics.md).',
+    '',
+    '## What it does',
+    '## How it is used',
+    '## Acceptance criteria',
+    '- [ ] One line per criterion',
+    '## Where it lives in the code',
+    '## Pending',
+    F,
+    '',
+    '### Epics',
+    '',
+    F + 'markdown',
+    '## Epic name',
+    '',
+    'Status: planned, in progress or done.',
+    '',
+    '- [Feature name](features/feature-name.md): status',
+    F,
+    '',
+    '### Decision entry',
+    '',
+    F + 'markdown',
+    '## 2026-01-15 Short title',
+    '',
+    '- Context: what forced the choice.',
+    '- Decision: what was chosen.',
+    '- Consequence: what it costs or changes.',
+    F,
+    '',
+    '### Log entry',
+    '',
+    F + 'markdown',
+    '## 2026-01-15',
+    '',
+    '- What changed, with a link to the note or the commit.',
+    F,
+    '',
+    '## The task board',
+    '',
+    'The board is ' + dir + '/board.md, with the columns To do, In progress, Paused and Done. If the note has no board, create it with create_board: those four columns are its default. If it has one, call list_boards and use its column names as they are, in whatever language: planned, being done, waiting for the person, finished.',
+    '',
+    'Change the board with add_card, move_card and update_card, not with write_note. They keep the card ids, and the person sees the change at once.',
+    '',
+    '1. Before you start a piece of work, add one card per task to To do: a short title, and a field agent with who will do it (your name, or the name of the subagent).',
+    '2. When you start a task, move its card to In progress.',
+    '3. When you need something from the person, move the card to Paused, set the field needs to exactly what you need, and tell the person in the conversation.',
+    '4. When the person answers, remove needs (set it to an empty value) and move the card back to In progress.',
+    '5. When the task is finished, move the card to Done and set the field link to the note or the change that shows the result.',
+    '',
+    '- One card per task. A card In progress means someone is working on it now.',
+    '- Do not delete finished cards: they are the record of the work.',
+    '- With subagents, give each one the path of the board and the id of its card, and have it move its own card.',
+    '- The fields agent, needs and link have that meaning. Others are free, for example due=2026-01-31 or priority=high.',
+    '',
+    '## ' + (ro ? 'This token cannot write' : 'Without write access, or with local files'),
+    '',
+    (ro ? 'This token can only read, so keep' : 'If a token cannot write, or the person prefers local files, keep') + ' the same structure as .md files on disk, for example in a docs folder of the repository, and give the person a link to each file as the server instructions say. There the board is a code block in board.md that you edit as text:',
+    '',
+    F + 'markdown',
+    F.replace(/`/g, '~') + 'kanban',
+    '{done=Done}',
+    '## To do',
+    '- [ ] Short title of the task {agent=claude}',
+    '',
+    '## In progress',
+    '',
+    '## Paused',
+    '',
+    '## Done',
+    '- [x] A finished task {agent=claude link=features/sign-in.md}',
+    F.replace(/`/g, '~'),
+    F,
+  ].join('\n') + '\n';
 }
 async function apiRoute(req, url, p, m) {
   const r = p.slice(7) || '/';

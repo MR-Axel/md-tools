@@ -206,19 +206,35 @@
   const secRow = (id, icon, title, text, tech, extra) => '<li data-sec-row="' + id + '"><span class="lmd-sec-ico">' + icon + '</span><div><b>' + T(title) + '</b><p>' + T(text) + '</p>' + (extra || '') + (tech ? '<small>' + tech + '</small>' : '') + '</div></li>';
   // own: un servidor propio. can: se ofrece proteger una carpeta. count: carpetas protegidas de la cuenta.
   // pick: se está eligiendo cuál proteger, entre folders.
+  // ai: la clave del asistente de este dispositivo, si se sabe: { hasKey, provider, last4, off }. De la clave solo
+  // se muestran el proveedor y los últimos cuatro caracteres, lo mismo que en la tarjeta del asistente.
+  const AI_NAMES = { anthropic: 'Anthropic (Claude)', openai: 'OpenAI' };
+  // Lo que se sabe de la clave sin cargar el asistente: lo lee de donde él la guarda. off: la herramienta está
+  // apagada y hay una pestaña Herramientas donde prenderla.
+  async function aiKeyInfo() {
+    let st = null;
+    try { st = LMD.ai && LMD.ai.status ? await LMD.ai.status() : await LMD.store.aiGet(); } catch (e) { /* sin base local: se informa igual, sin el dato */ }
+    return { hasKey: !!(st && (st.hasKey || st.data)), provider: (st && st.provider) || '', last4: (st && st.last4) || '', off: !(LMD.tools && LMD.tools.isOn('assistant')) && !!document.querySelector('[data-ptab=tools]') };
+  }
   function security(o) {
     o = o || {};
-    const n = o.count || 0;
+    const n = o.count || 0; const ai = o.ai || null;
     const choose = !o.pick ? '' : !(o.folders || []).length ? '<p class="lmd-sec-pick" role="status">' + T('Primero creá una carpeta en la Nube. Después la protegés desde acá o desde el menú de la carpeta.') + '</p>'
       : '<div class="lmd-sec-pick"><span>' + T('Elegí la carpeta') + '</span>' + o.folders.map((f) => '<button type="button" class="lmd-btn" data-c="protect-at" data-f="' + esc(f) + '">' + ICON.folder + '<span>' + esc(f) + '</span></button>').join('') + '</div>';
     return '<section class="lmd-sec" aria-label="' + T('Seguridad') + '"><h4>' + T('Seguridad') + '</h4><ul>' +
       (o.own ? secRow('notes', ICON.lock, 'Notas en la nube', 'En un servidor propio, el cifrado en tránsito y en el servidor depende de cómo esté instalado. El servidor puede leerlas, para compartirlas y atender a tu IA.', 'HTTPS · DATA_KEY')
         : secRow('notes', ICON.lock, 'Notas en la nube', 'Viajan cifradas y se guardan cifradas en el servidor. El servidor tiene la llave, para poder compartirlas y atender a tu IA.', 'HTTPS · AES-256-GCM')) +
+      // El orden es el de las columnas en una ventana ancha: la cuenta (notas, entrar), las carpetas protegidas, y la
+      // clave de IA con el código abierto. Ver los estilos de .lmd-sec en content.css.
+      secRow('signin', ICON.key, 'Entrar sin contraseña', 'Entrás con un código de un solo uso que llega a tu correo. No hay contraseña de cuenta que se pueda filtrar.', T('Las sesiones y los tokens se guardan como hash')) +
       secRow('vaults', ICON.shield, 'Carpetas protegidas', 'Se cifran en tu dispositivo con tu contraseña. Ni el servidor puede leerlas.', 'AES-256-GCM · PBKDF2 · ' + T('En el plan gratis y en el pago'),
         '<p>' + T('Los nombres de archivos y carpetas quedan visibles. Sin la contraseña y sin la clave de respaldo, esas notas no se pueden recuperar.') + '</p>' +
         (n ? '<p class="lmd-sec-count">' + T(n === 1 ? 'Tenés 1 carpeta protegida.' : 'Tenés {n} carpetas protegidas.', { n }) + '</p>' : '') +
         (o.can ? '<p class="lmd-sec-act"><button type="button" class="lmd-link" data-c="protect">' + T('Proteger una carpeta') + '</button></p>' + choose : '')) +
-      secRow('signin', ICON.key, 'Entrar sin contraseña', 'Entrás con un código de un solo uso que llega a tu correo. No hay contraseña de cuenta que se pueda filtrar.', T('Las sesiones y los tokens se guardan como hash')) +
+      // La clave del asistente (aikey.js): dónde queda y por dónde viaja. Informa aunque el asistente esté apagado.
+      secRow('aikey', ICON.spark, 'Tu clave de IA', 'Se guarda cifrada solo en este dispositivo. No pasa por el servidor de SharpMD ni se sincroniza, y las llamadas van directo a tu proveedor.',
+        'AES-256-GCM · ' + T('llave no exportable') + (ai && ai.off ? ' · <button type="button" class="lmd-link" data-c="ai-tools">' + T('Prender en Herramientas') + '</button>' : ''),
+        ai && ai.hasKey ? '<p class="lmd-sec-key">' + esc(ai.provider === 'compat' ? T('Compatible con OpenAI') : AI_NAMES[ai.provider] || ai.provider) + ' · ••••' + esc(ai.last4 ? ' ' + ai.last4 : '') + '</p>' : '') +
       secRow('open', ICON.code, 'Sin analítica y con código abierto', 'No hay analítica. El código es abierto y podés usar tu propio servidor.', T('App MIT · Servidor AGPL')) +
       '</ul><p class="lmd-sec-foot">' + T('Una nota eliminada queda 30 días en la papelera.') + ' <a href="' + PRIVACY + '" target="_blank" rel="noopener noreferrer">' + T('Cómo funciona') + '</a></p></section>';
   }
@@ -264,8 +280,8 @@
   async function cloudPane(box, host) {
     await LMD.cloud.ready();
     secRedraw = null;
-    const canProtect = !host.direct && LMD.vault.can(); let picking = false; let free = [];
-    const secNow = (count) => security({ own: LMD.cloud.own(), can: canProtect, count, pick: picking, folders: free });
+    const canProtect = !host.direct && LMD.vault.can(); let picking = false; let free = []; let ai = null;
+    const secNow = (count) => security({ own: LMD.cloud.own(), can: canProtect, count, pick: picking, folders: free, ai });
     if (!LMD.cloud.enabled()) box.innerHTML = hint(T('La nube está apagada: SharpMD funciona sin cuenta y sin sincronizar.')) + actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="on">' + T('Prender la nube') + '</button>');
     else if (host.direct) box.innerHTML = direct(host, 'cloud') + '<div data-sec>' + secNow(0) + '</div>';
     else if (!LMD.cloud.signedIn()) box.innerHTML = LMD.home.perks() + actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="login">' + T('Crear cuenta o entrar') + '</button>') + '<div data-sec>' + secNow(0) + '</div>';
@@ -282,6 +298,7 @@
     const sec = async () => {
       const slot = box.querySelector('[data-sec]'); if (!slot) return;
       let count = 0;
+      ai = await aiKeyInfo();
       if (LMD.cloud.signedIn() && !host.direct) {
         try {
           count = (await LMD.vault.load()).filter((v) => v.state === 'on').length;
@@ -311,6 +328,7 @@
       else if (b.dataset.c === 'name-ok') { const row = box.querySelector('.lmd-acct-name'); if (row && row._save) row._save(); }
       else if (b.dataset.c === 'name-no') cloudPane(box, host);
       // Proteger una carpeta: sin sesión primero se entra; con una sola carpeta se va directo, con varias se elige.
+      else if (b.dataset.c === 'ai-tools') host.tab('tools');
       else if (b.dataset.c === 'protect') { if (!LMD.cloud.signedIn()) askLogin(); else if (free.length === 1) LMD.vault.pick('v-protect', free[0]); else { picking = true; sec(); } }
       else if (b.dataset.c === 'protect-at') LMD.vault.pick('v-protect', b.dataset.f);
     };
@@ -369,11 +387,13 @@
 
   // El mensaje que la persona pega en su IA para conectarla y decirle cómo documentar acá. Va siempre en inglés,
   // en cualquier idioma de la app: lo lee una IA. Es el único lugar donde está ese texto.
-  // o: { url, token, scope, share }. Sin token (uno viejo, que ya no se muestra) lleva el marcador AI_TOKEN_MARK.
+  // o: { url, token, scope, share, workspace }. Sin token (uno viejo, que ya no se muestra) lleva el marcador
+  // AI_TOKEN_MARK. workspace: false saca las secciones del espacio de proyecto (documentar y llevar el tablero);
+  // el detalle de esas dos está en la guía que el servidor entrega con get_guide.
   const AI_TOKEN_MARK = 'PASTE_YOUR_TOKEN';
   function aiBrief(o) {
     const url = String(o.url || ''); const token = o.token || AI_TOKEN_MARK; const scope = String(o.scope || '').replace(/\/+$/, '');
-    const fence = '\x60\x60\x60';
+    const fence = '\x60\x60\x60'; const dir = scope || '<project>';
     return [
       'You are being connected to SharpMD, a Markdown notes app. Use it to keep me informed in documents I can read in my browser.',
       '',
@@ -414,6 +434,23 @@
       '- Before you start a task, call search_notes and read the notes of the project, so you know the system: its architecture, the decisions already made and its conventions.',
       '- Keep one index note per project, for example ' + (scope ? scope : 'project') + '/README.md, with a link to every other note of that project.',
       '- When you build or change something, add or update a note about it and link it from the index. The next session, whether it is Claude, Codex or another agent, starts from that context.',
+    ], o.workspace === false ? [] : [
+      '',
+      '## Document the project',
+      '',
+      '- In the first session, unless it is there already, give the project a folder with README.md (what it is, how to run it, an index of links), architecture.md (with a Mermaid diagram), features/ (one note per feature, with its acceptance criteria), epics.md, decisions.md and log.md.',
+      '- Search and read what already exists first. Link the notes with relative paths and keep them current as you work.',
+      scope ? '- The project folder is ' + scope + '/, the one this token reaches.' : '- If the name of the project folder is not evident, ask me once.',
+      '',
+      '## Keep a task board',
+      '',
+      '- Keep a kanban board in ' + dir + '/board.md with the columns To do, In progress, Paused and Done. Use create_board, add_card, move_card and update_card. Do not rewrite its Markdown by hand.',
+      '- Before you start, add each task as a card in To do, with a field agent naming the agent or subagent that does it.',
+      '- Move it to In progress when you start, to Paused when you need something from me (say exactly what in a field needs, and tell me), and to Done when it is finished, with a field link to the note or the change.',
+      '- One card per task, and finished cards stay. With subagents, each one moves its own card.',
+      '',
+      'Do both without being asked. Call get_guide once before you start, for the layout of each note and the full board rules. If this token cannot write, or I prefer local files, keep the same structure as local .md files, linked as "When you finish" says.',
+    ], [
       '',
       '## How to write',
       '',
@@ -470,6 +507,11 @@
     let a = null; let tokens = [];
     // El token recién creado sigue a la vista hasta salir de este panel o revocarlo: el servidor no lo vuelve a dar.
     let shown = null;
+    // Qué hace la IA con el mensaje, y si lleva las instrucciones del espacio de proyecto. Va junto al botón que lo
+    // copia: con un token recién creado, debajo de ese botón; si no, debajo de la lista, que tiene uno por token.
+    let ws = true;
+    const wsRow = () => hint(T('Con ese mensaje, tu IA documenta el proyecto y lleva un tablero de tareas en SharpMD.')) +
+      '<label class="lmd-check lmd-ai-ws"><input type="checkbox" data-c="ws"' + (ws ? ' checked' : '') + '><span>' + T('Incluir las instrucciones del espacio de proyecto') + '</span></label>';
     const draw = async (fresh) => {
       if (fresh) shown = fresh;
       const made = shown; let list = []; let folders = [];
@@ -483,9 +525,9 @@
       box.innerHTML = intro + field('URL', a.mcp_url) +
         (made ? '<p class="lmd-ai-new">' + T('Copiá estos datos ahora: el token no se vuelve a mostrar.') + '</p>' + field('Token', made.token) +
           longField('Claude Code', 'claude mcp add --transport http sharpmd ' + made.mcp_url + ' --header "Authorization: Bearer ' + made.token + '"') +
-          actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="brief">' + T('Copiar instrucciones para tu IA') + '</button>') + hint(T('Un mensaje para pegar en tu IA: cómo conectarse y cómo documentar acá.')) : '') +
+          actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="brief">' + T('Copiar instrucciones para tu IA') + '</button>') + wsRow() : '') +
         '<h4>' + T('Tokens') + '</h4>' +
-        (list.length ? '<ul class="lmd-tokens">' + list.map((t) => '<li><span>' + esc(tokenName(t.name)) + ' · ' + (t.scope ? T('Carpeta {a}', { a: esc(t.scope) + '/' }) : T('Todas las notas')) + ' · ' + T('creado el {a}', { a: day(t.created) }) + ' · ' + (t.used ? T('usado el {a}', { a: day(t.used) }) : T('sin usar')) + (t.share ? ' · ' + T('puede compartir') : '') + '</span><button type="button" class="lmd-tok-brief" data-brief="' + t.id + '" title="' + T('Copiar instrucciones para tu IA') + '">' + T('Instrucciones') + '</button><button type="button" data-rm="' + t.id + '">' + T('Revocar') + '</button></li>').join('') + '</ul>' : hint(T('Todavía no hay tokens.'))) +
+        (list.length ? '<ul class="lmd-tokens">' + list.map((t) => '<li><span>' + esc(tokenName(t.name)) + ' · ' + (t.scope ? T('Carpeta {a}', { a: esc(t.scope) + '/' }) : T('Todas las notas')) + ' · ' + T('creado el {a}', { a: day(t.created) }) + ' · ' + (t.used ? T('usado el {a}', { a: day(t.used) }) : T('sin usar')) + (t.share ? ' · ' + T('puede compartir') : '') + '</span><button type="button" class="lmd-tok-brief" data-brief="' + t.id + '" title="' + T('Copiar instrucciones para tu IA') + '">' + T('Instrucciones') + '</button><button type="button" data-rm="' + t.id + '">' + T('Revocar') + '</button></li>').join('') + '</ul>' + (made ? '' : wsRow()) : hint(T('Todavía no hay tokens.'))) +
         // Un token puede alcanzar toda la nube o una sola carpeta, que suele ser un proyecto.
         (folders.length ? '<label class="lmd-pick"><span>' + T('Carpeta') + '</span><select data-c="folder"><option value="">' + T('Todas las notas') + '</option>' +
           folders.map((d) => '<option value="' + esc(d) + '"' + (d === kept ? ' selected' : '') + '>' + esc(d) + '/</option>').join('') + '</select></label>' : '') +
@@ -519,10 +561,11 @@
           // Con el token a la vista el mensaje sale listo; de uno viejo sale con el marcador, y se dice.
           const t = brief ? tokens.find((x) => String(x.id) === brief.dataset.brief) : shown; if (!t) return;
           const live = shown && String(shown.id) === String(t.id);
-          await copyText(aiBrief({ url: a.mcp_url, token: live ? shown.token : '', scope: t.scope, share: t.share }));
+          await copyText(aiBrief({ url: a.mcp_url, token: live ? shown.token : '', scope: t.scope, share: t.share, workspace: ws }));
           say(live ? T('Instrucciones copiadas. Pegalas en tu IA.') : T('Instrucciones copiadas. Reemplazá {a} por tu token, que ya no se muestra.', { a: AI_TOKEN_MARK }), true);
         }
         else if (!b) return;
+        else if (b.dataset.c === 'ws') ws = !!b.checked;
         else if (b.dataset.c === 'login') goLogin(host);
         else if (b.dataset.c === 'plans') host.tab('plan');
         else if (b.dataset.c === 'token') await draw(await LMD.cloud.newToken(T('IA'), (box.querySelector('[data-c=folder]') || {}).value || '', !!(box.querySelector('[data-c=share]') || {}).checked));

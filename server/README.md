@@ -185,11 +185,15 @@ Sign-in is a six-digit code sent by mail, no passwords.
 | `GET` / `POST /admin/sites` | With `x-admin-key`: list the published sites, suspend, restore, delete |
 | `POST /mcp` | MCP over Streamable HTTP, with `Authorization: Bearer mdt_...` |
 
-MCP tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`, `move_note`, `note_history`.
+MCP tools: `list_notes`, `list_folders`, `read_note`, `write_note`, `append_note`, `search_notes`, `list_comments`, `resolve_comment`, `move_note`, `note_history`, `get_guide`, `list_boards`, `create_board`, `add_card`, `move_card`, `update_card`, `delete_card`.
 
 `write_note`, `append_note` and `move_note` end their answer with `Open it: <url>`, the address that opens the note in the app. It is built from `APP_URL` as `?f=cloud/<path>`, the same address the app uses, so point `APP_URL` at the app your users open. Opened without a session, the app asks to sign in and then opens the note.
 
 `move_note` `{ from, to }` moves or renames a note inside the same space, and its history, comments, shares and public links follow it. `note_history` `{ path, version? }` lists the earlier versions of a note, or returns the text of one. Neither works inside a folder protected with a password.
+
+Boards. The board tools are the card operations of the API (`/api/v1/boards`) under names for a model, with the same rules: the folder limit of the token, team roles and policies, protected folders, and the write goes over the revision that was read. `list_boards` `{ path }` returns each board of a note with its columns, the column of finished cards (`done_column`) and every card with its `id`, title and fields. `create_board` `{ path, title?, columns?, done? }` creates the note with a board, or adds a board at the end of a note that exists; without `columns` it gets To do, In progress, Paused and Done, with `{done=Done}` written in the board. `add_card` `{ path, title, column?, fields?, position?, board? }`, `move_card` `{ path, id, column, position? }`, `update_card` `{ path, id, title?, fields?, done? }` (a field with an empty value is removed) and `delete_card` `{ path, id }` answer with the card (`id`, `title`, `column`, `done`, `fields`), the `path` and the `url` that opens the note. Moving a card to the column of finished cards marks it as done. They produce the same card events as the API, with `actor.type: "mcp"`. A token that only reads is offered `list_boards` and not the others.
+
+`get_guide` returns a Markdown guide for the AI: the folder structure to document a project (`README.md`, `architecture.md`, `features/`, `epics.md`, `decisions.md`, `log.md`) and the rules of its task board in `board.md` (one card per task, moved through To do, In progress, Paused and Done, with the fields `agent`, `needs` and `link`). The `instructions` of `initialize` carry a short version and tell the AI to call it once per session. The message the app copies from Settings > AI (MCP) says the same.
 
 Sharing from an AI is a way out for the notes if the AI is fed instructions by someone else, so it is a separate permission. Five more tools exist only for a token created with `share: true` ("Can share and create links" in Settings > AI), which is off by default, cannot be added to an existing token and shows in the token list:
 

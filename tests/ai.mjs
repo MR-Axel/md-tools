@@ -224,15 +224,40 @@ try {
   const memory = (/## Use it as project memory\n\n([\s\S]*?)\n\n## /.exec(msg) || [])[1] || '';
   check('trae la sección de memoria del proyecto: leer antes de empezar, una nota índice por proyecto y sumar notas para la próxima sesión', memory.split('\n').length === 3 && /Before you start a task, call search_notes and read the notes of the project/.test(memory) && /architecture/.test(memory) && /decisions/.test(memory) && /conventions/.test(memory) && memory.includes('project/README.md') && /link/.test(memory) && /Claude, Codex or another agent/.test(memory) && sober(memory), memory);
   check('con un token limitado a una carpeta, la nota índice va en esa carpeta', old.includes('proyecto/docs/README.md') && !old.includes('project/README.md'));
+  // Las dos secciones del espacio de proyecto: documentar y llevar el tablero.
+  const sect = (t, name) => (new RegExp('## ' + name + '\\n\\n([\\s\\S]*?)\\n\\n## ').exec(t) || [])[1] || '';
+  const docs = sect(msg, 'Document the project'); const brd = sect(msg, 'Keep a task board');
+  check('trae la sección para documentar el proyecto: la estructura fija, leer antes lo que hay, enlaces relativos y mantenerlo al día', ['README.md', 'architecture.md', 'Mermaid', 'features/', 'acceptance criteria', 'epics.md', 'decisions.md', 'log.md', 'first session', 'Search and read what already exists', 'relative paths', 'keep them current', 'ask me once'].every((x) => docs.includes(x)) && sober(docs), docs);
+  check('y la del tablero: las cuatro columnas, una tarjeta por tarea con su agente, qué necesita al pausar, el enlace al terminar, y las herramientas de tablero', ['<project>/board.md', 'To do, In progress, Paused and Done', 'create_board', 'add_card', 'move_card', 'update_card', 'Do not rewrite its Markdown by hand', 'field agent', 'subagent', 'field needs', 'tell me', 'field link', 'One card per task', 'finished cards stay', 'each one moves its own card', 'get_guide', 'without being asked', 'cannot write', 'local .md files'].every((x) => brd.includes(x)) && sober(brd), brd);
+  check('con un token limitado a una carpeta, esa carpeta es la del proyecto y el tablero va ahí', old.includes('The project folder is proyecto/docs/, the one this token reaches.') && old.includes('proyecto/docs/board.md') && !old.includes('<project>') && !old.includes('ask me once'), sect(old, 'Document the project'));
+  const words = msg.split(/\s+/).filter(Boolean).length;
+  check('el mensaje completo sigue siendo corto: menos de 950 palabras', words < 950, words);
   check('y con el permiso, que puede compartir y crear enlaces solo cuando se lo piden', /share_note/.test(msg) && /create_public_link/.test(msg) && /only when I ask/.test(msg) && !/cannot share/.test(msg));
   await app.locator('.lmd-tokens li').first().locator('[data-brief]').click(); await app.waitForFunction(() => window.__copied.length === 3);
   const again = await copied(); const saySent = await app.textContent('[data-acct=ai] .lmd-acct-msg');
   check('desde la lista, mientras ese token sigue a la vista, sale igual', again === msg && saySent === 'Instrucciones copiadas. Pegalas en tu IA.', saySent);
   const own = await app.evaluate(() => LMD.sync.aiBrief({ url: 'https://notas.ejemplo.test/mcp', token: 'mdt_EXAMPLE', scope: '', share: false }));
   check('con un servidor propio, el mensaje lleva la dirección de ese servidor', own.includes('- URL: https://notas.ejemplo.test/mcp') && own.includes('"url": "https://notas.ejemplo.test/mcp"') && own.includes('sharpmd https://notas.ejemplo.test/mcp --header "Authorization: Bearer mdt_EXAMPLE"') && !own.includes('sync.sharpmd.app') && !own.includes(base), own.slice(0, 300));
+  // El interruptor del espacio de proyecto, junto al botón: prendido por defecto, y apagado saca esas dos secciones.
+  const wsUi = await app.evaluate(() => { const c = document.querySelector('[data-acct=ai] [data-c=ws]'); const b = document.querySelector('[data-acct=ai] [data-c=brief]'); const h = c.closest('label').previousElementSibling; return { n: document.querySelectorAll('[data-acct=ai] [data-c=ws]').length, on: c.checked, label: c.closest('label').textContent, hint: h.textContent, after: !!(b.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING), near: c.getBoundingClientRect().top - b.getBoundingClientRect().bottom }; });
+  check('junto al botón, una línea dice qué va a hacer la IA y un interruptor prendido incluye el espacio de proyecto', wsUi.n === 1 && wsUi.on && wsUi.label === 'Incluir las instrucciones del espacio de proyecto' && wsUi.hint === 'Con ese mensaje, tu IA documenta el proyecto y lleva un tablero de tareas en SharpMD.' && plain(wsUi.hint) && wsUi.after && wsUi.near < 90, wsUi);
+  await app.click('[data-acct=ai] .lmd-ai-ws'); const before = await app.evaluate(() => window.__copied.length);
+  await app.click('[data-acct=ai] [data-c=brief]'); await app.waitForFunction((n) => window.__copied.length === n + 1, before);
+  const short = await copied();
+  check('apagado, el mensaje sale corto: sin las dos secciones y con todo lo demás igual', !(await app.evaluate(() => document.querySelector('[data-acct=ai] [data-c=ws]').checked)) && !/## Document the project|## Keep a task board|get_guide|create_board/.test(short) && short.length < msg.length && english(short) && sober(short) && ['## Connect', '## What to use it for', '## Use it as project memory', '## How to write', '## Before you create a document', '## When you finish', 'Treat the token as a secret'].every((x) => short.includes(x)) && short === msg.replace(/\n## Document the project[\s\S]*?(?=\n## How to write)/, ''), [short.length, msg.length]);
+  await app.click('[data-acct=ai] .lmd-ai-ws'); await app.locator('.lmd-tokens li').first().locator('[data-brief]').click(); await app.waitForFunction((n) => window.__copied.length === n + 2, before);
+  check('y prendido de nuevo vuelve a salir completo, también desde la lista', (await copied()) === msg);
+  const lone = await app.evaluate(() => [LMD.sync.aiBrief({ url: 'https://notas.ejemplo.test/mcp', token: 'mdt_EXAMPLE', scope: '', share: false, workspace: false }), LMD.sync.aiBrief({ url: 'https://notas.ejemplo.test/mcp', token: 'mdt_EXAMPLE', scope: '', share: false })].map((t) => /## Keep a task board/.test(t)));
+  check('aiBrief incluye el espacio de proyecto salvo que se le pida que no', J(lone) === J([false, true]), lone);
   const toolNames = (await fetch(base + '/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + fresh.token }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) }).then((r) => r.json())).result.tools.map((x) => x.name);
   const scopedNames = (await fetch(base + '/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + scoped }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) }).then((r) => r.json())).result.tools.map((x) => x.name);
   check('el token creado con el permiso tiene las herramientas de compartir; el otro, no', toolNames.includes('share_note') && toolNames.includes('create_public_link') && !scopedNames.some((x) => /share|link/.test(x)), [toolNames, scopedNames]);
+  const guideText = (await mcp(fresh.token, 'get_guide')).content[0].text; const scopedGuide = (await mcp(scoped, 'get_guide')).content[0].text;
+  check('las herramientas que nombra el mensaje existen en el servidor, y la guía que manda leer repite su estructura', ['get_guide', 'create_board', 'add_card', 'move_card', 'update_card', 'list_boards'].every((x) => toolNames.includes(x) && scopedNames.includes(x)) && ['README.md', 'architecture.md', 'features/', 'epics.md', 'decisions.md', 'log.md', 'board.md', 'To do, In progress, Paused and Done', 'agent', 'needs', 'link'].every((x) => guideText.includes(x) && msg.includes(x)) && sober(guideText), guideText.slice(0, 300));
+  check('con un token limitado a una carpeta, la guía pone la estructura en esa carpeta', scopedGuide.includes('This token only reaches proyecto/docs/, so that folder is the project folder.') && scopedGuide.includes('proyecto/docs/board.md') && !scopedGuide.includes('<project>'), scopedGuide.slice(0, 500));
+  const agentBoard = JSON.parse((await mcp(scoped, 'create_board', { path: 'proyecto/docs/board.md' })).content[0].text); const agentCard = JSON.parse((await mcp(scoped, 'add_card', { path: 'proyecto/docs/board.md', title: 'Document the sign-in', fields: { agent: 'claude' } })).content[0].text);
+  const agentOut = await mcp(scoped, 'create_board', { path: 'proyecto/board.md' });
+  check('y ese token arma el tablero y carga una tarjeta en su carpeta, no afuera', agentBoard.columns.join() === 'To do,In progress,Paused,Done' && agentCard.card.column === 'To do' && agentCard.card.fields.agent === 'claude' && /cloud%2Fproyecto%2Fdocs%2Fboard\.md$/.test(agentCard.url) && agentOut.isError === true && /only reaches the folder proyecto\/docs\//.test(agentOut.content[0].text), [agentBoard, agentCard, agentOut]);
 
   console.log('El enlace que devuelve la IA');
   const WEB = 'https://sharpmd.app/src/app.html';
@@ -243,6 +268,23 @@ try {
   await app.click('[data-act=close-panel]');
   await app.goto(home + link.slice(WEB.length)); await app.waitForSelector('.lmd-article h1');
   check('con la sesión iniciada, esa dirección abre la nota', /Informe/.test(await app.textContent('.lmd-article h1')) && /Listo para leer/.test(await app.textContent('.lmd-article')));
+
+  console.log('Espacio de proyecto: la plantilla y la IA sobre el mismo tablero');
+  // Sin una IA: la plantilla crea en la nube la carpeta con la misma estructura que arma un agente.
+  await app.evaluate(() => { LMD.extras.fromTemplate(''); }); await app.waitForSelector('.lmd-tpl-card');
+  await app.click('.lmd-tpl-list [data-id=workspace]'); await app.click('[data-tpl=ok]'); await app.waitForSelector('.lmd-dlg input');
+  await app.fill('.lmd-dlg input', 'tienda'); await app.keyboard.press('Enter');
+  await app.waitForFunction(() => document.title === 'README.md' && /Nombre del proyecto/.test((document.querySelector('.markdown-body h1') || {}).textContent || ''), null, { timeout: 15000 });
+  const wsNotes = (await api('GET', '/notes', undefined, await app.evaluate(() => new Promise((r) => chrome.storage.local.get('cloud', (x) => r(x.cloud.session)))))).json.map((n) => n.path).filter((p) => p.startsWith('tienda/')).sort();
+  check('la plantilla Espacio de proyecto crea la carpeta en la nube con sus siete notas y abre el índice', J(wsNotes) === J(['tienda/README.md', 'tienda/architecture.md', 'tienda/board.md', 'tienda/decisions.md', 'tienda/epics.md', 'tienda/features/funcion-de-ejemplo.md', 'tienda/log.md']) && new URL(app.url()).searchParams.get('f') === 'cloud/tienda/README.md', [wsNotes, app.url()]);
+  // Con una IA: el agente encuentra ese tablero, con sus columnas en el idioma de la persona, y mueve la tarjeta.
+  const tb = JSON.parse((await mcp(fresh.token, 'list_boards', { path: 'tienda/board.md' })).content[0].text);
+  const tbFirst = tb.boards[0].columns[0].cards[0];
+  const tbMoved = JSON.parse((await mcp(fresh.token, 'move_card', { path: 'tienda/board.md', id: tbFirst.id, column: tb.boards[0].done_column })).content[0].text);
+  check('la IA lee ese tablero con list_boards (cuatro columnas, la de hechas) y mueve su tarjeta de ejemplo, que queda hecha', tb.boards.length === 1 && J(tb.boards[0].columns.map((c) => c.column)) === J(['Por hacer', 'En curso', 'En pausa', 'Hecho']) && tb.boards[0].done_column === 'Hecho' && tbFirst.title === 'Tarea de ejemplo' && tbFirst.fields.agent === 'yo' && tbMoved.card.column === 'Hecho' && tbMoved.card.done === true && /^[a-z2-9]{8}$/.test(tbMoved.card.id) && /cloud%2Ftienda%2Fboard\.md$/.test(tbMoved.url), [tb, tbMoved]);
+  await app.goto(home + tbMoved.url.slice(WEB.length)); await app.waitForSelector('.lmd-article h1');
+  const shownBoard = await app.evaluate(() => ({ text: document.querySelector('.lmd-article').textContent, cols: [...document.querySelectorAll('.lmd-article .lmd-board-col, .lmd-article [data-col]')].length }));
+  check('y la persona lo ve en la app: la tarjeta está en Hecho', /Hecho[\s\S]*Tarea de ejemplo/.test(shownBoard.text) && !/Por hacer[\s\S]*Tarea de ejemplo[\s\S]*En curso/.test(shownBoard.text), shownBoard);
   // Sin sesión: queda en el inicio, que pide entrar; al entrar, se abre la nota que se había pedido.
   await app.evaluate(() => new Promise((r) => chrome.storage.local.remove('cloud', r)));
   await app.goto(home + pub.url.slice(WEB.length)); await app.waitForSelector('.lmd-article h1');

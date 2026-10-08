@@ -506,6 +506,8 @@
         const t = id ? LMD.templates.get(id) : null;
         prev.innerHTML = t ? ctx.preview(t.text) : '';
         prev.scrollTop = 0; ok.disabled = !t;
+        // Una plantilla de varias notas crea una carpeta: el botón lo dice.
+        ok.textContent = t && t.pack ? T('Crear carpeta') : T('Crear nota');
         box.querySelector('[data-tpl=rm]').hidden = !String(id).startsWith('c:');
       };
       const draw = () => {

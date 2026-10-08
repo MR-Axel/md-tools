@@ -179,7 +179,7 @@ try {
   check('ninguna pestaña necesita scroll a 800 px de alto (plan gratis)', over.length === 0, over);
   await tab('cloud');
   const freeCloud = await app.evaluate(() => [...document.querySelectorAll('[data-acct=cloud] .lmd-acct-row')].map((r) => r.children[0].textContent + '=' + r.children[1].textContent).join('|') + ' / ' + [...document.querySelectorAll('[data-acct=cloud] button')].map((b) => b.textContent).join('|'));
-  check('Nube: la cuenta, el plan y cuántas notas, con abrir la carpeta, salir y eliminar la cuenta', freeCloud === 'Cuenta=' + mail + '|Nombre visible=' + mail.split('@')[0] + '|Plan=Gratis|Notas en la nube=1 de 10 / Cambiar|Abrir la carpeta Nube|Salir|Proteger una carpeta|Eliminar la cuenta', freeCloud);
+  check('Nube: la cuenta, el plan y cuántas notas, con abrir la carpeta, salir y eliminar la cuenta', freeCloud === 'Cuenta=' + mail + '|Nombre visible=' + mail.split('@')[0] + '|Plan=Gratis|Notas en la nube=1 de 10 / Cambiar|Abrir la carpeta Nube|Salir|Proteger una carpeta|Prender en Herramientas|Eliminar la cuenta', freeCloud);
   // el nombre visible se cambia en el lugar, y se muestra siempre como texto
   const nameHint = await text('[data-acct=cloud] .lmd-acct-name-hint');
   await app.click('[data-acct=cloud] [data-c=name]'); await app.waitForSelector('[data-acct=cloud] [data-name-in]');
@@ -529,9 +529,9 @@ try {
       pick: [...s.querySelectorAll('[data-c=protect-at]')].map((b) => b.dataset.f), msg: (s.querySelector('p.lmd-sec-pick') || {}).textContent || '', wide: s.scrollWidth - s.clientWidth };
   });
   const limpio = (t) => !!t && !/[!¡—–]/.test(t) && !/end-to-end|extremo a extremo|militar|inviolable|100%/i.test(t);
-  const ROWS = 'notes:Notas en la nube|vaults:Carpetas protegidas|signin:Entrar sin contraseña|open:Sin analítica y con código abierto';
+  const ROWS = 'notes:Notas en la nube|signin:Entrar sin contraseña|vaults:Carpetas protegidas|aikey:Tu clave de IA|open:Sin analítica y con código abierto';
   const fuera = await secOf();
-  check('sin sesión, Nube muestra el bloque de seguridad debajo del botón de entrar: cuatro renglones con ícono', !!fuera && fuera.title === 'Seguridad' && fuera.rows === ROWS && fuera.icons === 4 && fuera.below && fuera.wide <= 0, fuera);
+  check('sin sesión, Nube muestra el bloque de seguridad debajo del botón de entrar: cinco renglones con ícono', !!fuera && fuera.title === 'Seguridad' && fuera.rows === ROWS && fuera.icons === 5 && fuera.below && fuera.wide <= 0, fuera);
   check('dice qué lee el servidor y qué no, cada cosa en su renglón, sin signos de admiración ni rayas', limpio(fuera.text) && /Ni el servidor puede leerlas\./.test(fuera.text) && /para compartirlas y atender a tu IA\./.test(fuera.text) && /En el plan gratis y en el pago/.test(fuera.text) && /AES-256-GCM · PBKDF2/.test(fuera.text) && /no se pueden recuperar\./.test(fuera.text), fuera.text);
   check('con un servidor propio no promete un cifrado que depende de quien lo instaló', /En un servidor propio/.test(fuera.text) && !/Viajan cifradas/.test(fuera.text), fuera.text);
   check('"Cómo funciona" lleva a las notas en la nube de la página de privacidad', fuera.link === 'Cómo funciona' && fuera.href === SITE + '/privacy.html#cloud-notes' && /<h2 id="cloud-notes">/.test(fs.readFileSync(path.join(root, 'privacy.html'), 'utf8')), [fuera.link, fuera.href]);
@@ -557,6 +557,34 @@ try {
   const dentro = await secOf();
   const orden = await app.evaluate(() => { const q = (s) => document.querySelector('[data-acct=cloud] ' + s).getBoundingClientRect(); return q('.lmd-sec').top >= q('.lmd-acct-actions').bottom && q('.lmd-acct-del').top >= q('.lmd-sec').bottom; });
   check('con sesión, el mismo bloque va debajo de los datos de la cuenta y antes de eliminarla', !!dentro && dentro.rows === ROWS && dentro.count === '' && orden && limpio(dentro.text), dentro);
+  // La clave del asistente de IA: el bloque dice dónde queda y por dónde viaja, esté prendido el asistente o no.
+  const keyRow = () => app.evaluate(() => { const li = document.querySelector('[data-acct=cloud] [data-sec-row=aikey]'); return li && { title: li.querySelector('b').textContent, text: li.querySelector('p').textContent, tech: li.querySelector('small').textContent, act: (li.querySelector('[data-c=ai-tools]') || {}).textContent || '', key: (li.querySelector('.lmd-sec-key') || {}).textContent || '', all: li.textContent }; });
+  await app.waitForSelector('[data-acct=cloud] [data-sec-row=aikey] [data-c=ai-tools]');
+  const k0 = await keyRow();
+  check('el bloque dice cómo se protege la clave de IA: cifrada, solo en este dispositivo, sin pasar por el servidor ni sincronizarse', k0.title === 'Tu clave de IA' && /^Se guarda cifrada solo en este dispositivo\./.test(k0.text) && /No pasa por el servidor de SharpMD ni se sincroniza, y las llamadas van directo a tu proveedor\./.test(k0.text) && k0.tech === 'AES-256-GCM · llave no exportable · Prender en Herramientas' && limpio(k0.all), k0);
+  check('con el asistente apagado y sin clave, se muestra igual, con una acción discreta para prenderlo', k0.act === 'Prender en Herramientas' && k0.key === '' && (await app.evaluate(() => !LMD.tools.isOn('assistant') && document.querySelector('[data-c=ai-tools]').classList.contains('lmd-link'))), k0);
+  // Con una clave cargada: el proveedor y los últimos cuatro caracteres, nada más.
+  const FAKE = 'sk-ant-PRUEBA-NO-ES-UNA-CLAVE-Zz9Q';
+  await app.evaluate(async (key) => { const k = await LMD.seal.deviceKey(); await LMD.store.aiPut({ provider: 'anthropic', baseUrl: '', model: 'modelo-de-prueba', cryptoKey: k, data: await LMD.seal.seal(k, 'sharpmd ai key v1|anthropic|https://api.anthropic.com/v1', key), last4: key.slice(-4), at: Date.now() }); }, FAKE);
+  await tab('plan'); await tab('cloud'); await app.waitForSelector('[data-acct=cloud] [data-sec-row=aikey] .lmd-sec-key');
+  const k1 = await keyRow(); const whole = await app.evaluate(() => document.querySelector('.lmd-panel').innerHTML);
+  const slack1 = await app.evaluate(() => { const b = document.querySelector('.lmd-panel-body'); const d = document.querySelector('[data-acct=cloud] .lmd-acct-del').getBoundingClientRect(); return { over: b.scrollHeight - b.clientHeight, left: Math.round(b.getBoundingClientRect().bottom - d.bottom) }; });
+  check('con la clave cargada y el asistente apagado (el renglón más largo), la pestaña sigue entrando sin scroll a 800 px', slack1.over <= 0, slack1);
+  check('con una clave cargada muestra el proveedor y los últimos cuatro caracteres, y nada más de la clave', k1.key === 'Anthropic (Claude) · •••• Zz9Q' && k1.act === 'Prender en Herramientas' && !whole.includes('PRUEBA') && !whole.includes(FAKE.slice(0, 12)) && limpio(k1.all), k1);
+  const kept = await app.evaluate(async () => { const r = await LMD.store.aiGet(); const sync = chrome.storage.sync ? await new Promise((res) => chrome.storage.sync.get(null, res)) : {}; const local = await new Promise((res) => chrome.storage.local.get(null, res)); let exported = true; try { await crypto.subtle.exportKey('raw', r.cryptoKey); } catch (e) { exported = false; } return { alg: r.cryptoKey.algorithm.name + '-' + r.cryptoKey.algorithm.length, extractable: r.cryptoKey.extractable, exported, sealed: typeof r.data === 'string' && !r.data.includes('PRUEBA'), inSync: JSON.stringify(sync).includes('Zz9Q') || JSON.stringify(sync).includes('PRUEBA'), inLocal: JSON.stringify(local).includes('PRUEBA') }; });
+  check('lo que afirma es cierto: la clave queda cifrada con una llave AES-256-GCM que el navegador no deja exportar, y no está en las preferencias que se sincronizan', kept.alg === 'AES-GCM-256' && kept.extractable === false && kept.exported === false && kept.sealed && !kept.inSync && !kept.inLocal, kept);
+  await app.click('[data-acct=cloud] [data-c=ai-tools]');
+  check('la acción lleva a Herramientas, donde se prende el asistente', (await app.evaluate(() => document.querySelector('[data-ptab].lmd-on').dataset.ptab)) === 'tools');
+  await app.evaluate(() => LMD.tools.set('assistant', true)); await app.waitForFunction(() => LMD.tools.isOn('assistant'));
+  await tab('plan'); await tab('cloud'); await app.waitForSelector('[data-acct=cloud] [data-sec-row=aikey] .lmd-sec-key');
+  const k2 = await keyRow();
+  check('con el asistente prendido la acción ya no está, y la clave sigue a la vista', k2.act === '' && k2.tech === 'AES-256-GCM · llave no exportable' && k2.key === 'Anthropic (Claude) · •••• Zz9Q', k2);
+  const fits = await app.evaluate(() => { const b = document.querySelector('.lmd-panel-body'); const li = (id) => document.querySelector('[data-acct=cloud] [data-sec-row=' + id + ']').getBoundingClientRect(); return { over: b.scrollHeight - b.clientHeight, cols: [li('notes').left === li('signin').left && li('signin').top > li('notes').bottom - 1, li('vaults').left > li('notes').right - 1 && li('vaults').top === li('notes').top, li('aikey').left > li('vaults').right - 1 && li('aikey').top === li('notes').top, li('open').left === li('aikey').left && li('open').top > li('aikey').bottom - 1] }; });
+  check('con la clave a la vista la pestaña Nube sigue entrando sin scroll a 800 px, en tres columnas', fits.over <= 0 && fits.cols.every(Boolean), fits);
+  const keyEn = await app.evaluate(() => { const plain = (h) => { const d = document.createElement('div'); d.innerHTML = h; return d.textContent; }; LMD.setLang('en'); const t = plain(LMD.sync.security({ ai: { hasKey: true, provider: 'compat', last4: 'abcd', off: true } })); const none = plain(LMD.sync.security({})); LMD.setLang('es'); return { t, none }; });
+  check('en inglés dice lo mismo, y sin saber de la clave el renglón informa igual', /Your AI key/.test(keyEn.t) && /Stored encrypted on this device only\. It does not go through the SharpMD server and is not synced, and calls go straight to your provider\./.test(keyEn.t) && /AES-256-GCM · non-exportable key · Turn on in Tools/.test(keyEn.t) && /OpenAI compatible · •••• abcd/.test(keyEn.t) && !/[áéíóúñ]/i.test(keyEn.t) && limpio(keyEn.t) && /Your AI key/.test(keyEn.none) && !/Turn on in Tools|••••/.test(keyEn.none), keyEn);
+  await app.evaluate(async () => { await LMD.store.aiDelete(); LMD.tools.set('assistant', false); }); await app.waitForFunction(() => !LMD.tools.isOn('assistant'));
+  await tab('plan'); await tab('cloud'); await app.waitForSelector('[data-acct=cloud] [data-sec-row=aikey] [data-c=ai-tools]');
   const segSession = (await stored('cloud')).session;
 
   // La primera nota que va a la nube: la pregunta suma una línea que lleva a este bloque.
