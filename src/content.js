@@ -249,8 +249,10 @@
     // Listas de tareas
     if (p.tasklists) {
       article.querySelectorAll('li').forEach((li) => {
-        let target = li.firstChild;
-        if (target && target.nodeType === 1 && target.tagName === 'P') target = target.firstChild;
+        // En una lista con renglones en blanco el elemento arranca con un salto de línea y el texto va dentro de un párrafo.
+        const first = (n) => { while (n && n.nodeType === 3 && !n.nodeValue.trim() && n.nextSibling) n = n.nextSibling; return n; };
+        let target = first(li.firstChild);
+        if (target && target.nodeType === 1 && target.tagName === 'P') target = first(target.firstChild);
         if (!target || target.nodeType !== 3) return;
         const m = /^\[([ xX])\](\s+|$)/.exec(target.nodeValue);
         if (!m) return;
