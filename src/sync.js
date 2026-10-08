@@ -44,7 +44,8 @@
     } else title = LMD.cloud.signedIn() ? T('Esta nota no está en la nube. Clic para subirla') : T('Sincronización apagada. Clic para entrar a tu cuenta');
     btn.className = 'lmd-icon-btn lmd-sync ' + cls;
     const others = isCloud() ? core.present.filter((m) => m !== LMD.cloud.email()) : [];
-    btn.innerHTML = icon + (others.length ? '<b class="lmd-sync-n">' + (others.length + 1) + '</b>' : '');
+    // Quiénes están se ve en la tira de avatares de al lado (live.js): acá queda el estado de la nube.
+    btn.innerHTML = icon;
     btn.title = title + (others.length ? ' · ' + T('También acá: {a}', { a: others.map((m) => (core.presentNames && core.presentNames[m]) || m).join(', ') }) : '');
     loadAccount();
   }
@@ -793,7 +794,7 @@
     const fmt = (ms) => new Date(ms).toLocaleString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { dateStyle: 'medium', timeStyle: 'short' });
     const weight = (n) => (n < 1024 ? n + ' B' : (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB');
     box.innerHTML = '<div class="lmd-ask-card lmd-hist" role="dialog" aria-label="' + T('Historial de versiones') + '"><h3>' + T('Historial de versiones') + '</h3>' +
-      (list.length ? '<div class="lmd-hist-body"><ul>' + list.map((v) => '<li><button type="button" data-v="' + v.id + '">' + esc(fmt(v.saved)) + '<small>' + weight(v.size) + '</small></button></li>').join('') + '</ul><pre></pre></div>'
+      (list.length ? '<div class="lmd-hist-body"><ul>' + list.map((v) => '<li><button type="button" data-v="' + v.id + '">' + esc(fmt(v.saved)) + '<small>' + weight(v.size) + (v.edited && LMD.live.who(v.edited) ? ' · ' + esc(LMD.live.who(v.edited)) : '') + '</small></button></li>').join('') + '</ul><pre></pre></div>'
         : '<p>' + T('Todavía no hay versiones anteriores de esta nota.') + '</p>') +
       '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-h="no" data-esc>' + T('Cerrar') + '</button><button type="button" class="lmd-btn lmd-btn-fill" data-h="ok" disabled>' + T('Restaurar esta versión') + '</button></div></div>';
     document.body.appendChild(box);

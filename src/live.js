@@ -18,7 +18,7 @@
   // people viene del servidor: [{ id, name, color, block, editing, here }]. El color es un número que asigna él.
   let S = null;
   let turn = 0;
-  let layer = null; let chip = null; let bar = null; let dlg = null; let notice = null;
+  let layer = null; let chip = null; let bar = null; let dlg = null; let notice = null; let strip = null;
   // Doce colores que se leen con letra blanca encima, en tema claro y oscuro.
   const COLORS = ['#d93d42', '#0b7fd6', '#2b9a66', '#d9620f', '#8347b9', '#c8388f', '#0e958a', '#a67c00', '#3a5bc7', '#b54a6f', '#0b8fb0', '#7d6b55'];
   const tint = (p) => COLORS[(p.color | 0) % COLORS.length];
@@ -27,6 +27,18 @@
   const here = () => (S ? S.people.filter((p) => p.here || p.id === S.me) : []);
   const others = () => (S ? S.people.filter((p) => p.id !== S.me && p.here) : []);
   const active = () => !!S && !S.ended;
+  // El color de una persona fuera de una sesión en vivo: siempre el mismo para el mismo correo.
+  const hue = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.codePointAt(0)) >>> 0; return h % COLORS.length; };
+  // Una IA que está en la nota: "IA · Claude Code (token "work")", o "IA · work" si el cliente no dijo quién es.
+  const aiName = (a) => T('IA') + ' · ' + (a.client ? a.client + ' (token "' + (a.token || '') + '")' : a.token || '');
+  const who = (by) => (!by ? '' : by.kind === 'ai' ? T('IA') + (by.name ? ' · ' + by.name : '') : by.kind === 'guest' ? (by.name ? by.name + ' · ' : '') + T('invitado') : by.name || '');
+  // "Última edición: 8 oct, 22:35, por Ana". Las notas guardadas antes de que se anotara el autor dicen solo cuándo.
+  function lastText() {
+    const e = core && core.lastEdit; if (!e || !e.at) return '';
+    const d = new Date(e.at).toLocaleString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const a = who(e.by);
+    return a ? T('Última edición: {d}, por {a}', { d, a }) : T('Última edición: {d}', { d });
+  }
   // Un miembro del equipo que no eligió un nombre visible llega sin nombre: nunca viaja su correo.
   const named = (list) => (Array.isArray(list) ? list : []).map((p) => (p.name ? p : Object.assign({}, p, { name: T('Miembro del equipo') })));
   const say = (e) => T({ offline: 'No hay conexión con el servidor.', live_gone: 'Esa sesión en vivo ya terminó.', live_ended: 'Esa sesión en vivo ya terminó.', live_full: 'La sesión está completa. Probá de nuevo en un rato.',
@@ -197,8 +209,37 @@
   }
 
   // ---------- Lo que se ve ----------
-  function paint() { paintChip(); paintBar(); paintMarks(); }
+  function paint() { paintChip(); paintBar(); paintMarks(); paintStrip(); }
   const avatar = (p) => { const a = el('span', { class: 'lmd-live-av' }); a.style.setProperty('--lmd-live', tint(p)); a.textContent = initials(p.name); a.title = p.name; return a; };
+  // Una IA no lleva iniciales ni el logotipo de nadie: una chispa, con su nombre al pasar el cursor.
+  const aiAvatar = (a) => { const n = el('span', { class: 'lmd-live-av lmd-here-ai' + (a.writing ? ' lmd-here-busy' : ''), role: 'img', 'aria-label': aiName(a), title: aiName(a) + (a.writing ? ' · ' + T('escribiendo') : '') }, ICON.spark); return n; };
+  // Quiénes tienen abierta la nota ahora, personas e IA, en una tira de avatares junto a la nube. En una sesión en
+  // vivo esa tira es la de la sesión (paintChip), con las IA sumadas. En una nota propia sin compartir no hay nadie
+  // más: la tira aparece solo si hay una IA.
+  function paintStrip() {
+    if (!strip) return;
+    const ai = (core.hereAi || []).slice(0, 6); const me = LMD.cloud.email();
+    const mails = core.cloudPath && !core.noDoc && !LMD.cloud.guest() ? (core.present || []) : [];
+    const people = mails.some((m) => m !== me) ? mails.map((m) => ({ name: (core.presentNames && core.presentNames[m]) || m.split('@')[0], color: hue(m), me: m === me })) : [];
+    const list = people.map((p) => ({ p })).concat(ai.map((a) => ({ a })));
+    strip.hidden = active() || !list.length || !core.cloudPath;
+    strip.classList.remove('lmd-on');
+    if (strip.hidden) { strip.textContent = ''; return; }
+    strip.textContent = '';
+    const row = el('span', { class: 'lmd-live-avs' });
+    list.slice(0, 4).forEach((x) => row.appendChild(x.a ? aiAvatar(x.a) : avatar(x.p)));
+    // Dos cuentas de "y tantos más": la de siempre y la de pantalla chica, donde entran dos avatares.
+    if (list.length > 4) row.appendChild(el('span', { class: 'lmd-live-av lmd-live-more lmd-here-more-w', text: '+' + (list.length - 4) }));
+    if (list.length > 2) row.appendChild(el('span', { class: 'lmd-live-av lmd-live-more lmd-here-more-s', text: '+' + (list.length - 2) }));
+    strip.appendChild(row);
+    const names = list.map((x) => (x.a ? aiName(x.a) : x.p.name + (x.p.me ? ' · ' + T('vos') : '')));
+    const last = lastText();
+    const tip = el('span', { class: 'lmd-here-tip', role: 'tooltip' });
+    if (last) tip.appendChild(el('b', { text: last }));
+    tip.appendChild(el('span', { text: names.join(', ') }));
+    strip.appendChild(tip);
+    strip.setAttribute('aria-label', T('En esta nota: {a}', { a: names.join(', ') }) + (last ? '. ' + last : ''));
+  }
   // Arriba: que la nota está en vivo y quiénes están. Abre el cuadro de la sesión.
   function paintChip() {
     if (!chip) return;
@@ -210,8 +251,11 @@
     const row = el('span', { class: 'lmd-live-avs' });
     list.slice(0, 4).forEach((p) => row.appendChild(avatar(p)));
     if (list.length > 4) row.appendChild(el('span', { class: 'lmd-live-av lmd-live-more', text: '+' + (list.length - 4) }));
+    // Las IA que están en la nota van al final de la misma tira.
+    const ai = (core.hereAi || []).slice(0, 3); ai.forEach((a) => row.appendChild(aiAvatar(a)));
     chip.append(row, el('span', { class: 'lmd-live-n', text: String(list.length) }));
-    chip.title = T('Colaborar en vivo') + ' · ' + list.map((p) => p.name).join(', ');
+    // La última edición de una nota en vivo está en el cuadro de la sesión, que se abre desde acá.
+    chip.title = T('Colaborar en vivo') + ' · ' + list.map((p) => p.name).concat(ai.map(aiName)).join(', ');
   }
   // Para el invitado, una barra bajo la de arriba: de quién es la sesión, cuánta gente hay, si se cortó, y cómo salir.
   function paintBar() {
@@ -359,7 +403,8 @@
         ? '<div class="lmd-field lmd-live-link"><span>' + T('Enlace') + '</span><input type="text" readonly aria-label="' + T('Enlace') + '"><button type="button" class="lmd-link" data-lv="copy">' + T('Copiar') + '</button></div>' +
           '<p class="lmd-hint">' + T(changed ? 'El enlace cambió: el anterior ya no sirve. Los que siguen adentro no necesitan el nuevo.' : 'Quien lo abre entra a editar esta nota, sin cuenta. Pasáselo solo a quien quieras que entre.') + '</p>'
         : '<p class="lmd-hint">' + T('El enlace se ve solo en el navegador donde se abrió la sesión. Acá podés crear uno nuevo: el anterior deja de servir.') + '</p>')) +
-        '<h4>' + T(here().length === 1 ? '1 persona' : '{n} personas', { n: here().length }) + '</h4><ul class="lmd-live-people"></ul>';
+        '<h4>' + T(here().length === 1 ? '1 persona' : '{n} personas', { n: here().length }) + '</h4><ul class="lmd-live-people"></ul><p class="lmd-hint lmd-live-last"></p>';
+      const lastP = body.querySelector('.lmd-live-last'); lastP.textContent = lastText(); lastP.hidden = !lastP.textContent;
       const input = body.querySelector('.lmd-live-link input'); if (input) input.value = link;
       const told = body.querySelector('.lmd-live-team');
       if (told) told.textContent = T(S.me === 'o' ? 'Nota del equipo. Los miembros editan desde su cuenta, sin el enlace.' : 'Nota del equipo, en vivo con invitados. La abrió {a}.', { a: S.by });
@@ -430,11 +475,23 @@
     if (!c.APP) return;
     chip = el('button', { type: 'button', class: 'lmd-live-chip lmd-doc-only', 'data-act': 'live', hidden: '' });
     c.ui.sync.after(chip);
+    strip = el('button', { type: 'button', class: 'lmd-here lmd-doc-only', hidden: '' });
+    chip.after(strip);
+    // Con el dedo no hay "pasar por encima": el cuadrito sale al tocar, y se va al tocar afuera.
+    // El cuadrito cuelga del borde derecho de la tira; si así se sale de la pantalla, se corre hasta entrar.
+    const placeTip = () => {
+      const t = strip.querySelector('.lmd-here-tip'); if (!t) return;
+      t.style.left = ''; t.style.right = '';
+      if (t.getBoundingClientRect().left < 8) { t.style.right = 'auto'; t.style.left = (8 - strip.getBoundingClientRect().left) + 'px'; }
+    };
+    strip.addEventListener('mouseenter', placeTip); strip.addEventListener('focus', placeTip);
+    strip.addEventListener('click', (e) => { e.stopPropagation(); strip.classList.toggle('lmd-on'); placeTip(); });
+    document.addEventListener('click', () => { if (strip) strip.classList.remove('lmd-on'); });
     layer = el('div', { class: 'lmd-live-layer' });
     c.ui.main.appendChild(layer);
     // Tocar una marca muestra de quién es (con el dedo no hay "pasar por encima").
     layer.addEventListener('click', (e) => { const m = e.target.closest('.lmd-live-mark'); if (!m) return; const on = !m.classList.contains('lmd-live-show'); layer.querySelectorAll('.lmd-live-show').forEach((n) => n.classList.remove('lmd-live-show')); m.classList.toggle('lmd-live-show', on); });
-    c.hooks.render.push(paintMarks); c.hooks.patch.push(paintMarks);
+    c.hooks.render.push(paintMarks); c.hooks.patch.push(paintMarks); c.hooks.doc.push(paintStrip);
     window.addEventListener('resize', place);
     if (window.ResizeObserver) new ResizeObserver(place).observe(c.ui.article);
     LMD.cloud.onGuest((what) => {
@@ -445,7 +502,9 @@
     });
   }
 
-  LMD.live = { init, attach, detach, event, enter, open, at, heldBy, lost, active, explainVault,
+  LMD.live = { init, attach, detach, event, enter, open, at, heldBy, lost, active, explainVault, who,
+    // Cambió quién está en la nota (personas o IA) o su último guardado.
+    strip: () => { if (!core) return; if (active()) paintChip(); paintStrip(); if (dlg && dlg._draw && active()) dlg._draw(); },
     // Cambió el estado del guardado (con conexión, sin ella): la barra del invitado lo dice.
     state: () => { if (S && S.role === 'guest') paintBar(); },
     count: () => here().length,

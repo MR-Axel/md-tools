@@ -758,7 +758,7 @@ async function liveSuite() {
     check('al invitado le llega cada guardado con el texto nuevo y quién fue (por número), sin pedir la nota', savedG.length === 3 && savedG[0].text.includes('Dos, de Ana.') && savedG[0].pid === 'o' && savedG[1].pid === 'g1' && savedG[2].pid === 'x' && savedG[2].text.includes('Cuatro, de Beto.') && savedG.map((e) => e.rev).join() === '3,4,5', savedG);
     check('por la escucha del invitado no pasa ningún correo, ni quién más tiene la nota abierta por su cuenta, ni comentarios ni carpetas', !/@ejemplo|"who"|"by"|"presence"|"comments"|"vault"/.test(earG.text) && evG.every((e) => e.type === 'saved' || e.type === 'live'), earG.text.slice(0, 400));
     check('a quien abrió la sesión le llega el guardado del invitado con el texto, sin correo de invitado', evO.some((e) => e.type === 'saved' && e.pid === 'g1' && e.by === 'guest' && e.text.includes('Tres.')), evO.filter((e) => e.type === 'saved'));
-    check('a la cuenta con la nota compartida, que no es parte de la sesión, el aviso le llega sin el texto ni la lista de invitados', evB.filter((e) => e.type === 'saved').length === 3 && evB.every((e) => !('text' in e) && !('patch' in e) && e.type !== 'live') && !/Ben|img/.test(earB.text), evB);
+    check('a la cuenta con la nota compartida, que no es parte de la sesión, el aviso le llega sin el texto ni la lista de invitados', evB.filter((e) => e.type === 'saved').length === 3 && evB.every((e) => !('text' in e) && !('patch' in e) && e.type !== 'live') && !/Ben|img/.test(earB.text) && evB.some((e) => e.type === 'saved' && e.edited && e.edited.kind === 'guest' && e.edited.name === ''), evB);
     const ears = []; for (let i = 0; i < 5; i++) ears.push(await listen('/live/events', g3.pass));
     check('tope de conexiones por invitado: la quinta escucha con el mismo pase se rechaza', ears.slice(0, 4).every((e) => e.status === 200) && ears[4].status === 429, ears.map((e) => e.status));
     ears.forEach((e) => e.stop());
@@ -1376,6 +1376,35 @@ async function teamSuite() {
       check('pase de invitado: dentro de /live/ no maneja la sesión ni alcanza otra nota', inside.every((r) => r.status === 404 || r.status === 401) && !inside.some((r) => JSON.stringify(r.json).includes(OSECRET)), inside.map((r) => r.status));
       check('pase de invitado: pedir otra ruta por parámetro no cambia de nota', tricks[0].json.name === 'vivo.md' && !JSON.stringify(tricks[0].json).includes(OSECRET) && tricks[1].status !== 200 && (await call('GET', n('otra.md'), undefined, T.s)).json.text === 'dos ' + OSECRET, tricks.map((r) => r.status));
       check('pase de invitado: un token o una sesión de cuenta no entran como pase, ni el pase como sesión de otro', (await call('GET', '/live/note', undefined, Ed.s)).status !== 200 && (await call('GET', '/live/events', undefined, Ed.s)).status === 401);
+
+      // Quién está y quién editó: la IA del equipo aparece, y nada de eso sale hacia quien no puede ver la nota.
+      const ttok = (await call('POST', '/team/tokens', { name: 'bot-equipo', write: true }, T.s)).json.token; secrets.push(ttok);
+      const edEv2 = await stream('/events?path=vivo.md&o=' + SP, Ed.s); const gEv2 = await stream('/live/events', PASS);
+      await call('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'initialize', params: { clientInfo: { name: 'Agente <b>x</b>' } } }, ttok);
+      const aiRead = await call('POST', '/mcp', { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'read_note', arguments: { path: 'vivo.md' } } }, ttok);
+      await sleep(350);
+      const aiSeen = evs(edEv2).filter((e) => e.type === 'presence' && e.ai && e.ai.length).pop(); const aiGuest = evs(gEv2).filter((e) => e.type === 'live' && e.ai && e.ai.length).pop();
+      check('presencia: una IA que lee la nota con un token del equipo figura para los miembros, con el nombre del token y del cliente', aiRead.status === 200 && !!aiSeen && aiSeen.ai[0].kind === 'ai' && aiSeen.ai[0].token === 'bot-equipo' && aiSeen.ai[0].client === 'Agente <b>x</b>' && aiSeen.ai[0].writing === false, aiSeen);
+      check('presencia: al invitado de la sesión le llega la IA sin correos ni números de cuenta o de token', !!aiGuest && aiGuest.ai[0].token === 'bot-equipo' && !/@ejemplo\.test|"who"/.test(gEv2.text) && !/"id":\d/.test(JSON.stringify(aiGuest.ai)), aiGuest);
+      const otherEv = await stream('/events?path=otra.md&o=' + SP, Ed.s); await sleep(250);
+      check('presencia: la IA figura solo en la nota que tocó', !evs(otherEv).some((e) => e.ai && e.ai.length), evs(otherEv)); otherEv.stop();
+      const outEv = await stream('/events?path=vivo.md&o=' + SP, X.s);
+      check('presencia: quien no puede ver la nota no escucha quién está en ella', outEv.status === 403);
+      const edNote = (await call('GET', n('vivo.md'), undefined, Ed.s)).json; const rdNote = (await call('GET', n('vivo.md'), undefined, Rd.s)).json; const gNote = (await call('GET', '/live/note', undefined, PASS)).json;
+      check('autor: los miembros ven quién hizo el último guardado; al invitado le llega el nombre visible y nunca algo del correo', edNote.edited && edNote.edited.kind === 'user' && edNote.edited.name === 'vivoedi' && rdNote.edited && rdNote.edited.kind === 'user' && gNote.edited && gNote.edited.kind === 'user' && gNote.edited.name === '' && !/vivoedi|@/.test(JSON.stringify(gNote.edited)), [edNote.edited, gNote.edited]);
+      const outNote = await call('GET', n('vivo.md'), undefined, X.s); const outVers = await call('GET', '/versions/' + enc('vivo.md') + o, undefined, X.s);
+      check('autor: quien no puede ver la nota no recibe ni el autor ni el historial', outNote.status === 403 && outVers.status === 403 && !/edited/.test(JSON.stringify([outNote.json, outVers.json])), [outNote.status, outVers.status]);
+      const gSave2 = await call('PUT', '/live/note', { text: edNote.text + '\n\notra de Gabi', rev: edNote.rev }, PASS); await sleep(250);
+      const afterGuest = (await call('GET', n('vivo.md'), undefined, Ed.s)).json;
+      check('autor: lo que guarda un invitado queda a su nombre, marcado como invitado, también en el aviso', gSave2.status === 200 && afterGuest.edited.kind === 'guest' && afterGuest.edited.name === 'Gabi' && evs(edEv2).some((e) => e.type === 'saved' && e.edited && e.edited.kind === 'guest' && e.edited.name === 'Gabi'), afterGuest.edited);
+      const aiWrite = await call('POST', '/mcp', { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'append_note', arguments: { path: 'vivo.md', text: 'línea del bot' } } }, ttok); await sleep(350);
+      const savedAi = evs(gEv2).filter((e) => e.type === 'saved' && e.edited).pop(); const busyAi = evs(edEv2).filter((e) => e.ai && e.ai.length && e.ai[0].writing).pop();
+      check('autor: lo que guarda la IA del equipo llega a todos como de la IA, y figura escribiendo', aiWrite.status === 200 && !!savedAi && savedAi.edited.kind === 'ai' && savedAi.edited.name === 'bot-equipo' && !!busyAi && (await call('GET', n('vivo.md'), undefined, Rd.s)).json.edited.name === 'bot-equipo', [savedAi, busyAi]);
+      { const db = S.db(); const by = db.prepare('SELECT by FROM notes WHERE user = ? AND path = ?').get(SP, 'vivo.md').by; db.close();
+        check('autor: en la base queda el número del token o de la cuenta, nunca un correo ni el token', /^t:\d+$/.test(by) && !by.includes(ttok), by); }
+      const hooked = S.log();
+      check('presencia: nada de esto se anota en la salida del servidor', !hooked.includes('bot-equipo') && !hooked.includes(ttok));
+      edEv2.stop(); gEv2.stop();
 
       // Sacar a un invitado, y terminarla.
       const kickM = await call('POST', '/live/kick', { path: 'vivo.md', id: sEd.you, o: SP }, T.s); const kickO = await call('POST', '/live/kick', { path: 'vivo.md', id: 'o', o: SP }, T.s);

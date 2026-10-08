@@ -28,6 +28,9 @@ Then, in SharpMD: Settings → Cloud → Sync server, and type the address (`htt
 | `WEBHOOK_RETRY_MS` | Waits between delivery attempts of a webhook, in milliseconds, separated by commas | `60000,300000,900000,2400000` (5 attempts in an hour) |
 | `WEBHOOK_MAX_FAILS` | Failed attempts in a row that turn a webhook off | `15` |
 | `WEBHOOK_TIMEOUT_MS` | How long a delivery waits for the answer | `8000` |
+| `AI_SEEN_MS` | How long an AI is shown as present in a note after reading it with a token, in milliseconds | `60000` |
+| `AI_WROTE_MS` | The same after writing it | `120000` |
+| `AI_WRITING_MS` | How long it is shown as writing after a save | `10000` |
 | `WEBHOOK_UPDATE_WAIT_MS` | How long `note.updated` waits to join the saves of one note into one event | `10000` |
 | `API_PER_MINUTE` | Requests per minute of each token on `/api/v1` | `120` |
 | `INBOX_PER_MINUTE` | Requests per minute of each inbound address | `60` |
@@ -73,7 +76,7 @@ curl -X POST https://sync.example.com/admin/plan -H "x-admin-key: $ADMIN_KEY" \
 
 ## What it stores
 
-Email, notes, their previous versions (paid plan, 30 days), deleted notes while they are in the trash (30 days), and hashes of sign-in codes, sessions and tokens. Sessions and tokens are stored hashed: the server cannot show a token again after creating it. Of a live session it stores the note, the name chosen by whoever opened it, the hash of the link's secret and, on a team note, the member who opened it; the guests live in memory only (see "Live sessions"). Of a team it stores its name, the accounts that belong to it, the invitations that are waiting (the invited email address, until it is accepted, declined or removed) the id of the subscription that pays for it, the role of each member, the policies its administrators set and, for 90 days, an activity log of its shared space: who did what and when, with the path of the note, never its text, and the name a guest of a live session chose when what they wrote was saved or they were removed (see "Teams").
+Email, notes with who made their last save (the number of the account or of the token, or the name a guest of a live session chose; never an email), their previous versions (paid plan, 30 days) with who had written each one, deleted notes while they are in the trash (30 days), and hashes of sign-in codes, sessions and tokens. Sessions and tokens are stored hashed: the server cannot show a token again after creating it. Of a live session it stores the note, the name chosen by whoever opened it, the hash of the link's secret and, on a team note, the member who opened it; the guests live in memory only (see "Live sessions"). Of a team it stores its name, the accounts that belong to it, the invitations that are waiting (the invited email address, until it is accepted, declined or removed) the id of the subscription that pays for it, the role of each member, the policies its administrators set and, for 90 days, an activity log of its shared space: who did what and when, with the path of the note, never its text, and the name a guest of a live session chose when what they wrote was saved or they were removed (see "Teams").
 
 Of a contribution to the community gallery it stores the type, the name, the description, the language, the public name its sender chose, the content, the account that sent it, its state and how many times it was added (a number, not who). See "Community gallery".
 
@@ -159,7 +162,7 @@ Sign-in is a six-digit code sent by mail, no passwords.
 | `GET` / `PUT` / `DELETE /notes/{path}` | Read (`{ text, rev, updated, role }`), write `{ text, rev? }`, delete. Deleting moves the note to the trash; `?forever=1` skips it. See "Revisions" and "Trash" below |
 | `DELETE /account` `{ email }` | Deletes the account of the session. See "Deleting an account" below |
 | `GET /trash`, `POST /trash/{id}/restore`, `DELETE /trash/{id}`, `DELETE /trash` | List the trash, restore a note, delete one for good, empty it. See "Trash" below |
-| `GET /events?path=` | Server-sent events for an open note: `presence` (who else has it open), `saved` (`{ by, updated, rev }`), `comments`, `vault`, and `live` while a live session is open |
+| `GET /events?path=` | Server-sent events for an open note: `presence` (who else has it open, and `ai`: the agents in it, see "Who is in a note"), `saved` (`{ by, updated, rev, edited }`), `comments`, `vault`, and `live` while a live session is open |
 | `POST /rename` `{ from, to, text?, updated? }` | Rename. With a protected folder involved, `text` is the note for its new path and `updated` what the client read: `409 changed` if the note changed meanwhile |
 | `GET /search?q=` | Search the text of every note outside protected folders |
 | `GET /vaults` | Protected folders: `{ id, folder, salt, iters, wrapped, check, state, ai }`. `ai` is `null`, or `{ until }` while unlocked for the AI (`until: 0` means until locked) |
@@ -379,6 +382,14 @@ It refuses while money is still being charged, with `409` and a `manage` field h
 - `team_has_members`: it manages a team that still has other members. Alone in its team, the team and the notes of its space are deleted with the account.
 
 A member of a team leaves the team; the notes of the team stay with the team. `400 bad_confirm` when the email is not the one of the account.
+
+### Who is in a note, and who edited it last
+
+People. Every account that has a note open (`GET /events`) receives `who` (emails) and `names` (visible names) of the others, as before. Only someone who can read the note can listen to it.
+
+AI. An agent that reads or writes a note with a token (`mdt_...`, personal or of a team; over MCP or the REST API) counts as present in that note for `AI_SEEN_MS` after its last read and `AI_WROTE_MS` after its last write. The same events carry `ai: [{ kind: "ai", id, token, client, writing }]`: `token` is the name of the token, `client` is what the MCP client said in `initialize` (`clientInfo.name`, empty if it said nothing or came through the REST API), and `writing` is true for `AI_WRITING_MS` after a save. `id` is a number made up for the occasion, not the token's. This lives in memory only. The guests of a live session receive the same list in their `live` events.
+
+Last edit. `GET /notes/{path}` carries `edited`: `{ kind, name }` for whoever made the last save, or `null` for a note saved before this was recorded (the app then shows only `updated`). `kind` is `user` (`name` is the visible name of the account), `ai` (`name` is the name of the token, empty once the token is revoked) or `guest` (the name a guest of a live session chose; empty for an account that only has the note shared with it, which is not part of the session). The `saved` event carries the same `edited`, and `GET /versions/{path}` gives each version the `edited` of whoever had written it. A guest of a live session gets it in `GET /live/note` and in `saved`, where an account that has not chosen a visible name comes with an empty `name`: nothing taken from an email reaches a guest. The database stores `u:12`, `t:5` or `g:Name` in `notes.by` and `versions.by`; the name is looked up on reading. None of this is added to webhooks or to the REST API.
 
 ### Revisions
 

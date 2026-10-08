@@ -594,6 +594,17 @@ try {
     check('equipo: en un espacio protegido lo dice en una línea', /A space protected with a password has no live sessions: guests do not have the key\./.test(vaultLine), vaultLine);
     await emi2.ctx.close();
 
+    // Una IA del equipo en la nota: la ven los miembros y el invitado, en la misma tira, sin correos.
+    const bot = (await api('POST', '/team/tokens', { name: 'bot', write: true }, T.s)).json.token;
+    const botCall = (method, params) => api('POST', '/mcp', { jsonrpc: '2.0', id: 1, method, params }, bot);
+    await botCall('initialize', { clientInfo: { name: 'Agente' } }); await botCall('tools/call', { name: 'read_note', arguments: { path: 'equipo.md' } });
+    const chipAi = (page) => page.waitForFunction(() => !!document.querySelector('.lmd-live-chip .lmd-here-ai'), null, { timeout: 8000 }).then(() => page.evaluate(() => ({ ai: document.querySelector('.lmd-live-chip .lmd-here-ai').title, chip: document.querySelector('.lmd-live-chip').title, strip: document.querySelector('.lmd-here').hidden })), () => null);
+    const emiAi = await chipAi(emi.page); const guestAi = await chipAi(guest.page);
+    check('equipo: una IA que lee la nota con un token del equipo aparece en la tira de la sesión, para el miembro y para el invitado', !!emiAi && emiAi.ai === 'AI · Agente (token "bot")' && emiAi.strip && !!guestAi && guestAi.ai === 'AI · Agente (token "bot")', [emiAi, guestAi]);
+    await guest.page.click('.lmd-live-chip'); await guest.page.waitForSelector('.lmd-live-card .lmd-live-last');
+    const guestLast = await guest.page.textContent('.lmd-live-card .lmd-live-last'); await guest.page.click('.lmd-live-card [data-lv=close]');
+    check('equipo: al invitado no le llega ningún correo por la presencia ni por la última edición', !!guestAi && !/@|ejemplo|emi\b/.test(guestAi.chip + guestLast) && /^Last edited [A-Z][a-z]{2} \d/.test(guestLast), [guestAi && guestAi.chip, guestLast]);
+
     // Terminarla: los miembros siguen con su nota, el invitado se queda sin poder seguir.
     await tere.page.click('.lmd-live-chip'); await tere.page.waitForSelector('.lmd-live-card [data-lv=end]');
     await tere.page.click('.lmd-live-card [data-lv=end]'); await tere.page.waitForSelector('.lmd-dlg-card, .lmd-ask-card [data-ok], .lmd-confirm', { timeout: 3000 }).catch(() => {});
@@ -603,6 +614,27 @@ try {
     check('equipo: al terminarla, al invitado se le corta y los miembros siguen con la nota como siempre', !!(await guest.page.$('.lmd-live-bar.lmd-live-over')) && (await emi.page.evaluate(() => document.querySelector('.lmd-live-chip').hidden && !!document.querySelector('.lmd-article .lmd-editable'))) && (await api('GET', '/live?path=equipo.md&o=' + SP, undefined, T.s)).json.open === false);
     await typeIn(emi.page, 'Second paragraph', ' After the session.', 10); await leave(emi.page); await saved(emi.page);
     check('equipo: y el miembro sigue guardando', /After the session\./.test((await api('GET', tNote('equipo.md'), undefined, T.s)).json.text));
+    // Sin sesión en vivo, la misma tira: quiénes tienen la nota abierta, la IA cuando pasa, y la última edición.
+    await sleep(500);
+    const hereOf = (page) => page.evaluate(() => { const s = document.querySelector('.lmd-here'); const avs = [...s.querySelectorAll('.lmd-live-avs > .lmd-live-av')]; return { shown: !s.hidden && s.offsetParent !== null, seen: avs.filter((a) => getComputedStyle(a).display !== 'none').map((a) => a.textContent || 'ai'), titles: avs.map((a) => a.title), colors: avs.map((a) => a.style.getPropertyValue('--lmd-live')), tip: s.querySelector('.lmd-here-tip').textContent, tipOn: getComputedStyle(s.querySelector('.lmd-here-tip')).display !== 'none', badge: !!document.querySelector('.lmd-sync-n') }; });
+    await emi.page.waitForFunction(() => { const s = document.querySelector('.lmd-here'); return !s.hidden && /After the session/.test(document.querySelector('.lmd-article').innerText) && /by emi/.test(s.textContent); }, null, { timeout: 8000 }).catch(() => {});
+    const h1 = await hereOf(emi.page); const h2 = await hereOf(tere.page);
+    check('equipo: sin sesión, la tira muestra a los miembros que tienen la nota abierta, con iniciales y nombre', h1.shown && h1.titles.filter((t) => t && !/^AI/.test(t)).length === 3 && h1.titles.includes('tere') && h1.titles.includes('leo') && h1.titles.some((t) => t === 'emi') && h1.seen.includes('T') && !h1.badge, h1);
+    check('equipo: cada persona lleva el mismo color en todos los navegadores', h2.shown && ['tere', 'emi', 'leo'].every((t) => h1.colors[h1.titles.indexOf(t)] && h1.colors[h1.titles.indexOf(t)] === h2.colors[h2.titles.indexOf(t)]) && new Set(h1.colors.filter(Boolean)).size >= 2, [h1.colors, h2.colors, h2.titles]);
+    check('equipo: el cuadrito dice la última edición con fecha, hora y quién', /^Last edited [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d\d [AP]M by emi/.test(h1.tip) && /^Last edited .+ by emi/.test(h2.tip) && !/@/.test(h1.tip) && !h1.tipOn, [h1.tip, h2.tip]);
+    await emi.page.hover('.lmd-here');
+    check('equipo: y sale al pasar el cursor', (await hereOf(emi.page)).tipOn);
+    await botCall('tools/call', { name: 'append_note', arguments: { path: 'equipo.md', text: 'Line from the bot.' } });
+    await tere.page.waitForFunction(() => !!document.querySelector('.lmd-here .lmd-here-ai') && /by AI · bot/.test(document.querySelector('.lmd-here').textContent), null, { timeout: 8000 }).catch(() => {});
+    const h3 = await hereOf(tere.page);
+    check('equipo: la IA del equipo se suma a la tira, la nota se actualiza y la última edición pasa a ser suya', h3.titles.some((t) => /^AI · Agente \(token "bot"\)/.test(t)) && /by AI · bot/.test(h3.tip) && (await sees(tere.page, 'Line from the bot.')), h3);
+    const lph = await R.open(L, PHONE); await lph.page.goto(tUrl('equipo.md')); await lph.page.waitForFunction(() => { const s = document.querySelector('.lmd-here'); return s && !s.hidden && s.querySelectorAll('.lmd-live-av').length >= 4; }, null, { timeout: 10000 }).catch(() => {});
+    const few = await hereOf(lph.page); const fewOf = await overflow(lph.page);
+    check('equipo: en un teléfono la tira deja dos avatares y la cuenta de los demás, sin desbordar', few.shown && few.seen.length === 3 && /^\+\d$/.test(few.seen[2]) && fewOf.page <= 0, [few.seen, fewOf]);
+    await lph.page.tap('.lmd-here');
+    const tapped = await lph.page.evaluate(() => { const t = document.querySelector('.lmd-here-tip'); const r = t.getBoundingClientRect(); return { on: getComputedStyle(t).display !== 'none', fits: r.left >= 0 && r.right <= innerWidth + 0.5, text: t.textContent }; });
+    check('equipo: y el cuadrito sale al tocar, dentro de la pantalla', tapped.on && tapped.fits && /^Last edited /.test(tapped.text), tapped);
+    await lph.ctx.close();
     for (const c of [tere, emi, leo, guest]) await c.ctx.close();
   }
 

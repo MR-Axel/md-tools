@@ -493,6 +493,39 @@ try {
     check('alias de Gmail: otra casilla de Gmail es otra cuenta', g.acc.id !== a.acc.id && g.acc.email === 'otragmail@gmail.com');
   }
 
+  console.log('Última edición');
+  {
+    const { DatabaseSync } = await import('node:sqlite'); const pathMod = await import('path');
+    const h = { 'x-forwarded-for': '10.9.1.9' };
+    const st = await call('POST', '/auth/start', { email: 'edita@ejemplo.test' }, undefined, h);
+    const es = (await call('POST', '/auth/verify', { email: 'edita@ejemplo.test', code: st.json.dev_code }, undefined, h)).json.session;
+    await call('POST', '/admin/plan', { email: 'edita@ejemplo.test', plan: 'pro' }, undefined, { 'x-admin-key': 'clave-de-prueba' });
+    const note = () => call('GET', '/notes/autor.md', undefined, es).then((r) => r.json);
+    await call('PUT', '/notes/autor.md', { text: 'uno' }, es);
+    const n1 = await note();
+    check('la nota dice quién hizo el último guardado: la cuenta, por su nombre visible', n1.edited && n1.edited.kind === 'user' && n1.edited.name === 'edita' && n1.updated > 0 && !JSON.stringify(n1.edited).includes('@'), n1.edited);
+    const tk = (await call('POST', '/tokens', { name: 'robot' }, es)).json;
+    const mcpCall = (name, args) => call('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, tk.token);
+    await mcpCall('write_note', { path: 'autor.md', text: 'dos, de la IA' });
+    const n2 = await note();
+    check('si guardó una IA, dice que fue una IA y el nombre de su token', n2.edited && n2.edited.kind === 'ai' && n2.edited.name === 'robot' && n2.text === 'dos, de la IA', n2.edited);
+    const vers = (await call('GET', '/versions/autor.md', undefined, es)).json;
+    check('el historial dice de quién era cada versión', vers.length === 1 && vers[0].edited && vers[0].edited.kind === 'user' && vers[0].edited.name === 'edita', vers);
+    const viaApi = await call('GET', '/api/v1/note?path=autor.md', undefined, tk.token);
+    check('por la API la nota viaja como antes, sin el autor', viaApi.status === 200 && !/"edited"|"by"/.test(JSON.stringify(viaApi.json)), viaApi.json);
+    await call('DELETE', '/tokens/' + tk.id, undefined, es);
+    const n3 = await note();
+    check('con el token revocado sigue diciendo que fue una IA, sin nombre', n3.edited && n3.edited.kind === 'ai' && n3.edited.name === '', n3.edited);
+    // Una nota guardada antes de que existiera la columna: queda sin autor, con su fecha.
+    const db = new DatabaseSync(pathMod.join(data, 'mdtools.db')); db.exec('PRAGMA busy_timeout = 3000');
+    const cols = (t) => db.prepare('PRAGMA table_info(' + t + ')').all().map((c) => c.name);
+    const hasCols = cols('notes').includes('by') && cols('versions').includes('by');
+    db.prepare("UPDATE notes SET by = NULL WHERE path = 'autor.md'").run(); db.close();
+    const n4 = await note();
+    check('las notas anteriores a la columna quedan sin autor y conservan su fecha', hasCols && n4.edited === null && n4.updated === n3.updated && n4.text === n3.text, [hasCols, n4.edited]);
+    check('otra cuenta no llega al autor de una nota ajena', (await call('GET', '/notes/autor.md', undefined, s)).status === 404 && (await call('GET', '/versions/autor.md', undefined, s)).json.length === 0);
+  }
+
   check('cerrar sesión la invalida', (await call('POST', '/auth/logout', {}, s)).status === 200 && (await call('GET', '/notes', undefined, s)).status === 401);
 } catch (e) { check('sin excepciones', false, String(e && e.stack || e)); console.log(log); }
 child.kill();

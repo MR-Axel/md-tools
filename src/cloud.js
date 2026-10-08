@@ -379,7 +379,8 @@
       roles[path] = n.role || 'owner';
       const r = unsent ? await settle(path, copy.base, copy.text, n.text) : { text: n.text };
       await keep(path, r.text, n.text, r.text !== n.text);
-      return Object.assign(r, { base: n.text, rev: n.rev });
+      // updated y edited: cuándo fue el último guardado y de quién (para el cuadrito de "última edición").
+      return Object.assign(r, { base: n.text, rev: n.rev, updated: n.updated || 0, edited: n.edited || null });
     });
   }
   // Guarda sobre la revisión leída. Si en el medio guardó otro, junta lo de acá con lo del servidor y reintenta;

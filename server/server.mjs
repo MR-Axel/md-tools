@@ -100,6 +100,10 @@ try { db.exec('ALTER TABLE notes ADD COLUMN e INTEGER NOT NULL DEFAULT 0'); } ca
 try { db.exec('ALTER TABLE versions ADD COLUMN size INTEGER'); } catch (e) { /* ya estaba */ }
 try { db.exec('ALTER TABLE versions ADD COLUMN e INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* ya estaba */ }
 try { db.exec('ALTER TABLE comments ADD COLUMN e INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* ya estaba */ }
+// by: quién hizo el último guardado de la nota ('u:12' una cuenta, 't:5' un token de IA, 'g:Ana' un invitado de una
+// sesión en vivo, con el nombre que eligió). En una versión del historial, quién había escrito ese texto. Las notas
+// y versiones anteriores a esta columna quedan sin autor. Nunca guarda un correo: el nombre se busca al leer.
+for (const table of ['notes', 'versions']) { try { db.exec('ALTER TABLE ' + table + ' ADD COLUMN by TEXT'); } catch (e) { /* ya estaba */ } }
 // v: el texto de la nota llegó cifrado desde el navegador (carpeta con contraseña). aad: la ruta a la que quedó atada una versión cifrada.
 try { db.exec('ALTER TABLE notes ADD COLUMN v INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* ya estaba */ }
 try { db.exec('ALTER TABLE versions ADD COLUMN aad TEXT'); } catch (e) { /* ya estaba */ }
@@ -600,7 +604,7 @@ function roomFor(user) {
 function writeNote(user, p, text, base) {
   p = cleanPath(p); text = String(text == null ? '' : text);
   const kind = checkText(user.id, p, text);
-  const row = q('SELECT text, e, v, size, rev, updated FROM notes WHERE user = ? AND path = ?').get(user.id, p);
+  const row = q('SELECT text, e, v, size, rev, updated, by FROM notes WHERE user = ? AND path = ?').get(user.id, p);
   const prev = row ? { text: unseal(row.text, row.e, 'notes.text') } : null;
   if (row && base != null && base !== row.rev) throw new Fail(409, 'rev_conflict', '', { text: prev.text, rev: row.rev, updated: row.updated });
   if (!prev) roomFor(user);
@@ -608,7 +612,7 @@ function writeNote(user, p, text, base) {
   // nota (o al descifrarla) la versión anterior no se guarda: sería dejar el texto en claro, o uno que ya nadie abre.
   if (prev && user.plan === 'pro' && prev.text !== text && row.v === kind.v) {
     const last = q('SELECT saved FROM versions WHERE user = ? AND path = ? ORDER BY saved DESC LIMIT 1').get(user.id, p);
-    if (!last || now() - last.saved > 60000) q('INSERT INTO versions (user, path, text, saved, size, e, aad) VALUES (?, ?, ?, ?, ?, ?, ?)').run(user.id, p, seal(prev.text, 'versions.text'), now(), row.size == null ? prev.text.length : row.size, SEALED, row.v ? p : null);
+    if (!last || now() - last.saved > 60000) q('INSERT INTO versions (user, path, text, saved, size, e, aad, by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(user.id, p, seal(prev.text, 'versions.text'), now(), row.size == null ? prev.text.length : row.size, SEALED, row.v ? p : null, row.by || null);
   }
   const rev = row ? row.rev + 1 : 1; const at = now();
   q('INSERT INTO notes (user, path, text, updated, size, e, v, rev) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (user, path) DO UPDATE SET text = excluded.text, updated = excluded.updated, size = excluded.size, e = excluded.e, v = excluded.v, rev = excluded.rev').run(user.id, p, seal(text, 'notes.text'), at, kind.size, SEALED, kind.v, rev);
@@ -870,8 +874,63 @@ const namesIn = (room, who) => who.map((mail) => { const c = Array.from(room).fi
 function announce(key, event, skip) {
   const room = rooms.get(key); if (!room) return;
   const who = whoIn(room); const names = namesIn(room, who);
-  for (const c of room) if (c !== skip && !c.gid) push(c, Object.assign({ who, names }, event));
+  const ai = aiIn(key);
+  for (const c of room) if (c !== skip && !c.gid) push(c, Object.assign({ who, names, ai }, event));
 }
+// ---------- Quién está en la nota: también la IA ----------
+// Un agente que lee o escribe una nota con un token (por MCP o por la API) figura como presente un rato después de
+// cada llamada sobre esa nota: AI_SEEN_MS desde la última lectura y AI_WROTE_MS desde la última escritura. Sale en
+// los mismos avisos de presencia, con kind 'ai', el nombre del token y, si el cliente MCP lo dijo al conectarse
+// (clientInfo.name de initialize), el nombre del cliente. Vive en memoria: nada de esto se guarda.
+const AI_SEEN_MS = Math.max(1000, +(env.AI_SEEN_MS || 60000)); const AI_WROTE_MS = Math.max(AI_SEEN_MS, +(env.AI_WROTE_MS || 120000));
+const AI_WRITING_MS = Math.min(AI_WROTE_MS, Math.max(500, +(env.AI_WRITING_MS || 10000))); // cuánto figura "escribiendo" tras un guardado
+const aiRooms = new Map(); // nota → Map(token → { n, name, client, until, writing })
+const aiTimers = new Map(); const mcpClients = new Map(); let aiSeq = 0;
+function mcpClientSeen(user, params) {
+  if (!user || user.tokenId == null) return;
+  let name = ''; try { name = cleanName(params && params.clientInfo && params.clientInfo.name); } catch (e) { name = ''; }
+  if (mcpClients.size > 5000) mcpClients.clear();
+  if (name) mcpClients.set(user.tokenId, name); else mcpClients.delete(user.tokenId);
+}
+const aiIn = (key) => { const m = aiRooms.get(key); const t = now(); return m ? Array.from(m.values()).filter((x) => x.until > t).map((x) => ({ kind: 'ai', id: 'a' + x.n, token: x.name, client: x.client, writing: x.writing > t })) : []; };
+// Avisa a quienes tienen la nota abierta (y a los invitados de su sesión en vivo, si hay una).
+function aiTell(key) {
+  if (!rooms.has(key)) return;
+  announce(key, { type: 'presence' });
+  const i = key.indexOf(':'); const row = liveRow(+key.slice(0, i), key.slice(i + 1)); if (row) tellLive(row);
+}
+// Saca a las que ya vencieron y deja el reloj puesto para el próximo cambio (deja de escribir, o se va).
+function aiSweep(key) {
+  clearTimeout(aiTimers.get(key)); aiTimers.delete(key);
+  const m = aiRooms.get(key); if (!m) return;
+  const t = now(); let next = Infinity;
+  for (const [id, x] of m) { if (x.until <= t) m.delete(id); else next = Math.min(next, x.until, x.writing > t ? x.writing : Infinity); }
+  if (!m.size) { aiRooms.delete(key); return; }
+  const timer = setTimeout(() => { aiSweep(key); aiTell(key); }, Math.max(30, next - t + 15)); timer.unref(); aiTimers.set(key, timer);
+}
+function aiTouch(user, ownerId, p, wrote) {
+  if (!user || user.tokenId == null) return;
+  const key = roomKey(ownerId, p);
+  let m = aiRooms.get(key);
+  if (!m) { if (aiRooms.size >= 20000) return; m = new Map(); aiRooms.set(key, m); }
+  let x = m.get(user.tokenId); if (!x) { x = { n: ++aiSeq, until: 0, writing: 0 }; m.set(user.tokenId, x); }
+  x.name = String(user.tokenName || '').slice(0, 60); x.client = mcpClients.get(user.tokenId) || '';
+  x.until = Math.max(x.until, now() + (wrote ? AI_WROTE_MS : AI_SEEN_MS)); if (wrote) x.writing = now() + AI_WRITING_MS;
+  aiSweep(key); aiTell(key);
+}
+// Quién hizo el último guardado, en palabras. Para una cuenta, su nombre visible; a un invitado de una sesión en
+// vivo solo le llega el que esa cuenta eligió (vacío si no eligió ninguno), nunca algo sacado de su correo.
+// outside: quien pregunta ve la nota porque se la compartieron y no es parte de su sesión en vivo: de un invitado
+// sabe que fue un invitado, sin su nombre (tampoco recibe la lista de quiénes están en la sesión).
+function editedBy(by, forGuest, outside) {
+  if (!by || typeof by !== 'string') return null;
+  const v = by.slice(2);
+  if (by[0] === 'u') { const u = q('SELECT name, email FROM users WHERE id = ?').get(+v); return u ? { kind: 'user', name: forGuest ? u.name || '' : nameOf(u) } : null; }
+  if (by[0] === 't') { const t = q('SELECT name FROM tokens WHERE id = ?').get(+v); return { kind: 'ai', name: t ? t.name : '' }; }
+  if (by[0] === 'g') return { kind: 'guest', name: outside ? '' : v };
+  return null;
+}
+const noteEdited = (ownerId, p, forGuest, outside) => { const r = q('SELECT by FROM notes WHERE user = ? AND path = ?').get(ownerId, p); return r ? editedBy(r.by, forGuest, outside) : null; };
 // Qué cambió entre dos textos, por líneas: de la línea at se sacan del y entran lines. Lo usa el aviso de guardado
 // de una sesión en vivo cuando el texto es grande, para no mandar la nota entera con cada cambio.
 function linePatch(prev, text) {
@@ -886,7 +945,10 @@ const LIVE_INLINE = 4000; // hasta este largo el aviso lleva el texto entero
 // 'g3' un invitado, 'x' otro). Con una sesión abierta, a quienes participan les llega además el cambio mismo: el
 // texto nuevo o, si es largo, las líneas que cambiaron sobre la revisión anterior (base). Así lo aplican sin pedir
 // la nota. A un invitado no le llega ningún correo. text es lo que quedó guardado, en claro.
+// who.ed: quién guardó, como se anota en la nota ('u:12', 't:5', 'g:Ana'); sin eso la nota queda sin autor.
 function tellSaved(ownerId, p, saved, who, text) {
+  q('UPDATE notes SET by = ? WHERE user = ? AND path = ?').run(who.ed || null, ownerId, p);
+  const edited = who.ed ? [editedBy(who.ed, false), editedBy(who.ed, true), editedBy(who.ed, false, true)] : [null, null, null];
   const live = liveRow(ownerId, p);
   if (live) memOf(live).last = { rev: saved.rev, pid: who.pid || 'x' };
   const room = rooms.get(roomKey(ownerId, p)); if (!room) return;
@@ -900,6 +962,7 @@ function tellSaved(ownerId, p, saved, who, text) {
     const member = !!live && (c.gid ? c.live === live.id : !!c.lm);
     if (c.gid && !member) continue;
     const ev = c.gid ? { type: 'saved', pid, updated: saved.updated, rev: saved.rev } : { who: list, type: 'saved', by: who.by, updated: saved.updated, rev: saved.rev, pid };
+    const by = edited[c.gid ? 1 : c.lm ? 0 : 2]; if (by) ev.edited = by;
     push(c, member && change ? Object.assign(ev, change) : ev);
   }
 }
@@ -1046,7 +1109,7 @@ function livePeople(row) {
 // (can: quien la abrió y quien administra el equipo cambian el enlace, sacan a un invitado y la terminan).
 const liveView = (row, who) => Object.assign({ open: true, name: row.name, created: row.created, max: LIVE_PEOPLE, people: livePeople(row) },
   row.opener && who ? { team: true, you: livePid(row, who.id), can: who.id === row.opener || teamRoleOf(who) === 'admin' } : {});
-const liveEvent = (row, c, people) => Object.assign({ type: 'live', open: true, people }, row.opener && !c.gid ? { team: true, you: livePid(row, c.uid), can: c.uid === row.opener || !!c.admin } : {});
+const liveEvent = (row, c, people) => Object.assign({ type: 'live', open: true, people, ai: aiIn(roomKey(row.owner, row.path)) }, row.opener && !c.gid ? { team: true, you: livePid(row, c.uid), can: c.uid === row.opener || !!c.admin } : {});
 // Quiénes están y en qué bloque, a todos los de la sesión. Junta los cambios de un instante en un solo aviso.
 function tellLive(row) {
   const m = memOf(row); if (m.tick) return;
@@ -1183,7 +1246,7 @@ function liveJoin(req, body) {
   m.guests.set(id, g); passes.set(g.hash, { live: row.id, gid: id });
   liveTouch(row); tellLive(row);
   // Hacia afuera va el nombre de la nota, no en qué carpetas la guarda su dueño. Tampoco el correo de nadie.
-  return Object.assign({ pass, you: 'g' + id, name: g.name, color: g.color, by: row.name, max: LIVE_PEOPLE, note: { name: noteName(row.path), text: n.text, rev: n.rev, updated: n.updated }, people: livePeople(row) }, back ? {} : { ticket });
+  return Object.assign({ pass, you: 'g' + id, name: g.name, color: g.color, by: row.name, max: LIVE_PEOPLE, note: { name: noteName(row.path), text: n.text, rev: n.rev, updated: n.updated, edited: noteEdited(owner.id, row.path, true) }, people: livePeople(row) }, back ? {} : { ticket });
 }
 // De quién es el pase. Con la sesión cerrada, el invitado sacado o el pase inventado, la respuesta es la misma.
 function guestFrom(req) {
@@ -1217,7 +1280,7 @@ function livePresence(row, who, pid, body) {
 // Las rutas de un invitado. Lo que no está acá, un pase no lo alcanza.
 async function liveGuest(req, p, m) {
   const { row, g, owner } = guestFrom(req);
-  if (p === '/live/note' && m === 'GET') { const n = readNote(owner, row.path); return { name: noteName(row.path), text: n.text, rev: n.rev, updated: n.updated }; }
+  if (p === '/live/note' && m === 'GET') { const n = readNote(owner, row.path); return { name: noteName(row.path), text: n.text, rev: n.rev, updated: n.updated, edited: noteEdited(owner.id, row.path, true) }; }
   if (p === '/live/note' && m === 'PUT') {
     rate('lsave:' + g.hash, 300, 60000, 'too_many');
     const body = await readBody(req); const rev = cleanRev(body.rev);
@@ -1225,7 +1288,7 @@ async function liveGuest(req, p, m) {
     if (rev == null) throw new Fail(400, 'rev_required');
     const text = String(body.text == null ? '' : body.text);
     const saved = liveWrite(owner, row.path, text, rev);
-    tellSaved(owner.id, row.path, saved, { by: 'guest', pid: 'g' + g.id }, text);
+    tellSaved(owner.id, row.path, saved, { by: 'guest', pid: 'g' + g.id, ed: 'g:' + g.name }, text);
     // En una nota de un equipo, lo que guarda un invitado queda en el registro como una edición, con su nombre.
     if (row.opener) teamLog(teamBySpace(row.owner), { guest: g.name }, 'edit', row.path);
     return { updated: saved.updated, size: saved.size, rev: saved.rev };
@@ -1366,6 +1429,7 @@ function callTool(user, name, args, opt) {
   // que usa el navegador. Una nota que el navegador todavía no cifró no se entrega.
   const read = (a, key) => {
     const n = readNote(a.who, a.p);
+    aiTouch(user, a.who.id, a.p, false);
     if (!key) return n.text;
     if (!n.text.startsWith(VAULT)) throw new Fail(423, 'vault_locked', 'This note is still being encrypted by SharpMD. Try again in a moment.');
     return vaultOpen(key, aadOf(a), n.text);
@@ -1380,7 +1444,8 @@ function callTool(user, name, args, opt) {
     text = String(text == null ? '' : text);
     if (key && Buffer.byteLength(text) > MAX_NOTE) throw new Fail(413, 'too_large');
     const saved = writeNote(a.who, a.p, key ? vaultSeal(key, aadOf(a), text) : text, base === undefined ? revOf(a) : base);
-    tellSaved(a.who.id, a.p, saved, { by: 'mcp' }, text);
+    tellSaved(a.who.id, a.p, saved, { by: 'mcp', ed: user.tokenId != null ? 't:' + user.tokenId : null }, text);
+    aiTouch(user, a.who.id, a.p, true);
     return saved;
   };
   // La dirección para abrir esa nota en la app, con el mismo formato que usa la app al navegar.
@@ -1493,6 +1558,8 @@ function callTool(user, name, args, opt) {
 }
 
 function mcp(user, msg) {
+  // El cliente dice quién es al conectarse: con ese nombre figura la IA en las notas que toque.
+  if (msg && msg.method === 'initialize') mcpClientSeen(user, msg.params);
   if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } };
   const reply = (result) => ({ jsonrpc: '2.0', id: msg.id, result });
   if (msg.method === 'initialize') return reply({ protocolVersion: (msg.params && msg.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'sharpmd', version: '1.0.0' },
@@ -4389,7 +4456,7 @@ async function route(req, url) {
   if (p.startsWith('/notes/')) {
     const note = dec(p.slice(7));
     const clean = cleanPath(note);
-    if (m === 'GET') { const t = target(user, url, clean, 'view'); return Object.assign(readNote(t.owner, clean), { role: t.role }); }
+    if (m === 'GET') { const t = target(user, url, clean, 'view'); return Object.assign(readNote(t.owner, clean), { role: t.role, edited: noteEdited(t.owner.id, clean, false, t.role !== 'owner' && t.role !== 'team' && !(user.team && user.team.space === t.owner.id)) }); }
     if (m === 'PUT') {
       const t = target(user, url, clean, 'edit');
       teamHold(user, t.owner);
@@ -4398,14 +4465,14 @@ async function route(req, url) {
       const saved = mine ? liveWrite(t.owner, clean, body.text, cleanRev(body.rev)) : writeNote(t.owner, clean, body.text, cleanRev(body.rev));
       // Dentro de una sesión en vivo, quién fue: quien la abrió ('o') u otro miembro del equipo ('m2').
       const session = mine ? liveRow(t.owner.id, clean) : null;
-      tellSaved(t.owner.id, clean, saved, { by: user.email, pid: session ? livePid(session, user.id) : t.role === 'owner' ? 'o' : 'x' }, String(body.text == null ? '' : body.text));
+      tellSaved(t.owner.id, clean, saved, { by: user.email, pid: session ? livePid(session, user.id) : t.role === 'owner' ? 'o' : 'x', ed: 'u:' + user.id }, String(body.text == null ? '' : body.text));
       if (t.role === 'team') teamLog(user.team, user, saved.rev === 1 ? 'create' : 'edit', clean);
       return saved;
     }
     if (m === 'DELETE') { const t = target(user, url, clean, 'owner'); const r = deleteNote(t.owner, clean, url.searchParams.get('forever') === '1'); if (t.role === 'team') teamLog(user.team, user, 'delete', clean); return r; }
   }
   // El historial del espacio de un equipo dura más (TEAM_HISTORY_DAYS): su lista trae más versiones.
-  if (p.startsWith('/versions/') && m === 'GET') { const owner = spaceOf(user, url.searchParams.get('o')); return q('SELECT id, saved, size FROM versions WHERE user = ? AND path = ? ORDER BY saved DESC LIMIT ?').all(owner.id, cleanPath(dec(p.slice(10))), owner === user ? 100 : 500); }
+  if (p.startsWith('/versions/') && m === 'GET') { const owner = spaceOf(user, url.searchParams.get('o')); return q('SELECT id, saved, size, by FROM versions WHERE user = ? AND path = ? ORDER BY saved DESC LIMIT ?').all(owner.id, cleanPath(dec(p.slice(10))), owner === user ? 100 : 500).map((v) => ({ id: v.id, saved: v.saved, size: v.size, edited: editedBy(v.by, false) })); }
   if (p.startsWith('/version/') && m === 'GET') {
     const v = q('SELECT id, path, text, saved, e, aad FROM versions WHERE id = ? AND user = ?').get(+p.slice(9), spaceOf(user, url.searchParams.get('o')).id);
     if (!v) throw new Fail(404, 'not_found');

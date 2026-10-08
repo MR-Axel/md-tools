@@ -1495,6 +1495,7 @@
       "Los miembros pueden publicar carpetas del equipo como sitio": "Members can publish team folders as a site", "Preparó un sitio": "Set up a site",
       "Publicó un sitio": "Published a site", "Despublicó un sitio": "Unpublished a site",
       "Publicar sitios": "Publishing sites",
+      "Última edición: {d}, por {a}": "Last edited {d} by {a}", "Última edición: {d}": "Last edited {d}", "En esta nota: {a}": "In this note: {a}", "escribiendo": "writing",
       "Los miembros pueden abrir sesiones en vivo con invitados": "Members can open live sessions with guests", "Miembro del equipo": "Team member", "del equipo": "team", "invitado": "guest",
       "Abrió una sesión en vivo": "Opened a live session", "Terminó una sesión en vivo": "Ended a live session", "Sacó a un invitado": "Removed a guest",
       "Quien administra el equipo no habilitó las sesiones en vivo con invitados.": "The team admin has not turned on live sessions with guests.",
