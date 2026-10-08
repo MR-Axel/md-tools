@@ -619,7 +619,7 @@ async function appSuite() {
     check('pay.html: después del pago no redirige a una dirección de afuera', navs.every((u) => u.startsWith(origin + '/pay.html')) && pay.url().startsWith(origin + '/pay.html'), navs);
     const marked = await links('?plan=' + enc('yearly"><b>x</b>') + '&email=' + enc('a<b>b</b>@ejemplo.test'));
     const weird = await links('?plan=__proto__&email=' + enc('Ana@Ejemplo.test'));
-    check('pay.html: el correo se muestra como texto y un plan desconocido cae en el mensual', marked.kids === 0 && marked.email === 'a<b>b</b>@ejemplo.test' && marked.amount === 'USD 3.99' && weird.email === 'ana@ejemplo.test' && weird.amount === 'USD 3.99' && weird.shown.join() === 'buy', [marked, weird]);
+    check('pay.html: el correo se muestra como texto y un plan desconocido cae en el mensual', marked.kids === 0 && marked.email === 'a<b>b</b>@ejemplo.test' && marked.amount === 'USD 4' && weird.email === 'ana@ejemplo.test' && weird.amount === 'USD 4' && weird.shown.join() === 'buy', [marked, weird]);
     const none = await links('?email=' + enc('sin-arroba'));
     check('pay.html: sin un correo bien formado no ofrece pagar', none.shown.join() === 'noemail', none.shown);
     await pay.goto(origin + '/marco.html'); await pay.waitForTimeout(800);
@@ -892,19 +892,19 @@ if (ONLY !== 'server' && ONLY !== 'app' && ONLY !== 'team') await liveSuite();
 // Paddle y el correo son servidores falsos locales.
 async function teamSuite() {
   console.log('Seguridad de los equipos');
-  const BASE = 'pri_prueba_base'; const SEAT = 'pri_prueba_lugar'; const APIKEY = 'clave-api-de-prueba-9911-zzz';
+  const TEAMP = 'pri_prueba_equipo'; const APIKEY = 'clave-api-de-prueba-9911-zzz';
   const paddleCalls = []; const mails = [];
   const collect = (into) => http.createServer((req, res) => { let raw = ''; req.on('data', (c) => { raw += c; }); req.on('end', () => { let body = null; try { body = JSON.parse(raw); } catch (e) { body = raw; } into.push({ method: req.method, url: req.url, auth: req.headers.authorization, body }); res.writeHead(200, { 'content-type': 'application/json' }); res.end('{}'); }); });
   const fakePaddle = collect(paddleCalls); const fakeMail = collect(mails);
   await new Promise((r) => fakePaddle.listen(0, '127.0.0.1', r)); await new Promise((r) => fakeMail.listen(0, '127.0.0.1', r));
-  const S = await boot({ ADMIN_KEY: ADMIN, PADDLE_WEBHOOK_SECRET: PADDLE, PADDLE_TEAM_BASE: BASE, PADDLE_TEAM_SEAT: SEAT, PADDLE_API_KEY: APIKEY, PADDLE_API_URL: 'http://127.0.0.1:' + fakePaddle.address().port,
+  const S = await boot({ ADMIN_KEY: ADMIN, PADDLE_WEBHOOK_SECRET: PADDLE, PADDLE_PRICE_TEAM: TEAMP, PADDLE_API_KEY: APIKEY, PADDLE_API_URL: 'http://127.0.0.1:' + fakePaddle.address().port,
     MAIL_WEBHOOK: 'http://127.0.0.1:' + fakeMail.address().port, TEAM_INVITES_DAY: '6', FREE_NOTES: '3', AUTH_PER_IP: '100' });
   secrets.push(APIKEY);
   const { call } = S;
   try {
     let clock = Date.now() - 900000;
     const hook = async (ev, o2) => { o2 = o2 || {}; const raw = JSON.stringify(ev); const ts = Math.floor(Date.now() / 1000); const h1 = createHmac('sha256', o2.secret || PADDLE).update(ts + ':' + raw).digest('hex'); const r = await fetch(S.base + '/paddle/webhook', { method: 'POST', headers: o2.unsigned ? {} : { 'paddle-signature': 'ts=' + ts + ';h1=' + h1 }, body: raw }); return { status: r.status, json: await r.json().catch(() => null) }; };
-    const teamEv = (id, status, email, extra, at) => ({ event_type: 'subscription.updated', occurred_at: new Date(at || (clock += 1000)).toISOString(), data: Object.assign({ id, status, items: [{ price: { id: BASE }, quantity: 1 }].concat(extra ? [{ price: { id: SEAT }, quantity: extra }] : []) }, email ? { custom_data: { sharpmd_email: email } } : {}) });
+    const teamEv = (id, status, email, extra, at) => ({ event_type: 'subscription.updated', occurred_at: new Date(at || (clock += 1000)).toISOString(), data: Object.assign({ id, status, items: [{ price: { id: TEAMP }, quantity: 2 + (extra || 0) }] }, email ? { custom_data: { sharpmd_email: email } } : {}) });
     const acct = async (who) => (await call('GET', '/account', undefined, who.s)).json;
     const invite = (who, email) => call('POST', '/team/invite', { email }, who.s);
     const join = async (owner, who) => { await invite(owner, who.email); const inv = (await acct(who)).team.invites.find((i) => i.by === owner.email); return call('POST', '/team/accept', { id: inv.id }, who.s); };
@@ -1015,7 +1015,7 @@ async function teamSuite() {
     check('equipo: los lugares no bajan de los ocupados ni toman valores raros, y Paddle no recibe nada', lowered.status === 409 && lowered.json.error === 'seats_in_use' && odd.length === 0 && paddleCalls.length === 0, [lowered.json, odd]);
     const raised = await call('POST', '/team/seats', { seats: 8 }, A.s);
     const pc = paddleCalls[0] || {};
-    check('equipo: el cambio de lugares va a la suscripción del equipo, con la clave y solo con los precios configurados', raised.status === 200 && paddleCalls.length === 1 && pc.url === '/subscriptions/sub_t1' && pc.auth === 'Bearer ' + APIKEY && pc.body.items.every((i) => i.price_id === BASE || i.price_id === SEAT) && pc.body.items.find((i) => i.price_id === SEAT).quantity === 6, pc);
+    check('equipo: el cambio de lugares va a la suscripción del equipo, con la clave y solo con el precio configurado', raised.status === 200 && paddleCalls.length === 1 && pc.url === '/subscriptions/sub_t1' && pc.auth === 'Bearer ' + APIKEY && JSON.stringify(pc.body.items) === JSON.stringify([{ price_id: TEAMP, quantity: 8 }]), pc);
     check('equipo: la clave de la API de Paddle no viaja en ninguna respuesta', !JSON.stringify([raised.json, await acct(A), (await call('GET', '/team', undefined, A.s)).json]).includes(APIKEY));
 
     // ---------- Invitar no es mandar correo a mansalva ----------

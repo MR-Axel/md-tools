@@ -11,9 +11,11 @@
   const T = LMD.t;
   let core = null;
 
-  // Lo que se muestra del precio, en centavos de dólar por mes: el base cubre a las personas incluidas.
-  const PRICE = { base: 798, seat: 300 };
-  const cost = (seats, included) => ((PRICE.base + PRICE.seat * Math.max(0, seats - included)) / 100).toFixed(2);
+  // Lo que se muestra del precio: dólares por persona y por mes, y los días de la prueba gratis.
+  const PRICE = { seat: 5, trial: 14 };
+  const cost = (seats) => String(PRICE.seat * seats);
+  const perSeat = (t) => T('USD {a} por persona al mes, mínimo {n}', { a: PRICE.seat, n: t.min || 2 });
+  const until = (ms) => new Date(ms).toLocaleDateString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { day: 'numeric', month: 'long' });
   const WHY = {
     offline: 'No hay conexión con el servidor.', bad_email: 'Ese correo no parece válido.', own_email: 'Ese es tu propio correo.',
     team_full: 'No quedan lugares. Sumá uno para invitar.', already_member: 'Esa persona ya está en el equipo.',
@@ -50,11 +52,11 @@
   function column(a, btn) {
     const t = a && a.team; const mine = t && t.mine;
     if (!t || !(t.enabled || mine) || a.billing === false) return '';
-    return '<div class="lmd-plan lmd-plan-team' + (mine && mine.active ? ' lmd-plan-on' : '') + '"><h4>' + T('Equipo') + ' <small>USD ' + cost(t.included, t.included) + ' / ' + T('mes') + '</small></h4><ul><li>' + T('Todo lo del plan pago para cada persona') + '</li><li>' +
-      T('{n} personas incluidas, USD {a} por cada una más', { n: t.included, a: PRICE.seat / 100 }) + '</li><li>' + T('Un espacio compartido para las notas del equipo') + '</li><li>' +
+    return '<div class="lmd-plan lmd-plan-team' + (mine && mine.active ? ' lmd-plan-on' : '') + '"><h4>' + T('Equipo') + ' <small>USD ' + PRICE.seat + ' / ' + T('persona') + '</small></h4><ul><li>' + T('Todo lo del plan pago para cada persona') + '</li><li class="lmd-price">' +
+      perSeat(t) + '</li><li>' + T('Un espacio compartido para las notas del equipo') + '</li><li>' +
       T('Papeles, ajustes del equipo y registro de actividad') + '</li><li>' + T('Historial de versiones de un año') + '</li></ul>' +
       (mine ? '<p class="lmd-hint">' + T(mine.active ? 'Es tu plan actual.' : 'El plan del equipo venció. Las notas siguen ahí.') + '</p>'
-        : '<div class="lmd-plan-buy">' + btn(t.checkout, 'USD ' + cost(t.included, t.included) + ' / ' + T('mes'), 'team') + '</div>') + '</div>';
+        : '<div class="lmd-plan-buy">' + btn(t.checkout, t.trial ? T('Probar gratis {n} días', { n: PRICE.trial }) : 'USD ' + PRICE.seat + ' / ' + T('persona'), 'team') + '</div>') + '</div>';
   }
 
   // La protección del espacio: una sola contraseña para todas las notas del equipo, que pone quien paga el equipo.
@@ -144,6 +146,7 @@
     const boss = (mine.members.find((m) => (m.owner !== undefined ? m.owner : m.admin)) || {}).email || '';
     out = '<h4>' + T('Tu equipo') + (mine.name ? ' <small>' + esc(mine.name) + '</small>' : '') + '</h4>' +
       (mine.active ? '' : '<p class="lmd-hint">' + T('El plan del equipo venció. Las notas siguen ahí.') + '</p>') +
+      (mine.active && mine.trial_until ? '<p class="lmd-plan-why lmd-price" data-team="trial" role="status">' + T('Prueba gratis hasta {a}', { a: until(mine.trial_until) }) + '</p>' : '') +
       // Quien ya pagaba por su cuenta: su suscripción no se toca. Se le dice que sigue activa y dónde darla de baja.
       (mine.solo && !owner ? '<p class="lmd-plan-why lmd-team-solo" role="status">' + T('Tu suscripción individual sigue activa.') + (a.manage ? ' <a href="' + esc(a.manage) + '" target="_blank" rel="noopener noreferrer">' + T('Darla de baja') + '</a>' : '') + '</p>' : '') +
       '<div class="lmd-acct-row" data-team="role"><span>' + T('Tu papel') + '</span><b>' + role(mine.role) + '</b></div>' +
@@ -162,10 +165,11 @@
     if (owner && mine.billing && mine.active) {
       // Cambiar los lugares cambia el cobro: el costo que queda está a la vista antes de confirmar. Solo para quien paga.
       if (wantFor !== mine.seats) { want = mine.seats; wantFor = mine.seats; }
-      out += '<div class="lmd-team-seats" data-min="' + Math.max(t.included, mine.used) + '" data-max="' + t.max + '" data-inc="' + t.included + '" data-now="' + mine.seats + '">' +
+      out += '<div class="lmd-team-seats" data-min="' + Math.max(t.min || 2, mine.used) + '" data-max="' + t.max + '" data-now="' + mine.seats + '">' +
           '<button type="button" class="lmd-btn" data-t="less" aria-label="' + T('Menos lugares') + '">-</button><b data-t="n" aria-live="polite">' + want + '</b><button type="button" class="lmd-btn" data-t="more" aria-label="' + T('Más lugares') + '">+</button>' +
-          '<span class="lmd-team-cost">' + T('{n} lugares: USD {a} por mes', { n: want, a: cost(want, t.included) }) + '</span>' +
-          '<button type="button" class="lmd-btn lmd-btn-fill" data-t="seats"' + (want === mine.seats ? ' disabled' : '') + '>' + T('Cambiar lugares') + '</button></div>';
+          '<span class="lmd-team-cost">' + T('{n} lugares: USD {a} por mes', { n: want, a: cost(want) }) + '</span>' +
+          '<button type="button" class="lmd-btn lmd-btn-fill" data-t="seats"' + (want === mine.seats ? ' disabled' : '') + '>' + T('Cambiar lugares') + '</button></div>' +
+          '<p class="lmd-hint lmd-price" data-team="price">' + perSeat(t) + '</p>';
     }
     out += policyBlock(mine, admin);
     out += vaultBlock(mine, owner);
@@ -299,7 +303,7 @@
       // El número y su costo cambian en el lugar; nada viaja hasta confirmar.
       want = Math.max(+seats.dataset.min, Math.min(+seats.dataset.max, want + (kind === 'more' ? 1 : -1)));
       seats.querySelector('[data-t=n]').textContent = want;
-      seats.querySelector('.lmd-team-cost').textContent = T('{n} lugares: USD {a} por mes', { n: want, a: cost(want, +seats.dataset.inc) });
+      seats.querySelector('.lmd-team-cost').textContent = T('{n} lugares: USD {a} por mes', { n: want, a: cost(want) });
       seats.querySelector('[data-t=seats]').disabled = want === +seats.dataset.now;
       return true;
     }
@@ -329,7 +333,7 @@
         if (!(await LMD.dialog.confirm({ title: T('¿Sacar a {a} del equipo?', { a: b.dataset.mail }), text: T('Conserva sus notas. Las del equipo quedan en el equipo.'), ok: T('Sacar'), danger: true }))) return true;
         await C.remove(+b.dataset.id);
       } else if (kind === 'seats') {
-        if (!(await LMD.dialog.confirm({ title: T('¿Pasar a {n} lugares?', { n: want }), text: T('Quedan USD {a} por mes. La diferencia se cobra o se acredita ahora.', { a: cost(want, +seats.dataset.inc) }), ok: T('Cambiar lugares') }))) return true;
+        if (!(await LMD.dialog.confirm({ title: T('¿Pasar a {n} lugares?', { n: want }), text: T(mine.trial_until ? 'Quedan USD {a} por mes. Se cobra cuando termina la prueba gratis.' : 'Quedan USD {a} por mes. La diferencia se cobra o se acredita ahora.', { a: cost(want) }), ok: T('Cambiar lugares') }))) return true;
         b.disabled = true;
         await C.seats(want); said = T('Lugares cambiados.');
       } else if (kind === 'name') {

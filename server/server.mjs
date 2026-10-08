@@ -26,10 +26,14 @@
 //   LIVE_PEOPLE     personas por sesión en vivo, contando a quien la abrió (12)
 //   LIVE_IDLE_MS    cuánto dura una sesión en vivo sin nadie conectado (12 horas)
 //   LIVE_GUEST_MS   cuánto conserva su lugar un invitado sin conexión (2 minutos)
-//   PADDLE_TEAM_BASE, PADDLE_TEAM_SEAT   ids de los dos precios del plan de equipo en Paddle: el base (cubre 2 personas)
-//                   y el de cada lugar adicional. Con ellos el aviso de Paddle reconoce la suscripción de un equipo
+//   PADDLE_PRICE_MONTHLY, PADDLE_PRICE_YEARLY   ids de los precios vigentes del plan pago en Paddle (mensual y anual)
+//   PADDLE_PRICE_LEGACY   ids de precios anteriores del plan pago, separados por coma: quien sigue suscripto a uno
+//                   conserva el plan. Un precio marcado en Paddle con custom_data.app = 'sharpmd' cuenta igual
+//   PADDLE_PRICE_TEAM   id del precio del plan de equipo en Paddle: por persona y por mes, con la cantidad = lugares.
+//                   Con él (o con custom_data.kind = 'team' en el precio) el aviso reconoce la suscripción de un equipo
+//   PADDLE_PRICE_TEAM_NOTRIAL   opcional: el mismo precio sin prueba gratis, para quien ya usó la suya
 //   PADDLE_API_KEY  clave de la API de Paddle: con ella el servidor cambia la cantidad de lugares de un equipo.
-//                   Sin estas tres (y PADDLE_WEBHOOK_SECRET) el plan de equipo queda apagado y la app no lo ofrece
+//                   Sin PADDLE_PRICE_TEAM, esta clave y PADDLE_WEBHOOK_SECRET el plan de equipo queda apagado y la app no lo ofrece
 //   PADDLE_API_URL  dirección de la API de Paddle (https://api.paddle.com; la de pruebas es https://sandbox-api.paddle.com)
 //   CHECKOUT_TEAM   enlace de pago del plan de equipo que la app muestra en Ajustes → Plan
 //   TEAM_MAX_SEATS  lugares que puede tener un equipo como máximo (50)
@@ -371,7 +375,7 @@ const account = (user) => ({ id: user.id, share: shareAllowed(user), live: user.
   manage: ((user.own || user.plan) === 'pro' || (user.team && user.team.owner === user.id && user.team.sub)) && env.PORTAL_URL ? env.PORTAL_URL : '',
   // billing: si a esta cuenta se le muestra algo de cobro. A quien tiene el plan por un equipo que paga otra persona, no:
   // ni enlaces de pago ni precios. Lo que paga por su lado (su suscripción individual) lo sigue administrando.
-  billing: !teamGuest(user), checkout: teamGuest(user) ? { monthly: '', yearly: '' } : { monthly: withEmail(env.CHECKOUT_MONTHLY, user), yearly: withEmail(env.CHECKOUT_YEARLY, user) }, team: teamView(user), pages: pagesView(user) });
+  billing: !teamGuest(user), checkout: teamGuest(user) ? { monthly: '', yearly: '' } : { monthly: payLink(env.CHECKOUT_MONTHLY, user), yearly: payLink(env.CHECKOUT_YEARLY, user) }, team: teamView(user), pages: pagesView(user) });
 
 // ---------- Comentarios ----------
 // Lo que alguien escribe desde "Enviar comentarios" llega por correo a FEEDBACK_TO. Entra con o sin sesión.
@@ -1635,12 +1639,22 @@ const dec = (s) => { try { return decodeURIComponent(s); } catch (e) { throw new
 //     equipo (más abajo). Sesiones en vivo no hay todavía. Tampoco carpetas con contraseña de cada miembro: el espacio
 //     se protege entero, con una sola contraseña que pone quien administra (más abajo, "Espacio del equipo protegido").
 //   - Lugares: los miembros más las invitaciones pendientes nunca superan los lugares pagos.
-const TEAM_BASE = String(env.PADDLE_TEAM_BASE || '').trim(); const TEAM_SEAT = String(env.PADDLE_TEAM_SEAT || '').trim();
+//   - Cobro: un solo precio por persona y por mes; la cantidad de la suscripción son los lugares. Arranca con una
+//     prueba gratis, que cuenta como equipo al día. Cada cuenta tiene una sola: otra suscripción en prueba no da nada
+//     hasta su primer cobro.
+// Los precios de SharpMD en Paddle, por su id: los del plan pago (los vigentes y los anteriores, que siguen valiendo
+// para quien ya está suscripto) y el del equipo. Un precio marcado con custom_data.app = 'sharpmd' cuenta igual.
+const priceIds = (v) => String(v || '').split(',').map((s) => s.trim()).filter(Boolean);
+const PRICES_SOLO = new Set([env.PADDLE_PRICE_MONTHLY, env.PADDLE_PRICE_YEARLY, env.PADDLE_PRICE_LEGACY].flatMap(priceIds));
+const TEAM_PRICE = String(env.PADDLE_PRICE_TEAM || '').trim();
+const TEAM_PRICE_NOTRIAL = String(env.PADDLE_PRICE_TEAM_NOTRIAL || '').trim(); // el mismo precio sin prueba gratis, si existe
+const ours = (price) => !!price.custom_data && price.custom_data.app === 'sharpmd';
+const teamPrice = (price) => (!!price.id && (price.id === TEAM_PRICE || price.id === TEAM_PRICE_NOTRIAL)) || (ours(price) && price.custom_data.kind === 'team');
 const PADDLE_API = String(env.PADDLE_API_URL || 'https://api.paddle.com').replace(/\/+$/, '');
 // El plan de equipo se ofrece solo con todo lo que hace falta para cobrarlo y para cambiar los lugares.
-const TEAM_BILLING = !!(env.PADDLE_WEBHOOK_SECRET && TEAM_BASE && TEAM_SEAT && env.PADDLE_API_KEY);
-const TEAM_INCLUDED = 2; // personas que cubre el precio base
-const TEAM_MAX_SEATS = Math.max(TEAM_INCLUDED, +(env.TEAM_MAX_SEATS || 50));
+const TEAM_BILLING = !!(env.PADDLE_WEBHOOK_SECRET && TEAM_PRICE && env.PADDLE_API_KEY);
+const TEAM_MIN = 2; // un equipo paga por dos personas como mínimo
+const TEAM_MAX_SEATS = Math.max(TEAM_MIN, +(env.TEAM_MAX_SEATS || 50));
 const TEAM_INVITES_DAY = +(env.TEAM_INVITES_DAY || 20); // invitaciones que un equipo manda por día
 const TEAM_PRE = '@team/'; // bajo qué carpeta ve la IA las notas del equipo
 const APP_URL = String(env.APP_URL || 'https://sharpmd.app/src/app.html');
@@ -1649,6 +1663,11 @@ db.exec('CREATE TABLE IF NOT EXISTS team_members (team INTEGER NOT NULL, user IN
 db.exec('CREATE TABLE IF NOT EXISTS team_invites (id INTEGER PRIMARY KEY, team INTEGER NOT NULL, email TEXT NOT NULL, created INTEGER NOT NULL, UNIQUE (team, email))');
 // kind: 'solo' la suscripción individual, 'team' la de un equipo. Se decide la primera vez que se ve la suscripción.
 try { db.exec("ALTER TABLE paddle_subs ADD COLUMN kind TEXT NOT NULL DEFAULT 'solo'"); } catch (e) { /* ya estaba */ }
+// De la suscripción de un equipo: price es el precio que lleva (con ese mismo se cambian los lugares) y trial queda en 1
+// si alguna vez estuvo en prueba gratis. trial_until, en el equipo, es hasta cuándo dura la prueba (0: no está en prueba).
+for (const [table, col] of [['paddle_subs', "price TEXT NOT NULL DEFAULT ''"], ['paddle_subs', 'trial INTEGER NOT NULL DEFAULT 0'], ['teams', 'trial_until INTEGER NOT NULL DEFAULT 0']]) { try { db.exec('ALTER TABLE ' + table + ' ADD COLUMN ' + col); } catch (e) { /* ya estaba */ } }
+// Si esa cuenta ya tuvo su prueba gratis de equipo (en otra suscripción que la que se mira, si se pasa una).
+const teamTried = (userId, except) => !!q("SELECT 1 FROM paddle_subs WHERE user = ? AND kind = 'team' AND trial = 1 AND id != ? LIMIT 1").get(userId, except || '');
 
 // Papeles: 'admin' administra (quien paga lo es siempre, y puede nombrar a otros), 'editor' lee y escribe en el
 // espacio, 'reader' solo lee. Los tres ocupan un lugar. Quienes ya eran miembros quedan como editores.
@@ -1667,6 +1686,9 @@ function userById(id) {
   return u;
 }
 const withEmail = (link, user) => (link ? link + (link.includes('?') ? '&' : '?') + 'email=' + encodeURIComponent(user.email) : '');
+// El enlace de pago de una cuenta. Quien ya tuvo su prueba gratis de equipo lo lleva con trial=0: la página de pago no
+// se la ofrece de nuevo. Lo que de verdad impide encadenar pruebas es el aviso de Paddle (más abajo), no este enlace.
+const payLink = (link, user) => { const url = withEmail(link, user); return url && TEAM_BILLING && teamTried(user.id) ? url + '&trial=0' : url; };
 // Lugares ocupados: los miembros y las invitaciones que todavía nadie respondió.
 const teamUsed = (t) => q('SELECT COUNT(*) AS n FROM team_members WHERE team = ?').get(t.id).n + q('SELECT COUNT(*) AS n FROM team_invites WHERE team = ?').get(t.id).n;
 // Lo que la app sabe del equipo. Un miembro ve quiénes están (sus correos, nada más de nadie); las invitaciones
@@ -1676,7 +1698,9 @@ function teamView(user) {
   const invites = q("SELECT i.id, t.name, u.email AS by, i.role FROM team_invites i JOIN teams t ON t.id = i.team JOIN users u ON u.id = t.owner WHERE i.email = ? AND t.status = 'active' ORDER BY i.created").all(user.email);
   // Quien tiene el plan por un equipo que paga otra persona no recibe nada de cobro: ni la oferta ni el enlace de pago.
   const guest = teamGuest(user);
-  const out = { enabled: TEAM_BILLING && !guest, checkout: TEAM_BILLING && !guest ? withEmail(env.CHECKOUT_TEAM, user) : '', included: TEAM_INCLUDED, max: TEAM_MAX_SEATS, mine: null, invites };
+  // trial: si a esta cuenta se le ofrece la prueba gratis.
+  const offer = TEAM_BILLING && !guest;
+  const out = { enabled: offer, checkout: offer ? payLink(env.CHECKOUT_TEAM, user) : '', min: TEAM_MIN, max: TEAM_MAX_SEATS, trial: offer && !teamTried(user.id), mine: null, invites };
   if (!t) return out;
   const owner = t.owner === user.id; const role = teamRoleOf(user); const admin = role === 'admin';
   const members = q('SELECT u.id, u.email, u.name, m.role FROM team_members m JOIN users u ON u.id = m.user WHERE m.team = ? ORDER BY m.joined, u.id').all(t.id)
@@ -1689,7 +1713,8 @@ function teamView(user) {
   out.mine.can = Object.fromEntries(['write'].concat(POLICY_BOOLS).map((k) => [k, teamAllows(t, user, k)]));
   // Los lugares y las invitaciones pendientes, para quien administra personas. El cobro, solo para quien paga.
   if (admin) { out.mine.seats = t.seats; out.mine.used = teamUsed(t); out.mine.pending = q('SELECT id, email, role, created FROM team_invites WHERE team = ? ORDER BY created').all(t.id); out.mine.log_days = TEAM_LOG_DAYS; }
-  if (owner) out.mine.billing = TEAM_BILLING && !!t.sub;
+  // trial_until: hasta cuándo dura la prueba gratis, mientras dure.
+  if (owner) { out.mine.billing = TEAM_BILLING && !!t.sub; if (t.status === 'active' && t.trial_until > now()) out.mine.trial_until = t.trial_until; }
   return out;
 }
 // Quien deja de ser miembro deja de escuchar las notas del equipo en el acto.
@@ -1699,18 +1724,19 @@ function teamCut(spaceId, userId) {
 // Crea el equipo de esa cuenta o lo vuelve a poner al día, con esa cantidad de lugares. sub es la suscripción que
 // lo paga, si hay una. Quien ya es miembro de otro equipo no sale de ahí porque llegue un pago a su nombre (lo
 // pudo hacer cualquiera): no se crea nada y devuelve null. Su equipo nace cuando sale del otro.
-function teamOpen(user, seats, sub) {
-  seats = Math.max(TEAM_INCLUDED, Math.min(TEAM_MAX_SEATS, seats));
+// trialUntil: hasta cuándo dura la prueba gratis, si la suscripción está en prueba.
+function teamOpen(user, seats, sub, trialUntil) {
+  seats = Math.max(TEAM_MIN, Math.min(TEAM_MAX_SEATS, seats)); const until = Math.max(0, Math.floor(+trialUntil || 0));
   const t = q('SELECT * FROM teams WHERE owner = ?').get(user.id);
   if (!t && teamOf(user.id)) return null;
   db.exec('BEGIN');
   try {
     if (t) {
-      q("UPDATE teams SET seats = ?, sub = COALESCE(?, sub), status = 'active' WHERE id = ?").run(seats, sub || null, t.id);
+      q("UPDATE teams SET seats = ?, sub = COALESCE(?, sub), status = 'active', trial_until = ? WHERE id = ?").run(seats, sub || null, until, t.id);
       q("UPDATE users SET plan = 'pro' WHERE id = ?").run(t.space);
     } else {
       const space = Number(q("INSERT INTO users (email, plan, created) VALUES (?, 'pro', ?)").run('team:' + random(12), now()).lastInsertRowid);
-      const id = Number(q("INSERT INTO teams (owner, space, seats, sub, status, created) VALUES (?, ?, ?, ?, 'active', ?)").run(user.id, space, seats, sub || null, now()).lastInsertRowid);
+      const id = Number(q("INSERT INTO teams (owner, space, seats, sub, status, created, trial_until) VALUES (?, ?, ?, ?, 'active', ?, ?)").run(user.id, space, seats, sub || null, now(), until).lastInsertRowid);
       q("INSERT INTO team_members (team, user, joined, role) VALUES (?, ?, ?, 'admin')").run(id, user.id, now());
     }
     db.exec('COMMIT');
@@ -1719,16 +1745,16 @@ function teamOpen(user, seats, sub) {
 }
 // El cobro se cayó: el equipo queda, con su gente y sus notas, pero ya no da el plan pago.
 function teamShut(t) {
-  q("UPDATE teams SET status = 'ended' WHERE id = ?").run(t.id);
+  q("UPDATE teams SET status = 'ended', trial_until = 0 WHERE id = ?").run(t.id);
   q("UPDATE users SET plan = 'free' WHERE id = ?").run(t.space);
   liveTeamSweep(q('SELECT * FROM teams WHERE id = ?').get(t.id));
 }
-// Un aviso de Paddle sobre la suscripción de un equipo. Los lugares salen de la suscripción: los que cubre el
-// precio base más la cantidad del precio por lugar adicional.
-function teamBilled(user, sub, active, items) {
+// Un aviso de Paddle sobre la suscripción de un equipo. Los lugares son la cantidad de su ítem (item); si el aviso no
+// la trae, quedan los que había. trialUntil: hasta cuándo dura la prueba gratis, o 0.
+function teamBilled(user, sub, active, item, trialUntil) {
   if (active) {
-    const extra = items.find((i) => i.price.id === TEAM_SEAT);
-    const t = teamOpen(user, TEAM_INCLUDED + Math.max(0, Math.floor(+(extra && extra.quantity) || 0)), sub);
+    const had = q('SELECT seats FROM teams WHERE owner = ?').get(user.id);
+    const t = teamOpen(user, Math.floor(+(item && item.quantity) || 0) || (had ? had.seats : TEAM_MIN), sub, trialUntil);
     if (!t) { console.error('paddle: suscripción de equipo para una cuenta que ya está en otro equipo · ' + sub.slice(0, 60)); return { ignored: 'in_team' }; }
     return { team: t.id, seats: t.seats };
   }
@@ -1831,17 +1857,18 @@ function teamDrop(t, userId, by) {
   teamCut(t.space, userId);
   liveTeamSweep(t);
   teamVaultLeft(t, userId);
-  // Si tenía paga una suscripción de equipo que esperaba a que saliera de este, su equipo nace ahora, con los lugares
-  // que cubre el precio base. El próximo aviso de Paddle trae la cantidad real.
+  // Si tenía paga una suscripción de equipo que esperaba a que saliera de este, su equipo nace ahora, con el mínimo
+  // de lugares. El próximo aviso de Paddle trae la cantidad real.
   const paid = q("SELECT id FROM paddle_subs WHERE user = ? AND kind = 'team' AND status = 'active' ORDER BY at DESC LIMIT 1").get(userId);
-  if (paid) teamOpen({ id: userId }, TEAM_INCLUDED, paid.id);
+  if (paid) teamOpen({ id: userId }, TEAM_MIN, paid.id);
   return { ok: true };
 }
-// Cambiar los lugares es cambiar la suscripción en Paddle, con prorrateo en el momento: un ítem con el precio base
-// y, si hay más de los que cubre, otro con el precio por lugar y esa cantidad. Nunca menos que los ocupados.
+// Cambiar los lugares es cambiar la cantidad del ítem de la suscripción en Paddle, con el mismo precio que ya tiene.
+// Con prorrateo en el momento; durante la prueba gratis no hay nada que cobrar y Paddle solo acepta el cambio sin
+// cobro. Nunca menos que los ocupados.
 async function teamSeats(user, body) {
   const t = ownerTeam(user); const n = body.seats;
-  if (!Number.isInteger(n) || n < TEAM_INCLUDED || n > TEAM_MAX_SEATS) throw new Fail(400, 'bad_seats');
+  if (!Number.isInteger(n) || n < TEAM_MIN || n > TEAM_MAX_SEATS) throw new Fail(400, 'bad_seats');
   if (t.status !== 'active') throw new Fail(402, 'team_ended');
   if (!TEAM_BILLING || !t.sub) throw new Fail(409, 'no_billing');
   if (n < teamUsed(t)) throw new Fail(409, 'seats_in_use', '', { used: teamUsed(t) });
@@ -1850,9 +1877,11 @@ async function teamSeats(user, body) {
   limit('tseat:' + t.id, 10, HOUR, 'too_many'); mark('tseat:' + t.id);
   seatBusy.add(t.id);
   try {
-    const items = [{ price_id: TEAM_BASE, quantity: 1 }].concat(n > TEAM_INCLUDED ? [{ price_id: TEAM_SEAT, quantity: n - TEAM_INCLUDED }] : []);
+    const known = q('SELECT price FROM paddle_subs WHERE id = ?').get(t.sub);
+    const items = [{ price_id: (known && known.price) || TEAM_PRICE, quantity: n }];
+    const mode = t.trial_until > now() ? 'do_not_bill' : 'prorated_immediately';
     let r = null;
-    try { r = await fetch(PADDLE_API + '/subscriptions/' + encodeURIComponent(t.sub), { method: 'PATCH', headers: { authorization: 'Bearer ' + env.PADDLE_API_KEY, 'content-type': 'application/json' }, body: JSON.stringify({ items, proration_billing_mode: 'prorated_immediately' }), signal: AbortSignal.timeout(15000) }); }
+    try { r = await fetch(PADDLE_API + '/subscriptions/' + encodeURIComponent(t.sub), { method: 'PATCH', headers: { authorization: 'Bearer ' + env.PADDLE_API_KEY, 'content-type': 'application/json' }, body: JSON.stringify({ items, proration_billing_mode: mode }), signal: AbortSignal.timeout(15000) }); }
     catch (e) { r = null; }
     if (!r || !r.ok) { console.error('paddle: no se pudo cambiar la cantidad de lugares · ' + (r ? r.status : 'sin respuesta')); throw new Fail(502, 'billing_failed'); }
     q('UPDATE teams SET seats = ? WHERE id = ?').run(n, t.id);
@@ -2308,6 +2337,8 @@ function accountDelete(req, user, body) {
 // de Paddle: quien paga con el correo de otro no compra para el otro.
 // Un aviso vale cinco minutos desde que Paddle lo firmó: pasado eso, una copia vieja ya no entra.
 const PADDLE_ACTIVE = ['active', 'trialing', 'past_due'];
+// Hasta cuándo dura la prueba gratis de una suscripción en prueba: lo dice su ítem, o la fecha del primer cobro.
+const trialEnd = (d, item) => Date.parse((item && item.trial_dates && item.trial_dates.ends_at) || d.next_billed_at || (d.current_billing_period && d.current_billing_period.ends_at) || '') || 0;
 function paddleSigned(raw, header) {
   const parts = Object.fromEntries(String(header || '').split(';').map((x) => { const i = x.indexOf('='); return i < 0 ? [x, ''] : [x.slice(0, i), x.slice(i + 1)]; }));
   if (!/^\d{1,12}$/.test(parts.ts || '') || !parts.h1 || Math.abs(Date.now() / 1000 - +parts.ts) > 300) return false;
@@ -2321,10 +2352,10 @@ async function paddleWebhook(req) {
   if (!ev || typeof ev !== 'object') throw new Fail(400, 'bad_json');
   const d = ev.data && typeof ev.data === 'object' ? ev.data : {};
   if (!/^subscription\./.test(ev.event_type || '')) return { ok: true, ignored: 'event' };
-  // La cuenta de Paddle puede vender otros productos: solo cuentan los precios marcados como de SharpMD.
-  // Los dos precios del plan de equipo cuentan por su id, lleven o no esa marca.
+  // La cuenta de Paddle puede vender otros productos: solo cuentan los precios de SharpMD, por su marca
+  // (custom_data.app) o por su id (los configurados: los vigentes, los anteriores y el del equipo).
   const items = (Array.isArray(d.items) ? d.items : []).filter((i) => i && i.price && typeof i.price === 'object');
-  if (!items.some((i) => (i.price.custom_data && i.price.custom_data.app === 'sharpmd') || (TEAM_BASE && (i.price.id === TEAM_BASE || i.price.id === TEAM_SEAT)))) return { ok: true, ignored: 'product' };
+  if (!items.some((i) => ours(i.price) || PRICES_SOLO.has(i.price.id) || teamPrice(i.price))) return { ok: true, ignored: 'product' };
   const id = String(d.id || ''); const at = Date.parse(ev.occurred_at) || 0;
   // Una suscripción queda atada a la cuenta con la que se vio la primera vez. Sin eso, la cuenta sale de
   // custom_data (lo escribe la página de pago) o de la suscripción guardada antes de que existiera esta tabla.
@@ -2336,12 +2367,19 @@ async function paddleWebhook(req) {
   if (!user || !id) { console.error('paddle: aviso ' + String(ev.event_type).slice(0, 40) + ' sin cuenta · ' + id.slice(0, 60)); return { ok: true, ignored: 'user' }; }
   // Los avisos pueden llegar desordenados o repetidos: uno anterior al último aplicado no cambia nada.
   if (known && at && at < known.at) return { ok: true, ignored: 'stale' };
-  const status = PADDLE_ACTIVE.includes(d.status) ? 'active' : 'ended';
-  // De equipo es la suscripción que trae el precio base del equipo. Como la cuenta, se decide la primera vez que se la ve.
-  const kind = known ? known.kind : (TEAM_BASE && items.some((i) => i.price.id === TEAM_BASE) ? 'team' : 'solo');
-  q('INSERT INTO paddle_subs (id, user, status, at, kind) VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET status = excluded.status, at = MAX(at, excluded.at)').run(id, user.id, status, at, kind);
+  // De equipo es la suscripción que trae el precio del equipo. Como la cuenta, se decide la primera vez que se la ve.
+  const seat = items.find((i) => teamPrice(i.price)) || null;
+  const kind = known ? known.kind : (seat ? 'team' : 'solo');
+  // La prueba gratis de un equipo es una por cuenta: otra suscripción en prueba no cuenta como al día hasta su primer cobro.
+  const trialing = kind === 'team' && d.status === 'trialing'; const again = trialing && teamTried(user.id, id);
+  const status = PADDLE_ACTIVE.includes(d.status) && !again ? 'active' : 'ended';
+  q("INSERT INTO paddle_subs (id, user, status, at, kind, price, trial) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET status = excluded.status, at = MAX(at, excluded.at), price = CASE excluded.price WHEN '' THEN price ELSE excluded.price END, trial = MAX(trial, excluded.trial)")
+    .run(id, user.id, status, at, kind, kind === 'team' && seat ? String(seat.price.id || '').slice(0, 80) : '', trialing ? 1 : 0);
   // La suscripción de un equipo no toca el plan propio de la cuenta: da el plan pago a sus miembros mientras esté al día.
-  if (kind === 'team') return Object.assign({ ok: true }, teamBilled(user, id, status === 'active', items));
+  if (kind === 'team') {
+    if (again) { console.error('paddle: otra prueba gratis de equipo para una cuenta que ya tuvo la suya · ' + id.slice(0, 60)); return Object.assign({ ok: true, trial: 'used' }, teamBilled(user, id, false)); }
+    return Object.assign({ ok: true }, teamBilled(user, id, status === 'active', seat, trialing ? trialEnd(d, seat) : 0));
+  }
   // El plan es pago mientras quede alguna suscripción activa de la cuenta. Así, quien paga una suscripción a nombre
   // de otra persona y después la cancela no le saca el plan que esa persona paga por su lado.
   const other = q("SELECT id FROM paddle_subs WHERE user = ? AND status = 'active' AND kind != 'team' ORDER BY at DESC LIMIT 1").get(user.id);

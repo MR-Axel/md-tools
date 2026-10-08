@@ -625,7 +625,9 @@
     if (planWhy && !pro) note = '<p class="lmd-plan-why" role="status">' + esc(planWhy) + '</p>' + note;
     // El pago se hace en esta misma pestaña: el enlace lleva en back la dirección a la que volver.
     const payUrl = (url) => url + (url.includes('?') ? '&' : '?') + 'back=' + encodeURIComponent(host.back);
-    const btn = (url, label, kind) => (url ? '<a class="lmd-btn lmd-btn-fill" data-pay="' + (kind || '') + '" href="' + esc(payUrl(url)) + '">' + label + '</a>' : '<button type="button" class="lmd-btn" disabled>' + label + ' · ' + T('pronto') + '</button>');
+    // plain: el botón sin relleno, para la opción que no es la principal (el pago mensual, al lado del anual).
+    const btn = (url, label, kind, plain) => (url ? '<a class="lmd-btn' + (plain ? '' : ' lmd-btn-fill') + '" data-pay="' + (kind || '') + '" href="' + esc(payUrl(url)) + '">' + label + '</a>' : '<button type="button" class="lmd-btn" disabled>' + label + ' · ' + T('pronto') + '</button>');
+    const YEAR = 'USD 40 / ' + T('año'); const MONTH = 'USD 4 / ' + T('mes');
     const teamCol = LMD.team.column(a, btn);
     const state = wait && (wait.state !== 'done' || pro) ? wait.state : '';
     // Quien tiene el plan por un equipo que paga otra persona no ve planes, precios ni botones de compra: ve su
@@ -644,12 +646,12 @@
       '<div class="lmd-plans' + (teamCol ? ' lmd-plans-3' : '') + '">' +
         '<div class="lmd-plan' + (a && !pro ? ' lmd-plan-on' : '') + '"><h4>' + T('Gratis') + '</h4><ul><li>' + T('Todo el editor') + '</li><li>' + T('Hasta 10 notas en la nube') + '</li><li>' + T('Notas en el navegador y en tu disco, sin límite') + '</li><li>' + T('Carpetas protegidas') + '</li><li>' + T('Conectar una IA por MCP') + '</li><li>' + T('Los 12 temas') + '</li></ul>' +
           (a && !pro ? '<p class="lmd-hint">' + T('Es tu plan actual.') + '</p>' : '') + '</div>' +
-        '<div class="lmd-plan' + (own ? ' lmd-plan-on' : '') + '"><h4>' + T('Pago') + ' <small>USD 3.99 / ' + T('mes') + '</small></h4><ul><li>' + T('Notas en la nube sin límite') + '</li><li>' + T('Carpetas protegidas') + '</li><li>' + T('Compartir y editar entre varios') + '</li><li>' + T('Sesiones en vivo: quien invitás entra sin cuenta') + '</li><li>' + T('API y automatizaciones') + '</li><li>' + T('Historial de versiones de 30 días') + '</li><li>' + T('Colores, tipografía y CSS propio') + '</li></ul>' +
+        '<div class="lmd-plan' + (own ? ' lmd-plan-on' : '') + '"><h4>' + T('Pago') + ' <small>' + YEAR + '</small></h4><ul><li>' + T('Notas en la nube sin límite') + '</li><li>' + T('Carpetas protegidas') + '</li><li>' + T('Compartir y editar entre varios') + '</li><li>' + T('Sesiones en vivo: quien invitás entra sin cuenta') + '</li><li>' + T('API y automatizaciones') + '</li><li>' + T('Historial de versiones de 30 días') + '</li><li>' + T('Colores, tipografía y CSS propio') + '</li></ul>' +
           (own ? '<p class="lmd-hint">' + T('Es tu plan actual.') + (a.manage ? ' <a href="' + esc(a.manage) + '" target="_blank" rel="noopener noreferrer">' + T('Administrar la suscripción') + '</a>' : '') + '</p>'
             : pro ? '<p class="lmd-hint">' + T('Lo tenés con el equipo.') + '</p>'
-            : a ? '<div class="lmd-plan-buy">' + btn(pay.monthly, 'USD 3.99 / ' + T('mes')) + btn(pay.yearly, 'USD 39 / ' + T('año')) + '</div>'
+            : a ? '<div class="lmd-plan-buy">' + btn(pay.yearly, YEAR) + btn(pay.monthly, MONTH, '', true) + '</div>'
             // Sobre un archivo abierto directo se paga en la app: los mismos dos botones la abren en una pestaña nueva, ya en los planes.
-            : host.direct && LMD.cloud.enabled() ? '<div class="lmd-plan-buy">' + ['USD 3.99 / ' + T('mes'), 'USD 39 / ' + T('año')].map((label) => '<button type="button" class="lmd-btn lmd-btn-fill" data-c="app" data-at="' + DIRECT_AT.plan + '">' + label + '</button>').join('') + '</div>' : '') + '</div>' + teamCol + '</div>' + LMD.team.section(a);
+            : host.direct && LMD.cloud.enabled() ? '<div class="lmd-plan-buy">' + [YEAR, MONTH].map((label, i) => '<button type="button" class="lmd-btn' + (i ? '' : ' lmd-btn-fill') + '" data-c="app" data-at="' + DIRECT_AT.plan + '">' + label + '</button>').join('') + '</div>' : '') + '</div>' + teamCol + '</div>' + LMD.team.section(a);
     LMD.team.mount(box, a);
     box.onclick = async (e) => {
       // Lo del equipo se atiende aparte. Se decide sin esperar nada: el enlace de pago, más abajo, frena su navegación en este mismo turno.

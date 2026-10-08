@@ -6,8 +6,8 @@
 import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SITE = 'https://sharpmd.app';
-// The team plan shows on the landing page once its checkout is open (the two price ids in pay.html).
-const TEAM_OPEN = /var TEAM = \{ base: '[^']+', seat: '[^']+'/.test(fs.readFileSync(path.join(root, 'pay.html'), 'utf8'));
+// The team plan shows on the landing page once its checkout is open (the id of its price in pay.html).
+const TEAM_OPEN = /var TEAM = \{ price: '[^']+'/.test(fs.readFileSync(path.join(root, 'pay.html'), 'utf8'));
 const src = fs.readFileSync(path.join(root, 'tools', 'landing.src.html'), 'utf8').replace(/\r\n/g, '\n')
   // Lo del plan de equipo (su columna y sus filas en las otras dos) va entre marcas, y sale solo con el cobro abierto.
   .replace(/ *<!--TEAM-->\n([\s\S]*?)\n *<!--\/TEAM-->\n?/g, (all, inner) => (TEAM_OPEN ? inner + '\n' : ''))
@@ -17,33 +17,18 @@ if (/<!--\/?TEAM-->/.test(src)) throw new Error('quedó una marca del plan de eq
 const CARD = SITE + '/docs/social-card-3.png';
 const CARD_ALT = { en: 'SharpMD: Markdown notes your AI writes and your team reads', es: 'SharpMD: notas en Markdown que tu IA escribe y tu equipo lee' };
 
-// Los precios que muestra la portada, en un solo lugar. Hay dos juegos: el vigente y el nuevo, que ya está decidido pero
-// todavía no se puede cobrar. NEW_PRICING elige cuál sale en todos lados: las tarjetas de los planes, la pregunta frecuente
-// y los datos estructurados. El día que el cobro nuevo esté abierto se pasa a true y se vuelve a generar. La columna del
-// plan de equipo sigue dependiendo de TEAM_OPEN, que mira pay.html.
-// llms.txt se escribe a mano: ese día su sección "Plans" pasa a decir
-//   - Paid: USD 40 a year or USD 4 a month. (lo demás, igual)
-//   - Team: USD 5 per person a month, from 2 people, free for 14 days with no card. (más lo que trae el plan de equipo)
-// y también cambian los precios de README.md y README.es.md ("Cloud notes and the sync server").
-const NEW_PRICING = false;
-const PRICES = {
-  current: {
-    offers: { paid: '3.99', team: '7.98' },
-    en: { PAID_BIG: 'USD 3.99', PAID_PER: 'a month', PAID_ALT: 'or USD 39 a year', PAID_LINE: 'USD 3.99 a month or USD 39 a year',
-      TEAM_BIG: 'USD 7.98', TEAM_PER: 'a month', TEAM_ALT: '2 people included, USD 3 for each extra one', TEAM_HOW: 'You sign in and pay inside the app.' },
-    es: { PAID_BIG: 'USD 3.99', PAID_PER: 'por mes', PAID_ALT: 'o USD 39 por año', PAID_LINE: 'USD 3.99 por mes o USD 39 por año',
-      TEAM_BIG: 'USD 7.98', TEAM_PER: 'por mes', TEAM_ALT: '2 personas incluidas, USD 3 por cada una más', TEAM_HOW: 'Entrás a tu cuenta y pagás dentro de la app.' },
-  },
-  // El anual va primero, como opción principal, y el mensual debajo.
-  next: {
-    offers: { paid: '4', team: '5' },
-    en: { PAID_BIG: 'USD 40', PAID_PER: 'a year', PAID_ALT: 'or USD 4 a month', PAID_LINE: 'USD 40 a year or USD 4 a month',
-      TEAM_BIG: 'USD 5', TEAM_PER: 'per person a month', TEAM_ALT: 'From 2 people', TEAM_HOW: 'Free for 14 days, no card needed' },
-    es: { PAID_BIG: 'USD 40', PAID_PER: 'por año', PAID_ALT: 'o USD 4 por mes', PAID_LINE: 'USD 40 por año o USD 4 por mes',
-      TEAM_BIG: 'USD 5', TEAM_PER: 'por persona por mes', TEAM_ALT: 'Desde 2 personas', TEAM_HOW: 'Gratis por 14 días, sin tarjeta' },
-  },
+// Los precios que muestra la portada, en un solo lugar: las tarjetas de los planes, la pregunta frecuente y los datos
+// estructurados. El anual va primero, como opción principal, y el mensual debajo. El equipo se cobra por persona. La columna
+// del plan de equipo depende de TEAM_OPEN, que mira pay.html.
+// Los mismos precios están escritos a mano en pay.html, en la app (src/sync.js y src/team.js), en llms.txt ("Plans") y en
+// README.md y README.es.md ("Cloud notes and the sync server").
+const PRICE = {
+  offers: { paid: '4', team: '5' },
+  en: { PAID_BIG: 'USD 40', PAID_PER: 'a year', PAID_ALT: 'or USD 4 a month', PAID_LINE: 'USD 40 a year or USD 4 a month',
+    TEAM_BIG: 'USD 5', TEAM_PER: 'per person a month', TEAM_ALT: 'From 2 people', TEAM_HOW: 'Free for 14 days' },
+  es: { PAID_BIG: 'USD 40', PAID_PER: 'por año', PAID_ALT: 'o USD 4 por mes', PAID_LINE: 'USD 40 por año o USD 4 por mes',
+    TEAM_BIG: 'USD 5', TEAM_PER: 'por persona por mes', TEAM_ALT: 'Desde 2 personas', TEAM_HOW: 'Gratis por 14 días' },
 };
-const PRICE = PRICES[NEW_PRICING ? 'next' : 'current'];
 
 const META = {
   en: { title: 'SharpMD: Markdown editor with your AI connected',

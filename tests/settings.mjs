@@ -203,7 +203,7 @@ try {
     pay: [...document.querySelectorAll('[data-acct=plan] [data-pay]')].map((a) => ({ label: a.textContent, href: a.href, target: a.getAttribute('target') })), manage: /Administrar/.test(document.querySelector('[data-acct=plan]').textContent) }));
   const backOf = (href) => new URL(href).searchParams.get('back');
   check('Plan: las dos tarjetas, con la gratis marcada como actual', freePlan.cards === 'Gratis*!|Pago' && !freePlan.manage, freePlan);
-  check('los botones de pago abren en la misma pestaña y llevan a dónde volver', freePlan.pay.length === 2 && freePlan.pay.every((p) => p.target === null && backOf(p.href) === here && new URL(p.href).searchParams.get('email') === mail) && /plan=monthly/.test(freePlan.pay[0].href) && /plan=yearly/.test(freePlan.pay[1].href), [here, freePlan.pay]);
+  check('los botones de pago abren en la misma pestaña y llevan a dónde volver', freePlan.pay.length === 2 && freePlan.pay.every((p) => p.target === null && backOf(p.href) === here && new URL(p.href).searchParams.get('email') === mail) && /plan=yearly/.test(freePlan.pay[0].href) && freePlan.pay[0].label === 'USD 40 / año' && /plan=monthly/.test(freePlan.pay[1].href) && freePlan.pay[1].label === 'USD 4 / mes', [here, freePlan.pay]);
   // ---------- Temas incluidos, en el plan gratis ----------
   await tab('look');
   const paint = () => app.evaluate(() => { const r = document.documentElement; return { themed: r.classList.contains('lmd-themed'), dark: r.classList.contains('lmd-dark'), bg: r.style.getPropertyValue('--bg'), body: getComputedStyle(document.body).backgroundColor, bar: document.querySelector('meta[name=theme-color]').content }; });
@@ -306,8 +306,8 @@ try {
   check('y no le piden nada al servidor', asked.length === 0, asked.slice(0, 5));
   const buy = await file.evaluate(() => ({ paid: [...document.querySelectorAll('[data-acct=plan] .lmd-plan + .lmd-plan .lmd-plan-buy [data-c=app]')].map((b) => b.textContent + ' ' + b.dataset.at + (b.classList.contains('lmd-btn-fill') ? ' fill' : '')),
     open: [...document.querySelectorAll('[data-acct=plan] .lmd-acct-actions [data-c=app]')].map((b) => b.textContent + (b.classList.contains('lmd-btn-fill') ? ' fill' : '')), price: document.querySelector('[data-acct=plan] .lmd-plan + .lmd-plan h4').textContent }));
-  check('Plan sobre un archivo directo: la tarjeta del plan pago trae suscribirse por mes y por año, con los precios de la app, y "Abrir SharpMD" queda de secundario',
-    buy.paid.join('|') === 'USD 3.99 / mes #lmd-plans fill|USD 39 / año #lmd-plans fill' && buy.open.join('|') === 'Abrir SharpMD' && /USD 3\.99 \/ mes/.test(buy.price), buy);
+  check('Plan sobre un archivo directo: la tarjeta del plan pago trae suscribirse por año (el destacado) y por mes, con los precios de la app, y "Abrir SharpMD" queda de secundario',
+    buy.paid.join('|') === 'USD 40 / año #lmd-plans fill|USD 4 / mes #lmd-plans' && buy.open.join('|') === 'Abrir SharpMD' && /USD 40 \/ año/.test(buy.price), buy);
   await file.evaluate(() => document.documentElement.classList.add('lmd-store-app'));
   check('dentro de la app de Android los botones de compra no se ven', await file.evaluate(() => getComputedStyle(document.querySelector('[data-acct=plan] .lmd-plan-buy')).display === 'none'));
   await file.evaluate(() => document.documentElement.classList.remove('lmd-store-app'));
@@ -358,8 +358,8 @@ try {
   const tabsBefore = ctx.pages().length;
   await Promise.all([app.waitForURL(/sharpmd\.app\/pay\.html/), app.click('[data-acct=plan] [data-pay]')]); await app.waitForSelector('#buy:not([hidden])');
   const pay = await app.evaluate(() => ({ email: document.getElementById('email').textContent, back: document.querySelector('#buy [data-back]').href, backShown: document.querySelector('#buy [data-back]').getBoundingClientRect().height > 0, other: document.getElementById('other').href, query: location.search }));
-  check('pagar sale en la misma pestaña, para la cuenta abierta', ctx.pages().length === tabsBefore && pay.email === mail && /plan=monthly/.test(pay.query), [ctx.pages().length, tabsBefore, pay]);
-  check('la página de pago deja volver sin pagar, y el otro plan conserva la vuelta', pay.back === docUrl && pay.backShown && backOf(pay.other) === docUrl && /plan=yearly/.test(pay.other), pay);
+  check('pagar sale en la misma pestaña, para la cuenta abierta', ctx.pages().length === tabsBefore && pay.email === mail && /plan=yearly/.test(pay.query), [ctx.pages().length, tabsBefore, pay]);
+  check('la página de pago deja volver sin pagar, y el otro plan conserva la vuelta', pay.back === docUrl && pay.backShown && backOf(pay.other) === docUrl && /plan=monthly/.test(pay.other), pay);
   await app.click('#go');
   const paddle = await app.evaluate(() => window.__paddle);
   check('Paddle recibe la cuenta y una vuelta que conserva back', paddle.customData.sharpmd_email === mail && /pay\.html\?done=1&back=/.test(paddle.settings.successUrl) && backOf(paddle.settings.successUrl) === docUrl, paddle);
