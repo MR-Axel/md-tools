@@ -2780,3 +2780,23 @@ html.lmd-ai-open .lmd-ai-card { left: calc(50% - 190px); width: min(860px, calc(
 .lmd-ask-card p.lmd-imp-err { margin: 0 0 16px; }
 .lmd-imp-card .lmd-ask-actions { margin-top: 16px; justify-content: flex-end; }
 @media (prefers-reduced-motion: reduce) { .lmd-imp-bar i { transition: none; } }
+
+/* ---------- Varios bloques a la vez (blocks.js) ---------- */
+.lmd-article > .lmd-bsel { background: var(--accent-soft); box-shadow: 0 0 0 5px var(--accent-soft); outline: 1.5px solid color-mix(in srgb, var(--accent) 62%, transparent); outline-offset: 5px; border-radius: 3px; }
+.lmd-bsel-bar { position: fixed; z-index: 45; display: flex; align-items: center; gap: 2px; padding: 4px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 9px; box-shadow: var(--shadow); font: 13px/1.2 var(--lmd-font); color: var(--fg); }
+.lmd-bsel-bar[hidden], .lmd-bsel-bar button[hidden], .lmd-bsel-drop[hidden] { display: none; }
+.lmd-bsel-n { padding: 0 8px 0 7px; color: var(--fg-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lmd-bsel-bar button { min-width: 30px; height: 30px; padding: 0 7px; border: 0; border-radius: 6px; background: transparent; color: var(--fg); font: inherit; cursor: pointer; display: grid; place-items: center; }
+.lmd-bsel-bar button:hover { background: var(--accent-soft); color: var(--accent); }
+.lmd-bsel-bar button[data-bs=del]:hover { background: color-mix(in srgb, #dc2626 16%, transparent); color: #dc2626; }
+.lmd-bsel-bar button[data-bs=grip] { cursor: grab; color: var(--fg-muted); touch-action: none; }
+.lmd-bsel-bar svg { width: 16px; height: 16px; }
+.lmd-bsel-bar [data-bs=grip] svg, .lmd-bsel-bar [data-bs=more] svg { fill: currentColor; stroke: none; }
+.lmd-bsel-bar .lmd-bsel-done { padding: 0 11px; color: var(--accent); font-weight: 600; }
+.lmd-bsel-bar.lmd-bsel-dock { left: 50%; top: auto; bottom: calc(14px + var(--lmd-kb, 0px)); transform: translateX(-50%); max-width: calc(100vw - 16px); overflow-x: auto; }
+.lmd-bsel-drop { position: fixed; z-index: 44; height: 3px; border-radius: 2px; background: var(--accent-fill); pointer-events: none; }
+.lmd-bsel-moving .lmd-article > .lmd-bsel { opacity: 0.55; }
+.lmd-bsel-moving, .lmd-bsel-moving * { cursor: grabbing !important; }
+.lmd-bsel-ranging, .lmd-bsel-moving { user-select: none; -webkit-user-select: none; }
+@media (pointer: coarse) { .lmd-bsel-bar button { min-width: 40px; height: 40px; } }
+@media print { .lmd-bsel-bar, .lmd-bsel-drop { display: none !important; } .lmd-article > .lmd-bsel { background: none; box-shadow: none; outline: 0; } }

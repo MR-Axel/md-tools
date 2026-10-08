@@ -106,6 +106,16 @@ try {
   const copy = await app.evaluate(([who]) => LMD.store.cloudGet(who, 'diario/lunes.md'), [mail]);
   const idb = await app.evaluate(() => LMD.store.handlesAll().then((all) => JSON.stringify(all.map((r) => Object.assign({}, r, { cryptoKey: undefined })))));
   o.guarda = [(await raw('diario/lunes.md')).startsWith('vault1:'), /Escrito con la carpeta protegida\./.test(await plainOf('diario/lunes.md')), copy.sealed === true && copy.text.startsWith('vault1:') && copy.base.startsWith('vault1:'), /mandarina|Escrito con la carpeta/.test(idb)];
+  // Pasar un bloque a una nota nueva (blocks.js): nace en la misma carpeta protegida, cifrada.
+  {
+    await app.evaluate(() => { const a = document.activeElement; if (a && a.blur) a.blur(); }); await app.waitForTimeout(500);
+    const at = await app.evaluate(() => { const art = document.querySelector('.lmd-article'); const p = [...art.children].find((n) => /Escrito con la carpeta/.test(n.textContent)); const r = p.getBoundingClientRect(); return { x: art.getBoundingClientRect().left + 22, y: r.top + r.height / 2 }; });
+    await app.mouse.click(at.x, at.y); await app.click('.lmd-bsel-bar [data-bs=more]'); await app.click('.lmd-bsel-menu [data-bs=doc-copy]');
+    const made = 'diario/Escrito con la carpeta protegida.md';
+    await until(async () => (await list()).some((n) => n.path === made));
+    o.bloques = [String(await raw(made)).startsWith('vault1:'), await plainOf(made)];
+    await api('DELETE', '/notes/' + enc(made) + '?forever=1', undefined, session); await app.keyboard.press('Escape');
+  }
   await app.click('[data-act=mode-read]'); await app.waitForTimeout(200);
   await app.click('.lmd-sync'); await app.waitForSelector('.lmd-menu [data-s=share]');
   o.menuNube = await app.evaluate(() => ({ share: document.querySelector('.lmd-menu [data-s=share]').classList.contains('lmd-locked'), note: (document.querySelector('.lmd-menu-note') || {}).textContent || '', comments: !!document.querySelector('.lmd-menu [data-s=comments].lmd-locked') }));
@@ -321,6 +331,7 @@ const checks = [
   ['al guardar viaja cifrada, y la copia para usar sin conexión también queda cifrada', o.guarda && o.guarda[0] && o.guarda[1] && o.guarda[2] && o.guarda[3] === false, o.guarda],
   ['compartir y comentar para la IA explican en una línea por qué no están, con el camino a seguir', o.menuNube && o.menuNube.share && /Carpeta protegida/.test(o.menuNube.note) && /movela a otra carpeta/.test(o.menuNube.note) && o.menuNube.comments && /carpeta protegida/.test(o.menuNube.avisa) && o.menuNube.sinVentana === 0, o.menuNube],
   ['el historial de una nota protegida se lee en claro en la app', o.historial && o.historial[0] >= 1 && /mandarina/.test(o.historial[1] || ''), o.historial],
+  ['pasar un bloque a una nota nueva la deja en la misma carpeta protegida, cifrada', o.bloques && o.bloques[0] === true && /Escrito con la carpeta protegida\./.test(o.bloques[1]), o.bloques],
   ['crear adentro: la nota nace cifrada', o.crea && o.crea[0] && o.crea[1] && /^# nueva/.test(o.crea[2]), o.crea],
   ['renombrar adentro: queda cifrada para su ruta nueva', o.renombra && o.renombra[0] && /^# nueva/.test(o.renombra[1]) && o.renombra[2] === false, o.renombra],
   ['sacarla de la carpeta la descifra', o.sale && o.sale[0] && /^# nueva/.test(o.sale[1]) && /nueva/.test(o.sale[2]), o.sale],

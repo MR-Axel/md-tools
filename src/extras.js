@@ -198,7 +198,8 @@
 
   // Una nota que ya trae nombre y contenido (de una plantilla), dentro de una carpeta del disco o de la nube.
   // El nombre no pisa a otro: si está tomado, suma un número.
-  async function newFrom(dirUrl, given) {
+  // Con stay no se abre: devuelve la dirección de la nota creada (blocks.js pasa bloques a una nota nueva).
+  async function newFrom(dirUrl, given, stay) {
     const free = async (taken) => { let name = given.name + '.md'; for (let n = 2; n < 50 && await taken(name); n++) name = given.name + '-' + n + '.md'; return name; };
     try {
       if (inCloud(dirUrl)) {
@@ -207,12 +208,14 @@
         const all = new Set((await LMD.cloud.list(true, s.owner)).map((n) => n.path)); const inner = s.path.slice(0, -1);
         const path = pre + await free((name) => all.has(inner + name));
         await LMD.cloud.write(path, given.text);
+        if (stay) { core.reloadTree(); return core.urlOf(path); }
         return core.open(core.urlOf(path), { tree: true, edit: 'doc' });
       }
       const dir = await core.dirHandle(dirUrl);
       const name = await free((n) => exists(dir, n));
       const h = await dir.getFileHandle(name, { create: true });
       const w = await h.createWritable(); await w.write(given.text); await w.close();
+      if (stay) { core.reloadTree(); return dirUrl + encodeURIComponent(name); }
       return core.open(dirUrl + encodeURIComponent(name), { tree: true, edit: 'doc' });
     } catch (e) { cloudFail(e, 'No se pudo crear el archivo'); }
   }
@@ -886,5 +889,5 @@
     article.addEventListener('keyup', (e) => { if (/^Arrow|^Page|^Home$|^End$/.test(e.key)) centerCaret(); });
   }
 
-  LMD.extras = { init, pasteImage, saveImage, exportHtml, htmlOf, imageDialog, imageMd, fromTemplate, trash, menu: showMenu };
+  LMD.extras = { init, pasteImage, saveImage, exportHtml, htmlOf, imageDialog, imageMd, fromTemplate, trash, menu: showMenu, newIn: (dirUrl, given) => newFrom(dirUrl, given, true) };
 })();
