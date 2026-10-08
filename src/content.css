@@ -1815,3 +1815,46 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-home-actions .lmd-btn[data-daily] svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 @media (max-width: 760px) { .lmd-daily-nav { padding: 10px 16px 0; } }
 @media print { .lmd-daily-nav { display: none !important; } }
+
+/* ---------- Herramienta: mapa de enlaces (linkmap.js) ---------- */
+.lmd-zone-btn.lmd-daily-btn svg, .lmd-zone-btn.lmd-map-btn svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-map .lmd-ask-card.lmd-map-card { display: flex; flex-direction: column; width: min(1180px, 100%); height: min(820px, 100%); max-height: 100%; padding: 0; overflow: hidden; }
+.lmd-map { padding: 20px; align-items: center; }
+.lmd-map-head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 18px; border-bottom: 1px solid var(--line); }
+.lmd-map-head h3 { margin: 0 auto 0 0; font-size: 15.5px; white-space: nowrap; }
+.lmd-map-head .lmd-map-q { flex: 0 1 220px; min-width: 90px; margin: 0; }
+.lmd-map-head select { flex: 0 1 190px; min-width: 0; width: auto; }
+.lmd-map-lone { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--fg-muted); white-space: nowrap; cursor: pointer; }
+.lmd-map-body { position: relative; flex: 1; min-height: 0; background: var(--bg-soft); }
+.lmd-map-canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; outline: none; }
+.lmd-ask-card p.lmd-map-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 20px; text-align: center; color: var(--fg-muted); pointer-events: none; }
+.lmd-ask-card p.lmd-map-empty[hidden] { display: none; }
+.lmd-map-zoom { position: absolute; right: 10px; bottom: 10px; display: flex; flex-direction: column; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.lmd-map-zoom svg, .lmd-map-head .lmd-icon-btn svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-map-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 18px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--fg-muted); }
+.lmd-map-tip { text-align: right; }
+@media (max-width: 760px) {
+  .lmd-map { padding: 0; }
+  .lmd-map .lmd-ask-card.lmd-map-card { width: 100%; height: 100%; border: 0; border-radius: 0; padding-top: env(safe-area-inset-top, 0px); }
+  .lmd-map-head { flex-wrap: wrap; gap: 8px; padding: 10px 8px 10px 14px; }
+  .lmd-map-head h3 { order: 0; } .lmd-map-head [data-map=close] { order: 1; }
+  .lmd-map-head .lmd-map-q { order: 2; flex: 1 1 100%; }
+  .lmd-map-head select { order: 3; flex: 1 1 45%; }
+  .lmd-map-lone { order: 4; }
+  .lmd-map-tip { display: none; }
+  .lmd-map-foot { padding-bottom: max(8px, env(safe-area-inset-bottom, 0px)); }
+}
+/* "Enlaces a esta nota": bajo la nota abierta, que le cede su margen de abajo. */
+.lmd-article:has(+ .lmd-back) { padding-bottom: 28px; }
+.lmd-back { padding: 0 48px 120px; font: 14px/1.5 var(--lmd-font); color: var(--fg); }
+.lmd-centered .lmd-back { max-width: calc(var(--lmd-content-w) + 96px); margin: 0 auto; }
+.lmd-article[hidden] + .lmd-back, .lmd-nodoc .lmd-back { display: none; }
+.lmd-back summary { padding: 10px 0; border-top: 1px solid var(--line); color: var(--fg-muted); font-size: 13px; font-weight: 600; cursor: pointer; }
+.lmd-back-n { margin-left: 4px; padding: 1px 7px; border-radius: 9px; background: var(--bg-soft); font-weight: 500; font-variant-numeric: tabular-nums; }
+.lmd-back ul { margin: 2px 0 0; padding: 0; list-style: none; }
+.lmd-back li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 4px 0; }
+.lmd-back li a { color: var(--link); text-decoration: none; overflow-wrap: anywhere; }
+.lmd-back li a:hover { text-decoration: underline; }
+.lmd-back li span { flex: none; max-width: 45%; color: var(--fg-faint); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 760px) { .lmd-back { padding: 0 16px 100px; } }
+@media print { .lmd-back, .lmd-map { display: none !important; } }

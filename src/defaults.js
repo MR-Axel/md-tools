@@ -1150,6 +1150,13 @@
       "Exportar a Word": "Export to Word", "Suma la opción Word (.docx) al menú Exportar. El archivo se arma en el navegador.": "Adds a Word (.docx) option to the Export menu. The file is built in the browser.",
       "Documento de Word descargado": "Word document downloaded", "No se pudo armar el documento de Word.": "Could not build the Word document.", "Exportar esta nota": "Export this note", "documento": "document",
       "Está en el menú Exportar de la barra de arriba. Las fórmulas van como texto LaTeX y los diagramas como imagen.": "It is in the Export menu of the top bar. Formulas go as LaTeX text and diagrams as images.",
+      // Mapa de enlaces (linkmap.js)
+      "Mapa de enlaces": "Link map", "Un gráfico de qué notas enlazan con cuáles, y los enlaces que llegan a la nota abierta.": "A graph of which notes link to which, and the links that point to the open note.",
+      "Enlaces a esta nota": "Links to this note", "Buscar una nota": "Find a note", "Notas sin enlaces": "Notes without links", "Todas las carpetas": "All folders",
+      "Acercar": "Zoom in", "Alejar": "Zoom out", "Encuadrar": "Fit to view", "Abrir el mapa": "Open the map", "1 enlace": "1 link", "{n} enlaces": "{n} links", "Leyendo las notas…": "Reading notes…",
+      "Ninguna nota para mostrar con este filtro.": "No notes to show with this filter.", "No hay notas en este dispositivo para armar el mapa.": "There are no notes on this device to build the map.",
+      "Tocá una nota para abrirla. Dos dedos para acercar.": "Tap a note to open it. Two fingers to zoom.", "Clic en una nota para abrirla. La rueda acerca y aleja.": "Click a note to open it. The wheel zooms.",
+      "Lee la carpeta abierta, las notas del navegador y las de la nube que ya están en este dispositivo. No baja ni envía nada.": "Reads the open folder, the browser notes and the cloud notes already on this device. It downloads and sends nothing.",
       // Leer en voz alta (speak.js)
       "Leer en voz alta": "Read aloud", "Lee la nota con la voz del dispositivo y marca por dónde va.": "Reads the note with the device voice and marks where it is.",
       "Este navegador no tiene voces para leer.": "This browser has no voices to read with.", "Este navegador no tiene voces instaladas para leer.": "This browser has no voices installed to read with.",

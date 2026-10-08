@@ -176,13 +176,14 @@
     present: { js: ['src/present.js'] },
     daily: { js: ['src/daily.js'] },
     docx: { js: ['src/docx.js'] },
+    linkmap: { js: ['src/linkmap.js'] },
     // La galería de la comunidad, en Ajustes > Herramientas: se pide al abrir esa pestaña.
     gallery: { js: ['src/gallery.js'] },
   };
   const LAZY_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, tools: () => !!(LMD.diagram && LMD.formula && LMD.templates && LMD.community) };
   LAZY_HAVE.gallery = () => !!LMD.gallery;
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
-  ['present', 'daily', 'docx'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
+  ['present', 'daily', 'docx', 'linkmap'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
   async function appLazy(what) {
     const spec = LAZY_APP[what];
     try {

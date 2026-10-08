@@ -23,6 +23,17 @@ async function open(o) {
   await page.addInitScript(([base, lang, tools]) => { try { if (localStorage.getItem('tools:listo')) return; localStorage.setItem('tools:listo', '1'); localStorage.setItem('mdtools:settings', JSON.stringify({ cloudUrl: base, language: lang, tools })); } catch (e) { /* página en blanco */ } }, [R.base, o.lang || 'en', o.tools || {}]);
   return { ctx, page };
 }
+// Un permiso de carpeta solo se puede guardar en un perfil de verdad (una ventana privada no lo deja): para las
+// pruebas con una carpeta del disco, un Chromium con su perfil propio. Quien la usa borra profile al cerrar.
+async function openProfile(tools) {
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'mdtools-'));
+  const ctx = await chromium.launchPersistentContext(profile, { executablePath: process.env.CHROME_BIN || chromium.executablePath(), viewport: { width: 1280, height: 800 }, locale: 'en-US', serviceWorkers: 'block' });
+  await ctx.route((url) => /(^|\.)sharpmd\.app$/.test(url.hostname), (r) => r.abort());
+  const page = await ctx.newPage(); page.on('pageerror', (e) => R.errors.push(e.message));
+  await page.addInitScript(([base, t]) => { try { if (localStorage.getItem('tools:listo')) return; localStorage.setItem('tools:listo', '1'); localStorage.setItem('mdtools:settings', JSON.stringify({ cloudUrl: base, language: 'en', tools: t })); } catch (e) { /* página en blanco */ } }, [R.base, tools]);
+  return { ctx, page, profile };
+}
+const dropProfile = async (ctx, profile) => { await ctx.close(); await sleep(300); try { fs.rmSync(profile, { recursive: true, force: true }); } catch (e) { /* Windows suelta el perfil después */ } };
 const SMALL = { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: ENGINE !== 'firefox' };
 const noteUrl = (name, edit) => R.home + '?f=' + encodeURIComponent('local/' + name) + (edit ? '&edit=1' : '');
 const goHome = async (page) => { await page.goto(R.home); await page.waitForSelector('.lmd-home, .lmd-article'); await sleep(250); };
@@ -266,12 +277,7 @@ await suite('daily', async () => {
 
   await step('Nota diaria: en una carpeta del disco y en la nube', async () => {
     if (ENGINE === 'chromium') {
-      // Un permiso de carpeta solo se puede guardar en un perfil de verdad: una ventana privada no lo deja.
-      const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'mdtools-'));
-      const ctx = await chromium.launchPersistentContext(profile, { executablePath: process.env.CHROME_BIN || chromium.executablePath(), viewport: { width: 1280, height: 800 }, locale: 'en-US', serviceWorkers: 'block' });
-      await ctx.route((url) => /(^|\.)sharpmd\.app$/.test(url.hostname), (r) => r.abort());
-      const page = await ctx.newPage(); page.on('pageerror', (e) => R.errors.push(e.message));
-      await page.addInitScript(([base]) => { try { if (localStorage.getItem('tools:listo')) return; localStorage.setItem('tools:listo', '1'); localStorage.setItem('mdtools:settings', JSON.stringify({ cloudUrl: base, language: 'en', tools: { daily: true } })); } catch (e) { /* página en blanco */ } }, [R.base]);
+      const { ctx, page, profile } = await openProfile({ daily: true });
       await fixClock(page);
       await goHome(page);
       await page.evaluate(async () => { const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('mis-dias', { create: true }); window.showDirectoryPicker = async () => dir; });
@@ -285,8 +291,7 @@ await suite('daily', async () => {
       check('y es una nota diaria, con sus enlaces', J(await nav(page)) === J(['Yesterday', 'Today', 'Tomorrow']) && (await localNames(page)).length === 0);
       await page.click('.lmd-daily-nav [data-daily=cal]'); await page.waitForSelector('.lmd-daily-cal .lmd-daily-day.lmd-has');
       check('el calendario lee los días del disco', await page.evaluate(() => [...document.querySelectorAll('.lmd-daily-day.lmd-has')].map((b) => b.textContent).join() === '7'));
-      await ctx.close(); await sleep(300);
-      try { fs.rmSync(profile, { recursive: true, force: true }); } catch (e) { /* Windows suelta el perfil después */ }
+      await dropProfile(ctx, profile);
     }
     const who = await R.signup('diario-' + Date.now() + '@prueba.test');
     const { ctx, page } = await open({ who, tools: { daily: true, dailyWhere: 'cloud', dailyFolder: 'diario' } }); await fixClock(page);
@@ -451,6 +456,201 @@ await suite('docx', async () => {
     const got = await download(page, async () => { await page.click('.lmd-topbar [data-act=more]'); await page.click('.lmd-menu [data-more=export]'); await page.click('.lmd-menu [data-more=export-docx]'); });
     const z = unzip(got.buf);
     check('desde "más" > Exportar se descarga un .docx válido', got.name === 'corta.docx' && z.bad.length === 0 && z.get('word/document.xml').includes('>Un párrafo.<') && z.get('docProps/core.xml').includes('<dc:title>Corta</dc:title>'));
+    await ctx.close();
+  });
+});
+
+// ---------- Mapa de enlaces ----------
+// a y b se enlazan entre sí, a y c también, e llega a b por una referencia; d queda suelta. Lo que está en código no cuenta.
+const WEB = {
+  'a.md': '# A\n\nVa a [[b]] y a [la c](c.md). En código no cuenta: `[[d]]`.\n\n```\n[[d]] y [otra](d.md)\n```\n',
+  'b.md': '# B\n\nVuelve a [la a](./a.md#a) y sale a [un sitio](https://example.com/c.md).\n',
+  'c.md': '# C\n\nUn wikilink con otra forma: [[A]]. Y uno que no existe: [[no-existe]].\n',
+  'd.md': '# D\n\nSin enlaces.\n',
+  'e.md': '# E\n\nPor referencia: [la b][ref].\n\n[ref]: b.md\n',
+};
+const web = async (page) => { await goHome(page); for (const [n, t] of Object.entries(WEB)) await put(page, n, t); };
+const map = (page) => page.evaluate(() => (window.LMD && LMD.linkmap ? LMD.linkmap.state() : null));
+const mapReady = async (page) => { await until(async () => { const s = await map(page); return s && s.open && s.ready && s.settled; }, 15000); await page.evaluate(() => LMD.linkmap.fit()); await sleep(150); return map(page); };
+const back = (page) => page.evaluate(() => { const b = document.querySelector('.lmd-back'); return b ? { n: b.querySelector('.lmd-back-n').textContent, names: [...b.querySelectorAll('li a')].map((a) => a.textContent), where: [...b.querySelectorAll('li span')].map((a) => a.textContent), open: b.open } : null; });
+const openNoteAt = async (page, name) => { await page.goto(noteUrl(name)); await page.waitForSelector('.lmd-article > *'); await sleep(300); };
+const EDGES = ['a.md ~ b.md', 'a.md ~ c.md', 'b.md ~ e.md'];
+
+await suite('linkmap', async () => {
+  await step('Mapa: apagada no deja nada', async () => {
+    const { ctx, page } = await open();
+    await web(page); await openNoteAt(page, 'b.md');
+    check('apagada: sin botón, sin enlaces bajo la nota, sin archivo', await page.evaluate(() => !document.querySelector('.lmd-map-btn, .lmd-back') && !LMD.linkmap) && await scripts(page, 'linkmap.js') === 0);
+    await page.keyboard.press('Alt+Shift+G'); await sleep(250);
+    check('ni responde su atajo', await page.evaluate(() => !document.querySelector('.lmd-map')));
+    await toolsTab(page);
+    check('su tarjeta está en Herramientas, apagada', await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=linkmap]'); return !!c && c.querySelector('b').textContent === 'Link map' && !c.querySelector('input').checked; }));
+    await flip(page, 'linkmap'); await until(() => page.evaluate(() => !!LMD.linkmap));
+    await page.click('.lmd-tl-card[data-tool=linkmap] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-card[data-tool=linkmap] [data-map=go]');
+    check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
+    await closePanel(page);
+    await until(() => page.evaluate(() => !!document.querySelector('.lmd-back')));
+    check('prendida: el botón en el explorador y los enlaces bajo la nota', await scripts(page, 'linkmap.js') === 1 && await page.evaluate(() => !!document.querySelector('.lmd-zone-files .lmd-map-btn') && !!document.querySelector('.lmd-back')));
+    await toolsTab(page); await flip(page, 'linkmap'); await closePanel(page);
+    check('apagarla saca las dos cosas', await page.evaluate(() => !document.querySelector('.lmd-map-btn, .lmd-back')));
+    await ctx.close();
+  });
+
+  await step('Mapa: enlaces a esta nota', async () => {
+    const { ctx, page } = await open({ tools: { linkmap: true } });
+    await web(page); await openNoteAt(page, 'b.md');
+    await until(() => page.evaluate(() => !!document.querySelector('.lmd-back')));
+    let b = await back(page);
+    check('bajo la nota: las que enlazan a ella, por enlace, wikilink o referencia', b && b.n === '2' && J(b.names) === J(['a', 'e']) && b.where[0] === 'In this browser' && b.open, b);
+    check('el índice separa enlaces relativos de wikilinks y deja afuera el código', await page.evaluate((t) => { const l = LMD.linkmap.linksOf(t); return JSON.stringify(l) === JSON.stringify({ wiki: ['b'], rel: ['c.md'] }); }, WEB['a.md']));
+    await page.click('.lmd-back li a'); await until(async () => (await here(page)) === 'local/a.md');
+    await until(async () => { const x = await back(page); return x && x.names.join() === 'b,c'; });
+    b = await back(page);
+    check('tocar una abre esa nota, que muestra las suyas', (await here(page)) === 'local/a.md' && b && J(b.names) === J(['b', 'c']), b);
+    await openNoteAt(page, 'd.md'); await sleep(500);
+    check('una nota a la que nadie enlaza no muestra el panel', (await back(page)) === null);
+    check('y se puede pedir por código', J(await page.evaluate(() => LMD.linkmap.backlinks())) === J([]) && J(await page.evaluate(() => LMD.linkmap.backlinks(location.href.replace(/\?.*$/, '').replace(/[^/]*\/[^/]*$/, '') && 'https://lmd.local/local/b.md'))) === J(['a.md', 'e.md']));
+    // Enlazar desde otra nota y volver: el panel se pone al día.
+    await put(page, 'd.md', '# D\n\nAhora sí: [[c]].\n');
+    await openNoteAt(page, 'c.md'); await until(async () => { const x = await back(page); return x && x.names.length === 2; });
+    check('un enlace nuevo aparece al volver a la nota', J(((await back(page)) || {}).names) === J(['a', 'd']), await back(page));
+    await ctx.close();
+  });
+
+  await step('Mapa: nodos, aristas y abrir desde un nodo', async () => {
+    const { ctx, page } = await open({ tools: { linkmap: true } });
+    await web(page); await openNoteAt(page, 'a.md');
+    await page.click('.lmd-zone-files .lmd-map-btn'); await page.waitForSelector('.lmd-map canvas');
+    let s = await mapReady(page);
+    check('un nodo por nota y una arista por par enlazado', s.nodes.length === 5 && J(s.nodes.map((n) => n.name).sort()) === J(Object.keys(WEB)) && J(s.edges) === J(EDGES), { n: s.nodes.map((x) => x.name), e: s.edges });
+    const deg = Object.fromEntries(s.nodes.map((n) => [n.name, n.deg]).sort((x, y) => x[0].localeCompare(y[0])));
+    check('cada nodo sabe cuántos enlaces tiene, y cuál es la nota abierta', J(deg) === J({ 'a.md': 2, 'b.md': 2, 'c.md': 1, 'd.md': 0, 'e.md': 1 }) && s.nodes.filter((n) => n.cur).map((n) => n.name).join() === 'a.md', deg);
+    const box = await page.evaluate(() => { const r = document.querySelector('.lmd-map-canvas').getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; });
+    check('todos los nodos quedan a la vista, separados', s.nodes.every((n) => n.x > box.l && n.x < box.r && n.y > box.t && n.y < box.b) && s.nodes.every((n, i) => s.nodes.every((m, k) => k === i || Math.hypot(n.x - m.x, n.y - m.y) > 14)), s.nodes);
+    check('el pie dice cuántas notas y enlaces hay', await page.evaluate(() => document.querySelector('.lmd-map-count').textContent === '5 notes · 3 links'));
+    check('el lienzo tiene algo dibujado', await page.evaluate(() => { const c = document.querySelector('.lmd-map-canvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n > 200; }));
+    const at = (name) => s.nodes.find((n) => n.name === name);
+    await page.mouse.move(at('b.md').x, at('b.md').y); await sleep(120);
+    check('pasar el cursor por un nodo lo marca, con sus vecinos', (await map(page)).hover === 'b.md' && await page.evaluate(() => document.querySelector('.lmd-map-canvas').style.cursor === 'pointer'));
+    // Acercar con la rueda, y arrastrar un nodo.
+    const k0 = s.k; await page.mouse.move((box.l + box.r) / 2, (box.t + box.b) / 2); await page.mouse.wheel(0, -400); await sleep(150);
+    check('la rueda acerca', (await map(page)).k > k0 * 1.2, [k0, (await map(page)).k]);
+    await page.click('.lmd-map [data-map=out]'); await page.click('.lmd-map [data-map=fit]'); await sleep(150);
+    s = await mapReady(page);
+    const d0 = at('d.md'); await page.mouse.move(d0.x, d0.y); await page.mouse.down(); await page.mouse.move(d0.x + 60, d0.y + 40, { steps: 4 }); const mid = (await map(page)).nodes.find((n) => n.name === 'd.md'); await page.mouse.up(); await sleep(100);
+    check('arrastrar un nodo lo mueve, sin abrir la nota', Math.hypot(mid.x - d0.x - 60, mid.y - d0.y - 40) < 6 && (await map(page)).open && (await here(page)) === 'local/a.md', [d0, mid]);
+    // Buscar, filtrar las sueltas.
+    await page.fill('.lmd-map-q', 'E'); await sleep(120);
+    check('el buscador marca las notas que coinciden', (await map(page)).nodes.filter((n) => n.hit).map((n) => n.name).join() === 'e.md');
+    await page.fill('.lmd-map-q', ''); await page.click('.lmd-map-lone input'); await sleep(200);
+    s = await map(page);
+    check('sin las notas sueltas quedan las enlazadas', s.nodes.length === 4 && !s.nodes.some((n) => n.name === 'd.md') && J(s.edges) === J(EDGES) && (await stored(page, 'settings')).tools.mapOrphans === false);
+    await page.click('.lmd-map-lone input');
+    s = await mapReady(page);
+    check('y vuelven al pedirlas', s.nodes.length === 5);
+    await page.mouse.click(at('c.md').x, at('c.md').y); await until(async () => (await here(page)) === 'local/c.md');
+    check('tocar un nodo abre esa nota y cierra el mapa', (await here(page)) === 'local/c.md' && !(await map(page)).open && await page.evaluate(() => document.querySelector('.lmd-article h1').textContent.startsWith('C')));
+    await page.keyboard.press('Alt+Shift+G'); await page.waitForSelector('.lmd-map canvas'); s = await mapReady(page);
+    check('el atajo lo abre, con la nota nueva marcada', s.nodes.filter((n) => n.cur).map((n) => n.name).join() === 'c.md');
+    await page.fill('.lmd-map-q', 'b'); await page.keyboard.press('Enter'); await until(async () => (await here(page)) === 'local/b.md');
+    check('Enter en el buscador abre la que coincide', (await here(page)) === 'local/b.md' && !(await map(page)).open);
+    await page.keyboard.press('Alt+Shift+G'); await page.waitForSelector('.lmd-map canvas'); await page.keyboard.press('Escape'); await sleep(150);
+    check('Escape lo cierra', !(await map(page)).open && await page.evaluate(() => !document.querySelector('.lmd-map')));
+    check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
+    await ctx.close();
+  });
+
+  await step('Mapa: la nube solo con lo que ya está en el dispositivo', async () => {
+    const who = await R.signup('mapa-' + Date.now() + '@prueba.test');
+    for (const [p, t] of [['p/x.md', '# X\n\n[[y]]\n'], ['p/y.md', '# Y\n'], ['z.md', '# Z\n\n[x](p/x.md)\n']]) await R.api('PUT', '/notes/' + encodeURIComponent(p), { text: t }, who.s);
+    const { ctx, page } = await open({ who, tools: { linkmap: true } });
+    await page.goto(R.noteUrl('p/x.md')); await page.waitForSelector('.lmd-article > *'); await sleep(500);
+    await page.goto(R.noteUrl('p/y.md')); await page.waitForSelector('.lmd-article > *'); await sleep(500);
+    // Una copia cifrada de una carpeta protegida de la que acá no hay llave.
+    await page.evaluate((mail) => LMD.store.cloudPut(mail, 'secreta/s.md', { text: 'lmd1:cifrado', base: 'lmd1:cifrado', sealed: true, pending: false, role: 'owner' }), who.email);
+    const asked = []; page.on('request', (r) => { if (r.url().startsWith(R.base)) asked.push(r.method() + ' ' + r.url().slice(R.base.length)); });
+    await sleep(300); asked.length = 0;
+    await page.keyboard.press('Alt+Shift+G'); await page.waitForSelector('.lmd-map canvas');
+    const s = await mapReady(page);
+    check('entran las notas de la nube que ya se abrieron acá, con su carpeta', J(s.nodes.map((n) => n.name + '@' + n.folder).sort()) === J(['x.md@Cloud/p', 'y.md@Cloud/p']) && J(s.edges) === J(['x.md ~ y.md']), s.nodes.map((n) => n.name + '@' + n.folder));
+    check('la que nunca se bajó no aparece, ni la copia cifrada', !s.nodes.some((n) => n.name === 'z.md' || n.name === 's.md'));
+    // La nota abierta se sigue consultando sola, como siempre: lo que no puede haber es un pedido de otra nota ni de la lista.
+    check('armar el mapa no pide ninguna nota al servidor', asked.filter((a) => /\/notes/.test(a) && !/y\.md/.test(a)).length === 0, asked);
+    await page.keyboard.press('Escape');
+    await until(async () => { const x = await back(page); return x && x.names.join() === 'x'; });
+    check('los enlaces a esta nota también salen de las copias locales', J(((await back(page)) || {}).names) === J(['x']) && asked.filter((a) => /\/notes\//.test(a) && /z\.md/.test(a)).length === 0);
+    await ctx.close();
+  });
+
+  await step('Mapa: una carpeta del disco, con subcarpetas', async () => {
+    if (ENGINE !== 'chromium') return;
+    const { ctx, page, profile } = await openProfile({ linkmap: true });
+    await goHome(page);
+    await page.evaluate(async () => {
+      const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('wiki', { create: true });
+      const write = async (d, name, data) => { const h = await d.getFileHandle(name, { create: true }); const s = await h.createWritable(); await s.write(data); await s.close(); };
+      await write(dir, 'raiz.md', '# Raíz\n\n[[hoja]] y [la otra](sub/otra%20nota.md)\n');
+      const sub = await dir.getDirectoryHandle('sub', { create: true });
+      await write(sub, 'hoja.md', '# Hoja\n\n[arriba](../raiz.md)\n'); await write(sub, 'otra nota.md', '# Otra\n'); await write(sub, 'datos.csv', 'a,b\n');
+      window.showDirectoryPicker = async () => dir;
+    });
+    await put(page, 'del-navegador.md', '# N\n\n[[raiz]]\n');
+    await Promise.all([page.waitForNavigation(), page.click('[data-home=dir]')]); await page.waitForSelector('.lmd-article > *'); await sleep(500);
+    await page.click('.lmd-zone-files .lmd-map-btn'); await page.waitForSelector('.lmd-map canvas');
+    let s = await mapReady(page);
+    check('la carpeta abierta entra con sus subcarpetas, junto a las notas del navegador', J(s.nodes.map((n) => n.name + '@' + n.folder).sort()) === J(['del-navegador.md@In this browser', 'hoja.md@wiki/sub', 'otra nota.md@wiki/sub', 'raiz.md@wiki']), s.nodes.map((n) => n.name + '@' + n.folder));
+    check('los enlaces relativos suben y bajan de carpeta; un wikilink no cruza de un lugar a otro', J(s.edges) === J(['hoja.md ~ raiz.md', 'otra nota.md ~ raiz.md']), s.edges);
+    const opts = await page.evaluate(() => [...document.querySelector('.lmd-map-folder').options].map((o) => o.value));
+    check('el filtro ofrece cada carpeta', J(opts) === J(['', 'In this browser', 'wiki', 'wiki/sub']), opts);
+    await page.selectOption('.lmd-map-folder', 'wiki/sub'); await sleep(250); s = await map(page);
+    check('filtrar por carpeta deja solo sus notas', J(s.nodes.map((n) => n.name).sort()) === J(['hoja.md', 'otra nota.md']) && s.edges.length === 0);
+    await page.selectOption('.lmd-map-folder', 'wiki'); s = await mapReady(page);
+    check('y una carpeta incluye lo de adentro', s.nodes.length === 3 && s.edges.length === 2);
+    const n = s.nodes.find((x) => x.name === 'hoja.md'); await page.mouse.click(n.x, n.y);
+    await until(async () => /sub\/hoja\.md$/.test(await here(page)));
+    check('abrir desde un nodo lleva a la nota del disco', /sub\/hoja\.md$/.test(await here(page)));
+    await until(async () => { const x = await back(page); return x && x.names.join() === 'raiz'; });
+    check('con sus enlaces entrantes', J(((await back(page)) || {}).names) === J(['raiz']) && (await back(page)).where[0] === 'wiki');
+    await dropProfile(ctx, profile);
+  });
+
+  await step('Mapa: cientos de notas y pantalla chica', async () => {
+    const { ctx, page } = await open({ tools: { linkmap: true }, ctx: SMALL });
+    await goHome(page);
+    await page.evaluate(async () => { const N = 300; for (let i = 0; i < N; i++) await LMD.store.handlesPut({ key: 'note:n' + i + '.md', note: true, name: 'n' + i + '.md', text: '# N' + i + '\n\n[[n' + ((i * 7 + 1) % N) + ']] [x](n' + ((i + 13) % N) + '.md)\n', at: Date.now() - i }); });
+    await openNoteAt(page, 'n0.md');
+    await page.tap('.lmd-topbar [data-act=more]'); await page.waitForSelector('.lmd-menu [data-more=linkmap]');
+    const t0 = Date.now(); await page.tap('.lmd-menu [data-more=linkmap]'); await page.waitForSelector('.lmd-map canvas');
+    await until(async () => { const s = await map(page); return s && s.ready; }, 10000);
+    const ready = Date.now() - t0;
+    const fps = await page.evaluate(() => new Promise((resolve) => { let n = 0; const t = performance.now(); const f = () => { n++; if (performance.now() - t < 1000) requestAnimationFrame(f); else resolve(n); }; requestAnimationFrame(f); }));
+    let s = await map(page);
+    check('300 notas: el mapa está listo enseguida y la animación no se traba', s.nodes.length === 300 && s.edges.length > 500 && ready < 5000 && fps >= 20, { ready, fps, edges: s.edges.length });
+    s = await mapReady(page);
+    check('y termina de acomodarse', s.settled);
+    const fill = await page.evaluate(() => { const c = document.querySelector('.lmd-map-card').getBoundingClientRect(); const cv = document.querySelector('.lmd-map-canvas').getBoundingClientRect(); const q = document.querySelector('.lmd-map-q').getBoundingClientRect(); return { full: c.left <= 0 && c.right >= innerWidth && c.bottom >= innerHeight - 1, canvas: cv.width >= innerWidth - 2 && cv.height > 400, q: q.left >= 0 && q.right <= innerWidth, x: document.documentElement.scrollWidth <= innerWidth }; });
+    check('en pantalla chica ocupa toda la pantalla, sin desbordar', fill.full && fill.canvas && fill.q && fill.x, fill);
+    // Dos dedos acercan; uno corre el mapa; tocar un nodo abre la nota.
+    const touch = (type, id, x, y) => page.evaluate(([t, i, px, py]) => document.querySelector('.lmd-map-canvas').dispatchEvent(new PointerEvent(t, { bubbles: true, pointerId: i, pointerType: 'touch', isPrimary: i === 1, clientX: px, clientY: py, button: 0 })), [type, id, x, y]);
+    const k0 = s.k;
+    await touch('pointerdown', 1, 150, 400); await touch('pointerdown', 2, 240, 400); await touch('pointermove', 1, 90, 400); await touch('pointermove', 2, 300, 400); await touch('pointerup', 1, 90, 400); await touch('pointerup', 2, 300, 400);
+    check('separar dos dedos acerca', (await map(page)).k > k0 * 1.5 && (await map(page)).open, [k0, (await map(page)).k]);
+    const before = (await map(page)).nodes[5];
+    // Desde un lugar sin notas cerca.
+    const all = (await map(page)).nodes; let free = null; let far = 0;
+    for (let x = 30; x <= 300; x += 15) for (let y = 220; y <= 640; y += 15) { const d = Math.min(...all.map((n) => Math.hypot(n.x - x, n.y - y))); if (d > far) { far = d; free = { x, y }; } }
+    await touch('pointerdown', 1, free.x, free.y); await touch('pointermove', 1, free.x + 30, free.y - 10); await touch('pointermove', 1, free.x + 60, free.y - 20); await touch('pointerup', 1, free.x + 60, free.y - 20);
+    const after = (await map(page)).nodes[5];
+    check('un dedo corre el mapa', far > 20 && Math.abs((after.x - before.x) - 60) < 8 && Math.abs((after.y - before.y) + 20) < 8 && (await map(page)).open, [far, before.x, after.x]);
+    await page.evaluate(() => LMD.linkmap.fit()); await sleep(100);
+    await page.tap('.lmd-map [data-map=in]'); await page.tap('.lmd-map [data-map=in]'); await sleep(100);
+    s = await map(page);
+    const cv = await page.evaluate(() => { const r = document.querySelector('.lmd-map-canvas').getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; });
+    // Un nodo a la vista, lejos de los botones y sin otro pegado.
+    const pick = s.nodes.find((n) => n.x > cv.l + 30 && n.x < cv.r - 80 && n.y > cv.t + 30 && n.y < cv.b - 150 && s.nodes.every((m) => m === n || Math.hypot(m.x - n.x, m.y - n.y) > 34));
+    await touch('pointerdown', 1, pick.x, pick.y); await touch('pointerup', 1, pick.x, pick.y);
+    await until(async () => (await here(page)) === 'local/' + pick.name);
+    check('tocar un nodo abre su nota', (await here(page)) === 'local/' + pick.name && !(await map(page)).open, pick && pick.name);
     await ctx.close();
   });
 });

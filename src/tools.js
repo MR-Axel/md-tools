@@ -144,4 +144,6 @@
     icon: svg('<rect x="4" y="5.500" width="16" height="14.500" rx="2"/><path d="M4 10h16M8.500 3.500v4M15.500 3.500v4M9 14.500l2.200 2.200 4-4.400"/>') });
   register({ id: 'docx', name: 'Exportar a Word', about: 'Suma la opción Word (.docx) al menú Exportar. El archivo se arma en el navegador.', defaultOn: false, lazy: 'docx', module: () => LMD.docx,
     icon: svg('<path d="M6.500 3.500h8l4 4v13h-12z"/><path d="M14.500 3.500v4h4M8.800 11.500l1.300 5.500 1.900-4.200 1.900 4.200 1.300-5.500"/>') });
+  register({ id: 'linkmap', name: 'Mapa de enlaces', about: 'Un gráfico de qué notas enlazan con cuáles, y los enlaces que llegan a la nota abierta.', defaultOn: false, lazy: 'linkmap', module: () => LMD.linkmap,
+    icon: svg('<circle cx="6" cy="7" r="2.300"/><circle cx="18" cy="6" r="2.300"/><circle cx="12" cy="17.500" r="2.300"/><path d="M8.200 6.800l7.500-.600M7.100 9l3.800 6.500M16.900 8l-3.800 7.500"/>') });
 })();
