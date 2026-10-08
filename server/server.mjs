@@ -2566,6 +2566,13 @@ function kbAttrs(card, attrs) {
 }
 const kbColumn = (board, title, make) => { const t = kbText(title, 120, 'bad_column'); let col = board.columns.find((c) => c.title === t) || board.columns.find((c) => c.title.toLowerCase() === t.toLowerCase()); if (!col && make) { col = { title: t, cards: [] }; board.columns.push(col); } if (!col) throw new Fail(404, 'column_not_found', 'There is no column called ' + t); return col; };
 // Una operación sobre las tarjetas de una nota. Devuelve el texto nuevo y la tarjeta tocada. op: create, update, delete.
+const KB_DONE_NAMES = /^(done|complete|completed|finished|closed|shipped|hecho|hecha|hechos|hechas|listo|lista|listos|listas|terminado|terminada|terminados|terminadas|completado|completada|completados|completadas|finalizado|finalizada|finalizados|finalizadas|cerrado|cerrada|cerrados|cerradas)$/i;
+function kbDoneColumn(board) {
+  const cols = board.columns;
+  if (board.done === '') return null;
+  if (board.done != null) { const want = String(board.done).toLowerCase(); const hit = cols.find((c) => c.title === board.done) || cols.find((c) => c.title.toLowerCase() === want); if (hit) return hit; }
+  return cols.find((c) => KB_DONE_NAMES.test(c.title.replace(/[^\p{L}\p{N}]+/gu, ' ').trim())) || null;
+}
 function kbApply(text, op, args) {
   const parsed = kbBlocks(text); const at = isoNow();
   if (!parsed.blocks.length) throw new Fail(404, 'no_board', 'This note has no kanban board');
@@ -2575,6 +2582,7 @@ function kbApply(text, op, args) {
     const col = args.column == null || args.column === '' ? block.board.columns[0] || kbColumn(block.board, 'To do', true) : kbColumn(block.board, args.column, true);
     const card = { id: kbId(), text: kbText(args.title, 500, 'bad_title'), done: args.done === true, created: at, updated: at, attrs: {} };
     kbAttrs(card, args.attrs);
+    if (args.done == null && kbDoneColumn(block.board) === col) card.done = true;
     if (args.position === 'top') col.cards.unshift(card); else col.cards.push(card);
     kbStamp(block.board, at);
     return { text: kbSave(parsed, block), card: kbCard(card, col.title), board: bi };
@@ -2590,7 +2598,11 @@ function kbApply(text, op, args) {
   kbAttrs(card, args.attrs);
   if (args.column != null && args.column !== '') {
     const to = kbColumn(block.board, args.column, true);
-    if (to !== col || args.position) { col.cards.splice(col.cards.indexOf(card), 1); if (args.position === 'top') to.cards.unshift(card); else to.cards.push(card); col = to; }
+    if (to !== col || args.position) {
+      const doneCol = kbDoneColumn(block.board);
+      if (to !== col && args.done == null && doneCol) { if (to === doneCol) card.done = true; else if (col === doneCol) card.done = false; }
+      col.cards.splice(col.cards.indexOf(card), 1); if (args.position === 'top') to.cards.unshift(card); else to.cards.push(card); col = to;
+    }
   }
   kbStamp(block.board, at);
   if (JSON.stringify([card.text, card.done, card.attrs, col.title]) !== was) card.updated = at;
