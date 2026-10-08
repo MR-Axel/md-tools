@@ -400,8 +400,11 @@
       !isDir && ['del', 'Eliminar', true],
       // Una carpeta o una nota de la nube: avisar afuera cuando algo cambie ahí (automate.js).
       cloud && core.APP && core.pathOf(url) && ['auto', 'Automatizar…', false, 'spark'],
+      // Una carpeta de la nube sin contraseña, en un servidor que publica sitios: publicarla (publish.js).
+      folder && core.APP && LMD.sync.canPublish(folder) && ['site', 'Publicar como sitio…'],
     ].concat(folder ? LMD.vault.menu(folder) : []).filter(Boolean), (f) => {
       if (/^v-/.test(f)) LMD.vault.pick(f, folder);
+      else if (f === 'site') LMD.sync.publish(folder);
       else if (f === 'auto') core.ensure('automate').then((ok) => { if (ok) LMD.automate.wizard(core, { kind: isDir ? 'folder' : 'note', path: core.pathOf(url) }); });
       else if (f === 'new') newFile(at);
       else if (f === 'tpl') fromTemplate(at);
@@ -761,8 +764,9 @@
     '@media(prefers-color-scheme:dark){body{background:#121418;color:#e6e8ec}a{color:#bef264}pre,th,.lmd-box,.lmd-alert{background:#1a1d23}:not(pre)>code{background:#232730}pre,th,td,h2,hr,blockquote{border-color:#2a2e37}blockquote{color:#a0a7b4}}';
 
   // El documento como HTML limpio, sin lo que es de la interfaz: para exportarlo o copiarlo.
-  function htmlOf() {
-    const copy = core.ui.article.cloneNode(true);
+  // Con from, el de un bloque dibujado fuera de la página (una nota que se publica en un sitio).
+  function htmlOf(from) {
+    const copy = (from || core.ui.article).cloneNode(true);
     copy.querySelectorAll('.lmd-anchor, .lmd-code-copy, .lmd-code-lang, .lmd-dgm-tools, .lmd-add, .lmd-draft, .lmd-draft-li, .lmd-board-edit').forEach((n) => n.remove());
     copy.querySelectorAll('[contenteditable]').forEach((n) => n.removeAttribute('contenteditable'));
     copy.querySelectorAll('[data-l], [data-p]').forEach((n) => { n.removeAttribute('data-l'); n.removeAttribute('data-p'); });

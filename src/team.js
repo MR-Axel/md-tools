@@ -81,7 +81,8 @@
 
   // Ajustes del equipo: lo que quien administra decide para el espacio. Quien no administra los ve, bloqueados.
   const POLICIES = [['share', 'Los miembros pueden compartir notas del equipo con otras cuentas'], ['links', 'Los miembros pueden crear enlaces públicos de notas del equipo'],
-    ['tokens', 'Los miembros pueden conectar su IA al espacio del equipo'], ['automation', 'Los miembros pueden usar automatizaciones en el espacio del equipo']];
+    ['tokens', 'Los miembros pueden conectar su IA al espacio del equipo'], ['automation', 'Los miembros pueden usar automatizaciones en el espacio del equipo'],
+    ['publish', 'Los miembros pueden publicar carpetas del equipo como sitio']];
   const days = (n) => (n === 365 ? T('1 año') : T('{n} días', { n }));
   function policyBlock(mine, admin) {
     const p = mine.policies; if (!p) return '';
@@ -202,8 +203,9 @@
   const ACTION = { create: 'Creó', edit: 'Editó', move: 'Movió', delete: 'Eliminó', restore: 'Restauró', purge: 'Borró de la papelera', empty_trash: 'Vació la papelera', share: 'Compartió', unshare: 'Dejó de compartir',
     link: 'Creó un enlace', unlink: 'Quitó un enlace', invite: 'Invitó', uninvite: 'Quitó una invitación', join: 'Entró al equipo', leave: 'Salió del equipo', remove: 'Sacó a alguien', role: 'Cambió un papel',
     policy: 'Cambió un ajuste', team_name: 'Cambió el nombre del equipo', protect: 'Protegió el espacio', password: 'Cambió la contraseña', rotate: 'Empezó a rotar la llave', rotate_done: 'Rotó la llave', unprotect: 'Quitó la protección',
-    destroy: 'Eliminó el contenido', ai: 'Entró una IA', ai_unlock: 'Desbloqueó para su IA', token_create: 'Creó un token', token_revoke: 'Revocó un token', automation: 'Creó una automatización', automation_remove: 'Quitó una automatización' };
-  const POLICY_NAME = { share: 'Compartir', links: 'Enlaces públicos', live: 'Sesiones en vivo', tokens: 'IA de los miembros', automation: 'Automatizaciones', history_days: 'Historial de versiones', folder: 'Carpeta de las notas nuevas', template: 'Plantilla de las notas nuevas', ai_unlock: 'Desbloqueo para la IA' };
+    destroy: 'Eliminó el contenido', ai: 'Entró una IA', ai_unlock: 'Desbloqueó para su IA', token_create: 'Creó un token', token_revoke: 'Revocó un token', automation: 'Creó una automatización', automation_remove: 'Quitó una automatización',
+    site: 'Preparó un sitio', publish: 'Publicó un sitio', unpublish: 'Despublicó un sitio' };
+  const POLICY_NAME = { share: 'Compartir', links: 'Enlaces públicos', live: 'Sesiones en vivo', tokens: 'IA de los miembros', automation: 'Automatizaciones', publish: 'Publicar sitios', history_days: 'Historial de versiones', folder: 'Carpeta de las notas nuevas', template: 'Plantilla de las notas nuevas', ai_unlock: 'Desbloqueo para la IA' };
   // El detalle de una fila, en palabras: a quién, hacia dónde, qué ajuste y a qué valor.
   function detail(e) {
     const out = [];

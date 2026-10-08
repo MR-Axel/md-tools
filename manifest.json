@@ -95,6 +95,7 @@
         "src/dictate.js",
         "src/gallery.js",
         "src/automate.js",
+        "src/publish.js",
         "src/present.js",
         "src/daily.js",
         "src/docx.js",

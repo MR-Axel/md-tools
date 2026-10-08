@@ -32,7 +32,7 @@ export async function rig(env, engine) {
   const PORT = 24000 + Math.floor(Math.random() * 4000); const base = 'http://127.0.0.1:' + PORT;
   const st = { log: '', proc: null };
   const start = async () => {
-    st.proc = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(PORT), DATA_DIR: data, DEV_CODES: '1', ADMIN_KEY: ADMIN, PUBLIC_URL: base, ALLOW_ORIGINS: origin, ...(env || {}) }, stdio: ['ignore', 'pipe', 'pipe'] });
+    st.proc = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(PORT), DATA_DIR: data, DEV_CODES: '1', ADMIN_KEY: ADMIN, PUBLIC_URL: base, ALLOW_ORIGINS: origin, ...(typeof env === 'function' ? env(PORT) : (env || {})) }, stdio: ['ignore', 'pipe', 'pipe'] });
     const mark = st.log.length;
     st.proc.stdout.on('data', (d) => { st.log += d; }); st.proc.stderr.on('data', (d) => { st.log += d; });
     for (let i = 0; i < 80 && !/puerto/.test(st.log.slice(mark)); i++) await sleep(100);

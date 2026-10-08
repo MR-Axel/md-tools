@@ -183,9 +183,10 @@
     gallery: { js: ['src/gallery.js'] },
     // Ajustes > Automatizaciones y el alta guiada: se piden al abrir esa pestaña o al elegir "Automatizar…".
     automate: { js: ['src/automate.js'] },
+    publish: { js: ['src/publish.js'] },
   };
   const LAZY_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, tools: () => !!(LMD.diagram && LMD.formula && LMD.templates && LMD.community) };
-  LAZY_HAVE.gallery = () => !!LMD.gallery; LAZY_HAVE.automate = () => !!LMD.automate;
+  LAZY_HAVE.gallery = () => !!LMD.gallery; LAZY_HAVE.automate = () => !!LMD.automate; LAZY_HAVE.publish = () => !!LMD.publish;
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
   ['present', 'daily', 'docx', 'linkmap'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
   async function appLazy(what) {
@@ -208,7 +209,7 @@
 
   // ---------- Markdown ----------
 
-  function postProcess(article) {
+  function postProcess(article, off) {
     const p = settings.plugins;
 
     // Títulos: id y ancla
@@ -216,7 +217,7 @@
     const headings = Array.from(article.querySelectorAll('h1,h2,h3,h4,h5,h6'));
     headings.forEach((h) => {
       h.id = slugify(h.textContent, used);
-      if (p.anchors && !editMode) {
+      if (p.anchors && !editMode && !off) {
         const a = el('a', { class: 'lmd-anchor', href: '#' + h.id, 'aria-label': T('Enlace a esta sección'), text: '#' });
         h.appendChild(a);
       }
@@ -286,7 +287,7 @@
       const wrap = el('div', { class: 'lmd-code' });
       preEl.replaceWith(wrap); wrap.appendChild(preEl);
       if (lang) wrap.appendChild(el('span', { class: 'lmd-code-lang', text: lang }));
-      if (p.copyCode) {
+      if (p.copyCode && !off) {
         const btn = el('button', { class: 'lmd-code-copy', type: 'button', title: T('Copiar') }, ICON.copy);
         btn.addEventListener('click', () => copyText(code.textContent, btn));
         wrap.appendChild(btn);
@@ -300,7 +301,7 @@
       if (/^https?:/i.test(href) && a.host !== location.host) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
     });
 
-    if (APP) {
+    if (APP && !off) {
       // Rutas relativas: los links pasan por la app y las imágenes se leen de la carpeta abierta.
       const relative = (v) => v && !/^(#|[a-z][a-z0-9+.-]*:|\/\/)/i.test(v);
       article.querySelectorAll('a[href]').forEach((a) => {
@@ -327,6 +328,8 @@
 
     if (p.imageViewer) article.querySelectorAll('img').forEach((img) => img.classList.add('lmd-zoomable'));
 
+    // Fuera de la página (drawOff), las fórmulas y los diagramas los espera quien llama.
+    if (off) return headings;
     renderMath(article);
     renderMermaid(article);
     renderGraphviz(article);
@@ -444,12 +447,12 @@
   }
 
   let mermaidSeq = 0;
-  async function renderMermaid(article) {
+  async function renderMermaid(article, light) {
     const nodes = Array.from(article.querySelectorAll('pre.lmd-mermaid'));
     if (!nodes.length) return;
     if (!(await ensure('mermaid')) || !window.mermaid) return;
     await tools();
-    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: isDark() ? 'dark' : 'default', flowchart: { curve: settings.diagramShape === 'square' ? 'linear' : 'basis' } });
+    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: !light && isDark() ? 'dark' : 'default', flowchart: { curve: settings.diagramShape === 'square' ? 'linear' : 'basis' } });
     for (const n of nodes) {
       const code = n.textContent;
       try {
@@ -506,6 +509,20 @@
         n.replaceWith(box);
       } catch (e) { LMD.diagram.fail(n, 'dot', e); }
     }
+  }
+
+  // Una nota cualquiera dibujada fuera de la página, con sus fórmulas y diagramas ya resueltos: lo que se publica
+  // como página de un sitio (publish.js). Los diagramas salen en el tema claro, que se lee sobre los dos fondos.
+  // Devuelve el bloque y las filas del encabezado de la nota. Los enlaces quedan como se escribieron.
+  async function drawOff(text) {
+    const fm = splitFrontmatter(String(text == null ? '' : text));
+    if (settings.plugins.highlight && /^\s*(```|~~~)\s*\w/m.test(fm.body)) await ensure('hljs');
+    if (settings.plugins.emoji && !window.markdownitEmoji && EMOJI_RE.test(fm.body)) { if (await ensure('emoji')) parserKey = ''; }
+    const box = el('div');
+    box.innerHTML = DOMPurify.sanitize(buildParser().render(fm.body), { ADD_ATTR: ['target', 'data-tex'], FORBID_TAGS: ['style', 'form'] });
+    postProcess(box, true);
+    await renderMath(box); await renderMermaid(box, true); await renderGraphviz(box);
+    return { box, rows: fm.rows || [] };
   }
 
   function frontmatterNode(rows) {
@@ -3153,7 +3170,7 @@
     openApp: (query) => bg({ type: 'openApp', query }),
     openPanel: (tab, why) => openPanel(tab, why),
     // patch: se dibujó en el lugar un cambio de otra persona (sesión en vivo), sin pasar por render.
-    ui, hooks: { render: [], tree: [], doc: [], patch: [], home: [] }, menus: { export: [], more: [] }, actions: {},
+    ui, hooks: { render: [], tree: [], doc: [], patch: [], home: [], saved: [] }, menus: { export: [], more: [] }, actions: {},
     get treeRoot() { return treeRoot; }, collect: (root) => collectFiles(root), readFile: (url) => readFile(url), wikiKey, lastBlock: null, appUrl: APP_URL, hold: false,
     // Lo que la sesión en vivo (live.js) necesita del lector.
     live: {
@@ -3193,7 +3210,7 @@
     dirHandle: async (dirUrl) => { let dir = rootOf(dirUrl).handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, ensure, isDark,
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
-    rangeOf, render, softRender, flash, insertLines, spliceLines, replaceLines, commitBlock, undo, redo, editCode, vFile, toHref,
+    drawOff, rangeOf, render, softRender, flash, insertLines, spliceLines, replaceLines, commitBlock, undo, redo, editCode, vFile, toHref,
     inline: (text) => DOMPurify.sanitize(buildParser().renderInline(text)),
     // Un Markdown cualquiera, dibujado con el mismo saneado que una nota (la vista previa de una plantilla).
     preview: (text) => homeCtx().preview(text),
@@ -3425,6 +3442,8 @@
       } finally { saving = false; if (inbox) setTimeout(drainInbox, 0); } // lo que llegó mientras salía este guardado entra después
       if (seq !== docSeq) return true;
       if (isCloud()) diskRev = savedRev == null ? null : savedRev;
+      // Una nota de la nube quedó guardada: quien publica un sitio con esa nota se entera (sync.js).
+      if (isCloud()) { const at = vParts(HERE).join('/'); core.hooks.saved.forEach((fn) => { try { fn(at, savedRev); } catch (e) { /* quien escucha se arregla */ } }); }
       fileCache.delete(HERE); // la búsqueda en la carpeta vuelve a leerlo
       cloudState = 'ok';
       diskText = sent; diskStamp = ''; dirty = raw !== diskText; updateSaveState();
