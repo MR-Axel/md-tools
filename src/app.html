@@ -6,7 +6,8 @@
 <title>SharpMD</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="description" content="Read and edit Markdown files in the browser. Nothing is uploaded: files stay on your machine.">
-<link rel="icon" href="../icons/icon32.png">
+<link rel="icon" type="image/png" sizes="32x32" href="../icons/icon32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="../icons/icon16.png">
 <link rel="manifest" href="../manifest.webmanifest">
 <meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">
@@ -23,16 +24,15 @@
 <script src="boot.js"></script>
 <link rel="preload" href="../vendor/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
 <style>
-  /* Pantalla de carga: el logo con el cursor sobre el fondo del tema (los colores los deja boot.js), hasta que la app está lista. */
+  /* Pantalla de carga: el logo (icons/logo.svg) con el cursor que parpadea, sobre el fondo del tema (lo deja boot.js), hasta que la app está lista. */
   html { background: #fbfaf7; } @media (prefers-color-scheme: dark) { html { background: #121418; } } /* antes de boot.js: que Safari no destelle en blanco al abrir la app instalada */
   .lmd-splash { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: var(--lmd-boot-bg, #121418); }
   .lmd-splash svg { width: 72px; height: 72px; opacity: 0; animation: lmd-splash-in .18s ease-out .12s forwards; }
-  .lmd-splash path { fill: none; stroke: var(--lmd-boot-hash, #bef264); stroke-width: 5.5; stroke-linecap: round; }
-  .lmd-splash rect { fill: var(--lmd-boot-bar, #e8eaee); animation: lmd-splash-blink 1.06s steps(1, end) .3s infinite; }
+  .lmd-splash .lmd-splash-cur { animation: lmd-splash-blink 1.06s steps(1, end) .3s infinite; }
   .lmd-splash.lmd-splash-out { opacity: 0; pointer-events: none; transition: opacity .16s ease-out; }
   @keyframes lmd-splash-in { to { opacity: 1; } }
   @keyframes lmd-splash-blink { 50% { opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { .lmd-splash svg { opacity: 1; animation: none; } .lmd-splash rect { animation: none; } .lmd-splash.lmd-splash-out { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .lmd-splash svg { opacity: 1; animation: none; } .lmd-splash .lmd-splash-cur { animation: none; } .lmd-splash.lmd-splash-out { transition: none; } }
   @media print { .lmd-splash { display: none; } }
 </style>
 <link rel="stylesheet" href="../vendor/hljs-themes.css">
@@ -40,7 +40,7 @@
 <link rel="stylesheet" href="editors.css">
 </head>
 <body>
-  <div class="lmd-splash" id="lmd-splash" aria-hidden="true"><svg viewBox="6 8 52 48"><path d="M27 16 22 48M41 16 36 48M13 27h30M11 38h30"/><rect x="48" y="15" width="6" height="34" rx="3"/></svg></div>
+  <div class="lmd-splash" id="lmd-splash" aria-hidden="true"><svg viewBox="0 0 64 64"><rect width="64" height="64" rx="15" fill="#14161a"/><g fill="#f3f5f8"><rect x="14.5" y="17" width="6" height="30" rx="1.3"/><rect x="26.5" y="17" width="6" height="30" rx="1.3"/><rect x="8.5" y="23.25" width="30" height="6" rx="1.3"/><rect x="8.5" y="34.75" width="30" height="6" rx="1.3"/></g><rect x="43.5" y="15" width="11" height="34" rx="2.4" fill="#c5f467" class="lmd-splash-cur"/></svg></div>
   <script defer src="web.js"></script>
   <script defer src="defaults.js"></script>
   <script defer src="storeapp.js"></script>

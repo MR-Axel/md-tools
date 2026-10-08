@@ -14,7 +14,8 @@
   body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.65 "MDT Inter", -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
   main { width: min(720px, 100% - 40px); margin: 0 auto; padding: 46px 0 80px; }
   .top { display: flex; align-items: center; gap: 14px; margin-bottom: 40px; }
-  .top > a { margin-right: auto; color: var(--muted); text-decoration: none; font-weight: 600; }
+  .top > a { margin-right: auto; color: var(--muted); text-decoration: none; font-weight: 400; }
+  .top b { font-weight: 700; }
   .lang { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); }
   .lang a { display: flex; align-items: center; height: 26px; padding: 0 11px; border-radius: 999px; color: var(--muted); font-size: 12.5px; font-weight: 600; text-decoration: none; }
   .lang a.on { background: var(--accent); color: var(--on); }
@@ -35,7 +36,7 @@
 </head>
 <body>
 <main>
-  <div class="top"><a href="./">← SharpMD</a><!--LANG--></div>
+  <div class="top"><a href="./">← <b>Sharp</b>MD</a><!--LANG--></div>
 
   <div lang="en">
     <h1>A WYSIWYG Markdown editor online: edit Markdown without typing syntax</h1>

@@ -4,7 +4,7 @@
 import { chromium } from 'playwright-core';
 import fs from 'fs'; import path from 'path'; import { fileURLToPath, pathToFileURL } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const out = path.join(root, 'docs', 'social-card-3.png');
+const out = path.join(root, 'docs', 'social-card-4.png');
 const font = pathToFileURL(path.join(root, 'vendor/fonts/inter.woff2')).href;
 const html = `<!doctype html><meta charset="utf-8"><style>
   @font-face { font-family: "Inter"; font-weight: 100 900; src: url("${font}") format("woff2"); }
@@ -13,7 +13,7 @@ const html = `<!doctype html><meta charset="utf-8"><style>
   .glow { position: absolute; right: -220px; top: -160px; width: 900px; height: 900px; background: radial-gradient(closest-side, rgba(190, 242, 100, .17), rgba(190, 242, 100, 0)); }
   .text { position: absolute; left: 88px; top: 0; bottom: 0; width: 640px; display: flex; flex-direction: column; justify-content: center; }
   .brand { display: flex; align-items: center; gap: 26px; font-size: 104px; font-weight: 740; letter-spacing: -0.045em; line-height: 1; }
-  .brand svg { width: 128px; height: 118px; flex: none; }
+  .brand svg { width: 118px; height: 118px; flex: none; } .brand span { font-weight: 400; }
   .tag { margin-top: 40px; font-size: 47px; line-height: 1.18; font-weight: 560; letter-spacing: -0.028em; color: #c9ced8; }
   .tag b { color: #bef264; font-weight: 620; }
   /* A la derecha, un recorte de la app como detalle: una nota con el párrafo que se está escribiendo. */
@@ -30,7 +30,7 @@ const html = `<!doctype html><meta charset="utf-8"><style>
     <div class="edit"><small>Written by your AI</small>Checkout passes the test<i></i></div>
     <div class="t on"><i></i><div class="p" style="max-width:250px"></div></div><div class="t on"><i></i><div class="p" style="max-width:310px"></div></div><div class="t"><i></i><div class="p" style="max-width:210px"></div></div><div class="t"><i></i><div class="p" style="max-width:280px"></div></div></div>
   <div class="text">
-    <div class="brand"><svg viewBox="8 12 50 40"><path d="M27 16 22 48M41 16 36 48M13 27h30M11 38h30" fill="none" stroke="#bef264" stroke-width="5.5" stroke-linecap="round"/><rect x="48" y="15" width="6" height="34" rx="3" fill="#e8eaee"/></svg>SharpMD</div>
+    <div class="brand"><svg viewBox="0 0 64 64"><rect width="64" height="64" rx="15" fill="#14161a"/><g fill="#f3f5f8"><rect x="14.5" y="17" width="6" height="30" rx="1.3"/><rect x="26.5" y="17" width="6" height="30" rx="1.3"/><rect x="8.5" y="23.25" width="30" height="6" rx="1.3"/><rect x="8.5" y="34.75" width="30" height="6" rx="1.3"/></g><rect x="43.5" y="15" width="11" height="34" rx="2.4" fill="#c5f467"/></svg><div>Sharp<span>MD</span></div></div>
     <div class="tag">Markdown notes your <b>AI</b> writes and your <b>team</b> reads</div>
   </div>
 </body>`;

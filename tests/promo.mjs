@@ -17,12 +17,12 @@ const base = `<style>
 </style>`;
 const small = `<!doctype html><meta charset="utf-8">${base}<body><div class="glow"></div>
   <div style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 44px">
-    <div class="brand" style="font-size:46px"><img src="${url('icons/icon128.png')}">SharpMD</div>
+    <div class="brand" style="font-size:46px"><img src="${url('icons/icon128.png')}"><div>Sharp<span style="font-weight:400">MD</span></div></div>
     <div class="tag" style="margin-top:16px;font-size:21px;line-height:1.3">Read and edit Markdown<br>in the browser</div>
   </div></body>`;
 const big = `<!doctype html><meta charset="utf-8">${base}<body><div class="glow"></div>
   <div style="position:absolute;left:84px;top:0;bottom:0;width:520px;display:flex;flex-direction:column;justify-content:center">
-    <div class="brand" style="font-size:72px"><img src="${url('icons/icon128.png')}">SharpMD</div>
+    <div class="brand" style="font-size:72px"><img src="${url('icons/icon128.png')}"><div>Sharp<span style="font-weight:400">MD</span></div></div>
     <div class="tag" style="margin-top:26px;font-size:34px;line-height:1.25">Read and edit Markdown<br>in the browser</div>
     <div class="tag" style="margin-top:22px;font-size:20px"><b>Free and open source</b> · sharpmd.app</div>
   </div>

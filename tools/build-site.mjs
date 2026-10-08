@@ -14,7 +14,7 @@ const src = fs.readFileSync(path.join(root, 'tools', 'landing.src.html'), 'utf8'
   .replace('<div class="plans">', TEAM_OPEN ? '<div class="plans three">' : '<div class="plans">');
 if (/<!--\/?TEAM-->/.test(src)) throw new Error('quedó una marca del plan de equipo sin resolver');
 // La imagen que se ve al compartir el enlace: la arma tests/social.mjs. Si cambia, cambia de nombre, para que las redes no usen la anterior.
-const CARD = SITE + '/docs/social-card-3.png';
+const CARD = SITE + '/docs/social-card-4.png';
 const CARD_ALT = { en: 'SharpMD: Markdown notes your AI writes and your team reads', es: 'SharpMD: notas en Markdown que tu IA escribe y tu equipo lee' };
 
 // Los precios que muestra la portada, en un solo lugar: las tarjetas de los planes, la pregunta frecuente y los datos
@@ -84,7 +84,7 @@ function build(lang) {
     '<meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">', '<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">',
     '<link rel="preload" href="' + up + 'vendor/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>',
     '<link rel="preload" href="' + up + 'docs/clips/hero.jpg" as="image" fetchpriority="high">',
-    '<link rel="icon" href="' + up + 'icons/icon32.png">',
+    '<link rel="icon" type="image/png" sizes="32x32" href="' + up + 'icons/icon32.png">', '<link rel="icon" type="image/png" sizes="16x16" href="' + up + 'icons/icon16.png">',
     '<script type="application/ld+json">' + JSON.stringify(app) + '</script>',
     '<script type="application/ld+json">' + JSON.stringify({ '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: faq }) + '</script>',
   ].join('\n');
@@ -139,7 +139,7 @@ function buildPage(slug, lang) {
     '<meta property="og:image" content="' + CARD + '">', '<meta property="og:image:type" content="image/png">', '<meta property="og:image:width" content="1200">', '<meta property="og:image:height" content="630">', '<meta property="og:image:alt" content="' + esc(CARD_ALT[lang]) + '">',
     '<meta name="twitter:card" content="summary_large_image">', '<meta name="twitter:title" content="' + esc(m.title) + '">', '<meta name="twitter:description" content="' + esc(m.desc) + '">', '<meta name="twitter:image" content="' + CARD + '">', '<meta name="twitter:image:alt" content="' + esc(CARD_ALT[lang]) + '">',
     '<meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">', '<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">',
-    '<link rel="icon" href="' + up + 'icons/icon32.png">',
+    '<link rel="icon" type="image/png" sizes="32x32" href="' + up + 'icons/icon32.png">', '<link rel="icon" type="image/png" sizes="16x16" href="' + up + 'icons/icon16.png">',
   ].join('\n');
   html = html.replace(/<!--HEAD-->/, head).replace(/<html[^>]*>/, '<html lang="' + lang + '">');
   // en /es/ las rutas relativas suben un nivel; las que empiezan con ./ se quedan en /es/ (la portada y la otra página, en castellano)

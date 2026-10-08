@@ -643,9 +643,8 @@
     ui.customStyle = el('style', { id: 'lmd-custom-css' });
     // Ícono de la pestaña: el de SharpMD, para que no quede el genérico ni el de otra extensión.
     document.querySelectorAll('link[rel~="icon"]').forEach((n) => n.remove());
-    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#1a1d23"/>' +
-      '<g stroke="#bef264" stroke-width="5.5" stroke-linecap="round"><path d="M27 16 22 48M41 16 36 48M13 27h30M11 38h30"/></g>' +
-      '<rect x="48" y="15" width="6" height="34" rx="3" fill="#e8eaee"/></svg>';
+    // El logo en su grilla de 16 px (la de icons/icon16.png, ver tools/build-icons.mjs): en la pestaña cada trazo cae en píxeles enteros.
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3.75" fill="#14161a"/><path fill="#f3f5f8" d="M3 4h2v8H3zM7 4h2v8H7zM2 5h8v2H2zM2 9h8v2H2z"/><rect x="11" y="3" width="3" height="10" rx=".5" fill="#c5f467"/></svg>';
     document.head.appendChild(el('link', { rel: 'icon', type: 'image/svg+xml', href: 'data:image/svg+xml,' + encodeURIComponent(svg) }));
     document.head.appendChild(ui.customStyle);
 
