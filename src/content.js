@@ -907,9 +907,9 @@
       if (settings.theme === 'auto') { applySettings(); render(); }
     });
     // Atrás y adelante del navegador: la dirección ya cambió, falta traer la nota que le toca.
-    if (APP) window.addEventListener('hashchange', () => { const open = takeOpen(); if (open) LMD.install.openLink(open, homeCtx()); });
+    if (APP) window.addEventListener('hashchange', () => { const open = takeOpen(); if (open) LMD.install.openLink(open, homeCtx()); const sign = takeSignin(); if (sign) LMD.home.signinLink(homeCtx(), sign); });
     if (APP) window.addEventListener('popstate', () => {
-      if (/^#open=/.test(location.hash)) return; // lo atiende hashchange
+      if (/^#(open|signin)=/.test(location.hash)) return; // lo atiende hashchange
       const f = new URLSearchParams(location.search).get('f') || '';
       if (noDoc ? !f : VBASE + f === HERE) { const frag = unesc(location.hash.slice(1)); const t = frag && !/^lmd-/.test(frag) ? findAnchor(frag) : null; if (t) { shown(t); t.scrollIntoView(); } return; }
       go(f, { pop: true, hash: location.hash });
@@ -3874,6 +3874,15 @@
     return m[1];
   }
 
+  // El enlace del correo con el código (app.html#signin=...): sale de la barra de direcciones apenas se lee, no se
+  // guarda en ningún lado, y antes de entrar se pregunta (home.js).
+  function takeSignin() {
+    const m = APP && /^#signin=(.*)$/.exec(location.hash);
+    if (!m) return '';
+    history.replaceState(history.state, '', location.href.split('#')[0]);
+    return m[1];
+  }
+
   // ---------- Arranque de la página propia ----------
   async function appBoot() {
     const params = new URLSearchParams(location.search);
@@ -3919,8 +3928,8 @@
     if (hashTab) { history.replaceState(history.state, '', location.href.split('#')[0]); openPanel(hashTab); }
     updateSaveState();
     checkUpdate(false);
-    const openAt = takeOpen();
-    if (APP) appBoot().finally(unsplash).then(() => { if (openAt) LMD.install.openLink(openAt, homeCtx()); }, () => {});
+    const openAt = takeOpen(); const signAt = takeSignin();
+    if (APP) appBoot().finally(unsplash).then(() => { if (openAt) LMD.install.openLink(openAt, homeCtx()); else if (signAt) LMD.home.signinLink(homeCtx(), signAt); }, () => {});
     else {
       afterOpen({ hash: location.hash });
       // El árbol arranca donde lo dejó la persona, o en la raíz del repositorio si el archivo está dentro de uno.

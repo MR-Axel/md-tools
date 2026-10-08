@@ -17,7 +17,7 @@
 //   TEST_LOGIN      correo:123456 de una cuenta de prueba que entra con ese código fijo, sin correo (para revisiones de tienda)
 //   PADDLE_WEBHOOK_SECRET   firma de los avisos de Paddle: con esto /paddle/webhook activa y da de baja el plan pago
 //   PORTAL_URL      dirección donde quien paga administra su suscripción
-//   FEEDBACK_TO     correo que recibe los comentarios y reportes de error de POST /feedback. Sin esto, responde 404
+//   FEEDBACK_TO     correo que recibe los comentarios y reportes de error de POST /feedback (además quedan en la tabla feedback). Sin esto, responde 404
 //   AUTH_PER_IP     códigos de acceso que una misma IP puede pedir por hora (20). Detrás de un proxy la IP sale de x-forwarded-for
 //   VAULT_MINUTE_MS solo para pruebas: cuántos milisegundos dura un minuto de una carpeta desbloqueada para la IA (60000)
 //   DATA_KEY        32 bytes en base64: con ella, el texto de las notas, del historial y de los comentarios se guarda cifrado
@@ -40,7 +40,7 @@
 //   TEAM_INVITES_DAY  invitaciones que un equipo puede mandar por día (20)
 //   TEAM_HISTORY_DAYS días de historial de versiones en el espacio de un equipo (365)
 //   TEAM_LOG_DAYS   días que dura el registro de actividad de un equipo (90)
-//   APP_URL         dirección de la app: a ella llevan el correo de invitación y los enlaces que el MCP devuelve
+//   APP_URL         dirección de la app: a ella llevan el correo de invitación, el botón del correo con el código y los enlaces que el MCP devuelve
 //                   para abrir una nota (https://sharpmd.app/src/app.html)
 //   TRASH_DAYS      días que una nota eliminada queda en la papelera antes de borrarse del todo (30)
 //   GALLERY_NOTIFY_URL  opcional: cada aporte nuevo a la galería manda acá un POST con { text } (una línea corta, sin
@@ -240,17 +240,28 @@ const limit = (key, max, span, code) => { const s = waitFor(key, max, span); if 
 const clientIp = (req) => String(req.headers['x-forwarded-for'] || '').split(',').pop().trim() || req.socket.remoteAddress || '';
 
 // ---------- Correo ----------
-// El correo del código: inglés por defecto, español si la app lo pide. Va en HTML y en texto plano.
+// El correo del código: inglés por defecto, español si la app lo pide. Va en HTML y en texto plano, sin imágenes ni
+// rastreo. El código va primero en el asunto (el teléfono lo ofrece para copiar desde el aviso) y solo en su renglón,
+// sin nada pegado: un doble clic o una pulsación larga lo toma entero.
+// El botón abre la app con el correo y el código ya cargados. Van en el fragmento de la dirección (#signin=), que el
+// navegador no manda a ningún servidor ni pone en Referer. Es el mismo código, con su único uso y su vencimiento: el
+// enlace no suma ningún poder. Abrirlo no inicia sesión: la app pregunta, y recién al confirmar llama a /auth/verify,
+// así que un antivirus o un cliente de correo que abre los enlaces no gasta el código.
 const MAIL = {
-  en: { subject: 'Your SharpMD code: ', lead: 'Your sign-in code', note: 'It expires in 15 minutes. If you did not ask for it, you can ignore this email.', text: (c) => 'Your SharpMD code is ' + c + '. It expires in 15 minutes.\n\nIf you did not ask for it, you can ignore this email.' },
-  es: { subject: 'Tu código de SharpMD: ', lead: 'Tu código para entrar', note: 'Vence en 15 minutos. Si no lo pediste, podés ignorar este correo.', text: (c) => 'Tu código de SharpMD es ' + c + '. Vence en 15 minutos.\n\nSi no lo pediste, podés ignorar este correo.' },
+  en: { subject: (c) => c + ' is your SharpMD code', lead: 'Your sign-in code', go: 'Sign in to SharpMD', or: 'Or type the code in the app.', note: 'It expires in 15 minutes and works once. If you did not ask for it, you can ignore this email.',
+    text: (c, link) => c + '\n\nThat is your SharpMD sign-in code. Type it in the app, or open this link and confirm:\n' + link + '\n\nIt expires in 15 minutes and works once. If you did not ask for it, you can ignore this email.' },
+  es: { subject: (c) => c + ' es tu código de SharpMD', lead: 'Tu código para entrar', go: 'Entrar a SharpMD', or: 'O escribí el código en la app.', note: 'Vence en 15 minutos y sirve una sola vez. Si no lo pediste, podés ignorar este correo.',
+    text: (c, link) => c + '\n\nEse es tu código para entrar a SharpMD. Escribilo en la app, o abrí este enlace y confirmá:\n' + link + '\n\nVence en 15 minutos y sirve una sola vez. Si no lo pediste, podés ignorar este correo.' },
 };
-const mailHtml = (m, code) => '<!doctype html><html><body style="margin:0;padding:32px 16px;background:#f4f3ee;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1d2026">' +
+const signinLink = (email, code) => APP_URL.split('#')[0] + '#signin=' + Buffer.from(code + ':' + email, 'utf8').toString('base64url');
+const mailHtml = (m, code, link) => '<!doctype html><html><body style="margin:0;padding:32px 16px;background:#f4f3ee;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1d2026">' +
   '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">' +
   '<table role="presentation" width="420" cellpadding="0" cellspacing="0" style="max-width:420px;width:100%;background:#ffffff;border:1px solid #dedbd2;border-radius:14px">' +
   '<tr><td style="padding:28px 32px 8px;font-size:17px;font-weight:700;letter-spacing:-0.01em"><span style="color:#4d7c0f">#</span> SharpMD</td></tr>' +
   '<tr><td style="padding:8px 32px 0;font-size:15px;color:#5c6370">' + m.lead + '</td></tr>' +
-  '<tr><td style="padding:14px 32px 6px"><div style="padding:16px 0;border-radius:10px;background:#f1efe9;text-align:center;font:700 32px/1 ui-monospace,Consolas,Menlo,monospace;letter-spacing:0.28em;color:#1d2026">' + code + '</div></td></tr>' +
+  '<tr><td style="padding:14px 32px 6px"><div style="padding:16px 0;border-radius:10px;background:#f1efe9;text-align:center;font:700 32px/1 ui-monospace,Consolas,Menlo,monospace;letter-spacing:0.28em;color:#1d2026;-webkit-user-select:all;user-select:all">' + code + '</div></td></tr>' +
+  '<tr><td style="padding:10px 32px 0" align="center"><a href="' + html(link) + '" style="display:inline-block;padding:12px 22px;border-radius:999px;background:#4d7c0f;color:#ffffff;font-size:15px;font-weight:650;text-decoration:none">' + m.go + '</a></td></tr>' +
+  '<tr><td style="padding:10px 32px 0;font-size:13.5px;color:#5c6370" align="center">' + m.or + '</td></tr>' +
   '<tr><td style="padding:12px 32px 28px;font-size:13.5px;line-height:1.5;color:#8a909c">' + m.note + '</td></tr>' +
   '</table><div style="padding-top:14px;font-size:12px;color:#8a909c">sharpmd.app</div></td></tr></table></body></html>';
 
@@ -269,7 +280,8 @@ async function sendMail(mail) {
 
 async function sendCode(email, code, lang) {
   const m = MAIL[lang === 'es' ? 'es' : 'en'];
-  const sent = await sendMail({ to: email, subject: m.subject + code, text: m.text(code), html: mailHtml(m, code) });
+  const link = signinLink(email, code);
+  const sent = await sendMail({ to: email, subject: m.subject(code), text: m.text(code, link), html: mailHtml(m, code, link) });
   if (!sent && !env.DEV_CODES) throw new Fail(500, 'mail_not_configured');
 }
 
@@ -378,9 +390,24 @@ const account = (user) => ({ id: user.id, share: shareAllowed(user), live: user.
   billing: !teamGuest(user), checkout: teamGuest(user) ? { monthly: '', yearly: '' } : { monthly: payLink(env.CHECKOUT_MONTHLY, user), yearly: payLink(env.CHECKOUT_YEARLY, user) }, team: teamView(user), pages: pagesView(user) });
 
 // ---------- Comentarios ----------
-// Lo que alguien escribe desde "Enviar comentarios" llega por correo a FEEDBACK_TO. Entra con o sin sesión.
-// Tope de cinco por hora por IP y por cuenta.
+// Lo que alguien escribe desde "Enviar comentarios" queda guardado en la tabla feedback y además sale por correo a
+// FEEDBACK_TO. Entra con o sin sesión. Tope de cinco por hora por IP y por cuenta.
+// Guardado es recibido: si el correo falla, el comentario ya está en la base y la respuesta es de éxito.
+// De cada uno se guarda el texto, el correo si lo dieron, si había sesión y con qué plan, y los cuatro datos de
+// contexto ya saneados (place es "where": web o extension). De una denuncia, además, qué nota es. Nada de contenido de
+// notas. Va en claro, sin DATA_KEY: lo lee de afuera, en solo lectura, quien avisa las novedades. El id no se repite
+// (AUTOINCREMENT): "los nuevos desde el id N" vale aunque la tabla se haya vaciado. Se borran solos a los 180 días.
 const FEEDBACK_MAX = 5;
+const FEEDBACK_DAYS = 180;
+db.exec("CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, created INTEGER NOT NULL, kind TEXT NOT NULL DEFAULT 'feedback', from_email TEXT NOT NULL DEFAULT '', signed_in INTEGER NOT NULL DEFAULT 0, plan TEXT NOT NULL DEFAULT '', text TEXT NOT NULL DEFAULT '', version TEXT NOT NULL DEFAULT '', place TEXT NOT NULL DEFAULT '', browser TEXT NOT NULL DEFAULT '', lang TEXT NOT NULL DEFAULT '', rep_kind TEXT NOT NULL DEFAULT '', rep_note TEXT NOT NULL DEFAULT '', rep_owner TEXT NOT NULL DEFAULT '')");
+const feedbackSweep = () => q('DELETE FROM feedback WHERE created < ?').run(now() - FEEDBACK_DAYS * DAY);
+// GET /admin/feedback?days=N: los de los últimos N días (30 si no se dice, 180 como mucho), del más nuevo al más viejo.
+function feedbackAdmin(url) {
+  const days = Math.min(FEEDBACK_DAYS, Math.max(1, Math.floor(+url.searchParams.get('days') || 30)));
+  const rows = q('SELECT * FROM feedback WHERE created >= ? ORDER BY id DESC LIMIT 500').all(now() - days * DAY);
+  return { days, items: rows.map((r) => Object.assign({ id: r.id, created: r.created, kind: r.kind, from_email: r.from_email, signed_in: !!r.signed_in, plan: r.plan, text: r.text, context: { version: r.version, where: r.place, browser: r.browser, lang: r.lang } },
+    r.kind === 'report' ? { report: { kind: r.rep_kind, note: r.rep_note, owner: r.rep_owner } } : {})) };
+}
 async function feedback(req, body) {
   if (!env.FEEDBACK_TO || !(env.RESEND_API_KEY || env.MAIL_WEBHOOK || env.DEV_CODES)) throw new Fail(404, 'no_route');
   let user = null;
@@ -397,15 +424,22 @@ async function feedback(req, body) {
   // Del contexto solo pasan estos cuatro datos, recortados: nada de notas ni de rutas.
   const c = body.context && typeof body.context === 'object' ? body.context : {};
   const field = (v, max) => String(v == null ? '' : v).replace(/[\r\n]+/g, ' ').trim().slice(0, max) || '-';
+  const f = { note: rep ? field(rep.note, 300) : '-', owner: rep ? field(rep.owner, 120) : '-', kind: rep && ['link', 'shared', 'live', 'gallery', 'site'].includes(rep.kind) ? rep.kind : '-',
+    version: field(c.version, 40), where: c.where === 'extension' ? 'extension' : 'web', browser: field(c.browser, 300), lang: field(c.lang, 20) };
+  const kept = (v) => (v === '-' ? '' : v);
+  const id = Number(q('INSERT INTO feedback (created, kind, from_email, signed_in, plan, text, version, place, browser, lang, rep_kind, rep_note, rep_owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(now(), rep ? 'report' : 'feedback', from, user ? 1 : 0, user ? String(user.plan || '') : '', text.slice(0, 4000), kept(f.version), f.where, kept(f.browser), kept(f.lang), kept(f.kind), kept(f.note), kept(f.owner)).lastInsertRowid);
   const mail = { to: env.FEEDBACK_TO, subject: rep ? 'SharpMD report' : 'SharpMD feedback',
-    text: (rep ? 'Reported note: ' + field(rep.note, 300) + '\nOwner: ' + field(rep.owner, 120) + '\nKind: ' + (['link', 'shared', 'live', 'gallery', 'site'].includes(rep.kind) ? rep.kind : '-') + '\n\n' : '') +
+    text: (rep ? 'Reported note: ' + f.note + '\nOwner: ' + f.owner + '\nKind: ' + f.kind + '\n\n' : '') +
       (text || '(no reason given)') + '\n\n---\nFrom: ' + (from || 'anonymous') + (user ? ' (signed in, ' + user.plan + ' plan)' : '') +
-      '\nVersion: ' + field(c.version, 40) + '\nWhere: ' + (c.where === 'extension' ? 'extension' : 'web') +
-      '\nBrowser: ' + field(c.browser, 300) + '\nLanguage: ' + field(c.lang, 20) + '\n' };
+      '\nVersion: ' + f.version + '\nWhere: ' + f.where +
+      '\nBrowser: ' + f.browser + '\nLanguage: ' + f.lang + '\n' };
   if (from) mail.reply_to = from;
+  // El comentario ya quedó guardado: si el correo no sale, se anota y la respuesta es la misma.
   // Sin correo configurado y en modo de prueba no sale nada: alcanza para probar la app.
-  if (!(await sendMail(mail))) return { ok: true, dev: true };
-  return { ok: true };
+  let sent = true;
+  try { sent = await sendMail(mail); } catch (e) { console.error('comentarios: no salió el correo del comentario ' + id); }
+  return sent ? { ok: true } : { ok: true, dev: true };
 }
 
 // ---------- Bóvedas: carpetas con contraseña ----------
@@ -2319,6 +2353,7 @@ function accountDelete(req, user, body) {
     for (const id of ids) for (const sql of ACCOUNT_ROWS) q(sql).run(id);
     q('DELETE FROM shares WHERE email = ?').run(user.email);
     q('DELETE FROM team_invites WHERE email = ?').run(user.email);
+    q('DELETE FROM feedback WHERE from_email = ?').run(user.email);
     q('DELETE FROM codes WHERE email = ?').run(user.email);
     q('DELETE FROM live_tickets WHERE live NOT IN (SELECT id FROM lives)').run();
     db.exec('COMMIT');
@@ -4963,7 +4998,7 @@ async function route(req, url) {
   if (p === '/auth/verify' && m === 'POST') return authVerify(req, await readBody(req));
   if (p === '/paddle/webhook' && m === 'POST') return paddleWebhook(req);
   if (p === '/feedback' && m === 'POST') return feedback(req, await readBody(req));
-  if (((p === '/admin/plan' || p === '/admin/team') && m === 'POST') || p === '/admin/gallery' || p === '/admin/sites' || (p === '/admin/landing' && m === 'GET')) {
+  if (((p === '/admin/plan' || p === '/admin/team') && m === 'POST') || p === '/admin/gallery' || p === '/admin/sites' || ((p === '/admin/landing' || p === '/admin/feedback') && m === 'GET')) {
     // La misma respuesta sin clave configurada, sin clave en el pedido o con una equivocada. Diez fallos por hora por IP.
     const ip = 'admin:' + clientIp(req);
     limit(ip, 10, HOUR, 'too_many');
@@ -4971,6 +5006,7 @@ async function route(req, url) {
     if (p === '/admin/gallery') return galleryAdmin(m, url, m === 'POST' ? await readBody(req) : {});
     if (p === '/admin/sites') return sitesAdmin(m, url, m === 'POST' ? await readBody(req) : {});
     if (p === '/admin/landing') return landingAdmin(url);
+    if (p === '/admin/feedback') return feedbackAdmin(url);
     const b = await readBody(req);
     if (p === '/admin/team') {
       // Un equipo armado a mano, sin cobro: para quien aloja su propio servidor. seats: 0 lo deja sin plan pago.
@@ -5164,11 +5200,12 @@ server.on('request', (req) => { if (fileUploadReq(req)) return; const t = setTim
 process.on('uncaughtException', (e) => console.error('error no capturado · ' + String(e && e.stack || e).slice(0, 1500)));
 process.on('unhandledRejection', (e) => console.error('promesa sin atender · ' + String(e && e.stack || e).slice(0, 1500)));
 
-// Limpieza: códigos vencidos, historial viejo, lo que venció en la papelera y sesiones sin uso, cada seis horas; los topes en memoria, cada diez minutos.
+// Limpieza: códigos vencidos, historial viejo, lo que venció en la papelera, comentarios de más de 180 días y sesiones sin uso, cada seis horas; los topes en memoria, cada diez minutos.
+feedbackSweep(); // y al arrancar
 setInterval(() => {
   q('DELETE FROM codes WHERE expires < ?').run(now());
   historySweep(); teamLogSweep();
-  trashSweep();
+  trashSweep(); feedbackSweep();
   q('DELETE FROM sessions WHERE seen < ?').run(now() - SESSION_DAYS * DAY);
 }, 6 * HOUR).unref();
 setInterval(() => { for (const k of marks.keys()) if (!recent(k, DAY).length) marks.delete(k); for (const [k, w] of windows) if (now() - w.t > HOUR) windows.delete(k); }, 600000).unref();

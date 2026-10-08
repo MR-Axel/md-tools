@@ -1,5 +1,5 @@
 // Servidor de sincronización: cuentas, notas, límites del plan gratis y MCP.
-import { spawn } from 'child_process'; import { createHmac } from 'crypto';
+import { spawn } from 'child_process'; import { createHmac } from 'crypto'; import { DatabaseSync } from 'node:sqlite';
 import fs from 'fs'; import os from 'os'; import path from 'path'; import http from 'http'; import { fileURLToPath } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'mdsync-'));
@@ -315,20 +315,31 @@ try {
   check('comentarios: la IP es la última de x-forwarded-for', (await fb({ text: 'Con una IP inventada adelante.' }, undefined, '1.2.3.4, 10.0.0.9')).status === 429);
   const porCuenta = []; for (let i = 0; i < 6; i++) porCuenta.push((await fb({ text: 'Comentario ' + i + ' de la misma cuenta.' }, ps, '10.1.0.' + i)).status);
   check('comentarios: cinco por hora por cuenta, aunque cambie la IP', porCuenta.join() === '200,200,200,200,429,429', porCuenta);
+  // Cada comentario queda guardado, salga o no el correo: lo lista /admin/feedback con la clave de administración.
+  const fbKey = { 'x-admin-key': 'clave-de-prueba' };
+  const fbList = await call('GET', '/admin/feedback', undefined, undefined, fbKey);
+  const fbAnon = ((fbList.json || {}).items || []).find((i) => i.text === 'El menú tapa los ajustes.') || {};
+  const fbUser = ((fbList.json || {}).items || []).find((i) => i.text === 'Con la cuenta abierta.') || {};
+  check('comentarios guardados: sin sesión queda el texto y los cuatro datos de contexto, sin correo', fbList.status === 200 && fbAnon.kind === 'feedback' && fbAnon.from_email === '' && fbAnon.signed_in === false && fbAnon.plan === '' && fbAnon.created > Date.now() - 600000 && JSON.stringify(fbAnon.context) === JSON.stringify({ version: '2.35.0', where: 'extension', browser: 'Chrome', lang: 'es' }) && !('report' in fbAnon), fbAnon);
+  check('comentarios guardados: con sesión queda el correo de la cuenta y su plan', fbUser.from_email === 'pago@ejemplo.test' && fbUser.signed_in === true && /^(free|pro)$/.test(fbUser.plan) && fbUser.context.where === 'web' && fbUser.context.version === '', fbUser);
+  check('comentarios guardados: lo rechazado no se guarda, lo más nuevo va primero y el texto se guarda entero hasta 4000', !fbList.json.items.some((i) => /abc|Texto de prueba/.test(i.text)) && fbList.json.items.some((i) => i.text.length === 4000) && fbList.json.items.every((i, n, all) => !n || all[n - 1].id > i.id), fbList.json.items.map((i) => i.id));
+  const fbNoKey = [await call('GET', '/admin/feedback', undefined, undefined, { 'x-forwarded-for': '10.0.1.1' }), await call('GET', '/admin/feedback', undefined, undefined, { 'x-admin-key': 'otra', 'x-forwarded-for': '10.0.1.1' }), await call('POST', '/admin/feedback', {}, undefined, fbKey), await call('GET', '/admin/feedback?days=1', undefined, undefined, fbKey), await call('GET', '/admin/feedback?days=9999', undefined, undefined, fbKey)];
+  check('comentarios guardados: /admin/feedback pide la clave, es solo de lectura y days va de 1 a 180', fbNoKey[0].status === 403 && fbNoKey[1].status === 403 && fbNoKey[2].status !== 200 && fbNoKey[3].json.days === 1 && fbNoKey[3].json.items.length === fbList.json.items.length && fbNoKey[4].json.days === 180 && fbList.json.days === 30, fbNoKey.map((r) => [r.status, r.json && r.json.days]));
 
   // Con correo configurado: qué sale, a quién, y que del contexto no pase nada de más
   const second = async (extra) => {
-    const port = PORT + 1 + Math.floor(Math.random() * 500); const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdsync-'));
+    const port = PORT + 1 + Math.floor(Math.random() * 500); const dir = (extra && extra.DATA_DIR) || fs.mkdtempSync(path.join(os.tmpdir(), 'mdsync-'));
     const proc = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(port), DATA_DIR: dir, DEV_CODES: '1', ...extra }, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = ''; proc.stdout.on('data', (d) => { out += d; }); proc.stderr.on('data', (d) => { out += d; });
     for (let i = 0; i < 50 && !/puerto/.test(out); i++) await new Promise((r) => setTimeout(r, 100));
+    const get = async (url, headers) => { const r = await fetch('http://127.0.0.1:' + port + url, { headers: headers || {} }); return { status: r.status, json: await r.json().catch(() => null) }; };
     const post = async (url, body, auth) => { const r = await fetch('http://127.0.0.1:' + port + url, { method: 'POST', headers: { 'content-type': 'application/json', ...(auth ? { authorization: 'Bearer ' + auth } : {}) }, body: JSON.stringify(body) }); return { status: r.status, json: await r.json().catch(() => null) }; };
-    return { post, stop: async () => { proc.kill(); await new Promise((r) => setTimeout(r, 300)); fs.rmSync(dir, { recursive: true, force: true }); } };
+    return { post, get, dir, log: () => out, stop: async (keep) => { const gone = new Promise((r) => proc.once('exit', r)); proc.kill(); await gone; await new Promise((r) => setTimeout(r, 300)); if (!keep) fs.rmSync(dir, { recursive: true, force: true }); } };
   };
   const sent = [];
   const inbox = http.createServer((req, res) => { let b = ''; req.on('data', (d) => { b += d; }); req.on('end', () => { sent.push(JSON.parse(b)); res.writeHead(200); res.end('{}'); }); });
   await new Promise((r) => inbox.listen(0, '127.0.0.1', r));
-  const withMail = await second({ FEEDBACK_TO: 'duenio@ejemplo.test', MAIL_WEBHOOK: 'http://127.0.0.1:' + inbox.address().port });
+  const withMail = await second({ FEEDBACK_TO: 'duenio@ejemplo.test', ADMIN_KEY: 'clave-de-prueba', MAIL_WEBHOOK: 'http://127.0.0.1:' + inbox.address().port });
   const real = await withMail.post('/feedback', { text: 'Al cambiar de idioma se pisan dos ventanas.', email: 'Lectora@Ejemplo.test', context: { version: '2.35.0', where: 'web', browser: 'Mozilla/5.0 Chrome/140', lang: 'es', path: 'C:/privado/diario.md', note: '# Mi diario secreto' } });
   const m = sent[0] || {};
   check('comentarios: se mandan al correo configurado, con respuesta a quien escribió', real.status === 200 && !real.json.dev && m.to === 'duenio@ejemplo.test' && m.subject === 'SharpMD feedback' && m.reply_to === 'lectora@ejemplo.test', [real.json, m]);
@@ -345,7 +356,59 @@ try {
   await withMail.post('/feedback', { text: 'Publica datos de otra persona.', report: { kind: 'otra-cosa', note: 'informes/plan.md', owner: '7' } }, ls);
   const m4 = sent[sent.length - 1] || {};
   check('denuncia: con sesión lleva el motivo, la ruta, la cuenta dueña y a quién responder', m4.subject === 'SharpMD report' && /^Reported note: informes\/plan\.md\nOwner: 7\nKind: -\n\nPublica datos de otra persona\.\n/.test(m4.text || '') && m4.reply_to === 'cuenta@ejemplo.test', m4);
+  const kept = (await withMail.get('/admin/feedback', { 'x-admin-key': 'clave-de-prueba' })).json.items;
+  const k1 = kept.find((i) => /pisan dos ventanas/.test(i.text)) || {}; const k3 = kept.find((i) => i.kind === 'report' && !i.text) || {}; const k4 = kept.find((i) => i.kind === 'report' && i.text) || {};
+  check('comentarios guardados: con correo configurado también quedan, con el correo que dieron y sin rutas ni contenido de notas', kept.length === 4 && k1.kind === 'feedback' && k1.from_email === 'lectora@ejemplo.test' && k1.signed_in === false && k1.context.browser === 'Mozilla/5.0 Chrome/140' && !/privado|diario|secreto|contenido de la nota/.test(JSON.stringify(kept)), kept);
+  check('denuncias guardadas: qué nota es en una sola línea, sin motivo o con él, y la cuenta de quien denuncia si había sesión', k3.report && k3.report.kind === 'link' && k3.report.note === 'pub/abc123 Bcc: tercero@ejemplo.test' && k3.report.owner === '' && k3.from_email === '' && k3.context.version === '2.51.0' &&
+    k4.report && k4.report.kind === '' && k4.report.note === 'informes/plan.md' && k4.report.owner === '7' && k4.text === 'Publica datos de otra persona.' && k4.from_email === 'cuenta@ejemplo.test' && k4.signed_in === true && k4.plan === 'free', [k3, k4]);
+  // El correo con el código: el código primero en el asunto y solo en su renglón, y un enlace que lo lleva en el fragmento.
+  const cm = sent.find((x) => x.to === 'cuenta@ejemplo.test') || {}; const cCode = lc.json.dev_code;
+  const cLink = (/^(https:\/\/\S+)$/m.exec(cm.text || '') || [])[1] || ''; const cFrag = cLink.split('#signin=')[1] || '';
+  check('correo del código: el asunto empieza con el código y el texto lo trae solo en el primer renglón', cm.subject === cCode + ' is your SharpMD code' && (cm.text || '').split('\n')[0] === cCode && (cm.text || '').split('\n')[1] === '' && /expires in 15 minutes and works once/.test(cm.text), [cm.subject, cm.text]);
+  check('correo del código: el enlace abre la app y lleva el correo y el código en el fragmento, nunca en la ruta ni en la consulta', cLink.split('#')[0] === 'https://sharpmd.app/src/app.html' && /^[A-Za-z0-9_-]+$/.test(cFrag) && Buffer.from(cFrag, 'base64url').toString() === cCode + ':cuenta@ejemplo.test' && !cLink.split('#')[0].includes(cCode) && !/cuenta|%40|@/.test(cLink.split('#')[0]) && cLink.split('#').length === 2, cLink);
+  const cHtml = cm.html || '';
+  check('correo del código: el HTML trae el código solo en su caja, el botón con el mismo enlace, y nada remoto ni que rastree', cHtml.includes('>' + cCode + '</div>') && cHtml.includes('href="' + cLink + '"') && />Sign in to SharpMD<\/a>/.test(cHtml) && (cHtml.match(/href=/g) || []).length === 1 && !/<img|<script|<link|src=|url\(|<form|onclick/i.test(cHtml), cHtml);
+  const lcEs = await withMail.post('/auth/start', { email: 'hola@ejemplo.test', lang: 'es' }); const cmEs = sent.find((x) => x.to === 'hola@ejemplo.test') || {};
+  check('correo del código: en español si la app lo pidió', cmEs.subject === lcEs.json.dev_code + ' es tu código de SharpMD' && (cmEs.text || '').split('\n')[0] === lcEs.json.dev_code && />Entrar a SharpMD<\/a>/.test(cmEs.html || '') && /#signin=[A-Za-z0-9_-]+\n/.test(cmEs.text), [cmEs.subject, cmEs.text]);
+  check('correo del código: el enlace no suma nada, el código se usa una sola vez', (await withMail.post('/auth/verify', { email: 'hola@ejemplo.test', code: lcEs.json.dev_code })).status === 200 && (await withMail.post('/auth/verify', { email: 'hola@ejemplo.test', code: lcEs.json.dev_code })).json.error === 'code_expired');
   await withMail.stop(); inbox.close();
+  // Otra dirección para la app: el enlace del correo sale de APP_URL.
+  const sent2 = []; const inbox2 = http.createServer((req, res) => { let b = ''; req.on('data', (d) => { b += d; }); req.on('end', () => { sent2.push(JSON.parse(b)); res.writeHead(200); res.end('{}'); }); });
+  await new Promise((r) => inbox2.listen(0, '127.0.0.1', r));
+  const ownApp = await second({ APP_URL: 'https://notas.ejemplo.test/app.html', MAIL_WEBHOOK: 'http://127.0.0.1:' + inbox2.address().port });
+  await ownApp.post('/auth/start', { email: 'propia@ejemplo.test' });
+  check('correo del código: con APP_URL el enlace va a esa app', /\nhttps:\/\/notas\.ejemplo\.test\/app\.html#signin=[A-Za-z0-9_-]+\n/.test((sent2[0] || {}).text || ''), sent2[0]);
+  await ownApp.stop(); inbox2.close();
+  // Si el correo falla (el proveedor responde con error, o ni contesta), el comentario queda guardado y la respuesta es de éxito.
+  const broken = http.createServer((req, res) => { req.resume(); res.writeHead(500); res.end('{}'); }); await new Promise((r) => broken.listen(0, '127.0.0.1', r));
+  const failing = await second({ FEEDBACK_TO: 'duenio@ejemplo.test', ADMIN_KEY: 'clave-de-prueba', MAIL_WEBHOOK: 'http://127.0.0.1:' + broken.address().port });
+  const lost = await failing.post('/feedback', { text: 'El correo de este no va a salir.', email: 'quien@ejemplo.test' });
+  const lostRep = await failing.post('/feedback', { text: '', report: { kind: 'gallery', note: 'gallery/12', owner: '' } });
+  const lostKept = (await failing.get('/admin/feedback', { 'x-admin-key': 'clave-de-prueba' })).json.items;
+  check('comentarios: si el correo falla, queda guardado y la respuesta es de éxito', lost.status === 200 && lost.json.ok === true && lostRep.status === 200 && lostKept.length === 2 && lostKept[1].text === 'El correo de este no va a salir.' && lostKept[1].from_email === 'quien@ejemplo.test' && lostKept[0].report.note === 'gallery/12' && /no salió el correo del comentario 1/.test(failing.log()), [lost, lostKept]);
+  check('correo del código: si falla, pedir el código sigue respondiendo el error', (await failing.post('/auth/start', { email: 'quien@ejemplo.test' })).status === 502);
+  await failing.stop(); broken.close();
+  const dead = await second({ FEEDBACK_TO: 'duenio@ejemplo.test', ADMIN_KEY: 'clave-de-prueba', MAIL_WEBHOOK: 'http://127.0.0.1:9/' });
+  const lost2 = await dead.post('/feedback', { text: 'Tampoco sale si el proveedor no contesta.' });
+  check('comentarios: si el proveedor ni contesta, también queda guardado', lost2.status === 200 && lost2.json.ok === true && (await dead.get('/admin/feedback', { 'x-admin-key': 'clave-de-prueba' })).json.items.length === 1, lost2);
+  await dead.stop();
+  // Retención: los de más de 180 días se borran solos, y el id de uno nuevo no repite el de uno borrado.
+  const fbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdsync-'));
+  let old = await second({ DATA_DIR: fbDir, FEEDBACK_TO: 'duenio@ejemplo.test', ADMIN_KEY: 'clave-de-prueba' });
+  for (const t of ['El más viejo, se va.', 'Casi viejo, se queda.', 'El último, que también vence.']) await old.post('/feedback', { text: t });
+  await old.stop(true);
+  const fdb = new DatabaseSync(path.join(fbDir, 'mdtools.db'));
+  fdb.prepare('UPDATE feedback SET created = ? WHERE id = 1').run(Date.now() - 181 * 86400000); fdb.prepare('UPDATE feedback SET created = ? WHERE id = 2').run(Date.now() - 179 * 86400000); fdb.prepare('UPDATE feedback SET created = ? WHERE id = 3').run(Date.now() - 200 * 86400000);
+  // La consulta de solo lectura con la que se avisan los nuevos por otro canal.
+  const news = fdb.prepare('SELECT id, created, kind, from_email, text FROM feedback WHERE id > ? ORDER BY id LIMIT 50').all(1);
+  fdb.close();
+  old = await second({ DATA_DIR: fbDir, FEEDBACK_TO: 'duenio@ejemplo.test', ADMIN_KEY: 'clave-de-prueba' });
+  const left = (await old.get('/admin/feedback?days=180', { 'x-admin-key': 'clave-de-prueba' })).json.items;
+  await old.post('/feedback', { text: 'Uno nuevo después de la limpieza.' });
+  const left2 = (await old.get('/admin/feedback?days=180', { 'x-admin-key': 'clave-de-prueba' })).json.items;
+  check('comentarios: los de más de 180 días se borran solos y los demás quedan', left.length === 1 && left[0].id === 2 && left[0].text === 'Casi viejo, se queda.', left);
+  check('comentarios: la consulta de novedades por id anda sobre la base, y un id borrado no se repite', news.map((r) => r.id).join() === '2,3' && Object.keys(news[0]).join() === 'id,created,kind,from_email,text' && left2[0].id === 4, [news, left2]);
+  await old.stop();
   const noFeedback = await second({});
   check('comentarios: sin FEEDBACK_TO responde 404', (await noFeedback.post('/feedback', { text: 'No debería llegar a nadie.' })).status === 404);
   await noFeedback.stop();
@@ -553,6 +616,7 @@ try {
   check('eliminar la cuenta: sin sesión no hay ruta', (await call('DELETE', '/account', { email: 'pago@ejemplo.test' })).status === 401);
   const byeOk = await bye(ps, ' Pago@Ejemplo.test ');
   check('eliminar la cuenta: se borra, y la sesión, el token y el enlace dejan de servir', byeOk.status === 200 && (await call('GET', '/account', undefined, ps)).status === 401 && (await call('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/list' }, tokP)).status === 401 && (await call('GET', '/public/' + linkP)).status === 404, byeOk.json);
+  check('eliminar la cuenta: sus comentarios guardados también se borran', !(await call('GET', '/admin/feedback', undefined, undefined, { 'x-admin-key': 'clave-de-prueba' })).json.items.some((i) => i.from_email === 'pago@ejemplo.test'));
   check('eliminar la cuenta: lo que había compartido ya no le llega a nadie', !(await call('GET', '/shared', undefined, s)).json.some((n) => n.by === 'pago@ejemplo.test'));
   const pc2 = await call('POST', '/auth/start', { email: 'pago@ejemplo.test' }, undefined, { 'x-forwarded-for': '10.9.0.2' }); const ps2 = (await call('POST', '/auth/verify', { email: 'pago@ejemplo.test', code: pc2.json.dev_code })).json.session;
   check('eliminar la cuenta: entrar de nuevo con ese correo es una cuenta nueva, vacía', (await call('GET', '/notes', undefined, ps2)).json.length === 0 && (await call('GET', '/trash', undefined, ps2)).json.length === 0 && (await call('GET', '/account', undefined, ps2)).json.plan === 'free');

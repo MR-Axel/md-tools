@@ -214,7 +214,7 @@
   // Lo abren la fila "Sin sesión" del pie, el enlace de la sección Nube del explorador y ?login=1.
   let loginBox = null;
   function closeLogin() { if (loginBox) { loginBox.remove(); loginBox = null; } }
-  async function login() {
+  async function login(was) {
     if (!ctx) return;
     await LMD.cloud.ready();
     if (!LMD.cloud.enabled() || LMD.cloud.signedIn()) return;
@@ -231,8 +231,58 @@
     box.addEventListener('click', (e) => { if (e.target.closest('[data-cloud=cancel]')) closeLogin(); });
     box.addEventListener('mousedown', (e) => { if (!start && e.target === box) closeLogin(); });
     box.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeLogin(); } });
-    signIn(box.querySelector('.lmd-signin'), async () => { closeLogin(); await paintAcct(); ctx.refresh(); });
+    signIn(box.querySelector('.lmd-signin'), async () => { closeLogin(); await paintAcct(); ctx.refresh(); }, '', typeof was === 'string' ? was : '');
     if (start && box.scrollIntoView) box.scrollIntoView({ block: 'nearest' });
+  }
+
+  // ---------- El enlace del correo con el código ----------
+  // app.html#signin=<base64url de "código:correo">. El correo trae un botón que abre la app con el código ya cargado.
+  // Abrir el enlace no inicia sesión: se pregunta, y recién al confirmar se llama a /auth/verify. Así quien abre los
+  // enlaces para revisarlos (un antivirus, la vista previa de un cliente de correo) no gasta el código. Es el mismo
+  // código de un solo uso que se puede tipear. Lo leído vive solo en memoria: nunca se guarda en ningún almacenamiento.
+  function readSignin(frag) {
+    try {
+      const b = atob(String(frag || '').replace(/-/g, '+').replace(/_/g, '/'));
+      const m = /^(\d{6}):(.+)$/.exec(new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(b, (c) => c.charCodeAt(0))));
+      return m && validEmail(m[2]) && m[2] === m[2].toLowerCase() ? { code: m[1], email: m[2] } : null;
+    } catch (e) { return null; }
+  }
+  let linking = false;
+  async function signinLink(frag) {
+    if (!ctx || linking) return false;
+    linking = true;
+    try { return await askSignin(frag); } finally { linking = false; }
+  }
+  async function askSignin(frag) {
+    const D = LMD.dialog; const got = readSignin(frag);
+    await LMD.cloud.ready();
+    if (!LMD.cloud.enabled() || LMD.cloud.guest()) return false;
+    const again = () => login(got ? got.email : '');
+    // Con una sesión abierta no se ofrece pedir otro código desde acá: el formulario de entrar es para quien no entró.
+    const dead = async (title, text) => { const ask = !LMD.cloud.signedIn(); if (await D.confirm({ title, text, ok: T(ask ? 'Pedir otro código' : 'Cerrar'), cancel: ask ? T('Cerrar') : false }) && ask) again(); return false; };
+    if (!got) return dead(T('Este enlace para entrar no sirve'), T('Pedí un código nuevo y entrá con ese.'));
+    const other = LMD.cloud.signedIn() && LMD.cloud.email() !== got.email;
+    if (LMD.cloud.signedIn() && !other) { await D.confirm({ title: T('Ya entraste como {a}', { a: got.email }), text: T('La sesión ya está abierta en este navegador.'), ok: T('Cerrar'), cancel: false }); return false; }
+    closeLogin();
+    // Con otra cuenta abierta se pregunta antes de cambiar: nada se cierra hasta que el código sirvió.
+    const yes = other
+      ? await D.confirm({ title: T('¿Cambiar de cuenta?'), text: T('Ahora la sesión abierta es de {a}. Si seguís, se cierra y entrás como {b}.', { a: LMD.cloud.email(), b: got.email }), ok: T('Cambiar de cuenta') })
+      : await D.confirm({ title: T('¿Entrar como {a}?', { a: got.email }), text: T('Abriste el enlace del correo. Vas a entrar a tu cuenta en este navegador.'), ok: T('Entrar') });
+    if (!yes) return false;
+    try {
+      if (other && ctx.leave) { try { await ctx.leave(); } catch (e) { /* lo que no subió queda en la cola */ } }
+      await LMD.cloud.verify(got.email, got.code);
+    } catch (e) {
+      const code = e && e.code;
+      // Vencido, ya usado (quizás tipeado en otro dispositivo) o reemplazado por uno más nuevo: se ofrece pedir otro.
+      if (code === 'code_expired' || code === 'bad_code' || code === 'tries_code') return dead(T('Ese enlace ya no sirve'), T('El código venció o ya se usó. Pedí otro.') + (other ? ' ' + T(KEEPS) : ''));
+      await D.confirm({ title: T('No se pudo entrar'), text: authWhy(e, got.email), ok: T('Cerrar'), cancel: false });
+      return false;
+    }
+    // Al cambiar de cuenta la app arranca de nuevo, limpia: lo que estaba a la vista era de la otra.
+    if (other) { location.replace(ctx.APP_URL); return true; }
+    await paintAcct(); ctx.refresh();
+    return true;
   }
 
   async function paintAcct(step) {
@@ -566,6 +616,8 @@
     openFile: (c, file, say) => { ctx = c; return openInMemory(file, say); },
     pickTemplate: (c) => { ctx = c; return pickTemplate(); },
     perks, signIn, waitText, login,
+    // El enlace del correo con el código (app.html#signin=...): pregunta antes de entrar.
+    signinLink: (c, frag) => { ctx = c; return signinLink(frag); },
     gate: (c, rec, mode) => { ctx = c; return gate(rec, mode); },
   };
 })();
