@@ -784,6 +784,7 @@
     // page.js es un archivo aparte: si una copia guardada de la app todavía no lo trae, el resto arranca igual.
     if (LMD.page) LMD.page.init(core);
     if (LMD.fold) LMD.fold.init(core);
+    if (LMD.blocks) LMD.blocks.init(core);
     ui.sync =ui.main.querySelector('.lmd-sync');
     LMD.sync.init(core);
     LMD.comments.init(core);

@@ -348,5 +348,5 @@
     });
   }
 
-  LMD.fold = { init, editable, titleLines, widen, inserted: (d) => { if (d && d.matches && d.matches(BOX)) opened(d, false); }, reveal, clean, outline: fromOutline, on, section: sectionOf };
+  LMD.fold = { init, editable, titleLines, widen, inserted: (d) => { if (d && d.matches && d.matches(BOX)) opened(d, false); }, reveal, clean, outline: fromOutline, on, section: sectionOf, wrap: wrapLines };
 })();

@@ -613,6 +613,26 @@
       "Plegar o desplegar la sección del cursor": "Fold or unfold the section at the cursor", "Plegar todas las secciones": "Fold all sections", "Desplegar todas las secciones": "Unfold all sections",
       "Con el plegado por títulos prendido": "With heading folding on", "Secciones plegadas": "Sections folded", "Secciones desplegadas": "Sections unfolded",
       "Bloque eliminado. Ctrl+Z lo deshace": "Block deleted. Ctrl+Z brings it back",
+      "Bloques seleccionados": "Selected blocks", "1 bloque": "1 block", "{n} bloques": "{n} blocks", "Seleccionar el bloque": "Select the block",
+      "Mover los bloques": "Move the blocks", "Cortar": "Cut", "Más acciones": "More actions",
+      "Copiar a una nota nueva": "Copy to a new document", "Mover a una nota nueva": "Move to a new document",
+      "Convertir en lista con viñetas": "Turn into a bulleted list", "Convertir en lista numerada": "Turn into a numbered list",
+      "Convertir en lista de tareas": "Turn into a task list", "Convertir en cita": "Turn into a quote",
+      "Bloque copiado": "Block copied", "Bloques copiados: {n}": "Blocks copied: {n}",
+      "Bloque cortado. Ctrl+Z lo deshace": "Block cut. Ctrl+Z brings it back", "Bloques cortados: {n}. Ctrl+Z los deshace": "Blocks cut: {n}. Ctrl+Z brings them back",
+      "Bloques eliminados: {n}. Ctrl+Z los deshace": "Blocks deleted: {n}. Ctrl+Z brings them back",
+      "{a} está escribiendo en esos bloques": "{a} is typing in those blocks",
+      "Nota nueva: {a}": "New note: {a}", "No se pudo crear la nota nueva.": "The new note could not be created.",
+      "Guardá esta nota antes de pasar bloques a una nueva.": "Save this note before sending blocks to a new one.",
+      "No hay dónde guardar la nota nueva: quedó abierta sin guardar y el original no cambió.": "Nowhere to save the new note: it is open unsaved, and the original was left as it was.",
+      "La nota cambió mientras tanto: los bloques quedaron también acá.": "The note changed in the meantime: the blocks are still here too.",
+      "Con bloques seleccionados": "With blocks selected", "Seleccionar el bloque del cursor": "Select the block at the cursor",
+      "Extender la selección de bloques": "Extend the block selection", "Pasar al bloque de arriba o de abajo": "Go to the block above or below",
+      "Seleccionar todos los bloques. Escribiendo, dos veces": "Select all blocks. While typing, press it twice",
+      "Seleccionar un rango de bloques, o sumar y quitar uno": "Select a range of blocks, or add and remove one",
+      "Copiar los bloques": "Copy the blocks", "Cortar los bloques": "Cut the blocks", "Pegar debajo los bloques copiados": "Paste the copied blocks below",
+      "Duplicar los bloques": "Duplicate the blocks", "Eliminar los bloques": "Delete the blocks", "Soltar la selección de bloques": "Release the block selection",
+      "Entrar a escribir en el bloque": "Start typing in the block", "Llevar el foco a la barra de acciones": "Move focus to the action bar",
       "Insertar debajo": "Insert below", "Insertar": "Insert", "Convertir en": "Turn into", "Este bloque": "This block",
       "Subir": "Move up", "Bajar": "Move down", "Duplicar": "Duplicate", "Eliminar": "Delete",
       "Cambio deshecho": "Change undone", "No hay más cambios para deshacer": "Nothing left to undo",
@@ -1819,7 +1839,7 @@
   const fileLink = (url) => WEB_APP_URL + '#open=' + encodeURIComponent(url);
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.64.0';
+  const VERSION = '2.65.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);

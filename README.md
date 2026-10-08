@@ -32,6 +32,7 @@ Free and open source. No tracking: files are read in your browser and never uplo
 | **Tables** | Add and remove rows and columns. A totals row sums each column, and a cell can hold `=sum`, `=avg`, `=min`, `=max`, `=count` or `=median`. |
 | **Boards** | A `kanban` block turns headings into columns and tasks into cards you can drag. Each card has a stable id, created and edited dates and your own attributes (due date, owner, priority…), and a click opens its detail. Anywhere else it reads as a plain task list. A wide board uses the full width of the note. |
 | **Collapsible sections and folding** | A collapsible section (`::: details Title`) is inserted from the block menu or with `/`, renamed by clicking its title, wrapped around the selected blocks and unwrapped again. Fold sections by heading is a reading option in Settings: each heading folds what is under it, and nothing is written to the note. |
+| **Several blocks at once** | Drag from the left margin, Shift or Ctrl + click, or press Esc in a block and extend with Shift + arrows; on touch, press and hold. Copy, cut, duplicate, delete, move, wrap, turn into a list or a quote, or send the blocks to a new note that leaves a link behind. Each action is one undo step. |
 | **Page settings** | Settings that belong to a note, kept in its front matter so they travel with the file: page width (normal, wide, full), numbered headings and whether the outline shows. |
 | **Diagrams** | Mermaid and Graphviz, with an editor that shows the drawing next to the code: templates, pieces to add with a button, color palettes, and errors explained with their line marked. |
 | **Math** | KaTeX, inline and in blocks, with an editor that previews as you type. |
@@ -237,6 +238,7 @@ src/
   board.js        kanban boards (cards with attributes) and table formulas
   page.js         page settings kept in the front matter of the note
   fold.js         collapsible sections edited in place and folding by heading
+  blocks.js       select several blocks and act on them: copy, cut, move, wrap, new note
   automate.js     Settings → Automations and the guided setup, loaded on demand
   extras.js       files from the tree, images, replace, typewriter mode, HTML export
   images.js       shrinking images in the browser, cloud attachments, storage in Settings
@@ -273,6 +275,7 @@ Two more scripts run by hand, outside `npm test`:
 - `node tools.mjs` covers presentation mode, the daily note, Word export and the link map (`ONLY=docx` runs one). `KEEP_DOCX=path ONLY=docx node tools.mjs` leaves the generated file there to open it by hand.
 - `node jsonyaml.mjs` covers the JSON and YAML tree and plain `.txt` files (`ONLY=yaml` runs one part).
 - `node fold.mjs` covers collapsible sections (insert, title, wrap, nesting, export) and folding by heading.
+- `node blocks.mjs` covers selecting several blocks (mouse, keyboard, touch) and every action on them.
 - `node import.mjs` covers Import to Markdown: each format, progress, cancelling, limits, hostile files and the extension page (`ONLY=pdf` runs one part).
 - `node assistant.mjs` covers the AI assistant against a local server that imitates the Anthropic and OpenAI streaming formats: no real provider and no real key (`ONLY=key` runs one part: key, actions, gen, panel, comments, errors, vault, small, safe, ext).
 - `node perf.mjs` measures the web app load, cold and warm, on a throttled network and CPU. Run it before and after touching what `src/app.html` loads.

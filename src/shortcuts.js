@@ -36,6 +36,20 @@
     ['md-bold', 'write', '**…**', 'Negrita al escribir. También *…*, `…`, ~~…~~ y ==…==', { ctx: 'Editando' }],
     ['wiki', 'write', '[[', 'Enlazar otra nota', { ctx: 'Editando', on: 'app' }],
     ['task-move', 'write', 'Up / Down', 'Mover una tarea, con el foco en su manija', { ctx: 'Editando' }],
+    ['blk-pick', 'write', 'Esc', 'Seleccionar el bloque del cursor', { ctx: 'Editando' }],
+    ['blk-all', 'write', 'Ctrl+A', 'Seleccionar todos los bloques. Escribiendo, dos veces', { ctx: 'Editando' }],
+    ['blk-click', 'write', 'Shift+Click / Ctrl+Click', 'Seleccionar un rango de bloques, o sumar y quitar uno'],
+    ['blk-step', 'write', 'Up / Down', 'Pasar al bloque de arriba o de abajo', { ctx: 'Con bloques seleccionados' }],
+    ['blk-extend', 'write', 'Shift+Up / Shift+Down', 'Extender la selección de bloques', { ctx: 'Con bloques seleccionados' }],
+    ['blk-copy', 'write', 'Ctrl+C', 'Copiar los bloques', { ctx: 'Con bloques seleccionados' }],
+    ['blk-cut', 'write', 'Ctrl+X', 'Cortar los bloques', { ctx: 'Con bloques seleccionados' }],
+    ['blk-paste', 'write', 'Ctrl+V', 'Pegar debajo los bloques copiados', { ctx: 'Con bloques seleccionados' }],
+    ['blk-dup', 'write', 'Ctrl+D', 'Duplicar los bloques', { ctx: 'Con bloques seleccionados' }],
+    ['blk-move', 'write', 'Alt+Up / Alt+Down', 'Mover los bloques', { ctx: 'Con bloques seleccionados' }],
+    ['blk-del', 'write', 'Delete / Backspace', 'Eliminar los bloques', { ctx: 'Con bloques seleccionados' }],
+    ['blk-edit', 'write', 'Enter', 'Entrar a escribir en el bloque', { ctx: 'Con bloques seleccionados' }],
+    ['blk-bar', 'write', 'Tab', 'Llevar el foco a la barra de acciones', { ctx: 'Con bloques seleccionados' }],
+    ['blk-release', 'write', 'Esc', 'Soltar la selección de bloques', { ctx: 'Con bloques seleccionados' }],
 
     ['search', 'nav', 'Ctrl+Shift+F', 'Buscar en la nota o en la carpeta'],
     ['search-step', 'nav', 'Enter / Shift+Enter', 'Resultado siguiente o anterior', { ctx: 'En el buscador' }],
@@ -98,8 +112,8 @@
   const APPLE = { Ctrl: '⌘', Alt: '⌥', Shift: '⇧', Enter: '↩', Backspace: '⌫' };
   const ARROWS = { Up: '↑', Down: '↓', Left: '←', Right: '→' };
   const NAMES = {
-    es: { Space: 'Espacio', Home: 'Inicio', End: 'Fin', PageUp: 'Re Pág', PageDown: 'Av Pág', Backspace: 'Retroceso', Click: 'clic' },
-    en: { Space: 'Space', Home: 'Home', End: 'End', PageUp: 'PgUp', PageDown: 'PgDn', Backspace: 'Backspace', Click: 'click' },
+    es: { Space: 'Espacio', Home: 'Inicio', End: 'Fin', PageUp: 'Re Pág', PageDown: 'Av Pág', Backspace: 'Retroceso', Delete: 'Supr', Click: 'clic' },
+    en: { Space: 'Space', Home: 'Home', End: 'End', PageUp: 'PgUp', PageDown: 'PgDn', Backspace: 'Backspace', Delete: 'Delete', Click: 'click' },
   };
   const ORDER = ['Ctrl', 'Alt', 'Shift'];
   const label = (key) => {

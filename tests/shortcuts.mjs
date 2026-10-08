@@ -172,6 +172,8 @@ const ELSEWHERE = {
   speak: 'depende de las voces del equipo (voice.mjs)', dictate: 'necesita micrófono (voice.mjs)', 'daily-month': 'tools.mjs', wiki: 'links.mjs', replace: 'extras.mjs', 'replace-all': 'extras.mjs',
   'card-tag': 'data.mjs', 'col-name': 'data.mjs', 'ed-apply': 'diagram-editor.mjs y formulas.mjs', 'ed-cancel': 'diagram-editor.mjs y formulas.mjs', 'ed-indent': 'diagram-editor.mjs', 'ed-hole': 'formulas.mjs',
   'code-done': 'writing.mjs', 'list-level': 'lists.mjs', 'list-move': 'lists.mjs', fold: 'fold.mjs', 'fold-all': 'fold.mjs', 'unfold-all': 'fold.mjs', 'ai-here': 'assistant.mjs', 'ai-send': 'assistant.mjs', 'ai-gen': 'assistant.mjs', comment: 'ai.mjs',
+  'blk-pick': 'blocks.mjs', 'blk-all': 'blocks.mjs', 'blk-click': 'blocks.mjs', 'blk-step': 'blocks.mjs', 'blk-extend': 'blocks.mjs', 'blk-copy': 'blocks.mjs', 'blk-cut': 'blocks.mjs', 'blk-paste': 'blocks.mjs',
+  'blk-dup': 'blocks.mjs', 'blk-move': 'blocks.mjs', 'blk-del': 'blocks.mjs', 'blk-edit': 'blocks.mjs', 'blk-bar': 'blocks.mjs', 'blk-release': 'blocks.mjs',
 };
 const BODY = ['# Atajos', '', 'Uno dos tres.', '', 'Otro renglón.', '', '- [ ] primera', '- [ ] segunda', '', '| a | b |', '|---|---|', '| uno | dos |', '', '```kanban', '## Por hacer', '- Tarjeta de prueba', '## Hecho', '```', '', '## Dos', '', 'Texto de la segunda.', '', '## Tres', '', 'Fin.', ''].join('\n');
 // Negrita y cursiva las hace el navegador: el Firefox de las pruebas no aplica esas teclas a un texto editable.
