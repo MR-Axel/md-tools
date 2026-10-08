@@ -2527,3 +2527,6 @@ html.lmd-ai-open .lmd-ai-card { left: calc(50% - 190px); width: min(860px, calc(
   .lmd-ai-ask textarea, .lmd-ai-free input, .lmd-ai-gen textarea, .lmd-ai-field input, .lmd-ai-field textarea, .lmd-ai-field select { font-size: 16px; }
 }
 @media print { .lmd-ai-card, .lmd-ai-panel, .lmd-ai-menu { display: none !important; } .lmd-ai-at { box-shadow: none; } html.lmd-ai-open .lmd-main { margin-right: 0; } }
+
+/* Ajustes > IA (MCP): el interruptor de las instrucciones del espacio de proyecto, junto al botón que copia el mensaje. */
+.lmd-acct .lmd-ai-ws { margin: 6px 0 0; font-size: 13px; color: var(--fg); }

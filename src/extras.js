@@ -216,10 +216,45 @@
       return core.open(dirUrl + encodeURIComponent(name), { tree: true, edit: 'doc' });
     } catch (e) { cloudFail(e, 'No se pudo crear el archivo'); }
   }
+  // Una plantilla de varias notas (el espacio de proyecto): pide el nombre de la carpeta y la crea con todo adentro,
+  // en dirUrl o, si no se dice dónde, donde se crean las carpetas nuevas (el disco abierto o la nube). Las notas
+  // del navegador no tienen carpetas: ahí se dice qué hace falta. Abre el índice.
+  async function newPack(dirUrl, t) {
+    let at = dirUrl && !inLocal(dirUrl) ? dirUrl : ''; let cloud = !!at && inCloud(at);
+    if (!at) { at = core.diskDir(); if (!at && LMD.cloud.signedIn()) { at = core.urlOf(''); cloud = true; } }
+    if (!at) { core.flash(T('Un espacio de proyecto es una carpeta: entrá a tu cuenta o abrí una carpeta del disco.'), 'warn'); return; }
+    if (cloud && notMineTeam(core.pathOf(at))) return;
+    const typed = await askName('Nombre de la carpeta del proyecto', T('proyecto'), cloud ? badPath : badName, 'Crear');
+    if (!typed) return;
+    try {
+      if (cloud) {
+        const dir = core.pathOf(at); const root = (dir ? dir + '/' : '') + cloudName(typed) + '/'; const s = LMD.cloud.split(root + 'x');
+        if (!(await LMD.vault.unlockFor(root + 'x'))) return false;
+        const inner = s.path.slice(0, -1);
+        if ((await LMD.cloud.list(true, s.owner)).some((n) => n.path.startsWith(inner))) { core.flash(T('Ya hay una carpeta con ese nombre'), 'error'); return; }
+        // En el plan gratis, si no entran todas no se crea ninguna: una carpeta a medias no sirve.
+        const a = !s.owner && LMD.sync.account();
+        if (a && a.limit && a.notes + t.pack.length > a.limit) { cloudFail({ code: 'note_limit' }); return; }
+        for (const n of t.pack) await LMD.cloud.write(root + n.path, n.text);
+        return core.open(core.urlOf(root + t.pack[0].path), { tree: true });
+      }
+      const parent = await core.dirHandle(at);
+      if (await exists(parent, typed)) { core.flash(T('Ya hay una carpeta con ese nombre'), 'error'); return; }
+      const folder = await parent.getDirectoryHandle(typed, { create: true });
+      for (const n of t.pack) {
+        const parts = n.path.split('/'); let d = folder;
+        for (const p of parts.slice(0, -1)) d = await d.getDirectoryHandle(p, { create: true });
+        const h = await d.getFileHandle(parts[parts.length - 1], { create: true });
+        const w = await h.createWritable(); await w.write(n.text); await w.close();
+      }
+      return core.open(at + encodeURIComponent(typed) + '/' + encodeURIComponent(t.pack[0].path), { tree: true });
+    } catch (e) { core.reloadTree(); cloudFail(e, 'No se pudo crear la carpeta'); }
+  }
   // Elegir una plantilla y crear la nota: en dirUrl, o donde van las notas nuevas si no se dice dónde.
   async function fromTemplate(dirUrl) {
     const t = await core.pickTemplate();
     if (!t) return;
+    if (t.pack) return newPack(dirUrl, t);
     const given = { name: t.file, text: t.text };
     if (!dirUrl) return core.newNote(Object.assign({ strict: true }, given));
     return newFile(dirUrl, given);
