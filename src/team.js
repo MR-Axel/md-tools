@@ -142,21 +142,22 @@
   // Tokens del equipo: son del equipo, no de quien los crea. El recién creado queda a la vista unos minutos.
   let fresh = null;
   const day = (ms) => new Date(ms).toLocaleDateString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { day: 'numeric', month: 'short' });
-  const tokenRow = (k) => '<li><span>' + esc(k.name) + ' · ' + (k.scope ? T('Carpeta {a}', { a: esc(k.scope) + '/' }) : T('Todas las notas del equipo')) + ' · ' + T(k.write ? (k.share ? 'lee, escribe y comparte' : 'lee y escribe') : 'solo lee') +
-    ' · ' + (k.used ? T('usado el {a}', { a: day(k.used) }) : T('sin usar')) + '</span><span class="lmd-team-acts"><button type="button" data-t="tok-regen" data-id="' + k.id + '" data-name="' + esc(k.name) + '">' + T('Regenerar') + '</button><button type="button" data-t="tok-rm" data-id="' + k.id + '" data-name="' + esc(k.name) + '">' + T('Revocar') + '</button></span></li>';
+  // La fila es la misma pieza que en IA y en Automatizaciones (kit.js): el nombre y el alcance, lo demás en letra chica.
+  const tokenRow = (k) => LMD.kit.tokenRow({ name: esc(k.name), scope: k.scope ? T('Carpeta {a}', { a: esc(k.scope) + '/' }) : T('Todas las notas del equipo'),
+    meta: [T(k.write ? (k.share ? 'lee, escribe y comparte' : 'lee y escribe') : 'solo lee'), k.used ? T('usado el {a}', { a: day(k.used) }) : T('sin usar')],
+    acts: '<button type="button" data-t="tok-regen" data-id="' + k.id + '" data-name="' + esc(k.name) + '">' + T('Regenerar') + '</button><button type="button" data-t="tok-rm" data-id="' + k.id + '" data-name="' + esc(k.name) + '">' + T('Revocar') + '</button>' });
   function tokenBlock(mine) {
     const made = fresh && fresh.team === mine.id && Date.now() - fresh.at < 600000 ? fresh : (fresh = null);
-    const field = (label, value) => '<div class="lmd-field"><span>' + label + '</span><input type="text" readonly value="' + esc(value) + '"><button type="button" class="lmd-link" data-t="tok-copy">' + T('Copiar') + '</button></div>';
+    const field = (label, value) => LMD.kit.copyRow(label, value, 'data-t="tok-copy"');
     return '<h4>' + T('Tokens del equipo') + '</h4><p class="lmd-hint">' + T('Para una IA o un servicio que trabaja para el equipo. No dependen de quien los creó.') + '</p>' +
-      (made ? '<p class="lmd-ai-new">' + T('Copiá estos datos ahora: el token no se vuelve a mostrar.') + '</p>' + field('URL', made.mcp_url) + field('Token', made.token) +
-        '<div class="lmd-acct-actions"><button type="button" class="lmd-btn lmd-btn-fill" data-t="tok-brief">' + T('Copiar instrucciones para tu IA') + '</button></div>' : '') +
-      '<ul class="lmd-tokens lmd-team-list" data-team="tokens"></ul>' +
-      (mine.active ? '<div class="lmd-share-row lmd-team-invite lmd-team-tok"><input type="text" data-t="tok-name" maxlength="40" autocomplete="off" placeholder="' + T('nombre del token') + '" aria-label="' + T('nombre del token') + '">' +
-        '<input type="text" data-t="tok-folder" spellcheck="false" autocomplete="off" placeholder="' + T('carpeta (opcional)') + '" aria-label="' + T('carpeta (opcional)') + '"></div>' +
-        '<label class="lmd-check"><input type="checkbox" data-t="tok-write" checked><span>' + T('Puede escribir') + '</span></label>' +
-        '<label class="lmd-check"><input type="checkbox" data-t="tok-share"><span>' + T('Puede compartir y crear enlaces') + '</span></label>' +
-        '<div class="lmd-acct-actions"><button type="button" class="lmd-btn" data-t="tok-new">' + T('Crear un token del equipo') + '</button></div>' : '');
+      (made ? '<div class="lmd-fresh"><p class="lmd-ai-new">' + T('Copiá estos datos ahora: el token no se vuelve a mostrar.') + '</p>' + field('URL', made.mcp_url) + field('Token', made.token) +
+        '<div class="lmd-acct-actions"><button type="button" class="lmd-btn lmd-btn-fill" data-t="tok-brief">' + T('Copiar instrucciones para tu IA') + '</button></div></div>' : '') +
+      '<ul class="lmd-tokens lmd-tok-rows lmd-team-list" data-team="tokens"></ul>' +
+      // El nombre, la carpeta y los permisos son del token que se va a crear: aparecen con el formulario, al pedirlo.
+      (mine.active ? '<div class="lmd-tok-new" data-tok-new><div class="lmd-acct-actions"><button type="button" class="lmd-btn" data-t="tok-open">' + T('Crear un token del equipo') + '</button></div></div>' : '');
   }
+  const tokenForm = () => LMD.kit.tokenForm({ a: 'data-t', name: ['tok-name', T('nombre del token')], folder: ['tok-folder', null],
+    checks: [['tok-write', T('Puede escribir'), true], ['tok-share', T('Puede compartir y crear enlaces'), false]], ok: 'tok-new', no: 'tok-no' });
   // Lo que se pide aparte después de dibujar: la lista de tokens del equipo.
   async function mount(box, a) {
     subMount(box, a && a.team && a.team.mine);
@@ -348,7 +349,21 @@
       return true;
     }
     // Campos y listas: se leen al confirmar, o los atiende change.
-    if (['n', 'email', 'role', 'invite-role', 'tok-name', 'tok-folder', 'tok-write', 'tok-share', 'sub-name'].includes(kind)) return true;
+    if (['n', 'email', 'role', 'invite-role', 'tok-name', 'tok-folder', 'tok-write', 'tok-share', 'tok-new', 'tok-no', 'sub-name'].includes(kind)) return true;
+    // Un token nuevo: el formulario se abre en el lugar del botón, y crea al confirmar (kit.js atiende sus botones).
+    if (kind === 'tok-open') {
+      LMD.kit.tokenAsk(b.closest('[data-tok-new]'), tokenForm(), async (form) => {
+        const name = form.querySelector('[data-t=tok-name]'); const write = form.querySelector('[data-t=tok-write]').checked;
+        if (!name.value.trim()) { name.focus(); return T('Escribí un nombre.'); }
+        try {
+          const made = await C.newToken({ name: name.value.trim(), folder: form.querySelector('[data-t=tok-folder]').value.trim().replace(/^\/+|\/+$/g, ''), write, share: write && form.querySelector('[data-t=tok-share]').checked });
+          fresh = Object.assign(made, { team: mine.id, at: Date.now() });
+        } catch (err) { return why(err); }
+        await refresh(); redraw();
+        return '';
+      });
+      return true;
+    }
     if (/^v-/.test(kind)) {
       // Las ventanas son de vault.js: cuando algo cambia, avisa (onTeam) y la gestión se vuelve a dibujar.
       again = async () => { await refresh(); if (box.isConnected) redraw(); };
@@ -391,12 +406,6 @@
         const text = await templateDialog(mine.policies.template);
         if (text == null) return true;
         await C.policies({ template: text }); said = T('Ajuste guardado.');
-      } else if (kind === 'tok-new') {
-        const name = box.querySelector('[data-t=tok-name]'); const write = box.querySelector('[data-t=tok-write]').checked;
-        if (!name.value.trim()) { say(T('Escribí un nombre.')); name.focus(); return true; }
-        b.disabled = true;
-        const made = await C.newToken({ name: name.value.trim(), folder: box.querySelector('[data-t=tok-folder]').value.trim().replace(/^\/+|\/+$/g, ''), write, share: write && box.querySelector('[data-t=tok-share]').checked });
-        fresh = Object.assign(made, { team: mine.id, at: Date.now() });
       } else if (kind === 'tok-regen') {
         if (!(await LMD.dialog.confirm({ title: T('¿Regenerar el token "{a}"?', { a: b.dataset.name }), text: T('Las conexiones que usan este token dejan de andar. Vas a tener que pegar el token nuevo donde lo uses.'), ok: T('Regenerar'), danger: true }))) return true;
         fresh = Object.assign(await C.regenerate(+b.dataset.id), { team: mine.id, at: Date.now() });

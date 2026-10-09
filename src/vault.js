@@ -659,9 +659,9 @@
     // El espacio del equipo figura para quien lo puede desbloquear para su IA: quien administra, o un miembro si se habilitó.
     const list = all().filter((v) => v.state === 'on' && (!v.team || v.admin || v.ai_members || v.ai));
     if (!list.length) return '';
-    return '<h4>' + T('Carpetas protegidas') + '</h4>' +
+    return LMD.kit.card({ id: 'vaults-ai', title: T('Carpetas protegidas'), text: T('Cuáles puede leer tu IA ahora.'), body:
       '<ul class="lmd-tokens lmd-vault-list">' + list.map((v) => '<li' + (v.ai ? ' class="lmd-vault-on"' : '') + '><span>' + ICON.lock + '<b>' + (v.team ? esc(teamName()) + ' (@team/)' : isRoot(v) ? esc(T('Toda tu nube')) : esc(v.folder) + '/') + '</b> · ' + esc(aiText(v)) + '</span>' +
-        (v.ai ? '<button type="button" data-vault-ailock="' + v.id + '">' + T('Bloquear ahora') + '</button>' : '<button type="button" data-vault-ai="' + v.id + '">' + T('Desbloquear para la IA') + '</button>') + '</li>').join('') + '</ul>';
+        (v.ai ? '<button type="button" data-vault-ailock="' + v.id + '">' + T('Bloquear ahora') + '</button>' : '<button type="button" data-vault-ai="' + v.id + '">' + T('Desbloquear para la IA') + '</button>') + '</li>').join('') + '</ul>' });
   }
   // Al lado de "Crear un token": qué no alcanza un token, tenga el alcance que tenga.
   const tokenNote = () => (all().length ? '<p class="lmd-hint lmd-vault-tokens">' + T('Las carpetas protegidas no entran en ningún token, salvo mientras estén desbloqueadas para la IA.') + '</p>' : '');

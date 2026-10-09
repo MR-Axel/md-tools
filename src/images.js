@@ -523,7 +523,7 @@
   }
 
   // ---------- Ajustes > Nube: almacenamiento ----------
-  // Un renglón en la cabecera de Nube: el nombre, la barra, cuánto se usa y el acceso a la lista. El detalle (el
+  // Una fila de la tarjeta Cuenta de Nube (la arma sync.js): el nombre, la barra, cuánto se usa y el acceso a la lista. El detalle (el
   // aviso de tope pasado, el espacio del equipo, pasar las incrustadas) está en la lista.
   const meter = (data) => { const p = el('progress', { class: 'lmd-st-bar', max: '100' }); p.value = data.max ? Math.min(100, Math.round((data.used / data.max) * 100)) : 0; p.setAttribute('aria-label', T('Almacenamiento')); return p; };
   async function paintPane(pane) {

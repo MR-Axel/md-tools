@@ -68,7 +68,7 @@ try {
   const page2 = await ctx.newPage(); await page2.goto(home); await page2.waitForSelector('.lmd-xroot[data-root=cloud] a.lmd-node');
   o.enInicio = await page2.evaluate(() => { const n = document.querySelector('.lmd-xroot[data-root=cloud] a.lmd-node'); return [n.textContent.trim(), n.querySelector('.lmd-node-where').title]; });
   // "Conectar una IA" abre el mismo panel que Ajustes → IA, en una ventana: ahí se crea el token.
-  await page2.click('[data-cloud=menu]'); await page2.click('[data-cloud=ai]'); await page2.waitForSelector('.lmd-panel-card [data-acct=ai] [data-c=token]'); await page2.click('[data-acct=ai] [data-c=token]'); await page2.waitForSelector('.lmd-ai-new');
+  await page2.click('[data-cloud=menu]'); await page2.click('[data-cloud=ai]'); await page2.waitForSelector('.lmd-panel-card [data-acct=ai] [data-c=token]'); await page2.click('[data-acct=ai] [data-c=token]'); await page2.click('[data-acct=ai] [data-c=token-ok]'); await page2.waitForSelector('.lmd-ai-new');
   const fields = await page2.evaluate(() => [...document.querySelectorAll('[data-acct=ai] .lmd-field input, [data-acct=ai] .lmd-field textarea')].map((i) => i.value));
   o.campos = [fields[0], fields[1].slice(0, 4), fields[2].slice(0, 44)];
   const token = fields[1];

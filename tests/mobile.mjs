@@ -413,8 +413,8 @@ try {
         text: tabs.every((t) => t.querySelector('span').offsetParent && t.querySelector('span').textContent.trim()), low: Math.min(...tabs.map((t) => t.getBoundingClientRect().height)), above: nav.getBoundingClientRect().bottom <= document.querySelector('.lmd-panel-body').getBoundingClientRect().top + 1 }; });
     check(tag + 'los ajustes ocupan toda la pantalla', J(panel.box) === J([0, 0, panel.screen[0], panel.screen[1]]), panel);
     check(tag + 'las pestañas van arriba en una fila que se desliza, con texto y 40 px de alto', panel.row === 1 && panel.slides && panel.text && panel.low >= 40 && panel.above, panel);
-    for (const tab of ['look', 'read', 'plug', 'cloud', 'ai', 'plan', 'inst', 'adv']) {
-      await page.tap('[data-ptab=' + tab + ']'); await page.waitForTimeout(tab === 'cloud' || tab === 'ai' || tab === 'plan' ? 700 : 200);
+    for (const tab of ['look', 'read', 'plug', 'cloud', 'ai', 'auto', 'plan', 'inst', 'adv']) {
+      await page.tap('[data-ptab=' + tab + ']'); await page.waitForTimeout(tab === 'auto' ? 1200 : tab === 'cloud' || tab === 'ai' || tab === 'plan' ? 700 : 200);
       const t = await page.evaluate(() => { const body = document.querySelector('.lmd-panel-body'); const on = document.querySelector('[data-ptab].lmd-on').getBoundingClientRect();
         const cols = [...body.querySelectorAll('section:not([hidden]).lmd-two, section:not([hidden]) .lmd-plug, section:not([hidden]) .lmd-plans, section:not([hidden]) .lmd-sec ul')].map((g) => getComputedStyle(g).gridTemplateColumns.split(' ').length);
         return { wide: body.scrollWidth - body.clientWidth, cols, tab: on.left >= 0 && on.right <= window.innerWidth, cut: [...body.querySelectorAll('section:not([hidden]) *')].filter((n) => n.offsetParent && n.getBoundingClientRect().right > window.innerWidth + 1).length }; });
@@ -424,11 +424,16 @@ try {
       await fits(page, tag + 'ajustes, pestaña ' + tab);
     }
     if (W === 390) {
-      await page.tap('[data-ptab=ai]'); await page.waitForSelector('[data-acct=ai] [data-c=token]'); await page.tap('[data-acct=ai] [data-c=token]'); await page.waitForSelector('.lmd-ai-new');
+      await page.tap('[data-ptab=ai]'); await page.waitForSelector('[data-acct=ai] [data-c=token]'); await page.tap('[data-acct=ai] [data-c=token]'); await page.waitForSelector('[data-acct=ai] .lmd-tokform');
+      // El formulario del token nuevo: a una columna, con todo adentro de la pantalla y botones que se pueden tocar.
+      const form = await page.evaluate(() => { const f = document.querySelector('[data-acct=ai] .lmd-tokform'); const box = (n) => { const r = n.getBoundingClientRect(); return { in: r.left >= 0 && r.right <= window.innerWidth + 1, h: Math.round(r.height) }; };
+        return { self: box(f), name: box(f.querySelector('[data-c=tok-name]')), share: box(f.querySelector('[data-c=share]').closest('label')), buttons: [...f.querySelectorAll('button')].map(box), wide: document.querySelector('.lmd-panel-body').scrollWidth - document.querySelector('.lmd-panel-body').clientWidth }; });
+      check(tag + 'el formulario de un token nuevo entra en la pantalla: el nombre, el permiso de compartir y sus dos botones se pueden tocar', form.self.in && form.name.in && form.name.h >= 40 && form.share.in && form.share.h >= 40 && form.buttons.length === 2 && form.buttons.every((b) => b.in && b.h >= 40) && form.wide <= 0, form);
+      await page.tap('[data-acct=ai] [data-c=token-ok]'); await page.waitForSelector('.lmd-ai-new');
       const cmd = await page.evaluate(() => { const t = document.querySelector('[data-acct=ai] .lmd-field-long textarea'); const r = t.getBoundingClientRect(); return { cut: t.scrollWidth > t.clientWidth + 1 || t.scrollHeight > t.clientHeight + 2, inside: r.left >= 0 && r.right <= window.innerWidth, whole: /--header "Authorization: Bearer mdt_\S+"$/.test(t.value), name: document.querySelector('.lmd-tokens li span').textContent.split(' · ')[0] }; });
       check(tag + 'el comando para conectar la IA se ve entero, y el token se llama "AI"', !cmd.cut && cmd.inside && cmd.whole && cmd.name === 'AI', cmd);
-      const tk = await page.evaluate(() => { const box = (n) => { const r = n.getBoundingClientRect(); return { in: r.left >= 0 && r.right <= window.innerWidth + 1, h: Math.round(r.height) }; }; return { brief: box(document.querySelector('[data-acct=ai] [data-c=brief]')), row: [...document.querySelector('.lmd-tokens li').querySelectorAll('button')].map(box), share: box(document.querySelector('[data-acct=ai] .lmd-tok-share')) }; });
-      check(tag + 'copiar las instrucciones, las acciones de cada token y el permiso de compartir entran en la pantalla y se pueden tocar', tk.brief.in && tk.brief.h >= 40 && tk.row.length === 3 && tk.row.every((b) => b.in && b.h >= 40) && tk.share.in, tk);
+      const tk = await page.evaluate(() => { const box = (n) => { const r = n.getBoundingClientRect(); return { in: r.left >= 0 && r.right <= window.innerWidth + 1, h: Math.round(r.height) }; }; return { brief: box(document.querySelector('[data-acct=ai] [data-c=brief]')), row: [...document.querySelector('.lmd-tokens li').querySelectorAll('button')].map(box), card: box(document.querySelector('[data-acct=ai] .lmd-blk')), fresh: box(document.querySelector('[data-acct=ai] .lmd-fresh')), url: box(document.querySelector('[data-acct=ai] .lmd-kv.lmd-field')) }; });
+      check(tag + 'copiar las instrucciones, las acciones de cada token, la tarjeta y el bloque del token nuevo entran en la pantalla y se pueden tocar', tk.brief.in && tk.brief.h >= 40 && tk.row.length === 3 && tk.row.every((b) => b.in && b.h >= 40) && tk.card.in && tk.fresh.in && tk.url.in, tk);
       await fits(page, tag + 'ajustes, IA con un token recién creado');
     }
     await page.tap('[data-act=close-panel]');

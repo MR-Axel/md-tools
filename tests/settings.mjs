@@ -47,6 +47,8 @@ const setPlan = (plan) => api('POST', '/admin/plan', { email: mail, plan }, unde
 const stored = (key) => app.evaluate((k) => new Promise((resolve) => chrome.storage.local.get(k, (r) => resolve(r[k]))), key);
 const cloudUrl = (p) => home + '?f=' + encodeURIComponent('cloud/' + p.split('/').map(encodeURIComponent).join('/'));
 const tab = async (t) => { await app.click('[data-ptab=' + t + ']'); await app.waitForTimeout(450); };
+// Nube vuelta a dibujar, con la explicación de Seguridad desplegada (con sesión va plegada debajo del estado).
+const tabCloud = async () => { await tab('plan'); await tab('cloud'); await app.waitForSelector('[data-acct=cloud] .lmd-sec-more'); await app.evaluate(() => { document.querySelector('[data-acct=cloud] .lmd-sec-more').open = true; }); };
 const openSettings = async (t) => { await app.click('[data-act=settings]'); await app.waitForSelector('.lmd-panel-card'); if (t) await tab(t); };
 const TABS = ['look', 'read', 'plug', 'tools', 'cloud', 'ai', 'plan', 'inst', 'adv'];
 // Ninguna pestaña puede necesitar scroll con la ventana a 800 px de alto. Las que sí deslizan se sacan al leer el
@@ -217,7 +219,15 @@ try {
   check('ninguna pestaña necesita scroll a 800 px de alto, salvo Herramientas, Plugins y Nube (plan gratis)', over.length === 0, over);
   await tab('cloud');
   const freeCloud = await app.evaluate(() => [...document.querySelectorAll('[data-acct=cloud] .lmd-acct-row')].map((r) => r.children[0].textContent + '=' + r.children[1].textContent).join('|') + ' / ' + [...document.querySelectorAll('[data-acct=cloud] button')].map((b) => b.textContent).join('|'));
-  check('Nube: la cuenta, el plan y cuántas notas, con abrir la carpeta, salir y eliminar la cuenta', freeCloud === 'Cuenta=' + mail + '|Nombre visible=' + mail.split('@')[0] + '|Plan=Gratis|Notas en la nube=1 de 25 / Cambiar|Abrir la carpeta Nube|Salir|Proteger con contraseña|Proteger toda mi nube|Proteger una carpeta|Prender en Herramientas|Eliminar la cuenta', freeCloud);
+  check('Nube: la cuenta, el plan y cuántas notas, con abrir la carpeta, salir y eliminar la cuenta', freeCloud === 'Correo=' + mail + '|Nombre visible=' + mail.split('@')[0] + '|Plan=Gratis|Notas en la nube=1 de 25 / Abrir la carpeta Nube|Salir|Cambiar|Proteger toda mi nube|Proteger una carpeta|Prender en Herramientas|Eliminar la cuenta', freeCloud);
+  // Tres tarjetas con su título, cada una una región con ese nombre; un solo botón relleno en toda la pestaña, y cada acción en la fila o la tarjeta de lo que afecta.
+  const cloudCards = await app.evaluate(() => { const box = document.querySelector('[data-acct=cloud]'); const of = (sel) => { const n = box.querySelector(sel); const c = n && n.closest('[data-blk]'); return c ? c.dataset.blk : ''; };
+    return { cards: [...box.querySelectorAll('.lmd-blk')].map((c) => c.dataset.blk + ':' + c.querySelector('.lmd-blk-head h4').textContent + ':' + (c.getAttribute('role') === 'region' && document.getElementById(c.getAttribute('aria-labelledby')) === c.querySelector('h4'))),
+      fills: [...box.querySelectorAll('.lmd-btn-fill')].map((b) => b.dataset.c), open: of('[data-c=open]'), out: !!box.querySelector('.lmd-kv [data-c=out]') && box.querySelector('[data-c=out]').closest('.lmd-kv').children[0].textContent, protect: of('[data-c=protect-all]'),
+      lead: box.querySelector('[data-blk=security] .lmd-blk-head p').textContent, more: box.querySelector('.lmd-sec-more').open, wide: box.scrollWidth - box.clientWidth }; });
+  check('Nube: tres tarjetas con título (Cuenta, Sitios publicados si se ofrecen, Seguridad), cada una una región con su nombre', /^account:Cuenta:true\|(sites:Sitios publicados:true\|)?security:Seguridad:true$/.test(cloudCards.cards.join('|')), cloudCards.cards);
+  check('un solo botón relleno en la pestaña, y cada acción al lado de lo que afecta: abrir en la tarjeta de la cuenta, salir en la fila del correo, proteger en Seguridad', cloudCards.fills.join() === 'open' && cloudCards.open === 'account' && cloudCards.out === 'Correo' && cloudCards.protect === 'security' && cloudCards.wide <= 0, cloudCards);
+  check('Seguridad: una línea dice qué se cifra, y la explicación larga queda plegada debajo del estado', /^Las carpetas con contraseña se cifran de extremo a extremo\./.test(cloudCards.lead) && cloudCards.more === false, cloudCards);
   // el nombre visible se cambia en el lugar, y se muestra siempre como texto
   const nameHint = await text('[data-acct=cloud] .lmd-acct-name-hint');
   await app.click('[data-acct=cloud] [data-c=name]'); await app.waitForSelector('[data-acct=cloud] [data-name-in]');
@@ -515,18 +525,35 @@ try {
   check('ninguna pestaña necesita scroll a 800 px de alto, salvo Herramientas, Plugins y Nube (plan pago)', over.length === 0, over);
   await tab('cloud');
   const paidCloud = await app.evaluate(() => [...document.querySelectorAll('[data-acct=cloud] .lmd-acct-row')].map((r) => r.children[0].textContent + '=' + r.children[1].textContent).join('|'));
-  check('Nube con plan pago: el número de notas y "sin límite"', paidCloud === 'Cuenta=' + mail + '|Nombre visible=' + mail.split('@')[0] + '|Plan=Pago|Notas en la nube=4, sin límite', paidCloud);
+  check('Nube con plan pago: el número de notas y "sin límite"', paidCloud === 'Correo=' + mail + '|Nombre visible=' + mail.split('@')[0] + '|Plan=Pago|Notas en la nube=4, sin límite', paidCloud);
+  // El almacenamiento es una fila más de la tarjeta Cuenta, con el mismo estilo que las demás: ya no flota junto al título.
+  await app.waitForFunction(() => { const s = document.querySelector('[data-acct=cloud] [data-files-pane]'); return !LMD.images || (s && !s.hidden); }, null, { timeout: 8000 }).catch(() => {});
+  const storage = await app.evaluate(() => { const s = document.querySelector('[data-acct=cloud] [data-files-pane]'); const rows = [...document.querySelectorAll('[data-acct=cloud] [data-blk=account] .lmd-kv:not([hidden])')]; const last = rows[rows.length - 1].getBoundingClientRect(); const first = rows[0].getBoundingClientRect();
+    return { loaded: !!LMD.images, inCard: !!s && !!s.closest('[data-blk=account]'), row: !!s && s.classList.contains('lmd-kv'), shown: !!s && !s.hidden, text: s ? s.textContent : '', pos: s ? getComputedStyle(s).position : '', aligned: Math.abs(last.left - first.left) < 1 && Math.abs(last.right - first.right) < 1, loose: document.querySelectorAll('[data-tab=cloud] > [data-files-pane]').length }; });
+  check('Nube con plan pago: el almacenamiento es una fila de la tarjeta Cuenta, alineada con las demás, con "Ver adjuntos" al final', storage.inCard && storage.row && storage.pos === 'static' && storage.loose === 0 && storage.aligned && (!storage.loaded || (storage.shown && /^Almacenamiento.*Ver adjuntos$/.test(storage.text))), storage);
   await tab('ai'); await app.waitForSelector('[data-acct=ai] [data-c=token]');
   const aiBefore = await app.evaluate(() => ({ url: document.querySelector('[data-acct=ai] .lmd-field input').value, fields: document.querySelectorAll('[data-acct=ai] .lmd-field').length, none: /Todavía no hay tokens/.test(document.querySelector('[data-acct=ai]').textContent), make: document.querySelector('[data-acct=ai] [data-c=token]').textContent, fill: document.querySelector('[data-acct=ai] [data-c=token]').classList.contains('lmd-btn-fill'), kept: document.querySelectorAll('[data-acct=ai] .lmd-tok-kept').length }));
-  await app.click('[data-acct=ai] [data-c=token]'); await app.waitForSelector('.lmd-ai-new');
+  await app.click('[data-acct=ai] [data-c=token]'); await app.click('[data-acct=ai] [data-c=token-ok]'); await app.waitForSelector('.lmd-ai-new');
   const ai = await app.evaluate(() => ({ fields: [...document.querySelectorAll('[data-acct=ai] .lmd-field')].map((f) => [f.querySelector('span').textContent, f.querySelector('input, textarea').value]), list: [...document.querySelectorAll('.lmd-tokens li span')].map((s) => s.textContent), body: (() => { const b = document.querySelector('.lmd-panel-body'); return b.scrollHeight - b.clientHeight; })(), make: document.querySelector('[data-acct=ai] [data-c=token]').textContent, fill: document.querySelector('[data-acct=ai] [data-c=token]').classList.contains('lmd-btn-fill'), acts: [...document.querySelector('.lmd-tokens li').querySelectorAll('button')].map((b) => b.textContent) }));
   const token = ai.fields[1][1];
   check('IA: sin tokens, "Crear un token" es el botón principal; con uno pasa a "Crear otro token" sin relleno, y la fila ofrece regenerarlo', aiBefore.make === 'Crear un token' && aiBefore.fill && aiBefore.kept === 0 && ai.make === 'Crear otro token' && !ai.fill && ai.acts.join() === 'Instrucciones,Regenerar,Revocar', [aiBefore, ai.make, ai.fill, ai.acts]);
   const mcp = (t) => fetch(base + '/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + t }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) }).then((r) => r.status);
   check('IA: la dirección del MCP, y al crear un token, el token y el comando listo', aiBefore.url === base + '/mcp' && aiBefore.fields === 1 && aiBefore.none && ai.fields.map((f) => f[0]).join() === 'URL,Token,Claude Code' && token.startsWith('mdt_') && ai.fields[2][1] === 'claude mcp add --transport http sharpmd ' + base + '/mcp --header "Authorization: Bearer ' + token + '"' && ai.body <= 0, [aiBefore, ai]);
   check('el token creado sirve para entrar por MCP y figura en la lista', (await mcp(token)) === 200 && ai.list.length === 1 && /sin usar/.test(ai.list[0]), ai.list);
-  await app.click('.lmd-tokens [data-rm]'); await app.waitForFunction(() => /Todavía no hay tokens/.test(document.querySelector('[data-acct=ai]').textContent));
-  check('revocarlo lo saca de la lista y deja de entrar', (await mcp(token)) === 401 && (await app.locator('.lmd-tokens li').count()) === 0);
+  // Automatizaciones con un token y sin automatizaciones: tres tarjetas con su título que entran en la ventana de 1000 x 740 sin deslizar, en español y sin nada cortado.
+  await tab('auto'); await app.waitForSelector('[data-auto-pane] [data-blk=tokens] .lmd-tok-rows li');
+  const autoFit = await app.evaluate(() => { const body = document.querySelector('.lmd-panel-body'); const card = document.querySelector('.lmd-panel-card').getBoundingClientRect(); const box = document.querySelector('[data-auto-pane]');
+    return { lang: LMD.lang(), size: [Math.round(card.width), Math.round(card.height)], scroll: body.scrollHeight - body.clientHeight, wide: body.scrollWidth - body.clientWidth, cards: [...box.querySelectorAll('.lmd-blk-head h4')].map((h) => h.textContent).join('|'), empty: [...box.querySelectorAll('.lmd-empty')].map((p) => p.textContent).join('|'),
+      cut: [...box.querySelectorAll('h4, p, .lmd-btn, li, small')].filter((n) => n.scrollWidth > n.clientWidth + 1).map((n) => n.textContent.slice(0, 30)), tall: [...box.querySelectorAll('.lmd-blk-act .lmd-btn')].filter((b) => b.getBoundingClientRect().height > 40).length,
+      form: box.querySelectorAll('.lmd-tokform, [data-c=tok-folder]').length, kept: [...box.querySelectorAll('.lmd-tok-kept')].map((p) => p.textContent).join('|'), fills: [...box.querySelectorAll('.lmd-btn-fill')].map((b) => b.dataset.c).join() }; });
+  check('Automatizaciones, con un token y sin automatizaciones: tres tarjetas con título y su estado vacío en una línea', autoFit.lang === 'es' && autoFit.cards === 'Automatizaciones|Direcciones de entrada|Tokens de la API' && autoFit.empty === 'Todavía no hay automatizaciones.|Todavía no hay direcciones de entrada.' && autoFit.fills === 'hook', autoFit);
+  check('y entra en la ventana de 1000 x 740 sin deslizar, sin textos cortados ni botones en dos renglones', autoFit.size.join('x') === '1000x740' && autoFit.scroll <= 0 && autoFit.wide <= 0 && !autoFit.cut.length && autoFit.tall === 0, autoFit);
+  check('el aviso de que el token no se vuelve a mostrar va una sola vez, corto, debajo de la lista, y las opciones de un token nuevo no están a la vista', autoFit.kept === 'Un token se muestra una sola vez. Si lo perdiste, regeneralo.' && autoFit.form === 0, [autoFit.kept, autoFit.form]);
+  await tab('ai'); await app.waitForSelector('[data-acct=ai] .lmd-tokens [data-rm]');
+  const aiFit = await app.evaluate(() => { const body = document.querySelector('.lmd-panel-body'); const box = document.querySelector('[data-acct=ai]'); return { scroll: body.scrollHeight - body.clientHeight, wide: body.scrollWidth - body.clientWidth, cut: [...box.querySelectorAll('h4, h5, p, .lmd-btn, li, small')].filter((n) => n.scrollWidth > n.clientWidth + 1).map((n) => n.textContent.slice(0, 30)), form: box.querySelectorAll('.lmd-tokform, [data-c=folder], [data-c=share]').length }; });
+  check('IA (MCP) con un token: entra en la misma ventana sin deslizar, sin textos cortados y sin opciones de token nuevo a la vista', aiFit.scroll <= 0 && aiFit.wide <= 0 && !aiFit.cut.length && aiFit.form === 0, aiFit);
+  await app.click('[data-acct=ai] .lmd-tokens [data-rm]'); await app.waitForFunction(() => /Todavía no hay tokens/.test(document.querySelector('[data-acct=ai]').textContent));
+  check('revocarlo lo saca de la lista y deja de entrar', (await mcp(token)) === 401 && (await app.locator('[data-acct=ai] .lmd-tokens li').count()) === 0);
   await app.click('[data-act=close-panel]');
 
   console.log('Inicio con notas');
@@ -601,7 +628,10 @@ try {
     const s = document.querySelector('[data-acct=cloud] .lmd-sec'); if (!s) return null;
     const above = document.querySelector('[data-acct=cloud] .lmd-acct-actions, [data-acct=cloud] .lmd-signin');
     return { title: s.querySelector('h4').textContent, rows: [...s.querySelectorAll('[data-sec-row]')].map((li) => li.dataset.secRow + ':' + li.querySelector('b').textContent).join('|'), icons: s.querySelectorAll('.lmd-sec-ico svg').length,
-      text: s.textContent, act: (s.querySelector('[data-c=protect]') || {}).textContent || '', href: s.querySelector('.lmd-sec-foot a').href, link: s.querySelector('.lmd-sec-foot a').textContent,
+      // text: la explicación (lo que se despliega) y el pie. La línea de arriba y el estado van aparte: son los únicos que nombran el cifrado de extremo a extremo.
+      text: s.querySelector('.lmd-sec-more').textContent + s.querySelector('.lmd-sec-foot').textContent, lead: s.querySelector('.lmd-blk-head p').textContent, open: s.querySelector('.lmd-sec-more').open, summary: s.querySelector('.lmd-sec-more > summary').textContent,
+      state: (s.querySelector('.lmd-e2e p') || {}).textContent || '', pickText: (s.querySelector('.lmd-sec-pick') || {}).textContent || '',
+      act: (s.querySelector('[data-c=protect]') || {}).textContent || '', href: s.querySelector('.lmd-sec-foot a').href, link: s.querySelector('.lmd-sec-foot a').textContent,
       below: !!above && s.getBoundingClientRect().top >= above.getBoundingClientRect().bottom, count: (s.querySelector('.lmd-sec-count') || {}).textContent || '',
       pick: [...s.querySelectorAll('[data-c=protect-at]')].map((b) => b.dataset.f), msg: (s.querySelector('p.lmd-sec-pick') || {}).textContent || '', wide: s.scrollWidth - s.clientWidth };
   });
@@ -610,21 +640,27 @@ try {
   const fuera = await secOf();
   check('sin sesión, Nube muestra el bloque de seguridad debajo del botón de entrar: cinco renglones con ícono', !!fuera && fuera.title === 'Seguridad' && fuera.rows === ROWS && fuera.icons === 5 && fuera.below && fuera.wide <= 0, fuera);
   check('dice qué lee el servidor y qué no, cada cosa en su renglón, sin signos de admiración ni rayas', limpio(fuera.text) && /Ni el servidor puede leerlas\./.test(fuera.text) && /para compartirlas y atender a tu IA\./.test(fuera.text) && /En el plan gratis y en el pago/.test(fuera.text) && /AES-256-GCM · PBKDF2/.test(fuera.text) && /no se pueden recuperar\./.test(fuera.text), fuera.text);
-  check('con un servidor propio no promete un cifrado que depende de quien lo instaló', /En un servidor propio/.test(fuera.text) && !/Viajan cifradas/.test(fuera.text), fuera.text);
+  check('con un servidor propio no promete un cifrado que depende de quien lo instaló', /En un servidor propio/.test(fuera.text) && !/Viajan cifradas/.test(fuera.text) && fuera.lead === 'Las carpetas con contraseña se cifran de extremo a extremo. El resto depende de cómo esté instalado tu servidor.', [fuera.lead, fuera.text]);
+  check('sin sesión no hay estado que mostrar: la explicación va abierta, con su título de sección desplegable', fuera.open === true && fuera.state === '' && fuera.summary === 'Qué se cifra y quién tiene la llave', [fuera.open, fuera.state, fuera.summary]);
   check('"Cómo funciona" lleva a las notas en la nube de la página de privacidad', fuera.link === 'Cómo funciona' && fuera.href === SITE + '/privacy.html#cloud-notes' && /<h2 id="cloud-notes">/.test(fs.readFileSync(path.join(root, 'privacy.html'), 'utf8')), [fuera.link, fuera.href]);
   // Con el servidor de SharpMD, y en los dos idiomas.
   const lit = await app.evaluate(() => {
-    const plain = (h) => { const d = document.createElement('div'); d.innerHTML = h; return d.textContent; };
-    const es = plain(LMD.sync.security({ can: true, count: 2 })); LMD.setLang('en');
-    const en = plain(LMD.sync.security({ can: true, count: 2 })); const en1 = plain(LMD.sync.security({ count: 1 })); const enOwn = plain(LMD.sync.security({ own: true })); LMD.setLang('es');
-    return { es, en, en1, enOwn };
+    // La cabecera de la tarjeta (el título y la línea de qué se cifra) se mira aparte: plain deja la explicación y el pie.
+    const lead = (h) => { const d = document.createElement('div'); d.innerHTML = h; return d.querySelector('.lmd-blk-head h4').textContent + '|' + d.querySelector('.lmd-blk-head p').textContent; };
+    const plain = (h) => { const d = document.createElement('div'); d.innerHTML = h; d.querySelector('.lmd-blk-head').remove(); return d.textContent; };
+    const es = plain(LMD.sync.security({ can: true, count: 2 })); const esLead = lead(LMD.sync.security({})); LMD.setLang('en');
+    const en = plain(LMD.sync.security({ can: true, count: 2 })); const en1 = plain(LMD.sync.security({ count: 1 })); const enOwn = plain(LMD.sync.security({ own: true }));
+    const enLead = lead(LMD.sync.security({})); const enOwnLead = lead(LMD.sync.security({ own: true })); LMD.setLang('es');
+    return { es, en, en1, enOwn, esLead, enLead, enOwnLead };
   });
+  // La regla de redacción del producto: la nube está cifrada, y las carpetas con contraseña, de extremo a extremo. Nunca que todo lo es.
+  check('la línea de Seguridad dice que la nube está cifrada y que lo de extremo a extremo son las carpetas con contraseña, en los dos idiomas', lit.esLead === 'Seguridad|La nube está cifrada, y las carpetas con contraseña, de extremo a extremo.' && lit.enLead === 'Security|The cloud is encrypted, and password-protected folders are end-to-end encrypted.' && lit.enOwnLead === 'Security|Password-protected folders are end-to-end encrypted. The rest depends on how your server is set up.', [lit.esLead, lit.enLead, lit.enOwnLead]);
   // Los términos son del servicio alojado: el enlace va junto al de privacidad, y con un servidor propio no aparece.
   const terms = await app.evaluate(() => { const links = (o, l) => { LMD.setLang(l); const d = document.createElement('div'); d.innerHTML = LMD.sync.security(o); const out = [...d.querySelectorAll('.lmd-sec-foot a')].map((a) => a.textContent + ' ' + a.getAttribute('href') + ' ' + a.target); LMD.setLang('es'); return out; };
     return { es: links({}, 'es'), en: links({}, 'en'), own: links({ own: true }, 'es') }; });
   check('junto a "Cómo funciona" hay un enlace a los Términos, en los dos idiomas, y con un servidor propio no está', terms.es.length === 2 && terms.es[1] === 'Términos ' + SITE + '/terms.html _blank' && terms.en[1] === 'Terms ' + SITE + '/terms.html _blank' && terms.own.length === 1 && fs.existsSync(path.join(root, 'terms.html')), terms);
   check('en español: las notas comunes viajan y se guardan cifradas, y el servidor tiene la llave', limpio(lit.es) && /Viajan cifradas y se guardan cifradas en el servidor\. El servidor tiene la llave, para poder compartirlas y atender a tu IA\./.test(lit.es) && /HTTPS · AES-256-GCM/.test(lit.es) && /Tenés 2 carpetas protegidas\./.test(lit.es) && /Proteger una carpeta/.test(lit.es), lit.es);
-  check('en inglés dice lo mismo, sin español suelto', limpio(lit.en) && !/[áéíóúñ]/i.test(lit.en + lit.en1 + lit.enOwn) && /^Security/.test(lit.en) && /Cloud notes|Notes in the cloud/.test(lit.en) && /Encrypted in transit and on the server\. The server holds the key, so it can share them and serve your AI\./.test(lit.en) &&
+  check('en inglés dice lo mismo, sin español suelto', limpio(lit.en) && !/[áéíóúñ]/i.test(lit.en + lit.en1 + lit.enOwn) && /^What is encrypted and who holds the key/.test(lit.en) && /Cloud notes|Notes in the cloud/.test(lit.en) && /Encrypted in transit and on the server\. The server holds the key, so it can share them and serve your AI\./.test(lit.en) &&
     /Protected folders/.test(lit.en) && /Encrypted on your device with your password\. Not even the server can read them\./.test(lit.en) && /On the free and paid plans/.test(lit.en) && /You have 2 protected folders\./.test(lit.en) && /Protect a folder/.test(lit.en) && /How it works/.test(lit.en) && /one-time code/.test(lit.en) && /App MIT · Server AGPL/.test(lit.en), lit.en);
   check('una sola carpeta va en singular, y sin poder proteger no se ofrece la acción', /You have 1 protected folder\./.test(lit.en1) && !/Protect a folder/.test(lit.en1) && /On your own server/.test(lit.enOwn) && limpio(lit.enOwn), [lit.en1, lit.enOwn]);
   check('sin sesión no hay cantidad de carpetas, y la acción está', fuera.count === '' && fuera.act === 'Proteger una carpeta', fuera);
@@ -635,9 +671,16 @@ try {
   const [pedidoSeg] = await Promise.all([app.waitForResponse((r) => r.url().endsWith('/auth/start')), app.click('[data-acct=cloud] [data-cloud=start]')]);
   await app.waitForSelector('[data-acct=cloud] [data-field=code]'); await app.fill('[data-acct=cloud] [data-field=code]', (await pedidoSeg.json()).dev_code); await app.keyboard.press('Enter');
   await app.waitForSelector('[data-acct=cloud] [data-c=out]'); await app.waitForSelector('[data-acct=cloud] .lmd-sec [data-c=protect]');
+  await app.waitForSelector('[data-acct=cloud] .lmd-e2e');
   const dentro = await secOf();
-  const orden = await app.evaluate(() => { const q = (s) => document.querySelector('[data-acct=cloud] ' + s).getBoundingClientRect(); return q('.lmd-sec').top >= q('.lmd-acct-actions').bottom && q('.lmd-acct-del').top >= q('.lmd-sec').bottom; });
+  const orden = await app.evaluate(() => { const q = (s) => document.querySelector('[data-acct=cloud] ' + s).getBoundingClientRect(); return q('.lmd-sec').top >= q('[data-blk=account]').bottom && q('.lmd-acct-del').top >= q('.lmd-sec').bottom; });
   check('con sesión, el mismo bloque va debajo de los datos de la cuenta y antes de eliminarla', !!dentro && dentro.rows === ROWS && dentro.count === '' && orden && limpio(dentro.text), dentro);
+  // Con sesión el estado de la protección va arriba, con sus botones, y la explicación queda plegada: se abre desde su título.
+  const estado = await app.evaluate(() => { const s = document.querySelector('[data-acct=cloud] .lmd-sec'); const l = s.querySelector('.lmd-e2e'); const m = s.querySelector('.lmd-sec-more');
+    return { acts: [...l.querySelectorAll('button')].map((b) => b.textContent + (b.classList.contains('lmd-btn-fill') ? '*' : '')), over: l.getBoundingClientRect().bottom <= m.getBoundingClientRect().top + 1, shown: s.querySelector('[data-sec-row=notes]').checkVisibility(), inRow: s.querySelectorAll('[data-sec-row] [data-c=protect], [data-sec-row] [data-c=protect-all]').length }; });
+  check('con sesión, Seguridad muestra arriba el estado con sus dos acciones, sin relleno, y la explicación plegada debajo', dentro.state === 'Protección de extremo a extremo: apagada' && estado.acts.join('|') === 'Proteger toda mi nube|Proteger una carpeta' && estado.over && dentro.open === false && !estado.shown && estado.inRow === 0, [dentro.state, estado]);
+  await app.focus('[data-acct=cloud] .lmd-sec-more > summary'); await app.keyboard.press('Enter');
+  check('la explicación se despliega con el teclado desde su título', await app.evaluate(() => document.querySelector('[data-acct=cloud] .lmd-sec-more').open && document.querySelector('[data-acct=cloud] [data-sec-row=notes]').checkVisibility()));
   // La clave del asistente de IA: el bloque dice dónde queda y por dónde viaja, esté prendido el asistente o no.
   const keyRow = () => app.evaluate(() => { const li = document.querySelector('[data-acct=cloud] [data-sec-row=aikey]'); return li && { title: li.querySelector('b').textContent, text: li.querySelector('p').textContent, tech: li.querySelector('small').textContent, act: (li.querySelector('[data-c=ai-tools]') || {}).textContent || '', key: (li.querySelector('.lmd-sec-key') || {}).textContent || '', all: li.textContent }; });
   await app.waitForSelector('[data-acct=cloud] [data-sec-row=aikey] [data-c=ai-tools]');
@@ -647,7 +690,7 @@ try {
   // Con una clave cargada: el proveedor y los últimos cuatro caracteres, nada más.
   const FAKE = 'sk-ant-PRUEBA-NO-ES-UNA-CLAVE-Zz9Q';
   await app.evaluate(async (key) => { const k = await LMD.seal.deviceKey(); await LMD.store.aiPut({ provider: 'anthropic', baseUrl: '', model: 'modelo-de-prueba', cryptoKey: k, data: await LMD.seal.seal(k, 'sharpmd ai key v1|anthropic|https://api.anthropic.com/v1', key), last4: key.slice(-4), at: Date.now() }); }, FAKE);
-  await tab('plan'); await tab('cloud'); await app.waitForSelector('[data-acct=cloud] [data-sec-row=aikey] .lmd-sec-key');
+  await tabCloud(); await app.waitForSelector('[data-acct=cloud] [data-sec-row=aikey] .lmd-sec-key');
   const k1 = await keyRow(); const whole = await app.evaluate(() => document.querySelector('.lmd-panel').innerHTML);
   const slack1 = await app.evaluate(() => { const b = document.querySelector('.lmd-panel-body'); const d = document.querySelector('[data-acct=cloud] .lmd-acct-del').getBoundingClientRect(); return { over: b.scrollHeight - b.clientHeight, left: Math.round(b.getBoundingClientRect().bottom - d.bottom) }; });
   check('con la clave cargada y el asistente apagado (la tarjeta más larga), el bloque no desborda a lo ancho', await app.evaluate(() => { const b = document.querySelector('.lmd-panel-body'); return b.scrollWidth <= b.clientWidth; }), slack1);
@@ -657,7 +700,7 @@ try {
   await app.click('[data-acct=cloud] [data-c=ai-tools]');
   check('la acción lleva a Herramientas, donde se prende el asistente', (await app.evaluate(() => document.querySelector('[data-ptab].lmd-on').dataset.ptab)) === 'tools');
   await app.evaluate(() => LMD.tools.set('assistant', true)); await app.waitForFunction(() => LMD.tools.isOn('assistant'));
-  await tab('plan'); await tab('cloud'); await app.waitForSelector('[data-acct=cloud] [data-sec-row=aikey] .lmd-sec-key');
+  await tabCloud(); await app.waitForSelector('[data-acct=cloud] [data-sec-row=aikey] .lmd-sec-key');
   const k2 = await keyRow();
   check('con el asistente prendido la acción ya no está, y la clave sigue a la vista', k2.act === '' && k2.tech === 'AES-256-GCM · llave no exportable' && k2.key === 'Anthropic (Claude) · •••• Zz9Q', k2);
   const fits = await app.evaluate(() => { const b = document.querySelector('.lmd-panel-body'); const li = (id) => document.querySelector('[data-acct=cloud] [data-sec-row=' + id + ']').getBoundingClientRect(); const tag = (id) => { const c = li(id); const t = document.querySelector('[data-acct=cloud] [data-sec-row=' + id + '] .lmd-sec-tech').getBoundingClientRect(); return Math.round(c.bottom - t.bottom); }; const same = (a, c) => Math.abs(a - c) < 1;
@@ -666,10 +709,10 @@ try {
         li('aikey').top >= li('notes').bottom + 16 && li('open').top >= li('aikey').bottom + 16, same(li('open').right, li('vaults').right)] }; });
   check('el bloque Seguridad es una grilla pareja de dos columnas: tarjetas del mismo alto por fila, 16 px o más entre ellas, y la quinta a lo ancho', fits.wide <= 0 && fits.cols.every(Boolean), fits);
   check('en cada tarjeta la línea técnica es una etiqueta aparte, al pie', fits.tags.every((d) => d >= 10 && d <= 20), fits.tags);
-  const keyEn = await app.evaluate(() => { const plain = (h) => { const d = document.createElement('div'); d.innerHTML = h; return d.textContent; }; LMD.setLang('en'); const t = plain(LMD.sync.security({ ai: { hasKey: true, provider: 'compat', last4: 'abcd', off: true } })); const none = plain(LMD.sync.security({})); LMD.setLang('es'); return { t, none }; });
+  const keyEn = await app.evaluate(() => { const plain = (h) => { const d = document.createElement('div'); d.innerHTML = h; d.querySelector('.lmd-blk-head').remove(); return d.textContent; }; LMD.setLang('en'); const t = plain(LMD.sync.security({ ai: { hasKey: true, provider: 'compat', last4: 'abcd', off: true } })); const none = plain(LMD.sync.security({})); LMD.setLang('es'); return { t, none }; });
   check('en inglés dice lo mismo, y sin saber de la clave el renglón informa igual', /Your AI key/.test(keyEn.t) && /Stored encrypted on this device only\. It does not go through the SharpMD server and is not synced, and calls go straight to your provider\./.test(keyEn.t) && /AES-256-GCM · non-exportable key/.test(keyEn.t) && /Turn on in Tools/.test(keyEn.t) && /OpenAI compatible · •••• abcd/.test(keyEn.t) && !/[áéíóúñ]/i.test(keyEn.t) && limpio(keyEn.t) && /Your AI key/.test(keyEn.none) && !/Turn on in Tools|••••/.test(keyEn.none), keyEn);
   await app.evaluate(async () => { await LMD.store.aiDelete(); LMD.tools.set('assistant', false); }); await app.waitForFunction(() => !LMD.tools.isOn('assistant'));
-  await tab('plan'); await tab('cloud'); await app.waitForSelector('[data-acct=cloud] [data-sec-row=aikey] [data-c=ai-tools]');
+  await tabCloud(); await app.waitForSelector('[data-acct=cloud] [data-sec-row=aikey] [data-c=ai-tools]');
   const segSession = (await stored('cloud')).session;
 
   // La primera nota que va a la nube: la pregunta suma una línea que lleva a este bloque.
@@ -691,17 +734,17 @@ try {
   await tab('plan'); await tab('cloud'); await app.waitForSelector('[data-acct=cloud] .lmd-sec [data-c=protect]'); await app.waitForTimeout(500);
   await app.click('[data-acct=cloud] [data-c=protect]'); await app.waitForSelector('[data-acct=cloud] [data-c=protect-at]');
   const elige = await secOf();
-  check('con varias carpetas se elige cuál', elige.pick.join() === 'alfa,beta' && /Elegí la carpeta/.test(elige.text), elige.pick);
+  check('con varias carpetas se elige cuál', elige.pick.join() === 'alfa,beta' && /Elegí la carpeta/.test(elige.pickText), elige.pick);
   await app.click('[data-acct=cloud] [data-c=protect-at][data-f=alfa]'); await app.waitForSelector('.lmd-vault-card [data-v=p1]');
   const hoja = await app.textContent('.lmd-vault-card h3');
   await app.fill('[data-v=p1]', 'caballo correcto batería grapa'); await app.fill('[data-v=p2]', 'caballo correcto batería grapa'); await app.keyboard.press('Enter'); await app.waitForSelector('.lmd-vault-key');
   await Promise.all([app.waitForEvent('download'), app.click('[data-v=down]')]);
   await app.click('[data-v=ok]'); await app.waitForSelector('.lmd-vault-card', { state: 'detached', timeout: 30000 });
-  await app.waitForSelector('[data-acct=cloud] .lmd-sec-count');
+  await app.waitForSelector('[data-acct=cloud] .lmd-sec-count', { state: 'attached' });
   const conUna = await secOf();
   const guardado = await api('GET', '/notes/' + encodeURIComponent('alfa/uno.md'), undefined, segSession);
   check('la acción abre el mismo flujo que el menú de la carpeta y la deja protegida', /Proteger "alfa" con contraseña/.test(hoja) && /^vault1:/.test((guardado.json || {}).text || ''), [hoja, guardado.status]);
-  check('con carpetas protegidas, el bloque dice cuántas', conUna.count === 'Tenés 1 carpeta protegida.' && conUna.pick.length === 0, conUna.count);
+  check('con carpetas protegidas, el bloque dice cuántas', conUna.count === 'Tenés 1 carpeta protegida.' && conUna.pick.length === 0 && conUna.state === 'Protección de extremo a extremo: activada en 1 carpeta', [conUna.count, conUna.state]);
   await app.click('[data-acct=cloud] [data-c=protect]'); await app.waitForSelector('.lmd-vault-card [data-v=p1]');
   const directo = await app.textContent('.lmd-vault-card h3');
   await app.click('.lmd-vault-card [data-v=no]'); await app.waitForSelector('.lmd-vault-card', { state: 'detached' });

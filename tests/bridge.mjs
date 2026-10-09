@@ -556,7 +556,7 @@ try {
   // La primera lectura de una cuenta paga desbloquea las personalizaciones y Ajustes se vuelve a dibujar: se espera a que pase.
   await until(async () => (await bg(() => LMD.load())).supporter === true, 6000); await rd.waitForTimeout(800);
   await rdTab('ai', () => !!document.querySelector('[data-acct=ai] [data-c=token]'));
-  await rd.click('[data-acct=ai] [data-c=token]'); await rd.waitForSelector('[data-acct=ai] .lmd-ai-new', { timeout: 8000 }).catch(() => {});
+  await rd.click('[data-acct=ai] [data-c=token]'); await rd.click('[data-acct=ai] [data-c=token-ok]').catch(() => {}); await rd.waitForSelector('[data-acct=ai] .lmd-ai-new', { timeout: 8000 }).catch(() => {});
   const ai = await rd.evaluate(() => ({ vals: [...document.querySelectorAll('[data-acct=ai] input, [data-acct=ai] textarea')].map((n) => n.value), brief: !!document.querySelector('[data-acct=ai] [data-c=brief]'), rows: document.querySelectorAll('[data-acct=ai] .lmd-tokens li').length }));
   const srvTokens = (await R.api('GET', '/tokens', undefined, ana.s)).json;
   check('en el lector, IA (MCP) crea un token de verdad y da la dirección y las instrucciones', ai.vals.some((v) => /^mdt_/.test(v)) && ai.vals.some((v) => v.startsWith(R.base)) && ai.brief && ai.rows === 1 && Array.isArray(srvTokens) && srvTokens.length === 1, [ai.vals.map((v) => v.slice(0, 30)), ai.rows, srvTokens]);

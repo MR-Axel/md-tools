@@ -117,5 +117,70 @@
     link();
     return 'download';
   }
-  LMD.kit = { ICON, el, esc, debounce, MD_RE, SKIP_DIRS, validEmail, saveFile };
+
+  // ---------- Las secciones de Ajustes que hablan con la cuenta (Nube, IA, Automatizaciones, tokens del equipo) ----------
+  // Todas se arman con estas piezas, para que se lean igual. Lo que reciben es HTML ya escapado.
+  // Una sección es una tarjeta: el título, una línea de qué es, su acción a la derecha y, debajo, el contenido.
+  // Es una región con el nombre de su título. o: { id, title, text, action, body, cls }
+  const card = (o) => {
+    const head = 'lmd-blk-' + o.id;
+    return '<div class="lmd-blk' + (o.cls ? ' ' + o.cls : '') + '" data-blk="' + o.id + '" role="region" aria-labelledby="' + head + '">' +
+      '<div class="lmd-blk-head"><div class="lmd-blk-title"><h4 id="' + head + '">' + o.title + '</h4>' + (o.text ? '<p>' + o.text + '</p>' : '') + '</div>' +
+      (o.action ? '<div class="lmd-blk-act">' + o.action + '</div>' : '') + '</div>' + (o.body || '') + '</div>';
+  };
+  // Una fila dato–valor: el rótulo a la izquierda, el valor a la derecha y, si la hay, una acción chica al final.
+  const kv = (label, value, action, cls) => '<div class="lmd-kv' + (cls ? ' ' + cls : '') + '"><span>' + label + '</span><b title="' + value + '">' + value + '</b>' + (action || '') + '</div>';
+  // Lo mismo para un dato que se copia (una dirección, un token): el valor va en un campo de solo lectura. El botón
+  // lleva el atributo que atiende cada panel (data-c="copy", data-t="tok-copy").
+  // o: { long: en un cuadro de varios renglones, mark: un atributo para encontrar el campo }
+  const copyRow = (label, value, attr, o) => '<div class="lmd-kv lmd-field' + (o && o.long ? ' lmd-field-long' : '') + '"><span>' + label + '</span>' +
+    (o && o.long ? '<textarea readonly rows="3" spellcheck="false" aria-label="' + label + '">' + esc(value) + '</textarea>' : '<input type="text" readonly' + (o && o.mark ? ' ' + o.mark : '') + ' aria-label="' + label + '" value="' + esc(value) + '">') +
+    '<button type="button" class="lmd-link" ' + attr + '>' + LMD.t('Copiar') + '</button></div>';
+  // Un token en su lista: el nombre y lo que alcanza, las fechas en letra chica y sus acciones a la derecha.
+  // r: { name, scope, meta: [..], acts }. El separador escondido deja el texto de la fila en un solo renglón legible.
+  const tokenRow = (r) => '<li><span class="lmd-tok-main"><b>' + r.name + '</b> · ' + r.scope + '<i class="lmd-tok-sep"> · </i><small>' + r.meta.join(' · ') + '</small></span><div class="lmd-tok-acts">' + r.acts + '</div></li>';
+  const tokenRows = (rows, attrs) => '<ul class="lmd-tokens lmd-tok-rows"' + (attrs ? ' ' + attrs : '') + '>' + rows.map(tokenRow).join('') + '</ul>';
+  // El formulario de un token nuevo: sus opciones no están a la vista hasta que se pide uno.
+  // o: { a: el atributo de sus controles ('data-c' o 'data-t'), name: [clave, texto de ejemplo], folder: [clave, carpetas]
+  // (sin carpetas, un campo para escribirla), checks: [[clave, rótulo, marcado], …], ok, no: las claves de sus botones }
+  const tokenForm = (o) => {
+    const T = LMD.t; const at = (k) => o.a + '="' + k + '"';
+    return '<div class="lmd-tokform" role="group" aria-label="' + T('Token nuevo') + '">' +
+      '<label class="lmd-pick"><span>' + T('Nombre') + '</span><input type="text" ' + at(o.name[0]) + ' maxlength="40" autocomplete="off" spellcheck="false" placeholder="' + esc(o.name[1]) + '"></label>' +
+      (o.folder[1] ? (o.folder[1].length ? '<label class="lmd-pick"><span>' + T('Carpeta') + '</span><select ' + at(o.folder[0]) + '><option value="">' + T('Todas las notas') + '</option>' + o.folder[1].map((d) => '<option value="' + esc(d) + '">' + esc(d) + '/</option>').join('') + '</select></label>' : '')
+        : '<label class="lmd-pick"><span>' + T('Carpeta') + '</span><input type="text" ' + at(o.folder[0]) + ' autocomplete="off" spellcheck="false" placeholder="' + T('Vacío: todas las notas') + '"></label>') +
+      (o.checks || []).map((c) => '<label class="lmd-check"><input type="checkbox" ' + at(c[0]) + (c[2] ? ' checked' : '') + '><span>' + c[1] + '</span></label>').join('') +
+      '<p class="lmd-tokform-err" role="alert" hidden></p>' +
+      '<div class="lmd-tokform-acts"><button type="button" class="lmd-btn" ' + at(o.no) + '>' + T('Cancelar') + '</button><button type="button" class="lmd-btn lmd-btn-fill" ' + at(o.ok) + '>' + T('Crear') + '</button></div></div>';
+  };
+  // Abre ese formulario en el lugar del botón que lo pidió (wrap es lo que envuelve a la barra del botón). Cancelar y
+  // Escape lo cierran y devuelven el foco al botón. create(form) crea el token y vuelve a dibujar; si no pudo,
+  // devuelve el motivo, que queda dicho en el formulario.
+  function tokenAsk(wrap, html, create) {
+    if (!wrap || wrap.querySelector('.lmd-tokform')) return;
+    const bar = wrap.firstElementChild; const opener = wrap.contains(document.activeElement) ? document.activeElement : bar.querySelector('button');
+    bar.hidden = true; wrap.insertAdjacentHTML('beforeend', html);
+    const form = wrap.lastElementChild; const ok = form.querySelector('.lmd-btn-fill'); const err = form.querySelector('.lmd-tokform-err');
+    // En una ventana propia, Escape la cerraría por su botón de salida (dialog.js): mientras el formulario está abierto, no.
+    const win = wrap.closest('.lmd-ask'); const held = win ? Array.from(win.querySelectorAll('[data-esc]')) : []; held.forEach((n) => n.removeAttribute('data-esc'));
+    const release = () => setTimeout(() => held.forEach((n) => n.setAttribute('data-esc', '')), 0);
+    const close = () => { form.remove(); bar.hidden = false; release(); if (opener && opener.isConnected) opener.focus({ preventScroll: true }); };
+    form.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+      else if (e.key === 'Enter' && e.target.matches('input[type=text]')) { e.preventDefault(); e.stopPropagation(); ok.click(); }
+    });
+    form.addEventListener('click', async (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b !== ok) { close(); return; }
+      if (ok.disabled) return;
+      ok.disabled = true; err.hidden = true;
+      const bad = await create(form);
+      if (!form.isConnected) release(); // el panel ya se volvió a dibujar, con el token nuevo a la vista
+      else if (bad) { ok.disabled = false; err.hidden = false; err.textContent = bad; }
+    });
+    const first = form.querySelector('input, select');
+    if (first && !(LMD.touch && LMD.touch.coarse())) first.focus({ preventScroll: true });
+    if (form.scrollIntoView) form.scrollIntoView({ block: 'nearest' });
+  }
+  LMD.kit = { ICON, el, esc, debounce, MD_RE, SKIP_DIRS, validEmail, saveFile, card, kv, copyRow, tokenRow, tokenRows, tokenForm, tokenAsk };
 })();

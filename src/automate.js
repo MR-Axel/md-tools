@@ -27,6 +27,8 @@
     vault: 'Una carpeta protegida no se puede automatizar.', bad_events: 'Elegí al menos un evento.', bad_path: 'Elegí una nota o una carpeta.', team_policy: 'Quien administra el equipo no habilitó las automatizaciones para los miembros.', read_only: 'Tu papel en el equipo es de lectura.' };
   const why = (e) => T(ERRORS[e && e.code] || 'No se pudo completar. Probá de nuevo.');
   const day = (ms) => new Date(ms).toLocaleString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  // El día solo, como en la lista de tokens de la pestaña de IA.
+  const date = (ms) => new Date(ms).toLocaleDateString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { day: 'numeric', month: 'short' });
   const fmtName = (f) => (FORMATS.find((x) => x[0] === f) || FORMATS[2])[1];
   const scopeText = (s, team) => (s.kind === 'folder' ? T('Carpeta {a}', { a: esc(s.path) + '/' }) : s.kind === 'note' ? esc(s.path) : T(team ? 'Todo el espacio del equipo' : 'Todas las notas'));
   async function copy(text, btn) {
@@ -50,7 +52,6 @@
     const paths = rows.map((r) => r.path).filter((p) => p && p[0] !== '~').sort((a, b) => a.localeCompare(b));
     return { notes: paths, folders: LMD.sync.foldersOf(rows.filter((r) => r.path && r.path[0] !== '~')) };
   }
-  const options = (list, picked, tail) => list.map((p) => '<option value="' + esc(p) + '"' + (p === picked ? ' selected' : '') + '>' + esc(p) + (tail || '') + '</option>').join('');
   // La cuenta, como la dio el servidor la última vez: de ahí sale si quien mira administra un equipo.
   let acct = null;
   // Quién puede automatizar el espacio del equipo lo decide el servidor (el papel y la política del equipo): viene en can.automation.
@@ -395,23 +396,30 @@
   // ---------- La pestaña de Ajustes ----------
   const hint = (text) => '<p class="lmd-hint">' + text + '</p>';
   const actions = (html) => '<div class="lmd-acct-actions">' + html + '</div>';
-  const INTRO = 'La API, los webhooks y las direcciones de entrada conectan tus notas con Slack, Make, n8n o Zapier.';
+  const INTRO = 'Conectá tus notas con Slack, Make, n8n o Zapier.';
   async function pane(box, host) {
     await LMD.cloud.ready();
+    const { card, copyRow } = LMD.kit;
     const intro = hint(T(INTRO));
     let space = ''; let shownUrl = null; let data = null;
     // Los tokens de la API son los de la cuenta, los mismos que usa la IA. El recién creado queda a la vista hasta salir de acá o revocarlo.
-    let tokens = []; let shownTok = null;
+    let tokens = []; let shownTok = null; let folders = [];
     const tokName = (n) => (/^(IA|AI)$/.test(n || '') ? T('IA') : n || 'API');
-    const say = (t, ok) => { const m = box.querySelector('.lmd-acct-msg'); if (m) { m.hidden = !t; m.textContent = t || ''; m.classList.toggle('lmd-acct-done', !!ok); } };
+    // Cada tarjeta dice lo suyo: el aviso sale en la del último clic (o en la primera, la de las automatizaciones).
+    let at = 'hooks';
+    const msgOf = (id) => box.querySelector('[data-blk=' + id + '] .lmd-acct-msg') || box.querySelector('.lmd-acct-msg');
+    const say = (t, ok) => { const m = msgOf(at); if (m) { m.hidden = !t; m.textContent = t || ''; m.classList.toggle('lmd-acct-done', !!ok); } };
+    const MSG = '<p class="lmd-hint lmd-acct-msg" role="status" hidden></p>';
+    const empty = (text) => '<p class="lmd-empty">' + T(text) + '</p>';
     const draw = async () => {
       data = await api('GET', '/automations' + (space ? '?o=' + space : ''));
       const admin = teamAdmin();
-      let folders = [];
+      folders = [];
       try { tokens = await LMD.cloud.tokens(); } catch (e) { tokens = []; /* sin la lista, igual se puede crear uno */ }
       try { folders = (await places('')).folders; } catch (e) { /* sin carpetas, el token alcanza todo */ }
-      const keptFolder = (box.querySelector('[data-c=tok-folder]') || {}).value || '';
-      const tokRow = (t) => '<li><span>' + esc(tokName(t.name)) + ' · ' + (t.scope ? T('Carpeta {a}', { a: esc(t.scope) + '/' }) : T('Todas las notas')) + ' · ' + T('creado el {a}', { a: day(t.created) }) + ' · ' + (t.used ? T('usado el {a}', { a: day(t.used) }) : T('sin usar')) + '</span><button type="button" data-tg="' + esc(t.id) + '">' + T('Regenerar') + '</button><button type="button" data-tk="' + esc(t.id) + '">' + T('Revocar') + '</button></li>';
+      const tokRows = tokens.map((t) => ({ name: esc(tokName(t.name)), scope: t.scope ? T('Carpeta {a}', { a: esc(t.scope) + '/' }) : T('Todas las notas'),
+        meta: [T('creado el {a}', { a: date(t.created) }), t.used ? T('usado el {a}', { a: date(t.used) }) : T('sin usar')],
+        acts: '<button type="button" data-tg="' + esc(t.id) + '">' + T('Regenerar') + '</button><button type="button" data-tk="' + esc(t.id) + '">' + T('Revocar') + '</button>' }));
       const hookRow = (h) => '<li class="lmd-au-item' + (h.state !== 'on' ? ' lmd-au-off' : '') + '" data-hook="' + h.id + '"><div><b>' + esc(h.name || fmtName(h.format)) + '</b><span>' + scopeText(h.scope, !!space) + ' · ' + T(h.events.length === 1 ? '1 evento' : '{n} eventos', { n: h.events.length }) + ' · ' + esc(T(fmtName(h.format))) + '</span>' +
         '<span class="lmd-au-dest">' + esc(h.destination) + '</span>' +
         (h.state === 'failed' ? '<span class="lmd-au-warn" role="alert">' + T('Se desactivó por fallos seguidos.') + '</span>' : h.state === 'paused' ? '<span class="lmd-au-warn">' + T('En pausa') + '</span>' : h.last ? '<span>' + T(h.last.ok ? 'Último aviso entregado el {a}' : 'El último aviso falló el {a}', { a: day(h.last.at) }) + '</span>' : '') + '</div>' +
@@ -421,22 +429,33 @@
         '<div class="lmd-au-acts"><button type="button" data-ia="new">' + T('Nueva dirección') + '</button><button type="button" data-ia="rm">' + T('Eliminar') + '</button></div></li>';
       box.innerHTML = intro +
         (admin ? '<label class="lmd-pick lmd-au-space"><span>' + T('De quién') + '</span><select data-c="space"><option value="">' + T('Mis notas') + '</option><option value="' + admin.space + '"' + (space ? ' selected' : '') + '>' + T('El espacio del equipo') + '</option></select></label>' : '') +
-        // Tres secciones, en este orden: los tokens de la API, los webhooks y las direcciones de entrada.
-        '<h4>' + T('Tokens de la API') + '</h4>' + hint(T('Para leer y escribir notas y mover tarjetas desde un flujo. Usa los mismos tokens que la IA.')) +
-        '<div class="lmd-field"><span>URL</span><input type="text" readonly value="' + esc(data.api_url) + '"><button type="button" class="lmd-link" data-c="copy">' + T('Copiar') + '</button></div>' +
-        (shownTok ? '<p class="lmd-ai-new">' + T('Copiá el token ahora: no se vuelve a mostrar.') + '</p><div class="lmd-field"><span>Token</span><input type="text" readonly data-api-token value="' + esc(shownTok.token) + '"><button type="button" class="lmd-link" data-c="copy">' + T('Copiar') + '</button></div>' : '') +
-        // Sin el token a la vista no queda nada suelto: una línea dice que ya está y que no se vuelve a mostrar.
-        (tokens.length ? '<ul class="lmd-tokens lmd-tok-rows" data-list="tokens">' + tokens.map(tokRow).join('') + '</ul>' + (shownTok ? '' : '<p class="lmd-hint lmd-tok-kept">' + T('El token ya está creado. Por seguridad no se vuelve a mostrar: si lo perdiste, regeneralo.') + '</p>') : hint(T('Todavía no hay tokens.'))) +
-        (folders.length ? '<label class="lmd-pick"><span>' + T('Carpeta') + '</span><select data-c="tok-folder"><option value="">' + T('Todas las notas') + '</option>' + options(folders, keptFolder, '/') + '</select></label>' : '') +
-        actions('<button type="button" class="lmd-btn' + (tokens.length ? '' : ' lmd-btn-fill') + '" data-c="token">' + T(tokens.length ? 'Crear otro token' : 'Crear un token') + '</button><a class="lmd-btn lmd-au-docs" href="' + DOCS + '" target="_blank" rel="noopener">' + T('Ver la documentación') + '</a>') +
-        '<h4>' + T('Webhooks') + '</h4>' + (data.hooks.length ? '<ul class="lmd-au-list" data-list="hooks">' + data.hooks.map(hookRow).join('') + '</ul>' : hint(T('Todavía no hay avisos. Por ejemplo: un mensaje en Slack cuando una tarjeta pasa a Hecho.'))) +
-        actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="hook">' + T('Nueva automatización') + '</button>') +
-        '<h4>' + T('Direcciones de entrada') + '</h4>' + hint(T('Una dirección secreta que agrega texto a una nota. Sirve para formularios, ventas o correo.')) +
-        (shownUrl ? '<p class="lmd-ai-new">' + T('Copiá la dirección ahora: no se vuelve a mostrar.') + '</p><div class="lmd-field"><span>URL</span><input type="text" readonly data-in-url value="' + esc(shownUrl) + '"><button type="button" class="lmd-link" data-c="copy">' + T('Copiar') + '</button></div>' : '') +
-        (data.inboxes.length ? '<ul class="lmd-au-list" data-list="inboxes">' + data.inboxes.map(inRow).join('') + '</ul>' : '') +
-        actions('<button type="button" class="lmd-btn" data-c="inbox">' + T('Nueva dirección de entrada') + '</button>') +
-        '<p class="lmd-hint lmd-acct-msg" role="status" hidden></p>';
+        // Tres tarjetas, por orden de uso: lo que se viene a hacer (las automatizaciones), las direcciones de entrada y,
+        // al final, los tokens de la API con su documentación. La acción de cada una va en su cabecera.
+        card({ id: 'hooks', title: T('Automatizaciones'), text: T('Un aviso a Slack, Discord o tu flujo cuando pasa algo con una nota o una tarjeta.'),
+          action: '<button type="button" class="lmd-btn lmd-btn-fill" data-c="hook">' + T('Nueva automatización') + '</button>',
+          body: (data.hooks.length ? '<ul class="lmd-au-list" data-list="hooks">' + data.hooks.map(hookRow).join('') + '</ul>' : empty('Todavía no hay automatizaciones.')) + MSG }) +
+        card({ id: 'inboxes', title: T('Direcciones de entrada'), text: T('Una dirección secreta que agrega texto a una nota. Sirve para formularios, ventas o correo.'),
+          action: '<button type="button" class="lmd-btn" data-c="inbox">' + T('Nueva dirección de entrada') + '</button>',
+          body: (shownUrl ? '<div class="lmd-fresh"><p class="lmd-ai-new">' + T('Copiá la dirección ahora: no se vuelve a mostrar.') + '</p>' + copyRow('URL', shownUrl, 'data-c="copy"', { mark: 'data-in-url' }) + '</div>' : '') +
+            (data.inboxes.length ? '<ul class="lmd-au-list" data-list="inboxes">' + data.inboxes.map(inRow).join('') + '</ul>' : shownUrl ? '' : empty('Todavía no hay direcciones de entrada.')) + MSG }) +
+        card({ id: 'tokens', title: T('Tokens de la API'), text: T('Para leer y escribir notas y mover tarjetas desde un flujo. Son los mismos tokens que usa la IA.'),
+          action: '<a class="lmd-btn lmd-au-docs" href="' + DOCS + '" target="_blank" rel="noopener">' + T('Ver la documentación') + '</a>',
+          body: copyRow('URL', data.api_url, 'data-c="copy"') +
+            (shownTok ? '<div class="lmd-fresh"><p class="lmd-ai-new">' + T('Copiá el token ahora: no se vuelve a mostrar.') + '</p>' + copyRow('Token', shownTok.token, 'data-c="copy"', { mark: 'data-api-token' }) + '</div>' : '') +
+            // Sin el token a la vista, una nota chica dice que no se vuelve a mostrar. Va una sola vez, debajo de la lista.
+            (tokens.length ? LMD.kit.tokenRows(tokRows, 'data-list="tokens"') + (shownTok ? '' : '<p class="lmd-note lmd-tok-kept">' + T('Un token se muestra una sola vez. Si lo perdiste, regeneralo.') + '</p>') : empty('Todavía no hay tokens.')) +
+            // Lo que alcanza el token nuevo se elige al crearlo: el formulario aparece en el lugar de este botón.
+            '<div class="lmd-tok-new" data-tok-new>' + actions('<button type="button" class="lmd-btn" data-c="token">' + T(tokens.length ? 'Crear otro token' : 'Crear un token') + '</button>') + '</div>' + MSG });
     };
+    const askToken = (wrap) => LMD.kit.tokenAsk(wrap, LMD.kit.tokenForm({ a: 'data-c', name: ['tok-name', 'API'], folder: ['tok-folder', folders], ok: 'token-ok', no: 'token-no' }), async (form) => {
+      try {
+        shownTok = await LMD.cloud.newToken(form.querySelector('[data-c=tok-name]').value.replace(/\s+/g, ' ').trim() || 'API', (form.querySelector('[data-c=tok-folder]') || {}).value || '', false);
+        await draw();
+        const again = box.querySelector('[data-c=token]'); if (again) again.focus({ preventScroll: true });
+        const n = box.querySelector('[data-api-token]'); if (n && n.scrollIntoView) n.scrollIntoView({ block: 'nearest' });
+        return '';
+      } catch (x) { return why(x); }
+    });
     const redraw = async () => { try { await draw(); } catch (e) { say(why(e)); } };
     if (!LMD.cloud.enabled()) box.innerHTML = hint(T('La nube está apagada: sin ella no hay notas para automatizar.'));
     else if (host.direct) box.innerHTML = intro; // la franja de arriba ya dice que la cuenta está en la app
@@ -452,6 +471,7 @@
     box.onfocusin = (e) => { if (e.target.matches('input[readonly]')) e.target.select(); };
     box.onclick = async (e) => {
       const b = e.target.closest('[data-c]'); const ha = e.target.closest('[data-ha]'); const ia = e.target.closest('[data-ia]'); const tk = e.target.closest('[data-tk]'); const tg = e.target.closest('[data-tg]');
+      const blk = e.target.closest('[data-blk]'); if (blk && (b || ha || ia || tk || tg)) at = blk.dataset.blk;
       try {
         if (tk) {
           if (await LMD.dialog.confirm({ title: T('¿Revocar este token?'), text: T('Lo que lo usa deja de entrar.'), ok: T('Revocar'), danger: true })) { await LMD.cloud.revoke(tk.dataset.tk); if (shownTok && String(shownTok.id) === tk.dataset.tk) shownTok = null; await draw(); }
@@ -460,7 +480,7 @@
           if (await LMD.dialog.confirm({ title: T('¿Regenerar este token?'), text: T('Las conexiones que usan este token dejan de andar. Vas a tener que pegar el token nuevo donde lo uses.'), ok: T('Regenerar'), danger: true })) { shownTok = await LMD.cloud.regenerate(tg.dataset.tg); await draw(); const n = box.querySelector('[data-api-token]'); if (n && n.scrollIntoView) n.scrollIntoView({ block: 'nearest' }); }
         } else if (ha) {
           const id = ha.closest('[data-hook]').dataset.hook; const hook = data.hooks.find((h) => String(h.id) === id); const o = space || undefined;
-          if (ha.dataset.ha === 'test') { say(T('Enviando la prueba…'), true); await test(id, space, box.querySelector('.lmd-acct-msg')); }
+          if (ha.dataset.ha === 'test') { say(T('Enviando la prueba…'), true); await test(id, space, msgOf('hooks')); }
           else if (ha.dataset.ha === 'log') deliveries(hook, space);
           else if (ha.dataset.ha === 'edit') wizard(null, { hook, space }, redraw);
           else if (ha.dataset.ha === 'pause' || ha.dataset.ha === 'resume') { await api('PUT', '/automations/hooks/' + id, { o, on: ha.dataset.ha === 'resume' }); await draw(); }
@@ -473,7 +493,7 @@
         else if (b.dataset.c === 'hook') wizard(null, { kind: 'all', path: space ? '~' + space + '/' : '' }, redraw);
         else if (b.dataset.c === 'inbox') inboxForm(space, (made) => { shownUrl = made.url; redraw(); });
         else if (b.dataset.c === 'copy') copy(b.parentNode.querySelector('input').value, b);
-        else if (b.dataset.c === 'token') { shownTok = await LMD.cloud.newToken('API', (box.querySelector('[data-c=tok-folder]') || {}).value || '', false); await draw(); }
+        else if (b.dataset.c === 'token') askToken(b.closest('[data-tok-new]'));
         else if (b.dataset.c === 'plans') host.tab('plan');
         else if (b.dataset.c === 'login') host.tab('cloud');
       } catch (x) { say(why(x)); }
