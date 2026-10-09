@@ -934,9 +934,28 @@
   // Entrar a la cuenta desde cualquier lado: Ajustes en Nube, con el correo ya pedido.
   const login = () => LMD.home.login(); // el formulario de entrar, en el centro
 
+  // Compartir hacia otra app (install.js): si la nota de la nube que está abierta puede salir con un enlace público
+  // (el plan, el papel en el equipo y que no esté en un espacio protegido: lo mismo que decide el menú de la nube).
+  function canLink() {
+    if (!core || !account || !account.share || core.readOnly || !LMD.cloud.signedIn()) return false;
+    const p = core.cloudPath;
+    if (!p || LMD.vault.of(p)) return false;
+    return LMD.cloud.isTeam(p) ? LMD.cloud.teamCan('links') : !mine().owner;
+  }
+  // El enlace público de esa nota. El servidor muestra el secreto una sola vez: el que se creó en esta sesión se reutiliza.
+  const linksMade = {};
+  async function publicLink() {
+    const full = core.cloudPath;
+    if (linksMade[full]) return { url: linksMade[full], reused: true };
+    const r = await LMD.cloud.link(full, '');
+    return { url: (linksMade[full] = LMD.WEB_APP_URL + '?f=' + encodeURIComponent('pub/' + r.token)), reused: false };
+  }
+  const linkWhy = (e) => T({ offline: 'No hay conexión con el servidor.', share_needs_plan: 'Compartir es parte del plan pago.', team_policy: 'Lo administra quien administra el equipo', read_only: 'En este equipo solo podés leer.',
+    too_many: 'Llegaste al tope de lo que se puede compartir. Quitá algo para sumar más.', not_found: 'Esta nota ya no está en la nube.' }[e && e.code] || 'No se pudo completar. Probá de nuevo.');
+
   // Vuelve a leer la cuenta después de un cambio en el equipo.
   const reload = async () => { account = await LMD.cloud.account(); asked = true; adopt(account, true); paint(); return account; };
 
   LMD.sync = { init, paint, click, panes, reload, dialog, feedback, report, reportRef, awaitPaid, openCloud, quota, PAY, login, me, foldersOf, signOut, aiBrief, askName: () => { wantName = true; }, account: () => account, why: (text) => { planWhy = text || ''; },
-    repaintAi: () => { if (aiRedraw) aiRedraw(); if (secRedraw) secRedraw(); }, security, canPublish, publish, siteState };
+    repaintAi: () => { if (aiRedraw) aiRedraw(); if (secRedraw) secRedraw(); }, security, canPublish, publish, siteState, canLink, publicLink, linkWhy };
 })();

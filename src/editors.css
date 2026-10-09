@@ -125,3 +125,22 @@
   .lmd-fxi kbd { display: none; }
 }
 @media print { .lmd-fxi { display: none !important; } }
+
+/* Compartir hacia otra app (install.js): la hoja con sus opciones, cada una un botón ancho que se toca con el dedo. */
+.lmd-so-card { width: min(420px, 100%); max-height: 100%; overflow-y: auto; }
+.lmd-ask-card p.lmd-so-name { margin: -4px 0 12px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lmd-ask-card p.lmd-so-long { margin: 0 0 12px; color: var(--fg-muted); }
+.lmd-so-list { display: grid; gap: 6px; margin: 0 0 14px; }
+.lmd-so-list[hidden], .lmd-so-link[hidden], .lmd-so-alt[hidden] { display: none; }
+.lmd-so-opt { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-soft); color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+.lmd-so-opt:hover, .lmd-so-opt:focus-visible { border-color: var(--accent-fill); outline: none; }
+.lmd-so-opt:disabled { opacity: 0.6; cursor: default; }
+.lmd-so-opt svg { flex: none; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-so-opt span { display: grid; min-width: 0; }
+.lmd-so-opt b { font-size: 14.5px; font-weight: 600; }
+.lmd-so-opt small { color: var(--fg-muted); font-size: 12.5px; line-height: 1.35; }
+.lmd-so-link input { width: 100%; height: 40px; margin: 0 0 8px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--fg); font: inherit; font-size: 16px; outline: none; }
+.lmd-so-alt { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+/* El inicio, cuando la app se abrió para un archivo que no llegó: el aviso con el botón de abrirlo. */
+.lmd-open-miss { display: grid; justify-items: center; gap: 10px; margin: 14px 0 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-soft); font-size: 13.5px; line-height: 1.45; }
+.lmd-open-miss p { margin: 0; color: var(--fg); }

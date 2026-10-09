@@ -41,24 +41,105 @@
     window.addEventListener('appinstalled', () => { offer = null; markInstalled(true); if (repaint) repaint(); });
   }
 
+  // ---------- Lo que llega de afuera: qué se puede abrir ----------
+  const SHARE_CACHE = 'lmd-share'; const SHARE_MAX = 5 * 1024 * 1024;
+  const SHARE_EXT = /\.(md|markdown|mdx|mkd|mdown|txt|json|ya?ml)$/i; // lo mismo que deja elegir "Abrir archivo"
+  const SHARE_TYPES = { 'text/markdown': '.md', 'text/x-markdown': '.md', 'text/plain': '.txt', 'application/json': '.json', 'application/yaml': '.yaml', 'application/x-yaml': '.yaml', 'text/yaml': '.yaml' };
+  // Muchos gestores de archivos mandan un .md como application/octet-stream, como texto o sin extensión en el nombre.
+  // Con un nombre que la app conoce se abre sin más; si no, decide el contenido: si es texto, se abre. Lo que dice ser
+  // otra cosa (una imagen, un PDF) no se abre.
+  const TEXTISH = /^(text\/.+|application\/(octet-stream|json|yaml|x-yaml|markdown|x-markdown|x-unknown))$/;
+  async function looksText(blob) {
+    const bytes = new Uint8Array(await blob.slice(0, 8192).arrayBuffer());
+    for (let i = 0; i < bytes.length; i++) if (bytes[i] < 9 || (bytes[i] > 13 && bytes[i] < 27)) return false;
+    return true;
+  }
+  // Devuelve { file } con un nombre que el lector sabe abrir, o { why } con el aviso.
+  async function asNote(blob, name, type, size) {
+    name = String(name || '').replace(/[\\/]/g, '-').slice(0, 200);
+    type = String(type || (blob && blob.type) || '').split(';')[0].trim().toLowerCase();
+    const known = SHARE_EXT.test(name);
+    if (!known && type && !TEXTISH.test(type)) return { why: T('Solo se abren archivos Markdown, de texto, JSON o YAML.') };
+    if (!blob || blob.size > SHARE_MAX || size > SHARE_MAX) return { why: T('Ese archivo es demasiado grande para abrirlo acá.') };
+    if (!known) {
+      if (!(await looksText(blob))) return { why: T('Solo se abren archivos Markdown, de texto, JSON o YAML.') };
+      name = (name || 'shared') + (SHARE_TYPES[type] || (/\.[a-z0-9]{1,8}$/i.test(name) ? '.txt' : '.md'));
+    }
+    return { file: new File([blob], name) };
+  }
+  const COPY_NOTE = 'Se abrió una copia. Los cambios no se guardan en el archivo original.';
+
   // ---------- "Abrir con": el archivo que manda el sistema ----------
-  // Llega con su permiso: se abre, se guarda en su lugar y queda en la lista de abiertos, como uno elegido a mano.
+  // El consumidor se registra apenas carga este archivo, antes de que arranque el lector: lo que llega mientras tanto
+  // espera en una fila. Queda registrado, así que también atiende un archivo que llega con la app ya abierta.
+  let onLaunch = null; const queued = []; let arrived = false;
+  if (WEB && window.launchQueue && window.launchQueue.setConsumer) {
+    window.launchQueue.setConsumer((params) => {
+      if (!params || !params.files || !params.files.length) return; // un arranque común, sin archivo
+      arrived = true;
+      if (onLaunch) onLaunch(params); else queued.push(params);
+    });
+  }
+  // Con permiso de escritura se abre en su lugar y queda en la lista de abiertos, como uno elegido a mano. Con
+  // permiso de solo lectura, o con un nombre que el lector no conoce, se abre una copia y se avisa.
   async function openLaunched(params, homeCtx) {
     const handle = params && params.files && params.files[0];
     if (!handle || handle.kind !== 'file') return false;
-    try { await LMD.home.adopt(homeCtx(), handle); return true; }
-    catch (e) { /* sin lugar donde guardar el permiso (pasa en algunos teléfonos): se abre una copia */ }
-    try { await LMD.home.openFile(homeCtx(), await handle.getFile(), homeCtx().say); return true; }
-    catch (e) { homeCtx().say(T('No se pudo abrir. Probá de nuevo.')); return false; }
+    arrived = true; unmiss();
+    const ctx = homeCtx();
+    let own = SHARE_EXT.test(handle.name || '');
+    if (own && handle.queryPermission) { try { own = (await handle.queryPermission({ mode: 'readwrite' })) !== 'denied'; } catch (e) { own = false; } }
+    if (own) {
+      try { await LMD.home.adopt(ctx, handle); return true; }
+      catch (e) { /* sin lugar donde guardar el permiso (pasa en algunos teléfonos): se abre una copia */ }
+    }
+    try {
+      const file = await handle.getFile();
+      const got = await asNote(file, handle.name || file.name, file.type);
+      if (got.why) { ctx.say(got.why); return false; }
+      let failed = '';
+      await LMD.home.openFile(ctx, got.file, (text) => { failed = text; });
+      if (failed) { ctx.say(failed); return false; }
+      ctx.warn(T(COPY_NOTE));
+      return true;
+    } catch (e) { ctx.say(T('No se pudo abrir. Probá de nuevo.')); return false; }
+  }
+
+  // ---------- Se esperaba un archivo y no llegó ----------
+  // La app de Android abre con ?open=1 cuando la lanzaron para abrir un archivo. Si el navegador que la muestra no lo
+  // entrega (ni por la fila de archivos ni como envío compartido), el inicio lo dice y deja el botón de abrir a un
+  // toque, en vez de quedar mudo.
+  const OPEN_WAIT = 2500;
+  function unmiss() { document.querySelectorAll('.lmd-open-miss').forEach((n) => n.remove()); }
+  function miss(ctx, text) {
+    const card = ctx && ctx.box && !ctx.box.hidden && ctx.box.querySelector('.lmd-home-card');
+    if (!card) return false;
+    unmiss();
+    const box = el('div', { class: 'lmd-open-miss', role: 'status' });
+    box.appendChild(el('p', { text }));
+    const btn = el('button', { type: 'button', class: 'lmd-btn lmd-btn-fill', 'data-home': 'file' }, ICON.file + '<span></span>');
+    btn.lastChild.textContent = T('Abrir archivo');
+    btn.addEventListener('click', () => setTimeout(unmiss, 0)); // el clic lo atiende el inicio: abre el selector
+    box.appendChild(btn);
+    const actions = card.querySelector('.lmd-home-actions');
+    if (actions) actions.after(box); else card.appendChild(box);
+    return true;
+  }
+  // El inicio se dibuja después de leer la dirección: se espera a que esté.
+  function missSoon(homeCtx, text, wait) {
+    let tries = 0;
+    const go = () => { if (arrived || /[?&]f=/.test(location.search)) return; if (!miss(homeCtx(), text) && ++tries < 40) setTimeout(go, 150); };
+    setTimeout(go, wait || 0);
+  }
+  function expect(homeCtx) {
+    try { const u = new URL(location.href); u.searchParams.delete('open'); history.replaceState(history.state, '', u.href); } catch (e) { /* dirección rara */ }
+    missSoon(homeCtx, T('Este navegador no entregó el archivo. Abrilo con el botón de abajo, o poné Chrome como navegador predeterminado para SharpMD.'), OPEN_WAIT);
   }
 
   // ---------- "Compartir": lo que manda otra app ----------
   // El service worker (sw.js) recibe el envío, lo deja en una caché aparte y manda a app.html?share=1. Acá se
   // recoge una sola vez: un archivo se abre como uno elegido a mano, sin guardar; un texto o un enlace, como nota nueva.
-  // Devuelve true si abrió algo; si no, el aviso para el inicio (o '' si no había nada).
-  const SHARE_CACHE = 'lmd-share'; const SHARE_MAX = 5 * 1024 * 1024;
-  const SHARE_EXT = /\.(md|markdown|mdx|mkd|mdown|txt|json|ya?ml)$/i; // lo mismo que deja elegir "Abrir archivo"
-  const SHARE_TYPES = { 'text/markdown': '.md', 'text/x-markdown': '.md', 'text/plain': '.txt', 'application/json': '.json', 'application/yaml': '.yaml', 'application/x-yaml': '.yaml', 'text/yaml': '.yaml' };
+  // Devuelve true si abrió algo; si no, el aviso para el inicio. Si no llegó nada, el inicio lo dice con su botón.
   function sharedNote(meta) {
     const one = (v) => String(v || '').replace(/\r\n?/g, '\n').trim();
     const title = one(meta.title).replace(/\s+/g, ' '); const text = one(meta.text); let url = one(meta.url);
@@ -78,23 +159,23 @@
       meta = m ? await m.json() : null; body = f ? await f.blob() : null;
       await caches.delete(SHARE_CACHE);
     } catch (e) { /* sin caché: no hay nada que recoger */ }
-    if (!meta || typeof meta !== 'object') return '';
+    // El envío no se pudo leer, o llegó vacío (pasa cuando el navegador descarta el archivo por su tipo).
+    const nothing = () => { missSoon(() => ctx, T('Lo compartido no llegó. Abrí el archivo con el botón de abajo.')); return ''; };
+    if (!meta || typeof meta !== 'object') return nothing();
+    arrived = true;
     const file = meta.file;
     if (file) {
-      let name = String(file.name || '').replace(/[\\/]/g, '-').slice(0, 200);
-      const byType = SHARE_TYPES[String(file.type || '').split(';')[0].trim().toLowerCase()];
-      if (!SHARE_EXT.test(name) && byType && !/\.[a-z0-9]{1,8}$/i.test(name)) name = (name || 'shared') + byType;
-      if (!SHARE_EXT.test(name)) return T('Solo se abren archivos Markdown, de texto, JSON o YAML.');
-      if (!body || body.size > SHARE_MAX) return T('Ese archivo es demasiado grande para abrirlo acá.');
+      const got = await asNote(body, file.name, file.type, +file.size || 0);
+      if (got.why) return got.why;
       let failed = '';
       LMD.home.account(ctx);
-      await LMD.home.openFile(ctx, new File([body], name), (text) => { failed = text; });
+      await LMD.home.openFile(ctx, got.file, (text) => { failed = text; });
       if (failed) return failed;
-      if (meta.count > 1) ctx.warn(T('Llegaron {n} archivos. Se abrió el primero.', { n: meta.count }));
+      ctx.warn(meta.count > 1 ? T('Llegaron {n} archivos. Se abrió el primero.', { n: meta.count }) : T(COPY_NOTE));
       return true;
     }
     const text = sharedNote(meta);
-    if (!text) return '';
+    if (!text) { arrived = false; return nothing(); }
     if (text.length > SHARE_MAX) return T('Ese texto es demasiado grande para abrirlo acá.');
     LMD.home.account(ctx);
     await LMD.home.create(ctx, { text, replace: true });
@@ -113,11 +194,126 @@
     paint();
   }
 
+  // ---------- Compartir hacia otra app ----------
+  // En el teléfono, "Compartir" abre una hoja propia con caminos claros: como texto (lo que mejor anda en WhatsApp y
+  // en los chats), como archivo, con un enlace público o copiando. La hoja de compartir del sistema solo abre dentro
+  // del toque: por eso el texto y los archivos se arman al abrir esta hoja, y el enlace, que hay que pedirlo al
+  // servidor, se comparte con un segundo toque. Si falla se dice, con la alternativa a un toque. Cancelar no es un error.
+  const LONG_TEXT = 60000; // más largo que esto, WhatsApp y otros chats cortan el mensaje
+  const MIME = { md: 'text/markdown', markdown: 'text/markdown', mdx: 'text/markdown', mkd: 'text/markdown', mdown: 'text/markdown', txt: 'text/plain', json: 'application/json', yaml: 'application/yaml', yml: 'application/yaml' };
+  const refused = {}; // extensiones que este navegador ya rechazó al compartir: no se vuelven a ofrecer en esta sesión
+  let host = null; let sheet = null;
+  const canShareOut = () => LMD.touch.coarse() || LMD.storeApp === true;
+  const canFile = (file) => { try { return !!(navigator.share && navigator.canShare && navigator.canShare({ files: [file] })); } catch (e) { return false; } };
+  // El archivo con su tipo; si el navegador no lo toma, el mismo nombre como texto plano; y aparte, como .txt.
+  function filesFor(text, name) {
+    const ext = ((/\.([a-z0-9]+)$/i.exec(name) || [])[1] || '').toLowerCase(); const type = MIME[ext] || 'text/markdown';
+    const base = name.replace(/\.[a-z0-9]+$/i, '') || 'note';
+    const same = refused[ext] ? null : [new File([text], name, { type })].concat(type === 'text/plain' ? [] : [new File([text], name, { type: 'text/plain' })]).find(canFile) || null;
+    const txt = ext === 'txt' || refused.txt ? null : [new File([text], base + '.txt', { type: 'text/plain' })].find(canFile) || null;
+    return { ext: ext || 'md', same, txt };
+  }
+  function closeSheet() { if (sheet) { sheet.remove(); sheet = null; } }
+  // o: { text, name, cloud }. El enlace público se ofrece si la nota está en la nube y la cuenta puede crear enlaces.
+  function shareOut(o) {
+    closeSheet();
+    const text = String(o.text || ''); const name = String(o.name || 'note.md'); const files = filesFor(text, name);
+    const flash = (msg, kind) => { if (host) host.flash(msg, kind); };
+    const title = T('Compartir');
+    const box = sheet = el('div', { class: 'lmd-ask lmd-so' }, '<div class="lmd-ask-card lmd-so-card" role="dialog" aria-modal="true"><h3></h3><p class="lmd-so-name"></p>' +
+      '<p class="lmd-hint lmd-so-long" hidden></p><div class="lmd-so-list"></div><div class="lmd-so-link" hidden></div>' +
+      '<p class="lmd-img-err" role="alert" hidden></p><div class="lmd-so-alt" hidden></div>' +
+      '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-so="close" data-esc></button></div></div>');
+    const q = (sel) => box.querySelector(sel);
+    q('.lmd-ask-card').setAttribute('aria-label', title); q('h3').textContent = title; q('.lmd-so-name').textContent = name; q('[data-so=close]').textContent = T('Cerrar');
+    const list = q('.lmd-so-list'); const err = q('.lmd-img-err'); const alt = q('.lmd-so-alt');
+    const option = (act, icon, label, sub) => {
+      const b = el('button', { type: 'button', class: 'lmd-so-opt', 'data-so': act }, icon + '<span><b></b><small></small></span>');
+      b.querySelector('b').textContent = label; b.querySelector('small').textContent = sub || ''; b.querySelector('small').hidden = !sub;
+      list.appendChild(b);
+      return b;
+    };
+    const asFile = (ext) => T('Compartir como archivo {a}', { a: '.' + ext });
+    option('text', ICON.b_p, T('Compartir como texto'), T('Lo que mejor anda en WhatsApp y en los chats.'));
+    if (files.same) option('file', ICON.file, asFile(files.ext));
+    if (files.txt) option('txt', ICON.txt, asFile('txt'), files.same ? T('Por si la otra app no toma el .{a}.', { a: files.ext }) : T('Este navegador no comparte archivos .{a}: va como .txt.', { a: files.ext }));
+    if (!files.same && !files.txt) option('save', ICON.download, T('Descargar el archivo'), T('Este navegador no comparte archivos.'));
+    if (o.cloud && LMD.sync.canLink()) option('link', ICON.link, T('Compartir un enlace'), T('Crea un enlace público de solo lectura.'));
+    option('copy', ICON.copy, T('Copiar'), T('El Markdown, para pegarlo donde quieras.'));
+    if (text.length > LONG_TEXT) { const long = q('.lmd-so-long'); long.hidden = false; long.textContent = T('Esta nota es larga y un chat puede cortarla. Va mejor como archivo o como enlace.'); }
+
+    const clear = () => { err.hidden = true; err.textContent = ''; alt.hidden = true; alt.textContent = ''; };
+    // El aviso de lo que falló, con las alternativas a un toque: cada una es un toque nuevo, con su propio gesto.
+    const fail = (msg, acts) => {
+      clear(); err.hidden = false; err.textContent = msg;
+      (acts || []).forEach(([act, label]) => alt.appendChild(el('button', { type: 'button', class: 'lmd-btn', 'data-so': act, text: label })));
+      alt.hidden = !alt.childNodes.length;
+    };
+    const copy = (what) => { if (host) host.copy(what); }; // avisa "Copiado" por su cuenta
+    const save = () => { closeSheet(); if (LMD.kit.saveFile(new Blob([text], { type: MIME[files.ext] || 'text/markdown' }), name) === 'download') flash(T('Archivo descargado')); };
+    // navigator.share se llama acá mismo, sin esperar nada antes: así sigue dentro del toque.
+    const send = (data, onFail) => {
+      let wait;
+      try { wait = navigator.share(data); } catch (e) { onFail(e); return; }
+      Promise.resolve(wait).then(closeSheet, (e) => { if (!e || e.name !== 'AbortError') onFail(e); }); // cerrar la hoja del sistema no es un error
+    };
+    const textFail = () => fail(T('No se pudo compartir. Copiá el texto y pegalo en la otra app.'), [['copy', T('Copiar')]]);
+    const shareText = () => {
+      if (!navigator.share) { fail(T('Este navegador no comparte desde la app. Copiá el texto y pegalo en la otra app.'), [['copy', T('Copiar')]]); return; }
+      send({ title: name, text }, textFail);
+    };
+    const shareFile = (file, ext) => {
+      if (!file) return;
+      send({ files: [file], title: name }, () => {
+        refused[ext] = true; // el navegador dijo que podía y no pudo: no se vuelve a ofrecer así
+        const b = list.querySelector('[data-so=' + (ext === 'txt' ? 'txt' : 'file') + ']'); if (b) b.remove();
+        fail(T('No se pudo compartir el archivo. ¿Compartirlo como texto?'), [['text', T('Compartir como texto')]].concat(ext !== 'txt' && files.txt && !refused.txt ? [['txt', asFile('txt')]] : [], [['save', T('Descargar')]]));
+      });
+    };
+    // El enlace hay que pedirlo: al tenerlo queda a la vista, y compartirlo es un toque nuevo.
+    let linking = false; let url = '';
+    const shareLink = async (btn) => {
+      if (linking) return;
+      linking = true; btn.disabled = true;
+      try {
+        const got = await LMD.sync.publicLink();
+        if (sheet !== box) return;
+        url = got.url; list.hidden = true; q('.lmd-so-long').hidden = true;
+        const pane = q('.lmd-so-link'); pane.hidden = false; pane.textContent = '';
+        pane.appendChild(el('input', { type: 'text', readonly: '', 'aria-label': T('Enlace'), value: url }));
+        if (!got.reused) pane.appendChild(el('p', { class: 'lmd-hint', text: T('Copiá el enlace ahora: no se vuelve a mostrar.') }));
+        const row = pane.appendChild(el('div', { class: 'lmd-so-alt' }));
+        if (navigator.share) row.appendChild(el('button', { type: 'button', class: 'lmd-btn lmd-btn-fill', 'data-so': 'send-link', text: T('Compartir el enlace') }));
+        row.appendChild(el('button', { type: 'button', class: 'lmd-btn', 'data-so': 'copy-link', text: T('Copiar el enlace') }));
+      } catch (e) { fail(LMD.sync.linkWhy(e), [['text', T('Compartir como texto')]]); btn.disabled = false; }
+      linking = false;
+    };
+    box.addEventListener('click', (e) => {
+      if (e.target === box) { closeSheet(); return; }
+      const b = e.target.closest('[data-so]'); if (!b) return;
+      const act = b.dataset.so;
+      if (act === 'close') { closeSheet(); return; }
+      clear();
+      if (act === 'text') shareText();
+      else if (act === 'file') shareFile(files.same, files.ext);
+      else if (act === 'txt') shareFile(files.txt, 'txt');
+      else if (act === 'save') save();
+      else if (act === 'copy') { copy(text); closeSheet(); }
+      else if (act === 'link') shareLink(b);
+      else if (act === 'send-link') send({ title: name, url }, () => fail(T('No se pudo compartir. Copiá el enlace y pegalo en la otra app.'), [['copy-link', T('Copiar el enlace')]]));
+      else if (act === 'copy-link') { copy(url); flash(T('Enlace copiado')); }
+    });
+    document.body.appendChild(box);
+    return box;
+  }
+
   function init(core, homeCtx) {
+    host = core;
     if (!APP) return;
     offlineChip();
     keep(core);
-    if (WEB && window.launchQueue && window.launchQueue.setConsumer) window.launchQueue.setConsumer((params) => { openLaunched(params, homeCtx); });
+    onLaunch = (params) => { openLaunched(params, homeCtx); };
+    queued.splice(0).forEach(onLaunch);
   }
 
   // ---------- La pestaña de Ajustes ----------
@@ -224,5 +420,5 @@
     return without(T('La extensión no lo pudo abrir. Actualizala o elegí el archivo a mano.'));
   }
 
-  LMD.install = { init, pane, openLaunched, takeShared, openLink, EXTENSION_URL, ANDROID_URL };
+  LMD.install = { init, pane, openLaunched, takeShared, expect, shareOut, canShareOut, openLink, EXTENSION_URL, ANDROID_URL };
 })();
