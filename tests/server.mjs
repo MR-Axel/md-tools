@@ -517,6 +517,53 @@ try {
   check('cifrado: con la clave original vuelve a andar', srv.up() && (await srv.ask('GET', '/notes/nueva.md', undefined, es)).json.text === 'remolacha-nueva, segunda versión.');
   await srv.stop(); wipe(encDir);
 
+  // ---------- El uso del plan gratis, dicho a la IA ----------
+  // El tope sale de FREE_NOTES: con 10 y con 25 los textos dicen ese número, y una cuenta paga no recibe ninguno.
+  for (const N of [10, 25]) {
+    const uDir = tmp(); const us = await boot(uDir, { FREE_NOTES: String(N), APP_URL: 'https://app.ejemplo.test/src/app.html' });
+    const PLANS = 'https://app.ejemplo.test/src/app.html#lmd-plans';
+    const fses = await us.enter('uso@ejemplo.test'); const pses = await us.enter('paga-uso@ejemplo.test', true);
+    const ftok = (await us.ask('POST', '/tokens', { name: 'IA' }, fses)).json.token; const ptok = (await us.ask('POST', '/tokens', { name: 'IA' }, pses)).json.token;
+    const said = [];
+    const tool = async (tok, name, args) => { const r = await us.ask('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args || {} } }, tok); const c = r.json.result; const parts = c.content.map((x) => x.text); if (tok === ftok) said.push(...parts); return { parts, text: parts.join('\n'), err: !!c.isError }; };
+    const facc = (await us.ask('GET', '/account', undefined, fses)).json; const pacc = (await us.ask('GET', '/account', undefined, pses)).json;
+    check('uso (' + N + '): la cuenta trae el tope del plan gratis, también la paga', facc.limit === N && facc.free_notes === N && pacc.limit === null && pacc.free_notes === N, [facc.limit, facc.free_notes, pacc.limit, pacc.free_notes]);
+    const l0 = await tool(ftok, 'list_notes');
+    check('uso (' + N + '): list_notes deja ver el uso del plan, aparte de la lista', l0.parts.length === 2 && JSON.parse(l0.parts[0]).length === 0 && l0.parts[1] === 'Free plan: 0 of ' + N + ' notes used, ' + N + ' left.', l0.parts);
+    const w1 = await tool(ftok, 'write_note', { path: 'p/README.md', text: '# Uno' });
+    const w1b = await tool(ftok, 'write_note', { path: 'p/README.md', text: '# Uno, otra vez' });
+    const e1 = await tool(ftok, 'edit_note', { path: 'p/README.md', old_text: 'otra vez', new_text: 'de nuevo' });
+    check('uso (' + N + '): write_note dice el uso al crear, en una línea, y no al editar', !w1.err && w1.text.endsWith('\nFree plan: 1 of ' + N + ' notes used.') && !/Tell the person/.test(w1.text) && !w1b.err && !/Free plan/.test(w1b.text) && !e1.err && !/Free plan/.test(e1.text), [w1.text, w1b.text, e1.text]);
+    const a1 = await tool(ftok, 'append_note', { path: 'p/log.md', text: 'hoy' }); const a1b = await tool(ftok, 'append_note', { path: 'p/log.md', text: 'mañana' });
+    const b1 = await tool(ftok, 'create_board', { path: 'p/board.md' }); const b1b = await tool(ftok, 'create_board', { path: 'p/board.md', title: 'Otro' });
+    const c1 = await tool(ftok, 'add_card', { path: 'p/board.md', title: 'Una tarea' });
+    const m1 = await tool(ftok, 'move_note', { from: 'p/log.md', to: 'p/registro.md' });
+    check('uso (' + N + '): append_note y create_board lo dicen si crearon la nota; agregar, sumar un tablero o una tarjeta y mover, no', a1.text.endsWith('\nFree plan: 2 of ' + N + ' notes used.') && !/Free plan/.test(a1b.text) && JSON.parse(b1.text).plan === 'Free plan: 3 of ' + N + ' notes used.' && !b1b.err && JSON.parse(b1b.text).plan === undefined && !c1.err && !/Free plan/.test(c1.text) && !m1.err && !/Free plan/.test(m1.text), [a1.text, a1b.text, b1.text, b1b.text, c1.text, m1.text]);
+    for (let i = 3; i < N - 3; i++) await us.ask('PUT', '/notes/relleno-' + i + '.md', { text: 'x' }, fses);
+    const low2 = await tool(ftok, 'write_note', { path: 'p/a.md', text: 'a' }); const low1 = await tool(ftok, 'write_note', { path: 'p/b.md', text: 'b' }); const low0 = await tool(ftok, 'write_note', { path: 'p/c.md', text: 'c' });
+    const tell = ' The paid plan has no note limit: ' + PLANS;
+    check('uso (' + N + '): cuando quedan 2 o menos, la línea le pide a la IA que avise, con cuántas quedan y el enlace a los planes',
+      low2.text.endsWith('\nFree plan: ' + (N - 2) + ' of ' + N + ' notes used, 2 left. Tell the person that the free plan is about to fill up and that 2 notes are left.' + tell) &&
+      low1.text.endsWith('\nFree plan: ' + (N - 1) + ' of ' + N + ' notes used, 1 left. Tell the person that the free plan is about to fill up and that 1 note is left.' + tell) &&
+      low0.text.endsWith('\nFree plan: ' + N + ' of ' + N + ' notes used, none left. Tell the person that the free plan is full and that the next new note will not be saved.' + tell), [low2.text, low1.text, low0.text]);
+    const over = await tool(ftok, 'write_note', { path: 'p/d.md', text: 'd' }); const overB = await tool(ftok, 'create_board', { path: 'p/otro.md' });
+    const overHttp = await us.ask('PUT', '/notes/e.md', { text: 'e' }, fses); const still = await tool(ftok, 'edit_note', { path: 'p/a.md', old_text: 'a', new_text: 'a, editada' });
+    const FULL = 'The free plan holds ' + N + ' notes and this account has ' + N + '. Nothing was saved. Existing notes can still be read and edited. To add a new one, delete a note or move to the paid plan, which has no note limit: ' + PLANS;
+    check('uso (' + N + '): en el tope el error dice qué pasó y qué hacer, y que no borre notas por su cuenta', over.err && over.text === 'Error: ' + FULL + ' Tell the person what happened and give them that link, or offer to make room. Do not delete notes on your own.' && overB.err && overB.text === over.text && !still.err, [over.text, overB.text, still.text]);
+    check('uso (' + N + '): el mismo tope por la app trae el número y cuántas hay, sin la parte que es para la IA', overHttp.status === 402 && overHttp.json.error === 'note_limit' && overHttp.json.message === FULL && overHttp.json.limit === N && overHttp.json.notes === N, overHttp.json);
+    const lf = await tool(ftok, 'list_notes'); const g = await tool(ftok, 'get_guide');
+    check('uso (' + N + '): la lista y la guía dicen cuánto lugar queda, y la guía qué crear primero si no entra todo', lf.parts[1] === 'Free plan: ' + N + ' of ' + N + ' notes used, none left.' && JSON.parse(lf.parts[0]).length === N &&
+      g.text.includes('Before you create the structure, check how much room the plan has: on the free plan list_notes says it. Right now: ' + N + ' of ' + N + ' notes used, none left. If the whole structure does not fit, create README.md, board.md and pending.md first and tell the person which notes were left out.'), [lf.parts[1], g.text.slice(0, 1800)]);
+    const nums = said.join('\n').match(/(?:of|holds) \d+ notes/g) || [];
+    check('uso (' + N + '): todos los textos dicen ' + N + ', y ninguno lleva signos de admiración, rayas ni castellano', nums.length > 8 && nums.every((x) => x === 'of ' + N + ' notes' || x === 'holds ' + N + ' notes') && said.filter((x) => /Free plan|free plan/.test(x)).every((x) => !/[áéíóúñ¡!—–]/.test(x)), nums);
+    const pl0 = await tool(ptok, 'list_notes'); const pw = await tool(ptok, 'write_note', { path: 'p/README.md', text: '# Paga' }); const pa = await tool(ptok, 'append_note', { path: 'p/log.md', text: 'hoy' });
+    const pb = await tool(ptok, 'create_board', { path: 'p/board.md' }); const pg = await tool(ptok, 'get_guide');
+    for (let i = 0; i < N; i++) await us.ask('PUT', '/notes/mas-' + i + '.md', { text: 'x' }, pses);
+    const pw2 = await tool(ptok, 'write_note', { path: 'p/pasado.md', text: 'x' });
+    check('uso (' + N + '): una cuenta paga no recibe ninguna de esas líneas', pl0.parts.length === 1 && [pw, pa, pb, pw2].every((x) => !x.err && !/free plan/i.test(x.text)) && JSON.parse(pb.text).plan === undefined && !/Right now/.test(pg.text) && pg.text.includes('create README.md, board.md and pending.md first'), [pl0.parts, pw.text, pa.text, pb.text, pw2.text]);
+    await us.stop(); wipe(uDir);
+  }
+
   // ---------- Papelera ----------
   {
   const trDir = tmp();

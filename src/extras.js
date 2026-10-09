@@ -36,8 +36,8 @@
     const parts = String(v || '').replace(/\\/g, '/').split('/').map((s) => s.trim()).filter(Boolean);
     return parts.length && !parts.some((s) => /[:*?"<>|\x00-\x1f]/.test(s) || /^\.\.?$/.test(s) || s[0] === '~') ? parts.join('/') : '';
   };
-  const cloudWhy = (e, fallback) => T({ offline: 'No hay conexión con el servidor.', note_limit: 'Llegaste al límite de notas del plan gratis. El plan pago no tiene límite.', team_ended: 'El plan del equipo venció. No se pueden sumar notas nuevas.',
-    no_access: 'Esta carpeta es de solo lectura', exists: 'Ya hay un archivo con ese nombre', bad_path: 'Ese nombre tiene caracteres que no se pueden usar' }[e && e.code] || fallback);
+  const cloudWhy = (e, fallback) => (e && e.code === 'note_limit' ? LMD.sync.full() : T({ offline: 'No hay conexión con el servidor.', team_ended: 'El plan del equipo venció. No se pueden sumar notas nuevas.',
+    no_access: 'Esta carpeta es de solo lectura', exists: 'Ya hay un archivo con ese nombre', bad_path: 'Ese nombre tiene caracteres que no se pueden usar' }[e && e.code] || fallback));
   // Al querer crear una nota de más en el plan gratis se abre Plan con el motivo, como con todo lo que es del plan pago.
   const cloudFail = (e, fallback) => { if (e && e.code === 'note_limit') core.openPanel('plan', cloudWhy(e)); else core.flash(cloudWhy(e, fallback), 'error'); };
   // Renombrar y eliminar son de quien creó la nota: lo compartido se puede leer o editar, no mover.

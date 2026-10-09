@@ -9,7 +9,7 @@
 //   RESEND_API_KEY  manda el código de acceso por Resend (con MAIL_FROM)
 //   MAIL_WEBHOOK    o lo manda a un webhook propio: POST { to, subject, text }
 //   DEV_CODES=1     sin correo: el código vuelve en la respuesta (solo para pruebas)
-//   FREE_NOTES      notas del plan gratis (10)
+//   FREE_NOTES      notas del plan gratis (10). El número sale solo de acá: la app y la IA lo reciben del servidor
 //   API_FREE=1      opens the API and the automations on the free plan too (MCP_FREE=1, the older name, does the same)
 //   SHARE_FREE=1    habilita compartir también en el plan gratis
 //   CHECKOUT_MONTHLY, CHECKOUT_YEARLY   enlaces de pago que la app muestra en Ajustes → Plan
@@ -396,7 +396,7 @@ function accountName(user, body) {
 try { db.exec('ALTER TABLE users ADD COLUMN protect_seen INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* ya estaba */ }
 const protectSeen = (userId) => { const r = q('SELECT protect_seen FROM users WHERE id = ?').get(userId); return !!(r && r.protect_seen); };
 function protectSeenSet(user) { q('UPDATE users SET protect_seen = ? WHERE id = ? AND protect_seen = 0').run(now(), user.id); return { ok: true }; }
-const account = (user) => ({ id: user.id, protect_seen: protectSeen(user.id), share: shareAllowed(user), live: user.plan === 'pro' || !!env.LIVE_FREE, email: user.email, name: nameOf(user), name_default: !user.name, plan: user.plan, own_plan: user.own || user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, mcp: true, api: apiAllowed(user), mcp_url: PUBLIC_URL + '/mcp',
+const account = (user) => ({ id: user.id, protect_seen: protectSeen(user.id), share: shareAllowed(user), live: user.plan === 'pro' || !!env.LIVE_FREE, email: user.email, name: nameOf(user), name_default: !user.name, plan: user.plan, own_plan: user.own || user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, free_notes: FREE_NOTES, mcp: true, api: apiAllowed(user), mcp_url: PUBLIC_URL + '/mcp',
   manage: ((user.own || user.plan) === 'pro' || (user.team && user.team.owner === user.id && user.team.sub)) && env.PORTAL_URL ? env.PORTAL_URL : '',
   // billing: si a esta cuenta se le muestra algo de cobro. A quien tiene el plan por un equipo que paga otra persona, no:
   // ni enlaces de pago ni precios. Lo que paga por su lado (su suscripción individual) lo sigue administrando.
@@ -654,10 +654,26 @@ const cleanRev = (v) => { if (v == null) return null; if (!Number.isInteger(v) |
 // Devuelve también prev, el texto que había, para quien quiera avisar solo lo que cambió.
 // Una nota más: en el plan gratis hay tope. Lo que está en la papelera no cuenta.
 function roomFor(user) {
-  if (user.plan === 'pro' || countNotes(user) < FREE_NOTES) return;
+  const has = user.plan === 'pro' ? 0 : countNotes(user);
+  if (has < FREE_NOTES) return;
   if (user.email.startsWith('team:')) throw new Fail(402, 'team_ended', 'This team is no longer on the paid plan: its notes can still be read and edited, but no new ones can be added');
-  throw new Fail(402, 'note_limit', 'The free plan holds ' + FREE_NOTES + ' notes and this account already has ' + FREE_NOTES + '. Nothing was saved. Existing notes can still be read and edited. To add a new one, delete a note or move to the paid plan.');
+  throw new Fail(402, 'note_limit', 'The free plan holds ' + FREE_NOTES + ' notes and this account has ' + has + '. Nothing was saved. Existing notes can still be read and edited. To add a new one, delete a note or move to the paid plan, which has no note limit: ' + plansUrl(), { limit: FREE_NOTES, notes: has });
 }
+// El uso del plan gratis, para decírselo a una IA: cuántas notas hay y cuántas entran. null en el plan pago y en
+// el espacio de un equipo. El tope sale siempre de FREE_NOTES. El servidor no sabe precios: da el enlace a los planes.
+const plansUrl = () => APP_URL.split('#')[0] + '#lmd-plans';
+function planUse(user) {
+  if (!user || user.plan === 'pro' || String(user.email || '').startsWith('team:')) return null;
+  const notes = countNotes(user);
+  return { notes, limit: FREE_NOTES, left: Math.max(0, FREE_NOTES - notes) };
+}
+const planLine = (u) => 'Free plan: ' + u.notes + ' of ' + u.limit + ' notes used, ' + (u.left || 'none') + ' left.';
+// Después de crear una nota. Con lugar, una línea. Cuando quedan dos o menos, además qué decirle a la persona.
+const LOW_ROOM = 2;
+const planAfter = (u) => (u.left > LOW_ROOM ? 'Free plan: ' + u.notes + ' of ' + u.limit + ' notes used.'
+  : planLine(u) + ' Tell the person that ' + (u.left ? 'the free plan is about to fill up and that ' + (u.left === 1 ? '1 note is' : u.left + ' notes are') + ' left' : 'the free plan is full and that the next new note will not be saved') + '. The paid plan has no note limit: ' + plansUrl());
+// Lo que se suma al error del tope cuando quien lo recibe es una IA.
+const FULL_FOR_AI = ' Tell the person what happened and give them that link, or offer to make room. Do not delete notes on your own.';
 function writeNote(user, p, text, base) {
   p = cleanPath(p); text = String(text == null ? '' : text);
   const kind = checkText(user.id, p, text);
@@ -1617,7 +1633,7 @@ function taskLines(lines) {
 
 // ---------- MCP (Streamable HTTP, respuestas JSON) ----------
 const TOOLS = [
-  { name: 'list_notes', description: 'List the Markdown notes in the SharpMD cloud folder, newest first. Pass a folder to list only what is inside it.', inputSchema: { type: 'object', properties: { folder: { type: 'string', description: 'Optional folder, for example projects/launch' } } } },
+  { name: 'list_notes', description: 'List the Markdown notes in the SharpMD cloud folder, newest first. Pass a folder to list only what is inside it. On the free plan the answer ends with how many notes the plan holds and how many are left.', inputSchema: { type: 'object', properties: { folder: { type: 'string', description: 'Optional folder, for example projects/launch' } } } },
   { name: 'list_folders', description: 'List the folders that hold notes, with how many notes each one has. A top-level folder is usually a project.', inputSchema: { type: 'object', properties: {} } },
   { name: 'read_note', description: 'Read one note by its path. The answer ends with the version of the note: pass it as base_rev when you replace the note with write_note.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path of the note, for example ideas/launch.md' } }, required: ['path'] } },
   { name: 'write_note', description: 'Create a note or replace its whole content with Markdown text. To change part of an existing note, prefer edit_note, set_task or append_note. When you replace a note, pass base_rev with the version read_note gave you: if the person changed the note in the meantime, their changes are merged with yours instead of being overwritten, and if both changed the same lines nothing is saved and you get the current text back.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, text: { type: 'string', description: 'Full Markdown content' }, base_rev: { type: 'number', description: 'Optional: the version of the note your text is based on, from read_note' } }, required: ['path', 'text'] } },
@@ -1669,8 +1685,22 @@ function vaultGate(user, p) {
 }
 
 // opt.raw: quien llama es la API REST (ver apiTool), que quiere datos en vez de la frase que lee una IA.
+// Sobre lo que responde cada herramienta, lo que una IA necesita saber del plan gratis: cuánto lugar queda al
+// listar, y cuánto quedó después de una llamada que creó una nota (editar una que ya estaba no lo repite).
+// La API REST (opt.raw) recibe los datos sin esa línea.
 function callTool(user, name, args, opt) {
-  args = args || {}; opt = opt || {};
+  const did = {}; const out = runTool(user, name, args, opt, did);
+  if (opt && opt.raw) return out;
+  if (name === 'list_notes') { const u = planUse(user); return u ? new Parts([JSON.stringify(out, null, 2), planLine(u)]) : out; }
+  const u = did.made ? planUse(did.made) : null;
+  if (!u) return out;
+  const line = planAfter(u);
+  if (typeof out === 'string') return out + '\n' + line;
+  if (out instanceof Parts) return new Parts(out.list.concat(line));
+  return out && typeof out === 'object' && !Array.isArray(out) ? Object.assign({}, out, { plan: line }) : out;
+}
+function runTool(user, name, args, opt, did) {
+  args = args || {}; opt = opt || {}; did = did || {};
   const vaults = vaultsOf(user.id);
   // El espacio del equipo, si la cuenta está en uno: sus notas figuran bajo @team/ y se leen y escriben como las
   // demás. El alcance del token se mira sobre la ruta entera, con @team/ incluido: un token limitado a una carpeta
@@ -1727,10 +1757,12 @@ function callTool(user, name, args, opt) {
   const write = (a, key, text, base) => {
     text = String(text == null ? '' : text);
     if (key && Buffer.byteLength(text) > MAX_NOTE) throw new Fail(413, 'too_large');
+    const fresh = revOf(a) == null;
     const saved = writeNote(a.who, a.p, key ? vaultSeal(key, aadOf(a), text) : text, base === undefined ? revOf(a) : base);
     tellSaved(a.who.id, a.p, saved, { by: 'mcp', ed: user.tokenId != null ? 't:' + user.tokenId : null }, text);
     aiTouch(user, a.who.id, a.p, true);
     aiReadSet(user, a.who.id, a.p, saved.rev, key ? null : text);
+    if (fresh) did.made = a.who;
     return saved;
   };
   // Quién hizo el último guardado de la nota, para decírselo a la IA sin nombres: ella misma, una persona, otra IA.
@@ -1740,7 +1772,7 @@ function callTool(user, name, args, opt) {
   // La dirección para abrir esa nota en la app, con el mismo formato que usa la app al navegar.
   const appLink = (f) => APP_URL + '?f=' + encodeURIComponent(f);
   const openUrl = (a) => appLink('cloud/' + (a.who === user && !isSpace(a.who) ? '' : '~' + a.who.id + '/') + a.p.split('/').map(encodeURIComponent).join('/'));
-  const k = { user, at, gate, read, write, revOf, openUrl, seen, mayWrite, noted, mcp: (n, x) => callTool(user, n, x) };
+  const k = { user, at, gate, read, write, revOf, openUrl, seen, mayWrite, noted, mcp: (n, x) => runTool(user, n, x, null, did) };
   if (opt.raw) { const out = apiTool(name, args, k); if (out !== undefined) return out; }
   if (name === 'get_guide') return guide(user);
   if (BOARD_TOOLS.has(name)) return boardTool(name, args, k);
@@ -1915,7 +1947,7 @@ function mcp(user, msg) {
       const out = callTool(user, msg.params && msg.params.name, msg.params && msg.params.arguments);
       const blocks = out instanceof Parts ? out.list : [typeof out === 'string' ? out : JSON.stringify(out, null, 2)];
       return reply({ content: blocks.map((text) => ({ type: 'text', text })) });
-    } catch (e) { return reply({ content: [{ type: 'text', text: 'Error: ' + (e.message || e.code || 'failed') }], isError: true }); }
+    } catch (e) { return reply({ content: [{ type: 'text', text: 'Error: ' + (e.message || e.code || 'failed') + (e.code === 'note_limit' ? FULL_FOR_AI : '') }], isError: true }); }
   }
   if (msg.id === undefined) return null; // notificación: no lleva respuesta
   return { jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'Method not found' } };
@@ -3694,7 +3726,7 @@ function boardTool(name, args, k) {
 // La guía que una IA lee a demanda (get_guide): cómo documentar un proyecto y cómo llevar su tablero. El mensaje que
 // se copia desde la app (aiBrief, en src/sync.js) trae el resumen; el detalle está solo acá.
 function guide(user) {
-  const F = '```'; const dir = user.scope || '<project>'; const ro = user.canWrite === false;
+  const F = '```'; const dir = user.scope || '<project>'; const ro = user.canWrite === false; const use = planUse(user);
   return [
     '# Working in SharpMD',
     '',
@@ -3717,6 +3749,7 @@ function guide(user) {
     '| ' + dir + '/pending.md | What the person has to do, each item with its steps. |',
     '',
     '- Create the structure in the first session, from what you can learn in the code and the conversation. Leave a section empty instead of inventing its content.',
+    '- Before you create the structure, check how much room the plan has: on the free plan list_notes says it.' + (use ? ' Right now: ' + planLine(use).replace(/^Free plan: /, '') : '') + ' If the whole structure does not fit, create README.md, board.md and pending.md first and tell the person which notes were left out.',
     '- Keep it current as you work. A feature that changes updates its note, a choice between options adds an entry to decisions.md, and each session adds an entry to log.md.',
     '- Link the notes with relative paths: [Architecture](architecture.md) from the README, [README](../README.md) from a feature note.',
     '- Read a note right before you change it. The rules for changing notes are in the next section.',

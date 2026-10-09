@@ -4067,7 +4067,11 @@
     } catch (e) {
       if (seq !== docSeq || (e && e.name === 'AbortError')) return false;
       if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) fileHandle = null;
-      if (e && e.code === 'note_limit') flash(T('Llegaste al límite de notas del plan gratis. Esta no se guardó en la nube'), 'error');
+      // En el tope del plan gratis: se dice acá y, si se pidió guardar, se abre Plan. Si no, queda el aviso con el botón.
+      if (e && e.code === 'note_limit') {
+        flash(T('El plan gratis está lleno. Esta nota no se guardó en la nube'), 'error');
+        if (interactive) openPanel('plan', LMD.sync.full()); else LMD.sync.room(e.body && e.body.limit ? e.body : null);
+      }
       // La carpeta se bloqueó (o se protegió desde otra pestaña) con la nota abierta: lo escrito sigue acá, y se
       // guarda cifrado apenas se desbloquea.
       else if (e && e.code === 'vault_locked') {

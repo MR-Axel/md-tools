@@ -219,7 +219,17 @@ try {
 
   // Plan gratis: con diez notas, la undécima no se crea y el aviso invita al plan pago.
   const before = await paths();
-  for (let i = before.length; i < 10; i++) await api('PUT', '/notes/relleno-' + i + '.md', { text: 'x' }, session);
+  // Antes del tope: cuando quedan dos lugares sale un aviso al pie, una vez por sesión, con el botón a los planes.
+  const roomBar = () => app.evaluate(() => { const b = document.querySelector('.lmd-room'); return b ? [b.querySelector('span').textContent, [...b.querySelectorAll('button')].map((x) => x.textContent || x.title).join('|'), b.getAttribute('role'), getComputedStyle(b).position] : null; });
+  const recount = async () => { await app.evaluate(() => LMD.sync.reload()); await app.waitForTimeout(150); };
+  await recount(); o.avisoConLugar = [before.length, await roomBar()];
+  for (let i = before.length; i < 8; i++) await api('PUT', '/notes/relleno-' + i + '.md', { text: 'x' }, session);
+  await recount(); o.avisoPoco = await roomBar();
+  await app.click('.lmd-room [data-room=plans]'); await app.waitForFunction(() => !document.querySelector('.lmd-panel').hidden && document.querySelector('[data-ptab].lmd-on').dataset.ptab === 'plan' && !!document.querySelector('.lmd-plans'));
+  o.avisoPlanes = [await roomBar(), await app.evaluate(() => document.querySelector('.lmd-plans .lmd-plan li:nth-child(2)').textContent)];
+  await app.click('[data-act=close-panel]'); await app.waitForTimeout(200);
+  await recount(); o.avisoUnaVez = await roomBar();
+  for (let i = 8; i < 10; i++) await api('PUT', '/notes/relleno-' + i + '.md', { text: 'x' }, session);
   // El aviso sale en Ajustes → Plan, como todo lo que es del plan pago: dice por qué y ahí están los planes.
   const why = async (re) => {
     await app.waitForFunction((r) => { const p = document.querySelector('.lmd-plan-why'); return !!p && new RegExp(r).test(p.textContent) && !document.querySelector('.lmd-panel').hidden; }, re, { timeout: 8000 });
@@ -227,9 +237,12 @@ try {
     await app.click('[data-act=close-panel]'); await app.waitForTimeout(200); return t;
   };
   await answer('once.md'); await create();
-  o.limite = [await why('límite'), (await paths()).length];
+  o.limite = [await why('lleno'), (await paths()).length];
   await app.click(CLOUD + ' .lmd-tree-new'); await app.click('.lmd-menu [data-f=tpl]'); await app.waitForSelector('.lmd-tpl-card'); await app.keyboard.press('Enter');
-  o.limitePlantilla = [await why('límite'), (await paths()).length];
+  o.limitePlantilla = [await why('lleno'), (await paths()).length];
+  // Lleno: el aviso sale una vez más, y se cierra con su cruz. Cuando vuelve a haber lugar no queda a la vista.
+  await recount(); o.avisoLleno = await roomBar();
+  await app.click('.lmd-room [data-room=later]'); await recount(); o.avisoCerrado = await roomBar();
   for (let i = before.length; i < 10; i++) await api('DELETE', '/notes/relleno-' + i + '.md', undefined, session);
 
   // Una nota compartida solo para ver: ni renombrar ni crear al lado.
@@ -650,9 +663,14 @@ const checks = [
   ['arrastrar la nota abierta de la nube la deja abierta en su ruta nueva', J(o.arrastreAbiertaNube) === J(['proyecto', true, 'lista.md', true]), o.arrastreAbiertaNube],
   ['una nota de solo lectura no entra en edición ni se renombra desde el título, y su menú de lectura no ofrece editar', J(o.soloLectura) === J([false, false, false, 'Copiar el bloque|Copiar el enlace a esta sección', 0]), o.soloLectura],
   ['eliminar desde el árbol la saca de la nube y deja abierta la nota que estaba', o.eliminada && o.eliminada[0] && o.eliminada[1].includes('borrar.md') && o.eliminada[2] === 'borrar.md', o.eliminada],
-  ['en el límite del plan gratis no crea y invita al plan pago', o.limite && /límite de notas del plan gratis/.test(o.limite[0]) && /plan pago/.test(o.limite[0]) && !/[!¡—]/.test(o.limite[0]) && o.limite[1] === 10, o.limite],
+  ['en el límite del plan gratis no crea, dice que no se guardó y que lo que hay sigue andando, e invita al plan pago', o.limite && o.limite[0] === 'El plan gratis está lleno: no se guardó nada nuevo en la nube. Las notas que ya tenés se siguen leyendo y editando. El plan pago no tiene límite.|plan' && !/[!¡—]/.test(o.limite[0]) && o.limite[1] === 10, o.limite],
+  ['con lugar en el plan gratis no hay aviso', o.avisoConLugar && o.avisoConLugar[0] <= 7 && o.avisoConLugar[1] === null, o.avisoConLugar],
+  ['cuando quedan dos lugares sale un aviso al pie, sin interrumpir, con el botón a los planes y uno para cerrarlo', J(o.avisoPoco) === J(['Plan gratis: 8 de 10 notas. Te quedan 2.', 'Ver planes|Ahora no', 'status', 'fixed']), o.avisoPoco],
+  ['el botón abre Plan, donde el tope del plan gratis sale del dato de la cuenta, y el aviso se va', o.avisoPlanes && o.avisoPlanes[0] === null && o.avisoPlanes[1] === 'Hasta 10 notas en la nube', o.avisoPlanes],
+  ['el aviso sale una sola vez por sesión', o.avisoUnaVez === null, o.avisoUnaVez],
+  ['con el plan lleno avisa una vez más, y cerrado no vuelve', o.avisoLleno && o.avisoLleno[0] === 'El plan gratis está lleno: 10 de 10 notas.' && o.avisoCerrado === null, [o.avisoLleno, o.avisoCerrado]],
   ['una plantilla elegida en la raíz Nube crea la nota en la nube y la abre en edición', o.plantilla && o.plantilla[0] && o.plantilla[1] && /^daily-\d{4}-\d{2}-\d{2}\.md$/.test(o.plantilla[2]) && o.plantilla[3], o.plantilla],
-  ['en el límite, una plantilla tampoco se crea y sale el mismo aviso', o.limitePlantilla && /límite de notas del plan gratis/.test(o.limitePlantilla[0]) && /plan pago/.test(o.limitePlantilla[0]) && o.limitePlantilla[1] === 10, o.limitePlantilla],
+  ['en el límite, una plantilla tampoco se crea y sale el mismo aviso', o.limitePlantilla && /^El plan gratis está lleno: no se guardó nada nuevo en la nube\./.test(o.limitePlantilla[0]) && /plan pago/.test(o.limitePlantilla[0]) && o.limitePlantilla[1] === 10, o.limitePlantilla],
   ['una nota compartida solo para ver no se renombra ni deja crear al lado', o.soloVer && o.soloVer[0] === true && /Solo quien creó/.test(o.soloVer[1]) && /solo lectura/.test(o.soloVer[2]) && o.soloVer[3] === 1, o.soloVer],
   ['sin conexión la nota abre desde la copia y lo marca', o.sinConexion && /Suelta/.test(o.sinConexion[0]) && /Sin conexión/.test(o.sinConexion[1]) && /lmd-sync-err/.test(o.sinConexion[2]), o.sinConexion],
   ['lo escrito sin conexión queda en la cola', o.enCola === true],

@@ -86,6 +86,9 @@
   const remember = () => (guest ? Promise.resolve() : new Promise((resolve) => chrome.storage.local.set({ cloud: !session && parked ? parked : Object.assign({ session, email, at: base }, team ? { team } : {}) }, resolve)));
   const OPEN_LIVE = ['/live/look', '/live/join']; // se piden con el secreto del enlace, sin pase ni cuenta
 
+  // El tope de notas del plan gratis lo fija el servidor y llega con la cuenta (free_notes). Antes de entrar no hay
+  // dato: vale este, que es el del servidor de SharpMD.
+  let freeNotes = 10;
   async function api(method, path, body, again) {
     await ready();
     if (!base) throw Object.assign(new Error('no_server'), { code: 'no_server' });
@@ -743,7 +746,8 @@
       await Z.forgetAll(email);
       session = ''; email = ''; listCache = null; vaultCache = null; setTeam(null); await remember();
     },
-    account: () => api('GET', '/account'),
+    account: async () => { const a = await api('GET', '/account'); if (a && a.free_notes > 0) freeNotes = a.free_notes; return a; },
+    freeNotes: () => freeNotes,
     setName: (name) => api('PUT', '/account', { name }),
     create: (path) => unlocked(() => putNote(path, '')).then((r) => { listCache = null; delete otherLists[split(path).owner]; return r; }),
     remove: (path) => api('DELETE', notePath(path)).then(async (r) => { listCache = null; delete otherLists[split(path).owner]; await S.cloudDelete(email, path); return r; }),
