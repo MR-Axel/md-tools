@@ -81,6 +81,59 @@
     tools.forEach((tool) => { if (!tool.lazy && tool.disable && !isOn(tool.id)) tool.disable(core); });
   }
 
+  // ---------- La vista flotante de cada tarjeta ----------
+  // Una escena chica por herramienta, dibujada con CSS (content.css, .lmd-peek): cajitas, líneas y un acento del tema.
+  // Sale al pasar el cursor por la tarjeta o al llegar con el teclado, debajo de ella (o arriba si no entra): nunca
+  // encima de su interruptor ni de su botón. Con el dedo no hay cursor: no aparece.
+  const L = '<i class="l"></i>';
+  const EQ = '<span class="eq"><i></i><i></i><i></i><i></i><i></i></span>';
+  const PEEK = {
+    speak: '<div class="lmd-pk lmd-pk-speak"><div class="hd"><i class="pl"></i>' + EQ + '</div><div class="tx"><i class="hl"></i>' + L + L + L + '</div></div>',
+    dictate: '<div class="lmd-pk lmd-pk-dictate"><div class="hd"><i class="mc"></i>' + EQ + '</div>' + L + L + L + '</div>',
+    kanban: '<div class="lmd-pk lmd-pk-board"><div class="bx"><i></i><i class="cd mv"></i><i class="cd"></i></div><div class="bx"><i></i><i class="cd"></i></div><div class="bx"><i></i><i class="cd"></i><i class="cd"></i></div></div>',
+    present: '<div class="lmd-pk lmd-pk-present"><div class="bx"><div class="s a">' + L + L + L + '</div><div class="s b">' + L + L + L + '</div></div><div class="dt"><i></i><i></i><i></i><i class="on"></i></div></div>',
+    daily: '<div class="lmd-pk lmd-pk-daily"><div class="cal">' + '<i></i>'.repeat(17) + '<i class="t"></i>' + '<i></i>'.repeat(17) + '</div><div class="bx">' + L + L + L + L + '</div></div>',
+    docx: '<div class="lmd-pk lmd-pk-conv"><div class="bx"><b>.md</b>' + L + L + L + L + '</div><i class="ar"></i><div class="bx to"><b>.docx</b>' + L + L + L + L + '</div></div>',
+    linkmap: '<div class="lmd-pk lmd-pk-map"><i class="e e1"></i><i class="e e2"></i><i class="e e3"></i><i class="n n1"></i><i class="n n2"></i><i class="n n3"></i></div>',
+    jsonyaml: '<div class="lmd-pk lmd-pk-json"><div class="r"><i class="ct"></i><i>{ }</i></div><div class="r in"><i>id</i><i class="v">7</i></div><div class="r in"><i class="ct tg"></i><i>tags</i></div><div class="r in2 kid"><i>0</i><i class="v">"a"</i></div><div class="r in2 kid"><i>1</i><i class="v">"b"</i></div><div class="r in"><i>done</i><i class="v">true</i></div></div>',
+    import: '<div class="lmd-pk lmd-pk-conv"><div class="st"><b>.docx</b><b>.pdf</b><b>.xlsx</b></div><i class="ar"></i><div class="bx to"><b>.md</b>' + L + L + L + L + '</div></div>',
+    assistant: '<div class="lmd-pk lmd-pk-ai"><div class="bx"><i class="sp"></i>' + L + '</div>' + L + L + L + '</div>',
+  };
+  const POINTER = !!window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches;
+  const PEEK_W = 232; const PEEK_H = 146; const PEEK_WAIT = 320;
+  let peekBox = null; let peekTimer = 0;
+  function peekHide() { clearTimeout(peekTimer); if (peekBox) peekBox.classList.remove('lmd-on'); }
+  function peekShow(cardEl, id) {
+    clearTimeout(peekTimer);
+    peekTimer = setTimeout(() => {
+      // Con sus opciones abiertas la tarjeta ya se está usando: no hace falta explicarla.
+      if (!cardEl.isConnected || !cardEl.offsetParent || cardEl.querySelector('.lmd-tl-opts:not([hidden])')) return;
+      const r = cardEl.getBoundingClientRect();
+      let y = r.bottom + 8; if (y + PEEK_H > innerHeight - 12) y = r.top - PEEK_H - 8;
+      if (y < 12) return; // ni abajo ni arriba: no sale
+      if (!peekBox || !peekBox.isConnected) {
+        peekBox = el('div', { class: 'lmd-peek', 'aria-hidden': 'true' }); document.body.appendChild(peekBox);
+        // Al mover la lista o cerrar los ajustes con Escape la tarjeta ya no está donde estaba.
+        window.addEventListener('scroll', peekHide, { capture: true, passive: true });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') peekHide(); }, true);
+      }
+      peekBox.innerHTML = PEEK[id]; // la escena arranca de nuevo cada vez
+      peekBox.style.left = Math.round(Math.max(12, Math.min(r.left + 50, innerWidth - PEEK_W - 12))) + 'px'; peekBox.style.top = Math.round(y) + 'px';
+      peekBox.classList.add('lmd-on');
+    }, PEEK_WAIT);
+  }
+  function peeks(box) {
+    if (!POINTER) return;
+    box.querySelectorAll('.lmd-tl-card').forEach((c) => {
+      const id = c.dataset.tool; if (!PEEK[id]) return;
+      c.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') peekShow(c, id); });
+      c.addEventListener('pointerleave', peekHide);
+      c.addEventListener('focusin', (e) => { if (e.target.matches(':focus-visible')) peekShow(c, id); });
+      c.addEventListener('focusout', peekHide);
+      c.addEventListener('click', peekHide);
+    });
+  }
+
   // ---------- La pestaña de Ajustes ----------
   function card(tool) {
     const why = reason(tool); const on = isOn(tool.id);
@@ -182,6 +235,7 @@
     }));
     box.querySelectorAll('[data-tool-need]').forEach((b) => b.addEventListener('click', () => show(b.dataset.toolNeed, true)));
     tools.forEach((tool) => { if ((tool.settings || tool.lazy) && isOn(tool.id)) check(tool.id); });
+    peeks(box);
   }
 
   // Una herramienta avisa desde sus opciones que ya tiene, o que perdió, lo que le faltaba.

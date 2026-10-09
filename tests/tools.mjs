@@ -758,6 +758,99 @@ await suite('card', async () => {
   });
 });
 
+// ---------- La vista flotante de cada tarjeta ----------
+await suite('peek', async () => {
+  const IDS = ['speak', 'dictate', 'kanban', 'present', 'daily', 'docx', 'linkmap', 'jsonyaml', 'import', 'assistant'];
+  const over = async (page, id) => { await page.mouse.move(4, 4); await sleep(40); await page.hover('.lmd-tl-card[data-tool=' + id + '] .lmd-tl-main b'); };
+  // Lo que se ve del flotante, y dónde quedó respecto de la tarjeta.
+  const peek = (page, id) => page.evaluate((t) => {
+    const p = document.querySelector('.lmd-peek'); if (!p) return { on: false, made: false };
+    const cs = getComputedStyle(p); const r = p.getBoundingClientRect(); const c = document.querySelector('.lmd-tl-card[data-tool=' + t + ']').getBoundingClientRect();
+    const scene = p.firstElementChild; const hot = p.querySelector('.mv, .t, .n3, .sp, .pl, .mc, .to, .on');
+    return { made: true, on: p.classList.contains('lmd-on') && cs.visibility === 'visible' && cs.opacity === '1', scene: scene ? scene.className.replace('lmd-pk ', '') : '', n: p.children.length,
+      size: Math.round(r.width) + 'x' + Math.round(r.height), inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
+      clear: r.top >= c.bottom || r.bottom <= c.top, hidden: p.getAttribute('aria-hidden'), events: cs.pointerEvents, parent: p.parentNode === document.body,
+      tab: p.querySelectorAll('a, button, input, select, textarea, [tabindex]').length, focus: p.contains(document.activeElement),
+      bg: cs.backgroundColor, hot: hot ? getComputedStyle(hot).borderTopColor + ' ' + getComputedStyle(hot).backgroundColor : '', moving: p.getAnimations({ subtree: true }).length };
+  }, id);
+  const rgb = (page, name) => page.evaluate((n) => { const i = document.createElement('i'); i.style.color = 'var(' + n + ')'; document.body.appendChild(i); const c = getComputedStyle(i).color; i.remove(); return c; }, name);
+
+  await step('Flotante: sale al pasar el cursor, una escena por herramienta, sin tapar la tarjeta', async () => {
+    const { ctx, page } = await open();
+    await goHome(page); await toolsTab(page);
+    check('antes de pasar el cursor no hay nada', !(await peek(page, 'kanban')).made);
+    await over(page, 'kanban'); await sleep(120);
+    check('no sale de inmediato: espera un momento', !(await peek(page, 'kanban')).on);
+    await sleep(500);
+    const k = await peek(page, 'kanban');
+    check('pasado ese momento aparece, de 232 por 146, entero en la ventana', k.on && k.scene === 'lmd-pk-board' && k.n === 1 && k.size === '232x146' && k.inside && k.parent, k);
+    check('queda fuera de la tarjeta: no tapa el interruptor ni el botón', k.clear, k);
+    check('no recibe el cursor ni el foco, y los lectores de pantalla no lo leen', k.events === 'none' && k.hidden === 'true' && k.tab === 0 && !k.focus, k);
+    check('se mueve', k.moving > 0, k.moving);
+    const seen = []; const bad = [];
+    for (const id of IDS) { await over(page, id); await sleep(480); const r = await peek(page, id); seen.push(r.scene); if (!r.on || !r.clear || !r.inside || !r.scene) bad.push([id, r]); }
+    check('las diez herramientas tienen la suya, y ninguna tapa su tarjeta ni se sale de la ventana', bad.length === 0 && seen.length === 10, bad.length ? bad : seen);
+    check('cada una dibuja lo suyo (exportar e importar comparten el dibujo de un formato a otro)', new Set(seen).size === 9 && seen[5] === seen[8], seen);
+    check('las tarjetas son las diez de la lista', J(await page.evaluate(() => [...document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card')].map((c) => c.dataset.tool))) === J(IDS));
+    await page.mouse.move(4, 4); await sleep(250);
+    check('al sacar el cursor se va', !(await peek(page, 'kanban')).on);
+    await over(page, 'daily'); await sleep(480);
+    await page.evaluate(() => document.querySelector('.lmd-panel-body').dispatchEvent(new Event('scroll'))); await sleep(250);
+    check('al deslizar la lista se va', !(await peek(page, 'daily')).on);
+    // Con las opciones abiertas la tarjeta ya se está usando
+    await page.evaluate(() => document.querySelector('.lmd-panel-body').scrollTo(0, 0)); await sleep(100);
+    await flip(page, 'present'); await page.waitForSelector('.lmd-tl-card[data-tool=present] [data-pres=go]');
+    await over(page, 'present'); await sleep(520);
+    check('con sus opciones abiertas no aparece', !(await peek(page, 'present')).on);
+    await flip(page, 'present');
+    check('y nada de esto es un error', R.errors.length === 0, R.errors);
+    await ctx.close();
+  });
+
+  await step('Flotante: con el teclado, con los colores del tema y sin movimiento', async () => {
+    const { ctx, page } = await open();
+    await goHome(page); await toolsTab(page);
+    await page.focus('.lmd-tl-card[data-tool=speak] input'); await page.keyboard.press('Tab'); await sleep(520);
+    const at = await page.evaluate(() => { const c = document.activeElement.closest('.lmd-tl-card'); return c ? c.dataset.tool : ''; });
+    const f = await peek(page, at || 'speak');
+    check('al llegar a una tarjeta con Tab aparece la suya, y el foco sigue en el interruptor', !!at && f.on && f.scene && f.clear && !f.focus && (await page.evaluate(() => document.activeElement.tagName)) === 'INPUT', [at, f]);
+    await page.keyboard.press('Escape'); await sleep(250);
+    check('Escape la saca', !(await peek(page, at || 'speak')).on);
+    // Los colores salen de las variables del tema: cambian con el tema y con el acento propio
+    await toolsTab(page).catch(() => {});
+    await page.addStyleTag({ content: '*, *::before, *::after { transition: none !important; }' });
+    const bad = [];
+    const sets = (await page.evaluate(() => LMD.theme.PRESETS.map((x) => ({ preset: x.id, theme: x.dark ? 'dark' : 'light' })))).concat([{ preset: '', theme: 'light', supporter: true, accent: '#e11d48' }, { preset: '', theme: 'dark', supporter: true, accent: '#0ea5e9' }]);
+    for (const s of sets) {
+      await page.evaluate((x) => LMD.theme.apply(document.documentElement, x), s);
+      await over(page, 'kanban'); await sleep(450);
+      const r = await peek(page, 'kanban'); const bg = await rgb(page, '--bg'); const fill = await rgb(page, '--accent-fill');
+      if (!r.on || r.bg !== bg || r.hot.split(') ')[0] + ')' !== fill || bg === fill) bad.push([s, r.bg, bg, r.hot, fill]);
+    }
+    check('en los doce temas y con un acento propio, el fondo es el del tema y el acento el elegido', bad.length === 0 && sets.length === 14, bad);
+    await ctx.close();
+    const still = await open({ ctx: { reducedMotion: 'reduce' } });
+    await goHome(still.page); await toolsTab(still.page);
+    const quiet = [];
+    for (const id of IDS) { await over(still.page, id); await sleep(450); const r = await peek(still.page, id); if (!r.on || r.moving) quiet.push([id, r.on, r.moving]); }
+    check('con movimiento reducido aparecen las diez, quietas', quiet.length === 0, quiet);
+    const vis = await still.page.evaluate(() => [...document.querySelectorAll('.lmd-peek .l, .lmd-peek .to')].filter((n) => getComputedStyle(n).opacity === '0' || n.getBoundingClientRect().width < 1).length);
+    check('y quieta, la escena queda dibujada entera', vis === 0, vis);
+    await still.ctx.close();
+  });
+
+  await step('Flotante: en el teléfono no hay', async () => {
+    const { ctx, page } = await open({ ctx: SMALL });
+    await goHome(page);
+    await page.evaluate(() => document.querySelector('[data-act=settings]').click()); await page.waitForSelector('.lmd-panel-card'); await page.tap('[data-ptab=tools]'); await page.waitForSelector('.lmd-tl-card');
+    const before = await page.evaluate(() => Math.round(document.querySelector('.lmd-tl-card[data-tool=kanban]').getBoundingClientRect().height));
+    await page.tap('.lmd-tl-card[data-tool=kanban] .lmd-tl-main b'); await sleep(600);
+    const m = await page.evaluate(() => ({ peek: !!document.querySelector('.lmd-peek'), h: Math.round(document.querySelector('.lmd-tl-card[data-tool=kanban]').getBoundingClientRect().height), side: document.documentElement.scrollWidth <= innerWidth && document.querySelector('.lmd-panel-body').scrollWidth <= document.querySelector('.lmd-panel-body').clientWidth + 1 }));
+    check('tocar una tarjeta no abre nada, no la agranda y no suma scroll de costado', !m.peek && m.h === before && m.side, [m, before]);
+    await ctx.close();
+  });
+});
+
 // ---------- Claro y oscuro desde la barra, en la web ----------
 await suite('theme', async () => {
   await step('Tema: el botón de la barra y su atajo, con el dispositivo en oscuro', async () => {
