@@ -256,6 +256,8 @@
       "No se pudo leer la carpeta. Activá \"Permitir acceso a URL de archivo\" en los detalles de la extensión.": "Could not read the folder. Turn on \"Allow access to file URLs\" in the extension details.",
       "Este servidor no expone el listado de la carpeta.": "This server does not expose the folder listing.",
       "Carpeta sin archivos Markdown.": "No Markdown files in this folder.",
+      "Actualizar la lista de archivos": "Refresh the file list", "Lista de archivos actualizada": "File list refreshed",
+      "\"{a}\" ya no está en la carpeta. Lo que ves sigue acá.": "\"{a}\" is no longer in the folder. What you see is still here.",
       "Sin coincidencias en {n} archivo": "No matches in {n} file",
       "Sin coincidencias en {n} archivos": "No matches in {n} files",
       ". Se revisaron los primeros {n}.": ". Only the first {n} were checked.",

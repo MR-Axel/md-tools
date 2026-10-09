@@ -128,8 +128,9 @@ try {
   check('el explorador marca el archivo abierto, y solo ese', J(s1.active) === J([before.pick]), s1.active);
   check('la carpeta desplegada sigue desplegada y el explorador no se movió', after.open.includes('sub') && after.sub && Math.abs(after.y - before.y) < 3, [before.y, after]);
   check('el ancho de la barra y el tema quedan como estaban', after.w === '360px' && after.theme === before.theme, [after.w, after.theme, before.theme]);
-  check('el foco sigue en el explorador, sobre el archivo tocado', s1.focus === before.pick, s1.focus);
-  await page.keyboard.press('ArrowDown');
+  const where1 = await page.evaluate(() => document.activeElement === document.body || !document.querySelector('.lmd-sidebar').contains(document.activeElement));
+  check('con el mouse el foco pasa al documento: Espacio y AvPág lo mueven a él', s1.focus === '' && where1, s1.focus);
+  await page.focus(node(before.pick)); await page.keyboard.press('ArrowDown');
   const f2 = (await state()).focus;
   await page.keyboard.press('Enter'); await shows(before.next);
   const s2 = await state();
@@ -289,6 +290,75 @@ try {
   const fresh = await until(() => page.evaluate(() => document.querySelector('.lmd-article').textContent.includes('Changed outside.')), 6000);
   check('la recarga automática relee el archivo a la vista', !!fresh && (await state()).title === 'n03.md' && (await state()).keep, await state());
 
+  console.log('El explorador se entera solo de lo que cambia en la carpeta');
+  const polls = () => page.evaluate(() => +document.documentElement.dataset.lmdTreePolls || 0);
+  const tree = () => page.evaluate(() => { const o = {}; document.querySelectorAll('.lmd-tree-box .lmd-node').forEach((n) => { o[decodeURIComponent(n.dataset.url.split('/').slice(n.dataset.kind === 'dir' ? -3 : -2).join('/'))] = n.dataset.kind + (n.classList.contains('lmd-node-new') ? '*' : ''); }); return o; });
+  const leaf = (o, name) => Object.keys(o).filter((k) => k.replace(/\/$/, '').endsWith('/' + name)).map((k) => o[k])[0] || '';
+  const has = (name, ms) => until(async () => leaf(await tree(), name), ms || 12000);
+  const gone = (name, ms) => until(async () => !leaf(await tree(), name), ms || 12000);
+  const subCount = () => page.evaluate(() => { const n = document.querySelector('.lmd-node[data-url$="/sub/"] .lmd-node-n'); return n && !n.hidden ? n.dataset.n : ''; });
+  await open('a.md'); await keep();
+  await page.click(node('sub/')); await page.waitForSelector(node('sub/c.md'));
+  await until(async () => (await subCount()) === '2');
+  await page.evaluate((sel) => { const p = document.querySelector(sel); p.scrollTop = 120; }, pane); await sleep(150);
+  await page.focus(node('n02.md'));
+  const k0 = await page.evaluate((sel) => ({ y: document.querySelector(sel).scrollTop, count: (document.querySelector('.lmd-node[data-url$="/sub/"] .lmd-node-n') || { dataset: {} }).dataset.n }), pane);
+  const p0 = await polls(); await sleep(4600);
+  check('con la pestaña a la vista, el explorador vuelve a mirar la carpeta cada pocos segundos', (await polls()) > p0, [p0, await polls()]);
+  fs.writeFileSync(path.join(disk, 'zz-new.md'), '# Brand new\n'); fs.writeFileSync(path.join(disk, 'sub', 'made-by-ai.md'), '# From outside\n'); fs.mkdirSync(path.join(disk, 'zz-dir'));
+  const n1 = await has('zz-new.md'); const n2 = await has('made-by-ai.md'); const n3 = await has('zz-dir');
+  const k1 = await page.evaluate((sel) => ({ y: document.querySelector(sel).scrollTop, open: [...document.querySelectorAll('.lmd-node-dir.lmd-open')].map((n) => n.textContent.trim()), focus: document.activeElement.classList.contains('lmd-node') ? document.activeElement.textContent.trim() : '', active: [...document.querySelectorAll('.lmd-node.lmd-active')].map((n) => n.textContent.trim()), keep: window.__keep === 1 }), pane);
+  check('un archivo creado afuera aparece solo, sin recargar', n1 === 'md*' && k1.keep, [n1, k1.keep]);
+  check('también el de una subcarpeta desplegada, y una carpeta nueva', n2 === 'md*' && n3 === 'dir*', [n2, n3]);
+  check('lo nuevo queda marcado, y lo que ya estaba no', Object.values(await tree()).filter((v) => v.endsWith('*')).length === 3, await tree());
+  check('las carpetas desplegadas, la posición, el foco y el archivo marcado quedan como estaban', k1.open.join() === 'sub' && Math.abs(k1.y - k0.y) < 3 && k1.focus === 'n02.md' && J(k1.active) === J(['a.md']), [k0, k1]);
+  check('y el contador de la carpeta se pone al día', k0.count === '2' && !!(await until(async () => (await subCount()) === '3')), [k0.count, await subCount()]);
+  check('la marca de nuevo se va sola a los segundos', !!(await until(async () => !Object.values(await tree()).some((v) => v.endsWith('*')), 12000)));
+  await page.click(node('zz-new.md')); await shows('zz-new.md');
+  check('y el archivo nuevo se abre como cualquier otro', (await state()).h1 === 'Brand new' && (await state()).keep);
+  await page.click(node('a.md')); await shows('a.md');
+  fs.rmSync(path.join(disk, 'zz-new.md')); fs.rmdirSync(path.join(disk, 'zz-dir')); fs.renameSync(path.join(disk, 'n40.md'), path.join(disk, 'n40-renamed.md'));
+  const g1x = await gone('zz-new.md'); const g2x = await gone('zz-dir'); const g3x = await gone('n40.md'); const r40 = await has('n40-renamed.md');
+  check('uno borrado afuera desaparece, y uno renombrado cambia de nombre', !!g1x && !!g2x && !!g3x && r40 === 'md*' && (await state()).keep && (await state()).title === 'a.md', [g1x, g2x, g3x, r40]);
+  fs.renameSync(path.join(disk, 'n40-renamed.md'), path.join(disk, 'n40.md')); await has('n40.md');
+  // Con la pestaña oculta no se mira nada; al volver, enseguida.
+  await inExt(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); });
+  await sleep(600); const ph = await polls();
+  fs.writeFileSync(path.join(disk, 'zz-hidden.md'), '# While hidden\n');
+  await sleep(9000);
+  check('con la pestaña oculta el explorador no sondea', (await polls()) === ph && !leaf(await tree(), 'zz-hidden.md'), [ph, await polls()]);
+  await inExt(() => { delete document.hidden; document.dispatchEvent(new Event('visibilitychange')); });
+  check('y al volver a la pestaña se pone al día enseguida', (await has('zz-hidden.md', 2500)) === 'md*' && (await state()).keep, await tree());
+  // El botón de la cabecera lo fuerza.
+  const refresh = await page.evaluate(() => { const b = document.querySelector('.lmd-zone-files .lmd-zone-head [data-act=tree-refresh]'); return b ? { title: b.title, w: b.getBoundingClientRect().width } : null; });
+  fs.writeFileSync(path.join(disk, 'zz-forced.md'), '# Forced\n');
+  await page.click('[data-act=tree-refresh]');
+  const forced = await has('zz-forced.md', 2500);
+  check('el botón Refresh de la cabecera lo fuerza, y lo dice', !!refresh && refresh.title === 'Refresh the file list' && refresh.w > 10 && refresh.w < 48 && !!forced && /File list refreshed/.test(await said()) && (await state()).keep, [refresh, forced, await said()]);
+  fs.rmSync(path.join(disk, 'zz-hidden.md')); fs.rmSync(path.join(disk, 'zz-forced.md')); fs.rmSync(path.join(disk, 'sub', 'made-by-ai.md'));
+  // El archivo abierto se borra afuera, con cambios sin guardar: se avisa y lo escrito sigue ahí.
+  await page.click(node('n05.md')); await shows('n05.md');
+  await page.click('[data-act=mode-edit]'); await page.waitForSelector('.lmd-article .lmd-editable');
+  await typeIn('Body 5.', ' UNSAVED'); await blur(); await sleep(200);
+  await page.evaluate(() => { window.__said = []; const n = document.querySelector('.lmd-foot .lmd-status'); new MutationObserver(() => { if (n.textContent) window.__said.push(n.textContent); }).observe(n, { childList: true, characterData: true, subtree: true }); });
+  fs.rmSync(path.join(disk, 'n05.md'));
+  const told = await until(() => page.evaluate(() => window.__said.find((t) => /no longer in the folder/.test(t))), 12000);
+  const d5 = await state(); const d5text = await page.evaluate(() => ({ text: document.querySelector('.lmd-article').textContent, gone: document.documentElement.classList.contains('lmd-doc-gone'), node: !!document.querySelector('.lmd-node[data-url$="/n05.md"]') }));
+  check('si el archivo abierto se borra afuera, se avisa', told === '"n05.md" is no longer in the folder. What you see is still here.' && d5text.gone && !d5text.node, [told, d5text.gone]);
+  check('y lo escrito sin guardar sigue a la vista, sin recargar', d5.title === 'n05.md' && d5.dirty && d5text.text.includes('Body 5. UNSAVED') && d5.keep, d5);
+  await sleep(5000);
+  check('el aviso sale una sola vez', (await page.evaluate(() => window.__said.filter((t) => /no longer in the folder/.test(t)).length)) === 1);
+  await page.click(node('n06.md')); await page.waitForSelector('.lmd-ask [data-ask=no]'); await page.click('.lmd-ask [data-ask=no]'); await page.waitForSelector('.lmd-dlg-card'); await page.click('.lmd-dlg-card [data-dlg=ok]'); await shows('n06.md');
+  await page.click('[data-act=mode-read]'); await sleep(200);
+  fs.writeFileSync(path.join(disk, 'n05.md'), FILES['n05.md']);
+  // El archivo que cargó el navegador desaparece mientras se mira otro: la sesión sigue.
+  fs.renameSync(path.join(disk, 'a.md'), path.join(disk, 'a-moved.md'));
+  await gone('a.md');
+  await page.click(node('n07.md')); await shows('n07.md');
+  const h7 = await state();
+  check('si desaparece el archivo que cargó el navegador, se sigue pasando de un archivo a otro', h7.h1 === 'Note 7' && h7.keep && h7.url === U('a.md') + '#lmd-file=n07.md' && !(await page.evaluate(() => document.documentElement.classList.contains('lmd-doc-gone'))), h7);
+  fs.renameSync(path.join(disk, 'a-moved.md'), path.join(disk, 'a.md')); await has('a.md');
+
   console.log('Tiempos sobre un archivo del disco, del clic al documento pintado');
   const timeTo = async (p, sel, title, h1) => {
     const t0 = Date.now();
@@ -368,9 +438,9 @@ try {
   const a1 = await astate(); const ay1 = await app.evaluate((sel) => document.querySelector(sel).scrollTop, pane);
   check('en la app, tocar un archivo de la carpeta no recarga ni muestra la pantalla de carga', a1.keep && a1.h1 === anum(apick[0]) && !a1.splash, a1);
   check('la carpeta desplegada y la posición del explorador quedan como estaban', a1.open.includes('sub') && ay0 > 100 && Math.abs(ay1 - ay0) < 3, [ay0, ay1, a1.open]);
-  check('y el foco sigue en el explorador: antes se perdía al cambiar de nota', a1.focus === apick[0], a1.focus);
-  await app.keyboard.press('ArrowDown'); await app.keyboard.press('Enter'); await ashows(apick[1]);
-  check('las flechas y Enter recorren los archivos', (await astate()).focus === apick[1] && (await astate()).keep && (await astate()).h1 === anum(apick[1]), await astate());
+  check('con el mouse el foco pasa al documento', a1.focus === '', a1.focus);
+  await app.focus(node(apick[0])); await app.keyboard.press('ArrowDown'); await app.keyboard.press('Enter'); await ashows(apick[1]);
+  check('con el teclado, las flechas y Enter recorren los archivos y el foco se queda en el explorador', (await astate()).focus === apick[1] && (await astate()).keep && (await astate()).h1 === anum(apick[1]), await astate());
   const akinds = await app.evaluate(() => { const o = {}; document.querySelectorAll('.lmd-xroot[data-root=disk] .lmd-node').forEach((n) => { o[n.textContent.trim()] = n.dataset.kind; }); return o; });
   check('en la app el explorador también distingue Markdown, texto, datos y el resto', akinds['a.md'] === 'md' && akinds['notes.txt'] === 'txt' && akinds['data.json'] === 'data' && akinds['conf.yaml'] === 'data' && akinds['report.docx'] === 'file' && akinds.sub === 'dir', akinds);
   await app.click(node('notes.txt')); await ashows('notes.txt');
@@ -394,6 +464,15 @@ try {
   await app.evaluate(() => { const b = document.querySelector('.lmd-imp [data-imp=cancel]'); if (b) b.click(); }); await sleep(500);
   await app.evaluate(() => { const b = document.querySelector('.lmd-imp [data-imp=cancel]'); if (b) b.click(); }); await sleep(300);
   await setting({ tools: { import: false } }); await sleep(600);
+  const afile = (name, text) => app.evaluate(async ([n, t]) => { const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('exp'); if (t == null) await dir.removeEntry(n); else { const h = await dir.getFileHandle(n, { create: true }); const w = await h.createWritable(); await w.write(t); await w.close(); } }, [name, text]);
+  const anode = (name) => app.evaluate((n) => { const x = document.querySelector('.lmd-node[data-url$="/' + n + '"]'); return x ? (x.classList.contains('lmd-node-new') ? 'new' : 'old') : ''; }, name);
+  await app.evaluate(() => { window.__keep = 1; });
+  await afile('zz-app-new.md', '# App new\n');
+  const an1 = await until(() => anode('zz-app-new.md'), 12000);
+  check('en la app, un archivo creado afuera en la carpeta abierta aparece solo y marcado', an1 === 'new' && (await astate()).keep && (await astate()).open.includes('sub'), [an1, await astate()]);
+  await afile('zz-app-new.md', null);
+  check('y uno borrado desaparece', !!(await until(async () => !(await anode('zz-app-new.md')), 12000)) && (await astate()).keep);
+  check('la app también tiene el botón Refresh', !!(await app.$('.lmd-zone-files .lmd-zone-head [data-act=tree-refresh]')));
   const aruns = { small: [], big: [] };
   for (let k = 0; k < 5; k++) {
     await app.click(node('a.md')); await ashows('a.md'); await sleep(250);

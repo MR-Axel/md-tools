@@ -775,6 +775,7 @@
         '<div class="lmd-split" title="' + T('Arrastrar para cambiar el alto') + '"></div>' +
         '<section class="lmd-zone lmd-zone-files" data-zone="files">' +
           '<div class="lmd-zone-head"><button type="button" class="lmd-zone-tog" data-zone-tog="files"><span class="lmd-node-chev">' + ICON.chevron + '</span><span>' + T('Archivos') + '</span></button>' +
+            '<button type="button" class="lmd-zone-btn lmd-tree-refresh" data-act="tree-refresh" title="' + T('Actualizar la lista de archivos') + '" aria-label="' + T('Actualizar la lista de archivos') + '">' + ICON.reload + '</button>' +
             (APP ? '<button type="button" class="lmd-zone-btn lmd-tree-add" title="' + T('Crear') + '">' + ICON.plus + '</button>' : '') +
             '<button type="button" class="lmd-zone-btn lmd-tree-open" title="' + T(APP ? 'Abrir otra carpeta o archivo' : 'Abrir otro archivo o carpeta') + '">' + ICON.open + '</button></div>' +
           '<div class="lmd-pane lmd-pane-files" data-pane="files"><div class="lmd-tree-box"></div><div class="lmd-results" hidden></div></div>' +
@@ -923,11 +924,11 @@
       // Un archivo del árbol, un resultado de búsqueda o un reciente: se abre sin recargar la página.
       const nav = e.target.closest('a.lmd-node, .lmd-results a');
       if (nav && APP && plain && offerImport(nav.dataset.url)) { e.preventDefault(); return; }
-      if (nav && inApp(nav)) { if (plain) { e.preventDefault(); openDoc(nav.href); } return; }
+      if (nav && inApp(nav)) { if (plain) { e.preventDefault(); if (e.detail) nav.blur(); openDoc(nav.href); } return; }
       // Sobre un archivo abierto directo también, si es algo que SharpMD dibuja; el resto lo abre el navegador.
       if (nav && !APP) {
         const to = nav.classList.contains('lmd-node') ? nav.dataset.url : nav.href;
-        if (plain && to && opensHere(to)) { e.preventDefault(); goFile(to); }
+        if (plain && to && opensHere(to)) { e.preventDefault(); if (e.detail) nav.blur(); goFile(to); }
         return;
       }
       const a = e.target.closest('.lmd-article a[href], .lmd-pane-outline a');
@@ -1219,6 +1220,7 @@
     // Con los títulos numerados, lo copiado lleva los números que se ven (page.js); el archivo no cambia.
     else if (act === 'copy-md') { if (needsRender && !typingNode() && !core.hold) render(); copyText(LMD.page && LMD.page.md && !needsRender && docKind() === 'md' ? LMD.page.md() : raw, source); }
     else if (act === 'copy-rich') copyRich(source);
+    else if (act === 'tree-refresh') { goneDoc = ''; core.reloadTree().then(() => { checkGone(); flash(T('Lista de archivos actualizada')); }); }
     else if (act === 'reload') { if (orphan || !alive()) location.reload(); else checkForChanges(true); }
     else if (act === 'print') window.print();
     else if (act === 'export-html') LMD.extras.exportHtml();
@@ -2282,6 +2284,8 @@
     container.appendChild(el('p', { class: 'lmd-empty', text: T('Leyendo carpeta…') }));
     const rows = await listDir(dirUrl);
     container.textContent = '';
+    // Lo que se listó, para notar después si la carpeta cambió afuera (pollTree).
+    container._dir = dirUrl; container._depth = depth; container._sig = rows == null ? null : rowSig(rows);
     const where = WHERE[sectionOf(dirUrl)];
     if (rows == null) {
       const msg = APP ? T('No se pudo leer esta carpeta.') : isFile
@@ -2298,7 +2302,12 @@
       return;
     }
     const here = noDoc ? '' : HERE;
-    rows.forEach((row) => {
+    rows.forEach((row) => rowNodes(row, depth, where, here).forEach((n) => container.appendChild(n)));
+  }
+  // Los nodos de un renglón del árbol: el archivo o la carpeta, y lo que cuelga de una carpeta.
+  function rowNodes(row, depth, where, here) {
+    const out = [];
+    {
       // Carpeta con contraseña: candado cerrado si está bloqueada en esta pestaña, abierto si no.
       const vault = row.vault || null; const shut = !!vault && !LMD.vault.isOpen(vault);
       const item = el(row.dir ? 'button' : 'a', { class: 'lmd-node' + (row.dir ? ' lmd-node-dir' : '') + (vault ? ' lmd-node-vault' + (shut ? ' lmd-vault-shut' : '') : ''), title: row.label && row.dir ? row.label : row.name });
@@ -2310,20 +2319,20 @@
         : '<span class="lmd-node-ico">' + FILE_ICON[kind] + '</span>') +
         '<span class="lmd-node-name"></span>' + (!row.dir && where ? '<span class="lmd-node-where" title="' + T(where[1]) + '">' + ICON[where[0]] + '</span>' : '');
       item.querySelector('.lmd-node-name').textContent = row.label || row.name;
-      container.appendChild(item);
+      out.push(item);
       // Abierta para la IA: se dice hasta cuándo, con el botón para bloquearla ya.
       if (vault && vault.ai) {
         const line = el('div', { class: 'lmd-vault-line' });
         line.style.paddingLeft = (32 + depth * 14) + 'px';
         line.append(el('span', { class: 'lmd-vault-ico' }, ICON.spark), el('span', { class: 'lmd-vault-state', text: LMD.vault.aiText(vault) }), el('button', { type: 'button', class: 'lmd-link', 'data-vault-ailock': String(vault.id), text: T('Bloquear ahora') }));
-        container.appendChild(line);
+        out.push(line);
       }
       if (row.dir) {
         item.type = 'button';
         // Una carpeta se arrastra a otra, como un archivo. En pantalla táctil se mueve desde el menú.
         if (APP && !LMD.touch.coarse()) item.draggable = true;
         const kids = el('div', { class: 'lmd-node-kids', hidden: '' });
-        container.appendChild(kids);
+        out.push(kids);
         const open = async () => {
           // Bloqueada: al abrirla pide la contraseña una vez. Al desbloquearse el explorador se redibuja con ella desplegada.
           if (shut) { openDirs.add(row.url); if (!(await LMD.vault.unlock(vault))) openDirs.delete(row.url); return; }
@@ -2341,7 +2350,85 @@
         item.href = APP ? toHref(row.url) : kind !== 'md' && opensHere(row.url) ? readerHref(row.url) : row.url;
         if (row.url === here) { item.classList.add('lmd-active'); setTimeout(() => { if (item.offsetParent) item.scrollIntoView({ block: 'nearest' }); }, 0); }
       }
+    }
+    return out;
+  }
+
+  // ---------- El explorador se entera solo de lo que cambia en la carpeta ----------
+  // Cada pocos segundos, y solo con la pestaña a la vista, se vuelve a listar cada carpeta del disco que está
+  // desplegada (una lectura por carpeta, con tope) y se compara con lo que hay dibujado. Si cambió, se suman los
+  // renglones nuevos y se sacan los que ya no están, sin redibujar el resto: carpetas desplegadas, posición, foco y
+  // búsqueda quedan como estaban. Donde el navegador lo ofrece, FileSystemObserver avisa enseguida y el sondeo queda
+  // de respaldo. Lo plegado no se lee: se pone al día al desplegarlo.
+  const TREE_POLL = 4000; const TREE_POLL_DIRS = 40; const NEW_MARK = 8000;
+  const rowSig = (rows) => rows.map((r) => (r.dir ? 'd' : 'f') + r.url).join('\n');
+  const watchable = (url) => (APP ? (rootOf(url) || {}).kind === 'dir' : isFile);
+  let treePolling = false; let goneDoc = ''; let fsObs = null; let fsObsRoot = null;
+  function watchDisk() {
+    if (!APP || !window.FileSystemObserver || !diskRoot || diskRoot.kind !== 'dir' || fsObsRoot === diskRoot.handle) return;
+    try {
+      if (fsObs) fsObs.disconnect();
+      fsObsRoot = diskRoot.handle;
+      fsObs = new window.FileSystemObserver(debounce(() => pollTree(), 400));
+      Promise.resolve(fsObs.observe(diskRoot.handle, { recursive: true })).catch(() => { /* queda el sondeo */ });
+    } catch (e) { /* queda el sondeo */ }
+  }
+  // Pone un renglón de carpeta al día con el listado nuevo. Lo que sigue estando no se toca.
+  function patchDir(box, rows) {
+    const key = (dir, url) => (dir ? 'd' : 'f') + url;
+    const old = new Map(); let cur = null;
+    Array.from(box.children).forEach((n) => {
+      if (n.classList.contains('lmd-node')) { cur = [n]; old.set(key(n.classList.contains('lmd-node-dir'), n.dataset.url), cur); } else if (cur) cur.push(n);
     });
+    // De vacía a con archivos, o al revés: cambia el aviso, se dibuja entera.
+    if (!old.size || !rows.length) { fillDir(box, box._dir, box._depth); return; }
+    const keep = new Set(rows.map((r) => key(r.dir, r.url)));
+    old.forEach((group, k) => { if (keep.has(k)) return; openDirs.delete(group[0].dataset.url); group.forEach((n) => n.remove()); });
+    const where = WHERE[sectionOf(box._dir)]; const here = noDoc ? '' : HERE;
+    let at = box.firstElementChild;
+    rows.forEach((row) => {
+      const group = old.get(key(row.dir, row.url));
+      if (group) { if (at === group[0]) at = group[group.length - 1].nextElementSibling; else group.forEach((n) => box.insertBefore(n, at)); return; }
+      const fresh = rowNodes(row, box._depth, where, here);
+      // Lo que apareció queda marcado unos segundos.
+      fresh[0].classList.add('lmd-node-new'); setTimeout(() => fresh[0].classList.remove('lmd-node-new'), NEW_MARK);
+      fresh.forEach((n) => box.insertBefore(n, at));
+    });
+    box._sig = rowSig(rows);
+  }
+  async function pollTree(force) {
+    if (treePolling || (!force && document.hidden) || !ui.paneFiles || !ui.paneFiles.dataset.loaded) return;
+    treePolling = true; const turn = treeTurn; let changed = false;
+    const root = document.documentElement; root.dataset.lmdTreePolls = String((+root.dataset.lmdTreePolls || 0) + 1);
+    try {
+      watchDisk();
+      const boxes = Array.from(ui.treeBox.querySelectorAll('.lmd-tree, .lmd-node-kids')).filter((b) => b._dir && b._sig != null && !b.hidden && watchable(b._dir)).slice(0, TREE_POLL_DIRS);
+      for (const box of boxes) {
+        const rows = await listDir(box._dir);
+        if (turn !== treeTurn) return;
+        // Una carpeta que no se pudo leer (o que ya no está) la saca su carpeta de arriba al ponerse al día.
+        if (!box.isConnected || rows == null || rowSig(rows) === box._sig) continue;
+        changed = true; patchDir(box, rows);
+      }
+      if (changed) {
+        // Lo que se sabía de la carpeta ya no vale: la búsqueda y los enlaces la vuelven a leer, y los contadores se rehacen.
+        clearCounts(); folderIndex.clear(); wikiIndex = null; linkIndex = null;
+        ui.treeBox.querySelectorAll('.lmd-node-dir').forEach((item) => { if (!watchable(item.dataset.url || '')) return; const n = item.querySelector(':scope > .lmd-node-n'); if (n) n.remove(); showCount(item, item.dataset.url); });
+      }
+      await checkGone();
+    } catch (e) { /* una vuelta que falla no rompe nada: se reintenta en la próxima */ } finally { treePolling = false; }
+  }
+  // El archivo abierto se borró o se renombró afuera: se avisa una vez. Lo que hay a la vista, guardado o no, sigue acá.
+  async function checkGone() {
+    if (noDoc || !watchable(HERE)) return;
+    const at = HERE; const rows = await listDir(new URL('.', HERE).href, true);
+    if (at !== HERE || rows == null) return;
+    const there = rows.some((r) => !r.dir && sameUrl(r.url, HERE));
+    document.documentElement.classList.toggle('lmd-doc-gone', !there);
+    if (there) { goneDoc = ''; return; }
+    if (goneDoc === HERE) return;
+    goneDoc = HERE;
+    flash(T('"{a}" ya no está en la carpeta. Lo que ves sigue acá.', { a: DOC_NAME }), 'warn');
   }
 
   // ---------- Cuántas notas hay en cada carpeta ----------
@@ -4028,7 +4115,8 @@
     undoStack.length = 0; redoStack.length = 0; collapsed.clear(); spyPin = null; present = []; hereAi = []; lastEdit = null;
     pendingCell = null; fileHandle = null; stashed = null; opened = null; held = null; diskStamp = ''; cloudPoll = 0; cloudState = 'ok'; diskRev = null;
     needsRender = false; core.lastBlock = null; core.hold = false;
-    LMD.write.closeMenu(); closeMore(); if (drawerOpen()) setDrawer(false); // en escritorio el foco sigue en el explorador
+    goneDoc = '';
+    LMD.write.closeMenu(); closeMore(); if (drawerOpen()) setDrawer(false); // en escritorio, quien recorre el explorador con el teclado conserva el foco
     // El aviso de una invitación a un equipo es de la cuenta, no de la nota: sigue al cambiar de nota.
     document.querySelectorAll('.lmd-menu, .lmd-ask:not(.lmd-team-ask)').forEach((n) => n.remove());
     ui.viewer.hidden = true; ui.viewer.textContent = ''; ui.format.hidden = true; ui.tableBar.hidden = true;
@@ -4243,6 +4331,9 @@
     if (missing) { try { history.replaceState(null, '', hostUrl()); } catch (e) { /* queda como está */ } flash(T('No se encontró "{a}".', { a: missing }), 'warn'); }
     updateSaveState();
     checkUpdate(false);
+    // El explorador se pone al día solo: en pausa con la pestaña oculta, y enseguida al volver a ella.
+    setInterval(() => pollTree(), TREE_POLL);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) pollTree(); });
     const openAt = takeOpen(); const signAt = takeSignin();
     if (APP) appBoot().finally(unsplash).then(() => { if (openAt) LMD.install.openLink(openAt, homeCtx()); else if (signAt) LMD.home.signinLink(homeCtx(), signAt); }, () => {});
     else {
