@@ -146,6 +146,13 @@
     const d = target(); if (!d || d.classList.contains('lmd-cell')) return;
     LMD.write.enter(d);
   }
+  // "siguiente" en una lista: cierra el ítem y abre otro igual, como Enter. En un ítem todavía vacío no hace nada
+  // (Enter ahí saldría de la lista).
+  function next() {
+    const d = target();
+    if (d && d._li && !clean(d.textContent).trim()) { closeFmt(); ses.glue = false; return; }
+    newline();
+  }
   const isTask = (d) => { const li = d.closest('li'); return !!li && li.classList.contains('lmd-task-item'); };
   // Un bloque nuevo de ese tipo. Dentro de una lista del mismo tipo es el ítem siguiente.
   function block(kind, done) {
@@ -265,7 +272,8 @@
       if (o.op === 'text') type(o.text, 'text');
       else if (o.op === 'punct') type(o.text, o.open ? 'open' : 'punct');
       else if (o.op === 'fmt') fmt(o.kind, o.on);
-      else if (o.op === 'break' || o.op === 'next') newline();
+      else if (o.op === 'break') newline();
+      else if (o.op === 'next') next();
       else if (o.op === 'block') block(o.kind, o.done);
       else if (o.op === 'scratch') scratch();
       else if (o.op === 'undo') undo();
@@ -281,7 +289,7 @@
     if (!target()) return;
     if (!commands()) { snapshot(); type(text, 'text'); return; }
     const d = active();
-    const res = LMD.voice.parse(text, 'text', ses.short, { list: !!(d && d.closest('li')) || !!(d && /^(ul|task)$/.test(d.dataset.kind || '')) });
+    const res = LMD.voice.parse(text, 'text', ses.short, { list: !!(d && d.closest('li')) || !!(d && /^(ul|ol|task)$/.test(d.dataset.kind || '')) });
     if (!res.ops.some((o) => o.op === 'scratch' || o.op === 'undo')) snapshot();
     run(res.ops);
   }
@@ -471,6 +479,7 @@
     area.innerHTML =
       '<label class="lmd-row"><span>' + esc(T('Idioma del dictado')) + '</span><select data-dct="lang">' + [['auto', 'El de la app'], ['es', 'Español'], ['en', 'English']].map((o) => '<option value="' + o[0] + '"' + (o[0] === pref ? ' selected' : '') + '>' + esc(o[0] === 'auto' ? T(o[1]) : o[1]) + '</option>').join('') + '</select></label>' +
       '<label class="lmd-check"><input type="checkbox" data-dct="commands"' + (commands() ? ' checked' : '') + '><span>' + esc(T('Órdenes habladas. Sin esto, todo lo dicho entra como texto.')) + '</span></label>' +
+      '<div class="lmd-row lmd-row-line"><span data-dct="next">' + esc(T('En una lista, decí «{a}» para pasar al ítem que sigue.', { a: shortLang() === 'es' ? 'siguiente' : 'next' })) + '</span></div>' +
       '<div class="lmd-row lmd-row-line"><span data-dct="where">' + esc(T(WHERE[state] || WHERE.downloadable)) + '</span>' + (state === 'downloadable' ? '<button type="button" class="lmd-btn" data-dct="install">' + esc(T('Descargar')) + '</button>' : '') +
         (canAsk ? '<button type="button" class="lmd-btn" data-dct="check">' + esc(T('Ver si se puede en este dispositivo')) + '</button>' : '') + '</div>' +
       '<div class="lmd-row lmd-row-line"><span>' + esc(T(LMD.touch.coarse() ? 'El micrófono aparece arriba del teclado al editar un bloque. También está en el menú de los tres puntos.' : 'Atajo: Alt+Shift+D, o el micrófono al lado del bloque que estás escribiendo.')) + '</span><button type="button" class="lmd-btn" data-dct="help">' + esc(T('Frases que entiende')) + '</button></div>';

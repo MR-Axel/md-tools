@@ -7,7 +7,7 @@
 //   - Pantalla chica.
 // Ningún micrófono ni voz de verdad: el reconocedor y el sintetizador se reemplazan antes de que cargue la app.
 //   BROWSER=firefox node voice.mjs      BROWSER=webkit node voice.mjs      (sin BROWSER: chromium)
-import { rig, tally, sleep, root } from './rig.mjs';
+import { rig, tally, sleep, root, leave } from './rig.mjs';
 import fs from 'fs'; import path from 'path'; import vm from 'vm';
 
 const ENGINE = process.env.BROWSER || 'chromium';
@@ -133,7 +133,7 @@ try {
     vm.runInContext(fs.readFileSync(path.join(root, 'src', 'voice.js'), 'utf8'), box);
     const P = box.LMD.voice.parse;
     const text = (lang, said, want, ctx) => { const got = P(said, 'text', lang, ctx).text; check('texto ' + lang + ': ' + said, got === want, got); };
-    const ops = (lang, said, want) => { const got = P(said, 'text', lang).ops.map((o) => o.op + (o.kind ? ':' + o.kind : '') + (o.mode ? ':' + o.mode + ':' + o.rest : '') + (o.done ? ':done' : '')).join(' '); check('órdenes ' + lang + ': ' + said, got === want, got); };
+    const ops = (lang, said, want, ctx) => { const got = P(said, 'text', lang, ctx).ops.map((o) => o.op + (o.kind ? ':' + o.kind : '') + (o.mode ? ':' + o.mode + ':' + o.rest : '') + (o.done ? ':done' : '')).join(' '); check('órdenes ' + lang + ': ' + said, got === want, got); };
     const tex = (lang, said, want) => { const got = P(said, 'formula', lang).latex; check('fórmula ' + lang + ': ' + said, got === want, got); };
     const dgm = (lang, said, want) => { const got = P(said, 'diagram', lang).mermaid; check('diagrama ' + lang + ': ' + said.replace(/\n/g, ' / '), got === ['flowchart TD'].concat(want).join('\n'), got); };
 
@@ -148,7 +148,23 @@ try {
     text('es', 'la siguiente semana viajo', 'La siguiente semana viajo');
     text('es', 'al día siguiente llovió', 'Al día siguiente llovió');
     text('es', 'peras siguiente uvas', 'Peras siguiente uvas');
-    text('es', 'peras siguiente uvas', 'Peras\n\nUvas', { list: true });
+    // "siguiente" suelto: solo en una lista y como lo último que se dijo.
+    const L = { list: true };
+    text('es', 'peras siguiente uvas', 'Peras siguiente uvas', L);
+    text('es', 'el siguiente paso es revisar', 'El siguiente paso es revisar', L);
+    text('es', 'la semana siguiente viajo', 'La semana siguiente viajo', L);
+    text('es', 'vamos con el siguiente', 'Vamos con el siguiente', L);
+    text('es', 'siguiente paso revisar', 'Siguiente paso revisar', L);
+    text('es', 'Siguiente.', 'Siguiente.');
+    text('es', 'el siguiente ítem es largo', 'El siguiente ítem es largo');
+    ops('es', 'siguiente', 'next', L);
+    ops('es', 'Siguiente.', 'next', L);
+    ops('es', 'Siguiente ítem.', 'next', L);
+    ops('es', 'siguiente item', 'next', L);
+    ops('es', 'comprar pan siguiente', 'text next', L);
+    ops('es', 'Comprar pan. Siguiente.', 'text next', L);
+    ops('es', 'siguiente', 'text');
+    ops('es', 'next', 'text', L);
     text('es', 'tarea comprar pan', '- [ ] Comprar pan');
     text('es', 'tarea hecha llamar a Juan', '- [x] Llamar a Juan');
     text('es', 'tarea uno tarea dos tarea hecha tres', '- [ ] Uno\n- [ ] Dos\n- [x] Tres');
@@ -179,6 +195,13 @@ try {
     text('en', 'subtitle the details new paragraph and now more', '## The details\n\nAnd now more');
     text('en', 'new list apples next pears next item grapes', '- Apples\n- Pears\n- Grapes');
     text('en', 'the next week I travel', 'The next week I travel');
+    text('en', 'the next step is to check', 'The next step is to check', L);
+    text('en', 'pears next grapes', 'Pears next grapes', L);
+    text('en', 'Next.', 'Next.');
+    ops('en', 'Next.', 'next', L);
+    ops('en', 'Next item.', 'next', L);
+    ops('en', 'buy milk next', 'text next', L);
+    ops('en', 'next', 'text');
     text('en', 'task buy bread', '- [ ] Buy bread');
     text('en', 'task done call John', '- [x] Call John');
     text('en', 'quote seek and you shall find', '> Seek and you shall find');
@@ -343,8 +366,9 @@ try {
     check('al prender Dictado llegan su gramática y su código', (await loaded()).tags.join() === 'speak.js,voice.js,dictate.js', (await loaded()).tags);
     check('prenderlo no arranca el micrófono', J(await srLog(page)) === '[]' && !(await dct(page)).active, await srLog(page));
     await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=dictate] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-opts [data-dct=lang]');
-    const dopts = await page.evaluate(() => { const o = document.querySelector('.lmd-tl-card[data-tool=dictate] .lmd-tl-opts'); return { lang: [...o.querySelector('[data-dct=lang]').options].map((x) => x.value).join(), commands: o.querySelector('[data-dct=commands]').checked, where: o.querySelector('[data-dct=where]').textContent, help: !!o.querySelector('[data-dct=help]') }; });
+    const dopts = await page.evaluate(() => { const o = document.querySelector('.lmd-tl-card[data-tool=dictate] .lmd-tl-opts'); return { lang: [...o.querySelector('[data-dct=lang]').options].map((x) => x.value).join(), commands: o.querySelector('[data-dct=commands]').checked, where: o.querySelector('[data-dct=where]').textContent, help: !!o.querySelector('[data-dct=help]'), next: o.querySelector('[data-dct=next]').textContent }; });
     check('sus opciones: idioma, órdenes y dónde se transcribe el audio', dopts.lang === 'auto,es,en' && dopts.commands && /provider/.test(dopts.where) && /does not receive or store audio/.test(dopts.where) && dopts.help, dopts);
+    check('y un renglón cuenta cómo pasar al ítem siguiente de una lista', dopts.next === 'In a list, say “next” to move on to the next item.', dopts.next);
     await page.click('.lmd-tl-opts [data-dct=help]'); await page.waitForSelector('.lmd-dct-help');
     const sheet = await page.evaluate(() => ({ titles: [...document.querySelectorAll('.lmd-dct-sheet h4')].map((h) => h.textContent).join(''), rows: document.querySelectorAll('.lmd-dct-sheet dt').length, sample: document.querySelector('.lmd-dct-sheet').innerText }));
     check('la hoja de ayuda lista las frases de texto, fórmula y diagrama', sheet.titles === 'TextFormulaDiagram' && sheet.rows >= 30 && /scratch that/.test(sheet.sample) && /end formula/.test(sheet.sample) && /go back to/.test(sheet.sample), sheet.titles + ' ' + sheet.rows);
@@ -896,6 +920,49 @@ try {
     await ctx.close();
   });
 
+  await step('Dictado: "next" pasa al ítem siguiente de una lista', async () => {
+    const { ctx, page } = await open({ tools: { dictate: true }, consent: true });
+    const NOTE = 'Plain.\n\n- Milk\n\n1. One\n2. Two\n\n- [ ] A\n- [x] B\n';
+    await note(page, 'next.md', NOTE, true);
+    await until(() => page.evaluate(() => !!LMD.dictate));
+    const at = async (q, hasText) => { await page.locator(q, { hasText }).first().click(); await page.keyboard.press('Control+End'); await sleep(150); await micOn(page); await listening(page); };
+    const off = async () => { await page.click('.lmd-dct-bar [data-dct=stop]'); await stopped(page); await sleep(1000); };
+    const ITEM = '.lmd-article li .lmd-editable';
+
+    await at(ITEM, 'Milk');
+    await say(page, 'Next.'); await say(page, 'bread next'); await say(page, 'the next step is to check');
+    await off();
+    check('viñetas: "Next." solo y "next" al final de la frase abren el ítem que sigue; a mitad de frase es texto', (await saved(page, 'next.md')) === NOTE.replace('- Milk\n', '- Milk\n- Bread\n- The next step is to check\n'), await saved(page, 'next.md'));
+
+    await at(ITEM, 'Two');
+    await say(page, 'next item'); await say(page, 'three');
+    await off();
+    check('numerada: la numeración sigue', /\n1\. One\n2\. Two\n3\. Three\n/.test(await saved(page, 'next.md')), await saved(page, 'next.md'));
+
+    await at(ITEM, /^B$/);
+    await say(page, 'next');
+    const box = await page.evaluate(() => { const li = document.activeElement.closest('li'); const b = li && li.querySelector('input.lmd-task'); return b ? b.checked : null; });
+    check('checklist: la casilla nueva nace sin tildar aunque la de arriba esté hecha', box === false, box);
+    await say(page, 'next'); await say(page, 'see next'); await say(page, 'dee');
+    await off();
+    check('y en un ítem todavía vacío "next" no sale de la lista', /\n- \[ \] A\n- \[x\] B\n- \[ \] See\n- \[ \] Dee\n$/.test(await saved(page, 'next.md')), await saved(page, 'next.md'));
+
+    // Deshacer, como después de un Enter: cada Ctrl+Z saca un ítem.
+    const before = await saved(page, 'next.md');
+    await leave(page); await sleep(300);
+    await page.keyboard.press('Control+z');
+    check('Ctrl+Z deshace el último ítem dictado', !!(await until(async () => (await saved(page, 'next.md')) === before.replace('- [ ] Dee\n', ''), 4000)), await saved(page, 'next.md'));
+    await page.keyboard.press('Control+z');
+    check('y otro Ctrl+Z, el anterior', !!(await until(async () => (await saved(page, 'next.md')) === before.replace('- [ ] See\n- [ ] Dee\n', ''), 4000)), await saved(page, 'next.md'));
+
+    await at('.lmd-article .lmd-editable', 'Plain.');
+    await say(page, 'Next.'); await say(page, 'and more next');
+    await off();
+    check('en un párrafo "next" se escribe como texto', /^Plain\. Next\. And more next\n\n- Milk\n/.test(await saved(page, 'next.md')), await saved(page, 'next.md'));
+    check('sin errores de página', R.errors.length === 0, R.errors);
+    await ctx.close();
+  });
+
   await step('Dictado: fórmula y diagrama', async () => {
     const { ctx, page } = await open({ tools: { dictate: true }, consent: true });
     await note(page, 'fx.md', '# Formulas\n\nEnergy is\n', true);
@@ -955,6 +1022,8 @@ try {
     await say(page, 'hola mundo coma esto es una prueba punto y aparte');
     await say(page, 'tarea comprar pan');
     await say(page, 'tarea hecha llamar a Juan');
+    await say(page, 'Siguiente.');
+    await say(page, 'pagar la luz');
     await say(page, 'nueva línea');
     await say(page, 'nueva línea');
     await say(page, 'el área es fórmula pi por r al cuadrado fin fórmula punto');
@@ -962,7 +1031,7 @@ try {
     await say(page, 'terminar dictado');
     await stopped(page); await sleep(1000);
     const md = await saved(page, 'es.md');
-    const want = '# Lista de compras\n\nHola mundo, esto es una prueba.\n\n- [ ] Comprar pan\n- [x] Llamar a Juan\n\nEl área es $\\pi \\cdot r^{2}$.\n\n```mermaid\nflowchart TD\n  n1(["Inicio"])\n  n2["Revisar"]\n  n1 --> n2\n```\n';
+    const want = '# Lista de compras\n\nHola mundo, esto es una prueba.\n\n- [ ] Comprar pan\n- [x] Llamar a Juan\n- [ ] Pagar la luz\n\nEl área es $\\pi \\cdot r^{2}$.\n\n```mermaid\nflowchart TD\n  n1(["Inicio"])\n  n2["Revisar"]\n  n1 --> n2\n```\n';
     check('las órdenes en español escriben el mismo Markdown', md.trim() === want.trim(), md);
     await page.evaluate(() => LMD.tools.setOpt({ dictateLang: 'en' })); await sleep(350);
     await caretLast(page); await micOn(page); await listening(page);
