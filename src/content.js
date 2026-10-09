@@ -295,10 +295,12 @@
   // De copia a archivo real. Con una carpeta ya conocida alcanza con el permiso (un clic, sin selector). Si no, se
   // elige la carpeta: el navegador no dice su ruta, así que se la reconoce por el nombre y porque adentro, por el
   // mismo camino, está este mismo archivo con este mismo texto. Recién ahí se anota a qué ruta corresponde.
-  async function fsGrant() {
+  // write false: solo abrir la carpeta (la fila del explorador). Ahí se pide lectura, y guardar se pide al editar.
+  async function fsGrant(write) {
     if (noDoc || !appRoot || appRoot.kind !== 'fs') return false;
     const seq = docSeq; const parts = vParts(HERE); const name = parts[parts.length - 1]; const folder = parts[parts.length - 2] || '';
     const known = await fsKnown(fsFile(HERE));
+    if (known && write === false) { let ok = false; try { ok = (await known.rec.handle.requestPermission({ mode: 'read' })) === 'granted'; } catch (e) { /* hace falta un clic */ } return ok && seq === docSeq ? fsSwap(known.rec, known.rest) : false; }
     if (known) {
       // El mismo aviso que al editar en una carpeta abierta en solo lectura: prepara para el cuadro del navegador.
       const ok = await askWrite(known.rec);
@@ -313,7 +315,8 @@
     for (const r of await LMD.store.rootsAll()) { if (!r.handle || r.ghost) continue; const at = r.kind === 'dir' ? parts.map(low).lastIndexOf(low(r.name)) : -1; if (at > score) { startIn = r.handle; score = at; } }
     fsSay(T('Buscá la carpeta "{a}" y elegila.', { a: folder }));
     let dir = null;
-    const opt = { id: 'lmd-d-' + LMD.bridge.hash(low(parts.slice(0, -1).join('/'))).replace(/[^a-z0-9]/gi, '').slice(0, 24), mode: 'readwrite' };
+    const opt = { id: 'lmd-d-' + LMD.bridge.hash(low(parts.slice(0, -1).join('/'))).replace(/[^a-z0-9]/gi, '').slice(0, 24) };
+    if (write !== false) opt.mode = 'readwrite';
     try { dir = await window.showDirectoryPicker(startIn ? Object.assign({ startIn }, opt) : opt); }
     catch (e) { if (startIn && !(e && e.name === 'AbortError')) { try { dir = await window.showDirectoryPicker(opt); } catch (err) { /* se canceló */ } } }
     if (seq !== docSeq) return false;
@@ -343,7 +346,7 @@
     roots[rec.id] = rec; fsSaid = '';
     if (!(await go(rec.id + '/' + rest.map(encodeURIComponent).join('/'), { replace: true, discard: true, tree: true }))) return false;
     if (text !== was && text !== raw) { core.setRaw(text); flash(T('Lo que cambiaste en la copia sigue sin guardar. Guardá para escribirlo en el archivo.'), 'warn'); }
-    else flash(T('Ya es el archivo del disco: guardar escribe en él.'));
+    else if (await canWrite(rec.handle, false)) flash(T('Ya es el archivo del disco: guardar escribe en él.'));
     window.scrollTo(0, y);
     return true;
   }
@@ -1190,7 +1193,7 @@
     // El cartel de una copia de un archivo del disco (paintCopy), arriba de la nota.
     ui.copyBar = el('div', { class: 'lmd-copybar', role: 'status', hidden: '' });
     ui.article.parentNode.insertBefore(ui.copyBar, ui.article);
-    document.addEventListener('click', (e) => { const b = e.target.closest('[data-fs=grant]'); if (b) { e.preventDefault(); fsGrant(); } const w = e.target.closest('[data-write]'); if (w && diskRoot) { e.preventDefault(); askWrite(diskRoot); } });
+    document.addEventListener('click', (e) => { const b = e.target.closest('[data-fs=grant]'); if (b) { e.preventDefault(); fsGrant(!!b.closest('.lmd-copybar')); } const w = e.target.closest('[data-write]'); if (w && diskRoot) { e.preventDefault(); askWrite(diskRoot); } });
     ui.rawPre = ui.main.querySelector('pre.lmd-raw');
     ui.rawEdit = ui.main.querySelector('.lmd-raw-edit');
     ui.status = ui.main.querySelector('.lmd-status');
