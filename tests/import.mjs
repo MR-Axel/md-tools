@@ -212,7 +212,7 @@ const dlg = (page) => page.evaluate(() => {
 });
 const finished = (page) => page.waitForFunction(() => { const b = document.querySelector('.lmd-imp'); return b && (!b.querySelector('.lmd-imp-out').hidden || !b.querySelector('.lmd-imp-err').hidden); }, null, { timeout: 30000 });
 const article = (page) => page.evaluate(() => document.querySelector('.lmd-article').innerText);
-const texts = (page) => page.evaluate(() => { const bad = []; document.querySelectorAll('.lmd-tl-card[data-tool=import], .lmd-ask, .lmd-menu, [data-import], .lmd-import-btn').forEach((n) => { const t = n.textContent + ' ' + (n.title || ''); if (/[!¡—–]/.test(t)) bad.push(t.slice(0, 80)); }); return bad; });
+const texts = (page) => page.evaluate(() => { const bad = []; document.querySelectorAll('.lmd-tl-card[data-tool=import], .lmd-tl-side, .lmd-ask, .lmd-menu, [data-import], .lmd-import-btn').forEach((n) => { const t = n.textContent + ' ' + (n.title || ''); if (/[!¡—–]/.test(t)) bad.push(t.slice(0, 80)); }); return bad; });
 const file = (name, buf, type) => ({ name, mimeType: type || 'application/octet-stream', buffer: Buffer.from(buf) });
 
 // ---------- Apagada no cambia nada ----------
@@ -232,7 +232,7 @@ await step('off', 'Apagada: nada cambia', async () => {
   await page.click('.lmd-tl-card[data-tool=import] .lmd-switch'); await until(() => page.evaluate(() => !!LMD.import));
   check('prenderla pide su archivo, una vez, y queda guardado', await scripts(page, 'import.js') === 1 && (await page.evaluate(() => JSON.parse(localStorage.getItem('mdtools:settings')).tools.import)) === true);
   await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=import] .lmd-tl-more'); await page.waitForSelector('[data-imp-go=pick]');
-  const opts = await page.evaluate(() => document.querySelector('.lmd-tl-card[data-tool=import] .lmd-tl-opts').textContent);
+  const opts = await page.evaluate(() => document.querySelector('.lmd-tl-side[data-tool=import] .lmd-tl-opts').textContent);
   check('sus opciones dicen qué convierte y que no se sube', /Word, Excel, PowerPoint, EPUB, PDF, HTML, CSV and TSV/.test(opts) && /not uploaded/.test(opts) && /Choose a file/.test(opts), opts);
   check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
   await page.click('[data-act=close-panel]'); await sleep(250);

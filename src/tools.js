@@ -106,8 +106,8 @@
   function peekShow(cardEl, id) {
     clearTimeout(peekTimer);
     peekTimer = setTimeout(() => {
-      // Con sus opciones abiertas la tarjeta ya se está usando: no hace falta explicarla.
-      if (!cardEl.isConnected || !cardEl.offsetParent || cardEl.querySelector('.lmd-tl-opts:not([hidden])')) return;
+      // Con el panel de opciones abierto ya se está configurando una: no hace falta explicar ninguna.
+      if (!cardEl.isConnected || !cardEl.offsetParent || cardEl.closest('.lmd-tl-cfg')) return;
       const r = cardEl.getBoundingClientRect();
       let y = r.bottom + 8; if (y + PEEK_H > innerHeight - 12) y = r.top - PEEK_H - 8;
       if (y < 12) return; // ni abajo ni arriba: no sale
@@ -141,9 +141,9 @@
       '<span class="lmd-tl-ico" aria-hidden="true">' + (tool.icon || ICON.tools) + '</span>' +
       '<div class="lmd-tl-main"><b>' + esc(T(tool.name)) + '</b><p>' + esc(T(tool.about)) + '</p>' + (why ? '<p class="lmd-tl-why">' + esc(why) + '</p>' : '') + '</div>' +
       ('<label class="lmd-switch"><input type="checkbox" data-tool-on="' + esc(tool.id) + '" aria-label="' + esc(T(tool.name)) + '"' + (on ? ' checked' : '') + (why ? ' disabled' : '') + '><i></i></label>') +
-      // Las opciones: un botón a la vista que las abre y las cierra, y al lado el aviso de lo que le falta para andar.
-      (tool.settings || tool.lazy ? '<div class="lmd-tl-acts"' + (on ? '' : ' hidden') + '><button type="button" class="lmd-btn lmd-tl-more" data-tool-opts="' + esc(tool.id) + '" aria-expanded="false"' + (on ? '' : ' hidden') + '><span>' + esc(T('Configurar')) + '</span>' + LMD.kit.ICON.chevron + '</button>' +
-        '<button type="button" class="lmd-tl-need" data-tool-need="' + esc(tool.id) + '" hidden></button></div><div class="lmd-tl-opts" hidden></div>' : '') +
+      // Las opciones: un botón a la vista que las abre en el panel del costado, y al lado el aviso de lo que le falta para andar.
+      (tool.settings || tool.lazy ? '<div class="lmd-tl-acts"' + (on ? '' : ' hidden') + '><button type="button" class="lmd-btn lmd-tl-more" data-tool-opts="' + esc(tool.id) + '" aria-expanded="false" aria-controls="lmd-tl-side"' + (on ? '' : ' hidden') + '><span>' + esc(T('Configurar')) + '</span>' + LMD.kit.ICON.chevron + '</button>' +
+        '<button type="button" class="lmd-tl-need" data-tool-need="' + esc(tool.id) + '" hidden></button></div>' : '') +
     '</div>';
   }
 
@@ -151,6 +151,10 @@
   const SUBS = [['tools', 'Herramientas'], ['community', 'Comunidad']];
   const SUB_KEY = 'lmd:tools-sub';
   let subNow = ''; let paneSub = null;
+  // El panel de opciones de la pestaña que está armada, y el ancho en que deja de entrar al costado y tapa toda la
+  // pestaña (el mismo corte que en content.css).
+  let paneSide = null; let sideWired = false;
+  const SIDE_FULL = matchMedia('(max-width: 960px), (max-height: 500px) and (pointer: coarse)');
   const subGet = () => {
     if (!subNow) { try { subNow = sessionStorage.getItem(SUB_KEY) || ''; } catch (e) { /* sin almacenamiento vale mientras dure la página */ } }
     return SUBS.some((x) => x[0] === subNow) ? subNow : 'tools';
@@ -163,6 +167,7 @@
   }
 
   function pane(box) {
+    paneSide = null; box.removeAttribute('inert');
     box.innerHTML = '<div class="lmd-subtabs" role="tablist" aria-label="' + esc(T('Herramientas')) + '">' +
         SUBS.map((x) => '<button type="button" role="tab" id="lmd-tsub-' + x[0] + '" data-tsub="' + x[0] + '" aria-controls="lmd-tsubp-' + x[0] + '">' + esc(T(x[1])) + '</button>').join('') + '</div>' +
       '<div class="lmd-subpane" role="tabpanel" id="lmd-tsubp-tools" aria-labelledby="lmd-tsub-tools" data-tsub-pane="tools">' +
@@ -175,6 +180,7 @@
     const tabs = Array.from(box.querySelectorAll('[data-tsub]'));
     const showSub = (id, focus) => {
       tabs.forEach((b) => { const on = b.dataset.tsub === id; b.classList.toggle('lmd-on', on); b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1; if (on && focus) b.focus(); });
+      if (paneSide) paneSide.shut(false);
       box.querySelectorAll('[data-tsub-pane]').forEach((p) => { p.hidden = p.dataset.tsubPane !== id; });
       if (id === 'community' && !galAsked) {
         galAsked = true;
@@ -193,23 +199,97 @@
     });
     showSub(subGet());
     const cardOf = (id) => box.querySelector('.lmd-tl-card[data-tool="' + id + '"]');
-    const parts = (id) => { const c = cardOf(id); return c ? { more: c.querySelector('.lmd-tl-more'), area: c.querySelector('.lmd-tl-opts'), acts: c.querySelector('.lmd-tl-acts') } : {}; };
-    const shut = (id) => { const p = parts(id); if (!p.more) return; p.more.setAttribute('aria-expanded', 'false'); p.more.firstChild.textContent = T('Configurar'); p.area.hidden = true; };
-    // Abre las opciones de una herramienta. Con focus, el foco pasa a su primer control.
+    const parts = (id) => { const c = cardOf(id); return c ? { more: c.querySelector('.lmd-tl-more'), acts: c.querySelector('.lmd-tl-acts'), input: c.querySelector('[data-tool-on]') } : {}; };
+    // Las opciones de una herramienta se abren en un panel al costado, dentro de los mismos Ajustes y fuera de la zona
+    // que se desliza: la grilla no cambia de lugar ni de alto. Mientras está abierto, las demás tarjetas quedan
+    // atenuadas e inertes (Tab no entra en ellas) y la que se configura queda marcada.
+    const host = box.closest('.lmd-panel-card') || box;
+    host.querySelectorAll(':scope > .lmd-tl-side').forEach((n) => n.remove());
+    const side = el('div', { class: 'lmd-tl-side', id: 'lmd-tl-side', role: 'region', tabindex: '-1', hidden: '' });
+    side.innerHTML = '<div class="lmd-tl-side-head">' +
+        '<button type="button" class="lmd-btn lmd-tl-back" data-tl-side="close">' + LMD.kit.ICON.chevron + '<span>' + esc(T('Volver')) + '</span></button>' +
+        '<span class="lmd-tl-ico" aria-hidden="true"></span><h4></h4>' +
+        '<label class="lmd-switch"><input type="checkbox" data-tl-side="on"><i></i></label>' +
+        '<button type="button" class="lmd-icon-btn lmd-tl-x" data-tl-side="close" title="' + esc(T('Cerrar')) + '" aria-label="' + esc(T('Cerrar')) + '">' + LMD.kit.ICON.close + '</button></div>' +
+      '<div class="lmd-tl-side-body lmd-acct"><div class="lmd-tl-opts"></div></div>';
+    host.appendChild(side);
+    const sideOn = side.querySelector('[data-tl-side=on]');
+    let now = ''; // la herramienta que está en el panel
+    const dim = (id) => {
+      box.classList.toggle('lmd-tl-cfg', !!id);
+      // Sin lugar al costado el panel tapa toda la pestaña: lo de atrás queda inerte entero.
+      box.toggleAttribute('inert', !!id && SIDE_FULL.matches);
+      box.querySelectorAll('.lmd-tl-card').forEach((c) => {
+        const on = !!id && c.dataset.tool === id;
+        c.classList.toggle('lmd-tl-now', on); c.toggleAttribute('inert', !!id && !on);
+        const b = c.querySelector('.lmd-tl-more'); if (b) b.setAttribute('aria-expanded', String(on));
+      });
+    };
+    // Cierra el panel. Con back, el foco vuelve al botón Configurar de esa tarjeta (o a su interruptor, si ya no hay botón).
+    const shut = (back) => {
+      if (!now) return false;
+      const p = parts(now); now = '';
+      side.hidden = true; dim('');
+      const to = back && (p.more && !p.more.hidden ? p.more : p.input);
+      if (to) to.focus({ preventScroll: true });
+      return true;
+    };
+    // Abre las opciones de una herramienta, o pasa el panel a ella si estaba en otra. Con focus, el foco va a su primer control.
     const show = async (id, focus) => {
       const tool = tools.find((t) => t.id === id); const p = parts(id); if (!tool || !p.more) return;
-      p.more.setAttribute('aria-expanded', 'true'); p.more.firstChild.textContent = T('Ocultar'); p.area.hidden = false;
+      peekHide();
+      let area = side.querySelector('.lmd-tl-opts');
+      if (now !== id) {
+        now = id;
+        // Un área nueva por herramienta: lo que la anterior dibuje tarde cae en una que ya no está.
+        const fresh = el('div', { class: 'lmd-tl-opts' }); area.replaceWith(fresh); area = fresh;
+        side.dataset.tool = id; side.setAttribute('aria-label', T('Opciones de {a}', { a: T(tool.name) }));
+        side.querySelector('.lmd-tl-ico').innerHTML = tool.icon || ICON.tools;
+        side.querySelector('h4').textContent = T(tool.name);
+        sideOn.setAttribute('aria-label', T(tool.name));
+        side.querySelector('.lmd-tl-side-body').scrollTop = 0;
+      }
+      sideOn.checked = true;
+      side.hidden = false; dim(id);
+      if (!side.contains(document.activeElement)) side.focus({ preventScroll: true });
       const mod = await load(tool);
-      if (!box.isConnected || p.more.getAttribute('aria-expanded') !== 'true') return;
+      if (!box.isConnected || now !== id) return;
       // Una herramienta sin opciones no ofrece configurarlas.
-      if (!mod || !mod.settings) { shut(id); p.more.hidden = true; return; }
-      await mod.settings(p.area, { close: () => core.ui.panel.querySelector('[data-act=close-panel]').click() });
-      if (!focus || !p.area.isConnected || p.area.hidden) return;
-      const first = Array.from(p.area.querySelectorAll('input, select, textarea, button')).find((n) => !n.disabled && n.type !== 'hidden' && n.offsetParent);
-      // Sin un control para usar todavía (presentar pide una nota abierta), el foco va a las opciones mismas.
-      if (first) first.focus({ preventScroll: true }); else { p.area.tabIndex = -1; p.area.focus({ preventScroll: true }); }
-      p.area.scrollIntoView({ block: 'nearest' });
+      if (!mod || !mod.settings) { p.more.hidden = true; shut(true); return; }
+      await mod.settings(area, { close: () => core.ui.panel.querySelector('[data-act=close-panel]').click() });
+      if (!focus || now !== id || !area.isConnected) return;
+      const first = Array.from(area.querySelectorAll('input, select, textarea, button')).find((n) => !n.disabled && n.type !== 'hidden' && n.offsetParent);
+      // Sin un control para usar todavía (presentar pide una nota abierta), el foco queda en el panel.
+      if (first) first.focus({ preventScroll: true }); else side.focus({ preventScroll: true });
     };
+    side.querySelectorAll('[data-tl-side=close]').forEach((b) => b.addEventListener('click', () => shut(true)));
+    // El interruptor del panel es el de la tarjeta: apagarla cierra el panel y deja el foco en el de la tarjeta.
+    sideOn.addEventListener('change', () => {
+      const input = parts(now).input; if (!input) return;
+      input.checked = sideOn.checked; input.dispatchEvent(new Event('change'));
+      if (!sideOn.checked) input.focus({ preventScroll: true });
+    });
+    paneSide = {
+      shut: (back) => box.isConnected && shut(back),
+      fit: () => { if (now && box.isConnected) dim(now); },
+      // Un clic en la zona atenuada. Las tarjetas atenuadas están inertes y el clic cae en lo de atrás: se busca por
+      // posición. Sobre una que se puede configurar, el panel pasa a ella; en cualquier otro lado, se cierra.
+      tap: (e) => {
+        if (!now || !box.isConnected || e.target.closest('.lmd-tl-now')) return;
+        const hit = Array.from(box.querySelectorAll('.lmd-tl-card')).find((c) => { const r = c.getBoundingClientRect(); return c.offsetParent && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; });
+        const more = hit && hit.querySelector('.lmd-tl-more');
+        if (more && !more.hidden && !more.parentNode.hidden) show(hit.dataset.tool, false); else shut(true);
+      },
+      // Con el teclado en pantalla la zona visible se achica: el campo que se escribe queda a la vista dentro del panel.
+      reveal: () => { const a = document.activeElement; if (now && a && a !== side && side.contains(a)) requestAnimationFrame(() => a.scrollIntoView({ block: 'nearest' })); },
+    };
+    const zone = box.closest('.lmd-panel-body') || box;
+    if (!zone._lmdTlTap) { zone._lmdTlTap = true; zone.addEventListener('click', (e) => { if (paneSide) paneSide.tap(e); }); }
+    if (!sideWired) {
+      sideWired = true;
+      SIDE_FULL.addEventListener('change', () => { if (paneSide) paneSide.fit(); });
+      if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { if (paneSide) paneSide.reveal(); });
+    }
     // Lo que le falta a una herramienta prendida para andar (el asistente sin su clave): un aviso corto que lleva a la opción.
     const mark = (id, text) => {
       const c = cardOf(id); const n = c && c.querySelector('.lmd-tl-need'); if (!n) return;
@@ -227,11 +307,11 @@
       const id = input.dataset.toolOn; set(id, input.checked);
       const p = parts(id); if (!p.more) return;
       p.acts.hidden = !input.checked; p.more.hidden = !input.checked;
-      // Al prenderla, sus opciones quedan a la vista ahí mismo; al apagarla se cierran.
-      if (input.checked) { show(id, true); check(id); } else { shut(id); mark(id, ''); }
+      // Al prenderla, sus opciones se abren en el panel; al apagarla se cierra.
+      if (input.checked) { show(id, true); check(id); } else { if (now === id) shut(false); mark(id, ''); }
     }));
     box.querySelectorAll('[data-tool-opts]').forEach((b) => b.addEventListener('click', () => {
-      if (b.getAttribute('aria-expanded') === 'true') shut(b.dataset.toolOpts); else show(b.dataset.toolOpts, false);
+      if (now === b.dataset.toolOpts) shut(true); else show(b.dataset.toolOpts, false);
     }));
     box.querySelectorAll('[data-tool-need]').forEach((b) => b.addEventListener('click', () => show(b.dataset.toolNeed, true)));
     tools.forEach((tool) => { if ((tool.settings || tool.lazy) && isOn(tool.id)) check(tool.id); });
@@ -241,8 +321,10 @@
   // Una herramienta avisa desde sus opciones que ya tiene, o que perdió, lo que le faltaba.
   let paneNeed = null;
   const need = (id, text) => { if (paneNeed) paneNeed(id, text); };
+  // El panel de opciones abierto se cierra desde afuera (Escape, otra pestaña de Ajustes): dice si había uno.
+  const shutSide = (back) => !!paneSide && !!paneSide.shut(back);
 
-  LMD.tools = { register, init, pane, sub, isOn, set, opt, setOpt, need, ICON, list: () => tools.slice(), community };
+  LMD.tools = { register, init, pane, sub, isOn, set, opt, setOpt, need, shut: shutSide, ICON, list: () => tools.slice(), community };
 
   // ---------- Las que vienen con la app ----------
   const APP_STORE = () => !!LMD.storeApp;

@@ -346,12 +346,12 @@ try {
     check('al prender Leer en voz alta se pide su archivo, y solo ese', J(await loaded()) === J({ speak: true, dictate: false, voice: false, tags: ['speak.js'] }), await loaded());
     await sleep(350);
     check('queda guardado en las preferencias de siempre', J((await stored(page, 'settings')).tools) === J({ speak: true }), await stored(page, 'settings'));
-    await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=speak] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-card[data-tool=speak] .lmd-tl-opts select');
+    await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=speak] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-side[data-tool=speak] .lmd-tl-opts select');
     // Dibujar las opciones no le pide las voces al navegador: la lista llega recién con "Choose voice".
-    check('sus opciones: velocidad, idioma, elegir voz y leer la nota', await page.evaluate(() => { const o = document.querySelector('.lmd-tl-card[data-tool=speak] .lmd-tl-opts'); return o.querySelectorAll('select').length === 2 && !!o.querySelector('[data-spk=go]') && !o.querySelector('[data-spk=go]').disabled && o.querySelector('[data-spk=voices]').textContent === 'Choose voice'; }));
-    await page.click('.lmd-tl-card[data-tool=speak] [data-spk=voices]'); await page.waitForSelector('.lmd-tl-card[data-tool=speak] [data-spk=voice]');
-    check('"Choose voice" trae las voces del dispositivo y deja el foco en la lista', await page.evaluate(() => { const o = document.querySelector('.lmd-tl-card[data-tool=speak] .lmd-tl-opts'); return o.querySelectorAll('select').length === 3 && o.querySelector('[data-spk=voice]').options.length === 3 && document.activeElement === o.querySelector('[data-spk=voice]'); }));
-    const boxes = () => page.evaluate(() => [...document.querySelectorAll('.lmd-tl-card[data-tool=speak] .lmd-tl-opts [data-spk-opt]')].map((i) => i.closest('label').textContent.trim() + ':' + i.checked));
+    check('sus opciones: velocidad, idioma, elegir voz y leer la nota', await page.evaluate(() => { const o = document.querySelector('.lmd-tl-side[data-tool=speak] .lmd-tl-opts'); return o.querySelectorAll('select').length === 2 && !!o.querySelector('[data-spk=go]') && !o.querySelector('[data-spk=go]').disabled && o.querySelector('[data-spk=voices]').textContent === 'Choose voice'; }));
+    await page.click('.lmd-tl-side[data-tool=speak] [data-spk=voices]'); await page.waitForSelector('.lmd-tl-side[data-tool=speak] [data-spk=voice]');
+    check('"Choose voice" trae las voces del dispositivo y deja el foco en la lista', await page.evaluate(() => { const o = document.querySelector('.lmd-tl-side[data-tool=speak] .lmd-tl-opts'); return o.querySelectorAll('select').length === 3 && o.querySelector('[data-spk=voice]').options.length === 3 && document.activeElement === o.querySelector('[data-spk=voice]'); }));
+    const boxes = () => page.evaluate(() => [...document.querySelectorAll('.lmd-tl-side[data-tool=speak] .lmd-tl-opts [data-spk-opt]')].map((i) => i.closest('label').textContent.trim() + ':' + i.checked));
     check('y tres interruptores: leer las secciones cerradas (prendido), saltear las tareas hechas y leer el código', J(await boxes()) === J(['Read collapsed sections:true', 'Skip completed tasks:false', 'Read code blocks:false']), await boxes());
     await page.click('.lmd-tl-opts [data-spk-opt=speakSkipDone]'); await sleep(350);
     check('un interruptor se guarda con las opciones de la herramienta', (await stored(page, 'settings')).tools.speakSkipDone === true && J(await boxes()) === J(['Read collapsed sections:true', 'Skip completed tasks:true', 'Read code blocks:false']), (await stored(page, 'settings')).tools);
@@ -366,7 +366,7 @@ try {
     check('al prender Dictado llegan su gramática y su código', (await loaded()).tags.join() === 'speak.js,voice.js,dictate.js', (await loaded()).tags);
     check('prenderlo no arranca el micrófono', J(await srLog(page)) === '[]' && !(await dct(page)).active, await srLog(page));
     await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=dictate] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-opts [data-dct=lang]');
-    const dopts = await page.evaluate(() => { const o = document.querySelector('.lmd-tl-card[data-tool=dictate] .lmd-tl-opts'); return { lang: [...o.querySelector('[data-dct=lang]').options].map((x) => x.value).join(), commands: o.querySelector('[data-dct=commands]').checked, where: o.querySelector('[data-dct=where]').textContent, help: !!o.querySelector('[data-dct=help]'), next: o.querySelector('[data-dct=next]').textContent }; });
+    const dopts = await page.evaluate(() => { const o = document.querySelector('.lmd-tl-side[data-tool=dictate] .lmd-tl-opts'); return { lang: [...o.querySelector('[data-dct=lang]').options].map((x) => x.value).join(), commands: o.querySelector('[data-dct=commands]').checked, where: o.querySelector('[data-dct=where]').textContent, help: !!o.querySelector('[data-dct=help]'), next: o.querySelector('[data-dct=next]').textContent }; });
     check('sus opciones: idioma, órdenes y dónde se transcribe el audio', dopts.lang === 'auto,es,en' && dopts.commands && /provider/.test(dopts.where) && /does not receive or store audio/.test(dopts.where) && dopts.help, dopts);
     check('y un renglón cuenta cómo pasar al ítem siguiente de una lista', dopts.next === 'In a list, say “next” to move on to the next item.', dopts.next);
     await page.click('.lmd-tl-opts [data-dct=help]'); await page.waitForSelector('.lmd-dct-help');
@@ -377,8 +377,10 @@ try {
     await page.keyboard.press('Escape'); await sleep(150);
     check('Escape la cierra y deja Ajustes abierto', await page.evaluate(() => !document.querySelector('.lmd-dct-help') && !document.querySelector('.lmd-panel').hidden));
 
+    // El panel sigue con las opciones del dictado y las demás tarjetas están atenuadas: se cierra y se apaga la otra
+    await page.click('.lmd-tl-side .lmd-tl-x'); await sleep(150);
     await page.click('.lmd-tl-card[data-tool=speak] .lmd-switch'); await sleep(350);
-    check('apagar una herramienta la deja apagada y esconde sus opciones', J((await stored(page, 'settings')).tools.speak) === 'false' && await page.evaluate(() => !LMD.tools.isOn('speak') && document.querySelector('.lmd-tl-card[data-tool=speak] .lmd-tl-more').hidden && document.querySelector('.lmd-tl-card[data-tool=speak] .lmd-tl-opts').hidden));
+    check('apagar una herramienta la deja apagada y esconde sus opciones', J((await stored(page, 'settings')).tools.speak) === 'false' && await page.evaluate(() => !LMD.tools.isOn('speak') && document.querySelector('.lmd-tl-card[data-tool=speak] .lmd-tl-more').hidden && document.querySelector('.lmd-tl-side').hidden));
     await page.keyboard.press('Escape');
     await page.reload(); await page.waitForSelector('.lmd-article > *'); await until(() => page.evaluate(() => !!LMD.dictate));
     check('al recargar, lo prendido vuelve prendido y lo apagado no se pide', J(await loaded()) === J({ speak: false, dictate: true, voice: true, tags: ['voice.js', 'dictate.js'] }), await loaded());
@@ -411,10 +413,10 @@ try {
     const card = await a.page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=dictate]'); return { off: c.classList.contains('lmd-tl-off'), disabled: c.querySelector('input').disabled, checked: c.querySelector('input').checked, why: (c.querySelector('.lmd-tl-why') || {}).textContent || '', more: !!c.querySelector('.lmd-tl-more:not([hidden])') }; });
     check('la tarjeta de Dictado lo dice, con el interruptor deshabilitado y sin "Configure"', J(card) === J({ off: true, disabled: true, checked: false, why: 'Dictation is not available in this browser. It works in Chrome.', more: false }), card);
     await openOpts(a.page, 'speak');
-    const sp = await a.page.evaluate(() => { const o = document.querySelector('.lmd-tl-card[data-tool=speak] .lmd-tl-opts'); return { shown: !o.hidden, selects: o.querySelectorAll('select').length, ask: !!o.querySelector('[data-spk=voices]'), go: !!o.querySelector('[data-spk=go]') }; });
+    const sp = await a.page.evaluate(() => { const o = document.querySelector('.lmd-tl-side[data-tool=speak] .lmd-tl-opts'); return { shown: !o.hidden, selects: o.querySelectorAll('select').length, ask: !!o.querySelector('[data-spk=voices]'), go: !!o.querySelector('[data-spk=go]') }; });
     check('las opciones de Leer en voz alta se dibujan sin pedirle nada al motor', J(sp) === J({ shown: true, selects: 2, ask: true, go: true }) && J(await calls(a.page)) === '[]', [sp, await calls(a.page)]);
-    await a.page.click('.lmd-tl-card[data-tool=speak] [data-spk=voices]'); await sleep(500);
-    const after = await a.page.evaluate(() => { const o = document.querySelector('.lmd-tl-card[data-tool=speak] .lmd-tl-opts'); return { why: (o.querySelector('.lmd-tl-why') || {}).textContent || '', voice: !!o.querySelector('[data-spk=voice]') }; });
+    await a.page.click('.lmd-tl-side[data-tool=speak] [data-spk=voices]'); await sleep(500);
+    const after = await a.page.evaluate(() => { const o = document.querySelector('.lmd-tl-side[data-tool=speak] .lmd-tl-opts'); return { why: (o.querySelector('.lmd-tl-why') || {}).textContent || '', voice: !!o.querySelector('[data-spk=voice]') }; });
     check('"Choose voice" con un motor que lanza: dice que no hay voces y nada se rompe', after.voice && after.why === 'This browser has no voices installed to read with.' && J(await calls(a.page)) === J(['getVoices']), [after, await calls(a.page)]);
     check('sin errores de página', R.errors.length === 0, R.errors);
     await a.ctx.close();
@@ -423,9 +425,9 @@ try {
     const b = await open({ tools: {}, consent: true }); await b.page.addInitScript(hostile);
     await note(b.page, 'bad.md', '# Broken engine\n\nText.\n', true);
     await b.page.click('[data-act=settings]'); await b.page.click('[data-ptab=tools]'); await b.page.waitForSelector('.lmd-tl-card');
-    await b.page.click('.lmd-tl-card[data-tool=dictate] .lmd-switch'); await until(() => b.page.evaluate(() => !!LMD.dictate)); await b.page.waitForSelector('.lmd-tl-card[data-tool=dictate] .lmd-tl-opts [data-dct=lang]'); await sleep(300);
+    await b.page.click('.lmd-tl-card[data-tool=dictate] .lmd-switch'); await until(() => b.page.evaluate(() => !!LMD.dictate)); await b.page.waitForSelector('.lmd-tl-side[data-tool=dictate] .lmd-tl-opts [data-dct=lang]'); await sleep(300);
     check('prender el dictado guarda la preferencia, muestra sus opciones y no llama al motor', J(await calls(b.page)) === '[]' && (await stored(b.page, 'settings')).tools.dictate === true && await b.page.evaluate(() => !!document.querySelector('.lmd-tl-opts [data-dct=check]')), await calls(b.page));
-    await b.page.click('.lmd-tl-card[data-tool=dictate] .lmd-tl-more'); await sleep(200); await openOpts(b.page, 'dictate');
+    await b.page.click('.lmd-tl-side .lmd-tl-x'); await sleep(200); await openOpts(b.page, 'dictate');
     check('cerrar y volver a abrir "Configure" tampoco', J(await calls(b.page)) === '[]', await calls(b.page));
     await b.page.click('.lmd-tl-opts [data-dct=check]'); await sleep(400);
     check('"Check on-device support" con el motor roto: lo consulta una vez, no ofrece descargar y nada se rompe', J(await calls(b.page)) === J(['available']) && await b.page.evaluate(() => !document.querySelector('.lmd-tl-opts [data-dct=install]') && !document.querySelector('.lmd-tl-opts [data-dct=check]') && !!document.querySelector('.lmd-tl-opts [data-dct=lang]')), await calls(b.page));

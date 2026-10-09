@@ -164,6 +164,8 @@ async function menuOn(page, text) {
   await pick(page, text); await page.waitForSelector('.lmd-format:not([hidden]) [data-ai-fmt]');
   await page.click('.lmd-format [data-ai-fmt]'); await page.waitForSelector('.lmd-ai-menu');
 }
+// Con las opciones de una herramienta abiertas, Escape cierra primero ese panel: los ajustes se cierran con su botón.
+const shutSettings = (page) => page.evaluate(() => { const b = document.querySelector('.lmd-panel:not([hidden]) [data-act=close-panel]'); if (b) b.click(); });
 const openOptions = async (page) => {
   await page.click('[data-act=settings]'); await page.waitForSelector('.lmd-panel-card'); await page.click('[data-ptab=tools]');
   await page.waitForSelector('[data-tool-opts=assistant]:not([hidden])'); await page.evaluate(() => { const b = document.querySelector('[data-tool-opts=assistant]'); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }); await page.waitForSelector('.lmd-ai-set [data-ai=prov]');
@@ -191,7 +193,7 @@ await step('key', ' La clave', async () => {
   const { ctx, page } = await open();
   await note(page, 'clave.md', NOTE, true);
   await openOptions(page);
-  const ui = await page.evaluate(() => { const i = document.querySelector('.lmd-ai-set [data-ai=key]'); const opts = document.querySelector('[data-tool=assistant] .lmd-tl-opts'); return { type: i.type, auto: i.autocomplete, text: opts.textContent, provs: [...document.querySelectorAll('[data-ai=prov] option')].map((x) => x.textContent) }; });
+  const ui = await page.evaluate(() => { const i = document.querySelector('.lmd-ai-set [data-ai=key]'); const opts = document.querySelector('.lmd-tl-side[data-tool=assistant] .lmd-tl-opts'); return { type: i.type, auto: i.autocomplete, text: opts.textContent, provs: [...document.querySelectorAll('[data-ai=prov] option')].map((x) => x.textContent) }; });
   check('el campo de la clave es de contraseña y sin autocompletar', ui.type === 'password' && ui.auto === 'off', ui);
   check('dice dónde queda la clave, a dónde va el texto, y el límite', /encrypted on this device/.test(ui.text) && /never goes through SharpMD/.test(ui.text) && /straight to your provider/.test(ui.text) && /spending limit/.test(ui.text) && /device unlocked/.test(ui.text), ui.text.slice(0, 500));
   check('doce proveedores: primero Anthropic, OpenAI y Gemini, y al final el servidor compatible', ui.provs.length === 12 && /Anthropic/.test(ui.provs[0]) && ui.provs[1] === 'OpenAI' && ui.provs[2] === 'Google Gemini' && ui.provs[11] === 'OpenAI-compatible server', ui.provs);
@@ -205,10 +207,10 @@ await step('key', ' La clave', async () => {
   // Prendido y sin clave: la tarjeta lo avisa, y el aviso lleva a la opción
   const needOf = () => page.evaluate(() => { const n = document.querySelector('[data-tool=assistant] .lmd-tl-need'); return n.hidden ? '' : n.textContent; });
   const lack = await needOf();
-  await page.click('[data-tool-opts=assistant]'); await page.waitForSelector('[data-tool=assistant] .lmd-tl-opts', { state: 'hidden' });
+  await page.click('.lmd-tl-side .lmd-tl-x'); await page.waitForSelector('.lmd-tl-side[data-tool=assistant] .lmd-tl-opts', { state: 'hidden' });
   await page.click('[data-tool=assistant] .lmd-tl-need'); await page.waitForSelector('.lmd-ai-set [data-ai=prov]');
   await sleep(200);
-  const led = await page.evaluate(() => ({ open: document.querySelector('[data-tool-opts=assistant]').getAttribute('aria-expanded'), focus: !!document.activeElement.closest('[data-tool=assistant] .lmd-tl-opts'), on: document.activeElement.dataset.ai || document.activeElement.tagName }));
+  const led = await page.evaluate(() => ({ open: document.querySelector('[data-tool-opts=assistant]').getAttribute('aria-expanded'), focus: !!document.activeElement.closest('.lmd-tl-side[data-tool=assistant] .lmd-tl-opts'), on: document.activeElement.dataset.ai || document.activeElement.tagName }));
   check('prendido y sin clave, la tarjeta dice que falta y el aviso abre la opción con el foco adentro', lack === 'Add your key' && led.open === 'true' && led.focus && led.on === 'prov', [lack, led]);
 
   const before = mock.log.length;
@@ -264,7 +266,7 @@ await step('key', ' La clave', async () => {
   await until(async () => (await page.evaluate(async () => (await LMD.ai.status()).lock)) === true, 15000);
   d = await dump(page);
   check('con contraseña no queda ninguna llave guardada: solo la sal y el texto cifrado', d.rec && !d.rec.hasKey && !!d.rec.salt && /^vault1:/.test(d.rec.data) && !/una contraseña larga/.test(d.flat + d.ls), d.rec);
-  await page.keyboard.press('Escape'); await sleep(150);
+  await shutSettings(page); await sleep(150);
   await page.goto(noteUrl('clave.md', true)); await page.waitForSelector('.lmd-editing .lmd-article'); await page.waitForFunction(() => window.LMD && LMD.assistant && LMD.assistant.state().on); await sleep(300);
   const locked = await page.evaluate(async () => { const s = await LMD.ai.status(); let code = ''; try { await LMD.ai.models(); } catch (e) { code = e.code; } return [s.lock, s.open, code]; });
   check('al volver a abrir, sin la contraseña no hay nada usable', locked[0] === true && locked[1] === false && locked[2] === 'locked', locked);
@@ -294,7 +296,7 @@ await step('key', ' La clave', async () => {
   check('OpenAI: la clave va como Authorization: Bearer a api.openai.com', !!lo && lo.host === 'api.openai.com' && lo.headers.authorization === 'Bearer ' + KEY_O && !lo.headers['x-api-key'], lo && lo.host);
   check('y como no hay un modelo fijo en el código, pide elegir uno de la lista', /Choose a model/.test(await page.textContent('.lmd-ai-note')) && (await page.evaluate(() => [...document.querySelectorAll('#lmd-ai-models option')].map((x) => x.value).join())) === 'modelo-a,modelo-b');
   await page.click('.lmd-ai-set [data-ai=swap]'); await page.selectOption('.lmd-ai-set [data-ai=prov]', 'compat');
-  const hint = await page.textContent('[data-tool=assistant] .lmd-tl-opts');
+  const hint = await page.textContent('.lmd-tl-side[data-tool=assistant] .lmd-tl-opts');
   check('el servidor propio explica el límite: https, CORS, y localhost en esta máquina', /https/.test(hint) && /CORS/.test(hint) && /localhost/.test(hint));
   await page.fill('.lmd-ai-set [data-ai=base]', 'http://example.org/v1'); await page.click('.lmd-ai-set [data-ai=save]'); await page.waitForSelector('.lmd-ai-note:not([hidden])');
   check('una dirección http que no es de esta máquina no se acepta', /has to be https/.test(await page.textContent('.lmd-ai-note')));
@@ -724,7 +726,7 @@ await step('many', ' Más proveedores', async () => {
   await page.click('.lmd-ai-set [data-ai=drop]'); await page.waitForSelector('.lmd-dlg [data-dlg=ok]'); await page.click('.lmd-dlg [data-dlg=ok]');
   await until(async () => (await status()).provider !== 'gemini');
   check('Quitar borra solo la de ese proveedor', (await savedNow()) === 'groq,minimax' && (await status()).has === true && !/Gm1n/.test((await dump(page)).flat), await savedNow());
-  await page.keyboard.press('Escape'); await sleep(250);
+  await shutSettings(page); await sleep(250);
 
   // Las diferencias entre los compatibles
   await connect(page, { provider: 'deepseek', key: KEY_D });
@@ -791,7 +793,7 @@ await step('many', ' Más proveedores', async () => {
   await openOptions(page);
   await page.click('.lmd-ai-set [data-ai=test]');
   check('la tarjeta lo dice con claridad, y propone cómo usarlo', await noteIs(/^The test failed\. This provider does not accept calls from a browser\. Use it through OpenRouter, or with a local proxy\.$/), await noteNow());
-  await page.keyboard.press('Escape'); await sleep(250);
+  await shutSettings(page); await sleep(250);
   plan({ text: 'no llega' });
   await menuOn(page, 'el lunes'); await page.click('.lmd-ai-menu [data-ai=fix]'); await cardDone(page);
   const k = await card(page); mock.queue.length = 0;
@@ -842,7 +844,7 @@ await step('vault', ' Carpetas protegidas', async () => {
   check('y la vez siguiente vuelve a preguntar', /protected folder/.test(await page.textContent('.lmd-dlg h3')) && chats().length === before);
   await page.click('.lmd-dlg [data-dlg=no]'); await sleep(200);
   // La opción "nunca"
-  await openOptions(page); await page.click('[data-tool=assistant] .lmd-switch:has([data-ai=novault])'); await sleep(250); await page.keyboard.press('Escape'); await sleep(250);
+  await openOptions(page); await page.click('[data-tool=assistant] .lmd-switch:has([data-ai=novault])'); await sleep(250); await shutSettings(page); await sleep(250);
   await menuOn(page, 'dato reservado'); await page.click('.lmd-ai-menu [data-ai=fix]'); await page.waitForSelector('.lmd-dlg');
   const never = await page.evaluate(() => ({ title: document.querySelector('.lmd-dlg h3').textContent, buttons: [...document.querySelectorAll('.lmd-dlg [data-dlg]')].map((b) => b.textContent) }));
   check('con "no mandar nunca", solo avisa: no hay cómo enviarla', /Protected note/.test(never.title) && never.buttons.join() === 'Got it', never);
@@ -972,7 +974,7 @@ await step('ext', ' Extensión', async () => {
     await page.click('.lmd-ai-set [data-ai=save]'); await page.waitForSelector('.lmd-ai-tail');
     check('sobre un .md abierto con la extensión, la conexión se carga igual', /•••• Lm5n/.test(await page.textContent('.lmd-ai-tail')));
     await page.fill('[data-ai=model]', 'modelo-a'); await page.dispatchEvent('[data-ai=model]', 'change'); await sleep(400);
-    await page.keyboard.press('Escape'); await sleep(250);
+    await shutSettings(page); await sleep(250);
     const here = await page.evaluate(async () => {
       let ls = ''; for (let i = 0; i < localStorage.length; i++) ls += localStorage.key(i) + '=' + localStorage.getItem(localStorage.key(i));
       const dbs = indexedDB.databases ? await indexedDB.databases() : []; const rows = [];
