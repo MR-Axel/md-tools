@@ -76,7 +76,7 @@ function build(lang) {
   const app = { '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'SharpMD', alternateName: ['Sharp MD', 'SharpMD Markdown editor'], url: m.url, applicationCategory: 'ProductivityApplication', operatingSystem: 'Web, Android', browserRequirements: 'Chrome, Edge, Brave, Firefox or Safari',
     description: m.desc, featureList: FEATURES[lang], inLanguage: lang, image: CARD, screenshot: SITE + '/docs/store/2-editing.png', isAccessibleForFree: true,
     offers: [{ '@type': 'Offer', name: 'Free', price: '0', priceCurrency: 'USD' }, { '@type': 'Offer', name: 'Paid', price: PRICE.offers.paid, priceCurrency: 'USD' }].concat(TEAM_OPEN ? [{ '@type': 'Offer', name: 'Team', price: PRICE.offers.team, priceCurrency: 'USD' }] : []),
-    license: 'https://opensource.org/licenses/MIT', codeRepository: 'https://github.com/MR-Axel/sharpmd' };
+    license: 'https://opensource.org/licenses/MIT', codeRepository: 'https://github.com/SharpMD/sharpmd' };
   const head = [
     // Quien ya usó la app entra directo; y la app, en "automático", sigue el idioma de la portada que se vio. Mientras se va,
     // la portada no se pinta: queda el logo con el cursor sobre el fondo de la app (la clase go), con el tema que la app tenía.

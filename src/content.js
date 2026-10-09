@@ -1093,7 +1093,7 @@
   }
 
   // Aviso de versión nueva. El service worker decide si toca consultar GitHub según el ajuste.
-  const ZIP_URL = 'https://github.com/MR-Axel/sharpmd/archive/refs/heads/main.zip';
+  const ZIP_URL = 'https://github.com/SharpMD/sharpmd/archive/refs/heads/main.zip';
   async function checkUpdate(force) {
     const say = (html, kind) => {
       const box = ui.panel.hidden ? null : ui.panel.querySelector('.lmd-update-msg');

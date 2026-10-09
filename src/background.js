@@ -27,7 +27,7 @@ async function lazyLoad(tabId, what) {
 
 // Versión nueva: se compara la del manifest instalado con la del manifest publicado en GitHub.
 // Si la extensión viene de la tienda (tiene update_url) no hace falta: Chrome la actualiza solo.
-const REPO_MANIFEST = 'https://raw.githubusercontent.com/MR-Axel/sharpmd/main/manifest.json';
+const REPO_MANIFEST = 'https://raw.githubusercontent.com/SharpMD/sharpmd/main/manifest.json';
 const EVERY = { daily: 864e5, weekly: 6048e5 };
 
 function isNewer(a, b) {

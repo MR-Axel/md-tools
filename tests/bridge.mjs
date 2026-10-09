@@ -466,7 +466,7 @@ try {
   console.log('Ajustes > Instalar, en la web sin la extensión');
   await sp.goto(R.home); await sp.waitForSelector('.lmd-home'); await openInst(sp);
   const np = await paneOf(sp);
-  check('sin la extensión: no hay dónde elegir, y un botón lleva a conseguirla', J(np.heads) === J(['Chrome extension', 'Install as an app', 'Open .md files with a double click']) && np.radios.length === 0 && /Not in this browser\./.test(np.text) && np.links.some((l) => l === 'Get the extension https://github.com/MR-Axel/sharpmd#install'), np);
+  check('sin la extensión: no hay dónde elegir, y un botón lleva a conseguirla', J(np.heads) === J(['Chrome extension', 'Install as an app', 'Open .md files with a double click']) && np.radios.length === 0 && /Not in this browser\./.test(np.text) && np.links.some((l) => l === 'Get the extension https://github.com/SharpMD/sharpmd#install'), np);
   check('sin aviso del navegador, dice cómo instalarla desde el menú', /From the browser menu: Install SharpMD\./.test(np.text) && !np.buttons.includes('Install') && /Its own window and "Open with" for \.md files on Windows\./.test(np.text));
   await sp.evaluate(() => { window.dispatchEvent(Object.assign(new Event('beforeinstallprompt', { cancelable: true }), { prompt: async () => { window.__prompted = true; }, userChoice: Promise.resolve({ outcome: 'accepted' }) })); });
   await sp.waitForSelector('[data-inst=app]', { timeout: 4000 }).catch(() => {});
@@ -479,7 +479,7 @@ try {
   await sp.goto(R.home + '#open=' + encodeURIComponent('file:///C:/Users/me/Desktop/my%20notes.md')); await sp.waitForSelector('.lmd-dlg-card');
   const nd = await sp.evaluate(() => { const c = document.querySelector('.lmd-dlg-card'); const a = c.querySelector('.lmd-dlg-link a'); return { at: location.href, title: c.querySelector('h3').textContent, text: c.querySelector('p').textContent, path: c.querySelector('.lmd-dlg-path code').textContent, buttons: [...c.querySelectorAll('.lmd-ask-actions button')].map((b) => b.textContent), link: a.textContent + ' ' + a.href, copy: c.querySelector('[data-dlg-copy]').textContent, all: c.textContent }; });
   check('sin la extensión: una línea que lo explica, la ruta, y el fragmento fuera de la barra', nd.at === R.home && nd.title === 'Open this file from your disk?' && nd.text === 'Opening files from your disk by link needs the Chrome extension.' && nd.path === 'C:\\Users\\me\\Desktop\\my notes.md' && !/[!¡—–]/.test(nd.all), nd);
-  check('con copiar la ruta, abrir archivo y el enlace a la extensión', nd.copy === 'Copy path' && J(nd.buttons) === J(['Cancel', 'Open file…']) && nd.link === 'Get the extension https://github.com/MR-Axel/sharpmd#install', nd);
+  check('con copiar la ruta, abrir archivo y el enlace a la extensión', nd.copy === 'Copy path' && J(nd.buttons) === J(['Cancel', 'Open file…']) && nd.link === 'Get the extension https://github.com/SharpMD/sharpmd#install', nd);
   await sp.click('.lmd-dlg-card [data-dlg-copy]'); await sp.waitForFunction(() => document.querySelector('[data-dlg-copy]').textContent === 'Copied', null, { timeout: 3000 }).catch(() => {});
   check('"Copiar la ruta" copia la ruta y lo dice', J(await sp.evaluate(() => window.__copied)) === J(['C:\\Users\\me\\Desktop\\my notes.md']) && (await sp.textContent('[data-dlg-copy]')) === 'Copied' && (await sp.locator('.lmd-dlg-card').count()) === 1);
   await sp.click('.lmd-dlg-card [data-dlg=ok]'); await sp.waitForFunction(() => !!window.__picker, null, { timeout: 4000 }).catch(() => {});
