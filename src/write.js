@@ -565,7 +565,8 @@
   const clDone = (li) => { const b = li.querySelector('input.lmd-task'); return !!(b && b.checked); };
   // Ocultar las hechas es solo de la vista: el archivo no cambia, y copiar, exportar e imprimir llevan la lista entera.
   // Se recuerda por nota mientras dure la sesión, por el lugar que ocupa la lista entre las listas de tareas.
-  const clKey = () => 'lmd-cl-hide:' + location.pathname + location.search;
+  // Sobre un archivo abierto directo, el que está a la vista puede ir en el fragmento (#lmd-file=...): también cuenta.
+  const clKey = () => 'lmd-cl-hide:' + location.pathname + location.search + (/^#lmd-file=/.test(location.hash) ? location.hash : '');
   const clHidden = () => { try { const v = JSON.parse(sessionStorage.getItem(clKey()) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } };
   function clHide(at, on) {
     const now = clHidden().filter((i) => i !== at); if (on) now.push(at);
