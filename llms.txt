@@ -76,7 +76,7 @@
 
 ## Privacy
 
-- No analytics in the app. The home page counts visits and button clicks anonymously, with no cookie and no identifier. Details: https://sharpmd.app/privacy.html
+- No trackers and no third parties. The site and the web app count a few anonymous events (a visit, the app opened, an account created) to know whether the product works. No cookie, no identifier, nothing about the notes. It can be turned off in Settings, and the extension sends none. Details: https://sharpmd.app/privacy.html
 
 ## Terms and policies
 

@@ -145,7 +145,7 @@ When another program changes the open file, or an AI saves the open cloud note, 
 
 ## Privacy
 
-No analytics. Settings, reading positions and browser notes are stored in your browser. Files you open are never uploaded. Reading aloud uses the voices of your device, and dictation uses the speech recognition of the browser: SharpMD never receives audio. Cloud notes are optional: a note reaches the sync server only when you send it there. With the extension installed, browser notes, the list of opened files and folders and display preferences pass between the web app and the extension inside your browser, never over the network. Apart from that, the extension makes two network requests: the daily check of the version number published here, which you can turn off, and a short check that the web app answers when you click its button. HTML produced from the Markdown goes through DOMPurify before it reaches the page. Details in the [privacy page](https://sharpmd.app/privacy.html).
+No trackers and no third parties. The site and the web app count a few anonymous events (a visit, the app opened, an account created) to know whether the product works: no cookie, no identifier, nothing about your notes. You can turn it off in Settings, and the extension sends none. Settings, reading positions and browser notes are stored in your browser. Files you open are never uploaded. Reading aloud uses the voices of your device, and dictation uses the speech recognition of the browser: SharpMD never receives audio. Cloud notes are optional: a note reaches the sync server only when you send it there. With the extension installed, browser notes, the list of opened files and folders and display preferences pass between the web app and the extension inside your browser, never over the network. Apart from that, the extension makes two network requests: the daily check of the version number published here, which you can turn off, and a short check that the web app answers when you click its button. HTML produced from the Markdown goes through DOMPurify before it reaches the page. Details in the [privacy page](https://sharpmd.app/privacy.html).
 
 The AI assistant is off until you turn it on and add your own key. The key is stored only on that device, encrypted with a key the browser will not export (optionally derived from a password that is never stored), and it is never part of the settings that sync, of a note or of an export. Requests go from your browser straight to the provider you chose, which receives the text you send, bills it and handles it under its own terms. A key in a browser is protected from other sites and from our server, not from someone using your unlocked device: prefer a key with a spending limit. Text from a protected folder is sent only if you confirm it that time, and you can turn that off for good.
 
@@ -310,7 +310,7 @@ All of them are vendored in `vendor/`, because Manifest V3 does not allow remote
 
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/surlabs)
 
-The editor is free and has no analytics. If it saves you time, you can [support the next tool on Ko-fi](https://ko-fi.com/surlabs).
+The editor is free and has no trackers. If it saves you time, you can [support the next tool on Ko-fi](https://ko-fi.com/surlabs).
 
 ## License
 

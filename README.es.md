@@ -261,4 +261,4 @@ La app es MIT. El servidor de `server/` es AGPL-3.0 o posterior.
 
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/surlabs)
 
-El editor es gratis y no tiene analítica. Si te ahorra tiempo, podés [bancar la próxima herramienta en Ko-fi](https://ko-fi.com/surlabs).
+El editor es gratis y no tiene rastreadores. Si te ahorra tiempo, podés [bancar la próxima herramienta en Ko-fi](https://ko-fi.com/surlabs).

@@ -90,6 +90,7 @@
   <p class="legal"><a href="terms.html"><span lang="en">Terms</span><span lang="es">Términos</span></a><a href="refunds.html"><span lang="en">Refunds</span><span lang="es">Reembolsos</span></a><a href="privacy.html"><span lang="en">Privacy</span><span lang="es">Privacidad</span></a><a href="acceptable-use.html"><span lang="en">Acceptable use</span><span lang="es">Uso aceptable</span></a><a href="copyright.html"><span lang="en">Copyright</span><span lang="es">Derechos de autor</span></a></p>
 </main>
 <script src="site.js"></script>
+<script src="src/count.js" data-page="pay"></script>
 <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
 <script>
 // Página de pago: abre el checkout de Paddle para la cuenta que viene en la dirección.
@@ -167,6 +168,8 @@
   var open = function () {
     if (!window.Paddle) return;
     if (!ready) { Paddle.Initialize({ token: TOKEN }); ready = true; }
+    // Conteo anónimo (src/count.js): se abrió el cobro. Va el nombre del evento, sin el correo ni el plan.
+    if (window.sharpmdCount) window.sharpmdCount('checkout_open');
     Paddle.Checkout.open({
       items: [isTeam ? { priceId: trial ? TEAM.price : TEAM.paid, quantity: seats } : { priceId: plan.price, quantity: 1 }],
       customer: { email: email },

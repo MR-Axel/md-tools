@@ -2886,6 +2886,11 @@
             '<label class="lmd-check"><input type="checkbox" data-server="off"' + (noCloud ? ' checked' : '') + '><span>' + T('Usar SharpMD sin nube') + '</span></label>' +
             '<label class="lmd-row lmd-server-url"' + (own ? '' : ' hidden') + '><span>' + T('Dirección del servidor') + '</span><input type="text" data-server="url" spellcheck="false" placeholder="https://" value="' + (own ? esc(s.cloudUrl) : '') + '"></label>' +
           '</section>' +
+          // Los conteos anónimos salen solo de la app web (count.js): en la extensión no hay nada que apagar.
+          (window.__MDT_WEB === true ? '<section data-tab="adv"><h3>' + T('Conteos de uso') + '</h3>' +
+            '<label class="lmd-check"><input type="checkbox" data-key="usageCounts"' + (s.usageCounts !== false ? ' checked' : '') + '><span>' + T('Mandar conteos de uso anónimos') + '</span></label>' +
+            '<p class="lmd-hint">' + T('Se manda el nombre de un evento (la app se abrió, una primera nota, una primera edición) y el canal por el que llegaste, como "reddit". Sin cookie ni identificador, y nada de tus notas. Los archivos abiertos desde tu disco con la extensión no mandan nada.') + '</p>' +
+          '</section>' : '') +
           (chrome.runtime.getManifest().update_url ? '' :
           '<section class="lmd-two" data-tab="adv"><h3>' + T('Actualizaciones') + '</h3>' +
             '<div class="lmd-row"><span>' + T('Buscar versiones nuevas') + '</span><div class="lmd-seg" data-seg="updateCheck" role="radiogroup">' +
@@ -3990,6 +3995,7 @@
       fileCache.delete(HERE); // la búsqueda en la carpeta vuelve a leerlo
       cloudState = 'ok';
       diskText = sent; diskStamp = ''; dirty = raw !== diskText; updateSaveState();
+      if (LMD.count && !LMD.cloud.guest()) LMD.count('edited'); // conteo anónimo: la primera edición guardada en este navegador
       if (dirty) markDirty(); // se escribió más durante el guardado: sale en el próximo
       if (interactive || !(appRoot && (appRoot.kind === 'local' || appRoot.kind === 'cloud'))) flash(T('Guardado'));
       return true;
@@ -4170,6 +4176,8 @@
     if (opt.tree) { fileCache.clear(); folderIndex.clear(); clearCounts(); wikiIndex = null; linkIndex = null; }
     HERE = VBASE + f; DOC_NAME = doc ? decodeURIComponent(HERE.split('/').pop() || '') : ''; noDoc = !doc;
     appRoot = doc ? doc.root : null;
+    // Conteo anónimo (count.js, solo en la app web): la primera nota propia que se abre o se crea en este navegador. Va el nombre del evento y nada de la nota.
+    if (doc && LMD.count && appRoot.kind !== 'pub' && !LMD.cloud.guest()) LMD.count('note_created');
     if (doc) wantCloud = '';
     if (doc) roots[appRoot.id] = appRoot;
     raw = doc ? doc.raw : ''; diskText = doc ? doc.disk : ''; dirty = raw !== diskText;
