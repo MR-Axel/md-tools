@@ -2512,7 +2512,10 @@
       // Una raíz sin nada dice cómo empezar; una carpeta del disco, que no tiene Markdown.
       const fresh = APP && depth === 0 && sectionOf(dirUrl) !== 'disk';
       const shut = APP && depth === 0 && dirUrl === teamUrl() && LMD.vault.teamShut();
-      container.appendChild(el('p', { class: 'lmd-empty', text: T(shut ? 'Desbloqueá el espacio para ver sus notas.' : fresh ? 'Creá una nota con el botón +.' : 'Carpeta sin archivos Markdown.') }));
+      const none = el('p', { class: 'lmd-empty', text: T(shut ? 'Desbloqueá el espacio para ver sus notas.' : fresh ? 'Creá una nota con el botón +.' : 'Carpeta sin archivos Markdown.') });
+      // Dentro de una carpeta, el aviso va con la sangría de lo que habría adentro: si no, parece hermano de la carpeta.
+      if (depth > 0) none.style.paddingLeft = (32 + depth * 14) + 'px';
+      container.appendChild(none);
       return;
     }
     const here = noDoc ? '' : HERE;
