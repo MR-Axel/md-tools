@@ -190,7 +190,10 @@
     }
     return vaultCache;
   }
-  const vaultFor = async (path) => (await vaults()).find((v) => path.startsWith(v.folder + '/')) || null;
+  // Si esa nota está dentro de esa carpeta protegida. Una sin carpeta (folder vacío) es toda la nube propia: cubre
+  // lo que no es de otro espacio (~equipo o ~quien compartió).
+  const vaultHas = (v, path) => (v.folder ? String(path || '').startsWith(v.folder + '/') : !!path && path[0] !== '~');
+  const vaultFor = async (path) => (await vaults()).find((v) => vaultHas(v, path)) || null;
   const lockedErr = (vault) => Object.assign(new Error('vault_locked'), { code: 'vault_locked', vault });
   // Mientras quien administra rota la llave del equipo (rotating), lo nuevo se cifra con la llave nueva (next), que
   // solo tiene su navegador. Para los demás el espacio queda cerrado hasta que termine.
@@ -227,8 +230,17 @@
   // rev es la revisión sobre la que se escribió (la que vino al leer). Si la nota ya va por otra, el servidor no
   // guarda y esto sale con rev_conflict, con el texto de ahora en claro (theirs) y su revisión (rev): quien llama
   // junta y reintenta. Sin rev se guarda pisando, como antes: para una nota nueva, o un servidor sin actualizar.
+  // Con toda la nube protegida y bloqueada, crear una nota (nueva, subida, del día) pide la contraseña una vez y
+  // sigue: ahí no hay otra carpeta donde dejarla sin cifrar. La ventana es de vault.js.
+  const unlocked = async (fn) => {
+    try { return await fn(); }
+    catch (e) { if (e.code !== 'vault_locked' || !e.vault || e.vault.team || e.vault.folder || !LMD.vault || !(await LMD.vault.unlock(e.vault))) throw e; return fn(); }
+  };
+  const putFns = [];
+  // Una nota propia llegó a la nube (no la de un invitado, ni la de otro espacio).
+  const told = (path, r) => { if (!guest && path[0] !== '~') putFns.forEach((fn) => { try { fn(path); } catch (e) { /* quien escucha se arregla */ } }); return r; };
   async function putNote(path, text, rev) {
-    const send = async () => api('PUT', notePath(path), Object.assign({ text: await wire(path, text) }, rev == null ? {} : { rev }));
+    const send = async () => told(path, await api('PUT', notePath(path), Object.assign({ text: await wire(path, text) }, rev == null ? {} : { rev })));
     try {
       try { return await send(); }
       catch (e) {
@@ -488,7 +500,7 @@
 
   // Las notas de una carpeta, tal como las lista el servidor (sin caché: se usa al cifrar y al descifrar todo).
   const under = async (vault) => (vault.team ? (await api('GET', '/notes?o=' + vault.folder.slice(1))).map((n) => Object.assign(n, { path: vault.folder + '/' + n.path }))
-    : (await api('GET', '/notes')).filter((n) => n.path.startsWith(vault.folder + '/')));
+    : (await api('GET', '/notes')).filter((n) => vaultHas(vault, n.path)));
   // Dónde se piden los cambios de una bóveda: las propias por su número, la del equipo en su ruta.
   const vp = (vault) => (vault && vault.team ? '/team/vault' : '/vaults/' + vault.id);
   const vById = (id) => (vaultCache || []).find((v) => v.id === +id) || { id };
@@ -524,7 +536,7 @@
       if (onStep) onStep(++done, rows.length);
     }
     // Las copias locales que estaban en claro pasan a estar cifradas.
-    for (const c of await S.cloudAll(email)) if (!c.sealed && c.path.startsWith(vault.folder + '/')) await keep(c.path, c.text, c.base, c.pending, c.role);
+    for (const c of await S.cloudAll(email)) if (!c.sealed && vaultHas(vault, c.path)) await keep(c.path, c.text, c.base, c.pending, c.role);
     fresh(vault);
     return rows.length;
   }
@@ -549,7 +561,7 @@
       if (onStep) onStep(++done, rows.length);
     }
     for (const c of await S.cloudAll(email)) {
-      if (!c.sealed || !c.path.startsWith(vault.folder + '/')) continue;
+      if (!c.sealed || !vaultHas(vault, c.path)) continue;
       const text = await Z.open(key, c.path, c.text);
       await S.cloudPut(email, c.path, { text, base: c.base === c.text ? text : await Z.open(key, c.path, c.base), pending: c.pending, role: c.role });
     }
@@ -588,7 +600,7 @@
     }
     // Las copias de este navegador pasan a la llave nueva.
     for (const c of await S.cloudAll(email)) {
-      if (!c.sealed || !c.path.startsWith(vault.folder + '/')) continue;
+      if (!c.sealed || !vaultHas(vault, c.path)) continue;
       try {
         const text = await Z.open(old, c.path, c.text); const was = c.base === c.text ? text : await Z.open(old, c.path, c.base);
         const sealed = await Z.seal(next, c.path, text);
@@ -698,7 +710,7 @@
     },
     account: () => api('GET', '/account'),
     setName: (name) => api('PUT', '/account', { name }),
-    create: (path) => putNote(path, '').then((r) => { listCache = null; delete otherLists[split(path).owner]; return r; }),
+    create: (path) => unlocked(() => putNote(path, '')).then((r) => { listCache = null; delete otherLists[split(path).owner]; return r; }),
     remove: (path) => api('DELETE', notePath(path)).then(async (r) => { listCache = null; delete otherLists[split(path).owner]; await S.cloudDelete(email, path); return r; }),
     // Papelera: lo eliminado de la nube, hasta que vence. owner es el espacio del equipo, o nada para lo propio.
     trash: (owner) => api('GET', '/trash' + (owner ? '?o=' + owner : '')),
@@ -757,7 +769,7 @@
     vaultKey: async (path) => { const v = await vaultFor(path); return v && sealing(v) ? { vault: v, key: await keyOf(v) } : null; },
     vaultKeys: async () => { const out = []; for (const v of await vaults()) { try { out.push(await keyOf(v)); } catch (e) { /* bloqueada */ } } return out; },
     // Una nota que llega a la nube con imágenes incrustadas las deja como adjuntos (si no se puede, va como estaba).
-    write: async (path, text) => putNote(path, LMD.images ? await LMD.images.liftQuiet(text, path) : text).then((r) => { listCache = null; delete otherLists[split(path).owner]; return r; }),
+    write: async (path, text) => unlocked(async () => putNote(path, LMD.images ? await LMD.images.liftQuiet(text, path) : text)).then((r) => { listCache = null; delete otherLists[split(path).owner]; return r; }),
     // Una versión del historial, en claro. Las de una nota protegida están cifradas con la ruta que tenía entonces.
     version: async (id, path) => {
       const v = await api('GET', '/version/' + id + (isTeam(path) ? '?o=' + team.space : ''));
@@ -789,7 +801,11 @@
       rename: (name) => api('PUT', '/team', { name }),
     },
     // Carpetas con contraseña.
-    vaults, vaultFor, sealFolder, openFolder, rotateSpace,
+    vaults, vaultFor, vaultHas, sealFolder, openFolder, rotateSpace,
+    // El aviso de la primera nota en la nube: quien lo muestra se entera de cada guardado propio, y deja anotado en
+    // la cuenta que ya se vio.
+    onPut: (fn) => { putFns.push(fn); },
+    protectSeen: () => api('POST', '/account/protect-seen', {}),
     // La protección del espacio del equipo. Crear, rotar y decidir sobre la IA son de quien administra: lo mira el servidor.
     teamVaultCreate: async (body) => { await api('POST', '/team/vault', body); const list = await vaults(true); delete otherLists[team.space]; return list.find((v) => v.team) || null; },
     teamVaultRotate: async (body) => { await api('POST', '/team/vault/rotate', body); const list = await vaults(true); return list.find((v) => v.team) || null; },
@@ -807,8 +823,8 @@
     vaultAi: async (id, key, minutes) => { const v = await api('POST', vp(vById(id)) + '/unlock', { key, minutes }); await vaults(true); return v; },
     // Elimina la carpeta protegida con sus notas, sin su llave. Las copias de este navegador se van con ella.
     vaultDestroy: async (vault) => {
-      const r = await api('POST', vp(vault) + '/destroy', vault.team ? { name: vault.confirm } : { folder: vault.folder });
-      for (const c of await S.cloudAll(email)) if (c.path.startsWith(vault.folder + '/')) await S.cloudDelete(email, c.path);
+      const r = await api('POST', vp(vault) + '/destroy', vault.team ? { name: vault.confirm } : vault.folder ? { folder: vault.folder } : { confirm: vault.confirm });
+      for (const c of await S.cloudAll(email)) if (vaultHas(vault, c.path)) await S.cloudDelete(email, c.path);
       try { await Z.forget(email, vault); } catch (e) { /* no había llave guardada */ }
       await vaults(true); fresh(vault);
       return r;

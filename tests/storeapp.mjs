@@ -4,6 +4,7 @@
 import { chromium } from 'playwright-core';
 import http from 'http'; import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+import { rig } from './rig.mjs';
 
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.woff2': 'font/woff2' };
 const site = http.createServer((req, res) => {
@@ -65,6 +66,31 @@ try {
   await quick.page.goto(home + '?new=1&src=android'); await quick.page.waitForSelector('.lmd-draft');
   check('el atajo "New note" de la app crea la nota y se detecta', (await state(quick.page)).on === true);
   await quick.ctx.close();
+
+  // ---------- El aviso de la primera nota en la nube, dentro de la app ----------
+  // Con una cuenta y un servidor de pruebas: en el teléfono de la app sale igual que en la web, entra en la
+  // pantalla, y lleva a Ajustes y a proteger toda la nube.
+  const R = await rig({ AUTH_PER_IP: '300' });
+  try {
+    const U = await R.signup('tienda@ejemplo.test');
+    await R.api('PUT', '/notes/primera.md', { text: '# First\n\nA note.\n' }, U.s);
+    const tel = await R.open(U, { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: 'light' });
+    await tel.page.goto(R.noteUrl('primera.md') + '&src=android'); await tel.page.waitForSelector('.markdown-body h1');
+    const inApp = (await state(tel.page)).on;
+    await tel.page.evaluate(() => LMD.cloud.save('primera.md', '# First\n\nSaved from the store app.\n')); await tel.page.waitForSelector('.lmd-protect-hint');
+    const hint = await tel.page.evaluate(() => { const h = document.querySelector('.lmd-protect-hint'); const r = h.getBoundingClientRect(); const bs = [...h.querySelectorAll('button')];
+      return { title: h.querySelector('b').textContent, text: h.querySelector('p').textContent, buttons: bs.map((b) => b.textContent), inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight, tall: bs.every((b) => b.getBoundingClientRect().height >= 40), noScroll: document.documentElement.scrollWidth <= innerWidth, modal: !!document.querySelector('.lmd-ask') }; });
+    check('en la app de la tienda el aviso de la primera nota en la nube sale igual, en inglés', inApp === true && hint.title === 'Your note is in the cloud' && hint.buttons.join('|') === 'Protect with a password|Not now|How it works' &&
+      hint.text === 'The cloud is encrypted, and the server keeps that key so it can share your notes and hand them to your AI. To keep even the server from reading them, protect them with a password: they become end-to-end encrypted.' && !/[!¡—–]/.test(hint.title + hint.text), [inApp, hint]);
+    check('en el teléfono entra en la pantalla, sus botones se tocan y no tapa con una ventana', hint.inside && hint.tall && hint.noScroll && hint.modal === false, hint);
+    await tel.page.tap('.lmd-protect-hint [data-ph=how]'); await tel.page.waitForSelector('.lmd-panel-card .lmd-e2e');
+    const line = await tel.page.evaluate(() => { const l = document.querySelector('.lmd-panel-card .lmd-e2e'); const b = l.querySelector('button'); const r = b.getBoundingClientRect(); return { text: l.querySelector('p').textContent, button: b.textContent, fits: r.height >= 40 && r.right <= innerWidth && document.documentElement.scrollWidth <= innerWidth, card: [...document.querySelectorAll('[data-sec-row=vaults] [data-c]')].map((x) => x.textContent) }; });
+    check('"How it works" abre Ajustes en Cloud, con "End-to-end protection: off" y su botón', line.text === 'End-to-end protection: off' && line.button === 'Protect with a password' && line.fits && line.card.join('|') === 'Protect my whole cloud|Protect a folder', line);
+    await tel.page.tap('.lmd-panel-card .lmd-e2e [data-c=protect-all]'); await tel.page.waitForSelector('.lmd-vault-card [data-v=p1]');
+    const card = await tel.page.evaluate(() => { const c = document.querySelector('.lmd-vault-card'); const r = c.getBoundingClientRect(); return { title: c.querySelector('h3').textContent, changes: [...c.querySelectorAll('.lmd-vault-changes li')].length, fits: r.left >= 0 && r.right <= innerWidth && document.documentElement.scrollWidth <= innerWidth, text: c.innerText }; });
+    check('el botón lleva a "Protect my cloud with a password", con lo que cambia y sin signos de admiración ni rayas', card.title === 'Protect my cloud with a password' && card.changes === 4 && card.fits && !/[!¡—–]/.test(card.text), card);
+    check('el aviso no mandó nada fuera del servidor de pruebas ni dio errores', R.outside.length === 0 && R.errors.length === 0, [R.outside, R.errors]);
+  } finally { await R.close(); }
 
   // ---------- Dentro de la app: la página de origen ----------
   const ref = await open();

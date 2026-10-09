@@ -132,7 +132,8 @@
         // El espacio del equipo protegido se bloquea entero: es una sola "carpeta", la raíz.
         if (other) { if (vaults.some((v) => v.team && v.folder === '~' + other) && LMD.vault.teamShut()) return []; vaults = []; }
         const at = prefix.slice(0, -1);
-        if (vaults.some((v) => (at === v.folder || at.startsWith(v.folder + '/')) && !LMD.vault.isOpen(v))) return [];
+        // Toda la nube protegida (v.folder vacío) no esconde los nombres: al abrir una nota se pide la contraseña.
+        if (vaults.some((v) => v.folder && (at === v.folder || at.startsWith(v.folder + '/')) && !LMD.vault.isOpen(v))) return [];
         (await LMD.cloud.list(false, other)).forEach((n) => {
           if (!n.path.startsWith(prefix)) return;
           const rest = n.path.slice(prefix.length); const cut = rest.indexOf('/');
@@ -2173,7 +2174,11 @@
       }
       add('local', { name: T('En este navegador'), icon: ICON.browser, url: VBASE + 'local/', add: true });
       if (LMD.cloud.enabled()) {
-        if (LMD.cloud.signedIn()) add('cloud', { name: T('Nube'), icon: ICON.cloud, url: VBASE + 'cloud/', add: true }).after(trashLink(''));
+        if (LMD.cloud.signedIn()) {
+          const mine = add('cloud', { name: T('Nube'), icon: ICON.cloud, url: VBASE + 'cloud/', add: true }); mine.after(trashLink(''));
+          // Toda la nube protegida con contraseña: el candado, el estado y sus acciones van arriba de las notas.
+          fills.push(LMD.vault.load().then(() => { const line = LMD.vault.rootLine(); if (line) mine.before(line); }).catch(() => { /* sin la lista, se dibuja como siempre */ }));
+        }
         // Sin sesión, un renglón que invita a entrar.
         else add('cloud', { name: T('Nube'), icon: ICON.cloud }).appendChild(el('button', { type: 'button', class: 'lmd-link lmd-root-hint', text: T('Entrar para ver tus notas') }));
         // El espacio del equipo: lo que hay ahí lo leen y lo editan todos sus miembros.

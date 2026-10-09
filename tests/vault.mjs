@@ -189,6 +189,49 @@ try {
   const removed = await srv.ask('DELETE', '/vaults/' + V.id, undefined, s);
   const plainAgain = await tool(full, 'read_note', { path: 'secreta/diario.md' });
   check('quitar la protección: con todo descifrado se borra y la carpeta vuelve a ser común', removed.status === 200 && !plainAgain.err && plainAgain.v.includes('berenjena-7') && (await srv.ask('GET', '/vaults', undefined, s)).json.length === 1 && (await srv.ask('GET', '/versions/' + enc('secreta/diario.md'), undefined, s)).json.length === 0 && (await srv.ask('GET', '/search?q=berenjena-7', undefined, s)).json.length === 1, [removed.json, plainAgain.raw]);
+
+  // ---------- El aviso de la primera nota en la nube: se anota por cuenta ----------
+  const c = await srv.enter('cora@ejemplo.test', true);
+  const acct = async (auth) => (await srv.ask('GET', '/account', undefined, auth)).json;
+  const d = await srv.enter('dina@ejemplo.test', false);
+  const seen0 = (await acct(c)).protect_seen; const marked = await srv.ask('POST', '/account/protect-seen', {}, c);
+  check('el aviso: una cuenta nueva no lo vio, al marcarlo queda anotado en esa cuenta y no en otra', seen0 === false && marked.status === 200 && (await acct(c)).protect_seen === true && (await acct(d)).protect_seen === false && (await srv.ask('POST', '/account/protect-seen', {})).status === 401, [seen0, marked.json]);
+  check('el aviso: haber protegido una carpeta lo da por visto', (await acct(s)).protect_seen === true && (await acct(b)).protect_seen === true);
+
+  // ---------- Toda la nube de una cuenta, con una sola contraseña ----------
+  await put('raiz.md', '# Raíz\n\nPrimera versión, zanahoria-0.', c); await put('raiz.md', '# Raíz\n\nEl secreto es zanahoria-raiz.', c); await put('dir/hoja.md', '- zanahoria-hoja', c);
+  await srv.ask('POST', '/shares', { path: 'raiz.md', email: 'beto@ejemplo.test', role: 'view' }, c);
+  await srv.ask('POST', '/comments', { path: 'raiz.md', quote: 'zanahoria-cita', text: 'Cambiá esto' }, c);
+  const cLink = (await srv.ask('POST', '/links', { path: 'dir/hoja.md' }, c)).json.token;
+  const cFull = (await srv.ask('POST', '/tokens', { name: 'todo' }, c)).json.token; const cDir = (await srv.ask('POST', '/tokens', { name: 'dir', folder: 'dir' }, c)).json.token;
+  const K3 = Z.newKey(); const made3 = await Z.derive(K3); const w3 = await Z.wrap(K3, PASSWORD);
+  const overFolders = await srv.ask('POST', '/vaults', { root: true, ...w3, check: made3.check }, s);
+  const all3 = await srv.ask('POST', '/vaults', { root: true, ...w3, check: made3.check }, c); const V3 = all3.json;
+  check('toda la nube: se crea sobre la raíz, y no encima de carpetas que ya tienen su contraseña', all3.status === 200 && V3.folder === '' && V3.root === true && V3.state === 'on' && overFolders.status === 409 && overFolders.json.error === 'vault_nested', [all3.json, overFolders.json]);
+  check('toda la nube: adentro no va otra carpeta protegida, ni una segunda raíz', (await srv.ask('POST', '/vaults', { folder: 'dir', ...w3, check: made3.check }, c)).json.error === 'vault_nested' && (await srv.ask('POST', '/vaults', { root: true, ...w3, check: made3.check }, c)).json.error === 'vault_nested');
+  check('toda la nube: se van lo compartido, el enlace público, los comentarios y el historial anterior', (await srv.ask('GET', '/shares', undefined, c)).json.people.length === 0 && (await srv.ask('GET', '/public/' + cLink)).status === 404 && (await srv.ask('GET', '/comments?all=1', undefined, c)).json.length === 0 && (await srv.ask('GET', '/versions/' + enc('raiz.md'), undefined, c)).json.length === 0);
+  const clear3 = await put('nueva.md', '# En claro', c); const clear4 = await put('dir/otra.md', '# En claro', c);
+  check('toda la nube: el servidor ya no acepta texto en claro, ni en la raíz ni en una carpeta', clear3.status === 409 && clear3.json.error === 'vault' && clear4.status === 409, [clear3.json, clear4.json]);
+  // Lo que ya había lo cifra el navegador, nota por nota; acá se hace lo mismo con la llave.
+  for (const [p, text] of [['raiz.md', '# Raíz\n\nEl secreto es zanahoria-raiz.'], ['dir/hoja.md', '- zanahoria-hoja'], ['nueva.md', '# Nueva\n\nzanahoria-nueva']]) await put(p, await Z.seal(made3.key, p, text), c);
+  const list3 = (await srv.ask('GET', '/notes', undefined, c)).json;
+  check('toda la nube: cifradas las que había y la nueva, el disco no guarda su texto', list3.length === 3 && list3.every((n) => n.v === 1) && !onDisk(data, 'zanahoria-raiz') && !onDisk(data, 'zanahoria-0') && !onDisk(data, 'zanahoria-hoja') && !onDisk(data, 'zanahoria-nueva') && !onDisk(data, 'zanahoria-cita') && onDisk(data, 'pepino'), list3);
+  check('toda la nube: no se comparte, no lleva enlace público ni comentarios para la IA', (await srv.ask('POST', '/shares', { path: 'raiz.md', email: 'beto@ejemplo.test', role: 'view' }, c)).status === 409 && (await srv.ask('POST', '/shares', { path: 'dir', kind: 'folder', email: 'beto@ejemplo.test', role: 'view' }, c)).status === 409 &&
+    (await srv.ask('POST', '/links', { path: 'raiz.md' }, c)).status === 409 && (await srv.ask('POST', '/comments', { path: 'raiz.md', quote: 'x', text: 'y' }, c)).status === 409);
+  const r3 = await tool(cFull, 'read_note', { path: 'raiz.md' }); const w3n = await tool(cFull, 'write_note', { path: 'ia.md', text: 'desde la IA' }); const s3 = await tool(cFull, 'search_notes', { query: 'zanahoria' }); const l3 = await tool(cFull, 'list_notes', {});
+  check('toda la nube, MCP bloqueado: no lee, no escribe, no busca, y dice cómo desbloquear', r3.err && /All the notes of this account are protected with a password and are locked/.test(r3.raw) && /Unlock for the AI/.test(r3.raw) && w3n.err && s3.v.locked_folders.join() === '/' && s3.v.results.every((x) => !x.hits.length) && l3.v.length === 3 && l3.v.every((n) => n.protected === true && n.locked === true), [r3.raw, s3.v, l3.v]);
+  const badKey = await srv.ask('POST', '/vaults/' + V3.id + '/unlock', { key: Z.b64(Z.newKey()), minutes: 15 }, c);
+  const un3 = await srv.ask('POST', '/vaults/' + V3.id + '/unlock', { key: Z.b64(K3), minutes: 15 }, c);
+  const r3b = await tool(cFull, 'read_note', { path: 'raiz.md' }); await tool(cFull, 'write_note', { path: 'ia.md', text: 'desde la IA, zanahoria-ia' }); const s3b = await tool(cFull, 'search_notes', { query: 'zanahoria-hoja' });
+  const iaRaw3 = (await get('ia.md', c)).json.text; const scoped3 = await tool(cDir, 'read_note', { path: 'dir/hoja.md' });
+  check('toda la nube, desbloqueada para la IA: lee, busca y lo que escribe queda cifrado; con otra llave no se desbloquea', badKey.status === 403 && un3.status === 200 && !!un3.json.ai && !r3b.err && /zanahoria-raiz/.test(r3b.raw) && s3b.v.some((x) => x.path === 'dir/hoja.md') && iaRaw3.startsWith('vault1:') && (await Z.open(made3.key, 'ia.md', iaRaw3)) === 'desde la IA, zanahoria-ia' && !onDisk(data, 'zanahoria-ia'), [badKey.json, r3b.raw, s3b.v]);
+  check('toda la nube: un token limitado a una carpeta no la alcanza ni desbloqueada', scoped3.err && /locked/.test(scoped3.raw), scoped3.raw);
+  await srv.ask('POST', '/vaults/' + V3.id + '/lock', {}, c);
+  check('toda la nube: al bloquear, la IA deja de leer', (await tool(cFull, 'read_note', { path: 'raiz.md' })).err && (await srv.ask('GET', '/vaults', undefined, c)).json[0].ai === null);
+  const wrongWord = await srv.ask('POST', '/vaults/' + V3.id + '/destroy', { folder: '' }, c); const wrongMail = await srv.ask('POST', '/vaults/' + V3.id + '/destroy', { confirm: 'ana@ejemplo.test' }, c);
+  const wiped = await srv.ask('POST', '/vaults/' + V3.id + '/destroy', { confirm: 'cora@ejemplo.test' }, c);
+  check('toda la nube: sin llave solo queda eliminar todo, y se confirma con el correo de la cuenta', wrongWord.status === 400 && wrongMail.status === 400 && wrongMail.json.error === 'bad_confirm' && wiped.status === 200 && wiped.json.notes === 4 && (await srv.ask('GET', '/notes', undefined, c)).json.length === 0 && (await srv.ask('GET', '/vaults', undefined, c)).json.length === 0 && (await put('libre.md', '# Libre', c)).status === 200, [wrongWord.json, wrongMail.json, wiped.json]);
+  check('toda la nube: lo de otra cuenta no se tocó', (await get('abierta/uno.md')).json.text.includes('pepino') && (await srv.ask('GET', '/vaults', undefined, s)).json.length === 1);
   await srv.stop();
 
   // ---------- Con cifrado en reposo además ----------

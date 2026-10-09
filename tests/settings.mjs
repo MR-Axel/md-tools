@@ -193,7 +193,7 @@ try {
   check('ninguna pestaña necesita scroll a 800 px de alto, salvo Herramientas y Nube (plan gratis)', over.length === 0, over);
   await tab('cloud');
   const freeCloud = await app.evaluate(() => [...document.querySelectorAll('[data-acct=cloud] .lmd-acct-row')].map((r) => r.children[0].textContent + '=' + r.children[1].textContent).join('|') + ' / ' + [...document.querySelectorAll('[data-acct=cloud] button')].map((b) => b.textContent).join('|'));
-  check('Nube: la cuenta, el plan y cuántas notas, con abrir la carpeta, salir y eliminar la cuenta', freeCloud === 'Cuenta=' + mail + '|Nombre visible=' + mail.split('@')[0] + '|Plan=Gratis|Notas en la nube=1 de 10 / Cambiar|Abrir la carpeta Nube|Salir|Proteger una carpeta|Prender en Herramientas|Eliminar la cuenta', freeCloud);
+  check('Nube: la cuenta, el plan y cuántas notas, con abrir la carpeta, salir y eliminar la cuenta', freeCloud === 'Cuenta=' + mail + '|Nombre visible=' + mail.split('@')[0] + '|Plan=Gratis|Notas en la nube=1 de 10 / Cambiar|Abrir la carpeta Nube|Salir|Proteger con contraseña|Proteger toda mi nube|Proteger una carpeta|Prender en Herramientas|Eliminar la cuenta', freeCloud);
   // el nombre visible se cambia en el lugar, y se muestra siempre como texto
   const nameHint = await text('[data-acct=cloud] .lmd-acct-name-hint');
   await app.click('[data-acct=cloud] [data-c=name]'); await app.waitForSelector('[data-acct=cloud] [data-name-in]');

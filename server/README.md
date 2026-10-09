@@ -196,7 +196,8 @@ The email is short, plain text plus simple HTML, with no remote images and no tr
 |---|---|
 | `POST /auth/start` `{ email, lang }` | Sends the code, in English or with `lang: "es"` in Spanish. A limit answers `429` with its own code (`code_gap`, `code_mail_hour`, `code_mail_day`, `code_ip_hour`), `retry_after` in the body and a `Retry-After` header, both in seconds |
 | `POST /auth/verify` `{ email, code }` | Returns `{ session, account }`. Limits: `tries_mail_hour`, `tries_mail_day`, `tries_ip_hour`, with the wait, and `tries_code` when that code is used up and a new one is needed |
-| `GET /account` | Plan, note count and limit. `plan` is what the account has now; `own_plan` what it pays for by itself (a member of a team can have `plan: "pro"` and `own_plan: "free"`); `billing` is `false` when the plan comes from a team someone else pays, and then no payment link is sent; `team` is described in "Teams" |
+| `GET /account` | Plan, note count and limit. `plan` is what the account has now; `own_plan` what it pays for by itself (a member of a team can have `plan: "pro"` and `own_plan: "free"`); `billing` is `false` when the plan comes from a team someone else pays, and then no payment link is sent; `team` is described in "Teams"; `protect_seen` says whether the account already saw the notice that offers to protect the cloud with a password |
+| `POST /account/protect-seen` | Record that the notice was shown, so it does not come back on another device. Protecting a folder records it too |
 | `GET /notes` | List |
 | `GET` / `PUT` / `DELETE /notes/{path}` | Read (`{ text, rev, updated, role }`), write `{ text, rev? }`, delete. Deleting moves the note to the trash; `?forever=1` skips it. See "Revisions" and "Trash" below |
 | `DELETE /account` `{ email }` | Deletes the account of the session. See "Deleting an account" below |
@@ -205,11 +206,11 @@ The email is short, plain text plus simple HTML, with no remote images and no tr
 | `POST /rename` `{ from, to, text?, updated? }` | Rename. With a protected folder involved, `text` is the note for its new path and `updated` what the client read: `409 changed` if the note changed meanwhile |
 | `GET /search?q=` | Search the text of every note outside protected folders |
 | `GET /vaults` | Protected folders: `{ id, folder, salt, iters, wrapped, check, state, ai }`. `ai` is `null`, or `{ until }` while unlocked for the AI (`until: 0` means until locked) |
-| `POST /vaults` `{ folder, salt, iters, wrapped, check }` | Protect a folder. `409 vault_nested` inside or around another one |
+| `POST /vaults` `{ folder, salt, iters, wrapped, check }` | Protect a folder. `409 vault_nested` inside or around another one. With `{ root: true }` in place of `folder` it protects the whole cloud of the account (`folder` comes back empty and `root` is `true`), and answers `409 vault_nested` if the account already has a protected folder |
 | `PUT /vaults/{id}` `{ salt, iters, wrapped }` | Change the password: the same data key, wrapped again |
 | `POST /vaults/{id}/unlock` `{ key, minutes }` | Unlock for the AI. `minutes` is 15, 60, 480 or 0. `403 bad_key` if the key is not the one of that folder, ten wrong keys an hour |
 | `POST /vaults/{id}/lock` | Forget the key now |
-| `POST /vaults/{id}/destroy` `{ folder }` | Delete the folder and its notes without the key. `folder` has to be the exact name of the folder, or it answers `400 bad_confirm` |
+| `POST /vaults/{id}/destroy` `{ folder }` | Delete the folder and its notes without the key. `folder` has to be the exact name of the folder, or it answers `400 bad_confirm`. For a whole cloud protected with one password the body is `{ confirm }` with the email of the account, and every note of the account is deleted |
 | `POST /vaults/{id}/open`, `DELETE /vaults/{id}` | Remove protection: the first lets the folder take plain text again while the browser decrypts each note, the second ends it and answers `409 vault_not_empty` while encrypted notes remain |
 | `POST /tokens` `{ name, folder, share }` | Creates a token for MCP, shown once. With `folder`, the token only reaches that folder. With `share: true`, it can share notes and create public links |
 | `GET` / `POST /comments`, `DELETE /comments/{id}` | Comments left on a note for the AI: `{ path, quote, text }` |
@@ -763,6 +764,7 @@ node teamadmin.mjs
 node cloud.mjs
 node vault.mjs
 node vaultapp.mjs
+node vaultall.mjs
 node automation.mjs
 node sites.mjs
 node images.mjs
