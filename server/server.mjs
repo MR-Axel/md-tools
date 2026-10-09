@@ -3819,6 +3819,8 @@ function guide(user) {
     '- Before you create the structure, check how much room the plan has: on the free plan list_notes says it.' + (use ? ' Right now: ' + planLine(use).replace(/^Free plan: /, '') : '') + ' If the whole structure does not fit, create README.md, board.md and pending.md first and tell the person which notes were left out.',
     '- Keep it current as you work. A feature that changes updates its note, a choice between options adds an entry to decisions.md, and each session adds an entry to log.md.',
     '- Link the notes with relative paths: [Architecture](architecture.md) from the README, [README](../README.md) from a feature note.',
+    '- Write the diagram in architecture.md as a Mermaid flowchart with short, stable node ids, and put related nodes in a `subgraph id [Title]` block. After the arrows, add one comment line per node, `%% @nodeId: what it does`, and more lines for its links: `%% @nodeId: [Feature note](features/name.md)`. The text is Markdown, so `[label](note.md)`, `[label](#section)`, `[[note]]` and URLs all work.',
+    '- Mermaid ignores those lines. With the Explorable diagrams tool on, the person clicks a node and reads them, follows the links and folds each group.',
     '- Read a note right before you change it. The rules for changing notes are in the next section.',
     '',
     '### Feature note',

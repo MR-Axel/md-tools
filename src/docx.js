@@ -154,7 +154,7 @@
   }
 
   // ---------- De la nota al documento ----------
-  const SKIP = '.lmd-anchor, .lmd-box-empty, .lmd-code-copy, .lmd-code-lang, .lmd-jy, .lmd-dgm-tools, .lmd-add, .lmd-draft, .lmd-draft-li, .lmd-board-edit, .lmd-cl-bar, .lmd-cl-add, .lmd-cl-grip, .lmd-front, .lmd-cm-layer, .lmd-live-layer, .lmd-voice-ghost, .lmd-handle, .footnote-backref, .lmd-col-n, .lmd-err-note, .footnotes-sep, script, style, button, select, textarea';
+  const SKIP = '.lmd-anchor, .lmd-box-empty, .lmd-code-copy, .lmd-code-lang, .lmd-jy, .lmd-dgm-tools, .lmd-xp-bar, .lmd-xp-card, .lmd-add, .lmd-draft, .lmd-draft-li, .lmd-board-edit, .lmd-cl-bar, .lmd-cl-add, .lmd-cl-grip, .lmd-front, .lmd-cm-layer, .lmd-live-layer, .lmd-voice-ghost, .lmd-handle, .footnote-backref, .lmd-col-n, .lmd-err-note, .footnotes-sep, script, style, button, select, textarea';
   const BLOCK = /^(P|DIV|UL|OL|DL|PRE|TABLE|BLOCKQUOTE|H[1-6]|HR|SECTION|DETAILS|FIGURE|ARTICLE|ASIDE|HEADER|FOOTER|NAV|MAIN)$/;
   const isBlock = (n) => n.nodeType === 1 && (BLOCK.test(n.tagName) || n.matches('.lmd-code, .lmd-table, .lmd-diagram, .lmd-math-block, .lmd-board'));
 

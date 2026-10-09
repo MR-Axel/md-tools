@@ -209,6 +209,7 @@
     daily: { js: ['src/daily.js'] },
     docx: { js: ['src/docx.js'] },
     linkmap: { js: ['src/linkmap.js'] },
+    explore: { js: ['src/explore.js'] },
     jsonyaml: { js: ['src/jsonyaml.js'] },
     import: { js: ['src/import.js'] },
     assistant: { js: ['src/aikey.js', 'src/assistant.js'] },
@@ -223,7 +224,7 @@
   const LAZY_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, tools: () => !!(LMD.diagram && LMD.formula && LMD.templates && LMD.community) };
   LAZY_HAVE.gallery = () => !!LMD.gallery; LAZY_HAVE.automate = () => !!LMD.automate; LAZY_HAVE.publish = () => !!LMD.publish;
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
-  ['present', 'daily', 'docx', 'linkmap', 'jsonyaml', 'import'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
+  ['present', 'daily', 'docx', 'linkmap', 'explore', 'jsonyaml', 'import'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
   LAZY_HAVE.assistant = () => !!(LMD.ai && LMD.assistant);
   LAZY_HAVE.shortcuts = () => !!LMD.shortcuts;
   async function appLazy(what) {
@@ -450,6 +451,29 @@
     return go(f, Object.assign({ hash: u.hash }, opt));
   }
 
+  // Enlaces dibujados fuera del texto de la nota (el detalle de un nodo, explore.js): quedan como los de la nota,
+  // con las rutas relativas y los [[nombres]] resueltos contra el archivo abierto.
+  async function prepLinks(box) {
+    box.querySelectorAll('a[href]').forEach((a) => {
+      const href = a.getAttribute('href');
+      if (!href || /^(#|[a-z][a-z0-9+.-]*:|\/\/)/i.test(href) || a.classList.contains('lmd-wiki')) return;
+      try { const url = new URL(href, HERE).href; a.setAttribute('data-lmd-href', href); a.href = APP ? toHref(url) : url; } catch (e) { /* queda como está */ }
+    });
+    await resolveWiki(box);
+  }
+  // Sigue uno de esos enlaces sin recargar la página. Devuelve false si le toca al navegador.
+  function followLink(a) {
+    const href = a.getAttribute('href') || '';
+    if (href[0] === '#') {
+      const frag = unesc(href.slice(1)); const target = findAnchor(frag);
+      if (target) { shown(target); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); } else if (frag) noSection(frag);
+      return true;
+    }
+    if (APP && (a.hasAttribute('data-lmd-href') || a.classList.contains('lmd-wiki')) && inApp(a)) { openDoc(a.href); return true; }
+    if (!APP && a.target !== '_blank' && opensHere(a.href)) { goFile(a.href); return true; }
+    return false;
+  }
+
   // ---------- Otro archivo de la carpeta, sobre un archivo abierto directo ----------
   // El lector sobre un .md del disco cambia de archivo sin recargar la página: lee el otro por el service worker y
   // lo dibuja en el lugar. Chrome no deja que una página file:// lleve su dirección a otra ruta (pushState falla),
@@ -613,6 +637,8 @@
         box.dataset.code = code; box.dataset.kind = 'mermaid';
         if (n.hasAttribute('data-l')) box.setAttribute('data-l', n.getAttribute('data-l'));
         n.replaceWith(box);
+        // Dibujado en la nota: lo sabe quien le suma algo encima (explore.js).
+        if (!light) core.hooks.diagram.forEach((fn) => fn(box));
       } catch (e) {
         // El aviso corto arriba del código, y el volcado del parser detrás de "Ver detalle".
         LMD.diagram.fail(n, 'mermaid', e);
@@ -3749,7 +3775,7 @@
     openApp: (query) => bg({ type: 'openApp', query }),
     openPanel: (tab, why) => openPanel(tab, why),
     // patch: se dibujó en el lugar un cambio de otra persona (sesión en vivo), sin pasar por render.
-    ui, hooks: { render: [], tree: [], doc: [], patch: [], home: [], saved: [] }, menus: { export: [], more: [] }, actions: {},
+    ui, hooks: { render: [], tree: [], doc: [], patch: [], home: [], saved: [], diagram: [] }, menus: { export: [], more: [] }, actions: {},
     get treeRoot() { return treeRoot; }, collect: (root) => collectFiles(root), readFile: (url) => readFile(url), wikiKey, lastBlock: null, appUrl: APP_URL, hold: false,
     // Lo que la sesión en vivo (live.js) necesita del lector.
     live: {
@@ -3774,7 +3800,7 @@
       typing: () => typingNode(),
     },
     editAt: (e) => editAt(e), copy: (text) => { copyText(text); flash(T('Copiado')); }, searchFor, sectionLink,
-    links: { headings: () => anchorsOf(spyHeadings), headingsIn, files: linkFiles, read: readDoc, rel: relLink, find: findAnchor, same: sameUrl },
+    links: { headings: () => anchorsOf(spyHeadings), headingsIn, files: linkFiles, read: readDoc, rel: relLink, find: findAnchor, same: sameUrl, prep: prepLinks, follow: followLink },
     get blocks() { return docKind() === 'md'; },
     // Dónde se crea desde la cabecera del explorador cuando hace falta una carpeta: la del disco, si hay una abierta.
     diskDir: () => (APP && diskRoot && diskRoot.kind === 'dir' ? treeRoot : ''),

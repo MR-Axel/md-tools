@@ -1749,6 +1749,18 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-pk-map .e3 { left: 167px; top: 12px; width: 103px; transform: rotate(131.1deg); }
 .lmd-pk-map .e2, .lmd-pk-map .e3 { background: var(--accent-fill); animation: lmd-pk-grow 3.6s ease-out infinite; }
 @keyframes lmd-pk-grow { 0%, 12% { width: 0; } 55% { width: 104px; } }
+/* diagramas explorables: se elige un nodo, se marcan sus flechas y sale su detalle */
+.lmd-pk-xp i { position: absolute; }
+.lmd-pk-xp .nd { top: 6px; width: 46px; height: 24px; border: 2px solid var(--pk-ink); border-radius: 6px; background: var(--bg); }
+.lmd-pk-xp .x1 { left: 0; } .lmd-pk-xp .x2 { left: 77px; } .lmd-pk-xp .x3 { left: 154px; }
+.lmd-pk-xp .e { top: 17px; width: 31px; height: 2px; background: var(--pk-ink); animation: lmd-pk-lit 3.6s steps(1) infinite; }
+.lmd-pk-xp .e1 { left: 46px; } .lmd-pk-xp .e2 { left: 123px; }
+.lmd-pk-xp .on { border-color: var(--accent-fill); animation: lmd-pk-pulse 1.8s ease-in-out infinite; }
+.lmd-pk-xp .x1, .lmd-pk-xp .x3 { animation: lmd-pk-dim 3.6s steps(1) infinite; }
+.lmd-pk-xp .bx { position: absolute; left: 34px; right: 34px; top: 48px; padding: 11px 11px 2px; animation: lmd-pk-in 3.6s infinite; }
+.lmd-pk-xp .bx .l:first-child { width: 52%; background: var(--accent-fill); }
+@keyframes lmd-pk-lit { 0%, 38% { background: var(--pk-ink); } 39%, 100% { background: var(--accent-fill); } }
+@keyframes lmd-pk-dim { 0%, 38% { opacity: .45; } 39%, 100% { opacity: 1; } }
 /* JSON y YAML: un árbol que se pliega */
 .lmd-pk-json .r { display: flex; align-items: center; gap: 7px; height: 19px; overflow: hidden; }
 .lmd-pk-json .in { padding-left: 16px; } .lmd-pk-json .in2 { padding-left: 32px; }
@@ -3226,3 +3238,72 @@ textarea.lmd-cd-title { min-height: 40px; max-height: 40vh; margin: 0 0 14px; fo
   .lmd-spk select[data-spk=rate] { flex: 0 0 76px; }
 }
 @media print { .lmd-flash-top, .lmd-forced-toast, .lmd-dct-hint { display: none !important; } }
+
+/* ---------- Herramienta: diagramas explorables (explore.js) ---------- */
+/* El diagrama de flujo queda en un marco con su barra; el SVG va dentro de una hoja que se mueve y se escala. */
+.lmd-diagram.lmd-xp { overflow: visible; text-align: left; }
+/* Las acciones de siempre (copiar, bajar, ampliar) van en la misma fila que la barra, a la derecha. */
+.lmd-xp > .lmd-dgm-tools { top: 4px; right: 6px; z-index: 1; border-color: transparent; background: transparent; }
+.lmd-xp.lmd-xp-finding > .lmd-dgm-tools { display: none; }
+.lmd-xp-stage { position: relative; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); overflow: hidden; }
+.lmd-xp-bar { order: -1; display: flex; align-items: center; gap: 2px; padding: 4px 6px; border-bottom: 1px solid var(--line); background: var(--bg-soft); font-family: var(--lmd-font); }
+.lmd-xp-bar button { flex: none; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--fg-muted); display: grid; place-items: center; cursor: pointer; }
+.lmd-xp-bar button[hidden] { display: none; }
+.lmd-xp-bar button:hover, .lmd-xp-bar button[aria-pressed=true] { background: var(--accent-soft); color: var(--accent); }
+.lmd-xp-bar button:focus-visible, .lmd-xp-q:focus-visible, .lmd-xp-card button:focus-visible, .lmd-xp-card a:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 1px; }
+.lmd-xp-bar svg, .lmd-xp-card-head svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-xp-q { flex: 0 1 190px; min-width: 60px; height: 28px; box-sizing: border-box; margin: 0 2px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); font: 13px var(--lmd-font); }
+.lmd-xp-q[hidden] { display: none; }
+.lmd-xp-count { margin: 0 6px 0 2px; font-size: 12px; color: var(--fg-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lmd-xp-count:empty { display: none; }
+.lmd-xp-view { position: relative; overflow: hidden; touch-action: pan-x pan-y; user-select: none; -webkit-user-select: none; }
+.lmd-xp-pan { transform-origin: 0 0; padding: 14px; text-align: center; }
+.lmd-xp-pan.lmd-xp-ease { transition: transform .18s ease-out; }
+.lmd-xp-zoomed .lmd-xp-view, .lmd-xp-full .lmd-xp-view { touch-action: none; cursor: grab; }
+.lmd-xp-view.lmd-xp-grab { cursor: grabbing; }
+/* Elegir: el nodo lleva un aro, lo que no toca se atenúa y sus flechas toman el acento. */
+.lmd-xp-stage g.lmd-xp-node, .lmd-xp-stage .lmd-xp-glabel { cursor: pointer; outline: none; }
+.lmd-xp-stage svg :is(g.node, g.edgeLabel, path.flowchart-link) { transition: opacity .15s; }
+.lmd-xp-stage svg.lmd-xp-sel :is(g.node, g.edgeLabel, path.flowchart-link):not(.lmd-xp-on),
+.lmd-xp-stage svg.lmd-xp-find:not(.lmd-xp-sel) g.node:not(.lmd-xp-hit),
+.lmd-xp-stage svg.lmd-xp-find:not(.lmd-xp-sel) :is(g.edgeLabel, path.flowchart-link) { opacity: .2; }
+.lmd-xp-stage svg path.flowchart-link.lmd-xp-on { stroke: var(--accent-fill) !important; stroke-width: 2.6px !important; }
+.lmd-xp-stage .lmd-xp-ring { stroke-width: 2.5px !important; }
+.lmd-xp-stage g.lmd-xp-node:is(.lmd-xp-me, :focus-visible) > .lmd-xp-ring { stroke: var(--accent-fill) !important; }
+.lmd-xp-stage g.lmd-xp-hit:not(.lmd-xp-me) > .lmd-xp-ring { stroke: var(--accent-fill) !important; stroke-dasharray: 5 4; }
+.lmd-xp-stage .lmd-xp-dot { fill: var(--accent-fill) !important; stroke: var(--bg) !important; stroke-width: 1.5px !important; }
+.lmd-xp-stage g.lmd-xp-folded > :is(rect, polygon, path, circle, ellipse):not(.lmd-xp-ring, .lmd-xp-dot) { stroke-dasharray: 6 4 !important; }
+.lmd-xp-stage .lmd-xp-glabel:is(:hover, :focus-visible) :is(span, text) { text-decoration: underline; }
+/* El detalle del nodo: en la nota va debajo del dibujo, para no tapar nada. */
+.lmd-xp-card { box-sizing: border-box; padding: 12px 14px 14px; border-top: 1px solid var(--line); background: var(--bg-soft); color: var(--fg); font: 13.5px/1.5 var(--lmd-font); text-align: left; outline: none; }
+.lmd-xp-card[hidden] { display: none; }
+.lmd-xp-card:focus-visible { box-shadow: inset 0 0 0 2px var(--accent-fill); }
+.lmd-xp-card-head { display: flex; align-items: flex-start; gap: 8px; }
+.lmd-xp-card-head b { flex: 1; min-width: 0; font-size: 15px; overflow-wrap: anywhere; }
+.lmd-xp-card-head .lmd-icon-btn { margin: -5px -7px 0 0; }
+.lmd-xp-note p { margin: 6px 0 0; overflow-wrap: anywhere; }
+.lmd-xp-note a { color: var(--accent); }
+.lmd-xp-note .lmd-xp-link a::before { content: "\2192\00a0"; }
+.lmd-xp-rel { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+.lmd-xp-rel > span { margin-right: 2px; color: var(--fg-muted); font-size: 12.5px; }
+.lmd-xp-rel button, .lmd-xp-rel i { padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--fg); font: inherit; font-size: 12.5px; font-style: normal; }
+.lmd-xp-rel button { cursor: pointer; }
+.lmd-xp-rel button:hover { border-color: var(--accent-fill); color: var(--accent); }
+.lmd-xp-reach { margin-top: 12px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg-muted); font: inherit; font-size: 12.5px; cursor: pointer; }
+.lmd-xp-reach[aria-pressed=true] { border-color: var(--accent-fill); background: var(--accent-soft); color: var(--accent); }
+.lmd-xp-lone { margin: 8px 0 0; color: var(--fg-muted); }
+.lmd-tl-opts pre.lmd-xp-how { margin: 0 0 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg-code); font: 12.5px/1.5 var(--lmd-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+/* A pantalla completa: el dibujo ocupa todo y el detalle flota al costado (abajo, en un teléfono). */
+dialog.lmd-xp-full { position: fixed; inset: 0; box-sizing: border-box; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: var(--bg); color: var(--fg); overflow: hidden; text-align: left; }
+dialog.lmd-xp-full::backdrop { background: var(--bg); }
+.lmd-xp-full .lmd-xp-stage { box-sizing: border-box; width: 100%; height: 100%; padding-top: env(safe-area-inset-top, 0px); border: 0; border-radius: 0; }
+.lmd-xp-full .lmd-xp-view { flex: 1; min-height: 0; }
+.lmd-xp-full .lmd-xp-pan { position: absolute; left: 0; top: 0; padding: 0; }
+.lmd-xp-full .lmd-xp-pan svg { display: block; width: 100%; max-width: none !important; }
+.lmd-xp-full .lmd-xp-card { position: absolute; right: 14px; top: calc(54px + env(safe-area-inset-top, 0px)); width: min(340px, calc(100% - 28px)); max-height: calc(100% - 72px); overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); box-shadow: var(--shadow); }
+@media (max-width: 640px) {
+  .lmd-xp-full .lmd-xp-card { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 46%; padding-bottom: max(14px, env(safe-area-inset-bottom, 0px)); border-width: 1px 0 0; border-radius: 14px 14px 0 0; }
+}
+@media (pointer: coarse) { .lmd-xp > .lmd-dgm-tools { top: 8px; } .lmd-xp-bar button { width: 38px; height: 38px; } .lmd-xp-q { height: 36px; font-size: 16px; } .lmd-xp-rel button { padding: 6px 12px; } }
+@media (prefers-reduced-motion: reduce) { .lmd-xp-pan.lmd-xp-ease, .lmd-xp-stage svg :is(g.node, g.edgeLabel, path.flowchart-link) { transition: none; } }
+@media print { .lmd-xp-bar, .lmd-xp-card { display: none !important; } .lmd-xp-stage { border: 0; } .lmd-xp-pan { transform: none !important; } }
