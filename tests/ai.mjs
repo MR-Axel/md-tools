@@ -357,6 +357,32 @@ try {
   check('al rato deja de figurar escribiendo, y sigue en la nota', calm.shown && !calm.busy && calm.ai.length === 1, calm);
   check('y se va sola cuando deja de usarla', await aiGone());
 
+  console.log('Agentes: la IA se anota por MCP y la app los muestra');
+  {
+    const val = async (name, args) => JSON.parse((await mcp(token, name, args)).content[0].text);
+    await mcp(token, 'create_board', { path: 'proyecto/tablero.md' });
+    const cardId = (await val('add_card', { path: 'proyecto/tablero.md', title: 'Importar notas' })).card.id;
+    await app.goto(cloudUrl('proyecto/tablero.md')); await app.waitForSelector('.lmd-board .lmd-card'); await app.waitForFunction(() => !!LMD.sync.account());
+    const asked = () => sent.filter((x) => x === 'GET /agents').length;
+    check('con la herramienta apagada no hay sección, ni su código, ni pedidos', await app.evaluate(() => !document.querySelector('.lmd-ag') && !LMD.agents && !LMD.tools.isOn('agents')) && asked() === 0);
+    await app.evaluate(() => LMD.tools.set('agents', true)); await app.waitForSelector('.lmd-ag .lmd-ag-empty');
+    check('prendida y sin agentes: una línea que dice qué va a aparecer', /^Conectá tu IA y pedile que registre sus agentes\./.test(await app.textContent('.lmd-ag-empty')) && asked() >= 1, await app.textContent('.lmd-ag-empty'));
+    const names = () => app.evaluate(() => [...document.querySelectorAll('.lmd-ag-row')].map((r) => [r.querySelector('.lmd-ag-name').textContent, r.dataset.status, r.querySelector('.lmd-ag-st').textContent, r.parentElement.closest('.lmd-ag-row') ? r.parentElement.closest('.lmd-ag-row').querySelector('.lmd-ag-name').textContent : '']));
+    const lead = await val('start_agent', { name: 'coordina', task: 'Reparte el trabajo' });
+    const sub = await val('start_agent', { name: 'importa', task: 'Importa las notas viejas', parent: lead.id, path: 'proyecto/tablero.md', card: cardId });
+    await app.waitForFunction(() => document.querySelectorAll('.lmd-ag-row').length === 2, null, { timeout: 4000 }).catch(() => {});
+    check('un cliente MCP anota dos agentes y la app los muestra sin recargar, el subagente bajo su padre', J(await names()) === J([['coordina', 'working', 'Trabajando', ''], ['importa', 'working', 'Trabajando', 'coordina']]), await names());
+    check('la tarjeta del tablero queda enlazada: su campo agent lleva el nombre y muestra la marca de en vivo', (await noteText('proyecto/tablero.md', session)).includes('agent=importa') && await app.evaluate((id) => { const c = [...document.querySelectorAll('.lmd-card')].find((x) => x.dataset.id === id); const m = c && c.querySelector('.lmd-ag-live'); return !!m && m.dataset.status === 'working' && !!m.querySelector('.lmd-ag-pulse'); }, cardId));
+    await mcp(token, 'update_agent', { id: sub.id, status: 'waiting', needs: 'La carpeta de origen' });
+    await app.waitForFunction(() => !!document.querySelector('.lmd-ag-row[data-status=waiting]'), null, { timeout: 4000 }).catch(() => {});
+    const waiting = await app.evaluate(() => { const r = document.querySelector('.lmd-ag-row[data-status=waiting]'); return r ? [r.querySelector('.lmd-ag-name').textContent, r.querySelector('.lmd-ag-st').textContent, r.querySelector('.lmd-ag-needs').textContent] : null; });
+    check('cambia el estado y la app lo refleja, con lo que necesita', J(waiting) === J(['importa', 'Esperando', 'Necesita: La carpeta de origen']), waiting);
+    await mcp(token, 'end_agent', { id: sub.id }); await mcp(token, 'end_agent', { id: lead.id, result: 'Todo importado' });
+    await app.waitForFunction(() => document.querySelectorAll('.lmd-ag-row[data-status=done]').length === 2, null, { timeout: 4000 }).catch(() => {});
+    check('al terminar figuran terminados, la marca se va y la tarjeta conserva su campo', J((await names()).map((x) => x[1])) === J(['done', 'done']) && await app.evaluate(() => !document.querySelector('.lmd-ag-live')) && (await noteText('proyecto/tablero.md', session)).includes('agent=importa'), await names());
+    await app.evaluate(() => LMD.tools.set('agents', false)); await app.waitForFunction(() => !document.querySelector('.lmd-ag'));
+  }
+
   check('nada usó prompt, alert ni confirm del navegador', natives.length === 0, natives);
   check('nada salió hacia el servidor de producción', outside.length === 0, outside);
   check('sin errores de JavaScript', errors.length === 0, errors);

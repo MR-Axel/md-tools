@@ -66,13 +66,14 @@ const ORIGINS = (env.ALLOW_ORIGINS || '').split(',').map((s) => s.trim()).filter
 const FREE_NOTES = +(env.FREE_NOTES || 10);
 // Agentes (start_agent y las demás): cuántos a la vez en el plan gratis, y sus tiempos. Un agente que no da señales
 // en AGENT_STALE_MS figura "sin señal"; en AGENT_GONE_MS se borra. Uno que terminó sigue a la vista AGENT_DONE_MS.
-// El plan pago guarda los que terminaron o se perdieron AGENT_HISTORY_MS. AGENTS_MAX es un techo técnico, de cualquier plan.
+// El plan pago guarda los que terminaron o se perdieron AGENT_HISTORY_MS. AGENTS_MAX es un techo técnico, de cualquier
+// plan, de agentes anotados a la vez; AGENT_HISTORY_MAX, el de filas de historial por cuenta, y AGENT_HISTORY_PAGE cuántas se entregan.
 const FREE_AGENTS = Math.max(1, Math.floor(+(env.FREE_AGENTS || 2)) || 2);
 const AGENT_STALE_MS = Math.max(50, +(env.AGENT_STALE_MS || 5 * 60000) || 5 * 60000);
 const AGENT_GONE_MS = Math.max(AGENT_STALE_MS, +(env.AGENT_GONE_MS || 30 * 60000) || 30 * 60000);
 const AGENT_DONE_MS = Math.max(50, +(env.AGENT_DONE_MS || 2 * 60000) || 2 * 60000);
 const AGENT_HISTORY_MS = Math.max(AGENT_DONE_MS, +(env.AGENT_HISTORY_MS || 24 * 3600000) || 24 * 3600000);
-const AGENTS_MAX = 200;
+const AGENTS_MAX = 200; const AGENT_HISTORY_MAX = 500; const AGENT_HISTORY_PAGE = 100;
 const TEST_LOGIN =/^[^\s:]+@[^\s:]+:\d{6}$/.test(env.TEST_LOGIN || '') ? [env.TEST_LOGIN.split(':')[0].toLowerCase(), env.TEST_LOGIN.split(':')[1]] : null;
 const MAX_NOTE = 1024 * 1024; // 1 MB por nota
 const HISTORY_DAYS = 30;
@@ -3836,8 +3837,11 @@ function agentTool(name, args, k) {
     out.started = iso(r.created); out.last_seen = iso(r.seen); if (r.ended) out.ended = iso(r.ended);
     return out;
   };
-  const all = () => q('SELECT * FROM agents WHERE owner = ? ORDER BY created, rowid').all(owner).map(agentOpen);
-  const one = (id) => { const r = q('SELECT * FROM agents WHERE id = ? AND owner = ?').get(typeof id === 'string' ? id : '', owner); if (!r || r.status === 'lost') throw new Fail(404, 'agent_not_found', AGENT_GONE()); return agentOpen(r); };
+  // Un token limitado a una carpeta ve los agentes que anotó él y los que trabajan dentro de su carpeta: de los
+  // demás no se entera, ni por su tarea ni por la ruta de su nota.
+  const reach = (r) => !user.scope || (r.token != null && r.token === user.tokenId) || (!!r.note_path && within(user, fullOf(r)));
+  const all = () => q('SELECT * FROM agents WHERE owner = ? ORDER BY created, rowid').all(owner).filter(reach).map(agentOpen);
+  const one = (id) => { const r = q('SELECT * FROM agents WHERE id = ? AND owner = ?').get(typeof id === 'string' ? id : '', owner); if (!r || r.status === 'lost' || !reach(r)) throw new Fail(404, 'agent_not_found', AGENT_GONE()); return agentOpen(r); };
   // Dónde trabaja: una nota que existe y, si se dio, una tarjeta de su tablero. El campo agent de esa tarjeta pasa a
   // llevar el nombre (si este token puede escribir ahí): así el tablero y esta lista dicen lo mismo.
   const link = (path, card, agentName) => {
@@ -3857,7 +3861,7 @@ function agentTool(name, args, k) {
   if (name === 'list_agents') {
     const rows = all(); const plan = agentPlan(user);
     const out = { agents: rows.filter((r) => agentLive(r, t)).map(view) };
-    if (args.history) { if (plan) out.history_note = 'The history of the agents that ended is part of the paid plan, which keeps the last ' + agentSpan(AGENT_HISTORY_MS) + ': ' + plansUrl(); else out.history = rows.filter((r) => !agentLive(r, t)).reverse().map(view); }
+    if (args.history) { if (plan) out.history_note = 'The history of the agents that ended is part of the paid plan, which keeps the last ' + agentSpan(AGENT_HISTORY_MS) + ': ' + plansUrl(); else out.history = rows.filter((r) => !agentLive(r, t)).sort((a, b) => b.ended - a.ended).slice(0, AGENT_HISTORY_PAGE).map(view); }
     if (plan) out.plan = plan;
     return out;
   }
@@ -3870,12 +3874,14 @@ function agentTool(name, args, k) {
     const active = agentsActive(owner);
     // El tope del plan gratis cuenta los que dan señal: uno que se colgó no le ocupa el lugar a otro.
     if (user.plan !== 'pro' && active >= FREE_AGENTS) throw new Fail(402, 'agent_limit', 'Free plan: ' + FREE_AGENTS + ' agents can be active at once and this account has ' + active + '. This one was not registered. The work can go on without it, or end one that finished with end_agent. Tell the person what happened: the paid plan has no limit on agents and keeps the history of the last ' + agentSpan(AGENT_HISTORY_MS) + ': ' + plansUrl(), { limit: FREE_AGENTS, active });
-    if (rows.length >= AGENTS_MAX) throw new Fail(429, 'too_many', 'This account already has ' + AGENTS_MAX + ' agents registered. End the ones that finished with end_agent.');
+    if (q('SELECT COUNT(*) AS n FROM agents WHERE owner = ? AND ended = 0').get(owner).n >= AGENTS_MAX) throw new Fail(429, 'too_many', 'This account already has ' + AGENTS_MAX + ' agents registered. End the ones that finished with end_agent.');
     const agentName = freeName(wanted, rows.map((r) => r.name));
     const l = link(args.path, args.card, agentName);
     const id = 'ag_' + random(6);
     q('INSERT INTO agents (id, owner, token, name, task, e, status, parent, note_owner, note_path, card, created, seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .run(id, owner, user.tokenId == null ? null : user.tokenId, agentSeal(agentName), agentSeal(task), SEALED, 'working', parent, l.owner, l.path, l.card, t, t);
+    // El historial tiene techo: pasado eso se van los más viejos.
+    q('DELETE FROM agents WHERE owner = ? AND ended > 0 AND id NOT IN (SELECT id FROM agents WHERE owner = ? AND ended > 0 ORDER BY ended DESC LIMIT ?)').run(owner, owner, AGENT_HISTORY_MAX);
     agentChanged(id);
     const plan = agentPlan(user);
     return Object.assign({ id, name: agentName, task, status: 'working' }, parent ? { parent } : {}, where(l),
@@ -3915,9 +3921,10 @@ function agentsFor(user) {
   for (const o of owners) { agentsSweep(o); for (const r of q('SELECT * FROM agents WHERE owner = ? ORDER BY created, rowid').all(o)) rows.push(agentOpen(r)); }
   const tokens = new Map(); const tokenOf = (id) => { if (id == null) return ''; if (!tokens.has(id)) { const x = q('SELECT name FROM tokens WHERE id = ?').get(id); tokens.set(id, x ? x.name : ''); } return tokens.get(id); };
   const view = (r) => ({ id: r.id, name: r.name, task: r.task, status: agentState(r, t), needs: r.needs, result: r.result, parent: r.parent, path: !r.note_path ? '' : r.note_owner === user.id ? r.note_path : '~' + r.note_owner + '/' + r.note_path, card: r.card,
-    token: tokenOf(r.token), client: (r.token != null && mcpClients.get(r.token)) || '', team: r.owner !== user.id, created: r.created, seen: r.seen, ended: r.ended });
+    // El nombre del token se muestra a quien es su dueño; de los del equipo, solo el cliente que se conectó.
+    token: r.owner === user.id ? tokenOf(r.token) : '', client: (r.token != null && mcpClients.get(r.token)) || '', team: r.owner !== user.id, created: r.created, seen: r.seen, ended: r.ended });
   const paid = user.plan === 'pro';
-  return { now: t, agents: rows.filter((r) => agentLive(r, t)).map(view), history: paid ? rows.filter((r) => !agentLive(r, t)).sort((a, b) => b.ended - a.ended).map(view) : null,
+  return { now: t, agents: rows.filter((r) => agentLive(r, t)).map(view), history: paid ? rows.filter((r) => !agentLive(r, t)).sort((a, b) => b.ended - a.ended).slice(0, AGENT_HISTORY_PAGE).map(view) : null,
     limit: paid ? null : FREE_AGENTS, free_agents: FREE_AGENTS, history_hours: Math.round(AGENT_HISTORY_MS / HOUR), stale_ms: AGENT_STALE_MS, gone_ms: AGENT_GONE_MS, done_ms: AGENT_DONE_MS };
 }
 // La guía que una IA lee a demanda (get_guide): cómo documentar un proyecto y cómo llevar su tablero. El mensaje que

@@ -9,7 +9,8 @@ import zlib from 'zlib'; import fs from 'fs'; import os from 'os'; import path f
 
 const ENGINE = process.env.BROWSER || 'chromium';
 const ONLY = process.env.ONLY || '';
-const R = await rig({}, ENGINE);
+// Los tiempos de los agentes van acelerados: sin señal a los 6 s, y uno que terminó queda 5 s a la vista.
+const R = await rig({ AGENT_STALE_MS: '6000', AGENT_DONE_MS: '5000' }, ENGINE);
 const { check, done } = tally();
 const J = (v) => JSON.stringify(v);
 const until = async (fn, ms) => { const end = Date.now() + (ms || 6000); for (;;) { const v = await fn(); if (v || Date.now() > end) return v; await sleep(80); } };
@@ -708,13 +709,13 @@ await suite('card', async () => {
     const g0 = await grid(page); const edge0 = await page.evaluate(() => getComputedStyle(document.querySelector('.lmd-tl-card[data-tool=daily]')).borderTopColor);
     await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-side[data-tool=daily] [data-dly=go]'); await sleep(200);
     const g1 = await grid(page); const d1 = await dimmed(page);
-    check('abrir el panel no cambia la posición ni el tamaño de ninguna tarjeta, ni el alto de la lista, ni el scroll', g1 === g0 && JSON.parse(g0).cards.length === 10, [g0, g1]);
-    check('las otras nueve quedan atenuadas e inertes, y la que se configura queda marcada con el acento', d1.now === 'daily' && d1.nowSeen && d1.faint === 9 && d1.inert === 9 && d1.open === 'daily' && (await page.evaluate(() => getComputedStyle(document.querySelector('.lmd-tl-card[data-tool=daily]')).borderTopColor)) !== edge0, d1);
+    check('abrir el panel no cambia la posición ni el tamaño de ninguna tarjeta, ni el alto de la lista, ni el scroll', g1 === g0 && JSON.parse(g0).cards.length === 11, [g0, g1]);
+    check('las otras diez quedan atenuadas e inertes, y la que se configura queda marcada con el acento', d1.now === 'daily' && d1.nowSeen && d1.faint === 10 && d1.inert === 10 && d1.open === 'daily' && (await page.evaluate(() => getComputedStyle(document.querySelector('.lmd-tl-card[data-tool=daily]')).borderTopColor)) !== edge0, d1);
     // Pasar de una herramienta a otra con el panel abierto: sin cerrarlo
     await page.evaluate(() => { window.__hid = 0; new MutationObserver((l) => { window.__hid += l.length; }).observe(document.querySelector('.lmd-tl-side'), { attributes: true, attributeFilter: ['hidden'] }); });
     await clickAt(page, '.lmd-tl-card[data-tool=linkmap] .lmd-tl-main b'); await page.waitForSelector('.lmd-tl-side[data-tool=linkmap] [data-map=go]'); await sleep(150);
     const s2 = await sideOf(page); const d2 = await dimmed(page); const g2 = await grid(page);
-    check('tocar otra tarjeta atenuada pasa el panel a esa herramienta sin cerrarlo, y nada se mueve', s2.open && s2.tool === 'linkmap' && s2.name === 'Link map' && s2.label === 'Link map options' && d2.now === 'linkmap' && d2.open === 'linkmap' && d2.faint === 9 && g2 === g0 && (await page.evaluate(() => window.__hid)) === 0 && !(await page.evaluate(() => !!document.querySelector('.lmd-tl-side [data-dly=go]'))), [s2, d2]);
+    check('tocar otra tarjeta atenuada pasa el panel a esa herramienta sin cerrarlo, y nada se mueve', s2.open && s2.tool === 'linkmap' && s2.name === 'Link map' && s2.label === 'Link map options' && d2.now === 'linkmap' && d2.open === 'linkmap' && d2.faint === 10 && g2 === g0 && (await page.evaluate(() => window.__hid)) === 0 && !(await page.evaluate(() => !!document.querySelector('.lmd-tl-side [data-dly=go]'))), [s2, d2]);
     // Tab no entra en las tarjetas atenuadas
     const walk = await page.evaluate(() => document.activeElement === document.querySelector('.lmd-tl-side'));
     const seen = [];
@@ -848,7 +849,7 @@ await suite('card', async () => {
       cards[cards.length - 1].scrollIntoView({ block: 'end' }); const moved = body.scrollTop > 0; const last = cards[cards.length - 1].getBoundingClientRect(); const box = body.getBoundingClientRect();
       const cut = cards.filter((c) => c.scrollWidth > c.clientWidth + 1).length;
       return { n: cards.length, wide, cut, side: body.scrollWidth <= body.clientWidth + 1, scrolls: moved && body.scrollHeight > body.clientHeight, lastIn: last.top >= box.top - 1 && last.bottom <= box.bottom + 1, btn: Math.round(b.height) }; });
-    check('las diez tarjetas entran en el ancho, nada se corta de costado, y deslizando se llega a la última', m.n === 10 && m.wide === 0 && m.cut === 0 && m.side && m.scrolls && m.lastIn && m.btn >= 36, m);
+    check('las once tarjetas entran en el ancho, nada se corta de costado, y deslizando se llega a la última', m.n === 11 && m.wide === 0 && m.cut === 0 && m.side && m.scrolls && m.lastIn && m.btn >= 36, m);
     // Con el teclado en pantalla, el campo que se escribe queda a la vista dentro del panel
     await page.evaluate(() => document.querySelector('.lmd-panel-body').scrollTo(0, 0));
     await page.tap('.lmd-tl-card[data-tool=assistant] .lmd-switch'); await page.waitForSelector('.lmd-tl-side[data-tool=assistant] [data-ai=own]'); await sleep(250);
@@ -884,14 +885,14 @@ await suite('card', async () => {
     await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-side[data-tool=daily] [data-dly=go]');
     await page.setViewportSize({ width: 1280, height: 800 }); await sleep(300);
     const wide = await sideOf(page);
-    check('si la ventana se ensancha con el panel abierto, pasa al costado y lo de atrás deja de estar inerte entero', wide.open && wide.half && wide.x && !wide.back && !(await page.evaluate(() => document.querySelector('[data-tools-pane]').inert)) && (await dimmed(page)).inert === 9, wide);
+    check('si la ventana se ensancha con el panel abierto, pasa al costado y lo de atrás deja de estar inerte entero', wide.open && wide.half && wide.x && !wide.back && !(await page.evaluate(() => document.querySelector('[data-tools-pane]').inert)) && (await dimmed(page)).inert === 10, wide);
     await ctx.close();
   });
 });
 
 // ---------- La vista flotante de cada tarjeta ----------
 await suite('peek', async () => {
-  const IDS = ['speak', 'dictate', 'kanban', 'present', 'daily', 'docx', 'linkmap', 'jsonyaml', 'import', 'assistant'];
+  const IDS = ['speak', 'dictate', 'kanban', 'present', 'daily', 'docx', 'linkmap', 'jsonyaml', 'import', 'assistant', 'agents'];
   const over = async (page, id) => { await page.mouse.move(4, 4); await sleep(40); await page.hover('.lmd-tl-card[data-tool=' + id + '] .lmd-tl-main b'); };
   // Lo que se ve del flotante, y dónde quedó respecto de la tarjeta.
   const peek = (page, id) => page.evaluate((t) => {
@@ -920,9 +921,9 @@ await suite('peek', async () => {
     check('se mueve', k.moving > 0, k.moving);
     const seen = []; const bad = [];
     for (const id of IDS) { await over(page, id); await sleep(480); const r = await peek(page, id); seen.push(r.scene); if (!r.on || !r.clear || !r.inside || !r.scene) bad.push([id, r]); }
-    check('las diez herramientas tienen la suya, y ninguna tapa su tarjeta ni se sale de la ventana', bad.length === 0 && seen.length === 10, bad.length ? bad : seen);
-    check('cada una dibuja lo suyo (exportar e importar comparten el dibujo de un formato a otro)', new Set(seen).size === 9 && seen[5] === seen[8], seen);
-    check('las tarjetas son las diez de la lista', J(await page.evaluate(() => [...document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card')].map((c) => c.dataset.tool))) === J(IDS));
+    check('las once herramientas tienen la suya, y ninguna tapa su tarjeta ni se sale de la ventana', bad.length === 0 && seen.length === 11, bad.length ? bad : seen);
+    check('cada una dibuja lo suyo (exportar e importar comparten el dibujo de un formato a otro)', new Set(seen).size === 10 && seen[5] === seen[8], seen);
+    check('las tarjetas son las once de la lista', J(await page.evaluate(() => [...document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card')].map((c) => c.dataset.tool))) === J(IDS));
     await page.mouse.move(4, 4); await sleep(250);
     check('al sacar el cursor se va', !(await peek(page, 'kanban')).on);
     await over(page, 'daily'); await sleep(480);
@@ -964,7 +965,7 @@ await suite('peek', async () => {
     await goHome(still.page); await toolsTab(still.page);
     const quiet = [];
     for (const id of IDS) { await over(still.page, id); await sleep(450); const r = await peek(still.page, id); if (!r.on || r.moving) quiet.push([id, r.on, r.moving]); }
-    check('con movimiento reducido aparecen las diez, quietas', quiet.length === 0, quiet);
+    check('con movimiento reducido aparecen las once, quietas', quiet.length === 0, quiet);
     const vis = await still.page.evaluate(() => [...document.querySelectorAll('.lmd-peek .l, .lmd-peek .to')].filter((n) => getComputedStyle(n).opacity === '0' || n.getBoundingClientRect().width < 1).length);
     check('y quieta, la escena queda dibujada entera', vis === 0, vis);
     await still.ctx.close();
@@ -978,6 +979,163 @@ await suite('peek', async () => {
     await page.tap('.lmd-tl-card[data-tool=kanban] .lmd-tl-main b'); await sleep(600);
     const m = await page.evaluate(() => ({ peek: !!document.querySelector('.lmd-peek'), h: Math.round(document.querySelector('.lmd-tl-card[data-tool=kanban]').getBoundingClientRect().height), side: document.documentElement.scrollWidth <= innerWidth && document.querySelector('.lmd-panel-body').scrollWidth <= document.querySelector('.lmd-panel-body').clientWidth + 1 }));
     check('tocar una tarjeta no abre nada, no la agranda y no suma scroll de costado', !m.peek && m.h === before && m.side, [m, before]);
+    await ctx.close();
+  });
+});
+
+// ---------- Agentes ----------
+// Un cliente MCP de mentira anota agentes contra el servidor local y la app los tiene que mostrar sin recargar.
+// Los tiempos del servidor van acelerados (ver el rig, arriba): sin señal a los 6 s, terminado queda 5 s a la vista.
+await suite('agents', async () => {
+  const tool = async (tok, name, args) => { const r = await R.api('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args || {} } }, tok); const c = r.json.result; let v = null; try { v = JSON.parse(c.content[0].text); } catch (e) { /* texto */ } return { v, text: c.content[0].text, err: !!c.isError }; };
+  const tokenOf = async (who) => (await R.api('POST', '/tokens', { name: 'Claude' }, who.s)).json.token;
+  const rows = (page, old) => page.evaluate((o) => [...document.querySelectorAll('.lmd-ag-list' + (o ? '.lmd-ag-old' : ':not(.lmd-ag-old)') + ' .lmd-ag-row')].map((r) => {
+    const own = (q) => r.querySelector(':scope > .lmd-ag-item ' + q); let depth = 0; let n = r; while ((n = n.parentElement.closest('.lmd-ag-row'))) depth++;
+    return { id: r.dataset.ag, status: r.dataset.status, name: own('.lmd-ag-name').textContent, st: own('.lmd-ag-st').textContent, when: own('time').textContent, task: (own('.lmd-ag-task') || {}).textContent || '', needs: (own('.lmd-ag-needs') || {}).textContent || '', result: (own('.lmd-ag-result') || {}).textContent || '', link: (own('.lmd-ag-link') || {}).textContent || '', depth, under: depth ? r.parentElement.closest('.lmd-ag-row').dataset.ag : '' };
+  }), !!old);
+  const badge = (page) => page.evaluate(() => { const n = document.querySelector('.lmd-ag-n'); return n && !n.hidden ? n.textContent + ':' + n.dataset.status : ''; });
+  const asked = (page) => { const hits = []; page.on('request', (r) => { if (r.url().startsWith(R.base + '/agents')) hits.push(r.method()); }); return hits; };
+  const marks = (page) => page.evaluate(() => [...document.querySelectorAll('.lmd-card .lmd-ag-live')].map((c) => c.closest('.lmd-card').dataset.id + ':' + c.dataset.status + ':' + c.textContent));
+  const state = (page) => page.evaluate(() => LMD.agents.state());
+
+  await step('Agentes: apagada no deja nada, y sin cuenta la tarjeta lo dice', async () => {
+    const { ctx, page } = await open(); const hits = asked(page);
+    await goHome(page);
+    check('apagada: sin sección, sin archivo cargado y sin pedidos', await page.evaluate(() => !document.querySelector('.lmd-ag') && !LMD.agents) && await scripts(page, 'agents.js') === 0 && hits.length === 0);
+    await toolsTab(page);
+    const card = await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=agents]'); return c ? { name: c.querySelector('b').textContent, on: c.querySelector('input').checked, off: c.querySelector('input').disabled, icon: !!c.querySelector('.lmd-tl-ico svg'), about: c.querySelector('p').textContent, why: (c.querySelector('.lmd-tl-why') || {}).textContent || '' } : null; });
+    check('su tarjeta está en Herramientas, apagada, y sin cuenta dice que la necesita', card && card.name === 'Agents' && card.on === false && card.off === false && card.icon && /agents of your AI/.test(card.about) && card.why === 'It needs a SharpMD account. Signed out, it shows nothing.', card);
+    // Sin nube (la dirección del servidor en "off"), la tarjeta dice eso.
+    await closePanel(page); await page.evaluate(() => LMD.patch({ cloudUrl: 'off' })); await sleep(500); await toolsTab(page);
+    check('con la nube apagada, la tarjeta dice que sin ella no hay nada para mostrar', await page.evaluate(() => (document.querySelector('.lmd-tl-card[data-tool=agents] .lmd-tl-why') || {}).textContent === 'The cloud is off: without it there are no agents to show.' && !document.querySelector('.lmd-tl-card[data-tool=agents] input').checked));
+    await closePanel(page); await page.evaluate((u) => LMD.patch({ cloudUrl: u }), R.base); await sleep(500); await toolsTab(page);
+    await flip(page, 'agents'); await until(() => page.evaluate(() => !!LMD.agents)); await page.waitForSelector('.lmd-tl-side[data-tool=agents] [data-ag-set=miss]');
+    const side = await page.evaluate(() => { const s = document.querySelector('.lmd-tl-side'); return { miss: s.querySelector('[data-ag-set=miss]').textContent, btn: (s.querySelector('button[data-ag-set=cloud]') || {}).textContent || '', plan: !!s.querySelector('[data-ag-set=plan]'), show: !!s.querySelector('[data-ag-set=show]'), need: (document.querySelector('[data-tool=agents] .lmd-tl-need') || {}).textContent || '' }; });
+    check('prendida sin cuenta: las opciones dicen que falta entrar y no ofrecen nada más', await scripts(page, 'agents.js') === 1 && side.miss === 'Sign in to see your agents.' && side.btn === 'Sign in' && !side.plan && !side.show && side.need === 'Sign in to your account' && (await stored(page, 'settings')).tools.agents === true, side);
+    check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
+    await closePanel(page);
+    const empty = await page.evaluate(() => { const b = document.querySelector('.lmd-ag'); return b ? { text: b.querySelector('.lmd-ag-empty').textContent, head: b.querySelector('.lmd-zone-tog').textContent.trim(), rows: b.querySelectorAll('.lmd-ag-row').length, h: b.getBoundingClientRect().height } : null; });
+    check('la sección aparece en la barra lateral, con una línea, y no pide nada al servidor', empty && empty.head === 'Agents' && /^Sign in to see your agents\./.test(empty.text) && empty.rows === 0 && empty.h < 90 && hits.length === 0 && !(await state(page)).polling, [empty, hits]);
+    await page.click('.lmd-ag [data-ag-tog]'); await sleep(150);
+    check('se pliega a un renglón, y queda así al recargar', await page.evaluate(() => document.querySelector('.lmd-ag-body').hidden && document.querySelector('.lmd-ag').getBoundingClientRect().height <= 32) && (await stored(page, 'settings')).tools.agentsShut === true);
+    await goHome(page); await page.waitForSelector('.lmd-ag');
+    check('plegada', await page.evaluate(() => document.querySelector('.lmd-ag-body').hidden && document.querySelector('.lmd-ag [data-ag-tog]').getAttribute('aria-expanded') === 'false'));
+    await toolsTab(page); await flip(page, 'agents'); await closePanel(page);
+    check('apagarla saca la sección', await page.evaluate(() => !document.querySelector('.lmd-ag')));
+    await ctx.close();
+  });
+
+  await step('Agentes: la IA anota dos agentes y un subagente, y la app los muestra en vivo', async () => {
+    const who = await R.signup('agentes-' + Date.now() + '@prueba.test', true); const tok = await tokenOf(who);
+    await tool(tok, 'create_board', { path: 'p/board.md', title: 'Importer' });
+    const card = (await tool(tok, 'add_card', { path: 'p/board.md', title: 'Write the parser' })).v.card.id;
+    const shown = (await tool(tok, 'add_card', { path: 'p/board.md', title: 'Review the docs', fields: { agent: 'docs' } })).v.card.id;
+    await tool(tok, 'write_note', { path: 'p/notes.md', text: '# Notes\n\nLoose ends.\n' });
+    const { ctx, page } = await open({ who, tools: { agents: true } }); const hits = asked(page);
+    await page.goto(R.noteUrl('p/board.md')); await page.waitForSelector('.lmd-board .lmd-card'); await page.waitForSelector('.lmd-ag .lmd-ag-empty');
+    check('sin agentes: una línea dice qué va a aparecer y cómo', /^Connect your AI and ask it to register its agents\. They show up here while they work\./.test(await page.textContent('.lmd-ag-empty')) && (await badge(page)) === '' && (await marks(page)).length === 0 && await page.evaluate(() => document.querySelector('.lmd-ag [data-ag-go]').textContent === 'Connect an AI'));
+    const before = hits.length;
+    const lead = (await tool(tok, 'start_agent', { name: 'lead', task: 'Split the importer in two' })).v;
+    const sub = (await tool(tok, 'start_agent', { name: 'parser', task: 'Write the parser and its tests', parent: lead.id, path: 'p/board.md', card })).v;
+    const docs = (await tool(tok, 'start_agent', { name: 'docs', task: 'Document the importer', path: 'p/board.md' })).v;
+    // El aviso llega por la nota abierta: mucho antes que el sondeo de la sección vacía.
+    await page.waitForFunction(() => document.querySelectorAll('.lmd-ag-row').length === 3, null, { timeout: 4000 });
+    let r = await rows(page);
+    check('los tres aparecen sin recargar: nombre, tarea, estado y hace cuánto', J(r.map((x) => [x.name, x.task, x.st, x.status, x.when])) === J([['lead', 'Split the importer in two', 'Working', 'working', 'just now'], ['parser', 'Write the parser and its tests', 'Working', 'working', 'just now'], ['docs', 'Document the importer', 'Working', 'working', 'just now']]) && hits.length > before, r);
+    check('el subagente va anidado bajo su padre, y los otros no', r[0].depth === 0 && r[1].depth === 1 && r[1].under === lead.id && r[2].depth === 0, r.map((x) => [x.name, x.depth, x.under]));
+    check('cada uno enlaza su nota, o su tarjeta', r[0].link === '' && r[1].link === 'board · card' && r[2].link === 'board', r.map((x) => x.link));
+    check('la cabecera cuenta los activos', (await badge(page)) === '3:working');
+    await until(async () => (await marks(page)).length === 2);
+    check('en el tablero, las tarjetas con un agente activo llevan la marca: por el id de la tarjeta, o por su campo agent', J((await marks(page)).sort()) === J([card + ':working:parser', shown + ':working:docs'].sort()), await marks(page));
+    check('y el campo agent de la tarjeta lleva el nombre', (await R.api('GET', '/notes/' + encodeURIComponent('p/board.md'), undefined, who.s)).json.text.includes('agent=parser'));
+
+    await tool(tok, 'update_agent', { id: sub.id, status: 'waiting', needs: 'The sample files' });
+    await page.waitForFunction((id) => { const x = document.querySelector('.lmd-ag-row[data-ag="' + id + '"]'); return x && x.dataset.status === 'waiting'; }, sub.id, { timeout: 4000 });
+    r = await rows(page);
+    check('cambia el estado y la app lo refleja: esperando, con lo que necesita', r[1].st === 'Waiting' && r[1].needs === 'Needs: The sample files' && r[0].st === 'Working' && (await badge(page)) === '3:waiting' && (await marks(page)).includes(card + ':waiting:parser'), [r[1], await badge(page), await marks(page)]);
+
+    await page.click('.lmd-ag-row[data-ag="' + sub.id + '"] > .lmd-ag-item .lmd-ag-link'); await sleep(400);
+    check('el enlace de la tarjeta la deja enfocada en el tablero', await page.evaluate((id) => document.activeElement && document.activeElement.classList.contains('lmd-card') && document.activeElement.dataset.id === id, card));
+    await tool(tok, 'update_agent', { id: docs.id, path: 'p/notes.md', task: 'Tidy the notes' });
+    await page.waitForFunction((id) => { const x = document.querySelector('.lmd-ag-row[data-ag="' + id + '"] .lmd-ag-link'); return x && x.textContent === 'notes'; }, docs.id, { timeout: 4000 });
+    check('al pasar a otra nota, la marca de su tarjeta se va', J(await marks(page)) === J([card + ':waiting:parser']), await marks(page));
+    await page.click('.lmd-ag-row[data-ag="' + docs.id + '"] > .lmd-ag-item .lmd-ag-link'); await opened(page, 'notes.md');
+    check('el enlace de una nota la abre', (await here(page)) === 'cloud/p/notes.md' && (await rows(page)).length === 3, await here(page));
+    await page.click('.lmd-ag-row[data-ag="' + sub.id + '"] > .lmd-ag-item .lmd-ag-link'); await opened(page, 'board.md');
+    await until(() => page.evaluate((id) => document.activeElement && document.activeElement.dataset.id === id, card));
+    check('y el de la tarjeta, desde otra nota, abre el tablero y la enfoca', (await here(page)) === 'cloud/p/board.md' && await page.evaluate((id) => document.activeElement.dataset.id === id, card));
+
+    // El que deja de dar señales queda sin señal; los que siguen, no.
+    for (let i = 0; i < 4; i++) { await sleep(1700); await tool(tok, 'list_notes', { agent_id: lead.id }); await tool(tok, 'list_notes', { agent_id: docs.id }); }
+    await page.waitForFunction((id) => { const x = document.querySelector('.lmd-ag-row[data-ag="' + id + '"]'); return x && x.dataset.status === 'silent'; }, sub.id, { timeout: 8000 });
+    r = await rows(page);
+    check('sin señales pasa a "sin señal", y la marca del tablero lo sigue', r[1].st === 'No signal' && r[0].st === 'Working' && r[2].st === 'Working' && (await marks(page)).includes(card + ':silent:parser') && (await badge(page)) === '3:working', [r.map((x) => x.st), await marks(page), await badge(page)]);
+    check('con la sección a la vista hay sondeo', (await state(page)).polling === true);
+
+    await tool(tok, 'end_agent', { id: docs.id, result: 'Notes tidy' });
+    await page.waitForFunction((id) => { const x = document.querySelector('.lmd-ag-row[data-ag="' + id + '"]'); return x && x.dataset.status === 'done'; }, docs.id, { timeout: 4000 });
+    r = await rows(page);
+    check('al terminar queda a la vista un rato, con cómo terminó, y deja de contar', r[2].st === 'Done' && r[2].result === 'Notes tidy' && (await badge(page)) === '2:working', [r[2], await badge(page)]);
+    check('sin historial todavía, no hay botón para verlo', await page.evaluate(() => document.querySelector('.lmd-ag [data-ag-past]').hidden));
+    await tool(tok, 'list_notes', { agent_id: lead.id });
+    await page.waitForFunction(() => document.querySelectorAll('.lmd-ag-list:not(.lmd-ag-old) .lmd-ag-row').length === 2 && !document.querySelector('.lmd-ag [data-ag-past]').hidden, null, { timeout: 12000 });
+    await page.click('.lmd-ag [data-ag-past]'); await page.waitForSelector('.lmd-ag-old .lmd-ag-row');
+    const old = await rows(page, true);
+    check('después se va de la lista y, en el plan pago, queda en el historial de las últimas horas', old.length === 1 && old[0].name === 'docs' && old[0].st === 'Done' && (await page.textContent('.lmd-ag-h')) === 'Last 24 hours' && await page.evaluate(() => document.querySelector('.lmd-ag [data-ag-past]').title === 'Last 24 hours' && document.querySelector('.lmd-ag [data-ag-past]').getAttribute('aria-pressed') === 'true'), old);
+
+    // Con la barra lateral cerrada no se sondea; al abrirla vuelve.
+    await tool(tok, 'list_notes', { agent_id: lead.id }); await sleep(600);
+    await page.click('.lmd-topbar [data-act=sidebar]'); await sleep(500);
+    const n0 = hits.length; await sleep(4000);
+    check('con la barra lateral cerrada no hay sondeo ni pedidos', (await state(page)).polling === false && hits.length === n0, [hits.length, n0]);
+    await page.click('.lmd-topbar [data-act=sidebar]'); await until(async () => (await state(page)).polling === true);
+    check('al abrirla vuelve a pedir la lista', hits.length > n0 && (await state(page)).polling === true);
+
+    await toolsTab(page);
+    await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=agents] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-side[data-tool=agents] [data-ag-set=show]');
+    const opts = await page.evaluate(() => { const s = document.querySelector('.lmd-tl-side'); return { plan: s.querySelector('[data-ag-set=plan]').textContent, count: s.querySelector('[data-ag-set=count]').textContent, why: (document.querySelector('[data-tool=agents] .lmd-tl-main .lmd-tl-why') || {}).textContent || '', need: document.querySelector('[data-tool=agents] .lmd-tl-need').hidden }; });
+    check('las opciones dicen el plan con los números del servidor y cuántos hay; con cuenta, la tarjeta no avisa nada', opts.plan === 'Paid plan: no limit on agents, with the history of the last 24 hours.' && opts.count === '2 active agents' && opts.why === '' && opts.need, opts);
+    check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0 && await page.evaluate(() => !/[!¡—–]/.test(document.querySelector('.lmd-ag').textContent)), await texts(page));
+    await flip(page, 'agents'); await closePanel(page);
+    const n1 = hits.length; await sleep(1200);
+    check('apagarla saca la sección y las marcas del tablero, y deja de pedir', await page.evaluate(() => !document.querySelector('.lmd-ag') && !document.querySelector('.lmd-ag-live')) && hits.length === n1);
+    await ctx.close();
+  });
+
+  await step('Agentes: el tope del plan gratis', async () => {
+    const who = await R.signup('agentes-gratis-' + Date.now() + '@prueba.test'); const tok = await tokenOf(who);
+    const a = await tool(tok, 'start_agent', { name: 'one', task: 'First' }); const b = await tool(tok, 'start_agent', { name: 'two', task: 'Second' }); const c = await tool(tok, 'start_agent', { name: 'three', task: 'Third' });
+    check('el tercero no entra: el servidor lo rechaza y dice dónde están los planes', !a.err && !b.err && c.err && /Free plan: 2 agents can be active at once/.test(c.text) && /#lmd-plans$/.test(c.text), c.text);
+    const { ctx, page } = await open({ who, tools: { agents: true } });
+    await goHome(page); await page.waitForSelector('.lmd-ag-row');
+    const note = await page.evaluate(() => { const n = document.querySelector('.lmd-ag-note'); return n ? { text: n.textContent, go: n.querySelector('[data-ag-go]').dataset.agGo } : null; });
+    check('la app muestra los dos y dice el tope, con el número del servidor, sin historial', (await rows(page)).length === 2 && note && note.text === 'Free plan: up to 2 agents at once. See plans' && note.go === 'plan' && await page.evaluate(() => document.querySelector('.lmd-ag [data-ag-past]').hidden) && (await state(page)).history === null, note);
+    await page.click('.lmd-ag-note [data-ag-go]'); await page.waitForSelector('.lmd-panel-card');
+    check('"Ver planes" abre la pestaña del plan', await page.evaluate(() => !!document.querySelector('.lmd-panel-card .lmd-plans')));
+    await ctx.close();
+  });
+
+  await step('Agentes: pantalla chica y en español', async () => {
+    const who = await R.signup('agentes-chica-' + Date.now() + '@prueba.test', true); const tok = await tokenOf(who);
+    await tool(tok, 'create_board', { path: 'p/tablero.md' });
+    const card = (await tool(tok, 'add_card', { path: 'p/tablero.md', title: 'Armar el importador' })).v.card.id;
+    const lead = (await tool(tok, 'start_agent', { name: 'líder', task: 'Reparte el importador entre dos agentes y junta lo que devuelven' })).v;
+    const sub = (await tool(tok, 'start_agent', { name: 'pruebas', task: 'Corre las pruebas del importador', parent: lead.id, path: 'p/tablero.md', card })).v;
+    await tool(tok, 'update_agent', { id: sub.id, needs: 'Los archivos de ejemplo que mencionaste, en la carpeta del proyecto' });
+    const { ctx, page } = await open({ who, tools: { agents: true }, lang: 'es', ctx: SMALL });
+    await page.goto(R.noteUrl('p/tablero.md')); await page.waitForSelector('.lmd-board .lmd-card');
+    await page.tap('.lmd-topbar [data-act=more]'); await page.waitForSelector('.lmd-menu [data-more=agents]');
+    check('el menú "más" ofrece los agentes', (await page.textContent('.lmd-menu [data-more=agents]')).trim() === 'Agentes');
+    await page.tap('.lmd-menu [data-more=agents]'); await page.waitForSelector('.lmd-side-open .lmd-ag .lmd-ag-row'); await sleep(450);
+    const m = await page.evaluate(() => {
+      const b = document.querySelector('.lmd-ag'); const r = b.getBoundingClientRect(); const body = b.querySelector('.lmd-ag-body'); const link = b.querySelector('.lmd-ag-link').getBoundingClientRect();
+      return { in: r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight + 1 && r.top >= 0, side: body.scrollWidth <= body.clientWidth + 1, noScroll: document.documentElement.scrollWidth <= innerWidth, tap: link.height >= 36, font: parseFloat(getComputedStyle(body).fontSize),
+        rows: [...b.querySelectorAll('.lmd-ag-row')].map((x) => x.querySelector('.lmd-ag-st').textContent), needs: b.querySelector('.lmd-ag-needs').textContent, cut: [...b.querySelectorAll('.lmd-ag-task, .lmd-ag-needs')].some((p) => p.scrollWidth > p.clientWidth + 1) };
+    });
+    check('tocarlo abre la barra lateral con la sección a la vista, que entra en la pantalla sin scroll de costado', m.in && m.side && m.noScroll && !m.cut, m);
+    check('en español, con texto cómodo y un enlace que se puede tocar', J(m.rows) === J(['Trabajando', 'Esperando']) && /^Necesita: Los archivos de ejemplo/.test(m.needs) && m.font >= 14 && m.tap, m);
+    await page.tap('.lmd-ag-row[data-ag="' + sub.id + '"] > .lmd-ag-item .lmd-ag-link'); await sleep(600);
+    check('tocar el enlace de la tarjeta la muestra en el tablero', await page.evaluate((id) => { const c = [...document.querySelectorAll('.lmd-card')].find((x) => x.dataset.id === id); return !!c && !!c.querySelector('.lmd-ag-live'); }, card));
     await ctx.close();
   });
 });

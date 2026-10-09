@@ -574,7 +574,7 @@ try {
     const ftok = (await ag.ask('POST', '/tokens', { name: 'IA' }, fses)).json.token; const ptok = (await ag.ask('POST', '/tokens', { name: 'IA paga' }, pses)).json.token;
     const said = [];
     const tool = async (tok, name, args) => { const r = await ag.ask('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args || {} } }, tok); const c = r.json.result; const parts = c.content.map((x) => x.text); said.push(...parts); let v = null; try { v = JSON.parse(parts[0]); } catch (e) { /* texto */ } return { parts, text: parts.join('\n'), err: !!c.isError, v }; };
-    const seenBy = async (ses) => (await ag.ask('GET', '/agents', undefined, ses)).json;
+    const seenBy = async (ses) => (await ag.ask('GET', '/agents', undefined, ses)).json; const J = (v) => JSON.stringify(v);
     const byId = (list, id) => (list || []).find((x) => x.id === id);
 
     const defs = (await ag.ask('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/list' }, ftok)).json.result.tools;
@@ -664,7 +664,13 @@ try {
     await tool(bot, 'write_note', { path: 'equipo.md', text: '# Equipo' });
     const tb = await tool(bot, 'start_agent', { name: 'team bot', task: 'Sync the roadmap', path: 'equipo.md' });
     pv = await seenBy(pses); const mineTeam = pv.agents.find((x) => x.id === tb.v.id);
-    check('agentes: con un token de equipo el agente es del espacio: lo ve un miembro, con la ruta que abre la app', team.status === 200 && !tb.err && tb.v.path === 'equipo.md' && !!mineTeam && mineTeam.team === true && mineTeam.token === 'bot' && mineTeam.path === '~' + space + '/equipo.md' && !(await seenBy(fses)).agents.some((x) => x.id === tb.v.id), [tb.v, mineTeam, space]);
+    check('agentes: con un token de equipo el agente es del espacio: lo ve un miembro, con la ruta que abre la app', team.status === 200 && !tb.err && tb.v.path === 'equipo.md' && !!mineTeam && mineTeam.team === true && mineTeam.token === '' && mineTeam.path === '~' + space + '/equipo.md' && !(await seenBy(fses)).agents.some((x) => x.id === tb.v.id), [tb.v, mineTeam, space]);
+    // Un token limitado a una carpeta: ve los suyos y los que trabajan dentro de su carpeta, nada más.
+    const stok = (await ag.ask('POST', '/tokens', { name: 'solo p', folder: 'p/' }, pses)).json.token;
+    await tool(ptok, 'write_note', { path: 'otra/nota.md', text: '# Otra' });
+    const outA = await tool(ptok, 'start_agent', { name: 'afuera', task: 'Trabaja fuera de la carpeta', path: 'otra/nota.md' }); const inA = await tool(ptok, 'start_agent', { name: 'adentro', task: 'Trabaja en la carpeta', path: 'p/board.md' });
+    const ownA = await tool(stok, 'start_agent', { name: 'propio', task: 'Del token limitado' }); const sl = await tool(stok, 'list_agents'); const sOut = await tool(stok, 'update_agent', { id: outA.v.id, task: 'x' }); const sPath = await tool(stok, 'start_agent', { name: 'x', task: 'x', path: 'otra/nota.md' });
+    check('agentes: un token limitado a una carpeta ve los suyos y los de su carpeta, y no toca ni enlaza lo de afuera', !outA.err && !inA.err && !ownA.err && J(sl.v.agents.map((x) => x.name).sort()) === J(['adentro', 'propio']) && sOut.err && /There is no agent with that id/.test(sOut.text) && sPath.err && /only reaches the folder p\//.test(sPath.text) && (await tool(ptok, 'list_agents')).v.agents.length >= 4, [sl.v, sOut.text, sPath.text]);
     const cross = await tool(ptok, 'update_agent', { id: tb.v.id, task: 'x' });
     check('agentes: el token de una persona no cambia los del equipo', cross.err && /There is no agent with that id/.test(cross.text), cross.text);
     ctrl.abort();

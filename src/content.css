@@ -3218,3 +3218,69 @@ textarea.lmd-cd-title { min-height: 40px; max-height: 40vh; margin: 0 0 14px; fo
   .lmd-spk select[data-spk=rate] { flex: 0 0 76px; }
 }
 @media print { .lmd-flash-top, .lmd-forced-toast, .lmd-dct-hint { display: none !important; } }
+
+/* ---------- Agentes (agents.js) ---------- */
+/* La sección de la barra lateral, debajo de los archivos: una línea cuando no hay nada, y crece hasta un tope. */
+.lmd-ag { flex: none; display: flex; flex-direction: column; min-height: 0; max-height: 46%; }
+.lmd-ag * { box-sizing: border-box; }
+.lmd-ag-n { flex: none; min-width: 17px; height: 17px; margin-left: 5px; padding: 0 5px; border-radius: 999px; background: var(--accent-fill); color: var(--accent-fg); font-size: 10.5px; font-weight: 700; line-height: 17px; letter-spacing: 0; text-align: center; }
+.lmd-ag-n[hidden] { display: none; }
+.lmd-ag-n[data-status=waiting] { background: #d97706; color: #fff; }
+.lmd-ag-n[data-status=silent] { background: var(--fg-faint); color: var(--bg); }
+.lmd-ag-past svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-ag-past.lmd-on { background: var(--accent-soft); color: var(--fg); }
+.lmd-ag-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 10px 10px 12px; font-size: 13px; line-height: 1.4; color: var(--fg-muted); }
+.lmd-ag-body[hidden] { display: none; }
+.lmd-ag-list, .lmd-ag-kids { margin: 0; padding: 0; list-style: none; }
+.lmd-ag-kids { margin-left: 3px; padding-left: 11px; border-left: 1px solid var(--line); }
+.lmd-ag-item { display: flex; gap: 8px; padding: 6px 0; }
+.lmd-ag-main { flex: 1; min-width: 0; }
+.lmd-ag-dot, .lmd-ag-pulse { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--fg-faint); }
+.lmd-ag-dot { margin-top: 5px; }
+.lmd-ag-row[data-status=working] > .lmd-ag-item .lmd-ag-dot, .lmd-ag-live[data-status=working] .lmd-ag-pulse { background: var(--accent-fill); animation: lmd-ag-pulse 1.8s ease-in-out infinite; }
+.lmd-ag-row[data-status=waiting] > .lmd-ag-item .lmd-ag-dot, .lmd-ag-live[data-status=waiting] .lmd-ag-pulse { background: #d97706; }
+.lmd-ag-row[data-status=done] > .lmd-ag-item .lmd-ag-dot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--fg-faint); }
+.lmd-ag-row[data-status=lost] > .lmd-ag-item .lmd-ag-dot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line); }
+@keyframes lmd-ag-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-fill) 45%, transparent); } 60% { box-shadow: 0 0 0 5px transparent; } }
+.lmd-ag-top { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.lmd-ag-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); font-weight: 600; }
+.lmd-ag-tag { flex: none; padding: 0 5px; border: 1px solid var(--line); border-radius: 999px; font-size: 10.5px; }
+.lmd-ag-when { flex: none; margin-left: auto; font-size: 11.5px; color: var(--fg-faint); white-space: nowrap; }
+.lmd-ag-row[data-status=waiting] > .lmd-ag-item .lmd-ag-st { color: #b45309; font-weight: 600; }
+.lmd-dark .lmd-ag-row[data-status=waiting] > .lmd-ag-item .lmd-ag-st { color: #fbbf24; }
+.lmd-ag-task, .lmd-ag-needs, .lmd-ag-result, .lmd-ag-empty, .lmd-ag-note { margin: 2px 0 0; overflow-wrap: anywhere; }
+.lmd-ag-needs { padding: 3px 7px; border-radius: 6px; background: color-mix(in srgb, #d97706 14%, transparent); color: var(--fg); }
+.lmd-ag-needs span { font-weight: 600; }
+.lmd-ag-result { color: var(--fg-faint); }
+.lmd-ag-row[data-status=silent] > .lmd-ag-item .lmd-ag-task, .lmd-ag-old .lmd-ag-task { color: var(--fg-faint); }
+.lmd-ag-link { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; margin-top: 3px; padding: 1px 0; border: 0; background: none; color: var(--link); font: inherit; font-size: 12.5px; cursor: pointer; }
+.lmd-ag-link span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lmd-ag-link:hover span { text-decoration: underline; }
+.lmd-ag-link svg { flex: none; width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-ag-empty { padding: 4px 0 2px; color: var(--fg-faint); }
+.lmd-ag-empty .lmd-link, .lmd-ag-note .lmd-link { padding: 0; color: var(--link); font-size: inherit; }
+.lmd-ag-note { padding-top: 6px; font-size: 12px; color: var(--fg-faint); }
+.lmd-ag-h { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--line); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-faint); }
+.lmd-guest .lmd-ag { display: none !important; }
+/* En el tablero: la tarjeta con un agente activo lleva un punto junto a su campo agent. */
+.lmd-chip.lmd-ag-live { display: inline-flex; align-items: center; gap: 5px; color: var(--fg); }
+.lmd-ag-pulse { width: 7px; height: 7px; }
+.lmd-card.lmd-ag-flash { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+/* su vista en Ajustes > Herramientas: un agente, dos subagentes y otro sin señal */
+.lmd-pk-agents .r { display: flex; align-items: center; gap: 8px; height: 22px; margin-bottom: 6px; }
+.lmd-pk-agents .k { margin-left: 4px; padding-left: 12px; border-left: 1px solid var(--line); }
+.lmd-pk-agents .d { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--pk-ink); }
+.lmd-pk-agents .on { background: var(--accent-fill); animation: lmd-pk-pulse 1.8s ease-in-out infinite; }
+.lmd-pk-agents .k .on { animation-delay: -.9s; }
+.lmd-pk-agents .wt { background: #d97706; }
+.lmd-pk-agents b { flex: none; width: 34px; height: 8px; border-radius: 4px; background: var(--fg-muted); opacity: .75; }
+.lmd-pk-agents .l { flex: 1; width: auto; margin: 0; }
+.lmd-pk-agents .r:nth-child(2) .l { animation: lmd-pk-w1 3.6s linear infinite; } .lmd-pk-agents .r:nth-child(3) .l { animation: lmd-pk-w2 3.6s linear infinite; }
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  .lmd-ag { max-height: 52%; }
+  .lmd-ag-body { font-size: 14.5px; padding: 2px 12px 12px 14px; }
+  .lmd-ag-link { min-height: 36px; font-size: 14px; }
+  .lmd-ag-when { font-size: 12.5px; }
+}
+@media (prefers-reduced-motion: reduce) { .lmd-ag-dot, .lmd-ag-pulse { animation: none !important; } }
+@media print { .lmd-ag { display: none !important; } }

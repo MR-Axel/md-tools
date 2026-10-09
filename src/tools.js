@@ -25,6 +25,7 @@
   // register({ id, name, about, icon, defaultOn, enable(core), disable(core), settings?(caja) })
   //   lazy + module: el archivo se pide con core.ensure(lazy) y module() devuelve { enable, disable, settings }.
   //   available(): '' si se puede usar acá, o la línea que dice por qué no.
+  //   note(): una línea más en la tarjeta, prendida o apagada: lo que hace falta para que muestre algo. No la apaga.
   function register(tool) {
     if (!tool || !tool.id || tools.some((t) => t.id === tool.id)) return;
     tools.push(tool);
@@ -98,6 +99,7 @@
     jsonyaml: '<div class="lmd-pk lmd-pk-json"><div class="r"><i class="ct"></i><i>{ }</i></div><div class="r in"><i>id</i><i class="v">7</i></div><div class="r in"><i class="ct tg"></i><i>tags</i></div><div class="r in2 kid"><i>0</i><i class="v">"a"</i></div><div class="r in2 kid"><i>1</i><i class="v">"b"</i></div><div class="r in"><i>done</i><i class="v">true</i></div></div>',
     import: '<div class="lmd-pk lmd-pk-conv"><div class="st"><b>.docx</b><b>.pdf</b><b>.xlsx</b></div><i class="ar"></i><div class="bx to"><b>.md</b>' + L + L + L + L + '</div></div>',
     assistant: '<div class="lmd-pk lmd-pk-ai"><div class="bx"><i class="sp"></i>' + L + '</div>' + L + L + L + '</div>',
+    agents: '<div class="lmd-pk lmd-pk-agents"><div class="r"><i class="d on"></i><b></b>' + L + '</div><div class="r k"><i class="d on"></i><b></b>' + L + '</div><div class="r k"><i class="d wt"></i><b></b>' + L + '</div><div class="r"><i class="d"></i><b></b>' + L + '</div></div>',
   };
   const POINTER = !!window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches;
   const PEEK_W = 232; const PEEK_H = 146; const PEEK_WAIT = 320;
@@ -136,10 +138,10 @@
 
   // ---------- La pestaña de Ajustes ----------
   function card(tool) {
-    const why = reason(tool); const on = isOn(tool.id);
+    const why = reason(tool); const on = isOn(tool.id); const note = !why && tool.note ? tool.note() || '' : '';
     return '<div class="lmd-tl-card' + (why ? ' lmd-tl-off' : '') + '" data-tool="' + esc(tool.id) + '">' +
       '<span class="lmd-tl-ico" aria-hidden="true">' + (tool.icon || ICON.tools) + '</span>' +
-      '<div class="lmd-tl-main"><b>' + esc(T(tool.name)) + '</b><p>' + esc(T(tool.about)) + '</p>' + (why ? '<p class="lmd-tl-why">' + esc(why) + '</p>' : '') + '</div>' +
+      '<div class="lmd-tl-main"><b>' + esc(T(tool.name)) + '</b><p>' + esc(T(tool.about)) + '</p>' + (why || note ? '<p class="lmd-tl-why">' + esc(why || note) + '</p>' : '') + '</div>' +
       ('<label class="lmd-switch"><input type="checkbox" data-tool-on="' + esc(tool.id) + '" aria-label="' + esc(T(tool.name)) + '"' + (on ? ' checked' : '') + (why ? ' disabled' : '') + '><i></i></label>') +
       // Las opciones: un botón a la vista que las abre en el panel del costado, y al lado el aviso de lo que le falta para andar.
       (tool.settings || tool.lazy ? '<div class="lmd-tl-acts"' + (on ? '' : ' hidden') + '><button type="button" class="lmd-btn lmd-tl-more" data-tool-opts="' + esc(tool.id) + '" aria-expanded="false" aria-controls="lmd-tl-side"' + (on ? '' : ' hidden') + '><span>' + esc(T('Configurar')) + '</span>' + LMD.kit.ICON.chevron + '</button>' +
@@ -366,4 +368,9 @@
   register({ id: 'assistant', name: 'Asistente de IA (con tu clave)', about: 'Mejora, traduce, genera y responde sobre la nota con tu propia clave de Claude, OpenAI, Gemini u otro proveedor.', defaultOn: false, lazy: 'assistant', module: () => LMD.assistant,
     available: () => (window.crypto && window.crypto.subtle && window.indexedDB ? '' : T('Acá no se puede guardar la clave de forma segura.')),
     icon: svg('<path d="M12 3.500l1.900 5.100 5.100 1.900-5.100 1.900L12 17.500l-1.900-5.100L5 10.500l5.100-1.900z"/><path d="M18.500 15.500l.800 2.200 2.200.800-2.200.800-.800 2.200-.800-2.200-2.200-.800 2.200-.800z"/>') });
+  // Los agentes que una IA conectada por MCP pone a trabajar, en vivo (agents.js). Los datos están en la nube: sin
+  // ella o sin cuenta la tarjeta lo dice. Se pregunta al dibujarla, cuando la cuenta ya se leyó.
+  register({ id: 'agents', name: 'Agentes', about: 'Muestra en vivo los agentes de tu IA que trabajan en tus notas de la nube: quién, en qué y qué necesita.', defaultOn: false, lazy: 'agents', module: () => LMD.agents,
+    note: () => (!LMD.cloud.enabled() ? T('La nube está apagada: sin ella no hay agentes para mostrar.') : LMD.cloud.signedIn() && !LMD.cloud.guest() ? '' : T('Necesita una cuenta de SharpMD. Sin entrar no muestra nada.')),
+    icon: svg('<circle cx="12" cy="6" r="2.500"/><circle cx="6.500" cy="17.500" r="2.500"/><circle cx="17.500" cy="17.500" r="2.500"/><path d="M12 8.500v3M6.500 15v-3.500h11V15"/>') });
 })();
