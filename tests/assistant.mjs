@@ -164,11 +164,11 @@ async function menuOn(page, text) {
   await pick(page, text); await page.waitForSelector('.lmd-format:not([hidden]) [data-ai-fmt]');
   await page.click('.lmd-format [data-ai-fmt]'); await page.waitForSelector('.lmd-ai-menu');
 }
-// Con las opciones de una herramienta abiertas, Escape cierra primero ese panel: los ajustes se cierran con su botón.
+// Los ajustes se cierran con su botón: no depende de dónde esté el foco.
 const shutSettings = (page) => page.evaluate(() => { const b = document.querySelector('.lmd-panel:not([hidden]) [data-act=close-panel]'); if (b) b.click(); });
 const openOptions = async (page) => {
   await page.click('[data-act=settings]'); await page.waitForSelector('.lmd-panel-card'); await page.click('[data-ptab=tools]');
-  await page.waitForSelector('[data-tool-opts=assistant]:not([hidden])'); await page.evaluate(() => { const b = document.querySelector('[data-tool-opts=assistant]'); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }); await page.waitForSelector('.lmd-ai-set [data-ai=prov]');
+  await page.waitForSelector('[data-tool-pick=assistant]'); await page.evaluate(() => document.querySelector('[data-tool-pick=assistant]').click()); await page.waitForSelector('.lmd-ai-set [data-ai=prov]');
 };
 // Lo guardado en el navegador, sin lo que no se puede serializar (la llave): ahí no tiene que estar la clave.
 const dump = (page) => page.evaluate(async () => {
@@ -207,10 +207,10 @@ await step('key', ' La clave', async () => {
   // Prendido y sin clave: la tarjeta lo avisa, y el aviso lleva a la opción
   const needOf = () => page.evaluate(() => { const n = document.querySelector('[data-tool=assistant] .lmd-tl-need'); return n.hidden ? '' : n.textContent; });
   const lack = await needOf();
-  await page.click('.lmd-tl-side .lmd-tl-x'); await page.waitForSelector('.lmd-tl-side[data-tool=assistant] .lmd-tl-opts', { state: 'hidden' });
+  await page.click('[data-tool-pick=kanban]'); await page.waitForSelector('.lmd-tl-side[data-tool=kanban]');
   await page.click('[data-tool=assistant] .lmd-tl-need'); await page.waitForSelector('.lmd-ai-set [data-ai=prov]');
   await sleep(200);
-  const led = await page.evaluate(() => ({ open: document.querySelector('[data-tool-opts=assistant]').getAttribute('aria-expanded'), focus: !!document.activeElement.closest('.lmd-tl-side[data-tool=assistant] .lmd-tl-opts'), on: document.activeElement.dataset.ai || document.activeElement.tagName }));
+  const led = await page.evaluate(() => ({ open: document.querySelector('[data-tool-pick=assistant]').getAttribute('aria-current'), focus: !!document.activeElement.closest('.lmd-tl-side[data-tool=assistant] .lmd-tl-opts'), on: document.activeElement.dataset.ai || document.activeElement.tagName }));
   check('prendido y sin clave, la tarjeta dice que falta y el aviso abre la opción con el foco adentro', lack === 'Add your key' && led.open === 'true' && led.focus && led.on === 'prov', [lack, led]);
 
   const before = mock.log.length;

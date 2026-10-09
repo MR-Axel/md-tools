@@ -701,8 +701,10 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 
 /* ---------- Pestañas de ajustes, sincronización, historial ---------- */
 .lmd-ptabs { display: flex; flex-direction: column; gap: 3px; padding: 14px 10px; border-right: 1px solid var(--line); background: var(--bg-side); overflow: auto; }
-.lmd-ptabs button { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px; border: 0; border-radius: 9px; background: transparent; color: var(--fg-muted); font: inherit; font-size: 13.5px; font-weight: 600; text-align: left; cursor: pointer; }
-.lmd-ptabs button svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+/* Un rótulo que no entra en un renglón parte en dos y el ítem crece: mismo aire arriba y abajo, y el ícono con el primer renglón. */
+.lmd-ptabs button { display: flex; align-items: flex-start; gap: 10px; flex: none; min-height: 38px; padding: 10px 12px; border: 0; border-radius: 9px; background: transparent; color: var(--fg-muted); font: inherit; font-size: 13.5px; font-weight: 600; text-align: left; cursor: pointer; }
+.lmd-ptabs button { line-height: 18px; }
+.lmd-ptabs button svg { width: 16px; height: 16px; flex: none; margin-top: 1px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .lmd-ptabs button:hover { color: var(--fg); background: var(--bg-soft); }
 .lmd-ptabs button.lmd-on { background: var(--accent-soft); color: var(--accent); }
 .lmd-panel-body > section[hidden] { display: none; }
@@ -756,8 +758,6 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-switch input:checked + i { background: var(--accent-fill); box-shadow: inset 0 0 0 1.5px var(--accent-edge, transparent); }
 .lmd-switch input:checked + i::after { transform: translateX(14px); background: var(--accent-knob, var(--bg)); }
 .lmd-switch input:focus-visible + i { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
-.lmd-switch[data-tip]:not([data-tip=""])::after { content: attr(data-tip); position: absolute; left: 0; bottom: calc(100% + 4px); z-index: 5; width: max-content; max-width: 280px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-soft); color: var(--fg); font-size: 12.5px; line-height: 1.4; box-shadow: var(--shadow); opacity: 0; transform: translateY(4px); pointer-events: none; transition: opacity .14s, transform .14s; }
-.lmd-switch[data-tip]:hover::after { opacity: 1; transform: none; transition-delay: .25s; }
 .lmd-acct-row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); color: var(--fg-muted); }
 .lmd-acct-row b { color: var(--fg); font-weight: 600; }
 .lmd-plans { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
@@ -1001,8 +1001,8 @@ button.lmd-cm-quote:hover { border-left-color: var(--accent-fill); color: var(--
 .lmd-pick select { flex: 0 1 300px; min-width: 0; height: 34px; padding: 0 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--fg); font: inherit; font-size: 13px; outline: none; }
 .lmd-pick select:focus { border-color: var(--accent-fill); }
 .lmd-acct .lmd-plan-why { margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--accent-fill); border-radius: 10px; background: var(--accent-soft); color: var(--fg); font-size: 13.5px; }
-.lmd-ptabs .lmd-ptabs-link { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px; border-radius: 9px; color: var(--fg-faint); font-size: 13.5px; font-weight: 500; text-decoration: none; }
-.lmd-ptabs-link svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-ptabs .lmd-ptabs-link { display: flex; align-items: flex-start; gap: 10px; flex: none; min-height: 34px; box-sizing: border-box; padding: 8px 12px; line-height: 18px; border-radius: 9px; color: var(--fg-faint); font-size: 13.5px; font-weight: 500; text-decoration: none; }
+.lmd-ptabs-link svg { width: 16px; height: 16px; flex: none; margin-top: 1px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .lmd-ptabs .lmd-ptabs-link:hover { color: var(--accent); background: var(--bg-soft); }
 .lmd-ptabs-ver { padding: 8px 12px 0; color: var(--fg-faint); font-size: 11.5px; white-space: nowrap; }
 
@@ -1222,13 +1222,13 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
     padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px); }
   .lmd-panel-card header { padding: 8px 8px 8px 16px; }
   .lmd-ptabs { flex-direction: row; align-items: center; gap: 4px; padding: 8px 10px; border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; }
-  .lmd-ptabs button, .lmd-ptabs .lmd-ptabs-link { flex: none; height: 40px; white-space: nowrap; }
+  .lmd-ptabs button, .lmd-ptabs .lmd-ptabs-link { flex: none; align-items: center; height: 40px; min-height: 0; padding-top: 0; padding-bottom: 0; white-space: nowrap; }
+  .lmd-ptabs button svg, .lmd-ptabs-link svg { margin-top: 0; }
   .lmd-ptabs .lmd-ptabs-foot { margin-top: 0; }
   .lmd-ptabs-ver { flex: none; padding: 0 8px; }
   .lmd-panel-body { padding: 2px 16px calc(22px + env(safe-area-inset-bottom, 0px)); }
   .lmd-two, .lmd-grid, .lmd-plans { grid-template-columns: minmax(0, 1fr); }
   .lmd-two > .lmd-extra p, [data-tab=adv] > .lmd-extra p, .lmd-panel-foot .lmd-hint { min-width: 0; }
-  .lmd-switch[data-tip]::after { display: none; }
   .lmd-acct-row, .lmd-tokens li { align-items: center; min-height: 40px; }
   .lmd-pick { flex-wrap: wrap; }
   .lmd-pick select { flex: 1 1 100%; }
@@ -1616,67 +1616,74 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 
 /* Ajustes > Herramientas: una tarjeta por herramienta, con su interruptor y sus opciones. */
 .lmd-tl-lead { margin: 0 0 12px; }
-.lmd-tl-list { display: flex; flex-direction: column; gap: 10px; }
+.lmd-tl-list { display: flex; flex-direction: column; gap: 5px; }
 .lmd-tl-list[hidden] { display: none; }
-.lmd-tl-card { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-soft); }
-.lmd-tl-ico { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: var(--bg); color: var(--accent); }
+/* Una fila por herramienta: ícono, nombre y descripción (el botón que la elige) e interruptor. */
+.lmd-tl-card { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 3px 10px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-soft); cursor: pointer; }
+.lmd-tl-ico { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--bg); color: var(--accent); }
 .lmd-tl-ico svg, .lmd-dct-mic svg, .lmd-dct-stop svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.lmd-tl-main { min-width: 0; }
-.lmd-tl-main b { display: block; font-size: 14px; font-weight: 600; color: var(--fg); }
-.lmd-tl-main p { margin: 2px 0 0; font-size: 13px; line-height: 1.4; color: var(--fg-muted); }
-.lmd-tl-main p.lmd-tl-why, .lmd-tl-opts p.lmd-tl-why { color: var(--fg-faint); font-size: 12.5px; }
+.lmd-tl-main { appearance: none; min-width: 0; margin: 0; padding: 0; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.lmd-tl-main:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 3px; }
+.lmd-tl-main b { display: flex; align-items: center; gap: 2px; font-size: 14px; font-weight: 600; line-height: 1.4; color: var(--fg); }
+.lmd-tl-main b svg { flex: none; width: 14px; height: 14px; fill: none; stroke: var(--fg-faint); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-tl-main p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin: 1px 0 0; font-size: 12.5px; line-height: 1.35; color: var(--fg-muted); }
+.lmd-tl-card > p.lmd-tl-why { grid-column: 2 / -1; margin: 0; }
+p.lmd-tl-why { color: var(--fg-faint); font-size: 12.5px; line-height: 1.4; }
 .lmd-tl-card .lmd-switch { padding: 0; }
 .lmd-tl-card .lmd-tag { margin: 0; }
 .lmd-tl-off .lmd-tl-ico { color: var(--fg-faint); }
 .lmd-tl-off .lmd-switch { opacity: .5; cursor: default; }
-.lmd-tl-acts { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 4px; }
-.lmd-tl-acts[hidden], .lmd-tl-more[hidden], .lmd-tl-opts[hidden], .lmd-tl-need[hidden] { display: none; }
-.lmd-tl-more { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px 4px 11px; background: var(--bg); font-size: 13px; }
-.lmd-tl-more svg, .lmd-tl-back svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-/* Una tarjeta con las opciones abiertas se distingue: borde con el acento, y su botón también. */
-.lmd-tl-card { transition: opacity .15s; }
-.lmd-tl-card.lmd-tl-now { border-color: var(--accent-fill); box-shadow: 0 0 0 1px var(--accent-fill); }
-.lmd-tl-cfg .lmd-tl-card:not(.lmd-tl-now) { opacity: .4; }
-.lmd-tl-more[aria-expanded=true] { border-color: var(--accent-fill); color: var(--accent); }
-.lmd-tl-need { padding: 4px 10px; border: 0; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.lmd-tl-acts { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 1px 0 2px; }
+.lmd-tl-acts[hidden], .lmd-tl-need[hidden], .lmd-tl-side [hidden] { display: none; }
+.lmd-tl-back svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-tl-need { padding: 3px 10px; border: 0; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .lmd-tl-need:hover { text-decoration: underline; }
 .lmd-tl-side:focus { outline: none; }
 .lmd-tl-need:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
 .lmd-tl-opts .lmd-row { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
 .lmd-tl-opts .lmd-row > span { flex: 1 1 120px; min-width: 0; font-size: 13.5px; }
 .lmd-tl-opts .lmd-row select { flex: 1 1 160px; min-width: 0; width: auto; }
-/* Las opciones de una herramienta: un panel al costado, dentro de los Ajustes. Ocupa la misma celda que la zona de
-   contenido (la última de la grilla, en escritorio y en teléfono) y queda encima de su mitad derecha, justo sobre la
-   segunda columna de tarjetas: la grilla de atrás no se mueve ni cambia de alto. Lo que no entra se desliza adentro. */
+/* Lista y detalle (tools.js). El detalle de la herramienta elegida ocupa la misma celda que la zona de contenido de
+   los Ajustes (la última de la grilla, en escritorio y en teléfono). En pantalla ancha la pestaña son dos mitades
+   fijas: la zona de contenido se queda con la izquierda, con la lista y su scroll, y el detalle con la derecha, con
+   el suyo. Nada tapa nada, y elegir una herramienta no mueve ninguna fila. */
 .lmd-panel-card > .lmd-panel-body, .lmd-tl-side { grid-column: -2 / -1; grid-row: -2 / -1; }
-.lmd-tl-side { justify-self: end; z-index: 2; box-sizing: border-box; display: flex; flex-direction: column; width: 50%; min-width: 0; min-height: 0; border-left: 1px solid var(--line); background: var(--bg); box-shadow: -16px 0 28px -20px rgba(0, 0, 0, .45); animation: lmd-tl-side-in .16s ease-out; }
+.lmd-panel-card.lmd-tl-split > .lmd-panel-body { box-sizing: border-box; justify-self: start; width: 50%; padding-right: 16px; }
+.lmd-tl-side { justify-self: end; box-sizing: border-box; display: flex; flex-direction: column; width: 50%; min-width: 0; min-height: 0; border-left: 1px solid var(--line); background: var(--bg); }
 .lmd-tl-side[hidden] { display: none; }
-@keyframes lmd-tl-side-in { from { opacity: 0; transform: translateX(14px); } }
-.lmd-tl-side-head { flex: none; display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 9px 10px 9px 16px; border-bottom: 1px solid var(--line); }
+.lmd-tl-split .lmd-tl-card.lmd-tl-now { border-color: var(--accent-fill); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent-fill); }
+.lmd-tl-split .lmd-tl-main p { display: block; white-space: nowrap; text-overflow: ellipsis; }
+.lmd-tl-split .lmd-tl-main b svg { display: none; }
+.lmd-tl-side-head { flex: none; display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 9px 16px; border-bottom: 1px solid var(--line); }
 .lmd-tl-side-head h4 { flex: 1; min-width: 0; margin: 0; font-size: 14px; font-weight: 600; line-height: 1.3; color: var(--fg); overflow-wrap: anywhere; }
-.lmd-tl-side-head .lmd-tl-ico { flex: none; width: 32px; height: 32px; background: var(--bg-soft); }
+.lmd-tl-side-head .lmd-tl-ico { flex: none; background: var(--bg-soft); }
+.lmd-tl-side-head .lmd-tl-ico:empty { display: none; }
 .lmd-tl-side-head .lmd-switch { flex: none; padding: 0; }
 /* Safari cuenta como desborde el texto de un select más largo que su caja: de costado no se desliza nunca. */
 .lmd-tl-side-body { flex: 1; min-height: 0; overflow: hidden auto; padding: 14px 16px 18px; overscroll-behavior: contain; scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
+.lmd-tl-about { margin: 0 0 8px; font-size: 13.5px; line-height: 1.45; color: var(--fg-muted); }
+.lmd-tl-side-body > p.lmd-tl-why { margin: 0 0 8px; }
+.lmd-tl-side-body > .lmd-tl-turn { margin: 0; }
+.lmd-tl-opts:not(:empty) { margin-top: 2px; padding-top: 14px; border-top: 1px solid var(--line); }
 .lmd-tl-back { display: none; flex: none; align-items: center; gap: 2px; padding: 4px 11px 4px 6px; background: var(--bg); font-size: 13px; }
 .lmd-tl-back svg { transform: rotate(180deg); }
-/* Sin lugar al costado (ventana angosta o teléfono) el panel tapa toda la zona de contenido, con Volver en vez de la cruz. */
+/* Sin lugar al costado (ventana angosta o teléfono) la lista ocupa todo y el detalle se abre encima, con Volver. */
 @media (max-width: 960px), (max-height: 500px) and (pointer: coarse) {
-  .lmd-tl-side { width: 100%; border-left: 0; box-shadow: none; }
+  .lmd-tl-side { z-index: 2; width: 100%; border-left: 0; animation: lmd-tl-side-in .16s ease-out; }
   .lmd-tl-back { display: inline-flex; }
-  .lmd-tl-x { display: none; }
   .lmd-tl-side-head { padding-left: 10px; }
 }
-@media (prefers-reduced-motion: reduce) { .lmd-tl-card { transition: none; } .lmd-tl-side { animation: none; } }
+@keyframes lmd-tl-side-in { from { opacity: 0; transform: translateX(14px); } }
+@media (prefers-reduced-motion: reduce) { .lmd-tl-side { animation: none; } }
 @media print { .lmd-tl-side { display: none; } }
 .lmd-tl-opts .lmd-row:last-child { margin-bottom: 0; }
 .lmd-tl-opts .lmd-btn { flex: none; }
 
-/* La vista flotante de una herramienta (tools.js): una escena de 232 x 146 dibujada con cajitas y líneas, con los
-   colores del tema y su acento. No recibe el cursor ni el foco. Cada escena deja a la vista su estado final: sin
-   animación (movimiento reducido) se entiende igual. */
-.lmd-peek { --pk-ink: color-mix(in srgb, var(--fg-faint) 42%, var(--bg)); position: fixed; left: 0; top: 0; z-index: 62; box-sizing: border-box; width: 232px; height: 146px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); box-shadow: var(--shadow); overflow: hidden; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .14s, visibility 0s .14s; font: 11px/1.4 var(--lmd-mono); color: var(--fg); }
-.lmd-peek.lmd-on { opacity: 1; visibility: visible; transition-delay: 0s; }
+/* La ilustración de una herramienta (tools.js), dentro de su detalle: una escena de 232 x 146 dibujada con cajitas y
+   líneas, con los colores del tema y su acento. No recibe el cursor ni el foco. Cada escena deja a la vista su
+   estado final: sin animación (movimiento reducido) se entiende igual. */
+.lmd-peek { --pk-ink: color-mix(in srgb, var(--fg-faint) 42%, var(--bg)); box-sizing: border-box; width: 232px; max-width: 100%; height: 146px; margin: 4px 0 14px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); overflow: hidden; pointer-events: none; font: 11px/1.4 var(--lmd-mono); color: var(--fg); }
+.lmd-peek[hidden] { display: none; }
 .lmd-peek * { box-sizing: border-box; }
 .lmd-peek i, .lmd-peek b { display: block; font-style: normal; font-weight: 400; }
 .lmd-pk { position: relative; height: 100%; }
@@ -1779,7 +1786,7 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-pk-ai .bx .l { width: 96px; margin: 0; animation: lmd-pk-w1 3.6s linear infinite; }
 .lmd-pk-ai > .l { background: color-mix(in srgb, var(--accent-fill) 55%, var(--bg)); }
 .lmd-pk-ai > .l:nth-child(2) { animation: lmd-pk-w2 3.6s linear infinite; } .lmd-pk-ai > .l:nth-child(3) { animation: lmd-pk-w3 3.6s linear infinite; } .lmd-pk-ai > .l:nth-child(4) { animation: lmd-pk-w4 3.6s linear infinite; }
-@media (prefers-reduced-motion: reduce) { .lmd-peek { transition: none; } .lmd-peek *, .lmd-peek *::after { animation: none !important; } .lmd-pk .b { display: none; } }
+@media (prefers-reduced-motion: reduce) { .lmd-peek *, .lmd-peek *::after { animation: none !important; } .lmd-pk .b { display: none; } }
 @media print { .lmd-peek { display: none; } }
 
 /* Leer en voz alta: el bloque que se está leyendo y los controles, abajo al centro. */
@@ -1830,9 +1837,9 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-dct-sheet dt { color: var(--fg); }
 .lmd-dct-sheet dd { margin: 0; color: var(--fg-muted); }
 @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
-  .lmd-tl-card { grid-template-columns: 34px minmax(0, 1fr) auto; padding: 12px; }
-  .lmd-tl-ico { width: 34px; height: 34px; }
-  .lmd-tl-more, .lmd-tl-need, .lmd-tl-back { min-height: 36px; }
+  .lmd-tl-card { padding: 9px 12px; }
+  .lmd-plug .lmd-plg-row { min-height: 44px; }
+  .lmd-tl-need, .lmd-tl-back { min-height: 36px; }
   .lmd-tl-side-body { padding: 14px 16px calc(22px + env(safe-area-inset-bottom, 0px)); }
   .lmd-spk { bottom: calc(46px + env(safe-area-inset-bottom, 0px)); flex-wrap: wrap; justify-content: center; }
   .lmd-spk select { max-width: 120px; height: 36px; }
@@ -2161,14 +2168,6 @@ textarea.lmd-jy-in { resize: vertical; }
 @media (max-width: 760px) { .lmd-back { padding: 0 16px 100px; } }
 @media print { .lmd-back, .lmd-map { display: none !important; } }
 
-/* Con más herramientas, las tarjetas van de a dos en pantalla ancha. */
-@media (min-width: 761px) {
-  .lmd-tl-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
-  .lmd-tl-list { gap: 6px; } .lmd-tl-lead { margin-bottom: 8px; }
-  .lmd-tl-list .lmd-tl-main p { font-size: 12.5px; line-height: 1.35; margin-top: 1px; }
-  .lmd-tl-list .lmd-tl-card { height: 100%; align-content: start; padding: 7px 12px; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 4px 10px; }
-}
-
 /* Equipo: papeles, ajustes que decide quien administra, tokens del equipo y registro de actividad. */
 .lmd-scope { color: var(--fg-faint); }
 .lmd-two > .lmd-scope { margin-top: -10px; font-size: 12.5px; line-height: 1.35; }
@@ -2297,8 +2296,8 @@ textarea.lmd-jy-in { resize: vertical; }
 .lmd-pg-seg button { min-height: 30px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: var(--fg-muted); font: inherit; font-size: 13px; cursor: pointer; }
 .lmd-pg-seg button[aria-checked="true"] { background: var(--bg); color: var(--fg); box-shadow: 0 1px 2px rgba(0, 0, 0, .18); }
 .lmd-pg-seg button:disabled { cursor: default; opacity: 0.6; }
-.lmd-pg label.lmd-pg-row { cursor: pointer; }
-.lmd-pg label.lmd-pg-row input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent-fill); }
+.lmd-pg label.lmd-plg-row { cursor: pointer; }
+.lmd-pg label.lmd-plg-row input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent-fill); }
 .lmd-page-nudge { position: fixed; left: 50%; bottom: 52px; transform: translateX(-50%); z-index: 55; display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 24px); padding: 8px 10px 8px 14px; border: 1px solid var(--line); border-radius: 11px; background: var(--bg); box-shadow: var(--shadow); font: 13.5px/1.35 var(--lmd-font); color: var(--fg); }
 .lmd-page-nudge .lmd-btn { padding: 5px 11px; font-size: 13px; white-space: nowrap; }
 .lmd-page-nudge .lmd-link { white-space: nowrap; }
@@ -2357,7 +2356,7 @@ textarea.lmd-jy-in { resize: vertical; }
   .lmd-au-acts button { min-height: 36px; }
   .lmd-au-opt { min-height: 44px; }
   .lmd-au-fmt button, .lmd-pg-seg button { min-height: 40px; }
-  .lmd-pg-row { flex-wrap: wrap; }
+  .lmd-plg-row { flex-wrap: wrap; }
   .lmd-page-nudge { bottom: calc(64px + env(safe-area-inset-bottom, 0px)); flex-wrap: wrap; justify-content: flex-end; }
   .lmd-page-nudge span { flex: 1 1 100%; }
 }
@@ -3030,13 +3029,35 @@ html.lmd-ai-open .lmd-ai-card { left: calc(50% - 190px); width: min(860px, calc(
 .lmd-acct > .lmd-field + .lmd-hint, .lmd-acct > .lmd-field + .lmd-tokens { margin-top: 12px; }
 .lmd-site-sec { margin-top: 24px; }
 .lmd-panel-foot .lmd-btn { display: inline-flex; align-items: center; gap: 8px; }
-/* Plugins: bloques con subtítulo en dos columnas parejas, y cada interruptor en un renglón de 40 px. */
-.lmd-plug { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 40px; align-items: start; }
-.lmd-plug-col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+/* Plugins: la lista en una columna, con sus bloques, y al costado el detalle del plugin elegido con su ejemplo (lista y
+   detalle, como en Herramientas). Cada fila: el nombre, que lo elige, y su interruptor. */
+.lmd-plug { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .lmd-plug-group { min-width: 0; }
-.lmd-plug-group h4 { margin: 0 0 2px; }
-.lmd-plug .lmd-switch { min-height: 40px; padding: 0; font-size: 13.5px; }
-.lmd-plug .lmd-switch span { min-width: 0; overflow-wrap: anywhere; }
+.lmd-plug-group h4 { margin: 0 0 4px; }
+.lmd-plg-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 36px; padding: 0 8px 0 10px; border: 1px solid transparent; border-radius: 8px; cursor: pointer; }
+.lmd-plg-row:hover { background: var(--bg-soft); }
+.lmd-plg-pick { appearance: none; display: flex; align-items: center; gap: 2px; min-width: 0; margin: 0; padding: 7px 0; border: 0; border-radius: 6px; background: none; color: var(--fg); font: inherit; font-size: 13.5px; line-height: 1.35; text-align: left; cursor: pointer; }
+.lmd-plg-pick span { min-width: 0; overflow-wrap: anywhere; }
+.lmd-plg-pick svg { flex: none; width: 14px; height: 14px; fill: none; stroke: var(--fg-faint); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-plg-pick:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+.lmd-plg-row .lmd-switch { min-height: 0; padding: 0; }
+.lmd-tl-split .lmd-plg-pick svg { display: none; }
+.lmd-tl-split .lmd-plg-row.lmd-tl-now { border-color: var(--accent-fill); background: var(--accent-soft); }
+/* El ejemplo: lo que se escribe, y cómo se ve apagado y prendido, dibujado por el motor de la app. Es para mirar. */
+.lmd-plg-ex { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }
+.lmd-plg-part { min-width: 0; }
+.lmd-plg-part h5 { display: flex; align-items: center; gap: 8px; margin: 0 0 5px; font-size: 12px; font-weight: 700; line-height: 1.45; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-faint); }
+.lmd-plg-now { padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11.5px; font-style: normal; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.lmd-plg-src { margin: 0; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-code); color: var(--fg); font: 12.5px/1.5 var(--lmd-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.lmd-plg-src code { padding: 0; background: none; font: inherit; }
+.lmd-plg-out { box-sizing: border-box; min-height: 42px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); font-size: 14px; line-height: 1.5; overflow: hidden; overflow-wrap: anywhere; }
+.lmd-plg-part[data-pg=on] .lmd-plg-out { border-color: color-mix(in srgb, var(--accent-fill) 55%, var(--line)); }
+.lmd-plg-out > :first-child { margin-top: 0; } .lmd-plg-out > :last-child { margin-bottom: 0; }
+.lmd-plg-out h2 { font-size: 1.15em; margin: .5em 0 .3em; padding-bottom: 0; border-bottom: 0; }
+.lmd-plg-out img { max-width: 64px; height: auto; }
+.lmd-plg-out svg { max-width: 100%; height: auto; }
+.lmd-plg-out .lmd-diagram, .lmd-plg-out .lmd-code, .lmd-plg-out .lmd-table { margin: 0; }
+.lmd-plg-wait { margin: -4px 0 0; }
 /* Herramientas: dos sub-pestañas, las de la app y lo que comparte la comunidad. */
 .lmd-subtabs { display: flex; gap: 4px; margin: 0 0 18px; border-bottom: 1px solid var(--line); }
 .lmd-subtabs button { position: relative; height: 38px; padding: 0 14px; border: 0; border-radius: 8px 8px 0 0; background: none; color: var(--fg-muted); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
@@ -3093,7 +3114,6 @@ html.lmd-ai-open .lmd-ai-card { left: calc(50% - 190px); width: min(860px, calc(
 }
 @media print { .lmd-protect-hint { display: none !important; } }
 @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
-  .lmd-plug { grid-template-columns: minmax(0, 1fr); }
   .lmd-subtabs button { height: 42px; flex: 1 1 0; }
   .lmd-sec li { padding: 14px; }
 }
@@ -3233,7 +3253,7 @@ textarea.lmd-cd-title { min-height: 40px; max-height: 40vh; margin: 0 0 14px; fo
   .lmd-subtabs button { height: 44px; }
   .lmd-seg button { height: 40px; }
   .lmd-card-add { min-height: 44px; }
-  .lmd-tl-more, .lmd-tl-back, .lmd-tl-opts .lmd-btn { min-height: 40px; }
+  .lmd-tl-back, .lmd-tl-opts .lmd-btn { min-height: 40px; }
   /* La barra de la lectura: a lo ancho, los cuatro botones y la velocidad arriba, idioma y voz abajo. */
   .lmd-spk { left: 8px; right: 8px; transform: none; max-width: 520px; margin: 0 auto; }
   .lmd-spk .lmd-icon-btn { width: 44px; height: 44px; }

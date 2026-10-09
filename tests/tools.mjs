@@ -74,7 +74,7 @@ await suite('present', async () => {
     check('su tarjeta está en Herramientas, apagada', J(card) === J({ name: 'Presentation mode', on: false, icon: true }), card);
     await flip(page, 'present'); await until(() => page.evaluate(() => !!LMD.present));
     check('prenderla pide su archivo y queda guardado', await scripts(page, 'present.js') === 1 && (await stored(page, 'settings')).tools.present === true);
-    await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=present] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-side[data-tool=present] [data-pres=go]');
+    await page.evaluate((q) => document.querySelector(q).click(), '.lmd-tl-card[data-tool=present] .lmd-tl-main'); await page.waitForSelector('.lmd-tl-side[data-tool=present] [data-pres=go]');
     check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
     await closePanel(page);
     check('prendida: el botón en la barra y la opción en Exportar', await page.evaluate(() => !!document.querySelector('.lmd-top-right .lmd-pres-btn')) && (await menuItems(page, 'export')).includes('present-pdf'));
@@ -179,7 +179,7 @@ const here = (page) => page.evaluate(() => decodeURIComponent(new URLSearchParam
 const nav = (page) => page.evaluate(() => { const n = document.querySelector('.lmd-daily-nav'); return n ? [...n.querySelectorAll('button')].map((b) => b.textContent.trim()) : null; });
 const localNames = (page) => page.evaluate(async () => (await LMD.store.notesAll()).map((n) => n.name).sort());
 const opened = (page, name) => until(async () => (await here(page)).endsWith(name) && await page.evaluate(() => !!document.querySelector('.lmd-article > *')), 6000);
-const dailyOpts = async (page) => { await toolsTab(page); await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-side[data-tool=daily] [data-dly=go]'); };
+const dailyOpts = async (page) => { await toolsTab(page); await page.evaluate((q) => document.querySelector(q).click(), '.lmd-tl-card[data-tool=daily] .lmd-tl-main'); await page.waitForSelector('.lmd-tl-side[data-tool=daily] [data-dly=go]'); };
 
 await suite('daily', async () => {
   await step('Nota diaria: apagada no deja nada', async () => {
@@ -192,7 +192,7 @@ await suite('daily', async () => {
     check('su tarjeta está en Herramientas, apagada', await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=daily]'); return !!c && c.querySelector('b').textContent === 'Daily note' && !c.querySelector('input').checked; }));
     await flip(page, 'daily'); await until(() => page.evaluate(() => !!LMD.daily));
     check('prenderla pide su archivo', await scripts(page, 'daily.js') === 1 && (await stored(page, 'settings')).tools.daily === true);
-    await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await page.waitForSelector('[data-dly=go]');
+    await page.evaluate((q) => document.querySelector(q).click(), '.lmd-tl-card[data-tool=daily] .lmd-tl-main'); await page.waitForSelector('[data-dly=go]');
     const o = await page.evaluate(() => { const q = (k) => document.querySelector('[data-dly=' + k + ']'); return { where: [...q('where').options].map((x) => x.value + (x.disabled ? ':no' : '')).join(), name: q('name').value, tpl: q('tpl').value, many: q('tpl').options.length > 5, folderHidden: q('folder').closest('[data-dly-row]').hidden }; });
     check('sus opciones: dónde, el nombre y la plantilla', o.where.startsWith('local,cloud:no') && o.name === 'YYYY-MM-DD' && o.tpl === '' && o.many && o.folderHidden, o);
     check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
@@ -376,7 +376,7 @@ await suite('docx', async () => {
     await toolsTab(page);
     check('su tarjeta está en Herramientas, apagada', await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=docx]'); return !!c && c.querySelector('b').textContent === 'Export to Word' && !c.querySelector('input').checked; }));
     await flip(page, 'docx'); await until(() => page.evaluate(() => !!LMD.docx));
-    await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=docx] .lmd-tl-more'); await page.waitForSelector('[data-docx=go]');
+    await page.evaluate((q) => document.querySelector(q).click(), '.lmd-tl-card[data-tool=docx] .lmd-tl-main'); await page.waitForSelector('[data-docx=go]');
     check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
     await closePanel(page);
     const items = await menuItems(page, 'export');
@@ -491,7 +491,7 @@ await suite('linkmap', async () => {
     await toolsTab(page);
     check('su tarjeta está en Herramientas, apagada', await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=linkmap]'); return !!c && c.querySelector('b').textContent === 'Link map' && !c.querySelector('input').checked; }));
     await flip(page, 'linkmap'); await until(() => page.evaluate(() => !!LMD.linkmap));
-    await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=linkmap] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-side[data-tool=linkmap] [data-map=go]');
+    await page.evaluate((q) => document.querySelector(q).click(), '.lmd-tl-card[data-tool=linkmap] .lmd-tl-main'); await page.waitForSelector('.lmd-tl-side[data-tool=linkmap] [data-map=go]');
     check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
     await closePanel(page);
     await until(() => page.evaluate(() => !!document.querySelector('.lmd-back')));
@@ -660,138 +660,166 @@ await suite('linkmap', async () => {
   });
 });
 
-// ---------- La tarjeta: el interruptor, Configurar y lo que se abre al prender ----------
+// ---------- Lista y detalle: la fila, su interruptor y el detalle de la herramienta elegida ----------
 await suite('card', async () => {
-  // Las opciones se abren en un panel al costado (.lmd-tl-side), dentro de los Ajustes: la tarjeta no las lleva adentro.
-  const optsOf = (page, id) => page.evaluate((t) => { const c = document.querySelector('.lmd-tl-card[data-tool=' + t + ']'); const b = c.querySelector('.lmd-tl-more'); const s = document.querySelector('.lmd-tl-side'); const a = s.querySelector('.lmd-tl-opts'); const f = document.activeElement; const mine = !s.hidden && s.dataset.tool === t;
-    return { shown: !b.hidden && !c.querySelector('.lmd-tl-acts').hidden, open: b.getAttribute('aria-expanded'), text: b.textContent, area: mine && a.children.length > 0, focus: mine && !!(f && a.contains(f)), inside: mine && s.contains(f), onBtn: f === b, onSwitch: f === c.querySelector('[data-tool-on]'), tag: f ? f.tagName : '', btn: b.classList.contains('lmd-btn') && !b.classList.contains('lmd-link'), icon: !!b.querySelector('svg'), now: c.classList.contains('lmd-tl-now'), inCard: !!c.querySelector('.lmd-tl-opts') }; }, id);
-  // Dónde está cada tarjeta y cuánto mide, y el scroll de la pestaña: abrir el panel no puede cambiar nada de esto.
-  const grid = (page) => page.evaluate(() => { const body = document.querySelector('.lmd-panel-body'); const list = document.querySelector('.lmd-tl-list:not([hidden])').getBoundingClientRect();
-    return JSON.stringify({ cards: [...document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card')].map((c) => { const r = c.getBoundingClientRect(); return [c.dataset.tool, r.left, r.top, r.width, r.height].join(' '); }), list: [list.top, list.height].join(' '), top: body.scrollTop, tall: body.scrollHeight, page: scrollY }); });
-  const sideOf = (page) => page.evaluate(() => { const s = document.querySelector('.lmd-tl-side'); const r = s.getBoundingClientRect(); const b = document.querySelector('.lmd-panel-body').getBoundingClientRect(); const card = document.querySelector('.lmd-panel-card').getBoundingClientRect(); const vis = (q) => { const n = s.querySelector(q); return !!n && !!n.offsetParent; };
-    return { open: !s.hidden, tool: s.dataset.tool || '', role: s.getAttribute('role'), label: s.getAttribute('aria-label'), name: s.querySelector('h4').textContent, icon: !!s.querySelector('.lmd-tl-side-head .lmd-tl-ico svg'), on: s.querySelector('[data-tl-side=on]').checked, x: vis('.lmd-tl-x'), back: vis('.lmd-tl-back'), backText: s.querySelector('.lmd-tl-back').textContent,
-      inDialog: s.parentNode === document.querySelector('.lmd-panel-card') && document.querySelectorAll('[role=dialog]').length === 1, right: Math.abs(r.right - b.right) <= 1 && Math.abs(r.top - b.top) <= 1 && Math.abs(r.bottom - b.bottom) <= 1 && r.right <= card.right + 1, half: Math.abs(r.width - b.width / 2) <= 2, whole: Math.abs(r.width - b.width) <= 1 && Math.abs(r.left - b.left) <= 1,
-      scrolls: getComputedStyle(s.querySelector('.lmd-tl-side-body')).overflowY === 'auto', wide: getComputedStyle(s.querySelector('.lmd-tl-side-body')).overflowX !== 'hidden' || [...s.querySelectorAll('.lmd-tl-side-body *')].some((n) => n.offsetParent && n.getBoundingClientRect().right > s.querySelector('.lmd-tl-side-body').getBoundingClientRect().left + s.querySelector('.lmd-tl-side-body').clientWidth + 0.5) }; });
-  const dimmed = (page) => page.evaluate(() => { const cards = [...document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card')]; const now = cards.filter((c) => c.classList.contains('lmd-tl-now'));
-    return { now: now.map((c) => c.dataset.tool).join(), nowSeen: now.every((c) => getComputedStyle(c).opacity === '1' && !c.inert), faint: cards.filter((c) => !c.classList.contains('lmd-tl-now') && +getComputedStyle(c).opacity < 0.6).length, inert: cards.filter((c) => c.inert).length, n: cards.length, open: cards.filter((c) => (c.querySelector('.lmd-tl-more') || { getAttribute: () => '' }).getAttribute('aria-expanded') === 'true').map((c) => c.dataset.tool).join() }; });
-  const middle = (page, sel) => page.evaluate((q) => { const r = document.querySelector(q).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, sel);
+  // Lista y detalle: a la izquierda una fila por herramienta, a la derecha (.lmd-tl-side) la que está elegida.
+  const IDS = ['speak', 'dictate', 'kanban', 'present', 'daily', 'docx', 'linkmap', 'explore', 'jsonyaml', 'import', 'assistant', 'agents'];
+  const pickRow = async (page, id) => { await page.evaluate((t) => { const c = document.querySelector('.lmd-tl-card[data-tool=' + t + ']'); c.scrollIntoView({ block: 'nearest' }); }, id); await page.click('.lmd-tl-card[data-tool=' + id + '] .lmd-tl-main'); await sleep(200); };
+  const rowOf = (page, id) => page.evaluate((t) => { const c = document.querySelector('.lmd-tl-card[data-tool=' + t + ']'); const b = c.querySelector('.lmd-tl-main'); const f = document.activeElement; const n = c.querySelector('.lmd-tl-need');
+    return { current: b.getAttribute('aria-current'), now: c.classList.contains('lmd-tl-now'), on: c.querySelector('[data-tool-on]').checked, onPick: f === b, onSwitch: f === c.querySelector('[data-tool-on]'), tab: [b.tabIndex, c.querySelector('[data-tool-on]').tabIndex].join(), need: n && !n.hidden ? n.textContent : '', inCard: !!c.querySelector('.lmd-tl-opts') }; }, id);
+  // Dónde está cada fila y cuánto mide, y el scroll de la lista: elegir una herramienta no puede cambiar nada de esto.
+  const grid = (page) => page.evaluate(() => { const body = document.querySelector('.lmd-panel-body'); const list = document.querySelector('.lmd-tl-list:not([hidden])').getBoundingClientRect(); const card = document.querySelector('.lmd-panel-card').getBoundingClientRect();
+    return JSON.stringify({ cards: [...document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card')].map((c) => { const r = c.getBoundingClientRect(); return [c.dataset.tool, r.left, r.top, r.width, r.height].join(' '); }), list: [list.top, list.height].join(' '), top: body.scrollTop, tall: body.scrollHeight, page: scrollY, dialog: [card.left, card.top, card.width, card.height].join(' ') }); });
+  const sideOf = (page) => page.evaluate(() => { const s = document.querySelector('.lmd-tl-side'); const r = s.getBoundingClientRect(); const body = document.querySelector('.lmd-panel-body'); const b = body.getBoundingClientRect(); const card = document.querySelector('.lmd-panel-card').getBoundingClientRect(); const vis = (q) => { const n = s.querySelector(q); return !!n && !!n.offsetParent; }; const f = document.activeElement; const a = s.querySelector('.lmd-tl-opts'); const sb = s.querySelector('.lmd-tl-side-body'); const pk = s.querySelector('.lmd-peek');
+    return { open: !s.hidden, tool: s.dataset.tool || '', role: s.getAttribute('role'), named: (document.getElementById(s.getAttribute('aria-labelledby')) || {}).textContent || '', live: s.querySelector('h4').getAttribute('aria-live'), name: s.querySelector('h4').textContent, about: s.querySelector('.lmd-tl-about').textContent, icon: !!s.querySelector('.lmd-tl-side-head .lmd-tl-ico svg'), on: s.querySelector('[data-tl-side=on]').checked, x: !!s.querySelector('.lmd-tl-x'), back: vis('.lmd-tl-back'), backText: s.querySelector('.lmd-tl-back').textContent,
+      turn: vis('.lmd-tl-turn') ? s.querySelector('.lmd-tl-turn').textContent : '', why: vis('[data-tl-side=why]') ? s.querySelector('[data-tl-side=why]').textContent : '', area: a.children.length > 0, focus: a.contains(f), inside: s.contains(f), tag: f ? f.tagName : '', scene: pk.firstElementChild && !pk.hidden ? pk.firstElementChild.className.replace('lmd-pk ', '') : '',
+      inDialog: s.parentNode === document.querySelector('.lmd-panel-card') && document.querySelectorAll('[role=dialog]').length === 1,
+      // Al costado: la lista se queda con la mitad izquierda y el detalle con la derecha, sin pisarse.
+      beside: !s.hidden && Math.abs(r.left - b.right) <= 1 && Math.abs(r.top - b.top) <= 1 && Math.abs(r.bottom - b.bottom) <= 1 && Math.abs(r.right - card.right) <= 2 && Math.abs(r.width - b.width) <= 2,
+      whole: !s.hidden && Math.abs(r.width - b.width) <= 1 && Math.abs(r.left - b.left) <= 1 && Math.abs(r.top - b.top) <= 1,
+      split: document.querySelector('.lmd-panel-card').classList.contains('lmd-tl-split'), inertAll: document.querySelector('[data-tools-pane]').inert,
+      scrolls: getComputedStyle(sb).overflowY === 'auto' && getComputedStyle(body).overflowY === 'auto', wide: getComputedStyle(sb).overflowX !== 'hidden' || [...sb.querySelectorAll('*')].some((n) => n.offsetParent && n.getBoundingClientRect().right > sb.getBoundingClientRect().left + sb.clientWidth + 0.5) }; });
+  // Ninguna fila atenuada ni inerte, y una sola elegida.
+  const calm = (page) => page.evaluate(() => { const cards = [...document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card')];
+    return { n: cards.length, faint: cards.filter((c) => +getComputedStyle(c).opacity < 1).length, inert: cards.filter((c) => c.inert).length, current: cards.filter((c) => c.querySelector('.lmd-tl-main').getAttribute('aria-current') === 'true').map((c) => c.dataset.tool).join(), marked: cards.filter((c) => c.classList.contains('lmd-tl-now')).map((c) => c.dataset.tool).join() }; });
+  // Cada fila se puede traer a la vista entera, y lo que hay en su centro es ella: nada la tapa.
+  const reach = (page) => page.evaluate(() => { const body = document.querySelector('.lmd-panel-body'); const bad = [];
+    [...document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card')].forEach((c) => { c.scrollIntoView({ block: 'nearest' }); const r = c.getBoundingClientRect(); const b = body.getBoundingClientRect(); const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); const sw = c.querySelector('.lmd-switch').getBoundingClientRect(); const at2 = document.elementFromPoint(sw.left + sw.width / 2, sw.top + sw.height / 2);
+      if (r.top < b.top - 1 || r.bottom > b.bottom + 1 || r.left < b.left || r.right > b.left + body.clientWidth + 1 || !c.contains(at) || !c.contains(at2)) bad.push(c.dataset.tool); });
+    const out = { bad, scrolls: body.scrollHeight > body.clientHeight, side: body.scrollWidth <= body.clientWidth + 1 }; body.scrollTop = 0; return out; });
   const settingsOpen = (page) => page.evaluate(() => !document.querySelector('.lmd-panel').hidden);
-  // Las tarjetas atenuadas están inertes: un clic sobre ellas va por coordenadas, como el de una persona.
-  const clickAt = async (page, sel) => { const p = await middle(page, sel); await page.mouse.click(p.x, p.y); await sleep(250); };
+  const QUIET = '*, *::before, *::after { transition: none !important; animation: none !important; }';
 
-  await step('Tarjeta: al prender se abren las opciones en el panel del costado, y Configure las abre y las cierra', async () => {
+  await step('Lista y detalle: dos zonas fijas, y elegir una herramienta no tapa ni mueve nada', async () => {
     const { ctx, page } = await open();
-    await goHome(page); await toolsTab(page);
-    await page.addStyleTag({ content: '*, *::before, *::after { transition: none !important; animation: none !important; }' });
-    const before = await optsOf(page, 'daily'); const closed = await sideOf(page);
+    await goHome(page); await toolsTab(page); await sleep(200);
+    await page.addStyleTag({ content: QUIET });
+    const s0 = await sideOf(page); const c0 = await calm(page); const first = await rowOf(page, 'speak');
+    check('al entrar el detalle ya está, al costado de la lista, con la primera herramienta elegida', s0.open && s0.beside && s0.split && !s0.whole && s0.inDialog && s0.tool === 'speak' && s0.name === 'Read aloud' && c0.current === 'speak' && c0.marked === 'speak' && first.current === 'true', [s0, c0]);
+    check('el detalle es una región con el nombre de la herramienta, que se anuncia al cambiar: ícono, interruptor, descripción entera e ilustración', s0.role === 'region' && s0.named === 'Read aloud' && s0.live === 'polite' && s0.icon && !s0.on && /^Reads the note with the device voice/.test(s0.about) && s0.scene === 'lmd-pk-speak' && s0.scrolls && !s0.wide, s0);
+    check('apagada, en vez de opciones dice que hay que prenderla (o por qué acá no se puede), y su archivo no se pide', (s0.why ? !s0.turn : s0.turn === 'Turn it on to set it up.') && !s0.area && await scripts(page, 'speak.js') === 0, s0);
+    check('sin cruz ni Back ni botón Configure: no hay nada que cerrar', !s0.x && !s0.back && await page.evaluate(() => !document.querySelector('.lmd-tl-more, [data-tool-opts]') && !/Configure|Hide/.test(document.querySelector('[data-tools-pane]').textContent)));
+    const rows = await page.evaluate(() => [...document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card')].map((c) => { const r = c.getBoundingClientRect(); const p = c.querySelector('.lmd-tl-main p'); const cs = getComputedStyle(p);
+      return { id: c.dataset.tool, x: Math.round(r.left), w: Math.round(r.width), h: Math.round(r.height), role: c.getAttribute('role'), btn: c.querySelector('.lmd-tl-main').tagName, icon: !!c.querySelector('.lmd-tl-ico svg'), name: c.querySelector('.lmd-tl-main b').textContent.length > 3, one: p.getBoundingClientRect().height < parseFloat(cs.lineHeight) * 1.5 && cs.textOverflow === 'ellipsis', sw: !!c.querySelector('.lmd-switch input[data-tool-on]'), note: !!c.querySelector(':scope > .lmd-tl-why') }; }));
+    check('las doce filas van en una columna: ícono, nombre, una línea de descripción recortada e interruptor', J(rows.map((x) => x.id)) === J(IDS) && new Set(rows.map((x) => x.x + ':' + x.w)).size === 1 && rows.every((x) => x.role === 'listitem' && x.btn === 'BUTTON' && x.icon && x.name && x.one && x.sw && x.h < 100 && (x.h <= 60 || x.note)) && await page.evaluate(() => document.querySelector('.lmd-tl-list').getAttribute('role') === 'list'), rows);
+    check('nada atenuado ni inerte', c0.n === 12 && c0.faint === 0 && c0.inert === 0 && !s0.inertAll, c0);
+    const r800 = await reach(page);
+    check('a 800 de alto las doce filas se alcanzan enteras, con su interruptor, sin nada encima ni scroll de costado', r800.bad.length === 0 && r800.side, r800);
+    // Elegir una de las últimas: nada cambia de lugar ni de tamaño, y el detalle pasa a ella
+    await page.evaluate(() => document.querySelector('.lmd-tl-card[data-tool=agents]').scrollIntoView({ block: 'nearest' })); await sleep(80);
+    const g0 = await grid(page);
+    await page.click('.lmd-tl-card[data-tool=agents] .lmd-tl-main'); await sleep(250);
+    const g1 = await grid(page); const s1 = await sideOf(page); const c1 = await calm(page);
+    check('elegir la última no mueve ni agranda ninguna fila, ni el scroll, ni el diálogo', g1 === g0 && JSON.parse(g0).cards.length === 12, [g0, g1]);
+    check('el detalle pasa a esa herramienta, en el mismo lugar, y la fila queda marcada: una sola', s1.tool === 'agents' && s1.name === 'Agents' && s1.named === 'Agents' && s1.scene === 'lmd-pk-agents' && s1.beside && c1.current === 'agents' && c1.marked === 'agents' && c1.faint === 0 && c1.inert === 0, [s1, c1]);
+    check('y esa fila sigue entera a la vista: el detalle no la tapa', await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=agents]'); const r = c.getBoundingClientRect(); const s = document.querySelector('.lmd-tl-side').getBoundingClientRect(); return r.right <= s.left && c.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }));
+    check('la marca es el acento del tema', await page.evaluate(() => { const a = getComputedStyle(document.querySelector('.lmd-tl-card[data-tool=agents]')); const b = getComputedStyle(document.querySelector('.lmd-tl-card[data-tool=speak]')); return a.borderTopColor !== b.borderTopColor && a.backgroundColor !== b.backgroundColor; }));
+    for (const id of ['present', 'docx', 'jsonyaml', 'assistant']) { await pickRow(page, id); }
+    await page.evaluate(() => document.querySelector('.lmd-tl-card[data-tool=agents]').scrollIntoView({ block: 'nearest' })); await sleep(80);
+    check('pasar por otras herramientas tampoco mueve nada', (await grid(page)) === g0);
+    // Con el teclado: flechas, Inicio y Fin
+    await pickRow(page, 'assistant');
+    const keys = [];
+    for (const k of ['ArrowDown', 'ArrowDown', 'ArrowUp', 'ArrowUp', 'Home', 'ArrowUp', 'End']) { await page.keyboard.press(k); await sleep(120); keys.push(await page.evaluate(() => { const a = document.activeElement; const c = a.closest('.lmd-tl-card'); return (c ? c.dataset.tool : '?') + (a.matches('[data-tool-pick]') ? '' : '!') + '>' + document.querySelector('.lmd-tl-side').dataset.tool + '>' + document.querySelectorAll('.lmd-tl-main[aria-current=true]').length; })); }
+    check('las flechas, Inicio y Fin pasan de fila en fila con el foco, y el detalle las sigue', J(keys) === J(['agents>agents>1', 'agents>agents>1', 'assistant>assistant>1', 'import>import>1', 'speak>speak>1', 'speak>speak>1', 'agents>agents>1']), keys);
+    check('la fila que se elige con el teclado queda a la vista', await page.evaluate(() => { const r = document.querySelector('.lmd-tl-card[data-tool=agents]').getBoundingClientRect(); const b = document.querySelector('.lmd-panel-body').getBoundingClientRect(); return r.top >= b.top - 1 && r.bottom <= b.bottom + 1; }));
+    // Tab: de la fila elegida a su interruptor y de ahí al detalle
+    const tabs = [];
+    for (let i = 0; i < 2; i++) { await page.keyboard.press('Tab'); tabs.push(await page.evaluate(() => { const a = document.activeElement; const c = a.closest('.lmd-tl-card'); return c ? c.dataset.tool + (a.matches('[data-tool-on]') ? ':switch' : ':row') : a.closest('.lmd-tl-side') ? 'detail' : 'out'; })); }
+    check('Tab va de la fila elegida a su interruptor y de ahí al detalle, sin pasar por las otras once', tabs[0] === 'agents:switch' && tabs[1] === 'detail' && !tabs.some((x) => /^(?!agents)\w+:/.test(x)) && (await rowOf(page, 'speak')).tab === '-1,-1' && (await rowOf(page, 'agents')).tab === '0,0', tabs);
+    await page.keyboard.press('Shift+Tab'); await page.keyboard.press('ArrowUp'); await sleep(120);
+    check('con el foco en un interruptor, la flecha pasa al interruptor de la fila de al lado', await page.evaluate(() => document.activeElement === document.querySelector('.lmd-tl-card[data-tool=assistant] [data-tool-on]') && document.querySelector('.lmd-tl-side').dataset.tool === 'assistant'));
+    // Prender y apagar desde la fila
+    await pickRow(page, 'speak');
+    await flip(page, 'kanban'); const k1 = await sideOf(page); await flip(page, 'kanban');
+    check('apagar y prender desde la fila una herramienta sin opciones no cambia la elegida', k1.tool === 'speak' && (await sideOf(page)).tool === 'speak' && (await calm(page)).current === 'speak' && (await stored(page, 'settings')).tools.kanban === true, k1);
+    const g2 = await grid(page);
     await flip(page, 'daily'); await page.waitForSelector('.lmd-tl-side[data-tool=daily] [data-dly=go]'); await sleep(150);
-    const on = await optsOf(page, 'daily'); const side = await sideOf(page);
-    check('apagada no ofrece configurar; al prenderla sus opciones se abren solas con el foco en el primer control', !before.shown && !before.area && !closed.open && on.shown && on.open === 'true' && on.area && on.focus, [before, on]);
-    check('el botón es un botón a la vista y dice siempre Configure', on.btn && on.icon && on.text === 'Configure', on);
-    check('las opciones no van dentro de la tarjeta: van en un panel de los mismos Ajustes, a la derecha, sin otra ventana encima', !on.inCard && side.open && side.tool === 'daily' && side.inDialog && side.right && side.half && !side.whole, side);
-    check('el panel es una región con el nombre de la herramienta, su ícono, su interruptor prendido y una cruz', side.role === 'region' && side.label === 'Daily note options' && side.name === 'Daily note' && side.icon && side.on && side.x && !side.back && side.scrolls && !side.wide, side);
-    await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await sleep(120);
-    const shut = await optsOf(page, 'daily');
-    await page.focus('.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await page.keyboard.press('Enter'); await page.waitForSelector('.lmd-tl-side[data-tool=daily] [data-dly=go]'); await sleep(120);
-    const again = await optsOf(page, 'daily');
-    check('Configure las cierra y las vuelve a abrir, también con el teclado, y el foco entra al panel', shut.open === 'false' && !shut.area && shut.text === 'Configure' && shut.onBtn && again.open === 'true' && again.area && again.text === 'Configure' && again.inside, [shut, again]);
-    // Escape: el primero cierra el panel y deja el foco en Configure; el segundo cierra los ajustes
-    await page.keyboard.press('Escape'); await sleep(150);
-    const esc1 = await optsOf(page, 'daily'); const still = await settingsOpen(page);
-    check('Escape cierra solo el panel: los ajustes siguen abiertos y el foco vuelve al botón Configure', !esc1.area && esc1.open === 'false' && esc1.onBtn && still && !(await sideOf(page)).open, [esc1, still]);
-    await page.keyboard.press('Escape'); await sleep(200);
-    check('y el segundo Escape cierra los ajustes', !(await settingsOpen(page)));
-    await toolsTab(page);
-    await page.addStyleTag({ content: '*, *::before, *::after { transition: none !important; animation: none !important; }' });
-
-    // Abrir no mueve nada: cada tarjeta queda en su lugar y con su tamaño, y el scroll no cambia
-    await flip(page, 'linkmap'); await page.waitForSelector('.lmd-tl-side[data-tool=linkmap] [data-map=go]'); await page.keyboard.press('Escape'); await sleep(150);
-    const g0 = await grid(page); const edge0 = await page.evaluate(() => getComputedStyle(document.querySelector('.lmd-tl-card[data-tool=daily]')).borderTopColor);
-    await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-side[data-tool=daily] [data-dly=go]'); await sleep(200);
-    const g1 = await grid(page); const d1 = await dimmed(page);
-    check('abrir el panel no cambia la posición ni el tamaño de ninguna tarjeta, ni el alto de la lista, ni el scroll', g1 === g0 && JSON.parse(g0).cards.length === 12, [g0, g1]);
-    check('las otras once quedan atenuadas e inertes, y la que se configura queda marcada con el acento', d1.now === 'daily' && d1.nowSeen && d1.faint === 11 && d1.inert === 11 && d1.open === 'daily' && (await page.evaluate(() => getComputedStyle(document.querySelector('.lmd-tl-card[data-tool=daily]')).borderTopColor)) !== edge0, d1);
-    // Pasar de una herramienta a otra con el panel abierto: sin cerrarlo
-    await page.evaluate(() => { window.__hid = 0; new MutationObserver((l) => { window.__hid += l.length; }).observe(document.querySelector('.lmd-tl-side'), { attributes: true, attributeFilter: ['hidden'] }); });
-    await clickAt(page, '.lmd-tl-card[data-tool=linkmap] .lmd-tl-main b'); await page.waitForSelector('.lmd-tl-side[data-tool=linkmap] [data-map=go]'); await sleep(150);
-    const s2 = await sideOf(page); const d2 = await dimmed(page); const g2 = await grid(page);
-    check('tocar otra tarjeta atenuada pasa el panel a esa herramienta sin cerrarlo, y nada se mueve', s2.open && s2.tool === 'linkmap' && s2.name === 'Link map' && s2.label === 'Link map options' && d2.now === 'linkmap' && d2.open === 'linkmap' && d2.faint === 11 && g2 === g0 && (await page.evaluate(() => window.__hid)) === 0 && !(await page.evaluate(() => !!document.querySelector('.lmd-tl-side [data-dly=go]'))), [s2, d2]);
-    // Tab no entra en las tarjetas atenuadas
-    const walk = await page.evaluate(() => document.activeElement === document.querySelector('.lmd-tl-side'));
-    const seen = [];
-    for (let i = 0; i < 40; i++) { await page.keyboard.press('Tab'); seen.push(await page.evaluate(() => { const a = document.activeElement; const c = a.closest('.lmd-tl-card'); return c ? c.dataset.tool : a.closest('.lmd-tl-side') ? 'side' : a.closest('.lmd-panel') ? 'settings' : 'out'; })); }
-    check('con el panel abierto el foco está en él, y Tab recorre el panel y los ajustes sin entrar en una tarjeta atenuada ni salir', walk && seen.includes('side') && seen.every((x) => x === 'side' || x === 'settings' || x === 'linkmap'), seen.join(' '));
-    // Un clic en la zona atenuada, fuera de una tarjeta que se pueda configurar, lo cierra
-    await clickAt(page, '.lmd-tl-card[data-tool=kanban] .lmd-tl-main b');
-    const out1 = await optsOf(page, 'linkmap');
-    check('tocar una tarjeta atenuada que no tiene opciones cierra el panel, y el foco vuelve a Configure', !out1.area && out1.open === 'false' && out1.onBtn && (await dimmed(page)).inert === 0 && (await dimmed(page)).faint === 0, out1);
-    await page.click('.lmd-tl-card[data-tool=linkmap] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-side[data-tool=linkmap] [data-map=go]');
-    const lead = await page.evaluate(() => { const r = document.querySelector('.lmd-tl-lead').getBoundingClientRect(); return { x: r.left + 30, y: r.top + r.height / 2 }; }); await page.mouse.click(lead.x, lead.y); await sleep(250);
-    check('y tocar la zona atenuada fuera de las tarjetas, también', !(await sideOf(page)).open && (await optsOf(page, 'linkmap')).onBtn && await settingsOpen(page));
-    // La cruz, y cambiar de pestaña
-    await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-side[data-tool=daily] [data-dly=go]');
-    await page.click('.lmd-tl-side .lmd-tl-x'); await sleep(120);
-    check('la cruz lo cierra y el foco vuelve a Configure', !(await sideOf(page)).open && (await optsOf(page, 'daily')).onBtn);
-    await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-side[data-tool=daily] [data-dly=go]');
-    await page.click('[data-ptab=look]'); await sleep(150);
-    const tabbed = await page.evaluate(() => ({ side: [...document.querySelectorAll('.lmd-tl-side')].every((s) => s.hidden), look: !document.querySelector('.lmd-panel-body > section[data-tab=look]').hidden }));
-    await page.click('[data-ptab=tools]'); await page.waitForSelector('.lmd-tl-card'); await sleep(150);
-    const back = await dimmed(page);
-    check('cambiar de pestaña lo cierra, y al volver a Herramientas no queda nada atenuado', tabbed.side && tabbed.look && !(await sideOf(page)).open && back.faint === 0 && back.inert === 0 && back.open === '' && (await page.evaluate(() => document.querySelectorAll('.lmd-tl-side').length)) === 1, [tabbed, back]);
-    await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-side[data-tool=daily] [data-dly=go]');
-    await page.click('[data-tsub=community]'); await sleep(150);
-    check('pasar a Comunidad también', !(await sideOf(page)).open);
-    await page.click('[data-tsub=tools]'); await sleep(150);
-    // El flotante de la tarjeta no sale con el panel abierto
-    await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-side[data-tool=daily] [data-dly=go]');
-    await page.mouse.move(4, 4); await sleep(40); await page.hover('.lmd-tl-card[data-tool=daily] .lmd-tl-main b'); await sleep(520);
-    const p1 = await page.evaluate(() => !!document.querySelector('.lmd-peek.lmd-on'));
-    const k = await middle(page, '.lmd-tl-card[data-tool=kanban] .lmd-tl-main b'); await page.mouse.move(k.x, k.y); await sleep(520);
-    check('con el panel abierto no aparece el flotante de ninguna tarjeta', !p1 && !(await page.evaluate(() => !!document.querySelector('.lmd-peek.lmd-on'))));
-    // Lo que redibuja las opciones lo hace dentro del panel, sin cerrarlo
+    const d1 = await sideOf(page); const dr = await rowOf(page, 'daily');
+    check('prender desde la fila una que tiene opciones la elige: se ven sus opciones, con el foco en la primera', d1.tool === 'daily' && d1.on && d1.area && d1.focus && !d1.turn && dr.current === 'true' && dr.on && !dr.inCard && (await calm(page)).current === 'daily', [d1, dr]);
+    check('y eso tampoco mueve ninguna fila', (await grid(page)) === g2);
+    await pickRow(page, 'speak'); await flip(page, 'daily');
+    const d2 = await sideOf(page);
+    check('apagarla desde la fila no cambia la elegida', d2.tool === 'speak' && !(await rowOf(page, 'daily')).on && (await stored(page, 'settings')).tools.daily === false, d2);
+    // El interruptor del detalle
+    await pickRow(page, 'daily');
+    const off = await sideOf(page);
+    await page.click('.lmd-tl-side .lmd-tl-side-head .lmd-switch'); await page.waitForSelector('.lmd-tl-side[data-tool=daily] [data-dly=go]'); await sleep(150);
+    const on = await sideOf(page);
+    check('el interruptor del detalle es el de la fila: prende, muestra las opciones y deja el foco donde estaba', !off.on && off.turn && !off.area && on.on && on.area && !on.turn && !on.focus && (await rowOf(page, 'daily')).on && (await page.evaluate(() => LMD.tools.isOn('daily'))), [off, on]);
     await page.selectOption('.lmd-tl-side [data-dly=where]', { index: 0 }).catch(() => {}); await sleep(250);
-    check('redibujar las opciones no cierra el panel', (await sideOf(page)).open && (await optsOf(page, 'daily')).area);
-    // El interruptor del panel apaga la herramienta y lo cierra
+    check('redibujar las opciones las deja en el detalle', (await sideOf(page)).area && (await sideOf(page)).tool === 'daily');
     await page.click('.lmd-tl-side .lmd-tl-side-head .lmd-switch'); await sleep(350);
-    const off = await optsOf(page, 'daily');
-    check('apagarla desde el panel lo cierra, saca el botón y deja el foco en el interruptor de la tarjeta', !off.shown && off.open === 'false' && !off.area && off.onSwitch && (await stored(page, 'settings')).tools.daily === false && !(await page.evaluate(() => LMD.tools.isOn('daily'))), off);
-    await flip(page, 'daily'); await page.waitForSelector('.lmd-tl-side[data-tool=daily] [data-dly=go]'); await flip(page, 'daily');
-    const off2 = await optsOf(page, 'daily');
-    check('y apagarla desde la tarjeta, también', !off2.shown && !off2.area && !(await sideOf(page)).open && (await dimmed(page)).faint === 0, off2);
-    // Una de la columna derecha: el panel la tapa, y su nombre queda arriba del panel
-    await flip(page, 'present'); await page.waitForSelector('.lmd-tl-side[data-tool=present] [data-pres=go]'); await sleep(150);
-    const pr = await sideOf(page);
-    check('una herramienta de la segunda columna abre el mismo panel, con su nombre arriba', pr.open && pr.name === 'Presentation mode' && pr.right && (await optsOf(page, 'present')).open === 'true', pr);
-    await page.keyboard.press('Escape'); await sleep(150); await flip(page, 'present');
-    // Una que no sirve sin configurar: el asistente abre con el foco en el proveedor y avisa que falta la clave
+    const off2 = await sideOf(page);
+    check('apagarla desde el detalle saca las opciones y el detalle sigue ahí', off2.open && off2.tool === 'daily' && !off2.on && !off2.area && off2.turn && !(await rowOf(page, 'daily')).on && (await stored(page, 'settings')).tools.daily === false, off2);
+    // Otra pestaña, Comunidad, y volver
+    await page.click('[data-tsub=community]'); await sleep(200);
+    const com = await sideOf(page);
+    check('en Comunidad no hay detalle y la zona de contenido vuelve a su ancho', !com.open && !com.split && await page.evaluate(() => { const b = document.querySelector('.lmd-panel-body').getBoundingClientRect(); const c = document.querySelector('.lmd-panel-card').getBoundingClientRect(); return Math.abs(b.right - c.right) <= 2; }), com);
+    await page.click('[data-tsub=tools]'); await sleep(200);
+    check('al volver a Herramientas el detalle sigue con la misma', (await sideOf(page)).beside && (await sideOf(page)).tool === 'daily');
+    await page.click('[data-ptab=look]'); await sleep(150);
+    const look = await page.evaluate(() => ({ side: [...document.querySelectorAll('.lmd-tl-side')].every((s) => s.hidden), split: document.querySelector('.lmd-panel-card').classList.contains('lmd-tl-split'), look: !document.querySelector('.lmd-panel-body > section[data-tab=look]').hidden, full: Math.abs(document.querySelector('.lmd-panel-body').getBoundingClientRect().right - document.querySelector('.lmd-panel-card').getBoundingClientRect().right) <= 2 }));
+    await page.click('[data-ptab=tools]'); await page.waitForSelector('.lmd-tl-card'); await sleep(200);
+    const again = await sideOf(page);
+    check('en otra pestaña de Ajustes el detalle no queda a la vista; al volver está, con la última que se miró', look.side && !look.split && look.look && look.full && again.beside && again.tool === 'daily' && (await calm(page)).current === 'daily' && (await page.evaluate(() => document.querySelectorAll('.lmd-tl-side').length)) === 1, [look, again]);
+    // Escape cierra los ajustes: ya no hay un panel que cerrar primero
+    await page.keyboard.press('Escape'); await sleep(200);
+    check('Escape cierra los ajustes de una', !(await settingsOpen(page)));
+    await toolsTab(page); await sleep(200);
+    check('y al abrirlos de nuevo en la misma sesión, la elegida es la misma', (await sideOf(page)).tool === 'daily');
+    // Una que no sirve sin configurar: el asistente pasa al detalle con el foco en el proveedor, y su fila avisa que falta la clave
     await flip(page, 'assistant'); await page.waitForSelector('.lmd-ai-set [data-ai=prov]'); await sleep(200);
-    const ai = await optsOf(page, 'assistant');
-    const need = await page.evaluate(() => { const n = document.querySelector('[data-tool=assistant] .lmd-tl-need'); return { text: n.hidden ? '' : n.textContent, tag: n.tagName, others: [...document.querySelectorAll('.lmd-tl-need:not([hidden])')].length }; });
-    check('el asistente se abre al prenderlo, con el foco en su primer control, y la tarjeta dice que falta la clave', ai.open === 'true' && ai.focus && ai.tag === 'SELECT' && need.text === 'Add your key' && need.tag === 'BUTTON' && need.others === 1, [ai, need]);
-    // Sus opciones no entran en el alto: se deslizan dentro del panel, y redibujarlas no pierde el lugar
-    const sc = await page.evaluate(async () => { const b = document.querySelector('.lmd-tl-side-body'); const tall = b.scrollHeight > b.clientHeight + 20; b.scrollTop = 60; const sel = document.querySelector('.lmd-tl-side [data-ai=prov]'); sel.selectedIndex = sel.selectedIndex === 1 ? 2 : 1; sel.dispatchEvent(new Event('change', { bubbles: true })); await new Promise((r) => setTimeout(r, 300)); return { tall, top: b.scrollTop, open: !document.querySelector('.lmd-tl-side').hidden, body: document.querySelector('.lmd-panel-body').scrollTop }; });
-    check('lo que no entra se desliza dentro del panel, y cambiar de proveedor redibuja sin cerrarlo ni perder el scroll', sc.tall && sc.top === 60 && sc.open, sc);
+    const ai = await sideOf(page); const air = await rowOf(page, 'assistant');
+    check('el asistente pasa al detalle al prenderlo, con el foco en su primer control, y su fila dice que falta la clave', ai.tool === 'assistant' && ai.focus && ai.tag === 'SELECT' && air.need === 'Add your key' && (await page.evaluate(() => document.querySelectorAll('.lmd-tl-need:not([hidden])').length)) === 1, [ai, air]);
+    await pickRow(page, 'kanban');
+    await page.click('.lmd-tl-card[data-tool=assistant] .lmd-tl-need'); await sleep(250);
+    const led = await sideOf(page);
+    check('el aviso de la fila lleva al detalle de esa herramienta, con el foco adentro', led.tool === 'assistant' && led.focus, led);
+    // Sus opciones no entran en el alto: se deslizan dentro del detalle, y redibujarlas no pierde el lugar
+    const sc = await page.evaluate(async () => { const b = document.querySelector('.lmd-tl-side-body'); const tall = b.scrollHeight > b.clientHeight + 20; b.scrollTop = 60; const sel = document.querySelector('.lmd-tl-side [data-ai=prov]'); sel.selectedIndex = sel.selectedIndex === 1 ? 2 : 1; sel.dispatchEvent(new Event('change', { bubbles: true })); await new Promise((r) => setTimeout(r, 300)); return { tall, top: b.scrollTop, body: document.querySelector('.lmd-panel-body').scrollTop }; });
+    check('lo que no entra se desliza dentro del detalle, sin mover la lista, y cambiar de proveedor redibuja sin perder el scroll', sc.tall && sc.top === 60, sc);
     check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
-    await page.keyboard.press('Escape'); await sleep(150);
     await flip(page, 'assistant');
-    check('apagado, el aviso se va', await page.evaluate(() => document.querySelector('[data-tool=assistant] .lmd-tl-need').hidden && document.querySelector('.lmd-tl-side').hidden));
+    check('apagado, el aviso se va y el detalle vuelve a pedir que se prenda', await page.evaluate(() => document.querySelector('.lmd-tl-card[data-tool=assistant] .lmd-tl-need').hidden && document.querySelector('.lmd-tl-card[data-tool=assistant] .lmd-tl-acts').hidden) && !!(await sideOf(page)).turn);
     check('y nada de esto es un error', R.errors.length === 0, R.errors);
     await ctx.close();
   });
 
-  await step('Tarjeta: con movimiento reducido el panel entra sin animación', async () => {
-    const { ctx, page } = await open({ ctx: { reducedMotion: 'reduce' }, tools: { daily: true } });
-    await goHome(page); await toolsTab(page);
-    const moving = await page.evaluate(() => getComputedStyle(document.querySelector('.lmd-tl-card')).transitionDuration);
-    await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-more');
-    const m = await page.evaluate(() => { const s = document.querySelector('.lmd-tl-side'); return { open: !s.hidden, anim: s.getAnimations().length, name: getComputedStyle(s).animationName }; });
-    check('ni el panel se anima ni las tarjetas se atenúan de a poco', m.open && m.anim === 0 && m.name === 'none' && /^0s/.test(moving), [m, moving]);
+  await step('Lista y detalle: a 720 de alto, con quince filas y en español', async () => {
+    const { ctx, page } = await open({ ctx: { viewport: { width: 1280, height: 720 } }, lang: 'es' });
+    await goHome(page); await toolsTab(page); await sleep(200);
+    const r720 = await reach(page); const s = await sideOf(page);
+    check('a 720 de alto las doce se alcanzan deslizando la lista, y el detalle sigue al costado', r720.bad.length === 0 && r720.scrolls && r720.side && s.beside, [r720, s]);
+    await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=agents]'); c.scrollIntoView({ block: 'nearest' }); c.querySelector('.lmd-tl-main').click(); }); await sleep(200);
+    const es = await sideOf(page);
+    check('en español, el detalle de la última', es.tool === 'agents' && es.name === 'Agentes' && es.turn === 'Prendela para configurarla.' && !es.wide, es);
+    // Tres herramientas más (quince filas): la lista las desliza y el detalle no se entera
+    await page.evaluate(() => { for (const k of ['uno', 'dos', 'tres']) LMD.tools.register({ id: 'extra-' + k, name: 'Herramienta de prueba ' + k, about: 'Una descripción larga para ver que la fila no crece ni empuja a las demás fuera de la lista.', defaultOn: false }); });
+    await page.click('[data-ptab=look]'); await page.click('[data-ptab=tools]'); await page.waitForSelector('.lmd-tl-card[data-tool=extra-tres]'); await sleep(200);
+    const r15 = await reach(page);
+    await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=extra-tres]'); c.scrollIntoView({ block: 'nearest' }); c.querySelector('.lmd-tl-main').click(); }); await sleep(200);
+    const s15 = await sideOf(page);
+    check('con quince filas todas se alcanzan, la última se elige y el detalle sigue en su lugar', (await calm(page)).n === 15 && r15.bad.length === 0 && r15.side && s15.beside && s15.tool === 'extra-tres' && !s15.turn && !s15.area, [r15, s15]);
     await ctx.close();
-    const lively = await open({ tools: { daily: true } });
+  });
+
+  await step('Lista y detalle: con movimiento reducido nada se anima', async () => {
+    const { ctx, page } = await open({ ctx: { reducedMotion: 'reduce', viewport: { width: 900, height: 700 } }, tools: { daily: true } });
+    await goHome(page); await toolsTab(page);
+    await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-main');
+    const m = await page.evaluate(() => { const s = document.querySelector('.lmd-tl-side'); return { open: !s.hidden, anim: s.getAnimations().length, name: getComputedStyle(s).animationName }; });
+    check('en angosto el detalle se abre sin animación', m.open && m.anim === 0 && m.name === 'none', m);
+    await ctx.close();
+    const lively = await open({ ctx: { viewport: { width: 900, height: 700 } }, tools: { daily: true } });
     await goHome(lively.page); await toolsTab(lively.page);
-    await lively.page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-more');
+    await lively.page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-main');
     check('sin esa preferencia, entra con una animación corta', await lively.page.evaluate(() => getComputedStyle(document.querySelector('.lmd-tl-side')).animationName === 'lmd-tl-side-in'));
     await lively.ctx.close();
+    const desk = await open({ tools: { daily: true } });
+    await goHome(desk.page); await toolsTab(desk.page); await pickRow(desk.page, 'daily');
+    check('en escritorio el detalle está siempre: no entra ni sale', await desk.page.evaluate(() => getComputedStyle(document.querySelector('.lmd-tl-side')).animationName === 'none'));
+    await desk.ctx.close();
   });
 
   await step('Tarjeta: el interruptor prendido toma el acento, en los doce temas y con un color propio', async () => {
@@ -827,165 +855,163 @@ await suite('card', async () => {
     await ctx.close();
   });
 
-  await step('Tarjeta: en el teléfono entra y la pestaña se desliza hasta la última', async () => {
+  await step('Lista y detalle: en el teléfono la lista ocupa todo y tocar una fila abre su detalle con Back', async () => {
     const { ctx, page } = await open({ ctx: SMALL });
     await goHome(page);
-    await page.evaluate(() => document.querySelector('[data-act=settings]').click()); await page.waitForSelector('.lmd-panel-card'); await page.tap('[data-ptab=tools]'); await page.waitForSelector('.lmd-tl-card');
-    await page.tap('.lmd-tl-card[data-tool=present] .lmd-switch'); await page.waitForSelector('.lmd-tl-side[data-tool=present] [data-pres=go]'); await sleep(250);
-    const ph = await sideOf(page);
-    check('en el teléfono las opciones tapan toda la zona de contenido, con Back en vez de la cruz, y no se salen de costado', ph.open && ph.whole && ph.right && ph.back && !ph.x && ph.backText === 'Back' && ph.name === 'Presentation mode' && ph.on && !ph.wide && (await page.evaluate(() => document.querySelector('[data-tools-pane]').inert && document.documentElement.scrollWidth <= innerWidth)), ph);
-    await page.tap('.lmd-tl-side .lmd-tl-back'); await sleep(200);
-    check('Back las cierra y el foco vuelve a Configure', !(await sideOf(page)).open && (await optsOf(page, 'present')).onBtn && !(await page.evaluate(() => document.querySelector('[data-tools-pane]').inert)));
-    // Con la herramienta ya prendida, abrir y cerrar no mueve la lista de atrás
+    await page.evaluate(() => document.querySelector('[data-act=settings]').click()); await page.waitForSelector('.lmd-panel-card'); await page.tap('[data-ptab=tools]'); await page.waitForSelector('.lmd-tl-card'); await sleep(200);
+    const s0 = await sideOf(page);
+    check('al entrar se ve la lista sola, a todo el ancho', !s0.open && !s0.split && !s0.inertAll && await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card').getBoundingClientRect(); return c.width > innerWidth - 40; }), s0);
+    const m = await page.evaluate(() => { const body = document.querySelector('.lmd-panel-body'); const cards = [...document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card')];
+      const wide = cards.filter((c) => { const r = c.getBoundingClientRect(); return r.left < 0 || r.right > innerWidth + 0.5; }).length; const cut = cards.filter((c) => c.scrollWidth > c.clientWidth + 1).length;
+      const low = Math.min(...cards.map((c) => c.querySelector('.lmd-tl-main').getBoundingClientRect().height)); const go = cards.every((c) => !!c.querySelector('.lmd-tl-main b svg') && getComputedStyle(c.querySelector('.lmd-tl-main b svg')).display !== 'none');
+      return { n: cards.length, wide, cut, low: Math.round(low), go }; });
+    const r = await reach(page);
+    check('las doce filas entran en el ancho, nada se corta de costado, cada una muestra que se puede abrir, y deslizando se llega a la última', m.n === 12 && m.wide === 0 && m.cut === 0 && m.low >= 36 && m.go && r.bad.length === 0 && r.scrolls && r.side, [m, r]);
+    // El interruptor de la fila anda sin entrar al detalle
+    await page.tap('.lmd-tl-card[data-tool=kanban] .lmd-switch'); await sleep(300);
+    const k = await sideOf(page);
+    await page.tap('.lmd-tl-card[data-tool=kanban] .lmd-switch'); await sleep(300);
+    check('el interruptor de una fila la apaga y la prende sin abrir nada', !k.open && (await stored(page, 'settings')).tools.kanban === true && !(await sideOf(page)).open, k);
+    // Tocar la fila abre el detalle encima, y Back vuelve
     await page.evaluate(() => { document.querySelector('.lmd-panel-body').scrollTop = 40; }); await sleep(80);
-    const pg0 = await grid(page);
-    await page.tap('.lmd-tl-card[data-tool=present] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-side[data-tool=present] [data-pres=go]'); await sleep(200);
-    const pg1 = await grid(page);
+    const g0 = await grid(page);
+    await page.tap('.lmd-tl-card[data-tool=present] .lmd-tl-main'); await sleep(300);
+    const ph = await sideOf(page); const g1 = await grid(page);
+    check('tocar una fila abre su detalle sobre toda la zona de contenido, con Back, su descripción y su ilustración, sin salirse de costado', ph.open && ph.whole && ph.back && ph.backText === 'Back' && ph.name === 'Presentation mode' && !ph.on && ph.turn && ph.scene === 'lmd-pk-present' && !ph.wide && ph.inertAll && ph.inside && (await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)), ph);
     await page.tap('.lmd-tl-side .lmd-tl-back'); await sleep(200);
-    check('abrir y cerrar no mueve la lista de atrás ni su scroll', pg1 === pg0 && (await grid(page)) === pg0 && JSON.parse(pg0).top === 40, [pg0, pg1]);
+    check('Back lo cierra y el foco vuelve a la fila; la lista de atrás no se movió', !(await sideOf(page)).open && (await rowOf(page, 'present')).onPick && !(await sideOf(page)).inertAll && g1 === g0 && (await grid(page)) === g0 && JSON.parse(g0).top === 40, [g0, g1]);
+    // Prender una que tiene opciones lleva a ellas
     await page.evaluate(() => { document.querySelector('.lmd-panel-body').scrollTop = 0; });
-    const m = await page.evaluate(() => { const body = document.querySelector('.lmd-panel-body'); const cards = [...document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card')]; const b = document.querySelector('.lmd-tl-card[data-tool=present] .lmd-tl-more').getBoundingClientRect();
-      const wide = cards.filter((c) => { const r = c.getBoundingClientRect(); return r.left < 0 || r.right > innerWidth + 0.5; }).length;
-      cards[cards.length - 1].scrollIntoView({ block: 'end' }); const moved = body.scrollTop > 0; const last = cards[cards.length - 1].getBoundingClientRect(); const box = body.getBoundingClientRect();
-      const cut = cards.filter((c) => c.scrollWidth > c.clientWidth + 1).length;
-      return { n: cards.length, wide, cut, side: body.scrollWidth <= body.clientWidth + 1, scrolls: moved && body.scrollHeight > body.clientHeight, lastIn: last.top >= box.top - 1 && last.bottom <= box.bottom + 1, btn: Math.round(b.height) }; });
-    check('las doce tarjetas entran en el ancho, nada se corta de costado, y deslizando se llega a la última', m.n === 12 && m.wide === 0 && m.cut === 0 && m.side && m.scrolls && m.lastIn && m.btn >= 36, m);
-    // Con el teclado en pantalla, el campo que se escribe queda a la vista dentro del panel
-    await page.evaluate(() => document.querySelector('.lmd-panel-body').scrollTo(0, 0));
+    await page.tap('.lmd-tl-card[data-tool=present] .lmd-switch'); await page.waitForSelector('.lmd-tl-side[data-tool=present] [data-pres=go]'); await sleep(250);
+    const on = await sideOf(page);
+    check('prender una herramienta con opciones abre su detalle con las opciones', on.open && on.whole && on.on && on.area && !on.turn, on);
+    await page.tap('.lmd-tl-side .lmd-tl-back'); await sleep(200);
+    // Con el teclado en pantalla, el campo que se escribe queda a la vista dentro del detalle
     await page.tap('.lmd-tl-card[data-tool=assistant] .lmd-switch'); await page.waitForSelector('.lmd-tl-side[data-tool=assistant] [data-ai=own]'); await sleep(250);
     const kb = await page.evaluate(async () => {
       const vv = window.visualViewport; const tall = window.innerHeight; const field = document.querySelector('.lmd-tl-side [data-ai=own]'); const side = document.querySelector('.lmd-tl-side');
       document.querySelector('.lmd-tl-side-body').scrollTop = 0; field.focus({ preventScroll: true });
       const hiddenBefore = field.getBoundingClientRect().bottom > tall - 320;
       Object.defineProperty(vv, 'height', { configurable: true, get: () => tall - 320 });
-      vv.dispatchEvent(new Event('resize')); await new Promise((r) => setTimeout(r, 250));
-      const r = field.getBoundingClientRect(); const s = side.getBoundingClientRect(); const head = side.querySelector('.lmd-tl-side-head').getBoundingClientRect();
-      const out = { hiddenBefore, kb: getComputedStyle(document.documentElement).getPropertyValue('--lmd-kb').trim(), limit: tall - 320, fieldTop: Math.round(r.top), fieldBottom: Math.round(r.bottom), sideBottom: Math.round(s.bottom), headBottom: Math.round(head.bottom), focus: document.activeElement === field };
+      vv.dispatchEvent(new Event('resize')); await new Promise((r2) => setTimeout(r2, 250));
+      const fr = field.getBoundingClientRect(); const s = side.getBoundingClientRect(); const head = side.querySelector('.lmd-tl-side-head').getBoundingClientRect();
+      const out = { hiddenBefore, kb: getComputedStyle(document.documentElement).getPropertyValue('--lmd-kb').trim(), limit: tall - 320, fieldTop: Math.round(fr.top), fieldBottom: Math.round(fr.bottom), sideBottom: Math.round(s.bottom), headBottom: Math.round(head.bottom), focus: document.activeElement === field };
       delete vv.height; vv.dispatchEvent(new Event('resize')); await new Promise((r2) => setTimeout(r2, 120));
       return out;
     });
-    check('con el teclado abierto el panel termina arriba del teclado y el campo con el foco queda a la vista', kb.hiddenBefore && kb.kb === '320px' && kb.sideBottom <= kb.limit + 1 && kb.fieldBottom <= kb.limit + 1 && kb.fieldTop >= kb.headBottom - 1 && kb.focus, kb);
+    check('con el teclado abierto el detalle termina arriba del teclado y el campo con el foco queda a la vista', kb.hiddenBefore && kb.kb === '320px' && kb.sideBottom <= kb.limit + 1 && kb.fieldBottom <= kb.limit + 1 && kb.fieldTop >= kb.headBottom - 1 && kb.focus, kb);
     check('y nada de esto es un error', R.errors.length === 0, R.errors);
     await ctx.close();
   });
 
-  await step('Tarjeta: en una ventana angosta el panel tapa la pestaña y lo de atrás queda inerte', async () => {
+  await step('Lista y detalle: en una ventana angosta el detalle se abre encima y lo de atrás queda inerte', async () => {
     const { ctx, page } = await open({ ctx: { viewport: { width: 900, height: 700 } }, tools: { daily: true, linkmap: true } });
-    await goHome(page); await toolsTab(page);
-    const g0 = await grid(page);
-    await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-side[data-tool=daily] [data-dly=go]'); await sleep(250);
+    await goHome(page); await toolsTab(page); await sleep(200);
+    const g0 = await grid(page); const s0 = await sideOf(page);
+    await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-main'); await page.waitForSelector('.lmd-tl-side[data-tool=daily] [data-dly=go]'); await sleep(250);
     const s = await sideOf(page); const g1 = await grid(page);
-    check('a 900 de ancho no hay lugar al costado: el panel ocupa toda la zona de contenido, con Back, y la grilla de atrás no se mueve', s.open && s.whole && s.back && !s.x && g1 === g0, [s, g0, g1]);
+    check('a 900 de ancho no hay lugar al costado: la lista sola, y al elegir una fila su detalle ocupa toda la zona de contenido, con Back, sin mover la lista', !s0.open && !s0.split && s.open && s.whole && s.back && s.inertAll && g1 === g0, [s0, s]);
     const seen = [];
     for (let i = 0; i < 30; i++) { await page.keyboard.press('Tab'); seen.push(await page.evaluate(() => { const a = document.activeElement; return a.closest('.lmd-tl-side') ? 'side' : a.closest('[data-tools-pane]') ? 'behind' : a.closest('.lmd-panel') ? 'settings' : 'out'; })); }
     check('Tab no llega a lo que quedó tapado', seen.includes('side') && seen.every((x) => x === 'side' || x === 'settings'), seen.join(' '));
     await page.keyboard.press('Escape'); await sleep(150);
-    check('Escape lo cierra, con los ajustes abiertos y el foco en Configure', !(await sideOf(page)).open && (await optsOf(page, 'daily')).onBtn && await settingsOpen(page) && (await grid(page)) === g0);
-    // Al ensanchar la ventana con el panel abierto pasa al costado, y las tarjetas vuelven a poder tocarse
-    await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-side[data-tool=daily] [data-dly=go]');
+    check('ahí Escape vuelve a la lista, con los ajustes abiertos y el foco en la fila', !(await sideOf(page)).open && (await rowOf(page, 'daily')).onPick && await settingsOpen(page) && (await grid(page)) === g0);
+    await page.keyboard.press('Escape'); await sleep(200);
+    check('y otro Escape cierra los ajustes', !(await settingsOpen(page)));
+    await toolsTab(page); await sleep(150);
+    // Al ensanchar la ventana con el detalle abierto pasa al costado; al angostarla de nuevo, queda la lista
+    await page.click('.lmd-tl-card[data-tool=daily] .lmd-tl-main'); await page.waitForSelector('.lmd-tl-side[data-tool=daily] [data-dly=go]');
     await page.setViewportSize({ width: 1280, height: 800 }); await sleep(300);
     const wide = await sideOf(page);
-    check('si la ventana se ensancha con el panel abierto, pasa al costado y lo de atrás deja de estar inerte entero', wide.open && wide.half && wide.x && !wide.back && !(await page.evaluate(() => document.querySelector('[data-tools-pane]').inert)) && (await dimmed(page)).inert === 11, wide);
+    check('si la ventana se ensancha, el detalle pasa al costado y la lista vuelve a poder usarse', wide.open && wide.beside && wide.split && !wide.back && !wide.inertAll && (await calm(page)).inert === 0, wide);
+    await page.setViewportSize({ width: 900, height: 700 }); await sleep(300);
+    const back = await sideOf(page);
+    check('y si se angosta de nuevo, queda la lista', !back.open && !back.split && !back.inertAll, back);
     await ctx.close();
   });
 });
 
-// ---------- La vista flotante de cada tarjeta ----------
+// ---------- La ilustración de cada herramienta, dentro de su detalle ----------
 await suite('peek', async () => {
   const IDS = ['speak', 'dictate', 'kanban', 'present', 'daily', 'docx', 'linkmap', 'explore', 'jsonyaml', 'import', 'assistant', 'agents'];
-  const over = async (page, id) => { await page.mouse.move(4, 4); await sleep(40); await page.hover('.lmd-tl-card[data-tool=' + id + '] .lmd-tl-main b'); };
-  // Lo que se ve del flotante, y dónde quedó respecto de la tarjeta.
-  const peek = (page, id) => page.evaluate((t) => {
-    const p = document.querySelector('.lmd-peek'); if (!p) return { on: false, made: false };
-    const cs = getComputedStyle(p); const r = p.getBoundingClientRect(); const c = document.querySelector('.lmd-tl-card[data-tool=' + t + ']').getBoundingClientRect();
+  const choose = async (page, id) => { await page.evaluate((t) => document.querySelector('.lmd-tl-card[data-tool=' + t + '] .lmd-tl-main').click(), id); await sleep(120); };
+  const peek = (page) => page.evaluate(() => {
+    const all = document.querySelectorAll('.lmd-peek'); const p = all[0]; if (!p) return { n: 0 };
+    const cs = getComputedStyle(p); const r = p.getBoundingClientRect(); const sb = document.querySelector('.lmd-tl-side-body'); const b = sb.getBoundingClientRect();
     const scene = p.firstElementChild; const hot = p.querySelector('.mv, .t, .n3, .sp, .pl, .mc, .to, .on');
-    return { made: true, on: p.classList.contains('lmd-on') && cs.visibility === 'visible' && cs.opacity === '1', scene: scene ? scene.className.replace('lmd-pk ', '') : '', n: p.children.length,
-      size: Math.round(r.width) + 'x' + Math.round(r.height), inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
-      clear: r.top >= c.bottom || r.bottom <= c.top, hidden: p.getAttribute('aria-hidden'), events: cs.pointerEvents, parent: p.parentNode === document.body,
-      tab: p.querySelectorAll('a, button, input, select, textarea, [tabindex]').length, focus: p.contains(document.activeElement),
-      bg: cs.backgroundColor, hot: hot ? getComputedStyle(hot).borderTopColor + ' ' + getComputedStyle(hot).backgroundColor : '', moving: p.getAnimations({ subtree: true }).length };
-  }, id);
+    return { n: all.length, on: !p.hidden && cs.visibility === 'visible' && cs.opacity === '1' && r.width > 0, scene: scene ? scene.className.replace('lmd-pk ', '') : '', kids: p.children.length,
+      size: Math.round(r.width) + 'x' + Math.round(r.height), inDetail: p.parentNode === sb && r.left >= b.left && r.right <= b.right, flow: cs.position, hidden: p.getAttribute('aria-hidden'), events: cs.pointerEvents,
+      tab: p.querySelectorAll('a, button, input, select, textarea, [tabindex]').length, bg: cs.backgroundColor, hot: hot ? getComputedStyle(hot).borderTopColor + ' ' + getComputedStyle(hot).backgroundColor : '', moving: p.getAnimations({ subtree: true }).length,
+      after: !!p.previousElementSibling && p.previousElementSibling.matches('p'), before: (p.compareDocumentPosition(sb.querySelector('.lmd-tl-opts')) & Node.DOCUMENT_POSITION_FOLLOWING) > 0 };
+  });
   const rgb = (page, name) => page.evaluate((n) => { const i = document.createElement('i'); i.style.color = 'var(' + n + ')'; document.body.appendChild(i); const c = getComputedStyle(i).color; i.remove(); return c; }, name);
 
-  await step('Flotante: sale al pasar el cursor, una escena por herramienta, sin tapar la tarjeta', async () => {
+  await step('Ilustración: una escena por herramienta, dentro del detalle', async () => {
     const { ctx, page } = await open();
-    await goHome(page); await toolsTab(page);
-    check('antes de pasar el cursor no hay nada', !(await peek(page, 'kanban')).made);
-    await over(page, 'kanban'); await sleep(120);
-    check('no sale de inmediato: espera un momento', !(await peek(page, 'kanban')).on);
-    await sleep(500);
-    const k = await peek(page, 'kanban');
-    check('pasado ese momento aparece, de 232 por 146, entero en la ventana', k.on && k.scene === 'lmd-pk-board' && k.n === 1 && k.size === '232x146' && k.inside && k.parent, k);
-    check('queda fuera de la tarjeta: no tapa el interruptor ni el botón', k.clear, k);
-    check('no recibe el cursor ni el foco, y los lectores de pantalla no lo leen', k.events === 'none' && k.hidden === 'true' && k.tab === 0 && !k.focus, k);
-    check('se mueve', k.moving > 0, k.moving);
+    await goHome(page); await toolsTab(page); await sleep(200);
+    const k0 = await peek(page);
+    check('la de la herramienta elegida está en el detalle desde el arranque: de 232 por 146, entre la descripción y las opciones', k0.n === 1 && k0.on && k0.scene === 'lmd-pk-speak' && k0.kids === 1 && k0.size === '232x146' && k0.inDetail && k0.flow === 'static' && k0.after && k0.before, k0);
+    check('no recibe el cursor ni el foco, y los lectores de pantalla no la leen', k0.events === 'none' && k0.hidden === 'true' && k0.tab === 0, k0);
+    check('se mueve', k0.moving > 0, k0.moving);
     const seen = []; const bad = [];
-    for (const id of IDS) { await over(page, id); await sleep(480); const r = await peek(page, id); seen.push(r.scene); if (!r.on || !r.clear || !r.inside || !r.scene) bad.push([id, r]); }
-    check('las doce herramientas tienen la suya, y ninguna tapa su tarjeta ni se sale de la ventana', bad.length === 0 && seen.length === 12, bad.length ? bad : seen);
+    for (const id of IDS) { await choose(page, id); const r = await peek(page); seen.push(r.scene); if (!r.on || !r.inDetail || !r.scene || r.n !== 1) bad.push([id, r]); }
+    check('las doce herramientas tienen la suya', bad.length === 0 && seen.length === 12, bad.length ? bad : seen);
     check('cada una dibuja lo suyo (exportar e importar comparten el dibujo de un formato a otro)', new Set(seen).size === 11 && seen[5] === seen[9], seen);
-    check('las tarjetas son las doce de la lista', J(await page.evaluate(() => [...document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card')].map((c) => c.dataset.tool))) === J(IDS));
-    await page.mouse.move(4, 4); await sleep(250);
-    check('al sacar el cursor se va', !(await peek(page, 'kanban')).on);
-    await over(page, 'daily'); await sleep(480);
-    await page.evaluate(() => document.querySelector('.lmd-panel-body').dispatchEvent(new Event('scroll'))); await sleep(250);
-    check('al deslizar la lista se va', !(await peek(page, 'daily')).on);
-    // Con las opciones abiertas la tarjeta ya se está usando
-    await page.evaluate(() => document.querySelector('.lmd-panel-body').scrollTo(0, 0)); await sleep(100);
+    check('las filas son las doce de la lista', J(await page.evaluate(() => [...document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card')].map((c) => c.dataset.tool))) === J(IDS));
+    // Ya no hay flotante: pasar el cursor por una fila no hace aparecer nada
+    await page.mouse.move(4, 4); await page.hover('.lmd-tl-card[data-tool=kanban] .lmd-tl-main b'); await sleep(600);
+    const hov = await page.evaluate(() => ({ n: document.querySelectorAll('.lmd-peek').length, floating: [...document.body.children].filter((x) => x.classList.contains('lmd-peek')).length, tool: document.querySelector('.lmd-tl-side').dataset.tool }));
+    check('pasar el cursor por una fila no saca ningún flotante ni cambia el detalle', hov.n === 1 && hov.floating === 0 && hov.tool === 'agents', hov);
+    // Con opciones: la ilustración queda arriba y las opciones debajo
     await flip(page, 'daily'); await page.waitForSelector('.lmd-tl-side[data-tool=daily] [data-dly=go]');
-    await over(page, 'daily'); await sleep(520);
-    check('con sus opciones abiertas no aparece', !(await peek(page, 'daily')).on);
+    const d = await peek(page);
+    check('con la herramienta prendida sigue ahí, arriba de sus opciones', d.on && d.scene === 'lmd-pk-daily' && d.before && await page.evaluate(() => document.querySelector('.lmd-tl-side .lmd-peek').getBoundingClientRect().bottom <= document.querySelector('.lmd-tl-side .lmd-tl-opts').getBoundingClientRect().top), d);
     await flip(page, 'daily');
     check('y nada de esto es un error', R.errors.length === 0, R.errors);
     await ctx.close();
   });
 
-  await step('Flotante: con el teclado, con los colores del tema y sin movimiento', async () => {
+  await step('Ilustración: con los colores del tema, sin movimiento y en el teléfono', async () => {
     const { ctx, page } = await open();
-    await goHome(page); await toolsTab(page);
-    await page.focus('.lmd-tl-card[data-tool=speak] input'); await page.keyboard.press('Tab'); await sleep(520);
-    const at = await page.evaluate(() => { const c = document.activeElement.closest('.lmd-tl-card'); return c ? c.dataset.tool : ''; });
-    const f = await peek(page, at || 'speak');
-    check('al llegar a una tarjeta con Tab aparece la suya, y el foco sigue en el interruptor', !!at && f.on && f.scene && f.clear && !f.focus && (await page.evaluate(() => document.activeElement.tagName)) === 'INPUT', [at, f]);
-    await page.keyboard.press('Escape'); await sleep(250);
-    check('Escape la saca', !(await peek(page, at || 'speak')).on);
-    // Los colores salen de las variables del tema: cambian con el tema y con el acento propio
-    await toolsTab(page).catch(() => {});
+    await goHome(page); await toolsTab(page); await sleep(200);
     await page.addStyleTag({ content: '*, *::before, *::after { transition: none !important; }' });
+    await choose(page, 'kanban');
     const bad = [];
     const sets = (await page.evaluate(() => LMD.theme.PRESETS.map((x) => ({ preset: x.id, theme: x.dark ? 'dark' : 'light' })))).concat([{ preset: '', theme: 'light', supporter: true, accent: '#e11d48' }, { preset: '', theme: 'dark', supporter: true, accent: '#0ea5e9' }]);
+    const marks = [];
     for (const s of sets) {
-      await page.evaluate((x) => LMD.theme.apply(document.documentElement, x), s);
-      await over(page, 'kanban'); await sleep(450);
-      const r = await peek(page, 'kanban'); const bg = await rgb(page, '--bg'); const fill = await rgb(page, '--accent-fill');
+      await page.evaluate((x) => LMD.theme.apply(document.documentElement, x), s); await sleep(60);
+      const r = await peek(page); const bg = await rgb(page, '--bg'); const fill = await rgb(page, '--accent-fill');
       if (!r.on || r.bg !== bg || r.hot.split(') ')[0] + ')' !== fill || bg === fill) bad.push([s, r.bg, bg, r.hot, fill]);
+      // La fila elegida: su borde es el acento, y el nombre se sigue leyendo sobre su fondo
+      const row = await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card.lmd-tl-now'); const cs = getComputedStyle(c); const b = getComputedStyle(c.querySelector('.lmd-tl-main b')).color; const i = document.createElement('i'); i.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;background:' + cs.backgroundColor; const under = getComputedStyle(document.querySelector('.lmd-panel-card')).backgroundColor;
+        const px = (c2) => c2.match(/[\d.]+/g).map(Number); const over = (top, base) => { const t = px(top); const a = t.length > 3 ? t[3] : 1; const u = px(base); return [0, 1, 2].map((k) => t[k] * a + u[k] * (1 - a)); };
+        const lum = (m) => { const ch = m.slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2]; };
+        const bgc = over(cs.backgroundColor, under); const x = lum(px(b)); const y = lum(bgc); return { edge: cs.borderTopColor, text: +((Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)).toFixed(2) }; });
+      marks.push(row.text); if (row.edge !== fill || row.text < 4.5) bad.push([s, 'fila', row, fill]);
     }
-    check('en los doce temas y con un acento propio, el fondo es el del tema y el acento el elegido', bad.length === 0 && sets.length === 14, bad);
+    check('en los doce temas y con un acento propio: la escena con el fondo del tema y su acento, y la fila elegida con el borde del acento y el nombre legible', bad.length === 0 && sets.length === 14, bad.length ? bad : marks);
     await ctx.close();
     const still = await open({ ctx: { reducedMotion: 'reduce' } });
-    await goHome(still.page); await toolsTab(still.page);
+    await goHome(still.page); await toolsTab(still.page); await sleep(200);
     const quiet = [];
-    for (const id of IDS) { await over(still.page, id); await sleep(450); const r = await peek(still.page, id); if (!r.on || r.moving) quiet.push([id, r.on, r.moving]); }
-    check('con movimiento reducido aparecen las doce, quietas', quiet.length === 0, quiet);
+    for (const id of IDS) { await choose(still.page, id); const r = await peek(still.page); if (!r.on || r.moving) quiet.push([id, r.on, r.moving]); }
+    check('con movimiento reducido están las doce, quietas', quiet.length === 0, quiet);
     const vis = await still.page.evaluate(() => [...document.querySelectorAll('.lmd-peek .l, .lmd-peek .to')].filter((n) => getComputedStyle(n).opacity === '0' || n.getBoundingClientRect().width < 1).length);
     check('y quieta, la escena queda dibujada entera', vis === 0, vis);
     await still.ctx.close();
-  });
-
-  await step('Flotante: en el teléfono no hay', async () => {
-    const { ctx, page } = await open({ ctx: SMALL });
-    await goHome(page);
-    await page.evaluate(() => document.querySelector('[data-act=settings]').click()); await page.waitForSelector('.lmd-panel-card'); await page.tap('[data-ptab=tools]'); await page.waitForSelector('.lmd-tl-card');
-    const before = await page.evaluate(() => Math.round(document.querySelector('.lmd-tl-card[data-tool=kanban]').getBoundingClientRect().height));
-    await page.tap('.lmd-tl-card[data-tool=kanban] .lmd-tl-main b'); await sleep(600);
-    const m = await page.evaluate(() => ({ peek: !!document.querySelector('.lmd-peek'), h: Math.round(document.querySelector('.lmd-tl-card[data-tool=kanban]').getBoundingClientRect().height), side: document.documentElement.scrollWidth <= innerWidth && document.querySelector('.lmd-panel-body').scrollWidth <= document.querySelector('.lmd-panel-body').clientWidth + 1 }));
-    check('tocar una tarjeta no abre nada, no la agranda y no suma scroll de costado', !m.peek && m.h === before && m.side, [m, before]);
-    await ctx.close();
+    const small = await open({ ctx: SMALL });
+    await goHome(small.page);
+    await small.page.evaluate(() => document.querySelector('[data-act=settings]').click()); await small.page.waitForSelector('.lmd-panel-card'); await small.page.tap('[data-ptab=tools]'); await small.page.waitForSelector('.lmd-tl-card');
+    const before = await small.page.evaluate(() => Math.round(document.querySelector('.lmd-tl-card[data-tool=kanban]').getBoundingClientRect().height));
+    await small.page.tap('.lmd-tl-card[data-tool=kanban] .lmd-tl-main'); await sleep(400);
+    const m = await peek(small.page);
+    const fits = await small.page.evaluate(() => ({ h: Math.round(document.querySelector('.lmd-tl-card[data-tool=kanban]').getBoundingClientRect().height), side: document.documentElement.scrollWidth <= innerWidth, floating: [...document.body.children].filter((x) => x.classList.contains('lmd-peek')).length }));
+    check('en el teléfono la ilustración va en el detalle que se abre al tocar la fila, sin agrandar la fila ni sumar scroll de costado', m.on && m.scene === 'lmd-pk-board' && m.inDetail && m.size === '232x146' && fits.h === before && fits.side && fits.floating === 0, [m, fits, before]);
+    await small.ctx.close();
   });
 });
 
-// ---------- Agentes ----------
-// Un cliente MCP de mentira anota agentes contra el servidor local y la app los tiene que mostrar sin recargar.
-// Los tiempos del servidor van acelerados (ver el rig, arriba): sin señal a los 6 s, terminado queda 5 s a la vista.
 await suite('agents', async () => {
   const tool = async (tok, name, args) => { const r = await R.api('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args || {} } }, tok); const c = r.json.result; let v = null; try { v = JSON.parse(c.content[0].text); } catch (e) { /* texto */ } return { v, text: c.content[0].text, err: !!c.isError }; };
   const tokenOf = async (who) => (await R.api('POST', '/tokens', { name: 'Claude' }, who.s)).json.token;
@@ -1092,11 +1118,11 @@ await suite('agents', async () => {
     check('al abrirla vuelve a pedir la lista', hits.length > n0 && (await state(page)).polling === true);
 
     await toolsTab(page);
-    await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=agents] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-side[data-tool=agents] [data-ag-set=show]');
-    const opts = await page.evaluate(() => { const s = document.querySelector('.lmd-tl-side'); return { plan: s.querySelector('[data-ag-set=plan]').textContent, count: s.querySelector('[data-ag-set=count]').textContent, why: (document.querySelector('[data-tool=agents] .lmd-tl-main .lmd-tl-why') || {}).textContent || '', need: document.querySelector('[data-tool=agents] .lmd-tl-need').hidden }; });
+    await page.evaluate((q) => document.querySelector(q).click(), '.lmd-tl-card[data-tool=agents] .lmd-tl-main'); await page.waitForSelector('.lmd-tl-side[data-tool=agents] [data-ag-set=show]');
+    const opts = await page.evaluate(() => { const s = document.querySelector('.lmd-tl-side'); return { plan: s.querySelector('[data-ag-set=plan]').textContent, count: s.querySelector('[data-ag-set=count]').textContent, why: (document.querySelector('.lmd-tl-card[data-tool=agents] > .lmd-tl-why') || {}).textContent || '', need: document.querySelector('[data-tool=agents] .lmd-tl-need').hidden }; });
     check('las opciones dicen el plan con los números del servidor y cuántos hay; con cuenta, la tarjeta no avisa nada', opts.plan === 'Paid plan: no limit on agents, with the history of the last 24 hours.' && opts.count === '2 active agents' && opts.why === '' && opts.need, opts);
     check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0 && await page.evaluate(() => !/[!¡—–]/.test(document.querySelector('.lmd-ag').textContent)), await texts(page));
-    // Con el panel de opciones abierto, la tarjeta puede quedar debajo de él (columna derecha): se apaga con el interruptor del panel.
+    // Se apaga con el interruptor del detalle.
     await page.click('.lmd-tl-side[data-tool=agents] .lmd-switch'); await sleep(350); await closePanel(page);
     const n1 = hits.length; await sleep(1200);
     check('apagarla saca la sección y las marcas del tablero, y deja de pedir', await page.evaluate(() => !document.querySelector('.lmd-ag') && !document.querySelector('.lmd-ag-live')) && hits.length === n1);

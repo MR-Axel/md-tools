@@ -104,7 +104,7 @@
   }
   const openOptions = () => {
     core.openPanel('tools');
-    setTimeout(() => { const b = core.ui.panel.querySelector('[data-tool-opts=assistant]'); if (b && !b.hidden && b.getAttribute('aria-expanded') !== 'true') b.click(); if (b) b.scrollIntoView({ block: 'center' }); }, 60);
+    setTimeout(() => LMD.tools.show('assistant'), 60);
   };
   // Antes de armar un pedido: que haya una conexión cargada.
   async function ready() {

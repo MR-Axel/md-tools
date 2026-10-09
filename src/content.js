@@ -248,8 +248,9 @@
 
   // ---------- Markdown ----------
 
-  function postProcess(article, off) {
-    const p = settings.plugins;
+  // off: fuera de la página (drawOff). 'sample': un ejemplo de Ajustes > Plugins, con su propia lista de plugins (plug).
+  function postProcess(article, off, plug) {
+    const p = plug || settings.plugins;
 
     // Títulos: id. El enlace a la sección se copia desde el menú del título (clic derecho o la manija del bloque).
     const used = new Set();
@@ -324,13 +325,13 @@
       const wrap = el('div', { class: 'lmd-code' });
       preEl.replaceWith(wrap); wrap.appendChild(preEl);
       if (lang) wrap.appendChild(el('span', { class: 'lmd-code-lang', text: lang }));
-      if (p.copyCode && !off) {
+      if (p.copyCode && (!off || off === 'sample')) {
         const btn = el('button', { class: 'lmd-code-copy', type: 'button', title: T('Copiar') }, ICON.copy);
         btn.addEventListener('click', () => copyText(code.textContent, btn));
         wrap.appendChild(btn);
       }
     });
-    if (plainCode.length) paintCode(plainCode);
+    if (plainCode.length && off !== 'sample') paintCode(plainCode); // un ejemplo no pide la librería por su cuenta
 
     // Links externos en pestaña nueva
     article.querySelectorAll('a[href]').forEach((a) => {
@@ -622,7 +623,7 @@
   }
 
   let mermaidSeq = 0;
-  async function renderMermaid(article, light) {
+  async function renderMermaid(article, light, quiet) {
     const nodes = Array.from(article.querySelectorAll('pre.lmd-mermaid'));
     if (!nodes.length) return;
     if (!(await ensure('mermaid')) || !window.mermaid) return;
@@ -639,7 +640,7 @@
         if (n.hasAttribute('data-l')) box.setAttribute('data-l', n.getAttribute('data-l'));
         n.replaceWith(box);
         // Dibujado en la nota: lo sabe quien le suma algo encima (explore.js).
-        if (!light) core.hooks.diagram.forEach((fn) => fn(box));
+        if (!light && !quiet) core.hooks.diagram.forEach((fn) => fn(box));
       } catch (e) {
         // El aviso corto arriba del código, y el volcado del parser detrás de "Ver detalle".
         LMD.diagram.fail(n, 'mermaid', e);
@@ -701,6 +702,123 @@
     postProcess(box, true);
     await renderMath(box); await renderMermaid(box, true); await renderGraphviz(box);
     return { box, rows: fm.rows || [] };
+  }
+
+  // ---------- Ajustes > Plugins: la lista y el ejemplo de cada uno ----------
+  // Un fragmento suelto dibujado con otra lista de plugins, por el mismo camino que la nota: el parser, el saneado y
+  // los retoques. No toca la nota abierta ni los ajustes guardados. Las fórmulas y los diagramas quedan como se
+  // escribieron: los resuelve sampleFull, que es quien pide las librerías pesadas.
+  function sample(text, plugins) {
+    const p = Object.assign({}, plugins);
+    const fm = p.frontmatter ? splitFrontmatter(text) : { body: text, rows: null };
+    const box = el('div');
+    box.innerHTML = DOMPurify.sanitize(LMD.md.buildParser(p).render(fm.body), { ADD_ATTR: ['target', 'data-tex'], FORBID_TAGS: ['style', 'form'] });
+    postProcess(box, 'sample', p);
+    if (fm.rows && fm.rows.length) box.insertBefore(frontmatterNode(fm.rows), box.firstChild);
+    return box;
+  }
+  // Lo que cada plugin pide en diferido, y si ya está acá.
+  const SAMPLE_LAZY = { highlight: 'hljs', emoji: 'emoji', katex: 'katex', mermaid: 'mermaid', graphviz: 'graphviz' };
+  const SAMPLE_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, katex: () => !!window.katex, mermaid: () => !!window.mermaid, graphviz: () => !!window.Viz };
+  async function sampleFull(text, plugins) {
+    for (const k of ['highlight', 'emoji']) {
+      if (plugins[k] && !SAMPLE_HAVE[SAMPLE_LAZY[k]]() && (await ensure(SAMPLE_LAZY[k])) && k === 'emoji') parserKey = ''; // la nota abierta también los gana
+    }
+    const box = sample(text, plugins);
+    await renderMath(box); await renderMermaid(box, false, true); await renderGraphviz(box);
+    return box;
+  }
+  LMD.plugSample = { draw: sample, full: sampleFull, lazy: SAMPLE_LAZY, have: (k) => !SAMPLE_LAZY[k] || SAMPLE_HAVE[SAMPLE_LAZY[k]]() };
+
+  const PLUG_SEL = 'lmd:plug-sel'; const PLUG_STAY = 700;
+  let plugSel = '';
+  // Lista y detalle, como en Herramientas (tools.js): a la izquierda los interruptores en sus cinco bloques, a la
+  // derecha el plugin elegido con lo que hace y un ejemplo: lo que se escribe, y cómo se ve apagado y prendido.
+  // El detalle sigue al cursor y al foco. El ejemplo de un plugin que pide una librería pesada se dibuja cuando el
+  // cursor se queda en él o con un clic: pasar por toda la lista no descarga nada.
+  function plugPane(box) {
+    if (box._lmdPlug) box._lmdPlug.abort();
+    const off = new AbortController(); box._lmdPlug = off; const live = { signal: off.signal };
+    const d = LMD.tools.detail(box);
+    const side = d.side; const body = side.querySelector('.lmd-tl-side-body'); const sideOn = side.querySelector('[data-tl-side=on]');
+    const part = (id, label) => '<div class="lmd-plg-part" data-pg="' + id + '"><h5><span>' + T(label) + '</span><em class="lmd-plg-now" hidden>' + T('Tu ajuste') + '</em></h5>' + (id === 'src' ? '<pre class="lmd-plg-src"><code></code></pre>' : '<div class="lmd-plg-out markdown-body"></div>') + '</div>';
+    body.innerHTML = '<p class="lmd-tl-about"></p><div class="lmd-plg-ex" role="region" aria-label="' + T('Ejemplo') + '" aria-live="polite">' + part('src', 'Escribís') + part('off', 'Apagado') + part('on', 'Prendido') +
+      '<p class="lmd-hint lmd-plg-wait" hidden>' + T('Cargando…') + '</p></div>';
+    const rows = Array.from(box.querySelectorAll('.lmd-plg-row'));
+    const rowOf = (k) => rows.find((r) => r.dataset.plug === k) || null;
+    const inputOf = (k) => rowOf(k).querySelector('[data-plugin]');
+    let sel = ''; let seq = 0; let stay = 0; let hover = 0; let over = ''; let mx = -1; let my = -1;
+    // Solo la fila que tuvo el foco queda en el orden de Tab: de ahí se pasa al detalle, y las flechas recorren la lista.
+    const rove = (row) => rows.forEach((r) => r.querySelectorAll('[data-plug-pick], [data-plugin]').forEach((n) => { n.tabIndex = r === row ? 0 : -1; }));
+    // Lo dibujado es para mirar: no entra en el orden de Tab, no repite ids de la nota y sus enlaces no llevan a ningún lado.
+    const tame = (out) => {
+      out.querySelectorAll('a, button, input, summary, select, textarea, [tabindex]').forEach((n) => { n.tabIndex = -1; });
+      out.querySelectorAll(':not(svg):not(svg *)[id]').forEach((n) => n.removeAttribute('id'));
+    };
+    const put = (id, node) => { const out = body.querySelector('[data-pg=' + id + '] .lmd-plg-out'); out.textContent = ''; while (node.firstChild) out.appendChild(node.firstChild); tame(out); };
+    const mine = () => { const on = !!inputOf(sel).checked; sideOn.checked = on; body.querySelector('[data-pg=off] .lmd-plg-now').hidden = on; body.querySelector('[data-pg=on] .lmd-plg-now').hidden = !on; };
+    // El texto que se muestra y el que se dibuja son el mismo, salvo la imagen: se ve un nombre corto y se dibuja el ícono de la app.
+    const source = (k) => T(LMD.PLUGIN_SAMPLES[k] || '');
+    const drawn = (k) => (k === 'imageViewer' ? source(k).replace(/\(([^)]*)\)$/, '(' + chrome.runtime.getURL('icons/icon128.png') + ')') : source(k));
+    const full = async (k) => {
+      clearTimeout(stay); const my = seq;
+      let node = null; try { node = await sampleFull(drawn(k), { [k]: true }); } catch (e) { node = null; }
+      if (my !== seq || sel !== k || !side.isConnected) return;
+      if (node) put('on', node);
+      body.querySelector('.lmd-plg-wait').hidden = true;
+    };
+    // Elige un plugin: el detalle pasa a él. now: el ejemplo pesado se dibuja ya (un clic), sin esperar a que el cursor se quede.
+    const pick = (k, now) => {
+      if (!rowOf(k)) return;
+      if (sel === k) { if (now && !body.querySelector('.lmd-plg-wait').hidden) full(k); return; }
+      sel = k; plugSel = k; seq++; clearTimeout(stay);
+      try { sessionStorage.setItem(PLUG_SEL, k); } catch (e) { /* sin almacenamiento vale mientras dure la página */ }
+      rows.forEach((r) => { const on = r.dataset.plug === k; r.classList.toggle('lmd-tl-now', on); r.querySelector('[data-plug-pick]').setAttribute('aria-current', String(on)); });
+      side.dataset.plug = k;
+      side.querySelector('h4').textContent = T(LMD.PLUGIN_LABELS[k]);
+      sideOn.setAttribute('aria-label', T(LMD.PLUGIN_LABELS[k]));
+      body.querySelector('.lmd-tl-about').textContent = T(LMD.PLUGIN_HELP[k] || '');
+      body.querySelector('.lmd-plg-src code').textContent = source(k);
+      put('off', sample(drawn(k), { [k]: false })); put('on', sample(drawn(k), { [k]: true }));
+      mine(); body.scrollTop = 0;
+      const wait = !LMD.plugSample.have(k);
+      // Mientras la librería no está, la fórmula se ve como se escribió.
+      if (wait) body.querySelectorAll('[data-pg=on] .lmd-math:empty').forEach((n) => { n.textContent = n.getAttribute('data-tex') || ''; });
+      body.querySelector('.lmd-plg-wait').hidden = !wait;
+      if (SAMPLE_LAZY[k] && !wait) full(k); // ya está cargada: directo
+      else if (wait) { if (now) full(k); else stay = setTimeout(() => { if (sel === k && side.isConnected && !side.hidden) full(k); }, PLUG_STAY); }
+    };
+    rows.forEach((r) => {
+      const k = r.dataset.plug;
+      // El cursor elige al pasar, con una demora corta para que cruzar la lista no la haga parpadear. Vale solo si el
+      // cursor se movió: cuando la lista se desliza debajo de un cursor quieto (las flechas del teclado), no elige nada.
+      r.addEventListener('pointermove', (e) => {
+        if (e.pointerType !== 'mouse' || (e.clientX === mx && e.clientY === my)) return;
+        mx = e.clientX; my = e.clientY; if (over === k) return;
+        over = k; clearTimeout(hover); hover = setTimeout(() => { if (side.isConnected && over === k) pick(k); }, 90);
+      }, live);
+      r.addEventListener('pointerleave', () => { if (over === k) { over = ''; clearTimeout(hover); } }, live);
+      r.addEventListener('focusin', () => { rove(r); pick(k); }, live);
+      // Toda la fila elige, menos su interruptor, que prende y apaga. En pantalla angosta, además abre el detalle encima.
+      r.addEventListener('click', (e) => { if (e.target.closest('.lmd-switch')) return; clearTimeout(hover); rove(r); pick(k, true); if (d.enter()) side.focus({ preventScroll: true }); }, live);
+      inputOf(k).addEventListener('change', () => { if (sel === k) mine(); }, live);
+    });
+    sideOn.addEventListener('change', () => { const input = inputOf(sel); input.checked = sideOn.checked; input.dispatchEvent(new Event('change', { bubbles: true })); });
+    // Con el teclado: flechas, Inicio y Fin pasan de fila en fila, de un bloque al siguiente.
+    box.addEventListener('keydown', (e) => {
+      const from = e.target.closest('[data-plug-pick], [data-plugin]'); if (!from || e.altKey || e.ctrlKey || e.metaKey) return;
+      const at = rows.indexOf(from.closest('.lmd-plg-row'));
+      const to = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: rows.length - 1 }[e.key]; if (to === undefined || at < 0) return;
+      e.preventDefault(); const next = rows[Math.max(0, Math.min(rows.length - 1, to))]; if (!next || next === rows[at]) return;
+      next.querySelector(from.matches('[data-plugin]') ? '[data-plugin]' : '[data-plug-pick]').focus({ preventScroll: true }); next.scrollIntoView({ block: 'nearest' });
+    }, live);
+    d.back = () => { const b = rowOf(sel) && rowOf(sel).querySelector('[data-plug-pick]'); if (b) b.focus({ preventScroll: true }); };
+    // Lo de mirar no se toca: un enlace del ejemplo no navega.
+    body.addEventListener('click', (e) => { if (e.target.closest('.lmd-plg-out a')) e.preventDefault(); });
+    if (!plugSel) { try { plugSel = sessionStorage.getItem(PLUG_SEL) || ''; } catch (e) { /* sin almacenamiento */ } }
+    const first = rowOf(plugSel) || rows[0];
+    if (first) { rove(first); pick(first.dataset.plug); }
+    d.fit();
   }
 
   function frontmatterNode(rows) {
@@ -1035,7 +1153,7 @@
       if (e.key === 'Escape') {
         if (moreMenu) closeMore(true);
         else if (!ui.viewer.hidden) ui.viewer.click();
-        // Con las opciones de una herramienta abiertas al costado, el primer Escape cierra eso y el segundo los ajustes.
+        // En pantalla angosta, con el detalle de una herramienta abierto encima de la lista, Escape vuelve a la lista.
         else if (!ui.panel.hidden) { if (!LMD.tools.shut(true)) closePanel(); }
         else if (drawerOpen()) setDrawer(false);
         else if (ui.searchInput.value || document.activeElement === ui.searchInput) toggleSearch(false);
@@ -2823,7 +2941,8 @@
   // Herramientas (tools.js) va después de Plugins. El invitado de una sesión en vivo no la ve.
   PANEL_TABS.splice(3, 0, ['tools', 'Herramientas', LMD.tools.ICON.tools]);
   // API y automatizaciones (automate.js) va después de IA: los tokens de la API, los webhooks y las direcciones de entrada.
-  PANEL_TABS.splice(PANEL_TABS.findIndex((t) => t[0] === 'ai') + 1, 0, ['auto', 'API y automatizaciones', '<svg viewBox="0 0 24 24"><path d="M13 3 5 13.5h6L10 21l8-10.5h-6z"/></svg>']);
+  // El cuarto dato es su rótulo corto para el menú en español: el nombre entero no entra en un renglón de esa columna.
+  PANEL_TABS.splice(PANEL_TABS.findIndex((t) => t[0] === 'ai') + 1, 0, ['auto', 'API y automatizaciones', '<svg viewBox="0 0 24 24"><path d="M13 3 5 13.5h6L10 21l8-10.5h-6z"/></svg>', 'Automatizaciones']);
   // Al cerrar Ajustes el foco vuelve a donde estaba al abrirlos.
   let panelBack = null;
   // La grilla de temas de Apariencia: cuál está puesto, cuál se eligió para mirar y qué botón le toca.
@@ -2862,15 +2981,14 @@
     if (ui.panel.hidden) serverDraft = false;
     const noCloud = /^off$/i.test(s.cloudUrl || ''); const own = serverDraft || (!!s.cloudUrl && !noCloud);
     const EXTRA = ' <em class="lmd-tag">' + T('Plan pago') + '</em>';
-    // Los plugins van en bloques con subtítulo (PLUGIN_GROUPS), repartidos en dos columnas parejas: la primera se
-    // llena hasta la mitad de los interruptores. Uno que no esté en ningún bloque va al final del último.
-    const plugSwitch = (k) => '<label class="lmd-switch" data-tip="' + esc(T(LMD.PLUGIN_HELP[k] || '')) + '"><input type="checkbox" data-plugin="' + k + '"' + (s.plugins[k] ? ' checked' : '') + '><i></i><span>' + esc(T(LMD.PLUGIN_LABELS[k])) + '</span></label>';
+    // Los plugins van en bloques con subtítulo (PLUGIN_GROUPS), en una columna. Cada fila: el botón que lo elige para ver
+    // su ejemplo en el detalle (plugPane) y su interruptor. Uno que no esté en ningún bloque va al final del último.
+    const plugRow = (k) => '<div class="lmd-plg-row" role="listitem" data-plug="' + k + '"><button type="button" class="lmd-plg-pick" data-plug-pick="' + k + '" aria-controls="lmd-tl-side" aria-current="false"><span>' + esc(T(LMD.PLUGIN_LABELS[k])) + '</span>' + ICON.chevron + '</button>' +
+      '<label class="lmd-switch"><input type="checkbox" data-plugin="' + k + '" aria-label="' + esc(T(LMD.PLUGIN_LABELS[k])) + '"' + (s.plugins[k] ? ' checked' : '') + '><i></i></label></div>';
     const plugKeys = Object.keys(LMD.PLUGIN_LABELS);
     const plugGroups = LMD.PLUGIN_GROUPS.map((g) => [g[0], g[1].filter((k) => plugKeys.includes(k))]);
     plugGroups[plugGroups.length - 1][1].push(...plugKeys.filter((k) => !plugGroups.some((g) => g[1].includes(k))));
-    const plugCols = [[], []]; let plugSeen = 0;
-    plugGroups.forEach((g) => { if (!g[1].length) return; plugCols[plugSeen < plugKeys.length / 2 ? 0 : 1].push(g); plugSeen += g[1].length; });
-    const plugins = plugCols.map((col) => '<div class="lmd-plug-col">' + col.map((g) => '<div class="lmd-plug-group" role="group" aria-label="' + esc(T(g[0])) + '"><h4>' + esc(T(g[0])) + '</h4>' + g[1].map(plugSwitch).join('') + '</div>').join('') + '</div>').join('');
+    const plugins = plugGroups.filter((g) => g[1].length).map((g) => '<div class="lmd-plug-group" role="list" aria-label="' + esc(T(g[0])) + '"><h4>' + esc(T(g[0])) + '</h4>' + g[1].map(plugRow).join('') + '</div>').join('');
     const fonts = LMD.FONTS.slice();
     if (s.fontFamily && !fonts.some((f) => f.value === s.fontFamily)) fonts.push({ name: s.fontFamily, value: s.fontFamily });
     const fontOptions = fonts.map((f) => '<option value="' + esc(f.value) + '"' + (f.value === (s.fontFamily || '') ? ' selected' : '') + '>' + esc(f.value ? f.name : T(f.name)) + '</option>').join('');
@@ -2883,7 +3001,7 @@
       '<div class="lmd-panel-card" role="dialog" aria-modal="true" aria-label="' + T('Ajustes') + '">' +
         '<header><h2>' + T('Ajustes') + '</h2><button class="lmd-icon-btn" data-act="close-panel" title="' + T('Cerrar') + '" aria-label="' + T('Cerrar') + '">' + ICON.close + '</button></header>' +
         '<nav class="lmd-ptabs" role="tablist">' +
-          PANEL_TABS.filter((t) => !guestTabs || guestTabs.includes(t[0])).map((t) => '<button type="button" role="tab" data-ptab="' + t[0] + '">' + t[2] + '<span>' + T(t[1]) + '</span></button>').join('') +
+          PANEL_TABS.filter((t) => !guestTabs || guestTabs.includes(t[0])).map((t) => '<button type="button" role="tab" data-ptab="' + t[0] + '">' + t[2] + '<span>' + (t[3] && LMD.lang() === 'es' ? t[3] : T(t[1])) + '</span></button>').join('') +
           '<button type="button" class="lmd-ptabs-foot" data-act="feedback">' + ICON.mail + '<span>' + T('Enviar comentarios') + '</span></button>' +
           '<a class="lmd-ptabs-link" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">' + ICON.coffee + '<span>' + T('Apoyar el proyecto') + '</span></a>' +
           '<small class="lmd-ptabs-ver">SharpMD ' + LMD.VERSION + '</small>' +
@@ -3006,7 +3124,7 @@
     };
     const showTab = (tab) => {
       panelTab = tab;
-      LMD.tools.shut(false); // el panel de opciones de una herramienta no sigue abierto sobre otra pestaña
+      LMD.tools.leave(); // el detalle de una herramienta no sigue a la vista sobre otra pestaña
       ui.panel.querySelectorAll('[data-ptab]').forEach((b) => { b.classList.toggle('lmd-on', b.dataset.ptab === tab); b.setAttribute('aria-selected', String(b.dataset.ptab === tab)); });
       // En pantalla chica las pestañas son una fila que se desliza: la elegida queda a la vista.
       const on = ui.panel.querySelector('[data-ptab].lmd-on'); if (on && LMD.touch.small()) on.scrollIntoView({ block: 'nearest', inline: 'center' });
@@ -3019,6 +3137,7 @@
       if (tab === 'cloud' && LMD.images) LMD.images.pane(ui.panel.querySelector('[data-files-pane]'));
       if (tab === 'inst') LMD.install.pane(ui.panel.querySelector('[data-inst-pane]'));
       if (tab === 'tools') LMD.tools.pane(ui.panel.querySelector('[data-tools-pane]'));
+      if (tab === 'plug') plugPane(ui.panel.querySelector('[data-tab=plug] .lmd-plug'));
       if (tab === 'auto') { const pane = ui.panel.querySelector('[data-auto-pane]'); ensure('automate').then((ok) => { if (ok && pane.isConnected) LMD.automate.pane(pane, host); }); }
     };
     ui.panel.querySelectorAll('[data-ptab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.ptab)));

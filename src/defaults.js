@@ -104,7 +104,36 @@
     ['Enlaces y medios', ['wikilinks', 'linkify', 'imageViewer']],
     ['Comportamiento', ['toc', 'frontmatter', 'html', 'breaks']],
   ];
-  // Qué hace cada plugin, para mostrar al pasar el mouse.
+  // Un ejemplo corto por plugin, en Markdown: Ajustes > Plugins lo dibuja dos veces con el motor de la app, con ese
+  // plugin apagado y prendido. Los que llevan palabras tienen su versión en inglés entre los textos de más abajo.
+  const PLUGIN_SAMPLES = {
+    sub: "H~2~O",
+    sup: "x^2^ + y^2^",
+    ins: "Un texto ++agregado++ después.",
+    mark: "Lo ==importante== va primero.",
+    abbr: "*[HTML]: HyperText Markup Language\n\nUna página en HTML.",
+    emoji: "Listo para salir :rocket:",
+    typographer: "\"Hola\" -- dijo... (c) 2026",
+    tasklists: "- [x] Escribir el borrador\n- [ ] Revisarlo",
+    deflist: "Markdown\n: Texto con formato simple.",
+    footnote: "El dato tiene fuente[^1].\n\n[^1]: Informe anual, página 12.",
+    alerts: "> [!NOTE]\n> Esto conviene tenerlo en cuenta.",
+    containers: "::: tip\nGuardá seguido.\n:::",
+    tables: "| Mes | Entra | Sale |\n|---|---|---|\n| Enero | 10 | 4 |\n| Sin datos |||",
+    highlight: "```js\nconst total = precio * 2;\n```",
+    copyCode: "```\nnpm install\n```",
+    katex: "La energía: $E = mc^2$",
+    mermaid: "```mermaid\ngraph LR\n  Idea --> Borrador --> Nota\n```",
+    graphviz: "```dot\ndigraph { Idea -> Nota }\n```",
+    wikilinks: "Sigue en [[plan de viaje]].",
+    linkify: "La app está en https://sharpmd.app",
+    imageViewer: "![El ícono de la app](icono.png)",
+    toc: "[[toc]]\n\n## Llegada\n\n## Vuelta",
+    frontmatter: "---\ntitulo: Informe\nautor: Ana\n---\n\nEl texto de la nota.",
+    html: "Se guarda con <kbd>Ctrl</kbd> + <kbd>S</kbd>.",
+    breaks: "Primer renglón\nsegundo renglón",
+  };
+  // Qué hace cada plugin: se lee en el detalle de ese plugin, arriba de su ejemplo.
   const PLUGIN_HELP = {
     highlight: "Colorea el código según su lenguaje.",
     emoji: "Convierte :rocket: en un emoji.",
@@ -1443,7 +1472,31 @@
       "La app web tiene otra cuenta: {a}. Cada lado sigue con la suya.": "The web app is signed in as {a}. Each side keeps its own account.",
       "Usar {a} en los dos": "Use {a} on both", "¿Usar {a} en los dos?": "Use {a} on both?", "La extensión sale de la otra cuenta.": "The extension signs out of the other account.", "Usar esta cuenta": "Use this account",
       "Abrí la app para ver lo que compartió la comunidad.": "Open the app to see what the community shared.",
-      "Configurar": "Configure","Ocultar": "Hide", "Opciones de {a}": "{a} options", "Volver": "Back", "Falta la clave": "Add your key",
+      "Prendela para configurarla.": "Turn it on to set it up.", "Volver": "Back",
+      // Los ejemplos de Ajustes > Plugins (PLUGIN_SAMPLES) y los rótulos de sus tres piezas.
+      "Un texto ++agregado++ después.": "Some text ++added++ later.",
+      "Lo ==importante== va primero.": "The ==important part== goes first.",
+      "*[HTML]: HyperText Markup Language\n\nUna página en HTML.": "*[HTML]: HyperText Markup Language\n\nA page in HTML.",
+      "Listo para salir :rocket:": "Ready to ship :rocket:",
+      "\"Hola\" -- dijo... (c) 2026": "\"Hello\" -- she said... (c) 2026",
+      "- [x] Escribir el borrador\n- [ ] Revisarlo": "- [x] Write the draft\n- [ ] Review it",
+      "Markdown\n: Texto con formato simple.": "Markdown\n: Text with simple formatting.",
+      "El dato tiene fuente[^1].\n\n[^1]: Informe anual, página 12.": "The figure has a source[^1].\n\n[^1]: Annual report, page 12.",
+      "> [!NOTE]\n> Esto conviene tenerlo en cuenta.": "> [!NOTE]\n> This is worth keeping in mind.",
+      "::: tip\nGuardá seguido.\n:::": "::: tip\nSave often.\n:::",
+      "| Mes | Entra | Sale |\n|---|---|---|\n| Enero | 10 | 4 |\n| Sin datos |||": "| Month | In | Out |\n|---|---|---|\n| January | 10 | 4 |\n| No data |||",
+      "```js\nconst total = precio * 2;\n```": "```js\nconst total = price * 2;\n```",
+      "La energía: $E = mc^2$": "Energy: $E = mc^2$",
+      "```mermaid\ngraph LR\n  Idea --> Borrador --> Nota\n```": "```mermaid\ngraph LR\n  Idea --> Draft --> Note\n```",
+      "```dot\ndigraph { Idea -> Nota }\n```": "```dot\ndigraph { Idea -> Note }\n```",
+      "Sigue en [[plan de viaje]].": "It continues in [[travel plan]].",
+      "La app está en https://sharpmd.app": "The app lives at https://sharpmd.app",
+      "![El ícono de la app](icono.png)": "![The app icon](icon.png)",
+      "[[toc]]\n\n## Llegada\n\n## Vuelta": "[[toc]]\n\n## Arrival\n\n## Return",
+      "---\ntitulo: Informe\nautor: Ana\n---\n\nEl texto de la nota.": "---\ntitle: Report\nauthor: Ana\n---\n\nThe text of the note.",
+      "Se guarda con <kbd>Ctrl</kbd> + <kbd>S</kbd>.": "Save with <kbd>Ctrl</kbd> + <kbd>S</kbd>.",
+      "Primer renglón\nsegundo renglón": "First line\nsecond line",
+      "Escribís": "You write", "Apagado": "Off", "Prendido": "On", "Tu ajuste": "Your setting", "Ejemplo": "Example", "Falta la clave": "Add your key",
       "Herramientas": "Tools","Prendé el Tablero kanban en Ajustes > Herramientas para verlo como tablero": "Turn on Kanban board in Settings > Tools to see it as a board", "Opciones": "Options",
       "Funciones que se suman a la app. Cada una se prende acá.": "Features added to the app. Turn each one on here.",
       "Tablero kanban": "Kanban board", "Un bloque kanban se ve como un tablero con columnas y tarjetas que se arrastran.": "A kanban block shows as a board with columns and cards you can drag.",
@@ -2034,7 +2087,7 @@
   const fileLink = (url) => WEB_APP_URL + '#open=' + encodeURIComponent(url);
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.74.0';
+  const VERSION = '2.75.0';
 
-  root.LMD = { VERSION, PLUGIN_HELP, PLUGIN_GROUPS, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
+  root.LMD = { VERSION, PLUGIN_HELP, PLUGIN_SAMPLES, PLUGIN_GROUPS, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);
