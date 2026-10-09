@@ -49,9 +49,10 @@ const cloudUrl = (p) => home + '?f=' + encodeURIComponent('cloud/' + p.split('/'
 const tab = async (t) => { await app.click('[data-ptab=' + t + ']'); await app.waitForTimeout(450); };
 const openSettings = async (t) => { await app.click('[data-act=settings]'); await app.waitForSelector('.lmd-panel-card'); if (t) await tab(t); };
 const TABS = ['look', 'read', 'plug', 'tools', 'cloud', 'ai', 'plan', 'inst', 'adv'];
-// Ninguna pestaña puede necesitar scroll con la ventana a 800 px de alto. Las dos que sí deslizan se sacan al leer el
-// resultado: Herramientas, que es una lista que crece, y Nube, por las tarjetas del bloque Seguridad.
-const SCROLLS = /^(tools|cloud) /;
+// Ninguna pestaña puede necesitar scroll con la ventana a 800 px de alto. Las que sí deslizan se sacan al leer el
+// resultado: Herramientas y Plugins, que son una lista en una columna con el detalle al costado (la lista desliza, el
+// detalle no), y Nube, por las tarjetas del bloque Seguridad.
+const SCROLLS = /^(tools|plug|cloud) /;
 const overflow = async () => { const out = []; for (const t of TABS) { await tab(t); const m = await app.evaluate(() => { const b = document.querySelector('.lmd-panel-body'); return b.scrollHeight - b.clientHeight; }); if (m > 0) out.push(t + ' +' + m); } return out; };
 // Los dos renglones que dicen qué anda sin cuenta y qué suma tenerla: sin signos de admiración ni rayas largas. Van en Ajustes → Nube.
 // En el inicio, la cuenta vive al pie de la barra lateral: sin sesión, la invitación a entrar con una línea de qué suma.
@@ -178,13 +179,13 @@ try {
   console.log('Ajustes, plan gratis');
   await openSettings();
   await tab('plug');
-  const plug = await app.evaluate(() => { const box = document.querySelector('[data-tab=plug] .lmd-plug'); const cols = [...box.querySelectorAll('.lmd-plug-col')]; const rows = [...box.querySelectorAll('.lmd-switch')];
-    return { groups: [...box.querySelectorAll('.lmd-plug-group')].map((g) => g.querySelector('h4').textContent + ':' + g.querySelectorAll('[data-plugin]').length + ':' + g.getAttribute('role') + ':' + (g.getAttribute('aria-label') === g.querySelector('h4').textContent)).join('|'),
+  const plug = await app.evaluate(() => { const box = document.querySelector('[data-tab=plug] .lmd-plug'); const groups = [...box.querySelectorAll('.lmd-plug-group')]; const rows = [...box.querySelectorAll('.lmd-plg-row')];
+    return { groups: groups.map((g) => g.querySelector('h4').textContent + ':' + g.querySelectorAll('[data-plugin]').length + ':' + g.getAttribute('role') + ':' + (g.getAttribute('aria-label') === g.querySelector('h4').textContent)).join('|'),
       all: rows.length, uniq: new Set(rows.map((r) => r.querySelector('input').dataset.plugin)).size, known: Object.keys(LMD.PLUGIN_LABELS).length, low: Math.min(...rows.map((r) => r.getBoundingClientRect().height)),
-      gap: Math.round(cols[1].getBoundingClientRect().left - cols[0].getBoundingClientRect().right), split: cols.map((c) => c.querySelectorAll('.lmd-switch').length), between: Math.min(...cols.flatMap((c) => [...c.querySelectorAll('.lmd-plug-group')].slice(1).map((g) => Math.round(g.getBoundingClientRect().top - g.previousElementSibling.getBoundingClientRect().bottom)))),
+      cols: new Set(rows.map((r) => Math.round(r.getBoundingClientRect().left))).size, between: Math.min(...groups.slice(1).map((g) => Math.round(g.getBoundingClientRect().top - g.previousElementSibling.getBoundingClientRect().bottom))),
       anchors: !!box.querySelector('[data-plugin=anchor], [data-plugin=anchors]'), heads: getComputedStyle(box.querySelector('h4')).textTransform + ' ' + getComputedStyle(box.querySelector('h4')).fontSize }; });
-  check('Plugins: los interruptores van en cinco bloques con subtítulo, cada uno una sola vez', plug.groups === 'Texto:7:group:true|Bloques:6:group:true|Código y matemática:5:group:true|Enlaces y medios:3:group:true|Comportamiento:4:group:true' && plug.all === plug.known && plug.uniq === plug.all && !plug.anchors, plug);
-  check('en dos columnas parejas, con renglones de 40 px o más y 20 px o más entre bloques y entre columnas', plug.low >= 40 && plug.gap >= 28 && plug.between >= 20 && Math.abs(plug.split[0] - plug.split[1]) <= 2 && plug.heads === 'uppercase 12px', plug);
+  check('Plugins: los interruptores van en cinco bloques con subtítulo, cada uno una sola vez', plug.groups === 'Texto:7:list:true|Bloques:6:list:true|Código y matemática:5:list:true|Enlaces y medios:3:list:true|Comportamiento:4:list:true' && plug.all === plug.known && plug.uniq === plug.all && !plug.anchors, plug);
+  check('en una columna, con renglones de 36 px o más y 16 px o más entre bloques (el detalle con el ejemplo va al costado: plugins.mjs)', plug.low >= 36 && plug.cols === 1 && plug.between >= 16 && plug.heads === 'uppercase 12px', plug);
   await tab('look');
   check('diez pestañas en orden', (await app.evaluate(() => [...document.querySelectorAll('[data-ptab]')].map((b) => b.dataset.ptab + ':' + b.textContent.trim()).join('|'))) === 'look:Apariencia|read:Lectura y edición|plug:Plugins|tools:Herramientas|cloud:Nube|ai:IA (MCP)|auto:API y automatizaciones|plan:Plan|inst:Instalar|adv:Avanzado');
   // Pie de la barra: comentarios, apoyar el proyecto y la versión, que tiene que ser la del manifiesto.
@@ -197,7 +198,7 @@ try {
   check('al pie de las pestañas: enviar comentarios, apoyar el proyecto y la versión', JSON.stringify(foot.last) === JSON.stringify(['Enviar comentarios', 'Apoyar el proyecto', 'SharpMD ' + manifestVersion]) && foot.stacked, foot);
   check('apoyar el proyecto abre el enlace en una pestaña nueva', foot.href.replace(/\/$/, '') === foot.sponsor.replace(/\/$/, '') && foot.target === '_blank' && /noopener/.test(foot.rel), foot);
   let over = (await overflow()).filter((x) => !SCROLLS.test(x));
-  check('ninguna pestaña necesita scroll a 800 px de alto, salvo Herramientas y Nube (plan gratis)', over.length === 0, over);
+  check('ninguna pestaña necesita scroll a 800 px de alto, salvo Herramientas, Plugins y Nube (plan gratis)', over.length === 0, over);
   await tab('cloud');
   const freeCloud = await app.evaluate(() => [...document.querySelectorAll('[data-acct=cloud] .lmd-acct-row')].map((r) => r.children[0].textContent + '=' + r.children[1].textContent).join('|') + ' / ' + [...document.querySelectorAll('[data-acct=cloud] button')].map((b) => b.textContent).join('|'));
   check('Nube: la cuenta, el plan y cuántas notas, con abrir la carpeta, salir y eliminar la cuenta', freeCloud === 'Cuenta=' + mail + '|Nombre visible=' + mail.split('@')[0] + '|Plan=Gratis|Notas en la nube=1 de 25 / Cambiar|Abrir la carpeta Nube|Salir|Proteger con contraseña|Proteger toda mi nube|Proteger una carpeta|Prender en Herramientas|Eliminar la cuenta', freeCloud);
@@ -495,7 +496,7 @@ try {
   for (const p of ['archivo/vieja.md', 'proyectos/plan.md', 'proyectos/nueva.md']) { await api('PUT', '/notes/' + encodeURIComponent(p), { text: '# ' + p + '\n' }, session); await new Promise((r) => setTimeout(r, 15)); }
   await app.goto(cloudUrl('proyectos/plan.md')); await app.waitForSelector('.markdown-body h1'); await openSettings();
   over = (await overflow()).filter((x) => !SCROLLS.test(x));
-  check('ninguna pestaña necesita scroll a 800 px de alto, salvo Herramientas y Nube (plan pago)', over.length === 0, over);
+  check('ninguna pestaña necesita scroll a 800 px de alto, salvo Herramientas, Plugins y Nube (plan pago)', over.length === 0, over);
   await tab('cloud');
   const paidCloud = await app.evaluate(() => [...document.querySelectorAll('[data-acct=cloud] .lmd-acct-row')].map((r) => r.children[0].textContent + '=' + r.children[1].textContent).join('|'));
   check('Nube con plan pago: el número de notas y "sin límite"', paidCloud === 'Cuenta=' + mail + '|Nombre visible=' + mail.split('@')[0] + '|Plan=Pago|Notas en la nube=4, sin límite', paidCloud);
