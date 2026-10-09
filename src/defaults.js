@@ -1500,6 +1500,15 @@
       "Ninguna nota para mostrar con este filtro.": "No notes to show with this filter.", "No hay notas en este dispositivo para armar el mapa.": "There are no notes on this device to build the map.",
       "Tocá una nota para abrirla. Dos dedos para acercar.": "Tap a note to open it. Two fingers to zoom.", "Clic en una nota para abrirla. La rueda acerca y aleja.": "Click a note to open it. The wheel zooms.",
       "Lee la carpeta abierta, las notas del navegador y las de la nube que ya están en este dispositivo. No baja ni envía nada.": "Reads the open folder, the browser notes and the cloud notes already on this device. It downloads and sends nothing.",
+      // Diagramas explorables (explore.js)
+      "Diagramas explorables": "Explorable diagrams", "Un diagrama de flujo se recorre: acercar, elegir un nodo para ver sus conexiones y su detalle, plegar grupos y buscar.": "A flowchart you can walk through: zoom, pick a node to see its connections and its detail, fold groups and search.",
+      "Explorar el diagrama": "Explore the diagram", "Buscar un nodo": "Find a node", "Ver todo el diagrama": "Show the whole diagram", "Plegar los grupos": "Fold the groups", "Desplegar los grupos": "Unfold the groups",
+      "Salir de pantalla completa": "Exit full screen", "Diagrama a pantalla completa": "Diagram in full screen", "Plegar {a}": "Fold {a}", "{a}, grupo plegado": "{a}, folded group", "Detalle de {a}": "Detail of {a}",
+      "Recibe de": "Receives from", "Envía a": "Sends to", "Seguir el recorrido": "Follow the path", "Sin conexiones": "No connections", "No se pudo plegar ese grupo.": "That group could not be folded.",
+      "Vale para los diagramas de flujo de Mermaid, leyendo la nota. El detalle de un nodo se escribe dentro del bloque, una línea por dato:": "It works on Mermaid flowcharts, while reading the note. The detail of a node is written inside the block, one line per fact:",
+      "Recibe los pedidos de la web.": "Takes the requests from the web app.", "Notas de la API": "API notes", "Acercar con la rueda sin apretar Ctrl": "Zoom with the wheel without holding Ctrl",
+      "Teclas: Tab pasa de nodo en nodo, Enter abre el detalle, Escape lo cierra, + y - acercan y alejan, 0 vuelve a la vista entera.": "Keys: Tab moves from node to node, Enter opens the detail, Escape closes it, + and - zoom, 0 goes back to the whole view.",
+      "Detalle de un nodo": "Node detail", "Qué hace, con [un enlace](nota.md)": "What it does, with [a link](note.md)",
       // Leer en voz alta (speak.js)
       "Leer en voz alta": "Read aloud", "Lee la nota con la voz del dispositivo y marca por dónde va.": "Reads the note with the device voice and marks where it is.",
       "Este navegador no tiene voces para leer.": "This browser has no voices to read with.", "Este navegador no tiene voces instaladas para leer.": "This browser has no voices installed to read with.",

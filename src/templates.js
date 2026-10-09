@@ -856,6 +856,102 @@ graph LR
 ## What can go wrong
 -
 `],
+    // Un diagrama con el detalle de cada nodo anotado, para la herramienta de diagramas explorables (explore.js).
+    ['archmap', 'product', 'Mapa de arquitectura', 'Architecture map', 'architecture-map',
+`# Mapa de arquitectura
+
+Con la herramienta Diagramas explorables prendida (Ajustes > Herramientas), un clic en un nodo muestra qué hace y con qué se conecta. El título de un grupo lo pliega.
+
+\`\`\`mermaid
+flowchart LR
+  persona([Persona]) --> web[Web]
+  web --> api[API]
+  subgraph servidor [Servidor]
+    api --> sesiones[Sesiones]
+    api --> base[(Base de datos)]
+    api -- encola --> cola[[Cola de trabajos]]
+    cola --> trabajador[Trabajador]
+    trabajador --> base
+  end
+  trabajador --> correo[Proveedor de correo]
+
+  %% @persona: Quien abre la app en el navegador.
+  %% @web: La interfaz. Solo habla con la API.
+  %% @api: La única entrada. Revisa la sesión y reparte cada pedido.
+  %% @api: [Componentes](#componentes)
+  %% @sesiones: Quién entró y qué puede hacer.
+  %% @base: La fuente de verdad. Solo escriben la API y el trabajador.
+  %% @cola: Lo que no necesita respuesta en el momento.
+  %% @trabajador: Toma los trabajos de la cola, manda los correos y guarda el resultado.
+  %% @correo: Servicio de afuera. Si falla, el trabajador reintenta.
+  %% @correo: [Decisiones](#decisiones)
+\`\`\`
+
+## Cómo se anota
+
+Cada línea \`%% @nombre: texto\` dentro del bloque es el detalle de un nodo. Mermaid no la dibuja.
+
+- El texto es Markdown: \`[otra nota](otra-nota.md)\`, \`[una sección](#componentes)\`, \`[[nota]]\` o una dirección.
+- Varias líneas para un mismo nodo se suman.
+- \`subgraph nombre [Título]\` arma un grupo que se pliega.
+
+## Componentes
+
+| Componente | Dónde vive | Quién lo mantiene |
+|---|---|---|
+| Web |  |  |
+| API |  |  |
+
+## Decisiones
+-
+`,
+`# Architecture map
+
+With the Explorable diagrams tool on (Settings > Tools), a click on a node shows what it does and what it connects to. The title of a group folds it.
+
+\`\`\`mermaid
+flowchart LR
+  person([Person]) --> web[Web app]
+  web --> api[API]
+  subgraph server [Server]
+    api --> sessions[Sessions]
+    api --> db[(Database)]
+    api -- queues --> jobs[[Job queue]]
+    jobs --> worker[Worker]
+    worker --> db
+  end
+  worker --> mail[Email provider]
+
+  %% @person: Whoever opens the app in a browser.
+  %% @web: The interface. It only talks to the API.
+  %% @api: The single way in. Checks the session and routes each request.
+  %% @api: [Components](#components)
+  %% @sessions: Who signed in and what they can do.
+  %% @db: The source of truth. Only the API and the worker write to it.
+  %% @jobs: Work that does not need an answer right away.
+  %% @worker: Takes jobs from the queue, sends the email and stores the result.
+  %% @mail: An outside service. If it fails, the worker tries again.
+  %% @mail: [Decisions](#decisions)
+\`\`\`
+
+## How to annotate
+
+Each \`%% @name: text\` line inside the block is the detail of a node. Mermaid does not draw it.
+
+- The text is Markdown: \`[another note](another-note.md)\`, \`[a section](#components)\`, \`[[note]]\` or a URL.
+- Several lines for the same node add up.
+- \`subgraph name [Title]\` makes a group that folds.
+
+## Components
+
+| Component | Where it lives | Who maintains it |
+|---|---|---|
+| Web app |  |  |
+| API |  |  |
+
+## Decisions
+-
+`],
     ['release', 'product', 'Notas de versión', 'Release notes', 'release-notes',
 `# Versión
 

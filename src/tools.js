@@ -95,6 +95,7 @@
     daily: '<div class="lmd-pk lmd-pk-daily"><div class="cal">' + '<i></i>'.repeat(17) + '<i class="t"></i>' + '<i></i>'.repeat(17) + '</div><div class="bx">' + L + L + L + L + '</div></div>',
     docx: '<div class="lmd-pk lmd-pk-conv"><div class="bx"><b>.md</b>' + L + L + L + L + '</div><i class="ar"></i><div class="bx to"><b>.docx</b>' + L + L + L + L + '</div></div>',
     linkmap: '<div class="lmd-pk lmd-pk-map"><i class="e e1"></i><i class="e e2"></i><i class="e e3"></i><i class="n n1"></i><i class="n n2"></i><i class="n n3"></i></div>',
+    explore: '<div class="lmd-pk lmd-pk-xp"><i class="e e1"></i><i class="e e2"></i><i class="nd x1"></i><i class="nd x2 on"></i><i class="nd x3"></i><div class="bx">' + L + L + L + '</div></div>',
     jsonyaml: '<div class="lmd-pk lmd-pk-json"><div class="r"><i class="ct"></i><i>{ }</i></div><div class="r in"><i>id</i><i class="v">7</i></div><div class="r in"><i class="ct tg"></i><i>tags</i></div><div class="r in2 kid"><i>0</i><i class="v">"a"</i></div><div class="r in2 kid"><i>1</i><i class="v">"b"</i></div><div class="r in"><i>done</i><i class="v">true</i></div></div>',
     import: '<div class="lmd-pk lmd-pk-conv"><div class="st"><b>.docx</b><b>.pdf</b><b>.xlsx</b></div><i class="ar"></i><div class="bx to"><b>.md</b>' + L + L + L + L + '</div></div>',
     assistant: '<div class="lmd-pk lmd-pk-ai"><div class="bx"><i class="sp"></i>' + L + '</div>' + L + L + L + '</div>',
@@ -358,6 +359,9 @@
     icon: svg('<path d="M6.500 3.500h8l4 4v13h-12z"/><path d="M14.500 3.500v4h4M8.800 11.500l1.300 5.500 1.900-4.200 1.900 4.200 1.300-5.500"/>') });
   register({ id: 'linkmap', name: 'Mapa de enlaces', about: 'Qué notas enlazan con cuáles, y cuáles llegan a la nota abierta.', defaultOn: false, lazy: 'linkmap', module: () => LMD.linkmap,
     icon: svg('<circle cx="6" cy="7" r="2.300"/><circle cx="18" cy="6" r="2.300"/><circle cx="12" cy="17.500" r="2.300"/><path d="M8.200 6.800l7.500-.600M7.100 9l3.800 6.500M16.900 8l-3.800 7.500"/>') });
+  // Un diagrama de flujo de la nota se recorre (explore.js). Apagada, el diagrama se ve como siempre.
+  register({ id: 'explore', name: 'Diagramas explorables', about: 'Un diagrama de flujo se recorre: acercar, elegir un nodo para ver sus conexiones y su detalle, plegar grupos y buscar.', defaultOn: false, lazy: 'explore', module: () => LMD.explore,
+    icon: svg('<rect x="3.5" y="4.5" width="7" height="5" rx="1.3"/><rect x="13.5" y="14.5" width="7" height="5" rx="1.3"/><path d="M7 9.5v4.5a3 3 0 0 0 3 3h3.5"/><circle cx="16.8" cy="7.2" r="2.8"/><path d="M18.9 9.300l1.800 1.800"/>') });
   register({ id: 'jsonyaml', name: 'JSON y YAML', about: 'Un bloque o un archivo JSON o YAML se ve como un árbol plegable que se edita.', defaultOn: false, lazy: 'jsonyaml', module: () => LMD.jsonyaml,
     icon: svg('<path d="M8.500 4.500c-2 0-2.500 1-2.500 2.500v2.500c0 1.300-.700 2.300-2 2.500 1.300.200 2 1.200 2 2.500V17c0 1.500.500 2.500 2.500 2.500M15.500 4.500c2 0 2.500 1 2.500 2.500v2.500c0 1.300.700 2.300 2 2.500-1.300.200-2 1.200-2 2.500V17c0 1.500-.500 2.500-2.500 2.500"/>') });
   register({ id: 'import', name: 'Importar a Markdown', about: 'Convierte Word, Excel, PowerPoint, PDF, EPUB, HTML y CSV en una nota, sin subir el archivo.', defaultOn: false, lazy: 'import', module: () => LMD.import,

@@ -171,6 +171,8 @@
       ['Flecha', (c) => link(flowGraph(c), '', (a, b) => a + ' --> ' + pick(b))],
       ['Flecha con texto', (c) => link(flowGraph(c), '', (a, b) => a + ' -- ' + pick(T('texto')) + ' --> ' + b)],
       ['Color de un nodo', (c) => ({ text: 'style ' + pick(flowGraph(c).last() || 'A') + ' fill:#fde68a,stroke:#d97706,color:#422006' })],
+      // Con la herramienta de diagramas explorables prendida: la línea de comentario que guarda el detalle de un nodo.
+      ['Detalle de un nodo', (c) => ({ text: '%% @' + (flowGraph(c).last() || 'A') + ': ' + pick(T('Qué hace, con [un enlace](nota.md)')) }), () => !!LMD.tools && LMD.tools.isOn('explore')],
     ],
     seq: [
       ['Participante', (c) => ({ text: 'participant ' + letterId(seqInfo(c).used) + ' as ' + pick(T('Nombre')) })],
@@ -218,9 +220,11 @@
   // En Graphviz todo va antes de la llave que cierra.
   function dotEnd(code) { const lines = code.split('\n'); for (let i = lines.length - 1; i >= 0; i--) if (/^\s*\}\s*$/.test(lines[i])) return { at: i }; const p = code.lastIndexOf('}'); return p === -1 ? {} : { pos: p }; }
 
+  // Las piezas de un tipo que valen ahora: una con condición sale solo cuando se cumple.
+  const piecesOf = (type) => (PIECES[type] || []).filter((x) => !x[2] || x[2]());
   // Arma lo que hay que escribir para una pieza: { from, to, text, sel: [inicio, fin] } sobre el texto del cuadro.
   function pieceEdit(kind, code, i) {
-    const type = typeOf(kind, code); const def = (PIECES[type] || [])[i]; if (!def) return null;
+    const type = typeOf(kind, code); const def = piecesOf(type)[i]; if (!def) return null;
     const p = def[1](code); const lines = code.split('\n'); const h = headLine(lines);
     const first = lines.find((l, n) => n > h && l.trim() && !/^\s*%%/.test(l));
     const indent = p.indent != null ? p.indent : (first ? indentOf(first) : '  ') || '  ';
@@ -536,7 +540,7 @@
       shown = type;
       label.textContent = (kind === 'dot' ? 'Graphviz' : 'Mermaid') + (type && type !== 'dot' ? ' · ' + T(TYPE_NAME[type]) : '');
       addRow.hidden = !PIECES[type];
-      addRow.lastChild.innerHTML = (PIECES[type] || []).map((x, i) => '<button type="button" data-piece="' + i + '">' + T(x[0]) + '</button>').join('');
+      addRow.lastChild.innerHTML = piecesOf(type).map((x, i) => '<button type="button" data-piece="' + i + '">' + T(x[0]) + '</button>').join('');
     };
     refresh(); showType();
     const later = debounce(refresh, 300);

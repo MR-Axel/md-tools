@@ -989,7 +989,7 @@
   // Con from, el de un bloque dibujado fuera de la página (una nota que se publica en un sitio).
   function htmlOf(from) {
     const copy = (from || core.ui.article).cloneNode(true);
-    copy.querySelectorAll('.lmd-anchor, .lmd-code-copy, .lmd-code-lang, .lmd-jy, .lmd-dgm-tools, .lmd-add, .lmd-draft, .lmd-draft-li, .lmd-board-edit, .lmd-cl-bar, .lmd-cl-add, .lmd-cl-grip').forEach((n) => n.remove());
+    copy.querySelectorAll('.lmd-anchor, .lmd-code-copy, .lmd-code-lang, .lmd-jy, .lmd-dgm-tools, .lmd-xp-bar, .lmd-xp-card, .lmd-add, .lmd-draft, .lmd-draft-li, .lmd-board-edit, .lmd-cl-bar, .lmd-cl-add, .lmd-cl-grip').forEach((n) => n.remove());
     copy.querySelectorAll('[contenteditable]').forEach((n) => n.removeAttribute('contenteditable'));
     // Lo plegado sale a la vista, y al exportar o copiar la nota las secciones desplegables van abiertas (fold.js).
     if (LMD.fold) LMD.fold.clean(copy, !from);

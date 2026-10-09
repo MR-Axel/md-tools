@@ -105,6 +105,7 @@
         "src/daily.js",
         "src/docx.js",
         "src/linkmap.js",
+        "src/explore.js",
         "src/jsonyaml.js",
         "src/import.js",
         "src/aikey.js",
