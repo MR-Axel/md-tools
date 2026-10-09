@@ -161,7 +161,7 @@
     const prev = el('div', { class: 'lmd-gal-prev' }); prev.appendChild(sampleOf(full)); card.appendChild(prev);
     const locked = planNeeded(full);
     if (locked) {
-      const extra = el('div', { class: 'lmd-extra' }); extra.appendChild(el('p', { text: T('Los colores, la tipografía y el CSS propio vienen con el plan pago.') }));
+      const extra = el('div', { class: 'lmd-extra' }); extra.appendChild(el('p', { text: T('El fondo y los colores del texto de este tema vienen con el plan pago.') }));
       const pay = el('div', { class: 'lmd-extra-actions', 'data-pay': '' }); pay.appendChild(el('button', { type: 'button', class: 'lmd-btn lmd-btn-fill', 'data-gv': 'plans', text: T('Ver planes') }));
       extra.appendChild(pay); card.appendChild(extra);
     }

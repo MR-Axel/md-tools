@@ -96,6 +96,16 @@ try {
   check('los ajustes van en diez pestañas, cada una con lo suyo', tabs.join('|') === 'look:Apariencia=Apariencia|read:Lectura y edición=Lectura+Edición+Carpeta|plug:Plugins=Plugins de Markdown|tools:Herramientas=Herramientas|cloud:Nube=Nube|ai:IA (MCP)=Conectar una IA|auto:API y automatizaciones=API y automatizaciones|plan:Plan=Plan|inst:Instalar=Instalar|adv:Avanzado=CSS propio+Servidor+Actualizaciones', tabs);
   const marks = await page.evaluate(() => ({ plugins: document.querySelectorAll('[data-tab=plug] [data-plugin]').length, other: document.querySelectorAll('[data-tab=plug] input:not([data-plugin]), [data-tab=plug] textarea, [data-tab=plug] select, [data-tab=plug] button').length, paidInPlugins: document.querySelectorAll('[data-tab=plug] .lmd-tag').length, cssTab: document.querySelector('[data-key=customCSS]').closest('section').dataset.tab, cssPaid: document.querySelector('[data-key=customCSS]').closest('section').querySelectorAll('.lmd-tag').length, reset: document.querySelector('[data-act=reset]').closest('section').dataset.tab }));
   check('Plugins trae solo los interruptores, sin marca de plan pago; el CSS propio y Restablecer van en Avanzado', marks.plugins >= 20 && marks.other === 0 && marks.paidInPlugins === 0 && marks.cssTab === 'adv' && marks.cssPaid === 1 && marks.reset === 'adv', marks);
+  // Sin cuenta: el color de acento y la tipografía se cambian sin aviso de plan; el CSS propio muestra su candado.
+  await page.click('[data-ptab=look]'); await page.click('[data-accent="#ec4899"]');
+  const fontPick = await page.evaluate(() => document.querySelector('select[data-key=fontFamily]').options[4].value);
+  await page.selectOption('select[data-key=fontFamily]', fontPick); await page.waitForTimeout(700);
+  const noAcct = await page.evaluate(() => { const r = document.documentElement; const look = document.querySelector('section[data-tab=look]'); const t = document.querySelector('[data-key=customCSS]'); const adv = t.closest('section');
+    return { fill: r.style.getPropertyValue('--accent-fill'), font: r.style.getPropertyValue('--lmd-font'), marks: look.querySelectorAll('.lmd-tag, .lmd-extra, .lmd-locked').length, off: look.querySelector('select[data-key=fontFamily]').disabled || look.querySelector('[data-accent-custom]').disabled,
+      cssOff: t.disabled, note: adv.querySelector('.lmd-extra p').textContent, plans: adv.querySelectorAll('[data-act=see-plans]').length, clear: adv.querySelectorAll('[data-act=css-clear]').length }; });
+  check('sin cuenta, el color de acento y la tipografía se eligen y se aplican, sin candado ni aviso de plan', noAcct.fill === '#ec4899' && fontPick.length > 3 && noAcct.font === fontPick && noAcct.marks === 0 && !noAcct.off, [noAcct, fontPick]);
+  check('sin cuenta, el CSS propio va con su candado: el campo apagado, una línea que lo explica y el botón a los planes', noAcct.cssOff && noAcct.note === 'El CSS propio viene con el plan pago.' && noAcct.plans === 1 && noAcct.clear === 0, noAcct);
+  await page.click('[data-accent=""]'); await page.selectOption('select[data-key=fontFamily]', ''); await page.waitForTimeout(500);
   await page.close();
 
   console.log('Página propia de SharpMD');

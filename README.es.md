@@ -63,9 +63,9 @@ Gratis y de código abierto. Sin seguimiento: los archivos se leen en tu navegad
 - **Árbol de carpetas**: los archivos Markdown de la carpeta del documento, con subcarpetas que se abren y botón para subir de nivel.
 - **Recarga automática** cuando el archivo cambia en disco, sin perder la posición.
 - **Doce temas incluidos**, seis claros y seis oscuros, en una grilla de miniaturas con vista previa en vivo. Los doce son gratis. Cada uno fija la página, los paneles, el texto, los bordes, los enlaces, la selección, la sintaxis del código y los diagramas, con contraste AA medido (`tests/themes.mjs`).
-- **Tema** claro, oscuro o automático. Los colores de acento, la tipografía y el CSS propio son extras de agradecimiento para quienes apoyan el proyecto, y se liberan a palabra: no hay verificación. Todo lo que hace el lector y el editor es gratis.
+- **Tema** claro, oscuro o automático, con **color de acento** a elección. Gratis, como todo lo que hacen el lector y el editor.
 - **Contenido centrado**, con **ancho**, **tamaño de letra**, **interlineado** y **tipografía** a medida. Las líneas largas del código bajan de renglón, con un ajuste para dejarlas con scroll.
-- **CSS propio** encima del tema.
+- **CSS propio** encima del tema, con el plan pago.
 - **Plugins de Markdown**, cada uno con su interruptor: resaltado de código, emoji, subíndice y superíndice, insertado, marcado, abreviaturas, listas de definición, notas al pie, listas de tareas, alertas estilo GitHub, índice en el texto (`[[toc]]`), matemática con KaTeX, diagramas con Mermaid y Graphviz, tablas con celdas combinadas, bloques `::: tip` y la cabecera YAML mostrada como ficha.
 - **Español e inglés**: toma el idioma del navegador (español, o inglés para cualquier otro) y se cambia desde Ajustes.
 - **Búsqueda siempre a la vista, con dos alcances**: con la pestaña Índice busca en el documento abierto; con la pestaña Carpeta busca el texto en todos los Markdown de la carpeta y sus subcarpetas.

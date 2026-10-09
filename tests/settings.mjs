@@ -276,11 +276,32 @@ try {
   check('un tema guardado a mano se aplica también sin el plan', sneaked.themed && sneaked.dark && sneaked.bg === '#0d1524' && (await head()).on === 'marea', sneaked);
   await app.evaluate(() => new Promise((resolve) => chrome.storage.local.get('settings', (r) => chrome.storage.local.set({ settings: Object.assign({}, r.settings, { preset: '', theme: 'auto' }) }, resolve)))); await app.waitForTimeout(500);
   check('y el tema de siempre vuelve como estaba', !(await paint()).themed && (await head()).on === (startDark ? 'noche' : 'lima'), await head());
-  await tab('look'); await app.click('[data-act=see-plans]'); await app.waitForTimeout(450);
-  check('"Ver planes" abre Ajustes directo en Plan', (await app.evaluate(() => document.querySelector('[data-ptab].lmd-on').dataset.ptab + ':' + [...document.querySelectorAll('.lmd-panel-body > section:not([hidden]) h3')].map((h) => h.textContent).join())) === 'plan:Plan');
+  // ---------- Acento y tipografía: de todos los planes ----------
+  await tab('look');
+  const freeLook = await app.evaluate(() => { const l = document.querySelector('section[data-tab=look]'); return { marks: l.querySelectorAll('.lmd-tag, .lmd-extra, .lmd-locked').length, font: !l.querySelector('select[data-key=fontFamily]').disabled, color: !l.querySelector('[data-accent-custom]').disabled, pick: l.querySelector('select[data-key=fontFamily]').options[6].value }; });
+  check('en el plan gratis, el color de acento y la tipografía no llevan candado ni aviso de plan', freeLook.marks === 0 && freeLook.font && freeLook.color, freeLook);
+  await app.click('[data-accent="#ec4899"]'); await app.selectOption('select[data-key=fontFamily]', freeLook.pick); await app.waitForTimeout(700);
+  const freeSet = await stored('settings'); const freeStyle = await app.evaluate(() => ({ fill: document.documentElement.style.getPropertyValue('--accent-fill'), font: document.documentElement.style.getPropertyValue('--lmd-font') }));
+  check('y se aplican y quedan guardados sin el plan pago', freeSet.supporter !== true && freeSet.accent === '#ec4899' && freeSet.fontFamily === freeLook.pick && freeStyle.fill === '#ec4899' && freeStyle.font === freeLook.pick && (await head()).custom, [freeStyle, freeSet.accent, freeSet.fontFamily]);
+  await app.evaluate(() => new Promise((resolve) => chrome.storage.local.get('settings', (r) => chrome.storage.local.set({ settings: Object.assign({}, r.settings, { accent: '', fontFamily: '' }) }, resolve)))); await app.waitForTimeout(500);
   await tab('adv');
   const freeAdv = await app.evaluate(() => { const t = document.querySelector('[data-key=customCSS]'); return { off: t.disabled, tag: t.closest('section').querySelector('.lmd-tag').textContent, own: document.querySelector('[data-server=own]').checked, url: document.querySelector('[data-server=url]').value, shown: !document.querySelector('.lmd-server-url').hidden }; });
   check('Avanzado: el CSS propio sigue siendo del plan pago, y el servidor propio muestra su dirección', freeAdv.off && freeAdv.tag === 'Plan pago' && freeAdv.own && freeAdv.url === base && freeAdv.shown, freeAdv);
+  const cssNote = await app.evaluate(() => { const s = document.querySelector('[data-key=customCSS]').closest('section'); return { note: s.querySelector('.lmd-extra p').textContent, clear: s.querySelectorAll('[data-act=css-clear]').length }; });
+  check('el CSS propio explica en una línea que es del plan pago', cssNote.note === 'El CSS propio viene con el plan pago.' && cssNote.clear === 0, cssNote);
+  await app.click('section[data-tab=adv] [data-act=see-plans]'); await app.waitForTimeout(450);
+  check('"Ver planes" abre Ajustes directo en Plan', (await app.evaluate(() => document.querySelector('[data-ptab].lmd-on').dataset.ptab + ':' + [...document.querySelectorAll('.lmd-panel-body > section:not([hidden]) h3')].map((h) => h.textContent).join())) === 'plan:Plan');
+  await app.click('[data-act=close-panel]');
+  // Quien ya tenía CSS propio guardado y no tiene el plan pago: se sigue aplicando, se lee, no se edita y se puede quitar.
+  const OLD_CSS = '.markdown-body h1 { letter-spacing: 3px; }';
+  await app.evaluate((css) => new Promise((resolve) => chrome.storage.local.get('settings', (r) => chrome.storage.local.set({ settings: Object.assign({}, r.settings, { customCSS: css }) }, resolve))), OLD_CSS); await app.waitForTimeout(500);
+  await openSettings('adv');
+  const keptCss = await app.evaluate(() => { const t = document.querySelector('[data-key=customCSS]'); const s = t.closest('section'); return { live: document.getElementById('lmd-custom-css').textContent, value: t.value, readOnly: t.readOnly, off: t.disabled, tag: s.querySelector('.lmd-tag').textContent, note: s.querySelector('.lmd-extra p').textContent, clear: s.querySelectorAll('[data-act=css-clear]').length, plans: s.querySelectorAll('[data-act=see-plans]').length }; });
+  await app.click('[data-key=customCSS]'); await app.keyboard.type('x'); await app.waitForTimeout(400);
+  check('el CSS que ya estaba guardado se sigue aplicando sin el plan pago, y el campo lo muestra sin dejar editarlo', keptCss.live === OLD_CSS && keptCss.value === OLD_CSS && keptCss.readOnly && !keptCss.off && keptCss.tag === 'Plan pago' && keptCss.note === 'Editar el CSS propio viene con el plan pago. El que ya tenías se sigue aplicando.' && keptCss.plans === 1 && (await stored('settings')).customCSS === OLD_CSS, keptCss);
+  await app.click('[data-act=css-clear]'); await app.waitForTimeout(600);
+  const cleared = await app.evaluate(() => { const t = document.querySelector('[data-key=customCSS]'); return { live: document.getElementById('lmd-custom-css').textContent, value: t.value, off: t.disabled, clear: document.querySelectorAll('[data-act=css-clear]').length }; });
+  check('y se puede quitar: deja de aplicarse y el campo vuelve a quedar con su candado', keptCss.clear === 1 && cleared.live === '' && cleared.value === '' && cleared.off && cleared.clear === 0 && (await stored('settings')).customCSS === '', cleared);
   await app.click('[data-act=close-panel]');
   await app.click('.lmd-sync'); await app.click('.lmd-menu [data-s=ai]'); await app.waitForSelector('.lmd-panel-card'); await app.waitForTimeout(450);
   check('"Conectar una IA" del menú de la nube abre Ajustes en IA', (await app.evaluate(() => document.querySelector('[data-ptab].lmd-on').dataset.ptab)) === 'ai');
@@ -411,7 +432,11 @@ try {
   check('y la marca sale de la dirección', done.hash === '' && done.url === docUrl, done);
   await tab('look');
   const unlocked = await app.evaluate(() => ({ font: !document.querySelector('select[data-key=fontFamily]').disabled, swatches: !document.querySelector('.lmd-swatches').classList.contains('lmd-locked'), tags: document.querySelectorAll('.lmd-panel .lmd-tag').length, css: !document.querySelector('[data-key=customCSS]').disabled }));
-  check('las personalizaciones quedan desbloqueadas', (await stored('settings')).supporter === true && unlocked.font && unlocked.swatches && unlocked.css && unlocked.tags === 0, unlocked);
+  check('con el plan pago no queda ningún candado', (await stored('settings')).supporter === true && unlocked.font && unlocked.swatches && unlocked.css && unlocked.tags === 0, unlocked);
+  await tab('adv'); await app.fill('[data-key=customCSS]', '.markdown-body h1 { letter-spacing: 2px; }'); await app.waitForTimeout(900);
+  const proCss = await app.evaluate(() => { const t = document.querySelector('[data-key=customCSS]'); return { live: document.getElementById('lmd-custom-css').textContent, edit: !t.disabled && !t.readOnly, extra: t.closest('section').querySelectorAll('.lmd-extra, .lmd-tag').length }; });
+  check('con el plan pago el CSS propio se edita, se guarda y se aplica', proCss.edit && proCss.extra === 0 && proCss.live === '.markdown-body h1 { letter-spacing: 2px; }' && (await stored('settings')).customCSS === '.markdown-body h1 { letter-spacing: 2px; }', proCss);
+  await app.fill('[data-key=customCSS]', ''); await app.waitForTimeout(900); await tab('look');
   // ---------- Temas incluidos, con el plan pago ----------
   const proGrid = await app.evaluate(() => document.querySelectorAll('.lmd-th-lock').length);
   await app.click('[data-th=marea]'); await app.waitForTimeout(150);

@@ -7,7 +7,7 @@
   const TYPES = ['template', 'theme', 'palette'];
   const THEME = ['mode', 'accent', 'paperLight', 'paperDark', 'font', 'codeColor', 'diagramShape', 'surface', 'text', 'muted', 'border', 'link'];
   const INK = Object.keys(LMD.theme.CUSTOM); // surface, text, muted, border, link: colores de un modo solo, que tienen que dejar leer
-  const PAID = ['accent', 'paperLight', 'paperDark', 'font'].concat(INK); // lo que hoy viene con el plan pago en Apariencia
+  const PAID = ['paperLight', 'paperDark'].concat(INK); // lo que viene con el plan pago: el fondo y los colores del texto. El acento y la tipografía son de todos
   const COLORS = ['fill', 'text', 'border', 'line', 'second', 'third'];
   const MAX_TEMPLATE = 20 * 1024; const MAX_KEPT = 100;
   // Las tipografías viajan por nombre y se traducen acá a las que la app ya trae. Ninguna otra vale.
@@ -81,22 +81,22 @@
     if ('diagramShape' in data) s.diagramShape = data.diagramShape;
     return s;
   }
-  // El tema que hay puesto, con lo que se aparta de fábrica. Sin plan pago no entran sus colores ni su tipografía.
+  // El tema que hay puesto, con lo que se aparta de fábrica. Sin plan pago no entran el fondo ni los colores del texto.
   function fromSettings(s) {
     const d = {};
     if (s.theme === 'light' || s.theme === 'dark') d.mode = s.theme;
     if (HEX.test(s.codeColor || '')) d.codeColor = s.codeColor.toLowerCase();
     if (s.diagramShape === 'square') d.diagramShape = 'square';
+    const f = fontId(s.fontFamily); if (f && f !== 'Inter') d.font = f;
     if (s.supporter) {
       // Con un tema incluido puesto, sale con sus colores: el fondo, los paneles, el texto, los bordes, los enlaces y el acento.
       const p = LMD.theme.chosen(s);
       if (p) { d.mode = p.dark ? 'dark' : 'light'; d[p.dark ? 'paperDark' : 'paperLight'] = p.c.bg; d.accent = p.c.fill; d.surface = p.c.soft; d.text = p.c.fg; d.muted = p.c.muted; d.border = p.c.line; d.link = p.c.link; }
       if (d.mode) INK.forEach((k) => { const v = s[LMD.theme.CUSTOM[k]]; if (HEX.test(v || '')) d[k] = v.toLowerCase(); });
-      if (HEX.test(s.accent || '')) d.accent = s.accent.toLowerCase();
       if (paperOk(s.paperLight, false)) d.paperLight = s.paperLight.toLowerCase();
       if (paperOk(s.paperDark, true)) d.paperDark = s.paperDark.toLowerCase();
-      const f = fontId(s.fontFamily); if (f && f !== 'Inter') d.font = f;
     }
+    if (HEX.test(s.accent || '')) d.accent = s.accent.toLowerCase();
     return d;
   }
   const needsPlan = (data) => PAID.some((k) => k in data);
