@@ -62,6 +62,9 @@ Then, in SharpMD: Settings → Cloud → Sync server, and type the address (`htt
 | `PAGES_MAX_PAGES`, `PAGES_MAX_MB` | Pages per site, and megabytes of stored HTML per site | `300`, `40` |
 | `PAGES_NEW_DAY`, `PAGES_PUTS_HOUR` | Sites one account may create per day, and pages one site may upload per hour | `3`, `1200` |
 | `PAGES_GRACE_MS` | Tests only: the grace period in milliseconds. Leave it alone in production | |
+| `PAGES_TEAM_DOMAIN` | Domain under which each team gets its own subdomain for its published sites, for example `pages.example.com` for `acme.pages.example.com`: only the domain name, no scheme, port or path. Needs `PAGES_URL`, and a wildcard DNS record and certificate. Without it nothing changes: every site stays on the pages host. See "A subdomain per team" | off |
+| `PAGES_TEAM_HOLD_DAYS` | Days a subdomain stays reserved for the team that changed or released it, before another team can take it | `90` |
+| `PAGES_TEAM_HOLD_MS` | Tests only: that reservation in milliseconds. Leave it alone in production | |
 | `DATA_KEY` | 32 bytes in base64. Turns on encryption at rest: see below | off |
 | `FILE_MAX_FREE_MB`, `FILE_MAX_PAID_MB` | Megabytes one attached image may weigh, an animated GIF included, on the free plan and on the paid one. See "Attached images" | `5`, `10` |
 | `FILES_FREE_MB`, `FILES_PAID_MB` | Megabytes of attached images per free account and per paid account. With `0` the free plan does not upload | `0`, `1024` |
@@ -118,7 +121,7 @@ Of a contribution to the community gallery it stores the type, the name, the des
 
 Of a message sent from "Send feedback" or a report it stores the text, the email address if one was given, and four details of where it was written, for 180 days. See "Feedback".
 
-Of a published site it stores the account it belongs to (its number, never the email address), the folder, the address, its settings (title, description, language, color, font, text logo, author name and its two switches), a preview key, how many times it was reported and, of each page, the path of the note, its address, its title and description, the HTML that is served, its text for the search and the revision of the note it was made from. That content is public: it is not encrypted at rest. See "Published sites".
+Of a published site it stores the account it belongs to (its number, never the email address), the folder, the address, its settings (title, description, language, color, font, text logo, author name and its two switches), a preview key, how many times it was reported and, of each page, the path of the note, its address, its title and description, the HTML that is served, its text for the search and the revision of the note it was made from. That content is public: it is not encrypted at rest. See "Published sites". Of a team, with `PAGES_TEAM_DOMAIN`, it also stores the subdomain it chose and the names it has on hold, each with the date its hold ends.
 
 Of an attached image it stores the file itself, under `DATA_DIR/files/`, and a row with the account or team space it belongs to, who uploaded it, its type, size, hash and date, and whether it arrived encrypted. Never the name the file had: the app removes the metadata of a photo (camera, date, location) before uploading, unless the person chose to keep the original. `DATA_KEY` does not cover these files. See "Attached images".
 
@@ -406,7 +409,7 @@ Of each page the server stores the path of the note, its route, title, descripti
 
 **Plan.** `PAGES_PER_ACCOUNT` sites per paid account (1). When the account leaves the paid plan the site stays up for `PAGES_GRACE_DAYS` (7) and nothing new can be published (`402`); after that it is unpublished and its pages are deleted, and the settings and the address are kept for when the plan comes back.
 
-**Teams.** A folder of the team space can be published too, with `o`. The policy `publish`, off by default, decides whether members who are not administrators may do it; a reader never can (`403 read_only`), and administrators always can. Any member sees the site of the team. Creating, publishing and unpublishing it go to the activity log (`site`, `publish`, `unpublish`) with the folder and the address. A team space has its own allowance of `PAGES_PER_ACCOUNT` sites.
+**Teams.** A folder of the team space can be published too, with `o`. The policy `publish`, off by default, decides whether members who are not administrators may do it; a reader never can (`403 read_only`), and administrators always can. Any member sees the site of the team. Creating, publishing and unpublishing it go to the activity log (`site`, `publish`, `unpublish`, `subdomain`, `subdomain_off`) with the folder and the address. A team space has its own allowance of `PAGES_PER_ACCOUNT` sites.
 
 **Limits.** `PAGES_MAX_PAGES` pages per site (300), 1.5 MB of HTML per page and `PAGES_MAX_MB` per site (40), `PAGES_PUTS_HOUR` uploaded pages per site and hour (1,200), 30 publications per site and hour, `PAGES_NEW_DAY` sites created per account and day (3), 900 requests a minute per IP on the pages host and 5 reports an hour per IP.
 
@@ -431,6 +434,47 @@ curl -X POST https://sync.example.com/admin/sites -H "x-admin-key: $ADMIN_KEY" \
 4. Then `"action":"restore"` puts it back as it was, or `"action":"delete"` removes the site and its pages for good. To act on the account itself, `POST /admin/plan`.
 
 These admin routes are called on the API host, never on the pages host.
+
+### A subdomain per team
+
+Part of the team plan, and off unless `PAGES_TEAM_DOMAIN` is set. With it, the administrator of a team chooses a name and the sites published from the team space are served at `<name>.<PAGES_TEAM_DOMAIN>/<slug>/`, with the scheme and the port of `PAGES_URL`. Sites of personal accounts, and of teams that chose no name, stay on the pages host. Previews (`/~{key}/`) stay on the pages host too.
+
+Without the variable nothing changes: the `/team/subdomain` routes answer `404 no_route`, `GET /account` carries `team.mine.subdomain: { enabled: false }`, the app shows no field, and no host name other than the one of `PAGES_URL` serves a site. So the code can be deployed first and turned on later.
+
+**To turn it on.** Three things outside this server, then the variable:
+
+1. A wildcard DNS record for `*.<PAGES_TEAM_DOMAIN>` to the same machine.
+2. A wildcard certificate for `*.<PAGES_TEAM_DOMAIN>`. A wildcard is only issued with a DNS challenge, so the proxy needs credentials for the DNS provider, or the certificate has to be issued and renewed by other means.
+3. A proxy rule that sends `*.<PAGES_TEAM_DOMAIN>` to the same port, passing the `Host` header as it arrived.
+4. `PAGES_TEAM_DOMAIN=pages.example.com` in the environment of the service, and a restart.
+
+The server does not start if `PAGES_TEAM_DOMAIN` is set without `PAGES_URL`, if it is not a plain domain name, or if it is the host name of `PUBLIC_URL`. The domain can be the pages host itself (`acme.pages.example.com`), a domain of its own (`acme.example.page`), or the parent of the other names (`acme.example.com` next to `sync.example.com`): the host names of `PUBLIC_URL`, `PAGES_URL`, `APP_URL` and `ALLOW_ORIGINS` that fall under it keep being served as always, and no team can choose their label. A domain kept only for sites is the more cautious choice.
+
+**Routes.** All of them ask for the session of an administrator of the team (`403 not_admin`, `404 no_team` without a team).
+
+| Route | What it does |
+|---|---|
+| `GET /team/subdomain` | `{ enabled, domain, name, url, template, hold_days }`. `name` and `url` are empty until one is chosen. `template` is the address with `{name}` where the name goes. The same object is in `team.mine.subdomain` of `GET /account` and `GET /team`, for every member |
+| `GET /team/subdomain?name=` | Checks a name while it is typed: `{ ok: true, name, url }`, or `{ ok: false, why }` with `bad_subdomain`, `subdomain_reserved` or `subdomain_taken` |
+| `PUT /team/subdomain` `{ name }` | Chooses or changes it. `400 bad_subdomain`, `409 subdomain_reserved`, `409 subdomain_taken`, `402 team_ended` when the team is not paid, `429 subdomain_changes` with five names already on hold. Answers `{ ok, subdomain, team }` |
+| `DELETE /team/subdomain` | Releases it: the sites of the team go back to the pages host. Works on a team that is not paid too |
+
+**The name.** 3 to 32 characters: lowercase letters, digits and single hyphens, not at the ends. No `--`, so no encoded names (`xn--`). Reserved: everything a site address cannot be (`www`, `api`, `app`, `admin`, `mail`, `status`, `login`, `support`, `billing`…), the names of infrastructure (`sync`, `pages`, `smtp`, `ns1`, `cdn`, `staging`…), and anything that contains `sharpmd` or `sharp-md`. A name belongs to one team.
+
+**Changing and releasing.** A name that a team changes or releases stays on hold for `PAGES_TEAM_HOLD_DAYS`. During that time only that team can take it back, so nobody inherits the links of another team from one day to the next. While the team has another name, the old one redirects to the new one with the same path. A team keeps at most five names on hold: with five, it can go back to one of them but cannot choose a new one. When a team is deleted with its account, its name and the ones it had on hold stay reserved for nobody until they expire.
+
+**The old addresses keep working.** `<PAGES_URL>/<slug>/…` of a site that now lives on a subdomain answers `308` to the same path there. When the team releases the name, the site is served on the pages host again. `GET /sites` gives the current address of each site in `url`.
+
+**What a team host serves.** The same addresses as the pages host, for the sites of that team only: `/{slug}/…`, `/_/site.css`, `/_/site.js`, the report form, `/robots.txt` and `/sitemap.xml` (an index of the sites of that team; the one of the pages host leaves them out). `/` redirects to the site of the team when there is one, and lists them when there are several. The site of another team, or of a personal account, answers `404` there, the same as one that does not exist.
+
+**Security.**
+
+- The `Host` header is compared with the exact domain: one label, then `.<PAGES_TEAM_DOMAIN>`, then the port of `PAGES_URL`. A name that only looks like it (`evil-example.com`, `acme.pages.example.com.evil.test`) is not a team host. A host under the domain that is not a valid name or belongs to no team (two labels, another port, an unknown name) answers a plain `404` and never reaches the API. `X-Forwarded-Host` and `Forwarded` are ignored.
+- Nothing of a response is taken from the `Host` header. The origin in the content policy, in the canonical address, in the sitemaps and in the redirects comes from the configuration and from the name stored for the team. A host of nobody gets no page at all, only `Not found`.
+- On a team host there is no API, exactly as on the pages host: no account route, no session, no token, no MCP, no CORS, and nothing but `GET` and `HEAD` plus the report.
+- No cookies anywhere. The server sets none and reads none, and a session is a bearer token kept by the origin of the app, so a site on one subdomain has no session to read from another subdomain or from the app. That is why sibling names are enough. It also means a site cannot make an authenticated request to the API.
+- The API gives no CORS headers to an origin under `PAGES_TEAM_DOMAIN`, even with `ALLOW_ORIGINS=*`. Do not add a team origin to `ALLOW_ORIGINS`.
+- Each team host sends the headers of the pages host with its own origin in the policy: `script-src` and `style-src` name only its own `/_/site.js` and `/_/site.css`, `frame-ancestors 'none'` and `X-Frame-Options: DENY` keep any other origin from embedding it, and `Cross-Origin-Resource-Policy: same-origin` and `Cross-Origin-Opener-Policy: same-origin` keep another origin, a sibling subdomain included, from reading its pages or its search index.
 
 ### Attached images
 
@@ -611,6 +655,7 @@ Three levels of settings. Personal settings (appearance, fonts, language, tools,
 | `GET /team/policies` | Any member: `{ policies, can, history_days, history_max }` |
 | `PUT /team/policies` `{ share, links, live, tokens, automation, publish, history_days, folder, template }` | Administrator: changes the policies sent, see below. `400 bad_policy` |
 | `GET /team/log` | Administrator: the activity log, see below |
+| `GET /team/subdomain`, `GET /team/subdomain?name=`, `PUT /team/subdomain` `{ name }`, `DELETE /team/subdomain` | Administrator: the subdomain of the team for its published sites. Only with `PAGES_TEAM_DOMAIN`: otherwise `404 no_route`. See "A subdomain per team" |
 | `GET /team/tokens`, `POST /team/tokens` `{ name, folder, write, share }`, `DELETE /team/tokens/{id}`, `POST /team/tokens/{id}/regenerate` | Administrator: team tokens, see below |
 | `POST /team/seats` `{ seats }` | The account that pays (`403 not_owner` for another administrator): changes the subscription in Paddle and then the seats. `409 seats_in_use` below the seats in use, `400 bad_seats`, `502 billing_failed` if Paddle refuses, `409 no_billing` for a team made by hand |
 
