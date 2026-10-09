@@ -318,6 +318,7 @@ try {
   check('quien administra ve a cada miembro con su papel y lo puede cambiar, menos el propio', /olga@ejemplo\.test · Administrator/.test(adminView.text) && /pedro@ejemplo\.test · Editor/.test(adminView.text) && /lucia@ejemplo\.test · Reader/.test(adminView.text) && adminView.roles.join() === 'editor,reader' && adminView.invRole, adminView);
   check('Plan tiene las secciones del equipo: ajustes, protección, tokens y registro', ['Team settings', 'Space protection', 'Team tokens', 'Activity log'].every((h) => adminView.heads.includes(h)) && adminView.enabled && !adminView.locked, adminView.heads);
   check('y dice que quien solo lee ocupa un lugar', /A reader takes a seat too\./.test(adminView.text));
+  check('sin PAGES_TEAM_DOMAIN en el servidor, Plan no ofrece el subdominio del equipo', !adminView.heads.includes('Team subdomain') && !(await olga.page.$('.lmd-team [data-t=sub-name], .lmd-team [data-t=sub-save], .lmd-team [data-team=subdomain]')), adminView.heads);
   // Cada cambio vuelve a dibujar la gestión: se espera su aviso, borrando antes el del cambio anterior.
   const does = async (page, fn, text) => { await page.evaluate(() => { const m = document.querySelector('.lmd-team-msg'); if (m) { m.hidden = true; m.textContent = ''; } }); await fn(); await said(page, text); };
   await does(olga.page, () => olga.page.selectOption('.lmd-team select[data-t=role][data-id="' + P.id + '"]', 'reader'), 'Role changed.');

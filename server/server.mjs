@@ -1985,6 +1985,8 @@ function mcp(user, msg) {
 function cors(req, res) {
   if (autoCors(req, res)) return;
   const origin = req.headers.origin;
+  // El sitio de un equipo en su subdominio nunca es un origen de la API, aunque ALLOW_ORIGINS diga "*".
+  if (origin && teamSiteOrigin(origin)) return;
   if (origin && (/^(chrome|moz)-extension:\/\//.test(origin) || ORIGINS.includes(origin) || ORIGINS.includes('*'))) {
     res.setHeader('access-control-allow-origin', origin);
     res.setHeader('vary', 'origin');
@@ -2096,6 +2098,8 @@ function teamView(user) {
   // owner: es quien paga. role: 'admin', 'editor' o 'reader'. can: lo que esta cuenta puede hacer en el espacio.
   out.mine = { id: t.id, name: t.name, role, owner, active: t.status === 'active', space: t.space, members, solo: user.own === 'pro' };
   out.mine.vault = teamVaultView(user, t);
+  // subdomain: si el servidor da subdominio por equipo, cuál tiene este y bajo qué dominio.
+  out.mine.subdomain = teamSubView(t);
   out.mine.policies = teamPolicies(t); out.mine.history_days = teamHistoryDays(t); out.mine.history_max = TEAM_HISTORY_DAYS; out.mine.history_choices = TEAM_HISTORY_CHOICES.filter((d) => d <= TEAM_HISTORY_DAYS);
   out.mine.can = Object.fromEntries(['write'].concat(POLICY_BOOLS).map((k) => [k, teamAllows(t, user, k)]));
   // Los lugares y las invitaciones pendientes, para quien administra personas. El cobro, solo para quien paga.
@@ -2544,7 +2548,7 @@ function teamLogSweep() {
   for (const t of q('SELECT team, COUNT(*) AS n FROM team_log GROUP BY team HAVING n > ?').all(TEAM_LOG_MAX)) q('DELETE FROM team_log WHERE team = ? AND id NOT IN (SELECT id FROM team_log WHERE team = ? ORDER BY id DESC LIMIT ?)').run(t.team, t.team, TEAM_LOG_MAX);
   for (const [k, at] of logSeen) if (now() - at > HOUR) logSeen.delete(k);
 }
-const TEAM_ACTIONS = ['create', 'edit', 'move', 'delete', 'restore', 'purge', 'empty_trash', 'share', 'unshare', 'link', 'unlink', 'invite', 'uninvite', 'join', 'leave', 'remove', 'role', 'policy', 'team_name', 'protect', 'password', 'rotate', 'rotate_done', 'unprotect', 'destroy', 'ai', 'ai_unlock', 'token_create', 'token_revoke', 'token_regenerate', 'automation', 'automation_remove', 'site', 'publish', 'unpublish', 'live_open', 'live_end', 'live_kick', 'attach', 'detach'];
+const TEAM_ACTIONS = ['create', 'edit', 'move', 'delete', 'restore', 'purge', 'empty_trash', 'share', 'unshare', 'link', 'unlink', 'invite', 'uninvite', 'join', 'leave', 'remove', 'role', 'policy', 'team_name', 'protect', 'password', 'rotate', 'rotate_done', 'unprotect', 'destroy', 'ai', 'ai_unlock', 'token_create', 'token_revoke', 'token_regenerate', 'automation', 'automation_remove', 'site', 'publish', 'unpublish', 'subdomain', 'subdomain_off', 'live_open', 'live_end', 'live_kick', 'attach', 'detach'];
 // Lo que se pide del registro: who (número de cuenta), token (nombre), action, from y to (milisegundos), before (id, para seguir).
 function teamLogRows(team, url, max) {
   const g = (k) => url.searchParams.get(k) || '';
@@ -2590,9 +2594,16 @@ async function teamAdminRoute(user, p, m, req, after) {
   const t = user.team; const url = new URL(req.url, 'http://x');
   // Las políticas las lee cualquier miembro (necesita saber con qué nace una nota y qué puede hacer); las cambia quien administra.
   if (p === '/team/policies' && m === 'GET') { if (!t) throw new Fail(404, 'no_team'); return { policies: teamPolicies(t), can: Object.fromEntries(['write'].concat(POLICY_BOOLS).map((k) => [k, teamAllows(t, user, k)])), history_days: teamHistoryDays(t), history_max: TEAM_HISTORY_DAYS }; }
-  const known = p === '/team/policies' || p === '/team/role' || p === '/team/log' || p === '/team/tokens' || p.startsWith('/team/tokens/');
+  // /team/subdomain existe solo con PAGES_TEAM_DOMAIN: sin la variable responde como cualquier ruta que no hay.
+  const known = p === '/team/policies' || p === '/team/role' || p === '/team/log' || p === '/team/tokens' || p.startsWith('/team/tokens/') || (p === '/team/subdomain' && !!TEAM_SITES);
   if (!known) return null;
   adminTeam(user);
+  // Sin name, el subdominio que hay. Con name, si ese nombre se puede usar: lo pregunta la app mientras se escribe.
+  if (p === '/team/subdomain' && m === 'GET') {
+    const name = url.searchParams.get('name'); if (name == null) return teamSubView(t);
+    limit('tsub:' + user.id, 300, HOUR, 'too_many'); mark('tsub:' + user.id);
+    try { const ok = teamSubName(name, t); return { ok: true, name: ok, url: teamOrigin(ok) + '/' }; } catch (e) { if (e instanceof Fail) return { ok: false, why: e.code }; throw e; }
+  }
   if (p === '/team/log' && m === 'GET') {
     const key = 'tlog:' + user.id; limit(key, TEAM_LOG_HOUR, HOUR, 'too_many'); mark(key);
     if (url.searchParams.get('format') === 'csv') return { csv: teamLogCsv(teamLogRows(t, url, TEAM_LOG_CSV)), days: TEAM_LOG_DAYS };
@@ -2641,6 +2652,8 @@ async function teamAdminRoute(user, p, m, req, after) {
     }
     return after({ ok: true, policies: teamPolicies(t) });
   }
+  if (p === '/team/subdomain' && m === 'PUT') { teamSubSet(t, user, (await readBody(req)).name); return after({ ok: true, subdomain: teamSubView(q('SELECT * FROM teams WHERE id = ?').get(t.id)) }); }
+  if (p === '/team/subdomain' && m === 'DELETE') { teamSubClear(t, user); return after({ ok: true, subdomain: teamSubView(q('SELECT * FROM teams WHERE id = ?').get(t.id)) }); }
   if (p === '/team/tokens' && m === 'POST') {
     if (t.status !== 'active') throw new Fail(402, 'team_ended');
     if (q('SELECT COUNT(*) AS n FROM tokens WHERE team = ?').get(t.id).n >= MAX_TEAM_TOKENS) throw new Fail(429, 'too_many');
@@ -2711,6 +2724,8 @@ function accountDelete(req, user, body) {
   db.exec('BEGIN');
   try {
     if (!own && user.team) q('DELETE FROM team_members WHERE team = ? AND user = ?').run(user.team.id, user.id);
+    // El subdominio del equipo que se va queda en reserva, a nombre de nadie: otro equipo no lo toma al día siguiente.
+    if (own) teamSubOrphan(own);
     if (own) { q('DELETE FROM team_members WHERE team = ?').run(own.id); q('DELETE FROM team_invites WHERE team = ?').run(own.id); q('DELETE FROM team_log WHERE team = ?').run(own.id); q('DELETE FROM tokens WHERE team = ?').run(own.id); q('DELETE FROM teams WHERE id = ?').run(own.id); }
     // En el registro de otros equipos, lo que hizo esta cuenta queda sin nombre.
     q('UPDATE team_log SET uid = NULL WHERE uid = ?').run(user.id); q('UPDATE team_log SET about = NULL WHERE about = ?').run(user.id);
@@ -4263,6 +4278,7 @@ function autoCors(req, res) {
 // Dónde. El mismo servidor atiende un segundo nombre de host, el de PAGES_URL, y por ahí salen solo los sitios:
 //   <PAGES_URL>/<slug>/            la portada del sitio
 //   <PAGES_URL>/<slug>/<ruta>      cada página
+// Con PAGES_TEAM_DOMAIN, los sitios de un equipo salen además por su propio subdominio (más abajo, "Subdominio por equipo").
 // Quién es quién lo dice la cabecera Host. Por ese host no existe ninguna otra ruta del servidor (ni API, ni
 // sesiones, ni MCP): no se leen credenciales y lo único que se escribe es una denuncia. Por el host de siempre no se
 // sirve ningún sitio. Ese es el resguardo principal: aunque alguien lograra meter un script en su sitio, corre en un
@@ -4565,6 +4581,7 @@ function siteLapse(site, owner) {
   return site;
 }
 function sitesSweep() {
+  q('DELETE FROM team_sub_holds WHERE until <= ?').run(now());
   // Lo publicado de una nota que ya no existe (se eliminó o cambió de nombre) no se servía más: acá se borra.
   q('DELETE FROM site_pages WHERE NOT EXISTS (SELECT 1 FROM sites s JOIN notes n ON n.user = s.owner AND n.path = site_pages.note WHERE s.id = site_pages.site)').run();
   for (const s of q('SELECT * FROM sites').all()) { try { siteLapse(s, userById(s.owner)); } catch (e) { console.error('sitios: no se pudo revisar el plan · ' + String(e && e.message || e).slice(0, 200)); } } }
@@ -4588,7 +4605,7 @@ function sitePending(site) {
 function siteView(site, user, full) {
   const c = siteConfOf(site); const team = site.owner !== user.id;
   const n = q('SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS size FROM site_pages WHERE site = ?').get(site.id);
-  const out = { id: site.id, o: team ? site.owner : 0, team, slug: site.slug, folder: site.folder, url: PAGES.url + '/' + site.slug + '/', preview: PAGES.url + '/~' + site.pkey + '/',
+  const out = { id: site.id, o: team ? site.owner : 0, team, slug: site.slug, folder: site.folder, url: siteOrigin(site) + '/' + site.slug + '/', preview: PAGES.url + '/~' + site.pkey + '/',
     title: c.title, descr: c.descr, home: c.home, lang: c.lang, accent: c.accent, font: c.font, logo: c.logo, author: c.author, noindex: !!c.noindex, auto: !!c.auto,
     live: !!site.live, suspended: !!site.suspended, reason: site.suspended ? site.reason : '', lapsed: site.lapsed || 0, ends: site.lapsed ? site.lapsed + PAGES_GRACE_MS : 0,
     published: site.published || 0, pages: n.n, size: n.size, can: !team || (teamAllows(user.team, user, 'publish') && teamAllows(user.team, user, 'write')) };
@@ -4639,6 +4656,126 @@ function siteSlug(v, mine) {
   if (row && row.id !== mine) throw new Fail(409, 'slug_taken');
   return slug;
 }
+// ---------- Subdominio por equipo ----------
+// Con PAGES_TEAM_DOMAIN, quien administra un equipo elige un nombre y los sitios del espacio del equipo salen por
+//   <nombre>.<PAGES_TEAM_DOMAIN>/<slug>/
+// con el esquema y el puerto de PAGES_URL. La dirección de antes (<PAGES_URL>/<slug>/) sigue andando: redirige ahí.
+// Sin la variable nada de esto existe: ni las rutas, ni el dato en la cuenta, ni otro nombre de host que atender.
+//   - Cada subdominio es un origen aparte, con las mismas reglas que el host de sitios: por ahí no hay API, ni
+//     credenciales, ni CORS, y sus cabeceras impiden que otro origen lo enmarque o lea sus recursos. Como el
+//     servidor no usa cookies, un sitio no tiene ninguna sesión que leerle a otro ni a la app.
+//   - Quién es quién lo dice la cabecera Host, contra el dominio exacto: una etiqueta sola, delante de
+//     ".<PAGES_TEAM_DOMAIN>". Un nombre que solo se le parece no entra acá. Lo que se escribe en una respuesta sale
+//     de la configuración y de la base, nunca de lo que mandó el pedido.
+//   - Por el subdominio de un equipo se sirven solo los sitios de ese equipo. El de otro responde igual que uno que
+//     no existe.
+//   - Un nombre que un equipo cambia o deja queda en reserva TEAM_SUB_HOLD_MS: en ese tiempo solo ese equipo lo puede
+//     volver a tomar, y mientras tenga otro, el viejo redirige al nuevo. Así nadie hereda de un día para el otro
+//     los enlaces de otro equipo.
+const TEAM_SITES = (() => {
+  const raw = String(env.PAGES_TEAM_DOMAIN || '').trim().toLowerCase(); if (!raw) return null;
+  if (!PAGES) fatal('PAGES_TEAM_DOMAIN necesita PAGES_URL: por los subdominios de equipo salen sitios publicados');
+  if (raw.length > 200 || !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(raw)) fatal('PAGES_TEAM_DOMAIN es solo un nombre de dominio, sin esquema, puerto ni ruta: por ejemplo pages.example.com');
+  const hostOf = (v) => { try { return new URL(v).hostname.toLowerCase(); } catch (e) { return ''; } };
+  if (hostOf(PUBLIC_URL) === raw) fatal('PAGES_TEAM_DOMAIN tiene que ser otro nombre que el de PUBLIC_URL');
+  // Los nombres propios que caen bajo ese dominio (el de la API, el de sitios, el de la app): se atienden como
+  // siempre, y su etiqueta no la puede elegir ningún equipo.
+  const own = new Set(); const labels = new Set();
+  for (const h of [PUBLIC_URL, PAGES.url, APP_URL].concat(ORIGINS).map(hostOf)) if (h.endsWith('.' + raw)) { own.add(h); labels.add(h.slice(0, -(raw.length + 1)).split('.').pop()); }
+  const u = new URL(PAGES.url);
+  return { domain: raw, scheme: u.protocol, port: u.port ? ':' + u.port : '', plain: u.protocol === 'https:' ? ':443' : ':80', own, labels };
+})();
+// El nombre: 3 a 32, minúsculas, números y guiones sueltos. Sin "--": deja afuera los nombres codificados (xn--).
+const TEAM_SUB = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
+// Lo que no puede elegir un equipo: lo que tampoco puede un sitio, los nombres de infraestructura y los que
+// harían pasar el sitio por el servicio, por su soporte o por un ingreso.
+const TEAM_SUB_RESERVED = new Set(Array.from(SITE_RESERVED).concat(('sync pages smtp imap pop pop3 ftp sftp ssh ns ns1 ns2 ns3 mx mx1 mx2 webmail autodiscover autoconfig localhost local secure ssl tls vpn proxy gateway git dev staging stage beta alpha preview internal intranet ' +
+  'console panel cpanel portal sso id identity verify verification password passwords recover recovery reset checkout invoice invoices payments paddle refund refunds trust safety compliance postmaster hostmaster webmaster noreply no-reply info sales ' +
+  'developer developers community forum wiki uptime monitor metrics analytics graphql ws wss socket live events files file upload uploads media origin edge cache node server servers db database backup backups data config www1 www2 web mobile ' +
+  'extension claude anthropic ai bot assistant customer customers client clients user users member members owner owners staff helpdesk service services feedback').split(' ')));
+const TEAM_SUB_HOLD_MS = env.PAGES_TEAM_HOLD_MS ? Math.max(0, +env.PAGES_TEAM_HOLD_MS || 0) : Math.max(1, +(env.PAGES_TEAM_HOLD_DAYS || 90) || 90) * DAY; // PAGES_TEAM_HOLD_MS es para las pruebas
+const TEAM_SUB_HOLDS = 5; // nombres en reserva que puede acumular un equipo: con ese tope no se acaparan
+try { db.exec('ALTER TABLE teams ADD COLUMN subdomain TEXT'); } catch (e) { /* ya estaba */ }
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS teams_subdomain ON teams (subdomain) WHERE subdomain IS NOT NULL');
+// team: el equipo que lo dejó (0 si ya no existe: nadie lo recupera). until: hasta cuándo dura la reserva.
+db.exec('CREATE TABLE IF NOT EXISTS team_sub_holds (name TEXT PRIMARY KEY, team INTEGER NOT NULL, until INTEGER NOT NULL)');
+const teamOrigin = (name) => TEAM_SITES.scheme + '//' + name + '.' + TEAM_SITES.domain + TEAM_SITES.port;
+const underTeamDomain = (host) => !!TEAM_SITES && host.endsWith('.' + TEAM_SITES.domain) && !TEAM_SITES.own.has(host);
+// Si un origen (la cabecera Origin de un pedido a la API) es el de un sitio de equipo.
+function teamSiteOrigin(origin) { if (!TEAM_SITES) return false; try { return underTeamDomain(new URL(origin).hostname.toLowerCase()); } catch (e) { return false; } }
+// De qué equipo es el pedido, por su Host. null: no es un subdominio de equipo y sigue por donde iba. name vacío:
+// cae bajo el dominio pero no es un nombre posible (más de una etiqueta, otro puerto, caracteres de más).
+function teamHostOf(req) {
+  if (!TEAM_SITES) return null;
+  const m = /^([^:]*)(:\d{1,5})?$/.exec(String(req.headers.host || '').toLowerCase());
+  if (!m || !underTeamDomain(m[1])) return null;
+  const port = (m[2] || '') === TEAM_SITES.port || (!TEAM_SITES.port && m[2] === TEAM_SITES.plain);
+  const name = m[1].slice(0, -(TEAM_SITES.domain.length + 1));
+  return { name: port && TEAM_SUB.test(name) && !name.includes('--') ? name : '' };
+}
+// Lo que atiende ese Host: el espacio del equipo que tiene el nombre; o nada (space 0), con adónde se mudó si el
+// nombre está en reserva y su equipo ya tiene otro.
+function teamScope(th) {
+  const t = th.name ? q('SELECT space, subdomain FROM teams WHERE subdomain = ?').get(th.name) : null;
+  if (t) return { space: t.space, origin: teamOrigin(t.subdomain), moved: '' };
+  const held = th.name ? q('SELECT team FROM team_sub_holds WHERE name = ? AND until > ?').get(th.name, now()) : null;
+  const next = held && held.team ? q('SELECT subdomain FROM teams WHERE id = ?').get(held.team) : null;
+  return { space: 0, origin: '', moved: next && next.subdomain ? teamOrigin(next.subdomain) : '' };
+}
+// El origen por el que sale un sitio: el subdominio de su equipo si lo tiene, o el host de sitios.
+function siteOrigin(site) {
+  if (!TEAM_SITES) return PAGES.url;
+  const t = q('SELECT subdomain FROM teams WHERE space = ?').get(site.owner);
+  return t && t.subdomain ? teamOrigin(t.subdomain) : PAGES.url;
+}
+// Un nombre que ese equipo puede tomar: bien escrito, sin reservar, y que no sea de otro ni esté en reserva por otro.
+function teamSubName(v, t) {
+  const name = typeof v === 'string' ? v.trim().toLowerCase() : '';
+  if (!TEAM_SUB.test(name) || name.includes('--')) throw new Fail(400, 'bad_subdomain', 'The subdomain takes lowercase letters, numbers and single hyphens, 3 to 32');
+  if (TEAM_SUB_RESERVED.has(name) || TEAM_SITES.labels.has(name) || /sharp-?md/.test(name)) throw new Fail(409, 'subdomain_reserved', 'That name is reserved');
+  const row = q('SELECT id FROM teams WHERE subdomain = ?').get(name);
+  const held = q('SELECT team FROM team_sub_holds WHERE name = ? AND until > ?').get(name, now());
+  if ((row && row.id !== t.id) || (held && held.team !== t.id)) throw new Fail(409, 'subdomain_taken', 'That name is not available');
+  return name;
+}
+function teamSubView(t) {
+  if (!TEAM_SITES) return { enabled: false };
+  const name = (t && t.subdomain) || '';
+  // template: la dirección con {name} donde va el nombre, para mostrarla mientras se escribe.
+  return { enabled: true, domain: TEAM_SITES.domain, name, url: name ? teamOrigin(name) + '/' : '', template: teamOrigin('{name}') + '/', hold_days: Math.round(TEAM_SUB_HOLD_MS / DAY) };
+}
+const teamSubHold = (name, teamId) => q('INSERT INTO team_sub_holds (name, team, until) VALUES (?, ?, ?) ON CONFLICT (name) DO UPDATE SET team = excluded.team, until = excluded.until').run(name, teamId, now() + TEAM_SUB_HOLD_MS);
+// Elegir o cambiar el subdominio. Es del plan de equipo: con el equipo vencido no se elige uno nuevo.
+function teamSubSet(t, user, v) {
+  if (t.status !== 'active') throw new Fail(402, 'team_ended');
+  const name = teamSubName(v, t); const was = t.subdomain || '';
+  if (name === was) return;
+  if (q('SELECT COUNT(*) AS n FROM team_sub_holds WHERE team = ? AND name != ? AND until > ?').get(t.id, name, now()).n >= TEAM_SUB_HOLDS) throw new Fail(429, 'subdomain_changes', 'Too many subdomain changes: go back to an earlier name or wait for one to be released');
+  db.exec('BEGIN');
+  try {
+    q('DELETE FROM team_sub_holds WHERE name = ?').run(name);
+    if (was) teamSubHold(was, t.id);
+    q('UPDATE teams SET subdomain = ? WHERE id = ?').run(name, t.id);
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  t.subdomain = name;
+  teamLog(t, user, 'subdomain', '', name);
+}
+// Dejarlo: los sitios del equipo vuelven al host de sitios y el nombre queda en reserva.
+function teamSubClear(t, user) {
+  const was = t.subdomain || ''; if (!was) return;
+  db.exec('BEGIN');
+  try { teamSubHold(was, t.id); q('UPDATE teams SET subdomain = NULL WHERE id = ?').run(t.id); db.exec('COMMIT'); } catch (e) { db.exec('ROLLBACK'); throw e; }
+  t.subdomain = null;
+  teamLog(t, user, 'subdomain_off', '', was);
+}
+// El equipo se elimina: lo que tenía y lo que tenía en reserva queda a nombre de nadie hasta que venza.
+function teamSubOrphan(t) {
+  q('UPDATE team_sub_holds SET team = 0 WHERE team = ?').run(t.id);
+  const row = q('SELECT subdomain FROM teams WHERE id = ?').get(t.id);
+  if (row && row.subdomain) teamSubHold(row.subdomain, 0);
+}
+// ---------- fin del subdominio por equipo ----------
 // La configuración: cada dato contra su lista o su largo. Nada de acá llega a la página como CSS ni como HTML.
 function siteConfClean(b, prev, site, owner) {
   const c = Object.assign({}, prev);
@@ -4772,7 +4909,7 @@ function sitesRoute(req, user, p, m, url) {
 function sitesAdmin(m, url, b) {
   if (!PAGES) throw new Fail(404, 'no_route');
   const row = (s) => { const u = q('SELECT email FROM users WHERE id = ?').get(s.owner); const t = q('SELECT t.name, u.email FROM teams t JOIN users u ON u.id = t.owner WHERE t.space = ?').get(s.owner); const n = q('SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS size FROM site_pages WHERE site = ?').get(s.id); const c = siteConfOf(s);
-    return { id: s.id, slug: s.slug, url: PAGES.url + '/' + s.slug + '/', account: t ? t.email : u ? u.email : '', team: t ? (t.name || 'Team') : '', folder: s.folder, title: c.title, live: !!s.live, suspended: !!s.suspended, reason: s.reason, lapsed: s.lapsed, pages: n.n, size: n.size, reports: s.reports, reported: s.reported, created: s.created, published: s.published }; };
+    return { id: s.id, slug: s.slug, url: siteOrigin(s) + '/' + s.slug + '/', account: t ? t.email : u ? u.email : '', team: t ? (t.name || 'Team') : '', folder: s.folder, title: c.title, live: !!s.live, suspended: !!s.suspended, reason: s.reason, lapsed: s.lapsed, pages: n.n, size: n.size, reports: s.reports, reported: s.reported, created: s.created, published: s.published }; };
   if (m === 'GET') {
     const st = url.searchParams.get('status') || ''; const find = String(url.searchParams.get('q') || '').toLowerCase().slice(0, 80);
     let rows = q('SELECT * FROM sites ORDER BY reported DESC, id DESC LIMIT 2000').all();
@@ -5033,8 +5170,11 @@ const SITE_VER = sha(SITE_CSS + SITE_JS).slice(0, 12);
 // La política de cada respuesta del host de sitios: nada por defecto; el único script y la única hoja de estilos
 // son los propios, por su dirección exacta; imágenes por https o incrustadas; el buscador y la denuncia hablan solo
 // con este host. Sin estilos ni scripts en línea, sin marcos, sin formularios que salgan.
-const SITE_CSP = PAGES ? "default-src 'none'; script-src " + PAGES.url + "/_/site.js; style-src " + PAGES.url + "/_/site.css; img-src https: data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" : '';
+const siteCsp = (origin) => "default-src 'none'; script-src " + origin + "/_/site.js; style-src " + origin + "/_/site.css; img-src https: data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+const SITE_CSP = PAGES ? siteCsp(PAGES.url) : '';
 const SITE_HEADERS = { 'content-security-policy': SITE_CSP, 'x-content-type-options': 'nosniff', 'referrer-policy': 'strict-origin-when-cross-origin', 'x-frame-options': 'DENY', 'cross-origin-opener-policy': 'same-origin', 'cross-origin-resource-policy': 'same-origin', 'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()' };
+// Las del subdominio de un equipo: las mismas, con su propio origen en la política. El origen sale de la base.
+const siteHeaders = (origin) => (origin === PAGES.url ? SITE_HEADERS : Object.assign({}, SITE_HEADERS, { 'content-security-policy': siteCsp(origin) }));
 const SITE_ICON = 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3.75" fill="#14161a"/><path fill="#f3f5f8" d="M3 4h2v8H3zM7 4h2v8H7zM2 5h8v2H2zM2 9h8v2H2z"/><rect x="11" y="3" width="3" height="10" rx=".5" fill="#c5f467"/></svg>').toString('base64');
 const siteDay = (ms) => new Date(ms).toISOString().slice(0, 10);
 // El documento entero, con su cabecera. Todo lo que no es el cuerpo ya filtrado pasa por html().
@@ -5131,29 +5271,29 @@ function sitePage(ctx, page) {
     '<footer class="sp-foot">' + (conf.author ? '<span>' + html(t.by.replace('{a}', conf.author)) + '</span>' : '') + '<span>' + html(t.updated.replace('{a}', '')) + '<time datetime="' + siteDay(page.at) + '">' + siteDay(page.at) + '</time></span>' +
     '<a class="sp-made" href="https://sharpmd.app">' + html(t.made) + '</a><a href="' + html(report) + '" rel="nofollow">' + html(t.report) + '</a></footer></main>\n' +
     (side.length > 1 ? '<aside class="sp-toc" aria-label="' + html(t.toc) + '"><h2>' + html(t.toc) + '</h2><ul>' + side.map((h) => '<li><a class="sp-l' + h.l + '" href="#' + html(encodeURIComponent(h.id)) + '">' + html(h.t) + '</a></li>').join('') + '</ul></aside>\n' : '') + '</div>';
-  const url = PAGES.url + '/' + site.slug + '/' + page.route;
+  const url = (ctx.origin || PAGES.url) + '/' + site.slug + '/' + page.route;
   return siteDoc({ lang: conf.lang, conf, title: home ? conf.title : page.title + ' · ' + conf.title, descr: page.descr || conf.descr, noindex: ctx.preview || !!conf.noindex, canonical: ctx.preview ? '' : url, author: conf.author,
     og: { type: home ? 'website' : 'article', title: home ? conf.title : page.title, site: conf.title }, body });
 }
-function siteReportPage(query) {
+function siteReportPage(query, scope) {
   const slug = String(query.get('s') || ''); const route = String(query.get('p') || '');
   const site = SITE_SLUG.test(slug) ? q('SELECT * FROM sites WHERE slug = ?').get(slug) : null;
-  if (!site || !/^[a-z0-9/-]{0,300}$/.test(route)) return null;
+  if (!site || (scope && site.owner !== scope.space) || !/^[a-z0-9/-]{0,300}$/.test(route)) return null;
   const conf = siteConfOf(site); const t = SITE_STR[conf.lang === 'es' ? 'es' : 'en'];
   return siteDoc({ lang: conf.lang, title: t.r_title, noindex: true, body: '<main class="sp-report" data-s="' + html(slug) + '" data-p="' + html(route) + '" data-ok="' + html(t.r_ok) + '" data-fail="' + html(t.r_fail) + '" data-many="' + html(t.r_many) + '" data-short="' + html(t.r_short) + '">' +
-    '<h1>' + html(t.r_title) + '</h1><p>' + html(t.r_lead) + '</p><p><code>' + html(PAGES.url + '/' + slug + '/' + route) + '</code></p>' +
+    '<h1>' + html(t.r_title) + '</h1><p>' + html(t.r_lead) + '</p><p><code>' + html(siteOrigin(site) + '/' + slug + '/' + route) + '</code></p>' +
     '<div class="sp-form" hidden><label>' + html(t.r_why) + '<textarea maxlength="2000"></textarea></label><label>' + html(t.r_mail) + '<input type="email" maxlength="200" autocomplete="email"></label><button type="button" class="sp-btn">' + html(t.r_send) + '</button></div>' +
     '<noscript><p>' + html(t.r_js) + '</p></noscript><p class="sp-msg" role="status"></p><p><a href="' + html('/' + slug + '/') + '">' + html(t.r_back) + '</a></p></main>' });
 }
 // La denuncia de un sitio: lo único que el host de sitios escribe. Sale por el mismo camino que POST /feedback, con
 // report.kind "site". De quien denuncia no se lee ninguna credencial: llega como anónimo, con su IP para el tope.
-async function siteReport(req) {
+async function siteReport(req, scope) {
   if (!/^application\/json\b/i.test(req.headers['content-type'] || '')) throw new Fail(415, 'bad_type');
   let b = null; try { b = JSON.parse(await readRaw(req, 8192)); } catch (e) { if (e instanceof Fail) throw e; throw new Fail(400, 'bad_json'); }
   if (!b || typeof b !== 'object' || Array.isArray(b)) throw new Fail(400, 'bad_json');
   const slug = String(b.s || ''); const route = String(b.p || ''); const text = String(b.text == null ? '' : b.text).trim().slice(0, 2000);
   const site = SITE_SLUG.test(slug) ? q('SELECT * FROM sites WHERE slug = ?').get(slug) : null;
-  if (!site || !/^[a-z0-9/-]{0,300}$/.test(route)) throw new Fail(404, 'not_found');
+  if (!site || (scope && site.owner !== scope.space) || !/^[a-z0-9/-]{0,300}$/.test(route)) throw new Fail(404, 'not_found');
   if (text.length < 5) throw new Fail(400, 'bad_text');
   const ip = 'site:report:' + clientIp(req);
   limit(ip, SITE_REPORTS_HOUR, HOUR, 'too_many'); mark(ip);
@@ -5161,16 +5301,18 @@ async function siteReport(req) {
   let email = ''; try { email = String(b.email || '').trim() ? cleanEmail(b.email) : ''; } catch (e) { email = ''; }
   const plain = { headers: { 'x-forwarded-for': req.headers['x-forwarded-for'] || '' }, socket: req.socket };
   try {
-    await feedback(plain, { text, email, report: { kind: 'site', note: PAGES.url + '/' + slug + '/' + route, owner: 'site ' + site.id }, context: { where: 'web', browser: req.headers['user-agent'] || '', lang: siteConfOf(site).lang } });
+    await feedback(plain, { text, email, report: { kind: 'site', note: siteOrigin(site) + '/' + slug + '/' + route, owner: 'site ' + site.id }, context: { where: 'web', browser: req.headers['user-agent'] || '', lang: siteConfOf(site).lang } });
   } catch (e) { if (e instanceof Fail && e.status === 429) throw e; /* sin correo configurado, o el correo falló: la denuncia ya quedó contada en el sitio */ }
   return { ok: true };
 }
 const pagesHost = (req) => { if (!PAGES) return false; const h = String(req.headers.host || '').toLowerCase(); return h === PAGES.host || h === PAGES.host + PAGES.port; };
 // Todo lo que entra por el host de sitios termina acá. No se llama a userFrom ni a route: por este host no hay API.
-async function pagesServe(req, res) {
+// scope: el pedido llegó por el subdominio de un equipo (teamScope). Ahí se ven solo los sitios de ese equipo.
+async function pagesServe(req, res, scope) {
   const head = req.method === 'HEAD';
+  const origin = scope && scope.space ? scope.origin : PAGES.url; const H = siteHeaders(origin);
   const send = (status, type, body, extra) => {
-    const h = Object.assign({}, SITE_HEADERS, { 'content-type': type, 'cache-control': status === 200 ? 'public, max-age=0, must-revalidate' : 'no-store' }, extra || {});
+    const h = Object.assign({}, H, { 'content-type': type, 'cache-control': status === 200 ? 'public, max-age=0, must-revalidate' : 'no-store' }, extra || {});
     if (status === 200 && body) {
       const tag = '"' + sha(body).slice(0, 24) + '"'; h.etag = tag;
       if (String(req.headers['if-none-match'] || '').split(',').map((v) => v.trim().replace(/^W\//, '')).includes(tag)) { res.writeHead(304, h); res.end(); return; }
@@ -5182,47 +5324,65 @@ async function pagesServe(req, res) {
   try {
     rate('pages:' + clientIp(req), SITE_HITS_MINUTE, 60000, 'too_many');
     const raw = String(req.url || '/'); const qi = raw.indexOf('?'); const p = qi === -1 ? raw : raw.slice(0, qi); const query = new URLSearchParams(qi === -1 ? '' : raw.slice(qi + 1));
-    if (p === '/_/report' && req.method === 'POST') { const out = await siteReport(req); send(200, 'application/json; charset=utf-8', JSON.stringify(out), { 'cache-control': 'no-store' }); return; }
+    // Un nombre bajo el dominio de equipos que no es de ningún equipo: ahí no hay nada, y la respuesta no repite el
+    // nombre pedido. El que un equipo dejó hace poco lleva al que tiene ahora, con la misma ruta.
+    if (scope && !scope.space) {
+      const fine = (req.method === 'GET' || head) && p.length <= 600 && /^\/[A-Za-z0-9._~/-]*$/.test(p) && !/\/\/|(^|\/)\.\.?(\/|$)/.test(p);
+      if (scope.moved && fine) { const qs = query.toString(); res.writeHead(308, Object.assign({}, H, { location: scope.moved + p + (qs ? '?' + qs : ''), 'cache-control': 'no-store' })); res.end(); return; }
+      send(404, 'text/plain; charset=utf-8', 'Not found'); return;
+    }
+    if (p === '/_/report' && req.method === 'POST') { const out = await siteReport(req, scope); send(200, 'application/json; charset=utf-8', JSON.stringify(out), { 'cache-control': 'no-store' }); return; }
     if (req.method !== 'GET' && !head) { send(405, 'text/plain; charset=utf-8', 'Method not allowed', { allow: 'GET, HEAD' }); return; }
     // Una dirección de acá lleva solo letras, números, guiones, puntos y barras. Nada codificado, nada con "..".
     if (p.length > 600 || !/^\/[A-Za-z0-9._~/-]*$/.test(p) || /\/\/|(^|\/)\.\.?(\/|$)/.test(p)) { page(404, siteNote('en', 'missing')); return; }
     if (p === '/_/site.css') { send(200, 'text/css; charset=utf-8', SITE_CSS, { 'cache-control': 'public, max-age=86400' }); return; }
     if (p === '/_/site.js') { send(200, 'text/javascript; charset=utf-8', SITE_JS, { 'cache-control': 'public, max-age=86400' }); return; }
-    if (p === '/_/report') { const body = siteReportPage(query); if (body) page(200, body, { 'cache-control': 'no-store', 'x-robots-tag': 'noindex' }); else page(404, siteNote('en', 'missing')); return; }
+    if (p === '/_/report') { const body = siteReportPage(query, scope); if (body) page(200, body, { 'cache-control': 'no-store', 'x-robots-tag': 'noindex' }); else page(404, siteNote('en', 'missing')); return; }
+    // La raíz del subdominio de un equipo: su sitio si tiene uno solo a la vista; si tiene varios, la lista.
+    if (p === '/' && scope) {
+      const rows = q('SELECT slug, conf, lapsed FROM sites WHERE owner = ? AND live = 1 AND suspended = 0 ORDER BY id').all(scope.space).filter((s) => !(s.lapsed && now() - s.lapsed >= PAGES_GRACE_MS));
+      if (rows.length === 1) { res.writeHead(302, Object.assign({}, H, { location: '/' + rows[0].slug + '/', 'cache-control': 'no-store' })); res.end(); return; }
+      const t = SITE_STR.en; const list = rows.filter((s) => !siteConfOf(s).noindex);
+      page(200, siteDoc({ lang: 'en', title: t.root_t, noindex: true, body: '<main class="sp-note"><h1>' + html(t.root_t) + '</h1>' + (list.length ? '<ul>' + list.map((s) => '<li><a href="/' + s.slug + '/">' + html(siteConfOf(s).title) + '</a></li>').join('') + '</ul>' : '<p>' + html(t.root) + '</p>') + '<p><a href="https://sharpmd.app">' + html(t.what) + '</a></p></main>' }), { 'x-robots-tag': 'noindex' }); return;
+    }
     if (p === '/') { const t = SITE_STR.en; page(200, siteDoc({ lang: 'en', title: t.root_t, descr: t.root, body: '<main class="sp-note"><h1>' + html(t.root_t) + '</h1><p>' + html(t.root) + '</p><p><a href="https://sharpmd.app">' + html(t.what) + '</a></p></main>' })); return; }
-    if (p === '/robots.txt') { send(200, 'text/plain; charset=utf-8', 'User-agent: *\nDisallow: /_/\nDisallow: /~\nSitemap: ' + PAGES.url + '/sitemap.xml\n'); return; }
+    if (p === '/robots.txt') { send(200, 'text/plain; charset=utf-8', 'User-agent: *\nDisallow: /_/\nDisallow: /~\nSitemap: ' + origin + '/sitemap.xml\n'); return; }
     if (p === '/sitemap.xml') {
-      const rows = q('SELECT slug, conf, lapsed FROM sites WHERE live = 1 AND suspended = 0 ORDER BY id LIMIT 20000').all().filter((s) => !siteConfOf(s).noindex && !(s.lapsed && now() - s.lapsed >= PAGES_GRACE_MS));
-      send(200, 'application/xml; charset=utf-8', '<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + rows.map((s) => '<sitemap><loc>' + PAGES.url + '/' + s.slug + '/sitemap.xml</loc></sitemap>\n').join('') + '</sitemapindex>\n');
+      // Cada origen lista lo suyo: el subdominio de un equipo, sus sitios; el host de sitios, los que no salen por un subdominio.
+      const rows = q('SELECT owner, slug, conf, lapsed FROM sites WHERE live = 1 AND suspended = 0 ORDER BY id LIMIT 20000').all().filter((s) => !siteConfOf(s).noindex && !(s.lapsed && now() - s.lapsed >= PAGES_GRACE_MS) && (scope ? s.owner === scope.space : siteOrigin(s) === PAGES.url));
+      send(200, 'application/xml; charset=utf-8', '<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + rows.map((s) => '<sitemap><loc>' + origin + '/' + s.slug + '/sitemap.xml</loc></sitemap>\n').join('') + '</sitemapindex>\n');
       return;
     }
     const parts = p.slice(1).split('/'); const first = parts[0]; const rest = parts.slice(1).join('/');
     const preview = first[0] === '~';
-    const site = preview ? (/^~[A-Za-z0-9_-]{16,48}$/.test(first) ? q('SELECT * FROM sites WHERE pkey = ?').get(first.slice(1)) : null) : (SITE_SLUG.test(first) ? q('SELECT * FROM sites WHERE slug = ?').get(first) : null);
-    if (!site) { page(404, siteNote('en', 'missing')); return; }
+    // La vista previa vive solo en el host de sitios. Por el subdominio de un equipo, el sitio de otro no existe.
+    const site = preview ? (!scope && /^~[A-Za-z0-9_-]{16,48}$/.test(first) ? q('SELECT * FROM sites WHERE pkey = ?').get(first.slice(1)) : null) : (SITE_SLUG.test(first) ? q('SELECT * FROM sites WHERE slug = ?').get(first) : null);
+    if (!site || (scope && site.owner !== scope.space)) { page(404, siteNote('en', 'missing')); return; }
+    // La dirección de antes de un sitio que ahora sale por el subdominio de su equipo: lleva ahí, con la misma ruta.
+    if (!scope && !preview && TEAM_SITES) { const to = siteOrigin(site); if (to !== PAGES.url) { const qs = query.toString(); res.writeHead(308, Object.assign({}, H, { location: to + p + (qs ? '?' + qs : ''), 'cache-control': 'no-store' })); res.end(); return; } }
     const lang = siteConfOf(site).lang; const base = '/' + first;
-    if (parts.length === 1) { res.writeHead(308, Object.assign({}, SITE_HEADERS, { location: base + '/', 'cache-control': 'no-store' })); res.end(); return; }
+    if (parts.length === 1) { res.writeHead(308, Object.assign({}, H, { location: base + '/', 'cache-control': 'no-store' })); res.end(); return; }
     if (site.suspended) { page(451, siteNote(lang, 'held'), { 'x-robots-tag': 'noindex' }); return; }
     if (siteVaulted(site.owner, site.folder)) siteTakeDown(site);
     if ((!preview && (!site.live || (site.lapsed && now() - site.lapsed >= PAGES_GRACE_MS))) || siteVaulted(site.owner, site.folder)) { page(410, siteNote(lang, 'gone'), { 'x-robots-tag': 'noindex' }); return; }
-    const ctx = siteContext(site, base, preview); const conf = ctx.conf;
+    const ctx = siteContext(site, base, preview); const conf = ctx.conf; ctx.origin = origin;
     const robots = preview || conf.noindex ? { 'x-robots-tag': 'noindex' } : {};
     if (!ctx.tree.flat.length) { page(410, siteNote(lang, 'gone'), { 'x-robots-tag': 'noindex' }); return; }
     if (rest === 'search.json') {
       const text = new Map(q('SELECT note, text FROM site_pages WHERE site = ?').all(site.id).map((r) => [r.note, r.text]));
       send(200, 'application/json; charset=utf-8', JSON.stringify(ctx.tree.flat.map((x) => ({ r: x.route, t: x.title, x: text.get(x.note) || '' }))), robots); return;
     }
-    if (rest === 'robots.txt' && !preview) { send(200, 'text/plain; charset=utf-8', 'User-agent: *\n' + (conf.noindex ? 'Disallow: /' + site.slug + '/\n' : 'Allow: /' + site.slug + '/\nSitemap: ' + PAGES.url + '/' + site.slug + '/sitemap.xml\n')); return; }
+    if (rest === 'robots.txt' && !preview) { send(200, 'text/plain; charset=utf-8', 'User-agent: *\n' + (conf.noindex ? 'Disallow: /' + site.slug + '/\n' : 'Allow: /' + site.slug + '/\nSitemap: ' + origin + '/' + site.slug + '/sitemap.xml\n')); return; }
     if (rest === 'sitemap.xml' && !preview) {
       if (conf.noindex) { page(404, siteNote(lang, 'missing', base + '/')); return; }
-      send(200, 'application/xml; charset=utf-8', '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + ctx.tree.flat.map((x) => '<url><loc>' + PAGES.url + '/' + site.slug + '/' + x.route + '</loc><lastmod>' + siteDay(x.at) + '</lastmod></url>\n').join('') + '</urlset>\n');
+      send(200, 'application/xml; charset=utf-8', '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + ctx.tree.flat.map((x) => '<url><loc>' + origin + '/' + site.slug + '/' + x.route + '</loc><lastmod>' + siteDay(x.at) + '</lastmod></url>\n').join('') + '</urlset>\n');
       return;
     }
     const route = rest.replace(/\/+$/, '');
     if (route && !/^[a-z0-9-]+(\/[a-z0-9-]+)*$/.test(route)) { page(404, siteNote(lang, 'missing', base + '/'), robots); return; }
     const hit = ctx.byRoute.get(route);
     // Sin una nota de portada, la dirección del sitio lleva a su primera página.
-    if (!hit && route === '') { res.writeHead(302, Object.assign({}, SITE_HEADERS, { location: base + '/' + ctx.tree.flat[0].route, 'cache-control': 'no-store' })); res.end(); return; }
+    if (!hit && route === '') { res.writeHead(302, Object.assign({}, H, { location: base + '/' + ctx.tree.flat[0].route, 'cache-control': 'no-store' })); res.end(); return; }
     if (!hit) { page(404, siteNote(lang, 'missing', base + '/'), robots); return; }
     page(200, sitePage(ctx, hit), robots);
   } catch (e) {
@@ -5930,6 +6090,8 @@ const BASE_HEADERS = { 'cache-control': 'no-store', 'x-content-type-options': 'n
 const server = http.createServer(async (req, res) => {
   // El host de los sitios publicados es otro mundo: por ahí no hay API, ni CORS, ni credenciales.
   if (pagesHost(req)) { pagesServe(req, res); return; }
+  // El subdominio de un equipo es ese mismo mundo, con los sitios de ese equipo y nada más.
+  const sub = teamHostOf(req); if (sub) { pagesServe(req, res, teamScope(sub)); return; }
   // Las imágenes adjuntas se sirven sin sesión y con sus propias cabeceras (bloque ADJUNTOS).
   if (fileServe(req, res)) return;
   for (const k in BASE_HEADERS) res.setHeader(k, BASE_HEADERS[k]);

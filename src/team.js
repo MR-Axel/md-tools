@@ -26,6 +26,8 @@
     too_many: 'Demasiados cambios seguidos. Probá más tarde.', not_found: 'Esa invitación ya no está.',
     not_admin: 'Lo administra quien administra el equipo', not_owner: 'Eso lo decide quien paga el equipo.', owner_stays: 'Quien paga el equipo es siempre administrador.',
     bad_name: 'Escribí un nombre.', bad_path: 'Esa carpeta no sirve.', bad_policy: 'Ese valor no sirve.', vault: 'Con el espacio protegido no hay plantilla.',
+    bad_subdomain: 'Usá de 3 a 32 letras minúsculas, números o guiones.', subdomain_reserved: 'Ese nombre está reservado.', subdomain_taken: 'Ese nombre no está disponible.',
+    subdomain_changes: 'Demasiados cambios de subdominio. Volvé a un nombre anterior o probá más adelante.',
   };
   const why = (e) => T(WHY[e && e.code] || 'No se pudo completar. Probá de nuevo.');
   const ROLE = { admin: 'Administrador', editor: 'Editor', reader: 'Lector' };
@@ -101,6 +103,42 @@
       (admin && mine.vault ? '<p class="lmd-hint">' + T('Con el espacio protegido no hay plantilla.') + '</p>' : '') + '</div>';
   }
 
+  // El subdominio del equipo: la dirección por la que salen sus sitios publicados. Lo elige quien administra. Si el
+  // servidor no lo ofrece (subdomain.enabled en falso, o un servidor anterior que no manda el dato), no se muestra nada.
+  const SUB_OK = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
+  const subAddr = (s, name) => String(s.template || '').replace('{name}', name);
+  function subBlock(mine, admin) {
+    const s = mine.subdomain; if (!s || !s.enabled || (!admin && !s.name)) return '';
+    const head = '<h4>' + T('Subdominio del equipo') + '</h4>';
+    if (!admin) return head + '<div class="lmd-acct-row" data-team="subdomain"><span>' + T('Dirección de los sitios') + '</span><b>' + esc(s.url) + '</b></div>';
+    const label = T('Subdominio del equipo');
+    return head + '<p class="lmd-hint">' + T('Los sitios que publica el equipo salen por esta dirección. Los enlaces de antes siguen andando.') + '</p>' +
+      '<div class="lmd-share-row lmd-team-invite" data-team="subdomain"><input type="text" data-t="sub-name" maxlength="32" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="' + T('nombre') + '" aria-label="' + label + '" value="' + esc(s.name || '') + '"' + (mine.active ? '' : ' disabled') + '>' +
+      '<button type="button" class="lmd-btn lmd-btn-fill" data-t="sub-save" disabled>' + T('Guardar') + '</button>' + (s.name ? '<button type="button" class="lmd-btn" data-t="sub-off">' + T('Dejar de usarlo') + '</button>' : '') + '</div>' +
+      '<p class="lmd-hint" data-team="sub-url">' + esc(subAddr(s, s.name || T('nombre'))) + '</p><p class="lmd-hint" data-team="sub-why" role="status" aria-live="polite" hidden></p>';
+  }
+  // Mientras se escribe: la dirección como quedaría, lo que no sirve dicho en el momento, y la consulta al servidor
+  // (reservado, de otro equipo) un instante después de la última tecla. Guardar se prende solo con un nombre que sirve.
+  function subMount(box, mine) {
+    const input = box.querySelector('[data-t=sub-name]'); const s = mine && mine.subdomain; if (!input || !s) return;
+    const url = box.querySelector('[data-team=sub-url]'); const whyEl = box.querySelector('[data-team=sub-why]'); const save = box.querySelector('[data-t=sub-save]');
+    let timer = 0; let turn = 0;
+    const tell = (text) => { whyEl.hidden = !text; whyEl.textContent = text; };
+    input.addEventListener('input', () => {
+      const name = input.value.trim().toLowerCase(); const mineTurn = ++turn; clearTimeout(timer);
+      url.textContent = subAddr(s, name || T('nombre')); save.disabled = true;
+      if (!name || name === (s.name || '')) { tell(''); return; }
+      if (!SUB_OK.test(name) || name.includes('--')) { tell(T(WHY.bad_subdomain)); return; }
+      tell('');
+      timer = setTimeout(async () => {
+        let r = null; try { r = await LMD.cloud.team.subCheck(name); } catch (e) { if (mineTurn === turn && input.isConnected) tell(why(e)); return; }
+        if (mineTurn !== turn || !input.isConnected) return;
+        if (r.ok) { save.disabled = false; tell(T('Disponible.')); } else tell(T(WHY[r.why] || 'No se pudo completar. Probá de nuevo.'));
+      }, 350);
+    });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !save.disabled) save.click(); });
+  }
+
   // Tokens del equipo: son del equipo, no de quien los crea. El recién creado queda a la vista unos minutos.
   let fresh = null;
   const day = (ms) => new Date(ms).toLocaleDateString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { day: 'numeric', month: 'short' });
@@ -121,6 +159,7 @@
   }
   // Lo que se pide aparte después de dibujar: la lista de tokens del equipo.
   async function mount(box, a) {
+    subMount(box, a && a.team && a.team.mine);
     const list = box.querySelector('[data-team=tokens]'); if (!list) return;
     let rows = [];
     try { rows = await LMD.cloud.team.tokens(); } catch (e) { return; }
@@ -172,6 +211,7 @@
           '<p class="lmd-hint lmd-price" data-team="price">' + perSeat(t) + '</p>';
     }
     out += policyBlock(mine, admin);
+    out += subBlock(mine, admin);
     out += vaultBlock(mine, owner);
     if (admin) {
       out += tokenBlock(mine) +
@@ -209,7 +249,7 @@
     link: 'Creó un enlace', unlink: 'Quitó un enlace', attach: 'Subió una imagen', detach: 'Eliminó una imagen', invite: 'Invitó', uninvite: 'Quitó una invitación', join: 'Entró al equipo', leave: 'Salió del equipo', remove: 'Sacó a alguien', role: 'Cambió un papel',
     policy: 'Cambió un ajuste', team_name: 'Cambió el nombre del equipo', protect: 'Protegió el espacio', password: 'Cambió la contraseña', rotate: 'Empezó a rotar la llave', rotate_done: 'Rotó la llave', unprotect: 'Quitó la protección',
     destroy: 'Eliminó el contenido', ai: 'Entró una IA', ai_unlock: 'Desbloqueó para su IA', token_create: 'Creó un token', token_revoke: 'Revocó un token', token_regenerate: 'Regeneró un token', automation: 'Creó una automatización', automation_remove: 'Quitó una automatización',
-    site: 'Preparó un sitio', publish: 'Publicó un sitio', unpublish: 'Despublicó un sitio', live_open: 'Abrió una sesión en vivo', live_end: 'Terminó una sesión en vivo', live_kick: 'Sacó a un invitado' };
+    site: 'Preparó un sitio', publish: 'Publicó un sitio', unpublish: 'Despublicó un sitio', subdomain: 'Eligió el subdominio', subdomain_off: 'Dejó el subdominio', live_open: 'Abrió una sesión en vivo', live_end: 'Terminó una sesión en vivo', live_kick: 'Sacó a un invitado' };
   const POLICY_NAME = { share: 'Compartir', links: 'Enlaces públicos', live: 'Sesiones en vivo', tokens: 'IA de los miembros', automation: 'Automatizaciones', publish: 'Publicar sitios', history_days: 'Historial de versiones', folder: 'Carpeta de las notas nuevas', template: 'Plantilla de las notas nuevas', ai_unlock: 'Desbloqueo para la IA' };
   // El detalle de una fila, en palabras: a quién, hacia dónde, qué ajuste y a qué valor.
   function detail(e) {
@@ -308,7 +348,7 @@
       return true;
     }
     // Campos y listas: se leen al confirmar, o los atiende change.
-    if (['n', 'email', 'role', 'invite-role', 'tok-name', 'tok-folder', 'tok-write', 'tok-share'].includes(kind)) return true;
+    if (['n', 'email', 'role', 'invite-role', 'tok-name', 'tok-folder', 'tok-write', 'tok-share', 'sub-name'].includes(kind)) return true;
     if (/^v-/.test(kind)) {
       // Las ventanas son de vault.js: cuando algo cambia, avisa (onTeam) y la gestión se vuelve a dibujar.
       again = async () => { await refresh(); if (box.isConnected) redraw(); };
@@ -340,6 +380,13 @@
         const name = await LMD.dialog.prompt({ title: T('Nombre del equipo'), value: mine.name || '', ok: T('Guardar'), validate: (v) => (v.length > 40 ? T('Hasta 40 caracteres.') : '') });
         if (name == null) return true;
         await C.rename(name);
+      } else if (kind === 'sub-save') {
+        b.disabled = true;
+        await C.subdomain(box.querySelector('[data-t=sub-name]').value.trim().toLowerCase()); said = T('Subdominio guardado.');
+      } else if (kind === 'sub-off') {
+        const s = mine.subdomain;
+        if (!(await LMD.dialog.confirm({ title: T('¿Dejar de usar {a}?', { a: s.name + '.' + s.domain }), text: T('Los sitios del equipo vuelven a la dirección compartida. El nombre queda reservado para tu equipo {n} días.', { n: s.hold_days }), ok: T('Dejar de usarlo'), danger: true }))) return true;
+        await C.subdomainOff(); said = T('Subdominio liberado.');
       } else if (kind === 'template') {
         const text = await templateDialog(mine.policies.template);
         if (text == null) return true;

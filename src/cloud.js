@@ -841,6 +841,10 @@
       leave: () => api('POST', '/team/leave', {}),
       seats: (n) => api('POST', '/team/seats', { seats: n }),
       rename: (name) => api('PUT', '/team', { name }),
+      // El subdominio del equipo para sus sitios publicados: si un nombre se puede usar, elegirlo y dejarlo.
+      subCheck: (name) => api('GET', '/team/subdomain?name=' + encodeURIComponent(name)),
+      subdomain: (name) => api('PUT', '/team/subdomain', { name }),
+      subdomainOff: () => api('DELETE', '/team/subdomain'),
     },
     // Carpetas con contraseña.
     vaults, vaultFor, vaultHas, sealFolder, openFolder, rotateSpace,

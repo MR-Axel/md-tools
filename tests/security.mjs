@@ -1,7 +1,7 @@
 // Seguridad: un caso por cada control del servidor, de la página de pago y de la app.
 // Todo corre contra un servidor local con claves inventadas y contra la extensión cargada en un Chromium:
 // ningún pedido sale a sync.sharpmd.app ni a sharpmd.app (lo que apunte ahí se corta y se anota como falla).
-// SHARPMD_SERVER apunta a otro server.mjs, para comparar contra una versión anterior. SEC_ONLY=server|app|live|team|gallery|auto|sites corre una parte.
+// SHARPMD_SERVER apunta a otro server.mjs, para comparar contra una versión anterior. SEC_ONLY=server|app|live|team|gallery|auto|sites|subdomain corre una parte.
 import { spawn } from 'child_process'; import { createHmac, createHash } from 'crypto'; import { DatabaseSync } from 'node:sqlite';
 import fs from 'fs'; import os from 'os'; import path from 'path'; import http from 'http'; import net from 'net'; import { fileURLToPath, pathToFileURL } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -2085,6 +2085,116 @@ async function sitesSuite() {
   await S.stop();
 }
 if (!ONLY || ONLY === 'sites') await sitesSuite();
+
+// ====================================================================================================================
+// Subdominio por equipo: los sitios de un equipo en <nombre>.<PAGES_TEAM_DOMAIN>
+// ====================================================================================================================
+// Se prueba con la disposición más expuesta: la API, el host de sitios, la app y los equipos como hermanos bajo el
+// mismo dominio, y ALLOW_ORIGINS en "*". Lo que tiene que sostenerse: el Host se compara contra el dominio exacto,
+// por un subdominio no hay API ni credenciales, un equipo no ve lo de otro, la API no le abre CORS a un sitio, la
+// respuesta no repite lo que mandó el pedido, y un nombre no pasa de un equipo a otro de un día para el otro.
+async function teamSubSuite() {
+  console.log('\nSubdominio por equipo');
+  const port = portSeq + 1; const DOM = 'ejemplo.test';
+  const fakeMail = http.createServer((req, res) => { req.resume(); req.on('end', () => { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{}'); }); });
+  await new Promise((r) => fakeMail.listen(0, '127.0.0.1', r));
+  const S = await boot({ ADMIN_KEY: ADMIN, MAIL_WEBHOOK: 'http://127.0.0.1:' + fakeMail.address().port, ALLOW_ORIGINS: '*', PUBLIC_URL: 'http://nube.' + DOM + ':' + port, PAGES_URL: 'http://publica.' + DOM + ':' + port, APP_URL: 'https://editor.' + DOM + '/src/app.html', PAGES_TEAM_DOMAIN: DOM, AUTH_PER_IP: '300' });
+  const { call } = S; const API = 'nube.' + DOM + ':' + port; const PH = 'publica.' + DOM + ':' + port; const th = (n) => n + '.' + DOM + ':' + port; const tUrl = (n) => 'http://' + th(n);
+  const raw = (host, p, opt) => new Promise((resolve) => {
+    try {
+      const r = http.request({ host: '127.0.0.1', port: S.port, path: p, method: (opt && opt.method) || 'GET', headers: Object.assign({ host }, (opt && opt.headers) || {}) }, (res) => { let b = ''; res.on('data', (c) => { b += c; }); res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: b })); });
+      r.on('error', () => resolve({ status: 0, headers: {}, body: '' })); if (opt && opt.body) r.write(opt.body); r.end();
+    } catch (e) { resolve({ status: 0, headers: {}, body: '' }); }
+  });
+  const wire = (line, host, more) => new Promise((resolve) => { const sock = net.connect(S.port, '127.0.0.1', () => sock.write(line + '\r\nHost: ' + host + (more || '') + '\r\nConnection: close\r\n\r\n')); let b = ''; sock.on('data', (c) => { b += c; }); sock.on('end', () => resolve(b)); sock.on('error', () => resolve(b)); setTimeout(() => { sock.destroy(); resolve(b); }, 3000); });
+  const all = (r) => JSON.stringify(r.headers) + r.body;
+  try {
+    const team = async (email, name, slug, secret) => {
+      const who = await signup(S, email); await call('POST', '/admin/team', { email, seats: 3 }, undefined, { 'x-admin-key': ADMIN });
+      const space = (await call('GET', '/account', undefined, who.s)).json.team.mine.space;
+      await call('PUT', '/notes/' + enc('docs/index.md') + '?o=' + space, { text: '# Inicio\n\n' + secret }, who.s);
+      const site = (await call('POST', '/sites', { o: space, folder: 'docs', slug, title: 'Docs ' + name }, who.s)).json;
+      await call('PUT', '/sites/' + site.id + '/pages', { pages: [{ note: 'docs/index.md', rev: 1, html: '<h1>Inicio</h1><p>' + secret + '</p>' }] }, who.s); await call('POST', '/sites/' + site.id + '/publish', {}, who.s);
+      const set = await call('PUT', '/team/subdomain', { name }, who.s);
+      return { who, space, site, set };
+    };
+    const A = await team('ana-sub@ejemplo.test', 'acme', 'docs-acme', 'SECRETO-ACME'); const B = await team('beto-sub@ejemplo.test', 'globex', 'docs-globex', 'SECRETO-GLOBEX');
+    const okA = await raw(th('acme'), '/docs-acme/');
+    check('subdominio: cada equipo sirve su sitio por su nombre', A.set.status === 200 && B.set.status === 200 && okA.status === 200 && /SECRETO-ACME/.test(okA.body) && (await raw(th('globex'), '/docs-globex/')).status === 200, [A.set.json, okA.status]);
+
+    // ---------- El Host, contra el dominio exacto ----------
+    const fakes = [];
+    for (const h of ['evil-' + DOM + ':' + port, 'acme' + DOM + ':' + port, 'acme.' + DOM + '.evil.test:' + port, 'acme.' + DOM + '.evil.test', th('acme') + '@evil.test', 'evil.test@' + th('acme'), 'x.' + th('acme'), 'acme.x.' + DOM + ':' + port, 'acme.' + DOM + ':1', 'acme.' + DOM, 'acme.' + DOM + '.:' + port, 'acme.' + DOM + ':' + port + ':' + port, '.' + DOM + ':' + port, '-acme.' + DOM + ':' + port, 'xn--acme.' + DOM + ':' + port, 'acme_.' + DOM + ':' + port, 'acme%2e' + DOM + ':' + port, 'acme.' + DOM + '/docs-acme:' + port, '[::1]:' + port]) fakes.push(await raw(h, '/docs-acme/'));
+    check('subdominio: un sufijo que se le parece, una etiqueta de más, otro puerto o un Host con trucos no sirven el sitio', fakes.every((r) => r.status !== 200 && !/SECRETO/.test(r.body)), fakes.map((r) => r.status));
+    const fwd = await raw(API, '/docs-acme/', { headers: { 'x-forwarded-host': th('acme'), forwarded: 'host=' + th('acme'), 'x-host': th('acme'), 'x-original-host': th('acme') } });
+    const twoHosts = await wire('GET /docs-acme/ HTTP/1.1\r\nHost: ' + API, th('acme')); const absForm = await wire('GET http://' + th('acme') + '/docs-acme/ HTTP/1.1', API); const absApi = await wire('GET http://' + API + '/account HTTP/1.1', th('acme'), '\r\nAuthorization: Bearer ' + A.who.s);
+    check('subdominio: x-forwarded-host no cuenta, y ni dos cabeceras Host ni una dirección absoluta cruzan de un mundo al otro', fwd.status !== 200 && !/SECRETO/.test(fwd.body) && !/SECRETO/.test(twoHosts) && !/SECRETO/.test(absForm) && !/^HTTP\/1\.1 200/.test(absApi) && !absApi.includes(A.who.email), [fwd.status, twoHosts.slice(0, 40), absForm.slice(0, 40), absApi.slice(0, 40)]);
+    const own = [await raw(API, '/health'), await raw(PH, '/'), await raw('editor.' + DOM + ':' + port, '/health')];
+    const ownNames = []; for (const n of ['nube', 'publica', 'editor']) ownNames.push((await call('GET', '/team/subdomain?name=' + n, undefined, A.who.s)).json.why);
+    check('subdominio: los nombres propios bajo ese dominio se atienden como siempre, y ningún equipo los puede elegir', own[0].status === 200 && /"ok":true/.test(own[0].body) && own[1].status === 200 && /SharpMD/.test(own[1].body) && own[2].status === 200 && ownNames.every((w) => w === 'subdomain_reserved'), [own.map((r) => r.status), ownNames]);
+    const ghost = [await raw(th('zzz-reflejo'), '/'), await raw(th('zzz-reflejo'), '/docs-acme/'), await raw('zzz.reflejo.' + DOM + ':' + port, '/'), await raw(th('zzz-reflejo'), '/account', { headers: { authorization: 'Bearer ' + A.who.s } })];
+    check('subdominio: un nombre de nadie responde 404 y nada de la respuesta repite el Host pedido', ghost.every((r) => r.status === 404 && r.body === 'Not found' && !/reflejo/i.test(all(r))), ghost.map((r) => [r.status, r.body.slice(0, 30)]));
+
+    // ---------- Por un subdominio no hay API ----------
+    const auth = { authorization: 'Bearer ' + A.who.s }; const j = { 'content-type': 'application/json' };
+    const apiPaths = ['/health', '/account', '/notes', '/notes/' + enc('docs/index.md') + '?o=' + A.space, '/search?q=secreto', '/sites', '/sites/' + A.site.id, '/tokens', '/team', '/team/subdomain', '/team/log', '/team/tokens', '/shared', '/api/v1/me', '/api/v1/notes', '/api/v1/openapi.json', '/admin/sites', '/events?path=' + enc('docs/index.md'), '/live/events', '/f/' + 'a'.repeat(40)];
+    const viaSub = []; for (const p of apiPaths) viaSub.push(await raw(th('acme'), p, { headers: Object.assign({ 'x-admin-key': ADMIN }, auth) }));
+    const writes = [await raw(th('acme'), '/auth/start', { method: 'POST', headers: j, body: JSON.stringify({ email: 'x@ejemplo.test' }) }), await raw(th('acme'), '/team/subdomain', { method: 'PUT', headers: Object.assign({}, j, auth), body: JSON.stringify({ name: 'otro' }) }), await raw(th('acme'), '/mcp', { method: 'POST', headers: Object.assign({}, j, auth), body: '{}' }), await raw(th('acme'), '/notes/' + enc('docs/index.md'), { method: 'DELETE', headers: auth }), await raw(th('acme'), '/account', { method: 'OPTIONS', headers: { origin: 'https://evil.test', 'access-control-request-method': 'GET' } })];
+    check('subdominio: ninguna ruta de la API existe por ahí, ni con la sesión ni con la clave de administración', viaSub.every((r) => r.status === 404 && !r.body.includes(A.who.email) && !/"ok":true|"plan"/.test(r.body)) && writes.every((r) => r.status === 405 || r.status === 404), [viaSub.map((r) => r.status), writes.map((r) => r.status)]);
+    check('subdominio: ninguna respuesta pone una cookie ni abre CORS', viaSub.concat(writes, [okA]).every((r) => !r.headers['set-cookie'] && !r.headers['access-control-allow-origin'] && !r.headers['access-control-allow-credentials']), null);
+    const cookie = await raw(API, '/account', { headers: { cookie: 'session=' + A.who.s + '; token=' + A.who.s + '; authorization=Bearer ' + A.who.s } });
+    check('subdominio: una cookie no es una credencial para la API, venga de donde venga', cookie.status === 401, cookie.status);
+
+    // ---------- Un equipo no ve lo de otro ----------
+    const pkeyA = new URL(A.site.preview).pathname;
+    const cross = []; for (const p of ['/docs-acme/', '/docs-acme', '/docs-acme/search.json', '/docs-acme/sitemap.xml', '/docs-acme/robots.txt', pkeyA, '/_/report?s=docs-acme&p=', '/sitemap.xml', '/robots.txt', '/', '/docs-globex/../docs-acme/', '/docs-globex/%2e%2e/docs-acme/', '//' + th('acme') + '/docs-acme/']) cross.push(await raw(th('globex'), p));
+    const crossWire = [await wire('GET /docs-globex/../docs-acme/ HTTP/1.1', th('globex')), await wire('GET /docs-acme/search.json HTTP/1.1', th('globex')), await wire('GET /%64ocs-acme/ HTTP/1.1', th('globex'))];
+    const crossPost = await raw(th('globex'), '/_/report', { method: 'POST', headers: j, body: JSON.stringify({ s: 'docs-acme', p: '', text: 'denuncia cruzada' }) });
+    check('subdominio: por el subdominio de un equipo no sale nada del sitio de otro: ni páginas, ni buscador, ni mapas, ni vista previa, ni denuncia', cross.every((r) => !/SECRETO-ACME|docs-acme\/sitemap|Docs acme/.test(r.body)) && cross.slice(0, 7).every((r) => r.status === 404) && crossWire.every((b) => !/SECRETO-ACME/.test(b)) && crossPost.status === 404, [cross.map((r) => r.status), crossPost.status]);
+    const hdr = okA.headers; const csp = hdr['content-security-policy'] || '';
+    check('subdominio: las cabeceras impiden que otro origen lo enmarque o lea sus recursos, y su política nombra solo su propio origen', csp.includes('script-src ' + tUrl('acme') + '/_/site.js;') && !csp.includes('globex') && !csp.includes('publica.') && /default-src 'none'/.test(csp) && /frame-ancestors 'none'/.test(csp) && /connect-src 'self'/.test(csp) && /form-action 'none'/.test(csp) && hdr['x-frame-options'] === 'DENY' && hdr['cross-origin-resource-policy'] === 'same-origin' && hdr['cross-origin-opener-policy'] === 'same-origin' && hdr['x-content-type-options'] === 'nosniff', csp);
+    const search = await raw(th('acme'), '/docs-acme/search.json');
+    check('subdominio: el índice del buscador tampoco se deja leer desde otro origen', search.status === 200 && search.headers['cross-origin-resource-policy'] === 'same-origin' && !search.headers['access-control-allow-origin'], search.status);
+
+    // ---------- La API no le abre CORS a un sitio, ni con ALLOW_ORIGINS en "*" ----------
+    const cors = async (origin, method) => (await raw(API, '/health', { method: method || 'GET', headers: Object.assign({ origin }, method ? { 'access-control-request-method': 'GET', 'access-control-request-headers': 'authorization' } : {}) })).headers['access-control-allow-origin'];
+    const corsNo = [await cors(tUrl('acme')), await cors(tUrl('acme'), 'OPTIONS'), await cors(tUrl('globex')), await cors('http://nadie.' + DOM), await cors('https://acme.' + DOM), await cors('http://ACME.' + DOM.toUpperCase() + ':' + port)];
+    const corsYes = [await cors('https://otra.test'), await cors('https://editor.' + DOM), await cors('https://evil-' + DOM)];
+    check('subdominio: con ALLOW_ORIGINS en "*" la API responde a cualquier origen menos al de un sitio de equipo', corsNo.every((v) => !v) && corsYes[0] === 'https://otra.test' && corsYes[1] === 'https://editor.' + DOM && corsYes[2] === 'https://evil-' + DOM, [corsNo, corsYes]);
+
+    // ---------- Quién puede elegirlo, y sobre qué equipo ----------
+    const M = await signup(S, 'meli-sub@ejemplo.test'); await call('POST', '/team/invite', { email: M.email }, A.who.s);
+    await call('POST', '/team/accept', { id: (await call('GET', '/account', undefined, M.s)).json.team.invites[0].id }, M.s);
+    const tt = (await call('POST', '/team/tokens', { name: 'robot', write: true }, A.who.s)).json.token; const pt = (await call('POST', '/tokens', { name: 'ia' }, A.who.s)).json.token; secrets.push(tt, pt);
+    const who = [await call('PUT', '/team/subdomain', { name: 'robado' }, M.s), await call('DELETE', '/team/subdomain', undefined, M.s), await call('PUT', '/team/subdomain', { name: 'robado' }, tt), await call('PUT', '/team/subdomain', { name: 'robado' }, pt), await call('PUT', '/team/subdomain', { name: 'robado' }), await call('DELETE', '/team/subdomain')];
+    check('subdominio: lo cambia quien administra con su sesión: un miembro no, y un token de IA o del equipo tampoco', who[0].status === 403 && who[1].status === 403 && who.slice(2).every((r) => r.status === 401), who.map((r) => r.status));
+    const other = [await call('PUT', '/team/subdomain?o=' + A.space + '&team=1&id=1', { name: 'pisado', team: 1, id: 1, o: A.space, space: A.space, owner: A.who.id }, B.who.s), await call('PUT', '/team/subdomain', { name: 'acme' }, B.who.s), await call('PUT', '/team/subdomain', { name: 'ACME' }, B.who.s), await call('PUT', '/team/subdomain', { name: ' acme ' }, B.who.s)];
+    const aStill = (await call('GET', '/team/subdomain', undefined, A.who.s)).json; const bNow = (await call('GET', '/team/subdomain', undefined, B.who.s)).json;
+    check('subdominio: cada equipo cambia solo el suyo, y el nombre de otro no se toma ni con mayúsculas ni con espacios', other[0].status === 200 && aStill.name === 'acme' && bNow.name === 'pisado' && other.slice(1).every((r) => r.status === 409 && r.json.error === 'subdomain_taken') && (await raw(th('acme'), '/docs-acme/')).status === 200, [other.map((r) => [r.status, r.json && r.json.error]), aStill.name, bNow.name]);
+    const odd = []; for (const n of ["a'; DROP TABLE teams;--", 'acme\u0000', 'ac\nme', 'аcme', 'a/../b', '%61cme', null, {}, [], ['libre'], true, 12345, 'acme.' + DOM, '*', 'a'.repeat(5000)]) odd.push((await call('PUT', '/team/subdomain', { name: n }, B.who.s)).json.error);
+    check('subdominio: un nombre con comillas, bytes nulos, letras de otro alfabeto o que no es texto no pasa', odd.every((e) => e === 'bad_subdomain') && (await call('GET', '/team/subdomain', undefined, B.who.s)).json.name === 'pisado' && S.db().prepare('SELECT COUNT(*) AS n FROM teams').get().n === 2, odd);
+
+    // ---------- Cambiar y dejar: la reserva ----------
+    const move = await call('PUT', '/team/subdomain', { name: 'acme-nuevo' }, A.who.s);
+    const steal = [await call('PUT', '/team/subdomain', { name: 'acme' }, B.who.s), await call('GET', '/team/subdomain?name=acme', undefined, B.who.s)];
+    const oldHost = await raw(th('acme'), '/docs-acme/?a=1&b=%0d%0aX-Mal:1'); const oldPath = await raw(PH, '/docs-acme/');
+    check('subdominio: el nombre que un equipo deja queda en reserva y otro no lo toma para hacerse pasar por él', move.status === 200 && steal[0].status === 409 && steal[0].json.error === 'subdomain_taken' && steal[1].json.ok === false && (await raw(th('acme'), '/docs-globex/')).status !== 200, [move.json && move.json.subdomain, steal[0].json]);
+    check('subdominio: el nombre viejo y la dirección compartida redirigen al nuevo, con un destino que sale de la base y sin cabeceras inyectadas', oldHost.status === 308 && oldHost.headers.location.startsWith(tUrl('acme-nuevo') + '/docs-acme/?') && !/[\r\n]/.test(oldHost.headers.location) && !oldHost.headers['x-mal'] && oldPath.status === 308 && oldPath.headers.location === tUrl('acme-nuevo') + '/docs-acme/', [oldHost.status, oldHost.headers.location, oldPath.headers.location]);
+    const rel = await call('DELETE', '/team/subdomain', undefined, A.who.s);
+    const after = [await call('PUT', '/team/subdomain', { name: 'acme-nuevo' }, B.who.s), await call('PUT', '/team/subdomain', { name: 'acme' }, B.who.s), await raw(th('acme-nuevo'), '/docs-acme/'), await raw(PH, '/docs-acme/')];
+    const holds = S.db().prepare('SELECT name, team, until FROM team_sub_holds ORDER BY name').all();
+    check('subdominio: al liberarlo tampoco queda libre en el acto: sigue reservado, y el sitio vuelve al host de sitios', rel.status === 200 && after[0].status === 409 && after[1].status === 409 && after[2].status === 404 && after[3].status === 200 && holds.filter((h) => /^acme/.test(h.name)).length === 2 && holds.every((h) => h.until > Date.now() + 80 * 86400000), [after.map((r) => r.status), holds.map((h) => h.name)]);
+    // Quien administra elimina su cuenta (antes saca al otro miembro): el equipo deja de existir.
+    await call('POST', '/team/remove', { id: M.id }, A.who.s);
+    const delA = await call('DELETE', '/account', { email: A.who.email }, A.who.s, from(nextIp()));
+    const orphan = S.db().prepare("SELECT team FROM team_sub_holds WHERE name LIKE 'acme%'").all(); const afterDel = await call('GET', '/team/subdomain?name=acme', undefined, B.who.s);
+    check('subdominio: eliminado el equipo, sus nombres quedan reservados a nombre de nadie', delA.status === 200 && orphan.length === 2 && orphan.every((h) => h.team === 0) && afterDel.json.ok === false, [delA.status, orphan, afterDel.json]);
+    const log = S.log();
+    check('subdominio: sin errores del servidor y sin sesiones ni tokens en su salida', !/error 500|error no capturado|promesa sin atender|sitios: error/.test(log) && !secrets.some((s) => s && log.includes(s)) && S.alive(), (log.match(/error[^\n]*/g) || []).slice(0, 3));
+  } catch (e) { check('subdominio: sin excepciones en la prueba', false, String(e && e.stack || e)); console.log(S.log().slice(-1500)); }
+  await S.stop(); fakeMail.close();
+}
+if (!ONLY || ONLY === 'subdomain') await teamSubSuite();
 
 // ====================================================================================================================
 // Imágenes adjuntas: lo que se sube, cómo se guarda y cómo se sirve

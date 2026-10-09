@@ -1756,6 +1756,13 @@
       "Los miembros pueden publicar carpetas del equipo como sitio": "Members can publish team folders as a site", "Preparó un sitio": "Set up a site",
       "Publicó un sitio": "Published a site", "Despublicó un sitio": "Unpublished a site",
       "Publicar sitios": "Publishing sites",
+      "Subdominio del equipo": "Team subdomain", "Dirección de los sitios": "Address of the sites", "Dejar de usarlo": "Stop using it", "Disponible.": "Available.",
+      "Los sitios que publica el equipo salen por esta dirección. Los enlaces de antes siguen andando.": "The sites the team publishes are served at this address. Earlier links keep working.",
+      "Usá de 3 a 32 letras minúsculas, números o guiones.": "Use 3 to 32 lowercase letters, numbers or hyphens.", "Ese nombre está reservado.": "That name is reserved.", "Ese nombre no está disponible.": "That name is not available.",
+      "Demasiados cambios de subdominio. Volvé a un nombre anterior o probá más adelante.": "Too many subdomain changes. Go back to an earlier name or try again later.",
+      "Subdominio guardado.": "Subdomain saved.", "Subdominio liberado.": "Subdomain released.", "¿Dejar de usar {a}?": "Stop using {a}?",
+      "Los sitios del equipo vuelven a la dirección compartida. El nombre queda reservado para tu equipo {n} días.": "The team sites go back to the shared address. The name stays reserved for your team for {n} days.",
+      "Eligió el subdominio": "Chose the subdomain", "Dejó el subdominio": "Released the subdomain",
       // El asistente de IA con clave propia (assistant.js)
       "Asistente de IA (con tu clave)": "AI assistant (your key)",
       "Mejora, traduce, genera y responde sobre la nota con tu propia clave de Claude, OpenAI, Gemini u otro proveedor.": "Improves, translates, writes and answers about the note with your own key for Claude, OpenAI, Gemini or another provider.",

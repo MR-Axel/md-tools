@@ -28,6 +28,9 @@ try {
   const s = login.json.session;
   check('entra y devuelve la cuenta', login.status === 200 && s.startsWith('mds_') && login.json.account.plan === 'free' && login.json.account.limit === 3, login.json);
   check('sin sesión no hay acceso', (await call('GET', '/notes')).status === 401);
+  // El subdominio por equipo se prende con PAGES_TEAM_DOMAIN. Este servidor no la tiene.
+  const subOff = [await call('GET', '/team/subdomain', undefined, s), await call('GET', '/team/subdomain?name=acme', undefined, s), await call('PUT', '/team/subdomain', { name: 'acme' }, s), await call('DELETE', '/team/subdomain', undefined, s)];
+  check('sin PAGES_TEAM_DOMAIN las rutas del subdominio por equipo no existen', subOff.every((r) => r.status === 404 && r.json.error === 'no_route') && (await call('PUT', '/team/subdomain', { name: 'acme' })).status === 401, subOff.map((r) => [r.status, r.json]));
 
   console.log('Nombre visible');
   const acc0 = (await call('GET', '/account', undefined, s)).json;

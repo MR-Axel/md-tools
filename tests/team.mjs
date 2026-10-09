@@ -128,6 +128,10 @@ try {
   check('quien administra crea una nota en el espacio del equipo', w1.status === 200 && w1.json.rev === 1, w1.json);
   const r1 = await api('GET', tnote('plan.md'), undefined, B.s);
   check('otro miembro la lee', r1.status === 200 && r1.json.text === 'MARCA-SECRETA-DEL-EQUIPO\nlínea dos' && r1.json.rev === 1 && r1.json.role === 'team', r1.json);
+  // El subdominio por equipo se prende con PAGES_TEAM_DOMAIN. Este servidor no la tiene.
+  const subOff = (await api('GET', '/account', undefined, A.s)).json.team.mine.subdomain;
+  const subRoutes = [await api('GET', '/team/subdomain', undefined, A.s), await api('GET', '/team/subdomain?name=acme', undefined, A.s), await api('PUT', '/team/subdomain', { name: 'acme' }, A.s), await api('DELETE', '/team/subdomain', undefined, A.s)];
+  check('sin PAGES_TEAM_DOMAIN el equipo no tiene subdominio: la cuenta lo dice y las rutas no existen, ni para quien administra', !!subOff && subOff.enabled === false && Object.keys(subOff).length === 1 && subRoutes.every((r) => r.status === 404 && r.json.error === 'no_route'), [subOff, subRoutes.map((r) => [r.status, r.json])]);
   const evA = await listen(A, 'plan.md', SPACE); await sleep(150);
   const w2 = await api('PUT', tnote('plan.md'), { text: 'MARCA-SECRETA-DEL-EQUIPO\nlínea dos\nde beto', rev: 1 }, B.s);
   check('y la edita, sobre la revisión que leyó', w2.status === 200 && w2.json.rev === 2, w2.json);

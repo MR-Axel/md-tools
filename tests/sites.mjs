@@ -2,6 +2,7 @@
 // Se prueba de punta a punta: publicar desde la app (menú de la carpeta y Ajustes), el sitio como lo ve un
 // visitante (navegación, buscador, sin JavaScript, en teléfono), los cambios sin publicar y volver a publicar,
 // despublicar, el plan y la baja de plan, el equipo con su política, la suspensión por administración y la denuncia.
+// Y el subdominio por equipo: elegirlo, cambiarlo y dejarlo, el Host, el aislamiento entre equipos y la app.
 // El host de sitios es el mismo servidor local pedido con otro nombre: pages.localhost, que resuelve a 127.0.0.1.
 // El correo es un servidor falso local: nada sale de esta máquina.
 import { rig, tally, sleep, root } from './rig.mjs';
@@ -13,7 +14,9 @@ const fakeMail = http.createServer((req, res) => { let raw = ''; req.on('data', 
 await new Promise((r) => fakeMail.listen(0, '127.0.0.1', r));
 
 let PORT = 0;
-const R = await rig((port) => { PORT = port; return { PAGES_URL: 'http://pages.localhost:' + port, PAGES_GRACE_MS: '2500', PAGES_MAX_PAGES: '8', AUTH_PER_IP: '300', FEEDBACK_TO: 'avisos@ejemplo.test', MAIL_WEBHOOK: 'http://127.0.0.1:' + fakeMail.address().port }; });
+// El dominio de los subdominios de equipo, y cuánto dura la reserva de un nombre que se deja (corta, para verla vencer).
+const TD = 'equipos.localhost'; const HOLD = 5000;
+const R = await rig((port) => { PORT = port; return { PAGES_URL: 'http://pages.localhost:' + port, PAGES_TEAM_DOMAIN: TD, PAGES_TEAM_HOLD_MS: String(HOLD), PAGES_GRACE_MS: '2500', PAGES_MAX_PAGES: '8', AUTH_PER_IP: '300', FEEDBACK_TO: 'avisos@ejemplo.test', MAIL_WEBHOOK: 'http://127.0.0.1:' + fakeMail.address().port }; });
 const { check, done } = tally();
 const enc = encodeURIComponent;
 const PH = 'pages.localhost:' + PORT; const PAGES = 'http://' + PH;
@@ -422,6 +425,172 @@ try {
   await api('PUT', '/team/policies', { publish: false }, O.s);
   const mAfter = await api('POST', '/sites/' + T1.id + '/unpublish', {}, M.s);
   check('apagar la política le saca el permiso en el acto', mAfter.status === 403 && mAfter.json.error === 'team_policy' && (await site('/wiki-equipo/')).status === 200, mAfter.json);
+  // ---------- Subdominio del equipo ----------
+  // Con PAGES_TEAM_DOMAIN, los sitios de un equipo salen por <nombre>.<dominio>. Todo lo anterior corrió con la
+  // variable puesta y ningún equipo con subdominio: nada cambió. Sin la variable se prueba más abajo, con otro servidor.
+  console.log('Subdominio del equipo');
+  {
+  const th = (name) => name + '.' + TD + ':' + PORT; const tUrl = (name) => 'http://' + th(name);
+  const sub = (who, method, body, qs) => api(method, '/team/subdomain' + (qs || ''), body, who && who.s);
+  const mineOf = async (who) => (await api('GET', '/account', undefined, who.s)).json.team.mine;
+  const sv0 = (await mineOf(O)).subdomain;
+  check('con PAGES_TEAM_DOMAIN el equipo sabe que puede elegir un subdominio, y todavía no tiene', sv0.enabled === true && sv0.domain === TD && sv0.name === '' && sv0.url === '' && sv0.template === tUrl('{name}') + '/', sv0);
+  const before = [await site('/wiki-equipo/'), await raw(th('taller'), '/wiki-equipo/'), await raw(th('taller'), '/')];
+  check('sin subdominio elegido el sitio sigue en su dirección de siempre, y un subdominio de nadie no sirve nada', before[0].status === 200 && before[1].status === 404 && before[2].status === 404 && !/Wiki|Bienvenida/.test(before[1].body), before.map((r) => r.status));
+  const badSubs = []; for (const s of ['ab', 'con espacio', '-guion', 'guion-', 'do--ble', 'xn--80ak6aa92e', 'a.b', 'a_b', 'ñandu', 'x'.repeat(33), '../x', '']) badSubs.push((await sub(O, 'PUT', { name: s })).json.error);
+  check('el nombre lleva minúsculas, números y guiones sueltos, de 3 a 32: lo demás no pasa', badSubs.every((e) => e === 'bad_subdomain'), badSubs);
+  const resSubs = []; for (const s of ['www', 'sync', 'pages', 'api', 'app', 'mail', 'admin', 'status', 'support', 'login', 'billing', 'security', 'sharpmd', 'sharp-md', 'my-sharpmd', 'sharpmd-help', 'sharp-md-docs']) resSubs.push((await sub(O, 'GET', undefined, '?name=' + s)).json.why);
+  const resPut = await sub(O, 'PUT', { name: 'support' });
+  check('hay nombres reservados, y ninguno puede hacerse pasar por el servicio', resSubs.every((e) => e === 'subdomain_reserved') && resPut.status === 409 && resPut.json.error === 'subdomain_reserved', [resSubs, resPut.json]);
+  const SOL = await R.signup('sol@ejemplo.test', true);
+  const perms = [await sub(M, 'PUT', { name: 'taller' }), await sub(L, 'PUT', { name: 'taller' }), await sub(M, 'GET', undefined, '?name=taller'), await sub(M, 'DELETE'), await sub(N, 'PUT', { name: 'taller' }), await sub(SOL, 'PUT', { name: 'taller' }), await sub(null, 'PUT', { name: 'taller' })];
+  check('lo elige quien administra: un miembro no, y sin equipo no hay nada que elegir aunque la cuenta tenga el plan pago', perms.slice(0, 4).every((r) => r.status === 403 && r.json.error === 'not_admin') && perms[4].status === 404 && perms[4].json.error === 'no_team' && perms[5].status === 404 && perms[5].json.error === 'no_team' && perms[6].status === 401, perms.map((r) => [r.status, r.json && r.json.error]));
+
+  const chk = (await sub(O, 'GET', undefined, '?name=Taller')).json;
+  const set = await sub(O, 'PUT', { name: 'taller' });
+  check('quien administra elige el subdominio, y la respuesta trae la dirección y el equipo como quedó', chk.ok === true && chk.name === 'taller' && chk.url === tUrl('taller') + '/' && set.status === 200 && set.json.subdomain.name === 'taller' && set.json.subdomain.url === tUrl('taller') + '/' && set.json.team.mine.subdomain.name === 'taller', [chk, set.json.subdomain]);
+  const t1v = (await api('GET', '/sites/' + T1.id, undefined, O.s)).json;
+  const viaSub = await raw(th('taller'), '/wiki-equipo/'); const viaSubPage = await raw(th('taller'), '/wiki-equipo/reglas');
+  check('el sitio del equipo sale por su subdominio, con sus enlaces y su dirección canónica ahí', t1v.url === tUrl('taller') + '/wiki-equipo/' && t1v.preview.startsWith(PAGES + '/~') && viaSub.status === 200 && /<a href="\/wiki-equipo\/reglas">Reglas<\/a>/.test(viaSub.body) && viaSub.body.includes('<link rel="canonical" href="' + tUrl('taller') + '/wiki-equipo/">') && viaSubPage.status === 200 && /Una sola/.test(viaSubPage.body), [t1v.url, viaSub.status, viaSubPage.status]);
+  const hs = viaSub.headers; const csp = hs['content-security-policy'] || '';
+  const assets = [await raw(th('taller'), '/_/site.css'), await raw(th('taller'), '/_/site.js')];
+  check('sus cabeceras: una política con su propio origen, sin marcos, sin lectura desde otro origen, sin cookies ni CORS', csp.includes('script-src ' + tUrl('taller') + '/_/site.js;') && csp.includes('style-src ' + tUrl('taller') + '/_/site.css;') && !csp.includes(PAGES) && /frame-ancestors 'none'/.test(csp) && hs['x-frame-options'] === 'DENY' && hs['cross-origin-resource-policy'] === 'same-origin' && hs['cross-origin-opener-policy'] === 'same-origin' && !hs['set-cookie'] && !hs['access-control-allow-origin'] && assets.every((r) => r.status === 200 && r.headers['cross-origin-resource-policy'] === 'same-origin'), [csp, assets.map((r) => r.status)]);
+  const old = [await site('/wiki-equipo/'), await site('/wiki-equipo/reglas?x=1'), await site('/wiki-equipo'), await site('/wiki-equipo/search.json')];
+  check('la dirección de antes no se rompe: redirige al subdominio con la misma ruta', old.every((r) => r.status === 308) && old[0].headers.location === tUrl('taller') + '/wiki-equipo/' && old[1].headers.location === tUrl('taller') + '/wiki-equipo/reglas?x=1' && old[3].headers.location === tUrl('taller') + '/wiki-equipo/search.json', old.map((r) => [r.status, r.headers.location]));
+  const pvPath = new URL(t1v.preview).pathname;
+  const pv = [await site(pvPath), await raw(th('taller'), pvPath)];
+  check('la vista previa sigue en el host de sitios y no existe por el subdominio', pv[0].status === 200 && pv[1].status === 404, pv.map((r) => r.status));
+  const rootSub = await raw(th('taller'), '/'); const robSub = await raw(th('taller'), '/robots.txt'); const mapSub = await raw(th('taller'), '/sitemap.xml'); const mapSite = await raw(th('taller'), '/wiki-equipo/sitemap.xml'); const mapShared = await site('/sitemap.xml');
+  check('la raíz del subdominio lleva al sitio del equipo, y los mapas de cada origen listan lo suyo', rootSub.status === 302 && rootSub.headers.location === '/wiki-equipo/' && robSub.body.includes('Sitemap: ' + tUrl('taller') + '/sitemap.xml') && mapSub.body.includes('<loc>' + tUrl('taller') + '/wiki-equipo/sitemap.xml</loc>') && mapSite.body.includes('<loc>' + tUrl('taller') + '/wiki-equipo/reglas</loc>') && !mapShared.body.includes('wiki-equipo'), [rootSub.status, rootSub.headers.location, mapSub.body.slice(-200)]);
+
+  // Otro equipo, con su sitio y su subdominio, y un sitio de una cuenta sola.
+  const P = await R.signup('pablo@ejemplo.test');
+  await api('POST', '/admin/team', { email: P.email, seats: 2 }, undefined, { 'x-admin-key': R.ADMIN });
+  const space2 = (await mineOf(P)).space;
+  await put(P, 'manual/index.md', '# Manual de la imprenta\n\nSOLO-IMPRENTA', space2);
+  const T2 = (await api('POST', '/sites', { o: space2, folder: 'manual', slug: 'manual-dos', title: 'Manual dos' }, P.s)).json;
+  await api('PUT', '/sites/' + T2.id + '/pages', { pages: [page('manual/index.md', 1, '<h1>Manual de la imprenta</h1><p>SOLO-IMPRENTA</p>')] }, P.s); await api('POST', '/sites/' + T2.id + '/publish', {}, P.s);
+  await put(SOL, 'notas/index.md', '# Notas de Sol\n\nSOLO-SOL');
+  const T3 = (await api('POST', '/sites', { folder: 'notas', slug: 'sol-notas', title: 'Notas de Sol' }, SOL.s)).json;
+  await api('PUT', '/sites/' + T3.id + '/pages', { pages: [page('notas/index.md', 1, '<h1>Notas de Sol</h1><p>SOLO-SOL</p>')] }, SOL.s); await api('POST', '/sites/' + T3.id + '/publish', {}, SOL.s);
+  const clash = await sub(P, 'PUT', { name: 'taller' }); const clashChk = (await sub(P, 'GET', undefined, '?name=taller')).json;
+  check('dos equipos no comparten nombre: el segundo recibe 409', clash.status === 409 && clash.json.error === 'subdomain_taken' && clashChk.ok === false && clashChk.why === 'subdomain_taken', [clash.json, clashChk]);
+  const set2 = await sub(P, 'PUT', { name: 'imprenta' });
+  const cross = [await raw(th('taller'), '/manual-dos/'), await raw(th('taller'), '/manual-dos/search.json'), await raw(th('imprenta'), '/wiki-equipo/'), await raw(th('imprenta'), '/wiki-equipo/reglas'), await raw(th('taller'), '/sol-notas/'), await raw(th('imprenta'), '/_/report?s=wiki-equipo&p='),
+    await raw(th('imprenta'), '/_/report', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ s: 'wiki-equipo', p: '', text: 'no debería llegar' }) })];
+  const own2 = await raw(th('imprenta'), '/manual-dos/'); const solo = await site('/sol-notas/'); const rep = await raw(th('taller'), '/_/report?s=wiki-equipo&p=reglas');
+  check('por el subdominio de un equipo no existe el sitio de otro, ni su buscador ni su denuncia; el de una cuenta sola tampoco', set2.status === 200 && cross.every((r) => r.status === 404 && !/SOLO-|Bienvenida|Una sola/.test(r.body)) && own2.status === 200 && /SOLO-IMPRENTA/.test(own2.body), cross.map((r) => r.status));
+  check('el sitio de una cuenta sola sigue en el host de sitios, sin redirección, y la denuncia de un sitio de equipo muestra su dirección nueva', solo.status === 200 && /SOLO-SOL/.test(solo.body) && rep.status === 200 && rep.body.includes(tUrl('taller') + '/wiki-equipo/reglas'), [solo.status, rep.status]);
+
+  // El Host decide, contra el dominio exacto.
+  const fakes = [await raw('evil-' + TD + ':' + PORT, '/wiki-equipo/'), await raw('taller' + TD + ':' + PORT, '/wiki-equipo/'), await raw(th('taller') + '.evil.test', '/wiki-equipo/'), await raw('x.' + th('taller'), '/wiki-equipo/'), await raw('taller.' + TD + ':1', '/wiki-equipo/'), await raw('taller.' + TD, '/wiki-equipo/'),
+    await raw(th('taller') + '@evil.test', '/wiki-equipo/'), await raw('taller.' + TD + '.:' + PORT, '/wiki-equipo/'), await raw('127.0.0.1:' + PORT, '/wiki-equipo/', { headers: { 'x-forwarded-host': th('taller'), forwarded: 'host=' + th('taller'), 'x-host': th('taller') } })];
+  check('Host falso: un sufijo que se le parece, una etiqueta de más, otro puerto o x-forwarded-host no sirven el sitio', fakes.every((r) => r.status !== 200 && !/Bienvenida/.test(r.body)), fakes.map((r) => r.status));
+  const nobody = [await raw(th('nadie-aqui'), '/'), await raw('x.' + th('taller'), '/wiki-equipo/'), await raw(th('nadie-aqui'), '/_/site.css')];
+  check('un nombre que no es de ningún equipo responde 404 sin repetir lo que se pidió', nobody.every((r) => r.status === 404 && r.body === 'Not found' && !JSON.stringify(r.headers).includes('nadie-aqui') && !JSON.stringify(r.headers).includes('x.taller')), nobody.map((r) => [r.status, r.body]));
+  const upper = await raw('TALLER.' + TD.toUpperCase() + ':' + PORT, '/wiki-equipo/');
+  check('las mayúsculas del Host no cambian nada: es el mismo nombre', upper.status === 200 && (upper.headers['content-security-policy'] || '').includes(tUrl('taller') + '/_/site.js'), upper.status);
+  const viaApi = [await raw(th('taller'), '/account', { headers: { authorization: 'Bearer ' + O.s } }), await raw(th('taller'), '/team', { headers: { authorization: 'Bearer ' + O.s } }), await raw(th('taller'), '/health'), await raw(th('taller'), '/auth/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: O.email }) })];
+  check('por el subdominio no hay API ni sesión: la cuenta no responde ni con su credencial', viaApi.slice(0, 3).every((r) => r.status === 404) && viaApi[3].status === 405 && !viaApi.some((r) => r.body.includes(O.email)), viaApi.map((r) => r.status));
+  const corsSub = await raw('127.0.0.1:' + PORT, '/health', { headers: { origin: tUrl('taller') } }); const corsApp = await raw('127.0.0.1:' + PORT, '/health', { headers: { origin: R.origin } });
+  check('la API no le abre CORS al origen de un sitio de equipo', !corsSub.headers['access-control-allow-origin'] && corsApp.headers['access-control-allow-origin'] === R.origin, [corsSub.headers['access-control-allow-origin'], corsApp.headers['access-control-allow-origin']]);
+
+  // Cambiar y dejar: el nombre viejo redirige y queda en reserva.
+  const chg = await sub(O, 'PUT', { name: 'taller-docs' });
+  const moved = [await raw(th('taller'), '/wiki-equipo/reglas'), await site('/wiki-equipo/reglas'), await raw(th('taller-docs'), '/wiki-equipo/reglas')];
+  const grab = await sub(P, 'PUT', { name: 'taller' }); const grabChk = (await sub(P, 'GET', undefined, '?name=taller')).json;
+  check('al cambiar de nombre, el viejo y la dirección compartida llevan al nuevo', chg.status === 200 && chg.json.subdomain.name === 'taller-docs' && moved[0].status === 308 && moved[0].headers.location === tUrl('taller-docs') + '/wiki-equipo/reglas' && moved[1].status === 308 && moved[1].headers.location === tUrl('taller-docs') + '/wiki-equipo/reglas' && moved[2].status === 200, moved.map((r) => [r.status, r.headers.location]));
+  check('el nombre que se dejó queda en reserva: otro equipo no lo puede tomar', grab.status === 409 && grab.json.error === 'subdomain_taken' && grabChk.ok === false, [grab.json, grabChk]);
+  const back = await sub(O, 'PUT', { name: 'taller' }); const backOld = await raw(th('taller-docs'), '/wiki-equipo/');
+  check('el equipo que lo dejó sí puede volver a su nombre', back.status === 200 && back.json.subdomain.name === 'taller' && backOld.status === 308 && backOld.headers.location === tUrl('taller') + '/wiki-equipo/', [back.json, backOld.status]);
+  const off = await sub(O, 'DELETE');
+  const freed = [await site('/wiki-equipo/'), await raw(th('taller'), '/wiki-equipo/'), await raw(th('taller-docs'), '/wiki-equipo/')];
+  const t1off = (await api('GET', '/sites/' + T1.id, undefined, O.s)).json; const held = await sub(P, 'PUT', { name: 'taller' });
+  check('al dejarlo, el sitio vuelve al host de sitios y el subdominio ya no sirve nada', off.status === 200 && off.json.subdomain.name === '' && off.json.team.mine.subdomain.url === '' && t1off.url === PAGES + '/wiki-equipo/' && freed[0].status === 200 && freed[1].status === 404 && freed[2].status === 404, [off.json.subdomain, freed.map((r) => r.status)]);
+  check('y el nombre liberado sigue en reserva: nadie lo toma al día siguiente para hacerse pasar por ese equipo', held.status === 409 && held.json.error === 'subdomain_taken', held.json);
+  const tlog = (await api('GET', '/team/log', undefined, O.s)).json.entries.filter((e) => /^subdomain/.test(e.action)).map((e) => [e.action, e.who, e.detail]);
+  check('el registro de actividad dice quién eligió y quién dejó el subdominio', tlog.some((a) => a[0] === 'subdomain' && a[1] === O.email && a[2] === 'taller-docs') && tlog.some((a) => a[0] === 'subdomain_off' && a[2] === 'taller'), tlog);
+  await sleep(HOLD + 400);
+  const late = await sub(P, 'PUT', { name: 'taller' }); const lateSite = [await raw(th('taller'), '/manual-dos/'), await raw(th('taller'), '/wiki-equipo/'), await raw(th('imprenta'), '/manual-dos/')];
+  check('vencida la reserva, otro equipo lo puede tomar, y por ahí salen solo sus sitios', late.status === 200 && lateSite[0].status === 200 && /SOLO-IMPRENTA/.test(lateSite[0].body) && lateSite[1].status === 404 && lateSite[2].status === 308, [late.json, lateSite.map((r) => r.status)]);
+  // Cambiar muchas veces seguidas deja muchos nombres en reserva: hay un tope.
+  const H = await R.signup('hugo@ejemplo.test');
+  await api('POST', '/admin/team', { email: H.email, seats: 2 }, undefined, { 'x-admin-key': R.ADMIN });
+  const hops = []; for (const n of ['hop-cero', 'hop-uno', 'hop-dos', 'hop-tres', 'hop-cuatro', 'hop-cinco', 'hop-seis']) hops.push(await sub(H, 'PUT', { name: n }));
+  const hopBack = await sub(H, 'PUT', { name: 'hop-cero' });
+  check('no se acaparan nombres: con cinco en reserva no se elige otro nuevo, pero sí uno de los propios', hops.slice(0, 6).every((r) => r.status === 200) && hops[6].status === 429 && hops[6].json.error === 'subdomain_changes' && hopBack.status === 200, hops.map((r) => r.status).concat(hopBack.status));
+
+  // En la app: el campo en la administración del equipo, con la dirección a la vista y lo que no sirve dicho en el momento.
+  const openPlan = async (pg) => { await pg.evaluate(() => document.querySelector('[data-act=settings]').click()); await pg.waitForSelector('.lmd-panel-card'); await pg.click('[data-ptab=plan]'); await pg.waitForSelector('.lmd-panel .lmd-team [data-team=members]'); await pg.waitForTimeout(300); };
+  const subState = (pg) => pg.evaluate(() => { const g = (s) => document.querySelector('.lmd-panel .lmd-team ' + s); const w = g('[data-team=sub-why]'); return { field: !!g('[data-t=sub-name]'), value: g('[data-t=sub-name]') ? g('[data-t=sub-name]').value : '', url: g('[data-team=sub-url]') ? g('[data-team=sub-url]').textContent : '', why: w && !w.hidden ? w.textContent : '', save: g('[data-t=sub-save]') ? !g('[data-t=sub-save]').disabled : false, off: !!g('[data-t=sub-off]') }; });
+  const whyIs = (pg, text) => pg.waitForFunction((t) => { const w = document.querySelector('.lmd-panel .lmd-team [data-team=sub-why]'); return !!w && !w.hidden && w.textContent === t; }, text, { timeout: 10000 });
+  const olga = await R.open(O);
+  await olga.page.goto(R.noteUrl('~' + space + '/wiki/index.md')); await olga.page.waitForSelector('[data-root=team] .lmd-node');
+  await openPlan(olga.page);
+  const ui0 = await subState(olga.page);
+  check('quien administra ve el campo del subdominio, vacío, con la dirección de ejemplo y sin nada que guardar', ui0.field && ui0.value === '' && ui0.url === tUrl('name') + '/' && ui0.save === false && ui0.off === false, ui0);
+  await olga.page.fill('.lmd-team [data-t=sub-name]', 'a_b'); await whyIs(olga.page, 'Use 3 to 32 lowercase letters, numbers or hyphens.');
+  const uiBad = await subState(olga.page);
+  await olga.page.fill('.lmd-team [data-t=sub-name]', 'support'); await whyIs(olga.page, 'That name is reserved.');
+  const uiRes = await subState(olga.page);
+  await olga.page.fill('.lmd-team [data-t=sub-name]', 'taller'); await whyIs(olga.page, 'That name is not available.');
+  const uiTaken = await subState(olga.page);
+  check('mientras escribe: la dirección como quedaría, y lo que no sirve dicho en claro, sin dejar guardar', uiBad.url === tUrl('a_b') + '/' && !uiBad.save && !uiRes.save && uiRes.url === tUrl('support') + '/' && !uiTaken.save, [uiBad, uiRes, uiTaken]);
+  await olga.page.fill('.lmd-team [data-t=sub-name]', 'estudio'); await whyIs(olga.page, 'Available.');
+  const uiOk = await subState(olga.page);
+  await olga.page.click('.lmd-team [data-t=sub-save]');
+  await olga.page.waitForFunction(() => { const m = document.querySelector('.lmd-team-msg'); return !!m && !m.hidden && m.textContent === 'Subdomain saved.'; }, null, { timeout: 10000 });
+  const uiSaved = await subState(olga.page); const svUi = (await mineOf(O)).subdomain;
+  check('con un nombre libre se prende Guardar, y al guardar queda puesto con el botón para dejarlo', uiOk.save === true && uiOk.url === tUrl('estudio') + '/' && uiSaved.value === 'estudio' && uiSaved.url === tUrl('estudio') + '/' && uiSaved.off === true && svUi.name === 'estudio' && (await raw(th('estudio'), '/wiki-equipo/')).status === 200, [uiOk, uiSaved, svUi]);
+  await olga.ctx.close();
+  const mario = await R.open(M);
+  await mario.page.goto(R.noteUrl('~' + space + '/wiki/index.md')); await mario.page.waitForSelector('[data-root=team] .lmd-node');
+  await openPlan(mario.page);
+  const uiM = await mario.page.evaluate(() => { const t = document.querySelector('.lmd-panel .lmd-team'); const row = t.querySelector('[data-team=subdomain]'); return { field: !!t.querySelector('[data-t=sub-name], [data-t=sub-save], [data-t=sub-off]'), row: row ? row.innerText : '' }; });
+  check('un miembro ve la dirección del equipo y no la puede cambiar', uiM.field === false && uiM.row.includes(tUrl('estudio') + '/'), uiM);
+  await mario.ctx.close();
+
+  // Con el plan del equipo vencido no se elige un nombre nuevo; y un equipo que se elimina deja su nombre en reserva.
+  await api('POST', '/admin/team', { email: P.email, seats: 0 }, undefined, { 'x-admin-key': R.ADMIN });
+  const ended = await sub(P, 'PUT', { name: 'otro-nombre' });
+  check('es una función del plan de equipo: con el plan vencido responde 402', ended.status === 402 && ended.json.error === 'team_ended', ended.json);
+  const Q = await R.signup('quique@ejemplo.test');
+  await api('POST', '/admin/team', { email: Q.email, seats: 2 }, undefined, { 'x-admin-key': R.ADMIN });
+  const qSet = await sub(Q, 'PUT', { name: 'efimero' }); const qDel = await api('DELETE', '/account', { email: Q.email }, Q.s);
+  const orphan = (await sub(O, 'GET', undefined, '?name=efimero')).json;
+  check('un equipo eliminado deja su nombre en reserva, a nombre de nadie', qSet.status === 200 && qDel.status === 200 && orphan.ok === false && orphan.why === 'subdomain_taken' && (await raw(th('efimero'), '/')).status === 404, [qSet.status, qDel.status, orphan]);
+  // Lo que sigue prueba el sitio del equipo en el host de sitios: el equipo deja su subdominio.
+  await sub(O, 'DELETE');
+
+  // ---------- Sin PAGES_TEAM_DOMAIN ----------
+  console.log('Sin el dominio de equipos');
+  {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdsites-')); const port = PORT + 2; const base = 'http://127.0.0.1:' + port; const ph = 'pages.localhost:' + port;
+    const boot = (env) => spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(port), DATA_DIR: dir, DEV_CODES: '1', ADMIN_KEY: R.ADMIN, PUBLIC_URL: base, PAGES_TEAM_DOMAIN: '', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const proc = boot({ PAGES_URL: 'http://' + ph });
+    let log = ''; proc.stdout.on('data', (d) => { log += d; }); proc.stderr.on('data', (d) => { log += d; });
+    for (let i = 0; i < 80 && !/puerto/.test(log); i++) await sleep(100);
+    const call = (m, p, b, s, extra) => fetch(base + p, { method: m, headers: Object.assign({ 'content-type': 'application/json' }, s ? { authorization: 'Bearer ' + s } : {}, extra || {}), body: b === undefined ? undefined : JSON.stringify(b) }).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
+    const host = (h, p) => new Promise((resolve) => { const r = http.request({ host: '127.0.0.1', port, path: p, headers: { host: h } }, (res) => { let b = ''; res.on('data', (c) => { b += c; }); res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: b })); }); r.end(); });
+    const code = (await call('POST', '/auth/start', { email: 'jefa@ejemplo.test' })).json.dev_code; const v = (await call('POST', '/auth/verify', { email: 'jefa@ejemplo.test', code })).json;
+    await call('POST', '/admin/team', { email: 'jefa@ejemplo.test', seats: 2 }, undefined, { 'x-admin-key': R.ADMIN });
+    const acct = (await call('GET', '/account', undefined, v.session)).json; const sp = acct.team.mine.space;
+    await call('PUT', '/notes/' + enc('wiki/index.md') + '?o=' + sp, { text: '# Wiki\n\nSIN-DOMINIO' }, v.session);
+    const made = (await call('POST', '/sites', { o: sp, folder: 'wiki', slug: 'wiki-sola', title: 'Wiki' }, v.session)).json;
+    await call('PUT', '/sites/' + made.id + '/pages', { pages: [page('wiki/index.md', 1, '<h1>Wiki</h1><p>SIN-DOMINIO</p>')] }, v.session); await call('POST', '/sites/' + made.id + '/publish', {}, v.session);
+    const routes = [await call('GET', '/team/subdomain', undefined, v.session), await call('GET', '/team/subdomain?name=taller', undefined, v.session), await call('PUT', '/team/subdomain', { name: 'taller' }, v.session), await call('DELETE', '/team/subdomain', undefined, v.session)];
+    const same = await host(ph, '/wiki-sola/'); const other = await host('taller.' + TD + ':' + port, '/wiki-sola/'); const otherApi = await host('taller.' + TD + ':' + port, '/health');
+    check('sin PAGES_TEAM_DOMAIN el equipo dice que no hay subdominio y la ruta no existe', acct.team.mine.subdomain && acct.team.mine.subdomain.enabled === false && Object.keys(acct.team.mine.subdomain).length === 1 && routes.every((r) => r.status === 404 && r.json.error === 'no_route'), [acct.team.mine.subdomain, routes.map((r) => [r.status, r.json])]);
+    check('el sitio del equipo se sirve donde siempre, sin redirección, y ningún otro nombre de host sirve sitios: responde la API de siempre', made.url === 'http://' + ph + '/wiki-sola/' && same.status === 200 && /SIN-DOMINIO/.test(same.body) && same.headers['content-security-policy'].includes('http://' + ph + '/_/site.js') && other.status === 401 && otherApi.status === 200 && /"ok":true/.test(otherApi.body), [made.url, same.status, other.status, otherApi.status]);
+    proc.kill(); await sleep(400);
+    // Mal configurado no arranca: sin PAGES_URL, o con algo que no es un nombre de dominio.
+    const dies = async (env) => { const p2 = boot(env); let out = ''; p2.stderr.on('data', (d) => { out += d; }); p2.stdout.on('data', (d) => { out += d; }); const exit = await new Promise((r) => { p2.once('exit', r); setTimeout(() => { p2.kill(); r(-1); }, 8000); }); return { exit, out }; };
+    const noPages = await dies({ PAGES_URL: '', PAGES_TEAM_DOMAIN: TD }); const badDomain = await dies({ PAGES_URL: 'http://' + ph, PAGES_TEAM_DOMAIN: 'https://' + TD + '/' }); const sameAsApi = await dies({ PUBLIC_URL: 'http://api.ejemplo.test:' + port, PAGES_URL: 'http://' + ph, PAGES_TEAM_DOMAIN: 'api.ejemplo.test' });
+    check('mal configurado el servidor no arranca: sin PAGES_URL, con algo que no es un dominio, o con el nombre de la API', [noPages, badDomain, sameAsApi].every((r) => r.exit === 1 && /PAGES_TEAM_DOMAIN/.test(r.out)), [noPages, badDomain, sameAsApi].map((r) => [r.exit, r.out.slice(0, 80)]));
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { /* Windows lo suelta después */ }
+  }
+  }
+
   // El espacio pasa a tener contraseña: deja de servirse, se borra lo publicado y no se puede volver a publicar.
   const b64 = (n) => Buffer.alloc(n, 5).toString('base64');
   const prot = await api('POST', '/team/vault', { salt: b64(16), iters: 200000, wrapped: b64(60), check: b64(32) }, O.s);
