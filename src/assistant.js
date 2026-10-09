@@ -78,11 +78,16 @@
     refusal: 'El modelo no respondió este pedido.', empty: 'El modelo no devolvió texto.',
     bad_url: 'Esa dirección no sirve. Tiene que ser https, o http://localhost en esta máquina.', bad_key: 'Esa clave no tiene la forma esperada.',
     bad_password: 'Esa contraseña no coincide.', unsupported: 'Acá no se puede guardar la clave de forma segura.',
+    // El proveedor está andando pero no deja que lo llame una página web. En la extensión esto no pasa.
+    cors: 'Este proveedor no acepta llamadas desde un navegador. Usalo a través de OpenRouter, o con un proxy local.',
   };
-  function say(e, st) {
+  // full: además, el estado que devolvió el proveedor (para la prueba de la conexión).
+  function say(e, st, full) {
     const code = e && e.code;
-    let out = T(code === 'network' && st && st.provider === 'compat' ? 'No se pudo llegar a ese servidor. Tiene que estar andando y aceptar pedidos desde el navegador (CORS).' : SAY[code] || 'No se pudo completar. Probá de nuevo.');
-    if (e && e.detail && /^(auth|rate|server|not_found|too_long|bad_request)$/.test(code)) out += ' ' + String(e.detail).slice(0, 220);
+    let out = T((code === 'network' || code === 'cors') && st && st.provider === 'compat' ? 'No se pudo llegar a ese servidor. Tiene que estar andando y aceptar pedidos desde el navegador (CORS).' : SAY[code] || 'No se pudo completar. Probá de nuevo.');
+    // Lo que dijo el proveedor va tal cual, como texto. La clave ya viene sacada (aikey.js).
+    if (e && e.detail && /^(auth|rate|server|not_found|too_long|bad_request)$/.test(code)) out += ' ' + String(e.detail).slice(0, full ? 300 : 220);
+    if (full && e && e.status) out += ' (HTTP ' + e.status + ')';
     return out;
   }
 
@@ -301,7 +306,7 @@
     const link = (act, label) => '<button type="button" class="lmd-link" data-ai="' + act + '">' + esc(T(label)) + '</button>';
     let html = '';
     if (!c.done) html = btn('stop', 'Cortar');
-    else if (c.err || !text) html = (c.err && /^(no_key|auth|no_model|unreadable|not_found)$/.test(c.err.code) ? btn('options', 'Abrir las opciones') : '') + btn('retry', 'Reintentar', true) + btn('discard', 'Descartar');
+    else if (c.err || !text) html = (c.err && /^(no_key|auth|no_model|unreadable|not_found|cors)$/.test(c.err.code) ? btn('options', 'Abrir las opciones') : '') + btn('retry', 'Reintentar', true) + btn('discard', 'Descartar');
     else {
       const ok = !c.bad;
       const rep = ok && can && job.t && job.t.s >= 0 && !job.t.loose; const ins = ok && can && (job.at || (job.t && job.t.s >= 0));
@@ -659,8 +664,10 @@
   const togglePanel = () => (panel ? closePanel() : openPanel());
 
   // ---------- Opciones ----------
+  const GROUPS = [['top', 'Populares'], ['more', 'Más'], ['custom', 'Personalizado']];
   function settings(area) {
-    const P = A().PROVIDERS; let st = { has: false }; let busy = false;
+    const P = A().PROVIDERS; const IDS = Object.keys(P); let st = { has: false, saved: [] }; let busy = false;
+    const nameOf = (k) => (P[k].custom ? T('Servidor compatible con OpenAI') : P[k].name);
     area.innerHTML =
       '<p class="lmd-tl-why">' + esc(T('La clave queda cifrada en este dispositivo y no pasa por SharpMD. Las llamadas van directo a tu proveedor: recibe el texto que le mandes, lo cobra y lo trata según sus condiciones.')) + '</p>' +
       '<p class="lmd-tl-why">' + esc(T('Conviene una clave con tope de gasto. Quien use este dispositivo desbloqueado también puede usarla.')) + '</p>' +
@@ -668,45 +675,114 @@
       '<label class="lmd-switch"><input type="checkbox" data-ai="novault"' + (opt('aiNoVault', false) ? ' checked' : '') + '><i></i><span>' + esc(T('No mandar nunca notas de carpetas protegidas')) + '</span></label>' +
       '<label class="lmd-ai-field"><span>' + esc(T('Instrucciones propias')) + '</span><textarea data-ai="own" rows="3" maxlength="2000" placeholder="' + esc(T('Por ejemplo: escribí en un tono cercano y sin tecnicismos.')) + '">' + esc(opt('aiOwn', '')) + '</textarea></label>' +
       '<p class="lmd-tl-why">' + esc(T('Se suman a las instrucciones fijas. Atajos: {a} abre las acciones, {b} abre el panel.', { a: KEY_ACT, b: KEY_ASK })) + '</p>';
-    const box = area.querySelector('.lmd-ai-set');
+    const box = area.querySelector('.lmd-ai-set'); const q = (s) => box.querySelector(s);
     area.querySelector('[data-ai=novault]').addEventListener('change', (e) => LMD.tools.setOpt({ aiNoVault: e.target.checked }));
     area.querySelector('[data-ai=own]').addEventListener('change', (e) => LMD.tools.setOpt({ aiOwn: e.target.value.trim().slice(0, 2000) }));
-    let note = ''; let noteBad = false; let ids = []; let form = null; // form: se está cargando o reemplazando la clave
+    // form: se está cargando o reemplazando la clave de un proveedor. find: lo escrito en el buscador de proveedores.
+    let note = ''; let noteBad = false; let ids = []; let form = null; let find = '';
+    const savedOf = (k) => (st.saved || []).some((s) => s.provider === k);
+    const hostOf = (u) => { try { return new URL(u).host; } catch (e) { return ''; } };
+    const regionOf = (p, base) => (p.regions || []).find((r) => r.base === A().cleanBase(base)) || null;
+    // A dónde va lo que se manda, con el nombre del proveedor elegido.
+    const where = (prov, base) => {
+      const p = P[prov]; const host = hostOf(base);
+      const to = p.custom ? host || T('ese servidor') : p.name + (host && A().cleanBase(base) !== p.base ? ' (' + host + ')' : '');
+      return T('Lo que mandás va de tu navegador a {a}, con tu clave. El servidor de SharpMD no lo ve.', { a: to });
+    };
+    // El selector, agrupado: los más usados, los demás por orden alfabético, y el servidor propio al final.
+    const fillProv = (prov) => {
+      const sel = q('[data-ai=prov]'); const f = find.trim().toLowerCase(); sel.textContent = '';
+      GROUPS.forEach(([g, label]) => {
+        const keys = IDS.filter((k) => P[k].group === g && (k === prov || !f || nameOf(k).toLowerCase().includes(f) || k.includes(f)));
+        if (!keys.length) return;
+        if (g === 'more') keys.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+        const og = document.createElement('optgroup'); og.label = T(label);
+        keys.forEach((k) => { const o = document.createElement('option'); o.value = k; o.textContent = nameOf(k) + (savedOf(k) ? ' · ' + T('guardado') : ''); o.selected = k === prov; og.appendChild(o); });
+        sel.appendChild(og);
+      });
+    };
+    // Lo que depende de la dirección escrita: a dónde va el texto, la región y los enlaces del proveedor.
+    const around = (prov, base, editing) => {
+      const p = P[prov]; const reg = regionOf(p, base);
+      q('.lmd-ai-where').textContent = where(prov, base);
+      if (!editing) return;
+      const sel = q('[data-ai=region]');
+      if (sel) {
+        sel.textContent = '';
+        p.regions.forEach((r) => { const o = document.createElement('option'); o.value = r.id; o.textContent = T(r.name); o.selected = r === reg; sel.appendChild(o); });
+        if (!reg) { const o = document.createElement('option'); o.value = ''; o.textContent = T('Otra dirección'); o.selected = true; sel.appendChild(o); }
+      }
+      [['keys', (reg || p).keys], ['docs', (reg || p).docs]].forEach(([k, url]) => { const a = q('a[data-ai=' + k + ']'); a.hidden = !url; if (url) a.href = url; else a.removeAttribute('href'); });
+      q('.lmd-ai-links').hidden = !p.keys && !p.docs;
+    };
     const draw = () => {
-      const editing = form || !st.has; const prov = (form && form.provider) || st.provider || 'anthropic'; const p = P[prov];
-      const list = ids.length ? ids : p.models;
+      if (!form && !st.has) form = { provider: 'anthropic', baseUrl: P.anthropic.base };
+      const editing = !!form; const prov = editing ? form.provider : st.provider; const p = P[prov];
+      const base = editing ? form.baseUrl : st.baseUrl;
+      const field = (label, inner) => '<label class="lmd-ai-field"><span>' + esc(T(label)) + '</span>' + inner + '</label>';
+      const btn = (act, label, fill) => '<button type="button" class="lmd-btn' + (fill ? ' lmd-btn-fill' : '') + '" data-ai="' + act + '">' + esc(T(label)) + '</button>';
+      const why = (text) => '<p class="lmd-tl-why">' + esc(T(text)) + '</p>';
       box.innerHTML =
-        '<label class="lmd-ai-field"><span>' + esc(T('Proveedor')) + '</span><select data-ai="prov"' + (editing ? '' : ' disabled') + '>' + Object.keys(P).map((k) => '<option value="' + k + '"' + (k === prov ? ' selected' : '') + '>' + esc(k === 'compat' ? T('Compatible con OpenAI') : P[k].name) + '</option>').join('') + '</select></label>' +
-        (p.custom ? '<label class="lmd-ai-field"><span>' + esc(T('Dirección del servidor')) + '</span><input type="url" data-ai="base" spellcheck="false" autocomplete="off" placeholder="https://openrouter.ai/api/v1" value="' + esc(editing ? (form && form.baseUrl) || '' : st.baseUrl) + '"' + (editing ? '' : ' disabled') + '></label>' +
-          '<p class="lmd-tl-why">' + esc(T('Sirve para OpenRouter, Ollama, LM Studio y otros. Tiene que ser https y aceptar pedidos desde el navegador (CORS); en esta máquina también va http://localhost.')) + '</p>' : '') +
+        '<div class="lmd-ai-field lmd-ai-prov"><span>' + esc(T('Proveedor')) + '</span><select data-ai="prov" aria-label="' + esc(T('Proveedor')) + '"></select>' +
+          (IDS.length > 10 ? '<input type="search" data-ai="find" autocomplete="off" spellcheck="false" placeholder="' + esc(T('Buscar proveedor')) + '" aria-label="' + esc(T('Buscar proveedor')) + '">' : '') + '</div>' +
+        '<p class="lmd-tl-why lmd-ai-where"></p>' +
         (editing ?
-          '<label class="lmd-ai-field"><span>' + esc(T(p.needsKey ? 'Clave' : 'Clave (si el servidor la pide)')) + '</span><input type="password" data-ai="key" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off" data-lpignore="true" data-1p-ignore placeholder="' + esc(T('Pegá la clave')) + '"></label>' +
-          '<div class="lmd-row"><button type="button" class="lmd-btn lmd-btn-fill" data-ai="save">' + esc(T('Guardar')) + '</button>' + (st.has ? '<button type="button" class="lmd-btn" data-ai="cancel">' + esc(T('Cancelar')) + '</button>' : '') + '</div>'
+          (p.regions ? field('Región', '<select data-ai="region"></select>') + why('Las claves de una región no sirven en la otra.') : '') +
+          field(p.custom ? 'Dirección del servidor' : 'Dirección base', '<input type="url" data-ai="base" spellcheck="false" autocomplete="off" placeholder="https://example.com/v1">') +
+          (p.custom ? why('Sirve para Ollama, LM Studio y cualquier otro servidor que hable como OpenAI. Tiene que ser https y aceptar pedidos desde el navegador (CORS); en esta máquina también va http://localhost.')
+            : p.sure ? '' : why('Esta dirección no está confirmada. Si no conecta, revisala en la documentación del proveedor y corregila acá.')) +
+          field(p.needsKey ? 'Clave' : 'Clave (si el servidor la pide)', '<input type="password" data-ai="key" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off" data-lpignore="true" data-1p-ignore placeholder="' + esc(T('Pegá la clave')) + '">') +
+          '<p class="lmd-ai-links"><a data-ai="keys" target="_blank" rel="noopener noreferrer">' + esc(T('Conseguir una clave')) + '</a><a data-ai="docs" target="_blank" rel="noopener noreferrer">' + esc(T('Documentación')) + '</a></p>' +
+          '<div class="lmd-row">' + btn('save', 'Guardar', true) + (st.has ? btn('cancel', 'Cancelar') : '') + '</div>'
           :
-          '<div class="lmd-row lmd-row-line"><span>' + esc(T('Clave')) + ': <code class="lmd-ai-tail">' + (st.hasKey ? '••••' + esc(st.last4 ? ' ' + st.last4 : '') : esc(T('sin clave'))) + '</code></span><span><button type="button" class="lmd-btn" data-ai="swap">' + esc(T('Reemplazar')) + '</button> <button type="button" class="lmd-btn" data-ai="drop">' + esc(T('Quitar')) + '</button></span></div>' +
-          '<label class="lmd-ai-field"><span>' + esc(T('Modelo')) + '</span><input type="text" data-ai="model" list="lmd-ai-models" spellcheck="false" autocomplete="off" placeholder="' + esc(T('Elegí uno o escribí su id')) + '" value="' + esc(st.model) + '"></label>' +
-          '<datalist id="lmd-ai-models">' + list.map((m) => '<option value="' + esc(m) + '">').join('') + '</datalist>' +
-          '<div class="lmd-row"><button type="button" class="lmd-link" data-ai="list">' + esc(T('Traer los modelos del proveedor')) + '</button></div>' +
+          '<div class="lmd-row lmd-row-line"><span>' + esc(T('Clave')) + ': <code class="lmd-ai-tail"></code></span><span>' + btn('swap', 'Reemplazar') + ' ' + btn('drop', 'Quitar') + '</span></div>' +
+          '<p class="lmd-tl-why lmd-ai-base">' + esc(T('Dirección base')) + ': <code></code>. ' + esc(T('Para cambiarla, tocá Reemplazar: pide la clave de nuevo.')) + '</p>' +
+          field('Modelo', '<input type="text" data-ai="model" list="lmd-ai-models" spellcheck="false" autocomplete="off" placeholder="' + esc(T('Elegí uno o escribí su id')) + '">') +
+          '<datalist id="lmd-ai-models"></datalist>' +
+          '<div class="lmd-row">' + btn('list', 'Actualizar') + btn('test', 'Probar') + '</div>' +
           (st.hasKey ? '<label class="lmd-switch"><input type="checkbox" data-ai="lock"' + (st.lock ? ' checked' : '') + '><i></i><span>' + esc(T('Pedir una contraseña al abrir')) + '</span></label>' : '')) +
-        '<p class="' + (noteBad ? 'lmd-img-err' : 'lmd-tl-why') + ' lmd-ai-note" role="status"' + (note ? '' : ' hidden') + '>' + esc(note) + '</p>';
+        '<p class="lmd-ai-note" role="status" hidden></p>';
+      // Lo que viene de lo guardado, de la persona o del proveedor entra como texto, nunca como HTML.
+      fillProv(prov); if (q('[data-ai=find]')) q('[data-ai=find]').value = find;
+      if (editing) q('[data-ai=base]').value = base;
+      else {
+        q('.lmd-ai-tail').textContent = st.hasKey ? '••••' + (st.last4 ? ' ' + st.last4 : '') : T('sin clave');
+        q('.lmd-ai-base code').textContent = st.baseUrl;
+        q('[data-ai=model]').value = st.model;
+        const list = q('#lmd-ai-models'); (ids.length ? ids : p.models).forEach((m) => { const o = document.createElement('option'); o.value = m; list.appendChild(o); });
+      }
+      around(prov, base, editing);
+      const n = q('.lmd-ai-note'); n.classList.add(noteBad ? 'lmd-img-err' : 'lmd-tl-why'); n.textContent = note; n.hidden = !note;
       // La tarjeta de Herramientas avisa mientras falte la conexión.
       LMD.tools.need('assistant', st.has ? '' : NEED);
     };
     const tell = (text, bad) => { note = text || ''; noteBad = !!bad; draw(); };
+    // Trae los modelos del proveedor. Devuelve true, o el error.
     const load = async (quiet) => {
       try { ids = await A().models(); if (!quiet) tell(ids.length ? T('{n} modelos disponibles.', { n: ids.length }) : T('El proveedor no devolvió modelos. Escribí el id a mano.')); else draw(); return true; }
       catch (e) {
-        if (e.code === 'locked') { if (await askPassword()) return load(quiet); tell(T(SAY.locked), true); return false; }
-        if (!quiet || e.code === 'auth') tell(say(e, st), true);
-        return e.code;
+        if (e.code === 'locked') { if (await askPassword()) return load(quiet); tell(T(SAY.locked), true); return e; }
+        if (!quiet) { if (e.code === 'not_found') tell(T('Este proveedor no entrega su lista de modelos. Elegí uno de los sugeridos o escribí su id.')); else tell(say(e, st, true), true); }
+        return e;
       }
     };
-    const refresh = async () => { try { st = await A().status(); } catch (e) { st = { has: false }; } draw(); };
+    const refresh = async () => { try { st = await A().status(); } catch (e) { st = { has: false, saved: [] }; } draw(); };
+    box.addEventListener('input', (e) => {
+      const d = e.target.dataset.ai;
+      if (d === 'find') { find = e.target.value; fillProv(form ? form.provider : st.provider); }
+      else if (d === 'base' && form) { form.baseUrl = e.target.value; around(form.provider, form.baseUrl, true); }
+    });
     box.addEventListener('change', async (e) => {
       const d = e.target.dataset.ai;
-      if (d === 'prov') { form = { provider: e.target.value, baseUrl: '' }; ids = []; note = ''; draw(); }
-      else if (d === 'base' && form) form.baseUrl = e.target.value;
-      else if (d === 'model') { try { st = await A().setModel(e.target.value); tell(st.model ? T('Modelo guardado.') : ''); } catch (x) { tell(say(x), true); } }
+      if (d === 'prov') {
+        const k = e.target.value; ids = []; note = '';
+        // Un proveedor con su clave ya guardada pasa a usarse; uno nuevo pide la suya. Las demás quedan como están.
+        if (savedOf(k)) { form = null; if (st.provider !== k) { try { st = await A().use(k); } catch (x) { tell(say(x), true); return; } } draw(); }
+        else { form = { provider: k, baseUrl: P[k].base }; draw(); }
+      } else if (d === 'region' && form) {
+        const r = (P[form.provider].regions || []).find((x) => x.id === e.target.value); if (!r) return;
+        form.baseUrl = r.base; q('[data-ai=base]').value = r.base; around(form.provider, r.base, true);
+      } else if (d === 'model') { try { st = await A().setModel(e.target.value); tell(st.model ? T('Modelo guardado.') : ''); } catch (x) { tell(say(x), true); } }
       else if (d === 'lock') {
         const want = e.target.checked;
         try {
@@ -726,27 +802,42 @@
     box.addEventListener('click', async (e) => {
       const b = e.target.closest('button[data-ai]'); if (!b || busy) return;
       const d = b.dataset.ai;
-      if (d === 'swap') { form = { provider: st.provider, baseUrl: st.baseUrl }; note = ''; draw(); box.querySelector('[data-ai=key]').focus(); }
+      if (d === 'swap') { form = { provider: st.provider, baseUrl: st.baseUrl }; note = ''; draw(); q('[data-ai=key]').focus(); }
       else if (d === 'cancel') { form = null; note = ''; draw(); }
       else if (d === 'drop') {
         if (!(await LMD.dialog.confirm({ title: T('Quitar la clave'), text: T('Se borra de este dispositivo. En tu proveedor sigue activa hasta que la des de baja ahí.'), ok: T('Quitar'), danger: true }))) return;
-        st = await A().remove(); ids = []; form = null; tell(T('Clave quitada.'));
+        st = await A().remove(st.provider); ids = []; form = null; tell(T('Clave quitada.'));
       } else if (d === 'list') { busy = true; await load(false); busy = false; }
-      else if (d === 'save') {
-        const input = box.querySelector('[data-ai=key]'); const base = box.querySelector('[data-ai=base]');
-        const prov = box.querySelector('[data-ai=prov]').value; const value = input.value.trim();
+      else if (d === 'test') {
+        // Un pedido mínimo, con lo guardado. Se muestra lo que contestó el modelo, o el error tal como lo dio el proveedor.
+        busy = true; b.disabled = true;
+        try {
+          const r = await send({ system: '', messages: [{ role: 'user', content: 'Reply with the single word OK.' }], max: 64 });
+          const reply = r.text.trim().replace(/\s+/g, ' ').slice(0, 120);
+          if (reply) tell(T('Funciona. {a} respondió: {b}', { a: r.model, b: reply })); else tell(T('La prueba falló.') + ' ' + T(SAY.empty), true);
+        } catch (x) { tell(T('La prueba falló.') + ' ' + say(x, st, true), true); }
+        busy = false;
+      } else if (d === 'save') {
+        const input = q('[data-ai=key]'); const base = q('[data-ai=base]');
+        const prov = q('[data-ai=prov]').value; const value = input.value.trim(); const p = P[prov];
         input.value = ''; // lo escrito no queda en la página
-        if (P[prov].needsKey && !value) { tell(T('Pegá la clave.'), true); return; }
+        if (form) form.baseUrl = base.value;
+        if (p.needsKey && !value) { tell(T('Pegá la clave.'), true); return; }
         busy = true;
         try {
           const keep = st.has && st.provider === prov ? st.model : '';
-          st = await A().save({ provider: prov, baseUrl: base ? base.value : '', key: value, model: keep });
-          form = null; ids = [];
+          st = await A().save({ provider: prov, baseUrl: base.value, key: value, model: keep });
+          const typed = base.value; form = null; ids = [];
           // La lista de modelos, de paso, dice si el proveedor acepta la clave.
           const got = await load(true);
-          if (got === 'auth') { st = await A().remove(); form = { provider: prov, baseUrl: base ? base.value : '' }; tell(T('El proveedor rechazó la clave. No se guardó.'), true); }
-          else if (got !== true) tell(T('Guardada. No se pudo traer la lista de modelos: escribí el id a mano.'));
-          else tell(st.model ? T('Guardada. Modelo: {a}.', { a: st.model }) : T('Guardada. Elegí un modelo.'));
+          if (got !== true && got.code === 'auth') { st = await A().remove(prov); form = { provider: prov, baseUrl: typed }; tell(T('El proveedor rechazó la clave. No se guardó.'), true); }
+          else if (got !== true && (got.code === 'cors' || got.code === 'network')) tell(T('Guardada.') + ' ' + say(got, st), true);
+          else if (got !== true) tell(T(p.models.length ? 'Guardada. El proveedor no entregó su lista de modelos: quedan los sugeridos, o escribí el id a mano.' : 'Guardada. No se pudo traer la lista de modelos: escribí el id a mano.'));
+          else {
+            // El modelo sugerido en el código puede haber quedado viejo: si el proveedor ya no lo ofrece, se pide elegir.
+            if (!keep && st.model && ids.length && !ids.includes(st.model)) st = await A().setModel('');
+            tell(st.model ? T('Guardada. Modelo: {a}.', { a: st.model }) : T('Guardada. Elegí un modelo.'));
+          }
         } catch (x) { tell(say(x), true); }
         busy = false;
       }

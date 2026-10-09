@@ -1,7 +1,8 @@
 // El asistente de IA con la clave de la persona (src/aikey.js y src/assistant.js). Nunca se llama a un proveedor de
 // verdad ni se usa una clave real: un servidor local imita los dos formatos (Anthropic Messages y OpenAI Chat
-// Completions, con SSE, y /v1/models) y lo que va a api.anthropic.com o api.openai.com se desvía hacia él.
-//   ONLY=key node assistant.mjs     (una parte: key, actions, gen, panel, comments, errors, vault, small, safe, ext)
+// Completions, con SSE, y la lista de modelos) con las diferencias de cada proveedor compatible, y lo que va a la
+// dirección de un proveedor se desvía hacia él.
+//   ONLY=key node assistant.mjs     (una parte: key, actions, gen, panel, comments, errors, many, vault, small, safe, ext)
 import { rig, tally, sleep, leave, root } from './rig.mjs';
 import { chromium } from 'playwright-core';
 import http from 'http'; import fs from 'fs'; import os from 'os'; import path from 'path';
@@ -17,7 +18,14 @@ const KEY_A = 'sk-ant-test03-PRUEBA-no-es-una-clave-real-0000000000-aB3d';
 const KEY_A2 = 'sk-ant-test03-OTRA-clave-de-prueba-11111111111111111-Zz9y';
 const KEY_O = 'sk-test-PRUEBA-openai-no-es-real-2222222222222222222-Qw7e';
 const KEY_C = 'clave-de-prueba-para-el-servidor-compatible-3333-Lm5n';
-const KEYS = [KEY_A, KEY_A2, KEY_O, KEY_C];
+const KEY_G = 'AIzaSy-PRUEBA-gemini-no-es-real-4444444444444444-Gm1n';
+const KEY_Q = 'gsk_PRUEBA_groq_no_es_real_55555555555555555555555_Gq2r';
+const KEY_M = 'PRUEBA-minimax-no-es-real-66666666666666666666666-Mx3m';
+const KEY_D = 'sk-PRUEBA-deepseek-no-es-real-7777777777777777777-Ds4k';
+const KEY_X = 'xai-PRUEBA-no-es-real-888888888888888888888888888-Xa5i';
+const KEY_K = 'sk-PRUEBA-kimi-no-es-real-99999999999999999999999-Km6i';
+const KEY_N = 'PRUEBA-together-no-es-real-00000000000000000000000-Tg7r';
+const KEYS = [KEY_A, KEY_A2, KEY_O, KEY_C, KEY_G, KEY_Q, KEY_M, KEY_D, KEY_X, KEY_K, KEY_N];
 
 // ---------- El proveedor de mentira ----------
 const mock = { log: [], queue: [], open: 0, closed: 0 };
@@ -30,30 +38,43 @@ const sse = (res, events, slow) => new Promise((resolve) => {
   next();
 });
 const pieces = (text) => { const out = []; const n = Math.max(1, Math.ceil(text.length / 4)); for (let i = 0; i < text.length; i += n) out.push(text.slice(i, i + n)); return out.length ? out : ['']; };
+// Cada proveedor con lo suyo. gemini: los ids con prefijo, y los errores dentro de una lista. deepseek: el
+// razonamiento en un campo aparte. xai: rechaza stream_options. minimax: sin lista de modelos. kimi: el uso dentro de
+// choices. together: la lista de modelos suelta, sin "data". mistral: el error con otra forma. nocors: no acepta
+// pedidos desde una página.
+const KINDS = ['anthropic', 'openai', 'compat', 'gemini', 'deepseek', 'groq', 'kimi', 'kimicn', 'minimax', 'minimaxcn', 'mistral', 'openrouter', 'together', 'xai', 'nocors'];
+const KIND_RE = new RegExp('^/(' + KINDS.join('|') + ')(/[^?]*)');
 const provider = http.createServer((req, res) => {
-  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
+  const m = KIND_RE.exec(req.url) || [];
+  const kind = m[1]; const p = m[2] || '';
+  const cors = kind === 'nocors' ? {} : { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
   if (req.method === 'OPTIONS') { res.writeHead(204, cors); res.end(); return; }
   if (req.url === '/doc/nota.md') { res.writeHead(200, { 'content-type': 'text/markdown; charset=utf-8' }); res.end('# Nota del disco\n\nEl lanzamiento es el lunes y esta todo listo.\n\nOtro párrafo.\n'); return; }
   let body = '';
   req.on('data', (d) => { body += d; });
   req.on('end', async () => {
-    const m = /^\/(anthropic|openai|compat)(\/v1\/[^?]*)/.exec(req.url) || [];
-    const kind = m[1]; const p = m[2] || '';
-    mock.log.push({ kind, path: p, method: req.method, host: req.headers['x-real-host'] || 'directo', headers: req.headers, body });
+    mock.log.push({ kind, path: p, url: req.url, method: req.method, host: req.headers['x-real-host'] || 'directo', headers: req.headers, body });
     if (!kind) { res.writeHead(404, cors); res.end(); return; }
-    if (req.method === 'GET' && p === '/v1/models') {
+    const json = (status, o) => { res.writeHead(status, Object.assign({ 'content-type': 'application/json' }, cors)); res.end(JSON.stringify(o)); };
+    const bad = (status, message) => json(status, kind === 'anthropic' ? { type: 'error', error: { type: 'x', message } } : kind === 'gemini' ? [{ error: { code: status, message, status: 'FAILED' } }] : kind === 'mistral' ? { object: 'error', message: { detail: [{ type: 'x', msg: message }] } } : { error: { message } });
+    if (req.method === 'GET' && /\/models$/.test(p)) {
       const key = req.headers['x-api-key'] || String(req.headers.authorization || '').replace(/^Bearer /, '');
-      if (/RECHAZADA/.test(key)) { res.writeHead(401, Object.assign({ 'content-type': 'application/json' }, cors)); res.end(JSON.stringify({ type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } })); return; }
-      res.writeHead(200, Object.assign({ 'content-type': 'application/json' }, cors));
-      res.end(JSON.stringify({ data: kind === 'anthropic' ? [{ id: 'claude-sonnet-5-5' }, { id: 'claude-opus-5-5' }, { id: 'claude-haiku-4-5-20251001' }] : [{ id: 'modelo-b' }, { id: 'modelo-a' }], has_more: false }));
+      if (/RECHAZADA/.test(key)) { if (kind === 'gemini') bad(400, 'API key not valid. Please pass a valid API key.'); else json(401, { type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }); return; }
+      if (/^minimax/.test(kind)) { res.writeHead(404, Object.assign({ 'content-type': 'text/plain' }, cors)); res.end('404 page not found'); return; }
+      if (kind === 'together') { json(200, [{ id: 'modelo-b' }, { id: 'modelo-a' }]); return; }
+      const data = kind === 'anthropic' ? [{ id: 'claude-sonnet-5-5' }, { id: 'claude-opus-5-5' }, { id: 'claude-haiku-4-5-20251001' }]
+        : kind === 'gemini' ? [{ id: 'models/gemini-2.5-pro' }, { id: 'models/gemini-2.5-flash' }, { id: 'models/gemini-3-pro-preview' }]
+          : kind === 'deepseek' ? [{ id: 'deepseek-chat' }, { id: 'deepseek-reasoner' }] : [{ id: 'modelo-b' }, { id: 'modelo-a' }];
+      json(200, { object: 'list', data, has_more: false });
       return;
     }
+    let sent = {}; try { sent = JSON.parse(body); } catch (e) { /* sin cuerpo */ }
+    if (kind === 'xai' && sent.stream_options) { json(400, { code: 'Client specified an invalid argument', error: 'Unknown field: stream_options' }); return; }
     const it = mock.queue.shift() || { text: DEFAULT };
-    if (it.status) {
-      res.writeHead(it.status, Object.assign({ 'content-type': 'application/json' }, cors));
-      res.end(JSON.stringify(kind === 'anthropic' ? { type: 'error', error: { type: 'x', message: it.message || 'fallo de prueba' } } : { error: { message: it.message || 'fallo de prueba' } }));
-      return;
-    }
+    if (it.status) { bad(it.status, it.message || 'fallo de prueba'); return; }
+    // Un error con estado 200, y una respuesta entera en vez de tramos.
+    if (it.soft) { json(200, { base_resp: { status_code: 1004, status_msg: it.soft } }); return; }
+    if (it.whole) { json(200, { choices: [{ index: 0, message: { role: 'assistant', content: it.text }, finish_reason: 'stop' }], usage: { prompt_tokens: 123, completion_tokens: 45 } }); return; }
     res.writeHead(200, Object.assign({ 'content-type': 'text/event-stream', 'cache-control': 'no-cache' }, cors));
     mock.open++;
     const ev = [];
@@ -70,12 +91,18 @@ const provider = http.createServer((req, res) => {
       ev.push(d({ type: 'message_delta', delta: { stop_reason: it.stop || 'end_turn' }, usage: { output_tokens: 45 } }), d({ type: 'message_stop' }));
     } else {
       const d = (o) => 'data: ' + JSON.stringify(o) + '\n\n';
-      pieces(it.text).forEach((t) => ev.push(d({ choices: [{ index: 0, delta: { content: t } }] })));
-      ev.push(d({ choices: [{ index: 0, delta: {}, finish_reason: it.stop || 'stop' }] }), d({ choices: [], usage: { prompt_tokens: 123, completion_tokens: 45 } }), 'data: [DONE]\n\n');
+      const usage = { prompt_tokens: 123, completion_tokens: 45 };
+      if (kind === 'deepseek') ['RAZONAMIENTO', '-OCULTO'].forEach((t) => ev.push(d({ choices: [{ index: 0, delta: { content: null, reasoning_content: t } }] })));
+      pieces((it.think ? '<think>\nRAZONAMIENTO-OCULTO\n</think>\n\n' : '') + it.text).forEach((t) => ev.push(d({ choices: [{ index: 0, delta: { content: t } }] })));
+      if (/^kimi/.test(kind)) ev.push(d({ choices: [{ index: 0, delta: {}, finish_reason: it.stop || 'stop', usage }] }), 'data: [DONE]\n\n');
+      else ev.push(d({ choices: [{ index: 0, delta: {}, finish_reason: it.stop || 'stop' }] }), d({ choices: [], usage }), 'data: [DONE]\n\n');
     }
     await sse(res, ev, it.slow || 0);
   });
 });
+// La dirección de cada proveedor, y a qué parte del servidor de mentira se desvía.
+const HOSTS = { 'api.anthropic.com': 'anthropic', 'api.openai.com': 'openai', 'generativelanguage.googleapis.com': 'gemini', 'api.deepseek.com': 'deepseek', 'api.groq.com': 'groq', 'api.moonshot.ai': 'kimi', 'api.moonshot.cn': 'kimicn', 'api.minimax.io': 'minimax', 'api.minimaxi.com': 'minimaxcn', 'api.mistral.ai': 'mistral', 'openrouter.ai': 'openrouter', 'api.together.xyz': 'together', 'api.x.ai': 'xai' };
+const HOST_RE = new RegExp('^https://(' + Object.keys(HOSTS).map((h) => h.replace(/\./g, '\\.')).join('|') + ')/');
 await new Promise((r) => provider.listen(0, '127.0.0.1', r));
 const MOCK = 'http://127.0.0.1:' + provider.address().port;
 const chats = () => mock.log.filter((r) => r.method === 'POST');
@@ -87,13 +114,13 @@ const said = (r) => (r.json.system || '') + '\n' + r.json.messages.map((m) => m.
 const seen = [];
 async function wire(ctx) {
   ctx.on('request', (r) => { let h = {}; try { h = r.headers(); } catch (e) { /* ya cerrado */ } let from = 'page'; try { if (r.serviceWorker()) from = 'sw'; } catch (e) { /* sin dato */ } seen.push({ url: r.url(), headers: JSON.stringify(h), body: r.postData() || '', from }); });
-  await ctx.route(/^https:\/\/api\.(anthropic|openai)\.com\//, async (route) => {
+  await ctx.route(HOST_RE, async (route) => {
     const req = route.request(); const u = new URL(req.url());
     const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
     if (mock.down) return route.abort('connectionrefused');
     const headers = Object.assign({}, req.headers(), { 'x-real-host': u.hostname }); delete headers['content-length']; delete headers.host;
-    const r = await fetch(MOCK + '/' + (u.hostname.includes('anthropic') ? 'anthropic' : 'openai') + u.pathname + u.search, { method: req.method(), headers, body: req.postData() || undefined });
+    const r = await fetch(MOCK + '/' + HOSTS[u.hostname] + u.pathname + u.search, { method: req.method(), headers, body: req.postData() || undefined });
     return route.fulfill({ status: r.status, headers: Object.assign({ 'content-type': r.headers.get('content-type') || 'text/plain' }, cors), body: Buffer.from(await r.arrayBuffer()) });
   });
   await ctx.route(/^https?:\/\/([a-z0-9-]+\.)*evil\.test\//, (route) => route.abort());
@@ -167,7 +194,8 @@ await step('key', ' La clave', async () => {
   const ui = await page.evaluate(() => { const i = document.querySelector('.lmd-ai-set [data-ai=key]'); const opts = document.querySelector('[data-tool=assistant] .lmd-tl-opts'); return { type: i.type, auto: i.autocomplete, text: opts.textContent, provs: [...document.querySelectorAll('[data-ai=prov] option')].map((x) => x.textContent) }; });
   check('el campo de la clave es de contraseña y sin autocompletar', ui.type === 'password' && ui.auto === 'off', ui);
   check('dice dónde queda la clave, a dónde va el texto, y el límite', /encrypted on this device/.test(ui.text) && /never goes through SharpMD/.test(ui.text) && /straight to your provider/.test(ui.text) && /spending limit/.test(ui.text) && /device unlocked/.test(ui.text), ui.text.slice(0, 500));
-  check('tres proveedores: Anthropic, OpenAI y compatible', ui.provs.length === 3 && /Anthropic/.test(ui.provs[0]) && ui.provs[1] === 'OpenAI' && /compatible/i.test(ui.provs[2]), ui.provs);
+  check('doce proveedores: primero Anthropic, OpenAI y Gemini, y al final el servidor compatible', ui.provs.length === 12 && /Anthropic/.test(ui.provs[0]) && ui.provs[1] === 'OpenAI' && ui.provs[2] === 'Google Gemini' && ui.provs[11] === 'OpenAI-compatible server', ui.provs);
+  check('y el texto dice a dónde va lo que se manda, con el nombre del proveedor', (await page.textContent('.lmd-ai-where')) === "What you send goes from your browser to Anthropic (Claude), with your key. SharpMD's server does not see it.", await page.textContent('.lmd-ai-where'));
   check('los textos no llevan signos de admiración ni rayas largas', !/[!¡—–]/.test(ui.text), ui.text.match(/[!¡—–]/g));
 
   // Una clave que el proveedor rechaza no queda guardada
@@ -276,7 +304,8 @@ await step('key', ' La clave', async () => {
   await page.waitForSelector('.lmd-ai-tail');
   const lc = mock.log.slice(m1).find((r) => r.path === '/v1/models');
   check('compatible: va derecho a la dirección elegida, con Bearer', !!lc && lc.kind === 'compat' && lc.host === 'directo' && lc.headers.authorization === 'Bearer ' + KEY_C, lc && [lc.kind, lc.host]);
-  check('al cambiar de proveedor la clave anterior se reemplaza entera', (await dump(page)).rec.provider === 'compat' && !hasKey((await dump(page)).flat));
+  const both = await page.evaluate(async () => (await LMD.ai.status()).saved.map((s) => s.provider + ':' + s.last4).join());
+  check('al cargar otro proveedor queda ese en uso, y la clave del anterior sigue guardada y cifrada', (await dump(page)).rec.provider === 'compat' && both === 'compat:Lm5n,openai:Qw7e' && !hasKey((await dump(page)).flat), both);
   await ctx.close();
 });
 
@@ -598,11 +627,183 @@ await step('errors', ' Cortar el streaming y errores', async () => {
   await ctx.setOffline(false);
   await page.click('.lmd-ai-card [data-ai=discard]');
   // Sin clave cargada
-  await page.evaluate(() => LMD.ai.remove());
+  await page.evaluate(async () => { while ((await LMD.ai.remove()).has) { /* una por proveedor: se quitan todas */ } });
   await menuOn(page, 'el lunes'); await page.click('.lmd-ai-menu [data-ai=fix]'); await page.waitForSelector('.lmd-dlg');
   check('sin clave no se manda nada: lleva a las opciones', /not connected/.test(await page.textContent('.lmd-dlg h3')) && chats().length === before);
   await page.click('.lmd-dlg [data-dlg=ok]'); await page.waitForSelector('.lmd-ai-set [data-ai=key]');
   check('y las opciones se abren con el campo de la clave', (await page.locator('.lmd-ai-set [data-ai=key]').count()) === 1);
+  check('sin errores de página', R.errors.length === 0, R.errors.slice(0, 3));
+  await ctx.close();
+});
+
+// ---------- Más proveedores: Gemini, Kimi, MiniMax y los demás compatibles ----------
+await step('many', ' Más proveedores', async () => {
+  const { ctx, page } = await open();
+  await note(page, 'varios.md', NOTE, true);
+  const status = () => page.evaluate(() => LMD.ai.status());
+  const savedNow = async () => (await status()).saved.map((s) => s.provider).sort().join();
+  const ask = () => page.evaluate(async () => { const d = []; try { const r = await LMD.ai.stream({ system: 's', messages: [{ role: 'user', content: 'hola' }] }, (x) => d.push(x)); return { text: r.text, deltas: d.join(''), usage: r.usage }; } catch (e) { return { code: e.code, detail: e.detail, status: e.status }; } });
+  const noteNow = async () => (await page.evaluate(() => { const n = document.querySelector('.lmd-ai-note'); return n && !n.hidden ? n.textContent : ''; }));
+  const noteIs = (re) => until(async () => re.test(await noteNow()), 8000);
+  const form = () => page.evaluate(() => { const q = (s) => document.querySelector('.lmd-ai-set ' + s); const v = (s) => (q(s) ? q(s).value : null); const a = (s) => (q(s) && !q(s).hidden ? q(s).href : ''); return { base: v('[data-ai=base]'), key: !!q('[data-ai=key]'), region: q('[data-ai=region]') ? [...q('[data-ai=region]').options].map((o) => o.textContent + (o.selected ? '*' : '')).join() : null, keys: a('a[data-ai=keys]'), docs: a('a[data-ai=docs]'), where: q('.lmd-ai-where').textContent, text: document.querySelector('.lmd-ai-set').textContent }; });
+  await openOptions(page);
+
+  // El selector
+  const sel = await page.evaluate(() => ({ groups: [...document.querySelectorAll('[data-ai=prov] optgroup')].map((g) => g.label + ': ' + [...g.children].map((o) => o.textContent).join(', ')), find: !!document.querySelector('.lmd-ai-set [data-ai=find]') }));
+  check('el selector agrupa: los populares, los demás por orden alfabético y el servidor propio al final', sel.groups.join(' | ') === 'Popular: Anthropic (Claude), OpenAI, Google Gemini | More: DeepSeek, Groq, Kimi (Moonshot AI), MiniMax, Mistral, OpenRouter, Together AI, xAI (Grok) | Custom: OpenAI-compatible server', sel.groups);
+  await page.fill('.lmd-ai-set [data-ai=find]', 'moon');
+  const found = await page.evaluate(() => [...document.querySelectorAll('[data-ai=prov] option')].map((o) => o.value).join());
+  await page.fill('.lmd-ai-set [data-ai=find]', '');
+  check('con más de diez hay un buscador, que deja el elegido y los que coinciden', sel.find && found === 'anthropic,kimi' && (await page.locator('[data-ai=prov] option').count()) === 12, found);
+
+  // Gemini, por su capa compatible con OpenAI
+  await page.selectOption('.lmd-ai-set [data-ai=prov]', 'gemini');
+  let f = await form();
+  check('Gemini: la dirección base viene puesta y se puede corregir, con el enlace a su consola de claves', f.base === 'https://generativelanguage.googleapis.com/v1beta/openai' && /^https:\/\/aistudio\.google\.com\//.test(f.keys) && /^https:\/\/ai\.google\.dev\//.test(f.docs) && f.region === null, f);
+  check('y el texto de privacidad nombra a Gemini', f.where === "What you send goes from your browser to Google Gemini, with your key. SharpMD's server does not see it.", f.where);
+  await page.fill('.lmd-ai-set [data-ai=key]', 'AIzaSy-RECHAZADA-00000000000000000000000'); await page.click('.lmd-ai-set [data-ai=save]');
+  check('una clave que Gemini rechaza con un 400 y el error dentro de una lista tampoco se guarda', await noteIs(/rejected the key/) && (await status()).has === false, await noteNow());
+  let m0 = mock.log.length;
+  await page.fill('.lmd-ai-set [data-ai=key]', KEY_G); await page.click('.lmd-ai-set [data-ai=save]'); await page.waitForSelector('.lmd-ai-tail');
+  const lg = mock.log.slice(m0).find((r) => /\/models$/.test(r.path));
+  check('Gemini: la lista de modelos se pide a su dirección, con la clave en Authorization y no en la dirección', !!lg && lg.host === 'generativelanguage.googleapis.com' && lg.path === '/v1beta/openai/models' && lg.headers.authorization === 'Bearer ' + KEY_G && !lg.headers['x-api-key'] && !/[?&]key=/.test(lg.url) && !hasKey(lg.url), lg && [lg.host, lg.url]);
+  let shown = await page.evaluate(() => ({ model: document.querySelector('[data-ai=model]').value, opts: [...document.querySelectorAll('#lmd-ai-models option')].map((x) => x.value).join(), base: document.querySelector('.lmd-ai-base code').textContent, buttons: [...document.querySelectorAll('.lmd-ai-set button')].map((b) => b.textContent).join() }));
+  check('los modelos vienen del proveedor, sin el prefijo "models/", y queda elegido el sugerido', shown.opts === 'gemini-2.5-flash,gemini-2.5-pro,gemini-3-pro-preview' && shown.model === 'gemini-2.5-flash' && /Model: gemini-2\.5-flash/.test(await noteNow()), shown);
+  check('con la clave guardada se ve la dirección en uso, y hay Refresh y Test', shown.base === 'https://generativelanguage.googleapis.com/v1beta/openai' && /Refresh/.test(shown.buttons) && /Test/.test(shown.buttons), shown);
+
+  // El botón Test
+  plan({ text: 'OK' });
+  await page.click('.lmd-ai-set [data-ai=test]');
+  check('Test hace un pedido mínimo y muestra lo que respondió el modelo', await noteIs(/^It works\. gemini-2\.5-flash replied: OK$/), await noteNow());
+  let q = lastChat();
+  check('ese pedido va a la capa compatible de Gemini, en streaming y con la clave solo en la cabecera', q.host === 'generativelanguage.googleapis.com' && q.path === '/v1beta/openai/chat/completions' && q.headers.authorization === 'Bearer ' + KEY_G && q.json.stream === true && q.json.model === 'gemini-2.5-flash' && !hasKey(q.url) && !hasKey(q.body), [q.host, q.path]);
+  check('sin tope de salida (cada proveedor lo llama distinto) y sin un mensaje de sistema vacío', q.json.max_tokens === undefined && q.json.max_completion_tokens === undefined && q.json.messages.length === 1 && q.json.messages[0].role === 'user' && q.json.stream_options.include_usage === true, q.json);
+  plan({ status: 429, message: 'Quota exceeded for metric generate_requests. Key ' + KEY_G });
+  await page.click('.lmd-ai-set [data-ai=test]');
+  check('si falla, Test muestra el error tal como lo dio el proveedor, con su estado y sin la clave', await noteIs(/^The test failed\. .*Quota exceeded for metric generate_requests\. Key ….*\(HTTP 429\)$/) && !hasKey(await noteNow()) && !hasKey(await page.content()), await noteNow());
+
+  // Un sugerido que el proveedor ya no ofrece
+  m0 = mock.log.length;
+  await page.selectOption('.lmd-ai-set [data-ai=prov]', 'groq'); await page.fill('.lmd-ai-set [data-ai=key]', KEY_Q); await page.click('.lmd-ai-set [data-ai=save]'); await page.waitForSelector('.lmd-ai-tail');
+  const lq = mock.log.slice(m0).find((r) => /\/models$/.test(r.path));
+  check('Groq: va a su dirección, y si el modelo sugerido ya no está en la lista pide elegir uno', !!lq && lq.host === 'api.groq.com' && lq.path === '/openai/v1/models' && lq.headers.authorization === 'Bearer ' + KEY_Q && /Choose a model/.test(await noteNow()) && (await status()).model === '', [lq && lq.path, await noteNow()]);
+
+  // MiniMax: dos regiones, una dirección sin confirmar y sin lista de modelos
+  await page.selectOption('.lmd-ai-set [data-ai=prov]', 'minimax');
+  f = await form();
+  check('MiniMax: selector de región, y aviso de que la dirección no está confirmada, con el enlace a la documentación', f.region === 'International*,Mainland China' && f.base === 'https://api.minimax.io/v1' && /not confirmed/.test(f.text) && /one region does not work in the other/.test(f.text) && /^https:\/\/platform\.minimax\.io\//.test(f.docs), f);
+  await page.selectOption('.lmd-ai-set [data-ai=region]', 'cn');
+  f = await form();
+  check('la región de China cambia la dirección, los enlaces y a dónde dice que va el texto', f.base === 'https://api.minimaxi.com/v1' && /^https:\/\/platform\.minimaxi\.com\//.test(f.keys) && /to MiniMax \(api\.minimaxi\.com\), with your key/.test(f.where), f);
+  await page.fill('.lmd-ai-set [data-ai=base]', 'https://otro.example/v1');
+  f = await form();
+  check('la dirección se puede escribir a mano, y el texto lo refleja', f.region === 'International,Mainland China,Another address*' && /to MiniMax \(otro\.example\)/.test(f.where), f);
+  await page.selectOption('.lmd-ai-set [data-ai=region]', 'intl');
+  await page.fill('.lmd-ai-set [data-ai=key]', KEY_M); await page.click('.lmd-ai-set [data-ai=save]'); await page.waitForSelector('.lmd-ai-tail');
+  shown = await page.evaluate(() => ({ model: document.querySelector('[data-ai=model]').value, opts: [...document.querySelectorAll('#lmd-ai-models option')].map((x) => x.value).join() }));
+  check('un proveedor sin lista de modelos: la clave se guarda igual y quedan los sugeridos', /did not list its models/.test(await noteNow()) && shown.opts === 'MiniMax-M2,MiniMax-M1,MiniMax-Text-01' && shown.model === 'MiniMax-M2' && (await status()).provider === 'minimax', [await noteNow(), shown]);
+  await page.click('.lmd-ai-set [data-ai=list]');
+  check('Refresh lo dice sin tratarlo como una falla', await noteIs(/does not list its models/) && !(await page.evaluate(() => document.querySelector('.lmd-ai-note').classList.contains('lmd-img-err'))), await noteNow());
+  await page.fill('[data-ai=model]', 'un-modelo-de-minimax'); await page.dispatchEvent('[data-ai=model]', 'change');
+  check('y el modelo se puede escribir a mano', await until(async () => (await status()).model === 'un-modelo-de-minimax'));
+
+  // Una clave por proveedor
+  check('cada proveedor guarda su clave: cargar otro no borra las anteriores', (await savedNow()) === 'gemini,groq,minimax', await savedNow());
+  let d = await dump(page);
+  check('todas quedan cifradas: ninguna en claro en la base, el almacenamiento ni la página', !hasKey(d.flat) && !hasKey(d.ls) && !hasKey(d.ss) && !hasKey(d.html) && !hasKey(d.status) && (d.flat.match(/vault1:/g) || []).length === 3, (d.flat.match(/vault1:/g) || []).length);
+  const marks = await page.evaluate(() => [...document.querySelectorAll('[data-ai=prov] option')].filter((o) => / · saved$/.test(o.textContent)).map((o) => o.value).sort().join());
+  check('el selector marca los que ya tienen su clave', marks === 'gemini,groq,minimax', marks);
+  m0 = mock.log.length;
+  await page.selectOption('.lmd-ai-set [data-ai=prov]', 'gemini');
+  await until(async () => (await status()).provider === 'gemini');
+  shown = await page.evaluate(() => ({ key: !!document.querySelector('.lmd-ai-set [data-ai=key]'), tail: (document.querySelector('.lmd-ai-tail') || {}).textContent, model: (document.querySelector('[data-ai=model]') || {}).value }));
+  check('volver a un proveedor ya cargado no pide la clave de nuevo', !shown.key && /^•••• Gm1n$/.test(shown.tail) && shown.model === 'gemini-2.5-flash' && (await savedNow()) === 'gemini,groq,minimax', shown);
+  plan({ text: 'hola de gemini' });
+  let r = await ask();
+  check('y los pedidos salen con la clave de ese proveedor, a su dirección', r.text === 'hola de gemini' && lastChat().host === 'generativelanguage.googleapis.com' && lastChat().headers.authorization === 'Bearer ' + KEY_G, r);
+  await page.click('.lmd-ai-set [data-ai=drop]'); await page.waitForSelector('.lmd-dlg [data-dlg=ok]'); await page.click('.lmd-dlg [data-dlg=ok]');
+  await until(async () => (await status()).provider !== 'gemini');
+  check('Quitar borra solo la de ese proveedor', (await savedNow()) === 'groq,minimax' && (await status()).has === true && !/Gm1n/.test((await dump(page)).flat), await savedNow());
+  await page.keyboard.press('Escape'); await sleep(250);
+
+  // Las diferencias entre los compatibles
+  await connect(page, { provider: 'deepseek', key: KEY_D });
+  plan({ text: 'Respuesta visible.' });
+  r = await ask();
+  check('el razonamiento que llega en un campo aparte (reasoning_content) no se muestra', r.text === 'Respuesta visible.' && r.deltas === 'Respuesta visible.' && r.usage.input === 123 && lastChat().host === 'api.deepseek.com' && lastChat().path === '/v1/chat/completions', r);
+  plan({ text: 'Respuesta visible.', think: true });
+  r = await ask();
+  check('ni el que viene al principio de la respuesta entre <think> y </think>', r.text === 'Respuesta visible.' && r.deltas === 'Respuesta visible.', r);
+  plan({ text: 'Usa <think> en una frase.' });
+  r = await ask();
+  check('pero una respuesta que solo nombra esa etiqueta queda entera', r.text === 'Usa <think> en una frase.', r);
+  plan({ text: 'Todo junto.', whole: true });
+  r = await ask();
+  check('una respuesta que llega entera, sin tramos, también se lee', r.text === 'Todo junto.' && r.usage.output === 45, r);
+  plan({ soft: 'login fail: please carry the API secret key ' + KEY_D });
+  r = await ask();
+  check('un error que llega con estado 200 se informa con su texto, sin la clave', r.code === 'server' && /login fail/.test(r.detail) && !hasKey(r.detail), r);
+
+  await connect(page, { provider: 'xai', key: KEY_X });
+  let n0 = chats().length;
+  plan({ text: 'uno' });
+  r = await ask();
+  let two = chats().slice(n0).map((c) => (JSON.parse(c.body).stream_options ? 'con' : 'sin')).join();
+  check('si un servidor rechaza stream_options, el pedido se repite sin ese dato y responde', r.text === 'uno' && two === 'con,sin' && lastChat().host === 'api.x.ai', [r, two]);
+  n0 = chats().length;
+  plan({ text: 'dos' });
+  r = await ask();
+  two = chats().slice(n0).map((c) => (JSON.parse(c.body).stream_options ? 'con' : 'sin')).join();
+  check('y queda anotado: la vez siguiente va directo sin él', r.text === 'dos' && two === 'sin', [r, two]);
+
+  await connect(page, { provider: 'kimi', baseUrl: 'https://api.moonshot.cn/v1', key: KEY_K, model: 'kimi-k2-turbo-preview' });
+  plan({ text: 'hola de kimi' });
+  r = await ask();
+  const sk = await status();
+  check('Kimi en la plataforma de China: va a api.moonshot.cn, sin stream_options, y lee el uso que llega dentro de choices', r.text === 'hola de kimi' && r.usage.input === 123 && r.usage.output === 45 && lastChat().host === 'api.moonshot.cn' && lastChat().json.stream_options === undefined && sk.baseUrl === 'https://api.moonshot.cn/v1' && sk.host === 'api.moonshot.cn', [r, sk.baseUrl]);
+  const cross = await page.evaluate(async () => { const rec = await LMD.store.aiGet(); await LMD.store.aiPut(Object.assign({}, rec, { baseUrl: '' })); let code = 'respondió'; try { await LMD.ai.stream({ system: 's', messages: [{ role: 'user', content: 'hola' }] }); } catch (e) { code = e.code; } await LMD.store.aiPut(rec); return code; });
+  check('la clave va atada a su dirección: cambiar la región guardada a mano no la manda a la otra plataforma', cross === 'unreadable' && !mock.log.some((x) => x.host === 'api.moonshot.ai'), cross);
+  check('cinco claves guardadas a la vez, una por proveedor', (await savedNow()) === 'deepseek,groq,kimi,minimax,xai', await savedNow());
+
+  // Lo guardado por una versión anterior: un solo registro, sin "more", cifrado atado a proveedor y dirección
+  const old = await page.evaluate(async (key) => {
+    const k = await LMD.seal.deviceKey(); const data = await LMD.seal.seal(k, 'sharpmd ai key v1|openai|https://api.openai.com/v1', key);
+    await LMD.store.aiDelete(); await LMD.store.aiPut({ provider: 'openai', baseUrl: '', model: 'modelo-a', at: Date.now() - 1000, cryptoKey: k, data, last4: key.slice(-4) });
+    return LMD.ai.status();
+  }, KEY_O);
+  check('una clave guardada por la versión anterior se lee tal cual: mismo proveedor, modelo y últimos cuatro', old.has && old.provider === 'openai' && old.model === 'modelo-a' && old.last4 === 'Qw7e' && old.hasKey && old.open && old.saved.length === 1 && old.name === 'OpenAI', old);
+  plan({ text: 'sigue andando' });
+  r = await ask();
+  check('y sigue sirviendo sin cargarla de nuevo', r.text === 'sigue andando' && lastChat().host === 'api.openai.com' && lastChat().headers.authorization === 'Bearer ' + KEY_O, r);
+  await connect(page, { provider: 'gemini', key: KEY_G });
+  const back = await page.evaluate(async () => { const a = (await LMD.ai.status()).saved.map((s) => s.provider + ':' + s.last4).join(); const b = await LMD.ai.use('openai'); return [a, b.provider, b.model, b.last4].join('|'); });
+  plan({ text: 'la de antes' });
+  r = await ask();
+  check('al sumar otro proveedor esa clave no se pierde, y se vuelve a ella sin escribirla', back === 'gemini:Gm1n,openai:Qw7e|openai|modelo-a|Qw7e' && r.text === 'la de antes' && lastChat().headers.authorization === 'Bearer ' + KEY_O, [back, r]);
+
+  // Un proveedor que no acepta pedidos desde una página
+  await connect(page, { provider: 'together', baseUrl: MOCK + '/nocors/v1', key: KEY_N, model: 'modelo-a' });
+  const s0 = seen.length;
+  r = await ask();
+  check('un fallo de CORS se distingue de un servidor caído', r.code === 'cors', r);
+  const probe = seen.slice(s0).filter((x) => x.url.includes('/nocors/'));
+  check('y para saberlo la clave no sale: el pedido de comprobación va sin ella', mock.log.some((x) => x.kind === 'nocors' && x.method === 'GET') && mock.log.filter((x) => x.kind === 'nocors' && x.method === 'GET').every((x) => !hasKey(JSON.stringify(x.headers) + x.url + x.body) && !x.headers.authorization) && probe.every((x) => !hasKey(x.url)), probe.map((x) => x.url));
+  await openOptions(page);
+  await page.click('.lmd-ai-set [data-ai=test]');
+  check('la tarjeta lo dice con claridad, y propone cómo usarlo', await noteIs(/^The test failed\. This provider does not accept calls from a browser\. Use it through OpenRouter, or with a local proxy\.$/), await noteNow());
+  await page.keyboard.press('Escape'); await sleep(250);
+  plan({ text: 'no llega' });
+  await menuOn(page, 'el lunes'); await page.click('.lmd-ai-menu [data-ai=fix]'); await cardDone(page);
+  const k = await card(page); mock.queue.length = 0;
+  check('una propuesta dice lo mismo y ofrece abrir las opciones', /does not accept calls from a browser/.test(k.err) && k.buttons.join() === 'options,retry,discard', k);
+  await page.click('.lmd-ai-card [data-ai=discard]');
+  await connect(page, { provider: 'compat', baseUrl: 'http://127.0.0.1:1/v1', model: 'm' });
+  r = await ask();
+  check('un servidor que no contesta se informa como falla de red', r.code === 'network', r);
+
+  check('en ningún pedido la clave fue en la dirección', mock.log.every((x) => !hasKey(x.url)) && seen.every((x) => !hasKey(x.url)));
+  check('y el servidor de SharpMD no recibió ninguna clave ni el texto de un pedido', !seen.some((x) => x.url.startsWith(R.base) && (hasKey(x.url + x.headers + x.body) || /"stream":true/.test(x.body))) && R.outside.length === 0, R.outside.slice(0, 3));
+  check('los textos nuevos no llevan signos de admiración ni rayas largas', !/[!¡—–]/.test(f.text + (await noteNow())), (f.text.match(/[!¡—–]/g) || []).join(''));
   check('sin errores de página', R.errors.length === 0, R.errors.slice(0, 3));
   await ctx.close();
 });
@@ -733,10 +934,10 @@ await step('safe', ' Seguridad', async () => {
   // La clave viaja solo al proveedor elegido
   const carriers = seen.filter((r) => KEYS.some((k) => (r.url + r.headers + r.body).includes(k)));
   const hosts = [...new Set(carriers.map((r) => new URL(r.url).host))];
-  const allowed = ['api.anthropic.com', 'api.openai.com', new URL(MOCK).host];
+  const allowed = ['api.anthropic.com', 'api.openai.com', 'generativelanguage.googleapis.com', 'api.groq.com', 'api.minimax.io', 'api.deepseek.com', 'api.x.ai', 'api.moonshot.cn', new URL(MOCK).host];
   check('en toda la batería, la clave viajó solo a los proveedores elegidos', carriers.length > 0 && hosts.every((h) => allowed.includes(h)), hosts);
   check('siempre en una cabecera: nunca en la dirección ni en el cuerpo', carriers.every((r) => !hasKey(r.url) && !hasKey(r.body)));
-  const byKey = { [KEY_A]: 'api.anthropic.com', [KEY_A2]: 'api.anthropic.com', [KEY_O]: 'api.openai.com', [KEY_C]: new URL(MOCK).host };
+  const byKey = { [KEY_A]: 'api.anthropic.com', [KEY_A2]: 'api.anthropic.com', [KEY_O]: 'api.openai.com', [KEY_C]: new URL(MOCK).host, [KEY_G]: 'generativelanguage.googleapis.com', [KEY_Q]: 'api.groq.com', [KEY_M]: 'api.minimax.io', [KEY_D]: 'api.deepseek.com', [KEY_X]: 'api.x.ai', [KEY_K]: 'api.moonshot.cn', [KEY_N]: new URL(MOCK).host };
   check('y cada clave fue únicamente a su proveedor', Object.keys(byKey).every((k) => seen.filter((r) => r.headers.includes(k)).every((r) => new URL(r.url).host === byKey[k])));
   check('nada pasó por el servidor de SharpMD: ni la clave ni el texto de un pedido', !seen.some((r) => r.url.startsWith(R.base) && (hasKey(r.url + r.headers + r.body) || /<selection>|Question: /.test(r.body))) && R.outside.length === 0, R.outside.slice(0, 3));
   check('los pedidos al proveedor van sin cookies ni referente', mock.log.filter((r) => r.method === 'POST').every((r) => !r.headers.cookie && !r.headers.referer), mock.log.filter((r) => r.headers.referer).map((r) => r.headers.referer).slice(0, 2));
