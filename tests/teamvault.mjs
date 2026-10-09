@@ -311,6 +311,11 @@ async function appSuite() {
   await typeIn(olga.page, 'pomelo-dos', ' Olga también.'); await leave(olga.page);
   const e2 = await until(async () => { const t = await plainOf(k1.key, 'plan.md'); return /Pedro estuvo acá/.test(t) && /Olga también/.test(t); });
   check('quien administra recibe el cambio en vivo y suma el suyo: quedan los dos', e2, await plainOf(k1.key, 'plan.md'));
+  // El aviso de la primera nota en la nube es de las notas propias: guardar en el espacio del equipo no lo muestra,
+  // ni a quien administra ni a un miembro, y la cuenta no queda anotada como que ya lo vio.
+  await pedro.page.waitForTimeout(1500);
+  const hintP = (await R.api('GET', '/account', undefined, P.s)).json.protect_seen;
+  check('guardar en el espacio del equipo no muestra el aviso de proteger la nube propia', !(await pedro.page.$('.lmd-protect-hint')) && !(await olga.page.$('.lmd-protect-hint')) && hintP === false, hintP);
   await pedro.page.reload(); await pedro.page.waitForSelector('.lmd-article p.lmd-editable');
   check('con "recordar en este dispositivo" no vuelve a pedir la contraseña al recargar', !(await pedro.page.$(CARD)) && /Olga también/.test(await pedro.page.textContent('.lmd-article')));
   // El historial se lee desde la app, descifrado acá.

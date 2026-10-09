@@ -118,7 +118,8 @@
       '<button type="button" role="menuitem" data-s="history"' + (pro ? '' : ' class="lmd-locked"') + '>' + ICON.reload + '<span>' + T('Historial de versiones') + '</span></button>' +
       '<button type="button" role="menuitem" data-s="ai">' + ICON.link + '<span>' + T('Conectar una IA') + '</span></button>' +
       (notes ? '<button type="button" role="menuitem" data-s="comments"' + (notes === 'on' ? '' : ' class="lmd-locked"') + '>' + ICON.comment + '<span>' + T('Comentarios para la IA') + '</span>' + (LMD.comments.count() ? '<b class="lmd-menu-n">' + LMD.comments.count() + '</b>' : '') + '</button>' : '') +
-      (vaulted ? '<p class="lmd-menu-note">' + ICON.lock + '<span>' + T('Carpeta protegida: sin compartir, enlaces públicos ni comentarios para la IA. Para eso, movela a otra carpeta.') + '</span></p>' : '') +
+      (vaulted ? '<p class="lmd-menu-note">' + ICON.lock + '<span>' + T(LMD.vault.status().kind === 'all' ? 'Nube protegida: sin compartir, enlaces públicos ni comentarios para la IA. La protección se quita desde Ajustes, en Nube.'
+        : 'Carpeta protegida: sin compartir, enlaces públicos ni comentarios para la IA. Para eso, movela a otra carpeta.') + '</span></p>' : '') +
       (account ? '<p class="lmd-menu-label">' + esc(account.email) + ' · ' + esc(LMD.team.planLabel(account)) + '</p>' : '') + '</div>';
     document.body.appendChild(menu);
     const box = btn.getBoundingClientRect();
@@ -219,9 +220,22 @@
     try { st = LMD.ai && LMD.ai.status ? await LMD.ai.status() : await LMD.store.aiGet(); } catch (e) { /* sin base local: se informa igual, sin el dato */ }
     return { hasKey: !!(st && (st.hasKey || st.data)), provider: (st && st.provider) || '', last4: (st && st.last4) || '', off: !(LMD.tools && LMD.tools.isOn('assistant')) && !!document.querySelector('[data-ptab=tools]') };
   }
+  // El estado de la protección de extremo a extremo, en una línea arriba del bloque de seguridad, con el botón que
+  // la activa. st es LMD.vault.status(): apagada, en n carpetas, o en toda la nube (ahí van desbloquear, bloquear y
+  // el menú con el resto, que atiende vault.js).
+  function e2eLine(st) {
+    if (!st) return '';
+    const all = st.kind === 'all';
+    const text = all ? 'activada en toda tu nube' : st.kind === 'folders' ? (st.n === 1 ? 'activada en 1 carpeta' : 'activada en {n} carpetas') : 'apagada';
+    const acts = all ? (st.state === 'on' ? '<button type="button" class="lmd-btn" data-root-vault="' + (st.open ? 'v-lock' : 'v-unlock') + '">' + T(st.open ? 'Bloquear' : 'Desbloquear') + '</button>' : '') +
+        '<button type="button" class="lmd-btn lmd-e2e-more" data-root-vault="menu" title="' + T('Más acciones') + '" aria-label="' + T('Más acciones') + '">' + ICON.more + '</button>'
+      : st.kind === 'folders' ? '<button type="button" class="lmd-btn" data-c="protect">' + T('Proteger una carpeta') + '</button>'
+      : '<button type="button" class="lmd-btn lmd-btn-fill" data-c="protect-all">' + T('Proteger con contraseña') + '</button>';
+    return '<div class="lmd-e2e" data-e2e="' + st.kind + '"><p><span class="lmd-e2e-ico">' + (st.kind === 'off' ? ICON.unlock : ICON.shield) + '</span><span>' + T('Protección de extremo a extremo') + ': <b>' + T(text, { n: st.n }) + '</b></span></p><div class="lmd-e2e-acts">' + acts + '</div></div>';
+  }
   function security(o) {
     o = o || {};
-    const n = o.count || 0; const ai = o.ai || null;
+    const n = o.count || 0; const ai = o.ai || null; const kind = o.e2e ? o.e2e.kind : '';
     const choose = !o.pick ? '' : !(o.folders || []).length ? '<p class="lmd-sec-pick" role="status">' + T('Primero creá una carpeta en la Nube. Después la protegés desde acá o desde el menú de la carpeta.') + '</p>'
       : '<div class="lmd-sec-pick"><span>' + T('Elegí la carpeta') + '</span>' + o.folders.map((f) => '<button type="button" class="lmd-btn" data-c="protect-at" data-f="' + esc(f) + '">' + ICON.folder + '<span>' + esc(f) + '</span></button>').join('') + '</div>';
     return '<section class="lmd-sec" aria-label="' + T('Seguridad') + '"><h4>' + T('Seguridad') + '</h4><ul>' +
@@ -231,8 +245,10 @@
       // código abierto al final, a lo ancho. Ver los estilos de .lmd-sec en content.css.
       secRow('vaults', ICON.shield, 'Carpetas protegidas', 'Se cifran en tu dispositivo con tu contraseña. Ni el servidor puede leerlas.', 'AES-256-GCM · PBKDF2 · ' + T('En el plan gratis y en el pago'),
         '<p>' + T('Los nombres de archivos y carpetas quedan visibles. Sin la contraseña y sin la clave de respaldo, esas notas no se pueden recuperar.') + '</p>' +
-        (n ? '<p class="lmd-sec-count">' + T(n === 1 ? 'Tenés 1 carpeta protegida.' : 'Tenés {n} carpetas protegidas.', { n }) + '</p>' : '') +
-        (o.can ? '<p class="lmd-sec-act"><button type="button" class="lmd-link" data-c="protect">' + T('Proteger una carpeta') + '</button></p>' + choose : '')) +
+        (kind === 'all' ? '<p class="lmd-sec-count">' + T('Toda tu nube está protegida.') + '</p>' : n ? '<p class="lmd-sec-count">' + T(n === 1 ? 'Tenés 1 carpeta protegida.' : 'Tenés {n} carpetas protegidas.', { n }) + '</p>' : '') +
+        // Toda la nube con una sola contraseña se ofrece mientras no haya carpetas con la suya: no va una dentro de otra.
+        (o.can && kind !== 'all' ? '<p class="lmd-sec-act">' + (kind === 'off' ? '<button type="button" class="lmd-link" data-c="protect-all">' + T('Proteger toda mi nube') + '</button>' : '') +
+          '<button type="button" class="lmd-link" data-c="protect">' + T('Proteger una carpeta') + '</button></p>' + choose : '')) +
       // La clave del asistente (aikey.js): dónde queda y por dónde viaja. Informa aunque el asistente esté apagado.
       secRow('aikey', ICON.spark, 'Tu clave de IA', 'Se guarda cifrada solo en este dispositivo. No pasa por el servidor de SharpMD ni se sincroniza, y las llamadas van directo a tu proveedor.',
         'AES-256-GCM · ' + T('llave no exportable'),
@@ -253,7 +269,7 @@
   // Se ofrece en una carpeta de la nube sin contraseña, si el servidor publica sitios. En el equipo, si su política lo permite.
   function canPublish(folder) {
     const pg = pagesOf(account); if (!pg || !folder || /^~\d+$/.test(folder)) return false;
-    if (LMD.cloud.vaultsNow().some((v) => folder === v.folder || folder.startsWith(v.folder + '/'))) return false;
+    if (LMD.cloud.vaultsNow().some((v) => folder === v.folder || LMD.cloud.vaultHas(v, folder + '/x'))) return false;
     return folder[0] === '~' ? !!pg.team : true;
   }
   const publish = (folder, id, done) => core.ensure('publish').then((ok) => { if (ok) LMD.publish.open(core, { folder, id, done }); });
@@ -278,8 +294,10 @@
     const pg = pagesOf(a); if (!pg || host.direct) return '';
     const rows = (pg.sites || []).map((s) => { const st = siteState(s); return '<div class="lmd-site-row" data-site="' + s.id + '"><div><b>' + esc(s.title || s.slug) + '</b><a class="lmd-link" href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(String(s.url).replace(/^https?:\/\//, '')) + '</a>' +
       '<span class="lmd-site-state lmd-site-' + st.kind + '">' + esc(st.text) + '</span></div><button type="button" class="lmd-btn" data-c="site" data-id="' + s.id + '">' + T('Administrar') + '</button></div>'; }).join('');
-    const room = (pg.sites || []).filter((s) => !s.team).length < pg.max;
-    return '<section class="lmd-site-sec" aria-label="' + T('Sitio publicado') + '"><h4>' + T('Sitio publicado') + '</h4>' + (rows || hint(T('Una carpeta de notas se convierte en un sitio web público, con menú, buscador y tema.'))) +
+    // Con toda la nube protegida el servidor no puede leer las notas: no hay qué publicar.
+    const sealedAll = LMD.vault.status().kind === 'all';
+    const room = !sealedAll && (pg.sites || []).filter((s) => !s.team).length < pg.max;
+    return '<section class="lmd-site-sec" aria-label="' + T('Sitio publicado') + '"><h4>' + T('Sitio publicado') + '</h4>' + (rows || hint(T(sealedAll ? 'Con toda la nube protegida con contraseña no se publican sitios: el servidor no puede leer las notas.' : 'Una carpeta de notas se convierte en un sitio web público, con menú, buscador y tema.'))) +
       (room ? actions('<button type="button" class="lmd-btn" data-c="site-new">' + T('Publicar una carpeta') + '</button>') : '') + '</section>';
   }
 
@@ -288,7 +306,9 @@
     secRedraw = null;
     const nameNow = wantName; wantName = false;
     const canProtect = !host.direct && LMD.vault.can(); let picking = false; let free = []; let ai = null;
-    const secNow = (count) => security({ own: LMD.cloud.own(), can: canProtect, count, pick: picking, folders: free, ai });
+    // Con sesión, arriba del bloque va el estado de la protección de extremo a extremo (e2e), con su botón.
+    let e2e = null;
+    const secNow = (count) => e2eLine(e2e) + security({ own: LMD.cloud.own(), can: canProtect, count, pick: picking, folders: free, ai, e2e });
     if (!LMD.cloud.enabled()) box.innerHTML = hint(T('La nube está apagada: SharpMD funciona sin cuenta y sin sincronizar.')) + actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="on">' + T('Prender la nube') + '</button>');
     else if (host.direct) box.innerHTML = '<div data-sec>' + secNow(0) + '</div>';
     else if (!LMD.cloud.signedIn()) box.innerHTML = LMD.home.perks() + actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="login">' + T('Crear cuenta o entrar') + '</button>') + '<div data-sec>' + secNow(0) + '</div>';
@@ -310,6 +330,7 @@
       if (LMD.cloud.signedIn() && !host.direct) {
         try {
           count = (await LMD.vault.load()).filter((v) => v.state === 'on').length;
+          if (canProtect) e2e = LMD.vault.status();
           free = foldersOf(await LMD.cloud.list(true)).filter((f) => LMD.vault.menu(f).some((m) => m[0] === 'v-protect'));
         } catch (e) { /* sin conexión: el bloque queda sin la cuenta */ }
       }
@@ -324,8 +345,11 @@
     };
     if (wantLogin) { wantLogin = false; if (LMD.cloud.enabled() && !host.direct) askLogin(); }
     box.onclick = async (e) => {
+      // Desbloquear, bloquear y el menú de la nube protegida los atiende vault.js.
+      if (e.target.closest('[data-root-vault]')) { if (!goApp(host, e)) LMD.vault.aiClick(e); return; }
       const b = e.target.closest('[data-c]'); if (!b) return;
       if (goApp(host, e)) return;
+      if (b.dataset.c === 'protect-all') { LMD.vault.protectAll(); return; }
       if (b.dataset.c === 'on') LMD.patch({ cloudUrl: '' });
       else if (b.dataset.c === 'login') { if (host.direct) host.login(); else askLogin(); }
       else if (b.dataset.c === 'open') openCloud(Object.assign({ say: (t) => { const m = box.querySelector('.lmd-acct-msg'); if (m) { m.hidden = false; m.textContent = t; } } }, host));

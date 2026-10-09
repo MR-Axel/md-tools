@@ -2899,9 +2899,33 @@ html.lmd-ai-open .lmd-ai-card { left: calc(50% - 190px); width: min(860px, calc(
 .lmd-sec-pick { margin-top: 0; }
 .lmd-sec-foot { margin-top: 16px; }
 [data-acct=cloud] .lmd-acct-del { margin-top: 12px; }
+/* Protección de extremo a extremo: el estado en una línea, arriba del bloque de seguridad, con su botón. */
+.lmd-e2e { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; margin: 28px 0 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-soft); }
+.lmd-e2e + .lmd-sec { margin-top: 20px; }
+.lmd-e2e p { display: flex; align-items: center; gap: 8px; flex: 1 1 220px; min-width: 0; margin: 0; font-size: 13.5px; color: var(--fg-muted); overflow-wrap: anywhere; }
+.lmd-e2e p b { color: var(--fg); font-weight: 600; }
+.lmd-e2e-ico { flex: none; display: inline-flex; color: var(--accent); }
+.lmd-e2e[data-e2e=off] .lmd-e2e-ico { color: var(--fg-faint); }
+.lmd-e2e-ico svg, .lmd-e2e-more svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-e2e-acts { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.lmd-e2e-more { display: inline-flex; align-items: center; padding: 7px 8px; }
+.lmd-sec-act { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+/* El aviso de la primera nota en la nube: una tarjeta chica en una esquina, que no tapa la nota ni frena nada. */
+.lmd-protect-hint { position: fixed; right: 22px; bottom: 48px; z-index: 46; box-sizing: border-box; width: min(380px, calc(100vw - 32px)); padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); color: var(--fg); box-shadow: var(--shadow); font: 14px/1.5 var(--lmd-font); }
+.lmd-protect-hint b { display: block; margin: 0 0 6px; font-size: 15px; }
+.lmd-protect-hint p { margin: 0 0 14px; font-size: 13.5px; color: var(--fg-muted); }
+.lmd-protect-acts { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.lmd-protect-acts .lmd-link { margin-left: auto; padding: 5px 2px; color: var(--accent); font-size: 13px; text-decoration: underline; }
 @media (max-width: 860px), (max-height: 500px) and (pointer: coarse) {
   .lmd-sec ul { grid-template-columns: minmax(0, 1fr); }
 }
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  .lmd-protect-hint { left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px) + var(--lmd-kb, 0px)); width: auto; max-height: calc(100dvh - 24px); overflow: auto; }
+  .lmd-protect-acts .lmd-btn { min-height: 44px; flex: 1 1 auto; }
+  .lmd-protect-acts .lmd-link { min-height: 44px; margin-left: 0; flex-basis: 100%; text-align: left; }
+  .lmd-e2e-acts .lmd-btn { min-height: 44px; }
+}
+@media print { .lmd-protect-hint { display: none !important; } }
 @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
   .lmd-plug { grid-template-columns: minmax(0, 1fr); }
   .lmd-subtabs button { height: 42px; flex: 1 1 0; }

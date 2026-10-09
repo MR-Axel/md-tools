@@ -383,7 +383,12 @@ function accountName(user, body) {
   return account(userById(user.id));
 }
 // ---------- fin del nombre visible ----------
-const account = (user) => ({ id: user.id, share: shareAllowed(user), live: user.plan === 'pro' || !!env.LIVE_FREE, email: user.email, name: nameOf(user), name_default: !user.name, plan: user.plan, own_plan: user.own || user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, mcp: true, api: apiAllowed(user), mcp_url: PUBLIC_URL + '/mcp',
+// El aviso de la primera nota en la nube ("protegela con una contraseña") se muestra una vez por cuenta: acá queda
+// anotado que ya se vio, para que no vuelva en otro dispositivo. Proteger algo también lo da por visto.
+try { db.exec('ALTER TABLE users ADD COLUMN protect_seen INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* ya estaba */ }
+const protectSeen = (userId) => { const r = q('SELECT protect_seen FROM users WHERE id = ?').get(userId); return !!(r && r.protect_seen); };
+function protectSeenSet(user) { q('UPDATE users SET protect_seen = ? WHERE id = ? AND protect_seen = 0').run(now(), user.id); return { ok: true }; }
+const account = (user) => ({ id: user.id, protect_seen: protectSeen(user.id), share: shareAllowed(user), live: user.plan === 'pro' || !!env.LIVE_FREE, email: user.email, name: nameOf(user), name_default: !user.name, plan: user.plan, own_plan: user.own || user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, mcp: true, api: apiAllowed(user), mcp_url: PUBLIC_URL + '/mcp',
   manage: ((user.own || user.plan) === 'pro' || (user.team && user.team.owner === user.id && user.team.sub)) && env.PORTAL_URL ? env.PORTAL_URL : '',
   // billing: si a esta cuenta se le muestra algo de cobro. A quien tiene el plan por un equipo que paga otra persona, no:
   // ni enlaces de pago ni precios. Lo que paga por su lado (su suscripción individual) lo sigue administrando.
@@ -454,7 +459,8 @@ async function feedback(req, body) {
 const VAULT = 'vault1:';
 const VAULT_ENC = 'sharpmd vault enc v1'; const VAULT_CHECK = 'sharpmd vault check v1';
 const MAX_VAULTS = 50; const VAULT_MINUTES = [15, 60, 480, 0]; // 0: hasta que se bloquee o se reinicie el servidor
-// Una bóveda con folder vacío cubre todo: es la del espacio de un equipo. Las de una persona siempre tienen carpeta.
+// Una bóveda con folder vacío cubre todo: la del espacio de un equipo, o la de una persona que protegió toda su
+// nube (POST /vaults { root: true }). Con esa, la persona no tiene otras: no va una dentro de otra.
 const inside = (p, folder) => !folder || p.startsWith(folder + '/');
 const preOf = (folder) => (folder ? folder + '/' : '');
 // En el espacio de un equipo el dato asociado lleva además de qué espacio es: ~espacio/ruta, que es como el
@@ -501,7 +507,7 @@ function checkText(userId, p, text) {
 // vencer el plazo o reiniciar el servidor la olvidan. No se guarda K, sino la llave que sale de ella.
 // En el espacio de un equipo la llave abierta es de quien la abrió: cada miembro desbloquea para su propia IA.
 const aiKeys = new Map(); // id de la bóveda (o id:cuenta en la de un equipo) → { key, until, timer }
-const aiSlot = (vault, uid) => (vault.folder ? String(vault.id) : vault.id + ':' + uid);
+const aiSlot = (vault, uid) => (vault.folder || uid == null ? String(vault.id) : vault.id + ':' + uid);
 function aiForget(vault, tell, uid) {
   const slot = aiSlot(vault, uid); const k = aiKeys.get(slot); if (!k) return;
   clearTimeout(k.timer); k.key.fill(0); aiKeys.delete(slot);
@@ -516,7 +522,7 @@ function aiForgetAll(vault, keep) {
   }
 }
 const aiKey = (vault, uid) => { const k = aiKeys.get(aiSlot(vault, uid)); if (!k) return null; if (k.until && k.until <= now()) { aiForget(vault, true, uid); return null; } return k; };
-const vaultView = (v) => { const k = aiKey(v); return { id: v.id, folder: v.folder, salt: v.salt, iters: v.iters, wrapped: v.wrapped, check: v.verify, state: v.state, created: v.created, ai: k ? { until: k.until } : null }; };
+const vaultView = (v) => { const k = aiKey(v); return { id: v.id, folder: v.folder, root: !v.folder, salt: v.salt, iters: v.iters, wrapped: v.wrapped, check: v.verify, state: v.state, created: v.created, ai: k ? { until: k.until } : null }; };
 // Al proteger una carpeta se va lo que quedaba en claro o abierto hacia afuera: el historial, los comentarios para
 // la IA (citan el texto), los enlaces públicos y lo compartido.
 function vaultPurge(userId, folder) {
@@ -531,7 +537,8 @@ function vaultPurge(userId, folder) {
   for (const row of q('SELECT * FROM lives WHERE owner = ? AND substr(path, 1, length(?)) = ?').all(userId, pre, pre)) liveEnd(row, 'closed');
 }
 function vaultCreate(user, body) {
-  const folder = cleanPath(String(body.folder || '').replace(/\/+$/, ''));
+  // root: toda la nube de la cuenta, con una sola contraseña. La carpeta es la raíz.
+  const folder = body.root === true ? '' : cleanPath(String(body.folder || '').replace(/\/+$/, ''));
   if (folder[0] === '~') throw new Fail(400, 'bad_path');
   const all = vaultsOf(user.id);
   if (all.length >= MAX_VAULTS) throw new Fail(429, 'too_many');
@@ -541,6 +548,7 @@ function vaultCreate(user, body) {
   if (!b64(body.salt, 16) || !b64(body.wrapped, 60) || !b64(body.check, 32) || !Number.isInteger(iters) || iters < 100000 || iters > 10000000) throw new Fail(400, 'bad_vault');
   q('INSERT INTO vaults (user, folder, salt, iters, wrapped, verify, created) VALUES (?, ?, ?, ?, ?, ?, ?)').run(user.id, folder, body.salt, iters, body.wrapped, body.check, now());
   vaultPurge(user.id, folder);
+  protectSeenSet(user);
   announceUser(user.id, { type: 'vault' });
   return vaultView(q('SELECT * FROM vaults WHERE user = ? AND folder = ?').get(user.id, folder));
 }
@@ -574,7 +582,8 @@ function vaultRemove(user, v) {
 // bóveda, sus notas, su historial y lo que tuviera en la papelera. Nada de eso pasa por la papelera: sin la llave
 // no se podría leer nunca. Quien lo pide escribe el nombre de la carpeta, y acá se vuelve a comparar.
 function vaultDestroy(user, v, body) {
-  if (typeof body.folder !== 'string' || body.folder !== v.folder) throw new Fail(400, 'bad_confirm');
+  // La nube entera se confirma con el correo de la cuenta: no hay nombre de carpeta que escribir.
+  if (v.folder ? typeof body.folder !== 'string' || body.folder !== v.folder : typeof body.confirm !== 'string' || body.confirm !== user.email) throw new Fail(400, 'bad_confirm');
   return vaultWipe({ id: v.user }, v);
 }
 function vaultWipe(user, v) {
@@ -1633,7 +1642,7 @@ const SHARE_TOOLS = new Set(TOOLS.filter((t) => t.share).map((t) => t.name));
 const NO_SHARE = 'This token cannot share notes or create public links. Ask the person to do it from the SharpMD app, or to create a token with that permission in Settings > AI.';
 
 // Lo que la IA lee cuando pide algo de una carpeta bloqueada: qué pasa y cómo lo resuelve la persona.
-const LOCKED = (folder) => 'The folder "' + folder + '" is protected with a password and is locked, so its notes cannot be read, searched or changed right now. The person can unlock it for the AI from SharpMD: right-click the folder, then "Unlock for the AI". Ask them to do that, then try again.';
+const LOCKED = (folder) => (!folder ? 'All the notes of this account are protected with a password and are locked, so they cannot be read, searched or changed right now. The person can unlock them for the AI from SharpMD: Settings, then AI, then "Unlock for the AI". Ask them to do that, then try again.' : '') || 'The folder "' + folder + '" is protected with a password and is locked, so its notes cannot be read, searched or changed right now. The person can unlock it for the AI from SharpMD: right-click the folder, then "Unlock for the AI". Ask them to do that, then try again.';
 // La llave con la que este token puede usar una carpeta con contraseña, o null. Hace falta que la persona la haya
 // desbloqueado para la IA y que la carpeta entera esté dentro del alcance del token.
 const aiReach = (user, vault) => { const k = vault.state === 'on' && within(user, vault.folder) ? aiKey(vault) : null; return k ? k.key : null; };
@@ -1791,7 +1800,7 @@ function callTool(user, name, args, opt) {
       .concat(space ? searchNotes(space, args.query, tv ? teamKey : undefined, tv ? teamAad(space.id, '') : '').map((r) => Object.assign(r, { path: TEAM_PRE + r.path })) : []).filter((r) => within(user, r.path)).slice(0, 30);
     // Si quedó alguna carpeta bloqueada al alcance del token, se dice: lo que hay adentro no se buscó.
     if (tt && vaults.length) return { results, locked_folders: ['/'], note: 'The notes were not searched. ' + TEAM_TOKEN_LOCKED };
-    const shut = vaults.filter((v) => !aiReach(user, v) && (within(user, v.folder) || inside(user.scope, v.folder) || user.scope === v.folder)).map((v) => v.folder);
+    const shut = vaults.filter((v) => !aiReach(user, v) && (within(user, v.folder) || inside(user.scope, v.folder) || user.scope === v.folder)).map((v) => v.folder || '/');
     const teamShut = !!tv && !teamKey() && (within(user, TEAM_PRE.slice(0, -1)) || (user.scope || '').startsWith(TEAM_PRE));
     if (teamShut) shut.push(TEAM_PRE.slice(0, -1));
     return shut.length ? { results, locked_folders: shut, note: 'The notes inside locked folders were not searched. ' + (teamShut && shut.length === 1 ? TEAM_LOCKED : LOCKED(shut[0])) } : results;
@@ -5369,6 +5378,7 @@ async function route(req, url) {
   }
   if (p === '/account' && m === 'GET') return account(user);
   if (p === '/account' && m === 'PUT') return accountName(user, await readBody(req));
+  if (p === '/account/protect-seen' && m === 'POST') return protectSeenSet(user);
   if (p === '/account' && m === 'DELETE') return accountDelete(req, user, await readBody(req));
   if (p === '/trash' || p.startsWith('/trash/')) return trashRoute(user, p, m, url, m === 'POST' ? await readBody(req) : {});
   if (p === '/vaults' && m === 'GET') return vaultsOf(user.id).map(vaultView);

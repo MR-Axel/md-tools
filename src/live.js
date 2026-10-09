@@ -362,6 +362,8 @@
   };
   function explainVault(team) {
     LMD.dialog.confirm({ title: T('Colaborar en vivo'), text: T(team ? 'En un espacio protegido con contraseña no hay sesiones en vivo: los invitados no tienen la llave.'
+      // Con toda la nube protegida no hay otra carpeta a la que moverla.
+      : LMD.vault.status().kind === 'all' ? 'Con toda la nube protegida con contraseña no hay sesiones en vivo: las notas viajan cifradas y el servidor no puede repartir los cambios.'
       : 'Las notas de una carpeta protegida viajan cifradas y el servidor no las puede leer, así que no puede repartir los cambios. Para colaborar en vivo, movela a otra carpeta.'), ok: T('Entendido'), cancel: T('Cerrar') });
   }
   async function open() {

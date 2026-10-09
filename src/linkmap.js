@@ -35,7 +35,7 @@
           const who = LMD.cloud.email(); const vaults = (LMD.cloud.vaultsNow && LMD.cloud.vaultsNow()) || [];
           for (const c of await LMD.store.cloudAll(who)) {
             if (!c.path || c.path[0] === '~' || !MD_RE.test(c.path)) continue;
-            const vault = vaults.find((v) => c.path.startsWith(v.folder + '/')) || null;
+            const vault = vaults.find((v) => LMD.cloud.vaultHas(v, c.path)) || null;
             let text = c.text;
             // Carpeta protegida: bloqueada no aparece; desbloqueada, su copia se descifra con la llave ya abierta.
             if (vault && !LMD.vault.isOpen(vault)) continue;

@@ -14,11 +14,15 @@
   const who = () => LMD.cloud.email();
   const all = () => LMD.cloud.vaultsNow();
   // La carpeta protegida que contiene a una nota de la nube (propia, o del equipo si su espacio está protegido), o nada.
-  const of = (path) => (!path ? null : all().find((v) => path.startsWith(v.folder + '/')) || null);
+  const has = (v, path) => LMD.cloud.vaultHas(v, path);
+  const of = (path) => (!path ? null : all().find((v) => has(v, path)) || null);
   // El espacio del equipo, si está protegido. Su nombre es el del equipo.
   const teamV = () => all().find((v) => v.team) || null;
+  // Toda la nube de la cuenta protegida con una sola contraseña: una carpeta protegida sin carpeta (la raíz).
+  const isRoot = (v) => !!v && !v.team && !v.folder;
+  const rootV = () => all().find(isRoot) || null;
   const teamName = () => { const t = LMD.cloud.teamNow(); return (t && t.name) || T('Equipo'); };
-  const nameOf = (v) => (v.team ? teamName() : v.folder);
+  const nameOf = (v) => (v.team ? teamName() : v.folder || T('Tu nube'));
   // Lo que escribe quien administra para confirmar algo que no tiene vuelta: el nombre del equipo o, si no tiene, su correo.
   const confirmWord = () => { const t = LMD.cloud.teamNow(); return (t && t.name) || who(); };
   const byId = (id) => all().find((v) => v.id === +id) || null;
@@ -26,7 +30,7 @@
   const can = () => Z.supported() && LMD.cloud.vaultOk();
 
   const say = (e, fallback) => T({ offline: 'No hay conexión con el servidor.', bad_password: 'Esa contraseña no coincide.', too_many: 'Demasiados intentos. Probá de nuevo más tarde.',
-    vault_nested: 'Una carpeta protegida no puede estar dentro de otra.', mcp_needs_plan: 'Desbloquear una carpeta para la IA es parte del plan pago.',
+    vault_nested: 'Una carpeta protegida no puede estar dentro de otra.', bad_confirm: 'Eso no coincide con lo que hay que escribir.', mcp_needs_plan: 'Desbloquear una carpeta para la IA es parte del plan pago.',
     not_admin: 'Eso lo hace quien administra el equipo.', ai_not_allowed: 'Quien administra el equipo no habilitó desbloquear para la IA.',
     vault_rotating: 'El equipo está cambiando su llave. Probá en un momento.', vault_exists: 'El espacio del equipo ya está protegido.' }[e && e.code] || fallback || 'No se pudo completar. Probá de nuevo.');
   const hour = (ms) => new Date(ms).toLocaleTimeString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { hour: '2-digit', minute: '2-digit' });
@@ -88,7 +92,7 @@
     return K;
   }
   // La nota abierta, si está dentro de esa carpeta.
-  const openIn = (vault) => (core.appRoot && core.appRoot.kind === 'cloud' && !core.noDoc && core.cloudPath.startsWith(vault.folder + '/') ? core.cloudPath : '');
+  const openIn = (vault) => (core.appRoot && core.appRoot.kind === 'cloud' && !core.noDoc && has(vault, core.cloudPath) ? core.cloudPath : '');
   const reopen = (path) => core.open(core.urlOf(path), { replace: true, discard: true, tree: true });
   // Después de un cambio: la lista de carpetas, el explorador y Ajustes → IA quedan al día.
   async function refresh() {
@@ -116,9 +120,11 @@
 
   // ---------- Proteger una carpeta ----------
   function backupFile(folder, key) {
-    const team = folder == null; if (team) folder = teamName();
-    const text = 'SharpMD\n' + T(team ? 'Clave de respaldo del espacio de un equipo' : 'Clave de respaldo de una carpeta protegida') + '\n\n' + (team ? T('Equipo') + ': ' + folder + '\n' : T('Carpeta') + ': ' + folder + '/\n') + T('Cuenta') + ': ' + who() + '\n' + T('Fecha') + ': ' + new Date().toISOString().slice(0, 10) + '\n\n' + key + '\n\n' +
+    // folder vacío: toda la nube de la cuenta.
+    const team = folder == null; const root = folder === ''; if (team) folder = teamName(); if (root) folder = T('nube');
+    const text = 'SharpMD\n' + T(team ? 'Clave de respaldo del espacio de un equipo' : root ? 'Clave de respaldo de la nube protegida' : 'Clave de respaldo de una carpeta protegida') + '\n\n' + (team ? T('Equipo') + ': ' + folder + '\n' : root ? '' : T('Carpeta') + ': ' + folder + '/\n') + T('Cuenta') + ': ' + who() + '\n' + T('Fecha') + ': ' + new Date().toISOString().slice(0, 10) + '\n\n' + key + '\n\n' +
       T(team ? 'Con esta clave quien administra el equipo pone una contraseña nueva si la contraseña se olvida. Quien la tenga puede leer las notas del equipo: guardala en un lugar seguro, fuera de este dispositivo.'
+        : root ? 'Con esta clave se entra a la nube y se pone una contraseña nueva si la contraseña se olvida. Quien la tenga puede leer esas notas: guardala en un lugar seguro, fuera de este dispositivo.'
         : 'Con esta clave se entra a la carpeta y se pone una contraseña nueva si la contraseña se olvida. Quien la tenga puede leer esas notas: guardala en un lugar seguro, fuera de este dispositivo.') + '\n';
     const a = el('a', { download: 'sharpmd-' + T('clave-de-respaldo') + '-' + folder.replace(/[^\p{L}\p{N}_-]+/gu, '-') + '.txt' });
     a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
@@ -131,21 +137,29 @@
 
   // folder null: el espacio del equipo entero, que protege quien lo administra.
   async function protect(folder) {
-    const team = folder == null;
-    if (team ? !!teamV() : all().some((v) => v.folder === folder || folder.startsWith(v.folder + '/') || v.folder.startsWith(folder + '/'))) { core.flash(T(team ? 'El espacio del equipo ya está protegido.' : 'Una carpeta protegida no puede estar dentro de otra.'), 'warn'); return; }
+    const team = folder == null; const root = folder === '';
+    // Toda la nube con una contraseña no convive con carpetas que ya tienen la suya: no va una dentro de otra.
+    if (root && all().some((v) => !v.team)) { core.flash(T(rootV() ? 'Tu nube ya está protegida.' : 'Ya tenés carpetas protegidas. Para proteger toda la nube, primero quitales la protección.'), 'warn'); return; }
+    if (!root && (team ? !!teamV() : all().some((v) => !v.team && (!v.folder || v.folder === folder || folder.startsWith(v.folder + '/') || v.folder.startsWith(folder + '/'))))) { core.flash(T(team ? 'El espacio del equipo ya está protegido.' : 'Una carpeta protegida no puede estar dentro de otra.'), 'warn'); return; }
     if (core.dirty && !(await core.save(false))) return;
-    const title = team ? T('Proteger el espacio de "{a}"', { a: teamName() }) : T('Proteger "{a}" con contraseña', { a: folder });
+    const title = team ? T('Proteger el espacio de "{a}"', { a: teamName() }) : root ? T('Proteger tu nube con contraseña') : T('Proteger "{a}" con contraseña', { a: folder });
     // Primer paso: la contraseña y lo que hay que saber antes de crearla.
     const o = sheet(title,
       '<p>' + T(team ? 'Las notas del equipo se cifran en el navegador de cada miembro antes de subir. El servidor guarda el texto cifrado y no lo puede leer.'
+        : root ? 'Tus notas y sus imágenes se cifran en este navegador antes de subir, las que ya tenés y las nuevas. Quedan cifradas de extremo a extremo.'
         : 'Las notas de esta carpeta se cifran en este navegador antes de subir. El servidor guarda el texto cifrado y no lo puede leer.') + '</p>' +
       (team ? '<p>' + T('Es una sola contraseña para todo el equipo. Pasásela a cada miembro por fuera de SharpMD.') + '</p>' : '') +
-      '<p class="lmd-vault-warn">' + T('Sin la contraseña y sin la clave de respaldo, estas notas no se pueden recuperar. Tampoco desde SharpMD.') + '</p>' +
+      // Toda la nube: qué cambia, en una lista corta, antes de la contraseña.
+      (root ? '<ul class="lmd-vault-notes lmd-vault-changes"><li>' + T('El servidor ya no puede leer tus notas. Los nombres de las notas y de las carpetas no se cifran.') + '</li>' +
+        '<li>' + T('Compartir, los enlaces públicos, publicar un sitio y las automatizaciones dejan de estar disponibles. Lo que ya estaba compartido o publicado deja de estarlo.') + '</li>' +
+        '<li>' + T('Tu IA por MCP lee tus notas solo si las desbloqueás para ella por un rato.') + '</li>' +
+        '<li>' + T('El historial anterior, la papelera y los comentarios para la IA se eliminan del servidor.') + '</li></ul>' : '') +
+      '<p class="lmd-vault-warn">' + T(root ? 'Si perdés la contraseña y la clave de respaldo, tus notas no se pueden recuperar. Tampoco desde SharpMD.' : 'Sin la contraseña y sin la clave de respaldo, estas notas no se pueden recuperar. Tampoco desde SharpMD.') + '</p>' +
       field('p1', 'Contraseña', 'new-password') + meter + field('p2', 'Repetir la contraseña', 'new-password') +
-      '<ul class="lmd-vault-notes"><li>' + T('Los nombres de las notas y de las carpetas no se cifran.') + '</li>' +
+      (root ? '' : '<ul class="lmd-vault-notes"><li>' + T('Los nombres de las notas y de las carpetas no se cifran.') + '</li>' +
         '<li>' + T(team ? 'El historial anterior y la papelera del equipo se eliminan del servidor.' : 'El historial anterior de estas notas se elimina del servidor.') + '</li>' +
         '<li>' + T(team ? 'La IA lee las notas del equipo solo mientras alguien las desbloquee para ella.'
-          : 'En esta carpeta no hay compartir, enlaces públicos ni comentarios para la IA. Lo que ya estaba compartido deja de estarlo.') + '</li></ul>',
+          : 'En esta carpeta no hay compartir, enlaces públicos ni comentarios para la IA. Lo que ya estaba compartido deja de estarlo.') + '</li></ul>'),
       cancel() + okBtn('Continuar'));
     watch(o, 'p1');
     const password = await new Promise((resolve) => {
@@ -159,15 +173,16 @@
     const K = Z.newKey(); const key = Z.backupText(K);
     const s = sheet(T('Guardá la clave de respaldo'),
       '<p>' + T(team ? 'Con esta clave ponés una contraseña nueva si la del equipo se olvida. Guardala fuera de este dispositivo.'
+        : root ? 'Con esta clave se entra a tu nube si te olvidás la contraseña. Guardala fuera de este dispositivo: no se vuelve a mostrar.'
         : 'Con esta clave se entra a la carpeta si te olvidás la contraseña. Guardala fuera de este dispositivo: no se vuelve a mostrar.') + '</p>' +
       '<div class="lmd-vault-key" data-v="key"></div>' +
       '<div class="lmd-vault-keyacts"><button type="button" class="lmd-btn" data-v="down">' + ICON.download + '<span>' + T('Descargar') + '</span></button><button type="button" class="lmd-btn" data-v="copy">' + ICON.copy + '<span>' + T('Copiar') + '</span></button></div>' +
       '<p class="lmd-hint" data-v="need">' + T('Descargala o copiala para seguir.') + '</p>' +
       '<div data-v="work" hidden>' + bar('Cifrando notas: {n} de {m}') + '</div>',
-      cancel() + okBtn(team ? 'Proteger el espacio' : 'Proteger la carpeta'));
+      cancel() + okBtn(team ? 'Proteger el espacio' : root ? 'Proteger mi nube' : 'Proteger la carpeta'));
     // Cada grupo en su casilla: bajan de renglón enteros. Al copiar o descargar van unidos con guiones.
     s.q('key').innerHTML = key.split('-').map((g) => '<span>' + g + '</span>').join(''); s.q('ok').disabled = true;
-    const saved = () => { s.q('ok').disabled = false; s.q('need').textContent = T(team ? 'Clave guardada. Ya podés proteger el espacio.' : 'Clave guardada. Ya podés proteger la carpeta.'); };
+    const saved = () => { s.q('ok').disabled = false; s.q('need').textContent = T(team ? 'Clave guardada. Ya podés proteger el espacio.' : root ? 'Clave guardada. Ya podés proteger tu nube.' : 'Clave guardada. Ya podés proteger la carpeta.'); };
     let working = false;
     s.box.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-v]'); if (working) return;
@@ -180,7 +195,7 @@
       let vault = null;
       try {
         const d = await Z.derive(K);
-        const body = Object.assign(team ? { check: d.check } : { folder, check: d.check }, await Z.wrap(K, password));
+        const body = Object.assign(team ? { check: d.check } : root ? { root: true, check: d.check } : { folder, check: d.check }, await Z.wrap(K, password));
         // La llave queda abierta acá antes de crear la carpeta: desde ese momento lo que se guarde ahí sale cifrado.
         Z.hold({ check: d.check }, d.key);
         vault = team ? await LMD.cloud.teamVaultCreate(body) : await LMD.cloud.vaultCreate(body);
@@ -190,12 +205,13 @@
         s.close();
         const here = openIn(vault);
         await refresh();
-        if (here) reopen(here);
-        core.flash(T(team ? 'Espacio del equipo protegido' : 'Carpeta protegida'));
+        // La nota abierta se vuelve a abrir antes de avisar: si no, al terminar de abrirse pisa el aviso.
+        if (here) { try { await reopen(here); } catch (e) { /* se abre en la próxima */ } }
+        core.flash(T(team ? 'Espacio del equipo protegido' : root ? 'Tu nube quedó protegida' : 'Carpeta protegida'));
       } catch (err) {
         working = false; s.busy(false);
         // Creada pero a medias: lo que falta se cifra al volver a abrir la carpeta, con la contraseña.
-        if (vault) { s.box.querySelector('[data-v=ok]').hidden = true; s.box.querySelector('[data-v=no]').textContent = T('Cerrar'); s.fail(T(team ? 'Se cortó antes de terminar. Las notas que faltan se cifran al desbloquear el espacio.' : 'Se cortó antes de terminar. Las notas que faltan se cifran al desbloquear la carpeta.')); refresh(); }
+        if (vault) { s.box.querySelector('[data-v=ok]').hidden = true; s.box.querySelector('[data-v=no]').textContent = T('Cerrar'); s.fail(T(team ? 'Se cortó antes de terminar. Las notas que faltan se cifran al desbloquear el espacio.' : root ? 'Se cortó antes de terminar. Las notas que faltan se cifran al desbloquear tu nube.' : 'Se cortó antes de terminar. Las notas que faltan se cifran al desbloquear la carpeta.')); refresh(); }
         else { await Z.forget(who(), { check: (await Z.derive(K)).check }); s.fail(say(err)); }
       }
     });
@@ -218,7 +234,7 @@
     const member = vault.team && !vault.admin;
     const p = new Promise((resolve) => {
       const o = sheet(T('Desbloquear "{a}"', { a: nameOf(vault) }),
-        '<p>' + T(vault.team ? 'Las notas del equipo están protegidas con contraseña.' : 'Esta carpeta está protegida con contraseña.') + '</p>' +
+        '<p>' + T(vault.team ? 'Las notas del equipo están protegidas con contraseña.' : isRoot(vault) ? 'Tu nube está protegida con contraseña.' : 'Esta carpeta está protegida con contraseña.') + '</p>' +
         (member ? '<p class="lmd-hint" data-v="ask">' + T('Pedile la contraseña a quien administra el equipo.') + '</p>' : '') + field('p', 'Contraseña', 'current-password') +
         '<label class="lmd-check"><input type="checkbox" data-v="keep"><span>' + T('Recordar en este dispositivo') + '</span></label>' +
         (member ? '' : '<button type="button" class="lmd-link" data-v="forgot">' + T('¿Olvidaste la contraseña?') + '</button>'),
@@ -272,7 +288,7 @@
         o.busy(true);
         try {
           const d = await Z.derive(K);
-          if (d.check !== vault.check) { o.busy(false); o.fail(T(vault.team ? 'Esa clave de respaldo no es la de este equipo.' : 'Esa clave de respaldo no es la de esta carpeta.'), o.q('bk')); return; }
+          if (d.check !== vault.check) { o.busy(false); o.fail(T(vault.team ? 'Esa clave de respaldo no es la de este equipo.' : isRoot(vault) ? 'Esa clave de respaldo no es la de tu nube.' : 'Esa clave de respaldo no es la de esta carpeta.'), o.q('bk')); return; }
           await LMD.cloud.vaultRewrap(vault.id, await Z.wrap(K, password));
           K.fill(0); Z.hold(vault, d.key);
           o.close(); resolve(true);
@@ -288,7 +304,7 @@
     if (openIn(vault)) { if (core.dirty && !(await core.save(false))) return; await core.close({ tree: true }); }
     await Z.forget(who(), vault);
     await refresh();
-    core.flash(T(vault.team ? 'Espacio del equipo bloqueado' : 'Carpeta bloqueada'));
+    core.flash(T(vault.team ? 'Espacio del equipo bloqueado' : isRoot(vault) ? 'Nube bloqueada' : 'Carpeta bloqueada'));
   }
 
   function changePassword(vault) {
@@ -339,7 +355,7 @@
         o.close();
         await refresh();
         if (here) reopen(here);
-        core.flash(T(vault.team ? 'El espacio del equipo ya no está protegido' : 'La carpeta ya no está protegida'));
+        core.flash(T(vault.team ? 'El espacio del equipo ya no está protegido' : isRoot(vault) ? 'Tu nube ya no está protegida' : 'La carpeta ya no está protegida'));
       } catch (err) {
         o.busy(false); o.q('work').hidden = true;
         o.fail(err.code === 'bad_password' ? say(err) : T('Se cortó antes de terminar. Volvé a intentarlo para descifrar las notas que faltan.'), err.code === 'bad_password' ? o.q('p') : null);
@@ -351,25 +367,27 @@
   // Sin la contraseña y sin la clave de respaldo no hay forma de leer esas notas: lo que queda es eliminar la carpeta
   // con todo lo que tiene. No hace falta desbloquearla. Se confirma escribiendo su nombre, y no pasa por la papelera.
   function destroy(vault) {
-    const team = !!vault.team; const word = team ? confirmWord() : vault.folder;
-    const o = sheet(team ? T('Eliminar las notas de "{a}"', { a: teamName() }) : T('Eliminar "{a}" y sus notas', { a: vault.folder }),
+    // Toda la nube: se confirma con el correo de la cuenta.
+    const team = !!vault.team; const root = isRoot(vault); const word = team ? confirmWord() : root ? who() : vault.folder;
+    const o = sheet(team ? T('Eliminar las notas de "{a}"', { a: teamName() }) : root ? T('Eliminar todas las notas de tu nube') : T('Eliminar "{a}" y sus notas', { a: vault.folder }),
       '<p class="lmd-vault-warn">' + T(team ? 'Se eliminan todas las notas del equipo, con su historial y su papelera. No se pueden recuperar. El espacio queda vacío y sin contraseña.'
+        : root ? 'Se eliminan todas las notas de tu nube, con su historial y su papelera. No se pueden recuperar. La nube queda vacía y sin contraseña.'
         : 'Se eliminan la carpeta y todas sus notas. No van a la papelera y no se pueden recuperar.') + '</p>' +
-      '<label class="lmd-dlg-field"><span>' + T(team ? 'Para confirmar, escribí el nombre del equipo: {a}' : 'Para confirmar, escribí el nombre de la carpeta: {a}', { a: esc(word) }) + '</span><input type="text" data-v="name" autocomplete="off" spellcheck="false"></label>',
-      cancel() + okBtn(team ? 'Eliminar las notas' : 'Eliminar la carpeta', true));
+      '<label class="lmd-dlg-field"><span>' + T(team ? 'Para confirmar, escribí el nombre del equipo: {a}' : root ? 'Para confirmar, escribí el correo de tu cuenta: {a}' : 'Para confirmar, escribí el nombre de la carpeta: {a}', { a: esc(word) }) + '</span><input type="text" data-v="name" autocomplete="off" spellcheck="false"></label>',
+      cancel() + okBtn(team || root ? 'Eliminar las notas' : 'Eliminar la carpeta', true));
     o.box.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-v]');
       if (e.target === o.box || (b && b.dataset.v === 'no')) { o.close(); return; }
       if (!b || b.dataset.v !== 'ok') return;
-      if (o.q('name').value.trim() !== word) { o.fail(T(team ? 'Ese no es el nombre del equipo.' : 'Ese no es el nombre de la carpeta.'), o.q('name')); return; }
+      if (o.q('name').value.trim() !== word) { o.fail(T(team ? 'Ese no es el nombre del equipo.' : root ? 'Ese no es el correo de tu cuenta.' : 'Ese no es el nombre de la carpeta.'), o.q('name')); return; }
       o.busy(true);
       try {
         const here = openIn(vault);
-        await LMD.cloud.vaultDestroy(team ? Object.assign({}, vault, { confirm: word }) : vault);
+        await LMD.cloud.vaultDestroy(team || root ? Object.assign({}, vault, { confirm: word }) : vault);
         o.close();
         if (here) await core.close({ replace: true, discard: true, tree: true });
         await refresh();
-        core.flash(T(team ? 'Notas del equipo eliminadas' : 'Carpeta eliminada'));
+        core.flash(T(team ? 'Notas del equipo eliminadas' : root ? 'Notas eliminadas' : 'Carpeta eliminada'));
       } catch (err) { o.busy(false); o.fail(say(err)); }
     });
   }
@@ -508,6 +526,7 @@
   async function aiUnlock(vault) {
     const o = sheet(T('Desbloquear "{a}" para la IA', { a: nameOf(vault) }),
       '<p>' + T(vault.team ? 'Mientras esté desbloqueado, el servidor puede leer y escribir las notas del equipo para tu IA. Para la IA de los demás sigue bloqueado.'
+        : isRoot(vault) ? 'Mientras esté desbloqueada, el servidor puede leer y escribir las notas de tu nube para tu IA.'
         : 'Mientras esté desbloqueada, el servidor puede leer y escribir las notas de esta carpeta para tu IA.') + '</p>' +
       '<p>' + T('La llave se guarda solo en la memoria del servidor y se olvida al vencer el plazo, al bloquear o si el servidor se reinicia.') + '</p>' +
       '<div class="lmd-vault-time"><span>' + T('Durante') + '</span><div class="lmd-seg" data-v="time">' + TIMES.map((t) => '<button type="button" data-min="' + t[0] + '"' + (t[0] === 60 ? ' class="lmd-on"' : '') + '>' + T(t[1]) + '</button>').join('') + '</div></div>' +
@@ -566,9 +585,29 @@
     if (v.ai) line.querySelector('.lmd-team-ai span').textContent = aiText(v);
     return line;
   }
+  // Toda la nube protegida: su renglón arriba de las notas de la Nube, con el estado y las acciones. Los nombres de
+  // las notas se siguen viendo (no se cifran): al abrir una se pide la contraseña.
+  function rootItems() {
+    const v = rootV(); if (!v || !can()) return [];
+    if (v.state === 'opening') return [['v-off', 'Terminar de quitar la protección…', true], ['v-destroy', 'Eliminar todas las notas…', true]];
+    return [isOpen(v) ? ['v-lock', 'Bloquear'] : ['v-unlock', 'Desbloquear…'], v.ai ? ['v-ailock', 'Bloquear para la IA ahora'] : ['v-ai', 'Desbloquear para la IA…'],
+      keptSet.has(v.check) && ['v-drop', 'Olvidar en este dispositivo'], ['v-pass', 'Cambiar la contraseña…'], ['v-off', 'Quitar la protección…', true], ['v-destroy', 'Eliminar todas las notas…', true]].filter(Boolean);
+  }
+  const rootState = (v) => (v.state === 'opening' ? 'Quitando la protección' : isOpen(v) ? 'Protegida, abierta en esta pestaña' : 'Protegida, bloqueada');
+  function rootLine() {
+    const v = rootV(); if (!v || !can()) return null;
+    const shut = !isOpen(v);
+    const line = el('div', { class: 'lmd-vault-line lmd-team-lock lmd-root-lock' + (shut ? ' lmd-team-shut' : '') });
+    line.append(el('span', { class: 'lmd-vault-ico' }, shut ? ICON.lock : ICON.unlock), el('span', { class: 'lmd-vault-state', text: T(rootState(v)) }));
+    if (v.state === 'on') line.appendChild(el('button', { type: 'button', class: 'lmd-link', 'data-root-vault': shut ? 'v-unlock' : 'v-lock', text: T(shut ? 'Desbloquear' : 'Bloquear') }));
+    line.appendChild(el('button', { type: 'button', class: 'lmd-link lmd-team-more', 'data-root-vault': 'menu', title: T('Más acciones'), 'aria-label': T('Más acciones') }, ICON.more));
+    if (v.ai) line.append(el('span', { class: 'lmd-team-ai' }, ICON.spark + '<span></span>'), el('button', { type: 'button', class: 'lmd-link', 'data-vault-ailock': String(v.id), text: T('Bloquear ahora') }));
+    if (v.ai) line.querySelector('.lmd-team-ai span').textContent = aiText(v);
+    return line;
+  }
   // Lo que suma el menú de una carpeta propia de la nube. [id, texto, peligroso].
   function menu(path) {
-    if (!can() || !path || path[0] === '~') return [];
+    if (!can() || !path || path[0] === '~' || rootV()) return [];
     const v = all().find((x) => x.folder === path);
     if (!v) return all().some((x) => path.startsWith(x.folder + '/') || x.folder.startsWith(path + '/')) ? [] : [['v-protect', 'Proteger con contraseña…']];
     if (v.state === 'opening') return [['v-off', 'Terminar de quitar la protección…', true], ['v-destroy', 'Eliminar la carpeta y sus notas…', true]];
@@ -576,7 +615,7 @@
       keptSet.has(v.check) && ['v-drop', 'Olvidar en este dispositivo'], ['v-pass', 'Cambiar la contraseña…'], ['v-off', 'Quitar la protección…', true], ['v-destroy', 'Eliminar la carpeta y sus notas…', true]].filter(Boolean);
   }
   function pick(id, path) {
-    const v = all().find((x) => x.folder === path);
+    const v = all().find((x) => !x.team && x.folder === path) || all().find((x) => x.folder === path);
     if (id === 'v-protect') return protect(path);
     if (!v) return null;
     if (id === 'v-unlock') return unlock(v);
@@ -613,7 +652,7 @@
     });
   }
   // Una carpeta protegida no se renombra ni se mueve entera: habría que volver a cifrar todo con las rutas nuevas.
-  const pinned = (folder) => all().some((v) => v.folder === folder || v.folder.startsWith(folder + '/'));
+  const pinned = (folder) => all().some((v) => !!v.folder && (v.folder === folder || v.folder.startsWith(folder + '/')));
 
   // ---------- En Ajustes → IA ----------
   function aiSection() {
@@ -621,7 +660,7 @@
     const list = all().filter((v) => v.state === 'on' && (!v.team || v.admin || v.ai_members || v.ai));
     if (!list.length) return '';
     return '<h4>' + T('Carpetas protegidas') + '</h4>' +
-      '<ul class="lmd-tokens lmd-vault-list">' + list.map((v) => '<li' + (v.ai ? ' class="lmd-vault-on"' : '') + '><span>' + ICON.lock + '<b>' + (v.team ? esc(teamName()) + ' (@team/)' : esc(v.folder) + '/') + '</b> · ' + esc(aiText(v)) + '</span>' +
+      '<ul class="lmd-tokens lmd-vault-list">' + list.map((v) => '<li' + (v.ai ? ' class="lmd-vault-on"' : '') + '><span>' + ICON.lock + '<b>' + (v.team ? esc(teamName()) + ' (@team/)' : isRoot(v) ? esc(T('Toda tu nube')) : esc(v.folder) + '/') + '</b> · ' + esc(aiText(v)) + '</span>' +
         (v.ai ? '<button type="button" data-vault-ailock="' + v.id + '">' + T('Bloquear ahora') + '</button>' : '<button type="button" data-vault-ai="' + v.id + '">' + T('Desbloquear para la IA') + '</button>') + '</li>').join('') + '</ul>';
   }
   // Al lado de "Crear un token": qué no alcanza un token, tenga el alcance que tenga.
@@ -635,6 +674,13 @@
       else pick(tv.dataset.teamVault, v.folder);
       return true;
     }
+    const rv = e.target.closest('[data-root-vault]');
+    if (rv) {
+      const v = rootV(); if (!v) return true;
+      if (rv.dataset.rootVault === 'menu') { const r = rv.getBoundingClientRect(); LMD.extras.menu(r.left, r.bottom + 4, rootItems(), (f) => pick(f, '')); }
+      else pick(rv.dataset.rootVault, '');
+      return true;
+    }
     const on = e.target.closest('[data-vault-ai]'); const off = e.target.closest('[data-vault-ailock]');
     if (on) { const v = byId(on.dataset.vaultAi); if (v) aiUnlock(v); return true; }
     if (off) { const v = byId(off.dataset.vaultAilock); if (v) aiLock(v); return true; }
@@ -643,7 +689,50 @@
 
   // Por qué una nota de una carpeta protegida no se comparte ni se comenta, y qué hacer.
   const WHY = 'Esta nota está en una carpeta protegida: el servidor no puede leerla, así que no se comparte ni lleva comentarios para la IA. Para eso, movela a otra carpeta.';
-  const explain = () => core.flash(T(WHY), 'warn');
+  // Con toda la nube protegida no hay otra carpeta a la que moverla: se dice de dónde se quita la protección.
+  const WHY_ALL = 'Tu nube está protegida con contraseña: el servidor no puede leer esta nota, así que no se comparte, no se publica ni lleva comentarios para la IA. La protección se quita desde Ajustes, en Nube.';
+  const explain = () => core.flash(T(rootV() && isRoot(of(core.cloudPath)) ? WHY_ALL : WHY), 'warn');
+
+  // ---------- Protección de extremo a extremo: el estado y el aviso de la primera vez ----------
+  // off: nada propio protegido. folders: n carpetas. all: toda la nube, con una sola contraseña.
+  function status() {
+    const mine = all().filter((v) => !v.team); const r = mine.find(isRoot);
+    return r ? { kind: 'all', open: isOpen(r), state: r.state, ai: !!r.ai } : { kind: mine.length ? 'folders' : 'off', n: mine.length };
+  }
+  // Proteger toda la nube: el mismo camino desde el aviso, desde Ajustes y desde el bloque de seguridad.
+  const protectAll = async () => { try { await LMD.cloud.vaults(true); } catch (e) { /* sin conexión se intenta igual: el servidor decide */ } return protect(''); };
+  // La primera vez que una cuenta guarda una nota propia en la nube se le dice, una sola vez, que puede protegerla
+  // con una contraseña. Que ya se vio queda anotado en la cuenta (el servidor), así que no vuelve en otro dispositivo.
+  // No sale para un invitado, en el espacio de un equipo (no es una nota propia) ni si ya hay algo protegido.
+  let hinted = ''; let hintBox = null;
+  const hintClose = () => { if (hintBox) { hintBox.remove(); hintBox = null; } };
+  async function hint() {
+    const me = who();
+    if (!core || !me || hinted === me || hintBox || LMD.cloud.guest() || !Z.supported()) return;
+    hinted = me;
+    let a = null;
+    try { a = await LMD.cloud.account(); await LMD.cloud.vaults(); } catch (e) { hinted = ''; return; }
+    // protect_seen falta en un servidor propio sin actualizar: ahí no se avisa, porque no habría dónde anotarlo.
+    if (who() !== me || !a || a.protect_seen !== false || !can() || all().some((v) => !v.team)) return;
+    try { await LMD.cloud.protectSeen(); } catch (e) { hinted = ''; return; }
+    hintClose();
+    const box = hintBox = el('div', { class: 'lmd-protect-hint', role: 'region', 'aria-label': T('Tu nota está en la nube') });
+    const acts = el('div', { class: 'lmd-protect-acts' });
+    acts.append(el('button', { type: 'button', class: 'lmd-btn lmd-btn-fill', 'data-ph': 'go', text: T('Proteger con contraseña') }),
+      el('button', { type: 'button', class: 'lmd-btn', 'data-ph': 'no', text: T('Ahora no') }),
+      el('button', { type: 'button', class: 'lmd-link', 'data-ph': 'how', text: T('Cómo funciona') }));
+    box.append(el('b', { text: T('Tu nota está en la nube') }),
+      el('p', { text: T('La nube está cifrada, y el servidor guarda esa llave para poder compartir tus notas y dárselas a tu IA. Para que ni el servidor pueda leerlas, protegelas con una contraseña: quedan cifradas de extremo a extremo.') }), acts);
+    box.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-ph]'); if (!b) return;
+      hintClose();
+      if (b.dataset.ph === 'go') protectAll();
+      // Cómo funciona: el bloque de seguridad, en Ajustes → Nube.
+      else if (b.dataset.ph === 'how') { core.openPanel('cloud'); setTimeout(() => { const s = document.querySelector('.lmd-e2e, .lmd-sec'); if (s) s.scrollIntoView({ block: 'start' }); }, 400); }
+    });
+    box.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); hintClose(); } });
+    document.body.appendChild(box);
+  }
 
   // La lista de carpetas protegidas, con las llaves recordadas ya abiertas. La pide el explorador al dibujarse.
   let loaded = '';
@@ -657,8 +746,9 @@
   // Llegó el aviso de que cambió el estado de una carpeta (otra pestaña, o el servidor al vencer un plazo).
   const changed = () => { LMD.cloud.vaultStale(); return refresh(); };
 
-  function init(c) { core = c; }
+  // El aviso espera un momento: la nota recién guardada ya está en pantalla y no tapa lo que se estaba haciendo.
+  function init(c) { core = c; LMD.cloud.onPut(() => { setTimeout(() => { hint().catch(() => { /* queda para el próximo guardado */ }); }, 700); }); }
 
-  LMD.vault = { init, load, changed, of, isOpen, unlock, unlockFor, menu, pick, beforeMove, pinned, aiSection, tokenNote, aiClick, aiText, explain, WHY, can,
+  LMD.vault = { init, load, changed, of, isOpen, unlock, unlockFor, menu, pick, beforeMove, pinned, aiSection, tokenNote, aiClick, aiText, explain, WHY, can, status, protectAll, rootLine,
     teamLine, teamShut, teamDo, onTeam: (fn) => { teamFns.push(fn); } };
 })();
