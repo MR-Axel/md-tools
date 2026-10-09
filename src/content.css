@@ -2649,6 +2649,14 @@ html:not(.lmd-editing) .lmd-cl-add { height: 1.25em; margin: 0; padding: 0 8px; 
 .lmd-ai-field > span { color: var(--fg-muted); }
 .lmd-ai-tail { margin-left: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .lmd-tl-opts .lmd-ai-note { margin: 0; }
+/* El buscador de proveedores se ve arriba del selector; en el orden del teclado va después. */
+.lmd-ai-prov > span { order: -2; }
+.lmd-ai-prov input[type=search] { order: -1; }
+.lmd-tl-opts p.lmd-ai-where, .lmd-tl-opts p.lmd-ai-base { margin: 0; }
+.lmd-ai-base code { overflow-wrap: anywhere; }
+.lmd-ai-links { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; font-size: 12.5px; }
+.lmd-ai-links[hidden], .lmd-ai-links a[hidden] { display: none; }
+.lmd-ai-links a { color: var(--accent); }
 
 .lmd-ai-panel { position: fixed; z-index: 44; top: 0; right: 0; bottom: 0; box-sizing: border-box; width: min(380px, 100vw); display: flex; flex-direction: column; gap: 8px; padding: 12px 12px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--bg); border-left: 1px solid var(--line); box-shadow: var(--shadow); font: 13.5px/1.5 var(--lmd-font); color: var(--fg); }
 html.lmd-ai-open .lmd-main { margin-right: min(380px, 100vw); }

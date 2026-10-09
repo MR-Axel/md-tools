@@ -211,7 +211,7 @@
   // pick: se está eligiendo cuál proteger, entre folders.
   // ai: la clave del asistente de este dispositivo, si se sabe: { hasKey, provider, last4, off }. De la clave solo
   // se muestran el proveedor y los últimos cuatro caracteres, lo mismo que en la tarjeta del asistente.
-  const AI_NAMES = { anthropic: 'Anthropic (Claude)', openai: 'OpenAI' };
+  const AI_NAMES = { anthropic: 'Anthropic (Claude)', openai: 'OpenAI', gemini: 'Google Gemini', deepseek: 'DeepSeek', groq: 'Groq', kimi: 'Kimi (Moonshot AI)', minimax: 'MiniMax', mistral: 'Mistral', openrouter: 'OpenRouter', together: 'Together AI', xai: 'xAI (Grok)' };
   // Lo que se sabe de la clave sin cargar el asistente: lo lee de donde él la guarda. off: la herramienta está
   // apagada y hay una pestaña Herramientas donde prenderla.
   async function aiKeyInfo() {
