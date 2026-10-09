@@ -323,6 +323,21 @@
         try { const h = await vFile(new URL(src, HERE).href); if (h) { const blob = URL.createObjectURL(await h.getFile()); blobUrls.push(blob); img.src = blob; } } catch (e) { /* no está en la carpeta */ }
       });
     }
+    // Sobre un archivo abierto directo, lo relativo lo resuelve el navegador contra el archivo que cargó. Si el que
+    // está a la vista es de otra carpeta (ver goFile), los enlaces y las imágenes se resuelven acá contra ese.
+    if (!APP && !off && new URL('.', HERE).href !== new URL('.', hostFile()).href) {
+      const relative = (v) => v && !/^(#|[a-z][a-z0-9+.-]*:|\/\/)/i.test(v);
+      article.querySelectorAll('a[href]').forEach((a) => {
+        const href = a.getAttribute('href');
+        if (!relative(href) || a.classList.contains('lmd-wiki')) return;
+        try { a.setAttribute('data-lmd-href', href); a.href = new URL(href, HERE).href; } catch (e) { /* queda como está */ }
+      });
+      article.querySelectorAll('img[src]').forEach((img) => {
+        const src = img.getAttribute('src');
+        if (!relative(src)) return;
+        try { img.setAttribute('data-lmd-src', src); img.src = new URL(src, HERE).href; } catch (e) { /* queda como está */ }
+      });
+    }
 
     LMD.board.calcTables(article);
 
@@ -405,6 +420,104 @@
     const u = new URL(href); const f = u.searchParams.get('f') || ''; const target = VBASE + f; const frag = unesc(u.hash.slice(1));
     if (!noDoc && sameUrl(target, HERE)) { const t = findAnchor(frag); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); else if (frag) noSection(frag); return Promise.resolve(true); }
     return go(f, Object.assign({ hash: u.hash }, opt));
+  }
+
+  // ---------- Otro archivo de la carpeta, sobre un archivo abierto directo ----------
+  // El lector sobre un .md del disco cambia de archivo sin recargar la página: lee el otro por el service worker y
+  // lo dibuja en el lugar. Chrome no deja que una página file:// lleve su dirección a otra ruta (pushState falla),
+  // así que el archivo a la vista viaja en el fragmento, #lmd-file=<ruta relativa al archivo que cargó el navegador>:
+  // recargar, atrás y adelante lo vuelven a mostrar. En un sitio web, un Markdown sí toma su dirección real.
+  const hostUrl = () => location.href.split('#')[0];
+  const hostFile = () => hostUrl().split('?')[0];
+  const cleanUrl = (url) => url.split('#')[0].split('?')[0];
+  const FILE_FRAG = /^#lmd-file=(.+)$/;
+  const OPENS_RE = /\.(md|mdx|mkd|mdown|markdown|txt|json|ya?ml)$/i;
+  // Lo que el lector abre en el lugar: Markdown, texto, JSON y YAML del mismo disco o del mismo sitio.
+  function opensHere(url) {
+    if (APP) return false;
+    try { const u = new URL(url); return OPENS_RE.test(u.pathname) && u.protocol === location.protocol && u.host === location.host; } catch (e) { return false; }
+  }
+  function relTo(from, to) {
+    const a = from.split('/'); const b = to.split('/'); a.pop();
+    let i = 0; while (i < a.length && i < b.length - 1 && a[i] === b[i]) i++;
+    return '../'.repeat(a.length - i) + b.slice(i).join('/');
+  }
+  // La dirección con la que queda la pestaña al mostrar ese archivo.
+  function readerHref(url) {
+    url = cleanUrl(url);
+    if (sameUrl(url, hostFile())) return hostUrl();
+    if (!isFile && MD_RE.test(url)) return url;
+    const rel = relTo(hostFile(), url); let ok = false;
+    try { ok = new URL(rel, hostFile()).href === url; } catch (e) { ok = false; }
+    return hostUrl() + '#lmd-file=' + (ok ? rel : url); // otra unidad de disco: va la dirección entera
+  }
+  // El archivo que dice la dirección: el del fragmento, si se puede abrir acá, o el que cargó el navegador.
+  function addressed() {
+    const m = FILE_FRAG.exec(location.hash);
+    if (m) { try { const u = new URL(m[1], hostFile()); u.hash = ''; u.search = ''; if (opensHere(u.href)) return u.href; } catch (e) { /* fragmento ilegible */ } }
+    return hostFile();
+  }
+  // De dónde se relee el archivo a la vista: el que cargó el navegador conserva su consulta.
+  const docUrl = () => (APP ? HERE : sameUrl(HERE, hostFile()) ? hostUrl() : HERE);
+  // Lo que no es texto (un binario con nombre de texto, la página de error de un sitio) no se dibuja acá.
+  const readable = (r) => !!r && r.ok && typeof r.text === 'string' && r.text.indexOf('\u0000') === -1 && (isFile || !/html/i.test(r.ctype || ''));
+
+  // Abre otro archivo en el lugar. opt: pop (viene de atrás o adelante), replace (no suma al historial), hash.
+  async function goFile(href, opt) {
+    opt = opt || {};
+    const cut = href.indexOf('#'); const url = cleanUrl(href); const hash = opt.hash != null ? opt.hash : (cut < 0 ? '' : href.slice(cut));
+    if (sameUrl(url, HERE)) {
+      const frag = /^#lmd-/.test(hash) ? '' : unesc(hash.slice(1)); const t = frag ? findAnchor(frag) : null;
+      if (t) { shown(t); t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } else if (frag) noSection(frag);
+      return true;
+    }
+    const seq = ++navSeq;
+    // Si no se pudo salir o abrir viniendo de atrás o adelante, la dirección vuelve a la del archivo que sigue a la vista.
+    const stay = () => { if (opt.pop) { try { history.pushState(null, '', readerHref(HERE)); } catch (e) { /* queda como está */ } } return false; };
+    try {
+      if (!(await leaveDoc())) return stay();
+      if (seq !== navSeq) return false;
+      const r = await bg({ type: 'fetchText', url });
+      if (seq !== navSeq) return false;
+      if (!r || !r.ok) { if (!orphan) flash(T('No se encontró "{a}".', { a: unesc(url.split('/').pop() || '') }), 'error'); return stay(); }
+      if (!readable(r)) { if (opt.pop) return stay(); location.href = url; return false; }
+      setFile(url, r.text, Object.assign({}, opt, { hash }));
+      return true;
+    } catch (e) {
+      // Algo inesperado: queda el camino de siempre, la página entera.
+      if (!opt.pop) location.href = href;
+      return false;
+    }
+  }
+  function setFile(url, text, opt) {
+    const wasEditing = editMode;
+    dropDoc();
+    HERE = url; DOC_NAME = unesc(HERE.split('/').pop() || '');
+    raw = text; diskText = text; dirty = false; rawMode = false; editMode = false;
+    if (!opt.pop) {
+      const to = readerHref(HERE);
+      try { if (opt.replace) history.replaceState(null, '', to); else if (to !== location.href) history.pushState(null, '', to); } catch (e) { /* la dirección queda como estaba */ }
+    }
+    paintDoc();
+    syncTree();
+    afterOpen({ editing: wasEditing, hash: opt.hash });
+    core.hooks.doc.forEach((fn) => fn());
+  }
+  // Atrás y adelante sobre un archivo abierto directo: la dirección ya cambió, falta traer el archivo que le toca.
+  let popWant = '';
+  function onReaderPop() {
+    const want = addressed();
+    if (sameUrl(want, HERE) || want === popWant) return;
+    popWant = want;
+    goFile(want, { pop: true, hash: '' }).then(() => { popWant = ''; }, () => { popWant = ''; });
+  }
+  // Un archivo del explorador que SharpMD no dibuja pero la herramienta de importar convierte: se ofrece convertirlo.
+  const IMPORT_RE = /\.(docx|xlsx|pptx|epub|pdf)$/i;
+  function offerImport(url) {
+    if (!APP || !url || !IMPORT_RE.test(cleanUrl(url)) || !LMD.tools || !LMD.tools.isOn('import')) return false;
+    const root = rootOf(url); if (!root || root.kind !== 'dir') return false;
+    ensure('import').then(async (ok) => { const h = ok && LMD.import ? await vFile(url) : null; if (h) LMD.import.run(await h.getFile()); }).catch(() => flash(T('No se pudo abrir. Probá de nuevo.'), 'error'));
+    return true;
   }
 
   async function ensure(what) {
@@ -592,7 +705,7 @@
   }
 
   // Posición de lectura por archivo
-  const posKey = () => (APP ? HERE : location.href.split('#')[0]);
+  const posKey = () => HERE;
   const savePosition = debounce(() => {
     if (!settings.rememberPosition) return;
     chrome.storage.local.get('positions', (r) => {
@@ -806,10 +919,17 @@
       const plain = !(e.ctrlKey || e.metaKey || e.shiftKey);
       if (e.target.closest('.lmd-res-doc')) { stepSearch(1); setDrawer(false); return; }
       const res = e.target.closest('.lmd-results a');
-      if (res && res.href.split('#')[0] === location.href.split('#')[0]) { e.preventDefault(); stepSearch(1); setDrawer(false); return; }
+      if (res && (APP ? res.href.split('#')[0] === location.href.split('#')[0] : sameUrl(res.href, HERE))) { e.preventDefault(); stepSearch(1); setDrawer(false); return; }
       // Un archivo del árbol, un resultado de búsqueda o un reciente: se abre sin recargar la página.
       const nav = e.target.closest('a.lmd-node, .lmd-results a');
+      if (nav && APP && plain && offerImport(nav.dataset.url)) { e.preventDefault(); return; }
       if (nav && inApp(nav)) { if (plain) { e.preventDefault(); openDoc(nav.href); } return; }
+      // Sobre un archivo abierto directo también, si es algo que SharpMD dibuja; el resto lo abre el navegador.
+      if (nav && !APP) {
+        const to = nav.classList.contains('lmd-node') ? nav.dataset.url : nav.href;
+        if (plain && to && opensHere(to)) { e.preventDefault(); goFile(to); }
+        return;
+      }
       const a = e.target.closest('.lmd-article a[href], .lmd-pane-outline a');
       if (!a) return;
       // Editando, el clic sobre un enlace pone el cursor; para seguirlo va con Ctrl.
@@ -823,12 +943,17 @@
         const frag = unesc(href.slice(1));
         const target = findAnchor(frag);
         e.preventDefault();
-        if (target) { spyPin = a.closest('.lmd-pane-outline') ? target.id : null; shown(target); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', '#' + target.id); }
+        // Con otro archivo a la vista, el fragmento dice cuál es: la sección no lo reemplaza.
+        if (target) { spyPin = a.closest('.lmd-pane-outline') ? target.id : null; shown(target); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); if (!FILE_FRAG.test(location.hash)) history.replaceState(null, '', '#' + target.id); }
         else if (frag) noSection(frag); else window.scrollTo({ top: 0, behavior: 'smooth' });
       } else if (APP && (a.hasAttribute('data-lmd-href') || a.classList.contains('lmd-wiki'))) {
         // Otro archivo de la carpeta. Leyendo, Ctrl o Shift lo abren aparte, como cualquier enlace.
         if (!editing && (e.ctrlKey || e.metaKey || e.shiftKey)) return;
         e.preventDefault(); openDoc(a.href);
+      } else if (!APP && a.target !== '_blank' && opensHere(a.href)) {
+        // Sobre un archivo abierto directo, un enlace a otro Markdown, texto, JSON o YAML de la carpeta se abre acá.
+        if (!editing && (e.ctrlKey || e.metaKey || e.shiftKey)) return;
+        e.preventDefault(); goFile(a.href);
       } else if (editing) {
         e.preventDefault();
         if (/^https?:/i.test(href) && a.host !== location.host) window.open(a.href, '_blank', 'noopener'); else if (inApp(a)) openDoc(a.href); else location.href = a.href;
@@ -913,6 +1038,26 @@
       const f = new URLSearchParams(location.search).get('f') || '';
       if (noDoc ? !f : VBASE + f === HERE) { const frag = unesc(location.hash.slice(1)); const t = frag && !/^lmd-/.test(frag) ? findAnchor(frag) : null; if (t) { shown(t); t.scrollIntoView(); } return; }
       go(f, { pop: true, hash: location.hash });
+    });
+    if (!APP) { window.addEventListener('popstate', onReaderPop); window.addEventListener('hashchange', onReaderPop); }
+
+    // El explorador con el teclado: las flechas recorren lo que está a la vista, derecha e izquierda despliegan y
+    // pliegan una carpeta (o van a la que contiene al archivo), Inicio y Fin van a las puntas. Enter abre, como siempre.
+    ui.treeBox.addEventListener('keydown', (e) => {
+      const cur = e.target.closest && e.target.closest('.lmd-node');
+      if (!cur || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return;
+      const all = Array.from(ui.treeBox.querySelectorAll('.lmd-node')).filter((n) => n.offsetParent);
+      const at = all.indexOf(cur); const dir = cur.classList.contains('lmd-node-dir'); const open = cur.classList.contains('lmd-open');
+      let to = null;
+      if (e.key === 'ArrowDown') to = all[at + 1];
+      else if (e.key === 'ArrowUp') to = all[at - 1];
+      else if (e.key === 'Home') to = all[0];
+      else if (e.key === 'End') to = all[all.length - 1];
+      else if (e.key === 'ArrowRight') { if (dir && !open) cur.click(); else if (dir) to = all[at + 1]; }
+      else if (dir && open) cur.click();
+      else { const kids = cur.closest('.lmd-node-kids'); let up = kids && kids.previousElementSibling; while (up && !up.classList.contains('lmd-node-dir')) up = up.previousElementSibling; to = up; }
+      e.preventDefault();
+      if (to) { to.focus(); to.scrollIntoView({ block: 'nearest' }); }
     });
   }
 
@@ -1202,8 +1347,8 @@
   };
   const LANGS = { yml: 'yaml', mjs: 'javascript', cjs: 'javascript', js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript', py: 'python', rb: 'ruby', rs: 'rust', sh: 'bash', ps1: 'powershell', htm: 'html', kt: 'kotlin', cs: 'csharp', h: 'c' };
   function docKind() {
-    if (APP && TXT_RE.test(DOC_NAME)) return 'text';
-    if (!APP || MD_RE.test(DOC_NAME) || DOC_NAME.indexOf('.') === -1) return 'md';
+    if (TXT_RE.test(DOC_NAME)) return 'text';
+    if (MD_RE.test(DOC_NAME) || DOC_NAME.indexOf('.') === -1) return 'md';
     if (IMG_RE.test(DOC_NAME)) return 'image';
     return /\.(csv|tsv)$/i.test(DOC_NAME) ? 'table' : 'code';
   }
@@ -1401,7 +1546,7 @@
         return text;
       } catch (e) { return null; }
     }
-    const url = location.href.split('#')[0];
+    const url = docUrl();
     const r = await bg({ type: 'fetchText', url });
     if (r && r.ok) return r.text;
     try {
@@ -1912,6 +2057,10 @@
     return all ? rows : visibleRows(rows);
   }
 
+  // Qué es cada archivo del explorador, para su ícono: Markdown, texto plano, datos (JSON o YAML) o cualquier otra cosa.
+  const fileKind = (name) => (MD_RE.test(name) ? 'md' : TXT_RE.test(name) ? 'txt' : JY_RE.test(name) ? 'data' : 'file');
+  const FILE_ICON = { md: ICON.md, txt: ICON.txt, data: ICON.data, file: ICON.file };
+
   // ---------- Explorador ----------
   // Raíces desplegables, en este orden y solo las que apliquen: la carpeta del disco, las notas de este
   // navegador y la nube. Sobre un .md abierto directo en el navegador hay una sola: la carpeta del archivo.
@@ -2039,7 +2188,7 @@
         others.forEach((r) => {
           const row = el('div', { class: 'lmd-recent' });
           const go = el('a', { class: 'lmd-node', href: APP_URL + '?f=' + encodeURIComponent(r.last || r.id + '/'), title: r.name });
-          go.innerHTML = '<span class="lmd-node-ico">' + (r.kind === 'dir' ? ICON.folder : ICON.md) + '</span><span class="lmd-node-name"></span><span class="lmd-node-sub"></span>';
+          go.innerHTML = '<span class="lmd-node-ico">' + (r.kind === 'dir' ? ICON.folder : FILE_ICON[fileKind(r.name)]) + '</span><span class="lmd-node-name"></span><span class="lmd-node-sub"></span>';
           go.querySelector('.lmd-node-name').textContent = r.name;
           go.querySelector('.lmd-node-sub').textContent = r.ghost ? T('Reconectar') : r.kind === 'dir' ? decodeURIComponent((r.last || '').split('/').slice(1).join('/')) : '';
           // Se abrió del otro lado (la web o la extensión): acá todavía falta elegirla una vez.
@@ -2082,6 +2231,12 @@
         if (turn !== rootTurn) return;
         treeRoot = next; fresh = true;
       }
+    }
+    // Sobre un archivo abierto directo, si el que se abrió quedó fuera del árbol, el árbol se vuelve a ubicar.
+    if (!APP && treeRoot && !HERE.startsWith(treeRoot)) {
+      const next = await startRoot(HERE);
+      if (turn !== rootTurn) return;
+      treeRoot = next; fresh = true;
     }
     // La raíz de la nota abierta se despliega sola.
     const key = noDoc ? '' : sectionOf(HERE);
@@ -2149,9 +2304,10 @@
       const item = el(row.dir ? 'button' : 'a', { class: 'lmd-node' + (row.dir ? ' lmd-node-dir' : '') + (vault ? ' lmd-node-vault' + (shut ? ' lmd-vault-shut' : '') : ''), title: row.label && row.dir ? row.label : row.name });
       item.style.paddingLeft = (10 + depth * 14) + 'px';
       item.dataset.url = row.url;
-      const md = MD_RE.test(row.name);
+      const kind = row.dir ? 'dir' : fileKind(row.name);
+      item.dataset.kind = kind;
       item.innerHTML = (row.dir ? '<span class="lmd-node-chev">' + ICON.chevron + '</span>' + (vault ? '<span class="lmd-node-lock" title="' + T(shut ? 'Carpeta protegida, bloqueada' : 'Carpeta protegida, desbloqueada en esta pestaña') + '">' + (shut ? ICON.lock : ICON.unlock) + '</span>' : '')
-        : '<span class="lmd-node-ico">' + (md ? ICON.md : ICON.file) + '</span>') +
+        : '<span class="lmd-node-ico">' + FILE_ICON[kind] + '</span>') +
         '<span class="lmd-node-name"></span>' + (!row.dir && where ? '<span class="lmd-node-where" title="' + T(where[1]) + '">' + ICON[where[0]] + '</span>' : '');
       item.querySelector('.lmd-node-name').textContent = row.label || row.name;
       container.appendChild(item);
@@ -2180,7 +2336,9 @@
         showCount(item, row.url);
         if (!shut && ((here && here.startsWith(row.url)) || openDirs.has(row.url))) open();
       } else {
-        item.href = toHref(row.url);
+        // Sobre un archivo abierto directo, lo que no es Markdown lleva la dirección que lo abre dentro de SharpMD
+        // (también en otra pestaña); el Markdown y lo que SharpMD no dibuja, la suya.
+        item.href = APP ? toHref(row.url) : kind !== 'md' && opensHere(row.url) ? readerHref(row.url) : row.url;
         if (row.url === here) { item.classList.add('lmd-active'); setTimeout(() => { if (item.offsetParent) item.scrollIntoView({ block: 'nearest' }); }, 0); }
       }
     });
@@ -3460,6 +3618,8 @@
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
     drawOff, rangeOf, render, softRender, flash, insertLines, spliceLines, replaceLines, tidyList, commitBlock, undo, redo, editCode, vFile, toHref, openDoc,
+    // Sobre un archivo abierto directo: abre otro de la carpeta en el lugar si SharpMD lo dibuja; si no, lo abre el navegador.
+    openFile: (url) => { if (opensHere(url)) return goFile(url); location.href = url; return Promise.resolve(false); },
     inline: (text) => DOMPurify.sanitize(buildParser().renderInline(text)),
     // Un Markdown cualquiera, dibujado con el mismo saneado que una nota (la vista previa de una plantilla).
     preview: (text) => homeCtx().preview(text),
@@ -3523,7 +3683,7 @@
       // La carpeta del archivo, como la escribe el sistema: Chrome no deja abrir su ventana ya parada ahí,
       // así que se muestra y se copia para pegarla en la barra de direcciones de esa ventana.
       let folder = '';
-      try { if (location.protocol === 'file:') { let d = decodeURIComponent(location.pathname).replace(/\/[^/]*$/, ''); if (/^\/[A-Za-z]:/.test(d)) d = d.slice(1).replace(/\//g, '\\'); folder = d; } } catch (e) { /* sin ruta */ }
+      try { if (location.protocol === 'file:') { let d = decodeURIComponent(new URL(HERE).pathname).replace(/\/[^/]*$/, ''); if (/^\/[A-Za-z]:/.test(d)) d = d.slice(1).replace(/\//g, '\\'); folder = d; } } catch (e) { /* sin ruta */ }
       const copyFolder = () => { if (!folder) return; try { navigator.clipboard.writeText(folder).catch(() => {}); } catch (e) { /* sin portapapeles */ } };
       const box = el('div', { class: 'lmd-ask' });
       box.innerHTML =
@@ -3848,9 +4008,9 @@
     if (!dirty) return true;
     if (await save(false) || !dirty) return true;
     // Sin conexión, lo escrito en una nota de la nube ya quedó en la cola y sube solo al volver.
-    if (appRoot.kind === 'cloud' && stashed === raw) return true;
+    if (appRoot && appRoot.kind === 'cloud' && stashed === raw) return true;
     // Falta el permiso para escribir: se pide, que acá hay un clic de por medio.
-    if (appRoot.id !== 'mem' && (await save(true) || !dirty)) return true;
+    if (!(appRoot && appRoot.id === 'mem') && (await save(true) || !dirty)) return true;
     return LMD.dialog.confirm({ title: T('Cambios sin guardar'), text: T('No se pudieron guardar los cambios de "{a}".', { a: DOC_NAME }), ok: T('Salir sin guardar'), danger: true });
   }
 
@@ -3868,7 +4028,7 @@
     undoStack.length = 0; redoStack.length = 0; collapsed.clear(); spyPin = null; present = []; hereAi = []; lastEdit = null;
     pendingCell = null; fileHandle = null; stashed = null; opened = null; held = null; diskStamp = ''; cloudPoll = 0; cloudState = 'ok'; diskRev = null;
     needsRender = false; core.lastBlock = null; core.hold = false;
-    LMD.write.closeMenu(); closeMore(); setDrawer(false);
+    LMD.write.closeMenu(); closeMore(); if (drawerOpen()) setDrawer(false); // en escritorio el foco sigue en el explorador
     // El aviso de una invitación a un equipo es de la cuenta, no de la nota: sigue al cambiar de nota.
     document.querySelectorAll('.lmd-menu, .lmd-ask:not(.lmd-team-ask)').forEach((n) => n.remove());
     ui.viewer.hidden = true; ui.viewer.textContent = ''; ui.format.hidden = true; ui.tableBar.hidden = true;
@@ -3998,7 +4158,7 @@
     const fromSearch = /^#lmd-q=([^&]+)(?:&r=(.+))?$/.exec(hash);
     if (fromSearch) {
       // Se llegó desde un resultado de búsqueda en la carpeta: se repite la búsqueda acá.
-      if (!APP) history.replaceState(null, '', location.href.split('#')[0]);
+      if (!APP) history.replaceState(null, '', readerHref(HERE));
       ui.searchInput.value = decodeURIComponent(fromSearch[1]);
       runSearch(ui.searchInput.value, true, true);
     } else if (hash && !/^#lmd-/.test(hash)) {
@@ -4054,8 +4214,18 @@
   const RENDER_KEYS = ['plugins', 'theme', 'diagramShape', 'preset', 'supporter', 'foldHeadings'];
   const TREE_KEYS = ['filesOnlyMarkdown', 'filesShowHidden'];
 
-  Promise.all([LMD.load(), loadSide()]).then(async ([s, saved]) => {
+  // Sobre un archivo abierto directo, la dirección puede traer otro archivo en el fragmento (recargar con otro a la
+  // vista, o un enlace copiado): se lee antes de dibujar, así lo primero que se ve ya es ese.
+  const bootFile = () => {
+    if (APP) return null;
+    const want = addressed();
+    return sameUrl(want, HERE) ? null : bg({ type: 'fetchText', url: want }).then((r) => ({ url: want, r }), () => ({ url: want, r: null }));
+  };
+  Promise.all([LMD.load(), loadSide(), bootFile()]).then(async ([s, saved, other]) => {
     settings = s;
+    let missing = '';
+    if (other && readable(other.r)) { HERE = other.url; DOC_NAME = unesc(HERE.split('/').pop() || ''); raw = other.r.text; diskText = raw; }
+    else if (other) missing = unesc(other.url.split('/').pop() || '');
     if (saved) side = Object.assign(side, saved, { shut: Object.assign({}, saved.shut) });
     LMD.setLang(settings.language);
     if (APP) { roots.local = { id: 'local', kind: 'local', name: T('En este navegador') }; roots.cloud = { id: 'cloud', kind: 'cloud', name: T('Nube') }; }
@@ -4069,14 +4239,18 @@
     // Ajustes sobre un archivo abierto directo manda igual, y también a la pestaña de IA.
     const hashTab = APP && { '#lmd-plans': 'plan', '#lmd-ai': 'ai', '#lmd-auto': 'auto' }[location.hash];
     if (hashTab) { history.replaceState(history.state, '', location.href.split('#')[0]); openPanel(hashTab); }
+    // El archivo del fragmento ya no está: queda el que cargó el navegador, con su dirección.
+    if (missing) { try { history.replaceState(null, '', hostUrl()); } catch (e) { /* queda como está */ } flash(T('No se encontró "{a}".', { a: missing }), 'warn'); }
     updateSaveState();
     checkUpdate(false);
     const openAt = takeOpen(); const signAt = takeSignin();
     if (APP) appBoot().finally(unsplash).then(() => { if (openAt) LMD.install.openLink(openAt, homeCtx()); else if (signAt) LMD.home.signinLink(homeCtx(), signAt); }, () => {});
     else {
-      afterOpen({ hash: location.hash });
+      afterOpen({ hash: FILE_FRAG.test(location.hash) ? '' : location.hash });
       // El árbol arranca donde lo dejó la persona, o en la raíz del repositorio si el archivo está dentro de uno.
-      startRoot(HERE).then((u) => { treeRoot = u; loadTree(); });
+      // Con otro archivo en el fragmento, el árbol es el del archivo que cargó el navegador mientras lo contenga:
+      // recargar deja el explorador donde estaba.
+      startRoot(hostFile()).then((u) => (HERE.startsWith(u) ? u : startRoot(HERE))).then((u) => { treeRoot = u; loadTree(); });
     }
 
     chrome.storage.onChanged.addListener((changes, area) => {

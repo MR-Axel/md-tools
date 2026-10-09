@@ -8,9 +8,11 @@ const LAZY = {
   graphviz: { js: ['vendor/viz-global.js'] },
 };
 
-async function fetchText(url) {
+async function fetchText(url, meta) {
   const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok && res.status !== 0) throw new Error('HTTP ' + res.status);
+  // El tipo que dice el servidor: el lector no dibuja como nota la página de error de un sitio.
+  if (meta) meta.ctype = res.headers.get('content-type') || '';
   return await res.text();
 }
 
@@ -102,8 +104,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     let allowed = false;
     try { const want = new URL(msg.url); const here = new URL(sender.url || (sender.tab && sender.tab.url) || ''); allowed = want.protocol === 'file:' ? here.protocol === 'file:' : /^https?:$/.test(want.protocol) && want.origin === here.origin; } catch (e) { allowed = false; }
     if (!allowed) { sendResponse({ ok: false, error: 'origin' }); return; }
-    fetchText(msg.url)
-      .then((text) => sendResponse({ ok: true, text }))
+    const meta = {};
+    fetchText(msg.url, meta)
+      .then((text) => sendResponse({ ok: true, text, ctype: meta.ctype }))
       .catch((e) => sendResponse({ ok: false, error: String(e && e.message || e) }));
     return true;
   }

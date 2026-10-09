@@ -111,7 +111,7 @@
     pending = gather().then((notes) => { cache = build(notes); pending = null; return cache; }, (e) => { pending = null; throw e; });
     return pending;
   }
-  const openNote = (url) => (core.APP ? core.open(url) : (location.href = url));
+  const openNote = (url) => (core.APP ? core.open(url) : core.openFile(url));
 
   // ---------- "Enlaces a esta nota", bajo la nota abierta ----------
   let backSeq = 0;
