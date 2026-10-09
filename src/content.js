@@ -734,8 +734,9 @@
   let plugSel = '';
   // Lista y detalle, como en Herramientas (tools.js): a la izquierda los interruptores en sus cinco bloques, a la
   // derecha el plugin elegido con lo que hace y un ejemplo: lo que se escribe, y cómo se ve apagado y prendido.
-  // El detalle sigue al cursor y al foco. El ejemplo de un plugin que pide una librería pesada se dibuja cuando el
-  // cursor se queda en él o con un clic: pasar por toda la lista no descarga nada.
+  // En pantalla ancha los interruptores van en dos columnas. El detalle sigue al cursor (LMD.tools.follow) y al foco.
+  // El ejemplo de un plugin que pide una librería pesada se dibuja cuando el cursor se queda en él o con un clic:
+  // pasar por toda la lista no descarga nada.
   function plugPane(box) {
     if (box._lmdPlug) box._lmdPlug.abort();
     const off = new AbortController(); box._lmdPlug = off; const live = { signal: off.signal };
@@ -747,7 +748,7 @@
     const rows = Array.from(box.querySelectorAll('.lmd-plg-row'));
     const rowOf = (k) => rows.find((r) => r.dataset.plug === k) || null;
     const inputOf = (k) => rowOf(k).querySelector('[data-plugin]');
-    let sel = ''; let seq = 0; let stay = 0; let hover = 0; let over = ''; let mx = -1; let my = -1;
+    let sel = ''; let seq = 0; let stay = 0;
     // Solo la fila que tuvo el foco queda en el orden de Tab: de ahí se pasa al detalle, y las flechas recorren la lista.
     const rove = (row) => rows.forEach((r) => r.querySelectorAll('[data-plug-pick], [data-plugin]').forEach((n) => { n.tabIndex = r === row ? 0 : -1; }));
     // Lo dibujado es para mirar: no entra en el orden de Tab, no repite ids de la nota y sus enlaces no llevan a ningún lado.
@@ -788,28 +789,31 @@
       if (SAMPLE_LAZY[k] && !wait) full(k); // ya está cargada: directo
       else if (wait) { if (now) full(k); else stay = setTimeout(() => { if (sel === k && side.isConnected && !side.hidden) full(k); }, PLUG_STAY); }
     };
+    const still = LMD.tools.follow(d, rows, (r) => pick(r.dataset.plug), live);
     rows.forEach((r) => {
       const k = r.dataset.plug;
-      // El cursor elige al pasar, con una demora corta para que cruzar la lista no la haga parpadear. Vale solo si el
-      // cursor se movió: cuando la lista se desliza debajo de un cursor quieto (las flechas del teclado), no elige nada.
-      r.addEventListener('pointermove', (e) => {
-        if (e.pointerType !== 'mouse' || (e.clientX === mx && e.clientY === my)) return;
-        mx = e.clientX; my = e.clientY; if (over === k) return;
-        over = k; clearTimeout(hover); hover = setTimeout(() => { if (side.isConnected && over === k) pick(k); }, 90);
-      }, live);
-      r.addEventListener('pointerleave', () => { if (over === k) { over = ''; clearTimeout(hover); } }, live);
       r.addEventListener('focusin', () => { rove(r); pick(k); }, live);
       // Toda la fila elige, menos su interruptor, que prende y apaga. En pantalla angosta, además abre el detalle encima.
-      r.addEventListener('click', (e) => { if (e.target.closest('.lmd-switch')) return; clearTimeout(hover); rove(r); pick(k, true); if (d.enter()) side.focus({ preventScroll: true }); }, live);
+      r.addEventListener('click', (e) => { still(); if (e.target.closest('.lmd-switch')) return; rove(r); pick(k, true); if (d.enter()) side.focus({ preventScroll: true }); }, live);
       inputOf(k).addEventListener('change', () => { if (sel === k) mine(); }, live);
     });
     sideOn.addEventListener('change', () => { const input = inputOf(sel); input.checked = sideOn.checked; input.dispatchEvent(new Event('change', { bubbles: true })); });
-    // Con el teclado: flechas, Inicio y Fin pasan de fila en fila, de un bloque al siguiente.
+    // Con el teclado: arriba y abajo pasan de fila en fila, de un bloque al siguiente; izquierda y derecha, a la fila
+    // de la otra columna que queda a la misma altura; Inicio y Fin, a las puntas.
     box.addEventListener('keydown', (e) => {
       const from = e.target.closest('[data-plug-pick], [data-plugin]'); if (!from || e.altKey || e.ctrlKey || e.metaKey) return;
       const at = rows.indexOf(from.closest('.lmd-plg-row'));
-      const to = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: rows.length - 1 }[e.key]; if (to === undefined || at < 0) return;
-      e.preventDefault(); const next = rows[Math.max(0, Math.min(rows.length - 1, to))]; if (!next || next === rows[at]) return;
+      if (at < 0) return;
+      let next = null;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        const me = rows[at].getBoundingClientRect(); let best = Infinity;
+        rows.forEach((r) => { const b = r.getBoundingClientRect(); if (e.key === 'ArrowRight' ? b.left <= me.left + 4 : b.left >= me.left - 4) return; const far = Math.abs(b.top - me.top); if (far < best) { best = far; next = r; } });
+        if (!next) return;
+      } else {
+        const to = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: rows.length - 1 }[e.key]; if (to === undefined) return;
+        next = rows[Math.max(0, Math.min(rows.length - 1, to))];
+      }
+      e.preventDefault(); if (!next || next === rows[at]) return;
       next.querySelector(from.matches('[data-plugin]') ? '[data-plugin]' : '[data-plug-pick]').focus({ preventScroll: true }); next.scrollIntoView({ block: 'nearest' });
     }, live);
     d.back = () => { const b = rowOf(sel) && rowOf(sel).querySelector('[data-plug-pick]'); if (b) b.focus({ preventScroll: true }); };

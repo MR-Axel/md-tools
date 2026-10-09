@@ -104,15 +104,16 @@
 
   // ---------- La pestaña de Ajustes ----------
   // Una fila por herramienta: el botón (nombre y descripción) la elige para verla en el detalle, y el interruptor la
-  // prende y la apaga ahí mismo. Debajo, lo que no deja usarla y el aviso de lo que le falta para andar.
+  // prende y la apaga ahí mismo. Debajo, lo que no deja usarla y el aviso de lo que le falta para andar. En pantalla
+  // ancha las filas van de a dos y muestran solo el nombre: la descripción se lee en el detalle (y en el globo).
   const hasOpts = (tool) => !!(tool.settings || tool.lazy);
   function card(tool) {
     const why = reason(tool); const on = isOn(tool.id); const note = !why && tool.note ? tool.note() || '' : '';
     return '<div class="lmd-tl-card' + (why ? ' lmd-tl-off' : '') + '" role="listitem" data-tool="' + esc(tool.id) + '">' +
       '<span class="lmd-tl-ico" aria-hidden="true">' + (tool.icon || ICON.tools) + '</span>' +
-      '<button type="button" class="lmd-tl-main" data-tool-pick="' + esc(tool.id) + '" aria-controls="lmd-tl-side" aria-current="false"><b>' + esc(T(tool.name)) + LMD.kit.ICON.chevron + '</b><p>' + esc(T(tool.about)) + '</p></button>' +
+      '<button type="button" class="lmd-tl-main" data-tool-pick="' + esc(tool.id) + '" aria-controls="lmd-tl-side" aria-current="false" title="' + esc(T(tool.about)) + '"><b>' + esc(T(tool.name)) + LMD.kit.ICON.chevron + '</b><p>' + esc(T(tool.about)) + '</p></button>' +
       ('<label class="lmd-switch"><input type="checkbox" data-tool-on="' + esc(tool.id) + '" aria-label="' + esc(T(tool.name)) + '"' + (on ? ' checked' : '') + (why ? ' disabled' : '') + '><i></i></label>') +
-      (why || note ? '<p class="lmd-tl-why">' + esc(why || note) + '</p>' : '') +
+      (why || note ? '<p class="lmd-tl-why" title="' + esc(why || note) + '">' + esc(why || note) + '</p>' : '') +
       (hasOpts(tool) ? '<div class="lmd-tl-acts" hidden><button type="button" class="lmd-tl-need" data-tool-need="' + esc(tool.id) + '" hidden></button></div>' : '') +
     '</div>';
   }
@@ -177,6 +178,25 @@
     }
     return d;
   }
+  // El detalle sigue al cursor, con intención: pasa a la fila donde el cursor se detiene un instante, no a las que cruza
+  // de pasada camino al detalle. Solo cuenta si el cursor se movió de verdad: cuando la lista se desliza debajo de un
+  // cursor quieto (las flechas del teclado) no elige nada. Y con el foco dentro del detalle (se está usando uno de sus
+  // controles) el cursor no cambia nada: ahí manda el clic. Al salir de la lista, queda lo último que se mostró.
+  // Devuelve cómo cancelar la elección que esté en espera. opt: las opciones de los escuchas (su señal de corte).
+  const HOVER_REST = 110;
+  function follow(d, rows, pick, opt) {
+    let timer = 0; let mx = -1; let my = -1;
+    const busy = () => { const a = document.activeElement; return !!a && a !== d.side && d.side.contains(a); };
+    rows.forEach((r) => {
+      r.addEventListener('pointermove', (e) => {
+        if (e.pointerType !== 'mouse' || (e.clientX === mx && e.clientY === my)) return;
+        mx = e.clientX; my = e.clientY; clearTimeout(timer);
+        timer = setTimeout(() => { if (d.side.isConnected && !d.side.hidden && !busy()) pick(r); }, HOVER_REST);
+      }, opt);
+      r.addEventListener('pointerleave', () => clearTimeout(timer), opt);
+    });
+    return () => clearTimeout(timer);
+  }
   const subGet = () => {
     if (!subNow) { try { subNow = sessionStorage.getItem(SUB_KEY) || ''; } catch (e) { /* sin almacenamiento vale mientras dure la página */ } }
     return SUBS.some((x) => x[0] === subNow) ? subNow : 'tools';
@@ -233,6 +253,7 @@
       '<p class="lmd-hint lmd-tl-turn" hidden>' + esc(T('Prendela para configurarla.')) + '</p><div class="lmd-tl-opts"></div>';
     const sideOn = side.querySelector('[data-tl-side=on]');
     let sel = ''; // la herramienta que está en el detalle
+    let drawing = null; // el último dibujo de opciones, mientras dura
     d.back = () => { const to = parts(sel).pick; if (to) to.focus({ preventScroll: true }); };
     // Las opciones de la herramienta elegida, si está prendida y las tiene. Con focus, el foco va a su primer control.
     const draw = async (focus) => {
@@ -254,19 +275,22 @@
       // Sin un control para usar todavía (presentar pide una nota abierta), el foco queda en el detalle.
       if (first) first.focus({ preventScroll: true }); else side.focus({ preventScroll: true });
     };
+    // Solo una fila queda en el orden de Tab (la última elegida con el teclado o con un clic): de la lista se pasa al
+    // detalle, y las flechas recorren las filas.
+    const rove = (id) => rows.forEach((c) => c.querySelectorAll('[data-tool-pick], [data-tool-on]').forEach((n) => { n.tabIndex = c.dataset.tool === id ? 0 : -1; }));
     // Elige una herramienta: su fila queda marcada y el detalle pasa a ella. enter: en angosto, además lo abre.
-    // focus: el foco va a su primer control. Nada de esto prende ni carga una herramienta apagada.
+    // focus: el foco va a su primer control. hover: la eligió el cursor al pasar. Nada de esto prende ni carga una
+    // herramienta apagada.
     const pick = (id, o) => {
       o = o || {};
       const tool = tools.find((t) => t.id === id); if (!tool || !cardOf(id)) return;
       const changed = sel !== id; sel = id; selNow = id;
       try { sessionStorage.setItem(SEL_KEY, id); } catch (e) { /* sin almacenamiento vale mientras dure la página */ }
+      if (!o.hover) rove(id);
       if (changed) {
-        // Solo la fila elegida queda en el orden de Tab: de la lista se pasa al detalle, y las flechas recorren las filas.
         rows.forEach((c) => {
           const on = c.dataset.tool === id; c.classList.toggle('lmd-tl-now', on);
           c.querySelector('[data-tool-pick]').setAttribute('aria-current', String(on));
-          c.querySelectorAll('[data-tool-pick], [data-tool-on]').forEach((n) => { n.tabIndex = on ? 0 : -1; });
         });
         const why = reason(tool) || (tool.note ? tool.note() || '' : '');
         side.dataset.tool = id;
@@ -280,9 +304,10 @@
       }
       const entering = !!o.enter && d.enter(); d.fit();
       if (entering && !o.focus) side.focus({ preventScroll: true });
-      if (changed || o.redraw) draw(o.focus); else if (o.focus) into(side.querySelector('.lmd-tl-opts'));
+      // Si las opciones todavía se están dibujando (la fila recién tomó el foco), el foco espera a que estén.
+      if (changed || o.redraw) drawing = draw(o.focus); else if (o.focus) Promise.resolve(drawing).then(() => { if (sel === id) into(side.querySelector('.lmd-tl-opts')); });
     };
-    // Prende o apaga. La selección no cambia, salvo al prender una que tiene opciones: pasa al detalle para verlas.
+    // Prende o apaga. Al prender una que tiene opciones, el foco pasa a ellas.
     const toggle = (id, on, focus) => {
       set(id, on);
       const input = parts(id).input; if (input) input.checked = on;
@@ -291,19 +316,23 @@
       else if (sel === id) draw(false);
     };
     sideOn.addEventListener('change', () => toggle(sel, sideOn.checked, false));
+    const still = follow(d, rows, (c) => pick(c.dataset.tool, { hover: true }));
     rows.forEach((c) => {
       const id = c.dataset.tool;
-      // Toda la fila elige, menos su interruptor y su aviso, que hacen lo suyo.
-      c.addEventListener('click', (e) => { if (!e.target.closest('.lmd-switch, .lmd-tl-need')) pick(id, { enter: true }); });
+      // Toda la fila elige, menos su interruptor y su aviso, que hacen lo suyo. Llegar a ella con el teclado también.
+      c.addEventListener('click', (e) => { still(); if (!e.target.closest('.lmd-switch, .lmd-tl-need')) pick(id, { enter: true }); });
+      c.addEventListener('focusin', () => pick(id));
       c.querySelector('[data-tool-on]').addEventListener('change', (e) => toggle(id, e.target.checked, true));
       const n = c.querySelector('[data-tool-need]'); if (n) n.addEventListener('click', () => pick(id, { enter: true, focus: true }));
     });
-    // Con el teclado: flechas, Inicio y Fin pasan de fila en fila, y el detalle las sigue.
+    // Con el teclado: las flechas recorren la grilla (en pantalla ancha, de a dos: izquierda y derecha cambian de
+    // columna, arriba y abajo de fila), Inicio y Fin van a las puntas, y el detalle las sigue.
     list.addEventListener('keydown', (e) => {
       const from = e.target.closest('[data-tool-pick], [data-tool-on]'); if (!from || e.altKey || e.ctrlKey || e.metaKey) return;
       const at = rows.indexOf(from.closest('.lmd-tl-card'));
-      const to = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: rows.length - 1 }[e.key]; if (to === undefined || at < 0) return;
-      e.preventDefault(); const next = rows[Math.max(0, Math.min(rows.length - 1, to))]; if (!next || next === rows[at]) return;
+      const cols = wide() ? 2 : 1; const side2 = cols > 1 ? { ArrowRight: at % 2 ? at : at + 1, ArrowLeft: at % 2 ? at - 1 : at } : {};
+      const to = Object.assign({ ArrowDown: at + cols, ArrowUp: at - cols, Home: 0, End: rows.length - 1 }, side2)[e.key]; if (to === undefined || at < 0) return;
+      e.preventDefault(); const next = rows[to]; if (!next || next === rows[at]) return;
       pick(next.dataset.tool);
       const same = next.querySelector(from.matches('[data-tool-on]') ? '[data-tool-on]:not(:disabled)' : '[data-tool-pick]') || next.querySelector('[data-tool-pick]');
       same.focus({ preventScroll: true }); next.scrollIntoView({ block: 'nearest' });
@@ -340,7 +369,7 @@
   // Los Ajustes pasaron a otra pestaña: el detalle no sigue a la vista.
   const leave = () => { if (cur) cur.drop(); };
 
-  LMD.tools = { register, init, pane, sub, isOn, set, opt, setOpt, need, show, detail, shut: shutSide, leave, ICON, list: () => tools.slice(), community };
+  LMD.tools = { register, init, pane, sub, isOn, set, opt, setOpt, need, show, detail, follow, shut: shutSide, leave, ICON, list: () => tools.slice(), community };
 
   // ---------- Las que vienen con la app ----------
   const APP_STORE = () => !!LMD.storeApp;

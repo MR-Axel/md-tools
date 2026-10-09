@@ -1648,11 +1648,25 @@ p.lmd-tl-why { color: var(--fg-faint); font-size: 12.5px; line-height: 1.4; }
    fijas: la zona de contenido se queda con la izquierda, con la lista y su scroll, y el detalle con la derecha, con
    el suyo. Nada tapa nada, y elegir una herramienta no mueve ninguna fila. */
 .lmd-panel-card > .lmd-panel-body, .lmd-tl-side { grid-column: -2 / -1; grid-row: -2 / -1; }
-.lmd-panel-card.lmd-tl-split > .lmd-panel-body { box-sizing: border-box; justify-self: start; width: 50%; padding-right: 16px; }
-.lmd-tl-side { justify-self: end; box-sizing: border-box; display: flex; flex-direction: column; width: 50%; min-width: 0; min-height: 0; border-left: 1px solid var(--line); background: var(--bg); }
+.lmd-panel-card.lmd-tl-split > .lmd-panel-body { box-sizing: border-box; justify-self: start; width: calc(100% - 300px); padding-right: 14px; padding-bottom: 8px; }
+.lmd-tl-split > .lmd-panel-body > section { padding: 12px 0 8px; }
+.lmd-tl-side { justify-self: end; box-sizing: border-box; display: flex; flex-direction: column; width: 300px; min-width: 0; min-height: 0; border-left: 1px solid var(--line); background: var(--bg); }
 .lmd-tl-side[hidden] { display: none; }
 .lmd-tl-split .lmd-tl-card.lmd-tl-now { border-color: var(--accent-fill); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent-fill); }
-.lmd-tl-split .lmd-tl-main p { display: block; white-space: nowrap; text-overflow: ellipsis; }
+/* En pantalla ancha las filas van de a dos y compactas (ícono, nombre e interruptor), para que entren todas sin
+   deslizar, también cuando sean quince: la descripción se lee en el detalle. Lo que no deja usar una herramienta y
+   el aviso de lo que le falta siguen en la fila, en un renglón. */
+.lmd-tl-split .lmd-tl-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 6px; }
+.lmd-tl-split .lmd-tl-card { box-sizing: border-box; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 1px 8px; min-height: 40px; padding: 5px 8px; }
+.lmd-tl-split .lmd-tl-card .lmd-tl-ico { width: 26px; height: 26px; border-radius: 7px; }
+.lmd-tl-split .lmd-tl-card .lmd-tl-ico svg { width: 16px; height: 16px; }
+.lmd-tl-split .lmd-tl-main b { font-size: 13.5px; line-height: 1.25; overflow-wrap: anywhere; }
+.lmd-tl-split .lmd-tl-main p { display: none; }
+.lmd-tl-split .lmd-tl-card > p.lmd-tl-why { overflow: hidden; font-size: 11.5px; line-height: 1.3; white-space: nowrap; text-overflow: ellipsis; }
+.lmd-tl-split .lmd-tl-acts { margin: 0; }
+.lmd-tl-split .lmd-tl-need { padding: 1px 8px; font-size: 11.5px; }
+.lmd-tl-split .lmd-tl-lead { display: none; }
+.lmd-tl-split .lmd-subtabs { margin-bottom: 12px; }
 .lmd-tl-split .lmd-tl-main b svg { display: none; }
 .lmd-tl-side-head { flex: none; display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 9px 16px; border-bottom: 1px solid var(--line); }
 .lmd-tl-side-head h4 { flex: 1; min-width: 0; margin: 0; font-size: 14px; font-weight: 600; line-height: 1.3; color: var(--fg); overflow-wrap: anywhere; }
@@ -3107,6 +3121,12 @@ html.lmd-ai-open .lmd-ai-card { left: calc(50% - 190px); width: min(860px, calc(
 .lmd-plg-pick:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
 .lmd-plg-row .lmd-switch { min-height: 0; padding: 0; }
 .lmd-tl-split .lmd-plg-pick svg { display: none; }
+/* En pantalla ancha, dos columnas de interruptores con sus bloques, y filas más bajas: entran sin deslizar. */
+.lmd-tl-split .lmd-plug { display: block; column-count: 2; column-gap: 14px; }
+.lmd-tl-split .lmd-plug-group { break-inside: avoid; margin: 0 0 8px; }
+.lmd-tl-split .lmd-plug-group h4 { margin: 0; }
+.lmd-tl-split .lmd-plg-row { gap: 8px; min-height: 28px; padding: 0 6px 0 8px; }
+.lmd-tl-split .lmd-plg-pick { padding: 3px 0; font-size: 13px; line-height: 1.2; }
 .lmd-tl-split .lmd-plg-row.lmd-tl-now { border-color: var(--accent-fill); background: var(--accent-soft); }
 /* El ejemplo: lo que se escribe, y cómo se ve apagado y prendido, dibujado por el motor de la app. Es para mirar. */
 .lmd-plg-ex { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }

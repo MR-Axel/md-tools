@@ -1,5 +1,5 @@
-// Ajustes > Plugins: la lista en una columna con el detalle al costado, y el ejemplo de cada plugin, dibujado por el
-// motor de la app: lo que se escribe, y cómo se ve apagado y prendido. También en pantalla chica.
+// Ajustes > Plugins: los interruptores en dos columnas con el detalle angosto al costado, sin deslizar, y el ejemplo de
+// cada plugin, dibujado por el motor de la app: lo que se escribe, y cómo se ve apagado y prendido. También en pantalla chica.
 //   BROWSER=firefox node plugins.mjs      BROWSER=webkit node plugins.mjs      (sin BROWSER: chromium)
 import { rig, tally, sleep } from './rig.mjs';
 
@@ -28,28 +28,31 @@ const side = (page) => page.evaluate(() => { const s = document.querySelector('.
   const part = (id) => { const p = s.querySelector('[data-pg=' + id + ']'); return { label: p.querySelector('h5 span').textContent, mine: !p.querySelector('.lmd-plg-now').hidden, html: (p.querySelector('.lmd-plg-out') || p.querySelector('code')).innerHTML, text: (p.querySelector('.lmd-plg-out') || p.querySelector('code')).textContent }; };
   return { open: !s.hidden, plug: s.dataset.plug || '', role: s.getAttribute('role'), named: (document.getElementById(s.getAttribute('aria-labelledby')) || {}).textContent || '', name: s.querySelector('h4').textContent, help: s.querySelector('.lmd-tl-about').textContent, on: s.querySelector('[data-tl-side=on]').checked,
     ex: { role: ex.getAttribute('role'), label: ex.getAttribute('aria-label'), live: ex.getAttribute('aria-live') }, src: part('src'), off: part('off'), onPart: part('on'), wait: !s.querySelector('.lmd-plg-wait').hidden, back: !!s.querySelector('.lmd-tl-back').offsetParent, inside: s.contains(f),
-    beside: !s.hidden && Math.abs(r.left - b.right) <= 1 && Math.abs(r.top - b.top) <= 1 && Math.abs(r.right - card.right) <= 2 && Math.abs(r.width - b.width) <= 2, whole: !s.hidden && Math.abs(r.width - b.width) <= 1 && Math.abs(r.left - b.left) <= 1,
+    beside: !s.hidden && Math.abs(r.left - b.right) <= 1 && Math.abs(r.top - b.top) <= 1 && Math.abs(r.right - card.right) <= 2 && r.width >= 280 && r.width <= 320 && b.width > r.width, whole: !s.hidden && Math.abs(r.width - b.width) <= 1 && Math.abs(r.left - b.left) <= 1,
     split: document.querySelector('.lmd-panel-card').classList.contains('lmd-tl-split'), inertAll: document.querySelector('[data-tab=plug] .lmd-plug').inert,
     tabbable: [...sb.querySelectorAll('.lmd-plg-out a, .lmd-plg-out button, .lmd-plg-out input, .lmd-plg-out summary, .lmd-plg-out [tabindex]')].filter((n) => n.tabIndex >= 0).length, ids: [...sb.querySelectorAll('.lmd-plg-out [id]')].filter((n) => !n.closest('svg')).length, handlers: [...sb.querySelectorAll('.lmd-plg-out *')].filter((n) => [...n.attributes].some((a) => /^on/i.test(a.name))).length,
-    wide: [...sb.querySelectorAll('.lmd-plg-part, .lmd-plg-out > *, .lmd-plg-src')].some((n) => n.offsetParent && n.getBoundingClientRect().right > sb.getBoundingClientRect().left + sb.clientWidth + 0.5) }; });
+    wide: getComputedStyle(sb).overflowX !== 'hidden' || [...sb.querySelectorAll('.lmd-tl-about, .lmd-plg-part, .lmd-plg-part h5, .lmd-plg-out > *, .lmd-plg-src')].some((n) => n.offsetParent && n.getBoundingClientRect().right > sb.getBoundingClientRect().left + sb.clientWidth + 0.5) }; });
 const grid = (page) => page.evaluate(() => { const body = document.querySelector('.lmd-panel-body'); const card = document.querySelector('.lmd-panel-card').getBoundingClientRect();
   return JSON.stringify({ rows: [...document.querySelectorAll('.lmd-plg-row')].map((c) => { const r = c.getBoundingClientRect(); return [c.dataset.plug, r.left, r.top, r.width, r.height].join(' '); }), top: body.scrollTop, tall: body.scrollHeight, dialog: [card.left, card.top, card.width, card.height].join(' ') }); });
 const reach = (page) => page.evaluate(() => { const body = document.querySelector('.lmd-panel-body'); const bad = [];
   [...document.querySelectorAll('.lmd-plg-row')].forEach((c) => { c.scrollIntoView({ block: 'nearest' }); const r = c.getBoundingClientRect(); const b = body.getBoundingClientRect(); const sw = c.querySelector('.lmd-switch').getBoundingClientRect();
     if (r.top < b.top - 1 || r.bottom > b.bottom + 1 || r.right > b.left + body.clientWidth + 1 || !c.contains(document.elementFromPoint(r.left + 20, r.top + r.height / 2)) || !c.contains(document.elementFromPoint(sw.left + sw.width / 2, sw.top + sw.height / 2))) bad.push(c.dataset.plug); });
   const out = { bad, scrolls: body.scrollHeight > body.clientHeight, side: body.scrollWidth <= body.clientWidth + 1 }; body.scrollTop = 0; return out; });
+// Sin deslizar nada: la lista no tiene scroll y cada fila, con su nombre entero, está dentro de la zona visible.
+const fits = (page) => page.evaluate(() => { const body = document.querySelector('.lmd-panel-body'); const b = body.getBoundingClientRect(); const rows = [...document.querySelectorAll('.lmd-plg-row')]; const heads = [...document.querySelectorAll('.lmd-plug-group h4')];
+  return { n: rows.length, extra: body.scrollHeight - body.clientHeight, top: body.scrollTop, out: rows.concat(heads).filter((c) => { const r = c.getBoundingClientRect(); return r.top < b.top - 0.5 || r.bottom > b.bottom + 0.5 || r.left < b.left || r.right > b.left + body.clientWidth + 0.5; }).map((c) => c.dataset.plug || c.textContent), cut: rows.filter((c) => { const n = c.querySelector('[data-plug-pick] span'); return n.scrollWidth > n.clientWidth + 1 || n.getBoundingClientRect().right > c.querySelector('.lmd-switch').getBoundingClientRect().left; }).map((c) => c.dataset.plug), side: Math.round(document.querySelector('.lmd-tl-side').getBoundingClientRect().width), cols: new Set(rows.map((c) => Math.round(c.getBoundingClientRect().left))).size, heads: heads.length }; });
 const choose = async (page, k) => { await page.evaluate((x) => { const r = document.querySelector('.lmd-plg-row[data-plug=' + x + ']'); r.scrollIntoView({ block: 'nearest' }); r.querySelector('[data-plug-pick]').click(); }, k); await until(() => page.evaluate((x) => document.querySelector('.lmd-tl-side').dataset.plug === x && document.querySelector('.lmd-plg-wait').hidden, k)); await sleep(60); };
 const KEYS = ['sub', 'sup', 'ins', 'mark', 'abbr', 'emoji', 'typographer', 'tasklists', 'deflist', 'footnote', 'alerts', 'containers', 'tables', 'highlight', 'copyCode', 'katex', 'mermaid', 'graphviz', 'wikilinks', 'linkify', 'imageViewer', 'toc', 'frontmatter', 'html', 'breaks'];
 
-await step('Plugins: la lista en una columna con el detalle al costado', async () => {
+await step('Plugins: dos columnas de interruptores con el detalle al costado', async () => {
   const { ctx, page } = await open();
   await plugTab(page);
   const list = await page.evaluate(() => { const box = document.querySelector('[data-tab=plug] .lmd-plug'); const rows = [...box.querySelectorAll('.lmd-plg-row')];
     return { keys: rows.map((r) => r.dataset.plug), known: Object.keys(LMD.PLUGIN_LABELS).length, samples: Object.keys(LMD.PLUGIN_LABELS).filter((k) => !LMD.PLUGIN_SAMPLES[k] || !LMD.PLUGIN_HELP[k]), groups: [...box.querySelectorAll('.lmd-plug-group')].map((g) => g.querySelector('h4').textContent + ':' + g.querySelectorAll('[data-plugin]').length).join('|'),
       cols: new Set(rows.map((r) => Math.round(r.getBoundingClientRect().left) + ':' + Math.round(r.getBoundingClientRect().width))).size, each: rows.every((r) => r.querySelectorAll('[data-plugin]').length === 1 && r.querySelector('[data-plug-pick]').tagName === 'BUTTON' && r.querySelector('[data-plug-pick]').textContent.trim() === LMD.t(LMD.PLUGIN_LABELS[r.dataset.plug]) && r.querySelector('[data-plugin]').getAttribute('aria-label') === LMD.t(LMD.PLUGIN_LABELS[r.dataset.plug])),
       tips: box.querySelectorAll('[data-tip]').length, low: Math.min(...rows.map((r) => r.getBoundingClientRect().height)), high: Math.max(...rows.map((r) => r.getBoundingClientRect().height)) }; });
-  check('los veinticinco plugins, cada uno con su interruptor, su explicación y su ejemplo, en cinco bloques y una sola columna', J(list.keys) === J(KEYS) && list.known === 25 && list.samples.length === 0 && list.groups === 'Text:7|Blocks:6|Code and math:5|Links and media:3|Behavior:4' && list.cols === 1 && list.each, list);
-  check('filas cortas, sin el globo de explicación de antes', list.tips === 0 && list.low >= 32 && list.high <= 60, list);
+  check('los veinticinco plugins, cada uno con su interruptor, su explicación y su ejemplo, en cinco bloques y dos columnas', J(list.keys) === J(KEYS) && list.known === 25 && list.samples.length === 0 && list.groups === 'Text:7|Blocks:6|Code and math:5|Links and media:3|Behavior:4' && list.cols === 2 && list.each, list);
+  check('filas cortas, sin el globo de explicación de antes', list.tips === 0 && list.low >= 28 && list.high <= 48, list);
   const s0 = await side(page);
   check('al entrar el detalle ya está al costado, con el primer plugin', s0.open && s0.beside && s0.split && s0.plug === 'sub' && s0.name === 'Subscript (H~2~O)' && s0.named === s0.name && s0.role === 'region' && !s0.back, s0);
   check('la explicación se lee en el detalle, y el ejemplo es una región con nombre que avisa sin interrumpir', s0.help === 'H~2~O shows the 2 as a subscript.' && s0.ex.role === 'region' && s0.ex.label === 'Example' && s0.ex.live === 'polite', s0);
@@ -76,7 +79,10 @@ await step('Plugins: la lista en una columna con el detalle al costado', async (
   check('llegar a un interruptor con el teclado muestra el ejemplo de ese plugin', (await side(page)).plug === 'sub');
   const keys = [];
   for (const k of ['ArrowDown', 'ArrowDown', 'ArrowUp', 'End', 'Home']) { await page.keyboard.press(k); await sleep(130); keys.push(await page.evaluate(() => { const a = document.activeElement; const r = a.closest('.lmd-plg-row'); return (r ? r.dataset.plug : '?') + '>' + document.querySelector('.lmd-tl-side').dataset.plug; })); }
-  check('las flechas, Inicio y Fin pasan de fila en fila, de un bloque al siguiente, y el detalle las sigue', J(keys) === J(['sup>sup', 'ins>ins', 'sup>sup', 'breaks>breaks', 'sub>sub']), keys);
+  check('arriba y abajo, Inicio y Fin pasan de fila en fila, de un bloque al siguiente, y el detalle las sigue', J(keys) === J(['sup>sup', 'ins>ins', 'sup>sup', 'breaks>breaks', 'sub>sub']), keys);
+  const lr = [];
+  for (const k of ['ArrowRight', 'ArrowRight', 'ArrowLeft', 'ArrowLeft']) { await page.keyboard.press(k); await sleep(130); lr.push(await page.evaluate(() => { const a = document.activeElement; const r = a.closest('.lmd-plg-row'); const first = document.querySelector('.lmd-plg-row[data-plug=sub]').getBoundingClientRect(); const me = r.getBoundingClientRect(); return (me.left > first.left + 20 ? 'der' : 'izq') + ':' + (Math.abs(me.top - first.top) < 30) + ':' + (document.querySelector('.lmd-tl-side').dataset.plug === r.dataset.plug) + ':' + a.matches('[data-plugin]'); })); }
+  check('derecha e izquierda pasan a la fila de la otra columna que está a la misma altura', J(lr) === J(['der:true:true:true', 'der:true:true:true', 'izq:true:true:true', 'izq:true:true:true']), lr);
   const tabs = [];
   await page.focus('.lmd-plg-row[data-plug=mark] [data-plug-pick]');
   for (let i = 0; i < 2; i++) { await page.keyboard.press('Tab'); tabs.push(await page.evaluate(() => { const a = document.activeElement; const r = a.closest('.lmd-plg-row'); return r ? r.dataset.plug + (a.matches('[data-plugin]') ? ':switch' : ':row') : a.closest('.lmd-tl-side') ? 'detail' : 'out'; })); }
@@ -84,7 +90,7 @@ await step('Plugins: la lista en una columna con el detalle al costado', async (
   const r800 = await reach(page);
   await page.setViewportSize({ width: 1280, height: 720 }); await sleep(250);
   const r720 = await reach(page);
-  check('a 800 y a 720 de alto todas las filas se alcanzan deslizando la lista, con el detalle al costado', r800.bad.length === 0 && r800.side && r720.bad.length === 0 && r720.scrolls && r720.side && (await side(page)).beside, [r800, r720]);
+  check('a 800 y a 720 de alto de ventana todas las filas se ven sin deslizar la lista, con el detalle al costado', r800.bad.length === 0 && r800.side && !r800.scrolls && r720.bad.length === 0 && !r720.scrolls && r720.side && (await side(page)).beside, [r800, r720]);
   // Otra pestaña y volver; Escape
   await page.click('[data-ptab=look]'); await sleep(150);
   const away = await page.evaluate(() => ({ side: [...document.querySelectorAll('.lmd-tl-side')].every((s) => s.hidden), split: document.querySelector('.lmd-panel-card').classList.contains('lmd-tl-split') }));
@@ -98,6 +104,20 @@ await step('Plugins: la lista en una columna con el detalle al costado', async (
   check('Escape cierra los ajustes de una', await page.evaluate(() => document.querySelector('.lmd-panel').hidden));
   check('y nada de esto es un error', R.errors.length === 0, R.errors);
   await ctx.close();
+});
+
+await step('Plugins: los veinticinco entran sin deslizar, en los dos idiomas', async () => {
+  // El tamaño de la ventana, no el del diálogo: 1280x720 da el diálogo de 1000 por 680, y 1000x680 el de 960 por 640.
+  const bad = []; const seen = [];
+  for (const vp of [{ width: 1280, height: 720 }, { width: 1280, height: 800 }, { width: 1024, height: 700 }, { width: 1000, height: 680 }]) for (const lang of ['es', 'en']) {
+    const { ctx, page } = await open({ ctx: { viewport: vp }, lang });
+    await plugTab(page); await sleep(200);
+    const f = await fits(page); const tag = vp.width + 'x' + vp.height + ' ' + lang; const s = await side(page);
+    seen.push(tag + ': sobra ' + (-f.extra) + ', detalle ' + f.side);
+    if (f.n !== 25 || f.heads !== 5 || f.extra > 0 || f.top !== 0 || f.out.length || f.cut.length || f.cols !== 2 || f.side < 280 || f.side > 320 || !s.beside || s.wide) bad.push([tag, f, s.wide]);
+    await ctx.close();
+  }
+  check('a 1280x720, 1280x800, 1024x700 y 1000x680 de ventana, en español y en inglés, los veinticinco interruptores y sus cinco títulos se ven enteros sin deslizar, en dos columnas, con el detalle de entre 280 y 320 px', bad.length === 0 && seen.length === 8, bad.length ? bad : seen);
 });
 
 await step('Plugins: pasar el cursor no descarga nada pesado; quedarse o hacer clic, sí', async () => {
@@ -127,6 +147,19 @@ await step('Plugins: pasar el cursor no descarga nada pesado; quedarse o hacer c
   await page.hover('.lmd-plg-row[data-plug=katex] [data-plug-pick]'); await sleep(350);
   const k2 = await side(page);
   check('ya cargada, la librería dibuja directo al pasar el cursor', k2.plug === 'katex' && !k2.wait && /class="katex/.test(k2.onPart.html), k2.wait);
+  // Con el foco dentro del detalle, el cursor no cambia de plugin: ahí manda el clic
+  await page.focus('.lmd-tl-side [data-tl-side=on]');
+  await page.hover('.lmd-plg-row[data-plug=sub]', { position: { x: 30, y: 10 } }); await sleep(400);
+  const held = (await side(page)).plug;
+  await page.click('.lmd-plg-row[data-plug=sub] [data-plug-pick]'); await sleep(250);
+  const clicked = (await side(page)).plug;
+  await page.hover('.lmd-plg-row[data-plug=mark]', { position: { x: 30, y: 10 } }); await sleep(400);
+  check('con el foco en el detalle el cursor no cambia de plugin; un clic sí, y después el detalle vuelve a seguir al cursor', held === 'katex' && clicked === 'sub' && (await side(page)).plug === 'mark', [held, clicked, (await side(page)).plug]);
+  // Cruzar filas de pasada, camino al detalle, no elige ninguna
+  const pts = await page.evaluate(() => { const p = (q) => { const r = document.querySelector(q).getBoundingClientRect(); return { x: r.left + 30, y: r.top + r.height / 2 }; }; return [p('.lmd-plg-row[data-plug=sub]'), p('.lmd-plg-row[data-plug=highlight]'), p('.lmd-tl-side .lmd-tl-about')]; });
+  await page.mouse.move(pts[0].x - 5, pts[0].y); await page.mouse.move(pts[0].x, pts[0].y); await sleep(300);
+  await page.mouse.move(pts[1].x, pts[1].y, { steps: 6 }); await page.mouse.move(pts[2].x, pts[2].y, { steps: 6 }); await sleep(350);
+  check('cruzar la otra columna de pasada, camino al detalle, no cambia de plugin, y al salir de la lista queda el último', (await side(page)).plug === 'sub', (await side(page)).plug);
   // Los veinticinco, uno por uno
   await page.mouse.move(4, 4); await sleep(200);
   const bad = []; const table = [];
