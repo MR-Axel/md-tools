@@ -772,7 +772,7 @@ await suite('theme', async () => {
     check('un clic pasa a claro, lo avisa y queda guardado como claro', !b.dark && b.name === 'Switch to dark' && b.said === 'Light theme' && (await stored(page, 'settings')).theme === 'light', b);
     await page.reload(); await page.waitForSelector('.lmd-article > *'); await sleep(300);
     const c = await at();
-    check('al recargar el primer cuadro ya sale claro, sin pasar por el oscuro del dispositivo', !c.dark && c.first === 'light #fbfaf7', c);
+    check('al recargar el primer cuadro ya sale claro, sin pasar por el oscuro del dispositivo', !c.dark && /^(only light|light only) #fbfaf7$/.test(c.first), c);
     await page.keyboard.press('Alt+Shift+T'); await sleep(350);
     const d = await at();
     check('Alt+Shift+T hace lo mismo', d.dark && d.said === 'Dark theme' && (await stored(page, 'settings')).theme === 'dark', d);

@@ -758,7 +758,7 @@
       "Solo se abren archivos Markdown, de texto, JSON o YAML.": "Only Markdown, text, JSON or YAML files can be opened.", "Ese archivo es demasiado grande para abrirlo acá.": "That file is too large to open here.",
       "Ese texto es demasiado grande para abrirlo acá.": "That text is too large to open here.", "Llegaron {n} archivos. Se abrió el primero.": "{n} files arrived. The first one was opened.",
       "Se abrió una copia. Los cambios no se guardan en el archivo original.": "Opened as a copy. Changes are not saved to the original file.",
-      "Este navegador no entregó el archivo. Abrilo con el botón de abajo, o poné Chrome como navegador predeterminado para SharpMD.": "This browser did not hand over the file. Open it with the button below, or set Chrome as your default browser for SharpMD.",
+      "Este navegador no entregó el archivo. Abrilo con el botón de abajo.": "This browser did not hand over the file. Open it with the button below.",
       "Lo compartido no llegó. Abrí el archivo con el botón de abajo.": "What you shared did not arrive. Open the file with the button below.",
       "Compartir como texto": "Share as text", "Lo que mejor anda en WhatsApp y en los chats.": "Works best in WhatsApp and chats.",
       "Compartir como archivo {a}": "Share as a file ({a})", "Por si la otra app no toma el .{a}.": "In case the other app does not take the .{a} file.",

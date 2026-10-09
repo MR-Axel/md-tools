@@ -133,7 +133,7 @@
   }
   function expect(homeCtx) {
     try { const u = new URL(location.href); u.searchParams.delete('open'); history.replaceState(history.state, '', u.href); } catch (e) { /* dirección rara */ }
-    missSoon(homeCtx, T('Este navegador no entregó el archivo. Abrilo con el botón de abajo, o poné Chrome como navegador predeterminado para SharpMD.'), OPEN_WAIT);
+    missSoon(homeCtx, T('Este navegador no entregó el archivo. Abrilo con el botón de abajo.'), OPEN_WAIT);
   }
 
   // ---------- "Compartir": lo que manda otra app ----------

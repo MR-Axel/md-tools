@@ -883,7 +883,7 @@ try {
     check('mientras se espera el archivo, el inicio no dice nada todavía', !(await seen(page)).miss);
     await page.waitForSelector('.lmd-open-miss', { timeout: 8000 }).catch(() => {});
     o = await seen(page);
-    check('si la app se abrió para un archivo y no llegó ninguno, el inicio lo dice, con el botón de abrir a un toque', /This browser did not hand over the file\. Open it with the button below, or set Chrome as your default browser for SharpMD\./.test(o.miss) && o.btn === 'Open file' && !o.open && o.store, o);
+    check('si la app se abrió para un archivo y no llegó ninguno, el inicio lo dice, con el botón de abrir a un toque', /This browser did not hand over the file\. Open it with the button below./.test(o.miss) && o.btn === 'Open file' && !o.open && o.store, o);
     await fits(page, 'aviso de archivo que no llegó');
     await page.evaluate(() => { window.showOpenFilePicker = async () => { window.__asked = true; throw new DOMException('closed', 'AbortError'); }; });
     await page.tap('.lmd-open-miss button'); await page.waitForTimeout(300);
