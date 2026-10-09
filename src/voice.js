@@ -21,6 +21,8 @@
   // Modo texto. Cada renglón: frases separadas por "|" y lo que hacen.
   //   guard: después de un artículo queda como texto.   lead: solo al empezar la frase o detrás de otra orden.
   //   solo: solo si es todo lo que se dijo.   list: como lead, y además en cualquier lugar si se está en una lista.
+  //   item: solo en una lista, sin un artículo adelante, y como lo último que se dijo ("comprar pan siguiente");
+  //         a mitad de frase vale solo si esa misma frase abrió la lista ("nueva lista peras siguiente uvas").
   const TEXT = {
     es: [
       ['punto y aparte', [{ op: 'punct', text: '.' }, { op: 'break' }]],
@@ -42,8 +44,8 @@
       ['subtitulo', { op: 'block', kind: 'h2' }, 'lead'],
       ['titulo', { op: 'block', kind: 'h1' }, 'lead'],
       ['nueva lista|lista nueva|lista con vinetas', { op: 'block', kind: 'ul' }],
-      ['siguiente item|siguiente punto|siguiente elemento', { op: 'next' }],
-      ['siguiente', { op: 'next' }, 'list'],
+      ['siguiente item|siguiente punto|siguiente elemento', { op: 'next' }, 'item'],
+      ['siguiente', { op: 'next' }, 'item'],
       ['tarea hecha|tarea lista|tarea terminada', { op: 'block', kind: 'task', done: true }, 'list'],
       ['nueva tarea', { op: 'block', kind: 'task' }],
       ['tarea', { op: 'block', kind: 'task' }, 'list'],
@@ -81,8 +83,8 @@
       ['subtitle|subheading|sub heading', { op: 'block', kind: 'h2' }, 'lead'],
       ['title|heading', { op: 'block', kind: 'h1' }, 'lead'],
       ['new list|bullet list|bulleted list', { op: 'block', kind: 'ul' }],
-      ['next item|next bullet|next point', { op: 'next' }],
-      ['next', { op: 'next' }, 'list'],
+      ['next item|next bullet|next point', { op: 'next' }, 'item'],
+      ['next', { op: 'next' }, 'item'],
       ['task done|done task|completed task|finished task', { op: 'block', kind: 'task', done: true }, 'list'],
       ['new task|to do item', { op: 'block', kind: 'task' }],
       ['task', { op: 'block', kind: 'task' }, 'list'],
@@ -298,13 +300,14 @@
 
   function parseText(text, lang, ctx) {
     const raw = words(text); const keys = raw.map(key); const idx = table('text', lang, () => index(TEXT[lang], (r) => ({ ops: [].concat(r[1]), flag: r[2] || '' })));
-    const ops = []; let pend = []; let heading = false; let titled = false; let afterCmd = true; let list = !!(ctx && ctx.list);
+    const ops = []; let pend = []; let heading = false; let titled = false; let afterCmd = true; let list = !!(ctx && ctx.list); let opened = false;
     const flush = () => { if (pend.length) { ops.push({ op: 'text', text: pend.join(' ') }); if (heading) titled = true; pend = []; } };
     // Un título es un solo renglón: lo que sigue va en un bloque nuevo.
     const endHeading = (next) => { if (heading && titled && next !== 'break' && next !== 'next') ops.push({ op: 'break' }); heading = false; titled = false; };
     for (let i = 0; i < raw.length; i++) {
       const hit = match(idx, keys, i);
-      const guarded = hit && ((hit.flag === 'guard' && i > 0 && pend.length && DET[lang].includes(keys[i - 1])) || (hit.flag === 'lead' && !afterCmd) || (hit.flag === 'list' && !afterCmd && (!list || DET[lang].includes(keys[i - 1]))) || (hit.flag === 'solo' && raw.length !== hit.w.length));
+      const guarded = hit && ((hit.flag === 'guard' && i > 0 && pend.length && DET[lang].includes(keys[i - 1])) || (hit.flag === 'lead' && !afterCmd) || (hit.flag === 'list' && !afterCmd && (!list || DET[lang].includes(keys[i - 1]))) ||
+        (hit.flag === 'item' && (!list || DET[lang].includes(keys[i - 1]) || (!opened && i + hit.w.length < raw.length))) ||(hit.flag === 'solo' && raw.length !== hit.w.length));
       if (!hit || guarded) { pend.push(raw[i]); afterCmd = false; continue; }
       const first = hit.ops[0];
       if (first.op === 'literal') { if (i + 1 < raw.length) { pend.push(raw[i + 1]); i++; afterCmd = false; } continue; }
@@ -313,7 +316,7 @@
       if (first.op === 'mode') { endHeading('mode'); ops.push({ op: 'mode', mode: first.mode, rest: raw.slice(i + 1).join(' ') }); return { mode: 'text', ops, text: plain(ops) }; }
       if (first.op === 'block' || first.op === 'break' || first.op === 'next' || first.op === 'stop' || first.op === 'undo' || first.op === 'scratch') endHeading(first.op);
       hit.ops.forEach((o) => ops.push(Object.assign({}, o)));
-      if (first.op === 'block') { heading = first.kind === 'h1' || first.kind === 'h2'; titled = false; list = first.kind === 'ul' || first.kind === 'task'; }
+      if (first.op === 'block') { heading = first.kind === 'h1' || first.kind === 'h2'; titled = false; list = first.kind === 'ul' || first.kind === 'task'; opened = list; }
       if (first.op === 'break' || first.op === 'next') heading = false;
     }
     flush(); endHeading('end');

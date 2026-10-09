@@ -1532,6 +1532,7 @@
       "Cortar el dictado (Alt+Shift+D)": "Stop dictation (Alt+Shift+D)", "Dictar (Alt+Shift+D)": "Dictate (Alt+Shift+D)",
       "Idioma del dictado": "Dictation language", "El de la app": "Same as the app",
       "Órdenes habladas. Sin esto, todo lo dicho entra como texto.": "Spoken commands. Without this, everything said goes in as text.",
+      "En una lista, decí «{a}» para pasar al ítem que sigue.": "In a list, say “{a}” to move on to the next item.",
       "El audio se transcribe en este dispositivo.": "Audio is transcribed on this device.",
       "El navegador puede enviar el audio a su proveedor para transcribirlo. SharpMD no recibe ni guarda audio.": "The browser may send the audio to its provider to transcribe it. SharpMD does not receive or store audio.",
       "El navegador está descargando el reconocimiento de voz.": "The browser is downloading speech recognition.",
