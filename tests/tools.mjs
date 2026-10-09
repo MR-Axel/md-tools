@@ -1005,10 +1005,6 @@ await suite('agents', async () => {
     await toolsTab(page);
     const card = await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=agents]'); return c ? { name: c.querySelector('b').textContent, on: c.querySelector('input').checked, off: c.querySelector('input').disabled, icon: !!c.querySelector('.lmd-tl-ico svg'), about: c.querySelector('p').textContent, why: (c.querySelector('.lmd-tl-why') || {}).textContent || '' } : null; });
     check('su tarjeta está en Herramientas, apagada, y sin cuenta dice que la necesita', card && card.name === 'Agents' && card.on === false && card.off === false && card.icon && /agents of your AI/.test(card.about) && card.why === 'It needs a SharpMD account. Signed out, it shows nothing.', card);
-    // Sin nube (la dirección del servidor en "off"), la tarjeta dice eso.
-    await closePanel(page); await page.evaluate(() => LMD.patch({ cloudUrl: 'off' })); await sleep(500); await toolsTab(page);
-    check('con la nube apagada, la tarjeta dice que sin ella no hay nada para mostrar', await page.evaluate(() => (document.querySelector('.lmd-tl-card[data-tool=agents] .lmd-tl-why') || {}).textContent === 'The cloud is off: without it there are no agents to show.' && !document.querySelector('.lmd-tl-card[data-tool=agents] input').checked));
-    await closePanel(page); await page.evaluate((u) => LMD.patch({ cloudUrl: u }), R.base); await sleep(500); await toolsTab(page);
     await flip(page, 'agents'); await until(() => page.evaluate(() => !!LMD.agents)); await page.waitForSelector('.lmd-tl-side[data-tool=agents] [data-ag-set=miss]');
     const side = await page.evaluate(() => { const s = document.querySelector('.lmd-tl-side'); return { miss: s.querySelector('[data-ag-set=miss]').textContent, btn: (s.querySelector('button[data-ag-set=cloud]') || {}).textContent || '', plan: !!s.querySelector('[data-ag-set=plan]'), show: !!s.querySelector('[data-ag-set=show]'), need: (document.querySelector('[data-tool=agents] .lmd-tl-need') || {}).textContent || '' }; });
     check('prendida sin cuenta: las opciones dicen que falta entrar y no ofrecen nada más', await scripts(page, 'agents.js') === 1 && side.miss === 'Sign in to see your agents.' && side.btn === 'Sign in' && !side.plan && !side.show && side.need === 'Sign in to your account' && (await stored(page, 'settings')).tools.agents === true, side);
@@ -1022,6 +1018,9 @@ await suite('agents', async () => {
     check('plegada', await page.evaluate(() => document.querySelector('.lmd-ag-body').hidden && document.querySelector('.lmd-ag [data-ag-tog]').getAttribute('aria-expanded') === 'false'));
     await toolsTab(page); await flip(page, 'agents'); await closePanel(page);
     check('apagarla saca la sección', await page.evaluate(() => !document.querySelector('.lmd-ag')));
+    // Sin nube (la dirección del servidor en "off"), la tarjeta dice eso.
+    await page.evaluate(() => LMD.patch({ cloudUrl: 'off' })); await until(() => page.evaluate(() => !LMD.cloud.enabled())); await sleep(300); await toolsTab(page);
+    check('con la nube apagada, la tarjeta dice que sin ella no hay nada para mostrar', await page.evaluate(() => (document.querySelector('.lmd-tl-card[data-tool=agents] .lmd-tl-why') || {}).textContent === 'The cloud is off: without it there are no agents to show.' && !document.querySelector('.lmd-tl-card[data-tool=agents] input').checked));
     await ctx.close();
   });
 
