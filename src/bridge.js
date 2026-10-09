@@ -51,7 +51,7 @@
     const pid = 'lmd-r-' + hash(rootKey(rec)).replace(/[^a-z0-9]/gi, '').slice(0, 20);
     let handle = null;
     try {
-      handle = dir ? await window.showDirectoryPicker({ id: pid, startIn: 'documents', mode: 'readwrite' })
+      handle = dir ? await window.showDirectoryPicker({ id: pid, startIn: 'documents' })
         : (await window.showOpenFilePicker({ id: pid, startIn: 'documents', multiple: false, types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.mkd', '.mdown'] } }] }))[0];
     } catch (e) { return null; }
     // Si es la misma carpeta, abre la nota en la que había quedado del otro lado; si no, como cualquier carpeta recién elegida.

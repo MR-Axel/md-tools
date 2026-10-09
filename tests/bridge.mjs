@@ -169,7 +169,7 @@ try {
   check('al tocarla pregunta con un diálogo propio', asks.ok === 'Choose folder' && /Reconnect "proj"/.test(asks.text) && /opened from the other side/.test(asks.text), asks.ok);
   await extPage.click('[data-dlg=ok]'); await extPage.waitForSelector('.markdown-body h1', { timeout: 8000 }).catch(() => {});
   const picked = await extPage.evaluate(() => window.__picked || null);
-  check('abre el selector con id y carpeta de arranque', !!picked && /^lmd-r-[a-z0-9]{4,}$/.test(picked.id) && picked.id.length <= 32 && picked.startIn === 'documents' && picked.mode === 'readwrite', picked);
+  check('abre el selector con id y carpeta de arranque, pidiendo solo lectura', !!picked && /^lmd-r-[a-z0-9]{4,}$/.test(picked.id) && picked.id.length <= 32 && picked.startIn === 'documents' && picked.mode !== 'readwrite', picked); // abrir es leer: escribir se pide al editar
   check('y queda abierta en la nota en la que estaba del otro lado', (await extPage.textContent('.markdown-body h1').catch(() => '')).startsWith('Proj readme') && /readme\.md/.test(decodeURIComponent(extPage.url())), extPage.url());
   const after = (await extRoots()).filter((r) => r.name === 'proj');
   check('ya es una carpeta de este lado: un solo renglón, con permiso', after.length === 1 && !after[0].ghost && after[0].handle, after);

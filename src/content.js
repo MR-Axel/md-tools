@@ -262,6 +262,36 @@
   }
   const fsSay = (text) => { fsSaid = text; return paintCopy(); };
   const sameText = (a, b) => String(a).replace(/\r\n?/g, '\n') === String(b).replace(/\r\n?/g, '\n');
+  // ---------- Permiso para guardar en una carpeta o un archivo del disco ----------
+  // Abrir (con el selector, arrastrando o desde los recientes) pide solo lectura: no aparece ningún cuadro del
+  // navegador. El permiso de escritura se pide recién cuando hace falta (editar, guardar, crear, renombrar, mover,
+  // borrar) y siempre después de un aviso propio, corto y en el idioma de la app: el cuadro que sigue es del
+  // navegador, sale en su idioma y no se puede cambiar. Si la persona dice que no, todo sigue abierto en solo lectura.
+  const diskRec = (url) => { if (!APP) return null; const r = url ? rootOf(url) : appRoot; return r && r.root && r.handle && (r.kind === 'dir' || r.kind === 'file') ? r : null; };
+  async function askWrite(rec) {
+    const ok = await LMD.dialog.confirm({ title: T('Guardar en "{a}"', { a: rec.name }), ok: T('Permitir guardar'), cancel: T('Seguir en solo lectura'),
+      text: T(rec.kind === 'dir' ? 'Para guardar en esta carpeta, el navegador te va a pedir permiso. El cuadro es del navegador y sale en su idioma: elegí la opción de guardar los cambios.' : 'Para guardar en este archivo, el navegador te va a pedir permiso. El cuadro es del navegador y sale en su idioma: elegí la opción de guardar los cambios.'),
+      // El pedido sale del clic sobre el botón: el navegador lo exige.
+      act: (d) => { let p = null; try { p = rec.handle.requestPermission({ mode: 'readwrite' }); } catch (e) { p = Promise.resolve('denied'); } Promise.resolve(p).then((s) => d.close(s === 'granted'), () => d.close(false)); } });
+    paintWrite(); if (ui.paneFiles && ui.paneFiles.dataset.loaded) loadTree();
+    return ok === true;
+  }
+  // Si se puede escribir ahí; si no, lo pide (quiet: solo contesta, sin preguntar). Lo que no es del disco no pregunta.
+  async function allowWrite(url, quiet) {
+    const rec = diskRec(url);
+    if (!rec || await canWrite(rec.handle, false)) return true;
+    return quiet ? false : askWrite(rec);
+  }
+  // El botón de editar no promete guardar si todavía no hay permiso.
+  async function paintWrite() {
+    const seq = docSeq; const rec = noDoc ? null : diskRec();
+    const ro = !!rec && !(await canWrite(rec.handle, false));
+    if (seq !== docSeq) return;
+    document.documentElement.classList.toggle('lmd-nowrite', ro);
+    const b = ui.main.querySelector('[data-act=mode-edit]');
+    if (b) { if (b.dataset.t0 == null) b.dataset.t0 = b.title || ''; b.title = ro ? T('Editar: el navegador va a pedir permiso para guardar') : b.dataset.t0; }
+  }
+
   // De copia a archivo real. Con una carpeta ya conocida alcanza con el permiso (un clic, sin selector). Si no, se
   // elige la carpeta: el navegador no dice su ruta, así que se la reconoce por el nombre y porque adentro, por el
   // mismo camino, está este mismo archivo con este mismo texto. Recién ahí se anota a qué ruta corresponde.
@@ -270,8 +300,8 @@
     const seq = docSeq; const parts = vParts(HERE); const name = parts[parts.length - 1]; const folder = parts[parts.length - 2] || '';
     const known = await fsKnown(fsFile(HERE));
     if (known) {
-      let ok = false;
-      try { ok = (await known.rec.handle.requestPermission({ mode: 'readwrite' })) === 'granted'; } catch (e) { /* hace falta un clic */ }
+      // El mismo aviso que al editar en una carpeta abierta en solo lectura: prepara para el cuadro del navegador.
+      const ok = await askWrite(known.rec);
       if (seq !== docSeq) return false;
       if (!ok) { fsSay(T('Falta el permiso para guardar en "{a}".', { a: known.rec.name })); return false; }
       return fsSwap(known.rec, known.rest);
@@ -1160,7 +1190,7 @@
     // El cartel de una copia de un archivo del disco (paintCopy), arriba de la nota.
     ui.copyBar = el('div', { class: 'lmd-copybar', role: 'status', hidden: '' });
     ui.article.parentNode.insertBefore(ui.copyBar, ui.article);
-    document.addEventListener('click', (e) => { const b = e.target.closest('[data-fs=grant]'); if (b) { e.preventDefault(); fsGrant(); } });
+    document.addEventListener('click', (e) => { const b = e.target.closest('[data-fs=grant]'); if (b) { e.preventDefault(); fsGrant(); } const w = e.target.closest('[data-write]'); if (w && diskRoot) { e.preventDefault(); askWrite(diskRoot); } });
     ui.rawPre = ui.main.querySelector('pre.lmd-raw');
     ui.rawEdit = ui.main.querySelector('.lmd-raw-edit');
     ui.status = ui.main.querySelector('.lmd-status');
@@ -2483,7 +2513,7 @@
   // La carpeta del disco más reciente que todavía tiene permiso: es la que se muestra al entrar.
   async function recentDisk() {
     for (const r of await LMD.store.rootsAll()) {
-      try { if ((await r.handle.queryPermission({ mode: r.kind === 'dir' ? 'readwrite' : 'read' })) === 'granted') return r; } catch (e) { /* permiso vencido */ }
+      try { if ((await r.handle.queryPermission({ mode: 'read' })) === 'granted') return r; } catch (e) { /* permiso vencido */ }
     }
     return null;
   }
@@ -2529,7 +2559,10 @@
         const top = VBASE + diskRoot.id + '/';
         if (!treeRoot || !treeRoot.startsWith(top)) treeRoot = top;
         const atTop = treeRoot === top;
-        add('disk', { name: atTop ? diskRoot.name : leaf(treeRoot), title: diskRoot.name + (atTop ? '' : '/' + vParts(treeRoot).join('/')), icon: diskRoot.kind === 'dir' ? ICON.folder : ICON.file, url: treeRoot, up: !atTop, add: diskRoot.kind === 'dir' });
+        const diskList = add('disk', { name: atTop ? diskRoot.name : leaf(treeRoot), title: diskRoot.name + (atTop ? '' : '/' + vParts(treeRoot).join('/')), icon: diskRoot.kind === 'dir' ? ICON.folder : ICON.file, url: treeRoot, up: !atTop, add: diskRoot.kind === 'dir' });
+        // De un vistazo: abierta en solo lectura, con la forma de permitir guardar ahí mismo.
+        if (diskRoot.handle && !diskRoot.ghost && !(await canWrite(diskRoot.handle, false))) diskList.before(el('button', { type: 'button', class: 'lmd-link lmd-root-hint lmd-root-ro', 'data-write': '', text: T('Solo lectura · Permitir guardar') }));
+        if (turn !== treeTurn) return;
       }
       // Un archivo del disco abierto por enlace: su rama, desde un par de carpetas más arriba, con el camino completo
       // en el título. Debajo, cómo abrir la carpeta de verdad (para ver todo y poder guardar).
@@ -2645,7 +2678,7 @@
     if (ghost && !e.target.closest('.lmd-node-x')) { e.preventDefault(); LMD.bridge.reconnect(ghost.dataset.ghost, homeCtx()).then(() => loadTree()); return true; }
     const x = e.target.closest('.lmd-node-x');
     if (x) { LMD.store.handlesDelete(x.dataset.key).then(() => loadTree()); return true; }
-    if (e.target.closest('.lmd-root-hint')) { LMD.sync.login(); return true; }
+    if (e.target.closest('.lmd-root-hint:not([data-write]):not([data-fs])')) { LMD.sync.login(); return true; }
     const bin = e.target.closest('[data-trash]');
     if (bin) { setDrawer(false); LMD.extras.trash(bin.dataset.trash); return true; }
     // "Bloquear ahora" de una carpeta abierta para la IA.
@@ -3633,8 +3666,11 @@
     }, 350);
   }
 
-  async function setEditMode(on) {
+  // auto: la app entra sola en edición (se venía editando, o la nota está vacía). Ahí, sin permiso para guardar en
+  // la carpeta, no se pregunta nada: la nota queda leyendo. Con el clic de la persona, primero va el aviso.
+  async function setEditMode(on, auto) {
     if (on && readOnly) { flash(T('Esta nota es de solo lectura'), 'warn'); return; }
+    if (on && !editMode && !(await allowWrite('', !!auto))) return;
     // Salir de edición guarda lo pendiente. Si se cancela el guardado, los cambios quedan sin guardar.
     if (!on && editMode) {
       const a = document.activeElement;
@@ -4095,7 +4131,7 @@
     diskDir: () => (APP && diskRoot && diskRoot.kind === 'dir' ? treeRoot : ''),
     newNote: (opt) => LMD.home.create(homeCtx(), opt),
     pick: (what) => LMD.home.pick(homeCtx(), what),
-    diskPath, canViewFolder, viewFolder, fsGrant: () => fsGrant(),
+    diskPath, canViewFolder, viewFolder, fsGrant: () => fsGrant(), allowWrite: (url) => allowWrite(url),
     pickTemplate: () => tools().then((ok) => (ok ? LMD.home.pickTemplate(homeCtx()) : null)),
     tools,
     showFiles,
@@ -4176,9 +4212,9 @@
       box.innerHTML =
         '<div class="lmd-ask-card" role="dialog" aria-label="' + T('Permiso para guardar') + '">' +
           '<h3>' + T('Permiso para guardar') + '</h3>' +
-          '<p>' + T('Chrome pide que elijas dónde puede escribir SharpMD. Elegí la carpeta de este archivo una sola vez y vas a poder guardar todo lo que haya adentro, sin que vuelva a preguntar.') + '</p>' +
+          '<p>' + T('El navegador pide que elijas dónde puede escribir SharpMD. Elegí la carpeta de este archivo una sola vez y vas a poder guardar todo lo que haya adentro, sin que vuelva a preguntar.') + '</p>' +
           (folder ? '<div class="lmd-ask-path"><code></code><button type="button" class="lmd-btn" data-ask="copy">' + T('Copiar') + '</button></div>' +
-            '<p class="lmd-hint lmd-ask-path-hint">' + T('Es la carpeta de este archivo. Queda copiada: pegala en la barra de direcciones de la ventana que abre Chrome.') + '</p>' : '') +
+            '<p class="lmd-hint lmd-ask-path-hint">' + T('Es la carpeta de este archivo. Queda copiada: pegala en la barra de direcciones de la ventana que abre el navegador.') + '</p>' : '') +
           '<div class="lmd-ask-actions">' +
             '<button type="button" class="lmd-btn lmd-btn-fill" data-ask="dir">' + T('Elegir la carpeta') + '</button>' +
             '<button type="button" class="lmd-btn" data-ask="file">' + T('Solo este archivo') + '</button>' +
@@ -4489,7 +4525,7 @@
     const rec = (roots[id] && roots[id].root ? roots[id] : null) || (await handlesAll()).find((r) => r.root && r.id === id);
     if (!rec) return fail(T('Ese acceso ya no está guardado. Abrí el archivo o la carpeta de nuevo.'));
     if (rec.ghost) return fail(T('Falta el permiso para abrir "{a}".', { a: rec.name }));
-    const mode = rec.kind === 'dir' ? 'readwrite' : 'read';
+    const mode = 'read'; // abrir es leer: el permiso de escritura se pide al editar o guardar (askWrite)
     let ok = false;
     try { ok = (await rec.handle.queryPermission({ mode })) === 'granted'; } catch (e) { /* se pide abajo */ }
     // Con un clic de por medio Chrome deja pedirlo ahí mismo; al arrancar hace falta el botón de la tarjeta.
@@ -4591,6 +4627,7 @@
     if (doc && appRoot.root) { appRoot.last = f; appRoot.at = Date.now(); handlesPut(appRoot); }
     paintDoc();
     paintCopy();
+    paintWrite();
     syncTree(opt.tree);
     if (noDoc) { render(); applyRawMode(); updateSaveState(); window.scrollTo(0, 0); showEmpty(opt.note); }
     else {
@@ -4663,7 +4700,7 @@
     const fresh = !!opt.edit; const blankDoc = !raw.trim(); const draft = opt.edit === true || blankDoc;
     if (fresh || (!readOnly && docKind() === 'md' && (blankDoc || opt.editing || editRemembered()))) {
       // Con Ajustes abiertos (vuelta de un cambio de idioma o de un pago) el menú de insertar no se ofrece: quedaría encima.
-      setEditMode(true).then(() => { const add = draft && ui.panel.hidden && ui.article.querySelector('.lmd-add'); if (add) add.click(); });
+      setEditMode(true, !fresh).then(() => { const add = draft && editMode && ui.panel.hidden && ui.article.querySelector('.lmd-add'); if (add) add.click(); });
     }
     const hash = opt.hash || '';
     const fromSearch = /^#lmd-q=([^&]+)(?:&r=(.+))?$/.exec(hash);

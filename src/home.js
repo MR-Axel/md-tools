@@ -185,7 +185,7 @@
         input.click();
         return;
       }
-      if (what === 'dir') await openPicked(await window.showDirectoryPicker({ id: 'lmd-abrir-carpeta', mode: 'readwrite' }), say);
+      if (what === 'dir') await openPicked(await window.showDirectoryPicker({ id: 'lmd-abrir-carpeta' }), say); // abrir es leer: escribir se pide al editar
       else {
         const picked = await window.showOpenFilePicker({ id: 'lmd-abrir', multiple: false, types: pickTypes() });
         await openPicked(picked[0], say);
@@ -461,7 +461,7 @@
     });
   }
 
-  // Al volver otro día Chrome pide confirmar el acceso, y eso necesita un clic.
+  // Al volver otro día el navegador pide confirmar el acceso, y eso necesita un clic.
   function gate(rec, mode) {
     return new Promise((resolve) => {
       const box = ctx.box;
@@ -470,7 +470,7 @@
         '<div class="lmd-home-card">' +
           '<img class="lmd-home-logo" src="' + chrome.runtime.getURL('icons/icon128.png') + '" alt="">' +
           '<h1></h1>' +
-          '<p class="lmd-home-sub">' + T('Chrome pide que confirmes el acceso antes de seguir.') + '</p>' +
+          '<p class="lmd-home-sub">' + T('El navegador pide que confirmes el acceso antes de seguir.') + '</p>' +
           '<div class="lmd-home-actions">' +
             '<button type="button" class="lmd-btn lmd-btn-fill" data-gate="ok"><span>' + T('Continuar') + '</span></button>' +
             '<button type="button" class="lmd-btn" data-gate="no"><span>' + T('Cancelar') + '</span></button>' +

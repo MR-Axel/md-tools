@@ -186,6 +186,7 @@
   // Carpeta nueva: en el disco se crea vacía; en la nube nace con su primera nota.
   async function newFolder(dirUrl) {
     if (inCloud(dirUrl)) return cloudNew(dirUrl, true);
+    if (!(await core.allowWrite(dirUrl || 'x:'))) return; // en una carpeta abierta en solo lectura, primero el permiso
     const name = await askName('Nombre de la carpeta nueva', T('carpeta'), badName, 'Crear');
     if (!name) return;
     try {
@@ -266,6 +267,7 @@
   async function newFile(dirUrl, given) {
     // Las notas del navegador no piden nombre: nacen con la fecha y se listan por su primer renglón.
     if (inLocal(dirUrl)) return core.newNote(Object.assign({ target: 'local' }, given));
+    if (!(await core.allowWrite(dirUrl || 'x:'))) return;
     if (given) return newFrom(dirUrl, given);
     if (inCloud(dirUrl)) return cloudNew(dirUrl, false);
     let name = await askName('Nombre del archivo nuevo', T('nota') + '.md', badName, 'Crear');
@@ -318,6 +320,7 @@
   async function rename(url, isDir, typed) {
     if (inCloud(url)) return cloudRename(url, isDir, typed);
     if (isCopy(url)) return needFolder(true);
+    if (!(await core.allowWrite(url))) return; // en una carpeta abierta en solo lectura, primero el permiso
     const old = nameOf(url);
     let name = (typed != null ? typed : await askName('Renombrar', old, badName, 'Renombrar') || '').trim();
     if (!name || name === old) return;
@@ -344,6 +347,7 @@
   async function moveTo(url, dirUrl) {
     const name = nameOf(url);
     if (teamReader(url) || teamReader(dirUrl)) { core.flash(T('En este equipo solo podés leer.'), 'warn'); return; }
+    if (!(await core.allowWrite(url))) return;
     if (inCloud(url)) {
       const old = core.pathOf(url); const dir = core.pathOf(dirUrl);
       if (!notMine(old)) await cloudMove(old, (dir ? dir + '/' : '') + name, false, 'No se pudo mover');
@@ -390,6 +394,7 @@
 
   async function remove(url) {
     if (inCloud(url)) return cloudRemove(url);
+    if (!(await core.allowWrite(url))) return;
     const name = nameOf(url);
     if (!(await askDelete(name))) return;
     try {
@@ -405,6 +410,7 @@
   async function removeDir(url) {
     const name = nameOf(url);
     if (teamReader(url)) { core.flash(T('En este equipo solo podés leer.'), 'warn'); return; }
+    if (!(await core.allowWrite(url))) return;
     if (!inCloud(url)) {
       if (!(await askDelete(name))) return;
       try {

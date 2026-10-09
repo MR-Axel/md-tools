@@ -524,6 +524,78 @@ try {
   check('un archivo suelto se renombra si el navegador puede moverlo; si no, dice que hay que abrir su carpeta', (loose.title === 'movido.md') || (loose.dlg === 'To rename it, open its folder' && loose.ok === 'Open folder'), loose);
   console.log('  archivo suelto: ' + (loose.title === 'movido.md' ? 'el navegador lo movió (FileSystemFileHandle.move)' : 'sin move(): ofrece abrir la carpeta'));
   await app.keyboard.press('Escape');
+  // ---------- Abrir una carpeta es leer: el permiso de guardar se pide recién al editar, con un aviso propio ----------
+  console.log('Abrir una carpeta no pide escritura; editar sí, con el aviso de la app antes');
+  await app.goto('chrome-extension://' + id + '/src/app.html'); await app.waitForSelector('.lmd-home');
+  await app.evaluate(async () => {
+    // El permiso de escritura, simulado: arranca sin dar, y cada pedido queda anotado.
+    window.__perm = { write: 'prompt', read: 'granted', answer: 'granted', asks: [], pickers: [] };
+    FileSystemHandle.prototype.queryPermission = async function (o) { return o && o.mode === 'readwrite' ? window.__perm.write : window.__perm.read; };
+    FileSystemHandle.prototype.requestPermission = async function (o) { const m = (o && o.mode) || 'read'; window.__perm.asks.push(m); if (m === 'readwrite') { window.__perm.write = window.__perm.answer; return window.__perm.write; } window.__perm.read = 'granted'; return 'granted'; };
+    for (const r of await LMD.store.rootsAll()) await LMD.store.handlesDelete(r.key);
+    window.__dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('exp');
+    window.showDirectoryPicker = async (o) => { window.__perm.pickers.push(o || {}); return window.__dir; };
+  });
+  const perm = () => app.evaluate(() => { const b = document.querySelector('[data-write]'); const d = document.querySelector('.lmd-dlg-card'); return { asks: window.__perm.asks.slice(), pickers: window.__perm.pickers.map((o) => o.mode || 'read'), gate: !!document.querySelector('[data-gate]'), ro: b && b.offsetParent ? b.textContent : '', editing: !!document.querySelector('.lmd-article .lmd-editable'), editTitle: document.querySelector('[data-act=mode-edit]').title, doc: document.title,
+    dlg: d ? { title: d.querySelector('h3').textContent, text: d.querySelector('p').textContent, buttons: [...d.querySelectorAll('.lmd-ask-actions button')].map((x) => x.textContent) } : null }; });
+  await app.click('[data-home=dir]'); await app.waitForSelector(node('a.md')); await sleep(700);
+  const p1 = await perm();
+  check('abrir una carpeta con el botón pide solo lectura: sin pedido de escritura y sin pantalla intermedia', J(p1.pickers) === J(['read']) && p1.asks.length === 0 && !p1.gate && !p1.dlg && !!p1.doc, p1);
+  check('la carpeta queda en solo lectura, y se nota: una línea en el explorador y el botón de editar lo avisa', p1.ro === 'Read-only · Allow saving' && p1.editTitle === 'Edit: the browser will ask for permission to save' && !p1.editing, p1);
+  // Arrastrada: el arrastre ya da lectura, y tampoco se pide nada.
+  await app.evaluate(async () => { for (const r of await LMD.store.rootsAll()) await LMD.store.handlesDelete(r.key); });
+  await app.goto('chrome-extension://' + id + '/src/app.html'); await app.waitForSelector('.lmd-home');
+  const patch = () => app.evaluate(async () => {
+    window.__perm = window.__perm || { write: 'prompt', read: 'granted', answer: 'granted', asks: [], pickers: [] };
+    FileSystemHandle.prototype.queryPermission = async function (o) { return o && o.mode === 'readwrite' ? window.__perm.write : window.__perm.read; };
+    FileSystemHandle.prototype.requestPermission = async function (o) { const m = (o && o.mode) || 'read'; window.__perm.asks.push(m); if (m === 'readwrite') { window.__perm.write = window.__perm.answer; return window.__perm.write; } window.__perm.read = 'granted'; return 'granted'; };
+    window.__dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('exp');
+  });
+  await patch();
+  await app.evaluate(() => { const box = document.querySelector('.lmd-home'); const ev = new Event('drop', { bubbles: true, cancelable: true }); Object.defineProperty(ev, 'dataTransfer', { value: { types: ['Files'], items: [{ kind: 'file', getAsFileSystemHandle: async () => window.__dir, getAsFile: () => null }], files: [] } }); box.dispatchEvent(ev); });
+  await app.waitForSelector(node('a.md'), { timeout: 8000 }).catch(() => {}); await sleep(700);
+  const p2 = await perm();
+  check('arrastrar una carpeta la abre igual: ningún pedido al navegador, ninguna pantalla de "confirmar el acceso"', p2.asks.length === 0 && !p2.gate && !p2.dlg && !!p2.doc && p2.ro === 'Read-only · Allow saving', p2);
+  // Editar: primero el aviso de la app, y recién con su botón sale el pedido del navegador.
+  await app.click(node('a.md')); await ashows('a.md');
+  await app.click('[data-act=mode-edit]'); await app.waitForSelector('.lmd-dlg-card', { timeout: 4000 }).catch(() => {});
+  const p3 = await perm();
+  check('al pasar a edición sale el aviso propio, sin nombrar a Chrome, y todavía no se le pidió nada al navegador', !!p3.dlg && p3.dlg.title === 'Save in "exp"' && p3.dlg.text === 'To save in this folder, the browser will ask for permission. That box belongs to the browser and shows in its language: choose the option that saves the changes.' && J(p3.dlg.buttons) === J(['Stay read-only', 'Allow saving']) && p3.asks.length === 0 && !/Chrome|[!¡—–]/.test(p3.dlg.title + p3.dlg.text), p3);
+  await app.click('.lmd-dlg-card [data-dlg=no]'); await sleep(400);
+  const p4 = await perm();
+  check('"Seguir en solo lectura" no pide nada y deja la nota leyendo', p4.asks.length === 0 && !p4.editing && !p4.dlg && p4.ro === 'Read-only · Allow saving', p4);
+  await app.evaluate(() => { window.__perm.answer = 'denied'; });
+  await app.click('[data-act=mode-edit]'); await app.waitForSelector('.lmd-dlg-card'); await app.click('.lmd-dlg-card [data-dlg=ok]'); await sleep(500);
+  const p5 = await perm();
+  check('si en el cuadro del navegador se dice que no, la carpeta sigue abierta en solo lectura y se puede reintentar', J(p5.asks) === J(['readwrite']) && !p5.editing && !p5.dlg && p5.ro === 'Read-only · Allow saving' && p5.doc === 'a.md', p5);
+  await app.evaluate(() => { window.__perm.answer = 'granted'; window.__perm.write = 'prompt'; });
+  await app.click('[data-write]'); await app.waitForSelector('.lmd-dlg-card'); await app.click('.lmd-dlg-card [data-dlg=ok]'); await sleep(600);
+  const p6 = await perm();
+  check('desde la línea del explorador se vuelve a pedir; otorgado, la línea se va y el botón de editar ya no avisa', J(p6.asks) === J(['readwrite', 'readwrite']) && p6.ro === '' && !/permission/.test(p6.editTitle) && !p6.dlg, p6);
+  await app.click('[data-act=mode-edit]'); await app.waitForSelector('.lmd-article .lmd-editable');
+  await app.locator('.lmd-article .lmd-editable', { hasText: 'findme-alpha' }).first().click(); await app.keyboard.press('Control+End'); await app.keyboard.type(' saved-with-permission'); await app.keyboard.press('Control+s');
+  check('con el permiso dado se edita y se guarda en el archivo, sin volver a preguntar', !!(await until(() => app.evaluate(async () => /saved-with-permission/.test(await (await (await window.__dir.getFileHandle('a.md')).getFile()).text())), 8000)) && (await perm()).asks.length === 2);
+  // Sin permiso, la app no entra sola en edición ni pregunta sola; y crear o renombrar ahí también avisa antes.
+  await app.evaluate(() => { window.__perm.write = 'prompt'; });
+  await app.click(node('conf.yaml')).catch(() => {}); await sleep(300);
+  await app.click(node('a.md')); await ashows('a.md'); await sleep(500);
+  const p7 = await perm();
+  check('sin permiso, abrir otra nota no entra sola en edición ni muestra el aviso', !p7.editing && !p7.dlg && p7.asks.length === 2, p7);
+  await app.click(node('a.md'), { button: 'right' }); await app.waitForSelector('.lmd-menu-narrow [data-f=ren]'); await app.click('.lmd-menu-narrow [data-f=ren]'); await app.waitForSelector('.lmd-dlg-card', { timeout: 4000 }).catch(() => {});
+  const p8 = await perm();
+  check('renombrar un archivo de esa carpeta muestra primero el mismo aviso', !!p8.dlg && p8.dlg.title === 'Save in "exp"' && J(p8.dlg.buttons) === J(['Stay read-only', 'Allow saving']), p8);
+  await app.click('.lmd-dlg-card [data-dlg=no]'); await sleep(300);
+  // Reabrir una carpeta reciente a la que el navegador le venció la lectura: se pide lectura, nunca escritura.
+  await app.evaluate(() => { window.__perm.read = 'prompt'; window.__perm.asks = []; });
+  await app.evaluate(() => { const b = document.querySelector('[data-act=go-home]'); if (b) b.click(); });
+  await sleep(500);
+  const lastOf = await app.evaluate(async () => { const r = (await LMD.store.rootsAll()).find((x) => x.kind === 'dir'); return r ? r.last : ''; });
+  await app.evaluate((f) => { history.pushState(null, '', location.pathname + '?f=' + encodeURIComponent(f)); window.dispatchEvent(new PopStateEvent('popstate')); }, lastOf);
+  await sleep(1200);
+  const p9 = await perm();
+  check('reabrir una reciente pide, a lo sumo, lectura: nunca escritura', !p9.asks.includes('readwrite') && (p9.asks.length === 0 || J([...new Set(p9.asks)]) === J(['read'])), p9);
+  const gateText = await app.evaluate(() => { const g = document.querySelector('[data-gate]'); return g ? g.closest('.lmd-home-card').textContent : ''; });
+  check('y si hace falta el clic, la pantalla dice "el navegador", no Chrome', !/Chrome/.test(gateText), gateText);
   await app.close();
 
   check('sin errores de JavaScript en ninguna página', errors.length === 0, errors.slice(0, 5));
