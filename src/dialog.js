@@ -73,13 +73,25 @@
   // Con path, una ruta del disco a la vista, siempre como texto, con su botón para copiarla.
   // Con act, el botón principal no cierra la pregunta: llama a act({ note, close }) en el mismo turno del clic (lo
   // que pide un gesto, como el portapapeles o el selector de archivos, sale de ahí). note(texto) deja una línea a la
-  // vista mientras tanto, y close(valor) la cierra.
+  // vista mientras tanto, y close(valor) la cierra. Con note, esa línea ya dice algo antes del clic. note(texto,
+  // { label, go }) le suma un enlace que llama a go.
   function confirm(o) {
     return new Promise((resolve) => {
       const f = frame(o, (o.text ? '<p></p>' : '') + (o.path ? '<div class="lmd-ask-path lmd-dlg-path"><code></code><button type="button" class="lmd-btn" data-dlg-copy></button></div>' : '') + (o.act ? '<p class="lmd-dlg-note" role="status" hidden></p>' : '') + (o.link ? '<p class="lmd-dlg-link" data-pay><a class="lmd-link" target="_blank" rel="noopener"></a></p>' : '') +
         (o.more ? '<p class="lmd-dlg-more"><span></span> <button type="button" class="lmd-link" data-dlg-more></button></p>' : ''), resolve);
       if (o.more) { const m = f.box.querySelector('.lmd-dlg-more'); m.querySelector('span').textContent = o.more.text || ''; m.querySelector('button').textContent = o.more.link; }
       if (o.text) f.box.querySelector('p').textContent = o.text;
+      const note = (text, action) => {
+        const n = f.box.querySelector('.lmd-dlg-note'); n.hidden = !text; n.textContent = text || '';
+        if (text && action) { const b = el('button', { type: 'button', class: 'lmd-link', 'data-dlg-do': '', text: action.label }); b.addEventListener('click', (e) => { e.stopPropagation(); action.go(); }); n.append(' ', b); }
+      };
+      if (o.act && o.note) note(o.note);
+      // La misma pregunta pasa a decir otra cosa, en el lugar: otro texto y otro rótulo en el botón principal.
+      const turn = (n) => {
+        let p = f.box.querySelector('.lmd-dlg-card > p:not([class])');
+        if (!p) { p = document.createElement('p'); f.box.querySelector('h3').after(p); }
+        p.textContent = n.text || ''; f.box.querySelector('[data-dlg=ok]').textContent = n.ok;
+      };
       if (o.path) { f.box.querySelector('.lmd-dlg-path code').textContent = o.path; f.box.querySelector('[data-dlg-copy]').textContent = T('Copiar la ruta'); }
       if (o.link) { const a = f.box.querySelector('.lmd-dlg-link a'); a.href = o.link.href; a.textContent = o.link.text; }
       f.box.querySelector('[data-dlg=ok]').focus();
@@ -93,7 +105,7 @@
         const copy = e.target.closest('[data-dlg-copy]');
         if (copy) { try { navigator.clipboard.writeText(o.path).then(() => { copy.textContent = T('Copiado'); }, () => {}); } catch (err) { /* sin portapapeles: la ruta queda a la vista para seleccionarla */ } return; }
         const b = e.target.closest('[data-dlg]'); if (!b) return;
-        if (o.act && b.dataset.dlg === 'ok') { o.act({ note: (text) => { const n = f.box.querySelector('.lmd-dlg-note'); n.hidden = !text; n.textContent = text || ''; }, close: f.close }); return; }
+        if (o.act && b.dataset.dlg === 'ok') { o.act({ note, close: f.close, turn }); return; }
         f.close(b.dataset.dlg === 'alt' ? 'alt' : b.dataset.dlg === 'ok');
       });
     });

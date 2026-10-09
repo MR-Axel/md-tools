@@ -420,17 +420,36 @@
 
   // ---------- Un enlace https que abre un archivo del disco ----------
   // app.html#open=<la dirección file:// codificada, o la ruta del sistema>. Un enlace lo puede mandar cualquiera: nunca
-  // se abre sin el clic de quien mira, y la ruta se muestra siempre como texto. Nunca se abre otra pestaña.
-  // - En la app web, con la extensión: el texto llega por el puente y se muestra acá, como copia (la extensión no
-  //   puede escribir en el disco, así que guardar pregunta dónde).
-  // - Con "Abrir SharpMD en: la extensión", y en la página de la extensión: esta pestaña pasa al archivo, en su lector.
-  // - Sin extensión, sin acceso a archivos o si la extensión no pudo: la ruta se copia y se abre el selector de
-  //   archivos, las dos cosas con el mismo clic. El archivo elegido se abre con su permiso y guardar escribe en él.
+  // se abre sin el clic de quien mira, y la ruta se muestra siempre como texto. Antes de preguntar ya se sabe qué va
+  // a hacer el botón, así que hay una sola pregunta, con el botón rotulado por lo que hace:
+  // - "Abrir", si la extensión puede entregar el archivo (está en una carpeta que la persona ya abrió con ella): el
+  //   texto llega por el puente y se muestra acá, como copia. Con "Abrir SharpMD en: la extensión", y en la página de
+  //   la extensión, esta pestaña pasa al archivo, en su lector.
+  // - "Elegir el archivo", en cualquier otro caso (sin extensión, carpeta sin habilitar, lectura apagada): el clic
+  //   copia la ruta y abre el selector de archivos. El archivo elegido se abre acá, con su permiso, y guardar escribe
+  //   en él. La pestaña nunca sale de la app.
+  // La web no puede habilitar carpetas. Para que los enlaces a una carpeta pasen a abrirse con un clic, la pregunta
+  // ofrece abrir el archivo una vez con la extensión: va a una pestaña nueva, y es el lector quien pregunta ahí.
   let asking = false;
   async function openLink(frag, ctx) {
     if (asking) return false;
     asking = true;
     try { return await askOpen(frag, ctx); } finally { asking = false; }
+  }
+  const low = (t) => String(t).toLowerCase();
+  // De lo ya abierto, lo más cercano a ese archivo, para que el selector arranque ahí: el mismo archivo, o la carpeta
+  // abierta que esté más abajo en su ruta (por nombre: de un permiso no se sabe la ruta). Si no hay, lo más reciente.
+  async function nearest(parts, name) {
+    let best = null; let score = -1;
+    try {
+      for (const r of await LMD.store.rootsAll()) {
+        if (!r.handle || r.ghost) continue;
+        const at = r.kind === 'dir' ? parts.map(low).lastIndexOf(low(r.name)) : -1;
+        const mine = r.kind === 'file' && low(r.name) === low(name) ? 1000 : at >= 0 ? 10 + at : 0;
+        if (mine > score) { best = r; score = mine; }
+      }
+    } catch (e) { /* sin lista de abiertos */ }
+    return best ? best.handle : null;
   }
   async function askOpen(frag, ctx) {
     const D = LMD.dialog; const title = T('¿Abrir este archivo de tu disco?');
@@ -439,45 +458,74 @@
     const url = LMD.fileUrl(given);
     if (!url) { await D.confirm({ title: T('Este enlace no se puede abrir'), text: T('Solo se abren archivos Markdown del disco.'), ok: T('Cerrar'), cancel: false }); return false; }
     const path = LMD.filePath(url);
+    const parts = decodeURIComponent(new URL(url).pathname).split('/').filter(Boolean); const name = parts.pop();
     const copyNote = () => ctx.warn(T('Se abrió una copia. El archivo del disco no cambia.'));
-    // El respaldo: la ruta al portapapeles y el selector de archivos, los dos con el mismo clic y en ese orden (los
-    // dos piden un gesto). El selector no deja que la página le fije una ruta: por eso se pega. La instrucción queda
-    // a la vista mientras el selector está abierto, y si copiar falla sigue el botón "Copiar la ruta".
-    let startIn = null;
-    try { const near = (await LMD.store.rootsAll()).find((r) => r.handle && !r.ghost); startIn = near ? near.handle : null; } catch (e) { /* sin carpetas abiertas */ }
-    const byPicker = (o) => D.confirm(Object.assign({ title, path, ok: T('Abrir') }, o, {
-      act: (d) => {
+    // El selector recuerda por id dónde quedó: uno por carpeta, así el próximo enlace a esa carpeta arranca en ella.
+    const pid = 'lmd-o-' + LMD.bridge.hash(low(parts.join('/'))).replace(/[^a-z0-9]/gi, '').slice(0, 24);
+    const startIn = await nearest(parts, name);
+    // Elegir el archivo: la ruta al portapapeles y el selector, los dos con el mismo clic y en ese orden (los dos
+    // piden un gesto). El selector no deja que la página le fije una ruta: por eso se pega. La instrucción queda a
+    // la vista, y si copiar falla sigue el botón "Copiar la ruta".
+    const HOW = T('La ruta se copia al tocar el botón. Pegala en el cuadro de nombre de archivo (Ctrl+V) y apretá Enter.');
+    const showCopy = async (r) => { LMD.home.account(ctx); await LMD.home.openFile(ctx, new File([r.text], String(r.name || 'note.md')), ctx.say); copyNote(); };
+    const pickNow = (d) => {
         let copied = null;
         try { copied = navigator.clipboard.writeText(path); } catch (e) { copied = Promise.reject(e); }
         d.note(T('La ruta ya está copiada. Pegala en el cuadro de nombre de archivo (Ctrl+V) y apretá Enter.'));
         copied.then(() => {}, () => d.note(T('La ruta no se pudo copiar. Copiala con el botón y pegala en el cuadro de nombre de archivo.')));
-        LMD.home.pickLinked(ctx, startIn, copyNote).then((got) => { if (got) d.close(true); });
-      },
-    }));
+        LMD.home.pickLinked(ctx, pid, startIn).then(async (got) => {
+          if (!got) return;
+          const open = async () => { LMD.home.account(ctx); await LMD.home.openLinked(ctx, got); if (got.file) copyNote(); d.close(true); };
+          // Otro archivo que el del enlace: se dice, y se puede elegir de nuevo o abrir ese.
+          if (low(got.name) !== low(name)) d.note(T('Elegiste "{a}". El enlace es a "{b}".', { a: got.name, b: name }), { label: T('Abrir "{a}" igual', { a: got.name }), go: open });
+          else await open();
+        });
+    };
+    const choose = (o) => D.confirm(Object.assign({ title, path, ok: T('Elegir el archivo'), note: HOW }, o, { act: pickNow }));
     await LMD.bridge.settle(); // el puente con la extensión se presenta al cargar: se espera a saber si está
-    if (!LMD.bridge.canOpen()) return byPicker({ text: T('Sin la extensión de Chrome, elegí el archivo.'), link: { href: EXTENSION_URL, text: T('Conseguir la extensión') } });
-    const access = { title: T('Falta el acceso a archivos'), text: T('La extensión no tiene acceso a archivos. Elegí el archivo, o activá el acceso.'), cancel: T('Cerrar'), more: { text: '', link: T('Detalles de la extensión'), go: () => LMD.bridge.setup() } };
-    const missing = { title: T('No se encontró el archivo'), text: T('Puede que se haya movido o que tenga otro nombre.'), cancel: T('Cerrar') };
-    const failed = { text: T('La extensión no lo pudo abrir. Actualizala o elegí el archivo a mano.') };
-    const outside = { text: T('Por enlace, la extensión solo abre lo que está en carpetas que ya abriste con ella. Elegí el archivo.') };
-    if (!(await D.confirm({ title, path, ok: T('Abrir') }))) return false;
+    const ext = LMD.bridge.canOpen();
+    if (!ext) return choose({ text: T('Sin la extensión de Chrome, elegí el archivo.'), link: { href: EXTENSION_URL, text: T('Conseguir la extensión') } });
     // Con "Abrir SharpMD en: la extensión", y en su página propia, lo muestra el lector de la extensión en esta pestaña.
-    if (OWN || (await LMD.load()).openIn === 'ext') {
-      const r = await LMD.bridge.openFile(url);
-      if (r && r.ok && r.opened) return true;
-      const why = r && r.ok ? r.why : '';
-      return byPicker(why === 'access' ? access : why === 'missing' ? missing : failed);
+    const inReader = OWN || (await LMD.load()).openIn === 'ext';
+    // can: true si la extensión lo entrega, false si no (no dice si el archivo existe), null si es una extensión anterior.
+    const can = inReader ? true : await LMD.bridge.canRead(url);
+    // Una extensión anterior, que entrega archivos pero no contesta si puede: se pregunta con "Abrir" y se pide el
+    // archivo. Si no lo entrega, la misma pregunta pasa en el lugar a "Elegir el archivo", con el porqué.
+    if (can === null) {
+      let picking = false; let busy = false;
+      return D.confirm({ title, path, ok: T('Abrir'), act: async (d) => {
+        if (picking) { pickNow(d); return; }
+        if (busy) return;
+        busy = true;
+        const r = await LMD.bridge.readFile(url);
+        busy = false;
+        if (r && r.ok && r.opened && typeof r.text === 'string') { await showCopy(r); d.close(true); return; }
+        const why = r && r.ok ? r.why : ''; picking = true;
+        d.turn({ ok: T('Elegir el archivo'), text: r && !r.ok && r.error === 'refused' ? T('Esta versión de la extensión no abre archivos por enlace. Elegí el archivo.')
+          : why === 'refused' ? T('Por enlace, la extensión solo abre lo que está en carpetas que ya abriste con ella. Elegí el archivo.')
+          : why === 'access' ? T('La extensión no tiene acceso a archivos. Elegí el archivo, o activá el acceso.')
+          : why === 'missing' ? T('No se encontró el archivo') + '. ' + T('Puede que se haya movido o que tenga otro nombre.')
+          : T('La extensión no lo pudo abrir.') + ' ' + T('Actualizala o elegí el archivo a mano.') });
+        d.note(HOW);
+      } });
     }
-    // En la app web: el texto llega por el puente y se muestra acá adentro.
-    const r = await LMD.bridge.readFile(url);
-    if (r && r.ok && r.opened && typeof r.text === 'string') {
-      LMD.home.account(ctx);
-      await LMD.home.openFile(ctx, new File([r.text], String(r.name || 'note.md')), ctx.say);
-      copyNote();
-      return true;
+    if (!can) {
+      const once = async () => { const r = await LMD.bridge.openFile(url, true); if (!(r && r.ok && r.opened)) ctx.say(T('La extensión no lo pudo abrir.')); };
+      return choose({ text: T('Por enlace, la extensión solo abre lo que está en carpetas que ya abriste con ella. Elegí el archivo.'), more: { text: T('Para abrir con un clic los enlaces a esta carpeta:'), link: T('Abrirlo una vez con la extensión'), go: once } });
     }
+    if (!(await D.confirm({ title, path, ok: T('Abrir') }))) return false;
+    let r = null;
+    if (inReader) { r = await LMD.bridge.openFile(url); if (r && r.ok && r.opened) return true; }
+    else {
+      // En la app web: el texto llega por el puente y se muestra acá adentro.
+      r = await LMD.bridge.readFile(url);
+      if (r && r.ok && r.opened && typeof r.text === 'string') { await showCopy(r); return true; }
+    }
+    // La extensión dijo que sí y después no pudo: otra pregunta, con otro título, que dice qué pasó.
     const why = r && r.ok ? r.why : '';
-    return byPicker(why === 'access' ? access : why === 'missing' ? missing : why === 'refused' ? outside : failed);
+    if (why === 'access') return choose({ title: T('Falta el acceso a archivos'), text: T('La extensión no tiene acceso a archivos. Elegí el archivo, o activá el acceso.'), cancel: T('Cerrar'), more: { text: '', link: T('Detalles de la extensión'), go: () => LMD.bridge.setup() } });
+    if (why === 'missing') return choose({ title: T('No se encontró el archivo'), text: T('Puede que se haya movido o que tenga otro nombre.'), cancel: T('Cerrar') });
+    return choose({ title: T('La extensión no lo pudo abrir'), text: T('Actualizala o elegí el archivo a mano.'), cancel: T('Cerrar') });
   }
 
   LMD.install = { init, pane, openLaunched, takeShared, expect, shareOut, canShareOut, openLink, EXTENSION_URL, ANDROID_URL };

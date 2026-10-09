@@ -77,7 +77,7 @@
   // canOpen: si de este lado hay una extensión que pueda llevar la pestaña a un archivo del disco. openFile lo pide.
   const api = { present: () => false, info: () => null, reconnect, adopt, settle: () => Promise.resolve(), sync: () => Promise.resolve(), hash,
     canOpen: () => false, openFile: () => Promise.resolve({ ok: false, error: 'none' }), setup: () => Promise.resolve({ ok: false, error: 'none' }),
-    readFile: () => Promise.resolve({ ok: false, error: 'none' }), paintSession };
+    readFile: () => Promise.resolve({ ok: false, error: 'none' }), canRead: () => Promise.resolve(false), paintSession };
   LMD.bridge = api;
 
   // ---------- Dos cuentas distintas, una de cada lado ----------
@@ -108,7 +108,19 @@
   }
   // El lector de un archivo del disco avisa que se abrió: la extensión anota su carpeta entre las que la app web puede
   // leer por enlace (bridge-sw.js). No manda la ruta: el service worker usa la dirección que le informa el navegador.
-  if (!APP && location.protocol === 'file:') { try { chrome.runtime.sendMessage({ type: 'fileSeen' }, () => { void chrome.runtime.lastError; }); } catch (e) { /* extensión recargada */ } }
+  // Si a este archivo lo abrió la app web ("abrirlo una vez con la extensión"), la carpeta no entra sola: se pregunta
+  // acá, en una ventana de la extensión, que la página web no puede tocar.
+  if (!APP && location.protocol === 'file:') {
+    const tell = (grant) => new Promise((resolve) => { try { chrome.runtime.sendMessage({ type: 'fileSeen', grant }, (r) => { void chrome.runtime.lastError; resolve(r || {}); }); } catch (e) { resolve({}); } });
+    tell(false).then(async (r) => {
+      if (!r.ask) return;
+      for (let i = 0; i < 60 && !document.querySelector('.markdown-body'); i++) await new Promise((resolve) => setTimeout(resolve, 250)); // el lector todavía se está armando
+      const T = LMD.t; let folder = '';
+      try { folder = LMD.filePath(new URL('.', location.href.split(/[?#]/)[0]).href); } catch (e) { /* dirección rara */ }
+      const yes = await LMD.dialog.confirm({ title: T('¿Abrir con un clic los enlaces a esta carpeta?'), text: T('La app web va a poder abrir los archivos Markdown de esta carpeta cuando abras un enlace a ellos. Se cambia en Ajustes, en Instalar.'), path: folder, ok: T('Permitir'), cancel: T('Ahora no') });
+      if (yes) tell(true);
+    });
+  }
   if (!APP) return;
 
   // Lo que se guarda a través del "archivo" de una nota también pasa por acá.
@@ -142,7 +154,11 @@
   api.present = () => present() && !!info;
   api.info = () => info;
   api.canOpen = () => present() && !!info;
-  api.openFile = (url) => call('file.open', { url });
+  // grant: en una pestaña nueva, donde el lector pregunta si los enlaces a esa carpeta se abren con un clic.
+  api.openFile = (url, grant) => call('file.open', grant ? { url, grant: true } : { url });
+  // Si la extensión puede entregarle ese archivo a la web: true o false (no dice si el archivo existe), o null si es una
+  // extensión anterior, que no conoce el pedido.
+  api.canRead = async (url) => { if (!(present() && info)) return false; const r = await Promise.race([call('file.can', { url }), new Promise((resolve) => setTimeout(() => resolve(null), 1500))]); return r && r.ok ? r.can === true : null; };
   api.readFile = (url) => call('file.read', { url });
   api.setup = () => call('file.setup');
 

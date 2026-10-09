@@ -139,7 +139,9 @@
     // La web avisa que su service worker ya la tiene guardada: desde ahí el botón la abre también sin conexión.
     'web.ready': async () => { await chrome.storage.local.set({ webReady: { at: Date.now() } }); return {}; },
     // Un enlace https que abre un archivo del disco: la app ya preguntó, y la pestaña que pide pasa a esa dirección.
-    'file.open': (a, by, sender) => openFile(a, sender),
+    'file.open': (a, by, sender) => openFile(a, sender, true),
+    // Si la web puede leer ese archivo por acá. Lo decide la lista de carpetas, sin mirar el disco: no dice si existe.
+    'file.can': async (a) => { const url = a && typeof a.url === 'string' && a.url.startsWith('file:///') ? LMD.fileUrl(a.url) : ''; return url ? { can: await readable(url) } : null; },
     // Lo mismo, pero el texto vuelve a la app web, que lo muestra adentro como copia.
     'file.read': (a) => readFile(a),
     // La sesión de la nube, una sola entre la web y la extensión (ver "La sesión de la nube", más abajo).
@@ -161,16 +163,31 @@
     if (opened.length >= OPEN_MAX) return true;
     opened.push(now); return false;
   }
-  async function openFile(a, sender) {
+  // web: lo pide la app web por el puente. Ahí la pregunta la dibujó la página, así que abrir el archivo en el lector
+  // no habilita su carpeta para la web por sí solo (ver "Qué archivos puede leer la app web"). Con grant, además, el
+  // archivo va a una pestaña nueva y el lector pregunta ahí, con una ventana de la extensión, si se habilita.
+  const BY_WEB = 'byWeb'; const BY_WEB_MAX = 12 * 3600000;
+  const session = chrome.storage.session || chrome.storage.local;
+  async function markByWeb(tabId, url, grant) {
+    const all = (await session.get(BY_WEB))[BY_WEB] || {}; const now = Date.now();
+    Object.keys(all).forEach((k) => { if (now - (all[k].at || 0) > BY_WEB_MAX) delete all[k]; });
+    all[tabId] = { key: pathKey(url), grant: grant === true, at: now };
+    await session.set({ [BY_WEB]: all });
+  }
+  async function openFile(a, sender, web) {
     const url = a && typeof a.url === 'string' && a.url.startsWith('file:///') ? LMD.fileUrl(a.url) : '';
     if (!url || !sender || !sender.tab || typeof sender.tab.id !== 'number') return null;
+    if (a.grant != null && a.grant !== true) return null;
     if (tooMany()) return { opened: false, why: 'limit' };
     let allowed = false;
     try { allowed = await chrome.extension.isAllowedFileSchemeAccess(); } catch (e) { /* no se pudo saber */ }
     if (!allowed) return { opened: false, why: 'access' };
     try { const res = await fetch(url, { cache: 'no-store' }); if (res.body) res.body.cancel().catch(() => {}); if (!res.ok && res.status !== 0) throw new Error('HTTP ' + res.status); }
     catch (e) { return { opened: false, why: 'missing' }; }
-    try { await chrome.tabs.update(sender.tab.id, { url }); } catch (e) { return { opened: false, why: 'access' }; }
+    try {
+      if (web && a.grant === true) { const tab = await chrome.tabs.create({ url, openerTabId: sender.tab.id }); await markByWeb(tab.id, url, true); }
+      else { if (web) await markByWeb(sender.tab.id, url, false); await chrome.tabs.update(sender.tab.id, { url }); }
+    } catch (e) { return { opened: false, why: 'access' }; }
     return { opened: true };
   }
   // ---------- Qué archivos puede leer la app web ----------
@@ -197,10 +214,18 @@
     return !!key && !w.off && w.roots.some((r) => inside(key, r));
   }
   // El lector abrió un archivo del disco: su carpeta pasa a la lista (o solo el archivo, si la carpeta está muy arriba).
-  async function seen(sender) {
+  // Si a ese archivo lo abrió la app web por el puente, no: ahí devuelve 'ask' cuando corresponde preguntar, y la
+  // carpeta entra recién con grant, que el lector manda después del clic de la persona en la ventana de la extensión.
+  async function seen(sender, grant) {
     if (!fromReader(sender)) return false;
     const url = LMD.fileUrl(String(sender.url).split(/[?#]/)[0]); const key = pathKey(url);
     if (!key) return false;
+    const all = (await session.get(BY_WEB))[BY_WEB] || {}; const mark = all[sender.tab.id];
+    if (mark && mark.key === key) {
+      if (!mark.grant) return false;
+      if (grant !== true) return (await readable(url)) ? true : 'ask';
+      delete all[sender.tab.id]; await session.set({ [BY_WEB]: all });
+    }
     const depth = key.split('/').length - 2 - (/^\/[a-z]:\//.test(key) ? 1 : 0); // carpetas por encima del archivo, sin contar la unidad
     const dir = depth >= DEEP;
     const rec = { url: dir ? new URL('.', url).href : url, dir, at: Date.now() };
@@ -212,7 +237,7 @@
     await chrome.storage.local.set({ webFiles: { off: w.off, roots } });
     return true;
   }
-  function onSeen(msg, sender, sendResponse) { seen(sender).then((ok) => sendResponse({ ok }), () => sendResponse({ ok: false })); return true; }
+  function onSeen(msg, sender, sendResponse) { seen(sender, msg && msg.grant).then((r) => sendResponse({ ok: r === true, ask: r === 'ask' }), () => sendResponse({ ok: false })); return true; }
 
   // El texto de ese archivo, con la misma validación y el mismo tope, y solo si está en la lista de arriba. Fuera de
   // ella (o con la lectura apagada) responde lo mismo exista o no el archivo: no sirve para averiguar qué hay en el disco.
