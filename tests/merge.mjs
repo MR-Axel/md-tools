@@ -86,7 +86,7 @@ try {
   const A = await R.signup('ana@ejemplo.test', true);
   const tok = (await api('POST', '/tokens', { name: 'Claude' }, A.s)).json.token;
   const tok2 = (await api('POST', '/tokens', { name: 'Otra' }, A.s)).json.token;
-  const mcp = async (name, args, t) => { const x = (await api('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args || {} } }, t || tok)).json.result; return { err: !!x.isError, text: x.content[0].text, more: x.content.slice(1).map((c) => c.text).join('\n'), n: x.content.length }; };
+  const mcp = async (name, args, t) => { const x = (await api('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args || {} } }, t || tok)).json.result; return { err: !!x.isError, text: x.content[0].text, more: x.content.slice(1).map((c) => c.text).join('\n'), n: x.content.length, data: x.structuredContent || null }; };
   const person = async (p, text) => { const n = (await api('GET', '/notes/' + enc(p), undefined, A.s)).json; return api('PUT', '/notes/' + enc(p), n && n.rev != null ? { text, rev: n.rev } : { text }, A.s); };
   const noteOf = async (p) => (await api('GET', '/notes/' + enc(p), undefined, A.s)).json;
   const revIn = (x) => +(/Version (\d+)/.exec(x.more) || [])[1];
@@ -97,6 +97,7 @@ try {
   await person('p/todo.md', base);
   const read1 = await mcp('read_note', { path: 'p/todo.md' });
   check('read_note devuelve el texto solo en el primer bloque, y la versión en el segundo', !read1.err && read1.text === base && read1.n === 2 && revIn(read1) === 1 && /base_rev: 1/.test(read1.more) && /by a person/.test(read1.more), read1);
+  check('y la versión viene también como dato, la misma del texto, con quién guardó último', !!read1.data && read1.data.rev === revIn(read1) && read1.data.path === 'p/todo.md' && read1.data.saved_by === 'a person' && read1.data.text === base, read1.data);
   // La persona tilda una tarea después de que la IA leyó; la IA manda la nota entera con un renglón más.
   await person('p/todo.md', sub(base, '- [ ] Buy bread', '- [x] Buy bread'));
   const w1 = await mcp('write_note', { path: 'p/todo.md', text: sub(base, 'Notes for the week.', 'Notes for the week.\n\nAdded by the AI.'), base_rev: revIn(read1) });
