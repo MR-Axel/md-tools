@@ -477,6 +477,93 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
   .lmd-root, .lmd-body { background: #fff !important; }
   .lmd-code pre { white-space: pre-wrap; }
   .lmd-code pre code { white-space: pre-wrap !important; }
+  /* Lo que en pantalla se desliza dentro de su caja, en papel se ve entero y se parte entre páginas. */
+  .lmd-table, .lmd-code pre, .lmd-code pre code, .lmd-math-block, .lmd-diagram { overflow: visible !important; }
+}
+
+/* ---------- Paginado: al imprimir y en el PDF ---------- */
+/* Fuera de la impresión estas reglas no hacen nada. Van sin @media para que la hoja escondida donde se calculan los
+   saltos de una carpeta (folderexport.js) se parta igual que el papel.
+   Ningún renglón queda solo arriba o abajo de una página: de un párrafo, un elemento de lista o un bloque de código
+   pasan al menos tres (y lo que es muy corto para eso pasa entero: .lmd-keep, que pone extras.js). Un título no queda
+   al pie: arrastra lo que sigue. Lo que se lee de una vez no se parte. */
+.markdown-body { orphans: 3; widows: 3; }
+.markdown-body :is(h1, h2, h3, h4, h5, h6), .markdown-body :is(.lmd-alert-title, .lmd-box-title, summary, dt) { break-after: avoid; page-break-after: avoid; break-inside: avoid; }
+.markdown-body :is(tr, img, figure, blockquote, .lmd-alert, div.lmd-box, .lmd-diagram, .lmd-math-block, .lmd-front, .lmd-card, .lmd-keep) { break-inside: avoid; page-break-inside: avoid; }
+/* Una tabla larga repite su encabezado en cada página. */
+.markdown-body thead { display: table-header-group; break-inside: avoid; }
+/* El último bloque no pasa solo a una página nueva: se lleva renglones del anterior. */
+.markdown-body > :last-child { break-before: avoid; page-break-before: avoid; }
+
+/* ---------- Exportar la carpeta (folderexport.js) ---------- */
+.lmd-fx-card { display: flex; flex-direction: column; width: min(600px, 100%); max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); }
+.lmd-fx-body { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -6px; padding: 0 6px; }
+.lmd-fx-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
+.lmd-fx-grid [hidden], .lmd-fx-checks [hidden] { display: none; }
+.lmd-fx-wide { grid-column: 1 / -1; }
+.lmd-fx-card .lmd-dlg-field select { display: block; width: 100%; height: 36px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--fg); font: inherit; outline: none; }
+.lmd-fx-card .lmd-dlg-field select:focus { border-color: var(--accent-fill); }
+.lmd-fx-checks { display: flex; flex-wrap: wrap; gap: 2px 20px; margin-bottom: 8px; }
+.lmd-fx-checks .lmd-check { margin-bottom: 6px; }
+.lmd-ask-card p.lmd-fx-count { margin: 0 0 6px; font-size: 13px; }
+.lmd-fx-list { max-height: 208px; margin: 0 0 12px; padding: 4px; overflow-y: auto; border: 1px solid var(--line); border-radius: 9px; list-style: none; }
+.lmd-fx-item { display: flex; align-items: center; gap: 4px; padding: 0 4px; border-radius: 6px; border-top: 2px solid transparent; border-bottom: 2px solid transparent; }
+.lmd-fx-item:hover { background: var(--bg-soft); }
+.lmd-fx-item .lmd-check { flex: 1; min-width: 0; margin: 0; padding: 4px 0; }
+.lmd-fx-item .lmd-check span { overflow-wrap: anywhere; font-size: 13.5px; }
+.lmd-fx-item .lmd-check input:not(:checked) + span { color: var(--fg-faint); }
+.lmd-fx-grip { flex: none; display: grid; place-items: center; width: 18px; color: var(--fg-faint); cursor: grab; }
+.lmd-fx-grip svg, .lmd-fx-move svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-fx-move { flex: none; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--fg-muted); cursor: pointer; opacity: 0; }
+.lmd-fx-item:hover .lmd-fx-move, .lmd-fx-item:focus-within .lmd-fx-move { opacity: 1; }
+.lmd-fx-move:hover { background: var(--line); color: var(--fg); }
+.lmd-fx-drag { opacity: 0.45; }
+.lmd-fx-over { border-top-color: var(--accent-fill); }
+.lmd-fx-under { border-bottom-color: var(--accent-fill); }
+.lmd-ask-card p.lmd-fx-note { margin: 0 0 10px; font-size: 13px; }
+.lmd-ask-card p.lmd-fx-status { margin: 10px 0 0; font-size: 13.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lmd-fx-card .lmd-ask-actions { margin-top: 14px; }
+.lmd-fx-busy .lmd-fx-body { opacity: 0.55; pointer-events: none; }
+@media (pointer: coarse) { .lmd-fx-move { opacity: 1; width: 34px; height: 34px; } .lmd-fx-grip { display: none; } }
+@media (max-width: 560px) {
+  .lmd-fx { padding: 10px; }
+  .lmd-fx-card { padding: 16px 16px 14px; max-height: calc(100vh - 20px); max-height: calc(100dvh - 20px); }
+  .lmd-fx-grid { grid-template-columns: minmax(0, 1fr); }
+  .lmd-fx-list { max-height: 30vh; }
+}
+/* El documento combinado. En pantalla está escondido, con el ancho y el alto útiles de la hoja: ahí se cargan las
+   imágenes y se calcula dónde cae cada salto. Con lmd-fx-measure se parte en columnas del tamaño de una página. */
+.lmd-fx-stage { position: fixed; left: 0; top: 0; width: 0; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; z-index: -1; }
+.lmd-fx-print { width: var(--fx-w); color: var(--fg); text-rendering: geometricPrecision; }
+.lmd-fx-print.lmd-fx-measure { height: var(--fx-h); column-width: var(--fx-w); column-gap: 0; column-fill: auto; }
+/* Lo mismo que hace la hoja de impresión, para que escondido mida igual que impreso. Los tamaños no dependen del
+   ancho de la pantalla: en el teléfono y en el escritorio sale el mismo documento. */
+.lmd-fx-print .lmd-table, .lmd-fx-print .lmd-code pre, .lmd-fx-print .lmd-code pre code.hljs, .lmd-fx-print .lmd-math-block, .lmd-fx-print .lmd-diagram { overflow: visible; }
+.lmd-fx-print .lmd-code pre, .lmd-fx-print .lmd-code pre code, .lmd-fx-print .lmd-code pre code.hljs { white-space: pre-wrap; overflow-wrap: anywhere; }
+.lmd-fx-print .lmd-code-lang { display: none; }
+.lmd-fx-print .markdown-body { overflow-wrap: break-word; }
+.lmd-fx-print .markdown-body h1 { font-size: 2.1em; }
+.lmd-fx-print .markdown-body h2 { font-size: 1.5em; }
+.lmd-fx-print .markdown-body h3 { font-size: 1.25em; }
+.lmd-fx-print .markdown-body :is(ul, ol) { padding-left: 1.7em; }
+.lmd-fx-print .markdown-body table { max-width: 100%; }
+.lmd-fx-print .markdown-body :is(th, td) { padding: 8px 14px; }
+.lmd-fx-print .lmd-front { grid-template-columns: minmax(0, max-content) minmax(0, 1fr); }
+.lmd-fx-print .lmd-zoomable { cursor: auto; }
+/* Cada documento: en página nueva, o a continuación del anterior con aire y una línea fina. */
+.lmd-fx-break { break-before: page; page-break-before: always; }
+.lmd-fx-measure > .lmd-fx-break { break-before: column; }
+.lmd-fx-join { margin-top: 3em; padding-top: 2.6em; border-top: 1px solid var(--line); }
+.lmd-fx-cover { padding-top: 78mm; text-align: center; }
+.lmd-fx-cover .lmd-fx-title { margin: 0; padding: 0; border: 0; font-size: 2.7em; line-height: 1.2; text-wrap: balance; }
+.lmd-fx-print .lmd-fx-toc ol { margin: 0; padding: 0; list-style: none; }
+.lmd-fx-toc li { margin: 0.5em 0; }
+.lmd-fx-toc a { color: inherit; text-decoration: none; }
+@media print {
+  html.lmd-fx-printing body > :not(.lmd-fx-stage) { display: none !important; }
+  html.lmd-fx-printing .lmd-fx-stage { position: static; width: auto; height: auto; overflow: visible; visibility: visible; }
+  html.lmd-fx-printing .lmd-fx-print { width: auto; }
+  html.lmd-fx-printing, html.lmd-fx-printing body { height: auto !important; overflow: visible !important; }
 }
 
 /* ---------- Pantalla de inicio de la app ---------- */

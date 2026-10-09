@@ -261,7 +261,7 @@ try {
       check('"más": copiar el HTML, sin nada de la interfaz', /^<h1[^>]*>Booking app launch/.test(copied) && !/contenteditable|data-l=|lmd-add|lmd-anchor/.test(copied) && /HTML copied/.test(await page.textContent('.lmd-status')), copied.slice(0, 200));
       await pick('export'); await page.waitForSelector('.lmd-menu-export');
       const exportMenu = await page.evaluate(() => [...document.querySelectorAll('.lmd-menu-export button')].map((b) => b.dataset.more + ':' + b.querySelector('span').textContent + (b.querySelector('kbd') ? ':' + b.querySelector('kbd').textContent : '')));
-      check('"más" > exportar: PDF, archivo HTML, el .md e imprimir con su atajo', J(exportMenu) === J(['export-pdf:PDF', 'export-html:HTML file', 'export-md:Markdown file (.md)', 'print:Print:Ctrl+P']), exportMenu);
+      check('"más" > exportar: PDF, archivo HTML, el .md e imprimir con su atajo', J(exportMenu) === J(['export-pdf:PDF', 'export-html:HTML file', 'export-md:Markdown file (.md)', 'print:Print:Ctrl+P', 'export-folder:The whole folder…']), exportMenu);
       await fits(page, 'menú de exportar');
       await away(page);
       await pick('export', 'print');
@@ -1055,7 +1055,7 @@ try {
     check('copiar el HTML', /^<h1[^>]*>Booking app launch/.test(await page.evaluate(() => navigator.clipboard.readText())));
     await page.click('[data-act=export]'); await page.waitForSelector('.lmd-menu-export');
     const em = await page.evaluate(() => [...document.querySelectorAll('.lmd-menu-export [role=menuitem]')].map((b) => b.dataset.more + ':' + b.querySelector('span').textContent + (b.querySelector('kbd') ? ':' + b.querySelector('kbd').textContent : '')));
-    check('exportar es un solo botón con su menú: PDF, HTML, el .md e imprimir con su atajo', J(em) === J(['export-pdf:PDF', 'export-html:HTML file', 'export-md:Markdown file (.md)', 'print:Print:Ctrl+P']), em);
+    check('exportar es un solo botón con su menú: PDF, HTML, el .md e imprimir con su atajo', J(em) === J(['export-pdf:PDF', 'export-html:HTML file', 'export-md:Markdown file (.md)', 'print:Print:Ctrl+P', 'export-folder:The whole folder…']), em);
     await page.click('[data-act=copy]'); await page.waitForSelector('.lmd-menu-copy');
     check('un solo menú abierto a la vez', await page.evaluate(() => document.querySelectorAll('.lmd-menu').length === 1 && document.querySelector('[data-act=export]').getAttribute('aria-expanded') === 'false'));
     await page.mouse.click(640, 500); await page.waitForTimeout(150);
