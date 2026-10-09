@@ -1141,10 +1141,12 @@
   const toolItems = (menu) => core.menus[menu].map((fn) => fn()).filter(Boolean);
   // Un archivo del disco abierto por su dirección: el enlace https que lo abre desde un chat o un documento.
   const fileHere = () => (!APP && location.protocol === 'file:' ? LMD.fileUrl(HERE) : '');
-  // Las pestañas de Ajustes que dependen de la cuenta. Sobre un archivo abierto directo llevan la franja que lo explica.
-  const DIRECT_TABS = ['cloud', 'ai', 'auto', 'plan', 'tools'];
-  // Este mismo archivo, en la app (la web o la página de la extensión, según "Abrir SharpMD en"): ahí sí hay cuenta.
-  const openInApp = () => bg({ type: 'openApp', pref: true, query: fileHere() ? '#open=' + encodeURIComponent(fileHere()) : '' });
+  // Sobre un archivo del disco la cuenta anda acá mismo: el lector le habla al servidor por la extensión (cloud.js).
+  // Sobre un .md de un sitio no hay cuenta: las pestañas de Ajustes que la piden llevan una franja que lo dice.
+  const NO_ACCT = !APP && !LMD.cloud.reach();
+  const DIRECT_TABS = ['cloud', 'ai', 'auto', 'plan'];
+  // La app (la web o la página de la extensión, según "Abrir SharpMD en"): ahí sí hay cuenta.
+  const openInApp = () => bg({ type: 'openApp', pref: true, query: '' });
   function openCopy(btn, keys) {
     const md = docKind() === 'md';
     barMenu(btn, 'lmd-menu-narrow lmd-menu-top lmd-menu-copy', [
@@ -2803,10 +2805,10 @@
           '<a class="lmd-ptabs-link" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">' + ICON.coffee + '<span>' + T('Apoyar el proyecto') + '</span></a>' +
           '<small class="lmd-ptabs-ver">SharpMD ' + LMD.VERSION + '</small>' +
         '</nav>' +
-        // Sobre un archivo abierto directo no hay cuenta: lo dice una sola franja, igual en todas las pestañas que la piden.
+        // Sobre un .md de un sitio no hay cuenta: lo dice una sola franja, igual en las pestañas que la piden.
         '<div class="lmd-panel-body">' +
-        (APP ? '' : '<div class="lmd-direct" data-direct hidden><p><b>' + T('Estás leyendo un archivo de tu disco.') + '</b> ' + T('Tu cuenta, la nube y tu IA están en la app.') + ' <span data-direct-who></span></p>' +
-          '<button type="button" class="lmd-btn lmd-btn-fill" data-direct-go>' + T('Abrir este archivo en la app') + '</button></div>') +
+        (NO_ACCT ? '<div class="lmd-direct" data-direct hidden><p>' + T('Tu cuenta, la nube y tu IA están en la app.') + ' <span data-direct-who></span></p>' +
+          '<button type="button" class="lmd-btn lmd-btn-fill" data-direct-go>' + T('Abrir la app') + '</button></div>' : '') +
           // Tres niveles: esto es personal. Lo del equipo lo decide quien lo administra y está en Plan; las opciones
           // de una nota sola, en el menú de esa nota.
           '<section class="lmd-two" data-tab="look"><h3>' + T('Apariencia') + '</h3>' +
@@ -2908,10 +2910,10 @@
     // Desde los paneles de la cuenta: cómo cambiar de pestaña, ir a entrar, y salir a pagar sin perder lo escrito.
     const host = {
       tab: (t) => showTab(t), close: () => closePanel(),
-      // En la app se entra en Ajustes → Nube. Sobre un archivo abierto directo, se abre la app con el correo ya pedido.
+      // En la app, y sobre un archivo del disco, se entra en Ajustes → Nube. Sobre un .md de un sitio se abre la app con el correo ya pedido.
       login: () => { if (APP) location.href = APP_URL + '?login=1'; else bg({ type: 'openApp', query: '?login=1' }); },
       leave: () => (dirty ? save(false) : Promise.resolve(true)),
-      back: location.href.split('#')[0], appUrl: APP_URL, direct: !APP,
+      back: location.href.split('#')[0], appUrl: APP_URL, direct: NO_ACCT,
       // Sobre un archivo abierto directo: la app en una pestaña nueva, la web o la página de la extensión según "Abrir SharpMD en".
       openApp: (at) => bg({ type: 'openApp', pref: true, query: at }),
       // Las personalizaciones vienen con el plan pago y se conservan.

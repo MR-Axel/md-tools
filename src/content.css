@@ -1509,6 +1509,7 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-inst-row p { flex: 1 1 240px; min-width: 0; margin: 0; font-size: 13.5px; color: var(--fg-muted); }
 .lmd-inst-row .lmd-btn { flex: none; }
 .lmd-inst-open { display: flex; flex-direction: column; gap: 6px; }
+.lmd-inst-files { margin: 6px 0 10px; padding: 0; list-style: none; font: 12.5px/1.5 var(--lmd-mono, ui-monospace, monospace); color: var(--fg-muted); overflow-wrap: anywhere; }
 .lmd-inst-opt { display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; color: var(--fg); cursor: pointer; }
 .lmd-inst-opt input { flex: none; margin: 3px 0 0; accent-color: var(--accent-fill); }
 .lmd-inst-opt span { min-width: 0; }
@@ -2587,6 +2588,9 @@ html:not(.lmd-editing) .lmd-cl-add { height: 1.25em; margin: 0; padding: 0 8px; 
 /* Abrir un archivo del disco por enlace: la ruta dentro de la pregunta. */
 .lmd-ask-card .lmd-dlg-path { margin: 0 0 18px; }
 .lmd-ask-card p + .lmd-dlg-path { margin-top: -6px; }
+/* Lo que hay que hacer en el selector de archivos, a la vista mientras está abierto. */
+.lmd-ask-card p.lmd-dlg-note { margin: -6px 0 18px; padding: 9px 12px; border: 1px solid var(--accent-fill); border-radius: 9px; background: var(--accent-soft); color: var(--fg); font-size: 13.5px; line-height: 1.45; }
+.lmd-ask-card p.lmd-dlg-note[hidden] { display: none; }
 /* ---------- Asistente de IA con clave propia (assistant.js) ---------- */
 .lmd-format [data-ai-fmt] { color: var(--accent); }
 .lmd-format [data-ai-fmt] svg, .lmd-ai-head > svg, .lmd-ai-btn svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }

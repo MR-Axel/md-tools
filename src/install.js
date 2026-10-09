@@ -170,6 +170,9 @@
         '<li>' + esc(T(fileAccess === true ? 'El acceso a archivos ya está activado.' : 'En los detalles de la extensión, activá "Permitir acceso a URL de archivo".')) + '</li></ol>' +
         '<div class="lmd-inst-links">' + (OWN && fileAccess !== true ? '<button type="button" class="lmd-btn" data-inst="details">' + esc(T('Detalles de la extensión')) + '</button>' : '') + out(HELP_URL, 'Ayuda', 'lmd-link') + '</div>';
     }
+    // Qué puede leer la app web por la extensión al abrir un enlace a un archivo del disco. Se maneja solo desde la
+    // extensión: la web no puede prenderlo ni sumar carpetas.
+    if (EXT && desktop) html += head('Carpetas de las que la app web puede abrir archivos') + '<div data-inst-files></div>';
     if (ANDROID_URL) html += head('App de Android') + line(esc(T('La misma app en el teléfono, con tus notas de la nube.')), out(ANDROID_URL, 'Conseguir la app'));
     box.innerHTML = html;
 
@@ -181,14 +184,38 @@
       try { await e.prompt(); const r = await e.userChoice; if (r && r.outcome === 'accepted') markInstalled(true); } catch (err) { /* el navegador no lo mostró */ }
       pane(box);
     });
+    const files = box.querySelector('[data-inst-files]');
+    if (files) {
+      let w = {};
+      try { w = (await chrome.storage.local.get('webFiles')).webFiles || {}; } catch (e) { /* sin almacenamiento */ }
+      const roots = Array.isArray(w.roots) ? w.roots.filter((r) => r && typeof r.url === 'string') : [];
+      const put = (next) => chrome.storage.local.set({ webFiles: next }).then(() => { if (box.isConnected) pane(box); });
+      const sw = el('label', { class: 'lmd-check' }); const on = el('input', { type: 'checkbox', 'data-inst': 'web-files' }); on.checked = w.off !== true;
+      sw.append(on, el('span', { text: T('La app web puede abrir archivos del disco por la extensión') }));
+      on.addEventListener('change', () => put({ off: !on.checked, roots }));
+      files.appendChild(sw);
+      files.appendChild(el('p', { class: 'lmd-hint', text: T('Solo al abrir un enlace a un archivo, y solo dentro de las carpetas de los archivos que abriste con la extensión.') }));
+      if (roots.length) {
+        const list = el('ul', { class: 'lmd-inst-files' });
+        roots.forEach((r) => list.appendChild(el('li', { text: LMD.filePath(r.url) })));
+        files.appendChild(list);
+        const clear = el('button', { type: 'button', class: 'lmd-btn', 'data-inst': 'files-clear', text: T('Vaciar la lista') });
+        clear.addEventListener('click', () => put({ off: w.off === true, roots: [] }));
+        files.appendChild(el('div', { class: 'lmd-inst-links' })).appendChild(clear);
+      } else files.appendChild(el('p', { class: 'lmd-hint', 'data-inst-none': '', text: T('Todavía no hay ninguna.') }));
+    }
     const details = box.querySelector('[data-inst=details]');
     if (details) details.addEventListener('click', () => { try { chrome.tabs.create({ url: 'chrome://extensions/?id=' + chrome.runtime.id }); } catch (e) { /* sin extensión */ } });
   }
 
   // ---------- Un enlace https que abre un archivo del disco ----------
   // app.html#open=<la dirección file:// codificada, o la ruta del sistema>. Un enlace lo puede mandar cualquiera: nunca
-  // se abre sin el clic de quien mira, y la ruta se muestra siempre como texto. Con la extensión, la pestaña pasa al
-  // archivo y lo muestra el lector de siempre; sin ella, queda la ruta para copiar y el selector de archivos.
+  // se abre sin el clic de quien mira, y la ruta se muestra siempre como texto. Nunca se abre otra pestaña.
+  // - En la app web, con la extensión: el texto llega por el puente y se muestra acá, como copia (la extensión no
+  //   puede escribir en el disco, así que guardar pregunta dónde).
+  // - Con "Abrir SharpMD en: la extensión", y en la página de la extensión: esta pestaña pasa al archivo, en su lector.
+  // - Sin extensión, sin acceso a archivos o si la extensión no pudo: la ruta se copia y se abre el selector de
+  //   archivos, las dos cosas con el mismo clic. El archivo elegido se abre con su permiso y guardar escribe en él.
   let asking = false;
   async function openLink(frag, ctx) {
     if (asking) return false;
@@ -202,26 +229,45 @@
     const url = LMD.fileUrl(given);
     if (!url) { await D.confirm({ title: T('Este enlace no se puede abrir'), text: T('Solo se abren archivos Markdown del disco.'), ok: T('Cerrar'), cancel: false }); return false; }
     const path = LMD.filePath(url);
-    const byHand = () => LMD.home.pick(ctx, 'file');
-    const without = async (text) => {
-      if (await D.confirm({ title, text, path, ok: T('Abrir archivo…'), link: { href: EXTENSION_URL, text: T('Conseguir la extensión') } })) byHand();
-      return false;
-    };
+    const copyNote = () => ctx.warn(T('Se abrió una copia. El archivo del disco no cambia.'));
+    // El respaldo: la ruta al portapapeles y el selector de archivos, los dos con el mismo clic y en ese orden (los
+    // dos piden un gesto). El selector no deja que la página le fije una ruta: por eso se pega. La instrucción queda
+    // a la vista mientras el selector está abierto, y si copiar falla sigue el botón "Copiar la ruta".
+    let startIn = null;
+    try { const near = (await LMD.store.rootsAll()).find((r) => r.handle && !r.ghost); startIn = near ? near.handle : null; } catch (e) { /* sin carpetas abiertas */ }
+    const byPicker = (o) => D.confirm(Object.assign({ title, path, ok: T('Abrir') }, o, {
+      act: (d) => {
+        let copied = null;
+        try { copied = navigator.clipboard.writeText(path); } catch (e) { copied = Promise.reject(e); }
+        d.note(T('La ruta ya está copiada. Pegala en el cuadro de nombre de archivo (Ctrl+V) y apretá Enter.'));
+        copied.then(() => {}, () => d.note(T('La ruta no se pudo copiar. Copiala con el botón y pegala en el cuadro de nombre de archivo.')));
+        LMD.home.pickLinked(ctx, startIn, copyNote).then((got) => { if (got) d.close(true); });
+      },
+    }));
     await LMD.bridge.settle(); // el puente con la extensión se presenta al cargar: se espera a saber si está
-    if (!LMD.bridge.canOpen()) return without(T('Para abrir archivos del disco desde un enlace hace falta la extensión de Chrome.'));
+    if (!LMD.bridge.canOpen()) return byPicker({ text: T('Sin la extensión de Chrome, elegí el archivo.'), link: { href: EXTENSION_URL, text: T('Conseguir la extensión') } });
+    const access = { title: T('Falta el acceso a archivos'), text: T('La extensión no tiene acceso a archivos. Elegí el archivo, o activá el acceso.'), cancel: T('Cerrar'), more: { text: '', link: T('Detalles de la extensión'), go: () => LMD.bridge.setup() } };
+    const missing = { title: T('No se encontró el archivo'), text: T('Puede que se haya movido o que tenga otro nombre.'), cancel: T('Cerrar') };
+    const failed = { text: T('La extensión no lo pudo abrir. Actualizala o elegí el archivo a mano.') };
+    const outside = { text: T('Por enlace, la extensión solo abre lo que está en carpetas que ya abriste con ella. Elegí el archivo.') };
     if (!(await D.confirm({ title, path, ok: T('Abrir') }))) return false;
-    const r = await LMD.bridge.openFile(url);
-    if (r && r.ok && r.opened) return true;
+    // Con "Abrir SharpMD en: la extensión", y en su página propia, lo muestra el lector de la extensión en esta pestaña.
+    if (OWN || (await LMD.load()).openIn === 'ext') {
+      const r = await LMD.bridge.openFile(url);
+      if (r && r.ok && r.opened) return true;
+      const why = r && r.ok ? r.why : '';
+      return byPicker(why === 'access' ? access : why === 'missing' ? missing : failed);
+    }
+    // En la app web: el texto llega por el puente y se muestra acá adentro.
+    const r = await LMD.bridge.readFile(url);
+    if (r && r.ok && r.opened && typeof r.text === 'string') {
+      LMD.home.account(ctx);
+      await LMD.home.openFile(ctx, new File([r.text], String(r.name || 'note.md')), ctx.say);
+      copyNote();
+      return true;
+    }
     const why = r && r.ok ? r.why : '';
-    if (why === 'access') {
-      if (await D.confirm({ title: T('Falta el acceso a archivos'), text: T('En los detalles de la extensión, activá "Permitir acceso a URL de archivo".') + ' ' + T('Después volvé a abrir el enlace.'), path, ok: T('Detalles de la extensión'), cancel: T('Cerrar') })) LMD.bridge.setup();
-      return false;
-    }
-    if (why === 'missing') {
-      if (await D.confirm({ title: T('No se encontró el archivo'), text: T('Puede que se haya movido o que tenga otro nombre.'), path, ok: T('Abrir archivo…'), cancel: T('Cerrar') })) byHand();
-      return false;
-    }
-    return without(T('La extensión no lo pudo abrir. Actualizala o elegí el archivo a mano.'));
+    return byPicker(why === 'access' ? access : why === 'missing' ? missing : why === 'refused' ? outside : failed);
   }
 
   LMD.install = { init, pane, openLaunched, takeShared, openLink, EXTENSION_URL, ANDROID_URL };

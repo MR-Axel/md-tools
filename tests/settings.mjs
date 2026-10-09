@@ -304,7 +304,7 @@ try {
   await app.click('[data-act=close-panel]');
 
   console.log('Un archivo abierto directo en el navegador');
-  // Ahí el lector corre dentro de la página del archivo y el servidor no le responde: la cuenta se maneja en la app.
+  // Ahí el lector corre dentro de la página del archivo, y al servidor le habla por la extensión: la cuenta anda ahí mismo.
   const admin = await ctx.newPage(); await admin.goto('chrome://extensions'); await admin.waitForTimeout(800);
   await admin.evaluate(async () => { for (const e of await chrome.developerPrivate.getExtensionsInfo()) await chrome.developerPrivate.updateExtensionConfiguration({ extensionId: e.id, fileAccess: true }); });
   await admin.close();
@@ -320,52 +320,51 @@ try {
   check('un .md abierto con la extensión toma el tema incluido, con su sintaxis', fileThemed && ['rgb(156, 53, 38)', 'rgb(125, 71, 0)', 'rgb(53, 96, 26)'].includes(fileCode), [fileThemed, fileCode]);
   await file.click('[data-act=settings]'); await file.waitForSelector('.lmd-panel-card');
   const direct = {};
-  for (const t of ['cloud', 'ai', 'plan']) { await file.click('[data-ptab=' + t + ']'); await file.waitForTimeout(500); direct[t] = await file.evaluate((k) => document.querySelector('[data-acct=' + k + ']').textContent, t); }
-  await file.waitForTimeout(800);
-  check('sobre un archivo directo, Nube, IA y Plan no fallan ni repiten lo que ya dice la franja de arriba', Object.values(direct).every((d) => !/La cuenta se maneja desde la app|Abrir SharpMD|No hay conexión/.test(d)) && /Seguridad/.test(direct.cloud) && /Una IA que hable MCP/.test(direct.ai) && /Gratis/.test(direct.plan), direct);
-  // Una sola franja lo dice igual en cada pestaña que depende de la cuenta, y ofrece abrir ESTE archivo en la app
+  for (const t of ['cloud', 'ai', 'plan']) { await file.click('[data-ptab=' + t + ']'); await file.waitForFunction((k) => /Salir|Crear un token|Es tu plan actual/.test(document.querySelector('[data-acct=' + k + ']').textContent), t, { timeout: 8000 }).catch(() => {}); direct[t] = await file.evaluate((k) => document.querySelector('[data-acct=' + k + ']').textContent, t); }
+  check('sobre un archivo del disco, Nube, IA y Plan muestran la cuenta de la extensión', direct.cloud.includes(mail) && /Seguridad/.test(direct.cloud) && /Salir/.test(direct.cloud) && /Crear un token/.test(direct.ai) && /Es tu plan actual/.test(direct.plan) && Object.values(direct).every((d) => !/No hay conexión|Entrá a tu cuenta/.test(d)), direct);
+  // La franja que mandaba a abrir el archivo en la app ya no existe: ni en Herramientas ni en las pestañas de la cuenta.
   const strip = {};
-  for (const t of ['look', 'cloud', 'ai', 'auto', 'plan', 'tools']) { await file.click('[data-ptab=' + t + ']'); await file.waitForTimeout(200); strip[t] = await file.evaluate(() => { const d = document.querySelector('[data-direct]'); return d.hidden || !d.offsetParent ? '' : d.textContent; }); }
-  const same = 'Estás leyendo un archivo de tu disco. Tu cuenta, la nube y tu IA están en la app. Abrir este archivo en la app';
-  check('sobre un archivo directo, una franja dice lo mismo en Nube, IA, API y automatizaciones, Plan y Herramientas, y no aparece en Apariencia', strip.look === '' && ['cloud', 'ai', 'auto', 'plan', 'tools'].every((t) => strip[t].replace(/\s+/g, ' ').trim() === same), strip);
-  // La galería ahí no habla con el servidor: muestra los temas incluidos y dice dónde está lo demás, sin "no hay conexión"
-  await file.click('[data-tsub=community]'); await file.waitForSelector('.lmd-gal-card[data-gkind=included]');
-  const dgal = await file.evaluate(() => ({ note: document.querySelector('.lmd-gal-note').textContent, hidden: document.querySelector('.lmd-gal-note').hidden, own: document.querySelectorAll('.lmd-gal-card[data-gkind=included]').length, empty: !!document.querySelector('.lmd-gal-list .lmd-empty') }));
-  check('la galería sobre un archivo directo muestra los doce temas incluidos y dice que el resto está en la app', !dgal.hidden && dgal.note === 'Abrí la app para ver lo que compartió la comunidad.' && dgal.own === 12 && !dgal.empty && !/conexión/.test(dgal.note), dgal);
-  const fileUrl = pathToFileURL(path.join(root, 'examples', 'sample.md')).href;
-  const lands = async (sel) => { await file.bringToFront(); const [p] = await Promise.all([ctx.waitForEvent('page'), file.click(sel)]); const first = p.url(); await p.close(); return { first, dlg: await file.evaluate(() => !!document.querySelector('.lmd-dlg, .lmd-gal-share')) }; };
-  const viaShare = await lands('[data-gal=share]'); const viaStrip = await lands('[data-direct-go]');
-  check('"Compartí el tuyo" y el botón de la franja abren este mismo archivo en la app, sin el diálogo de entrar', viaShare.first === SITE + '/src/app.html#open=' + encodeURIComponent(fileUrl) && viaStrip.first === viaShare.first && !viaShare.dlg && !viaStrip.dlg, [viaShare, viaStrip, fileUrl]);
-  check('y no le piden nada al servidor', asked.length === 0, asked.slice(0, 5));
-  const buy = await file.evaluate(() => ({ paid: [...document.querySelectorAll('[data-acct=plan] .lmd-plan + .lmd-plan .lmd-plan-buy [data-c=app]')].map((b) => b.textContent + ' ' + b.dataset.at + (b.classList.contains('lmd-btn-fill') ? ' fill' : '')),
-    open: [...document.querySelectorAll('[data-acct=plan] .lmd-acct-actions [data-c=app]')].map((b) => b.textContent + (b.classList.contains('lmd-btn-fill') ? ' fill' : '')), price: document.querySelector('[data-acct=plan] .lmd-plan + .lmd-plan h4').textContent }));
-  check('Plan sobre un archivo directo: la tarjeta del plan pago trae suscribirse por año (el destacado) y por mes, con los precios de la app, y ningún otro botón de abrir la app',
-    buy.paid.join('|') === 'USD 40 / año #lmd-plans fill|USD 4 / mes #lmd-plans' && buy.open.length === 0 && /USD 40 \/ año/.test(buy.price), buy);
+  for (const t of ['look', 'cloud', 'ai', 'auto', 'plan', 'tools']) { await file.click('[data-ptab=' + t + ']'); await file.waitForTimeout(200); strip[t] = await file.evaluate(() => !!document.querySelector('[data-direct], .lmd-direct') || /Estás leyendo un archivo de tu disco|Abrir este archivo en la app/.test(document.querySelector('.lmd-panel-card').textContent)); }
+  check('sobre un archivo del disco no hay franja en ninguna pestaña, tampoco en Herramientas', Object.values(strip).every((v) => v === false), strip);
+  // La galería ahí consulta al servidor, y "Compartí el tuyo" abre su formulario en el lugar.
+  await file.click('[data-tsub=community]'); await file.waitForSelector('.lmd-gal-card[data-gkind=included]'); await file.waitForTimeout(600);
+  const dgal = await file.evaluate(() => ({ note: document.querySelector('.lmd-gal-note').hidden ? '' : document.querySelector('.lmd-gal-note').textContent, own: document.querySelectorAll('.lmd-gal-card[data-gkind=included]').length }));
+  check('la galería sobre un archivo del disco muestra los doce temas incluidos y ya no manda a abrir la app', dgal.own === 12 && !/Abrí la app|conexión/.test(dgal.note), dgal);
+  const tabsNow = ctx.pages().length;
+  await file.click('[data-gal=share]'); await file.waitForSelector('.lmd-gal-share', { timeout: 5000 }).catch(() => {});
+  check('"Compartí el tuyo" abre el formulario ahí mismo, sin otra pestaña', (await file.locator('.lmd-gal-share [data-gs=send]').count()) === 1 && ctx.pages().length === tabsNow, ctx.pages().map((p) => p.url()));
+  await file.click('.lmd-gal-share [data-gs=no]').catch(() => {});
+  check('y la página del archivo no le pide nada al servidor: todo sale por la extensión', asked.length === 0, asked.slice(0, 5));
+  await file.click('[data-ptab=plan]'); await file.waitForSelector('[data-acct=plan] .lmd-plan-buy');
+  const buy = await file.evaluate(() => ({ paid: [...document.querySelectorAll('[data-acct=plan] .lmd-plans > .lmd-plan:nth-child(2) .lmd-plan-buy [data-c=app]')].map((b) => b.textContent + ' ' + b.dataset.at + (b.classList.contains('lmd-btn-fill') ? ' fill' : '')),
+    links: document.querySelectorAll('[data-acct=plan] a[data-pay]').length, price: document.querySelector('[data-acct=plan] .lmd-plans > .lmd-plan:nth-child(2) h4').textContent }));
+  check('Plan sobre un archivo del disco: suscribirse por año (el destacado) y por mes abre la app, y nada sale a pagar desde un file://',
+    buy.paid.join('|') === 'USD 40 / año #lmd-plans fill|USD 4 / mes #lmd-plans' && buy.links === 0 && /USD 40 \/ año/.test(buy.price), buy);
   await file.evaluate(() => document.documentElement.classList.add('lmd-store-app'));
   check('dentro de la app de Android los botones de compra no se ven', await file.evaluate(() => getComputedStyle(document.querySelector('[data-acct=plan] .lmd-plan-buy')).display === 'none'));
   await file.evaluate(() => document.documentElement.classList.remove('lmd-store-app'));
   // Por defecto SharpMD se abre en la web: una pestaña nueva, ya en la pestaña de Ajustes que toca.
   const goes = async (tab, sel) => { await file.bringToFront(); await file.click('[data-ptab=' + tab + ']'); const [p] = await Promise.all([ctx.waitForEvent('page'), file.click('[data-acct=' + tab + '] ' + sel)]); const first = p.url(); await p.waitForSelector('.lmd-home'); return { p, first }; };
   const onTab = async (p) => { await p.waitForTimeout(600); for (let i = 0; i < 3; i++) { try { return await p.evaluate(() => { const t = document.querySelector('[data-ptab].lmd-on'); return !document.querySelector('.lmd-panel').hidden && t ? t.dataset.ptab : ''; }); } catch (e) { await p.waitForTimeout(500); } } return 'sin página'; };
-  const webPlan = await goes('plan', '.lmd-plan-buy [data-c=app]'); await webPlan.p.waitForSelector('.lmd-panel .lmd-plans');
+  const webPlan = await goes('plan', '.lmd-plans > .lmd-plan:nth-child(2) .lmd-plan-buy [data-c=app]'); await webPlan.p.waitForSelector('.lmd-panel .lmd-plans');
   check('suscribirse abre la app web en una pestaña nueva, directo en los planes', webPlan.first === SITE + '/src/app.html#lmd-plans' && (await onTab(webPlan.p)) === 'plan', webPlan.first);
+  // La web de la prueba apunta a otro servidor que la extensión: la sesión no cruza.
+  const mixed = await webPlan.p.evaluate(async () => { await LMD.bridge.sync(); return { cloud: localStorage.getItem('mdtools:cloud'), clash: LMD.bridge.clash() }; });
+  check('con otro servidor de cada lado, la sesión de la extensión no pasa a la web', mixed.cloud === null && mixed.clash === null && (await stored('cloud')).email === mail, mixed);
   await webPlan.p.close();
-  // En Nube, IA y API y automatizaciones no queda otro botón de abrir la app: el de la franja alcanza.
   const others = {};
   for (const t of ['cloud', 'ai', 'auto']) { await file.click('[data-ptab=' + t + ']'); await file.waitForTimeout(500); others[t] = await file.evaluate((k) => document.querySelectorAll('[data-tab=' + k + '] [data-c=app]').length, t); }
-  check('en Nube, IA y API y automatizaciones el único botón que abre la app es el de la franja', Object.values(others).every((n) => n === 0) && (await file.evaluate(() => { const d = document.querySelector('[data-direct]'); return !d.hidden && !!d.querySelector('[data-direct-go]').offsetParent; })), others);
+  check('en Nube, IA y API y automatizaciones no hay ningún botón que mande a la app', Object.values(others).every((n) => n === 0), others);
   // Con "Abrir SharpMD en: esta extensión", los mismos botones abren la página de la extensión con la misma ancla.
   const openWas = await stored('settings');
   await app.evaluate((v) => new Promise((resolve) => chrome.storage.local.set({ settings: v }, resolve)), Object.assign({}, openWas, { openIn: 'ext' }));
-  const extPlan = await goes('plan', '.lmd-plan-buy [data-c=app]'); await extPlan.p.waitForSelector('.lmd-panel .lmd-plans');
+  const extPlan = await goes('plan', '.lmd-plans > .lmd-plan:nth-child(2) .lmd-plan-buy [data-c=app]'); await extPlan.p.waitForSelector('.lmd-panel .lmd-plans');
   check('con "esta extensión" elegida, suscribirse abre la página de la extensión en los planes', extPlan.first === home + '#lmd-plans' && (await onTab(extPlan.p)) === 'plan', extPlan.first);
   await extPlan.p.close();
-  const extStrip = await lands('[data-direct-go]');
-  check('y el botón de la franja abre este mismo archivo en la página de la extensión', extStrip.first === home + '#open=' + encodeURIComponent(fileUrl), extStrip.first);
   await app.evaluate((v) => new Promise((resolve) => chrome.storage.local.set({ settings: v }, resolve)), openWas);
   await file.bringToFront();
-  await file.click('[data-act=feedback]'); await file.waitForSelector('.lmd-fb a');
-  check('los comentarios ofrecen el correo', /^mailto:hello@sharpmd\.app/.test(await file.evaluate(() => document.querySelector('.lmd-fb a').href)) && (await file.locator('.lmd-fb textarea').count()) === 0);
+  await file.click('[data-act=feedback]'); await file.waitForSelector('.lmd-fb textarea');
+  check('los comentarios se mandan desde ahí, con su formulario', (await file.locator('.lmd-fb textarea').count()) === 1 && (await file.locator('.lmd-fb [data-fb=send]').count()) === 1);
   await file.close(); await app.bringToFront();
 
   console.log('Pago: ida y vuelta en la misma pestaña');

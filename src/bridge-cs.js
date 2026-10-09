@@ -32,6 +32,8 @@
       if (area !== 'local') return;
       if (changes.bridgeRev) post({ dir: 'event', what: 'store', by: (changes.bridgeRev.newValue || {}).by || '' });
       if (changes.settings) post({ dir: 'event', what: 'prefs' });
+      // Se entró o se salió de la cuenta del lado de la extensión. Solo el aviso: la sesión se pide aparte.
+      if (changes.cloud) post({ dir: 'event', what: 'session' });
     });
     // El botón de la extensión pregunta si la app cargó en esta pestaña.
     chrome.runtime.onMessage.addListener((msg, sender, respond) => { if (msg && msg.type === 'bridge-ping') respond({ ok: true }); });
