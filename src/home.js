@@ -13,7 +13,7 @@
   // Qué se puede hacer sin cuenta y qué suma tenerla, en dos renglones. Lo muestran el inicio y Ajustes → Nube.
   const perks = () => '<dl class="lmd-perks">' +
     '<dt>' + T('Sin cuenta') + '</dt><dd>' + T('Todo el editor, tus archivos del disco y las notas guardadas en este navegador.') + '</dd>' +
-    '<dt>' + T('Con cuenta') + '</dt><dd>' + T('Notas en la nube (10 gratis), con tu IA conectada. Compartir e historial en el plan pago.') + '</dd></dl>';
+    '<dt>' + T('Con cuenta') + '</dt><dd>' + T('Notas en la nube ({n} gratis), con tu IA conectada. Compartir e historial en el plan pago.', { n: LMD.cloud.freeNotes() }) + '</dd></dl>';
 
   // Entrar a la cuenta: primero el correo, después el código que llega. Es el mismo formulario en el inicio y en Ajustes → Nube.
   // Lo que contesta el servidor al pedir o probar un código. Cada tope (429) llega con su código y con los segundos
@@ -341,7 +341,7 @@
     acctNow = a;
     box.textContent = '';
     const pro = !!a && a.plan === 'pro';
-    if (a) acctHost().unlocked(a);
+    if (a) { acctHost().unlocked(a); LMD.sync.room(a); }
     // Quien tiene el plan por un equipo que paga otra persona ve su equipo y su papel, no un plan.
     const sub = a ? LMD.team.planLabel(a) + ' · ' + (a.limit ? T('{n} de {m} notas', { n: a.notes, m: a.limit }) : T(a.notes === 1 ? '1 nota, sin límite' : '{n} notas, sin límite', { n: a.notes })) : why;
     const b = row('menu', ICON.cloudOk, LMD.cloud.email(), sub);
@@ -548,7 +548,7 @@
         return ctx.open('cloud/' + encodeURIComponent(file), how);
       } catch (e) {
         // Desde una plantilla se eligió crearla ahí: en el límite del plan gratis se dice, en vez de mandarla a otro lado.
-        if (opt.strict && e && e.code === 'note_limit') { ctx.plan(T('Llegaste al límite de notas del plan gratis. El plan pago no tiene límite.')); return false; }
+        if (opt.strict && e && e.code === 'note_limit') { ctx.plan(LMD.sync.full()); return false; }
         // En el límite del plan gratis la nota nace igual, en el navegador, y se dice dónde quedó.
         if (e && e.code === 'note_limit') full = true;
         /* sin conexión: sigue en el navegador */
@@ -560,7 +560,7 @@
     await notePut(name, text);
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* el navegador decide */ }
     const done = await ctx.open('local/' + encodeURIComponent(name), how);
-    if (full) ctx.warn(T('El plan gratis llega a 10 notas en la nube. Esta quedó guardada en este navegador.'));
+    if (full) ctx.warn(T('El plan gratis llega a {n} notas en la nube. Esta quedó guardada en este navegador.', { n: LMD.cloud.freeNotes() }));
     return done;
   }
 

@@ -114,7 +114,7 @@
         catch (e) {
           // Sin conexión, o en el límite del plan: la nota nace igual, en este navegador, y se dice dónde quedó.
           w = 'local';
-          note = e && e.code === 'note_limit' ? T('El plan gratis llega a 10 notas en la nube. Esta quedó guardada en este navegador.') : T('Sin conexión. La nota del día quedó en este navegador.');
+          note = e && e.code === 'note_limit' ? T('El plan gratis llega a {n} notas en la nube. Esta quedó guardada en este navegador.', { n: (e.body && e.body.limit) || LMD.cloud.freeNotes() }) : T('Sin conexión. La nota del día quedó en este navegador.');
           if ((await names(w)).has(file)) { const done = await core.open(vbase() + pathOf(d, w)); core.flash(note, 'warn'); return done; }
         }
       } else if (w === 'disk') {

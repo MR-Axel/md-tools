@@ -10,7 +10,7 @@ const data = fs.mkdtempSync(path.join(os.tmpdir(), 'mdsync-'));
 const PORT = 20000 + Math.floor(Math.random() * 900);
 const base = 'http://127.0.0.1:' + PORT;
 const SITE = 'https://sharpmd.app';
-const server = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(PORT), DATA_DIR: data, DEV_CODES: '1', ADMIN_KEY: 'clave-de-prueba', FEEDBACK_TO: 'duenio@ejemplo.test', PUBLIC_URL: base, PORTAL_URL: 'https://portal.ejemplo.test/',
+const server = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(PORT), DATA_DIR: data, DEV_CODES: '1', ADMIN_KEY: 'clave-de-prueba', FREE_NOTES: '25', FEEDBACK_TO: 'duenio@ejemplo.test', PUBLIC_URL: base, PORTAL_URL: 'https://portal.ejemplo.test/',
   CHECKOUT_MONTHLY: SITE + '/pay.html?plan=monthly', CHECKOUT_YEARLY: SITE + '/pay.html?plan=yearly', ALLOW_ORIGINS: SITE }, stdio: ['ignore', 'pipe', 'pipe'] });
 let log = ''; server.stdout.on('data', (d) => { log += d; }); server.stderr.on('data', (d) => { log += d; });
 for (let i = 0; i < 50 && !/puerto/.test(log); i++) await new Promise((r) => setTimeout(r, 100));
@@ -56,7 +56,8 @@ const overflow = async () => { const out = []; for (const t of TABS) { await tab
 // Los dos renglones que dicen qué anda sin cuenta y qué suma tenerla: sin signos de admiración ni rayas largas. Van en Ajustes → Nube.
 // En el inicio, la cuenta vive al pie de la barra lateral: sin sesión, la invitación a entrar con una línea de qué suma.
 const perks = () => app.evaluate(() => [...document.querySelectorAll('.lmd-perks dt, .lmd-perks dd')].filter((n) => n.offsetWidth > 0).map((n) => n.textContent));
-const claro = (p) => p.length === 4 && p[0] === 'Sin cuenta' && /editor/.test(p[1]) && /disco/.test(p[1]) && /navegador/.test(p[1]) && p[2] === 'Con cuenta' && /nube \(10 gratis\), con tu IA conectada\./.test(p[3]) && /Compartir e historial en el plan pago\./.test(p[3]) && !/[!¡—]/.test(p.join(''));
+// Antes de entrar la app no tiene el dato del servidor y dice 10; después de haber entrado dice el tope de ese servidor (acá 25).
+const claro = (p) => p.length === 4 && p[0] === 'Sin cuenta' && /editor/.test(p[1]) && /disco/.test(p[1]) && /navegador/.test(p[1]) && p[2] === 'Con cuenta' && /nube \((10|25) gratis\), con tu IA conectada\./.test(p[3]) && /Compartir e historial en el plan pago\./.test(p[3]) && !/[!¡—]/.test(p.join(''));
 const text = (sel) => app.evaluate((s) => { const n = document.querySelector(s); return n ? n.textContent.trim() : null; }, sel);
 
 try {
@@ -133,7 +134,7 @@ try {
       inset: m.querySelector('[data-cloud=plan] svg').getBoundingClientRect().left - m.querySelector('[data-cloud=logout] svg').getBoundingClientRect().left, gear: document.querySelectorAll('[data-act=settings]').length, rowH: Math.round(m.querySelector('[data-cloud=plan]').getBoundingClientRect().height), above: r.bottom <= row.top && r.top >= 0, open: document.querySelector('[data-cloud=menu]').getAttribute('aria-expanded') }; });
   await app.keyboard.press('Escape');
   const shutAgain = await app.evaluate(() => [document.querySelectorAll('.lmd-side-acct .lmd-menu').length, document.querySelector('[data-cloud=menu]').getAttribute('aria-expanded'), document.activeElement.dataset.cloud]);
-  check('conectado: correo, plan y notas', box.email === mail && /^Plan gratis · 0 de 10 notas/.test(box.sub), box);
+  check('conectado: correo, plan y notas', box.email === mail && /^Plan gratis · 0 de 25 notas/.test(box.sub), box);
   check('la cuenta es una fila fija al pie de la barra lateral, y un correo largo no la parte en dos renglones', box.oneLine && box.inside && box.atFoot && box.title === mail, box);
   check('el menú de la cuenta abre hacia arriba y es solo de la cuenta: el plan que tiene, conectar su IA, el nombre visible, y Salir aparte', box.shut === 'false' && box.early === 0 && menu.acts.join() === 'plan,ai,name,logout' && menu.labels.join() === 'Plan · Gratis,Conectar tu IA,Nombre visible,Salir' && menu.order === 'plan ai name - logout' && menu.above && menu.open === 'true', [box, menu.acts, menu.labels, menu.order]);
   check('no repite los ajustes de la app: a esos se entra por el único botón de la barra de arriba', !menu.acts.includes('settings') && menu.gear === 1, [menu.acts, menu.gear]);
@@ -199,7 +200,7 @@ try {
   check('ninguna pestaña necesita scroll a 800 px de alto, salvo Herramientas y Nube (plan gratis)', over.length === 0, over);
   await tab('cloud');
   const freeCloud = await app.evaluate(() => [...document.querySelectorAll('[data-acct=cloud] .lmd-acct-row')].map((r) => r.children[0].textContent + '=' + r.children[1].textContent).join('|') + ' / ' + [...document.querySelectorAll('[data-acct=cloud] button')].map((b) => b.textContent).join('|'));
-  check('Nube: la cuenta, el plan y cuántas notas, con abrir la carpeta, salir y eliminar la cuenta', freeCloud === 'Cuenta=' + mail + '|Nombre visible=' + mail.split('@')[0] + '|Plan=Gratis|Notas en la nube=1 de 10 / Cambiar|Abrir la carpeta Nube|Salir|Proteger con contraseña|Proteger toda mi nube|Proteger una carpeta|Prender en Herramientas|Eliminar la cuenta', freeCloud);
+  check('Nube: la cuenta, el plan y cuántas notas, con abrir la carpeta, salir y eliminar la cuenta', freeCloud === 'Cuenta=' + mail + '|Nombre visible=' + mail.split('@')[0] + '|Plan=Gratis|Notas en la nube=1 de 25 / Cambiar|Abrir la carpeta Nube|Salir|Proteger con contraseña|Proteger toda mi nube|Proteger una carpeta|Prender en Herramientas|Eliminar la cuenta', freeCloud);
   // el nombre visible se cambia en el lugar, y se muestra siempre como texto
   const nameHint = await text('[data-acct=cloud] .lmd-acct-name-hint');
   await app.click('[data-acct=cloud] [data-c=name]'); await app.waitForSelector('[data-acct=cloud] [data-name-in]');
@@ -216,13 +217,15 @@ try {
   await tab('ai');
   await app.waitForSelector('[data-acct=ai] [data-c=token]');
   const freeAi = await text('[data-acct=ai]');
-  check('IA en el plan gratis: la dirección y el botón para crear un token, sin aviso del plan', !/plan pago/i.test(freeAi) && /En el plan gratis tu IA trabaja con las \d+ notas de tu nube\./.test(freeAi) && !/[!¡—]/.test(freeAi) && (await app.locator('[data-acct=ai] [data-c=plans]').count()) === 0 && (await app.locator('[data-acct=ai] .lmd-field').count()) === 1 && (await app.locator('[data-acct=ai] [data-c=share]').count()) === 0, freeAi);
+  check('IA en el plan gratis: la dirección y el botón para crear un token, sin aviso del plan', !/plan pago/i.test(freeAi) && /En el plan gratis tu IA trabaja con las 25 notas de tu nube\. Usás 1 de 25\./.test(freeAi) && !/[!¡—]/.test(freeAi) && (await app.locator('[data-acct=ai] [data-c=plans]').count()) === 0 && (await app.locator('[data-acct=ai] .lmd-field').count()) === 1 && (await app.locator('[data-acct=ai] [data-c=share]').count()) === 0, freeAi);
   await tab('plan');
   const here = app.url();
   const freePlan = await app.evaluate(() => ({ cards: [...document.querySelectorAll('[data-acct=plan] .lmd-plan')].map((c) => c.querySelector('h4').firstChild.nodeValue.trim() + (c.classList.contains('lmd-plan-on') ? '*' : '') + (/Es tu plan actual/.test(c.textContent) ? '!' : '')).join('|'),
     pay: [...document.querySelectorAll('[data-acct=plan] [data-pay]')].map((a) => ({ label: a.textContent, href: a.href, target: a.getAttribute('target') })), manage: /Administrar/.test(document.querySelector('[data-acct=plan]').textContent) }));
   const backOf = (href) => new URL(href).searchParams.get('back');
   check('Plan: las dos tarjetas, con la gratis marcada como actual', freePlan.cards === 'Gratis*!|Pago' && !freePlan.manage, freePlan);
+  const freeTop = await app.evaluate(() => document.querySelector('[data-acct=plan] .lmd-plan li:nth-child(2)').textContent);
+  check('el tope del plan gratis es el que dice el servidor (acá 25), no un número escrito en la app', freeTop === 'Hasta 25 notas en la nube', freeTop);
   check('los botones de pago abren en la misma pestaña y llevan a dónde volver', freePlan.pay.length === 2 && freePlan.pay.every((p) => p.target === null && backOf(p.href) === here && new URL(p.href).searchParams.get('email') === mail) && /plan=yearly/.test(freePlan.pay[0].href) && freePlan.pay[0].label === 'USD 40 / año' && /plan=monthly/.test(freePlan.pay[1].href) && freePlan.pay[1].label === 'USD 4 / mes', [here, freePlan.pay]);
   // ---------- Temas incluidos, en el plan gratis ----------
   await tab('look');

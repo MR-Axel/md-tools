@@ -15,7 +15,36 @@
     if (!a) return;
     if (LMD.cloud.setTeam(a.team && a.team.mine) && core && core.APP) core.reloadTree();
     if (!quiet) LMD.team.notice(a);
+    roomNotice(a);
   }
+  // Al plan gratis le quedan dos lugares o menos: un aviso al pie con el botón a los planes, el mismo que avisa de
+  // una versión nueva. Sale una vez por sesión (y una más si después se llena), y se cierra con su cruz.
+  const ROOM_LOW = 2; let roomSaid = '';
+  function roomNotice(a) {
+    if (!core || !a) return;
+    const left = a.limit ? Math.max(0, a.limit - a.notes) : Infinity;
+    // Volvió a haber lugar (se eliminó una nota, o se pasó al plan pago): el aviso que quedó a la vista se va.
+    if (left > ROOM_LOW) { const old = document.querySelector('.lmd-room'); if (old) old.remove(); return; }
+    // Con Plan abierto no hace falta: ahí están el motivo y los planes.
+    const panel = core.ui && core.ui.panel; const tab = panel && !panel.hidden && panel.querySelector('[data-ptab].lmd-on');
+    if (tab && tab.dataset.ptab === 'plan') return;
+    const kind = left ? 'low' : 'full';
+    try { roomSaid = roomSaid || sessionStorage.getItem('lmd-room') || ''; } catch (e) { /* sin sesión */ }
+    if (roomSaid === 'full' || roomSaid === kind || document.querySelector('.lmd-room')) return;
+    roomSaid = kind;
+    try { sessionStorage.setItem('lmd-room', kind); } catch (e) { /* sin sesión */ }
+    const bar = el('div', { class: 'lmd-orphan lmd-room', role: 'status' });
+    const vars = { n: a.notes, m: a.limit, a: left };
+    bar.appendChild(el('span', { text: !left ? T('El plan gratis está lleno: {n} de {m} notas.', vars) : left === 1 ? T('Plan gratis: {n} de {m} notas. Te queda 1.', vars) : T('Plan gratis: {n} de {m} notas. Te quedan {a}.', vars) }));
+    const go = el('button', { type: 'button', 'data-room': 'plans', text: T('Ver planes') });
+    const later = el('button', { type: 'button', class: 'lmd-update-x', 'data-room': 'later', title: T('Ahora no'), 'aria-label': T('Ahora no') }, ICON.close);
+    go.addEventListener('click', () => { bar.remove(); core.openPanel('plan'); });
+    later.addEventListener('click', () => bar.remove());
+    bar.appendChild(go); bar.appendChild(later);
+    document.body.appendChild(bar);
+  }
+  // En el tope: qué pasó y qué sigue andando. Se lee en Plan, arriba de los botones para pasar al pago.
+  const fullWhy = () => T('El plan gratis está lleno: no se guardó nada nuevo en la nube. Las notas que ya tenés se siguen leyendo y editando. El plan pago no tiene límite.');
   let loading = null;
   function loadAccount() {
     // Sobre un .md de un sitio no se consulta: ahí el servidor no responde (CORS). Sobre uno del disco sí, por la extensión.
@@ -90,7 +119,7 @@
       await openNote(path, move && !left ? { tree: true, replace: true, discard: true } : { tree: true });
       if (left) core.flash(T('La nota se subió, pero el original no se pudo quitar.'), 'warn');
     } catch (e) {
-      if (e.code === 'note_limit') core.openPanel('plan', T('Llegaste al límite de notas del plan gratis. El plan pago no tiene límite.'));
+      if (e.code === 'note_limit') core.openPanel('plan', fullWhy());
       else core.flash(T(e.code === 'offline' ? 'No hay conexión con el servidor.' : 'No se pudo subir la nota.'), 'error');
     }
   }
@@ -582,7 +611,7 @@
       // El permiso de compartir vuelve a quedar apagado después de crear un token.
       const keptShare = !fresh && !!(box.querySelector('[data-c=share]') || {}).checked;
       // En el plan gratis la IA trabaja sobre las mismas notas, con el mismo tope.
-      box.innerHTML = intro + (a.limit ? hint(T('En el plan gratis tu IA trabaja con las {a} notas de tu nube.', { a: a.limit })) : '') + field('URL', a.mcp_url) +
+      box.innerHTML = intro + (a.limit ? hint(T('En el plan gratis tu IA trabaja con las {a} notas de tu nube. Usás {n} de {a}.', { a: a.limit, n: a.notes })) : '') + field('URL', a.mcp_url) +
         (made ? '<p class="lmd-ai-new">' + T('Copiá estos datos ahora: el token no se vuelve a mostrar.') + '</p>' + field('Token', made.token) +
           longField('Claude Code', 'claude mcp add --transport http sharpmd ' + made.mcp_url + ' --header "Authorization: Bearer ' + made.token + '"') +
           actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="brief">' + T('Copiar instrucciones para tu IA') + '</button>') + wsRow() : '') +
@@ -703,7 +732,7 @@
       (state ? '<p class="lmd-paywait lmd-paywait-' + state + '" role="status"><span>' + T({ wait: 'Esperando la confirmación del pago…', late: 'La confirmación del pago todavía no llegó. Volvé a revisar en unos minutos.', done: wait.team ? 'Pago confirmado. Tu equipo está listo.' : 'Pago confirmado. Ya tenés el plan pago.' }[state]) + '</span>' +
         (state === 'late' ? '<button type="button" class="lmd-link" data-c="recheck">' + T('Revisar ahora') + '</button>' : '') + '</p>' : '') + note +
       '<div class="lmd-plans' + (teamCol ? ' lmd-plans-3' : '') + '">' +
-        '<div class="lmd-plan' + (a && !pro ? ' lmd-plan-on' : '') + '"><h4>' + T('Gratis') + '</h4><ul><li>' + T('Todo el editor') + '</li><li>' + T('Hasta 10 notas en la nube') + '</li><li>' + T('Notas en el navegador y en tu disco, sin límite') + '</li><li>' + T('Carpetas protegidas') + '</li><li>' + T('Conectar una IA por MCP') + '</li><li>' + T('Los 12 temas') + '</li></ul>' +
+        '<div class="lmd-plan' + (a && !pro ? ' lmd-plan-on' : '') + '"><h4>' + T('Gratis') + '</h4><ul><li>' + T('Todo el editor') + '</li><li>' + T('Hasta {n} notas en la nube', { n: LMD.cloud.freeNotes() }) + '</li><li>' + T('Notas en el navegador y en tu disco, sin límite') + '</li><li>' + T('Carpetas protegidas') + '</li><li>' + T('Conectar una IA por MCP') + '</li><li>' + T('Los 12 temas') + '</li></ul>' +
           (a && !pro ? '<p class="lmd-hint">' + T('Es tu plan actual.') + '</p>' : '') + '</div>' +
         '<div class="lmd-plan' + (own ? ' lmd-plan-on' : '') + '"><h4>' + T('Pago') + ' <small>' + YEAR + '</small></h4><ul><li>' + T('Notas en la nube sin límite') + '</li><li>' + T('Carpetas protegidas') + '</li><li>' + T('Compartir y editar entre varios') + '</li><li>' + T('Sesiones en vivo: quien invitás entra sin cuenta') + '</li><li>' + T('API y automatizaciones') + '</li><li>' + T('Historial de versiones de 30 días') + '</li><li>' + T('Colores, tipografía y CSS propio') + '</li></ul>' +
           (own ? '<p class="lmd-hint">' + T('Es tu plan actual.') + (a.manage ? ' <a href="' + esc(a.manage) + '" target="_blank" rel="noopener noreferrer">' + T('Administrar la suscripción') + '</a>' : '') + '</p>'
@@ -979,6 +1008,6 @@
   // Vuelve a leer la cuenta después de un cambio en el equipo.
   const reload = async () => { account = await LMD.cloud.account(); asked = true; adopt(account, true); paint(); return account; };
 
-  LMD.sync = { init, paint, click, panes, reload, dialog, feedback, report, reportRef, awaitPaid, openCloud, quota, PAY, login, me, foldersOf, signOut, dropSession, aiBrief, askName: () => { wantName = true; }, account: () => account, why: (text) => { planWhy = text || ''; },
+  LMD.sync = { init, paint, click, panes, reload, dialog, feedback, report, reportRef, awaitPaid, openCloud, quota, room: roomNotice, full: fullWhy, PAY, login, me, foldersOf, signOut, dropSession, aiBrief, askName: () => { wantName = true; }, account: () => account, why: (text) => { planWhy = text || ''; },
     repaintAi: () => { if (aiRedraw) aiRedraw(); if (secRedraw) secRedraw(); }, security, canPublish, publish, siteState, canLink, publicLink, linkWhy };
 })();
