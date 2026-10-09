@@ -228,10 +228,10 @@ await step('off', 'Apagada: nada cambia', async () => {
   await toolsTab(page);
   const card = await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=import]'); return c ? { name: c.querySelector('b').textContent, about: c.querySelector('p').textContent, on: c.querySelector('input').checked, icon: !!c.querySelector('.lmd-tl-ico svg') } : null; });
   check('su tarjeta está en Herramientas, apagada', !!card && card.name === 'Import to Markdown' && card.on === false && card.icon && /without uploading/.test(card.about), card);
-  check('las diez tarjetas, cada una con su interruptor', await page.evaluate(() => document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card').length === 10 && document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card input[data-tool-on]').length === 10));
+  check('las doce filas, cada una con su interruptor', await page.evaluate(() => document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card').length === 12 && document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card input[data-tool-on]').length === 12));
   await page.click('.lmd-tl-card[data-tool=import] .lmd-switch'); await until(() => page.evaluate(() => !!LMD.import));
   check('prenderla pide su archivo, una vez, y queda guardado', await scripts(page, 'import.js') === 1 && (await page.evaluate(() => JSON.parse(localStorage.getItem('mdtools:settings')).tools.import)) === true);
-  await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=import] .lmd-tl-more'); await page.waitForSelector('[data-imp-go=pick]');
+  await page.evaluate((q) => document.querySelector(q).click(), '.lmd-tl-card[data-tool=import] .lmd-tl-main'); await page.waitForSelector('[data-imp-go=pick]');
   const opts = await page.evaluate(() => document.querySelector('.lmd-tl-side[data-tool=import] .lmd-tl-opts').textContent);
   check('sus opciones dicen qué convierte y que no se sube', /Word, Excel, PowerPoint, EPUB, PDF, HTML, CSV and TSV/.test(opts) && /not uploaded/.test(opts) && /Choose a file/.test(opts), opts);
   check('los textos no llevan signos de admiración ni rayas', (await texts(page)).length === 0, await texts(page));
@@ -652,16 +652,16 @@ await step('tab', 'Ajustes > Herramientas desliza bien con diez tarjetas', async
       out.end = lr.bottom <= box().bottom + 1; out.width = body.scrollWidth <= body.clientWidth + 1;
       return out;
     });
-    check(where + ': las diez tarjetas, y si no entran desliza el diálogo, no la página', m.cards === 10 && (m.scrolls || m.end) && /auto|scroll/.test(m.over) && m.pageFixed, m);
+    check(where + ': las doce filas, y si no entran desliza el diálogo, no la página', m.cards === 12 && (m.scrolls || m.end) && /auto|scroll/.test(m.over) && m.pageFixed, m);
     check(where + ': cada tarjeta se puede ver entera, sin cortes a lo ancho', m.reach.length === 0 && m.cut.length === 0 && m.width, [m.reach, m.cut, m.width]);
     check(where + ': con el teclado, el foco trae cada interruptor a la vista', m.focus.length === 0, m.focus);
     check(where + ': al final del scroll se ve el final de la lista', m.end === true, m);
-    // Con las opciones de la herramienta abiertas, al fondo de la lista, también se llega.
+    // Con las opciones de la herramienta en el detalle, también se llega a su botón.
     await page.evaluate(() => LMD.tools.set('import', true)); await page.waitForFunction(() => !!LMD.import);
-    await page.click('[data-ptab=look]'); await page.click('[data-ptab=tools]'); await page.waitForSelector('.lmd-tl-card[data-tool=import] .lmd-tl-more:not([hidden])');
-    await page.evaluate(() => document.querySelector('.lmd-tl-card[data-tool=import] .lmd-tl-more').scrollIntoView({ block: 'nearest' }));
-    await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=import] .lmd-tl-more'); await page.waitForSelector('[data-imp-go=pick]');
-    const o = await page.evaluate(() => { const b = document.querySelector('[data-imp-go=pick]'); b.scrollIntoView({ block: 'nearest' }); const r = b.getBoundingClientRect(); const box = document.querySelector('.lmd-panel-body').getBoundingClientRect(); return r.top >= box.top - 1 && r.bottom <= box.bottom + 1 && r.right <= box.right + 1 && r.height >= 28; });
+    await page.click('[data-ptab=look]'); await page.click('[data-ptab=tools]'); await page.waitForSelector('.lmd-tl-card[data-tool=import] .lmd-tl-main:not([hidden])');
+    await page.evaluate(() => document.querySelector('.lmd-tl-card[data-tool=import] .lmd-tl-main').scrollIntoView({ block: 'nearest' }));
+    await page.evaluate((q) => document.querySelector(q).click(), '.lmd-tl-card[data-tool=import] .lmd-tl-main'); await page.waitForSelector('[data-imp-go=pick]');
+    const o = await page.evaluate(() => { const b = document.querySelector('[data-imp-go=pick]'); b.scrollIntoView({ block: 'nearest' }); const r = b.getBoundingClientRect(); const box = document.querySelector('.lmd-tl-side-body').getBoundingClientRect(); return r.top >= box.top - 1 && r.bottom <= box.bottom + 1 && r.right <= box.right + 1 && r.height >= 28; });
     check(where + ': las opciones de la tarjeta nueva se ven y su botón se alcanza', o === true);
     await ctx.close();
   }

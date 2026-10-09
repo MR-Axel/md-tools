@@ -1443,7 +1443,7 @@
       "La app web tiene otra cuenta: {a}. Cada lado sigue con la suya.": "The web app is signed in as {a}. Each side keeps its own account.",
       "Usar {a} en los dos": "Use {a} on both", "¿Usar {a} en los dos?": "Use {a} on both?", "La extensión sale de la otra cuenta.": "The extension signs out of the other account.", "Usar esta cuenta": "Use this account",
       "Abrí la app para ver lo que compartió la comunidad.": "Open the app to see what the community shared.",
-      "Configurar": "Configure","Ocultar": "Hide", "Opciones de {a}": "{a} options", "Volver": "Back", "Falta la clave": "Add your key",
+      "Prendela para configurarla.": "Turn it on to set it up.", "Volver": "Back", "Falta la clave": "Add your key",
       "Herramientas": "Tools","Prendé el Tablero kanban en Ajustes > Herramientas para verlo como tablero": "Turn on Kanban board in Settings > Tools to see it as a board", "Opciones": "Options",
       "Funciones que se suman a la app. Cada una se prende acá.": "Features added to the app. Turn each one on here.",
       "Tablero kanban": "Kanban board", "Un bloque kanban se ve como un tablero con columnas y tarjetas que se arrastran.": "A kanban block shows as a board with columns and cards you can drag.",

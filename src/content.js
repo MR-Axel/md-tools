@@ -1035,7 +1035,7 @@
       if (e.key === 'Escape') {
         if (moreMenu) closeMore(true);
         else if (!ui.viewer.hidden) ui.viewer.click();
-        // Con las opciones de una herramienta abiertas al costado, el primer Escape cierra eso y el segundo los ajustes.
+        // En pantalla angosta, con el detalle de una herramienta abierto encima de la lista, Escape vuelve a la lista.
         else if (!ui.panel.hidden) { if (!LMD.tools.shut(true)) closePanel(); }
         else if (drawerOpen()) setDrawer(false);
         else if (ui.searchInput.value || document.activeElement === ui.searchInput) toggleSearch(false);
@@ -3006,7 +3006,7 @@
     };
     const showTab = (tab) => {
       panelTab = tab;
-      LMD.tools.shut(false); // el panel de opciones de una herramienta no sigue abierto sobre otra pestaña
+      LMD.tools.leave(); // el detalle de una herramienta no sigue a la vista sobre otra pestaña
       ui.panel.querySelectorAll('[data-ptab]').forEach((b) => { b.classList.toggle('lmd-on', b.dataset.ptab === tab); b.setAttribute('aria-selected', String(b.dataset.ptab === tab)); });
       // En pantalla chica las pestañas son una fila que se desliza: la elegida queda a la vista.
       const on = ui.panel.querySelector('[data-ptab].lmd-on'); if (on && LMD.touch.small()) on.scrollIntoView({ block: 'nearest', inline: 'center' });
