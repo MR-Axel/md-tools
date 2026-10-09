@@ -21,13 +21,19 @@ const ctx = await chromium.launchPersistentContext(profile, { headless: false, e
 const sw = ctx.serviceWorkers()[0] || await ctx.waitForEvent('serviceworker'); const id = new URL(sw.url()).host;
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json', '.woff2': 'font/woff2' };
 const outside = [];
+// Los conteos anónimos que manda una página servida como sharpmd.app (src/count.js; los prueba tests/funnel.mjs): se anotan aparte.
+const counts = [];
 await ctx.route(SITE + '/**', (r) => {
   const rel = decodeURIComponent(new URL(r.request().url()).pathname); const file = path.join(root, rel.endsWith('/') ? rel + 'index.html' : rel);
   if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return r.fulfill({ status: 404, body: '' });
   return r.fulfill({ status: 200, contentType: TYPES[path.extname(file)] || 'application/octet-stream', body: fs.readFileSync(file) });
 });
 await ctx.route('https://cdn.paddle.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: 'window.Paddle = { Initialize: function (o) { window.__paddleInit = o; }, Checkout: { open: function (o) { window.__paddle = o; } } };' }));
-await ctx.route((url) => /(^|\.)(sync\.sharpmd\.app|evil\.example|ejemplo\.test)$/.test(url.hostname), (r) => { outside.push(r.request().url()); return r.abort(); });
+await ctx.route((url) => /(^|\.)(sync\.sharpmd\.app|evil\.example|ejemplo\.test)$/.test(url.hostname), (r) => {
+  const q = r.request(); const u = new URL(q.url());
+  if (u.hostname === 'sync.sharpmd.app' && u.pathname === '/stats' && q.method() === 'POST') { counts.push(q.postData() || ''); return r.fulfill({ status: 204, body: '' }); }
+  outside.push(q.url()); return r.abort();
+});
 
 const app = await ctx.newPage(); const errors = []; app.on('pageerror', (e) => errors.push(e.message));
 await app.addInitScript(autoDialogs);
@@ -455,6 +461,7 @@ try {
   await payPage.waitForFunction(() => location.hash === '', null, { timeout: 8000 });
   check('en la web vuelve a la app del mismo sitio y abre el plan', (await payPage.evaluate(() => document.querySelector('.lmd-acct-card').getAttribute('aria-label'))) === 'Plan');
   check('nada intentó salir a otro sitio', outside.length === 0, outside);
+  check('de la página de pago y de la app servidas como sharpmd.app sale solo el conteo anónimo: el nombre del evento y el canal, sin el correo ni el plan', counts.some((c) => /"p":"pay"/.test(c)) && counts.every((c) => /^\{"e":("(view|checkout_open)","p":"pay"|("app_open"|\["app_open","first_open"\]),"p":"app"),"s":"[a-z0-9-]{1,24}"\}$/.test(c)), counts.slice(0, 4));
   await payPage.close(); await app.bringToFront();
 
   console.log('Ajustes, plan pago');
@@ -554,7 +561,7 @@ try {
       pick: [...s.querySelectorAll('[data-c=protect-at]')].map((b) => b.dataset.f), msg: (s.querySelector('p.lmd-sec-pick') || {}).textContent || '', wide: s.scrollWidth - s.clientWidth };
   });
   const limpio = (t) => !!t && !/[!¡—–]/.test(t) && !/end-to-end|extremo a extremo|militar|inviolable|100%/i.test(t);
-  const ROWS = 'notes:Notas en la nube|vaults:Carpetas protegidas|aikey:Tu clave de IA|signin:Entrar sin contraseña|open:Sin analítica y con código abierto';
+  const ROWS = 'notes:Notas en la nube|vaults:Carpetas protegidas|aikey:Tu clave de IA|signin:Entrar sin contraseña|open:Sin rastreadores y con código abierto';
   const fuera = await secOf();
   check('sin sesión, Nube muestra el bloque de seguridad debajo del botón de entrar: cinco renglones con ícono', !!fuera && fuera.title === 'Seguridad' && fuera.rows === ROWS && fuera.icons === 5 && fuera.below && fuera.wide <= 0, fuera);
   check('dice qué lee el servidor y qué no, cada cosa en su renglón, sin signos de admiración ni rayas', limpio(fuera.text) && /Ni el servidor puede leerlas\./.test(fuera.text) && /para compartirlas y atender a tu IA\./.test(fuera.text) && /En el plan gratis y en el pago/.test(fuera.text) && /AES-256-GCM · PBKDF2/.test(fuera.text) && /no se pueden recuperar\./.test(fuera.text), fuera.text);

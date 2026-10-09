@@ -239,7 +239,7 @@
         (ai && ai.hasKey ? '<p class="lmd-sec-key">' + esc(ai.provider === 'compat' ? T('Compatible con OpenAI') : AI_NAMES[ai.provider] || ai.provider) + ' · ••••' + esc(ai.last4 ? ' ' + ai.last4 : '') + '</p>' : '') +
         (ai && ai.off ? '<p class="lmd-sec-act"><button type="button" class="lmd-link" data-c="ai-tools">' + T('Prender en Herramientas') + '</button></p>' : '')) +
       secRow('signin', ICON.key, 'Entrar sin contraseña', 'Entrás con un código de un solo uso que llega a tu correo. No hay contraseña de cuenta que se pueda filtrar.', T('Las sesiones y los tokens se guardan como hash')) +
-      secRow('open', ICON.code, 'Sin analítica y con código abierto', 'No hay analítica. El código es abierto y podés usar tu propio servidor.', T('App MIT · Servidor AGPL')) +
+      secRow('open', ICON.code, 'Sin rastreadores y con código abierto', 'No hay rastreadores ni terceros. La app web cuenta unos pocos eventos anónimos, y se apaga en Ajustes > Avanzado. El código es abierto y podés usar tu propio servidor.', T('App MIT · Servidor AGPL')) +
       '</ul><p class="lmd-sec-foot">' + T('Una nota eliminada queda 30 días en la papelera.') + ' <a href="' + PRIVACY + '" target="_blank" rel="noopener noreferrer">' + T('Cómo funciona') + '</a>' +
       // Los términos regulan el servicio alojado: con un servidor propio no se muestran.
       (o.own ? '' : ' · <a href="' + TERMS + '" target="_blank" rel="noopener noreferrer">' + T('Términos') + '</a>') + '</p></section>';

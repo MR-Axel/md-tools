@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SharpMD: privacy</title>
-<meta name="description" content="The app has no analytics. Files are read in your browser and never uploaded. Cloud notes are optional.">
+<meta name="description" content="No trackers and no third-party analytics. Files are read in your browser and never uploaded. Cloud notes are optional.">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/icon32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="icons/icon16.png">
 <link rel="preload" href="site/fonts/figtree.woff2" as="font" type="font/woff2" crossorigin>
@@ -17,12 +17,22 @@
   <div lang="en">
     <h1>Privacy</h1>
     <p class="date">Last updated: October 8, 2026</p>
-    <p>SharpMD works without an account, and the app has no analytics. Cloud notes are optional, and they are the only thing that leaves your machine.</p>
+    <p>SharpMD works without an account, with no trackers and no third-party analytics. Cloud notes are optional, and your notes leave your machine only if you send them there.</p>
     <h2>Your files</h2>
     <p>The files you open are read by your browser, on your machine. They are never uploaded. When you save, the browser writes to the file or folder you picked.</p>
     <h2>What is stored, and where</h2>
     <p>Settings, reading positions and the list of recently opened folders are stored in your browser, on your device. Clearing the site or extension data removes them.</p>
     <p>With the extension installed, the web app and the extension share one store on your device: browser notes, the list of recently opened files and folders, and display preferences. They pass between the two inside your browser, never over the network. The cloud session, the copies of cloud notes and the keys of protected folders are not shared.</p>
+    <h2 id="counts">Anonymous counts</h2>
+    <p>No trackers and no third-party analytics. The site and the web app count a few anonymous events (a visit, the app opened, an account created) to know whether the product works. No cookie, no identifier, nothing about your notes. You can turn it off in Settings, and the extension sends none.</p>
+    <ul>
+      <li>What is sent to <code>sync.sharpmd.app</code>: the name of the event, the page, and the channel the visit came from as one word: "reddit", "google", "direct", or the label a link carried in <code>utm_source</code>. On the home page, also which of two headlines was shown. Never the address you came from, the address of a page, a title, a file name, a search or your email.</li>
+      <li>The events. On the site: a page seen, a click on a button that opens the app or the plans, and the checkout opened. In the web app and the Android app: the app opened, and the first time in that browser that it was opened, that a note was created or opened, and that an edit was saved.</li>
+      <li>What the server keeps: a number per day, event and channel. It does not store the IP address, the browser or anything that tells one visitor from another. The IP address is used in memory to limit how many counts one address sends, and is not written anywhere. Nobody is followed from one step to the next.</li>
+      <li>What your browser keeps: the channel of your first visit, and which first-time events were already sent, so each one is sent once. Many people share those values. They are not identifiers.</li>
+      <li>With an account, the server counts some steps as they happen: a sign-in code requested, an account created, a sign-in, and the first cloud note, AI token, share and payment of an account. It keeps the channel the account came from on the account, as that one word, and deletes it with the account. The server makes these counts from requests it receives anyway. With the counts turned off, the app does not send the channel.</li>
+      <li>Nothing is sent when your browser asks not to be tracked (Do Not Track or Global Privacy Control), when you turn off "Send anonymous usage counts" in Settings, Advanced, or when the app uses your own server or no cloud. The extension sends no counts, over a file from your disk or on its own page. Published sites and copies of the app hosted somewhere else send none either.</li>
+    </ul>
     <h2 id="cloud-notes">Cloud notes, if you sign in</h2>
     <p>The sync server stores your email address, the notes you send to the cloud and, on the paid plan, their previous versions for 30 days. Sign-in codes, sessions and AI tokens are stored as hashes.</p>
     <ul>
@@ -100,7 +110,7 @@
       <li>Images that a document links from the web are loaded from where the document points.</li>
       <li>With cloud notes in use, the app talks to <code>sync.sharpmd.app</code>.</li>
       <li>With the AI assistant on and your key added, the app talks to the provider you chose (<code>api.anthropic.com</code>, <code>api.openai.com</code> or the server address you typed), and only when you ask it for something.</li>
-      <li>The home page at <code>sharpmd.app</code> counts visits and clicks on its buttons anonymously. It sends <code>sync.sharpmd.app</code> which of two headlines was shown and whether a button was used. No cookie, no identifier and no address is stored: only a count per day.</li>
+      <li>The site and the web app at <code>sharpmd.app</code> send <code>sync.sharpmd.app</code> anonymous counts: <a href="#counts">what they are and how to turn them off</a>.</li>
       <li>The web version is a static page hosted on GitHub Pages. GitHub, as the host, may log the address of the visitor like any web server.</li>
     </ul>
     <h2>Permissions of the extension</h2>
@@ -116,12 +126,22 @@
   <div lang="es">
     <h1>Privacidad</h1>
     <p class="date">Última actualización: 8 de octubre de 2026</p>
-    <p>SharpMD funciona sin cuenta, y la app no tiene analítica. Las notas en la nube son opcionales, y son lo único que sale de tu máquina.</p>
+    <p>SharpMD funciona sin cuenta, sin rastreadores ni analítica de terceros. Las notas en la nube son opcionales, y tus notas salen de tu máquina solo si las mandás ahí.</p>
     <h2>Tus archivos</h2>
     <p>Los archivos que abrís los lee tu navegador, en tu máquina. Nunca se suben. Al guardar, el navegador escribe en el archivo o la carpeta que elegiste.</p>
     <h2>Qué se guarda y dónde</h2>
     <p>Los ajustes, la posición de lectura y la lista de carpetas recientes se guardan en tu navegador, en tu dispositivo. Si borrás los datos del sitio o de la extensión, se van.</p>
     <p>Con la extensión instalada, la app web y la extensión comparten un solo depósito en tu dispositivo: las notas del navegador, la lista de archivos y carpetas recientes y las preferencias de apariencia. Pasan de una a la otra dentro de tu navegador, nunca por la red. La sesión de la nube, las copias de las notas de la nube y las llaves de las carpetas protegidas no se comparten.</p>
+    <h2 id="conteos" data-same="counts">Conteos anónimos</h2>
+    <p>Sin rastreadores ni analítica de terceros. El sitio y la app web cuentan unos pocos eventos anónimos (una visita, la app abierta, una cuenta creada) para saber si el producto funciona. Sin cookie, sin identificador y sin nada de tus notas. Se apaga en Ajustes, y la extensión no manda ninguno.</p>
+    <ul>
+      <li>Qué se manda a <code>sync.sharpmd.app</code>: el nombre del evento, la página y el canal por el que llegó la visita, en una palabra: "reddit", "google", "direct", o la etiqueta que traía el enlace en <code>utm_source</code>. En la portada, también cuál de dos titulares se mostró. Nunca la dirección de la que venís, la dirección de una página, un título, un nombre de archivo, una búsqueda ni tu correo.</li>
+      <li>Los eventos. En el sitio: una página vista, un clic en un botón que abre la app o los planes, y el cobro abierto. En la app web y en la app de Android: la app abierta, y la primera vez en ese navegador que se abrió, que se creó o se abrió una nota, y que se guardó una edición.</li>
+      <li>Qué guarda el servidor: un número por día, evento y canal. No guarda la dirección IP, el navegador ni nada que distinga a un visitante de otro. La dirección IP se usa en memoria para limitar cuántos conteos manda una misma dirección, y no se escribe en ningún lado. A nadie se lo sigue de un paso al otro.</li>
+      <li>Qué guarda tu navegador: el canal de tu primera visita, y cuáles eventos de primera vez ya se mandaron, para mandar cada uno una sola vez. Son valores que mucha gente comparte. No son identificadores.</li>
+      <li>Con una cuenta, el servidor cuenta algunos pasos cuando pasan: un código de ingreso pedido, una cuenta creada, un ingreso, y la primera nota en la nube, el primer token de IA, el primer compartir y el primer pago de una cuenta. En la cuenta guarda el canal por el que llegó, con esa misma palabra, y lo borra con la cuenta. El servidor hace esos conteos con pedidos que recibe igual. Con los conteos apagados, la app no manda el canal.</li>
+      <li>No se manda nada cuando tu navegador pide que no lo sigan (Do Not Track o Global Privacy Control), cuando apagás "Mandar conteos de uso anónimos" en Ajustes, Avanzado, ni cuando la app usa tu propio servidor o va sin nube. La extensión no manda conteos, ni sobre un archivo de tu disco ni en su propia página. Los sitios publicados y las copias de la app alojadas en otro lado tampoco.</li>
+    </ul>
     <h2 id="notas-en-la-nube" data-same="cloud-notes">Notas en la nube, si entrás con tu cuenta</h2>
     <p>El servidor de sincronización guarda tu correo, las notas que mandás a la nube y, en el plan pago, sus versiones anteriores durante 30 días. Los códigos de acceso, las sesiones y los tokens para la IA se guardan como hashes.</p>
     <ul>
@@ -199,7 +219,7 @@
       <li>Las imágenes que un documento enlaza desde la web se cargan desde donde apunta el documento.</li>
       <li>Con las notas en la nube en uso, la app habla con <code>sync.sharpmd.app</code>.</li>
       <li>Con el asistente de IA prendido y tu clave cargada, la app habla con el proveedor que elegiste (<code>api.anthropic.com</code>, <code>api.openai.com</code> o la dirección del servidor que escribiste), y solo cuando le pedís algo.</li>
-      <li>La portada de <code>sharpmd.app</code> cuenta visitas y clics en sus botones de forma anónima. Le manda a <code>sync.sharpmd.app</code> cuál de dos titulares se mostró y si se usó un botón. No se guarda ninguna cookie, identificador ni dirección: solo una cuenta por día.</li>
+      <li>El sitio y la app web de <code>sharpmd.app</code> le mandan a <code>sync.sharpmd.app</code> conteos anónimos: <a href="#conteos">qué son y cómo se apagan</a>.</li>
       <li>La versión web es una página estática alojada en GitHub Pages. GitHub, como alojamiento, puede registrar la dirección de quien la visita, como cualquier servidor web.</li>
     </ul>
     <h2>Permisos de la extensión</h2>

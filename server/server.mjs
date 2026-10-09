@@ -312,6 +312,7 @@ async function authStart(req, body) {
   const code = fixed || String(crypto.randomInt(0, 1000000)).padStart(6, '0');
   q('INSERT OR REPLACE INTO codes (email, hash, expires, tries, sent) VALUES (?, ?, ?, 0, ?)').run(email, sha(email + ':' + code), now() + 15 * 60000, now());
   if (fixed) return { ok: true };
+  statAdd('signin_start', statSource(body.src)); // one more code asked for, under the channel the app says: nothing about who
   await sendCode(email, code, body.lang);
   return env.DEV_CODES ? { ok: true, dev_code: code } : { ok: true };
 }
@@ -331,7 +332,14 @@ function authVerify(req, body) {
   // La cuenta: la de ese correo tal cual, y si no, la que coincide al sacarle los alias de Gmail (la más vieja, si
   // hubiera más de una de antes). Dos cuentas que ya existían siguen entrando cada una con su correo.
   let user = q('SELECT * FROM users WHERE email = ?').get(email) || q('SELECT * FROM users WHERE mkey = ? ORDER BY id LIMIT 1').get(mailKey(email));
-  if (!user) { q('INSERT OR IGNORE INTO users (email, mkey, created) VALUES (?, ?, ?)').run(email, mailKey(email), now()); user = q('SELECT * FROM users WHERE email = ?').get(email); }
+  const fixed = !!TEST_LOGIN && email === TEST_LOGIN[0];
+  if (!user) {
+    // The channel the account came from ("reddit") stays on the account: the later steps are counted under it.
+    const source = statSource(body.src);
+    const made = q('INSERT OR IGNORE INTO users (email, mkey, created, source) VALUES (?, ?, ?, ?)').run(email, mailKey(email), now(), source).changes;
+    user = q('SELECT * FROM users WHERE email = ?').get(email);
+    if (made && !fixed) statAdd('signed_up', source);
+  } else if (!fixed) statAdd('signed_in', user.source || 'unknown');
   const session = 'mds_' + random(32);
   q('INSERT INTO sessions (hash, user, created, seen) VALUES (?, ?, ?, ?)').run(sha(session), user.id, now(), now());
   return { session, account: account(userById(user.id)) };
@@ -657,6 +665,7 @@ function writeNote(user, p, text, base) {
   const rev = row ? row.rev + 1 : 1; const at = now();
   q('INSERT INTO notes (user, path, text, updated, size, e, v, rev) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (user, path) DO UPDATE SET text = excluded.text, updated = excluded.updated, size = excluded.size, e = excluded.e, v = excluded.v, rev = excluded.rev').run(user.id, p, seal(text, 'notes.text'), at, kind.size, SEALED, kind.v, rev);
   if (row && !row.v && kind.v) scrub();
+  if (!row) statOnce(user.id, STAT_BIT.cloud, 'cloud_first');
   const saved = { path: p, updated: at, size: kind.size, rev };
   // prev no viaja en la respuesta: lo usa quien llama para avisar el cambio a los que tienen la nota abierta.
   Object.defineProperty(saved, 'prev', { value: prev ? prev.text : null, enumerable: false });
@@ -860,6 +869,7 @@ function addShare(user, body) {
   if (kind === 'note' && !q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(user.id, p)) throw new Fail(404, 'not_found');
   if (q('SELECT COUNT(*) AS n FROM shares WHERE owner = ?').get(user.id).n >= MAX_SHARES) throw new Fail(429, 'too_many');
   q('INSERT INTO shares (owner, path, kind, email, role, created) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (owner, path, email) DO UPDATE SET role = excluded.role, kind = excluded.kind').run(user.id, p, kind, email, role, now());
+  statOnce(user.id, STAT_BIT.shared, 'shared');
   return { ok: true };
 }
 
@@ -875,6 +885,7 @@ function addLink(user, body) {
   const token = random(24); let pass = null;
   if (body.password) { const salt = random(12); pass = salt + ':' + passHash(body.password, salt); }
   const r = q('INSERT INTO links (hash, owner, path, pass, created) VALUES (?, ?, ?, ?, ?)').run(sha(token), user.id, p, pass, now());
+  statOnce(user.id, STAT_BIT.shared, 'shared');
   return { id: Number(r.lastInsertRowid), token, protected: !!pass };
 }
 function publicNote(token, password) {
@@ -2686,6 +2697,8 @@ async function paddleWebhook(req) {
   // La suscripción de un equipo no toca el plan propio de la cuenta: da el plan pago a sus miembros mientras esté al día.
   if (kind === 'team') {
     if (again) { console.error('paddle: otra prueba gratis de equipo para una cuenta que ya tuvo la suya · ' + id.slice(0, 60)); return Object.assign({ ok: true, trial: 'used' }, teamBilled(user, id, false)); }
+    // Counted once per account: the team started (its free trial included), and the first payment once the trial is over.
+    if (status === 'active') { statOnce(user.id, STAT_BIT.team, 'team_started'); if (!trialing) statOnce(user.id, STAT_BIT.paid, 'paid'); }
     return Object.assign({ ok: true }, teamBilled(user, id, status === 'active', seat, trialing ? trialEnd(d, seat) : 0));
   }
   // El plan es pago mientras quede alguna suscripción activa de la cuenta. Así, quien paga una suscripción a nombre
@@ -2693,6 +2706,7 @@ async function paddleWebhook(req) {
   const other = q("SELECT id FROM paddle_subs WHERE user = ? AND status = 'active' AND kind != 'team' ORDER BY at DESC LIMIT 1").get(user.id);
   const plan = other ? 'pro' : 'free';
   q('UPDATE users SET plan = ?, paddle_sub = ? WHERE id = ?').run(plan, other ? other.id : id, user.id);
+  if (status === 'active') statOnce(user.id, STAT_BIT.paid, 'paid');
   return { ok: true, plan };
 }
 
@@ -5244,19 +5258,127 @@ function fileSend(res, f) {
 // Fin de ADJUNTOS
 // ====================================================================================================================
 
-// ---------- Home page: two headlines on trial ----------
-// The home page says which headline it showed (a or b) and whether the app or the plans were opened from it. That adds
-// one to a counter per day, variant and event, and nothing else: no IP, no header and no identifier is stored.
+// ---------- Anonymous counts: the visits and the steps after them ----------
+// The site and the web app say that something happened (a page was seen, the app was opened, a first note was made)
+// and which channel the visit came from ("reddit", "direct"). That adds one to a counter per day, step, page, channel
+// and headline, and nothing else: no IP, no header and no identifier is stored, and no row says who or which browser.
 // The limit per IP lives in memory, like the others, and is lost on restart.
-db.exec('CREATE TABLE IF NOT EXISTS landing_stats (day TEXT NOT NULL, v TEXT NOT NULL, e TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, v, e))');
+// The steps of an account (it signed up, its first cloud note, its first token, its first share, its first payment) are
+// counted here, when they happen, once per account, under the channel the account came from. That channel is the only
+// thing kept on the account (users.source): a label many accounts share, not an identifier.
+// The counts are of events and not of people: nobody is followed from one step to the next, so the steps of a period
+// are not the same group of visitors.
+//   POST /stats   { e: 'view' | ['app_open', 'first_open'], p: 'home', s: 'reddit', v: 'a' }   (also at /landing, its old name)
+//   GET /admin/funnel?days=7&source=reddit&format=text   (x-admin-key)
+const STAT_SOURCES = ['direct', 'other', 'unknown', 'reddit', 'linkedin', 'whatsapp', 'telegram', 'twitter', 'github', 'google', 'bing', 'duckduckgo', 'youtube', 'hackernews', 'producthunt', 'chrome-web-store', 'play-store'];
+const STAT_SITE = ['home', 'mcp', 'wysiwyg'];
+// What a browser may count, and from which page. The steps of an account are not here: nobody can send them.
+const STAT_CLIENT = { view: STAT_SITE.concat('pay'), open: STAT_SITE, plans: STAT_SITE, checkout_open: ['pay'], app_open: ['app'], first_open: ['app'], note_created: ['app'], edited: ['app'] };
+// A link can bring its own channel (utm_source=newsletter). Only so many new ones a day: the rest count as "other".
+const STAT_SOURCES_DAY = +(env.STATS_SOURCES_DAY || 30);
+const STAT_BIT = { cloud: 1, token: 2, shared: 4, paid: 8, team: 16 };
 const LANDING_PER_HOUR = +(env.LANDING_PER_HOUR || 60);
-async function landingHit(req) {
+db.exec("CREATE TABLE IF NOT EXISTS stats (day TEXT NOT NULL, step TEXT NOT NULL, page TEXT NOT NULL DEFAULT '', source TEXT NOT NULL, variant TEXT NOT NULL DEFAULT '', n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, step, page, source, variant))");
+// The counter the home page had (landing_stats: day, v, e, n) moves into stats with what it had counted. Its name stays
+// as a view with the same columns, for whoever reads it.
+{
+  const old = q("SELECT type FROM sqlite_master WHERE name = 'landing_stats'").get();
+  if (old && old.type === 'table') {
+    db.exec('BEGIN');
+    try {
+      db.exec("INSERT INTO stats (day, step, page, source, variant, n) SELECT day, e, 'home', 'unknown', v, n FROM landing_stats WHERE true ON CONFLICT (day, step, page, source, variant) DO UPDATE SET n = n + excluded.n");
+      db.exec('DROP TABLE landing_stats');
+      db.exec('COMMIT');
+    } catch (e) { db.exec('ROLLBACK'); throw e; }
+  }
+  db.exec("CREATE VIEW IF NOT EXISTS landing_stats AS SELECT day, variant AS v, step AS e, SUM(n) AS n FROM stats WHERE page = 'home' AND step IN ('view', 'open') AND variant IN ('a', 'b') GROUP BY day, variant, step");
+}
+try { db.exec('ALTER TABLE users ADD COLUMN source TEXT'); } catch (e) { /* ya estaba */ }
+// Which of its steps an account already counted. The accounts from before start with what they had already done.
+try {
+  db.exec('ALTER TABLE users ADD COLUMN funnel INTEGER NOT NULL DEFAULT 0');
+  db.exec('UPDATE users SET funnel = (CASE WHEN EXISTS (SELECT 1 FROM notes WHERE notes.user = users.id) THEN 1 ELSE 0 END) | (CASE WHEN EXISTS (SELECT 1 FROM tokens WHERE tokens.user = users.id) THEN 2 ELSE 0 END)' +
+    ' | (CASE WHEN EXISTS (SELECT 1 FROM shares WHERE shares.owner = users.id) OR EXISTS (SELECT 1 FROM links WHERE links.owner = users.id) THEN 4 ELSE 0 END)' +
+    ' | (CASE WHEN EXISTS (SELECT 1 FROM paddle_subs WHERE paddle_subs.user = users.id) THEN 8 ELSE 0 END) | (CASE WHEN EXISTS (SELECT 1 FROM teams WHERE teams.owner = users.id) THEN 16 ELSE 0 END)');
+} catch (e) { /* ya estaba */ }
+const statDay = () => new Date(now()).toISOString().slice(0, 10);
+// A channel: one of the list, or the label a link brought, already cleaned by the page. Anything else is not counted
+// (strict) or counts as unknown. Past the limit of new labels of the day, "other".
+function statSource(v, strict) {
+  if (v == null || v === '') return 'unknown';
+  if (typeof v !== 'string' || !/^[a-z0-9-]{1,24}$/.test(v)) { if (strict) throw new Fail(400, 'bad_source'); return 'unknown'; }
+  if (STAT_SOURCES.includes(v)) return v;
+  const day = statDay();
+  if (q('SELECT 1 FROM stats WHERE day = ? AND source = ? LIMIT 1').get(day, v)) return v;
+  const seen = q('SELECT DISTINCT source FROM stats WHERE day = ?').all(day).filter((r) => !STAT_SOURCES.includes(r.source)).length;
+  return seen < STAT_SOURCES_DAY ? v : 'other';
+}
+// Counting never breaks what was being done.
+function statAdd(step, source, page, variant) {
+  try { q('INSERT INTO stats (day, step, page, source, variant, n) VALUES (?, ?, ?, ?, ?, 1) ON CONFLICT (day, step, page, source, variant) DO UPDATE SET n = n + 1').run(statDay(), step, page || '', source, variant || ''); }
+  catch (e) { console.error('stats: ' + String(e && e.message).slice(0, 200)); }
+}
+// A step of an account, the first time only. The space of a team is not a person: it does not count.
+function statOnce(id, bit, step) {
+  try {
+    const u = q('SELECT email, source, funnel FROM users WHERE id = ?').get(id);
+    if (!u || (Number(u.funnel) & bit) || u.email.startsWith('team:')) return;
+    q('UPDATE users SET funnel = funnel | ? WHERE id = ?').run(bit, id);
+    statAdd(step, u.source || 'unknown');
+  } catch (e) { console.error('stats: ' + String(e && e.message).slice(0, 200)); }
+}
+async function statsHit(req) {
   rate('landing:' + clientIp(req), LANDING_PER_HOUR, HOUR, 'too_many');
   // The body arrives as plain text (sendBeacon cannot send application/json without a preflight): it is read anyway.
   let b = null; try { b = JSON.parse(String(await readRaw(req, 200))); } catch (e) { if (e instanceof Fail) throw e; throw new Fail(400, 'bad_json'); }
-  if (!b || (b.v !== 'a' && b.v !== 'b') || (b.e !== 'view' && b.e !== 'open')) throw new Fail(400, 'bad_event');
-  q('INSERT INTO landing_stats (day, v, e, n) VALUES (?, ?, ?, 1) ON CONFLICT (day, v, e) DO UPDATE SET n = n + 1').run(new Date(now()).toISOString().slice(0, 10), b.v, b.e);
+  if (!b || typeof b !== 'object' || Array.isArray(b)) throw new Fail(400, 'bad_event');
+  // The home page published before this sends only the headline and the event: it is the page "home", with no channel.
+  const events = Array.isArray(b.e) ? b.e : [b.e]; const page = b.p == null ? 'home' : b.p; const variant = b.v == null ? '' : b.v;
+  if (!events.length || events.length > 4 || new Set(events).size !== events.length) throw new Fail(400, 'bad_event');
+  if (events.some((e) => typeof e !== 'string' || !Object.hasOwn(STAT_CLIENT, e) || !STAT_CLIENT[e].includes(page))) throw new Fail(400, 'bad_event');
+  if (variant !== '' && (page !== 'home' || (variant !== 'a' && variant !== 'b'))) throw new Fail(400, 'bad_event');
+  const source = statSource(b.s, true);
+  for (const e of events) statAdd(e, source, page, variant);
   return { __status: 204 };
+}
+// The steps, in order. Each rate is the count of the step over the count of the one before, in the same period.
+const FUNNEL = [['view', 'Visits'], ['open', 'Clicked open'], ['app_open', 'App opened'], ['first_open', 'First open'], ['note_created', 'First note'], ['edited', 'First edit'], ['signin_start', 'Asked for code'],
+  ['signed_up', 'Signed up'], ['cloud_first', 'First cloud note'], ['ai_token', 'AI token'], ['shared', 'Shared'], ['checkout_open', 'Opened checkout'], ['paid', 'Paid']];
+const FUNNEL_EXTRA = ['plans', 'pay_view', 'signed_in', 'team_started'];
+function funnelAdmin(url) {
+  const days = Math.min(3650, Math.max(1, Math.floor(+(url.searchParams.get('days') || 7)) || 7));
+  const only = url.searchParams.get('source') || '';
+  if (only && !/^[a-z0-9-]{1,24}$/.test(only)) throw new Fail(400, 'bad_source');
+  const to = statDay(); const from = new Date(now() - (days - 1) * DAY).toISOString().slice(0, 10);
+  // The payment page seen is not a visit: it is counted apart.
+  const rows = q("SELECT day, CASE WHEN step = 'view' AND page = 'pay' THEN 'pay_view' ELSE step END AS step, source, SUM(n) AS n FROM stats WHERE day >= ? AND day <= ? AND (? = '' OR source = ?) GROUP BY 1, 2, 3").all(from, to, only, only);
+  const blank = () => Object.fromEntries(FUNNEL.map((f) => f[0]).concat(FUNNEL_EXTRA).map((k) => [k, 0]));
+  const total = blank(); const sources = new Map(); const daily = new Map();
+  for (let t = Date.parse(from); t <= Date.parse(to); t += DAY) daily.set(new Date(t).toISOString().slice(0, 10), blank());
+  for (const r of rows) {
+    if (!(r.step in total)) continue;
+    const n = Number(r.n); total[r.step] += n;
+    if (!sources.has(r.source)) sources.set(r.source, blank());
+    sources.get(r.source)[r.step] += n;
+    if (daily.has(r.day)) daily.get(r.day)[r.step] += n;
+  }
+  const shape = (c) => ({
+    steps: FUNNEL.map((f, i) => ({ step: f[0], label: f[1], n: c[f[0]], rate: i && c[FUNNEL[i - 1][0]] ? Math.round((c[f[0]] / c[FUNNEL[i - 1][0]]) * 10000) / 10000 : null })),
+    extra: Object.fromEntries(FUNNEL_EXTRA.map((k) => [k, c[k]])),
+  });
+  const list = Array.from(sources).sort((a, b) => b[1].view - a[1].view || b[1].app_open - a[1].app_open || b[1].signed_up - a[1].signed_up || (a[0] < b[0] ? -1 : 1));
+  if (url.searchParams.get('format') === 'text') {
+    const pct = (r) => (r == null ? '' : '  ' + Math.round(r * 100) + '%');
+    const short = [['view', 'visits'], ['app_open', 'app'], ['first_open', 'new'], ['note_created', 'note'], ['signin_start', 'code'], ['signed_up', 'signup'], ['cloud_first', 'cloud'], ['paid', 'paid']];
+    const lines = ['SharpMD funnel, last ' + days + (days === 1 ? ' day' : ' days') + ' (' + from + ' to ' + to + ')' + (only ? ', source ' + only : ''), 'Counts of events, not of people.', '', 'TOTAL']
+      .concat(shape(total).steps.map((s) => s.label.padEnd(17) + String(s.n).padStart(6) + pct(s.rate)));
+    if (!only && list.length) {
+      lines.push('', 'BY SOURCE', short.map((s) => s[1]).join(' > '));
+      for (const [name, c] of list.slice(0, 12)) lines.push(name.padEnd(17) + short.map((s) => c[s[0]]).join(' > '));
+    }
+    return { __text: lines.join('\n') + '\n' };
+  }
+  return { from, to, days, source: only || null, total: shape(total), sources: list.map(([source, c]) => Object.assign({ source }, shape(c))), daily: Array.from(daily).map(([day, c]) => Object.assign({ day }, c)) };
 }
 // The totals per variant, with the open/view rate. ?days=N looks at the last N days only.
 function landingAdmin(url) {
@@ -5273,7 +5395,7 @@ function landingAdmin(url) {
 async function route(req, url) {
   const p = url.pathname; const m = req.method;
   if (p === '/health') return { ok: true };
-  if (p === '/landing' && m === 'POST') return landingHit(req);
+  if ((p === '/stats' || p === '/landing') && m === 'POST') return statsHit(req);
   // Automatizaciones: la API con token y las direcciones de entrada.
   if (p.startsWith('/api/v1/')) return apiRoute(req, url, p, m);
   if (p.startsWith('/in/')) return inboxRoute(req, url, p, m);
@@ -5281,7 +5403,7 @@ async function route(req, url) {
   if (p === '/auth/verify' && m === 'POST') return authVerify(req, await readBody(req));
   if (p === '/paddle/webhook' && m === 'POST') return paddleWebhook(req);
   if (p === '/feedback' && m === 'POST') return feedback(req, await readBody(req));
-  if (((p === '/admin/plan' || p === '/admin/team') && m === 'POST') || p === '/admin/gallery' || p === '/admin/sites' || ((p === '/admin/landing' || p === '/admin/feedback') && m === 'GET')) {
+  if (((p === '/admin/plan' || p === '/admin/team') && m === 'POST') || p === '/admin/gallery' || p === '/admin/sites' || ((p === '/admin/landing' || p === '/admin/funnel' || p === '/admin/feedback') && m === 'GET')) {
     // La misma respuesta sin clave configurada, sin clave en el pedido o con una equivocada. Diez fallos por hora por IP.
     const ip = 'admin:' + clientIp(req);
     limit(ip, 10, HOUR, 'too_many');
@@ -5289,6 +5411,7 @@ async function route(req, url) {
     if (p === '/admin/gallery') return galleryAdmin(m, url, m === 'POST' ? await readBody(req) : {});
     if (p === '/admin/sites') return sitesAdmin(m, url, m === 'POST' ? await readBody(req) : {});
     if (p === '/admin/landing') return landingAdmin(url);
+    if (p === '/admin/funnel') return funnelAdmin(url);
     if (p === '/admin/feedback') return feedbackAdmin(url);
     const b = await readBody(req);
     if (p === '/admin/team') {
@@ -5352,7 +5475,7 @@ async function route(req, url) {
   if (p === '/shared' && m === 'GET') return sharedWith(user);
   // Con o (en el cuerpo o en la dirección), compartir y los enlaces trabajan sobre el espacio del equipo, si el
   // papel de quien llama y la política del equipo lo permiten. Sin o, sobre lo propio, como siempre.
-  if (p === '/shares' && m === 'POST') { const b = await readBody(req); const owner = shareOwner(user, b.o, 'share'); return owner === user ? addShare(user, b) : teamShare(user.team, user, owner, b); }
+  if (p === '/shares' && m === 'POST') { const b = await readBody(req); const owner = shareOwner(user, b.o, 'share'); if (owner === user) return addShare(user, b); const r = teamShare(user.team, user, owner, b); statOnce(user.id, STAT_BIT.shared, 'shared'); return r; }
   if (p === '/shares' && m === 'GET') return sharesOf(shareOwner(user, url.searchParams.get('o'), 'see'), url.searchParams.get('path'));
   if (p.startsWith('/shares/') && m === 'DELETE') {
     const owner = shareOwner(user, url.searchParams.get('o'), 'share'); const row = q('SELECT path FROM shares WHERE id = ? AND owner = ?').get(+p.slice(8), owner.id);
@@ -5360,7 +5483,7 @@ async function route(req, url) {
     if (row && owner !== user) teamLog(user.team, user, 'unshare', row.path);
     return { ok: true };
   }
-  if (p === '/links' && m === 'POST') { const b = await readBody(req); const owner = shareOwner(user, b.o, 'links'); return owner === user ? addLink(user, b) : teamLink(user.team, user, owner, b); }
+  if (p === '/links' && m === 'POST') { const b = await readBody(req); const owner = shareOwner(user, b.o, 'links'); if (owner === user) return addLink(user, b); const r = teamLink(user.team, user, owner, b); statOnce(user.id, STAT_BIT.shared, 'shared'); return r; }
   if (p.startsWith('/links/') && m === 'DELETE') {
     const owner = shareOwner(user, url.searchParams.get('o'), 'links'); const row = q('SELECT path FROM links WHERE id = ? AND owner = ?').get(+p.slice(7), owner.id);
     q('DELETE FROM links WHERE id = ? AND owner = ?').run(+p.slice(7), owner.id);
@@ -5396,6 +5519,7 @@ async function route(req, url) {
     // Compartir y crear enlaces es un permiso aparte, que se pide al crear el token: sin share: true no lo tiene.
     const share = b.share === true;
     const r = q('INSERT INTO tokens (hash, user, name, scope, share, created) VALUES (?, ?, ?, ?, ?, ?)').run(sha(token), user.id, String(b.name || 'AI').slice(0, 60), scope, share ? 1 : 0, now());
+    statOnce(user.id, STAT_BIT.token, 'ai_token');
     return { id: Number(r.lastInsertRowid), token, scope, share, mcp_url: PUBLIC_URL + '/mcp' };
   }
   if (p.startsWith('/tokens/') && m === 'DELETE') { q('DELETE FROM tokens WHERE id = ? AND user = ?').run(+p.slice(8), user.id); return { ok: true }; }
@@ -5456,6 +5580,7 @@ const server = http.createServer(async (req, res) => {
     // La página de revisión de la galería: HTML sin scripts, que no se puede enmarcar ni mandar su formulario a otro lado.
     if (out && out.__html !== undefined) { res.writeHead(out.__status || 200, { 'content-type': 'text/html; charset=utf-8', 'x-frame-options': 'DENY', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" }); res.end(out.__html); return; }
     if (out && out.__file) { fileSend(res, out.__file); return; }
+    if (out && out.__text !== undefined) { res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }); res.end(out.__text); return; }
     if (out && out.__status) { res.writeHead(out.__status); res.end(); return; }
     if (out && out.__cache) { res.setHeader('cache-control', out.__cache); delete out.__cache; }
     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });

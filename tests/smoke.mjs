@@ -344,18 +344,18 @@ try {
     beats.length = 0;
     await ab.goto('https://sharpmd.app/?site'); await ab.waitForSelector('.hero h1'); await ab.waitForTimeout(400);
     const views = beats.slice();
-    check('titulares a prueba: al cargar, la portada publicada manda un aviso con la variante y el evento, y nada más', live.h1 === HERO.en.a && views.length === 1 && views[0].url === 'https://sync.sharpmd.app/landing' && views[0].method === 'POST' && views[0].body === '{"v":"a","e":"view"}' && /^text\/plain/.test(views[0].type) && !views[0].cookie && !views[0].auth, views);
+    check('titulares a prueba: al cargar, la portada publicada manda un aviso con la variante y el evento, y nada más', live.h1 === HERO.en.a && views.length === 1 && views[0].url === 'https://sync.sharpmd.app/stats' && views[0].method === 'POST' && views[0].body === '{"e":"view","p":"home","s":"direct","v":"a"}' && /^text\/plain/.test(views[0].type) && !views[0].cookie && !views[0].auth, views);
     // Los botones se tocan sin dejar que naveguen: lo que se mira es el aviso.
     await ab.evaluate(() => document.addEventListener('click', (e) => e.preventDefault()));
     const tap = async (sel) => { await ab.evaluate((s) => document.querySelector(s).click(), sel); await ab.waitForTimeout(150); return beats.length; };
     const afterFaq = await tap('nav a[href="#share"]'); const afterOpen = await tap('.hero a.btn.fill[href="src/app.html"]'); const afterMore = (await tap('nav a[href="#plans"]'), await tap('#plans a[href^="src/app.html"]'));
-    check('titulares a prueba: un botón que abre la app avisa "open" una vez por visita, y un enlace cualquiera no avisa', afterFaq === 1 && afterOpen === 2 && afterMore === 2 && beats[1].body === '{"v":"a","e":"open"}', [afterFaq, afterOpen, afterMore, beats.map((b) => b.body)]);
+    check('titulares a prueba: un botón que abre la app avisa "open" una vez por visita, ir a los planes avisa "plans", y un enlace cualquiera no avisa', afterFaq === 1 && afterOpen === 2 && afterMore === 3 && beats[1].body === '{"e":"open","p":"home","s":"direct","v":"a"}' && beats[2].body === '{"e":"plans","p":"home","s":"direct","v":"a"}', [afterFaq, afterOpen, afterMore, beats.map((b) => b.body)]);
     beats.length = 0; await open('https://sharpmd.app/?site', 'b'); await ab.waitForTimeout(300); beats.length = 0;
     await ab.goto('https://sharpmd.app/es/?site'); await ab.waitForSelector('.hero h1'); await ab.waitForTimeout(300);
     await ab.evaluate(() => document.addEventListener('click', (e) => e.preventDefault())); await tap('nav a[href="#plans"]');
     const kept = await ab.evaluate(() => ({ cookie: document.cookie, keys: Object.keys(localStorage).sort().join() }));
-    check('titulares a prueba: ir a los planes también cuenta, con la variante B y en la portada en castellano', beats.map((b) => b.body).join() === '{"v":"b","e":"view"},{"v":"b","e":"open"}', beats.map((b) => b.body));
-    check('titulares a prueba: no deja cookies, y en el navegador guarda solo la variante junto al idioma', kept.cookie === '' && kept.keys === 'mdtools:site-lang,sharpmd:hero', kept);
+    check('titulares a prueba: ir a los planes también cuenta, con la variante B y en la portada en castellano', beats.map((b) => b.body).join('|') === '{"e":"view","p":"home","s":"direct","v":"b"}|{"e":"plans","p":"home","s":"direct","v":"b"}', beats.map((b) => b.body));
+    check('titulares a prueba: no deja cookies, y en el navegador guarda solo la variante y el canal de la visita junto al idioma', kept.cookie === '' && kept.keys === 'mdtools:site-lang,sharpmd:hero,sharpmd:src1', kept);
     // Quien ya usó la app va directo a ella: no se le elige titular ni cuenta como visita.
     await ab.evaluate(() => { localStorage.setItem('sharpmd:app', '1'); localStorage.removeItem('sharpmd:hero'); }); beats.length = 0;
     await ab.goto('https://sharpmd.app/').catch(() => {}); await ab.waitForSelector('#app', { timeout: 10000 }).catch(() => {}); await ab.waitForTimeout(300);

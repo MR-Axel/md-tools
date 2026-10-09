@@ -387,22 +387,13 @@
     </div>
     <p class="under">El editor es gratis y de código abierto. No hay nada que instalar ni hace falta una cuenta para escribir.</p>
     <script>
-    // Puts headline A in place before the hero is painted, and counts: one view per load, and one open the first time
-    // a link to the app or to the plans is used. What is sent is the variant and the event. No cookie and no identifier.
-    // Only the published site counts.
+    // Puts headline A in place before the hero is painted. The visit and the first click on a link to the app or to the
+    // plans are counted by src/count.js, at the end of the page, with the headline that was shown.
     (function () {
-      var d = document.documentElement, v = d.getAttribute('data-ab'), opened = false;
+      var d = document.documentElement, v = d.getAttribute('data-ab');
       if (v !== 'a' && v !== 'b') return;
       if (v === 'a') [].forEach.call(document.querySelectorAll('.hero h1[data-a], .hero .lede[data-a]'), function (n) { n.textContent = n.getAttribute('data-a'); });
       d.classList.add('ab-on');
-      if (location.hostname !== 'sharpmd.app' || !navigator.sendBeacon) return;
-      function tell(e) { try { navigator.sendBeacon('https://sync.sharpmd.app/landing', JSON.stringify({ v: v, e: e })); } catch (x) { /* not counted */ } }
-      tell('view');
-      document.addEventListener('click', function (ev) {
-        var a = ev.target.closest ? ev.target.closest('a[href]') : null; if (!a || opened) return;
-        var h = a.getAttribute('href') || '';
-        if (/src\/app\.html/.test(h) || /#plans$/.test(h)) { opened = true; tell('open'); }
-      }, true);
     })();
     </script>
   </div>
@@ -564,7 +555,7 @@
 <section class="band" id="private"><div class="wrap">
   <h2>Qué puede leer el servidor y qué no</h2>
   <ul class="six duo">
-    <li><h3>Los archivos de tu disco</h3><p>Se leen en tu navegador y no se suben. Sin cuenta y sin analítica.</p></li>
+    <li><h3>Los archivos de tu disco</h3><p>Se leen en tu navegador y no se suben. No hace falta cuenta.</p></li>
     <li><h3>Las notas de la nube</h3><p>Se guardan cifradas. El servidor tiene esa llave, porque tiene que compartirlas y dárselas a tu IA.</p></li>
     <li><h3>Las carpetas con contraseña</h3><p>Cifradas de extremo a extremo: el servidor guarda texto que no puede leer. Tu IA entra solo mientras desbloqueás la carpeta, por el tiempo que elijas.</p></li>
     <li><h3>Tu clave de IA queda en tu dispositivo</h3><p>Se guarda cifrada solo en ese dispositivo, con una llave que el navegador no deja exportar. Nunca pasa por nuestro servidor, no se sincroniza y no se vuelve a mostrar entera. Las llamadas van de tu navegador directo al proveedor que elegiste, que recibe lo que le mandás. El texto de una carpeta protegida se manda solo si lo confirmás.</p></li>
@@ -890,5 +881,6 @@
   if (document.readyState === 'complete') idle(); else addEventListener('load', idle);
 })();
 </script>
+<script defer src="../src/count.js" data-page="home"></script>
 </body>
 </html>

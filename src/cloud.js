@@ -4,6 +4,9 @@
   'use strict';
 
   let session = ''; let email = ''; let base = ''; let loaded = null;
+  // El canal por el que llegó la persona ("reddit"), para el conteo anónimo del ingreso (count.js). No viaja en la
+  // extensión, con otro servidor, ni con los conteos apagados.
+  const channel = () => (LMD.count && LMD.count.source()) || undefined;
   let listCache = null; let listAt = 0;
 
   // La dirección sale de los ajustes (para quien aloja su propio servidor) o de la que trae la versión.
@@ -685,9 +688,9 @@
     enabled: () => !!base,
     signedIn: () => !!session,
     email: () => email,
-    start: (mail) => api('POST', '/auth/start', { email: mail, lang: LMD.lang() }),
+    start: (mail) => api('POST', '/auth/start', { email: mail, lang: LMD.lang(), src: channel() }),
     // Entrar con otra cuenta abierta (el enlace del correo): la de antes se cierra como al salir, recién cuando el código sirvió.
-    verify: async (mail, code) => { const r = await api('POST', '/auth/verify', { email: mail, code }); if (session && email && email !== r.account.email) await LMD.cloud.logout(); session = r.session; email = r.account.email; vaultCache = null; await remember(); return r.account; },
+    verify: async (mail, code) => { const r = await api('POST', '/auth/verify', { email: mail, code, src: channel() }); if (session && email && email !== r.account.email) await LMD.cloud.logout(); session = r.session; email = r.account.email; vaultCache = null; await remember(); return r.account; },
     // Al salir se borran las copias locales de la cuenta; lo que no llegó a subirse queda para cuando vuelva a entrar.
     // Las llaves de las carpetas protegidas se olvidan, también las recordadas en este dispositivo.
     logout: async () => {

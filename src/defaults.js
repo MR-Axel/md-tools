@@ -23,6 +23,7 @@
     wrapCode: true, // las líneas largas de los bloques de código bajan de renglón
     autosave: false,
     autosaveDelay: 2000, // ms después del último cambio
+    usageCounts: true, // la app web manda conteos anónimos (count.js); apagado, no sale nada
     cloudUrl: '', // servidor de sincronización propio; vacío usa el de la versión, "off" deja la app sin nube
     codeColor: '', // tinte de los bloques de código; vacío = el del tema
     diagramShape: 'round', // round | square: nodos y flechas de los diagramas de flujo
@@ -396,8 +397,10 @@
       "Entrar sin contraseña": "Sign in without a password",
       "Entrás con un código de un solo uso que llega a tu correo. No hay contraseña de cuenta que se pueda filtrar.": "You sign in with a one-time code sent to your email. There is no account password to leak.",
       "Las sesiones y los tokens se guardan como hash": "Sessions and tokens are stored as hashes",
-      "Sin analítica y con código abierto": "No analytics, open source",
-      "No hay analítica. El código es abierto y podés usar tu propio servidor.": "There are no analytics. The code is open and you can run your own server.",
+      "Sin rastreadores y con código abierto": "No trackers, open source",
+      "No hay rastreadores ni terceros. La app web cuenta unos pocos eventos anónimos, y se apaga en Ajustes > Avanzado. El código es abierto y podés usar tu propio servidor.": "No trackers and no third parties. The web app counts a few anonymous events, and you can turn that off in Settings > Advanced. The code is open and you can run your own server.",
+      "Conteos de uso": "Usage counts", "Mandar conteos de uso anónimos": "Send anonymous usage counts",
+      "Se manda el nombre de un evento (la app se abrió, una primera nota, una primera edición) y el canal por el que llegaste, como \"reddit\". Sin cookie ni identificador, y nada de tus notas. Los archivos abiertos desde tu disco con la extensión no mandan nada.": "What is sent is the name of an event (the app opened, a first note, a first edit) and the channel you came from, such as \"reddit\". No cookie, no identifier, and nothing about your notes. Files opened from your disk with the extension send nothing.",
       "App MIT · Servidor AGPL": "App MIT · Server AGPL",
       "Una nota eliminada queda 30 días en la papelera.": "A deleted note stays in the trash for 30 days.",
       "Viaja cifrada y se guarda cifrada en el servidor.": "It is encrypted in transit and on the server.",
