@@ -2941,7 +2941,8 @@
   // Herramientas (tools.js) va después de Plugins. El invitado de una sesión en vivo no la ve.
   PANEL_TABS.splice(3, 0, ['tools', 'Herramientas', LMD.tools.ICON.tools]);
   // API y automatizaciones (automate.js) va después de IA: los tokens de la API, los webhooks y las direcciones de entrada.
-  PANEL_TABS.splice(PANEL_TABS.findIndex((t) => t[0] === 'ai') + 1, 0, ['auto', 'API y automatizaciones', '<svg viewBox="0 0 24 24"><path d="M13 3 5 13.5h6L10 21l8-10.5h-6z"/></svg>']);
+  // El cuarto dato es su rótulo corto para el menú en español: el nombre entero no entra en un renglón de esa columna.
+  PANEL_TABS.splice(PANEL_TABS.findIndex((t) => t[0] === 'ai') + 1, 0, ['auto', 'API y automatizaciones', '<svg viewBox="0 0 24 24"><path d="M13 3 5 13.5h6L10 21l8-10.5h-6z"/></svg>', 'Automatizaciones']);
   // Al cerrar Ajustes el foco vuelve a donde estaba al abrirlos.
   let panelBack = null;
   // La grilla de temas de Apariencia: cuál está puesto, cuál se eligió para mirar y qué botón le toca.
@@ -3000,7 +3001,7 @@
       '<div class="lmd-panel-card" role="dialog" aria-modal="true" aria-label="' + T('Ajustes') + '">' +
         '<header><h2>' + T('Ajustes') + '</h2><button class="lmd-icon-btn" data-act="close-panel" title="' + T('Cerrar') + '" aria-label="' + T('Cerrar') + '">' + ICON.close + '</button></header>' +
         '<nav class="lmd-ptabs" role="tablist">' +
-          PANEL_TABS.filter((t) => !guestTabs || guestTabs.includes(t[0])).map((t) => '<button type="button" role="tab" data-ptab="' + t[0] + '">' + t[2] + '<span>' + T(t[1]) + '</span></button>').join('') +
+          PANEL_TABS.filter((t) => !guestTabs || guestTabs.includes(t[0])).map((t) => '<button type="button" role="tab" data-ptab="' + t[0] + '">' + t[2] + '<span>' + (t[3] && LMD.lang() === 'es' ? t[3] : T(t[1])) + '</span></button>').join('') +
           '<button type="button" class="lmd-ptabs-foot" data-act="feedback">' + ICON.mail + '<span>' + T('Enviar comentarios') + '</span></button>' +
           '<a class="lmd-ptabs-link" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">' + ICON.coffee + '<span>' + T('Apoyar el proyecto') + '</span></a>' +
           '<small class="lmd-ptabs-ver">SharpMD ' + LMD.VERSION + '</small>' +

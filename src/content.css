@@ -701,8 +701,10 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 
 /* ---------- Pestañas de ajustes, sincronización, historial ---------- */
 .lmd-ptabs { display: flex; flex-direction: column; gap: 3px; padding: 14px 10px; border-right: 1px solid var(--line); background: var(--bg-side); overflow: auto; }
-.lmd-ptabs button { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px; border: 0; border-radius: 9px; background: transparent; color: var(--fg-muted); font: inherit; font-size: 13.5px; font-weight: 600; text-align: left; cursor: pointer; }
-.lmd-ptabs button svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+/* Un rótulo que no entra en un renglón parte en dos y el ítem crece: mismo aire arriba y abajo, y el ícono con el primer renglón. */
+.lmd-ptabs button { display: flex; align-items: flex-start; gap: 10px; flex: none; min-height: 38px; padding: 10px 12px; border: 0; border-radius: 9px; background: transparent; color: var(--fg-muted); font: inherit; font-size: 13.5px; font-weight: 600; text-align: left; cursor: pointer; }
+.lmd-ptabs button { line-height: 18px; }
+.lmd-ptabs button svg { width: 16px; height: 16px; flex: none; margin-top: 1px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .lmd-ptabs button:hover { color: var(--fg); background: var(--bg-soft); }
 .lmd-ptabs button.lmd-on { background: var(--accent-soft); color: var(--accent); }
 .lmd-panel-body > section[hidden] { display: none; }
@@ -999,8 +1001,8 @@ button.lmd-cm-quote:hover { border-left-color: var(--accent-fill); color: var(--
 .lmd-pick select { flex: 0 1 300px; min-width: 0; height: 34px; padding: 0 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--fg); font: inherit; font-size: 13px; outline: none; }
 .lmd-pick select:focus { border-color: var(--accent-fill); }
 .lmd-acct .lmd-plan-why { margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--accent-fill); border-radius: 10px; background: var(--accent-soft); color: var(--fg); font-size: 13.5px; }
-.lmd-ptabs .lmd-ptabs-link { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px; border-radius: 9px; color: var(--fg-faint); font-size: 13.5px; font-weight: 500; text-decoration: none; }
-.lmd-ptabs-link svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-ptabs .lmd-ptabs-link { display: flex; align-items: flex-start; gap: 10px; flex: none; min-height: 34px; box-sizing: border-box; padding: 8px 12px; line-height: 18px; border-radius: 9px; color: var(--fg-faint); font-size: 13.5px; font-weight: 500; text-decoration: none; }
+.lmd-ptabs-link svg { width: 16px; height: 16px; flex: none; margin-top: 1px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .lmd-ptabs .lmd-ptabs-link:hover { color: var(--accent); background: var(--bg-soft); }
 .lmd-ptabs-ver { padding: 8px 12px 0; color: var(--fg-faint); font-size: 11.5px; white-space: nowrap; }
 
@@ -1220,7 +1222,8 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
     padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px); }
   .lmd-panel-card header { padding: 8px 8px 8px 16px; }
   .lmd-ptabs { flex-direction: row; align-items: center; gap: 4px; padding: 8px 10px; border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; }
-  .lmd-ptabs button, .lmd-ptabs .lmd-ptabs-link { flex: none; height: 40px; white-space: nowrap; }
+  .lmd-ptabs button, .lmd-ptabs .lmd-ptabs-link { flex: none; align-items: center; height: 40px; min-height: 0; padding-top: 0; padding-bottom: 0; white-space: nowrap; }
+  .lmd-ptabs button svg, .lmd-ptabs-link svg { margin-top: 0; }
   .lmd-ptabs .lmd-ptabs-foot { margin-top: 0; }
   .lmd-ptabs-ver { flex: none; padding: 0 8px; }
   .lmd-panel-body { padding: 2px 16px calc(22px + env(safe-area-inset-bottom, 0px)); }
