@@ -208,6 +208,8 @@
     present: { js: ['src/present.js'] },
     daily: { js: ['src/daily.js'] },
     docx: { js: ['src/docx.js'] },
+    // Exportar una carpeta entera como un solo documento: se pide al elegirla en un menú.
+    folderexport: { js: ['src/folderexport.js'] },
     linkmap: { js: ['src/linkmap.js'] },
     explore: { js: ['src/explore.js'] },
     jsonyaml: { js: ['src/jsonyaml.js'] },
@@ -227,7 +229,7 @@
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
   ['present', 'daily', 'docx', 'linkmap', 'explore', 'jsonyaml', 'import', 'agents'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
   LAZY_HAVE.assistant = () => !!(LMD.ai && LMD.assistant);
-  LAZY_HAVE.shortcuts = () => !!LMD.shortcuts;
+  LAZY_HAVE.shortcuts = () => !!LMD.shortcuts; LAZY_HAVE.folderexport = () => !!LMD.folderexport;
   async function appLazy(what) {
     const spec = LAZY_APP[what];
     try {

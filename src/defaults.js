@@ -1523,6 +1523,16 @@
       "En una plantilla propia, {{fecha}} se cambia por la fecha del día.": "In your own template, {{date}} becomes the date of the day.",
       "Sin conexión. La nota del día quedó en este navegador.": "Offline. The daily note was saved in this browser.", "Falta el permiso para escribir en la carpeta de las notas diarias.": "Permission to write to the daily notes folder is missing.",
       "No se pudo abrir la nota del día. Probá de nuevo.": "Could not open the daily note. Try again.", "La nota diaria se usa desde la app.": "The daily note works from the app.",
+      // Exportar una carpeta entera (folderexport.js)
+      "Exportar la carpeta…": "Export the folder…", "Toda la carpeta…": "The whole folder…", "Exportar la carpeta": "Export the folder", "Algunas notas quedaron afuera": "Some notes were left out",
+      "Armando el documento…": "Building the document…", "Cada documento en página nueva": "Each document on a new page", "Separador entre documentos": "Separator between documents", "Calculando las páginas…": "Working out the pages…",
+      "Cancelado.": "Cancelled.", "Compartidas": "Shared", "En esta carpeta no hay notas para exportar.": "This folder has no notes to export.", "Formato": "Format",
+      "Hoja": "Paper", "La carpeta sigue bloqueada: no se exporta.": "The folder is still locked: nothing is exported.", "Preparando…": "Preparing…", "Un solo Markdown (.md)": "A single Markdown (.md)",
+      "Carta": "Letter", "Portada con el título": "Cover page with the title", "Numerar las páginas": "Number the pages", "Incluir subcarpetas": "Include subfolders",
+      "Solo si la página quedó llena al menos hasta la mitad": "Only if the page ended at least half full", "Solo si quedó llena hasta tres cuartos": "Only if it ended three quarters full", "Siempre": "Always", "Quedan afuera por estar bloqueadas: {a}.": "Left out because they are locked: {a}.",
+      "Se muestran las primeras {n} notas.": "Showing the first {n} notes.", "{n} documento, en este orden:": "{n} document, in this order:", "{n} documentos, en este orden:": "{n} documents, in this order:", "Preparando {a} de {n}…": "Preparing {a} of {n}…",
+      "No se pudieron leer: {a}.": "Could not be read: {a}.", "Vacías, no suman página: {a}.": "Empty, they add no page: {a}.", "No hay notas para exportar.": "There are no notes to export.", "No se pudo exportar. Probá de nuevo.": "Could not export. Try again.",
+      "Listo: {n} documentos.": "Ready: {n} documents.", "Carpeta exportada: {n} documentos": "Folder exported: {n} documents", "Índice con los títulos": "Table of contents",
       // Exportar a Word (docx.js)
       "Exportar a Word": "Export to Word", "Suma Word (.docx) al menú Exportar.": "Adds Word (.docx) to the Export menu.",
       "Documento de Word descargado": "Word document downloaded", "No se pudo armar el documento de Word.": "Could not build the Word document.", "Exportar esta nota": "Export this note", "documento": "document",

@@ -408,7 +408,7 @@
   let menu = null;
   const closeMenu = () => { if (menu) { menu.remove(); menu = null; } };
   // El ícono de cada acción de los menús del explorador, por id.
-  const MENU_ICON = { new: 'file', tpl: 'doc', dir: 'folder', ren: 'pencil', mov: 'open', del: 'trash', file: 'file', 'v-protect': 'lock', 'v-lock': 'lock', 'v-unlock': 'unlock', 'v-ai': 'spark', 'v-ailock': 'lock', 'v-drop': 'close', 'v-pass': 'pencil', 'v-off': 'unlock', 'v-destroy': 'trash', 'v-backup': 'copy', 'v-rotate': 'lock' };
+  const MENU_ICON = { fexp: 'download', new: 'file', tpl: 'doc', dir: 'folder', ren: 'pencil', mov: 'open', del: 'trash', file: 'file', 'v-protect': 'lock', 'v-lock': 'lock', 'v-unlock': 'unlock', 'v-ai': 'spark', 'v-ailock': 'lock', 'v-drop': 'close', 'v-pass': 'pencil', 'v-off': 'unlock', 'v-destroy': 'trash', 'v-backup': 'copy', 'v-rotate': 'lock' };
   // Un menú corto en un punto de la pantalla. items: [id, texto, peligroso, ícono]. onPick recibe el id elegido.
   function showMenu(x, y, items, onPick) {
     closeMenu();
@@ -426,8 +426,8 @@
   function treeMenu(x, y, node) {
     const url = node.dataset.url; const isDir = node.classList.contains('lmd-node-dir'); const cloud = inCloud(url); const local = inLocal(url);
     const at = isDir ? url : parentOf(url);
-    // Quien solo lee en su equipo no crea, renombra ni elimina ahí: no hay menú que ofrecer.
-    if (teamReader(url)) return;
+    // Quien solo lee en su equipo no crea, renombra ni elimina ahí: de una carpeta le queda exportarla.
+    if (teamReader(url)) { if (isDir) showMenu(x, y, [['fexp', 'Exportar la carpeta…']], () => folderExport(url)); return; }
     // Una carpeta propia de la nube suma lo de las carpetas con contraseña: proteger, desbloquear, abrir para la IA.
     const folder = isDir && cloud ? core.pathOf(url) : '';
     showMenu(x, y, [
@@ -438,12 +438,15 @@
       // Lo mismo que arrastrarlo a una carpeta, sin arrastrar: sirve con el dedo y con el teclado.
       canTree(url) && ['mov', 'Mover a…'],
       !isDir && ['del', 'Eliminar', true],
+      // Todas las notas de la carpeta en un solo documento: PDF, HTML, Word o Markdown (folderexport.js).
+      isDir && ['fexp', 'Exportar la carpeta…'],
       // Una carpeta o una nota de la nube: avisar afuera cuando algo cambie ahí (automate.js).
       cloud && core.APP && core.pathOf(url) && ['auto', 'Automatizar…', false, 'spark'],
       // Una carpeta de la nube sin contraseña, en un servidor que publica sitios: publicarla (publish.js).
       folder && core.APP && LMD.sync.canPublish(folder) && ['site', 'Publicar como sitio…'],
     ].concat(folder ? LMD.vault.menu(folder) : []).filter(Boolean), (f) => {
       if (/^v-/.test(f)) LMD.vault.pick(f, folder);
+      else if (f === 'fexp') folderExport(url);
       else if (f === 'site') LMD.sync.publish(folder);
       else if (f === 'auto') core.ensure('automate').then((ok) => { if (ok) LMD.automate.wizard(core, { kind: isDir ? 'folder' : 'note', path: core.pathOf(url) }); });
       else if (f === 'new') newFile(at);
@@ -455,10 +458,12 @@
     });
   }
   // Crear: desde la cabecera del explorador (sin dirUrl: donde van las notas nuevas) o dentro de una raíz.
-  function createMenu(x, y, dirUrl) {
+  // Con whole (clic derecho sobre una raíz del explorador), suma exportar todo lo que hay en ella.
+  function createMenu(x, y, dirUrl, whole) {
     const folderAt = dirUrl ? (canTree(dirUrl) ? dirUrl : '') : (core.diskDir() || (LMD.cloud.signedIn() ? core.urlOf('') : ''));
-    showMenu(x, y, [['new', 'Nota en blanco'], ['tpl', 'Desde una plantilla…'], folderAt && ['dir', 'Carpeta']].filter(Boolean), (f) => {
-      if (f === 'dir') newFolder(folderAt);
+    showMenu(x, y, [['new', 'Nota en blanco'], ['tpl', 'Desde una plantilla…'], folderAt && ['dir', 'Carpeta'], whole && dirUrl && ['fexp', 'Exportar la carpeta…']].filter(Boolean), (f) => {
+      if (f === 'fexp') folderExport(dirUrl);
+      else if (f === 'dir') newFolder(folderAt);
       else if (f === 'tpl') fromTemplate(dirUrl);
       else if (dirUrl) newFile(dirUrl);
       else core.newNote();
@@ -982,6 +987,8 @@
     '.lmd-diagram{text-align:center;margin:0 0 1em}.lmd-box,.lmd-alert{margin:0 0 1em;padding:.6em 1em;border-left:3px solid #7c8b99;background:#f1efe9;border-radius:0 8px 8px 0}.lmd-box-title,.lmd-alert-title{font-weight:700;margin:0 0 .3em}' +
     'ol ol,ol ol ol ol ol{list-style-type:lower-alpha}ol ol ol,ol ol ol ol ol ol{list-style-type:lower-roman}ol ol ol ol{list-style-type:decimal}' +
     'li.lmd-task-item{list-style:none;margin-left:-1.3em}.lmd-front{display:none}' +
+    // Al imprimir: sin renglones sueltos, sin títulos al pie y sin partir lo que se lee de una vez.
+    '@media print{p,li,pre,blockquote{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{break-after:avoid;break-inside:avoid}tr,img,svg,blockquote,.lmd-alert,.lmd-diagram{break-inside:avoid}thead{display:table-header-group}pre{white-space:pre-wrap;overflow:visible}}' +
     '.lmd-board{display:flex;gap:12px;align-items:flex-start;overflow-x:auto;margin:0 0 1em}.lmd-col{flex:0 0 240px;padding:10px;border:1px solid #dedbd2;border-radius:10px}.lmd-col-head{font-weight:700;margin-bottom:8px}.lmd-col-n{margin-left:6px;opacity:.55;font-weight:400}.lmd-card{padding:8px 10px;margin-bottom:6px;border:1px solid #dedbd2;border-radius:8px}.lmd-card-done{opacity:.6;text-decoration:line-through}' +
     '@media(prefers-color-scheme:dark){body{background:#121418;color:#e6e8ec}a{color:#bef264}pre,th,.lmd-box,.lmd-alert{background:#1a1d23}:not(pre)>code{background:#232730}pre,th,td,h2,hr,blockquote{border-color:#2a2e37}blockquote{color:#a0a7b4}}';
 
@@ -1002,15 +1009,55 @@
     copy.querySelectorAll('a[data-lmd-href]').forEach((a) => a.setAttribute('href', a.getAttribute('data-lmd-href')));
     return copy.innerHTML.trim();
   }
+  // La página entera de un HTML exportado: el de una nota, o el de una carpeta (folderexport.js), que suma su hoja.
+  const htmlPage = (title, body, css) => '<!doctype html>\n<html lang="' + LMD.lang() + '">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>' +
+    title.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])) + '</title>\n<style>' + EXPORT_CSS + LMD.theme.exportCss(core.settings) + (css || '') + '</style>\n</head>\n<body>\n<main>\n' + body + '\n</main>\n</body>\n</html>\n';
   function exportHtml() {
     const title = (core.docName || 'documento').replace(/\.[^.]+$/, '');
-    const html = '<!doctype html>\n<html lang="' + LMD.lang() + '">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>' +
-      title.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])) + '</title>\n<style>' + EXPORT_CSS + LMD.theme.exportCss(core.settings) + '</style>\n</head>\n<body>\n<main>\n' + htmlOf() + '\n</main>\n</body>\n</html>\n';
-    if (LMD.kit.saveFile(new Blob([html], { type: 'text/html' }), title + '.html') === 'download') core.flash(T('HTML descargado'));
+    if (LMD.kit.saveFile(new Blob([htmlPage(title, htmlOf())], { type: 'text/html' }), title + '.html') === 'download') core.flash(T('HTML descargado'));
+  }
+
+  // ---------- Paginado ----------
+  // La hoja de impresión pide que de un párrafo pasen al menos tres renglones de cada lado de un corte de página
+  // (orphans y widows). Chromium, cuando no puede cumplir las dos, cumple la primera: un bloque de cuatro o cinco
+  // renglones lo parte en 3+1 o 3+2. Por eso lo que no llega a seis renglones se marca (.lmd-keep) y pasa entero, lo
+  // mismo que un bloque de código corto. width es el ancho útil de la hoja cuando el bloque está dibujado a otro ancho.
+  function keepShort(box, width) {
+    const lh = parseFloat(getComputedStyle(box).lineHeight) || (parseFloat(getComputedStyle(box).fontSize) || 16) * 1.6;
+    const marks = [];
+    box.querySelectorAll('p, li, dd, .lmd-code').forEach((n) => {
+      if (n.classList.contains('lmd-code')) { const pre = n.querySelector('pre'); marks.push([n, !!pre && pre.textContent.replace(/\n$/, '').split('\n').length <= 16]); return; }
+      // Un elemento de lista con bloques adentro (otra lista, párrafos) se parte por ellos.
+      if (n.tagName === 'LI' && n.querySelector('ul, ol, p, pre, table, blockquote')) { marks.push([n, false]); return; }
+      const r = n.getBoundingClientRect(); if (!r.height) return;
+      const lines = r.height / lh;
+      marks.push([n, Math.min(lines, width ? lines * r.width / width : lines) < 5.6]);
+    });
+    marks.forEach(([n, on]) => n.classList.toggle('lmd-keep', on));
+  }
+
+  // ---------- Exportar la carpeta ----------
+  // Su código (folderexport.js) se pide recién al elegirla. Sin carpeta, solo lo deja cargado (las pruebas).
+  const folderExport = (dirUrl) => core.ensure('folderexport').then((ok) => {
+    if (!ok || !LMD.folderexport) { core.flash(T('No se pudo abrir. Probá de nuevo.'), 'error'); return false; }
+    LMD.folderexport.bind(core);
+    return dirUrl ? LMD.folderexport.open(core, dirUrl) : true;
+  });
+  // La carpeta de la nota abierta, si es de las que se exportan: del disco, de este navegador o de la nube.
+  function folderHere() {
+    if (core.noDoc || !core.HERE) return '';
+    if (!core.APP) return location.protocol === 'file:' ? parentOf(core.HERE) : '';
+    const r = core.rootOf(core.HERE);
+    return r && /^(dir|local|cloud)$/.test(r.kind) ? parentOf(core.HERE) : '';
   }
 
   function init(c) {
     core = c;
+    core.actions['export-folder'] = () => { const at = folderHere(); if (at) folderExport(at); };
+    core.menus.export.push(() => (folderHere() ? ['export-folder', ICON.folder, 'Toda la carpeta…'] : null));
+    // Al imprimir la nota, lo corto pasa entero de página (ver keepShort). Las marcas se retiran al terminar.
+    window.addEventListener('beforeprint', () => { if (!core.noDoc) keepShort(core.ui.article, 660); });
+    window.addEventListener('afterprint', () => core.ui.article.querySelectorAll('.lmd-keep').forEach((n) => n.classList.remove('lmd-keep')));
     // Árbol: clic derecho sobre un archivo o carpeta, y botón de archivo nuevo en la cabecera.
     core.ui.treeBox.addEventListener('contextmenu', (e) => {
       const node = e.target.closest('.lmd-node');
@@ -1023,7 +1070,7 @@
       e.preventDefault();
       // Con el dedo apoyado, el renglón se levanta: el menú sale al soltar, si no se lo arrastró.
       if (node && held(node) && liftable(at) && !teamReader(at)) { liftRow(node, e.clientX, e.clientY); return; }
-      if (node) treeMenu(e.clientX, e.clientY, node); else createMenu(e.clientX, e.clientY, at);
+      if (node) treeMenu(e.clientX, e.clientY, node); else createMenu(e.clientX, e.clientY, at, true);
     });
     // Los botones de la cabecera del explorador y el "+" de cada raíz.
     core.ui.sidebar.addEventListener('click', (e) => {
@@ -1073,5 +1120,5 @@
     article.addEventListener('keyup', (e) => { if (/^Arrow|^Page|^Home$|^End$/.test(e.key)) centerCaret(); });
   }
 
-  LMD.extras = { init, pasteImage, saveImage, exportHtml, htmlOf, imageDialog, imageMd, fromTemplate, trash, menu: showMenu, newIn: (dirUrl, given) => newFrom(dirUrl, given, true) };
+  LMD.extras = { init, pasteImage, saveImage, exportHtml, htmlOf, htmlPage, folderExport, keepShort, imageDialog, imageMd, fromTemplate, trash, menu: showMenu, newIn: (dirUrl, given) => newFrom(dirUrl, given, true) };
 })();

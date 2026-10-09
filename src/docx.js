@@ -328,6 +328,8 @@
     function block(n, c) {
       if (n.nodeType === 3) { return n.nodeValue.trim() ? para(pPrOf(c), textRun(n.nodeValue.replace(/\s+/g, ' ').trim(), {})) : ''; }
       if (n.nodeType !== 1 || n.matches(SKIP) || n.hidden) return '';
+      // Una carpeta exportada (folderexport.js): el documento que empieza en página nueva. El párrafo del salto no ocupa renglón.
+      if (n.classList.contains('lmd-fx-break') && !c.fx) return '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/></w:pPr><w:r><w:br w:type="page"/></w:r></w:p>' + block(n, Object.assign({}, c, { fx: true }));
       const tag = n.tagName;
       if (/^H[1-6]$/.test(tag)) {
         const m = n.id && marks.get(n.id);

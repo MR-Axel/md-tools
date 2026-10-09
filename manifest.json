@@ -104,6 +104,7 @@
         "src/present.js",
         "src/daily.js",
         "src/docx.js",
+        "src/folderexport.js",
         "src/linkmap.js",
         "src/explore.js",
         "src/jsonyaml.js",
