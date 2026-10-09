@@ -1180,6 +1180,8 @@
       // Copiar y exportar abren acá mismo el menú que en escritorio cuelga de su botón.
       ['copy', ICON.copy, 'Copiar'],
       ['export', ICON.download, 'Exportar'],
+      // En el teléfono, mandar la nota a otra app (install.js): como texto, como archivo, con un enlace o copiando.
+      LMD.install.canShareOut() && ['share-out', ICON.share, 'Compartir'],
       diskDoc() && ['reload', ICON.reload, 'Recargar ahora'],
       md && !shown('[data-act=page]') && ['page', ICON.doc, 'Ajustes de la página'],
       !shown('[data-act=theme-flip]') && ['theme-flip', LMD.theme.isDark(settings) ? SUN : MOON, LMD.theme.isDark(settings) ? 'Pasar a claro' : 'Pasar a oscuro'],
@@ -1210,6 +1212,7 @@
     else if (act === 'copy-flink') { copyText(LMD.fileLink(fileHere()), source); flash(T('Enlace copiado')); }
     else if (act === 'export-pdf') window.print();
     else if (act === 'export-md') downloadDoc();
+    else if (act === 'share-out') { flushTyping(); LMD.install.shareOut({ text: raw, name: DOC_NAME || 'nota.md', cloud: !!appRoot && appRoot.kind === 'cloud' }); }
     else if (act === 'mode-read') { if (editMode) setEditMode(false); }
     else if (act === 'mode-edit') { if (!editMode) setEditMode(true); }
     else if (act === 'save') save(true);
@@ -4316,6 +4319,8 @@
       if (kept && !LMD.cloud.guest()) { try { sessionStorage.removeItem('lmd-live'); } catch (e) { /* sin sesión */ } }
       return;
     }
+    // La app de Android la lanzaron para abrir un archivo: si no llega, el inicio lo dice (install.js).
+    if (params.has('open')) LMD.install.expect(homeCtx);
     const f = params.get('f');
     if (!f) { showEmpty(); loadTree(); return; }
     LMD.home.account(homeCtx()); // con una nota abierta el inicio no se dibuja: la cuenta del pie se pinta acá

@@ -220,7 +220,7 @@ try {
     await page.tap('[data-act=more]'); await page.waitForSelector('.lmd-menu-more');
     const more = await page.evaluate(() => { const m = document.querySelector('.lmd-menu-more'); const r = m.getBoundingClientRect(); const bs = [...m.querySelectorAll('button')];
       return { acts: bs.map((b) => b.dataset.more), icons: bs.every((b) => b.querySelector('svg') && b.querySelector('span').textContent.trim()), low: Math.min(...bs.map((b) => b.getBoundingClientRect().height)), in: r.left >= 0 && r.right <= window.innerWidth && r.bottom <= window.innerHeight, right: Math.round(window.innerWidth - r.right) }; });
-    check(tag + 'el menú "más" trae la nube, insertar, la vista de código, copiar, exportar, los ajustes de la página, claro u oscuro, ajustes y los atajos, sin recargar (la nota es del navegador)', J(more.acts) === J(['sync', 'insert', 'view-raw', 'copy', 'export', 'page', 'theme-flip', 'settings', 'shortcuts']), more.acts);
+    check(tag + 'el menú "más" trae la nube, insertar, la vista de código, copiar, exportar, compartir, los ajustes de la página, claro u oscuro, ajustes y los atajos, sin recargar (la nota es del navegador)', J(more.acts) === J(['sync', 'insert', 'view-raw', 'copy', 'export', 'share-out', 'page', 'theme-flip', 'settings', 'shortcuts']), more.acts);
     check(tag + 'cada renglón del menú lleva ícono y texto, mide 40 px o más y queda a la derecha', more.icons && more.low >= 40 && more.in && more.right <= 12, more);
     await fits(page, tag + 'editando con el menú "más" abierto');
     // Copiar y exportar abren, desde "más", el mismo menú que en escritorio cuelga de su botón: sub es la opción de ese menú.
@@ -364,6 +364,23 @@ try {
       card = await inCard('.lmd-share');
       check('compartir entra en la pantalla', card.in && !card.cut.length, card);
       await fits(page, 'compartir'); await page.tap('[data-sh=close]');
+      // Compartir hacia otra app, con una nota de la nube y el plan que deja crear enlaces: el enlace se pide con un
+      // toque y se manda con otro, para que la hoja del sistema abra dentro de un gesto.
+      await page.evaluate(() => { window.__shared = []; Object.defineProperty(navigator, 'share', { configurable: true, value: (d) => { window.__shared.push({ url: d.url || '', text: d.text || '', active: !!(navigator.userActivation && navigator.userActivation.isActive) }); return Promise.resolve(); } }); });
+      const outSheet = async () => { await page.tap('[data-act=more]'); await page.tap('.lmd-menu-more [data-more=share-out]'); await page.waitForSelector('.lmd-so-card'); };
+      await outSheet();
+      check('en una nota de la nube, compartir hacia otra app ofrece también un enlace', await page.evaluate(() => [...document.querySelectorAll('.lmd-so-list [data-so]')].map((b) => b.dataset.so).includes('link')));
+      await page.tap('.lmd-so-list [data-so=link]'); await page.waitForSelector('.lmd-so-link input', { timeout: 8000 }).catch(() => {});
+      let made = await page.evaluate(() => { const p = document.querySelector('.lmd-so-link'); return { url: (p.querySelector('input') || {}).value || '', note: (p.querySelector('.lmd-hint') || {}).textContent || '', acts: [...p.querySelectorAll('[data-so]')].map((b) => b.dataset.so), sent: window.__shared.length }; });
+      check('el enlace público se crea y queda a la vista, con el aviso de copiarlo, sin compartir nada todavía', /\?f=pub%2F[\w-]+$/.test(made.url) && /not shown again/.test(made.note) && J(made.acts) === J(['send-link', 'copy-link']) && made.sent === 0, made);
+      await fits(page, 'compartir un enlace hacia otra app');
+      await page.tap('[data-so=send-link]'); await page.waitForTimeout(300);
+      const sent = await page.evaluate(() => ({ open: !!document.querySelector('.lmd-so-card'), shared: window.__shared }));
+      check('y mandarlo es un segundo toque: sale la dirección, dentro del gesto', !sent.open && sent.shared.length === 1 && sent.shared[0].url === made.url && sent.shared[0].active, sent);
+      await outSheet(); await page.tap('.lmd-so-list [data-so=link]'); await page.waitForSelector('.lmd-so-link input', { timeout: 8000 }).catch(() => {});
+      const again = await page.evaluate(() => { const p = document.querySelector('.lmd-so-link'); return { url: p.querySelector('input').value, note: !!p.querySelector('.lmd-hint') }; });
+      check('al volver a pedirlo se reutiliza el mismo enlace, sin crear otro', again.url === made.url && !again.note && (await page.evaluate(async () => (await LMD.cloud.shares('work/launch.md')).links.length)) === 1, again);
+      await page.tap('[data-so=close]');
     }
 
     // ---------- Papelera de la nube ----------
@@ -503,7 +520,7 @@ try {
     await page.tap('[data-act=mode-edit]'); await page.waitForSelector('.lmd-editable');
     await page.tap('[data-act=more]'); await page.waitForSelector('.lmd-menu-more');
     const m = await page.evaluate(() => { const r = document.querySelector('.lmd-menu-more').getBoundingClientRect(); return { in: r.top >= 0 && r.bottom <= window.innerHeight && r.right <= window.innerWidth, rows: document.querySelectorAll('.lmd-menu-more button').length, h: Math.round(r.height), screen: window.innerHeight }; });
-    check('acostado, el menú "más" queda entero dentro de la pantalla', m.in && m.rows === 8, m);
+    check('acostado, el menú "más" queda entero dentro de la pantalla', m.in && m.rows === 9, m);
     await fits(page, 'acostado, menú "más"');
     await ctx.close();
   }
@@ -693,10 +710,196 @@ try {
     const safe = await page.evaluate(async () => ({ pwned: window.__pwned, text: (await LMD.store.notesAll()).map((n) => n.text).find((t) => /onerror/.test(t)) || '', img: !!document.querySelector('.lmd-article img[onerror], .lmd-article script') }));
     check('lo compartido es texto: no corre nada y un enlace que no es http no entra', safe.pwned === undefined && !safe.img && /onerror/.test(safe.text) && !/javascript:/.test(safe.text), safe);
 
+    // Muchos gestores de archivos mandan un .md como application/octet-stream y sin extensión: decide el contenido.
+    check('el manifiesto también recibe application/octet-stream', accept.includes('application/octet-stream'), accept);
+    await send({}, [['README', 'application/octet-stream', '# Read me\n\nSent as a binary type.\n']]);
+    await page.waitForSelector('.markdown-body h1', { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(300); s = await state();
+    check('un Markdown que llega como application/octet-stream y sin extensión se abre igual, y se avisa que es una copia', s.f === 'mem/README.md' && s.h1.startsWith('Read me') && /Opened as a copy/.test(await page.evaluate(() => document.body.textContent)), s);
+    await send({}, [['notes.log', '', 'plain log line\n']]);
+    await page.waitForFunction(() => /notes\.log/.test(location.search), null, { timeout: 8000 }).catch(() => {});
+    check('un texto con una extensión que la app no conoce y sin tipo se abre como texto', (await state()).f === 'mem/notes.log.txt');
+    await send({}, [['blob', 'application/octet-stream', 'PK\u0003\u0004\u0000\u0000binary\u0000\u0000']]);
+    await page.waitForSelector('.lmd-home-msg:not([hidden])', { timeout: 8000 }).catch(() => {});
+    s = await state();
+    check('un binario que llega como application/octet-stream no se abre: el inicio dice por qué', s.nodoc && !s.f && /Only Markdown, text, JSON or YAML/.test(s.msg), s);
+    // Un envío vacío (pasa cuando el navegador descarta el archivo por su tipo): el inicio lo dice, con el botón de abrir.
+    await send({});
+    await page.waitForSelector('.lmd-open-miss', { timeout: 8000 }).catch(() => {});
+    const empty = await page.evaluate(() => { const n = document.querySelector('.lmd-open-miss'); return { text: n ? n.querySelector('p').textContent : '', btn: n ? (n.querySelector('button[data-home=file]') || {}).textContent : '', share: new URLSearchParams(location.search).has('share'), nodoc: document.documentElement.classList.contains('lmd-nodoc') }; });
+    check('un envío que llega vacío no deja el inicio mudo: dice que no llegó y ofrece abrir el archivo', empty.nodoc && /did not arrive/.test(empty.text) && empty.btn === 'Open file' && !empty.share, empty);
+
     await page.goto(origin + '/src/share'); await page.waitForSelector('.lmd-home', { timeout: 8000 }).catch(() => {});
     s = await state();
-    check('entrar a esa dirección sin un envío abre la app, sin más', s.path === '/src/app.html' && s.nodoc && !s.share && !s.msg, s);
+    check('entrar a esa dirección sin un envío abre la app, sin más', s.path === '/src/app.html' && s.nodoc && !s.share && !s.msg && !(await page.locator('.lmd-open-miss').count()), s);
     check('ningún envío fue a la red', !hits.slice(mark).includes('/src/share'), hits.slice(mark).filter((h) => /share/.test(h)));
+    await ctx.close();
+
+    // Sin el service worker (la primera vez, antes de abrir la app) el envío va a la red, y un alojamiento estático
+    // no recibe un POST. Lo que hay en esa ruta es una página que explica y lleva a la app.
+    const back = fs.readFileSync(path.join(root, 'src', 'share', 'index.html'), 'utf8');
+    check('la ruta de compartir tiene una página de respaldo, sin indexar y sin más código que el del sitio', /<meta name="robots" content="noindex">/.test(back) && /href="\.\.\/app\.html"/.test(back) && J((back.match(/<script[^>]*>/g) || [])) === J(['<script src="../../site.js">']), back.match(/<script[^>]*>/g));
+    const bare = await browser.newContext(Object.assign({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' }, PHONE));
+    const bp = await bare.newPage(); bp.on('pageerror', (e) => errors.push(e.message));
+    await bp.goto(origin + '/src/share/?src=android');
+    const told = await bp.evaluate(() => ({ h1: [...document.querySelectorAll('h1')].filter((n) => n.offsetParent).map((n) => n.textContent), link: [...document.querySelectorAll('a.btn')].filter((n) => n.offsetParent).map((n) => n.textContent + ' ' + n.getAttribute('href')) }));
+    check('sin service worker, esa ruta explica qué pasó y ofrece abrir la app', J(told.h1) === J(['Nothing was shared']) && J(told.link) === J(['Open SharpMD ../app.html']), told);
+    await bp.tap('a.btn:visible'); await bp.waitForSelector('.lmd-home', { timeout: 8000 }).catch(() => {});
+    check('y su botón lleva a la app', new URL(bp.url()).pathname === '/src/app.html', bp.url());
+    await bare.close();
+  }
+
+  // ---------- Compartir hacia otra app ----------
+  console.log('Compartir: la nota hacia otra app');
+  {
+    const { ctx, page } = await open(390, 844);
+    await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin });
+    await page.goto(home); await page.waitForSelector('.lmd-home');
+    await page.evaluate(() => new Promise((resolve) => chrome.storage.local.set({ settings: { cloudUrl: 'off' } }, resolve)));
+    const RAW = '# Share me\n\nA note for another app.\n';
+    await page.evaluate(async (text) => { await LMD.store.notePut('share-me.md', text); await LMD.store.notePut('long.md', '# Long\n\n' + 'word '.repeat(12100) + '\n'); }, RAW);
+    // La hoja de compartir del sistema, simulada: qué acepta y cómo contesta.
+    const fresh = async (mode, note) => {
+      await page.goto(home + '?f=' + encodeURIComponent('local/' + (note || 'share-me.md'))); await page.waitForSelector('.markdown-body h1');
+      await page.evaluate((mode) => {
+        window.__shared = [];
+        const def = (k, v) => Object.defineProperty(navigator, k, { configurable: true, value: v });
+        if (mode === 'none') { def('share', undefined); def('canShare', undefined); return; }
+        def('canShare', (d) => !(d && d.files) || (mode === 'text-only' ? false : mode === 'no-md' ? d.files.every((f) => f.type !== 'text/markdown') : true));
+        def('share', (d) => {
+          window.__shared.push({ text: d.text || '', url: d.url || '', files: (d.files || []).map((f) => f.name + ' ' + f.type), active: !!(navigator.userActivation && navigator.userActivation.isActive) });
+          const no = (name) => Promise.reject(new DOMException('refused', name));
+          if (mode === 'cancel') return no('AbortError');
+          if (mode === 'denied' || (mode === 'files-denied' && d.files)) return no('NotAllowedError');
+          return Promise.resolve();
+        });
+      }, mode);
+    };
+    const sheet = async () => { await page.tap('[data-act=more]'); await page.tap('.lmd-menu-more [data-more=share-out]'); await page.waitForSelector('.lmd-so-card'); };
+    const look = () => page.evaluate(() => {
+      const c = document.querySelector('.lmd-so-card'); if (!c) return { open: false, shared: window.__shared };
+      const err = c.querySelector('.lmd-img-err');
+      return { open: true, opts: [...c.querySelectorAll('.lmd-so-list [data-so]')].map((b) => b.dataset.so), err: err.hidden ? '' : err.textContent, alts: [...c.querySelectorAll('.lmd-so-card > .lmd-so-alt:not([hidden]) [data-so]')].map((b) => b.dataset.so),
+        long: !c.querySelector('.lmd-so-long').hidden, labels: [...c.querySelectorAll('.lmd-so-list b')].map((b) => b.textContent), shared: window.__shared };
+    });
+    const pick = async (act, where) => { await page.tap((where || '.lmd-so-list') + ' [data-so=' + act + ']'); await page.waitForTimeout(250); return look(); };
+
+    await fresh('ok'); await sheet();
+    let v = await look();
+    check('en el teléfono, "más" trae Compartir y abre una hoja propia: como texto, como archivo .md, como .txt y copiar', J(v.opts) === J(['text', 'file', 'txt', 'copy']) && J(v.labels) === J(['Share as text', 'Share as a file (.md)', 'Share as a file (.txt)', 'Copy']) && !v.long && !v.err, v);
+    const box = await page.evaluate(() => { const r = document.querySelector('.lmd-so-card').getBoundingClientRect(); return { in: r.left >= 0 && r.right <= window.innerWidth && r.top >= 0 && r.bottom <= window.innerHeight, low: Math.min(...[...document.querySelectorAll('.lmd-so-opt')].map((b) => b.getBoundingClientRect().height)) }; });
+    check('la hoja entra en la pantalla y sus opciones se tocan con el dedo', box.in && box.low >= 44, box);
+    await fits(page, 'compartir hacia otra app');
+    v = await pick('text');
+    check('como texto: sale el Markdown por la hoja del sistema, dentro del mismo toque, y la hoja propia se cierra', !v.open && v.shared.length === 1 && v.shared[0].text === RAW && !v.shared[0].files.length && v.shared[0].active, v);
+    await sheet(); v = await pick('file');
+    check('como archivo: sale el .md con su tipo', !v.open && J(v.shared[1].files) === J(['share-me.md text/markdown']) && v.shared[1].active, v.shared);
+    await sheet(); v = await pick('txt');
+    check('como .txt: el mismo contenido con otro nombre y como texto plano', !v.open && J(v.shared[2].files) === J(['share-me.txt text/plain']), v.shared);
+
+    await fresh('no-md'); await sheet(); v = await pick('file');
+    check('si el navegador no toma text/markdown, el .md sale como texto plano con su mismo nombre', !v.open && J(v.shared[0].files) === J(['share-me.md text/plain']), v);
+
+    await fresh('text-only'); await sheet(); v = await look();
+    check('si el navegador comparte texto y no archivos, se ofrece descargar en vez de compartir el archivo', J(v.opts) === J(['text', 'save', 'copy']), v.opts);
+    v = await pick('text');
+    check('y el texto sale igual', !v.open && v.shared.length === 1 && v.shared[0].text === RAW, v);
+
+    await fresh('none'); await sheet(); v = await look();
+    check('sin hoja de compartir en el navegador: texto, descargar y copiar', J(v.opts) === J(['text', 'save', 'copy']), v.opts);
+    v = await pick('text');
+    check('y compartir como texto lo dice, con copiar a un toque', v.open && /does not share from the app/.test(v.err) && J(v.alts) === J(['copy']), v);
+    v = await pick('copy', '.lmd-so-card > .lmd-so-alt');
+    const clip = await page.evaluate(() => navigator.clipboard.readText().catch((e) => 'no: ' + e.message));
+    check('esa copia deja el Markdown en el portapapeles y cierra la hoja', !v.open && clip.replace(/\r\n/g, '\n') === RAW, [v.open, clip]);
+    await sheet();
+    const [down] = await Promise.all([page.waitForEvent('download', { timeout: 8000 }).catch(() => null), page.tap('.lmd-so-list [data-so=save]')]);
+    check('y descargar baja el archivo con su nombre', !!down && down.suggestedFilename() === 'share-me.md', down && down.suggestedFilename());
+
+    await fresh('files-denied'); await sheet(); v = await pick('file');
+    check('si la hoja del sistema rechaza el archivo (NotAllowedError), se dice y se ofrece como texto, como .txt o descargar', v.open && /Could not share the file\. Share it as text instead\?/.test(v.err) && J(v.alts) === J(['text', 'txt', 'save']) && J(v.opts) === J(['text', 'txt', 'copy']), v);
+    v = await pick('text', '.lmd-so-card > .lmd-so-alt');
+    check('la alternativa es un toque nuevo, con su gesto, y sale', !v.open && v.shared.length === 2 && v.shared[1].text === RAW && v.shared[1].active, v.shared);
+    await sheet(); v = await look();
+    check('lo que el navegador ya rechazó no se vuelve a ofrecer', J(v.opts) === J(['text', 'txt', 'copy']), v.opts);
+    await page.tap('[data-so=close]');
+
+    await fresh('cancel'); await sheet(); v = await pick('text');
+    const afterText = v; v = await pick('file');
+    check('cancelar la hoja del sistema no es un error: sin aviso, y la hoja propia sigue abierta', afterText.open && !afterText.err && v.open && !v.err && !v.alts.length && v.shared.length === 2 && J(v.opts) === J(['text', 'file', 'txt', 'copy']), [afterText, v]);
+
+    await fresh('denied'); await sheet(); v = await pick('text');
+    check('si falla compartir el texto, se dice y queda copiar a un toque: nunca un fallo mudo', v.open && /Could not share\. Copy the text/.test(v.err) && J(v.alts) === J(['copy']), v);
+
+    await fresh('ok', 'long.md'); await sheet(); v = await look();
+    check('una nota de más de 60.000 caracteres sugiere mandarla como archivo o como enlace', v.long && /long/.test(await page.textContent('.lmd-so-long')), v.long);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(250);
+    check('Escape cierra la hoja', !(await look()).open);
+    await ctx.close();
+  }
+
+  // ---------- "Abrir con" en el teléfono ----------
+  console.log('Abrir con: el archivo que manda otra app');
+  {
+    // La fila de archivos del sistema, simulada. Con ?lq=1 entrega un archivo en cuanto la app registra su consumidor,
+    // que es lo que hace el navegador con un lanzamiento que estaba esperando.
+    const queue = () => {
+      const handle = (name, type, text, perm) => ({ kind: 'file', name, queryPermission: async () => perm || 'denied', getFile: async () => new File([text], name, { type }) });
+      window.__handle = handle;
+      Object.defineProperty(window, 'launchQueue', { configurable: true, value: { setConsumer(fn) {
+        window.__launch = fn; window.__early = !(window.LMD && LMD.install) && !document.querySelector('.lmd-home-card');
+        if (/[?&]lq=1/.test(location.search)) fn({ files: [handle('from-files.md', 'text/markdown', '# From the file manager\n\nread only\n')] });
+      } } });
+    };
+    const seen = (page) => page.evaluate(() => ({ f: decodeURIComponent(new URLSearchParams(location.search).get('f') || ''), open: new URLSearchParams(location.search).has('open'), h1: (document.querySelector('.markdown-body h1') || {}).textContent || '',
+      body: document.body.textContent, miss: (document.querySelector('.lmd-open-miss p') || {}).textContent || '', btn: (document.querySelector('.lmd-open-miss button[data-home=file]') || {}).textContent || '', store: LMD.storeApp === true }));
+    let { ctx, page } = await open(390, 844);
+    await ctx.addInitScript(queue);
+    await page.goto(home); await page.waitForSelector('.lmd-home');
+    await page.evaluate(() => new Promise((resolve) => chrome.storage.local.set({ settings: { cloudUrl: 'off' } }, resolve)));
+    await page.goto(home + '?src=android&open=1&lq=1'); await page.waitForSelector('.markdown-body h1', { timeout: 8000 }).catch(() => {});
+    check('el consumidor de la fila se registra apenas carga la app, antes de que arranque el lector', await page.evaluate(() => window.__early === true && typeof window.__launch === 'function'));
+    await page.waitForTimeout(300); let o = await seen(page);
+    check('con la app recién abierta, el archivo que ya esperaba se abre y se ve', o.f === 'mem/from-files.md' && o.h1.startsWith('From the file manager') && o.store, o.f + ' ' + o.h1);
+    check('con permiso de solo lectura se abre una copia, y se avisa', /Opened as a copy\. Changes are not saved to the original file\./.test(o.body));
+    await page.waitForTimeout(3200); o = await seen(page);
+    check('y como el archivo llegó, no sale el aviso de que no llegó', !o.miss && !o.open, o.miss);
+    // Con la app ya abierta y una nota a la vista, llega otro: sin extensión y como application/octet-stream.
+    await page.evaluate(() => window.__launch({ files: [window.__handle('LEEME', 'application/octet-stream', '# Sin extension\n\nllego con la app abierta\n')] }));
+    await page.waitForFunction(() => /LEEME/.test(location.search), null, { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(300); o = await seen(page);
+    check('con la app ya abierta, otro archivo también se abre: sin extensión y como application/octet-stream, por su contenido', o.f === 'mem/LEEME.md' && o.h1.startsWith('Sin extension'), o.f + ' ' + o.h1);
+    await page.evaluate(() => window.__launch({ files: [window.__handle('thing', 'application/octet-stream', 'PK\u0003\u0004\u0000\u0000\u0000binary')] }));
+    await page.waitForFunction(() => /Only Markdown, text, JSON or YAML/.test(document.body.textContent), null, { timeout: 8000 }).catch(() => {});
+    o = await seen(page);
+    check('un binario no se abre: se dice, y la nota que estaba sigue a la vista', /Only Markdown, text, JSON or YAML/.test(o.body) && o.f === 'mem/LEEME.md', o.f);
+    await page.evaluate(() => window.__launch({ files: [] }));
+    await page.waitForTimeout(300);
+    check('una fila vacía no cambia nada', (await seen(page)).f === 'mem/LEEME.md');
+
+    // La fila existe pero no trae nada: la app se abrió para un archivo (?open=1) y el navegador no lo entregó.
+    await page.goto(home + '?src=android&open=1'); await page.waitForSelector('.lmd-home-card');
+    check('mientras se espera el archivo, el inicio no dice nada todavía', !(await seen(page)).miss);
+    await page.waitForSelector('.lmd-open-miss', { timeout: 8000 }).catch(() => {});
+    o = await seen(page);
+    check('si la app se abrió para un archivo y no llegó ninguno, el inicio lo dice, con el botón de abrir a un toque', /This browser did not hand over the file\. Open it with the button below, or set Chrome as your default browser for SharpMD\./.test(o.miss) && o.btn === 'Open file' && !o.open && o.store, o);
+    await fits(page, 'aviso de archivo que no llegó');
+    await page.evaluate(() => { window.showOpenFilePicker = async () => { window.__asked = true; throw new DOMException('closed', 'AbortError'); }; });
+    await page.tap('.lmd-open-miss button'); await page.waitForTimeout(300);
+    check('ese botón abre el selector de archivos, y el aviso se va', await page.evaluate(() => window.__asked === true && !document.querySelector('.lmd-open-miss')));
+    await ctx.close();
+
+    // Un navegador sin fila de archivos (lo que se espera de Samsung Internet): el mismo aviso.
+    ({ ctx, page } = await open(360, 740));
+    await ctx.addInitScript(() => { Object.defineProperty(window, 'launchQueue', { configurable: true, value: undefined }); });
+    await page.goto(home); await page.waitForSelector('.lmd-home');
+    await page.evaluate(() => new Promise((resolve) => chrome.storage.local.set({ settings: { cloudUrl: 'off' } }, resolve)));
+    await page.goto(home + '?src=android&open=1'); await page.waitForSelector('.lmd-open-miss', { timeout: 8000 }).catch(() => {});
+    o = await seen(page);
+    check('sin fila de archivos en el navegador, el inicio también lo dice en vez de quedar mudo', /did not hand over the file/.test(o.miss) && o.btn === 'Open file', o.miss);
+    await fits(page, 'aviso de archivo que no llegó, 360');
+    await page.goto(home + '?src=android'); await page.waitForSelector('.lmd-home-card'); await page.waitForTimeout(3200);
+    check('un arranque común de la app no muestra ese aviso', !(await seen(page)).miss);
     await ctx.close();
   }
 

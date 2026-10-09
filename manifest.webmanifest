@@ -41,7 +41,7 @@
       "files": [
         {
           "name": "files",
-          "accept": ["text/markdown", "text/x-markdown", "text/plain", "application/json", "application/yaml", ".md", ".markdown", ".txt", ".json", ".yaml", ".yml"]
+          "accept": ["text/markdown", "text/x-markdown", "text/plain", "application/json", "application/yaml", "application/x-yaml", "application/octet-stream", ".md", ".markdown", ".mdx", ".txt", ".json", ".yaml", ".yml"]
         }
       ]
     }
