@@ -204,7 +204,7 @@
       try { tokens = await LMD.cloud.tokens(); } catch (e) { tokens = []; /* sin la lista, igual se puede crear uno */ }
       try { folders = (await places('')).folders; } catch (e) { /* sin carpetas, el token alcanza todo */ }
       const keptFolder = (box.querySelector('[data-c=tok-folder]') || {}).value || '';
-      const tokRow = (t) => '<li><span>' + esc(tokName(t.name)) + ' · ' + (t.scope ? T('Carpeta {a}', { a: esc(t.scope) + '/' }) : T('Todas las notas')) + ' · ' + T('creado el {a}', { a: day(t.created) }) + ' · ' + (t.used ? T('usado el {a}', { a: day(t.used) }) : T('sin usar')) + '</span><button type="button" data-tk="' + esc(t.id) + '">' + T('Revocar') + '</button></li>';
+      const tokRow = (t) => '<li><span>' + esc(tokName(t.name)) + ' · ' + (t.scope ? T('Carpeta {a}', { a: esc(t.scope) + '/' }) : T('Todas las notas')) + ' · ' + T('creado el {a}', { a: day(t.created) }) + ' · ' + (t.used ? T('usado el {a}', { a: day(t.used) }) : T('sin usar')) + '</span><button type="button" data-tg="' + esc(t.id) + '">' + T('Regenerar') + '</button><button type="button" data-tk="' + esc(t.id) + '">' + T('Revocar') + '</button></li>';
       const hookRow = (h) => '<li class="lmd-au-item' + (h.state !== 'on' ? ' lmd-au-off' : '') + '" data-hook="' + h.id + '"><div><b>' + esc(h.name || fmtName(h.format)) + '</b><span>' + scopeText(h.scope, !!space) + ' · ' + T(h.events.length === 1 ? '1 evento' : '{n} eventos', { n: h.events.length }) + ' · ' + esc(T(fmtName(h.format))) + '</span>' +
         '<span class="lmd-au-dest">' + esc(h.destination) + '</span>' +
         (h.state === 'failed' ? '<span class="lmd-au-warn" role="alert">' + T('Se desactivó por fallos seguidos.') + '</span>' : h.state === 'paused' ? '<span class="lmd-au-warn">' + T('En pausa') + '</span>' : h.last ? '<span>' + T(h.last.ok ? 'Último aviso entregado el {a}' : 'El último aviso falló el {a}', { a: day(h.last.at) }) + '</span>' : '') + '</div>' +
@@ -218,9 +218,10 @@
         '<h4>' + T('Tokens de la API') + '</h4>' + hint(T('Para leer y escribir notas y mover tarjetas desde un flujo. Usa los mismos tokens que la IA.')) +
         '<div class="lmd-field"><span>URL</span><input type="text" readonly value="' + esc(data.api_url) + '"><button type="button" class="lmd-link" data-c="copy">' + T('Copiar') + '</button></div>' +
         (shownTok ? '<p class="lmd-ai-new">' + T('Copiá el token ahora: no se vuelve a mostrar.') + '</p><div class="lmd-field"><span>Token</span><input type="text" readonly data-api-token value="' + esc(shownTok.token) + '"><button type="button" class="lmd-link" data-c="copy">' + T('Copiar') + '</button></div>' : '') +
-        (tokens.length ? '<ul class="lmd-tokens" data-list="tokens">' + tokens.map(tokRow).join('') + '</ul>' : hint(T('Todavía no hay tokens.'))) +
+        // Sin el token a la vista no queda nada suelto: una línea dice que ya está y que no se vuelve a mostrar.
+        (tokens.length ? '<ul class="lmd-tokens lmd-tok-rows" data-list="tokens">' + tokens.map(tokRow).join('') + '</ul>' + (shownTok ? '' : '<p class="lmd-hint lmd-tok-kept">' + T('El token ya está creado. Por seguridad no se vuelve a mostrar: si lo perdiste, regeneralo.') + '</p>') : hint(T('Todavía no hay tokens.'))) +
         (folders.length ? '<label class="lmd-pick"><span>' + T('Carpeta') + '</span><select data-c="tok-folder"><option value="">' + T('Todas las notas') + '</option>' + options(folders, keptFolder, '/') + '</select></label>' : '') +
-        actions('<button type="button" class="lmd-btn" data-c="token">' + T('Crear un token') + '</button><a class="lmd-btn lmd-au-docs" href="' + DOCS + '" target="_blank" rel="noopener">' + T('Ver la documentación') + '</a>') +
+        actions('<button type="button" class="lmd-btn' + (tokens.length ? '' : ' lmd-btn-fill') + '" data-c="token">' + T(tokens.length ? 'Crear otro token' : 'Crear un token') + '</button><a class="lmd-btn lmd-au-docs" href="' + DOCS + '" target="_blank" rel="noopener">' + T('Ver la documentación') + '</a>') +
         '<h4>' + T('Webhooks') + '</h4>' + (data.hooks.length ? '<ul class="lmd-au-list" data-list="hooks">' + data.hooks.map(hookRow).join('') + '</ul>' : hint(T('Todavía no hay avisos. Por ejemplo: un mensaje en Slack cuando una tarjeta pasa a Hecho.'))) +
         actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="hook">' + T('Nueva automatización') + '</button>') +
         '<h4>' + T('Direcciones de entrada') + '</h4>' + hint(T('Una dirección secreta que agrega texto a una nota. Sirve para formularios, ventas o correo.')) +
@@ -243,10 +244,13 @@
     box.onchange = (e) => { if (e.target.dataset.c === 'space') { space = e.target.value; shownUrl = null; redraw(); } };
     box.onfocusin = (e) => { if (e.target.matches('input[readonly]')) e.target.select(); };
     box.onclick = async (e) => {
-      const b = e.target.closest('[data-c]'); const ha = e.target.closest('[data-ha]'); const ia = e.target.closest('[data-ia]'); const tk = e.target.closest('[data-tk]');
+      const b = e.target.closest('[data-c]'); const ha = e.target.closest('[data-ha]'); const ia = e.target.closest('[data-ia]'); const tk = e.target.closest('[data-tk]'); const tg = e.target.closest('[data-tg]');
       try {
         if (tk) {
           if (await LMD.dialog.confirm({ title: T('¿Revocar este token?'), text: T('Lo que lo usa deja de entrar.'), ok: T('Revocar'), danger: true })) { await LMD.cloud.revoke(tk.dataset.tk); if (shownTok && String(shownTok.id) === tk.dataset.tk) shownTok = null; await draw(); }
+        } else if (tg) {
+          // El servidor cambia el secreto en un solo paso; el nuevo queda a la vista como uno recién creado.
+          if (await LMD.dialog.confirm({ title: T('¿Regenerar este token?'), text: T('Las conexiones que usan este token dejan de andar. Vas a tener que pegar el token nuevo donde lo uses.'), ok: T('Regenerar'), danger: true })) { shownTok = await LMD.cloud.regenerate(tg.dataset.tg); await draw(); const n = box.querySelector('[data-api-token]'); if (n && n.scrollIntoView) n.scrollIntoView({ block: 'nearest' }); }
         } else if (ha) {
           const id = ha.closest('[data-hook]').dataset.hook; const hook = data.hooks.find((h) => String(h.id) === id); const o = space || undefined;
           if (ha.dataset.ha === 'test') { say(T('Enviando la prueba…'), true); await test(id, space, box.querySelector('.lmd-acct-msg')); }

@@ -1476,6 +1476,14 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-tokens li .lmd-tok-brief { color: var(--accent); }
 .lmd-tokens li .lmd-tok-brief:hover { color: var(--accent); text-decoration: underline; }
 .lmd-acct .lmd-tok-share { margin: 10px 0 0; font-size: 13px; color: var(--fg); }
+/* Con el token ya creado y sin el secreto a la vista, una línea lo dice debajo de la lista. */
+.lmd-acct .lmd-tok-kept { margin: 10px 0 0; }
+/* En pantallas angostas las acciones de cada token (instrucciones, regenerar, revocar) bajan a su propio renglón. */
+@media (max-width: 560px) {
+  .lmd-tok-rows li { flex-wrap: wrap; row-gap: 0; }
+  .lmd-tok-rows li > span { flex: 1 1 100%; }
+  .lmd-tok-rows { max-height: 220px; }
+}
 .lmd-acct > .lmd-acct-msg.lmd-acct-done { color: var(--fg-muted); }
 /* ---------- Menús contextuales compactos ---------- */
 /* El peligro (eliminar) tiene su color en cada tema. */

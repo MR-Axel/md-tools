@@ -785,6 +785,8 @@
     uncomment: (id) => api('DELETE', '/comments/' + id),
     tokens: () => api('GET', '/tokens'),
     revoke: (id) => api('DELETE', '/tokens/' + id),
+    // El mismo token con un secreto nuevo: lo hace el servidor en un solo paso, y el viejo deja de entrar.
+    regenerate: (id) => api('POST', '/tokens/' + id + '/regenerate'),
     feedback: (text, mail, context) => api('POST', '/feedback', { text, email: mail || undefined, context }),
     // Denunciar una nota ajena: viaja qué nota es (ref), nunca su contenido.
     report: (text, ref, context) => api('POST', '/feedback', { text, report: ref, context }),
@@ -831,6 +833,7 @@
       tokens: () => api('GET', '/team/tokens'),
       newToken: (body) => api('POST', '/team/tokens', body),
       revoke: (id) => api('DELETE', '/team/tokens/' + id),
+      regenerate: (id) => api('POST', '/team/tokens/' + id + '/regenerate'),
       uninvite: (id) => api('DELETE', '/team/invites/' + id),
       accept: (id) => api('POST', '/team/accept', { id }),
       decline: (id) => api('POST', '/team/decline', { id }),
