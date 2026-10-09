@@ -228,7 +228,7 @@ await step('off', 'Apagada: nada cambia', async () => {
   await toolsTab(page);
   const card = await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=import]'); return c ? { name: c.querySelector('b').textContent, about: c.querySelector('p').textContent, on: c.querySelector('input').checked, icon: !!c.querySelector('.lmd-tl-ico svg') } : null; });
   check('su tarjeta está en Herramientas, apagada', !!card && card.name === 'Import to Markdown' && card.on === false && card.icon && /without uploading/.test(card.about), card);
-  check('las diez tarjetas, cada una con su interruptor', await page.evaluate(() => document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card').length === 10 && document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card input[data-tool-on]').length === 10));
+  check('las doce tarjetas, cada una con su interruptor', await page.evaluate(() => document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card').length === 12 && document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card input[data-tool-on]').length === 12));
   await page.click('.lmd-tl-card[data-tool=import] .lmd-switch'); await until(() => page.evaluate(() => !!LMD.import));
   check('prenderla pide su archivo, una vez, y queda guardado', await scripts(page, 'import.js') === 1 && (await page.evaluate(() => JSON.parse(localStorage.getItem('mdtools:settings')).tools.import)) === true);
   await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=import] .lmd-tl-more'); await page.waitForSelector('[data-imp-go=pick]');
@@ -630,8 +630,8 @@ await step('themes', 'El diálogo se lee en los doce temas', async () => {
   await ctx.close();
 });
 
-// ---------- La pestaña Herramientas, con diez tarjetas ----------
-await step('tab', 'Ajustes > Herramientas desliza bien con diez tarjetas', async () => {
+// ---------- La pestaña Herramientas, con doce tarjetas ----------
+await step('tab', 'Ajustes > Herramientas desliza bien con doce tarjetas', async () => {
   for (const small of [false, true]) {
     const { ctx, page } = await open(small ? { ctx: SMALL } : {});
     await note(page, 'n.md', '# Hello\n\nText.\n');
@@ -652,7 +652,7 @@ await step('tab', 'Ajustes > Herramientas desliza bien con diez tarjetas', async
       out.end = lr.bottom <= box().bottom + 1; out.width = body.scrollWidth <= body.clientWidth + 1;
       return out;
     });
-    check(where + ': las diez tarjetas, y si no entran desliza el diálogo, no la página', m.cards === 10 && (m.scrolls || m.end) && /auto|scroll/.test(m.over) && m.pageFixed, m);
+    check(where + ': las doce tarjetas, y si no entran desliza el diálogo, no la página', m.cards === 12 && (m.scrolls || m.end) && /auto|scroll/.test(m.over) && m.pageFixed, m);
     check(where + ': cada tarjeta se puede ver entera, sin cortes a lo ancho', m.reach.length === 0 && m.cut.length === 0 && m.width, [m.reach, m.cut, m.width]);
     check(where + ': con el teclado, el foco trae cada interruptor a la vista', m.focus.length === 0, m.focus);
     check(where + ': al final del scroll se ve el final de la lista', m.end === true, m);
