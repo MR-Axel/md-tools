@@ -366,10 +366,10 @@ try {
     const kept = await ab.evaluate(() => ({ cookie: document.cookie, keys: Object.keys(localStorage).sort().join() }));
     check('titulares a prueba: ir a los planes también cuenta, con la variante B y en la portada en castellano', beats.map((b) => b.body).join('|') === '{"e":"view","p":"home","s":"direct","v":"b"}|{"e":"plans","p":"home","s":"direct","v":"b"}', beats.map((b) => b.body));
     check('titulares a prueba: no deja cookies, y en el navegador guarda solo la variante y el canal de la visita junto al idioma', kept.cookie === '' && kept.keys === 'mdtools:site-lang,sharpmd:hero,sharpmd:src1', kept);
-    // Quien ya usó la app va directo a ella: no se le elige titular ni cuenta como visita.
+    // Quien ya usó la app va directo a ella: no se le elige titular ni cuenta como visita. La app sí avisa que se abrió (app_open): lo que no tiene que haber es un aviso de la portada.
     await ab.evaluate(() => { localStorage.setItem('sharpmd:app', '1'); localStorage.removeItem('sharpmd:hero'); }); beats.length = 0;
     await ab.goto('https://sharpmd.app/').catch(() => {}); await ab.waitForSelector('#app', { timeout: 10000 }).catch(() => {}); await ab.waitForTimeout(300);
-    check('titulares a prueba: quien entra directo a la app no cuenta como visita ni recibe un titular', /src\/app\.html/.test(ab.url()) && beats.length === 0 && (await ab.evaluate(() => localStorage.getItem('sharpmd:hero'))) === null, [ab.url(), beats.length]);
+    check('titulares a prueba: quien entra directo a la app no cuenta como visita ni recibe un titular', /src\/app\.html/.test(ab.url()) && beats.filter((b) => /"p":"home"/.test(String(b.body))).length === 0 && (await ab.evaluate(() => localStorage.getItem('sharpmd:hero'))) === null, [ab.url(), beats.length]);
     await ab.close();
   }
   await web.evaluate(async () => {
