@@ -20,6 +20,14 @@
   let offer = null; let repaint = null;
   const standalone = () => navigator.standalone === true || ['standalone', 'window-controls-overlay', 'minimal-ui'].some((m) => window.matchMedia && window.matchMedia('(display-mode: ' + m + ')').matches);
   const IOS = LMD.device.ios; const MAC = LMD.device.mac;
+  // Chrome y Edge avisan (beforeinstallprompt) cuando la app se puede instalar. Si pasados unos segundos no avisaron,
+  // puede ser que ya esté instalada o que el aviso se haya descartado: ahí vale decir dónde está en el menú. Otro
+  // navegador que tampoco avisó no instala apps (hay derivados de Chromium que no traen esa opción): se dice eso.
+  // No se mira el nombre de ninguno: Chrome y Edge se reconocen por la marca que declaran (userAgentData), y como un
+  // derivado puede declarar la de Chrome, el texto del menú lleva una salida para quien no encuentre la opción.
+  const OFFER_WAIT = 6000;
+  const sinceLoad = () => (window.performance && performance.now ? performance.now() : OFFER_WAIT);
+  const installer = () => ((navigator.userAgentData && navigator.userAgentData.brands) || []).some((b) => b && (b.brand === 'Google Chrome' || b.brand === 'Microsoft Edge'));
   // El ícono de Compartir de Safari, dibujado: es lo que hay que buscar en la barra.
   const SHARE = '<span class="lmd-inst-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4M8 10H6.5A1.5 1.5 0 0 0 5 11.5v8A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-8a1.5 1.5 0 0 0-1.5-1.5H16"/></svg></span>';
 
@@ -359,7 +367,13 @@
     else if (IOS) html += '<ol class="lmd-inst-steps" data-inst-ios><li>' + esc(T('En Safari, tocá Compartir')) + ' ' + SHARE + '</li><li>' + esc(T('Elegí "Agregar a inicio".')) + '</li><li>' + esc(T('Abrila desde su ícono: pantalla completa, también sin conexión.')) + '</li></ol>' +
       '<p class="lmd-inst-keep">' + esc(T('Sin instalar, Safari puede borrar las notas del navegador tras semanas sin uso.')) + '</p>';
     else if (MAC) html += '<ol class="lmd-inst-steps" data-inst-mac><li>' + esc(T('En Safari: menú Archivo, Agregar al Dock.')) + '</li><li>' + esc(T('En Chrome o Edge: el ícono de instalar, en la barra de direcciones.')) + '</li></ol>' + '<p class="lmd-inst-keep">' + gives + '</p>';
-    else html += line(gives + ' ' + esc(T('Desde el menú del navegador: Instalar SharpMD. En iPhone: Compartir, Agregar a inicio.')));
+    else if (desktop && !installer()) {
+      // Mientras el aviso todavía puede llegar, solo lo que da; después, la verdad en corto.
+      const left = OFFER_WAIT - sinceLoad();
+      html += line(left > 0 ? gives : esc(T('Este navegador no ofrece instalar apps. Funciona en Chrome y Edge.')));
+      if (left > 0) setTimeout(() => { if (repaint) repaint(); }, left + 50);
+    }
+    else html += line(gives + ' ' + esc(T('Desde el menú del navegador: Instalar SharpMD. En iPhone: Compartir, Agregar a inicio.')) + (desktop ? ' ' + esc(T('Si el menú no trae esa opción, este navegador no instala apps: usá Chrome o Edge.')) : ''));
     if (desktop) {
       html += head('Abrir los .md con doble clic') +
         '<ol class="lmd-inst-steps"><li>' + esc(T(MAC ? 'En Finder: clic derecho en un .md, Obtener información, Abrir con, Chrome, Cambiar todo.' : 'Clic derecho en un .md, Abrir con, Elegir otra aplicación, Chrome, Siempre.')) + '</li>' +

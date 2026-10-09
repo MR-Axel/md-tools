@@ -730,6 +730,8 @@
       "Ya está instalada.": "Already installed.",
       "Se instala desde la app web.": "It installs from the web app.", "Abrir la app web": "Open the web app",
       "Desde el menú del navegador: Instalar SharpMD. En iPhone: Compartir, Agregar a inicio.": "From the browser menu: Install SharpMD. On iPhone: Share, Add to Home Screen.",
+      "Este navegador no ofrece instalar apps. Funciona en Chrome y Edge.": "This browser does not offer to install apps. It works in Chrome and Edge.",
+      "Si el menú no trae esa opción, este navegador no instala apps: usá Chrome o Edge.": "If the menu has no such option, this browser does not install apps; use Chrome or Edge.",
       "Abrir los .md con doble clic": "Open .md files with a double click",
       "Clic derecho en un .md, Abrir con, Elegir otra aplicación, Chrome, Siempre.": "Right-click a .md file, Open with, Choose another app, Chrome, Always.",
       "El acceso a archivos ya está activado.": "File access is already on.",
