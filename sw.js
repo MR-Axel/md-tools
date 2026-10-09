@@ -5,6 +5,7 @@
 //  - La app (su HTML, scripts, estilos, íconos y tipografías) sale de la caché, sin esperar a la red.
 //  - Con cada visita se vuelve a pedir todo por detrás y se guarda junto, de una vez: si hubo una publicación,
 //    la visita siguiente ya abre la versión nueva entera, sin mezclar archivos de dos versiones.
+//    Si lo que bajó es de otra versión, la página abierta lo dice y ofrece recargar.
 //  - Al instalarse guarda solo lo que hace falta para el primer pintado; lo demás se guarda después, ya activo.
 //  - Lo que va a otro origen (el servidor de sincronización, el pago) no se toca ni se guarda.
 'use strict';
@@ -69,32 +70,61 @@ self.addEventListener('activate', (e) => {
 });
 
 // Una vuelta entera por detrás: se pide todo y recién con todo en la mano se guarda. Si algo falla (sin red, un
-// archivo que no está), no se guarda nada: la caché queda como estaba, entera.
-// Cada visita empieza su vuelta y corta la que hubiera en curso: una vuelta colgada no frena a las que siguen.
+// archivo que no llega), no se guarda nada: la caché queda como estaba, entera.
+//  - Hay una sola vuelta a la vez, y la que está en curso termina: una visita corta, o varias seguidas, ya no la
+//    cortan ni la hacen empezar de nuevo. Una red que no contesta la corta sola al minuto.
+//  - Lo primero que se pide es src/defaults.js, que dice la versión. Así, aunque el resto no llegue, se sabe si hay
+//    una versión nueva y la página lo puede decir (y recargar pasando por alto esta caché).
+//  - Un archivo de la lista que el servidor ya no tiene (404) no frena la vuelta: se saca de la caché. La lista de un
+//    service worker viejo puede nombrar algo que la versión nueva ya no trae.
+//  - Al terminar se avisa a las páginas abiertas con la versión que quedó: la que corre otra muestra "Hay una versión
+//    nueva" (src/web.js lo recibe, src/content.js lo dibuja).
+// light: solo mirar la versión, y dar la vuelta entera únicamente si cambió. Lo pide una pestaña que lleva rato abierta.
+const DEFAULTS = 'src/defaults.js';
+const versionIn = (text) => (/\bVERSION = '([^']+)'/.exec(text) || [])[1] || '';
+const tell = (msg) => self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => list.forEach((c) => c.postMessage(msg))).catch(() => {});
+// Un service worker que ya fue reemplazado por el de otra versión no guarda nada: su caché se borró, y volver a
+// crearla dejaría una copia entera de más hasta la próxima versión.
+const current = () => { const now = self.registration && self.registration.active; return !now || now.scriptURL === self.location.href; };
 let round = null;
-function refresh() {
-  if (round) round.abort();
+function refresh(light) {
+  if (round) return round;
   if (self.navigator && self.navigator.onLine === false) return Promise.resolve();
-  const stop = round = new AbortController();
-  return (async () => {
-    await new Promise((resolve) => setTimeout(resolve, 3000)); // después de la carga de la página, no durante
-    if (stop.signal.aborted) return;
+  const stop = new AbortController();
+  round = (async () => {
+    if (!light) await new Promise((resolve) => setTimeout(resolve, 3000)); // después de la carga de la página, no durante
     const timer = setTimeout(() => stop.abort(), 60000); // una red que no contesta: se prueba en la visita siguiente
-    const cache = await caches.open(CACHE);
-    const list = SHELL.concat(LATE); const got = [];
-    for (let i = 0; i < list.length; i += 6) {
-      const part = await Promise.all(list.slice(i, i + 6).map((path) => ask(path, stop.signal).then(async (res) => {
+    let version = ''; let had = '';
+    try {
+      if (!current()) return;
+      const cache = await caches.open(CACHE);
+      // El cuerpo se lee entero acá: una respuesta a medio leer deja ocupada su conexión y frena a las que siguen.
+      const get = (path) => ask(path, stop.signal).then(async (res) => {
+        if (res.status === 404 || res.status === 410) return [new URL(path, ROOT), null];
         if (!res.ok || res.type !== 'basic') throw new Error(path);
-        // El cuerpo se lee entero acá: una respuesta a medio leer deja ocupada su conexión y frena a las que siguen.
         return [new URL(path, ROOT), new Response(await res.blob(), { status: res.status, statusText: res.statusText, headers: res.headers })];
-      })));
-      got.push(...part);
-    }
-    clearTimeout(timer);
-    if (stop.signal.aborted) return;
-    await Promise.all(got.map(([url, res]) => cache.put(keyOf(url), res)));
-  })().catch(() => {}).then(() => { if (round === stop) round = null; });
+      });
+      const first = await get(DEFAULTS);
+      if (!first[1]) throw new Error(DEFAULTS);
+      version = versionIn(await first[1].clone().text());
+      const saved = await cache.match(keyOf(first[0]));
+      had = saved ? versionIn(await saved.text()) : '';
+      if (light && version === had) return;
+      const list = SHELL.concat(LATE).filter((path) => path !== DEFAULTS); const got = [first];
+      for (let i = 0; i < list.length; i += 6) got.push(...(await Promise.all(list.slice(i, i + 6).map(get))));
+      if (stop.signal.aborted) throw new Error('timeout');
+      if (!current()) return;
+      await Promise.all(got.map(([url, res]) => (res ? cache.put(keyOf(url), res) : cache.delete(keyOf(url)))));
+      if (version) await tell({ type: 'lmd-fresh', version, stored: true });
+    } catch (err) {
+      // No se pudo guardar entera, pero se llegó a ver que hay otra versión: la página lo dice igual.
+      if (version && version !== had) await tell({ type: 'lmd-fresh', version, stored: false });
+    } finally { clearTimeout(timer); }
+  })().catch(() => {}).then(() => { round = null; });
+  return round;
 }
+// Una página que lleva rato abierta pregunta si hay versión nueva (src/web.js).
+self.addEventListener('message', (e) => { if (e.data && e.data.type === 'lmd-check') e.waitUntil(refresh(true)); });
 
 const LISTED = new Set(SHELL.concat(LATE));
 

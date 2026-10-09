@@ -628,6 +628,7 @@
       "Cambio deshecho. Ctrl+Y lo rehace": "Change undone. Ctrl+Y redoes it", "Cambio rehecho": "Change redone", "No hay cambios para rehacer": "Nothing to redo",
       "Abrir": "Open", "Nuevo": "New", "Versión {v}": "Version {v}", "Al día": "Up to date", "Buscar actualizaciones": "Check for updates",
       "Hay una versión nueva: {v}": "New version available: {v}",
+      "Hay una versión nueva.": "There is a new version.", "Recargar": "Reload", "Guardá los cambios antes de recargar": "Save your changes before reloading",
       "Descargá el ZIP, reemplazá la carpeta de la extensión y tocá Aplicar.": "Download the ZIP, replace the extension folder and click Apply.",
       "No se pudo consultar": "Could not check",
       "Nombre del archivo nuevo": "Name for the new file", "nota": "note",

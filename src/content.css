@@ -445,6 +445,12 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-btn-fill { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--accent-fg); font-weight: 600; }
 .lmd-orphan { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 80; display: flex; align-items: center; gap: 14px; max-width: min(720px, calc(100vw - 32px)); padding: 12px 14px 12px 18px; border: 1px solid var(--accent-fill); border-radius: 12px; background: var(--bg); color: var(--fg); box-shadow: var(--shadow); font-size: 13.5px; line-height: 1.4; }
 .lmd-orphan button { flex: none; height: 34px; padding: 0 14px; border: 0; border-radius: 8px; background: var(--accent-fill); color: var(--accent-fg); font: inherit; font-weight: 600; cursor: pointer; }
+/* El aviso de versión nueva de la web: el mismo cartel, con una cruz para dejarlo para después. */
+.lmd-fresh { gap: 10px; padding-right: 10px; }
+.lmd-fresh button:disabled { opacity: .6; cursor: default; }
+.lmd-fresh .lmd-update-x { width: 30px; height: 30px; padding: 0; background: transparent; color: var(--fg-muted); }
+.lmd-fresh .lmd-update-x:hover { background: var(--accent-soft); color: var(--fg); }
+.lmd-fresh .lmd-update-x svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .lmd-ask { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 20px; background: rgba(0, 0, 0, 0.5); }
 .lmd-ask-card { width: min(480px, 100%); padding: 22px 24px; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); font-size: 14.5px; line-height: 1.5; }
 .lmd-ask-card h3 { margin: 0 0 8px; font-size: 17px; }
