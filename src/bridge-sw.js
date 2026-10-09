@@ -173,10 +173,53 @@
     try { await chrome.tabs.update(sender.tab.id, { url }); } catch (e) { return { opened: false, why: 'access' }; }
     return { opened: true };
   }
-  // El texto de ese archivo, con la misma validación y el mismo tope. Quien lo pide ya preguntó a la persona.
+  // ---------- Qué archivos puede leer la app web ----------
+  // La pregunta de "¿abrir este archivo?" la dibuja la página, así que no alcanza: si el sitio fuera vulnerado, podría
+  // pedir cualquier ruta. Por eso la extensión solo entrega lo que está dentro de algo que la persona ya abrió con
+  // ella: la carpeta (con sus subcarpetas) de un archivo abierto en el lector de file://. Si esa carpeta está muy
+  // arriba (la raíz de una unidad, la carpeta personal), vale solo ese archivo. La lista vive en el almacenamiento
+  // de la extensión (webFiles), con tope, y la anota el service worker con la dirección que informa el navegador,
+  // nunca con una que mande una página. Se ve, se vacía y se apaga en Ajustes > Instalar. Las carpetas abiertas con
+  // el selector en la app no cuentan: de ellas el navegador no dice la ruta.
+  const ROOTS_MAX = 20; const DEEP = 3;
+  // La ruta para comparar: sin codificar, con "." y ".." ya resueltos por el analizador de direcciones, y en
+  // minúsculas si es de una unidad de Windows (ahí C:\Notas y c:\notas son lo mismo). '' si no es un archivo local.
+  function pathKey(url) {
+    let u = null; let p = '';
+    try { u = new URL(url); p = decodeURIComponent(u.pathname); } catch (e) { return ''; }
+    if (u.protocol !== 'file:' || u.host || /[\u0000-\u001f\\]/.test(p) || /(^|\/)\.\.?(\/|$)/.test(p) || p.includes('//')) return '';
+    return /^\/[a-z]:\//i.test(p) ? p.toLowerCase() : p;
+  }
+  const webFiles = async () => { const w = (await stored('webFiles')) || {}; return { off: w.off === true, roots: Array.isArray(w.roots) ? w.roots.filter((r) => r && typeof r.url === 'string') : [] }; };
+  const inside = (key, root) => { const k = pathKey(root.url); return !!k && (root.dir ? k.endsWith('/') && key.startsWith(k) : key === k); };
+  async function readable(url) {
+    const key = pathKey(url); const w = await webFiles();
+    return !!key && !w.off && w.roots.some((r) => inside(key, r));
+  }
+  // El lector abrió un archivo del disco: su carpeta pasa a la lista (o solo el archivo, si la carpeta está muy arriba).
+  async function seen(sender) {
+    if (!fromReader(sender)) return false;
+    const url = LMD.fileUrl(String(sender.url).split(/[?#]/)[0]); const key = pathKey(url);
+    if (!key) return false;
+    const depth = key.split('/').length - 2 - (/^\/[a-z]:\//.test(key) ? 1 : 0); // carpetas por encima del archivo, sin contar la unidad
+    const dir = depth >= DEEP;
+    const rec = { url: dir ? new URL('.', url).href : url, dir, at: Date.now() };
+    const w = await webFiles(); const mine = pathKey(rec.url);
+    // Una carpeta ya cubierta por otra de la lista no se suma, y una nueva reemplaza a las que quedan adentro.
+    const covered = w.roots.find((r) => r.dir && inside(mine, r));
+    if (covered) { if (Date.now() - (covered.at || 0) < 60000) return true; covered.at = Date.now(); }
+    const roots = (covered ? w.roots : [rec].concat(w.roots.filter((r) => !inside(pathKey(r.url), rec)))).sort((x, y) => (y.at || 0) - (x.at || 0)).slice(0, ROOTS_MAX);
+    await chrome.storage.local.set({ webFiles: { off: w.off, roots } });
+    return true;
+  }
+  function onSeen(msg, sender, sendResponse) { seen(sender).then((ok) => sendResponse({ ok }), () => sendResponse({ ok: false })); return true; }
+
+  // El texto de ese archivo, con la misma validación y el mismo tope, y solo si está en la lista de arriba. Fuera de
+  // ella (o con la lectura apagada) responde lo mismo exista o no el archivo: no sirve para averiguar qué hay en el disco.
   async function readFile(a) {
     const url = a && typeof a.url === 'string' && a.url.startsWith('file:///') ? LMD.fileUrl(a.url) : '';
     if (!url) return null;
+    if (!(await readable(url))) return { opened: false, why: 'refused' }; // antes del tope: no dice nada, así que no hay qué frenar
     if (tooMany()) return { opened: false, why: 'limit' };
     let allowed = false;
     try { allowed = await chrome.extension.isAllowedFileSchemeAccess(); } catch (e) { /* no se pudo saber */ }
@@ -373,5 +416,5 @@
   }
   chrome.action.onClicked.addListener(() => { openSharp().catch(() => chrome.tabs.create({ url: OWN })); });
 
-  LMD.bridgeHost = { onMessage, onOwn, onCloud, openSharp, PREFS };
+  LMD.bridgeHost = { onMessage, onOwn, onCloud, onSeen, openSharp, PREFS };
 })();

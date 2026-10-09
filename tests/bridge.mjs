@@ -253,6 +253,67 @@ try {
     return { title: c.querySelector('h3').textContent, text: [...c.querySelectorAll('p')].map((x) => x.textContent.trim()).join(' | '), path: code ? code.textContent : null, kids: code ? code.children.length : -1, buttons: [...c.querySelectorAll('.lmd-ask-actions button')].map((b) => b.textContent), link: a ? a.textContent + ' ' + a.href : '', copy: (c.querySelector('[data-dlg-copy]') || {}).textContent || '', all: c.textContent };
   }).catch(() => null);
   const gone = (p) => p.waitForSelector('.lmd-dlg-card', { state: 'detached', timeout: 4000 }).catch(() => {});
+  // La app web solo recibe archivos de carpetas que la persona ya abrió con la extensión. La pregunta la dibuja la
+  // página, así que la que decide es la extensión, con su propia lista.
+  const wf = () => bg(() => chrome.storage.local.get('webFiles').then((r) => r.webFiles || null));
+  const urlOf = (...p) => pathToFileURL(path.join(...p)).href;
+  const REFUSED = J({ ok: true, opened: false, why: 'refused' });
+  const disk2 = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'sharpmd-out-'))); fs.writeFileSync(path.join(disk2, 'out.md'), '# Outside\n\nSECRET-OUTSIDE\n');
+  fs.mkdirSync(path.join(disk, 'sub')); fs.writeFileSync(path.join(disk, 'sub', 'deep.md'), '# Deep\n'); fs.writeFileSync(path.join(disk, 'plain.txt'), 'plain'); fs.writeFileSync(path.join(disk, 'page.html'), '<p>x</p>');
+  const openInReader = async (url) => { const p = watch(await ctx.newPage()); await p.goto(url); await p.waitForSelector('.markdown-body h1'); const w = await until(async () => { const x = await wf(); return x && x.roots.length ? x : null; }); await p.close(); return w; };
+  const never = [await ask(web, 'file.read', { url: fileAt }), await ask(web, 'file.read', { url: urlOf(disk, 'gone.md') })];
+  check('antes de abrir nada con la extensión, la web no recibe ningún archivo, exista o no', J(never[0]) === REFUSED && J(never[1]) === REFUSED && (await wf()) === null, never);
+  const listed = await openInReader(fileAt);
+  check('abrir un archivo en el lector anota su carpeta en la extensión', !!listed && listed.off === false && listed.roots.length === 1 && listed.roots[0].dir === true && listed.roots[0].url.toLowerCase() === (pathToFileURL(disk).href + '/').toLowerCase(), listed);
+  check('y la web no ve esa lista', !/sharpmd-disk-/.test(await web.evaluate(() => JSON.stringify(Object.entries(localStorage)))) && (await ask(web, 'files.list', {})).error === 'refused');
+  const flip = fileAt.replace(/^file:\/\/\/([A-Za-z]):/, (m, d) => 'file:///' + (d === d.toUpperCase() ? d.toLowerCase() : d.toUpperCase()) + ':');
+  const inRead = [await ask(web, 'file.read', { url: flip }), await ask(web, 'file.read', { url: urlOf(disk, 'sub', 'deep.md') })];
+  check('un archivo de esa carpeta o de una subcarpeta se entrega, con la unidad en mayúscula o en minúscula', inRead.every((r) => r && r.ok && r.opened === true) && /SECRET-DISK-TEXT/.test(inRead[0].text) && inRead[0].name === 'my notes.md' && inRead[1].name === 'deep.md' && J(Object.keys(inRead[0]).sort()) === J(['name', 'ok', 'opened', 'text']), inRead.map((r) => [r.opened, r.why, r.name]));
+  const outside = [urlOf(disk2, 'out.md'), urlOf(disk2, 'nope.md'), urlOf(path.dirname(disk), 'up.md'), pathToFileURL(disk).href + '-more/x.md', pathToFileURL(disk).href + '.md'];
+  const outRead = []; for (const u of outside) outRead.push(await ask(web, 'file.read', { url: u }));
+  check('fuera de esa carpeta la respuesta es la misma para un archivo que existe y para uno que no', outRead.every((r) => J(r) === REFUSED) && !/SECRET-OUTSIDE/.test(J(outRead)), outRead);
+  const base2 = pathToFileURL(disk).href; const to2 = path.basename(disk2) + '/out.md';
+  const escapes = [base2 + '/../' + to2, base2 + '/sub/../../' + to2, base2 + '/%2e%2e/' + to2, base2 + '/%2E%2E/' + to2, base2 + '/..%2F' + to2, base2 + '/..%5C' + to2.replace('/', '%5C'), base2 + '/sub/%2e%2e%2f%2e%2e%2f' + to2, base2 + '/./../' + to2, base2 + '//' + to2];
+  const escRead = []; for (const u of escapes) escRead.push(await ask(web, 'file.read', { url: u }));
+  check('".." y sus variantes codificadas no salen de la carpeta', escRead.every((r) => r && r.opened !== true && !('text' in r)) && !/SECRET-OUTSIDE/.test(J(escRead)), escRead);
+  const types = [await ask(web, 'file.read', { url: urlOf(disk, 'plain.txt') }), await ask(web, 'file.read', { url: urlOf(disk, 'page.html') }), await ask(web, 'file.read', { url: 'file://server/share/a.md' }), await ask(web, 'file.read', { url: base2 + '/' })];
+  check('un tipo que no es Markdown, una carpeta o una unidad de red no se entregan', types.every((r) => r && r.ok === false && r.error === 'shape'), types);
+  // Quién puede sumar carpetas: solo el lector de esta extensión sobre un file://, con la dirección que da el navegador.
+  const tell = (sender, msg) => bg(([s, m]) => new Promise((resolve) => LMD.bridgeHost.onSeen(m || {}, Object.assign({ id: chrome.runtime.id, tab: { id: 1 }, frameId: 0 }, s), resolve)), [sender, msg || null]);
+  const told = [await tell({ url: 'https://evil.example/notes/a.md' }, { url: urlOf(disk2, 'out.md') }), await tell({ url: WEB }), await tell({ url: urlOf(disk2, 'out.md'), frameId: 1 }), await tell({ url: urlOf(disk2, 'out.md'), id: 'otra' }), await tell({ url: 'file://server/share/a.md' })];
+  const fromWeb = [await ask(web, 'file.seen', { url: urlOf(disk2, 'out.md') }), await ask(web, 'files.add', { url: urlOf(disk2, 'out.md') }), await ask(web, 'prefs.set', { patch: { webFiles: { off: false, roots: [{ url: pathToFileURL(disk2).href + '/', dir: true }] } } })];
+  check('un sitio, la app web o un marco no pueden sumar carpetas a la lista', told.every((r) => r && r.ok === false) && fromWeb.slice(0, 2).every((r) => r && r.ok === false && r.error === 'refused') && (await wf()).roots.length === 1 && J(await ask(web, 'file.read', { url: urlOf(disk2, 'out.md') })) === REFUSED, [told, fromWeb]);
+  // Un archivo abierto muy arriba (la carpeta personal, la raíz de una unidad) habilita solo ese archivo.
+  await tell({ url: 'file:///C:/Users/someone/top.md' });
+  const high = (await wf()).roots.find((r) => /top\.md$/.test(r.url));
+  check('una carpeta muy arriba no entra entera: vale solo el archivo abierto', !!high && high.dir === false && J(await ask(web, 'file.read', { url: 'file:///C:/Users/someone/Documents/taxes.md' })) === REFUSED && J(await ask(web, 'file.read', { url: 'file:///C:/Users/someone/other.md' })) === REFUSED, high);
+  // Ajustes > Instalar, en la extensión: la lista a la vista, vaciarla, y apagar la lectura del todo.
+  await openInst(extPage);
+  const filesPane = () => extPage.evaluate(() => { const b = document.querySelector('[data-inst-files]'); return b ? { head: b.previousElementSibling.textContent, rows: [...b.querySelectorAll('.lmd-inst-files li')].map((li) => li.textContent), kids: b.querySelectorAll('.lmd-inst-files li *').length, on: b.querySelector('[data-inst=web-files]').checked, label: b.querySelector('label').textContent, clear: (b.querySelector('[data-inst=files-clear]') || {}).textContent || '', none: !!b.querySelector('[data-inst-none]'), all: b.textContent } : null; });
+  const fp = await filesPane();
+  check('Ajustes > Instalar muestra de qué carpetas puede abrir archivos la web, con su interruptor y el botón de vaciar', !!fp && fp.head === 'Folders the web app can open files from' && fp.rows.length === 2 && fp.rows.some((r) => r.toLowerCase() === (disk + path.sep).toLowerCase()) && fp.kids === 0 && fp.on === true && fp.label === 'The web app can open files from your disk through the extension' && fp.clear === 'Clear the list' && !/[!¡—–]/.test(fp.all), fp);
+  await openInst(web).catch(() => {});
+  check('en la web esa sección no está: se maneja solo desde la extensión', (await web.evaluate(() => !document.querySelector('[data-inst-files]') && !document.querySelector('[data-inst=web-files]'))) === true);
+  await web.click('[data-act=close-panel]').catch(() => {});
+  await extPage.click('[data-inst=web-files]'); await until(async () => (await wf()).off === true);
+  const offRead = [await ask(web, 'file.read', { url: fileAt }), await ask(web, 'file.read', { url: urlOf(disk, 'gone.md') })];
+  check('con el interruptor apagado la web no recibe nada, ni de una carpeta de la lista', (await wf()).off === true && (await wf()).roots.length === 2 && offRead.every((r) => J(r) === REFUSED), offRead);
+  await extPage.waitForSelector('[data-inst=web-files]'); await extPage.click('[data-inst=web-files]'); await until(async () => (await wf()).off === false);
+  // Que prendido vuelve a entregar lo prueba el enlace de más abajo, que lee un archivo de esta carpeta (los pedidos atendidos tienen un tope por minuto).
+  await extPage.waitForSelector('[data-inst=files-clear]'); await extPage.click('[data-inst=files-clear]'); await until(async () => (await wf()).roots.length === 0);
+  await extPage.waitForSelector('[data-inst-none]', { timeout: 4000 }).catch(() => {});
+  const cleared = await filesPane();
+  check('vaciar la lista la deja vacía, y la web vuelve a no recibir nada', !!cleared && cleared.rows.length === 0 && cleared.none && cleared.clear === '' && J(await ask(web, 'file.read', { url: fileAt })) === REFUSED, cleared);
+  await extPage.click('[data-act=close-panel]');
+  // Un enlace a un archivo fuera de la lista: la web cae al respaldo, con el selector.
+  const lo = watch(await ctx.newPage());
+  await lo.goto(linkTo(WEB, fileAt)); await lo.waitForSelector('.lmd-dlg-card'); await lo.click('.lmd-dlg-card [data-dlg=ok]');
+  await lo.waitForFunction(() => /only opens/.test((document.querySelector('.lmd-dlg-card p') || {}).textContent || ''), null, { timeout: 6000 }).catch(() => {});
+  const dOut = await dlg(lo);
+  check('un enlace a un archivo fuera de la lista ofrece elegirlo a mano, sin mostrar nada de él', lo.url() === WEB && !!dOut && dOut.title === 'Open this file from your disk?' && dOut.text.startsWith('By link, the extension only opens what is in folders you already opened with it. Pick the file.') && dOut.path === diskFile && J(dOut.buttons) === J(['Cancel', 'Open']) && !/SECRET-DISK-TEXT/.test(await lo.evaluate(() => document.body.textContent)) && !/[!¡—–]/.test(dOut.all), dOut);
+  await lo.close();
+  // Lo que sigue abre por enlace archivos de esta carpeta: la persona la abre una vez con la extensión.
+  await openInReader(fileAt);
   const lk = watch(await ctx.newPage());
   await lk.goto(linkTo(WEB, fileAt)); await lk.waitForSelector('.lmd-dlg-card');
   const d1 = await dlg(lk);
@@ -417,6 +478,8 @@ try {
   const strips = {};
   for (const t of ['look', 'cloud', 'ai', 'auto', 'plan', 'tools']) { await rdTab(t); strips[t] = await rd.evaluate(() => !!document.querySelector('[data-direct], .lmd-direct') || /Open this file in the app|You are reading a file from your disk/.test(document.querySelector('.lmd-panel-card').textContent)); }
   check('la franja "estás leyendo un archivo de tu disco" no está en Herramientas ni en ninguna otra pestaña', Object.values(strips).every((v) => v === false), strips);
+  // La primera lectura de una cuenta paga desbloquea las personalizaciones y Ajustes se vuelve a dibujar: se espera a que pase.
+  await until(async () => (await bg(() => LMD.load())).supporter === true, 6000); await rd.waitForTimeout(800);
   await rdTab('ai', () => !!document.querySelector('[data-acct=ai] [data-c=token]'));
   await rd.click('[data-acct=ai] [data-c=token]'); await rd.waitForSelector('[data-acct=ai] .lmd-ai-new', { timeout: 8000 }).catch(() => {});
   const ai = await rd.evaluate(() => ({ vals: [...document.querySelectorAll('[data-acct=ai] input, [data-acct=ai] textarea')].map((n) => n.value), brief: !!document.querySelector('[data-acct=ai] [data-c=brief]'), rows: document.querySelectorAll('[data-acct=ai] .lmd-tokens li').length }));
@@ -744,6 +807,6 @@ try {
   await ctx.close().catch(() => {});
   await R.close().catch(() => {});
   await shut(site).catch(() => {}); await shut(other).catch(() => {});
-  for (const d of [ext, profile, disk]) { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* Windows suelta la carpeta después */ } }
+  for (const d of [ext, profile, disk].concat(fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('sharpmd-out-')).map((n) => path.join(os.tmpdir(), n)))) { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* Windows suelta la carpeta después */ } }
 }
 process.exit(bad ? 1 : 0);

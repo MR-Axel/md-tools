@@ -170,6 +170,9 @@
         '<li>' + esc(T(fileAccess === true ? 'El acceso a archivos ya está activado.' : 'En los detalles de la extensión, activá "Permitir acceso a URL de archivo".')) + '</li></ol>' +
         '<div class="lmd-inst-links">' + (OWN && fileAccess !== true ? '<button type="button" class="lmd-btn" data-inst="details">' + esc(T('Detalles de la extensión')) + '</button>' : '') + out(HELP_URL, 'Ayuda', 'lmd-link') + '</div>';
     }
+    // Qué puede leer la app web por la extensión al abrir un enlace a un archivo del disco. Se maneja solo desde la
+    // extensión: la web no puede prenderlo ni sumar carpetas.
+    if (EXT && desktop) html += head('Carpetas de las que la app web puede abrir archivos') + '<div data-inst-files></div>';
     if (ANDROID_URL) html += head('App de Android') + line(esc(T('La misma app en el teléfono, con tus notas de la nube.')), out(ANDROID_URL, 'Conseguir la app'));
     box.innerHTML = html;
 
@@ -181,6 +184,26 @@
       try { await e.prompt(); const r = await e.userChoice; if (r && r.outcome === 'accepted') markInstalled(true); } catch (err) { /* el navegador no lo mostró */ }
       pane(box);
     });
+    const files = box.querySelector('[data-inst-files]');
+    if (files) {
+      let w = {};
+      try { w = (await chrome.storage.local.get('webFiles')).webFiles || {}; } catch (e) { /* sin almacenamiento */ }
+      const roots = Array.isArray(w.roots) ? w.roots.filter((r) => r && typeof r.url === 'string') : [];
+      const put = (next) => chrome.storage.local.set({ webFiles: next }).then(() => { if (box.isConnected) pane(box); });
+      const sw = el('label', { class: 'lmd-check' }); const on = el('input', { type: 'checkbox', 'data-inst': 'web-files' }); on.checked = w.off !== true;
+      sw.append(on, el('span', { text: T('La app web puede abrir archivos del disco por la extensión') }));
+      on.addEventListener('change', () => put({ off: !on.checked, roots }));
+      files.appendChild(sw);
+      files.appendChild(el('p', { class: 'lmd-hint', text: T('Solo al abrir un enlace a un archivo, y solo dentro de las carpetas de los archivos que abriste con la extensión.') }));
+      if (roots.length) {
+        const list = el('ul', { class: 'lmd-inst-files' });
+        roots.forEach((r) => list.appendChild(el('li', { text: LMD.filePath(r.url) })));
+        files.appendChild(list);
+        const clear = el('button', { type: 'button', class: 'lmd-btn', 'data-inst': 'files-clear', text: T('Vaciar la lista') });
+        clear.addEventListener('click', () => put({ off: w.off === true, roots: [] }));
+        files.appendChild(el('div', { class: 'lmd-inst-links' })).appendChild(clear);
+      } else files.appendChild(el('p', { class: 'lmd-hint', 'data-inst-none': '', text: T('Todavía no hay ninguna.') }));
+    }
     const details = box.querySelector('[data-inst=details]');
     if (details) details.addEventListener('click', () => { try { chrome.tabs.create({ url: 'chrome://extensions/?id=' + chrome.runtime.id }); } catch (e) { /* sin extensión */ } });
   }
@@ -226,6 +249,7 @@
     const access = { title: T('Falta el acceso a archivos'), text: T('La extensión no tiene acceso a archivos. Elegí el archivo, o activá el acceso.'), cancel: T('Cerrar'), more: { text: '', link: T('Detalles de la extensión'), go: () => LMD.bridge.setup() } };
     const missing = { title: T('No se encontró el archivo'), text: T('Puede que se haya movido o que tenga otro nombre.'), cancel: T('Cerrar') };
     const failed = { text: T('La extensión no lo pudo abrir. Actualizala o elegí el archivo a mano.') };
+    const outside = { text: T('Por enlace, la extensión solo abre lo que está en carpetas que ya abriste con ella. Elegí el archivo.') };
     if (!(await D.confirm({ title, path, ok: T('Abrir') }))) return false;
     // Con "Abrir SharpMD en: la extensión", y en su página propia, lo muestra el lector de la extensión en esta pestaña.
     if (OWN || (await LMD.load()).openIn === 'ext') {
@@ -243,7 +267,7 @@
       return true;
     }
     const why = r && r.ok ? r.why : '';
-    return byPicker(why === 'access' ? access : why === 'missing' ? missing : failed);
+    return byPicker(why === 'access' ? access : why === 'missing' ? missing : why === 'refused' ? outside : failed);
   }
 
   LMD.install = { init, pane, openLaunched, takeShared, openLink, EXTENSION_URL, ANDROID_URL };

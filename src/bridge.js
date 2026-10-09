@@ -106,6 +106,9 @@
     }
     slot.appendChild(p);
   }
+  // El lector de un archivo del disco avisa que se abrió: la extensión anota su carpeta entre las que la app web puede
+  // leer por enlace (bridge-sw.js). No manda la ruta: el service worker usa la dirección que le informa el navegador.
+  if (!APP && location.protocol === 'file:') { try { chrome.runtime.sendMessage({ type: 'fileSeen' }, () => { void chrome.runtime.lastError; }); } catch (e) { /* extensión recargada */ } }
   if (!APP) return;
 
   // Lo que se guarda a través del "archivo" de una nota también pasa por acá.
