@@ -482,6 +482,48 @@ try {
   }
   console.log('  la app: chico ' + J(aruns.small) + ' ms, 3.000 bloques ' + J(aruns.big) + ' ms');
   check('en la app un archivo chico cambia en un instante', median(aruns.small) < 250, aruns.small);
+  // ---------- El nombre de arriba: renombrar en el lugar, y dónde está el archivo ----------
+  console.log('El nombre de arriba: renombrar y dónde está el archivo');
+  const status = () => app.evaluate(() => document.querySelector('.lmd-status').textContent);
+  const typeName = async (name, key) => { await app.click('.lmd-docname'); await app.waitForSelector('.lmd-docname-input'); await app.fill('.lmd-docname-input', name); await app.keyboard.press(key || 'Enter'); await sleep(500); };
+  const inDir = (name) => app.evaluate(async (n) => { const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('exp'); try { await d.getFileHandle(n); return true; } catch (e) { return false; } }, name);
+  const menuOfTitle = async () => { await app.click('.lmd-docname', { button: 'right' }); await app.waitForSelector('.lmd-menu-narrow', { timeout: 2500 }).catch(() => {}); const items = await app.evaluate(() => [...document.querySelectorAll('.lmd-menu-narrow button')].map((b) => b.textContent.trim())); await app.keyboard.press('Escape'); await sleep(150); return items; };
+  await app.click(node('b.md')); await ashows('b.md');
+  await app.click('[data-act=mode-read]').catch(() => {}); await sleep(200);
+  await app.click('.lmd-docname'); await sleep(250);
+  const readClick = await app.locator('.lmd-docname-input').count();
+  await app.click('[data-act=mode-edit]'); await app.waitForSelector('.lmd-article .lmd-editable');
+  await app.click('.lmd-docname'); await app.waitForSelector('.lmd-docname-input', { timeout: 3000 }).catch(() => {});
+  const sel = await app.evaluate(() => { const i = document.querySelector('.lmd-docname-input'); return i ? i.value.slice(i.selectionStart, i.selectionEnd) + '|' + i.value : ''; });
+  check('leyendo, un clic sobre el nombre no lo edita; editando la nota, un clic lo vuelve un campo con el nombre elegido sin la extensión', readClick === 0 && sel === 'b|b.md', [readClick, sel]);
+  await app.fill('.lmd-docname-input', 'never'); await app.keyboard.press('Escape'); await sleep(300);
+  check('Escape cancela: el nombre y el archivo quedan como estaban', (await astate()).title === 'b.md' && (await app.textContent('.lmd-docname')) === 'b.md' && await inDir('b.md') && !(await inDir('never.md')));
+  await typeName('bad:name');
+  const bad1 = await status();
+  await typeName('a');
+  const bad2 = await status();
+  check('un nombre con caracteres inválidos o que ya existe no se aplica, y lo dice', bad1 === 'That name has characters that cannot be used' && bad2 === 'A file with that name already exists' && (await astate()).title === 'b.md' && await inDir('b.md'), [bad1, bad2]);
+  await typeName('beta renamed'); await ashows('beta renamed.md');
+  const ren = await app.evaluate(() => ({ title: document.title, name: document.querySelector('.lmd-docname').textContent, f: new URLSearchParams(location.search).get('f'), active: (document.querySelector('.lmd-node.lmd-active') || { textContent: '' }).textContent.trim(), h1: document.querySelector('.lmd-article h1').textContent.trim(), keep: window.__keep === 1 }));
+  check('Enter renombra el archivo de la carpeta, conservando .md, y todo lo sigue: pestaña, dirección y explorador', ren.title === 'beta renamed.md' && ren.name === 'beta renamed.md' && /\/beta%20renamed\.md$/.test(ren.f) && ren.active === 'beta renamed.md' && ren.h1 === 'Beta' && ren.keep && await inDir('beta renamed.md') && !(await inDir('b.md')), ren);
+  const recent = await app.evaluate(async () => (await LMD.store.rootsAll()).map((r) => decodeURIComponent(r.last || '')));
+  check('y los recientes apuntan al nombre nuevo', recent.some((l) => /\/beta renamed\.md$/.test(l)), recent);
+  const m1 = await menuOfTitle();
+  check('el menú del nombre: de una carpeta elegida con el selector no se conoce la ruta, así que solo ofrece renombrar', J(m1) === J(['Rename']), m1);
+  // Una nota del navegador.
+  await app.evaluate(() => LMD.store.notePut('nota.md', '# Nota\n\ntexto\n'));
+  await app.goto('chrome-extension://' + id + '/src/app.html?f=' + encodeURIComponent('local/nota.md') + '&edit=1'); await app.waitForSelector('.lmd-article .lmd-editable');
+  await typeName('otra nota'); await ashows('otra nota.md');
+  const loc = await app.evaluate(async () => ({ names: (await LMD.store.notesAll()).map((n) => n.name), f: new URLSearchParams(location.search).get('f') }));
+  check('una nota del navegador se renombra igual desde el título', loc.names.includes('otra nota.md') && !loc.names.includes('nota.md') && loc.f === 'local/otra%20nota.md', loc);
+  // Un archivo suelto, sin su carpeta: se renombra si el navegador sabe mover ese archivo; si no, dice cómo.
+  await app.evaluate(async () => { const root = await navigator.storage.getDirectory(); const h = await root.getFileHandle('suelto.md', { create: true }); const w = await h.createWritable(); await w.write('# Suelto\n'); await w.close(); window.__loose = h; await LMD.store.handlesPut({ key: 'root:loose1', root: true, id: 'loose1', kind: 'file', name: h.name, handle: h, at: Date.now(), last: 'loose1/suelto.md' }); });
+  await app.goto('chrome-extension://' + id + '/src/app.html?f=' + encodeURIComponent('loose1/suelto.md') + '&edit=1'); await app.waitForSelector('.lmd-article .lmd-editable');
+  await typeName('movido'); await sleep(600);
+  const loose = await app.evaluate(() => ({ title: document.title, handle: window.__loose ? window.__loose.name : '', dlg: (document.querySelector('.lmd-dlg-card h3') || {}).textContent || '', ok: (document.querySelector('.lmd-dlg-card [data-dlg=ok]') || {}).textContent || '' }));
+  check('un archivo suelto se renombra si el navegador puede moverlo; si no, dice que hay que abrir su carpeta', (loose.title === 'movido.md') || (loose.dlg === 'To rename it, open its folder' && loose.ok === 'Open folder'), loose);
+  console.log('  archivo suelto: ' + (loose.title === 'movido.md' ? 'el navegador lo movió (FileSystemFileHandle.move)' : 'sin move(): ofrece abrir la carpeta'));
+  await app.keyboard.press('Escape');
   await app.close();
 
   check('sin errores de JavaScript en ninguna página', errors.length === 0, errors.slice(0, 5));

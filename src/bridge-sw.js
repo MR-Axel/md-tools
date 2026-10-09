@@ -145,6 +145,7 @@
     // Lo mismo, pero el texto vuelve a la app web, que lo muestra adentro como copia.
     'file.read': (a) => readFile(a),
     'file.list': (a) => listDir(a),
+    'file.folder': (a, by, sender) => viewDir(a, sender),
     // La sesión de la nube, una sola entre la web y la extensión (ver "La sesión de la nube", más abajo).
     'session.get': (a) => sessionGet(a),
     'session.put': (a) => sessionPut(a),
@@ -253,6 +254,21 @@
   // nada más. Sale del listado que arma el navegador para file:///carpeta/, el mismo que usa el lector. Fuera de las
   // carpetas habilitadas, o con la lectura apagada, responde lo mismo exista o no la carpeta, sin mirar el disco.
   const LIST_MAX = 1000; const LISTED = /\.(md|markdown|mdx|mkd|mdown|txt|json|ya?ml)$/i;
+  // "Ver la carpeta en el navegador": el listado que arma el navegador para esa carpeta, en una pestaña nueva. Mismas
+  // reglas (solo carpetas habilitadas, sin decir si existe), y con el tope de las pestañas que se abren.
+  async function viewDir(a, sender) {
+    const raw = a && typeof a.url === 'string' ? a.url : ''; let plain = raw;
+    if (!/^file:\/\/\/[^\/\\]/.test(raw) || raw.length > 2048 || !raw.endsWith('/') || /[\u0000-\u001f\u007f\\?#]/.test(raw) || !sender || !sender.tab) return null;
+    try { plain = decodeURIComponent(raw); } catch (e) { return null; }
+    if (/(^|[\\/])\.\.([\\/]|$)/.test(raw) || /(^|[\\/])\.\.([\\/]|$)/.test(plain) || /[\u0000-\u001f\u007f\\]/.test(plain)) return null;
+    const key = pathKey(raw);
+    if (!key || !key.endsWith('/')) return null;
+    const w = await webFiles();
+    if (w.off || !w.roots.some((r) => r.dir && inside(key, r))) return { opened: false, why: 'refused' };
+    if (tooMany()) return { opened: false, why: 'limit' };
+    try { await chrome.tabs.create({ url: new URL(raw).href, openerTabId: sender.tab.id }); } catch (e) { return { opened: false, why: 'access' }; }
+    return { opened: true };
+  }
   async function listDir(a) {
     const raw = a && typeof a.url === 'string' ? a.url : ''; let plain = raw;
     if (!/^file:\/\/\/[^\/\\]/.test(raw) || raw.length > 2048 || !raw.endsWith('/') || /[\u0000-\u001f\u007f\\?#]/.test(raw)) return null;

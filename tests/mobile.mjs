@@ -1267,6 +1267,11 @@ try {
     await page.waitForSelector('.markdown-body h1', { timeout: 8000 }).catch(() => {});
     const got = await page.evaluate(() => ({ h1: (document.querySelector('.markdown-body h1') || {}).textContent || '', f: new URLSearchParams(location.search).get('f'), copy: /Opened as a copy\. The file on your disk is not changed\./.test(document.body.textContent), fs: document.querySelectorAll('[data-fs]').length, bar: !document.querySelector('.lmd-copybar') || document.querySelector('.lmd-copybar').hidden }));
     check('teléfono: el archivo elegido queda como copia, con su aviso y sin botones para pasar al archivo', !!chooser && got.h1 === 'Plan' && /^mem\//.test(got.f || '') && got.copy && got.fs === 0 && got.bar, got);
+    await page.evaluate(() => LMD.store.notePut('phone-note.md', '# Phone note\n'));
+    await page.goto(home + '?f=' + encodeURIComponent('local/phone-note.md')); await page.waitForSelector('.markdown-body h1');
+    const items = await page.evaluate(() => { const n = document.querySelector('.lmd-docname'); const r = n.getBoundingClientRect(); n.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 5, clientY: r.top + 5 })); return [...document.querySelectorAll('.lmd-menu-narrow button')].map((b) => b.textContent.trim()); });
+    check('teléfono: el menú del nombre solo ofrece renombrar', J(items) === J(['Rename']), items);
+    await away(page);
     await ctx.close();
   }
 

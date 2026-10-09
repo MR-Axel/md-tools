@@ -776,6 +776,10 @@
       "Por enlace, la extensión solo abre lo que está en carpetas que ya abriste con ella. Elegí el archivo.": "By link, the extension only opens what is in folders you already opened with it. Choose the file.",
       "Elegir el archivo": "Choose the file", "Buscá \"{a}\" en el selector. La ruta queda copiada, por si tu navegador deja pegarla (Ctrl+V).": "Find \"{a}\" in the picker. The path is copied, in case your browser lets you paste it (Ctrl+V).", "Buscá \"{a}\" en el selector.": "Find \"{a}\" in the picker.",
       // Un archivo del disco abierto por enlace: la copia, su cartel y el paso al archivo real (content.js)
+      "Ruta copiada": "Path copied", "Ver la carpeta en el navegador": "View the folder in the browser", "Mostrar en el Explorador": "Show in Explorer",
+      "La extensión solo muestra carpetas que ya abriste con ella.": "The extension only shows folders you already opened with it.", "No se pudo abrir la carpeta.": "Could not open the folder.",
+      "Para renombrarlo abrí su carpeta": "To rename it, open its folder", "El navegador no deja cambiar el nombre de un archivo suelto.": "The browser does not allow renaming a file opened on its own.",
+      "Esto es una copia del archivo del disco. Con su carpeta abierta se renombra el archivo de verdad.": "This is a copy of the file on disk. With its folder open, the real file is renamed.",
       "Del disco": "From disk", "Abrir esta carpeta": "Open this folder", "Editar el archivo del disco": "Edit the file on disk", "Permitir guardar": "Allow saving",
       "No se pudo abrir \"{a}\".": "Could not open \"{a}\".", "Buscá la carpeta \"{a}\" y elegila.": "Find the folder \"{a}\" and choose it.",
       "La carpeta \"{a}\" no contiene \"{b}\". Buscá \"{c}\".": "The folder \"{a}\" does not contain \"{b}\". Find \"{c}\".",

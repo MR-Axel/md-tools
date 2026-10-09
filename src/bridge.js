@@ -77,7 +77,7 @@
   // canOpen: si de este lado hay una extensión que pueda llevar la pestaña a un archivo del disco. openFile lo pide.
   const api = { present: () => false, info: () => null, reconnect, adopt, settle: () => Promise.resolve(), sync: () => Promise.resolve(), hash,
     canOpen: () => false, openFile: () => Promise.resolve({ ok: false, error: 'none' }), setup: () => Promise.resolve({ ok: false, error: 'none' }),
-    readFile: () => Promise.resolve({ ok: false, error: 'none' }), canRead: () => Promise.resolve(false), listDir: () => Promise.resolve({ ok: false, error: 'none' }),
+    readFile: () => Promise.resolve({ ok: false, error: 'none' }), canRead: () => Promise.resolve(false), listDir: () => Promise.resolve({ ok: false, error: 'none' }), viewFolder: () => Promise.resolve({ ok: false, error: 'none' }),
     // Un texto ya leído por el puente, para que quien abre la nota enseguida no lo pida de nuevo. Sale una sola vez.
     keep: (url, text) => { kept = { url, text, at: Date.now() }; }, take: (url) => { const k = kept; if (!k || k.url !== url) return null; kept = null; return Date.now() - k.at < 15000 ? k.text : null; },
     paintSession };
@@ -166,6 +166,8 @@
   api.readFile = (url) => call('file.read', { url });
   // Lo que hay en una carpeta habilitada: nombres de carpetas y de archivos que SharpMD abre.
   api.listDir = (url) => (present() && info ? call('file.list', { url }) : Promise.resolve({ ok: false, error: 'none' }));
+  // El listado de una carpeta habilitada, en una pestaña nueva del navegador.
+  api.viewFolder = (url) => (present() && info ? call('file.folder', { url }) : Promise.resolve({ ok: false, error: 'none' }));
   api.setup = () => call('file.setup');
 
   let seq = 0; const waits = new Map();

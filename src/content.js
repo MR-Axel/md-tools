@@ -1444,6 +1444,31 @@
   const toolItems = (menu) => core.menus[menu].map((fn) => fn()).filter(Boolean);
   // Un archivo del disco abierto por su dirección: el enlace https que lo abre desde un chat o un documento.
   const fileHere = () => (!APP && location.protocol === 'file:' ? LMD.fileUrl(HERE) : '');
+  // La ruta local de un archivo o una carpeta, como la escribe el sistema, solo cuando se la conoce de verdad: un
+  // archivo abierto en el lector (file://), uno abierto por enlace, o lo de una carpeta cuya ruta se supo por esos
+  // caminos (rec.fs). De una carpeta elegida con el selector el navegador no dice la ruta: ahí devuelve ''.
+  const diskUrl = (url) => {
+    const u = String(url || (noDoc ? '' : HERE));
+    if (!u) return '';
+    if (!APP) return isFile && /^file:\/\/\//.test(u) ? u.split(/[?#]/)[0] : '';
+    const r = rootOf(u);
+    if (r && r.kind === 'fs') return fsFile(u);
+    if (r && r.kind === 'dir' && r.fs) return r.fs + vParts(u).map(encodeURIComponent).join('/') + (/\/$/.test(u.split('#')[0]) && vParts(u).length ? '/' : '');
+    return '';
+  };
+  const diskPath = (url) => { const f = diskUrl(url); return f ? LMD.filePath(f) : ''; };
+  // "Ver la carpeta en el navegador": el listado de esa carpeta, en una pestaña nueva. En la web lo abre la extensión,
+  // y solo para carpetas habilitadas. No es el explorador del sistema: una página web no puede abrirlo.
+  const canViewFolder = () => (APP ? window.__MDT_WEB === true && LMD.bridge.canOpen() : isFile);
+  async function viewFolder(url) {
+    const f = diskUrl(url); if (!f) return false;
+    const dir = /\/$/.test(f) ? f : new URL('.', f).href;
+    if (!APP) { window.open(dir, '_blank', 'noopener'); return true; }
+    const r = await LMD.bridge.viewFolder(dir);
+    if (r && r.ok && r.opened) return true;
+    flash(T(r && r.ok && r.why === 'refused' ? 'La extensión solo muestra carpetas que ya abriste con ella.' : 'No se pudo abrir la carpeta.'), 'warn');
+    return false;
+  }
   // Sobre un archivo del disco la cuenta anda acá mismo: el lector le habla al servidor por la extensión (cloud.js).
   // Sobre un .md de un sitio no hay cuenta: las pestañas de Ajustes que la piden llevan una franja que lo dice.
   const NO_ACCT = !APP && !LMD.cloud.reach();
@@ -1458,6 +1483,7 @@
       md && ['copy-html', ICON.code, 'HTML'],
       hasLink() && ['copy-link', ICON.link, 'Enlace a la nota'],
       fileHere() && ['copy-flink', ICON.link, 'Copiar enlace a este archivo'],
+      diskPath() && ['copy-path', ICON.folder, 'Copiar la ruta'],
     ], keys);
   }
   function openExport(btn, keys) {
@@ -1513,6 +1539,7 @@
     else if (act === 'copy-html') { copyText(LMD.extras.htmlOf(), source); flash(T('HTML copiado')); }
     else if (act === 'copy-link') { copyText(location.href.split('#')[0], source); flash(T('Enlace copiado')); }
     else if (act === 'copy-flink') { copyText(LMD.fileLink(fileHere()), source); flash(T('Enlace copiado')); }
+    else if (act === 'copy-path') { copyText(diskPath(), source); flash(T('Ruta copiada')); }
     else if (act === 'export-pdf') window.print();
     else if (act === 'export-md') downloadDoc();
     else if (act === 'share-out') { flushTyping(); LMD.install.shareOut({ text: raw, name: DOC_NAME || 'nota.md', cloud: !!appRoot && appRoot.kind === 'cloud' }); }
@@ -4068,6 +4095,7 @@
     diskDir: () => (APP && diskRoot && diskRoot.kind === 'dir' ? treeRoot : ''),
     newNote: (opt) => LMD.home.create(homeCtx(), opt),
     pick: (what) => LMD.home.pick(homeCtx(), what),
+    diskPath, canViewFolder, viewFolder, fsGrant: () => fsGrant(),
     pickTemplate: () => tools().then((ok) => (ok ? LMD.home.pickTemplate(homeCtx()) : null)),
     tools,
     showFiles,

@@ -295,14 +295,36 @@
   const reopen = (url, to) => { if (url === core.HERE) openMoved(to); else core.reloadTree(); };
 
   // typed es el nombre ya escrito en el título de arriba; sin él, se pregunta.
+  // Un archivo suelto (elegido con el selector, sin su carpeta) o una copia abierta por enlace: el navegador no deja
+  // ver qué más hay en su carpeta. El suelto se renombra si el navegador sabe mover ese archivo; si no, se dice
+  // cómo: abriendo su carpeta. Devuelve si se pudo.
+  const isLoose = (url) => kindOf(url) === 'file' && !!core.appRoot && core.appRoot.id !== 'mem';
+  const isCopy = (url) => kindOf(url) === 'fs';
+  async function needFolder(copy) {
+    const go = await LMD.dialog.confirm({ title: T('Para renombrarlo abrí su carpeta'), text: T(copy ? 'Esto es una copia del archivo del disco. Con su carpeta abierta se renombra el archivo de verdad.' : 'El navegador no deja cambiar el nombre de un archivo suelto.'), ok: T(copy ? 'Abrir esta carpeta' : 'Abrir carpeta') });
+    if (go) { if (copy) core.fsGrant(); else core.pick('dir'); }
+    return false;
+  }
+  async function renameLoose(url, name) {
+    const root = core.appRoot; const h = root && root.handle;
+    if (!h || typeof h.move !== 'function') return needFolder(false);
+    if (!(await saved(url))) return false;
+    try { await h.move(name); } catch (e) { return needFolder(false); }
+    root.name = h.name; root.last = root.id + '/' + encodeURIComponent(h.name);
+    await LMD.store.handlesPut(root);
+    reopen(url, parentOf(url) + encodeURIComponent(h.name));
+    return true;
+  }
   async function rename(url, isDir, typed) {
     if (inCloud(url)) return cloudRename(url, isDir, typed);
+    if (isCopy(url)) return needFolder(true);
     const old = nameOf(url);
     let name = (typed != null ? typed : await askName('Renombrar', old, badName, 'Renombrar') || '').trim();
     if (!name || name === old) return;
     if (/[\\/:*?"<>|]/.test(name)) { core.flash(T('Ese nombre tiene caracteres que no se pueden usar'), 'error'); return; }
     if (!/\.[A-Za-z0-9]+$/.test(name)) name += (/\.[^.]+$/.exec(old) || ['.md'])[0];
     const dirUrl = parentOf(url);
+    if (isLoose(url)) return renameLoose(url, name);
     try {
       if (inLocal(url)) {
         if (await LMD.store.noteGet(name)) { core.flash(T('Ya hay un archivo con ese nombre'), 'error'); return; }
@@ -437,12 +459,14 @@
       (!isDir || cloud) && ['ren', 'Renombrar'],
       // Lo mismo que arrastrarlo a una carpeta, sin arrastrar: sirve con el dedo y con el teclado.
       canTree(url) && ['mov', 'Mover a…'],
+    ].concat(whereItems(url), [
       !isDir && ['del', 'Eliminar', true],
       // Una carpeta o una nota de la nube: avisar afuera cuando algo cambie ahí (automate.js).
       cloud && core.APP && core.pathOf(url) && ['auto', 'Automatizar…', false, 'spark'],
       // Una carpeta de la nube sin contraseña, en un servidor que publica sitios: publicarla (publish.js).
       folder && core.APP && LMD.sync.canPublish(folder) && ['site', 'Publicar como sitio…'],
-    ].concat(folder ? LMD.vault.menu(folder) : []).filter(Boolean), (f) => {
+    ]).concat(folder ? LMD.vault.menu(folder) : []).filter(Boolean), (f) => {
+      if (wherePick(f, url)) return;
       if (/^v-/.test(f)) LMD.vault.pick(f, folder);
       else if (f === 'site') LMD.sync.publish(folder);
       else if (f === 'auto') core.ensure('automate').then((ok) => { if (ok) LMD.automate.wizard(core, { kind: isDir ? 'folder' : 'note', path: core.pathOf(url) }); });
@@ -472,12 +496,39 @@
   }
   const rootUrl = (node) => { const sec = node.closest('.lmd-xroot'); const list = sec && sec.querySelector('.lmd-tree'); return (list && list.dataset.url) || ''; };
 
+  // ---------- Dónde está el archivo ----------
+  // Copiar su ruta local y ver su carpeta, solo cuando la ruta se conoce de verdad (core.diskPath). En el teléfono no
+  // se ofrecen. reveal es el punto de enganche para "Mostrar en el Explorador": lo pone un programa local, si lo hay
+  // (LMD.reveal(ruta)); una página web sola no puede abrir el explorador del sistema.
+  const whereItems = (url) => {
+    const path = !LMD.touch.small() && core.diskPath(url);
+    return path ? [['path', 'Copiar la ruta', false, 'copy'], core.canViewFolder() && ['folder', 'Ver la carpeta en el navegador', false, 'open'], typeof LMD.reveal === 'function' && ['reveal', 'Mostrar en el Explorador', false, 'folder']] : [];
+  };
+  function wherePick(f, url) {
+    if (f === 'path') { core.copy(core.diskPath(url)); core.flash(T('Ruta copiada')); return true; }
+    if (f === 'folder') { core.viewFolder(url); return true; }
+    if (f === 'reveal') { try { LMD.reveal(core.diskPath(url)); } catch (e) { core.flash(T('No se pudo abrir la carpeta.'), 'warn'); } return true; }
+    return false;
+  }
+  // El menú del nombre de arriba (clic derecho, o mantener apretado): lo mismo que el del archivo en el explorador.
+  function titleMenu(x, y) {
+    if (core.noDoc) return false;
+    const items = [canRename() && ['ren', 'Renombrar']].concat(whereItems(core.HERE)).filter(Boolean);
+    if (!items.length) return false;
+    showMenu(x, y, items, (f) => { if (!wherePick(f, core.HERE)) editTitle(); });
+    return true;
+  }
+
   // ---------- Renombrar desde el título ----------
-  // El nombre de la barra de arriba se vuelve un campo: Enter confirma, Escape cancela.
-  const canRename = () => !core.noDoc && !core.readOnly && (canTree() || inLocal());
+  // El nombre de la barra de arriba se vuelve un campo: Enter confirma, Escape cancela. Editando la nota alcanza un
+  // clic; leyendo, doble clic o F2. Usa la misma operación que "Renombrar" del explorador.
+  const canRename = () => !core.noDoc && !core.readOnly && (canTree() || inLocal() || isLoose() || isCopy());
   function editTitle() {
     const label = core.ui.main.querySelector('.lmd-docname');
     if (!canRename() || label.querySelector('input')) return;
+    // Lo que no se puede renombrar desde acá lo dice al intentar, con el botón que abre su carpeta.
+    if (isCopy()) { needFolder(true); return; }
+    if (isLoose() && !(core.appRoot.handle && typeof core.appRoot.handle.move === 'function')) { needFolder(false); return; }
     const old = core.docName; const dot = old.lastIndexOf('.');
     const input = el('input', { type: 'text', class: 'lmd-docname-input', spellcheck: 'false', 'aria-label': T('Nombre del archivo') });
     input.value = old;
@@ -1018,7 +1069,7 @@
       const at = node ? node.dataset.url : rootUrl(e.target);
       // Un archivo del disco abierto por su dirección: el enlace https que lo abre desde un chat o un documento.
       const disk = node && !core.APP && !node.classList.contains('lmd-node-dir') ? LMD.fileUrl(at || '') : '';
-      if (disk) { e.preventDefault(); showMenu(e.clientX, e.clientY, [['flink', 'Copiar enlace a este archivo', false, 'link']], () => core.copy(LMD.fileLink(disk))); return; }
+      if (disk) { e.preventDefault(); showMenu(e.clientX, e.clientY, [['flink', 'Copiar enlace a este archivo', false, 'link']].concat(whereItems(disk)).filter(Boolean), (f) => { if (!wherePick(f, disk)) core.copy(LMD.fileLink(disk)); }); return; }
       if (!at || !(canTree(at) || inLocal(at))) return;
       e.preventDefault();
       // Con el dedo apoyado, el renglón se levanta: el menú sale al soltar, si no se lo arrastró.
@@ -1040,6 +1091,9 @@
     const paintLabel = () => { const can = canRename(); label.classList.toggle('lmd-docname-edit', can); label.title = can ? T('Doble clic o F2 para cambiar el nombre') : ''; };
     paintLabel(); core.hooks.doc.push(paintLabel);
     label.addEventListener('dblclick', editTitle);
+    // Editando la nota, un clic sobre el nombre ya lo edita.
+    label.addEventListener('click', (e) => { if (core.editMode && !e.target.closest('input')) editTitle(); });
+    label.addEventListener('contextmenu', (e) => { if (e.target.closest('input')) return; if (titleMenu(e.clientX, e.clientY)) e.preventDefault(); });
     document.addEventListener('mousedown', (e) => { if (menu && !menu.contains(e.target)) closeMenu(); });
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeMenu();
