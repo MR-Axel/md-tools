@@ -10,6 +10,8 @@
 //   MAIL_WEBHOOK    o lo manda a un webhook propio: POST { to, subject, text }
 //   DEV_CODES=1     sin correo: el código vuelve en la respuesta (solo para pruebas)
 //   FREE_NOTES      notas del plan gratis (10). El número sale solo de acá: la app y la IA lo reciben del servidor
+//   FREE_AGENTS     agentes activos a la vez en el plan gratis (2). El plan pago no tiene tope y guarda su historial
+//   AGENT_STALE_MS, AGENT_GONE_MS, AGENT_DONE_MS, AGENT_HISTORY_MS   los tiempos de los agentes (ver las constantes)
 //   API_FREE=1      opens the API and the automations on the free plan too (MCP_FREE=1, the older name, does the same)
 //   SHARE_FREE=1    habilita compartir también en el plan gratis
 //   CHECKOUT_MONTHLY, CHECKOUT_YEARLY   enlaces de pago que la app muestra en Ajustes → Plan
@@ -62,7 +64,16 @@ const DATA_DIR = env.DATA_DIR || path.join(process.cwd(), 'data');
 const PUBLIC_URL = (env.PUBLIC_URL || 'http://localhost:' + PORT).replace(/\/$/, '');
 const ORIGINS = (env.ALLOW_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
 const FREE_NOTES = +(env.FREE_NOTES || 10);
-const TEST_LOGIN = /^[^\s:]+@[^\s:]+:\d{6}$/.test(env.TEST_LOGIN || '') ? [env.TEST_LOGIN.split(':')[0].toLowerCase(), env.TEST_LOGIN.split(':')[1]] : null;
+// Agentes (start_agent y las demás): cuántos a la vez en el plan gratis, y sus tiempos. Un agente que no da señales
+// en AGENT_STALE_MS figura "sin señal"; en AGENT_GONE_MS se borra. Uno que terminó sigue a la vista AGENT_DONE_MS.
+// El plan pago guarda los que terminaron o se perdieron AGENT_HISTORY_MS. AGENTS_MAX es un techo técnico, de cualquier plan.
+const FREE_AGENTS = Math.max(1, Math.floor(+(env.FREE_AGENTS || 2)) || 2);
+const AGENT_STALE_MS = Math.max(50, +(env.AGENT_STALE_MS || 5 * 60000) || 5 * 60000);
+const AGENT_GONE_MS = Math.max(AGENT_STALE_MS, +(env.AGENT_GONE_MS || 30 * 60000) || 30 * 60000);
+const AGENT_DONE_MS = Math.max(50, +(env.AGENT_DONE_MS || 2 * 60000) || 2 * 60000);
+const AGENT_HISTORY_MS = Math.max(AGENT_DONE_MS, +(env.AGENT_HISTORY_MS || 24 * 3600000) || 24 * 3600000);
+const AGENTS_MAX = 200;
+const TEST_LOGIN =/^[^\s:]+@[^\s:]+:\d{6}$/.test(env.TEST_LOGIN || '') ? [env.TEST_LOGIN.split(':')[0].toLowerCase(), env.TEST_LOGIN.split(':')[1]] : null;
 const MAX_NOTE = 1024 * 1024; // 1 MB por nota
 const HISTORY_DAYS = 30;
 const TRASH_MS = Math.max(0, +(env.TRASH_DAYS || 30)) * 86400000; // cuánto queda en la papelera una nota eliminada
@@ -1664,7 +1675,8 @@ const TOOLS = [
 // A un token del equipo que solo lee no se le ofrecen las que cambian algo.
 const BOARD_TOOLS = new Set(['list_boards', 'create_board', 'add_card', 'move_card', 'update_card', 'delete_card']);
 const WRITE_TOOLS = new Set(['write_note', 'append_note', 'edit_note', 'set_task', 'move_note', 'resolve_comment', 'create_board', 'add_card', 'move_card', 'update_card', 'delete_card', 'share_note', 'unshare_note', 'create_public_link', 'revoke_public_link']);
-const toolsFor = (user) => TOOLS.filter((t) => (!t.share || user.canShare) && !(user.canWrite === false && WRITE_TOOLS.has(t.name))).map(({ share, ...t }) => t);
+// Las de agentes (AGENT_DEFS) van después de las de notas y tableros, y antes de las de compartir.
+const toolsFor = (user) => { const mine = TOOLS.filter((t) => (!t.share || user.canShare) && !(user.canWrite === false && WRITE_TOOLS.has(t.name))); const plain = ({ share, ...t }) => agentArg(t); return mine.filter((t) => !t.share).map(plain).concat(AGENT_DEFS, mine.filter((t) => t.share).map(plain)); };
 const SHARE_TOOLS = new Set(TOOLS.filter((t) => t.share).map((t) => t.name));
 const NO_SHARE = 'This token cannot share notes or create public links. Ask the person to do it from the SharpMD app, or to create a token with that permission in Settings > AI.';
 
@@ -1775,7 +1787,9 @@ function runTool(user, name, args, opt, did) {
   const k = { user, at, gate, read, write, revOf, openUrl, seen, mayWrite, noted, mcp: (n, x) => runTool(user, n, x, null, did) };
   if (opt.raw) { const out = apiTool(name, args, k); if (out !== undefined) return out; }
   if (name === 'get_guide') return guide(user);
-  if (BOARD_TOOLS.has(name)) return boardTool(name, args, k);
+  if (AGENT_TOOLS.has(name)) return agentTool(name, args, k);
+  // Mover o cambiar una tarjeta es señal de vida del agente que la tiene enlazada.
+  if (BOARD_TOOLS.has(name)) { const out = boardTool(name, args, k); if (args.id != null) agentCardBeat(user, at(args.path), args.id); return out; }
   if (name === 'read_note') {
     const a = at(args.path); seen(a); const text = read(a, gate(a)); const rev = revOf(a); const last = lastBy(a);
     // El texto va solo en el primer bloque, como siempre. El segundo dice sobre qué versión se está parado.
@@ -1939,13 +1953,14 @@ function mcp(user, msg) {
   if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } };
   const reply = (result) => ({ jsonrpc: '2.0', id: msg.id, result });
   if (msg.method === 'initialize') return reply({ protocolVersion: (msg.params && msg.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'sharpmd', version: '1.0.0' },
-    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with edit_note or write_note, then resolve_comment. The person edits the same notes while you work, and checks tasks in them: read a note right before you change it, prefer edit_note, set_task, append_note and the board tools over write_note, pass base_rev from read_note when you do use write_note, and never uncheck or delete what the person checked or wrote. A folder marked as protected and locked is encrypted with a password: you cannot read it until the person unlocks it for the AI from SharpMD. If the person belongs to a team, the notes the team shares are under @team/ and every member can read and edit them. write_note, edit_note, set_task, append_note and move_note return a link that opens the note in the SharpMD app: give it to the person. ' + (user.canWrite === false ? '' : 'Work this way without being asked. Keep the project documented in one folder: README.md as the index, architecture.md, features/ with one note per feature, epics.md, decisions.md and log.md. Keep its task board in board.md, one card per task: To do when you plan it, In progress when you start, Paused when you need something from the person (say what in a field called needs), Done when it is finished. Change the board with create_board, add_card, move_card and update_card instead of rewriting the note. Keep what only the person can do in pending.md: a task list where each item has numbered steps with the direct link to the page where each one is done. Call get_guide once per session for the full structure and rules. ') + (user.teamToken ? 'This token belongs to a team, not to a person: every note it reaches is in the shared space of the team' + (user.canWrite ? '. ' : ', and it can only read. ') : '') + (user.canShare ? 'This token can share notes with other accounts and create public links: only do that when the person asks.' : 'This token cannot share notes or create public links: the person does that from the SharpMD app.') + (user.scope ? ' This token only reaches the folder ' + user.scope + '/.' : '') + ' When you mention a Markdown file that lives on the person\'s disk instead of here, give it as a link that opens it in their browser with the SharpMD extension: ' + APP_URL + '#open= followed by the file:// address of the file, percent-encoded as a single value (what encodeURIComponent returns). For example [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///C:/Users/me/Desktop/notes.md') + ') on Windows, or [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///Users/me/Desktop/notes.md') + ') on Mac and Linux. Under the link, write the full path as plain text, in case the link cannot be clicked.' });
+    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with edit_note or write_note, then resolve_comment. The person edits the same notes while you work, and checks tasks in them: read a note right before you change it, prefer edit_note, set_task, append_note and the board tools over write_note, pass base_rev from read_note when you do use write_note, and never uncheck or delete what the person checked or wrote. A folder marked as protected and locked is encrypted with a password: you cannot read it until the person unlocks it for the AI from SharpMD. If the person belongs to a team, the notes the team shares are under @team/ and every member can read and edit them. write_note, edit_note, set_task, append_note and move_note return a link that opens the note in the SharpMD app: give it to the person. ' + (user.canWrite === false ? '' : 'Work this way without being asked. Keep the project documented in one folder: README.md as the index, architecture.md, features/ with one note per feature, epics.md, decisions.md and log.md. Keep its task board in board.md, one card per task: To do when you plan it, In progress when you start, Paused when you need something from the person (say what in a field called needs), Done when it is finished. Change the board with create_board, add_card, move_card and update_card instead of rewriting the note. Keep what only the person can do in pending.md: a task list where each item has numbered steps with the direct link to the page where each one is done. Call get_guide once per session for the full structure and rules. When you split work between subagents or start a long task, register each agent with start_agent and close it with end_agent, so the person sees who is working on what. ') + (user.teamToken ? 'This token belongs to a team, not to a person: every note it reaches is in the shared space of the team' + (user.canWrite ? '. ' : ', and it can only read. ') : '') + (user.canShare ? 'This token can share notes with other accounts and create public links: only do that when the person asks.' : 'This token cannot share notes or create public links: the person does that from the SharpMD app.') + (user.scope ? ' This token only reaches the folder ' + user.scope + '/.' : '') + ' When you mention a Markdown file that lives on the person\'s disk instead of here, give it as a link that opens it in their browser with the SharpMD extension: ' + APP_URL + '#open= followed by the file:// address of the file, percent-encoded as a single value (what encodeURIComponent returns). For example [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///C:/Users/me/Desktop/notes.md') + ') on Windows, or [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///Users/me/Desktop/notes.md') + ') on Mac and Linux. Under the link, write the full path as plain text, in case the link cannot be clicked.' });
   if (msg.method === 'ping') return reply({});
   if (msg.method === 'tools/list') return reply({ tools: toolsFor(user) });
   if (msg.method === 'tools/call') {
     try {
       const out = callTool(user, msg.params && msg.params.name, msg.params && msg.params.arguments);
-      const blocks = out instanceof Parts ? out.list : [typeof out === 'string' ? out : JSON.stringify(out, null, 2)];
+      // agent_id en cualquier llamada es la señal de vida de ese agente; si ya no está, se le dice.
+      const blocks = (out instanceof Parts ? out.list : [typeof out === 'string' ? out : JSON.stringify(out, null, 2)]).concat(agentPulse(user, msg.params));
       return reply({ content: blocks.map((text) => ({ type: 'text', text })) });
     } catch (e) { return reply({ content: [{ type: 'text', text: 'Error: ' + (e.message || e.code || 'failed') + (e.code === 'note_limit' ? FULL_FOR_AI : '') }], isError: true }); }
   }
@@ -3723,6 +3738,188 @@ function boardTool(name, args, k) {
   const c = out.card;
   return Object.assign({ result: did + '.', card: { id: c.id, title: c.title, column: c.column, done: c.done, fields: c.attrs } }, where(), { board: out.board });
 }
+
+// ---------- Agentes ----------
+// Una IA que reparte trabajo se anota acá: cada agente con el nombre que ella elige, su tarea en una línea y, si
+// corresponde, la nota o la tarjeta del tablero en la que trabaja. La persona los ve en vivo desde la app
+// (herramienta Agentes, src/agents.js). Son temporales y no tocan las notas: viven en esta tabla, por cuenta. Con un
+// token de equipo la cuenta es el espacio del equipo, y los ve cada miembro.
+//   - La señal de vida es cualquier llamada MCP que lleve agent_id, un update_agent, o mover o cambiar su tarjeta.
+//   - Sin señal AGENT_STALE_MS figura 'silent'; sin señal AGENT_GONE_MS se va. Al terminar ('done') sigue a la vista
+//     AGENT_DONE_MS.
+//   - Plan gratis: FREE_AGENTS con señal a la vez, y nada queda después. Plan pago: sin tope, y los que terminaron o
+//     se perdieron ('lost') quedan AGENT_HISTORY_MS como historial.
+//   - Con una tarjeta enlazada, su campo agent pasa a llevar el nombre. Al terminar, la tarjeta y su campo quedan.
+// El nombre, la tarea, lo que necesita y el resultado se guardan cifrados si hay DATA_KEY, como el resto del texto.
+db.exec("CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, owner INTEGER NOT NULL, token INTEGER, name TEXT NOT NULL, task TEXT NOT NULL DEFAULT '', needs TEXT NOT NULL DEFAULT '', result TEXT NOT NULL DEFAULT '', e INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'working', parent TEXT NOT NULL DEFAULT '', note_owner INTEGER, note_path TEXT NOT NULL DEFAULT '', card TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL, seen INTEGER NOT NULL, ended INTEGER NOT NULL DEFAULT 0)");
+db.exec('CREATE INDEX IF NOT EXISTS agents_owner ON agents (owner)');
+ACCOUNT_ROWS.unshift('DELETE FROM agents WHERE owner = ?');
+const AGENT_DEFS = [
+  { name: 'start_agent', description: 'Register an agent that is working on the notes, so the person sees it live in SharpMD: who is working, on what, and what it needs. Call it when you split work between subagents (each one registers itself, with its own name) or when you start a long task. Returns the id of the agent. It is temporary: it is removed on its own when it stops giving signs of life, and nothing is written to the notes.', inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Short name you choose to tell this agent apart, for example tests or docs writer' }, task: { type: 'string', description: 'One line: what this agent is doing' }, path: { type: 'string', description: 'Optional: the note it works on, for example project/board.md' }, card: { type: 'string', description: 'Optional: id of its card on the board of that note. The field agent of the card is set to the name' }, parent: { type: 'string', description: 'Optional: id of the agent that launched this one' } }, required: ['name', 'task'] } },
+  { name: 'update_agent', description: 'Change what an agent shows: its task, its status, or the note or card it works on. Status is working, waiting (it needs something from the person: say exactly what in needs) or done. Calling it also counts as a sign of life.', inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'Id of the agent, from start_agent' }, task: { type: 'string', description: 'One line: what it is doing now' }, status: { type: 'string', enum: ['working', 'waiting', 'done'] }, needs: { type: 'string', description: 'With waiting: what it needs from the person, in one line' }, path: { type: 'string', description: 'The note it works on now. Empty to clear it' }, card: { type: 'string', description: 'Id of its card on the board of that note' } }, required: ['id'] } },
+  { name: 'end_agent', description: 'Mark an agent as finished. Call it when its task is done or abandoned. It stays visible for a short while and then goes away. Its card on the board is not touched: move it to Done with move_card.', inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'Id of the agent, from start_agent' }, result: { type: 'string', description: 'Optional: one line on how it ended' } }, required: ['id'] } },
+  { name: 'list_agents', description: 'List the agents registered on this account: name, task, status (working, waiting, silent when it gave no sign of life for a while, done), what it needs, and the note or card it works on. Use it to see what the other agents are doing before you start something.', inputSchema: { type: 'object', properties: { history: { type: 'boolean', description: 'Optional: also the agents that ended in the last hours. Paid plan only' } } } },
+];
+const AGENT_TOOLS = new Set(AGENT_DEFS.map((t) => t.name));
+// Las demás herramientas aceptan agent_id: con él, la llamada cuenta como señal de vida de ese agente.
+const AGENT_ARG = { type: 'string', description: 'Optional: your id from start_agent, to show you are still at work' };
+const agentArg = (t) => Object.assign({}, t, { inputSchema: Object.assign({}, t.inputSchema, { properties: Object.assign({}, t.inputSchema.properties, { agent_id: AGENT_ARG }) }) });
+const AGENT_COL = 'agents.text';
+const agentText = (v, max) => (typeof v === 'string' || typeof v === 'number' ? String(v) : '').replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, max).trim();
+// Un tiempo en palabras, para lo que lee la IA: sale de las constantes, nunca escrito a mano.
+const agentSpan = (ms) => { const one = (n, w) => n + ' ' + w + (n === 1 ? '' : 's'); return ms >= 2 * HOUR ? one(Math.round(ms / HOUR), 'hour') : ms >= 60000 ? one(Math.round(ms / 60000), 'minute') : one(Math.max(1, Math.round(ms / 1000)), 'second'); };
+// Un texto vacío se guarda vacío: no hay nada que cifrar.
+const agentSeal = (v) => (v === '' ? '' : seal(v, AGENT_COL)); const agentPlain = (v, e) => (v === '' ? '' : unseal(v, e, AGENT_COL));
+const agentOpen = (r) => Object.assign(r, { name: agentPlain(r.name, r.e), task: agentPlain(r.task, r.e), needs: agentPlain(r.needs, r.e), result: agentPlain(r.result, r.e) });
+// Cómo figura: lo que se guardó, salvo que lleve un rato sin señal.
+const agentState = (r, t) => (r.ended ? r.status : t - r.seen > AGENT_STALE_MS ? 'silent' : r.status);
+// A la vista: los que no terminaron, y los que terminaron hace poco. Lo demás es historial.
+const agentLive = (r, t) => !r.ended || (r.status === 'done' && t - r.ended <= AGENT_DONE_MS);
+const agentsActive = (ownerId) => q('SELECT COUNT(*) AS n FROM agents WHERE owner = ? AND ended = 0 AND seen > ?').get(ownerId, now() - AGENT_STALE_MS).n;
+// Avisa a las páginas abiertas: a las notas de la cuenta y, si el agente trabaja sobre una nota de otro espacio
+// (la del equipo, desde el token de un miembro), también a esa. La app vuelve a pedir la lista.
+const agentShown = new Map(); // id → cómo figuraba la última vez que se avisó
+function agentTell(r) {
+  announceUser(r.owner, { type: 'agents' });
+  if (r.note_owner && r.note_owner !== r.owner && r.note_path) announce(roomKey(r.note_owner, r.note_path), { type: 'agents' });
+}
+// Saca lo vencido de una cuenta, o de todas. Lo que se pierde pasa al historial en el plan pago y se borra en el gratis.
+function agentsSweep(ownerId) {
+  const t = now(); const paid = new Map();
+  const keeps = (owner) => { if (!paid.has(owner)) { const u = userById(owner); paid.set(owner, !!u && u.plan === 'pro'); } return paid.get(owner); };
+  const cols = 'SELECT id, owner, status, seen, ended, note_owner, note_path FROM agents';
+  for (const r of ownerId == null ? q(cols).all() : q(cols + ' WHERE owner = ?').all(ownerId)) {
+    const lost = !r.ended && t - r.seen > AGENT_GONE_MS;
+    if (lost && keeps(r.owner)) { q("UPDATE agents SET status = 'lost', ended = ? WHERE id = ?").run(r.seen + AGENT_GONE_MS, r.id); agentShown.set(r.id, 'past'); agentTell(r); }
+    else if (lost || (r.ended && t - r.ended > (keeps(r.owner) ? AGENT_HISTORY_MS : AGENT_DONE_MS))) { q('DELETE FROM agents WHERE id = ?').run(r.id); agentShown.delete(r.id); agentTell(r); }
+  }
+}
+// El reloj: lo que cambió solo por el paso del tiempo (quedó sin señal, se fue, dejó de estar a la vista) se avisa.
+function agentsTick() {
+  agentsSweep(); const t = now();
+  for (const r of q('SELECT id, owner, status, seen, ended, note_owner, note_path FROM agents').all()) {
+    const view = agentLive(r, t) ? agentState(r, t) : 'past';
+    if (agentShown.get(r.id) !== view) { agentShown.set(r.id, view); agentTell(r); }
+  }
+}
+setInterval(() => { try { agentsTick(); } catch (e) { /* en la próxima vuelta */ } }, Math.min(15000, Math.max(100, Math.min(AGENT_STALE_MS, AGENT_DONE_MS) / 3))).unref();
+const agentChanged = (id) => { const r = q('SELECT id, owner, status, seen, ended, note_owner, note_path FROM agents WHERE id = ?').get(id); if (r) { agentShown.set(r.id, agentLive(r, now()) ? agentState(r, now()) : 'past'); agentTell(r); } };
+// Señal de vida. Devuelve si el agente sigue anotado. Solo avisa a la app si venía sin señal.
+function agentBeat(user, id) {
+  if (typeof id !== 'string' || !id || id.length > 40) return false;
+  const r = q('SELECT id, seen FROM agents WHERE id = ? AND owner = ? AND ended = 0').get(id, user.id); if (!r) return false;
+  q('UPDATE agents SET seen = ? WHERE id = ?').run(now(), id);
+  if (now() - r.seen > AGENT_STALE_MS) agentChanged(id);
+  return true;
+}
+function agentCardBeat(user, a, card) {
+  for (const r of q('SELECT id FROM agents WHERE owner = ? AND note_owner = ? AND note_path = ? AND card = ? AND ended = 0').all(user.id, a.who.id, a.p, String(card))) agentBeat(user, r.id);
+}
+const AGENT_GONE = () => 'There is no agent with that id on this account. It may have been removed after ' + agentSpan(AGENT_GONE_MS) + ' without a sign of life. Register it again with start_agent.';
+// Lo que se suma a la respuesta de cualquier otra herramienta llamada con agent_id: nada si el agente sigue anotado.
+function agentPulse(user, params) {
+  const id = params && params.arguments && params.arguments.agent_id;
+  if (id == null || id === '' || AGENT_TOOLS.has(params.name)) return [];
+  return agentBeat(user, String(id)) ? [] : ['The agent ' + agentText(id, 40) + ' is not registered any more, so the person does not see it. Register it again with start_agent.'];
+}
+// El uso del plan gratis, en una línea. null en el plan pago.
+const agentPlan = (user) => (user.plan === 'pro' ? null : 'Free plan: ' + agentsActive(user.id) + ' of ' + FREE_AGENTS + ' agents active at once, and no history.');
+function agentTool(name, args, k) {
+  const user = k.user; const owner = user.id; const t = now();
+  agentsSweep(owner);
+  // La ruta como la escribe esta IA: una nota del equipo, vista desde el token de un miembro, va bajo @team/.
+  const fullOf = (r) => (!r.note_path ? '' : r.note_owner === owner ? r.note_path : TEAM_PRE + r.note_path);
+  const view = (r) => {
+    const out = { id: r.id, name: r.name, task: r.task, status: agentState(r, now()) };
+    if (r.needs) out.needs = r.needs; if (r.result) out.result = r.result; if (r.parent) out.parent = r.parent;
+    if (r.note_path) out.path = fullOf(r); if (r.card) out.card = r.card;
+    out.started = iso(r.created); out.last_seen = iso(r.seen); if (r.ended) out.ended = iso(r.ended);
+    return out;
+  };
+  const all = () => q('SELECT * FROM agents WHERE owner = ? ORDER BY created, rowid').all(owner).map(agentOpen);
+  const one = (id) => { const r = q('SELECT * FROM agents WHERE id = ? AND owner = ?').get(typeof id === 'string' ? id : '', owner); if (!r || r.status === 'lost') throw new Fail(404, 'agent_not_found', AGENT_GONE()); return agentOpen(r); };
+  // Dónde trabaja: una nota que existe y, si se dio, una tarjeta de su tablero. El campo agent de esa tarjeta pasa a
+  // llevar el nombre (si este token puede escribir ahí): así el tablero y esta lista dicen lo mismo.
+  const link = (path, card, agentName) => {
+    const none = card == null || card === '';
+    if (path == null || path === '') { if (!none) throw new Fail(400, 'bad_card', 'card needs path: the note that holds the board'); return { owner: null, path: '', card: '', a: null }; }
+    const a = k.at(path);
+    if (k.revOf(a) == null) throw new Fail(404, 'not_found', 'There is no note at ' + a.full + '.');
+    if (none) return { owner: a.who.id, path: a.p, card: '', a };
+    const text = k.read(a, k.gate(a)); let hit = null;
+    for (const b of kbBlocks(text).blocks) for (const col of b.board.columns) for (const c of col.cards) if (!hit && c.id && c.id === String(card)) hit = c;
+    if (!hit) throw new Fail(404, 'card_not_found', 'There is no card with the id ' + agentText(card, 40) + ' in ' + a.full + '. Take the id from add_card or list_boards.');
+    let can = user.canWrite !== false; try { k.mayWrite(a); } catch (e) { can = false; }
+    if (can && hit.attrs.agent !== agentName) apiTool('card_update', { path: a.full, id: hit.id, attrs: { agent: agentName } }, k);
+    return { owner: a.who.id, path: a.p, card: hit.id, a };
+  };
+  const where = (l) => (l.a ? Object.assign({ path: l.a.full }, l.card ? { card: l.card } : {}, { url: k.openUrl(l.a) }) : {});
+  if (name === 'list_agents') {
+    const rows = all(); const plan = agentPlan(user);
+    const out = { agents: rows.filter((r) => agentLive(r, t)).map(view) };
+    if (args.history) { if (plan) out.history_note = 'The history of the agents that ended is part of the paid plan, which keeps the last ' + agentSpan(AGENT_HISTORY_MS) + ': ' + plansUrl(); else out.history = rows.filter((r) => !agentLive(r, t)).reverse().map(view); }
+    if (plan) out.plan = plan;
+    return out;
+  }
+  if (name === 'start_agent') {
+    const wanted = agentText(args.name, 40); if (!wanted) throw new Fail(400, 'bad_name', 'name is a short name for this agent, for example tests or docs writer');
+    const task = agentText(args.task, 200); if (!task) throw new Fail(400, 'bad_task', 'task is one line that says what this agent is doing');
+    const rows = all().filter((r) => !r.ended);
+    let parent = '';
+    if (args.parent != null && args.parent !== '') { const p = rows.find((r) => r.id === args.parent); if (!p) throw new Fail(404, 'agent_not_found', 'parent is the id of an agent that is still registered. ' + AGENT_GONE()); parent = p.id; }
+    const active = agentsActive(owner);
+    // El tope del plan gratis cuenta los que dan señal: uno que se colgó no le ocupa el lugar a otro.
+    if (user.plan !== 'pro' && active >= FREE_AGENTS) throw new Fail(402, 'agent_limit', 'Free plan: ' + FREE_AGENTS + ' agents can be active at once and this account has ' + active + '. This one was not registered. The work can go on without it, or end one that finished with end_agent. Tell the person what happened: the paid plan has no limit on agents and keeps the history of the last ' + agentSpan(AGENT_HISTORY_MS) + ': ' + plansUrl(), { limit: FREE_AGENTS, active });
+    if (rows.length >= AGENTS_MAX) throw new Fail(429, 'too_many', 'This account already has ' + AGENTS_MAX + ' agents registered. End the ones that finished with end_agent.');
+    const agentName = freeName(wanted, rows.map((r) => r.name));
+    const l = link(args.path, args.card, agentName);
+    const id = 'ag_' + random(6);
+    q('INSERT INTO agents (id, owner, token, name, task, e, status, parent, note_owner, note_path, card, created, seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(id, owner, user.tokenId == null ? null : user.tokenId, agentSeal(agentName), agentSeal(task), SEALED, 'working', parent, l.owner, l.path, l.card, t, t);
+    agentChanged(id);
+    const plan = agentPlan(user);
+    return Object.assign({ id, name: agentName, task, status: 'working' }, parent ? { parent } : {}, where(l),
+      { note: 'Pass agent_id: "' + id + '" on your other calls so the person sees this agent is at work. Call update_agent when its task changes or it needs something from the person, and end_agent when it finishes. After ' + agentSpan(AGENT_STALE_MS) + ' without a call it shows as silent, and after ' + agentSpan(AGENT_GONE_MS) + ' it is removed.' }, plan ? { plan } : {});
+  }
+  const r = one(args.id);
+  if (name === 'end_agent' || (name === 'update_agent' && args.status === 'done')) {
+    if (r.status !== 'done') {
+      const result = args.result == null ? r.result : agentText(args.result, 200);
+      q("UPDATE agents SET status = 'done', needs = ?, result = ?, e = ?, name = ?, task = ?, seen = ?, ended = ? WHERE id = ?").run(agentSeal(''), agentSeal(result), SEALED, agentSeal(r.name), agentSeal(r.task), t, t, r.id);
+      agentChanged(r.id);
+    }
+    return Object.assign(view(one(r.id)), { note: 'Ended. It stays visible for ' + agentSpan(AGENT_DONE_MS) + '.' + (r.card ? ' Its card was not touched.' : '') });
+  }
+  // update_agent
+  if (r.status === 'done') throw new Fail(409, 'agent_ended', 'This agent already ended. Register a new one with start_agent.');
+  if (args.status != null && args.status !== 'working' && args.status !== 'waiting') throw new Fail(400, 'bad_status', 'status is working, waiting or done');
+  const task = args.task == null ? r.task : agentText(args.task, 200); if (!task) throw new Fail(400, 'bad_task', 'task is one line that says what this agent is doing');
+  const asked = args.needs == null ? null : agentText(args.needs, 200);
+  // Decir qué necesita es quedar esperando; volver a trabajar lo borra.
+  const status = args.status || (asked ? 'waiting' : asked === '' ? 'working' : r.status);
+  const needs = status === 'waiting' ? (asked == null ? r.needs : asked) : '';
+  if (status === 'waiting' && !needs) throw new Fail(400, 'bad_needs', 'With status waiting, needs says in one line what this agent needs from the person');
+  const here = () => { try { return r.note_path ? k.at(fullOf(r)) : null; } catch (e) { return null; } };
+  let l = { owner: r.note_owner, path: r.note_path, card: r.card, a: here() };
+  if (args.path !== undefined || args.card !== undefined) l = link(args.path === undefined ? fullOf(r) : args.path, args.card === undefined ? (args.path === undefined ? r.card : '') : args.card, r.name);
+  q('UPDATE agents SET task = ?, needs = ?, name = ?, result = ?, e = ?, status = ?, note_owner = ?, note_path = ?, card = ?, seen = ? WHERE id = ?')
+    .run(agentSeal(task), agentSeal(needs), agentSeal(r.name), agentSeal(r.result), SEALED, status, l.owner, l.path, l.card, t, r.id);
+  agentChanged(r.id);
+  return Object.assign(view(one(r.id)), l.a ? { url: k.openUrl(l.a) } : {}, status === 'waiting' ? { note: 'The person sees what this agent needs. Tell them in the conversation too.' } : {});
+}
+// Lo que la app muestra: los agentes de la cuenta y, si está en un equipo, los del espacio del equipo. Las rutas van
+// como las abre la app (~espacio/ruta para lo que no es propio). El historial, solo en el plan pago.
+function agentsFor(user) {
+  const t = now(); const owners = [user.id].concat(user.team && user.team.space ? [user.team.space] : []);
+  const rows = [];
+  for (const o of owners) { agentsSweep(o); for (const r of q('SELECT * FROM agents WHERE owner = ? ORDER BY created, rowid').all(o)) rows.push(agentOpen(r)); }
+  const tokens = new Map(); const tokenOf = (id) => { if (id == null) return ''; if (!tokens.has(id)) { const x = q('SELECT name FROM tokens WHERE id = ?').get(id); tokens.set(id, x ? x.name : ''); } return tokens.get(id); };
+  const view = (r) => ({ id: r.id, name: r.name, task: r.task, status: agentState(r, t), needs: r.needs, result: r.result, parent: r.parent, path: !r.note_path ? '' : r.note_owner === user.id ? r.note_path : '~' + r.note_owner + '/' + r.note_path, card: r.card,
+    token: tokenOf(r.token), client: (r.token != null && mcpClients.get(r.token)) || '', team: r.owner !== user.id, created: r.created, seen: r.seen, ended: r.ended });
+  const paid = user.plan === 'pro';
+  return { now: t, agents: rows.filter((r) => agentLive(r, t)).map(view), history: paid ? rows.filter((r) => !agentLive(r, t)).sort((a, b) => b.ended - a.ended).map(view) : null,
+    limit: paid ? null : FREE_AGENTS, free_agents: FREE_AGENTS, history_hours: Math.round(AGENT_HISTORY_MS / HOUR), stale_ms: AGENT_STALE_MS, gone_ms: AGENT_GONE_MS, done_ms: AGENT_DONE_MS };
+}
 // La guía que una IA lee a demanda (get_guide): cómo documentar un proyecto y cómo llevar su tablero. El mensaje que
 // se copia desde la app (aiBrief, en src/sync.js) trae el resumen; el detalle está solo acá.
 function guide(user) {
@@ -3823,6 +4020,17 @@ function guide(user) {
     '- Do not delete finished cards: they are the record of the work.',
     '- With subagents, give each one the path of the board and the id of its card, and have it move its own card.',
     '- The fields agent, needs and link have that meaning. Others are free, for example due=2026-01-31 or priority=high.',
+    '',
+    '## Agents',
+    '',
+    'The person can watch live who is working on their notes. Register when you split work between subagents, or when you start a task that will take a while. A quick single edit does not need it.',
+    '',
+    '- start_agent takes a short name you choose, the task in one line and, if there is one, the path of the board and the id of the card. It returns an id. The field agent of the card is set to the name.',
+    '- Each subagent registers itself with its own name, passes parent with your id, and moves its own card.',
+    '- Pass agent_id on the other calls: each one is a sign of life. After ' + agentSpan(AGENT_STALE_MS) + ' without one the agent shows as silent, and after ' + agentSpan(AGENT_GONE_MS) + ' it is removed.',
+    '- When it needs something from the person, call update_agent with status waiting and needs, besides moving the card to Paused.',
+    '- Call end_agent when the task is done. The card stays on the board.',
+    ...(user.plan === 'pro' ? [] : ['- The free plan shows ' + FREE_AGENTS + ' agents at once. If start_agent says the limit was reached, go on with the work and tell the person.']),
     '',
     '## The list of what the person has to do',
     '',
@@ -5552,6 +5760,7 @@ async function route(req, url) {
   }
   if (p === '/auth/logout' && m === 'POST') { q('DELETE FROM sessions WHERE hash = ?').run(sha(req.headers.authorization.split(/\s+/)[1])); return { ok: true }; }
   if (p === '/tokens' && m === 'GET') return q('SELECT id, name, scope, share, created, used FROM tokens WHERE user = ? ORDER BY created DESC').all(user.id).map((t) => Object.assign(t, { share: !!t.share }));
+  if (p === '/agents' && m === 'GET') return agentsFor(user);
   if (p === '/comments' && m === 'GET') return listComments(user, url.searchParams.get('path') || '', url.searchParams.get('all') === '1');
   if (p === '/comments' && m === 'POST') { const c = addComment(user, await readBody(req)); announce(roomKey(user.id, c.path), { type: 'comments' }); return c; }
   if (p.startsWith('/comments/') && m === 'DELETE') { q('DELETE FROM comments WHERE id = ? AND user = ?').run(+p.slice(10), user.id); return { ok: true }; }
