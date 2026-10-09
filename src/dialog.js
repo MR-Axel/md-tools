@@ -86,6 +86,12 @@
         if (text && action) { const b = el('button', { type: 'button', class: 'lmd-link', 'data-dlg-do': '', text: action.label }); b.addEventListener('click', (e) => { e.stopPropagation(); action.go(); }); n.append(' ', b); }
       };
       if (o.act && o.note) note(o.note);
+      // La misma pregunta pasa a decir otra cosa, en el lugar: otro texto y otro rótulo en el botón principal.
+      const turn = (n) => {
+        let p = f.box.querySelector('.lmd-dlg-card > p:not([class])');
+        if (!p) { p = document.createElement('p'); f.box.querySelector('h3').after(p); }
+        p.textContent = n.text || ''; f.box.querySelector('[data-dlg=ok]').textContent = n.ok;
+      };
       if (o.path) { f.box.querySelector('.lmd-dlg-path code').textContent = o.path; f.box.querySelector('[data-dlg-copy]').textContent = T('Copiar la ruta'); }
       if (o.link) { const a = f.box.querySelector('.lmd-dlg-link a'); a.href = o.link.href; a.textContent = o.link.text; }
       f.box.querySelector('[data-dlg=ok]').focus();
@@ -99,7 +105,7 @@
         const copy = e.target.closest('[data-dlg-copy]');
         if (copy) { try { navigator.clipboard.writeText(o.path).then(() => { copy.textContent = T('Copiado'); }, () => {}); } catch (err) { /* sin portapapeles: la ruta queda a la vista para seleccionarla */ } return; }
         const b = e.target.closest('[data-dlg]'); if (!b) return;
-        if (o.act && b.dataset.dlg === 'ok') { o.act({ note, close: f.close }); return; }
+        if (o.act && b.dataset.dlg === 'ok') { o.act({ note, close: f.close, turn }); return; }
         f.close(b.dataset.dlg === 'alt' ? 'alt' : b.dataset.dlg === 'ok');
       });
     });

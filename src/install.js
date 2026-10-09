@@ -466,8 +466,9 @@
     // Elegir el archivo: la ruta al portapapeles y el selector, los dos con el mismo clic y en ese orden (los dos
     // piden un gesto). El selector no deja que la página le fije una ruta: por eso se pega. La instrucción queda a
     // la vista, y si copiar falla sigue el botón "Copiar la ruta".
-    const choose = (o) => D.confirm(Object.assign({ title, path, ok: T('Elegir el archivo'), note: T('La ruta se copia al tocar el botón. Pegala en el cuadro de nombre de archivo (Ctrl+V) y apretá Enter.') }, o, {
-      act: (d) => {
+    const HOW = T('La ruta se copia al tocar el botón. Pegala en el cuadro de nombre de archivo (Ctrl+V) y apretá Enter.');
+    const showCopy = async (r) => { LMD.home.account(ctx); await LMD.home.openFile(ctx, new File([r.text], String(r.name || 'note.md')), ctx.say); copyNote(); };
+    const pickNow = (d) => {
         let copied = null;
         try { copied = navigator.clipboard.writeText(path); } catch (e) { copied = Promise.reject(e); }
         d.note(T('La ruta ya está copiada. Pegala en el cuadro de nombre de archivo (Ctrl+V) y apretá Enter.'));
@@ -479,8 +480,8 @@
           if (low(got.name) !== low(name)) d.note(T('Elegiste "{a}". El enlace es a "{b}".', { a: got.name, b: name }), { label: T('Abrir "{a}" igual', { a: got.name }), go: open });
           else await open();
         });
-      },
-    }));
+    };
+    const choose = (o) => D.confirm(Object.assign({ title, path, ok: T('Elegir el archivo'), note: HOW }, o, { act: pickNow }));
     await LMD.bridge.settle(); // el puente con la extensión se presenta al cargar: se espera a saber si está
     const ext = LMD.bridge.canOpen();
     if (!ext) return choose({ text: T('Sin la extensión de Chrome, elegí el archivo.'), link: { href: EXTENSION_URL, text: T('Conseguir la extensión') } });
@@ -488,7 +489,26 @@
     const inReader = OWN || (await LMD.load()).openIn === 'ext';
     // can: true si la extensión lo entrega, false si no (no dice si el archivo existe), null si es una extensión anterior.
     const can = inReader ? true : await LMD.bridge.canRead(url);
-    if (can === null) return choose({ text: T('Esta versión de la extensión no abre archivos por enlace. Elegí el archivo.') });
+    // Una extensión anterior, que entrega archivos pero no contesta si puede: se pregunta con "Abrir" y se pide el
+    // archivo. Si no lo entrega, la misma pregunta pasa en el lugar a "Elegir el archivo", con el porqué.
+    if (can === null) {
+      let picking = false; let busy = false;
+      return D.confirm({ title, path, ok: T('Abrir'), act: async (d) => {
+        if (picking) { pickNow(d); return; }
+        if (busy) return;
+        busy = true;
+        const r = await LMD.bridge.readFile(url);
+        busy = false;
+        if (r && r.ok && r.opened && typeof r.text === 'string') { await showCopy(r); d.close(true); return; }
+        const why = r && r.ok ? r.why : ''; picking = true;
+        d.turn({ ok: T('Elegir el archivo'), text: r && !r.ok && r.error === 'refused' ? T('Esta versión de la extensión no abre archivos por enlace. Elegí el archivo.')
+          : why === 'refused' ? T('Por enlace, la extensión solo abre lo que está en carpetas que ya abriste con ella. Elegí el archivo.')
+          : why === 'access' ? T('La extensión no tiene acceso a archivos. Elegí el archivo, o activá el acceso.')
+          : why === 'missing' ? T('No se encontró el archivo') + '. ' + T('Puede que se haya movido o que tenga otro nombre.')
+          : T('La extensión no lo pudo abrir.') + ' ' + T('Actualizala o elegí el archivo a mano.') });
+        d.note(HOW);
+      } });
+    }
     if (!can) {
       const once = async () => { const r = await LMD.bridge.openFile(url, true); if (!(r && r.ok && r.opened)) ctx.say(T('La extensión no lo pudo abrir.')); };
       return choose({ text: T('Por enlace, la extensión solo abre lo que está en carpetas que ya abriste con ella. Elegí el archivo.'), more: { text: T('Para abrir con un clic los enlaces a esta carpeta:'), link: T('Abrirlo una vez con la extensión'), go: once } });
@@ -499,12 +519,7 @@
     else {
       // En la app web: el texto llega por el puente y se muestra acá adentro.
       r = await LMD.bridge.readFile(url);
-      if (r && r.ok && r.opened && typeof r.text === 'string') {
-        LMD.home.account(ctx);
-        await LMD.home.openFile(ctx, new File([r.text], String(r.name || 'note.md')), ctx.say);
-        copyNote();
-        return true;
-      }
+      if (r && r.ok && r.opened && typeof r.text === 'string') { await showCopy(r); return true; }
     }
     // La extensión dijo que sí y después no pudo: otra pregunta, con otro título, que dice qué pasó.
     const why = r && r.ok ? r.why : '';

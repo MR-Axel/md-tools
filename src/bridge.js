@@ -158,7 +158,7 @@
   api.openFile = (url, grant) => call('file.open', grant ? { url, grant: true } : { url });
   // Si la extensión puede entregarle ese archivo a la web: true o false (no dice si el archivo existe), o null si es una
   // extensión anterior, que no conoce el pedido.
-  api.canRead = async (url) => { if (!(present() && info)) return false; const r = await call('file.can', { url }); return r && r.ok ? r.can === true : r && r.error === 'refused' ? null : false; };
+  api.canRead = async (url) => { if (!(present() && info)) return false; const r = await Promise.race([call('file.can', { url }), new Promise((resolve) => setTimeout(() => resolve(null), 1500))]); return r && r.ok ? r.can === true : null; };
   api.readFile = (url) => call('file.read', { url });
   api.setup = () => call('file.setup');
 

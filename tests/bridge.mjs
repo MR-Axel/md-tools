@@ -509,6 +509,7 @@ try {
   const burst = []; for (let i = 0; i < 14; i++) burst.push(await ask(web, 'file.open', { url: pathToFileURL(path.join(disk, 'gone-' + i + '.md')).href }));
   const capped = await ask(web, 'file.open', { url: fileAt });
   check('hay un tope de pedidos: pasado, ni un archivo que existe se abre', burst.some((r) => r && r.why === 'limit') && J(capped) === J({ ok: true, opened: false, why: 'limit' }) && web.url() === WEB, [burst.map((r) => r && r.why), capped]);
+  const cappedAt = Date.now();
   await lm.close();
 
   // ---------- Una sola sesión entre la web y la extensión ----------
@@ -664,6 +665,41 @@ try {
   await web.evaluate(() => LMD.sync.signOut(null)); await until(async () => !((await extGet('cloud')) || {}).session, 8000);
   await web.evaluate(() => LMD.patch({ cloudUrl: 'off' })); await bg(() => LMD.patch({ cloudUrl: 'off' })); await bg(() => chrome.storage.local.remove(['cloud', 'bridgeOther']));
   await web.evaluate(() => localStorage.removeItem('mdtools:cloud')); await web.waitForTimeout(400);
+
+  // ---------- Una extensión anterior: entrega archivos (file.read) pero no conoce file.can ----------
+  console.log('Un enlace con una extensión anterior, sin file.can');
+  await sleep(Math.max(0, 62000 - (Date.now() - cappedAt))); // el tope por minuto de pedidos atendidos, que lo anterior agotó: se espera a que venza entero
+  const older = (ops) => bg((list) => { if (!self.__onMsg) self.__onMsg = LMD.bridgeHost.onMessage; LMD.bridgeHost.onMessage = (msg, s, r) => (msg && list.includes(msg.op) ? (r({ ok: false, error: 'refused' }), false) : self.__onMsg(msg, s, r)); }, ops);
+  await older(['file.can']);
+  const lg = watch(await ctx.newPage()); const lgNav = []; lg.on('framenavigated', (f) => { if (f === lg.mainFrame()) lgNav.push(f.url()); });
+  await lg.goto(WEB); await lg.waitForSelector('.lmd-home'); await spy(lg);
+  check('la extensión simulada no conoce file.can y sí file.read', J(await ask(lg, 'file.can', { url: fileAt })) === J({ ok: false, error: 'refused' }) && (await lg.evaluate((u) => LMD.bridge.canRead(u), fileAt)) === null);
+  await lg.goto(linkTo(WEB, fileAt)); await lg.waitForSelector('.lmd-dlg-card');
+  const og = await dlg(lg);
+  await lg.click('.lmd-dlg-card [data-dlg=ok]'); await lg.waitForSelector('.markdown-body h1', { timeout: 8000 }).catch(() => {});
+  const og1 = await lg.evaluate(() => ({ at: location.href, h1: (document.querySelector('.markdown-body h1') || {}).textContent || '', dlgs: window.__dlgs, pickers: window.__pickers.length, open: document.querySelectorAll('.lmd-dlg-card').length }));
+  check('extensión anterior y carpeta habilitada: sigue siendo un clic, sin decir nada de la versión', !!og && J(og.buttons) === J(['Cancel', 'Open']) && !/version/i.test(og.all) && og1.h1.startsWith('Local note') && og1.at.startsWith(WEB + '?f=mem') && J(og1.dlgs) === J(['Open this file from your disk? / Open']) && og1.pickers === 0 && og1.open === 0, [og && og.buttons, og1]);
+  await lg.goto(WEB); await lg.waitForSelector('.lmd-home'); await spy(lg);
+  await lg.goto(linkTo(WEB, urlOf(disk2, 'out.md'))); await lg.waitForSelector('.lmd-dlg-card');
+  await lg.evaluate(() => { window.__card = document.querySelector('.lmd-dlg-card'); });
+  const og2 = await dlg(lg);
+  await lg.click('.lmd-dlg-card [data-dlg=ok]'); await lg.waitForFunction(() => (document.querySelector('.lmd-dlg-card [data-dlg=ok]') || {}).textContent === 'Choose the file', null, { timeout: 6000 }).catch(() => {});
+  const og3 = await dlg(lg);
+  const turned = await lg.evaluate(() => ({ same: window.__card === document.querySelector('.lmd-dlg-card'), n: document.querySelectorAll('.lmd-dlg-card').length, dlgs: window.__dlgs, pickers: window.__pickers.length, body: document.body.textContent }));
+  check('extensión anterior y carpeta sin habilitar: pregunta con "Abrir"', !!og2 && J(og2.buttons) === J(['Cancel', 'Open']) && og2.title === 'Open this file from your disk?' && !/version/i.test(og2.all), og2);
+  check('y esa misma pregunta cambia en el lugar a "Elegir el archivo", con el porqué y la línea de qué pegar', !!og3 && turned.same && turned.n === 1 && turned.dlgs.length === 1 && og3.title === 'Open this file from your disk?' && J(og3.buttons) === J(['Cancel', 'Choose the file']) && og3.text.startsWith('By link, the extension only opens what is in folders you already opened with it. Choose the file.') && (await noteOf(lg)) === CHOOSE && turned.pickers === 0 && !/SECRET-OUTSIDE/.test(turned.body) && !/version/i.test(og3.all), [og3, turned.dlgs]);
+  await lg.bringToFront(); await lg.click('.lmd-dlg-card [data-dlg=ok]'); await lg.waitForFunction(() => !!window.__pick, null, { timeout: 4000 }).catch(() => {});
+  check('ahí el botón copia la ruta y abre el selector', (await lg.evaluate(() => window.__pickers.length)) === 1 && (await noteOf(lg)) === PASTED && (await clipOf(lg)) === path.join(disk2, 'out.md') && lgNav.every((u) => u.startsWith(WEB)), [await noteOf(lg), lgNav]);
+  await lg.evaluate(() => window.__pick.reject(Object.assign(new Error('cancelado'), { name: 'AbortError' }))); await lg.keyboard.press('Escape'); await gone(lg);
+  // Una extensión todavía anterior, que tampoco entrega archivos: recién ahí se habla de la versión.
+  await older(['file.can', 'file.read']);
+  await lg.goto(WEB); await lg.waitForSelector('.lmd-home'); await spy(lg);
+  await lg.goto(linkTo(WEB, fileAt)); await lg.waitForSelector('.lmd-dlg-card'); await lg.click('.lmd-dlg-card [data-dlg=ok]');
+  await lg.waitForFunction(() => (document.querySelector('.lmd-dlg-card [data-dlg=ok]') || {}).textContent === 'Choose the file', null, { timeout: 6000 }).catch(() => {});
+  const og4 = await dlg(lg);
+  check('solo una extensión que tampoco conoce file.read lee que su versión no abre archivos por enlace', !!og4 && og4.text.startsWith('This version of the extension does not open files by link. Choose the file.') && J(og4.buttons) === J(['Cancel', 'Choose the file']) && (await lg.evaluate(() => window.__dlgs.length)) === 1, og4);
+  await bg(() => { if (self.__onMsg) { LMD.bridgeHost.onMessage = self.__onMsg; self.__onMsg = null; } });
+  await lg.close();
 
   // ---------- Sin conexión, con la extensión ----------
   console.log('Sin conexión, con la extensión');
