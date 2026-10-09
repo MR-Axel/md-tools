@@ -89,9 +89,9 @@ Después alcanza con arrastrar un `.md` al navegador.
 
 Hacé clic en el ícono de la extensión: abre SharpMD, donde empezás una nota nueva o elegís un archivo o una carpeta (o los arrastrás) y los leés y editás ahí mismo. Abre la app web, o la página de la extensión cuando no hay conexión; en Ajustes → Instalar se elige cuál. Como la carpeta ya la elegiste vos, guardar no pide ningún permiso más, y la página recuerda lo último que abriste.
 
-Con la extensión instalada, la app web y la extensión comparten un solo depósito: las mismas notas del navegador y la misma lista de archivos y carpetas abiertos de los dos lados. Una carpeta abierta de un lado figura del otro como "Reconectar": se elige una vez ahí y queda. La sesión de la nube no se comparte: cada lado entra por su cuenta.
+Con la extensión instalada, la app web y la extensión comparten un solo depósito: las mismas notas del navegador y la misma lista de archivos y carpetas abiertos de los dos lados. Una carpeta abierta de un lado figura del otro como "Reconectar": se elige una vez ahí y queda. La sesión de la nube también es una sola cuando los dos lados usan el mismo servidor: entrás o salís de uno y el otro lo sigue. Un `.md` abierto desde tu disco tiene la cuenta ahí mismo, en Ajustes.
 
-**Un enlace que abre un archivo local.** `https://sharpmd.app/src/app.html#open=` seguido de la dirección `file://` codificada abre ese `.md` de tu disco con la extensión, después de que confirmás. La ruta queda en el fragmento, así que no sale del navegador. Se copia desde el menú Copiar o con clic derecho sobre un archivo del explorador.
+**Un enlace que abre un archivo local.** `https://sharpmd.app/src/app.html#open=` seguido de la dirección `file://` codificada abre ese `.md` de tu disco dentro de la app web, después de que confirmás: la extensión lo lee y la app lo muestra como copia. Sin la extensión, la ruta se copia y se abre el selector de archivos: la pegás y el archivo se abre en su lugar. La ruta queda en el fragmento, así que no sale del navegador. Se copia desde el menú Copiar o con clic derecho sobre un archivo del explorador.
 
 Abrir un `.md` directo en el navegador sigue funcionando igual que antes. La pestaña Carpeta de la barra lateral tiene un botón que lleva a esta página.
 

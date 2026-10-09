@@ -4,9 +4,12 @@
 // almacenamiento de la extensión. La app web (sharpmd.app/src/app.html) los lee y los escribe por acá, a través del
 // script de contenido src/bridge-cs.js, que es el único que puede mandar estos mensajes.
 //
-// Lo que cruza: notas del navegador, la lista de recientes (nombre, tipo y fecha, nunca el permiso sobre la carpeta)
-// y las preferencias de la lista PREFS. Lo que no cruza nunca: la sesión de la nube, las copias de las notas de la
-// nube, las llaves de las carpetas protegidas y el resto de chrome.storage.
+// Lo que cruza: notas del navegador, la lista de recientes (nombre, tipo y fecha, nunca el permiso sobre la carpeta),
+// las preferencias de la lista PREFS y la sesión de la nube, solo si los dos lados usan el mismo servidor. Lo que no
+// cruza nunca: las copias de las notas de la nube, las llaves de las carpetas protegidas y el resto de chrome.storage.
+//
+// También atiende al lector de un archivo del disco (file://), que no puede hablarle al servidor de sincronización
+// por su origen: sus pedidos salen de acá, a una lista cerrada de rutas del servidor configurado (cloudApi).
 (function () {
   'use strict';
   const S = LMD.store;
@@ -137,6 +140,12 @@
     'web.ready': async () => { await chrome.storage.local.set({ webReady: { at: Date.now() } }); return {}; },
     // Un enlace https que abre un archivo del disco: la app ya preguntó, y la pestaña que pide pasa a esa dirección.
     'file.open': (a, by, sender) => openFile(a, sender),
+    // Lo mismo, pero el texto vuelve a la app web, que lo muestra adentro como copia.
+    'file.read': (a) => readFile(a),
+    // La sesión de la nube, una sola entre la web y la extensión (ver "La sesión de la nube", más abajo).
+    'session.get': (a) => sessionGet(a),
+    'session.put': (a) => sessionPut(a),
+    'session.clear': (a) => sessionClear(a),
     // La pantalla de la extensión donde se activa "Permitir acceso a URL de archivo".
     'file.setup': async () => { if (tooMany()) return { opened: false, why: 'limit' }; await chrome.tabs.create({ url: 'chrome://extensions/?id=' + chrome.runtime.id }); return { opened: true }; },
   };
@@ -164,6 +173,124 @@
     try { await chrome.tabs.update(sender.tab.id, { url }); } catch (e) { return { opened: false, why: 'access' }; }
     return { opened: true };
   }
+  // El texto de ese archivo, con la misma validación y el mismo tope. Quien lo pide ya preguntó a la persona.
+  async function readFile(a) {
+    const url = a && typeof a.url === 'string' && a.url.startsWith('file:///') ? LMD.fileUrl(a.url) : '';
+    if (!url) return null;
+    if (tooMany()) return { opened: false, why: 'limit' };
+    let allowed = false;
+    try { allowed = await chrome.extension.isAllowedFileSchemeAccess(); } catch (e) { /* no se pudo saber */ }
+    if (!allowed) return { opened: false, why: 'access' };
+    let text = '';
+    try { const res = await fetch(url, { cache: 'no-store' }); if (!res.ok && res.status !== 0) throw new Error('HTTP ' + res.status); text = await res.text(); }
+    catch (e) { return { opened: false, why: 'missing' }; }
+    if (text.length > TEXT_MAX) return { opened: false, why: 'size' };
+    let name = 'note.md';
+    try { name = decodeURIComponent(new URL(url).pathname.split('/').pop()) || name; } catch (e) { /* queda el nombre de respaldo */ }
+    return { opened: true, name, text };
+  }
+
+  // ---------- La sesión de la nube ----------
+  // Vive donde siempre: chrome.storage.local.cloud ({ session, email, at }), que leen la página de la extensión y el
+  // lector. La app web publica la suya, lee la de acá o pide cerrarla, y solo si su servidor es el mismo que el de
+  // acá: con la nube apagada o con otro servidor de un lado, cada lado sigue con lo suyo y no se contesta nada.
+  // Con dos cuentas distintas no se pisa ninguna: se anota (bridgeOther) para decirlo en Ajustes, y solo se cambia
+  // con force, que la app manda después de que la persona lo confirma.
+  const cleanBase = (u) => { const b = String(u || '').trim().replace(/\/+$/, ''); return /^off$/i.test(b) ? '' : b; };
+  const baseHere = async () => cleanBase((await LMD.load()).cloudUrl || LMD.CLOUD_URL);
+  const isUrl = (u) => typeof u === 'string' && u.length <= 300 && /^https?:\/\/\S+$/.test(u);
+  const isSession = (s) => typeof s === 'string' && /^[A-Za-z0-9_-]{16,256}$/.test(s);
+  const isMail = (m) => typeof m === 'string' && m.length <= 254 && /^[^\s@]+@[^\s@]+$/.test(m);
+  // La sesión guardada acá, si es del servidor de ahora. Una guardada antes de anotar el servidor vale como de este.
+  async function sessionHere(base) {
+    const c = (await stored('cloud')) || {};
+    return c.session && (!c.at || c.at === base) && isMail(c.email) ? { session: String(c.session), email: c.email } : null;
+  }
+  async function sameServer(a) {
+    if (!isUrl(a.base)) return '';
+    const base = await baseHere();
+    return base && base === cleanBase(a.base) ? base : '';
+  }
+  const other = (email) => (email ? chrome.storage.local.set({ bridgeOther: { email } }) : chrome.storage.local.remove('bridgeOther'));
+  // email: la cuenta de quien pregunta, si tiene. Con otra cuenta de este lado queda anotado que son dos.
+  async function sessionGet(a) {
+    if (a.email != null && a.email !== '' && !isMail(a.email)) return null;
+    const base = await sameServer(a);
+    if (!base) return { same: false };
+    const here = await sessionHere(base);
+    await other(here && a.email && a.email !== here.email ? a.email : '');
+    return { same: true, email: here ? here.email : '', session: here ? here.session : '' };
+  }
+  async function sessionPut(a) {
+    if (!isSession(a.session) || !isMail(a.email) || !isUrl(a.base)) return null;
+    const base = await sameServer(a);
+    if (!base) return { same: false };
+    const here = await sessionHere(base);
+    if (here && here.email !== a.email) {
+      if (a.force !== true) { await other(a.email); return { same: true, conflict: here.email }; }
+      await forget(here.email);
+    }
+    await chrome.storage.local.set({ cloud: { session: a.session, email: a.email, at: base } });
+    await other('');
+    return { same: true };
+  }
+  async function sessionClear(a) {
+    if (!isMail(a.email) || !isUrl(a.base)) return null;
+    const base = await sameServer(a);
+    if (!base) return { same: false };
+    const here = await sessionHere(base);
+    if (!here || here.email !== a.email) return { same: true, cleared: false };
+    await forget(here.email);
+    await chrome.storage.local.set({ cloud: { session: '', email: '', at: base } });
+    await other('');
+    return { same: true, cleared: true };
+  }
+  // Como al salir desde la app: se van las copias locales ya subidas y las llaves de las carpetas protegidas.
+  async function forget(email) {
+    try { for (const c of await S.cloudAll(email)) if (!c.pending) await S.cloudDelete(email, c.path); } catch (e) { /* sin base local */ }
+    try { if (LMD.seal && LMD.seal.forgetAll) await LMD.seal.forgetAll(email); } catch (e) { /* no había llaves */ }
+  }
+
+  // ---------- El servidor de sincronización, para el lector de un archivo del disco ----------
+  // El lector corre sobre file://, y desde ese origen el servidor no contesta. El pedido sale de acá, con la sesión
+  // guardada, al servidor configurado y solo a estas rutas: las de la cuenta, los tokens, el plan y el equipo, la
+  // galería, las automatizaciones y copiar una nota a la nube. No es un pase libre: ni otras rutas ni otro servidor.
+  const SEG = '[^/?#]+'; const QS = '(\\?[^#]*)?';
+  const ROUTES = [
+    ['POST', '/auth/(start|verify|logout)'],
+    ['GET|PUT|DELETE', '/account'],
+    ['GET', '/notes(\\?o=\\d+)?'], ['GET|PUT', '/notes/' + SEG + '(\\?o=\\d+)?'],
+    ['GET|POST', '/tokens'], ['DELETE', '/tokens/\\d+'],
+    ['GET', '/vaults'], ['GET', '/team/vault'],
+    ['GET|PUT', '/team'], ['GET', '/team/log' + QS], ['PUT', '/team/policies'],
+    ['POST', '/team/(invite|role|accept|decline|remove|leave|seats)'],
+    ['GET|POST', '/team/tokens'], ['DELETE', '/team/(tokens|invites)/\\d+'],
+    ['GET', '/gallery' + QS], ['POST', '/gallery'], ['GET|POST|DELETE', '/gallery/' + SEG + '(/' + SEG + ')?'],
+    ['GET', '/automations' + QS], ['POST', '/automations/(hooks|inboxes)'], ['GET|POST|PUT|DELETE', '/automations/(hooks|inboxes)/' + SEG + '(/' + SEG + ')?' + QS],
+    ['POST', '/feedback'],
+  ].map((r) => [r[0].split('|'), new RegExp('^' + r[1] + '$')]);
+  const routed = (method, path) => typeof method === 'string' && typeof path === 'string' && path.length <= 2000 && !/[\u0000-\u0020\\]|\/\/|\/(\.|%2e){1,2}(\/|\?|$)/i.test(path) && // "." y "..", también codificados, saldrían de la ruta
+    ROUTES.some((r) => r[0].includes(method) && r[1].test(path));
+  // Solo el lector de esta extensión, en el marco principal de una pestaña que muestra un archivo del disco.
+  const fromReader = (sender) => !!sender && sender.id === chrome.runtime.id && !!sender.tab && sender.frameId === 0 && /^file:\/\/\//.test(sender.url || '');
+  function onCloud(msg, sender, sendResponse) {
+    if (!fromReader(sender) || !routed(msg.method, msg.path)) { sendResponse({ ok: false, error: 'refused' }); return false; }
+    (async () => {
+      const base = await baseHere();
+      if (!base) return { ok: false, error: 'no_server' };
+      const here = msg.auth === false ? null : await sessionHere(base);
+      let body;
+      if (msg.body !== undefined) { body = JSON.stringify(msg.body); if (body.length > TEXT_MAX * 2) return { ok: false, error: 'refused' }; }
+      let res;
+      try { res = await fetch(base + msg.path, { method: msg.method, credentials: 'omit', redirect: 'error', cache: 'no-store', headers: Object.assign({ 'content-type': 'application/json' }, here ? { authorization: 'Bearer ' + here.session } : {}), body }); }
+      catch (e) { return { ok: false, error: 'offline' }; }
+      let json = null;
+      try { json = await res.json(); } catch (e) { /* respuesta sin cuerpo */ }
+      return { ok: true, status: res.status, json, retry: +(res.headers.get('retry-after') || 0) || 0 };
+    })().then(sendResponse, () => sendResponse({ ok: false, error: 'offline' }));
+    return true;
+  }
+
   // La página de la app dentro de la extensión pide lo mismo, sin pasar por el puente.
   function onOwn(msg, sender, sendResponse) {
     const mine = !!sender && sender.id === chrome.runtime.id && !!sender.tab && sender.frameId === 0 && isApp(sender.url, OWN);
@@ -246,5 +373,5 @@
   }
   chrome.action.onClicked.addListener(() => { openSharp().catch(() => chrome.tabs.create({ url: OWN })); });
 
-  LMD.bridgeHost = { onMessage, onOwn, openSharp, PREFS };
+  LMD.bridgeHost = { onMessage, onOwn, onCloud, openSharp, PREFS };
 })();

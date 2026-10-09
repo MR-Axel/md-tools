@@ -76,8 +76,36 @@
 
   // canOpen: si de este lado hay una extensión que pueda llevar la pestaña a un archivo del disco. openFile lo pide.
   const api = { present: () => false, info: () => null, reconnect, adopt, settle: () => Promise.resolve(), sync: () => Promise.resolve(), hash,
-    canOpen: () => false, openFile: () => Promise.resolve({ ok: false, error: 'none' }), setup: () => Promise.resolve({ ok: false, error: 'none' }) };
+    canOpen: () => false, openFile: () => Promise.resolve({ ok: false, error: 'none' }), setup: () => Promise.resolve({ ok: false, error: 'none' }),
+    readFile: () => Promise.resolve({ ok: false, error: 'none' }), paintSession };
   LMD.bridge = api;
+
+  // ---------- Dos cuentas distintas, una de cada lado ----------
+  // La sesión de la nube es una sola entre la web y la extensión. Si cada lado ya tenía la suya, de cuentas distintas,
+  // no se pisa ninguna: Ajustes > Nube lo dice. Desde la web se puede elegir que la de ahí quede en los dos.
+  let clash = null; let forceMine = false; let resync = () => Promise.resolve();
+  async function paintSession(slot, redraw) {
+    if (!slot) return;
+    const T = LMD.t; let text = ''; let mine = '';
+    if (WEB) { if (clash) { text = T('La extensión tiene otra cuenta: {a}. Cada lado sigue con la suya.', { a: clash.theirs }); mine = clash.mine; } }
+    else {
+      try { const o = (await chrome.storage.local.get('bridgeOther')).bridgeOther; if (o && o.email && LMD.cloud.signedIn() && o.email !== LMD.cloud.email()) text = T('La app web tiene otra cuenta: {a}. Cada lado sigue con la suya.', { a: o.email }); }
+      catch (e) { /* sin almacenamiento: no se dice nada */ }
+    }
+    slot.textContent = '';
+    if (!text) return;
+    const p = document.createElement('p'); p.className = 'lmd-hint lmd-acct-two'; p.setAttribute('role', 'status'); p.textContent = text + ' ';
+    if (mine) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'lmd-link'; b.dataset.two = 'mine'; b.textContent = T('Usar {a} en los dos', { a: mine });
+      b.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!(await LMD.dialog.confirm({ title: T('¿Usar {a} en los dos?', { a: mine }), text: T('La extensión sale de la otra cuenta.'), ok: T('Usar esta cuenta') }))) return;
+        forceMine = true; await resync(); if (redraw) redraw();
+      });
+      p.appendChild(b);
+    }
+    slot.appendChild(p);
+  }
   if (!APP) return;
 
   // Lo que se guarda a través del "archivo" de una nota también pasa por acá.
@@ -112,6 +140,7 @@
   api.info = () => info;
   api.canOpen = () => present() && !!info;
   api.openFile = (url) => call('file.open', { url });
+  api.readFile = (url) => call('file.read', { url });
   api.setup = () => call('file.setup');
 
   let seq = 0; const waits = new Map();
@@ -240,14 +269,54 @@
     if (Object.keys(take).length) await LMD.patch(take);
   }
 
+  // ---------- La sesión de la nube: una sola entre la web y la extensión ----------
+  // Entrar de un lado deja la sesión en el otro, y salir de uno sale del otro. De lo último que los dos tenían igual
+  // se recuerda solo el correo (st.sess), para saber de qué lado se salió. No corre con la nube apagada, y la
+  // extensión no contesta si su servidor es otro: en esos casos cada lado sigue con lo suyo. Con dos cuentas
+  // distintas no se toca ninguna (clash), salvo que la persona elija la de acá.
+  const cleanBase = (u) => { const b = String(u || '').trim().replace(/\/+$/, ''); return /^off$/i.test(b) ? '' : b; };
+  async function syncSession(st) {
+    const force = forceMine; forceMine = false; clash = null;
+    const base = cleanBase((await LMD.load()).cloudUrl || LMD.CLOUD_URL);
+    if (!base || (LMD.cloud && LMD.cloud.guest())) return;
+    const c = (await chrome.storage.local.get('cloud')).cloud || {};
+    const mine = c.session && c.email && (!c.at || c.at === base) ? { session: String(c.session), email: String(c.email) } : null;
+    const r = await call('session.get', { base, email: mine ? mine.email : '' });
+    if (!r.ok || !r.same) { delete st.sess; return; } // una extensión anterior, otro servidor o la nube apagada del otro lado
+    const theirs = r.session && r.email ? { session: r.session, email: r.email } : null;
+    const was = st.sess && st.sess.base === base ? st.sess.email : '';
+    const agree = (email) => { st.sess = { base, email }; };
+    if (mine && theirs) {
+      if (mine.email === theirs.email) { agree(mine.email); return; }
+      if (!force) { clash = { mine: mine.email, theirs: theirs.email }; return; }
+    }
+    if (mine) {
+      // La extensión tenía esta misma cuenta y ya no: se salió de ese lado.
+      if (!theirs && was === mine.email) { delete st.sess; if (LMD.sync && LMD.sync.dropSession) await LMD.sync.dropSession(); return; }
+      const p = await call('session.put', { base, session: mine.session, email: mine.email, force: force && !!theirs });
+      if (p.ok && p.same && !p.conflict) agree(mine.email);
+      return;
+    }
+    if (theirs) {
+      // Acá se salió de esa cuenta: la extensión sale también.
+      if (was === theirs.email) { await call('session.clear', { base, email: theirs.email }); delete st.sess; return; }
+      await chrome.storage.local.set({ cloud: { session: theirs.session, email: theirs.email, at: base } }); // cloud.js la vuelve a leer y avisa
+      agree(theirs.email);
+      return;
+    }
+    delete st.sess;
+  }
+
   async function once() {
     if (!present()) { info = null; return; }
     const hi = await call('hello');
     if (!hi.ok) { info = null; return; }
     info = hi;
-    if (!(await healthy())) return;
     let st = readState();
     if (st.depot !== hi.depot) st = { depot: hi.depot };
+    // La sesión no depende de la base local de notas: va primero y aparte.
+    try { await syncSession(st); } catch (e) { /* la próxima vuelta lo retoma */ }
+    if (!(await healthy())) { writeState(st); return; }
     let moved = false;
     try {
       moved = await syncNotes(st);
@@ -266,11 +335,13 @@
   function kick(ms) { clearTimeout(timer); timer = setTimeout(run, ms == null ? 250 : ms); }
   touched.note = () => kick(); touched.root = () => kick();
   api.sync = () => run();
+  resync = () => run();
+  api.clash = () => clash;
 
   // Lo primero: igualar. Quien abre una nota que todavía no llegó puede esperar a que termine (settle).
   const first = present() ? Promise.race([run(), new Promise((resolve) => setTimeout(resolve, 4000))]) : Promise.resolve();
   api.settle = () => first;
-  try { chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes.settings && info) kick(); }); } catch (e) { /* sin ajustes */ }
+  try { chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && (changes.settings || changes.cloud) && info) kick(); }); } catch (e) { /* sin ajustes */ }
   document.addEventListener('visibilitychange', () => { if (!document.hidden && present()) kick(0); });
 
   // Cuando el service worker de la web ya tiene la app guardada, la extensión se entera: desde ahí su botón abre la

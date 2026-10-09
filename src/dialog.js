@@ -71,9 +71,12 @@
   // se elige ese. Con link ({ href, text }) suma un enlace que lleva al cobro: dentro de la app de la tienda no se ve.
   // Con more ({ text, link, go }) suma una línea con un enlace que cierra la pregunta y llama a go.
   // Con path, una ruta del disco a la vista, siempre como texto, con su botón para copiarla.
+  // Con act, el botón principal no cierra la pregunta: llama a act({ note, close }) en el mismo turno del clic (lo
+  // que pide un gesto, como el portapapeles o el selector de archivos, sale de ahí). note(texto) deja una línea a la
+  // vista mientras tanto, y close(valor) la cierra.
   function confirm(o) {
     return new Promise((resolve) => {
-      const f = frame(o, (o.text ? '<p></p>' : '') + (o.path ? '<div class="lmd-ask-path lmd-dlg-path"><code></code><button type="button" class="lmd-btn" data-dlg-copy></button></div>' : '') + (o.link ? '<p class="lmd-dlg-link" data-pay><a class="lmd-link" target="_blank" rel="noopener"></a></p>' : '') +
+      const f = frame(o, (o.text ? '<p></p>' : '') + (o.path ? '<div class="lmd-ask-path lmd-dlg-path"><code></code><button type="button" class="lmd-btn" data-dlg-copy></button></div>' : '') + (o.act ? '<p class="lmd-dlg-note" role="status" hidden></p>' : '') + (o.link ? '<p class="lmd-dlg-link" data-pay><a class="lmd-link" target="_blank" rel="noopener"></a></p>' : '') +
         (o.more ? '<p class="lmd-dlg-more"><span></span> <button type="button" class="lmd-link" data-dlg-more></button></p>' : ''), resolve);
       if (o.more) { const m = f.box.querySelector('.lmd-dlg-more'); m.querySelector('span').textContent = o.more.text || ''; m.querySelector('button').textContent = o.more.link; }
       if (o.text) f.box.querySelector('p').textContent = o.text;
@@ -89,7 +92,9 @@
         if (o.more && e.target.closest('[data-dlg-more]')) { f.close(false); o.more.go(); return; }
         const copy = e.target.closest('[data-dlg-copy]');
         if (copy) { try { navigator.clipboard.writeText(o.path).then(() => { copy.textContent = T('Copiado'); }, () => {}); } catch (err) { /* sin portapapeles: la ruta queda a la vista para seleccionarla */ } return; }
-        const b = e.target.closest('[data-dlg]'); if (b) f.close(b.dataset.dlg === 'alt' ? 'alt' : b.dataset.dlg === 'ok');
+        const b = e.target.closest('[data-dlg]'); if (!b) return;
+        if (o.act && b.dataset.dlg === 'ok') { o.act({ note: (text) => { const n = f.box.querySelector('.lmd-dlg-note'); n.hidden = !text; n.textContent = text || ''; }, close: f.close }); return; }
+        f.close(b.dataset.dlg === 'alt' ? 'alt' : b.dataset.dlg === 'ok');
       });
     });
   }

@@ -5,6 +5,22 @@
 
   let session = ''; let email = ''; let base = ''; let loaded = null;
   let listCache = null; let listAt = 0;
+  // Dónde corre esto. En la app (la web o la página de la extensión) los pedidos salen de acá. En el lector de un
+  // archivo del disco (file://) el servidor no contesta a ese origen: salen por el service worker de la extensión,
+  // que solo atiende una lista cerrada de rutas (bridge-sw.js). En el lector de un sitio no hay cuenta.
+  const APP = /\/app\.html$/.test(location.pathname) && (location.protocol === 'chrome-extension:' || window.__MDT_WEB === true);
+  const VIA = !APP && location.protocol === 'file:';
+  function viaWorker(method, path, body, auth) {
+    return new Promise((resolve, reject) => {
+      const off = () => reject(Object.assign(new Error('offline'), { code: 'offline' }));
+      try {
+        chrome.runtime.sendMessage({ type: 'cloudApi', method, path, body, auth }, (r) => {
+          if (chrome.runtime.lastError || !r || !r.ok) { if (r && r.error === 'no_server') reject(Object.assign(new Error('no_server'), { code: 'no_server' })); else off(); return; }
+          resolve({ ok: r.status >= 200 && r.status < 300, status: r.status, json: async () => r.json, headers: { get: (k) => (k === 'retry-after' && r.retry ? String(r.retry) : null) } });
+        });
+      } catch (e) { off(); }
+    });
+  }
 
   // La dirección sale de los ajustes (para quien aloja su propio servidor) o de la que trae la versión.
   function ready() {
@@ -26,6 +42,19 @@
     return loaded;
   }
   let parked = null; // la sesión de otro servidor, que no se pisa mientras no se entre en este
+  // La sesión cambió por fuera de esta página: se entró o se salió en otra pestaña, en la página de la extensión, o
+  // del otro lado del puente entre la web y la extensión. Se vuelve a leer y se avisa (sync.js repinta lo de la cuenta).
+  try {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local' || !changes.cloud || !loaded || guest) return;
+      const c = changes.cloud.newValue || {}; const mine = !c.at || c.at === base;
+      const s = mine ? c.session || '' : ''; const m = mine ? c.email || '' : '';
+      if (s === session && (m === email || !s)) return;
+      const was = email;
+      loaded = null; listCache = null; vaultCache = null;
+      ready().then(() => window.dispatchEvent(new CustomEvent('lmd-session-changed', { detail: { was, now: email, signedIn: !!session } })));
+    });
+  } catch (e) { /* sin almacenamiento de la extensión */ }
   // El equipo de la cuenta: { space, name }. space es el número con el que se piden sus notas, que acá llevan rutas
   // ~space/..., como las que comparte otra cuenta. Se guarda lo último que se supo para dibujar el explorador sin
   // esperar al servidor, también sin conexión. setTeam devuelve si cambió.
@@ -60,7 +89,8 @@
     // Un invitado solo habla con las rutas de su sesión: lo demás no sale de acá (y el servidor tampoco lo aceptaría).
     if (guest && !path.startsWith('/live/') && path !== '/feedback') throw Object.assign(new Error('guest'), { code: 'guest', status: 403 });
     let res;
-    try {
+    if (VIA) res = await viaWorker(method, path, body, !!session);
+    else try {
       res = await fetch(base + path, { method, headers: Object.assign({ 'content-type': 'application/json' }, session && !OPEN_LIVE.includes(path) ? { authorization: 'Bearer ' + session } : {}), body: body === undefined ? undefined : JSON.stringify(body) });
     } catch (e) { throw Object.assign(new Error('offline'), { code: 'offline' }); }
     let json = null;
@@ -683,6 +713,8 @@
       return json;
     },
     enabled: () => !!base,
+    // Si desde acá se llega al servidor: en la app, y en el lector de un archivo del disco (por el service worker).
+    reach: () => APP || VIA,
     signedIn: () => !!session,
     email: () => email,
     start: (mail) => api('POST', '/auth/start', { email: mail, lang: LMD.lang() }),

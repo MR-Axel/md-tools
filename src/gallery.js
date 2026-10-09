@@ -180,8 +180,8 @@
 
   // Compartir: la nota abierta como plantilla, el tema que hay puesto, o una paleta. Se ve lo que sale antes de mandarlo.
   function share() {
-    // Sobre un archivo abierto directo no hay cuenta: compartir es abrir este archivo en la app.
-    if (!core.APP) { core.openInApp(); return; }
+    // Sobre un .md de un sitio no hay cuenta: se comparte desde la app.
+    if (!LMD.cloud.reach()) { core.openInApp(); return; }
     if (!LMD.cloud.signedIn() || LMD.cloud.guest()) {
       LMD.dialog.confirm({ title: T('Compartí el tuyo'), text: T('Entrá a tu cuenta para compartir.'), ok: T('Entrar') }).then((ok) => { if (ok) core.openPanel('cloud'); });
       return;
@@ -305,8 +305,8 @@
   async function load(more) {
     const seq = ++view.seq; await C.ready();
     view.page = more ? view.page + 1 : 1;
-    // Un archivo abierto directo no llega al servidor. No es una falla: se ve lo incluido y lo ya agregado, y dice dónde está el resto.
-    if (!core.APP) { view.items = []; view.pages = 1; view.off = T('Abrí la app para ver lo que compartió la comunidad.'); draw(); return; }
+    // Un .md de un sitio no llega al servidor. No es una falla: se ve lo incluido y lo ya agregado, y dice dónde está el resto.
+    if (!LMD.cloud.reach()) { view.items = []; view.pages = 1; view.off = T('Abrí la app para ver lo que compartió la comunidad.'); draw(); return; }
     try {
       const r = await api('GET', '/gallery?' + new URLSearchParams({ type: view.type, q: view.q, page: String(view.page) }));
       if (seq !== view.seq) return;
@@ -321,7 +321,7 @@
   }
   async function loadMine() {
     view.mine = [];
-    if (core.APP && LMD.cloud.signedIn() && !LMD.cloud.guest()) {
+    if (LMD.cloud.reach() && LMD.cloud.signedIn() && !LMD.cloud.guest()) {
       try { const rows = await api('GET', '/gallery/mine'); view.mine = (Array.isArray(rows) ? rows : []).filter((r) => r && Number.isInteger(r.id)).map((r) => ({ id: r.id, type: String(r.type), status: String(r.status), name: String(r.name || '').slice(0, 60), reason: String(r.reason || '').slice(0, 300) })); } catch (e) { /* sin conexión: no se listan */ }
     }
     draw();
