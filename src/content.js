@@ -65,6 +65,8 @@
   // Lo que el estado vacío (home.js) necesita del lector: dónde dibujarse y cómo abrir una nota sin recargar.
   const homeCtx = () => ({ settings, APP_URL, box: ui.home, open: (f, opt) => go(f, opt), refresh: () => core.reloadTree(), say: (text) => flash(text, 'error'), warn: (text) => flash(text, 'warn'), plan: (why) => openPanel('plan', why),
     // El pie de la barra lateral, donde vive la cuenta: dónde dibujarse, cómo quedar a la vista y cómo guardar antes de salir.
+    // Un archivo del disco abierto por enlace: su dirección en la app, y si la web ya tiene su carpeta con permiso.
+    disk: { doc: fsDoc, real: async (fileUrl) => { const k = await fsKnown(fileUrl); return !!(k && k.granted); } },
     acct: ui.acct, showSide: () => { if (LMD.touch.small()) setDrawer(true); else if (settings.sidebarHidden) LMD.patch({ sidebarHidden: false }); }, hideSide: () => setDrawer(false),
     leave: () => (dirty ? save(false) : Promise.resolve(true)), ready: unsplash, panel: (tab) => openPanel(tab),
     // El CSS propio viene con el plan pago: si Ajustes está abierto, se redibuja con el campo ya habilitado.
@@ -138,6 +140,8 @@
     if (root.kind === 'cloud') return LMD.cloud.handle(parts.join('/'));
     if (root.kind === 'pub') return { kind: 'file', name: root.title, getFile: async () => ({ text: async () => root.text, lastModified: 0, size: root.text.length }) };
     if (root.kind === 'file') return parts.length === 1 && parts[0] === root.handle.name ? root.handle : null;
+    // Un archivo del disco abierto por enlace: lo lee la extensión, y solo texto (una imagen de la nota no llega por acá).
+    if (root.kind === 'fs') { const name = parts[parts.length - 1]; return { kind: 'file', name, getFile: async () => { const text = await fsRead(fsFile(url)); return { text: async () => text, lastModified: 0, size: text.length }; } }; }
     let cur = root.handle;
     for (let k = 0; k < parts.length - 1; k++) cur = await cur.getDirectoryHandle(parts[k]);
     return cur.getFileHandle(parts[parts.length - 1]);
@@ -186,6 +190,14 @@
         return { name: n.name, label: first, url: dirUrl + encodeURIComponent(n.name), dir: false };
       });
       if (root.kind === 'file') return [{ name: root.handle.name, url: dirUrl + encodeURIComponent(root.handle.name), dir: false }];
+      if (root.kind === 'fs') {
+        // Lo que la extensión deja listar (carpetas habilitadas). Si no, queda solo el camino hasta la nota abierta.
+        const rows = await fsList(dirUrl);
+        if (rows) return rows;
+        if (noDoc || !HERE.startsWith(dirUrl)) return [];
+        const rest = HERE.slice(dirUrl.length).split('#')[0]; const seg = rest.split('/')[0]; const more = rest.includes('/');
+        return seg ? [{ name: decodeURIComponent(seg), url: dirUrl + seg + (more ? '/' : ''), dir: more }] : [];
+      }
       let dir = root.handle;
       for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p);
       const rows = [];
@@ -193,6 +205,152 @@
       return rows;
     } catch (e) { return null; }
   }
+  // ---------- Un archivo del disco abierto por enlace ----------
+  // Su dirección en la app es ?f=fs/<la ruta real, carpeta por carpeta>. Así un enlace relativo de la nota se resuelve
+  // solo contra la ruta de verdad, y atrás, adelante y las anclas andan como en cualquier otra nota. De dónde sale el
+  // texto: si la web ya tiene el permiso de una carpeta que lo contiene (la persona la eligió una vez, y de ahí se
+  // anotó su ruta en rec.fs), es el archivo real y se guarda en él. Si no, lo lee la extensión, solo de carpetas
+  // habilitadas, y queda como copia hasta que la persona dé acceso a la carpeta.
+  const FS = VBASE + 'fs/'; const FS_UP = 2;
+  const fsFile = (url) => { const p = vParts(url); const win = p.length && /^[a-z]:$/i.test(p[0]); return p.length ? 'file:///' + p.map((s, i) => (win && !i ? s : encodeURIComponent(s))).join('/') + (/\/$/.test(url.split('#')[0]) ? '/' : '') : ''; };
+  const fsDoc = (fileUrl) => { try { return 'fs/' + decodeURIComponent(new URL(fileUrl).pathname).split('/').filter(Boolean).map(encodeURIComponent).join('/'); } catch (e) { return ''; } };
+  const fsKey = (fileUrl) => { try { const p = decodeURIComponent(new URL(fileUrl).pathname); return /^\/[a-z]:\//i.test(p) ? p.toLowerCase() : p; } catch (e) { return ''; } };
+  const fsLists = new Map();
+  async function fsRead(fileUrl) {
+    const kept = LMD.bridge.take(fileUrl);
+    if (kept != null) return kept;
+    const r = await LMD.bridge.readFile(fileUrl);
+    if (r && r.ok && r.opened && typeof r.text === 'string') return r.text;
+    throw Object.assign(new Error('fs'), { why: r && r.ok ? r.why || 'failed' : r && r.error === 'refused' ? 'old' : 'none' });
+  }
+  async function fsList(dirUrl) {
+    const file = fsFile(dirUrl); const hit = fsLists.get(file);
+    if (hit && Date.now() - hit.at < 60000) return hit.rows;
+    let rows = null;
+    if (file) { const r = await LMD.bridge.listDir(file); if (r && r.ok && r.listed && Array.isArray(r.rows)) rows = r.rows.filter((x) => x && typeof x.name === 'string' && x.name && !/[\/\\]/.test(x.name) && (x.dir || MD_RE.test(x.name))).map((x) => ({ name: x.name, url: dirUrl + encodeURIComponent(x.name) + (x.dir ? '/' : ''), dir: !!x.dir })); }
+    fsLists.set(file, { at: Date.now(), rows });
+    return rows;
+  }
+  // La carpeta ya abierta en la web que contiene ese archivo, con lo que queda de la ruta y si el permiso sigue dado.
+  async function fsKnown(fileUrl) {
+    const key = fsKey(fileUrl); let best = null;
+    if (!key) return null;
+    for (const r of await LMD.store.rootsAll()) {
+      if (r.kind !== 'dir' || !r.handle || r.ghost || !r.fs) continue;
+      const k = fsKey(r.fs);
+      if (k && k.endsWith('/') && key.startsWith(k) && (!best || k.length > best.k.length)) best = { rec: r, k };
+    }
+    if (!best) return null;
+    const rest = decodeURIComponent(new URL(fileUrl).pathname).slice(best.k.length).split('/').filter(Boolean);
+    let granted = false;
+    try { granted = (await best.rec.handle.queryPermission({ mode: 'readwrite' })) === 'granted'; } catch (e) { /* permiso vencido */ }
+    return { rec: best.rec, rest, granted };
+  }
+  // El cartel de la copia, arriba de la nota: dice que es una copia y ofrece pasar al archivo real.
+  let fsSaid = '';
+  async function paintCopy() {
+    const bar = ui.copyBar; if (!bar) return;
+    const on = APP && !noDoc && !!appRoot && appRoot.kind === 'fs';
+    bar.hidden = !on; if (!on) { fsSaid = ''; return; }
+    const seq = docSeq; const known = await fsKnown(fsFile(HERE));
+    if (seq !== docSeq) return;
+    bar.textContent = '';
+    bar.appendChild(el('span', { class: 'lmd-copybar-text', text: fsSaid || T('Se abrió una copia. El archivo del disco no cambia.') }));
+    // Sin acceso a archivos (teléfono, Firefox, Safari) no hay cómo pasar al archivo: queda la copia.
+    if (known) bar.appendChild(el('button', { type: 'button', class: 'lmd-btn', 'data-fs': 'grant', text: T('Permitir guardar') }));
+    else if (window.showDirectoryPicker) bar.appendChild(el('button', { type: 'button', class: 'lmd-btn', 'data-fs': 'grant', text: T('Editar el archivo del disco') }));
+  }
+  const fsSay = (text) => { fsSaid = text; return paintCopy(); };
+  const sameText = (a, b) => String(a).replace(/\r\n?/g, '\n') === String(b).replace(/\r\n?/g, '\n');
+  // ---------- Permiso para guardar en una carpeta o un archivo del disco ----------
+  // Abrir (con el selector, arrastrando o desde los recientes) pide solo lectura: no aparece ningún cuadro del
+  // navegador. El permiso de escritura se pide recién cuando hace falta (editar, guardar, crear, renombrar, mover,
+  // borrar) y siempre después de un aviso propio, corto y en el idioma de la app: el cuadro que sigue es del
+  // navegador, sale en su idioma y no se puede cambiar. Si la persona dice que no, todo sigue abierto en solo lectura.
+  const diskRec = (url) => { if (!APP) return null; const r = url ? rootOf(url) : appRoot; return r && r.root && r.handle && (r.kind === 'dir' || r.kind === 'file') ? r : null; };
+  async function askWrite(rec) {
+    const ok = await LMD.dialog.confirm({ title: T('Guardar en "{a}"', { a: rec.name }), ok: T('Permitir guardar'), cancel: T('Seguir en solo lectura'),
+      text: T(rec.kind === 'dir' ? 'Para guardar en esta carpeta, el navegador te va a pedir permiso. El cuadro es del navegador y sale en su idioma: elegí la opción de guardar los cambios.' : 'Para guardar en este archivo, el navegador te va a pedir permiso. El cuadro es del navegador y sale en su idioma: elegí la opción de guardar los cambios.'),
+      // El pedido sale del clic sobre el botón: el navegador lo exige.
+      act: (d) => { let p = null; try { p = rec.handle.requestPermission({ mode: 'readwrite' }); } catch (e) { p = Promise.resolve('denied'); } Promise.resolve(p).then((s) => d.close(s === 'granted'), () => d.close(false)); } });
+    paintWrite(); if (ui.paneFiles && ui.paneFiles.dataset.loaded) loadTree();
+    return ok === true;
+  }
+  // Si se puede escribir ahí; si no, lo pide (quiet: solo contesta, sin preguntar). Lo que no es del disco no pregunta.
+  async function allowWrite(url, quiet) {
+    const rec = diskRec(url);
+    if (!rec || await canWrite(rec.handle, false)) return true;
+    return quiet ? false : askWrite(rec);
+  }
+  // El botón de editar no promete guardar si todavía no hay permiso.
+  async function paintWrite() {
+    const seq = docSeq; const rec = noDoc ? null : diskRec();
+    const ro = !!rec && !(await canWrite(rec.handle, false));
+    if (seq !== docSeq) return;
+    document.documentElement.classList.toggle('lmd-nowrite', ro);
+    const b = ui.main.querySelector('[data-act=mode-edit]');
+    if (b) { if (b.dataset.t0 == null) b.dataset.t0 = b.title || ''; b.title = ro ? T('Editar: el navegador va a pedir permiso para guardar') : b.dataset.t0; }
+  }
+
+  // De copia a archivo real. Con una carpeta ya conocida alcanza con el permiso (un clic, sin selector). Si no, se
+  // elige la carpeta: el navegador no dice su ruta, así que se la reconoce por el nombre y porque adentro, por el
+  // mismo camino, está este mismo archivo con este mismo texto. Recién ahí se anota a qué ruta corresponde.
+  // write false: solo abrir la carpeta (la fila del explorador). Ahí se pide lectura, y guardar se pide al editar.
+  async function fsGrant(write) {
+    if (noDoc || !appRoot || appRoot.kind !== 'fs') return false;
+    const seq = docSeq; const parts = vParts(HERE); const name = parts[parts.length - 1]; const folder = parts[parts.length - 2] || '';
+    const known = await fsKnown(fsFile(HERE));
+    if (known && write === false) { let ok = false; try { ok = (await known.rec.handle.requestPermission({ mode: 'read' })) === 'granted'; } catch (e) { /* hace falta un clic */ } return ok && seq === docSeq ? fsSwap(known.rec, known.rest) : false; }
+    if (known) {
+      // El mismo aviso que al editar en una carpeta abierta en solo lectura: prepara para el cuadro del navegador.
+      const ok = await askWrite(known.rec);
+      if (seq !== docSeq) return false;
+      if (!ok) { fsSay(T('Falta el permiso para guardar en "{a}".', { a: known.rec.name })); return false; }
+      return fsSwap(known.rec, known.rest);
+    }
+    if (!window.showDirectoryPicker) return false;
+    const low = (t) => String(t).toLowerCase();
+    // Dónde arranca el selector: recuerda por id dónde quedó para esta carpeta; la primera vez, lo más cercano ya abierto.
+    let startIn = null; let score = -1;
+    for (const r of await LMD.store.rootsAll()) { if (!r.handle || r.ghost) continue; const at = r.kind === 'dir' ? parts.map(low).lastIndexOf(low(r.name)) : -1; if (at > score) { startIn = r.handle; score = at; } }
+    fsSay(T('Buscá la carpeta "{a}" y elegila.', { a: folder }));
+    let dir = null;
+    const opt = { id: 'lmd-d-' + LMD.bridge.hash(low(parts.slice(0, -1).join('/'))).replace(/[^a-z0-9]/gi, '').slice(0, 24) };
+    if (write !== false) opt.mode = 'readwrite';
+    try { dir = await window.showDirectoryPicker(startIn ? Object.assign({ startIn }, opt) : opt); }
+    catch (e) { if (startIn && !(e && e.name === 'AbortError')) { try { dir = await window.showDirectoryPicker(opt); } catch (err) { /* se canceló */ } } }
+    if (seq !== docSeq) return false;
+    if (!dir) { fsSay(''); return false; }
+    // La carpeta elegida puede ser la del archivo o una de más arriba: se prueba cada lugar de la ruta donde calza su nombre.
+    let hit = null; let other = false;
+    for (let i = parts.length - 2; i >= 0 && !hit; i--) {
+      if (low(parts[i]) !== low(dir.name)) continue;
+      try { const text = await (await (await walk(dir, parts.slice(i + 1))).getFile()).text(); if (sameText(text, diskText)) hit = { i, rest: parts.slice(i + 1) }; else other = true; } catch (e) { /* ahí no está */ }
+    }
+    if (seq !== docSeq) return false;
+    if (!hit) { fsSay(T(other ? 'En "{a}" hay otro "{b}", distinto del que está abierto. Buscá la carpeta del enlace.' : 'La carpeta "{a}" no contiene "{b}". Buscá "{c}".', { a: dir.name, b: name, c: folder })); return false; }
+    let rec = null;
+    for (const r of await LMD.store.rootsAll()) { try { if (r.handle && await r.handle.isSameEntry(dir)) { rec = r; break; } } catch (e) { /* permiso vencido */ } }
+    if (!rec) { const id = Math.random().toString(36).slice(2, 10); rec = { key: 'root:' + id, root: true, id }; }
+    rec.kind = 'dir'; rec.name = dir.name; rec.handle = dir; rec.at = Date.now(); delete rec.ghost;
+    rec.fs = fsFile(FS + parts.slice(0, hit.i + 1).map(encodeURIComponent).join('/') + '/');
+    await handlesPut(rec);
+    return fsSwap(rec, hit.rest);
+  }
+  // La copia pasa a ser el archivo, en el lugar: misma posición, mismo modo, y lo que se cambió en la copia sigue
+  // puesto, sin guardar, hasta que la persona guarde.
+  async function fsSwap(rec, rest) {
+    flushTyping();
+    if (ui.rawEdit && !ui.rawEdit.hidden) { raw = ui.rawEdit.value.replace(/\r?\n/g, eol); syncSource(); }
+    const text = raw; const was = diskText; const y = window.scrollY;
+    roots[rec.id] = rec; fsSaid = '';
+    if (!(await go(rec.id + '/' + rest.map(encodeURIComponent).join('/'), { replace: true, discard: true, tree: true }))) return false;
+    if (text !== was && text !== raw) { core.setRaw(text); flash(T('Lo que cambiaste en la copia sigue sin guardar. Guardá para escribirlo en el archivo.'), 'warn'); }
+    else if (await canWrite(rec.handle, false)) flash(T('Ya es el archivo del disco: guardar escribe en él.'));
+    window.scrollTo(0, y);
+    return true;
+  }
+
   // En la página de la extensión no se puede inyectar con chrome.scripting: las librerías pesadas se cargan con <script>.
   const LAZY_APP = {
     katex: { js: ['vendor/katex/katex.min.js'], css: 'vendor/katex/katex.min.css' },
@@ -1038,6 +1196,10 @@
     document.body.append(ui.sidebar, ui.scrim, ui.main, ui.toTop, ui.keysBtn, ui.panel, ui.viewer, ui.format, ui.tableBar);
 
     ui.article = ui.main.querySelector('.lmd-article');
+    // El cartel de una copia de un archivo del disco (paintCopy), arriba de la nota.
+    ui.copyBar = el('div', { class: 'lmd-copybar', role: 'status', hidden: '' });
+    ui.article.parentNode.insertBefore(ui.copyBar, ui.article);
+    document.addEventListener('click', (e) => { const b = e.target.closest('[data-fs=grant]'); if (b) { e.preventDefault(); fsGrant(!!b.closest('.lmd-copybar')); } const w = e.target.closest('[data-write]'); if (w && diskRoot) { e.preventDefault(); askWrite(diskRoot); } });
     ui.rawPre = ui.main.querySelector('pre.lmd-raw');
     ui.rawEdit = ui.main.querySelector('.lmd-raw-edit');
     ui.status = ui.main.querySelector('.lmd-status');
@@ -1321,6 +1483,31 @@
   const toolItems = (menu) => core.menus[menu].map((fn) => fn()).filter(Boolean);
   // Un archivo del disco abierto por su dirección: el enlace https que lo abre desde un chat o un documento.
   const fileHere = () => (!APP && location.protocol === 'file:' ? LMD.fileUrl(HERE) : '');
+  // La ruta local de un archivo o una carpeta, como la escribe el sistema, solo cuando se la conoce de verdad: un
+  // archivo abierto en el lector (file://), uno abierto por enlace, o lo de una carpeta cuya ruta se supo por esos
+  // caminos (rec.fs). De una carpeta elegida con el selector el navegador no dice la ruta: ahí devuelve ''.
+  const diskUrl = (url) => {
+    const u = String(url || (noDoc ? '' : HERE));
+    if (!u) return '';
+    if (!APP) return isFile && /^file:\/\/\//.test(u) ? u.split(/[?#]/)[0] : '';
+    const r = rootOf(u);
+    if (r && r.kind === 'fs') return fsFile(u);
+    if (r && r.kind === 'dir' && r.fs) return r.fs + vParts(u).map(encodeURIComponent).join('/') + (/\/$/.test(u.split('#')[0]) && vParts(u).length ? '/' : '');
+    return '';
+  };
+  const diskPath = (url) => { const f = diskUrl(url); return f ? LMD.filePath(f) : ''; };
+  // "Ver la carpeta en el navegador": el listado de esa carpeta, en una pestaña nueva. En la web lo abre la extensión,
+  // y solo para carpetas habilitadas. No es el explorador del sistema: una página web no puede abrirlo.
+  const canViewFolder = () => (APP ? window.__MDT_WEB === true && LMD.bridge.canOpen() : isFile);
+  async function viewFolder(url) {
+    const f = diskUrl(url); if (!f) return false;
+    const dir = /\/$/.test(f) ? f : new URL('.', f).href;
+    if (!APP) { window.open(dir, '_blank', 'noopener'); return true; }
+    const r = await LMD.bridge.viewFolder(dir);
+    if (r && r.ok && r.opened) return true;
+    flash(T(r && r.ok && r.why === 'refused' ? 'La extensión solo muestra carpetas que ya abriste con ella.' : 'No se pudo abrir la carpeta.'), 'warn');
+    return false;
+  }
   // Sobre un archivo del disco la cuenta anda acá mismo: el lector le habla al servidor por la extensión (cloud.js).
   // Sobre un .md de un sitio no hay cuenta: las pestañas de Ajustes que la piden llevan una franja que lo dice.
   const NO_ACCT = !APP && !LMD.cloud.reach();
@@ -1335,6 +1522,7 @@
       md && ['copy-html', ICON.code, 'HTML'],
       hasLink() && ['copy-link', ICON.link, 'Enlace a la nota'],
       fileHere() && ['copy-flink', ICON.link, 'Copiar enlace a este archivo'],
+      diskPath() && ['copy-path', ICON.folder, 'Copiar la ruta'],
     ], keys);
   }
   function openExport(btn, keys) {
@@ -1390,6 +1578,7 @@
     else if (act === 'copy-html') { copyText(LMD.extras.htmlOf(), source); flash(T('HTML copiado')); }
     else if (act === 'copy-link') { copyText(location.href.split('#')[0], source); flash(T('Enlace copiado')); }
     else if (act === 'copy-flink') { copyText(LMD.fileLink(fileHere()), source); flash(T('Enlace copiado')); }
+    else if (act === 'copy-path') { copyText(diskPath(), source); flash(T('Ruta copiada')); }
     else if (act === 'export-pdf') window.print();
     else if (act === 'export-md') downloadDoc();
     else if (act === 'share-out') { flushTyping(); LMD.install.shareOut({ text: raw, name: DOC_NAME || 'nota.md', cloud: !!appRoot && appRoot.kind === 'cloud' }); }
@@ -1765,7 +1954,7 @@
     if (checking || noDoc || saving) return;
     // Una nota que todavía no tiene archivo (vive en la sesión) no tiene nada afuera que releer. Su "archivo" es
     // lo que hay en memoria: compararlo con lo guardado (nada, en una nota nueva) daba un cambio en el disco falso.
-    if (appRoot && appRoot.id === 'mem') { if (manual) flash(T('Sin cambios')); return; }
+    if (appRoot && (appRoot.id === 'mem' || appRoot.kind === 'fs')) { if (manual) flash(T('Sin cambios')); return; }
     checking = true;
     const seq = docSeq;
     try {
@@ -2296,7 +2485,7 @@
   const WHERE = { disk: ['disk', 'En el disco'], local: ['browser', 'En este navegador'], cloud: ['cloud', 'En la nube'], team: ['people', 'En el equipo'] };
   // Las notas del equipo viven en la nube, bajo el espacio del equipo: en el explorador son una raíz aparte.
   const teamUrl = () => { const t = APP ? LMD.cloud.teamNow() : null; return t ? VBASE + 'cloud/~' + t.space + '/' : ''; };
-  const sectionOf = (url) => { if (!APP) return isFile ? 'disk' : ''; const r = rootOf(url); if (!r) return ''; if (r.kind === 'cloud') return teamUrl() && url.startsWith(teamUrl()) ? 'team' : 'cloud'; return r.kind === 'local' ? 'local' : 'disk'; };
+  const sectionOf = (url) => { if (!APP) return isFile ? 'disk' : ''; const r = rootOf(url); if (!r) return ''; if (r.kind === 'cloud') return teamUrl() && url.startsWith(teamUrl()) ? 'team' : 'cloud'; return r.kind === 'local' ? 'local' : r.kind === 'fs' ? 'fs' : 'disk'; };
   // Las notas que nacen con la fecha por nombre se listan por su primer renglón.
   const STAMP_RE = /^(nota|note)-\d{8}-\d{4}(-\d+)?\.md$/i;
 
@@ -2333,7 +2522,7 @@
   // La carpeta del disco más reciente que todavía tiene permiso: es la que se muestra al entrar.
   async function recentDisk() {
     for (const r of await LMD.store.rootsAll()) {
-      try { if ((await r.handle.queryPermission({ mode: r.kind === 'dir' ? 'readwrite' : 'read' })) === 'granted') return r; } catch (e) { /* permiso vencido */ }
+      try { if ((await r.handle.queryPermission({ mode: 'read' })) === 'granted') return r; } catch (e) { /* permiso vencido */ }
     }
     return null;
   }
@@ -2379,7 +2568,18 @@
         const top = VBASE + diskRoot.id + '/';
         if (!treeRoot || !treeRoot.startsWith(top)) treeRoot = top;
         const atTop = treeRoot === top;
-        add('disk', { name: atTop ? diskRoot.name : leaf(treeRoot), title: diskRoot.name + (atTop ? '' : '/' + vParts(treeRoot).join('/')), icon: diskRoot.kind === 'dir' ? ICON.folder : ICON.file, url: treeRoot, up: !atTop, add: diskRoot.kind === 'dir' });
+        const diskList = add('disk', { name: atTop ? diskRoot.name : leaf(treeRoot), title: diskRoot.name + (atTop ? '' : '/' + vParts(treeRoot).join('/')), icon: diskRoot.kind === 'dir' ? ICON.folder : ICON.file, url: treeRoot, up: !atTop, add: diskRoot.kind === 'dir' });
+        // De un vistazo: abierta en solo lectura, con la forma de permitir guardar ahí mismo.
+        if (diskRoot.handle && !diskRoot.ghost && !(await canWrite(diskRoot.handle, false))) diskList.before(el('button', { type: 'button', class: 'lmd-link lmd-root-hint lmd-root-ro', 'data-write': '', text: T('Solo lectura · Permitir guardar') }));
+        if (turn !== treeTurn) return;
+      }
+      // Un archivo del disco abierto por enlace: su rama, desde un par de carpetas más arriba, con el camino completo
+      // en el título. Debajo, cómo abrir la carpeta de verdad (para ver todo y poder guardar).
+      if (!noDoc && appRoot && appRoot.kind === 'fs') {
+        const parts = vParts(HERE); const up = Math.max(1, parts.length - 1 - FS_UP);
+        const top = FS + parts.slice(0, up).map(encodeURIComponent).join('/') + '/';
+        const list = add('fs', { name: T('Del disco') + ' · ' + parts[up - 1], title: LMD.filePath(fsFile(top)), icon: ICON.folder, url: top });
+        if (window.showDirectoryPicker) list.after(el('button', { type: 'button', class: 'lmd-link lmd-root-hint', 'data-fs': 'grant', text: T('Abrir esta carpeta') }));
       }
       add('local', { name: T('En este navegador'), icon: ICON.browser, url: VBASE + 'local/', add: true });
       if (LMD.cloud.enabled()) {
@@ -2457,6 +2657,8 @@
     // La raíz de la nota abierta se despliega sola.
     const key = noDoc ? '' : sectionOf(HERE);
     if (key && side.shut[key]) { delete side.shut[key]; saveSide(); fresh = true; }
+    // La rama de un archivo abierto por enlace se arma con cada nota, y se va al pasar a otra cosa.
+    if (key === 'fs' || ui.treeBox.querySelector('.lmd-xroot[data-root=fs]')) fresh = true;
     if (fresh || !markActive()) loadTree();
   }
   // Sube el árbol del disco una carpeta, y lo recuerda para la carpeta de la nota abierta.
@@ -2485,7 +2687,7 @@
     if (ghost && !e.target.closest('.lmd-node-x')) { e.preventDefault(); LMD.bridge.reconnect(ghost.dataset.ghost, homeCtx()).then(() => loadTree()); return true; }
     const x = e.target.closest('.lmd-node-x');
     if (x) { LMD.store.handlesDelete(x.dataset.key).then(() => loadTree()); return true; }
-    if (e.target.closest('.lmd-root-hint')) { LMD.sync.login(); return true; }
+    if (e.target.closest('.lmd-root-hint:not([data-write]):not([data-fs])')) { LMD.sync.login(); return true; }
     const bin = e.target.closest('[data-trash]');
     if (bin) { setDrawer(false); LMD.extras.trash(bin.dataset.trash); return true; }
     // "Bloquear ahora" de una carpeta abierta para la IA.
@@ -3475,8 +3677,11 @@
     }, 350);
   }
 
-  async function setEditMode(on) {
+  // auto: la app entra sola en edición (se venía editando, o la nota está vacía). Ahí, sin permiso para guardar en
+  // la carpeta, no se pregunta nada: la nota queda leyendo. Con el clic de la persona, primero va el aviso.
+  async function setEditMode(on, auto) {
     if (on && readOnly) { flash(T('Esta nota es de solo lectura'), 'warn'); return; }
+    if (on && !editMode && !(await allowWrite('', !!auto))) return;
     // Salir de edición guarda lo pendiente. Si se cancela el guardado, los cambios quedan sin guardar.
     if (!on && editMode) {
       const a = document.activeElement;
@@ -3937,6 +4142,7 @@
     diskDir: () => (APP && diskRoot && diskRoot.kind === 'dir' ? treeRoot : ''),
     newNote: (opt) => LMD.home.create(homeCtx(), opt),
     pick: (what) => LMD.home.pick(homeCtx(), what),
+    diskPath, canViewFolder, viewFolder, fsGrant: () => fsGrant(), allowWrite: (url) => allowWrite(url),
     pickTemplate: () => tools().then((ok) => (ok ? LMD.home.pickTemplate(homeCtx()) : null)),
     tools,
     showFiles,
@@ -4017,9 +4223,9 @@
       box.innerHTML =
         '<div class="lmd-ask-card" role="dialog" aria-label="' + T('Permiso para guardar') + '">' +
           '<h3>' + T('Permiso para guardar') + '</h3>' +
-          '<p>' + T('Chrome pide que elijas dónde puede escribir SharpMD. Elegí la carpeta de este archivo una sola vez y vas a poder guardar todo lo que haya adentro, sin que vuelva a preguntar.') + '</p>' +
+          '<p>' + T('El navegador pide que elijas dónde puede escribir SharpMD. Elegí la carpeta de este archivo una sola vez y vas a poder guardar todo lo que haya adentro, sin que vuelva a preguntar.') + '</p>' +
           (folder ? '<div class="lmd-ask-path"><code></code><button type="button" class="lmd-btn" data-ask="copy">' + T('Copiar') + '</button></div>' +
-            '<p class="lmd-hint lmd-ask-path-hint">' + T('Es la carpeta de este archivo. Queda copiada: pegala en la barra de direcciones de la ventana que abre Chrome.') + '</p>' : '') +
+            '<p class="lmd-hint lmd-ask-path-hint">' + T('Es la carpeta de este archivo. Queda copiada: pegala en la barra de direcciones de la ventana que abre el navegador.') + '</p>' : '') +
           '<div class="lmd-ask-actions">' +
             '<button type="button" class="lmd-btn lmd-btn-fill" data-ask="dir">' + T('Elegir la carpeta') + '</button>' +
             '<button type="button" class="lmd-btn" data-ask="file">' + T('Solo este archivo') + '</button>' +
@@ -4115,6 +4321,8 @@
       if (!(await joinOutside(held.text, held.rev, held.who, true)) || seq !== docSeq) return false;
     }
     if (interactive && appRoot && appRoot.kind === 'local') return saveNoteToDisk();
+    // Una copia de un archivo del disco no tiene dónde guardarse: guardar es pasar al archivo real (pide la carpeta).
+    if (appRoot && appRoot.kind === 'fs') { if (interactive) { if (await fsGrant()) return save(false); if (seq === docSeq && appRoot && appRoot.kind === 'fs' && !window.showDirectoryPicker) flash(T('Es una copia: acá no se puede guardar en el archivo del disco.'), 'warn'); } return false; }
     if (!dirty && fileHandle) { if (interactive) flash(T('Sin cambios para guardar')); return true; }
     try {
       if (!fileHandle) { const found = await storedHandle(interactive); if (seq !== docSeq) return false; fileHandle = found; }
@@ -4307,6 +4515,15 @@
       if (!note) return fail(T('No se encontró "{a}".', { a: name }));
       return { root: roots.local, raw: note.text, disk: note.text };
     }
+    if (id === 'fs') {
+      const file = LMD.fileUrl(fsFile(url)); const known = file ? await fsKnown(file) : null;
+      if (known && known.granted) { try { await walk(known.rec.handle, known.rest); return { goto: known.rec.id + '/' + known.rest.map(encodeURIComponent).join('/') }; } catch (e) { /* ya no está en esa carpeta: queda lo que lea la extensión */ } }
+      let text = null; let why = 'shape';
+      if (file) { try { text = await fsRead(file); } catch (e) { why = e.why || 'failed'; } }
+      // No falla en silencio: lo dice, y ofrece elegir el archivo (install.js sabe por qué no se pudo).
+      if (text == null) { if (file) setTimeout(() => LMD.install.offer(file, homeCtx(), why), 0); return fail(T('No se pudo abrir "{a}".', { a: name })); }
+      return { root: roots.fs, raw: text, disk: text };
+    }
     if (id === 'mem') {
       // Navegador sin acceso a archivos: el documento viaja en la sesión y se guarda descargando una copia.
       let mem = null;
@@ -4319,7 +4536,7 @@
     const rec = (roots[id] && roots[id].root ? roots[id] : null) || (await handlesAll()).find((r) => r.root && r.id === id);
     if (!rec) return fail(T('Ese acceso ya no está guardado. Abrí el archivo o la carpeta de nuevo.'));
     if (rec.ghost) return fail(T('Falta el permiso para abrir "{a}".', { a: rec.name }));
-    const mode = rec.kind === 'dir' ? 'readwrite' : 'read';
+    const mode = 'read'; // abrir es leer: el permiso de escritura se pide al editar o guardar (askWrite)
     let ok = false;
     try { ok = (await rec.handle.queryPermission({ mode })) === 'granted'; } catch (e) { /* se pide abajo */ }
     // Con un clic de por medio Chrome deja pedirlo ahí mismo; al arrancar hace falta el botón de la tarjeta.
@@ -4380,6 +4597,8 @@
       if (seq !== navSeq) return false;
       const doc = f ? await loadDoc(f) : null;
       if (seq !== navSeq) return false;
+      // Un archivo del disco abierto por enlace del que la web ya tiene la carpeta: se abre el archivo real.
+      if (doc && doc.goto) return go(doc.goto, Object.assign({}, opt, { discard: true }));
       if (doc && doc.fail != null) {
         // No se pudo abrir: con una nota a la vista se avisa y queda esa; si no, lo dice el estado vacío.
         if (!noDoc && !opt.pop) { if (doc.fail) flash(doc.fail, 'error'); return false; }
@@ -4418,6 +4637,8 @@
     }
     if (doc && appRoot.root) { appRoot.last = f; appRoot.at = Date.now(); handlesPut(appRoot); }
     paintDoc();
+    paintCopy();
+    paintWrite();
     syncTree(opt.tree);
     if (noDoc) { render(); applyRawMode(); updateSaveState(); window.scrollTo(0, 0); showEmpty(opt.note); }
     else {
@@ -4490,7 +4711,7 @@
     const fresh = !!opt.edit; const blankDoc = !raw.trim(); const draft = opt.edit === true || blankDoc;
     if (fresh || (!readOnly && docKind() === 'md' && (blankDoc || opt.editing || editRemembered()))) {
       // Con Ajustes abiertos (vuelta de un cambio de idioma o de un pago) el menú de insertar no se ofrece: quedaría encima.
-      setEditMode(true).then(() => { const add = draft && ui.panel.hidden && ui.article.querySelector('.lmd-add'); if (add) add.click(); });
+      setEditMode(true, !fresh).then(() => { const add = draft && editMode && ui.panel.hidden && ui.article.querySelector('.lmd-add'); if (add) add.click(); });
     }
     const hash = opt.hash || '';
     const fromSearch = /^#lmd-q=([^&]+)(?:&r=(.+))?$/.exec(hash);
@@ -4568,7 +4789,7 @@
     else if (other) missing = unesc(other.url.split('/').pop() || '');
     if (saved) side = Object.assign(side, saved, { shut: Object.assign({}, saved.shut) });
     LMD.setLang(settings.language);
-    if (APP) { roots.local = { id: 'local', kind: 'local', name: T('En este navegador') }; roots.cloud = { id: 'cloud', kind: 'cloud', name: T('Nube') }; }
+    if (APP) { roots.fs = { id: 'fs', kind: 'fs', name: T('Del disco') }; roots.local = { id: 'local', kind: 'local', name: T('En este navegador') }; roots.cloud = { id: 'cloud', kind: 'cloud', name: T('Nube') }; }
     buildUI();
     applySettings();
     const withDoc = !APP || new URLSearchParams(location.search).has('f');

@@ -777,11 +777,21 @@
       "Detalles de la extensión": "Extension details", "Ayuda": "Help",
       "¿Abrir este archivo de tu disco?": "Open this file from your disk?", "Copiar la ruta": "Copy path",
       "Sin la extensión de Chrome, elegí el archivo.": "Without the Chrome extension, choose the file.",
-      "La ruta ya está copiada. Pegala en el cuadro de nombre de archivo (Ctrl+V) y apretá Enter.": "The path is copied. Paste it in the file name box (Ctrl+V) and press Enter.",
-      "La ruta no se pudo copiar. Copiala con el botón y pegala en el cuadro de nombre de archivo.": "The path could not be copied. Copy it with the button and paste it in the file name box.",
       "Se abrió una copia. El archivo del disco no cambia.": "Opened as a copy. The file on your disk is not changed.",
       "Por enlace, la extensión solo abre lo que está en carpetas que ya abriste con ella. Elegí el archivo.": "By link, the extension only opens what is in folders you already opened with it. Choose the file.",
-      "Elegir el archivo": "Choose the file", "La ruta se copia al tocar el botón. Pegala en el cuadro de nombre de archivo (Ctrl+V) y apretá Enter.": "The path is copied when you press the button. Paste it in the file name box (Ctrl+V) and press Enter.",
+      "Elegir el archivo": "Choose the file", "Buscá \"{a}\" en el selector. La ruta queda copiada, por si tu navegador deja pegarla (Ctrl+V).": "Find \"{a}\" in the picker. The path is copied, in case your browser lets you paste it (Ctrl+V).", "Buscá \"{a}\" en el selector.": "Find \"{a}\" in the picker.",
+      // Un archivo del disco abierto por enlace: la copia, su cartel y el paso al archivo real (content.js)
+      "Ruta copiada": "Path copied", "Ver la carpeta en el navegador": "View the folder in the browser", "Mostrar en el Explorador": "Show in Explorer",
+      "La extensión solo muestra carpetas que ya abriste con ella.": "The extension only shows folders you already opened with it.", "No se pudo abrir la carpeta.": "Could not open the folder.",
+      "Para renombrarlo abrí su carpeta": "To rename it, open its folder", "El navegador no deja cambiar el nombre de un archivo suelto.": "The browser does not allow renaming a file opened on its own.",
+      "Esto es una copia del archivo del disco. Con su carpeta abierta se renombra el archivo de verdad.": "This is a copy of the file on disk. With its folder open, the real file is renamed.",
+      "Del disco": "From disk", "Abrir esta carpeta": "Open this folder", "Editar el archivo del disco": "Edit the file on disk", "Permitir guardar": "Allow saving",
+      "No se pudo abrir \"{a}\".": "Could not open \"{a}\".", "Buscá la carpeta \"{a}\" y elegila.": "Find the folder \"{a}\" and choose it.",
+      "La carpeta \"{a}\" no contiene \"{b}\". Buscá \"{c}\".": "The folder \"{a}\" does not contain \"{b}\". Find \"{c}\".",
+      "En \"{a}\" hay otro \"{b}\", distinto del que está abierto. Buscá la carpeta del enlace.": "\"{a}\" has another \"{b}\", different from the one that is open. Find the folder from the link.",
+      "Falta el permiso para guardar en \"{a}\".": "Permission to save in \"{a}\" is missing.",
+      "Lo que cambiaste en la copia sigue sin guardar. Guardá para escribirlo en el archivo.": "What you changed in the copy is still unsaved. Save to write it to the file.",
+      "Ya es el archivo del disco: guardar escribe en él.": "This is now the file on disk: saving writes to it.", "Es una copia: acá no se puede guardar en el archivo del disco.": "This is a copy: saving to the file on disk is not possible here.",
       "Elegiste \"{a}\". El enlace es a \"{b}\".": "You chose \"{a}\". The link points to \"{b}\".", "Abrir \"{a}\" igual": "Open \"{a}\" anyway",
       "Para abrir con un clic los enlaces a esta carpeta:": "To open links to this folder with one click:", "Abrirlo una vez con la extensión": "Open it once with the extension",
       "Esta versión de la extensión no abre archivos por enlace. Elegí el archivo.": "This version of the extension does not open files by link. Choose the file.",
@@ -818,7 +828,12 @@
       "Este navegador no comparte desde la app. Copiá el texto y pegalo en la otra app.": "This browser does not share from the app. Copy the text and paste it in the other app.",
       "No se pudo compartir el archivo. ¿Compartirlo como texto?": "Could not share the file. Share it as text instead?",
       "No se pudo compartir. Copiá el enlace y pegalo en la otra app.": "Could not share. Copy the link and paste it in the other app.",
-      "Chrome pide que confirmes el acceso antes de seguir.": "Chrome asks you to confirm access before continuing.",
+      "El navegador pide que confirmes el acceso antes de seguir.": "The browser asks you to confirm access before continuing.",
+      // Permiso para guardar en una carpeta o un archivo del disco (content.js, askWrite)
+      "Guardar en \"{a}\"": "Save in \"{a}\"", "Seguir en solo lectura": "Stay read-only", "Solo lectura · Permitir guardar": "Read-only · Allow saving",
+      "Para guardar en esta carpeta, el navegador te va a pedir permiso. El cuadro es del navegador y sale en su idioma: elegí la opción de guardar los cambios.": "To save in this folder, the browser will ask for permission. That box belongs to the browser and shows in its language: choose the option that saves the changes.",
+      "Para guardar en este archivo, el navegador te va a pedir permiso. El cuadro es del navegador y sale en su idioma: elegí la opción de guardar los cambios.": "To save in this file, the browser will ask for permission. That box belongs to the browser and shows in its language: choose the option that saves the changes.",
+      "Editar: el navegador va a pedir permiso para guardar": "Edit: the browser will ask for permission to save",
       "Continuar": "Continue",
       "Ese acceso ya no está guardado. Abrí el archivo o la carpeta de nuevo.": "That access is no longer saved. Open the file or folder again.",
       "No se encontró \"{a}\".": "Could not find \"{a}\".",
@@ -839,8 +854,8 @@
       "Descargá el ZIP, reemplazá con su contenido la carpeta de la extensión y tocá Aplicar. Si la clonaste con git, alcanza con git pull y Aplicar.": "Download the ZIP, replace the extension folder with its contents and click Apply. If you cloned it with git, run git pull and click Apply.",
       "Ahora no": "Not now",
       "Permiso para guardar": "Permission to save",
-      "Es la carpeta de este archivo. Queda copiada: pegala en la barra de direcciones de la ventana que abre Chrome.": "This is the folder of this file. It is copied: paste it in the address bar of the window Chrome opens.",
-      "Chrome pide que elijas dónde puede escribir SharpMD. Elegí la carpeta de este archivo una sola vez y vas a poder guardar todo lo que haya adentro, sin que vuelva a preguntar.": "Chrome asks you to choose where SharpMD may write. Pick this file's folder once and you can save everything inside it, without being asked again.",
+      "Es la carpeta de este archivo. Queda copiada: pegala en la barra de direcciones de la ventana que abre el navegador.": "This is the folder of this file. It is copied: paste it in the address bar of the window the browser opens.",
+      "El navegador pide que elijas dónde puede escribir SharpMD. Elegí la carpeta de este archivo una sola vez y vas a poder guardar todo lo que haya adentro, sin que vuelva a preguntar.": "The browser asks you to choose where SharpMD may write. Pick this file's folder once and you can save everything inside it, without being asked again.",
       "Elegir la carpeta": "Choose the folder",
       "Solo este archivo": "This file only",
       "Cancelar": "Cancel",
@@ -2116,7 +2131,7 @@
   const fileLink = (url) => WEB_APP_URL + '#open=' + encodeURIComponent(url);
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.76.0';
+  const VERSION = '2.77.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, PLUGIN_SAMPLES, PLUGIN_GROUPS, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);
