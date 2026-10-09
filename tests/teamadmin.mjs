@@ -427,7 +427,9 @@ try {
   check('el menú de la nota no le ofrece compartir ni la sesión en vivo, y dice su equipo y su papel en vez de un plan', !lMenu.includes('share') && !lMenu.includes('live') && lMenu.includes('history') && lLabel === 'lucia@ejemplo.test · Taller · Reader', [lMenu, lLabel]);
   await lucia.page.keyboard.press('Escape'); await lucia.page.evaluate(() => { const m = document.querySelector('.lmd-menu'); if (m) m.remove(); });
   await lucia.page.evaluate(() => { const n = document.querySelector('[data-root=team] .lmd-node'); n.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 200 })); }); await sleep(300);
-  check('en una nota del equipo no hay menú para renombrar ni eliminar', !(await lucia.page.$('.lmd-menu [data-f]')));
+  // Quien solo lee puede exportar la carpeta; lo que no tiene es nada que cambie el espacio.
+  const lFile = await lucia.page.evaluate(() => [...document.querySelectorAll('.lmd-menu [data-f]')].map((x) => x.dataset.f));
+  check('en una nota del equipo no hay menú para renombrar ni eliminar', !lFile.some((f) => /ren|del|rm|mov|new|tpl|dir|auto/i.test(f)), lFile);
   await api('PUT', '/notes/' + enc('borrada.md') + OS, { text: 'x' }, U.s); await api('DELETE', '/notes/' + enc('borrada.md') + OS, undefined, U.s);
   await lucia.page.evaluate((s) => document.querySelector('[data-trash="' + s + '"]').click(), String(SP)); await lucia.page.waitForSelector('.lmd-trash li');
   const trashUi = await lucia.page.evaluate(() => { const t = document.querySelector('.lmd-trash'); return { rows: t.querySelectorAll('li').length, acts: t.querySelectorAll('[data-tr=back], [data-tr=del], [data-tr=empty]').length }; });
