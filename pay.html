@@ -7,40 +7,38 @@
 <meta name="robots" content="noindex">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/icon32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="icons/icon16.png">
+<link rel="preload" href="site/fonts/figtree.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="site/site.css">
 <style>
-  @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
-  :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --faint: #8a909c; --line: #dedbd2; --accent: #3f6b0c; --fill: #4d7c0f; --on: #fff; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #121418; --soft: #1a1d23; --fg: #e6e8ec; --muted: #a0a7b4; --faint: #737b89; --line: #2a2e37; --accent: #bef264; --fill: #bef264; --on: #14161a; } }
-  * { box-sizing: border-box; }
-  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--bg); color: var(--fg); font: 16px/1.55 "MDT Inter", -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
-  html[data-lang="en"] [lang="es"], html[data-lang="es"] [lang="en"] { display: none !important; }
-  main { width: min(440px, 100%); padding: 30px 32px; border: 1px solid var(--line); border-radius: 16px; background: var(--soft); }
-  .brand { display: flex; align-items: center; gap: 9px; margin-bottom: 22px; font-weight: 400; color: inherit; text-decoration: none; }
-  .brand img { width: 26px; height: 26px; border-radius: 6px; }
-  .brand b { font-weight: 700; }
-  h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: -0.02em; }
-  .price { margin: 0 0 4px; font-size: 32px; font-weight: 720; letter-spacing: -0.03em; }
-  .price small { font-size: 15px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+  /* The fonts, the colors, the name and the buttons come from site/site.css. Here, what only this page has. */
+  body { min-height: 100vh; display: grid; place-items: center; padding: 24px; font-size: 16px; }
+  main { width: min(452px, 100%); padding: 30px 34px 30px; border: 1px solid var(--line); border-radius: 16px; background: var(--soft); }
+  .brand { margin-bottom: 18px; }
+  h1 { margin: 0 0 8px; font-size: 26px; line-height: 1.15; letter-spacing: -0.014em; font-weight: 700; }
+  .price { margin: 0 0 6px; color: var(--fg); font-size: 34px; line-height: 1.15; font-weight: 700; letter-spacing: -0.018em; }
+  .price small { font-size: 15.5px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
   p { margin: 0 0 14px; color: var(--muted); }
-  .who { margin: 16px 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); font-size: 14.5px; color: var(--fg); overflow-wrap: anywhere; }
-  .who small { display: block; color: var(--faint); font-size: 12.5px; }
-  .btn { display: inline-flex; align-items: center; justify-content: center; width: 100%; padding: 13px 20px; border: 1px solid var(--fill); border-radius: 999px; background: var(--fill); color: var(--on); font: inherit; font-weight: 650; text-decoration: none; cursor: pointer; }
-  .btn:hover { filter: brightness(1.06); }
+  .who { margin: 18px 0; padding: 11px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); font-size: 15px; color: var(--fg); overflow-wrap: anywhere; }
+  .who small { display: block; margin-bottom: 2px; color: var(--muted); font: 400 11.5px/1.4 var(--mono); letter-spacing: .02em; }
+  .btn { width: 100%; background: var(--fill); border-color: var(--fill); color: var(--on); }
+  .btn:hover { border-color: var(--fill); filter: brightness(1.06); }
   .btn.ghost { margin-top: 10px; background: transparent; border-color: var(--line); color: var(--fg); }
-  .seats { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; color: var(--muted); font-size: 14.5px; }
+  .btn.ghost:hover { border-color: var(--rule); filter: none; }
+  .seats { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; color: var(--muted); font-size: 15px; }
   .seats span { flex: 1; }
   .seats b { min-width: 2ch; text-align: center; color: var(--fg); font-size: 17px; }
-  .seats button { width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--fg); font: inherit; font-size: 20px; line-height: 1; cursor: pointer; }
+  .seats button { width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--fg); font: inherit; font-size: 20px; line-height: 1; cursor: pointer; transition: border-color .15s; }
+  .seats button:hover { border-color: var(--rule); }
   .seats button:disabled { opacity: 0.4; cursor: default; }
-  .fine { margin: 16px 0 0; font-size: 13px; color: var(--faint); }
+  .fine { margin: 16px 0 0; font-size: 13.5px; color: var(--faint); }
   .fine.agree { margin-top: 10px; text-align: center; color: var(--muted); }
-  .fine a { color: var(--accent); }
-  .legal { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; margin: 18px 0 0; font-size: 12.5px; }
-  .legal a { color: var(--faint); text-decoration: none; }
-  .legal a:hover { color: var(--fg); }
-  .back { display: block; margin-top: 14px; text-align: center; font-size: 14px; color: var(--muted); }
+  .fine a { color: var(--accent); text-underline-offset: 3px; }
+  .legal { justify-content: center; gap: 4px 14px; margin: 20px 0 0; padding: 0; border: 0; font-size: 13px; }
+  .back { display: block; margin-top: 14px; text-align: center; font-size: 14.5px; color: var(--muted); text-underline-offset: 3px; transition: color .15s; }
   .back:hover { color: var(--accent); }
   [hidden] { display: none !important; }
+  @media (max-width: 640px) { body { padding: 16px; } main { padding: 24px 22px; } .legal { gap: 0 16px; } .back { display: flex; align-items: center; justify-content: center; min-height: 44px; margin-top: 6px; } }
+  @media (prefers-reduced-motion: reduce) { .seats button, .back { transition: none; } }
 </style>
 </head>
 <body>

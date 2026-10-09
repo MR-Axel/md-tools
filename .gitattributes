@@ -6,6 +6,7 @@
 /index.html export-ignore
 /privacy.html export-ignore
 /site.js export-ignore
+/site/ export-ignore
 /README.md export-ignore
 /README.es.md export-ignore
 /.gitignore export-ignore

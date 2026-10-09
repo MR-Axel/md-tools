@@ -39,7 +39,7 @@ try {
         const bad = []; page.on('requestfailed', (r) => { if (r.url().startsWith(R.origin)) bad.push(r.url().slice(R.origin.length) + ' ' + (r.failure() || {}).errorText); });
         const before = R.errors.length;
         await page.goto(R.origin + rel); await page.waitForSelector('h1');
-        const top = await page.evaluate(() => ({ h1: document.querySelector('h1').innerText.trim(), lang: document.documentElement.lang, font: document.fonts.check('16px "MDT Inter"'), clips: document.querySelectorAll('video.clip').length,
+        const top = await page.evaluate(() => ({ h1: document.querySelector('h1').innerText.trim(), lang: document.documentElement.lang, font: document.fonts.check('16px "Figtree"'), clips: document.querySelectorAll('video.clip').length,
           poster: [...document.querySelectorAll('video.clip')].map((v) => !!(v.getAttribute('poster') || v.getAttribute('data-poster'))), sources: [...document.querySelectorAll('video.clip')].map((v) => [...v.querySelectorAll('source')].map((s) => s.type).join()) }));
         check('portada ' + lang + ' ' + size + ': título, idioma y tipografía', top.h1.length > 10 && top.lang === lang && top.font, top);
         check('portada ' + lang + ' ' + size + ': no se pasa de ancho', (await fits(page)) <= 1, await fits(page));

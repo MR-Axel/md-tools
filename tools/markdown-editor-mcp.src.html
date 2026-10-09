@@ -8,40 +8,17 @@
 <meta name="robots" content="noindex">
 <!--HEAD-->
 <style>
-  @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
-  :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --line: #dedbd2; --accent: #4d7c0f; --on: #fff; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #121418; --soft: #1a1d23; --fg: #e6e8ec; --muted: #a0a7b4; --line: #2a2e37; --accent: #bef264; --on: #14161a; } }
-  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.65 "MDT Inter", -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
-  main { width: min(720px, 100% - 40px); margin: 0 auto; padding: 46px 0 80px; }
-  .top { display: flex; align-items: center; gap: 14px; margin-bottom: 40px; }
-  .top > a { margin-right: auto; color: var(--muted); text-decoration: none; font-weight: 400; }
-  .top b { font-weight: 700; }
-  .lang { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); }
-  .lang a { display: flex; align-items: center; height: 26px; padding: 0 11px; border-radius: 999px; color: var(--muted); font-size: 12.5px; font-weight: 600; text-decoration: none; }
-  .lang a.on { background: var(--accent); color: var(--on); }
-  h1 { margin: 0 0 14px; font-size: 38px; line-height: 1.15; letter-spacing: -0.03em; }
-  h2 { margin: 34px 0 8px; font-size: 21px; letter-spacing: -0.015em; }
-  p, li { color: var(--muted); }
-  .lede { margin: 0 0 22px; font-size: 19px; }
-  a { color: var(--accent); }
-  code { padding: 1px 6px; border-radius: 5px; background: var(--soft); font: 0.88em ui-monospace, Consolas, monospace; color: var(--fg); }
-  .btn { display: inline-flex; align-items: center; height: 44px; padding: 0 20px; border-radius: 10px; background: var(--accent); color: var(--on); font-weight: 650; text-decoration: none; }
-  .under { margin: 10px 0 0; font-size: 14px; }
-  .next { margin-top: 40px; }
-  .legal { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 52px 0 0; padding-top: 18px; border-top: 1px solid var(--line); font-size: 14px; }
-  .legal a { color: var(--muted); text-decoration: none; }
-  .legal a:hover, .legal a[aria-current] { color: var(--fg); }
-  @media (max-width: 640px) { h1 { font-size: 31px; } }
+/*SITE-CSS*/
 </style>
 </head>
-<body>
+<body class="doc">
 <main>
-  <div class="top"><a href="./">← <b>Sharp</b>MD</a><!--LANG--></div>
+  <div class="top"><a class="brand" href="./"><img src="icons/logo.svg" alt="" width="26" height="26"><span><b>Sharp</b>MD</span></a><!--LANG--></div>
 
   <div lang="en">
     <h1>A Markdown editor for Claude, Codex and other AI agents, over MCP</h1>
     <p class="lede">SharpMD is a Markdown editor in the cloud with the MCP endpoint already running. Your AI reads your notes before it works and writes down what it did. You edit the same notes on the formatted page.</p>
-    <p><a class="btn" href="src/app.html">Open the app</a></p>
+    <p><a class="btn fill" href="src/app.html">Open the app</a></p>
     <p class="under">Free over 10 cloud notes. SharpMD has no AI of its own: you connect yours.</p>
 
     <h2>Your AI reads and writes your notes</h2>
@@ -71,14 +48,14 @@
     <h2>Free over 10 notes</h2>
     <p>The free plan has 10 notes in the cloud and the MCP connection over those notes, with the comments your AI resolves. The paid plan has unlimited cloud notes. The editor is free and open source, and it asks for no account to write.</p>
 
-    <p class="next"><a class="btn" href="src/app.html">Open the app</a></p>
+    <p class="next"><a class="btn fill" href="src/app.html">Open the app</a></p>
     <p>You edit those notes without typing syntax: see the <a href="wysiwyg-markdown-editor.html">WYSIWYG Markdown editor</a>. Plans and everything else are on the <a href="./">SharpMD home page</a>.</p>
   </div>
 
   <div lang="es">
     <h1>Un editor de Markdown para Claude, Codex y otros agentes de IA, por MCP</h1>
     <p class="lede">SharpMD es un editor de Markdown en la nube con la conexión MCP ya andando. Tu IA lee tus notas antes de trabajar y deja escrito lo que hizo. Vos editás las mismas notas sobre la página ya formateada.</p>
-    <p><a class="btn" href="src/app.html">Abrir la app</a></p>
+    <p><a class="btn fill" href="src/app.html">Abrir la app</a></p>
     <p class="under">Gratis sobre 10 notas en la nube. SharpMD no trae una IA propia: conectás la tuya.</p>
 
     <h2>Tu IA lee y escribe tus notas</h2>
@@ -108,7 +85,7 @@
     <h2>Gratis sobre 10 notas</h2>
     <p>El plan gratis tiene 10 notas en la nube y la conexión MCP sobre esas notas, con los comentarios que tu IA resuelve. El plan pago tiene notas en la nube sin límite. El editor es gratis y de código abierto, y no pide cuenta para escribir.</p>
 
-    <p class="next"><a class="btn" href="src/app.html">Abrir la app</a></p>
+    <p class="next"><a class="btn fill" href="src/app.html">Abrir la app</a></p>
     <p>Esas notas las editás sin escribir sintaxis: mirá el <a href="./wysiwyg-markdown-editor.html">editor de Markdown WYSIWYG</a>. Los planes y todo lo demás están en la <a href="./">portada de SharpMD</a>.</p>
   </div>
   <p class="legal"><a href="./"><span lang="en">Home</span><span lang="es">Portada</span></a><a href="[[markdown-editor-mcp.html||./markdown-editor-mcp.html]]" aria-current="page"><span lang="en">Markdown editor for AI agents</span><span lang="es">Editor de Markdown para agentes de IA</span></a><a href="[[wysiwyg-markdown-editor.html||./wysiwyg-markdown-editor.html]]"><span lang="en">WYSIWYG Markdown editor</span><span lang="es">Editor de Markdown WYSIWYG</span></a><a href="privacy.html"><span lang="en">Privacy</span><span lang="es">Privacidad</span></a><a href="terms.html"><span lang="en">Terms</span><span lang="es">Términos</span></a><a href="support.html"><span lang="en">Support</span><span lang="es">Ayuda</span></a></p>

@@ -7,34 +7,12 @@
 <meta name="description" content="The app has no analytics. Files are read in your browser and never uploaded. Cloud notes are optional.">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/icon32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="icons/icon16.png">
-<style>
-  @font-face { font-family: "MDT Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("vendor/fonts/inter.woff2") format("woff2"); }
-  :root { color-scheme: light dark; --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --line: #dedbd2; --accent: #4d7c0f; --on: #fff; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #121418; --soft: #1a1d23; --fg: #e6e8ec; --muted: #a0a7b4; --line: #2a2e37; --accent: #bef264; --on: #14161a; } }
-  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.65 "MDT Inter", -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
-  html[data-lang="en"] [lang="es"], html[data-lang="es"] [lang="en"] { display: none !important; }
-  main { width: min(720px, 100% - 40px); margin: 0 auto; padding: 46px 0 80px; }
-  .top { display: flex; align-items: center; gap: 14px; margin-bottom: 40px; }
-  .top a { margin-right: auto; color: var(--muted); text-decoration: none; font-weight: 400; }
-  .top b { font-weight: 700; }
-  .lang { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); }
-  .lang button { height: 26px; padding: 0 11px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
-  html[data-lang="en"] .lang [data-set="en"], html[data-lang="es"] .lang [data-set="es"] { background: var(--accent); color: var(--on); }
-  h1 { margin: 0 0 6px; font-size: 38px; letter-spacing: -0.03em; }
-  h2 { margin: 34px 0 8px; font-size: 21px; letter-spacing: -0.015em; }
-  h3 { margin: 26px 0 6px; font-size: 17.5px; letter-spacing: -0.01em; scroll-margin-top: 16px; }
-  p, li { color: var(--muted); }
-  .date { margin: 0 0 26px; font-size: 14px; }
-  a { color: var(--accent); }
-  code { padding: 1px 6px; border-radius: 5px; background: var(--soft); font: 0.88em ui-monospace, Consolas, monospace; color: var(--fg); }
-  .legal { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 52px 0 0; padding-top: 18px; border-top: 1px solid var(--line); font-size: 14px; }
-  .legal a { color: var(--muted); text-decoration: none; }
-  .legal a:hover, .legal a[aria-current] { color: var(--fg); }
-</style>
+<link rel="preload" href="site/fonts/figtree.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="site/site.css">
 </head>
-<body>
+<body class="doc">
 <main>
-  <div class="top"><a href="./">← <b>Sharp</b>MD</a><div class="lang"><button type="button" data-set="en">EN</button><button type="button" data-set="es">ES</button></div></div>
+  <div class="top"><a class="brand" href="./"><img src="icons/logo.svg" alt="" width="26" height="26"><span><b>Sharp</b>MD</span></a><div class="lang"><button type="button" data-set="en">EN</button><button type="button" data-set="es">ES</button></div></div>
 
   <div lang="en">
     <h1>Privacy</h1>

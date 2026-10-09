@@ -1,0 +1,107 @@
+/* SharpMD site styles. One sheet for every static page of sharpmd.app.
+   The help, legal and payment pages link it. tools/build-site.mjs writes it into the landing page (the first part) and
+   into the search pages (all of it), so those load with no extra request. The app does not use it.
+   Fonts: Figtree and JetBrains Mono, SIL Open Font License 1.1 (site/fonts/OFL-*.txt). Cut down to Latin (Figtree with
+   variable weight, JetBrains Mono in regular, 25 KB the two) and served from this site. */
+
+@font-face { font-family: "Figtree"; font-style: normal; font-weight: 300 900; font-display: swap; src: url("fonts/figtree.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/jetbrains-mono.woff2") format("woff2"); }
+/* Until the fonts arrive the text shows in a system font of about the same width (Segoe UI is within 1% of Figtree in
+   regular), and line heights are fixed, so nothing moves when they swap. A resized local() font would match closer, but
+   Chrome looks it up before the first paint and that paint arrives about 40 ms later. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --faint: #666d79; --rule: #8a909c; --line: #dedbd2;
+  --accent: #3f6b0c; --fill: #4d7c0f; --on: #fff;
+  --shadow: 0 1px 2px rgba(30, 32, 38, .05), 0 18px 44px rgba(30, 32, 38, .11);
+  --sans: "Figtree", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #121418; --soft: #1a1d23; --fg: #e8eaee; --muted: #a4abb7; --faint: #8f97a5; --rule: #737b89; --line: #2a2e37; --accent: #c5f467; --fill: #c5f467; --on: #14161a; --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 22px 54px rgba(0, 0, 0, .42); }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 400 17px/1.55 var(--sans); -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: 100%; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+code { padding: 1px 6px; border-radius: 6px; background: var(--soft); font: 0.86em var(--mono); color: var(--fg); }
+kbd { padding: 1px 7px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; background: var(--soft); font: 0.84em var(--mono); color: var(--fg); }
+
+/* The name: Sharp in bold, MD in regular, next to the logo. */
+.brand { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; color: var(--fg); font-size: 18px; font-weight: 400; letter-spacing: -0.01em; text-decoration: none; }
+.brand img { width: 26px; height: 26px; border-radius: 6px; }
+.brand b { font-weight: 700; }
+
+/* EN / ES */
+.lang { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
+.lang a, .lang button { position: relative; display: grid; place-items: center; height: 28px; min-width: 38px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font: 400 12px/1 var(--mono); letter-spacing: .02em; text-decoration: none; cursor: pointer; transition: color .15s, background-color .15s; }
+.lang a:hover, .lang button:hover { color: var(--fg); }
+.lang a.on { background: var(--fill); color: var(--on); }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 48px; padding: 11px 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); color: var(--fg); font: inherit; font-weight: 650; line-height: 1.3; text-align: center; text-decoration: none; cursor: pointer; transition: border-color .15s, background-color .15s, filter .15s, transform .15s; }
+.btn:hover { border-color: var(--rule); }
+.btn:active { transform: translateY(1px); }
+.btn.fill { background: var(--fill); border-color: var(--fill); color: var(--on); }
+.btn.fill:hover { border-color: var(--fill); filter: brightness(1.06); }
+.btn.small { min-height: 38px; padding: 6px 15px; border-radius: 10px; font-size: 14.5px; }
+
+/* A small label in the monospaced font, with the cursor of the logo in front of it. */
+.eyebrow { display: flex; align-items: center; gap: 9px; margin: 0 0 20px; color: var(--muted); font: 400 13px/1.35 var(--mono); letter-spacing: .02em; }
+.eyebrow::before { content: ""; flex: none; width: 8px; height: 15px; border-radius: 2px; background: var(--fill); }
+
+@media (max-width: 640px) {
+  /* On a phone the two languages keep their look and get a 44 px target. */
+  .lang a::after, .lang button::after { content: ""; position: absolute; inset: -9px 0; }
+  .lang a, .lang button { min-width: 44px; }
+}
+@media (prefers-reduced-motion: reduce) { .btn, .lang a, .lang button { transition: none; } }
+
+/* ==== text pages ==== */
+/* A page of text: help, legal, the API reference and the search pages. */
+.doc main { width: min(608px, 100% - 40px); margin: 0 auto; padding: 0 0 96px; }
+/* The API reference has tables and code, which take more room; its text keeps the same line length. */
+.doc.broad main { width: min(780px, 100% - 40px); }
+.doc.broad main p, .doc.broad main li { max-width: 608px; }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 64px; margin-bottom: 64px; border-bottom: 1px solid var(--line); }
+.doc h1 { margin: 0 0 14px; font-size: clamp(31px, 5vw, 42px); line-height: 1.1; letter-spacing: -0.018em; font-weight: 700; text-wrap: balance; }
+.doc h2 { margin: 46px 0 10px; font-size: 22px; line-height: 1.25; letter-spacing: -0.012em; font-weight: 700; scroll-margin-top: 16px; }
+.doc h3 { margin: 30px 0 6px; font-size: 18px; line-height: 1.3; letter-spacing: -0.008em; font-weight: 650; scroll-margin-top: 16px; }
+.doc p { margin: 0 0 16px; }
+.doc p, .doc li, .doc td { color: var(--muted); overflow-wrap: break-word; }
+.doc li { margin: 0 0 6px; }
+.doc ul, .doc ol { margin: 0 0 16px; padding-left: 22px; }
+.doc main a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.doc .top a, .doc a.btn { color: var(--fg); text-decoration: none; }
+.doc a.btn.fill, .doc .lang a.on { color: var(--on); }
+.doc .lang a:not(.on) { color: var(--muted); }
+.doc .lang a:not(.on):hover { color: var(--fg); }
+.doc .date { position: relative; margin: 0 0 36px; padding-left: 16px; color: var(--muted); font: 400 12.5px/1.5 var(--mono); letter-spacing: .02em; }
+.doc .date::before { content: ""; position: absolute; left: 0; top: 2px; width: 7px; height: 14px; border-radius: 2px; background: var(--fill); }
+.doc .lede { margin: 0 0 26px; font-size: 19px; }
+.doc .under { margin: 12px 0 0; font-size: 14.5px; color: var(--faint); }
+.doc .next { margin-top: 44px; }
+.doc pre { margin: 12px 0 18px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); overflow-x: auto; font: 13px/1.6 var(--mono); color: var(--fg); }
+.doc pre code { padding: 0; background: none; font: inherit; }
+.doc table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 15px; }
+.doc th, .doc td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.doc th { color: var(--fg); font: 400 12px/1.4 var(--mono); letter-spacing: .02em; }
+.doc .wide { overflow-x: auto; }
+.legal { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 72px 0 0; padding-top: 22px; border-top: 1px solid var(--line); font-size: 14px; }
+.doc main .legal a, .legal a { color: var(--muted); text-decoration: none; transition: color .15s; }
+.doc main .legal a:hover, .doc main .legal a[aria-current], .legal a:hover, .legal a[aria-current] { color: var(--fg); }
+@media (max-width: 640px) {
+  .top { margin-bottom: 40px; }
+  .doc h2 { margin-top: 38px; }
+  .legal { gap: 0 20px; }
+  .legal a { display: inline-flex; align-items: center; min-height: 44px; }
+  /* a link in the line under the title: same place, a taller target */
+  .doc .date a { display: inline-block; margin: -13px 0; padding: 13px 0; }
+}
+@media (prefers-reduced-motion: reduce) { .legal a { transition: none; } }
+
+/* ==== two languages ==== */
+/* The pages written by hand carry both languages; site.js shows one. */
+html[data-lang="en"] [lang="es"], html[data-lang="es"] [lang="en"] { display: none !important; }
+html[data-lang="en"] .lang [data-set="en"], html[data-lang="es"] .lang [data-set="es"] { background: var(--fill); color: var(--on); }

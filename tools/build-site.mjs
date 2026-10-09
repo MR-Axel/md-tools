@@ -14,8 +14,18 @@ const src = fs.readFileSync(path.join(root, 'tools', 'landing.src.html'), 'utf8'
   .replace('<div class="plans">', TEAM_OPEN ? '<div class="plans three">' : '<div class="plans">');
 if (/<!--\/?TEAM-->/.test(src)) throw new Error('quedó una marca del plan de equipo sin resolver');
 // La imagen que se ve al compartir el enlace: la arma tests/social.mjs. Si cambia, cambia de nombre, para que las redes no usen la anterior.
-const CARD = SITE + '/docs/social-card-4.png';
+const CARD = SITE + '/docs/social-card-5.png';
 const CARD_ALT = { en: 'SharpMD: Markdown notes your AI writes and your team reads', es: 'SharpMD: notas en Markdown que tu IA escribe y tu equipo lee' };
+
+// The look every page shares lives in site/site.css. The pages written by hand link it. The ones generated here carry it
+// inside their <style>, so they need no extra request: the landing page takes the first part (fonts, colors, name,
+// buttons) and the search pages take the layout of a page of text too. The comments go, and the fonts get their path.
+const SHEET = fs.readFileSync(path.join(root, 'site', 'site.css'), 'utf8').replace(/\r\n/g, '\n');
+const PARTS = SHEET.split(/\/\* ==== [a-z ]+ ==== \*\/\n/);
+if (PARTS.length !== 3) throw new Error('site/site.css has to keep its three parts, and has ' + PARTS.length);
+const sheet = (css) => css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/url\("fonts\//g, 'url("site/fonts/').split('\n').map((l) => l.trim()).filter(Boolean).map((l) => '  ' + l).join('\n');
+const CSS = { core: sheet(PARTS[0]), text: sheet(PARTS[0] + PARTS[1]) };
+const FONTS = (up, list) => list.map((f) => '<link rel="preload" href="' + up + 'site/fonts/' + f + '.woff2" as="font" type="font/woff2" crossorigin>');
 
 // Los precios que muestra la portada, en un solo lugar: las tarjetas de los planes, la pregunta frecuente y los datos
 // estructurados. El anual va primero, como opción principal, y el mensual debajo. El equipo se cobra por persona. La columna
@@ -59,6 +69,7 @@ function build(lang) {
   const spans = new RegExp('<span lang="(en|es)">([\\s\\S]*?)</span>', 'g');
   html = html.replace(spans, (all, l, inner) => { if (inner.includes('<span')) throw new Error('span anidado en: ' + inner.slice(0, 80)); return l === lang ? inner : ''; });
   if (/lang="(en|es)"/.test(html.replace(/<html[^>]*>/, ''))) throw new Error('quedó una marca de idioma sin resolver');
+  html = html.replace('/*SITE-CSS-CORE*/', () => CSS.core.trimStart());
   // preguntas frecuentes, también como datos estructurados
   const faq = [...html.matchAll(/<details class="faq"><summary>([\s\S]*?)<\/summary><p>([\s\S]*?)<\/p><\/details>/g)].map((x) => ({ '@type': 'Question', name: plain(x[1]), acceptedAnswer: { '@type': 'Answer', text: plain(x[2]) } }));
   if (faq.length < 3) throw new Error('no se encontraron las preguntas frecuentes');
@@ -82,7 +93,9 @@ function build(lang) {
     '<meta property="og:image" content="' + CARD + '">', '<meta property="og:image:type" content="image/png">', '<meta property="og:image:width" content="1200">', '<meta property="og:image:height" content="630">', '<meta property="og:image:alt" content="' + esc(CARD_ALT[lang]) + '">',
     '<meta name="twitter:card" content="summary_large_image">', '<meta name="twitter:title" content="' + esc(m.title) + '">', '<meta name="twitter:description" content="' + esc(m.og) + '">', '<meta name="twitter:image" content="' + CARD + '">', '<meta name="twitter:image:alt" content="' + esc(CARD_ALT[lang]) + '">',
     '<meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">', '<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">',
-    '<link rel="preload" href="' + up + 'vendor/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>',
+    // Only the font of the text is asked for ahead. The one of the small label over the headline comes when the page is
+    // drawn: asked for here too, it takes bandwidth from the HTML itself and the first paint arrives later.
+    ...FONTS(up, ['figtree']),
     '<link rel="preload" href="' + up + 'docs/clips/hero.jpg" as="image" fetchpriority="high">',
     '<link rel="icon" type="image/png" sizes="32x32" href="' + up + 'icons/icon32.png">', '<link rel="icon" type="image/png" sizes="16x16" href="' + up + 'icons/icon16.png">',
     '<script type="application/ld+json">' + JSON.stringify(app) + '</script>',
@@ -90,7 +103,7 @@ function build(lang) {
   ].join('\n');
   html = html.replace(/<!--HEAD-->/, head).replace(/<html[^>]*>/, '<html lang="' + lang + '">');
   html = html.replace(/<!--LANG-->/, '<div class="lang"><a href="' + (lang === 'en' ? 'es/' : '../') + '?site"' + (lang === 'en' ? ' class="on" aria-current="true"' : '') + ' hreflang="' + (lang === 'en' ? 'es' : 'en') + '">EN</a><a href="' + (lang === 'en' ? 'es/' : '../') + '?site"' + (lang === 'es' ? ' class="on" aria-current="true"' : '') + ' hreflang="' + (lang === 'en' ? 'es' : 'en') + '">ES</a></div>');
-  if (/<!--(HEAD|LANG)-->/.test(html) || /%%|\[\[[^\]]*\|\|/.test(html)) throw new Error('faltó reemplazar una marca');
+  if (/<!--(HEAD|LANG)-->/.test(html) || /%%|\[\[[^\]]*\|\||SITE-CSS/.test(html)) throw new Error('faltó reemplazar una marca');
   // en /es/ las rutas relativas suben un nivel
   if (up) html = html.replace(/\b(href|src|poster|data-poster)="(?!https?:|mailto:|#|\/|\.\.?\/)([^"]+)"/g, '$1="' + up + '$2"').replace(/url\("(?!https?:|data:|\/|\.\.\/)([^"]+)"\)/g, 'url("' + up + '$1")');
   if (new RegExp('<span lang="' + other + '"').test(html)) throw new Error('quedó texto en ' + other);
@@ -125,6 +138,7 @@ function buildPage(slug, lang) {
   html = html.replace(/\[\[([^\]|]+)\|\|([^\]|]+)\]\]/g, (all, en, es) => esc(lang === 'en' ? en : es));
   html = html.replace(/<span lang="(en|es)">([\s\S]*?)<\/span>/g, (all, l, inner) => (l === lang ? inner : ''));
   if (/lang="(en|es)"/.test(html.replace(/<html[^>]*>/, ''))) throw new Error(slug + ': quedó una marca de idioma sin resolver');
+  html = html.replace('/*SITE-CSS*/', () => CSS.text.trimStart());
   const head = [
     // la app, en "automático", sigue el idioma de la página que se vio
     '<script>try{localStorage.setItem("mdtools:site-lang","' + lang + '")}catch(e){}</script>',
@@ -139,13 +153,14 @@ function buildPage(slug, lang) {
     '<meta property="og:image" content="' + CARD + '">', '<meta property="og:image:type" content="image/png">', '<meta property="og:image:width" content="1200">', '<meta property="og:image:height" content="630">', '<meta property="og:image:alt" content="' + esc(CARD_ALT[lang]) + '">',
     '<meta name="twitter:card" content="summary_large_image">', '<meta name="twitter:title" content="' + esc(m.title) + '">', '<meta name="twitter:description" content="' + esc(m.desc) + '">', '<meta name="twitter:image" content="' + CARD + '">', '<meta name="twitter:image:alt" content="' + esc(CARD_ALT[lang]) + '">',
     '<meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">', '<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">',
+    ...FONTS(up, ['figtree']),
     '<link rel="icon" type="image/png" sizes="32x32" href="' + up + 'icons/icon32.png">', '<link rel="icon" type="image/png" sizes="16x16" href="' + up + 'icons/icon16.png">',
   ].join('\n');
   html = html.replace(/<!--HEAD-->/, head).replace(/<html[^>]*>/, '<html lang="' + lang + '">');
   // en /es/ las rutas relativas suben un nivel; las que empiezan con ./ se quedan en /es/ (la portada y la otra página, en castellano)
   if (up) html = html.replace(/\b(href|src)="(?!https?:|mailto:|#|\/|\.\.?\/)([^"]+)"/g, '$1="' + up + '$2"').replace(/url\("(?!https?:|data:|\/|\.\.\/)([^"]+)"\)/g, 'url("' + up + '$1")');
   html = html.replace(/<!--LANG-->/, '<div class="lang"><a href="' + (lang === 'en' ? 'es/' : '../') + slug + '.html"' + (lang === 'en' ? ' class="on" aria-current="true"' : '') + ' hreflang="' + (lang === 'en' ? 'es' : 'en') + '">EN</a><a href="' + (lang === 'en' ? 'es/' : '../') + slug + '.html"' + (lang === 'es' ? ' class="on" aria-current="true"' : '') + ' hreflang="' + (lang === 'en' ? 'es' : 'en') + '">ES</a></div>');
-  if (/<!--(HEAD|LANG)-->/.test(html) || /%%|\[\[[^\]]*\|\|/.test(html)) throw new Error(slug + ': faltó reemplazar una marca');
+  if (/<!--(HEAD|LANG)-->/.test(html) || /%%|\[\[[^\]]*\|\||SITE-CSS/.test(html)) throw new Error(slug + ': faltó reemplazar una marca');
   if ((html.match(/<h1[ >]/g) || []).length !== 1) throw new Error(slug + ' (' + lang + '): tiene que quedar un solo h1');
   return html;
 }

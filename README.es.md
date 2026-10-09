@@ -211,6 +211,7 @@ Todas van copiadas en `vendor/`, porque Manifest V3 no permite cargar código re
 | DOMPurify | MPL-2.0 o Apache-2.0 |
 | PDF.js (se carga solo para convertir un PDF) | Apache-2.0 |
 | Inter (tipografía) | OFL-1.1 |
+| Figtree y JetBrains Mono (tipografías del sitio web, en `site/fonts`) | OFL-1.1 |
 
 El HTML que sale del Markdown pasa por DOMPurify antes de entrar a la página.
 
