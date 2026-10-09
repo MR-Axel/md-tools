@@ -99,7 +99,7 @@ try {
   check('MCP: initialize', init.json.result.serverInfo.name === 'sharpmd' && !!init.json.result.capabilities.tools, init.json);
   check('MCP: las notificaciones no llevan respuesta', (await call('POST', '/mcp', { jsonrpc: '2.0', method: 'notifications/initialized' }, t)).status === 202);
   const tools = await call('POST', '/mcp', { jsonrpc: '2.0', id: 2, method: 'tools/list' }, t);
-  check('MCP: lista las herramientas de un token sin permiso de compartir, con la guía y las de tablero', tools.json.result.tools.map((x) => x.name).join() === 'list_notes,list_folders,read_note,write_note,append_note,edit_note,set_task,search_notes,list_comments,resolve_comment,move_note,note_history,get_guide,list_boards,create_board,update_board,add_card,add_cards,move_card,update_card,delete_card' && tools.json.result.tools.every((x) => x.description.length > 20 && !/[!¡—–]/.test(x.description)), tools.json);
+  check('MCP: lista las herramientas de un token sin permiso de compartir, con la guía y las de tablero', tools.json.result.tools.map((x) => x.name).join() === 'list_notes,list_folders,read_note,write_note,append_note,edit_note,set_task,search_notes,list_comments,resolve_comment,move_note,note_history,get_guide,list_boards,create_board,update_board,add_card,add_cards,move_card,update_card,delete_card,start_agent,update_agent,end_agent,list_agents' && tools.json.result.tools.every((x) => x.description.length > 20 && !/[!¡—–]/.test(x.description)), tools.json);
   const tool = (name, args, id) => call('POST', '/mcp', { jsonrpc: '2.0', id: id || 9, method: 'tools/call', params: { name, arguments: args } }, t);
   await tool('write_note', { path: 'ia/resumen.md', text: '# Resumen\n\nEscrito por la IA.' });
   await tool('append_note', { path: 'ia/resumen.md', text: 'Segunda parte.' });
@@ -618,6 +618,133 @@ try {
     const pw2 = await tool(ptok, 'write_note', { path: 'p/pasado.md', text: 'x' });
     check('uso (' + N + '): una cuenta paga no recibe ninguna de esas líneas', pl0.parts.length === 1 && [pw, pa, pb, pw2].every((x) => !x.err && !/free plan/i.test(x.text)) && JSON.parse(pb.text).plan === undefined && !/Right now/.test(pg.text) && pg.text.includes('create README.md, board.md and pending.md first'), [pl0.parts, pw.text, pa.text, pb.text, pw2.text]);
     await us.stop(); wipe(uDir);
+  }
+
+  // ---------- Agentes ----------
+  // Los tiempos van acelerados: sin señal a los 1,5 s, se va a los 3,5 s, terminado queda 1,2 s, historial 9 s.
+  {
+    const aDir = tmp(); const STALE = 1500; const GONE = 3500; const DONE = 1200; const HIST = 9000;
+    const ag = await boot(aDir, { DATA_KEY: K1, FREE_AGENTS: '2', AGENT_STALE_MS: String(STALE), AGENT_GONE_MS: String(GONE), AGENT_DONE_MS: String(DONE), AGENT_HISTORY_MS: String(HIST), APP_URL: 'https://app.ejemplo.test/src/app.html' });
+    const PLANS = 'https://app.ejemplo.test/src/app.html#lmd-plans'; const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const fses = await ag.enter('agentes@ejemplo.test'); const pses = await ag.enter('paga-agentes@ejemplo.test', true);
+    const ftok = (await ag.ask('POST', '/tokens', { name: 'IA' }, fses)).json.token; const ptok = (await ag.ask('POST', '/tokens', { name: 'IA paga' }, pses)).json.token;
+    const said = [];
+    const tool = async (tok, name, args) => { const r = await ag.ask('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args || {} } }, tok); const c = r.json.result; const parts = c.content.map((x) => x.text); said.push(...parts); let v = null; try { v = JSON.parse(parts[0]); } catch (e) { /* texto */ } return { parts, text: parts.join('\n'), err: !!c.isError, v }; };
+    const seenBy = async (ses) => (await ag.ask('GET', '/agents', undefined, ses)).json; const J = (v) => JSON.stringify(v);
+    const byId = (list, id) => (list || []).find((x) => x.id === id);
+
+    const defs = (await ag.ask('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/list' }, ftok)).json.result.tools;
+    const AG = ['start_agent', 'update_agent', 'end_agent', 'list_agents'];
+    check('agentes: las cuatro herramientas están en la lista, y las demás aceptan agent_id', AG.every((n) => defs.some((d) => d.name === n)) && defs.filter((d) => !AG.includes(d.name)).every((d) => d.inputSchema.properties.agent_id && d.inputSchema.properties.agent_id.type === 'string') && defs.filter((d) => AG.includes(d.name)).every((d) => !d.inputSchema.properties.agent_id),
+      defs.map((d) => d.name));
+    check('agentes: sin sesión no se listan, y un token no sirve para la app', (await ag.ask('GET', '/agents')).status === 401 && (await ag.ask('GET', '/agents', undefined, ftok)).status === 401);
+
+    // Plan gratis: dos a la vez
+    const a1 = await tool(ftok, 'start_agent', { name: '  tests ', task: 'Run the remolacha-agente suite\nand report' });
+    check('agentes: start_agent devuelve el id, el nombre limpio, la tarea en una línea y cómo seguir', !a1.err && /^ag_[\w-]{6,}$/.test(a1.v.id) && a1.v.name === 'tests' && a1.v.task === 'Run the remolacha-agente suite and report' && a1.v.status === 'working' && a1.v.note.includes('agent_id: "' + a1.v.id + '"') && /After 2 seconds without a call it shows as silent, and after 4 seconds it is removed\./.test(a1.v.note), a1.v);
+    check('agentes: en el plan gratis la respuesta dice cuántos hay de cuántos', a1.v.plan === 'Free plan: 1 of 2 agents active at once, and no history.', a1.v.plan);
+    const a2 = await tool(ftok, 'start_agent', { name: 'tests', task: 'Second runner' });
+    check('agentes: dos con el mismo nombre no se confunden, al segundo se le suma un número', !a2.err && a2.v.name === 'tests 2' && a2.v.id !== a1.v.id && a2.v.plan === 'Free plan: 2 of 2 agents active at once, and no history.', a2.v);
+    const a3 = await tool(ftok, 'start_agent', { name: 'docs', task: 'Write the docs' });
+    check('agentes: el tercero no entra en el plan gratis, y el error dice qué pasó, que se le avise a la persona y el enlace a los planes', a3.err && a3.text.startsWith('Error: Free plan: 2 agents can be active at once and this account has 2. This one was not registered.') && /Tell the person what happened/.test(a3.text) && a3.text.endsWith('keeps the history of the last 9 seconds: ' + PLANS), a3.text);
+    let fv = await seenBy(fses);
+    check('agentes: la app recibe los dos, con el token que los anotó, el tope del plan y sin historial', fv.agents.length === 2 && fv.agents.map((x) => x.name).join() === 'tests,tests 2' && fv.agents.every((x) => x.status === 'working' && x.token === 'IA' && x.team === false && x.created <= fv.now) && fv.limit === 2 && fv.free_agents === 2 && fv.history === null && fv.stale_ms === STALE, fv);
+    check('agentes: los de una cuenta no los ve otra', (await seenBy(pses)).agents.length === 0);
+    const bad = [await tool(ftok, 'start_agent', { task: 'x' }), await tool(ftok, 'start_agent', { name: 'x' }), await tool(ftok, 'update_agent', { id: a1.v.id, card: 'abc' }), await tool(ftok, 'update_agent', { id: a1.v.id, path: 'no/existe.md' }), await tool(ftok, 'update_agent', { id: 'ag_noexiste', task: 'x' }), await tool(ftok, 'update_agent', { id: a1.v.id, status: 'sleeping' }), await tool(ftok, 'update_agent', { id: a1.v.id, status: 'waiting' })];
+    check('agentes: lo mal armado se rechaza diciendo qué falta', bad.every((x) => x.err) && /name is a short name/.test(bad[0].text) && /task is one line/.test(bad[1].text) && /card needs path/.test(bad[2].text) && /There is no note at no\/existe\.md/.test(bad[3].text) && /There is no agent with that id/.test(bad[4].text) && /working, waiting or done/.test(bad[5].text) && /needs says in one line/.test(bad[6].text), bad.map((x) => x.text));
+    const w2 = await tool(ftok, 'update_agent', { id: a2.v.id, needs: 'The staging password' });
+    fv = await seenBy(fses);
+    check('agentes: decir qué necesita lo deja esperando, y la app lo ve', !w2.err && w2.v.status === 'waiting' && w2.v.needs === 'The staging password' && byId(fv.agents, a2.v.id).status === 'waiting' && byId(fv.agents, a2.v.id).needs === 'The staging password', [w2.v, fv.agents]);
+    const w1 = await tool(ftok, 'update_agent', { id: a1.v.id, task: 'Fixing two failures' });
+    check('agentes: update_agent cambia la tarea', !w1.err && w1.v.task === 'Fixing two failures' && w1.v.status === 'working', w1.v);
+
+    // Latido: el que manda agent_id sigue; el que no, queda sin señal
+    await wait(900); const beat = await tool(ftok, 'list_notes', { agent_id: a1.v.id });
+    await wait(900); const beat2 = await tool(ftok, 'list_folders', { agent_id: a1.v.id });
+    const l1 = await tool(ftok, 'list_agents');
+    check('agentes: una llamada con agent_id es señal de vida, y no cambia lo que la herramienta responde', !beat.err && !beat2.err && beat.parts.length === 2 && byId(l1.v.agents, a1.v.id).status === 'working', [beat.parts, l1.v]);
+    check('agentes: sin señales pasa a silent, y lo dice igual la app', byId(l1.v.agents, a2.v.id).status === 'silent' && byId((await seenBy(fses)).agents, a2.v.id).status === 'silent', l1.v);
+    const ghost = await tool(ftok, 'list_notes', { agent_id: 'ag_noexiste' });
+    check('agentes: con un agent_id que ya no está, la respuesta lo avisa aparte', !ghost.err && ghost.parts.length === 3 && /is not registered any more/.test(ghost.parts[2]) && /start_agent/.test(ghost.parts[2]), ghost.parts);
+    const a4 = await tool(ftok, 'start_agent', { name: 'docs', task: 'Write the docs', parent: a1.v.id });
+    check('agentes: uno sin señal no ocupa lugar en el tope, y un subagente lleva a su padre', !a4.err && a4.v.parent === a1.v.id && a4.v.plan === 'Free plan: 2 of 2 agents active at once, and no history.', a4);
+    for (let i = 0; i < 3; i++) { await wait(700); await tool(ftok, 'list_notes', { agent_id: a1.v.id }); await tool(ftok, 'update_agent', { id: a4.v.id, task: 'Write the docs, part ' + i }); }
+    fv = await seenBy(fses); const goneUp = await tool(ftok, 'update_agent', { id: a2.v.id, task: 'x' });
+    check('agentes: pasado el tiempo sin señales se borra solo, y los que siguieron dando señales quedan', !byId(fv.agents, a2.v.id) && byId(fv.agents, a1.v.id).status === 'working' && byId(fv.agents, a4.v.id).parent === a1.v.id && fv.history === null && goneUp.err && /removed after 4 seconds without a sign of life/.test(goneUp.text), [fv, goneUp.text]);
+    const e1 = await tool(ftok, 'end_agent', { id: a4.v.id, result: 'Docs written' });
+    fv = await seenBy(fses); const again = await tool(ftok, 'update_agent', { id: a4.v.id, task: 'x' });
+    check('agentes: end_agent lo deja terminado y a la vista un rato, y ya no se puede cambiar', !e1.err && e1.v.status === 'done' && e1.v.result === 'Docs written' && /stays visible for 1 second/.test(e1.v.note) && byId(fv.agents, a4.v.id).status === 'done' && byId(fv.agents, a4.v.id).result === 'Docs written' && again.err && /already ended/.test(again.text), [e1.v, again.text]);
+    await wait(DONE + 500); await tool(ftok, 'list_notes', { agent_id: a1.v.id });
+    const fh = await tool(ftok, 'list_agents', { history: true });
+    check('agentes: en el plan gratis el terminado se va sin dejar historial, y pedirlo dice de qué plan es', !fh.err && fh.v.agents.length === 1 && fh.v.agents[0].id === a1.v.id && fh.v.history === undefined && fh.v.history_note.endsWith(PLANS) && fh.v.plan === 'Free plan: 1 of 2 agents active at once, and no history.' && (await seenBy(fses)).agents.length === 1, fh.v);
+    const fg = await tool(ftok, 'get_guide');
+    check('agentes: la guía dice cuándo anotarse, que cada subagente se anota y cierra, y el tope del plan gratis', /## Agents/.test(fg.text) && /split work between subagents/.test(fg.text) && /Each subagent registers itself with its own name/.test(fg.text) && /Call end_agent when the task is done/.test(fg.text) && fg.text.includes('The free plan shows 2 agents at once.') && fg.text.includes('After 2 seconds without one the agent shows as silent, and after 4 seconds it is removed.'), fg.text.slice(fg.text.indexOf('## Agents'), fg.text.indexOf('## Agents') + 900));
+
+    // Plan pago: sin tope, con la tarjeta enlazada y con historial
+    const ev = { text: '' }; const ctrl = new AbortController();
+    await tool(ptok, 'create_board', { path: 'p/board.md' });
+    const card = (await tool(ptok, 'add_card', { path: 'p/board.md', title: 'Build the importer' })).v.card.id;
+    const acc = (await ag.ask('GET', '/account', undefined, pses)).json;
+    const sse = await fetch('http://127.0.0.1:' + new URL(acc.mcp_url).port + '/events?path=' + encodeURIComponent('p/board.md'), { headers: { authorization: 'Bearer ' + pses }, signal: ctrl.signal }).catch(() => null);
+    if (sse && sse.ok) (async () => { const rd = sse.body.getReader(); const d = new TextDecoder(); try { for (;;) { const x = await rd.read(); if (x.done) break; ev.text += d.decode(x.value); } } catch (e) { /* se cortó */ } })();
+    const many = []; for (const n of ['uno', 'dos', 'tres', 'cuatro']) many.push(await tool(ptok, 'start_agent', { name: n, task: 'Tarea ' + n }));
+    check('agentes: el plan pago no tiene tope ni recibe líneas del plan', many.every((x) => !x.err && x.v.plan === undefined) && (await seenBy(pses)).agents.length === 4 && (await seenBy(pses)).limit === null, many.map((x) => x.text));
+    const noCard = await tool(ptok, 'start_agent', { name: 'builder', task: 'Importer', path: 'p/board.md', card: 'zzzz' });
+    const b1 = await tool(ptok, 'start_agent', { name: 'builder', task: 'Importer', path: 'p/board.md', card, parent: many[0].v.id });
+    const cardNow = async () => (await tool(ptok, 'list_boards', { path: 'p/board.md' })).v.boards[0].columns.flatMap((c) => c.cards.map((k) => Object.assign({ column: c.column }, k))).find((k) => k.id === card);
+    let pv = await seenBy(pses);
+    check('agentes: una tarjeta que no existe no anota nada y lo dice', noCard.err && /There is no card with the id zzzz in p\/board\.md/.test(noCard.text) && pv.agents.filter((x) => x.name === 'builder').length === 1, noCard.text);
+    check('agentes: con una tarjeta enlazada, su campo agent lleva el nombre y la app recibe la nota y la tarjeta', !b1.err && b1.v.path === 'p/board.md' && b1.v.card === card && b1.v.url === 'https://app.ejemplo.test/src/app.html?f=cloud%2Fp%2Fboard.md' && (await cardNow()).fields.agent === 'builder' && byId(pv.agents, b1.v.id).path === 'p/board.md' && byId(pv.agents, b1.v.id).card === card && byId(pv.agents, b1.v.id).parent === many[0].v.id, [b1.v, await cardNow(), byId(pv.agents, b1.v.id)]);
+    await wait(300);
+    check('agentes: quien tiene la nota abierta recibe el aviso por el canal de siempre', /"type":"agents"/.test(ev.text), ev.text.slice(0, 300));
+    const seen0 = byId(pv.agents, b1.v.id).seen; await wait(200);
+    const mv = await tool(ptok, 'move_card', { path: 'p/board.md', id: card, column: 'In progress' });
+    pv = await seenBy(pses);
+    check('agentes: mover su tarjeta también es señal de vida', !mv.err && byId(pv.agents, b1.v.id).seen > seen0 && byId(pv.agents, many[1].v.id).seen === byId(pv.agents, many[1].v.id).created, [seen0, byId(pv.agents, b1.v.id)]);
+    const e2 = await tool(ptok, 'end_agent', { id: b1.v.id, result: 'Importer merged' });
+    const kept = await cardNow();
+    check('agentes: al terminar no se toca la tarjeta ni su campo', !e2.err && /Its card was not touched/.test(e2.v.note) && kept.fields.agent === 'builder' && kept.column === 'In progress', [e2.v, kept]);
+    // uno sigue dando señales; los otros tres se pierden
+    for (let i = 0; i < 6; i++) { await wait(700); await tool(ptok, 'list_notes', { agent_id: many[0].v.id }); }
+    pv = await seenBy(pses); const ph = await tool(ptok, 'list_agents', { history: true });
+    check('agentes: en el plan pago el que terminó y los que se perdieron quedan en el historial, fuera de la lista en vivo', pv.agents.length === 1 && pv.agents[0].id === many[0].v.id && pv.history.length === 4 && byId(pv.history, b1.v.id).status === 'done' && byId(pv.history, b1.v.id).result === 'Importer merged' && pv.history.filter((x) => x.status === 'lost').length === 3 && pv.history_hours === 0 &&
+      !ph.err && ph.v.agents.length === 1 && ph.v.history.length === 4 && ph.v.history.some((x) => x.status === 'lost') && ph.v.history_note === undefined && ph.v.plan === undefined, [pv, ph.v]);
+    for (let i = 0; i < 12; i++) { await wait(700); await tool(ptok, 'list_notes', { agent_id: many[0].v.id }); }
+    pv = await seenBy(pses);
+    check('agentes: el historial también vence', pv.agents.length === 1 && pv.history.length === 0, pv);
+
+    // Token de equipo: los agentes son del espacio, y los ve cada miembro
+    const team = await ag.ask('POST', '/admin/team', { email: 'paga-agentes@ejemplo.test', seats: 3 }, undefined, { 'x-admin-key': 'clave-de-prueba' });
+    const bot = (await ag.ask('POST', '/team/tokens', { name: 'bot', write: true }, pses)).json.token;
+    const space = (await ag.ask('GET', '/account', undefined, pses)).json.team.mine.space;
+    await tool(bot, 'write_note', { path: 'equipo.md', text: '# Equipo' });
+    const tb = await tool(bot, 'start_agent', { name: 'team bot', task: 'Sync the roadmap', path: 'equipo.md' });
+    pv = await seenBy(pses); const mineTeam = pv.agents.find((x) => x.id === tb.v.id);
+    check('agentes: con un token de equipo el agente es del espacio: lo ve un miembro, con la ruta que abre la app', team.status === 200 && !tb.err && tb.v.path === 'equipo.md' && !!mineTeam && mineTeam.team === true && mineTeam.token === '' && mineTeam.path === '~' + space + '/equipo.md' && !(await seenBy(fses)).agents.some((x) => x.id === tb.v.id), [tb.v, mineTeam, space]);
+    // Un token limitado a una carpeta: ve los suyos y los que trabajan dentro de su carpeta, nada más.
+    const stok = (await ag.ask('POST', '/tokens', { name: 'solo p', folder: 'p/' }, pses)).json.token;
+    await tool(ptok, 'write_note', { path: 'otra/nota.md', text: '# Otra' });
+    const outA = await tool(ptok, 'start_agent', { name: 'afuera', task: 'Trabaja fuera de la carpeta', path: 'otra/nota.md' }); const inA = await tool(ptok, 'start_agent', { name: 'adentro', task: 'Trabaja en la carpeta', path: 'p/board.md' });
+    const ownA = await tool(stok, 'start_agent', { name: 'propio', task: 'Del token limitado' }); const sl = await tool(stok, 'list_agents'); const sOut = await tool(stok, 'update_agent', { id: outA.v.id, task: 'x' }); const sPath = await tool(stok, 'start_agent', { name: 'x', task: 'x', path: 'otra/nota.md' });
+    check('agentes: un token limitado a una carpeta ve los suyos y los de su carpeta, y no toca ni enlaza lo de afuera', !outA.err && !inA.err && !ownA.err && J(sl.v.agents.map((x) => x.name).sort()) === J(['adentro', 'propio']) && sOut.err && /There is no agent with that id/.test(sOut.text) && sPath.err && /only reaches the folder p\//.test(sPath.text) && (await tool(ptok, 'list_agents')).v.agents.length >= 4, [sl.v, sOut.text, sPath.text]);
+    const cross = await tool(ptok, 'update_agent', { id: tb.v.id, task: 'x' });
+    check('agentes: el token de una persona no cambia los del equipo', cross.err && /There is no agent with that id/.test(cross.text), cross.text);
+    ctrl.abort();
+
+    check('agentes: lo que lee la IA va en inglés, sin signos de admiración ni rayas', said.filter((x) => /agent/i.test(x) && !x.startsWith('# Working in SharpMD')).every((x) => !/[áéíóúñ¡!—–]/.test(x)), said.filter((x) => /[áéíóúñ¡!—–]/.test(x)).slice(0, 3));
+    await ag.stop();
+    const rawDb = ['mdtools.db', 'mdtools.db-wal'].map((f) => { try { return fs.readFileSync(path.join(aDir, f)).toString('latin1'); } catch (e) { return ''; } }).join('');
+    const adb = new DatabaseSync(path.join(aDir, 'mdtools.db'), { readOnly: true }); const arows = adb.prepare('SELECT name, task, e FROM agents').all(); adb.close();
+    check('agentes: con DATA_KEY el nombre y la tarea se guardan cifrados', arows.length >= 2 && arows.every((r) => r.e === 1 && r.name.startsWith('enc1:') && r.task.startsWith('enc1:')) && !rawDb.includes('remolacha-agente') && !rawDb.includes('Sync the roadmap'), arows.length);
+    wipe(aDir);
+
+    // El tope sale de FREE_AGENTS: con otro número, los textos dicen ese
+    const a3Dir = tmp(); const ag3 = await boot(a3Dir, { FREE_AGENTS: '3' });
+    const s3 = await ag3.enter('tres@ejemplo.test'); const t3 = (await ag3.ask('POST', '/tokens', { name: 'IA' }, s3)).json.token; const out3 = [];
+    for (let i = 0; i < 4; i++) { const r = await ag3.ask('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'start_agent', arguments: { name: 'n' + i, task: 't' } } }, t3); out3.push(r.json.result); }
+    const lim3 = out3[3].content[0].text; const g3 = (await ag3.ask('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_guide', arguments: {} } }, t3)).json.result.content[0].text;
+    check('agentes: con FREE_AGENTS=3 entran tres y los textos dicen tres, con los tiempos de fábrica', out3.slice(0, 3).every((x) => !x.isError) && out3[3].isError && /Free plan: 3 agents can be active at once and this account has 3\./.test(lim3) && /history of the last 24 hours/.test(lim3) && g3.includes('The free plan shows 3 agents at once.') && g3.includes('After 5 minutes without one the agent shows as silent, and after 30 minutes it is removed.') && (await ag3.ask('GET', '/agents', undefined, s3)).json.history_hours === 24, [lim3]);
+    await ag3.stop(); wipe(a3Dir);
   }
 
   // ---------- Papelera ----------

@@ -213,6 +213,7 @@
     jsonyaml: { js: ['src/jsonyaml.js'] },
     import: { js: ['src/import.js'] },
     assistant: { js: ['src/aikey.js', 'src/assistant.js'] },
+    agents: { js: ['src/agents.js'] },
     // La galería de la comunidad, en Ajustes > Herramientas: se pide al abrir esa pestaña.
     gallery: { js: ['src/gallery.js'] },
     // Ajustes > API y automatizaciones y el alta guiada: se piden al abrir esa pestaña o al elegir "Automatizar…".
@@ -224,7 +225,7 @@
   const LAZY_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, tools: () => !!(LMD.diagram && LMD.formula && LMD.templates && LMD.community) };
   LAZY_HAVE.gallery = () => !!LMD.gallery; LAZY_HAVE.automate = () => !!LMD.automate; LAZY_HAVE.publish = () => !!LMD.publish;
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
-  ['present', 'daily', 'docx', 'linkmap', 'explore', 'jsonyaml', 'import'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
+  ['present', 'daily', 'docx', 'linkmap', 'explore', 'jsonyaml', 'import', 'agents'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
   LAZY_HAVE.assistant = () => !!(LMD.ai && LMD.assistant);
   LAZY_HAVE.shortcuts = () => !!LMD.shortcuts;
   async function appLazy(what) {
@@ -3775,7 +3776,7 @@
     openApp: (query) => bg({ type: 'openApp', query }),
     openPanel: (tab, why) => openPanel(tab, why),
     // patch: se dibujó en el lugar un cambio de otra persona (sesión en vivo), sin pasar por render.
-    ui, hooks: { render: [], tree: [], doc: [], patch: [], home: [], saved: [], diagram: [] }, menus: { export: [], more: [] }, actions: {},
+    ui, hooks: { render: [], tree: [], doc: [], patch: [], home: [], saved: [], diagram: [], event: [] }, menus: { export: [], more: [] }, actions: {},
     get treeRoot() { return treeRoot; }, collect: (root) => collectFiles(root), readFile: (url) => readFile(url), wikiKey, lastBlock: null, appUrl: APP_URL, hold: false,
     // Lo que la sesión en vivo (live.js) necesita del lector.
     live: {
@@ -4305,6 +4306,8 @@
           // Las IA que están leyendo o escribiendo la nota, y quién hizo el último guardado.
           if (Array.isArray(ev.ai)) hereAi = ev.ai;
           if (ev.type === 'saved' && ev.updated) lastEdit = { at: ev.updated, by: ev.edited || null };
+          // Lo que no es de esta nota sino de la cuenta (los agentes) lo atiende quien se anotó para escucharlo.
+          if (ev.type === 'agents') { core.hooks.event.forEach((fn) => { try { fn(ev); } catch (e) { console.error(e); } }); return; }
           if (ev.type !== 'link') LMD.live.strip();
           // La escucha se cortó o volvió. Al volver se trae lo que haya cambiado mientras tanto, y sale lo pendiente.
           if (ev.type === 'link') {

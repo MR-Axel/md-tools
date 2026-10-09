@@ -522,7 +522,7 @@
       '- Keep a kanban board in ' + dir + '/board.md with the columns To do, In progress, Paused and Done. Use create_board, add_card, move_card and update_card. Do not rewrite its Markdown by hand.',
       '- Before you start, add each task as a card in To do, with a field agent naming the agent or subagent that does it.',
       '- Move it to In progress when you start, to Paused when you need something from me (say exactly what in a field needs, and tell me), and to Done when it is finished, with a field link to the note or the change.',
-      '- One card per task, and finished cards stay. With subagents, each one moves its own card.',
+      '- One card per task, and finished cards stay. With subagents, each one moves its own card, registers with start_agent and closes with end_agent.',
       '',
       '## Keep a list of what I have to do',
       '',
