@@ -408,7 +408,7 @@
   let menu = null;
   const closeMenu = () => { if (menu) { menu.remove(); menu = null; } };
   // El ícono de cada acción de los menús del explorador, por id.
-  const MENU_ICON = { new: 'file', tpl: 'doc', dir: 'folder', ren: 'pencil', del: 'trash', file: 'file', 'v-protect': 'lock', 'v-lock': 'lock', 'v-unlock': 'unlock', 'v-ai': 'spark', 'v-ailock': 'lock', 'v-drop': 'close', 'v-pass': 'pencil', 'v-off': 'unlock', 'v-destroy': 'trash', 'v-backup': 'copy', 'v-rotate': 'lock' };
+  const MENU_ICON = { new: 'file', tpl: 'doc', dir: 'folder', ren: 'pencil', mov: 'open', del: 'trash', file: 'file', 'v-protect': 'lock', 'v-lock': 'lock', 'v-unlock': 'unlock', 'v-ai': 'spark', 'v-ailock': 'lock', 'v-drop': 'close', 'v-pass': 'pencil', 'v-off': 'unlock', 'v-destroy': 'trash', 'v-backup': 'copy', 'v-rotate': 'lock' };
   // Un menú corto en un punto de la pantalla. items: [id, texto, peligroso, ícono]. onPick recibe el id elegido.
   function showMenu(x, y, items, onPick) {
     closeMenu();
@@ -435,6 +435,8 @@
       !local && ['tpl', 'Desde una plantilla…'],
       !local && ['dir', 'Nueva carpeta'],
       (!isDir || cloud) && ['ren', 'Renombrar'],
+      // Lo mismo que arrastrarlo a una carpeta, sin arrastrar: sirve con el dedo y con el teclado.
+      canTree(url) && ['mov', 'Mover a…'],
       !isDir && ['del', 'Eliminar', true],
       // Una carpeta o una nota de la nube: avisar afuera cuando algo cambie ahí (automate.js).
       cloud && core.APP && core.pathOf(url) && ['auto', 'Automatizar…', false, 'spark'],
@@ -448,6 +450,7 @@
       else if (f === 'tpl') fromTemplate(at);
       else if (f === 'dir') newFolder(at);
       else if (f === 'ren') rename(url, isDir);
+      else if (f === 'mov') moveAsk(url);
       else remove(url);
     });
   }
@@ -610,6 +613,8 @@
   const binOf = (e) => (e.target.closest && e.target.closest('.lmd-trash-link')) || null;
   function bindDrag(box) {
     box.addEventListener('dragstart', (e) => {
+      // Con el dedo el renglón se levanta acá (más abajo): el arrastre del navegador no corre a la vez.
+      if (finger || lift || LMD.touch.touched()) { e.preventDefault(); return; }
       const node = e.target.closest && e.target.closest('.lmd-node');
       if (!node || !node.dataset.url || !(canTree(node.dataset.url) || inLocal(node.dataset.url))) return;
       dragged = node.dataset.url; node.classList.add('lmd-dragging');
@@ -631,13 +636,189 @@
     box.addEventListener('drop', (e) => {
       if (!dragged) return;
       e.preventDefault();
-      const url = dragged; const bin = binOf(e); const t = bin ? null : dropTarget(e);
-      const ok = t && !badDrop(t.url);
-      endDrag();
-      if (bin) { if (isDirUrl(url)) removeDir(url); else remove(url); return; }
-      if (ok) { if (isDirUrl(url)) moveDir(url, t.url); else moveTo(url, t.url); }
+      dropOn(e);
     });
     box.addEventListener('dragend', endDrag);
+  }
+  // Soltar lo que se lleva donde está e.target: en la papelera se elimina, en una carpeta o en una raíz se mueve
+  // ahí, y en cualquier otro lado no pasa nada. Es lo mismo para el mouse y para el dedo.
+  function dropOn(e) {
+    const url = dragged; const bin = binOf(e); const t = bin ? null : dropTarget(e);
+    const ok = t && !badDrop(t.url);
+    endDrag();
+    if (bin) { if (isDirUrl(url)) removeDir(url); else remove(url); return; }
+    if (ok) { if (isDirUrl(url)) moveDir(url, t.url); else moveTo(url, t.url); }
+  }
+
+  // ---------- Arrastrar con el dedo ----------
+  // En pantalla táctil el navegador no arrastra. Mantener apretado un renglón (touch.js lo vuelve el evento del menú
+  // contextual, y Chrome en Android manda el suyo) lo levanta en vez de abrir el menú. Si el dedo se suelta sin
+  // moverse, sale el menú de siempre. Si se mueve, el renglón viaja con el dedo, el panel se desliza solo cerca de
+  // sus bordes y se suelta con las reglas del mouse (dropOn). Un deslizamiento corto nunca llega acá: el dedo no
+  // estuvo quieto medio segundo, y el panel se desliza como siempre.
+  const LIFT_MOVE = 8; // px que el dedo se corre, ya levantado el renglón, para que sea un arrastre
+  const LIFT_EDGE = 44; // px desde el borde del panel donde empieza a deslizarse solo
+  let finger = null; // el dedo apoyado en el explorador: { target, at }
+  let lift = null; // el renglón levantado: { node, url, target, x0, y0, x, y, moving, ghost, raf }
+  let liftEnd = 0; // cuándo se soltó el último: el clic que pueda seguir no abre nada
+  const liftable = (url) => core.APP && (canTree(url) || inLocal(url));
+  const held = (node) => !!finger && Date.now() - finger.at < 3000 && node.contains(finger.target);
+  // Lo que se desliza: el panel de archivos o, con el teléfono acostado, las dos zonas juntas.
+  function scroller() {
+    for (let n = core.ui.paneFiles; n && n !== document.body; n = n.parentElement) {
+      if (n.scrollHeight > n.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(n).overflowY)) return n;
+    }
+    return core.ui.paneFiles;
+  }
+  // Lo que hay debajo del dedo, si es del explorador: fuera de él no hay destino.
+  const underFinger = () => { const n = document.elementFromPoint(lift.x, lift.y); return n && core.ui.paneFiles.contains(n) ? n : null; };
+  function markFinger() {
+    const n = underFinger(); const e = n && { target: n };
+    const bin = e && binOf(e); const t = e && !bin ? dropTarget(e) : null;
+    markDrop(bin || (t && !badDrop(t.url) ? t.mark : null));
+  }
+  function placeGhost() {
+    const g = lift.ghost; if (!g) return;
+    const x = Math.max(8, Math.min(window.innerWidth - g.offsetWidth - 8, lift.x + 14)); const y = Math.max(8, lift.y - g.offsetHeight - 18);
+    g.style.transform = 'translate(' + Math.round(x) + 'px,' + Math.round(y) + 'px)';
+  }
+  // Mientras el dedo está cerca de un borde del panel, el panel se desliza hacia ese lado; más rápido cuanto más cerca.
+  function edgeScroll() {
+    if (!lift || !lift.moving) return;
+    const sc = scroller(); const r = sc.getBoundingClientRect(); const box = LMD.touch.visible();
+    const top = Math.max(r.top, box.top); const bottom = Math.min(r.bottom, box.bottom);
+    const d = lift.y < top + LIFT_EDGE ? lift.y - (top + LIFT_EDGE) : lift.y > bottom - LIFT_EDGE ? lift.y - (bottom - LIFT_EDGE) : 0;
+    if (d) { const was = sc.scrollTop; sc.scrollTop += Math.sign(d) * Math.min(16, 3 + Math.abs(d) / 4); if (sc.scrollTop !== was) markFinger(); }
+    lift.raf = requestAnimationFrame(edgeScroll);
+  }
+  function liftRow(node, x, y) {
+    dropLift();
+    lift = { node, url: node.dataset.url, target: finger.target, x0: x, y0: y, x, y, moving: false, ghost: null, raf: 0 };
+    node.classList.add('lmd-lifted');
+    try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) { /* sin vibración */ }
+    // Los toques siguen llegando a donde empezó el dedo, aunque el árbol se redibuje en el medio.
+    lift.target.addEventListener('touchmove', liftMove, { passive: false });
+    lift.target.addEventListener('touchend', liftUp);
+    lift.target.addEventListener('touchcancel', liftCancel);
+  }
+  // Deja todo como antes de levantar. Lo que se lleva (dragged) y la marca del destino los limpia endDrag.
+  function dropLift() {
+    const l = lift; if (!l) return;
+    lift = null; liftEnd = Date.now();
+    cancelAnimationFrame(l.raf);
+    l.target.removeEventListener('touchmove', liftMove); l.target.removeEventListener('touchend', liftUp); l.target.removeEventListener('touchcancel', liftCancel);
+    l.node.classList.remove('lmd-lifted');
+    if (l.ghost) l.ghost.remove();
+    document.documentElement.classList.remove('lmd-tree-drag');
+  }
+  function liftMove(e) {
+    const t = e.touches[0]; if (!lift || !t) return;
+    if (e.cancelable) e.preventDefault(); // el panel no se desliza con el renglón levantado
+    lift.x = t.clientX; lift.y = t.clientY;
+    if (!lift.moving) {
+      if (Math.hypot(lift.x - lift.x0, lift.y - lift.y0) < LIFT_MOVE) return;
+      lift.moving = true; dragged = lift.url;
+      lift.node.classList.add('lmd-dragging'); document.documentElement.classList.add('lmd-tree-drag');
+      const name = lift.node.querySelector('.lmd-node-name');
+      lift.ghost = el('div', { class: 'lmd-drag-ghost', 'aria-hidden': 'true' }, isDirUrl(lift.url) ? ICON.folder : ICON.file);
+      lift.ghost.appendChild(el('span', { text: name ? name.textContent : nameOf(lift.url) }));
+      document.body.appendChild(lift.ghost);
+      lift.raf = requestAnimationFrame(edgeScroll);
+    }
+    placeGhost(); markFinger();
+  }
+  function liftUp(e) {
+    const l = lift; if (!l) return;
+    if (e.cancelable) e.preventDefault(); // sin el clic que seguiría: abriría la nota, o lo que quedó debajo
+    const under = l.moving ? underFinger() : null;
+    dropLift();
+    if (!l.moving) { treeMenu(l.x0, l.y0, l.node); return; }
+    if (under) dropOn({ target: under }); else endDrag();
+  }
+  function liftCancel() { dropLift(); endDrag(); }
+  function bindLift(box) {
+    box.addEventListener('touchstart', (e) => {
+      // Un segundo dedo suelta lo levantado sin moverlo.
+      if (lift) liftCancel();
+      finger = e.touches.length === 1 ? { target: e.target, at: Date.now() } : null;
+    }, { passive: true });
+    // Que este exista (no pasivo) es lo que deja frenar el deslizamiento del panel cuando hay un renglón levantado.
+    box.addEventListener('touchmove', (e) => { if (lift && e.cancelable) e.preventDefault(); }, { passive: false });
+    const up = () => { finger = null; };
+    box.addEventListener('touchend', up); box.addEventListener('touchcancel', up);
+    box.addEventListener('click', (e) => { if (Date.now() - liftEnd < 400) { e.preventDefault(); e.stopPropagation(); } }, true);
+  }
+
+  // ---------- Mover a… ----------
+  // Las carpetas adonde puede ir url: las raíces del explorador que son de su mismo lugar (las mismas donde se lo
+  // puede soltar) y sus carpetas, en el orden del árbol. Una carpeta no va adentro de sí misma.
+  const MOVE_SKIP = /^(node_modules|\.git)$/;
+  async function moveRows(url) {
+    const mine = core.rootOf(url); const rows = []; let n = 0;
+    const walk = async (dirUrl, depth) => {
+      if (depth > 6 || n >= 400) return;
+      let list = null;
+      try { list = await core.listDir(dirUrl); } catch (e) { /* sin leer: esa carpeta queda sin lo de adentro */ }
+      for (const r of list || []) {
+        if (!r.dir || MOVE_SKIP.test(r.name) || (isDirUrl(url) && r.url.startsWith(url)) || n >= 400) continue;
+        n++; rows.push({ url: r.url, name: r.label || r.name, depth });
+        await walk(r.url, depth + 1);
+      }
+    };
+    for (const list of core.ui.treeBox.querySelectorAll('.lmd-xroot > .lmd-tree[data-url]')) {
+      const top = list.dataset.url;
+      if (core.rootOf(top) !== mine || teamReader(top)) continue;
+      const label = list.parentNode.querySelector('.lmd-tree-path');
+      rows.push({ url: top, name: label ? label.textContent : nameOf(top), depth: 0, root: true });
+      await walk(top, 1);
+    }
+    return rows;
+  }
+  // El diálogo: una lista de carpetas; tocar una mueve ahí. Devuelve la carpeta elegida, o nada.
+  async function pickFolder(url) {
+    const rows = await moveRows(url);
+    const at = parentOf(url); const isDir = isDirUrl(url);
+    return new Promise((resolve) => {
+      const title = T('Mover "{a}" a…', { a: nameOf(url) });
+      const box = el('div', { class: 'lmd-ask lmd-mv' });
+      box.innerHTML = '<div class="lmd-ask-card lmd-mv-card" role="dialog" aria-label="' + esc(title) + '"><h3>' + esc(title) + '</h3><ul class="lmd-mv-list"></ul>' +
+        '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-mv="no" data-esc>' + T('Cancelar') + '</button></div></div>';
+      const list = box.querySelector('.lmd-mv-list');
+      const row = (key, icon, name, depth, here) => {
+        const b = el('button', { type: 'button', 'data-mv': key }, icon);
+        b.style.paddingLeft = (10 + depth * 16) + 'px';
+        b.appendChild(el('span', { class: 'lmd-mv-name', text: name }));
+        // Donde ya está no es un destino: se muestra para ubicarse.
+        if (here) { b.disabled = true; b.appendChild(el('small', { text: T('Está acá') })); }
+        const li = el('li'); li.appendChild(b); list.appendChild(li);
+      };
+      rows.forEach((r, i) => row(String(i), r.root ? ICON[inCloud(r.url) ? 'cloud' : 'disk'] : ICON.folder, r.name, r.depth, r.url === at));
+      if (rows.length) row('new', ICON.plus, T('Nueva carpeta') + '…', 0, false);
+      document.body.appendChild(box);
+      const close = (value) => { box.remove(); resolve(value); };
+      box.addEventListener('mousedown', (e) => { if (e.target === box) close(null); });
+      box.addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-mv]'); if (!b || b.disabled) return;
+        if (b.dataset.mv === 'no') return close(null);
+        if (b.dataset.mv !== 'new') return close(rows[+b.dataset.mv].url);
+        // Una carpeta nueva nace en la raíz de donde está lo que se mueve. En la nube existe recién con la nota adentro.
+        box.remove();
+        const cloud = inCloud(url);
+        const base = rows.filter((r) => r.root && url.startsWith(r.url)).sort((a, b2) => b2.url.length - a.url.length)[0] || rows[0];
+        const typed = await askName('Nombre de la carpeta nueva', T('carpeta'), cloud ? badPath : badName, 'Crear');
+        if (!typed) return resolve(null);
+        try {
+          if (!cloud) await (await core.dirHandle(base.url)).getDirectoryHandle(typed, { create: true });
+          const dest = base.url + (cloud ? cloudName(typed) : typed).split('/').map(encodeURIComponent).join('/') + '/';
+          resolve(dest === at || (isDir && dest.startsWith(url)) ? null : dest);
+        } catch (err) { core.flash(T('No se pudo crear la carpeta'), 'error'); resolve(null); }
+      });
+    });
+  }
+  async function moveAsk(url) {
+    const dest = await pickFolder(url);
+    if (!dest) return;
+    if (isDirUrl(url)) moveDir(url, dest); else moveTo(url, dest);
   }
 
   // ---------- Pegar imágenes ----------
@@ -840,6 +1021,8 @@
       if (disk) { e.preventDefault(); showMenu(e.clientX, e.clientY, [['flink', 'Copiar enlace a este archivo', false, 'link']], () => core.copy(LMD.fileLink(disk))); return; }
       if (!at || !(canTree(at) || inLocal(at))) return;
       e.preventDefault();
+      // Con el dedo apoyado, el renglón se levanta: el menú sale al soltar, si no se lo arrastró.
+      if (node && held(node) && liftable(at) && !teamReader(at)) { liftRow(node, e.clientX, e.clientY); return; }
       if (node) treeMenu(e.clientX, e.clientY, node); else createMenu(e.clientX, e.clientY, at);
     });
     // Los botones de la cabecera del explorador y el "+" de cada raíz.
@@ -850,6 +1033,7 @@
       else createMenu(box.left, box.bottom + 6, b.classList.contains('lmd-tree-new') ? rootUrl(b) : '');
     });
     bindDrag(core.ui.paneFiles);
+    bindLift(core.ui.paneFiles);
     bindNoteDrop(core.ui.main);
     const label = core.ui.main.querySelector('.lmd-docname');
     // Si el nombre se puede cambiar depende de la nota abierta: se revisa cada vez que cambia.

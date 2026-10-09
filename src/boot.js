@@ -22,7 +22,13 @@
   // Con un tema incluido o un fondo propio, el color que dejó anotado theme.js.
   try { var kept = localStorage.getItem('lmd:bg'); if (!stale && /^#[0-9a-f]{6}$/i.test(kept || '')) bg = kept; } catch (e) { /* sin almacenamiento */ }
   root.style.background = bg;
+  // El esquema declarado sigue al tema de la app, no al dispositivo. Con un tema claro va "only light": así el
+  // navegador no oscurece la página por su cuenta (el modo oscuro forzado de Chrome) con el teléfono en oscuro.
+  // "light" primero, por si el navegador no entiende "only".
   root.style.colorScheme = dark ? 'dark' : 'light';
+  if (!dark) root.style.colorScheme = 'only light';
+  var scheme = document.querySelector('meta[name=color-scheme]');
+  if (scheme) scheme.content = dark ? 'dark' : 'only light';
   root.style.setProperty('--lmd-boot-bg', bg);
   // La barra del sistema (en el teléfono y en la app instalada) toma el mismo color.
   // Vienen dos, una por esquema de color: con el tema ya sabido, las dos dicen lo mismo.

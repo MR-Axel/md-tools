@@ -10,7 +10,9 @@
   --lmd-line-height: 1.65;
   --lmd-font: "MDT Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
   --lmd-mono: ui-monospace, SFMono-Regular, "Cascadia Code", Consolas, "Liberation Mono", Menlo, monospace;
+  /* "only light": con un tema claro el navegador no oscurece la página por su cuenta. "light" queda para el que no entiende "only". */
   color-scheme: light;
+  color-scheme: only light;
 }
 .lmd-root.lmd-light {
   --bg: #fbfaf7;
@@ -2984,3 +2986,109 @@ textarea.lmd-cd-title { min-height: 40px; max-height: 40vh; margin: 0 0 14px; fo
   .lmd-cd-attr > .lmd-cd-ico, .lmd-cd-attr > .lmd-cd-key, .lmd-cd-attr > .lmd-cd-switch, .lmd-cd-attr > .lmd-cd-rm { margin-top: 0; align-self: center; }
 }
 @media print { .lmd-col { flex: 1 1 240px; } }
+
+/* ---------- Avisos: cada tipo con su ícono, y el tipo se elige tocando el título ---------- */
+/* Un aviso se distingue de una cita también sin color: lleva ícono y rótulo. El ícono es una máscara pintada con el color del título. */
+/* La regla de la cita (.markdown-body blockquote) pesa más que .lmd-alert: sin esto el aviso salía con la barra gris y el texto tenue de una cita. */
+/* Un color por tipo y por modo, el mismo para la barra, el título y su ícono: 4.5:1 o más sobre el panel y el fondo de los doce temas (tests/themes.mjs). */
+.lmd-alert-note { --lmd-alert-c: #1a56c4; } .lmd-alert-tip { --lmd-alert-c: #116a37; } .lmd-alert-important { --lmd-alert-c: #6535d9; } .lmd-alert-warning { --lmd-alert-c: #8f4d00; } .lmd-alert-caution { --lmd-alert-c: #b91c1c; }
+.lmd-dark .lmd-alert-note { --lmd-alert-c: #6ea8ff; } .lmd-dark .lmd-alert-tip { --lmd-alert-c: #4ccb80; } .lmd-dark .lmd-alert-important { --lmd-alert-c: #b39bfa; } .lmd-dark .lmd-alert-warning { --lmd-alert-c: #f0a23a; } .lmd-dark .lmd-alert-caution { --lmd-alert-c: #ff7b7b; }
+.markdown-body blockquote.lmd-alert { padding: 0.7em 1em; border-left-width: 4px; border-left-color: var(--lmd-alert-c, var(--fg-faint)); color: var(--fg); }
+.markdown-body blockquote.lmd-alert .lmd-alert-title { color: var(--lmd-alert-c, var(--fg)); }
+.lmd-alert-title { display: flex; align-items: center; gap: 0.45em; }
+.lmd-alert-title::before { content: ""; flex: none; width: 1.1em; height: 1.1em; background: currentColor; -webkit-mask: var(--lmd-alert-ico) center / contain no-repeat; mask: var(--lmd-alert-ico) center / contain no-repeat; }
+.lmd-alert-note { --lmd-alert-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v5.500M12 7.500v.200'/%3E%3C/svg%3E"); }
+.lmd-alert-tip { --lmd-alert-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 17.500h6M10 21h4M8.500 14.500a6 6 0 1 1 7 0c-.600.500-1 1.200-1 2v1h-5v-1c0-.800-.400-1.500-1-2z'/%3E%3C/svg%3E"); }
+.lmd-alert-important { --lmd-alert-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 5h16v11h-8l-4.500 4v-4H4z'/%3E%3Cpath d='M12 8v3.500M12 13.800v.200'/%3E%3C/svg%3E"); }
+.lmd-alert-warning { --lmd-alert-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3.500l9.500 16.500h-19z'/%3E%3Cpath d='M12 10v4.500M12 17v.200'/%3E%3C/svg%3E"); }
+.lmd-alert-caution { --lmd-alert-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8.300 3h7.400L21 8.300v7.400L15.700 21H8.300L3 15.700V8.300z'/%3E%3Cpath d='M12 7.500v5M12 16v.200'/%3E%3C/svg%3E"); }
+/* Editando, el título es un botón: abre los cinco tipos. */
+.lmd-editing .lmd-alert-title { width: fit-content; min-height: 28px; padding-right: 4px; border-radius: 6px; cursor: pointer; }
+.lmd-editing .lmd-alert-title::after { content: ""; flex: none; width: 0.42em; height: 0.42em; margin: -0.2em 0 0 0.1em; border-right: 2px solid; border-bottom: 2px solid; transform: rotate(45deg); opacity: 0.65; }
+.lmd-editing .lmd-alert-title:hover { background: var(--bg); }
+.lmd-alert-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--lmd-alert-c, var(--fg-faint)); }
+.lmd-menu-alert button[aria-checked=true] { font-weight: 650; color: var(--accent); }
+@media (pointer: coarse) { .lmd-editing .lmd-alert-title { min-height: 40px; } }
+@media print { .lmd-alert-title::after { display: none; } }
+
+/* ---------- Explorador con el dedo: el renglón levantado, lo que viaja con el dedo y el diálogo "Mover a…" ---------- */
+/* Mantener apretado levanta el renglón. Al moverlo, una etiqueta con su nombre sigue al dedo y el panel no se desliza. */
+.lmd-node.lmd-lifted { position: relative; z-index: 1; border-radius: 6px; background: var(--accent-soft); color: var(--fg); box-shadow: inset 0 0 0 2px var(--accent-fill), var(--shadow); transform: scale(1.02); transition: transform 0.12s ease; }
+.lmd-drag-ghost { position: fixed; left: 0; top: 0; z-index: 90; display: flex; align-items: center; gap: 8px; max-width: min(280px, 72vw); padding: 9px 12px; border: 1px solid var(--accent-fill); border-radius: 10px; background: var(--bg); color: var(--fg); box-shadow: var(--shadow); font: 600 14px/1.3 var(--lmd-font); pointer-events: none; }
+.lmd-drag-ghost svg, .lmd-mv-list svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-drag-ghost svg { flex: none; width: 16px; height: 16px; }
+.lmd-drag-ghost span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lmd-tree-drag .lmd-pane, .lmd-tree-drag .lmd-zones { overflow: hidden; }
+@media (pointer: coarse) {
+  /* Con el dedo, mantener apretado es de la app: ni el menú del enlace, ni seleccionar el nombre, ni el arrastre del navegador. */
+  .lmd-tree-box .lmd-node, .lmd-trash-link { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
+  /* El menú de un renglón del explorador ("Mover a…" entre ellos): renglones altos para el dedo. */
+  .lmd-menu-narrow .lmd-menu-list button { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) { .lmd-node.lmd-lifted { transform: none; transition: none; } }
+.lmd-mv-card { display: flex; flex-direction: column; max-height: min(560px, 100%); }
+.lmd-mv-card h3 { overflow-wrap: anywhere; }
+.lmd-mv-list { flex: 1 1 auto; min-height: 0; margin: 4px 0 14px; padding: 0; list-style: none; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.lmd-mv-list button { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 44px; padding: 6px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+.lmd-mv-list button:hover, .lmd-mv-list button:focus-visible { background: var(--bg-soft); }
+.lmd-mv-list button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.lmd-mv-list button:disabled { color: var(--fg-faint); background: transparent; cursor: default; }
+.lmd-mv-list svg { flex: none; width: 17px; height: 17px; }
+.lmd-mv-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lmd-mv-list small { margin-left: auto; padding-left: 10px; font-size: 12px; color: var(--fg-faint); white-space: nowrap; }
+.lmd-mv .lmd-ask-actions { justify-content: flex-end; }
+.lmd-mv .lmd-ask-actions .lmd-btn { min-height: 44px; }
+@media print { .lmd-drag-ghost { display: none !important; } }
+
+/* ---------- Teléfono: menús en hoja, avisos a la vista con el teclado abierto y filas que avisan que siguen ---------- */
+/* Una opción filtrada del menú de insertar se va de verdad (los botones del menú son flex). */
+.lmd-menu [hidden] { display: none !important; }
+/* La hoja: touch.js la pega abajo de la zona visible (arriba del teclado) y le pone el alto máximo. */
+.lmd-menu.lmd-sheet { left: 8px !important; right: 8px; width: auto !important; max-width: none !important; padding: 8px; border-radius: 14px; overflow-y: auto; overscroll-behavior: contain; }
+.lmd-menu.lmd-sheet .lmd-menu-note { max-width: none; }
+/* En la hoja, lo del bloque (mover, duplicar, eliminar) va primero: es por lo que se abrió desde la manija, y abajo quedaría fuera de la vista. */
+.lmd-menu-ins.lmd-sheet { display: flex; flex-direction: column; }
+.lmd-menu-ins.lmd-sheet > * { flex: none; }
+.lmd-menu-ins.lmd-sheet > :nth-last-child(-n+2) { order: -1; }
+/* Y se desvanece abajo mientras quede algo por deslizar. */
+.lmd-menu.lmd-sheet::after { content: ""; position: sticky; bottom: -8px; display: block; flex: none; height: 20px; margin-top: -20px; background: linear-gradient(to bottom, transparent, var(--bg-soft)); pointer-events: none; }
+/* El aviso de una advertencia o un error cuando el teclado tapa el pie: arriba, debajo de la barra. */
+.lmd-flash-top { position: fixed; z-index: 62; left: 8px; right: 8px; top: calc(62px + env(safe-area-inset-top, 0px)); max-width: 520px; margin: 0 auto; padding: 10px 14px; border: 1px solid var(--line); border-left: 3px solid var(--accent-fill); border-radius: 10px; background: var(--bg); color: var(--fg); box-shadow: var(--shadow); font: 13.5px/1.4 var(--lmd-font); }
+.lmd-flash-top.lmd-error { border-left-color: var(--danger, #dc2626); }
+/* El aviso del oscurecido forzado: el texto arriba y las dos salidas abajo, a lo ancho. */
+.lmd-cl-toast.lmd-forced-toast { left: 8px; right: 8px; transform: none; flex-wrap: wrap; gap: 4px 18px; justify-content: flex-end; max-width: 520px; margin: 0 auto; padding: 12px 14px 6px; bottom: calc(46px + env(safe-area-inset-bottom, 0px) + var(--lmd-kb, 0px)); line-height: 1.45; }
+.lmd-forced-toast > span { flex: 1 1 100%; }
+.lmd-forced-toast .lmd-link { min-height: 40px; white-space: nowrap; }
+/* La etiqueta que presenta el micrófono la primera vez. */
+.lmd-dct-hint { position: fixed; z-index: 41; padding: 7px 11px; border-radius: 9px; background: var(--fg); color: var(--bg); font: 600 13px/1.2 var(--lmd-font); white-space: nowrap; box-shadow: var(--shadow); pointer-events: none; }
+.lmd-dct-hint[hidden] { display: none; }
+/* Una fila que se desliza de costado se desvanece del lado donde queda algo por ver. */
+.lmd-more-r { -webkit-mask-image: linear-gradient(to left, transparent 0, #000 44px); mask-image: linear-gradient(to left, transparent 0, #000 44px); }
+.lmd-more-l { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 44px); mask-image: linear-gradient(to right, transparent 0, #000 44px); }
+.lmd-more-l.lmd-more-r { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 44px, #000 calc(100% - 44px), transparent 100%); mask-image: linear-gradient(to right, transparent 0, #000 44px, #000 calc(100% - 44px), transparent 100%); }
+@media (pointer: coarse) {
+  /* La manija del bloque: angosta para entrar en el margen, con una zona de toque de 44 px alrededor. */
+  .lmd-handle { width: 26px; height: 32px; }
+  .lmd-handle::before { content: ""; position: absolute; inset: -7px -10px; }
+  /* Botones chicos de la nota y del panel: se ven igual, y la zona de toque sobresale hasta unos 44 px. */
+  .lmd-view button, .lmd-cl-more, .lmd-cl-grip, .lmd-col-menu, .lmd-zone-btn, .lmd-xroot .lmd-tree-up { position: relative; }
+  .lmd-view button::after { content: ""; position: absolute; inset: -9px 0; }
+  .lmd-fold-tog::after, .lmd-cl-more::after, .lmd-cl-grip::after, .lmd-col-menu::after, .lmd-code-copy::after { content: ""; position: absolute; inset: -7px; }
+  .lmd-zone-btn::after, .lmd-xroot .lmd-tree-up::after { content: ""; position: absolute; inset: -4px -2px; }
+  .markdown-body .lmd-task::after { content: ""; position: absolute; inset: -14px; }
+}
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  .lmd-dgm-add > div { padding-right: 4px; }
+  .lmd-dgm-add button { min-height: 40px; }
+  .lmd-fx-tabs button { min-height: 40px; padding: 3px 12px; }
+  .lmd-subtabs button { height: 44px; }
+  .lmd-seg button { height: 40px; }
+  .lmd-card-add { min-height: 44px; }
+  .lmd-tl-more, .lmd-tl-opts .lmd-btn { min-height: 40px; }
+  /* La barra de la lectura: a lo ancho, los cuatro botones y la velocidad arriba, idioma y voz abajo. */
+  .lmd-spk { left: 8px; right: 8px; transform: none; max-width: 520px; margin: 0 auto; }
+  .lmd-spk .lmd-icon-btn { width: 44px; height: 44px; }
+  .lmd-spk select { flex: 1 1 96px; max-width: none; height: 44px; }
+  .lmd-spk select[data-spk=rate] { flex: 0 0 76px; }
+}
+@media print { .lmd-flash-top, .lmd-forced-toast, .lmd-dct-hint { display: none !important; } }

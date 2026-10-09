@@ -280,8 +280,9 @@ try {
     await page.keyboard.press('Escape'); await away(page);
     const para = page.locator('.lmd-article > p.lmd-editable').first();
     await para.tap(); await page.waitForTimeout(350);
-    const handle = await page.evaluate(() => { const h = document.querySelector('.lmd-handle'); const r = h.getBoundingClientRect(); const p = document.querySelector('.lmd-article > p.lmd-editable').getBoundingClientRect(); return { seen: !h.hidden, left: Math.round(r.left), right: Math.round(r.right), h: Math.round(r.height), text: Math.round(p.left), dy: Math.abs(r.top - p.top) }; });
-    check(tag + 'al tocar un bloque su manija queda a la vista, al costado del texto', handle.seen && handle.left >= 0 && handle.right <= handle.text && handle.dy < 12 && handle.h >= 36, handle);
+    const handle = await page.evaluate(() => { const h = document.querySelector('.lmd-handle'); const r = h.getBoundingClientRect(); const p = document.querySelector('.lmd-article > p.lmd-editable').getBoundingClientRect(); return { seen: !h.hidden, left: Math.round(r.left), right: Math.round(r.right), h: Math.round(r.height), text: Math.round(p.left), dy: Math.abs(r.top - p.top), hit: Math.min(parseFloat(getComputedStyle(h, '::before').width), parseFloat(getComputedStyle(h, '::before').height)) }; });
+    // La manija se ve chica para entrar en el margen sin tocar el campo; la zona de toque sobresale hasta 44 px.
+    check(tag + 'al tocar un bloque su manija queda a la vista, al costado del texto, con 44 px para el dedo', handle.seen && handle.left >= 0 && handle.right <= handle.text - 8 && handle.dy < 12 && handle.h >= 30 && handle.hit >= 44, handle);
     await page.tap('.lmd-handle'); await page.waitForSelector('.lmd-menu [data-ins]', { timeout: 4000 }).catch(() => {});
     const block = await page.evaluate(() => { const m = document.querySelector('.lmd-menu'); if (!m) return null; const r = m.getBoundingClientRect(); return { ops: [...m.querySelectorAll('[data-op]')].map((b) => b.dataset.op), in: r.left >= 0 && r.right <= window.innerWidth && r.top >= 0 && r.bottom <= window.innerHeight, low: Math.min(...[...m.querySelectorAll('button')].map((b) => b.getBoundingClientRect().height)) }; });
     check(tag + 'la manija abre el menú de bloques, entero dentro de la pantalla', block && block.ops.includes('dup') && block.ops.includes('del') && block.in && block.low >= 40, block);
@@ -1051,6 +1052,135 @@ try {
     await page.setViewportSize({ width: 1280, height: 800 }); await page.waitForTimeout(400);
     check('al volver a ensanchar la ventana vuelven los íconos', await page.evaluate(() => !document.documentElement.classList.contains('lmd-bar-tight') && !!document.querySelector('[data-act=copy]').offsetParent));
     await ctx.close();
+  }
+
+  // ---------- Mover archivos del explorador con el dedo ----------
+  // Mantener apretado levanta el renglón; arrastrarlo lo mueve con las reglas del mouse, y sin arrastrar sale el menú,
+  // que trae "Move to…". Los toques son de verdad (CDP). Con MOVER_SHOTS se guardan capturas en esa carpeta.
+  {
+    console.log('Explorador: mover con el dedo');
+    const SHOTS = process.env.MOVER_SHOTS || ''; if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
+    const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: path.join(SHOTS, name) }); };
+    const who = 'dedo@ejemplo.test';
+    const s2 = (await api('POST', '/auth/verify', { email: who, code: (await api('POST', '/auth/start', { email: who })).json.dev_code })).json.session;
+    await api('POST', '/admin/plan', { email: who, plan: 'pro' }, undefined, { 'x-admin-key': 'clave-de-prueba' });
+    const names = ['proyectos/plan.md', 'archivo/viejo.md', 'aaa-suelta.md', 'otra.md', 'queda.md', 'tirar.md', 'zzz-lejos.md'].concat(Array.from({ length: 16 }, (x, i) => 'n' + String(i + 1).padStart(2, '0') + '.md'));
+    for (const n of names) await api('PUT', '/notes/' + encodeURIComponent(n), { text: '# ' + n + '\n' }, s2);
+    const { ctx, page } = await open(390, 844, { serviceWorkers: 'block' });
+    await page.goto(home); await page.waitForSelector('.lmd-home [data-home=new]');
+    await page.evaluate(async ([url, s, m]) => {
+      await LMD.store.notePut('del-navegador.md', '# Local\n');
+      await new Promise((resolve) => chrome.storage.local.set({ settings: { cloudUrl: url }, cloud: { session: s, email: m } }, resolve));
+    }, [base, s2, who]);
+    await page.goto(home); await page.waitForSelector('.lmd-home-acct', { state: 'attached' });
+    await page.evaluate(() => { window.__vib = 0; try { Object.defineProperty(navigator, 'vibrate', { configurable: true, value: () => { window.__vib++; return true; } }); } catch (e) { /* sin vibración que espiar */ } });
+    await page.tap('[data-act=sidebar]'); await page.waitForTimeout(350);
+    const CL = '.lmd-xroot[data-root=cloud] ';
+    await page.waitForSelector(CL + '.lmd-node >> text=zzz-lejos.md');
+    const cdp = await page.context().newCDPSession(page);
+    const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+    const row = (name, root) => page.locator((root || CL) + '.lmd-node', { hasText: name }).first();
+    const at = async (loc) => { const b = await loc.boundingBox(); return [b.x + Math.min(60, b.width / 2), b.y + b.height / 2]; };
+    const glide = async (from, to, steps, pause) => { for (let i = 1; i <= steps; i++) { await touch('touchMove', from[0] + (to[0] - from[0]) * i / steps, from[1] + (to[1] - from[1]) * i / steps); await page.waitForTimeout(pause); } };
+    const show = async (loc) => { await loc.evaluate((n) => n.scrollIntoView({ block: 'center' })); await page.waitForTimeout(200); };
+    const toTop = async () => { await page.evaluate(() => { document.querySelector('.lmd-pane-files').scrollTop = 0; }); await page.waitForTimeout(200); };
+    const paths = () => page.evaluate(async () => (await LMD.cloud.list(true)).map((n) => n.path).sort());
+    const state = () => page.evaluate(() => ({ lifted: document.querySelectorAll('.lmd-lifted').length, dragging: document.querySelectorAll('.lmd-dragging').length, ghost: (document.querySelector('.lmd-drag-ghost') || {}).textContent || '', menu: document.querySelectorAll('.lmd-menu').length, ask: document.querySelectorAll('.lmd-ask').length,
+      drop: [...document.querySelectorAll('.lmd-drop')].map((n) => (n.matches('.lmd-trash-link') ? 'papelera' : n.matches('.lmd-xroot') ? 'raíz ' + n.dataset.root : n.querySelector('.lmd-node-name').textContent)), scroll: Math.round(document.querySelector('.lmd-pane-files').scrollTop), drawer: document.documentElement.classList.contains('lmd-side-open'), doc: document.title }));
+    // Mantener apretado y llevarlo hasta "to" (un punto); devuelve cómo se veía levantado y arrastrando.
+    const drag = async (loc, to, opt) => {
+      const from = await at(loc); await touch('touchStart', from[0], from[1]); await page.waitForTimeout(650);
+      const up = await state(); if (opt && opt.shots) await shot(page, 'mover-01-levantado.png');
+      await glide(from, to, 12, 25); await page.waitForTimeout(120);
+      const mid = await state(); if (opt && opt.shots) await shot(page, 'mover-02-arrastrando.png');
+      await touch('touchEnd'); await page.waitForTimeout(250);
+      return { up, mid, end: await state() };
+    };
+    const start = await paths(); const title0 = await page.title();
+    await shot(page, 'mover-00-antes.png');
+
+    // Arrastrar un archivo a una carpeta
+    let g = await drag(row('aaa-suelta.md'), await at(row('proyectos')), { shots: true });
+    await page.waitForFunction(() => LMD.cloud.list(true).then((l) => l.some((n) => n.path === 'proyectos/aaa-suelta.md'))).catch(() => {});
+    let now = await paths();
+    check('mantener apretado un archivo lo levanta, con vibración y sin abrir el menú', g.up.lifted === 1 && g.up.menu === 0 && g.up.ghost === '' && (await page.evaluate(() => window.__vib)) === 1, g.up);
+    check('al arrastrarlo viaja una etiqueta con su nombre y la carpeta de destino queda marcada', g.mid.ghost === 'aaa-suelta.md' && g.mid.dragging === 1 && J(g.mid.drop) === J(['proyectos']), g.mid);
+    check('soltarlo sobre la carpeta lo mueve ahí, sin abrir la nota ni el menú', now.includes('proyectos/aaa-suelta.md') && !now.includes('aaa-suelta.md') && now.length === start.length && g.end.menu === 0 && g.end.lifted === 0 && g.end.ghost === '' && g.end.drawer && g.end.doc === title0, [now.filter((p) => /suelta/.test(p)), g.end]);
+    await page.waitForSelector(CL + '.lmd-node >> text=zzz-lejos.md'); await page.waitForTimeout(300);
+
+    // Un deslizamiento corto y rápido desliza el panel y no mueve nada
+    const can = await page.evaluate(() => { const p = document.querySelector('.lmd-pane-files'); p.scrollTop = 0; return p.scrollHeight - p.clientHeight; });
+    const sw = await at(row('n06.md'));
+    await touch('touchStart', sw[0], sw[1]); await glide(sw, [sw[0], sw[1] - 220], 8, 16); await touch('touchEnd'); await page.waitForTimeout(500);
+    const swiped = await state();
+    check('un deslizamiento rápido desliza el panel, sin levantar nada ni abrir menú o nota', can > 100 && swiped.scroll > 60 && swiped.lifted === 0 && swiped.menu === 0 && swiped.ghost === '' && swiped.drawer && swiped.doc === title0 && J(await paths()) === J(now), [can, swiped]);
+
+    // Mantener apretado sin mover: el menú de siempre, con "Move to…"
+    await show(row('otra.md'));
+    await press(page, row('otra.md')); await page.waitForSelector('.lmd-menu [data-f]', { timeout: 4000 }).catch(() => {});
+    const menu = await page.evaluate(() => { const m = document.querySelector('.lmd-menu'); if (!m) return null; const r = m.getBoundingClientRect(); const b = m.querySelector('[data-f=mov]');
+      return { items: [...m.querySelectorAll('[data-f]')].map((x) => x.dataset.f), mov: b ? b.textContent : '', h: b ? Math.round(b.getBoundingClientRect().height) : 0, in: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight, lifted: document.querySelectorAll('.lmd-lifted').length }; });
+    check('mantener apretado sin mover abre el menú del archivo, con "Move to…" antes de eliminar', menu && menu.in && menu.lifted === 0 && menu.mov === 'Move to…' && menu.h >= 44 && menu.items.indexOf('mov') === menu.items.indexOf('ren') + 1 && menu.items.indexOf('del') > menu.items.indexOf('mov'), menu);
+    await page.tap('.lmd-menu [data-f=mov]'); await page.waitForSelector('.lmd-mv-card'); await page.waitForTimeout(200);
+    const pick = await page.evaluate(() => { const c = document.querySelector('.lmd-mv-card').getBoundingClientRect(); const bs = [...document.querySelectorAll('.lmd-mv button')];
+      return { title: document.querySelector('.lmd-mv h3').textContent, rows: [...document.querySelectorAll('.lmd-mv-list button')].map((b) => b.querySelector('.lmd-mv-name').textContent + (b.disabled ? ' (' + b.querySelector('small').textContent + ')' : '')), low: Math.min(...bs.map((b) => Math.round(b.getBoundingClientRect().height))), in: c.left >= 0 && c.right <= innerWidth && c.top >= 0 && c.bottom <= innerHeight, menu: document.querySelectorAll('.lmd-menu').length }; });
+    check('"Move to…" abre el selector: la nube (donde ya está, sin poder elegirla), sus carpetas y una carpeta nueva, con renglones de 44 px', pick.title === 'Move "otra.md" to…' && J(pick.rows) === J(['Cloud (It is here)', 'archivo', 'proyectos', 'New folder…']) && pick.low >= 44 && pick.in && pick.menu === 0, pick);
+    await fits(page, 'selector de "Move to…"');
+    await shot(page, 'mover-03-mover-a.png');
+    await page.locator('.lmd-mv-list button', { hasText: 'archivo' }).tap();
+    await page.waitForFunction(() => LMD.cloud.list(true).then((l) => l.some((n) => n.path === 'archivo/otra.md'))).catch(() => {});
+    now = await paths();
+    check('elegir una carpeta mueve el archivo ahí y cierra el selector', now.includes('archivo/otra.md') && !now.includes('otra.md') && now.length === start.length && (await page.locator('.lmd-mv').count()) === 0, now.filter((p) => /otra/.test(p)));
+    await page.waitForSelector(CL + '.lmd-node >> text=zzz-lejos.md'); await page.waitForTimeout(300);
+    // Cancelar no mueve nada
+    await show(row('queda.md'));
+    await press(page, row('queda.md')); await page.waitForSelector('.lmd-menu [data-f=mov]'); await page.tap('.lmd-menu [data-f=mov]'); await page.waitForSelector('.lmd-mv-card');
+    await page.tap('.lmd-mv [data-mv=no]'); await page.waitForTimeout(300);
+    check('"Cancel" cierra el selector sin mover nada', (await page.locator('.lmd-mv').count()) === 0 && J(await paths()) === J(now));
+    // Sin carpeta adonde ir, se crea una desde el mismo selector
+    await show(row('n16.md'));
+    await press(page, row('n16.md')); await page.waitForSelector('.lmd-menu [data-f=mov]'); await page.tap('.lmd-menu [data-f=mov]'); await page.waitForSelector('.lmd-mv-card');
+    await page.tap('.lmd-mv [data-mv=new]'); await page.waitForSelector('.lmd-dlg-card input'); await page.fill('.lmd-dlg-card input', 'nuevas'); await page.tap('.lmd-dlg-card [data-dlg=ok]');
+    await page.waitForFunction(() => LMD.cloud.list(true).then((l) => l.some((n) => n.path === 'nuevas/n16.md'))).catch(() => {});
+    now = await paths();
+    check('"New folder…" pide el nombre y mueve la nota a la carpeta nueva', now.includes('nuevas/n16.md') && !now.includes('n16.md') && now.length === start.length, now.filter((p) => /n16/.test(p)));
+    await page.waitForSelector(CL + '.lmd-node >> text=zzz-lejos.md'); await page.waitForTimeout(300);
+
+    // Destinos que no valen: otro archivo de la misma carpeta, fuera del panel, y una nota del navegador sobre la nube
+    await show(row('queda.md'));
+    g = await drag(row('queda.md'), await at(row('tirar.md')));
+    const bad1 = [g.mid.drop, g.end.menu, g.end.ask, g.end.lifted, g.end.ghost];
+    const out = await page.evaluate(() => { const r = document.querySelector('.lmd-zone-outline, .lmd-pane-outline, .lmd-search').getBoundingClientRect(); return [r.left + r.width / 2, r.top + Math.min(20, r.height / 2)]; });
+    g = await drag(row('queda.md'), out);
+    const bad2 = [g.mid.drop, g.end.menu, g.end.ask, g.end.lifted, g.end.ghost];
+    await toTop();
+    g = await drag(row('del-navegador.md', '.lmd-xroot[data-root=local] '), await at(row('proyectos')));
+    const bad3 = [g.mid.drop, g.end.menu, g.end.ask, g.end.lifted, g.end.ghost, g.up.lifted];
+    await page.waitForTimeout(400);
+    check('soltar en un destino que no vale no hace nada: ni mueve, ni pregunta, ni deja nada levantado', J(bad1) === J([[], 0, 0, 0, '']) && J(bad2) === J([[], 0, 0, 0, '']) && J(bad3) === J([[], 0, 0, 0, '', 1]) && J(await paths()) === J(now) && (await page.evaluate(async () => (await LMD.store.notesAll()).some((n) => n.name === 'del-navegador.md'))) && (await page.title()) === title0, [bad1, bad2, bad3]);
+
+    // La papelera es un destino: pregunta lo mismo que "Eliminar"
+    const bin =await page.evaluate(() => { const b = document.querySelector('.lmd-trash-link'); b.scrollIntoView({ block: 'center' }); const r = b.getBoundingClientRect(); return [r.left + 60, r.top + r.height / 2]; });
+    await page.waitForTimeout(200);
+    g = await drag(row('tirar.md'), bin); await page.waitForSelector('.lmd-dlg-card', { timeout: 3000 }).catch(() => {});
+    const asked = await page.evaluate(() => { const h = document.querySelector('.lmd-dlg-card h3'); return h ? h.textContent : ''; });
+    check('soltarlo en la papelera la marca y pregunta antes de eliminar, como con el mouse', J(g.mid.drop) === J(['papelera']) && asked === 'Delete "tirar.md"?', [g.mid.drop, asked]);
+    await page.tap('[data-dlg=no]'); await page.waitForTimeout(200);
+    check('y al cancelar la nota sigue en su lugar', J(await paths()) === J(now));
+
+    // Cerca del borde de arriba el panel se desliza solo hasta llegar a la carpeta
+    await page.evaluate(() => { const p = document.querySelector('.lmd-pane-files'); p.scrollTop = p.scrollHeight; }); await page.waitForTimeout(200);
+    const far = await at(row('zzz-lejos.md')); const edge = await page.evaluate(() => { const r = document.querySelector('.lmd-pane-files').getBoundingClientRect(); return r.top + 12; });
+    const s0 = (await state()).scroll;
+    await touch('touchStart', far[0], far[1]); await page.waitForTimeout(650); await glide(far, [far[0], edge], 10, 25);
+    await page.waitForFunction(() => document.querySelector('.lmd-pane-files').scrollTop === 0, null, { timeout: 8000 }).catch(() => {});
+    const s1 = (await state()).scroll; const dir = await at(row('archivo'));
+    await glide([far[0], edge], dir, 6, 25); await page.waitForTimeout(120); const over = await state();
+    await touch('touchEnd');
+    await page.waitForFunction(() => LMD.cloud.list(true).then((l) => l.some((n) => n.path === 'archivo/zzz-lejos.md'))).catch(() => {});
+    now = await paths();
+    check('con el dedo cerca del borde el panel se desliza solo, y se suelta en una carpeta que no estaba a la vista', s0 > 100 && s1 === 0 && J(over.drop) === J(['archivo']) && now.includes('archivo/zzz-lejos.md') && !now.includes('zzz-lejos.md'), [s0, s1, over.drop, now.filter((p) => /lejos/.test(p))]);
+    await cdp.detach(); await ctx.close();
   }
 
   check('ningún pedido salió a la nube de verdad', outside.length === 0, outside);

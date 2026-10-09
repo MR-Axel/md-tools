@@ -277,7 +277,7 @@
       "Idioma": "Language",
       "Tema": "Theme",
       "Automático": "Auto",
-      "Pasar a claro": "Switch to light", "Pasar a oscuro": "Switch to dark", "Tema claro": "Light theme", "Tema oscuro": "Dark theme",
+      "Pasar a claro": "Switch to light", "Pasar a oscuro": "Switch to dark", "Tema claro": "Light theme", "Tu navegador oscurece las páginas claras. SharpMD pasó a su tema oscuro para que los colores se vean bien.": "Your browser darkens light pages. SharpMD switched to its dark theme so colors stay right.", "Seguir en claro": "Keep light","Tema oscuro": "Dark theme",
       "Automático sigue al dispositivo": "Auto follows your device",
       "Claro": "Light",
       "Oscuro": "Dark",
@@ -635,6 +635,7 @@
       "Ya hay un archivo con ese nombre": "A file with that name already exists",
       "No se pudo crear el archivo": "Could not create the file", "No se pudo renombrar": "Could not rename", "No se pudo eliminar": "Could not delete",
       "Nuevo archivo acá": "New file here", "Nuevo archivo": "New file", "Renombrar": "Rename",
+      "Mover a…": "Move to…", "Mover \"{a}\" a…": "Move \"{a}\" to…", "Está acá": "It is here",
       "Nombre del archivo": "File name", "Doble clic o F2 para cambiar el nombre": "Double-click or press F2 to rename",
       "No se pudo mover": "Could not move",
       "imagen": "image", "Imagen guardada en {a}": "Image saved to {a}", "No se pudo guardar la imagen": "Could not save the image",
@@ -1520,6 +1521,13 @@
       "El navegador no dio permiso para usar el micrófono.": "The browser did not allow the microphone.", "No se encontró un micrófono.": "No microphone was found.",
       "El reconocimiento de voz necesita conexión.": "Speech recognition needs a connection.", "Este idioma no está disponible para dictar.": "This language is not available for dictation.",
       "No se pudo prender el micrófono.": "The microphone could not be turned on.",
+      "El dictado no está disponible en este navegador. Funciona en Chrome.": "Dictation is not available in this browser. It works in Chrome.",
+      "Ver si se puede en este dispositivo": "Check on-device support", "Este navegador no transcribe en el dispositivo.": "This browser does not transcribe on the device.",
+      "El micrófono todavía no arrancó. Si no aparece el pedido de permiso, este navegador no permite dictar.": "The microphone has not started yet. If no permission prompt shows up, this browser does not allow dictation.",
+      "Tipo de aviso": "Callout type",
+      "El micrófono aparece arriba del teclado al editar un bloque. También está en el menú de los tres puntos.": "The microphone shows above the keyboard while you edit a block. It is also in the three dots menu.",
+      "Desde el menú de los tres puntos, o manteniendo apretado un párrafo: Leer desde acá.": "From the three dots menu, or press and hold a paragraph: Read from here.",
+      "Tocá para dictar": "Tap to dictate", "Dictar": "Dictate", "Cortar el dictado": "Stop dictation", "Elegir voz": "Choose voice", "Detener la lectura": "Stop reading",
       "Escuchando": "Listening", "En este dispositivo": "On this device", "Frases que entiende": "Phrases it understands", "Cortar": "Stop",
       "Cortar el dictado (Alt+Shift+D)": "Stop dictation (Alt+Shift+D)", "Dictar (Alt+Shift+D)": "Dictate (Alt+Shift+D)",
       "Idioma del dictado": "Dictation language", "El de la app": "Same as the app",
@@ -1989,7 +1997,7 @@
   const fileLink = (url) => WEB_APP_URL + '#open=' + encodeURIComponent(url);
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.69.0';
+  const VERSION = '2.70.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, PLUGIN_GROUPS, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);

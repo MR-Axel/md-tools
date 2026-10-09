@@ -122,6 +122,29 @@ for (const [id, cls] of [['lima', 'lmd-light'], ['noche', 'lmd-dark']]) {
 }
 const mer = TH.mermaid({ preset: 'marea', theme: 'dark', supporter: true });
 check('un tema incluido arma los diagramas con sus colores, y el de siempre deja los de Mermaid', mer.theme === 'base' && mer.themeVariables.primaryTextColor === TH.byId('marea').c.fg && TH.mermaid({ preset: '', theme: 'dark' }).theme === 'dark' && TH.mermaid({ preset: 'marea', theme: 'dark', supporter: false }).theme === 'base');
+// Los avisos (nota, consejo, importante, advertencia, precaución): el título de cada tipo se lee sobre el panel de
+// los doce temas, y la barra de color se distingue del panel y de la barra gris de una cita.
+{
+  // Un color por tipo y por modo (--lmd-alert-c): pinta la barra, el título y el ícono.
+  const KINDS = ['note', 'tip', 'important', 'warning', 'caution'];
+  const tone = (kind, dark) => { const m = new RegExp((dark ? '\\.lmd-dark ' : '(?:^|[;}] ?)') + '\\.lmd-alert-' + kind + ' \\{ --lmd-alert-c: (#[0-9a-f]{6}); \\}', 'm').exec(css); return m ? m[1] : ''; };
+  const bar = (kind) => (/\.markdown-body blockquote\.lmd-alert \{[^}]*border-left-color: var\(--lmd-alert-c/.test(css) && /\.markdown-body blockquote\.lmd-alert \.lmd-alert-title \{ color: var\(--lmd-alert-c/.test(css) ? tone(kind, false) : '');
+  const bad = [];
+  for (const p of P) for (const k of KINDS) {
+    const t = tone(k, p.dark); const b = bar(k) && t;
+    if (!t || !b) { bad.push(p.id + ' ' + k + ' sin color'); continue; }
+    const text = TH.contrast(t, p.c.soft); const edge = Math.min(TH.contrast(b, p.c.soft), TH.contrast(b, p.c.bg));
+    if (text < 4.5) bad.push(p.id + ' título ' + k + ' ' + text.toFixed(2));
+    if (edge < 3) bad.push(p.id + ' barra ' + k + ' ' + edge.toFixed(2));
+  }
+  check('los cinco avisos: título 4.5:1 y barra 3:1 sobre el panel, en los doce temas', bad.length === 0, bad);
+  check('la barra de un aviso gana a la de la cita (misma regla, más específica) y cada tipo trae su ícono', KINDS.every((k) => bar(k) && new RegExp('\\.lmd-alert-' + k + ' \\{ --lmd-alert-ico: url\\(').test(css)) && /\.markdown-body blockquote\.lmd-alert \{[^}]*color: var\(--fg\)/.test(css));
+}
+// Lo que se le declara al navegador: con un tema claro, "only light" (el navegador no lo oscurece por su cuenta).
+{
+  const boot = fs.readFileSync(path.join(root, 'src', 'boot.js'), 'utf8'); const html = fs.readFileSync(path.join(root, 'src', 'app.html'), 'utf8'); const theme = fs.readFileSync(path.join(root, 'src', 'theme.js'), 'utf8');
+  check('la app declara "only light" en los temas claros desde el primer cuadro, y traba a Dark Reader', /colorScheme = 'only light'/.test(boot) && /scheme\.content = dark \? 'dark' : 'only light'/.test(boot) && /colorScheme = 'only light'/.test(theme) && /color-scheme: only light;/.test(css) && /<meta name="darkreader-lock">/.test(html) && boot.indexOf('boot.js') < 0 && html.indexOf('<meta name="color-scheme"') < html.indexOf('<script src="boot.js">'));
+}
 const landing = fs.readFileSync(path.join(root, 'tools', 'landing.src.html'), 'utf8');
 const strip = P.filter((p) => !new RegExp('data-theme="' + p.id + '"[^>]*--b:' + p.c.bg + ';--f:' + p.c.fg + ';--m:' + p.c.muted + ';--c:' + p.c.code + ';--l:' + p.c.line + ';--a:' + p.c.fill).test(landing)).map((p) => p.id);
 check('la tira de la portada dibuja los doce con los mismos colores', strip.length === 0, strip);

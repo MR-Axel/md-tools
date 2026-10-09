@@ -466,7 +466,7 @@
     prime(s);
     const made = build(o.text, o.from);
     if (!made.segs.some((x) => x.text)) { core.flash(T('No hay texto para leer.'), 'warn'); return false; }
-    const all = await voices();
+    let all = []; try { all = Array.from((await voices()) || []); } catch (e) { all = []; }
     if (!all.length) { core.flash(T('Este navegador no tiene voces instaladas para leer.'), 'warn'); return false; }
     st.lang = made.lang; st.all = all; st.voice = pickVoice(all, st.lang);
     st.segs = made.segs; st.picked = !!o.text; st.i = o.text ? 0 : indexOf(made.segs, o.from); st.dir = 1;
@@ -569,21 +569,34 @@
 
   // ---------- Opciones en Ajustes > Herramientas ----------
   const CHECKS = [['speakCollapsed', 'Leer las secciones cerradas', true], ['speakSkipDone', 'Saltear las tareas hechas', false], ['speakCode', 'Leer los bloques de código', false]];
-  async function settings(area, api) {
-    const all = await voices(); const lang = opt('speakLang', 'auto'); const shown = lang === 'auto' ? (LMD.lang() === 'es' ? 'es' : 'en') : lang;
+  // Dibujar las opciones no toca el motor de voz: la lista de voces se le pide al navegador recién con "Elegir voz"
+  // (o al empezar a leer). got son las voces, cuando ya se pidieron.
+  async function settings(area, api, got) {
+    const loaded = Array.isArray(got); const all = loaded ? got : [];
+    const lang = opt('speakLang', 'auto'); const shown = lang === 'auto' ? (LMD.lang() === 'es' ? 'es' : 'en') : lang;
     area.innerHTML =
-      (all.length ? '' : '<p class="lmd-tl-why">' + esc(T('Este navegador no tiene voces instaladas para leer.')) + '</p>') +
+      (!loaded || all.length ? '' : '<p class="lmd-tl-why">' + esc(T('Este navegador no tiene voces instaladas para leer.')) + '</p>') +
       '<label class="lmd-row"><span>' + esc(T('Velocidad')) + '</span><select data-spk="rate">' + rateOptions() + '</select></label>' +
       '<label class="lmd-row"><span>' + esc(T('Idioma de la lectura')) + '</span><select data-spk="lang">' + langOptions(lang) + '</select></label>' +
-      '<label class="lmd-row"><span>' + esc(T('Voz')) + '</span><select data-spk="voice">' + voiceOptions(all, shown, opt(voiceKey(shown), '')) + '</select></label>' +
+      (loaded ? '<label class="lmd-row"><span>' + esc(T('Voz')) + '</span><select data-spk="voice">' + voiceOptions(all, shown, opt(voiceKey(shown), '')) + '</select></label>' :
+        '<div class="lmd-row"><span>' + esc(T('Voz')) + '</span><button type="button" class="lmd-btn" data-spk="voices">' + esc(T('Elegir voz')) + '</button></div>') +
       CHECKS.map((c) => '<label class="lmd-check"><input type="checkbox" data-spk-opt="' + c[0] + '"' + (opt(c[0], c[2]) ? ' checked' : '') + '><span>' + esc(T(c[1])) + '</span></label>').join('') +
-      '<div class="lmd-row lmd-row-line"><span>' + esc(T('Atajo: Alt+Shift+S. También con clic derecho, Leer desde acá.')) + '</span><button type="button" class="lmd-btn" data-spk="go">' + esc(T('Leer esta nota')) + '</button></div>';
+      '<div class="lmd-row lmd-row-line"><span>' + esc(T(LMD.touch.coarse() ? 'Desde el menú de los tres puntos, o manteniendo apretado un párrafo: Leer desde acá.' : 'Atajo: Alt+Shift+S. También con clic derecho, Leer desde acá.')) + '</span><button type="button" class="lmd-btn" data-spk="go">' + esc(T('Leer esta nota')) + '</button></div>';
     area.querySelector('[data-spk=rate]').addEventListener('change', (e) => keep({ speakRate: +e.target.value }));
-    area.querySelector('[data-spk=lang]').addEventListener('change', (e) => { keep({ speakLang: e.target.value }); settings(area, api); });
-    area.querySelector('[data-spk=voice]').addEventListener('change', (e) => { const p = {}; p[voiceKey(shown)] = e.target.value; keep(p); });
+    area.querySelector('[data-spk=lang]').addEventListener('change', (e) => { keep({ speakLang: e.target.value }); settings(area, api, got); });
+    const pick = area.querySelector('[data-spk=voice]');
+    if (pick) pick.addEventListener('change', (e) => { const p = {}; p[voiceKey(shown)] = e.target.value; keep(p); });
+    const ask = area.querySelector('[data-spk=voices]');
+    if (ask) ask.addEventListener('click', async () => {
+      ask.disabled = true;
+      let list = []; try { list = (await voices()) || []; } catch (e) { list = []; }
+      if (!area.isConnected) return;
+      await settings(area, api, Array.from(list));
+      const sel = area.querySelector('[data-spk=voice]'); if (sel) sel.focus({ preventScroll: true });
+    });
     area.querySelectorAll('[data-spk-opt]').forEach((box) => box.addEventListener('change', () => { const p = {}; p[box.dataset.spkOpt] = box.checked; keep(p); }));
     const go = area.querySelector('[data-spk=go]');
-    go.disabled = !all.length || core.noDoc;
+    go.disabled = (loaded && !all.length) || core.noDoc;
     go.addEventListener('click', () => { api.close(); start({}); });
   }
 
@@ -625,6 +638,9 @@
     wired = true;
     window.addEventListener('keydown', onKey);
     LMD.write.readMenu.push(menuItem);
+    // En pantalla chica no hay atajo ni clic derecho a mano: la lectura también arranca y se detiene desde el menú "más".
+    core.actions.speak = () => { if (st.active) stop(); else startHere(); };
+    core.menus.more.push(() => (on && synth() && core.blocks && LMD.touch.small() ? ['speak', ICON.speak, st.active ? 'Detener la lectura' : 'Leer en voz alta'] : null));
     // Otra nota: lo que se estaba leyendo ya no está.
     core.hooks.doc.push(() => { if (st.active && st.note !== core.HERE) stop(); });
     core.hooks.render.push(redrawn);
