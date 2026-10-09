@@ -425,24 +425,37 @@ async function uiTests(K) {
   }
   check('la app y el servidor eligen la misma columna de hechas', doneBoth.every((x) => x[0] === x[1]) && J(doneBoth.map((x) => x[0])) === J(['Listo', null, 'A', 'Done', 'Hechas ✅', 'REVIEW', null]), doneBoth);
 
-  console.log('Interfaz: alta guiada desde el tablero');
+  console.log('Interfaz: una automatización desde el tablero');
+  // Lo que viaja al servidor al guardar, tal cual.
+  const sentBy = async (pg, act, method) => { const [rq] = await Promise.all([pg.waitForRequest((x) => /\/automations\/hooks(\/\d+)?$/.test(x.url()) && x.method() === (method || 'POST')), act()]); return rq.postData(); };
+  // El formulario, como se ve: los eventos elegidos, las fichas, el resumen y lo que falta.
+  const form = (pg) => pg.evaluate(() => { const w = document.querySelector('.lmd-au-wiz'); const $ = (q) => w.querySelector(q); const t = (q) => ($(q) && !$(q).hidden ? $(q).textContent : ''); return {
+    title: $('h3').textContent, labs: [...w.querySelectorAll('.lmd-au-lab')].map((n) => n.textContent), tpl: [...w.querySelectorAll('[data-au-tpl]')].map((b) => b.textContent + (b.getAttribute('aria-pressed') === 'true' ? '*' : '')),
+    chips: [...w.querySelectorAll('.lmd-ms-chip > span')].map((n) => n.textContent), many: $('.lmd-ms').classList.contains('lmd-ms-many'), field: $('.lmd-ms-text').textContent, aria: $('.lmd-ms-btn').getAttribute('aria-label'), bad: $('.lmd-ms-btn').getAttribute('aria-invalid'),
+    name: $('[data-au=name]').value, scope: $('[data-au=scope]').value, format: $('[data-au=format]').value, fmts: [...$('[data-au=format]').options].map((o) => o.textContent), url: $('[data-au=url]').value, hint: $('[data-au=url]').placeholder, urlBad: $('[data-au=url]').getAttribute('aria-invalid'),
+    more: !$('.lmd-au-more').hidden, sum: t('.lmd-au-sum'), miss: $('.lmd-au-miss').textContent, errEv: t('#lmd-au-err-ev'), errUrl: t('#lmd-au-err-url'), tip: t('#lmd-au-tip'), off: $('[data-au=save]').disabled, save: $('[data-au=save]').textContent, text: $('.lmd-ask-card').textContent }; });
+  const CARDS = ['card.moved', 'card.done', 'card.created', 'card.updated', 'card.deleted'];
   await page.click('.lmd-board-menu'); await page.waitForSelector('.lmd-menu-board');
   const menuText = await page.textContent('.lmd-menu-board');
   await page.click('.lmd-menu-board [data-bm=notify]'); await page.waitForSelector('.lmd-au-wiz');
-  let s = await page.evaluate(() => ({ step: document.querySelector('.lmd-au-step').textContent, kind: document.querySelector('.lmd-au-wiz input[name=lmd-au-kind]:checked').value, note: document.querySelector('.lmd-au-wiz [data-au=note]').value }));
-  check('el menú del tablero ofrece avisar cuando cambie una tarjeta, con esa nota ya puesta', /Notify when a card changes/.test(menuText) && /Step 1 of 3 · Where to watch/.test(s.step) && s.kind === 'note' && s.note === 'ui/board.md', [menuText, s]);
-  await page.click('.lmd-au-wiz [data-au=next]');
-  s = await page.evaluate(() => ({ step: document.querySelector('.lmd-au-step').textContent, on: [...document.querySelectorAll('.lmd-au-wiz .lmd-au-body input:checked')].map((i) => i.value), all: document.querySelectorAll('.lmd-au-wiz .lmd-au-body input').length, groups: [...document.querySelectorAll('.lmd-au-group legend')].map((l) => l.textContent) }));
-  check('paso 2: los eventos de tarjeta ya marcados, en grupos', /Step 2 of 3 · What to notify/.test(s.step) && J(s.on.sort()) === J(['card.created', 'card.deleted', 'card.done', 'card.moved', 'card.updated']) && s.all === 12 && J(s.groups) === J(['Board cards', 'Notes', 'Comments']), s);
-  await page.click('.lmd-au-wiz [data-au=next]');
-  s = await page.evaluate(() => ({ step: document.querySelector('.lmd-au-step').textContent, fmts: [...document.querySelectorAll('[data-au-fmt]')].map((b) => b.textContent + (b.getAttribute('aria-checked') === 'true' ? '*' : '')), text: document.querySelector('.lmd-au-wiz .lmd-ask-card').textContent }));
-  check('paso 3: Slack, Discord o JSON, con Slack elegido', /Step 3 of 3 · Where to send/.test(s.step) && J(s.fmts) === J(['Slack*', 'Discord', 'Make, n8n, Zapier or other']) && plain(s.text), s);
-  await page.fill('.lmd-au-wiz [data-au=url]', 'ftp://nada'); await page.click('.lmd-au-wiz [data-au=next]');
-  const errText = await page.textContent('.lmd-au-wiz .lmd-dlg-err');
-  check('una dirección que no es https se rechaza antes de mandar', /has to start with https/.test(errText) && plain(errText), errText);
-  await page.click('.lmd-au-wiz [data-au=back]'); await page.click('.lmd-au-wiz [data-au=next]');
-  check('volver atrás no pierde lo escrito', (await page.inputValue('.lmd-au-wiz [data-au=url]')) === 'ftp://nada');
-  await page.fill('.lmd-au-wiz [data-au=url]', SINK + '/ui-slack'); await page.fill('.lmd-au-wiz [data-au=name]', 'Team channel'); await page.click('.lmd-au-wiz [data-au=next]');
+  let s = await form(page);
+  check('el menú del tablero ofrece avisar cuando cambie una tarjeta, y abre una sola pantalla con esa nota ya puesta', /Notify when a card changes/.test(menuText) && s.title === 'New automation' && J(s.labs) === J(['Name', 'When', 'In', 'Notify']) && s.scope === 'note:ui/board.md' && !/Step \d/.test(s.text) && !(await page.locator('.lmd-au-wiz [data-au=next], .lmd-au-wiz [data-au=back]').count()), [menuText, s]);
+  check('los cinco eventos de tarjeta ya elegidos, con su plantilla marcada', /^When: A card moves to another column, A card is marked done, A card is created, The details of a card change, A card is deleted$/.test(s.aria) && J(s.tpl) === J(['Task done', 'Card changes*', 'New note', 'New comment']) && (s.many ? s.field === '5 events' : s.chips.length === 5), s);
+  check('adónde avisar: Slack, Discord o JSON en un desplegable, con Slack elegido', s.format === 'slack' && J(s.fmts) === J(['Slack', 'Discord', 'Make, n8n, Zapier or other']) && s.hint === 'https://hooks.slack.com/services/…' && s.tip === 'Paste the incoming webhook address of your channel.' && !s.more && plain(s.text), s);
+  check('sin dirección no se guarda, y dice qué falta', s.off && s.save === 'Save' && s.miss === 'To save, add: the address.' && !s.errUrl, s);
+  await page.fill('.lmd-au-wiz [data-au=url]', 'ftp://nada');
+  s = await form(page);
+  check('una dirección que no es https se avisa junto al campo mientras se escribe, sin esperar a guardar', /has to start with https/.test(s.errUrl) && s.urlBad === 'true' && s.off && s.miss === 'To save, add: a valid address.' && plain(s.errUrl), s);
+  await page.fill('.lmd-au-wiz [data-au=url]', 'https://ho');
+  const typing = await form(page);
+  await page.focus('.lmd-au-wiz [data-au=name]');
+  s = await form(page);
+  check('una dirección a medias no molesta hasta salir del campo', !typing.errUrl && typing.off && /has to start with https/.test(s.errUrl) && s.off, [typing, s]);
+  await page.fill('.lmd-au-wiz [data-au=url]', SINK + '/ui-slack'); await page.fill('.lmd-au-wiz [data-au=name]', 'Team channel');
+  s = await form(page);
+  check('completo: el resumen se arma solo y Guardar se habilita', s.sum === 'When any of the 5 picked events happens, in the note ui/board.md, notify Slack (' + SINK.slice(7) + ').' && !s.off && !s.miss && !s.errUrl && !s.urlBad, s);
+  const sentBoard = await sentBy(page, () => page.click('.lmd-au-wiz [data-au=save]'));
+  check('lo que se manda es lo mismo que mandaba el alta de tres pasos para esa elección', sentBoard === J({ name: 'Team channel', url: SINK + '/ui-slack', scope: { kind: 'note', path: 'ui/board.md' }, events: CARDS, format: 'slack', include_text: false, lang: 'en' }), sentBoard);
   await page.waitForSelector('.lmd-au-wiz [data-au=test]');
   got.length = 0; await page.click('.lmd-au-wiz [data-au=test]'); await page.waitForSelector('.lmd-au-result:not([hidden])');
   const result = await page.textContent('.lmd-au-result');
@@ -497,8 +510,115 @@ async function uiTests(K) {
   const logText = await page.textContent('.lmd-au-log');
   check('el registro de entregas muestra estado, respuesta y duración', /Delivery log/.test(logText) && /Delivered/.test(logText) && /200/.test(logText) && /Test/.test(logText) && plain(logText), logText.slice(0, 300));
   await page.click('.lmd-au-log [data-au=no]');
-  await row.locator('[data-ha=pause]').click(); await page.waitForSelector('[data-list=hooks] .lmd-au-off');
-  check('pausar lo deja a la vista como pausado', /Paused/.test(await page.locator('[data-list=hooks] .lmd-au-item', { hasText: 'Team channel' }).textContent()));
+  // Editar: la misma pantalla, ya cargada. La dirección no vuelve del servidor: vacía, queda la de ahora.
+  await row.locator('[data-ha=edit]').click(); await page.waitForSelector('.lmd-au-wiz');
+  s = await form(page);
+  check('editar abre la misma pantalla ya cargada, sin plantillas y con la dirección a medias', s.title === 'Edit automation' && !s.tpl.length && s.name === 'Team channel' && s.scope === 'note:ui/board.md' && s.format === 'slack' && /^When: A card moves/.test(s.aria) && s.url === '' && /^http:\/\/127\.0\.0\.1:\d+\/…lack$/.test(s.hint) && s.tip === 'Empty: the current address stays.' && !s.off && /notify Slack \(127\.0\.0\.1:\d+\)\.$/.test(s.sum), s);
+  await page.click('.lmd-au-wiz .lmd-ms-btn svg'); await page.waitForSelector('.lmd-ms-pop');
+  await page.click('.lmd-ms-pop [data-ms-all="0"]'); await page.click('.lmd-ms-pop [data-v="card.done"]'); await page.keyboard.press('Escape');
+  await page.fill('.lmd-au-wiz [data-au=name]', 'Team channel 2');
+  const sentEdit = await sentBy(page, () => page.click('.lmd-au-wiz [data-au=save]'), 'PUT');
+  await page.waitForSelector('.lmd-au-wiz [data-au=test]');
+  const savedTitle = await page.textContent('.lmd-au-wiz h3');
+  got.length = 0; await page.click('.lmd-au-wiz [data-au=test]'); await page.waitForSelector('.lmd-au-result:not([hidden])');
+  check('guardar los cambios manda solo lo que cambia, sin tocar la dirección, y la prueba sigue llegando al mismo lugar', sentEdit === J({ name: 'Team channel 2', scope: { kind: 'note', path: 'ui/board.md' }, events: ['card.done'], format: 'slack', include_text: false }) && savedTitle === 'Automation saved' && /^The test arrived/.test(await page.textContent('.lmd-au-result')) && at('/ui-slack').length === 1, [sentEdit, savedTitle, at('/ui-slack').length]);
+  await page.click('.lmd-au-wiz [data-au=no]'); await page.waitForSelector('.lmd-au-wiz', { state: 'detached' });
+  const row2 = page.locator('[data-list=hooks] .lmd-au-item', { hasText: 'Team channel 2' });
+  await row2.waitFor();
+  check('y la lista lo muestra cambiado', /ui\/board\.md · 1 event · Slack/.test(await row2.textContent()), await row2.textContent());
+  await row2.locator('[data-ha=pause]').click(); await page.waitForSelector('[data-list=hooks] .lmd-au-off');
+  check('pausar lo deja a la vista como pausado', /Paused/.test(await page.locator('[data-list=hooks] .lmd-au-item', { hasText: 'Team channel 2' }).textContent()));
+
+  console.log('Interfaz: el formulario en una pantalla');
+  await page.click('[data-auto-pane] [data-c=hook]'); await page.waitForSelector('.lmd-au-wiz');
+  s = await form(page);
+  const btnOf = () => page.evaluate(() => { const b = document.querySelector('.lmd-au-wiz .lmd-ms-btn'); return { pop: b.getAttribute('aria-haspopup'), open: b.getAttribute('aria-expanded'), list: !!document.getElementById(b.getAttribute('aria-controls')), focus: document.activeElement === b, dialog: !!document.querySelector('.lmd-au-wiz [data-au=save]') }; });
+  let b = await btnOf();
+  check('vacío: el campo de eventos lo dice, no hay resumen y Guardar espera', s.field === 'Pick what to notify' && s.aria === 'When: Pick what to notify' && !s.chips.length && !s.sum && s.off && s.miss === 'To save, add: an event, the address.' && !s.errEv && !s.errUrl && s.scope === 'all' && s.tpl.every((x) => !/\*/.test(x)) && plain(s.text), s);
+  check('el desplegable es un botón con aria-haspopup y aria-expanded, y arranca con el foco', b.pop === 'listbox' && b.open === 'false' && b.focus && !(await page.locator('.lmd-au-wiz select[multiple]').count()), b);
+  // Por teclado: flecha abre, flechas recorren, espacio tilda, escribir busca, Enter tilda, Escape cierra solo la lista.
+  await page.keyboard.press('ArrowDown'); await page.waitForSelector('.lmd-ms-pop');
+  const pop = () => page.evaluate(() => { const p = document.querySelector('.lmd-ms-pop'); const l = p.querySelector('[role=listbox]'); const q = p.querySelector('.lmd-ms-q'); const a = document.activeElement; const on = document.getElementById(a.getAttribute('aria-activedescendant') || '');
+    return { multi: l.getAttribute('aria-multiselectable'), groups: [...l.querySelectorAll('[role=group]')].filter((g) => !g.hidden).map((g) => g.getAttribute('aria-label')), opts: [...l.querySelectorAll('[role=option][data-v]')].filter((o) => !o.hidden).map((o) => o.dataset.v), picked: [...l.querySelectorAll('[role=option][data-v][aria-selected=true]')].map((o) => o.dataset.v),
+      all: [...l.querySelectorAll('[data-ms-all]')].map((o) => o.getAttribute('aria-selected') + (o.classList.contains('lmd-ms-some') ? '~' : '')), allText: l.querySelector('[data-ms-all] small').textContent, focus: a === l ? 'list' : a === q ? 'search' : a.className, active: on ? on.dataset.v || 'all:' + on.dataset.msAll : '', search: !!q && q.getAttribute('role') === 'combobox', layer: p.parentNode.classList.contains('lmd-au-wiz'), none: !p.querySelector('.lmd-ms-nothing').hidden }; });
+  let p = await pop(); b = await btnOf();
+  check('flecha abajo lo abre: una lista de selección múltiple con los tres grupos, el buscador y el foco adentro', b.open === 'true' && b.list && p.multi === 'true' && J(p.groups) === J(['Board cards', 'Notes', 'Comments']) && p.opts.length === 12 && p.search && p.focus === 'list' && p.active === 'all:0' && p.allText === 'All in this group' && p.layer, [b, p]);
+  await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Space');
+  p = await pop(); s = await form(page);
+  check('las flechas recorren y espacio tilda: la ficha aparece sin cerrar la lista', p.active === 'card.done' && J(p.picked) === J(['card.done']) && J(s.chips) === J(['A card is marked done']) && J(p.all) === J(['false~', 'false', 'false']), [p, s.chips]);
+  await page.keyboard.type('comm');
+  p = await pop();
+  check('escribir busca: quedan los comentarios, con el foco en el buscador', p.focus === 'search' && J(p.groups) === J(['Comments']) && J(p.opts) === J(['comment.created', 'comment.resolved']) && p.active === 'all:2', p);
+  await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
+  p = await pop(); s = await form(page);
+  check('y Enter tilda lo que está marcado', p.active === 'comment.created' && J(p.picked) === J(['card.done', 'comment.created']) && J(s.chips) === J(['A card is marked done', 'There is a new comment']), [p, s.chips]);
+  await page.fill('.lmd-ms-q', 'zzz');
+  const nothing = (await pop()).none;
+  await page.fill('.lmd-ms-q', '');
+  await page.keyboard.press('Escape'); await sleep(120);
+  b = await btnOf();
+  check('Escape cierra solo el desplegable: el diálogo sigue y el foco vuelve al botón', nothing && !(await page.locator('.lmd-ms-pop').count()) && b.dialog && b.focus && b.open === 'false', [nothing, b]);
+  // Con clic: una opción, "todas las de este grupo", y afuera para cerrar.
+  await page.click('.lmd-au-wiz .lmd-ms-btn svg'); await page.waitForSelector('.lmd-ms-pop');
+  await page.click('.lmd-ms-pop [data-v="note.created"]');
+  s = await form(page);
+  const one = s.chips.slice();
+  await page.click('.lmd-ms-pop [data-ms-all="1"]');
+  p = await pop(); s = await form(page);
+  check('con clic se tilda una, y "todas las de este grupo" tilda el grupo entero; si no entran, queda el resumen', J(one) === J(['A card is marked done', 'A note is created', 'There is a new comment']) && J(p.picked) === J(['card.done', 'note.created', 'note.updated', 'note.moved', 'note.deleted', 'note.restored', 'comment.created']) && J(p.all) === J(['false~', 'true', 'false~']) && s.many && s.field === '7 events' && /^When any of the 7 picked events happens, in all my notes, notify Slack\.$/.test(s.sum), [one, p, s]);
+  await page.click('.lmd-ms-pop [data-ms-all="1"]');
+  p = await pop();
+  await page.mouse.click(6, 6); await sleep(120);
+  b = await btnOf(); s = await form(page);
+  check('otra vez lo destilda, y un clic afuera cierra la lista sin cerrar el diálogo', J(p.picked) === J(['card.done', 'comment.created']) && !(await page.locator('.lmd-ms-pop').count()) && b.dialog && J(s.chips) === J(['A card is marked done', 'There is a new comment']) && !s.many && s.sum === 'When a card is marked done or there is a new comment, in all my notes, notify Slack.', [p, b, s]);
+  await page.click('.lmd-au-wiz [data-ms-rm="card.done"]');
+  s = await form(page);
+  const less = s;
+  await page.click('.lmd-au-wiz [data-ms-rm="comment.created"]');
+  s = await form(page);
+  check('la cruz de una ficha la quita; sin ninguna, el campo lo dice ahí mismo', J(less.chips) === J(['There is a new comment']) && less.sum === 'When there is a new comment, in all my notes, notify Slack.' && !less.errEv && !s.chips.length && s.errEv === 'Pick at least one event.' && s.bad === 'true' && !s.sum && s.off && /an event/.test(s.miss), [less, s]);
+  // Plantillas: un clic llena los eventos y el nombre, mientras el nombre no sea de la persona.
+  await page.click('.lmd-au-wiz [data-au-tpl="0"]');
+  const t1 = await form(page);
+  await page.click('.lmd-au-wiz [data-au-tpl="2"]');
+  const t2 = await form(page);
+  await page.fill('.lmd-au-wiz [data-au=name]', 'Leads'); await page.click('.lmd-au-wiz [data-au-tpl="3"]');
+  const t3 = await form(page);
+  check('las plantillas llenan los eventos y el nombre en un clic, y no pisan un nombre escrito a mano', J(t1.chips) === J(['A card is marked done']) && t1.name === 'Task done' && /^Task done\*/.test(t1.tpl.join()) && !t1.errEv && J(t2.chips) === J(['A note is created']) && t2.name === 'New note' && t2.tpl[2] === 'New note*' && J(t3.chips) === J(['There is a new comment']) && t3.name === 'Leads', [t1, t2, t3]);
+  const scopes = await page.evaluate(() => { const sel = document.querySelector('.lmd-au-wiz [data-au=scope]'); return { first: sel.options[0].textContent, groups: [...sel.querySelectorAll('optgroup')].map((g) => g.label), folder: !!sel.querySelector('option[value="folder:ui"]'), note: !!sel.querySelector('option[value="note:ui/board.md"]') }; });
+  await page.selectOption('.lmd-au-wiz [data-au=scope]', 'folder:ui'); await page.selectOption('.lmd-au-wiz [data-au=format]', 'json');
+  await page.fill('.lmd-au-wiz [data-au=url]', SINK + '/ui-json');
+  s = await form(page);
+  check('el alcance es un desplegable (todo, una carpeta o una nota) y el resumen lo sigue', scopes.first === 'All my notes' && J(scopes.groups) === J(['Folders', 'Notes']) && scopes.folder && scopes.note && s.sum === 'When there is a new comment, in the folder ui/, notify ' + SINK.slice(7) + '.', [scopes, s.sum]);
+  check('con JSON aparece "Más opciones", plegado, con incluir el contenido', s.more && s.hint === 'https://' && (await page.evaluate(() => { const d = document.querySelector('.lmd-au-more'); return !d.open && d.querySelector('summary').textContent === 'More options' && !!d.querySelector('[data-au=text]'); })), s);
+  await page.click('.lmd-au-more summary'); await page.check('.lmd-au-wiz [data-au=text]');
+  const sentJson = await sentBy(page, () => page.press('.lmd-au-wiz [data-au=url]', 'Enter')); // Enter en un campo de texto guarda
+  await page.waitForSelector('.lmd-au-wiz [data-au=test]');
+  const oldBody = { name: 'Leads', url: SINK + '/ui-json', scope: { kind: 'folder', path: 'ui' }, events: ['comment.created'], format: 'json', include_text: true, lang: 'en' };
+  const viaOld = (await api('POST', '/automations/hooks', oldBody, K.ana.s)).json.hook;
+  const kept = (h) => J([h.name, h.destination, h.scope, h.events, h.format, h.include_text, h.lang, h.state]);
+  const viaForm = (await api('GET', '/automations', undefined, K.ana.s)).json.hooks.find((h) => String(h.id) === String(viaOld.id - 1));
+  check('para la misma elección, lo que queda guardado es idéntico a lo que guardaba el alta de tres pasos', sentJson === J(oldBody) && !!viaForm && kept(viaForm) === kept(viaOld), [sentJson, viaForm, viaOld]);
+  await api('DELETE', '/automations/hooks/' + viaOld.id, undefined, K.ana.s);
+  const secretShown = await page.inputValue('.lmd-au-wiz .lmd-field input');
+  got.length = 0; await page.click('.lmd-au-wiz [data-au=test]'); await page.waitForSelector('.lmd-au-result:not([hidden])');
+  check('con JSON, al guardar se ve el secreto una vez y la prueba llega firmada con él', /^whsec_/.test(secretShown) && at('/ui-json').length === 1 && signed(at('/ui-json')[0], secretShown) && at('/ui-json')[0].json.type === 'ping', [secretShown.slice(0, 8), at('/ui-json').length]);
+  await page.click('.lmd-au-wiz [data-au=no]'); await page.waitForSelector('.lmd-au-wiz', { state: 'detached' });
+  // Eliminar, desde la lista.
+  const leads = page.locator('[data-list=hooks] .lmd-au-item', { hasText: 'Leads' }); await leads.waitFor();
+  await leads.locator('[data-ha=rm]').click(); await page.waitForSelector('.lmd-dlg-card'); await page.click('.lmd-dlg-card [data-dlg=ok]'); await leads.waitFor({ state: 'detached' });
+  check('eliminar la saca de la lista y del servidor', !(await api('GET', '/automations', undefined, K.ana.s)).json.hooks.some((h) => h.name === 'Leads'));
+  // La lista no se sale de la ventana ni la corta el borde del diálogo: en una ventana baja se abre para arriba.
+  await page.setViewportSize({ width: 620, height: 430 });
+  await page.click('[data-auto-pane] [data-c=hook]'); await page.waitForSelector('.lmd-au-wiz');
+  await page.click('.lmd-au-wiz .lmd-ms-btn'); await page.waitForSelector('.lmd-ms-pop'); await sleep(200);
+  const near = await page.evaluate(() => { const r = document.querySelector('.lmd-ms-pop').getBoundingClientRect(); const f = document.querySelector('.lmd-au-wiz .lmd-ms').getBoundingClientRect(); const l = document.querySelector('.lmd-ms-list'); return { top: r.top, bottom: r.bottom, h: innerHeight, up: r.bottom <= f.top, down: r.top >= f.bottom, w: Math.abs(r.width - f.width) < 2, scrolls: l.scrollHeight > l.clientHeight, sheet: document.querySelector('.lmd-ms-pop').classList.contains('lmd-ms-sheet') }; });
+  check('cerca del borde de abajo la lista queda entera a la vista, con scroll adentro', near.top >= 0 && near.bottom <= near.h && (near.up || near.down) && near.w && near.scrolls && !near.sheet, near);
+  await page.setViewportSize({ width: 620, height: 330 }); await sleep(200);
+  const tight = await page.evaluate(() => { const r = document.querySelector('.lmd-ms-pop').getBoundingClientRect(); const f = document.querySelector('.lmd-au-wiz .lmd-ms').getBoundingClientRect(); return { top: r.top, bottom: r.bottom, h: innerHeight, up: r.bottom <= f.top, down: r.top >= f.bottom, field: [f.top, f.bottom] }; });
+  check('y al achicarse la ventana se vuelve a acomodar sin salirse', tight.top >= 0 && tight.bottom <= tight.h && (tight.up || tight.down), tight);
+  await page.keyboard.press('Escape'); await page.keyboard.press('Escape'); await page.waitForSelector('.lmd-au-wiz', { state: 'detached' });
+  await page.setViewportSize({ width: 1280, height: 800 });
   // Un aviso que se desactivó solo se ve con su aviso y se puede volver a prender.
   const dead = (await api('POST', '/automations/hooks', { name: 'Broken', url: SINK + '/fail', scope: { kind: 'folder', path: 'boom' }, events: ['note.created'] }, K.ana.s)).json.hook;
   await v1('PUT', '/note', { path: 'boom/a.md', text: '# A\n' }, K.token); await v1('PUT', '/note', { path: 'boom/b.md', text: '# B\n' }, K.token);
@@ -525,8 +645,8 @@ async function uiTests(K) {
     await dirNode.click({ button: 'right' }); await page.waitForSelector('.lmd-menu [data-f=auto]');
     const item = await page.textContent('.lmd-menu [data-f=auto]');
     await page.click('.lmd-menu [data-f=auto]'); await page.waitForSelector('.lmd-au-wiz');
-    s = await page.evaluate(() => ({ kind: document.querySelector('.lmd-au-wiz input[name=lmd-au-kind]:checked').value, folder: document.querySelector('.lmd-au-wiz [data-au=folder]').value }));
-    check('el menú de una carpeta ofrece "Automate…" con esa carpeta ya puesta', item === 'Automate…' && s.kind === 'folder' && s.folder === 'ui', [item, s]);
+    s = await form(page);
+    check('el menú de una carpeta ofrece "Automate…" con esa carpeta ya puesta', item === 'Automate…' && s.scope === 'folder:ui' && !s.chips.length && s.field === 'Pick what to notify', [item, s]);
     await page.keyboard.press('Escape');
   } else check('el menú de una carpeta ofrece "Automate…" con esa carpeta ya puesta', false, 'no encontré la carpeta en el explorador');
   const lia = await R.open(K.free);
@@ -566,9 +686,43 @@ async function uiTests(K) {
   s = await sp.evaluate(() => ({ body: document.querySelector('.lmd-panel-body').scrollWidth <= document.querySelector('.lmd-panel-body').clientWidth + 1, page: document.documentElement.scrollWidth <= window.innerWidth, btn: Math.min(...[...document.querySelectorAll('.lmd-au-acts button')].map((b) => b.getBoundingClientRect().height)) }));
   check('API y automatizaciones en pantalla chica: sin desborde y con botones que se tocan', s.body && s.page && s.btn >= 32, s);
   await sp.tap('[data-c=hook]'); await sp.waitForSelector('.lmd-au-wiz');
-  s = await sp.evaluate(() => { const c = document.querySelector('.lmd-au-wiz .lmd-ask-card').getBoundingClientRect(); return { fits: c.left >= 0 && c.right <= window.innerWidth && c.bottom <= window.innerHeight + 1 }; });
-  check('el alta guiada entra en la pantalla', s.fits, s);
-  await small.ctx.close(); await page.context().close();
+  s = await sp.evaluate(() => { const c = document.querySelector('.lmd-au-wiz .lmd-ask-card').getBoundingClientRect(); return { fits: c.left >= 0 && c.right <= window.innerWidth && c.bottom <= window.innerHeight + 1, wide: document.querySelector('.lmd-au-wiz .lmd-ask-card').scrollWidth <= document.querySelector('.lmd-au-wiz .lmd-ask-card').clientWidth + 1, tap: Math.min(...[...document.querySelectorAll('.lmd-au-wiz select, .lmd-au-wiz input[type=text], .lmd-au-wiz input[type=url], .lmd-au-wiz .lmd-ms, .lmd-au-wiz .lmd-btn, .lmd-au-wiz [data-au-tpl]')].map((n) => Math.round(n.getBoundingClientRect().height))) }; });
+  check('el formulario entra en la pantalla, sin desborde y con controles que se tocan', s.fits && s.wide && s.tap >= 36, s);
+  await sp.tap('.lmd-au-wiz .lmd-ms-btn'); await sp.waitForSelector('.lmd-ms-pop'); await sleep(250);
+  s = await sp.evaluate(() => { const n = document.querySelector('.lmd-ms-pop'); const r = n.getBoundingClientRect(); return { sheet: n.classList.contains('lmd-ms-sheet'), left: Math.round(r.left), right: Math.round(window.innerWidth - r.right), bottom: Math.round(window.innerHeight - r.bottom), tall: r.height / window.innerHeight, row: Math.min(...[...n.querySelectorAll('[role=option]')].map((o) => o.getBoundingClientRect().height)), done: (n.querySelector('[data-ms-done]') || {}).offsetHeight || 0, typing: document.activeElement.tagName, page: document.documentElement.scrollWidth <= window.innerWidth }; });
+  check('en teléfono el desplegable es una hoja pegada abajo, con filas que se tocan y sin abrir el teclado', s.sheet && s.left === 8 && s.right === 8 && s.bottom === 8 && s.tall <= 0.62 && s.row >= 44 && s.done >= 40 && s.typing !== 'INPUT' && s.page, s);
+  await sp.tap('.lmd-ms-pop [data-v="card.done"]'); await sp.tap('.lmd-ms-pop [data-ms-all="2"]');
+  await sp.evaluate(() => history.back()); await sleep(350);
+  s = await sp.evaluate(() => ({ pop: !!document.querySelector('.lmd-ms-pop'), dialog: !!document.querySelector('.lmd-au-wiz [data-au=save]'), chips: [...document.querySelectorAll('.lmd-au-wiz .lmd-ms-chip > span')].map((n) => n.textContent), many: document.querySelector('.lmd-au-wiz .lmd-ms-text').textContent }));
+  check('el atrás del sistema cierra la hoja y deja el formulario con lo elegido', !s.pop && s.dialog && (s.chips.length === 3 || s.many === '3 events'), s);
+  await sp.tap('.lmd-au-wiz .lmd-ms-btn svg'); await sp.waitForSelector('.lmd-ms-pop'); await sp.tap('.lmd-ms-pop [data-ms-done]'); await sleep(100);
+  check('y "Listo" también la cierra', !(await sp.locator('.lmd-ms-pop').count()) && !!(await sp.locator('.lmd-au-wiz [data-au=save]').count()));
+  await small.ctx.close();
+
+  console.log('Interfaz: en español');
+  const es = await R.open(K.ana, { viewport: { width: 1280, height: 800 } });
+  await es.ctx.addInitScript(() => { try { const st = JSON.parse(localStorage.getItem('mdtools:settings') || '{}'); st.language = 'es'; localStorage.setItem('mdtools:settings', JSON.stringify(st)); } catch (e) { /* sin almacenamiento */ } });
+  const ep = es.page;
+  await ep.goto(R.home + '#lmd-auto'); await ep.waitForSelector('.lmd-au-list');
+  await ep.click('[data-auto-pane] [data-c=hook]'); await ep.waitForSelector('.lmd-au-wiz');
+  await ep.click('.lmd-au-wiz [data-au-tpl="0"]');
+  await ep.click('.lmd-au-wiz .lmd-ms-btn svg'); await ep.waitForSelector('.lmd-ms-pop');
+  const esPop = await ep.evaluate(() => ({ groups: [...document.querySelectorAll('.lmd-ms-pop [role=group]')].map((g) => g.getAttribute('aria-label')), all: document.querySelector('.lmd-ms-pop [data-ms-all] small').textContent, q: document.querySelector('.lmd-ms-q').placeholder, cut: [...document.querySelectorAll('.lmd-ms-pop [role=option] span')].filter((n) => n.scrollWidth > n.clientWidth + 1).length }));
+  await ep.click('.lmd-ms-pop [data-v="note.created"]'); await ep.keyboard.press('Escape');
+  await ep.fill('.lmd-au-wiz [data-au=url]', SINK + '/ui-es');
+  s = await form(ep);
+  const fitsEs = await ep.evaluate(() => { const c = document.querySelector('.lmd-au-wiz .lmd-ask-card'); const cut = (q) => [...c.querySelectorAll(q)].filter((n) => n.scrollWidth > n.clientWidth + 1).map((n) => n.textContent); return { wide: c.scrollWidth <= c.clientWidth + 1, cut: cut('.lmd-au-lab, [data-au-tpl], .lmd-ms-chip > span, .lmd-btn, .lmd-au-sum, .lmd-au-tip'), lab: Math.max(...[...c.querySelectorAll('.lmd-au-lab')].map((n) => n.getBoundingClientRect().height)) }; });
+  check('en español: los rótulos, las plantillas, los grupos y el resumen', s.title === 'Nueva automatización' && J(s.labs) === J(['Nombre', 'Cuando', 'En', 'Avisar a']) && J(s.tpl) === J(['Tarea hecha', 'Cambios en tarjetas', 'Nota nueva', 'Comentario nuevo']) && J(esPop.groups) === J(['Tarjetas de un tablero', 'Notas', 'Comentarios']) && esPop.all === 'Todas las de este grupo' && esPop.q === 'Buscar' &&
+    J(s.chips) === J(['Una tarjeta queda hecha', 'Se crea una nota']) && s.sum === 'Cuando una tarjeta queda hecha o se crea una nota, en todas mis notas, avisar a Slack (' + SINK.slice(7) + ').' && s.save === 'Guardar' && s.name === 'Tarea hecha' && plain(s.text), [s, esPop]);
+  check('y los textos largos entran: nada cortado ni desbordado', fitsEs.wide && !fitsEs.cut.length && !esPop.cut && fitsEs.lab < 40, [fitsEs, esPop.cut]);
+  await ep.fill('.lmd-au-wiz [data-au=url]', '');
+  const esMiss = await form(ep);
+  await ep.fill('.lmd-au-wiz [data-au=url]', SINK + '/ui-es');
+  const sentEs = await sentBy(ep, () => ep.click('.lmd-au-wiz [data-au=save]'));
+  await ep.waitForSelector('.lmd-au-wiz [data-au=test]');
+  check('dice qué falta en español, y los avisos de esa automatización salen en español', esMiss.miss === 'Para guardar falta: la dirección.' && esMiss.off && JSON.parse(sentEs).lang === 'es' && J(JSON.parse(sentEs).events) === J(['card.done', 'note.created']) && (await ep.textContent('.lmd-au-wiz h3')) === 'Automatización creada', [esMiss.miss, sentEs]);
+  await es.ctx.close();
+  await page.context().close();
 }
 
 const failed = done();
