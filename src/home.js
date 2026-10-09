@@ -157,21 +157,24 @@
   const pickTypes = () => [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.mkd', '.mdown'] } }, { description: 'Text, JSON, YAML', accept: { 'text/plain': ['.txt'], 'application/json': ['.json'], 'application/yaml': ['.yaml', '.yml'] } }]
     .concat(imports('x.pdf') ? [{ description: 'Word, Excel, PowerPoint, EPUB, PDF, HTML, CSV', accept: { 'application/octet-stream': LMD.import.accept.split(',') } }] : []);
   // El archivo de un enlace que abre uno del disco (install.js). El selector sale en el mismo turno del clic, sin
-  // esperar nada antes. startIn: una carpeta ya abierta, para que arranque cerca. Con el archivo elegido se abre con
-  // su permiso, y guardar escribe en él; sin File System Access (Firefox, Safari) queda una copia. Devuelve si abrió.
-  function pickLinked(startIn, say, copied) {
+  // esperar nada antes. id: el selector recuerda por id dónde quedó, así que la segunda vez arranca en esa carpeta.
+  // startIn: una carpeta ya abierta, para la primera. Devuelve lo elegido sin abrirlo: { handle } con File System
+  // Access, { file } sin él (Firefox, Safari), o null si se canceló. Lo abre openLinked.
+  function pickLinked(id, startIn, say) {
     if (!canPick()) return new Promise((resolve) => {
       const input = el('input', { type: 'file', accept: pickAccept() });
-      input.addEventListener('change', async () => { const file = input.files[0]; if (!file) { resolve(false); return; } await openInMemory(file, say); copied(); resolve(true); });
-      input.addEventListener('cancel', () => resolve(false));
+      input.addEventListener('change', () => { const file = input.files[0]; resolve(file ? { file, name: file.name } : null); });
+      input.addEventListener('cancel', () => resolve(null));
       input.click();
     });
-    const opt = { id: 'lmd-abrir', multiple: false, types: pickTypes() };
+    const opt = { id: id || 'lmd-abrir', multiple: false, types: pickTypes() };
     const ask = (o) => { try { return window.showOpenFilePicker(o); } catch (e) { return Promise.reject(e); } };
     // Una carpeta guardada que ya no sirve como punto de partida no frena el selector: se pide sin ella.
     return ask(startIn ? Object.assign({ startIn }, opt) : opt).catch((e) => { if (startIn && !(e && e.name === 'AbortError')) return ask(opt); throw e; })
-      .then(async (picked) => { await openPicked(picked[0], say); return true; }, (e) => { if (!(e && e.name === 'AbortError')) say(T('No se pudo abrir. Probá de nuevo.')); return false; });
+      .then((picked) => ({ handle: picked[0], name: picked[0].name }), (e) => { if (!(e && e.name === 'AbortError')) say(T('No se pudo abrir. Probá de nuevo.')); return null; });
   }
+  // Con su permiso queda en la lista de abiertos y guardar escribe en él; sin permiso, es una copia.
+  const openLinked = (got, say) => (got.handle ? openPicked(got.handle, say) : openInMemory(got.file, say));
 
   // Elegir un archivo o una carpeta del disco. Lo usan el estado vacío y la cabecera del explorador.
   async function pick(what, say) {
@@ -642,7 +645,8 @@
     pick: (c, what) => { ctx = c; return pick(what, c.say); },
     // Un archivo que llega ya leído (compartido desde otra app): el mismo camino que el selector sin acceso a archivos.
     openFile: (c, file, say) => { ctx = c; return openInMemory(file, say); },
-    pickLinked: (c, startIn, copied) => { ctx = c; return pickLinked(startIn, c.say, copied); },
+    pickLinked: (c, id, startIn) => { ctx = c; return pickLinked(id, startIn, c.say); },
+    openLinked: (c, got) => { ctx = c; return openLinked(got, c.say); },
     pickTemplate: (c) => { ctx = c; return pickTemplate(); },
     perks, signIn, waitText, login,
     // El enlace del correo con el código (app.html#signin=...): pregunta antes de entrar.
