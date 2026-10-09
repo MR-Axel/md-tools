@@ -2803,6 +2803,12 @@ html:not(.lmd-editing) .lmd-cl-add { height: 1.25em; margin: 0; padding: 0 8px; 
 /* Abrir un archivo del disco por enlace: la ruta dentro de la pregunta. */
 .lmd-ask-card .lmd-dlg-path { margin: 0 0 18px; }
 .lmd-ask-card p + .lmd-dlg-path { margin-top: -6px; }
+/* Una copia de un archivo del disco: el cartel de arriba de la nota, con el botón que pasa al archivo real. */
+.lmd-copybar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 18px; padding: 10px 14px; border: 1px solid var(--accent-fill); border-radius: 10px; background: var(--accent-soft); color: var(--fg); font: 13.5px/1.45 var(--lmd-font); }
+.lmd-copybar[hidden] { display: none; }
+.lmd-copybar-text { flex: 1 1 240px; min-width: 0; }
+.lmd-copybar .lmd-btn { flex: none; }
+@media print { .lmd-copybar { display: none; } }
 /* Lo que hay que hacer en el selector de archivos, a la vista mientras está abierto. */
 .lmd-ask-card p.lmd-dlg-note { margin: -6px 0 18px; padding: 9px 12px; border: 1px solid var(--accent-fill); border-radius: 9px; background: var(--accent-soft); color: var(--fg); font-size: 13.5px; line-height: 1.45; }
 .lmd-ask-card p.lmd-dlg-note[hidden] { display: none; }

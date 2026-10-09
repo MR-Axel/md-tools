@@ -1252,6 +1252,24 @@ try {
     await cdp.detach(); await ctx.close();
   }
 
+  // Un enlace a un archivo del disco, en el teléfono: no hay extensión ni acceso a carpetas, así que no se ofrece
+  // nada de "editar el archivo del disco" ni "abrir esta carpeta". Queda elegir el archivo, que se abre como copia.
+  {
+    const { ctx, page } = await open(390, 844);
+    await page.addInitScript(() => { window.showOpenFilePicker = undefined; window.showDirectoryPicker = undefined; });
+    await page.goto(home); await page.waitForSelector('.lmd-home [data-home=new]');
+    await page.goto(home + '#open=' + encodeURIComponent('file:///C:/Users/me/notes/plan.md')); await page.waitForSelector('.lmd-dlg-card');
+    const d = await page.evaluate(() => { const c = document.querySelector('.lmd-dlg-card'); return { buttons: [...c.querySelectorAll('.lmd-ask-actions button')].map((b) => b.textContent), text: c.querySelector('p').textContent, fs: document.querySelectorAll('[data-fs]').length, more: !!c.querySelector('.lmd-dlg-more') }; });
+    check('teléfono: un enlace a un archivo del disco ofrece elegirlo, sin nada de carpetas ni de la extensión', J(d.buttons) === J(['Cancel', 'Choose the file']) && d.fs === 0 && !d.more, d);
+    await fits(page, 'la pregunta de un enlace a un archivo del disco');
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser', { timeout: 6000 }).catch(() => null), page.click('.lmd-dlg-card [data-dlg=ok]')]);
+    if (chooser) await chooser.setFiles({ name: 'plan.md', mimeType: 'text/markdown', buffer: Buffer.from('# Plan\n\nfrom the phone\n') });
+    await page.waitForSelector('.markdown-body h1', { timeout: 8000 }).catch(() => {});
+    const got = await page.evaluate(() => ({ h1: (document.querySelector('.markdown-body h1') || {}).textContent || '', f: new URLSearchParams(location.search).get('f'), copy: /Opened as a copy\. The file on your disk is not changed\./.test(document.body.textContent), fs: document.querySelectorAll('[data-fs]').length, bar: !document.querySelector('.lmd-copybar') || document.querySelector('.lmd-copybar').hidden }));
+    check('teléfono: el archivo elegido queda como copia, con su aviso y sin botones para pasar al archivo', !!chooser && got.h1 === 'Plan' && /^mem\//.test(got.f || '') && got.copy && got.fs === 0 && got.bar, got);
+    await ctx.close();
+  }
+
   check('ningún pedido salió a la nube de verdad', outside.length === 0, outside);
   check('sin errores de JavaScript', errors.length === 0, errors);
 } catch (e) {

@@ -197,6 +197,44 @@ try {
   await app.click('[data-act=mode-read]'); await app.waitForTimeout(400);
   await Promise.all([app.waitForNavigation(), app.locator('.markdown-body a', { hasText: 'La sección ñ' }).click()]); await app.waitForSelector('.markdown-body h2'); await app.waitForTimeout(600);
   o.nube = [await estado(), await titulo('La sección ñ')];
+  // Un archivo del disco abierto por enlace (?f=fs/<ruta real>): sus enlaces relativos se resuelven contra esa ruta y
+  // el destino lo lee la extensión. Acá la extensión se simula: entrega solo lo de C:/notas/proyecto.
+  const FS = {
+    'file:///C:/notas/proyecto/avance.md': '# Avance\n\n[README](README.md), [Índice](negocio/indice.md), [Sección](README.md#sección-única), [[indice]], [Afuera](../otra/secreto.md), [Nada](nada.md).\n',
+    'file:///C:/notas/proyecto/README.md': '# Léeme\n\n' + LARGO + '\n\n## Sección Única\n\nLlegaste.\n\n' + LARGO + '\n',
+    'file:///C:/notas/proyecto/negocio/indice.md': '# Índice\n\n[volver](../avance.md)\n',
+    'file:///C:/notas/otra/secreto.md': '# Secreto\n',
+  };
+  const simular = () => app.evaluate((files) => {
+    const en = (u) => decodeURIComponent(u).toLowerCase().startsWith('file:///c:/notas/proyecto/'); window.__leidos = [];
+    LMD.bridge.settle = async () => {}; LMD.bridge.canOpen = () => true; LMD.bridge.present = () => true;
+    LMD.bridge.readFile = async (u) => { window.__leidos.push(u); if (!en(u)) return { ok: true, opened: false, why: 'refused' }; return u in files ? { ok: true, opened: true, name: decodeURIComponent(u.split('/').pop()), text: files[u] } : { ok: true, opened: false, why: 'missing' }; };
+    LMD.bridge.canRead = async (u) => en(u);
+    LMD.bridge.listDir = async (u) => { if (!en(u)) return { ok: true, listed: false, why: 'refused' }; const rows = new Map(); Object.keys(files).filter((k) => k.startsWith(u)).forEach((k) => { const rest = k.slice(u.length); const cut = rest.indexOf('/'); rows.set(cut < 0 ? rest : rest.slice(0, cut), cut >= 0); }); return { ok: true, listed: true, rows: [...rows].map(([name, dir]) => ({ name: decodeURIComponent(name), dir })) }; };
+  }, FS);
+  const fsDe = (p) => home + '?f=' + encodeURIComponent('fs/' + p.split('/').map(encodeURIComponent).join('/'));
+  const visto = () => app.evaluate(() => { const on = document.querySelector('.lmd-xroot[data-root=fs] .lmd-node.lmd-active'); const d = document.querySelector('.lmd-dlg-card'); return { h1: (document.querySelector('.markdown-body h1') || {}).textContent || '', f: new URLSearchParams(location.search).get('f'), activo: on ? on.textContent.trim() : '', y: Math.round(window.scrollY), aviso: document.querySelector('.lmd-status').textContent, dlg: d ? d.querySelector('h3').textContent + ' / ' + [...d.querySelectorAll('.lmd-ask-actions button')].map((b) => b.textContent).join(',') : '', cartel: !document.querySelector('.lmd-copybar').hidden }; });
+  const seguir = async (texto) => { await app.locator('.markdown-body a', { hasText: texto }).first().click(); await app.waitForTimeout(700); };
+  await app.goto(home); await app.waitForSelector('.lmd-home'); await simular();
+  await app.evaluate((u) => { history.pushState(null, '', u); window.dispatchEvent(new PopStateEvent('popstate')); }, fsDe('C:/notas/proyecto/avance.md'));
+  await app.waitForSelector('.markdown-body h1', { timeout: 8000 }); await app.click('[data-act=mode-read]').catch(() => {}); await app.waitForTimeout(500);
+  o.fsInicio = await visto();
+  await seguir('README'); o.fsHermano = await visto();
+  await app.goBack(); await app.waitForTimeout(700); o.fsAtras = await visto();
+  await app.goForward(); await app.waitForTimeout(700); o.fsAdelante = await visto();
+  await app.goBack(); await app.waitForTimeout(700);
+  await seguir('Índice'); o.fsSub = await visto();
+  await seguir('volver'); o.fsVuelta = await visto();
+  await seguir('Sección'); await app.waitForTimeout(500); o.fsAncla = [await visto(), await titulo('Sección Única')];
+  await app.goBack(); await app.waitForTimeout(700);
+  o.fsWiki = await app.evaluate(() => { const a = document.querySelector('.markdown-body a.lmd-wiki'); return !!a && !a.classList.contains('lmd-wiki-missing'); });
+  await app.click('.markdown-body a.lmd-wiki'); await app.waitForTimeout(700); o.fsWikiAbre = await visto();
+  await app.goBack(); await app.waitForTimeout(700);
+  await seguir('Afuera'); await app.waitForSelector('.lmd-dlg-card', { timeout: 5000 }).catch(() => {}); o.fsAfuera = await visto();
+  o.fsAfueraTexto = await app.evaluate(() => document.body.textContent.includes('Secreto'));
+  await app.keyboard.press('Escape'); await app.waitForSelector('.lmd-dlg-card', { state: 'detached', timeout: 3000 }).catch(() => {});
+  await seguir('Nada'); await app.waitForSelector('.lmd-dlg-card', { timeout: 5000 }).catch(() => {}); o.fsNada = await visto();
+  await app.keyboard.press('Escape'); await app.waitForSelector('.lmd-dlg-card', { state: 'detached', timeout: 3000 }).catch(() => {});
 } catch (e) { o.excepcion = String(e && e.stack || e); }
 
 const cerca = (v) => v != null && v > 40 && v < 400; // el título quedó arriba, a la vista
@@ -226,6 +264,14 @@ const checks = [
   ['notas del navegador: lista las otras notas, navega a la sección y avisa si falta', J(o.localArchivos) === J(['dos.md']) && o.local && o.local[0].doc === 'dos.md' && cerca(o.local[1]) && o.localRoto.doc === 'uno.md' && o.localRoto.aviso === 'No se encontró "tres.md".', [o.localArchivos, o.local, o.localRoto]],
   ['nube: el selector lista las notas con su carpeta y escribe la ruta relativa', J(o.nubeArchivos) === J(['dos.md|proyecto/notas']) && /\[La sección ñ\]\(notas\/dos\.md#la-sección-ñ\)$/.test(o.nubeEnlace || ''), [o.nubeArchivos, o.nubeEnlace]],
   ['nube: navega a la sección de otra nota y avisa si la nota no existe', o.nube && o.nube[0].doc === 'dos.md' && cerca(o.nube[1]) && o.nubeRoto.doc === 'uno.md' && o.nubeRoto.aviso === 'No se encontró "tres.md".', [o.nube, o.nubeRoto]],
+  ['archivo del disco abierto por enlace: se abre por su ruta real, como copia, y figura elegido en el lateral', !!o.fsInicio && o.fsInicio.h1 === 'Avance' && o.fsInicio.f === 'fs/C%3A/notas/proyecto/avance.md' && o.fsInicio.activo === 'avance.md' && o.fsInicio.cartel, o.fsInicio],
+  ['ahí, un enlace relativo a un hermano se abre, y el lateral lo sigue', !!o.fsHermano && o.fsHermano.h1 === 'Léeme' && o.fsHermano.f === 'fs/C%3A/notas/proyecto/README.md' && o.fsHermano.activo === 'README.md', o.fsHermano],
+  ['atrás y adelante recorren las notas visitadas', !!o.fsAtras && o.fsAtras.h1 === 'Avance' && o.fsAdelante.h1 === 'Léeme', [o.fsAtras, o.fsAdelante]],
+  ['un enlace a una subcarpeta, y desde ahí uno que vuelve con ../', !!o.fsSub && o.fsSub.h1 === 'Índice' && o.fsSub.f === 'fs/C%3A/notas/proyecto/negocio/indice.md' && o.fsSub.activo === 'indice.md' && o.fsVuelta.h1 === 'Avance', [o.fsSub, o.fsVuelta]],
+  ['un enlace con ancla llega a la sección de la otra nota', !!o.fsAncla && o.fsAncla[0].h1 === 'Léeme' && cerca(o.fsAncla[1]), o.fsAncla],
+  ['un [[wikilink]] se resuelve en la carpeta y abre', o.fsWiki === true && !!o.fsWikiAbre && o.fsWikiAbre.h1 === 'Índice', [o.fsWiki, o.fsWikiAbre]],
+  ['un ../ que sale de lo habilitado no se abre: avisa y ofrece elegir el archivo', !!o.fsAfuera && o.fsAfuera.h1 === 'Avance' && o.fsAfuera.aviso === 'No se pudo abrir "secreto.md".' && /Elegir el archivo/.test(o.fsAfuera.dlg) && o.fsAfueraTexto === false, [o.fsAfuera, o.fsAfueraTexto]],
+  ['un destino que no existe tampoco falla en silencio', !!o.fsNada && o.fsNada.h1 === 'Avance' && o.fsNada.aviso === 'No se pudo abrir "nada.md".' && /^No se encontró el archivo \/ .*Elegir el archivo/.test(o.fsNada.dlg), o.fsNada],
   ['sin errores', errors.length === 0 && !o.excepcion, [errors, o.excepcion]],
 ];
 console.log('Enlaces internos');

@@ -246,7 +246,8 @@ try {
   // ---------- Un enlace https que abre un archivo del disco ----------
   console.log('Un enlace que abre un archivo del disco');
   const diskFile = path.join(disk, 'my notes.md'); fs.writeFileSync(diskFile, '# Local note\n\nfrom the disk, SECRET-DISK-TEXT\n');
-  fs.writeFileSync(path.join(disk, 'other.md'), '# Other\n');
+  const FILL = Array.from({ length: 60 }, (_, k) => 'Filler line ' + (k + 1) + '.').join('\n\n');
+  fs.writeFileSync(path.join(disk, 'other.md'), '# Other\n\n' + FILL + '\n\n## Second part\n\nYou arrived.\n\n' + FILL + '\n');
   const fileAt = pathToFileURL(diskFile).href; const linkTo = (base, target) => base + '#open=' + encodeURIComponent(target);
   const dlg = (p) => p.evaluate(() => {
     const c = document.querySelector('.lmd-dlg-card'); if (!c) return null; const code = c.querySelector('.lmd-dlg-path code'); const a = c.querySelector('.lmd-dlg-link a');
@@ -281,6 +282,15 @@ try {
   check('".." y sus variantes codificadas no salen de la carpeta', escRead.every((r) => r && r.opened !== true && !('text' in r)) && !/SECRET-OUTSIDE/.test(J(escRead)), escRead);
   const types = [await ask(web, 'file.read', { url: urlOf(disk, 'plain.txt') }), await ask(web, 'file.read', { url: urlOf(disk, 'page.html') }), await ask(web, 'file.read', { url: 'file://server/share/a.md' }), await ask(web, 'file.read', { url: base2 + '/' })];
   check('un tipo que no es Markdown, una carpeta o una unidad de red no se entregan', types.every((r) => r && r.ok === false && r.error === 'shape'), types);
+  // Listar una carpeta: las mismas reglas. Solo nombres, solo dentro de lo habilitado, y sin decir si algo existe afuera.
+  const dirOf = (...p) => pathToFileURL(path.join(...p)).href + '/';
+  const lsd = await ask(web, 'file.list', { url: dirOf(disk) }); const listedSub = await ask(web, 'file.list', { url: dirOf(disk, 'sub') });
+  const names = (r) => (r && r.rows ? r.rows.map((x) => (x.dir ? '[' + x.name + ']' : x.name)).sort() : null);
+  check('la extensión lista una carpeta habilitada y sus subcarpetas: nombres de carpetas y de archivos que SharpMD abre', lsd.ok && lsd.listed && J(names(lsd)) === J(['[sub]', 'my notes.md', 'other.md', 'plain.txt'].sort()) && lsd.rows.every((x) => J(Object.keys(x).sort()) === J(['dir', 'name'])) && J(names(listedSub)) === J(['deep.md']), [names(lsd), names(listedSub)]);
+  const NOLIST = J({ ok: true, listed: false, why: 'refused' });
+  const outList = [await ask(web, 'file.list', { url: dirOf(disk2) }), await ask(web, 'file.list', { url: dirOf(disk2, 'nope') }), await ask(web, 'file.list', { url: dirOf(path.dirname(disk)) }), await ask(web, 'file.list', { url: 'file:///C:/' })];
+  const badList = [await ask(web, 'file.list', { url: dirOf(disk) + '../' + path.basename(disk2) + '/' }), await ask(web, 'file.list', { url: dirOf(disk) + '%2e%2e/' }), await ask(web, 'file.list', { url: pathToFileURL(disk).href }), await ask(web, 'file.list', { url: 'file://server/share/' }), await ask(web, 'file.list', { url: 'https://example.com/' }), await ask(web, 'file.list', {})];
+  check('fuera de lo habilitado no lista nada, exista o no la carpeta, y ".." no escapa', outList.every((r) => J(r) === NOLIST) && badList.every((r) => r && r.ok === false && r.error === 'shape'), [outList, badList]);
   // Quién puede sumar carpetas: solo el lector de esta extensión sobre un file://, con la dirección que da el navegador.
   const tell = (sender, msg) => bg(([s, m]) => new Promise((resolve) => LMD.bridgeHost.onSeen(m || {}, Object.assign({ id: chrome.runtime.id, tab: { id: 1 }, frameId: 0 }, s), resolve)), [sender, msg || null]);
   const told = [await tell({ url: 'https://evil.example/notes/a.md' }, { url: urlOf(disk2, 'out.md') }), await tell({ url: WEB }), await tell({ url: urlOf(disk2, 'out.md'), frameId: 1 }), await tell({ url: urlOf(disk2, 'out.md'), id: 'otra' }), await tell({ url: 'file://server/share/a.md' })];
@@ -310,8 +320,8 @@ try {
   await extPage.click('[data-act=close-panel]');
   // Un enlace a un archivo de una carpeta sin habilitar, de punta a punta: una sola pregunta, que ya dice qué pasa y
   // cuyo botón dice lo que hace; el archivo elegido se abre en la app web, y la pestaña nunca pasa a un file://.
-  const CHOOSE = 'The path is copied when you press the button. Paste it in the file name box (Ctrl+V) and press Enter.';
-  const PASTED = 'The path is copied. Paste it in the file name box (Ctrl+V) and press Enter.';
+  const CHOOSE = 'Find "my notes.md" in the picker. The path is copied, in case your browser lets you paste it (Ctrl+V).';
+  const PASTED = CHOOSE; // la línea dice buscar el archivo: pegar la ruta es una ayuda, no un paso
   const spy = (p) => p.evaluate(() => {
     window.__dlgs = []; new MutationObserver((rs) => rs.forEach((r) => r.addedNodes.forEach((n) => { if (n.nodeType === 1 && n.matches('.lmd-dlg')) window.__dlgs.push(n.querySelector('h3').textContent + ' / ' + n.querySelector('[data-dlg=ok]').textContent); }))).observe(document.body, { childList: true });
     window.__pickers = []; window.showOpenFilePicker = (o) => { window.__pickers.push(o); return new Promise((resolve, reject) => { window.__pick = { resolve, reject }; }); };
@@ -386,7 +396,100 @@ try {
   const dIn = await dlg(lo);
   await lo.click('.lmd-dlg-card [data-dlg=ok]'); await lo.waitForSelector('.markdown-body h1', { timeout: 8000 }).catch(() => {});
   const oneClick = await lo.evaluate(() => ({ at: location.href, h1: (document.querySelector('.markdown-body h1') || {}).textContent || '', body: (document.querySelector('.markdown-body') || {}).textContent || '', dlgs: window.__dlgs, pickers: window.__pickers.length }));
-  check('con la carpeta habilitada el enlace se abre con un clic, en la app', !!dIn && J(dIn.buttons) === J(['Cancel', 'Open']) && (await lo.evaluate(() => !document.querySelector('.lmd-dlg-note, .lmd-dlg-more'))) && oneClick.h1.startsWith('Local note') && /SECRET-DISK-TEXT/.test(oneClick.body) && oneClick.at.startsWith(WEB + '?f=mem') && J(oneClick.dlgs) === J(['Open this file from your disk? / Open']) && oneClick.pickers === 0 && fileTabs().length === 0, [dIn && dIn.buttons, oneClick.at, oneClick.dlgs]);
+  check('con la carpeta habilitada el enlace se abre con un clic, en la app', !!dIn && J(dIn.buttons) === J(['Cancel', 'Open']) && (await lo.evaluate(() => !document.querySelector('.lmd-dlg-note, .lmd-dlg-more'))) && oneClick.h1.startsWith('Local note') && /SECRET-DISK-TEXT/.test(oneClick.body) && oneClick.at.startsWith(WEB + '?f=fs') && J(oneClick.dlgs) === J(['Open this file from your disk? / Open']) && oneClick.pickers === 0 && fileTabs().length === 0, [dIn && dIn.buttons, oneClick.at, oneClick.dlgs]);
+  // ---------- El archivo abierto por enlace, en el lateral, con sus enlaces relativos y el paso al archivo real ----------
+  const LINKS = '# Links\n\nA paragraph to edit.\n\n[Other](other.md), [Deep](sub/deep.md), [Section](other.md#second-part), [[deep]], [Outside](../' + path.basename(disk2) + '/out.md), [Gone](gone.md), [Web](https://example.com/).\n';
+  fs.writeFileSync(path.join(disk, 'links.md'), LINKS);
+  const linksAt = urlOf(disk, 'links.md');
+  const sideOf = (p) => p.evaluate(() => { const s = document.querySelector('.lmd-xroot[data-root=fs]'); if (!s) return null; const head = s.querySelector('.lmd-root-tog'); const on = s.querySelector('.lmd-node.lmd-active'); const bar = document.querySelector('.lmd-copybar');
+    return { head: head.textContent.trim(), title: head.title, nodes: [...s.querySelectorAll('.lmd-node')].filter((n) => n.offsetParent).map((n) => (n.classList.contains('lmd-node-dir') ? '[' + n.textContent.trim() + ']' : n.textContent.trim())), active: on ? on.textContent.trim() : '', activeShown: !!on && !!on.offsetParent, shut: s.classList.contains('lmd-shut'), open: (s.querySelector('[data-fs=grant]') || {}).textContent || '',
+      bar: bar && !bar.hidden ? { text: bar.querySelector('.lmd-copybar-text').textContent, btn: (bar.querySelector('button') || {}).textContent || '' } : null, f: new URLSearchParams(location.search).get('f'), h1: (document.querySelector('.markdown-body h1') || {}).textContent || '' }; });
+  const follow = async (p, text) => { await p.click('.markdown-body a:text-is("' + text + '")'); await p.waitForTimeout(700); };
+  const fAt = (...p) => 'fs/' + path.join(...p).split(path.sep).filter(Boolean).map(encodeURIComponent).join('/');
+  await lo.goto(WEB); await lo.waitForSelector('.lmd-home'); await spy(lo);
+  await lo.goto(linkTo(WEB, linksAt)); await lo.waitForSelector('.lmd-dlg-card'); await lo.click('.lmd-dlg-card [data-dlg=ok]');
+  await lo.waitForSelector('.markdown-body h1'); await lo.waitForSelector('.lmd-xroot[data-root=fs] .lmd-node.lmd-active', { timeout: 8000 }).catch(() => {});
+  await lo.click('[data-act=mode-read]').catch(() => {}); await lo.waitForTimeout(300); // la página venía de editar: los enlaces se siguen leyendo
+  const s1 = await sideOf(lo);
+  const upTwo = path.basename(path.dirname(path.dirname(disk)));
+  check('el archivo abierto por enlace figura en el lateral, en "Del disco", con su rama desplegada', !!s1 && !s1.shut && s1.head === 'From disk · ' + upTwo && s1.title.toLowerCase() === (path.dirname(path.dirname(disk)) + path.sep).toLowerCase() && s1.nodes.includes('[' + path.basename(path.dirname(disk)) + ']') && s1.nodes.includes('[' + path.basename(disk) + ']') && s1.nodes.includes('links.md'), s1);
+  check('y queda marcado como elegido, a la vista', !!s1 && s1.active === 'links.md' && s1.activeShown && s1.f === fAt(disk, 'links.md'), s1 && [s1.active, s1.f]);
+  check('con la carpeta habilitada en la extensión se ven los hermanos, sin ningún clic', !!s1 && ['other.md', 'my notes.md', '[sub]'].every((n) => s1.nodes.includes(n)) && !s1.nodes.includes('plain.txt') && !s1.nodes.includes('page.html'), s1 && s1.nodes);
+  check('el cartel dice que es una copia y ofrece editar el archivo del disco; el lateral, abrir la carpeta', !!s1 && !!s1.bar && s1.bar.text === 'Opened as a copy. The file on your disk is not changed.' && s1.bar.btn === 'Edit the file on disk' && s1.open === 'Open this folder', s1 && [s1.bar, s1.open]);
+  fs.mkdirSync('C:/tmp/agopen', { recursive: true });
+  await lo.screenshot({ path: 'C:/tmp/agopen/1-lateral-rama-y-cartel.png' }).catch(() => {});
+  // Los enlaces relativos de la nota se resuelven contra la ruta real y abren por el mismo camino.
+  await follow(lo, 'Other'); const l1 = await sideOf(lo);
+  check('un enlace a un hermano lo abre, sin recargar, y el lateral lo sigue', l1.h1 === 'Other' && l1.f === fAt(disk, 'other.md') && l1.active === 'other.md' && (await lo.evaluate(() => window.__dlgs.length)) === 1 && !!l1.bar, [l1.h1, l1.f, l1.active]);
+  await lo.goBack(); await lo.waitForTimeout(700); const l2 = await sideOf(lo);
+  await lo.goForward(); await lo.waitForTimeout(700); const l3 = await sideOf(lo);
+  await lo.goBack(); await lo.waitForTimeout(700);
+  check('atrás y adelante andan entre las notas visitadas', l2.h1 === 'Links' && l2.active === 'links.md' && l3.h1 === 'Other' && l3.active === 'other.md' && (await sideOf(lo)).h1 === 'Links', [l2.h1, l3.h1]);
+  await follow(lo, 'Deep'); const l4 = await sideOf(lo);
+  check('un enlace a una subcarpeta también, con su rama desplegada', l4.h1 === 'Deep' && l4.f === fAt(disk, 'sub', 'deep.md') && l4.active === 'deep.md' && l4.activeShown, [l4.h1, l4.f, l4.active]);
+  await lo.goBack(); await lo.waitForTimeout(700);
+  await follow(lo, 'Section'); await lo.waitForTimeout(600);
+  const l5 = await lo.evaluate(() => ({ h1: (document.querySelector('.markdown-body h1') || {}).textContent, hash: location.hash, y: window.scrollY, top: document.getElementById('second-part') ? Math.round(document.getElementById('second-part').getBoundingClientRect().top) : null }));
+  check('un enlace con ancla llega a la sección', l5.h1 === 'Other' && l5.y > 200 && l5.top != null && l5.top < 300, l5);
+  await lo.goBack(); await lo.waitForTimeout(700);
+  const wiki = await lo.evaluate(() => { const a = document.querySelector('.markdown-body a.lmd-wiki'); return a ? { missing: a.classList.contains('lmd-wiki-missing'), text: a.textContent } : null; });
+  await lo.click('.markdown-body a.lmd-wiki'); await lo.waitForTimeout(700);
+  check('un [[wikilink]] encuentra la nota en la carpeta', !!wiki && !wiki.missing && (await sideOf(lo)).h1 === 'Deep', wiki);
+  await lo.goBack(); await lo.waitForTimeout(700);
+  const tabsLinks = ctx.pages().length;
+  await follow(lo, 'Outside'); await lo.waitForSelector('.lmd-dlg-card', { timeout: 5000 }).catch(() => {});
+  const dUp = await dlg(lo); const stUp = await lo.evaluate(() => ({ h1: document.querySelector('.markdown-body h1').textContent, status: document.querySelector('.lmd-status') ? document.querySelector('.lmd-status').textContent : '', body: document.body.textContent }));
+  check('un enlace que sale de las carpetas habilitadas no se abre: avisa y ofrece elegirlo', stUp.h1 === 'Links' && /Could not open "out\.md"\./.test(stUp.body) && !!dUp && dUp.path === path.join(disk2, 'out.md') && J(dUp.buttons) === J(['Cancel', 'Choose the file']) && dUp.text.startsWith('By link, the extension only opens') && !/SECRET-OUTSIDE/.test(stUp.body), [stUp.h1, dUp]);
+  await lo.keyboard.press('Escape'); await gone(lo);
+  await follow(lo, 'Gone'); await lo.waitForSelector('.lmd-dlg-card', { timeout: 5000 }).catch(() => {});
+  const dGone = await dlg(lo);
+  check('un destino que no existe tampoco falla en silencio', (await sideOf(lo)).h1 === 'Links' && /Could not open "gone\.md"\./.test(await lo.evaluate(() => document.body.textContent)) && !!dGone && dGone.title === 'File not found' && J(dGone.buttons) === J(['Close', 'Choose the file']), dGone);
+  await lo.keyboard.press('Escape'); await gone(lo);
+  check('y los enlaces a la web siguen abriendo aparte', (await lo.evaluate(() => { const a = [...document.querySelectorAll('.markdown-body a')].find((x) => x.textContent === 'Web'); return a.target + ' ' + a.href; })) === '_blank https://example.com/' && ctx.pages().length === tabsLinks);
+  // De copia a archivo real: se edita la copia, se elige la carpeta, y lo escrito sigue ahí, sin guardar.
+  const folderName = path.basename(disk);
+  await lo.evaluate(async ([name, text]) => {
+    const root = await navigator.storage.getDirectory();
+    const mk = async (dirName, files) => { const d = await root.getDirectoryHandle(dirName, { create: true }); for (const [n, t] of Object.entries(files)) { const h = await d.getFileHandle(n, { create: true }); const w = await h.createWritable(); await w.write(t); await w.close(); } return d; };
+    const wrong = await mk('elsewhere', { 'x.md': '# X\n' });
+    const twin = await (await wrong.getDirectoryHandle(name, { create: true }));
+    { const h = await twin.getFileHandle('links.md', { create: true }); const w = await h.createWritable(); await w.write('# Another links\n'); await w.close(); }
+    window.__real = await mk(name, { 'links.md': text, 'other.md': '# Other\n\nreal folder\n' });
+    window.__dirs = [wrong, twin, window.__real]; window.__dirOpts = [];
+    window.showDirectoryPicker = async (o) => { window.__dirOpts.push(o); const d = window.__dirs.shift(); if (!d) throw Object.assign(new Error('cancelado'), { name: 'AbortError' }); return d; };
+  }, [folderName, LINKS]);
+  await lo.click('[data-act=mode-edit]'); await lo.waitForSelector('.lmd-article .lmd-editable');
+  await typeIn(lo, 'A paragraph to edit', ' TYPED-IN-THE-COPY'); await leave(lo);
+  await lo.evaluate(() => window.scrollTo(0, 40)); const yWas = await lo.evaluate(() => window.scrollY);
+  const barOf = (p) => p.evaluate(() => { const b = document.querySelector('.lmd-copybar'); return b && !b.hidden ? b.querySelector('.lmd-copybar-text').textContent + ' / ' + ((b.querySelector('button') || {}).textContent || '') : ''; });
+  await lo.click('.lmd-copybar [data-fs=grant]'); await lo.waitForFunction(() => /does not contain/.test(document.querySelector('.lmd-copybar').textContent), null, { timeout: 5000 }).catch(() => {});
+  const wrong1 = await barOf(lo);
+  await lo.click('.lmd-copybar [data-fs=grant]'); await lo.waitForFunction(() => /has another/.test(document.querySelector('.lmd-copybar').textContent), null, { timeout: 5000 }).catch(() => {});
+  const wrong2 = await barOf(lo);
+  check('una carpeta que no contiene el archivo, o que tiene otro con ese nombre, se dice y se puede reintentar', wrong1 === 'The folder "elsewhere" does not contain "links.md". Find "' + folderName + '". / Edit the file on disk' && wrong2 === '"' + folderName + '" has another "links.md", different from the one that is open. Find the folder from the link. / Edit the file on disk' && (await sideOf(lo)).f === fAt(disk, 'links.md'), [wrong1, wrong2]);
+  await lo.screenshot({ path: 'C:/tmp/agopen/2-cartel-con-su-boton.png' }).catch(() => {});
+  await lo.click('.lmd-copybar [data-fs=grant]'); await lo.waitForFunction(() => document.querySelector('.lmd-copybar').hidden, null, { timeout: 8000 }).catch(() => {});
+  await lo.waitForTimeout(500);
+  const rlf = await lo.evaluate(async () => { const out = []; for (const r of await LMD.store.rootsAll()) out.push({ name: r.name, kind: r.kind, fs: r.fs || '', same: !!r.handle && await r.handle.isSameEntry(window.__real) });
+    const sec = document.querySelector('.lmd-xroot[data-root=disk]'); const on = document.querySelector('.lmd-node.lmd-active');
+    return { f: new URLSearchParams(location.search).get('f'), bar: !document.querySelector('.lmd-copybar').hidden, body: document.querySelector('.markdown-body').textContent, editing: !!document.querySelector('.lmd-article .lmd-editable'), y: window.scrollY, roots: out, opt: window.__dirOpts[0], fsSec: !!document.querySelector('.lmd-xroot[data-root=fs]'), disk: sec ? [...sec.querySelectorAll('.lmd-node')].map((n) => n.textContent.trim()) : null, active: on ? on.textContent.trim() : '', status: document.body.textContent.includes('What you changed in the copy is still unsaved. Save to write it to the file.'), fileNow: await (await (await window.__real.getFileHandle('links.md')).getFile()).text() }; });
+  const recReal = rlf.roots.find((r) => r.same);
+  check('"Editar el archivo del disco" pasa de copia a archivo real sin recargar: sin cartel, en edición y en el mismo lugar', !rlf.bar && rlf.editing && !/^fs\//.test(rlf.f) && /\/links\.md$/.test(rlf.f) && !!recReal && recReal.kind === 'dir' && Math.abs(rlf.y - yWas) < 30 && lo.url().startsWith(WEB + '?f='), [rlf.f, rlf.y, rlf.roots]);
+  check('la web anota a qué ruta corresponde esa carpeta, de su lado y sin pasar por la extensión', !!recReal && recReal.fs.toLowerCase() === (pathToFileURL(disk).href + '/').toLowerCase() && (await wf()).roots.length === 1, [recReal, await wf()]);
+  check('lo que se cambió en la copia sigue puesto, sin guardar todavía, y lo avisa', /TYPED-IN-THE-COPY/.test(rlf.body) && rlf.status && !/TYPED-IN-THE-COPY/.test(rlf.fileNow), [rlf.status, rlf.fileNow]);
+  check('el lateral pasa a mostrar la carpeta real, con el archivo elegido', !rlf.fsSec && !!rlf.disk && rlf.disk.includes('links.md') && rlf.disk.includes('other.md') && rlf.active === 'links.md', [rlf.fsSec, rlf.disk, rlf.active]);
+  check('el selector de carpeta pide el mismo id para esa carpeta y no depende de pegar una ruta', !!rlf.opt && /^lmd-d-[a-z0-9]+$/.test(rlf.opt.id) && rlf.opt.mode === 'readwrite', rlf.opt);
+  await lo.keyboard.press('Control+s');
+  check('y guardar escribe en el archivo', !!(await until(() => lo.evaluate(async () => /TYPED-IN-THE-COPY/.test(await (await (await window.__real.getFileHandle('links.md')).getFile()).text())), 8000)));
+  await lo.screenshot({ path: 'C:/tmp/agopen/3-ya-es-el-archivo-rlf.png' }).catch(() => {});
+  // Con la carpeta ya conocida y el permiso vigente, el enlace abre directo el archivo real, editable y sin cartel.
+  await lo.goto(WEB); await lo.waitForSelector('.lmd-home'); await spy(lo);
+  await lo.goto(linkTo(WEB, urlOf(disk, 'other.md'))); await lo.waitForSelector('.lmd-dlg-card');
+  const dReal = await dlg(lo);
+  await lo.click('.lmd-dlg-card [data-dlg=ok]'); await lo.waitForSelector('.markdown-body h1'); await lo.waitForTimeout(500);
+  const again = await lo.evaluate(() => ({ f: new URLSearchParams(location.search).get('f'), bar: !document.querySelector('.lmd-copybar').hidden, body: document.querySelector('.markdown-body').textContent, dlgs: window.__dlgs }));
+  check('con la carpeta recordada y el permiso vigente, el enlace abre el archivo real, sin cartel', !!dReal && J(dReal.buttons) === J(['Cancel', 'Open']) && !again.bar && !/^fs\//.test(again.f) && /\/other\.md$/.test(again.f) && /real folder/.test(again.body) && again.dlgs.length === 1, [again.f, again.bar, again.dlgs]);
+  await lo.evaluate(async () => { for (const r of await LMD.store.rootsAll()) await LMD.store.handlesDelete(r.key); await LMD.bridge.sync(); }); // lo que sigue arranca sin carpetas abiertas en la web
   await lo.close();
   const lk = watch(await ctx.newPage());
   await lk.goto(linkTo(WEB, fileAt)); await lk.waitForSelector('.lmd-dlg-card');
@@ -406,7 +509,7 @@ try {
   await lk.waitForSelector('.markdown-body h1', { timeout: 8000 }).catch(() => {});
   await lk.waitForFunction(() => /Opened as a copy/.test(document.body.textContent), null, { timeout: 4000 }).catch(() => {});
   const inApp = await lk.evaluate(() => ({ at: location.href.split('?')[0], f: new URLSearchParams(location.search).get('f'), h1: (document.querySelector('.markdown-body h1') || {}).textContent || '', body: (document.querySelector('.markdown-body') || {}).textContent || '', note: /Opened as a copy\. The file on your disk is not changed\./.test(document.body.textContent), dlg: !!document.querySelector('.lmd-dlg-card') }));
-  check('con el clic, el archivo se muestra dentro de la app web, leído por el puente', inApp.at === WEB && inApp.f === 'mem/my%20notes.md' && inApp.h1.startsWith('Local note') && /SECRET-DISK-TEXT/.test(inApp.body) && !inApp.dlg, inApp);
+  check('con el clic, el archivo se muestra dentro de la app web, leído por el puente', inApp.at === WEB && /^fs\/.*\/my%20notes\.md$/.test(inApp.f || '') && inApp.h1.startsWith('Local note') && /SECRET-DISK-TEXT/.test(inApp.body) && !inApp.dlg, inApp);
   check('como copia, y lo dice', inApp.note, inApp);
   check('sin abrir otra pestaña ni llevar ninguna a un file://', ctx.pages().length === tabsWas && !ctx.pages().some((p) => p.url().startsWith('file:')), ctx.pages().map((p) => p.url()));
   const webSide = await web.evaluate(async () => ({ notes: JSON.stringify(await LMD.store.notesAll()), roots: (await LMD.store.rootsAll()).map((r) => r.name) }));
@@ -668,7 +771,6 @@ try {
 
   // ---------- Una extensión anterior: entrega archivos (file.read) pero no conoce file.can ----------
   console.log('Un enlace con una extensión anterior, sin file.can');
-  await sleep(Math.max(0, 62000 - (Date.now() - cappedAt))); // el tope por minuto de pedidos atendidos, que lo anterior agotó: se espera a que venza entero
   const older = (ops) => bg((list) => { if (!self.__onMsg) self.__onMsg = LMD.bridgeHost.onMessage; LMD.bridgeHost.onMessage = (msg, s, r) => (msg && list.includes(msg.op) ? (r({ ok: false, error: 'refused' }), false) : self.__onMsg(msg, s, r)); }, ops);
   await older(['file.can']);
   const lg = watch(await ctx.newPage()); const lgNav = []; lg.on('framenavigated', (f) => { if (f === lg.mainFrame()) lgNav.push(f.url()); });
@@ -678,7 +780,7 @@ try {
   const og = await dlg(lg);
   await lg.click('.lmd-dlg-card [data-dlg=ok]'); await lg.waitForSelector('.markdown-body h1', { timeout: 8000 }).catch(() => {});
   const og1 = await lg.evaluate(() => ({ at: location.href, h1: (document.querySelector('.markdown-body h1') || {}).textContent || '', dlgs: window.__dlgs, pickers: window.__pickers.length, open: document.querySelectorAll('.lmd-dlg-card').length }));
-  check('extensión anterior y carpeta habilitada: sigue siendo un clic, sin decir nada de la versión', !!og && J(og.buttons) === J(['Cancel', 'Open']) && !/version/i.test(og.all) && og1.h1.startsWith('Local note') && og1.at.startsWith(WEB + '?f=mem') && J(og1.dlgs) === J(['Open this file from your disk? / Open']) && og1.pickers === 0 && og1.open === 0, [og && og.buttons, og1]);
+  check('extensión anterior y carpeta habilitada: sigue siendo un clic, sin decir nada de la versión', !!og && J(og.buttons) === J(['Cancel', 'Open']) && !/version/i.test(og.all) && og1.h1.startsWith('Local note') && og1.at.startsWith(WEB + '?f=fs') && J(og1.dlgs) === J(['Open this file from your disk? / Open']) && og1.pickers === 0 && og1.open === 0, [og && og.buttons, og1]);
   await lg.goto(WEB); await lg.waitForSelector('.lmd-home'); await spy(lg);
   await lg.goto(linkTo(WEB, urlOf(disk2, 'out.md'))); await lg.waitForSelector('.lmd-dlg-card');
   await lg.evaluate(() => { window.__card = document.querySelector('.lmd-dlg-card'); });
@@ -687,9 +789,9 @@ try {
   const og3 = await dlg(lg);
   const turned = await lg.evaluate(() => ({ same: window.__card === document.querySelector('.lmd-dlg-card'), n: document.querySelectorAll('.lmd-dlg-card').length, dlgs: window.__dlgs, pickers: window.__pickers.length, body: document.body.textContent }));
   check('extensión anterior y carpeta sin habilitar: pregunta con "Abrir"', !!og2 && J(og2.buttons) === J(['Cancel', 'Open']) && og2.title === 'Open this file from your disk?' && !/version/i.test(og2.all), og2);
-  check('y esa misma pregunta cambia en el lugar a "Elegir el archivo", con el porqué y la línea de qué pegar', !!og3 && turned.same && turned.n === 1 && turned.dlgs.length === 1 && og3.title === 'Open this file from your disk?' && J(og3.buttons) === J(['Cancel', 'Choose the file']) && og3.text.startsWith('By link, the extension only opens what is in folders you already opened with it. Choose the file.') && (await noteOf(lg)) === CHOOSE && turned.pickers === 0 && !/SECRET-OUTSIDE/.test(turned.body) && !/version/i.test(og3.all), [og3, turned.dlgs]);
+  check('y esa misma pregunta cambia en el lugar a "Elegir el archivo", con el porqué y la línea de qué pegar', !!og3 && turned.same && turned.n === 1 && turned.dlgs.length === 1 && og3.title === 'Open this file from your disk?' && J(og3.buttons) === J(['Cancel', 'Choose the file']) && og3.text.startsWith('By link, the extension only opens what is in folders you already opened with it. Choose the file.') && (await noteOf(lg)) === CHOOSE.replace('my notes.md', 'out.md') && turned.pickers === 0 && !/SECRET-OUTSIDE/.test(turned.body) && !/version/i.test(og3.all), [og3, turned.dlgs]);
   await lg.bringToFront(); await lg.click('.lmd-dlg-card [data-dlg=ok]'); await lg.waitForFunction(() => !!window.__pick, null, { timeout: 4000 }).catch(() => {});
-  check('ahí el botón copia la ruta y abre el selector', (await lg.evaluate(() => window.__pickers.length)) === 1 && (await noteOf(lg)) === PASTED && (await clipOf(lg)) === path.join(disk2, 'out.md') && lgNav.every((u) => u.startsWith(WEB)), [await noteOf(lg), lgNav]);
+  check('ahí el botón copia la ruta y abre el selector', (await lg.evaluate(() => window.__pickers.length)) === 1 && (await noteOf(lg)) === PASTED.replace('my notes.md', 'out.md') && (await clipOf(lg)) === path.join(disk2, 'out.md') && lgNav.every((u) => u.startsWith(WEB)), [await noteOf(lg), lgNav]);
   await lg.evaluate(() => window.__pick.reject(Object.assign(new Error('cancelado'), { name: 'AbortError' }))); await lg.keyboard.press('Escape'); await gone(lg);
   // Una extensión todavía anterior, que tampoco entrega archivos: recién ahí se habla de la versión.
   await older(['file.can', 'file.read']);
@@ -827,7 +929,7 @@ try {
   check('el botón dispara la instalación y después dice que ya está instalada', (await sp.evaluate(() => window.__prompted === true)) && /Already installed\./.test((await paneOf(sp)).text));
   // ---------- Un enlace que abre un archivo del disco, sin la extensión ----------
   console.log('Un enlace que abre un archivo del disco, sin la extensión');
-  const PASTE = 'The path is copied. Paste it in the file name box (Ctrl+V) and press Enter.';
+  const PASTE = 'Find "my notes.md" in the picker. The path is copied, in case your browser lets you paste it (Ctrl+V).';
   const mock = () => sp.evaluate(() => {
     window.__copied = []; window.__order = []; window.__copyFails = false;
     Object.defineProperty(navigator.clipboard, 'writeText', { configurable: true, value: async (t) => { window.__order.push('copy'); if (window.__copyFails) throw new Error('sin permiso'); window.__copied.push(t); } });
@@ -837,7 +939,7 @@ try {
   const winPath = 'C:\\Users\\me\\Desktop\\my notes.md';
   await sp.goto(R.home + '#open=' + encodeURIComponent('file:///C:/Users/me/Desktop/my%20notes.md')); await sp.waitForSelector('.lmd-dlg-card');
   const nd = await sp.evaluate(() => { const c = document.querySelector('.lmd-dlg-card'); const a = c.querySelector('.lmd-dlg-link a'); const n = c.querySelector('.lmd-dlg-note'); return { at: location.href, title: c.querySelector('h3').textContent, text: c.querySelector('p').textContent, path: c.querySelector('.lmd-dlg-path code').textContent, buttons: [...c.querySelectorAll('.lmd-ask-actions button')].map((b) => b.textContent), link: a.textContent + ' ' + a.href, copy: c.querySelector('[data-dlg-copy]').textContent, note: n.hidden ? '' : n.textContent, all: c.textContent }; });
-  check('sin la extensión: una línea que lo explica, la ruta, y el fragmento fuera de la barra', nd.at === R.home && nd.title === 'Open this file from your disk?' && nd.text === 'Without the Chrome extension, choose the file.' && nd.path === winPath && nd.note === 'The path is copied when you press the button. Paste it in the file name box (Ctrl+V) and press Enter.' && !/[!¡—–]/.test(nd.all), nd);
+  check('sin la extensión: una línea que lo explica, la ruta, y el fragmento fuera de la barra', nd.at === R.home && nd.title === 'Open this file from your disk?' && nd.text === 'Without the Chrome extension, choose the file.' && nd.path === winPath && nd.note === PASTE && !/[!¡—–]/.test(nd.all), nd);
   check('con copiar la ruta, Abrir y el enlace a la extensión', nd.copy === 'Copy path' && J(nd.buttons) === J(['Cancel', 'Choose the file']) && nd.link === 'Get the extension https://github.com/SharpMD/sharpmd#install', nd);
   await sp.click('.lmd-dlg-card [data-dlg-copy]'); await sp.waitForFunction(() => document.querySelector('[data-dlg-copy]').textContent === 'Copied', null, { timeout: 3000 }).catch(() => {});
   check('"Copiar la ruta" copia la ruta y lo dice', J(await sp.evaluate(() => window.__copied)) === J([winPath]) && (await sp.textContent('[data-dlg-copy]')) === 'Copied' && (await sp.locator('.lmd-dlg-card').count()) === 1);
@@ -851,9 +953,9 @@ try {
   await sp.evaluate(() => { window.__pick.reject(Object.assign(new Error('cancelado'), { name: 'AbortError' })); window.__copyFails = true; window.__picker = null; });
   await sp.waitForTimeout(300);
   const still = await sp.locator('.lmd-dlg-card').count();
-  await sp.click('.lmd-dlg-card [data-dlg=ok]'); await sp.waitForFunction(() => !!window.__picker && /could not be copied/.test(document.querySelector('.lmd-dlg-note').textContent), null, { timeout: 4000 }).catch(() => {});
+  await sp.click('.lmd-dlg-card [data-dlg=ok]'); await sp.waitForFunction(() => !!window.__picker && /picker\.$/.test(document.querySelector('.lmd-dlg-note').textContent), null, { timeout: 4000 }).catch(() => {});
   const fb2 = await sp.evaluate(() => ({ note: document.querySelector('.lmd-dlg-note').textContent, copyBtn: !!document.querySelector('[data-dlg-copy]'), picker: !!window.__picker }));
-  check('al cancelar el selector la pregunta sigue; si copiar falla lo dice y conserva "Copiar la ruta"', still === 1 && fb2.picker && fb2.copyBtn && fb2.note === 'The path could not be copied. Copy it with the button and paste it in the file name box.', fb2);
+  check('al cancelar el selector la pregunta sigue; si copiar falla la línea no promete la ruta y queda "Copiar la ruta"', still === 1 && fb2.picker && fb2.copyBtn && fb2.note === 'Find "my notes.md" in the picker.', fb2);
   await sp.evaluate(() => { window.__pick.reject(Object.assign(new Error('cancelado'), { name: 'AbortError' })); });
   await sp.keyboard.press('Escape'); await sp.waitForSelector('.lmd-dlg-card', { state: 'detached', timeout: 3000 }).catch(() => {});
   check('en ningún momento se abre una pestaña con un file://', solo.ctx.pages().length === soloTabs && !solo.ctx.pages().some((p) => p.url().startsWith('file:')), solo.ctx.pages().map((p) => p.url()));

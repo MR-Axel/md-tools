@@ -144,6 +144,7 @@
     'file.can': async (a) => { const url = a && typeof a.url === 'string' && a.url.startsWith('file:///') ? LMD.fileUrl(a.url) : ''; return url ? { can: await readable(url) } : null; },
     // Lo mismo, pero el texto vuelve a la app web, que lo muestra adentro como copia.
     'file.read': (a) => readFile(a),
+    'file.list': (a) => listDir(a),
     // La sesión de la nube, una sola entre la web y la extensión (ver "La sesión de la nube", más abajo).
     'session.get': (a) => sessionGet(a),
     'session.put': (a) => sessionPut(a),
@@ -239,13 +240,50 @@
   }
   function onSeen(msg, sender, sendResponse) { seen(sender, msg && msg.grant).then((r) => sendResponse({ ok: r === true, ask: r === 'ask' }), () => sendResponse({ ok: false })); return true; }
 
+  // Leer y listar dentro de una carpeta habilitada tiene su propio tope, más alto que el de abrir pestañas: seguir
+  // los enlaces de una nota y dibujar su carpeta son varios pedidos seguidos.
+  const READ_MAX = 60; const reads = [];
+  function tooManyReads() {
+    const now = Date.now();
+    while (reads.length && now - reads[0] > 60000) reads.shift();
+    if (reads.length >= READ_MAX) return true;
+    reads.push(now); return false;
+  }
+  // Qué hay en una carpeta habilitada (o en una de adentro): nombres de carpetas y de los archivos que SharpMD abre,
+  // nada más. Sale del listado que arma el navegador para file:///carpeta/, el mismo que usa el lector. Fuera de las
+  // carpetas habilitadas, o con la lectura apagada, responde lo mismo exista o no la carpeta, sin mirar el disco.
+  const LIST_MAX = 1000; const LISTED = /\.(md|markdown|mdx|mkd|mdown|txt|json|ya?ml)$/i;
+  async function listDir(a) {
+    const raw = a && typeof a.url === 'string' ? a.url : ''; let plain = raw;
+    if (!/^file:\/\/\/[^\/\\]/.test(raw) || raw.length > 2048 || !raw.endsWith('/') || /[\u0000-\u001f\u007f\\?#]/.test(raw)) return null;
+    try { plain = decodeURIComponent(raw); } catch (e) { return null; }
+    if (/(^|[\\/])\.\.([\\/]|$)/.test(raw) || /(^|[\\/])\.\.([\\/]|$)/.test(plain) || /[\u0000-\u001f\u007f\\]/.test(plain)) return null;
+    const key = pathKey(raw);
+    if (!key || !key.endsWith('/')) return null;
+    const w = await webFiles();
+    if (w.off || !w.roots.some((r) => r.dir && inside(key, r))) return { listed: false, why: 'refused' };
+    if (tooManyReads()) return { listed: false, why: 'limit' };
+    let html = '';
+    try { const res = await fetch(new URL(raw).href, { cache: 'no-store' }); if (!res.ok && res.status !== 0) throw new Error('HTTP ' + res.status); html = await res.text(); }
+    catch (e) { return { listed: false, why: 'missing' }; }
+    const rows = []; const re = /addRow\((.*)\);/g; let m;
+    while ((m = re.exec(html)) && rows.length < LIST_MAX) {
+      try {
+        const row = JSON.parse('[' + m[1] + ']'); const name = row[0]; const dir = !!row[2];
+        if (typeof name !== 'string' || !name || name === '.' || name === '..' || name.length > NAME_MAX || /[\/\\\u0000-\u001f]/.test(name)) continue;
+        if (dir || LISTED.test(name)) rows.push({ name, dir });
+      } catch (e) { /* fila ilegible */ }
+    }
+    return { listed: true, rows };
+  }
+
   // El texto de ese archivo, con la misma validación y el mismo tope, y solo si está en la lista de arriba. Fuera de
   // ella (o con la lectura apagada) responde lo mismo exista o no el archivo: no sirve para averiguar qué hay en el disco.
   async function readFile(a) {
     const url = a && typeof a.url === 'string' && a.url.startsWith('file:///') ? LMD.fileUrl(a.url) : '';
     if (!url) return null;
     if (!(await readable(url))) return { opened: false, why: 'refused' }; // antes del tope: no dice nada, así que no hay qué frenar
-    if (tooMany()) return { opened: false, why: 'limit' };
+    if (tooManyReads()) return { opened: false, why: 'limit' };
     let allowed = false;
     try { allowed = await chrome.extension.isAllowedFileSchemeAccess(); } catch (e) { /* no se pudo saber */ }
     if (!allowed) return { opened: false, why: 'access' };
