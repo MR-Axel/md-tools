@@ -68,7 +68,9 @@ const said = async (p, re) => { await p.waitForFunction((r) => new RegExp(r).tes
 const closed = (p) => p.waitForSelector(CARD, { state: 'detached', timeout: 60000 });
 const fail = async (p) => { await p.waitForSelector(CARD + ' .lmd-dlg-err:not([hidden])'); return p.textContent(CARD + ' .lmd-dlg-err'); };
 const settingsCloud = async (p) => { await p.click('[data-act=settings]'); await p.waitForSelector('.lmd-panel-card'); await p.click('[data-ptab=cloud]'); await p.waitForSelector('.lmd-panel-card .lmd-e2e'); };
-const e2e = (p) => p.evaluate(() => { const l = document.querySelector('.lmd-panel-card .lmd-e2e'); const sec = document.querySelector('.lmd-panel-card .lmd-sec'); return { kind: l.dataset.e2e, text: l.querySelector('p').textContent, buttons: [...l.querySelectorAll('button')].map((b) => b.textContent || b.title), above: !!(l.compareDocumentPosition(sec) & Node.DOCUMENT_POSITION_FOLLOWING),
+const e2e = (p) => p.evaluate(() => { const l = document.querySelector('.lmd-panel-card .lmd-e2e'); const sec = document.querySelector('.lmd-panel-card .lmd-sec'); const more = sec.querySelector('.lmd-sec-more'); return { kind: l.dataset.e2e, text: l.querySelector('p').textContent, buttons: [...l.querySelectorAll('button')].map((b) => b.textContent || b.title),
+  // El estado va dentro de la tarjeta Seguridad, arriba de la explicación, que queda plegada.
+  above: sec.contains(l) && !!(l.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING) && !more.open, fills: l.querySelectorAll('.lmd-btn-fill').length,
   card: document.querySelector('[data-sec-row=vaults]').textContent, cardActs: [...document.querySelectorAll('[data-sec-row=vaults] [data-c]')].map((b) => b.dataset.c) }; });
 let K = null; let key = null;
 
@@ -215,8 +217,8 @@ const checks = [
   ['el aviso es una tarjeta que no frena nada: sin ventana encima, y se sigue guardando con él a la vista', o.aviso && o.aviso.modal === false && o.aviso.inside && J(o.sigue) === J([true, true]), [o.aviso, o.sigue]],
   ['que ya se vio queda anotado en la cuenta, en el servidor', o.anotado === true, o.anotado],
   ['"Ahora no" lo cierra, y no vuelve al guardar, al recargar ni en otro dispositivo', o.ahoraNo === true && J(o.noVuelve) === J([true, true, true]), [o.ahoraNo, o.noVuelve]],
-  ['Ajustes → Nube dice "apagada" arriba del bloque de seguridad, con el botón para activarla', o.estadoApagado && o.estadoApagado.kind === 'off' && /Protección de extremo a extremo: apagada/.test(o.estadoApagado.text) && J(o.estadoApagado.buttons) === J(['Proteger con contraseña']) && o.estadoApagado.above, o.estadoApagado],
-  ['la tarjeta "Carpetas protegidas" lleva al mismo paso y a proteger una carpeta', o.estadoApagado && J(o.estadoApagado.cardActs) === J(['protect-all', 'protect']), o.estadoApagado && o.estadoApagado.cardActs],
+  ['Ajustes → Nube dice "apagada" en la tarjeta Seguridad, arriba de la explicación plegada, con los botones para proteger toda la nube o una carpeta', o.estadoApagado && o.estadoApagado.kind === 'off' && /Protección de extremo a extremo: apagada/.test(o.estadoApagado.text) && J(o.estadoApagado.buttons) === J(['Proteger toda mi nube', 'Proteger una carpeta']) && o.estadoApagado.above && o.estadoApagado.fills === 0, o.estadoApagado],
+  ['con el estado a la vista, la tarjeta "Carpetas protegidas" no repite esas acciones', o.estadoApagado && o.estadoApagado.cardActs.length === 0, o.estadoApagado && o.estadoApagado.cardActs],
   ['en un teléfono el aviso entra en la pantalla y sus botones se tocan (la app de la tienda se mira en storeapp.mjs)', o.telefono && o.telefono.title === 'Tu nota está en la nube' && o.telefono.inside && o.telefono.tall && o.telefono.noScroll, [o.tienda, o.telefono]],
   ['"Cómo funciona" cierra el aviso y abre Ajustes → Nube, con el estado y su botón', o.como && o.como[0] === true && J(o.como[1]) === J(['off', true, true]) && o.como[2] === true, o.como],
   ['desde Ajustes, en el teléfono, se llega a proteger toda la nube y la ventana entra', o.como && J(o.como[3]) === J(['Proteger tu nube con contraseña', true]), o.como && o.como[3]],

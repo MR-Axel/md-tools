@@ -1565,7 +1565,6 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-tokens li button { flex: none; }
 .lmd-tokens li .lmd-tok-brief { color: var(--accent); }
 .lmd-tokens li .lmd-tok-brief:hover { color: var(--accent); text-decoration: underline; }
-.lmd-acct .lmd-tok-share { margin: 10px 0 0; font-size: 13px; color: var(--fg); }
 /* Con el token ya creado y sin el secreto a la vista, una línea lo dice debajo de la lista. */
 .lmd-acct .lmd-tok-kept { margin: 10px 0 0; }
 /* En pantallas angostas las acciones de cada token (instrucciones, regenerar, revocar) bajan a su propio renglón. */
@@ -3022,8 +3021,7 @@ html.lmd-ai-open .lmd-ai-card { left: calc(50% - 190px); width: min(860px, calc(
 @media print { .lmd-ai-card, .lmd-ai-panel, .lmd-ai-menu { display: none !important; } .lmd-ai-at { box-shadow: none; } html.lmd-ai-open .lmd-main { margin-right: 0; } }
 
 /* ---------- Imágenes adjuntas: almacenamiento en Ajustes y lista de adjuntos (images.js) ---------- */
-.lmd-st-host { position: relative; }
-.lmd-st-slot { position: absolute; top: 10px; right: 0; display: flex; align-items: center; gap: 10px; max-width: calc(100% - 120px); height: 24px; font-size: 13px; color: var(--fg-muted); white-space: nowrap; }
+.lmd-st-slot { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--fg-muted); }
 .lmd-st-slot[hidden] { display: none; }
 .lmd-st-name { flex: none; color: var(--fg); font-weight: 600; }
 .lmd-st-num { flex: none; }
@@ -3057,7 +3055,6 @@ html.lmd-ai-open .lmd-ai-card { left: calc(50% - 190px); width: min(860px, calc(
 .markdown-body img.lmd-img-locked { outline: 1px dashed var(--fg-muted); outline-offset: -1px; }
 .lmd-img-pick { flex-wrap: wrap; }
 @media (max-width: 640px) {
-  .lmd-st-slot { position: static; max-width: none; height: auto; flex-wrap: wrap; margin-bottom: 8px; white-space: normal; }
   .lmd-st-see { min-height: 32px; }
   .lmd-ask-card.lmd-st-card { max-height: calc(100dvh - 24px); padding: 18px 16px; }
   .lmd-st-del { min-width: 44px; min-height: 44px; }
@@ -3260,7 +3257,6 @@ html.lmd-ai-open .lmd-ai-card { left: calc(50% - 190px); width: min(860px, calc(
 [data-acct=cloud] .lmd-acct-del { margin-top: 12px; }
 /* Protección de extremo a extremo: el estado en una línea, arriba del bloque de seguridad, con su botón. */
 .lmd-e2e { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; margin: 28px 0 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-soft); }
-.lmd-e2e + .lmd-sec { margin-top: 20px; }
 .lmd-e2e p { display: flex; align-items: center; gap: 8px; flex: 1 1 220px; min-width: 0; margin: 0; font-size: 13.5px; color: var(--fg-muted); overflow-wrap: anywhere; }
 .lmd-e2e p b { color: var(--fg); font-weight: 600; }
 .lmd-e2e-ico { flex: none; display: inline-flex; color: var(--accent); }
@@ -3567,3 +3563,123 @@ dialog.lmd-xp-full::backdrop { background: var(--bg); }
 }
 @media (prefers-reduced-motion: reduce) { .lmd-ag-dot, .lmd-ag-pulse { animation: none !important; } }
 @media print { .lmd-ag { display: none !important; } }
+/* ---------- Ajustes: las secciones de la cuenta (Nube, IA, Automatizaciones) ---------- */
+/* Las tres pestañas se arman con las mismas piezas (kit.js). Una sección es una tarjeta: el título, una línea de qué
+   es, su acción a la derecha y el contenido. Adentro, filas dato–valor con el rótulo a la izquierda, el valor a la
+   derecha y una acción chica al final. El botón relleno queda para la acción principal de la tarjeta, si la tiene. */
+.lmd-blk { box-sizing: border-box; min-width: 0; margin: 0 0 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; }
+.lmd-blk:last-child { margin-bottom: 0; }
+/* La cabecera: el título y la acción en un renglón; la línea de qué es, debajo, a todo el ancho. */
+.lmd-blk-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 16px; }
+.lmd-blk-title { display: contents; }
+.lmd-blk-title h4 { grid-column: 1; margin: 0; font-size: 14.5px; font-weight: 650; line-height: 1.35; letter-spacing: 0; text-transform: none; color: var(--fg); }
+.lmd-blk-title p { grid-column: 1 / -1; grid-row: 2; margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--fg-muted); }
+.lmd-blk-act { grid-column: 2; grid-row: 1; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.lmd-blk-act .lmd-btn { display: inline-flex; align-items: center; padding: 6px 12px; font-size: 13px; text-decoration: none; }
+.lmd-blk-head:not(:last-child) { margin-bottom: 10px; }
+.lmd-blk-sub { margin: 12px 0 4px; font-size: 11.5px; font-weight: 700; line-height: 1.4; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-faint); }
+.lmd-blk .lmd-acct-actions { margin-top: 12px; }
+.lmd-blk .lmd-acct-msg { margin: 10px 0 0; color: #dc2626; }
+.lmd-blk .lmd-acct-msg.lmd-acct-done { color: var(--fg-muted); }
+.lmd-empty { margin: 0; padding: 10px 0 2px; border-top: 1px solid var(--line); font-size: 13px; color: var(--fg-muted); }
+.lmd-note { margin: 8px 0 0; font-size: 12px; line-height: 1.45; color: var(--fg-faint); }
+.lmd-acct .lmd-note.lmd-tok-kept { margin-top: 8px; }
+.lmd-blk .lmd-vault-tokens { margin: 6px 0 0; font-size: 12px; }
+/* Fila dato–valor. */
+.lmd-kv { box-sizing: border-box; display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 36px; padding: 3px 0; border-top: 1px solid var(--line); font-size: 13.5px; color: var(--fg-muted); }
+.lmd-kv[hidden] { display: none; }
+.lmd-kv > span:first-child { flex: 0 0 140px; font-size: inherit; color: var(--fg-muted); font-weight: 400; }
+.lmd-kv > b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-weight: 600; color: var(--fg); }
+.lmd-kv > .lmd-link { flex: none; min-width: 0; padding: 5px 0; color: var(--accent); text-align: right; }
+.lmd-kv.lmd-acct-row { justify-content: flex-start; padding: 3px 0; border-bottom: 0; }
+.lmd-blk .lmd-acct-name-hint { margin: -7px 0 0; padding: 0 0 7px; font-size: 11.5px; line-height: 1.3; color: var(--fg-faint); }
+.lmd-blk .lmd-acct-name-bad { color: #dc2626; }
+/* El dato que se copia: el valor es un campo de solo lectura, sin marco, que se lee como texto. */
+.lmd-kv.lmd-field { margin-top: 0; }
+.lmd-kv.lmd-field input { height: 30px; padding: 0; border-color: transparent; background: none; text-align: right; }
+.lmd-kv.lmd-field input:focus { border-color: transparent; }
+.lmd-kv.lmd-field .lmd-link { min-width: 0; }
+/* El almacenamiento, que pinta images.js: una fila más de la cuenta. */
+.lmd-kv.lmd-st-slot { font-size: 13.5px; }
+.lmd-kv > .lmd-st-name { color: var(--fg-muted); font-weight: 400; }
+.lmd-kv > .lmd-st-bar { flex: 0 1 160px; margin-left: auto; }
+.lmd-kv > .lmd-st-num { color: var(--fg); font-weight: 600; }
+.lmd-kv > .lmd-st-see { font-size: 12.5px; text-decoration: none; }
+/* Lo recién creado, que no se vuelve a mostrar (un token, una dirección): destacado dentro de su tarjeta. */
+.lmd-fresh { margin-top: 10px; padding: 0 14px 10px; border: 1px solid var(--accent-fill); border-radius: 10px; background: var(--accent-soft); }
+.lmd-acct .lmd-fresh .lmd-ai-new { margin: 10px 0 4px; font-weight: 600; }
+.lmd-fresh .lmd-kv { border-top: 0; }
+.lmd-fresh .lmd-kv > span:first-child { flex-basis: 96px; }
+.lmd-fresh .lmd-kv.lmd-field input { height: 34px; padding: 0 11px; border-color: var(--line); background: var(--bg); text-align: left; }
+.lmd-fresh .lmd-field textarea { background: var(--bg); }
+.lmd-fresh .lmd-acct-actions { margin-top: 10px; }
+.lmd-fresh .lmd-hint { margin: 8px 0 0; }
+.lmd-fresh .lmd-ai-ws { margin: 2px 0 0; }
+.lmd-fresh + .lmd-tokens { margin-top: 8px; }
+/* Los pasos de Conectar tu IA, en un renglón. */
+.lmd-steps { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 0 0 10px; padding: 0; list-style: none; counter-reset: lmd-step; font-size: 13px; color: var(--fg); }
+.lmd-steps li { display: flex; align-items: center; gap: 8px; min-width: 0; counter-increment: lmd-step; }
+.lmd-steps li::before { content: counter(lmd-step); flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 11.5px; font-weight: 700; }
+/* La lista de tokens: el nombre y el alcance, las fechas en letra chica, las acciones a la derecha. */
+.lmd-tok-rows { max-height: 236px; }
+.lmd-tok-rows li { padding: 8px 0; border-bottom: 0; border-top: 1px solid var(--line); }
+.lmd-tok-main { display: block; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.lmd-tok-main b { font-weight: 600; color: var(--fg); }
+.lmd-tok-main small { display: block; margin-top: 1px; font-size: 12px; color: var(--fg-faint); }
+.lmd-tok-sep { display: none; }
+.lmd-tok-acts { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 16px; }
+.lmd-tokens .lmd-tok-acts button { padding: 0; }
+/* El formulario de un token nuevo: aparece en el lugar del botón que lo pide. */
+.lmd-tok-new { margin-top: 12px; }
+.lmd-tok-new .lmd-acct-actions { margin-top: 0; }
+.lmd-tokform { display: grid; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-soft); }
+.lmd-tokform .lmd-pick, .lmd-tokform .lmd-check { margin: 0; }
+.lmd-tokform .lmd-check { font-size: 13px; color: var(--fg); }
+.lmd-tokform .lmd-pick select, .lmd-tokform .lmd-pick input[type=text] { background: var(--bg); }
+.lmd-tokform .lmd-pick input[type=text] { box-sizing: border-box; flex: 0 1 300px; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--fg); font: inherit; font-size: 13.5px; outline: none; }
+.lmd-tokform .lmd-pick input[type=text]:focus { border-color: var(--accent-fill); }
+.lmd-tokform-err { margin: 0; font-size: 12.5px; color: #dc2626; }
+.lmd-tokform-acts { display: flex; justify-content: flex-end; gap: 8px; }
+/* Automatizaciones y direcciones de entrada, dentro de su tarjeta. */
+.lmd-blk .lmd-au-item { border-bottom: 0; border-top: 1px solid var(--line); }
+.lmd-acct > .lmd-au-space { margin: 0 0 10px; }
+/* Sitios publicados. */
+.lmd-site-rows .lmd-site-row { border-top: 1px solid var(--line); }
+/* Seguridad: el estado y su botón arriba, la explicación plegada debajo. Los márgenes de antes, cuando no eran tarjetas, no valen. */
+.lmd-blk.lmd-sec, .lmd-blk.lmd-site-sec { margin: 0 0 10px; }
+[data-sec] + .lmd-acct-del { margin-top: 0; }
+.lmd-sec .lmd-e2e { margin: 0; padding: 6px 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: none; }
+.lmd-sec .lmd-e2e-acts .lmd-btn { padding: 6px 12px; font-size: 13px; }
+.lmd-sec > .lmd-sec-pick { margin: 0 0 10px; }
+.lmd-sec-more { border-top: 1px solid var(--line); }
+.lmd-sec-more > summary { display: flex; align-items: center; gap: 10px; min-height: 34px; font-size: 13.5px; color: var(--fg-muted); list-style: none; cursor: pointer; }
+.lmd-sec-more > summary::-webkit-details-marker { display: none; }
+.lmd-sec-more > summary::before { content: ""; flex: none; width: 6px; height: 6px; margin: 0 2px 0 3px; border-right: 1.6px solid currentColor; border-bottom: 1.6px solid currentColor; transform: rotate(-45deg); transition: transform 0.12s; }
+.lmd-sec-more[open] > summary::before { transform: rotate(45deg); }
+.lmd-sec-more > summary:hover { color: var(--fg); }
+.lmd-sec-more > summary:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; border-radius: 4px; }
+.lmd-sec-more > ul { margin: 4px 0 14px; }
+.lmd-sec .lmd-sec-foot { margin: 0; padding-top: 8px; border-top: 1px solid var(--line); }
+@media (prefers-reduced-motion: reduce) { .lmd-sec-more > summary::before { transition: none; } }
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  /* A una columna: la acción de la tarjeta baja a su propio renglón, y las filas de un dato largo se apilan. */
+  .lmd-blk { padding: 12px 14px; }
+  .lmd-blk-head { grid-template-columns: minmax(0, 1fr); }
+  .lmd-blk-act { grid-column: 1; grid-row: 3; justify-content: flex-start; margin-top: 8px; }
+  .lmd-blk-act .lmd-btn { min-height: 40px; }
+  .lmd-kv { flex-wrap: wrap; gap: 2px 12px; padding: 7px 0; }
+  .lmd-kv > span:first-child { flex-basis: 128px; }
+  .lmd-kv > b { white-space: normal; overflow-wrap: anywhere; }
+  .lmd-kv.lmd-field:not(.lmd-field-long) > span:first-child, .lmd-kv.lmd-st-slot > span:first-child { flex: 1 1 100%; }
+  .lmd-kv.lmd-field-long > span:first-child { flex: 1; }
+  .lmd-kv.lmd-field input { text-align: left; }
+  .lmd-kv > .lmd-st-bar { flex: 1 1 80px; margin-left: 0; }
+  .lmd-kv > .lmd-st-see, .lmd-kv > .lmd-link { min-height: 40px; }
+  .lmd-tok-acts button { min-height: 40px; }
+  .lmd-tokform .lmd-pick { flex-wrap: wrap; }
+  .lmd-tokform .lmd-pick input[type=text] { flex: 1 1 100%; height: 40px; font-size: 16px; }
+  .lmd-tokform-acts .lmd-btn { flex: 1 1 0; min-height: 44px; }
+  .lmd-sec-more > summary { min-height: 44px; }
+  .lmd-sec .lmd-e2e-acts { flex: 1 1 100%; }
+  .lmd-sec .lmd-e2e-acts .lmd-btn { flex: 1 1 auto; }
+}

@@ -482,7 +482,7 @@ try {
     check('iphone: si la hoja de compartir no acepta archivos, se descarga como siempre', !!dl && dl.suggestedFilename() === 'rich.html' && (await p.evaluate(() => window.__shared.length)) === 2, dl && dl.suggestedFilename());
     // El mensaje para la IA: se crea un token y se copian las instrucciones.
     await p.evaluate(() => document.querySelector('[data-act=settings]').click()); await p.waitForSelector('.lmd-panel-card'); await p.tap('[data-ptab=ai]'); await p.waitForSelector('[data-acct=ai] [data-c=token]', { timeout: 15000 });
-    await p.tap('[data-acct=ai] [data-c=token]'); await p.waitForSelector('[data-acct=ai] [data-c=brief]', { timeout: 15000 });
+    await p.tap('[data-acct=ai] [data-c=token]'); await p.tap('[data-acct=ai] [data-c=token-ok]'); await p.waitForSelector('[data-acct=ai] [data-c=brief]', { timeout: 15000 });
     await p.evaluate(() => { window.__copied.length = 0; });
     await p.tap('[data-acct=ai] [data-c=brief]'); await sleep(500);
     const brief = await p.evaluate(() => window.__copied.slice(-1)[0]);

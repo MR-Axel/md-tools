@@ -231,10 +231,10 @@ const SCENES = {
     const T = await S.take(who); const p = T.page;
     await cloudNote(T, who, 'shop/README.md');
     await p.click('[data-act=settings]'); await p.waitForSelector('.lmd-panel-card'); await p.click('[data-ptab=ai]'); await p.waitForSelector('[data-acct=ai] [data-c=token]');
-    await p.selectOption('[data-c=folder]', 'shop'); await p.click('[data-acct=ai] [data-c=token]'); await p.waitForSelector('.lmd-ai-new');
+    await p.click('[data-acct=ai] [data-c=token]'); await p.selectOption('[data-c=folder]', 'shop'); await p.click('[data-acct=ai] [data-c=token-ok]'); await p.waitForSelector('.lmd-ai-new');
     // The new token is shown once: the still is taken after that, with the list of tokens and the folder picker.
     await p.click('[data-act=close-panel]'); await p.click('[data-act=settings]'); await p.waitForSelector('.lmd-panel-card'); await p.click('[data-ptab=ai]'); await p.waitForSelector('[data-acct=ai] [data-c=token]');
-    await p.selectOption('[data-c=folder]', 'shop'); await settle(p);
+    await p.click('[data-acct=ai] [data-c=token]'); await p.selectOption('[data-c=folder]', 'shop'); await settle(p);
     await still('token', T);
   },
   // "The notes are the memory of the project": a project folder with the index note the AI keeps, and the notes it links.

@@ -105,7 +105,8 @@ const DESKTOP = {
     await T.click(p.locator('[data-act=settings]'), { ms: 380 }); await p.waitForSelector('.lmd-panel-card'); await T.wait(150);
     await T.click(p.locator('[data-ptab=ai]'), { ms: 360 }); await p.waitForSelector('[data-acct=ai] [data-c=token]'); await T.wait(350);
     // The token belongs to the throwaway local server and dies with it.
-    await T.click(p.locator('[data-acct=ai] [data-c=token]'), { ms: 380 }); await p.waitForSelector('.lmd-ai-new'); await T.wait(450); await T.snap('d-ai-1');
+    await T.click(p.locator('[data-acct=ai] [data-c=token]'), { ms: 380 }); await T.wait(250);
+    await T.click(p.locator('[data-acct=ai] [data-c=token-ok]'), { ms: 320 }); await p.waitForSelector('.lmd-ai-new'); await T.wait(450); await T.snap('d-ai-1');
     const token = await p.evaluate(() => [...document.querySelectorAll('[data-acct=ai] .lmd-field')].find((f) => f.querySelector('span').textContent === 'Token').querySelector('input').value);
     await T.click(p.locator('[data-acct=ai] [data-c=brief]'), { ms: 380 }); await T.wait(900); await T.snap('d-ai-2');
     const closed = Date.now();

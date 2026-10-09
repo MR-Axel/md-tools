@@ -3081,8 +3081,8 @@
           '<section data-tab="tools"><h3>' + T('Herramientas') + '</h3><div class="lmd-acct lmd-tl" data-tools-pane></div></section>' +
           // Nube, IA y Plan los dibuja sync.js al entrar a cada pestaña, con la cuenta recién consultada.
           // El renglón de almacenamiento de imágenes, arriba a la derecha, lo dibuja images.js.
-          '<section data-tab="cloud" class="lmd-st-host"><div class="lmd-st-slot" data-files-pane hidden></div><h3>' + T('Nube') + '</h3><div class="lmd-acct" data-acct="cloud"></div></section>' +
-          '<section data-tab="ai"><h3>' + T('Conectar una IA') + '</h3><div class="lmd-acct" data-acct="ai"></div></section>' +
+          '<section data-tab="cloud"><h3>' + T('Nube') + '</h3><div class="lmd-acct" data-acct="cloud"></div></section>' +
+          '<section data-tab="ai"><h3>' + T('IA (MCP)') + '</h3><div class="lmd-acct" data-acct="ai"></div></section>' +
           '<section data-tab="auto"><h3>' + T('API y automatizaciones') + '</h3><div class="lmd-acct lmd-au-pane" data-auto-pane></div></section>' +
           '<section data-tab="plan"><h3>' + T('Plan') + '</h3><div class="lmd-acct" data-acct="plan"></div></section>' +
           '<section data-tab="inst"><h3>' + T('Instalar') + '</h3><div class="lmd-acct lmd-inst" data-inst-pane></div></section>' +
@@ -3143,7 +3143,6 @@
       ui.panel.querySelector('.lmd-panel-body').scrollTop = 0;
       const acct = ui.panel.querySelector('[data-acct=' + tab + ']');
       if (acct) LMD.sync.panes[tab](acct, host);
-      if (tab === 'cloud' && LMD.images) LMD.images.pane(ui.panel.querySelector('[data-files-pane]'));
       if (tab === 'inst') LMD.install.pane(ui.panel.querySelector('[data-inst-pane]'));
       if (tab === 'tools') LMD.tools.pane(ui.panel.querySelector('[data-tools-pane]'));
       if (tab === 'plug') plugPane(ui.panel.querySelector('[data-tab=plug] .lmd-plug'));
