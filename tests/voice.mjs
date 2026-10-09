@@ -377,9 +377,9 @@ try {
     await page.keyboard.press('Escape'); await sleep(150);
     check('Escape la cierra y deja Ajustes abierto', await page.evaluate(() => !document.querySelector('.lmd-dct-help') && !document.querySelector('.lmd-panel').hidden));
 
-    // El detalle sigue con el dictado: la otra se apaga desde su fila, sin elegirla
+    // La otra se apaga desde su fila: el detalle pasa a ella, ya sin opciones
     await page.click('.lmd-tl-card[data-tool=speak] .lmd-switch'); await sleep(350);
-    check('apagar una herramienta la deja apagada y esconde sus opciones', J((await stored(page, 'settings')).tools.speak) === 'false' && await page.evaluate(() => !LMD.tools.isOn('speak') && document.querySelector('.lmd-tl-side').dataset.tool === 'dictate' && !document.querySelector('.lmd-tl-card[data-tool=speak] input').checked));
+    check('apagar una herramienta la deja apagada y esconde sus opciones', J((await stored(page, 'settings')).tools.speak) === 'false' && await page.evaluate(() => !LMD.tools.isOn('speak') && document.querySelector('.lmd-tl-side').dataset.tool === 'speak' && !document.querySelector('.lmd-tl-side [data-spk=rate]') && !document.querySelector('.lmd-tl-side .lmd-tl-turn').hidden && !document.querySelector('.lmd-tl-card[data-tool=speak] input').checked));
     await page.keyboard.press('Escape');
     await page.reload(); await page.waitForSelector('.lmd-article > *'); await until(() => page.evaluate(() => !!LMD.dictate));
     check('al recargar, lo prendido vuelve prendido y lo apagado no se pide', J(await loaded()) === J({ speak: false, dictate: true, voice: true, tags: ['voice.js', 'dictate.js'] }), await loaded());
