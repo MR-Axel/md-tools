@@ -60,6 +60,64 @@
     else if (r.top < top) window.scrollBy(0, r.top - top);
   }
 
+  // ---------- Menús ----------
+  // Un menú nunca queda detrás del teclado: se mide contra la zona visible, no contra la ventana. En teléfono, los
+  // menús de insertar, del bloque y los contextuales son una hoja pegada abajo de la zona visible (arriba del teclado
+  // si está abierto), de la mitad del alto como mucho y con scroll adentro: lo que se edita queda a la vista arriba.
+  // Los que salen de un botón de la barra (más, copiar, exportar) quedan donde están, recortados a lo que se ve.
+  const SHEET = '.lmd-menu-ins, .lmd-menu-read, .lmd-menu-board';
+  const sheets = () => small() && coarse();
+  const sheetRoom = () => { const box = visible(); return Math.max(200, Math.round((box.bottom - box.top) * 0.5)); };
+  function fitMenu(m) {
+    if (!m || !m.isConnected || m.parentNode !== document.body || !small()) return;
+    const box = visible(); const room = Math.max(160, box.bottom - box.top - 16);
+    if (sheets() && m.matches(SHEET)) {
+      m.classList.add('lmd-sheet');
+      m.style.maxHeight = Math.min(room, sheetRoom()) + 'px';
+      m.style.top = Math.round(box.bottom - m.offsetHeight - 8) + 'px';
+      return;
+    }
+    m.style.maxHeight = room + 'px';
+    const r = m.getBoundingClientRect();
+    if (r.bottom > box.bottom - 8 || r.top < box.top + 8) m.style.top = Math.round(Math.max(box.top + 8, Math.min(r.top, box.bottom - 8 - r.height))) + 'px';
+  }
+  const fitMenus = () => document.querySelectorAll('body > .lmd-menu').forEach(fitMenu);
+  // Antes de abrir una hoja: el bloque sobre el que se abre sube hasta quedar a la vista arriba de ella. El scroll que
+  // hace eso no es de la persona: quien cierra sus menús al deslizar la página lo pregunta con nudged().
+  let nudge = 0;
+  const nudged = () => Date.now() - nudge < 400;
+  function reveal(node) {
+    if (!node || !node.getBoundingClientRect || !sheets()) return;
+    const box = visible(); const top = box.bottom - 8 - Math.min(Math.max(160, box.bottom - box.top - 16), sheetRoom()) - 10;
+    const r = node.getBoundingClientRect(); const over = Math.min(r.bottom - top, r.top - (box.top + 62));
+    if (over > 0) { nudge = Date.now(); window.scrollBy({ top: over, behavior: 'instant' }); }
+  }
+
+  // ---------- Filas que se deslizan de costado ----------
+  // Las pestañas de Ajustes y las piezas de los editores van en una fila que se desliza. Para que se note que sigue,
+  // se desvanece del lado donde queda algo por ver (lmd-more-l, lmd-more-r).
+  const ROWS = '.lmd-ptabs, .lmd-dgm-add > div, .lmd-fx-tabs, .lmd-fx .lmd-fx-keys';
+  function edge(n) {
+    const more = n.scrollWidth - n.clientWidth;
+    n.classList.toggle('lmd-more-r', more > 4 && n.scrollLeft < more - 4);
+    n.classList.toggle('lmd-more-l', more > 4 && n.scrollLeft > 4);
+  }
+  let edging = 0;
+  const edges = () => { clearTimeout(edging); edging = setTimeout(() => document.querySelectorAll(ROWS).forEach(edge), 60); };
+  function watchRows() {
+    document.addEventListener('scroll', (e) => { const n = e.target; if (n && n.nodeType === 1 && n.matches(ROWS)) edge(n); }, { capture: true, passive: true });
+    window.addEventListener('resize', edges);
+    // Al elegir una pestaña queda entera a la vista, y la fila vuelve a medirse (cambió lo que hay abierto).
+    document.addEventListener('click', (e) => {
+      const tab = e.target.closest && e.target.closest('.lmd-ptabs button');
+      if (tab && small()) tab.scrollIntoView({ block: 'nearest', inline: 'center' });
+      edges();
+    }, true);
+    new MutationObserver(edges).observe(document.body, { childList: true });
+    const panel = document.querySelector('body > .lmd-panel'); if (panel) new MutationObserver(edges).observe(panel, { attributes: true, attributeFilter: ['hidden'] });
+    edges();
+  }
+
   // ---------- Mantener apretado ----------
   // Medio segundo con el dedo quieto sobre node equivale al clic derecho: sale el mismo evento, en el mismo punto.
   // Si el navegador manda el suyo (Chrome en Android lo hace), queda uno solo. when() dice si corresponde.
@@ -91,7 +149,7 @@
   // dirección; atrás la consume y acá se cierra lo de arriba, con el mismo Escape que usa el teclado. Si lo abierto
   // se cerró de otra forma, la entrada queda: la próxima nota que se abre la reemplaza (backMark) y, si antes llega
   // un atrás, se lo deja seguir de largo. Nunca se retrocede el historial por cuenta propia mientras hay algo abierto.
-  const LAYERS = ':scope > .lmd-ask, :scope > .lmd-dgm, :scope > .lmd-viewer:not([hidden]), :scope > .lmd-panel:not([hidden])';
+  const LAYERS = ':scope > .lmd-ask, :scope > .lmd-dgm, :scope > .lmd-viewer:not([hidden]), :scope > .lmd-panel:not([hidden]), :scope > .lmd-menu.lmd-sheet:not(.lmd-menu-auto)';
   const layers = () => Array.from(document.body.querySelectorAll(LAYERS));
   const drawer = () => document.documentElement.classList.contains('lmd-side-open');
   const marked = () => { try { return !!(history.state && history.state.lmdLayer); } catch (e) { return false; } };
@@ -103,7 +161,8 @@
   function closeTop() {
     const all = layers();
     // Lo que se arma al abrirse (un diálogo) está encima de lo que ya estaba en la página (Ajustes, la imagen).
-    const top = all.filter((n) => n.matches('.lmd-ask, .lmd-dgm')).pop() || all.pop();
+    // Y una hoja de menú está encima de todo.
+    const top = all.filter((n) => n.matches('.lmd-sheet')).pop() || all.filter((n) => n.matches('.lmd-ask, .lmd-dgm')).pop() || all.pop();
     const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
     if (top) (top.contains(document.activeElement) ? document.activeElement : top).dispatchEvent(esc); else window.dispatchEvent(esc);
   }
@@ -138,10 +197,15 @@
     mark();
     measure();
     watchBack();
+    watchRows();
+    // Cada menú que se abre se acomoda a la zona visible; una hoja cuenta para el atrás del sistema.
+    new MutationObserver((list) => {
+      list.forEach((rec) => rec.addedNodes.forEach((n) => { if (n.nodeType === 1 && n.classList.contains('lmd-menu')) { fitMenu(n); if (n.matches('.lmd-sheet:not(.lmd-menu-auto)')) track(); } }));
+    }).observe(document.body, { childList: true });
     if (!v) return;
-    const follow = () => { measure(); dock(); if (kb) caretIntoView(); };
+    const follow = () => { measure(); dock(); fitMenus(); if (kb) caretIntoView(); };
     v.addEventListener('resize', follow);
-    v.addEventListener('scroll', () => { measure(); dock(); });
+    v.addEventListener('scroll', () => { measure(); dock(); fitMenus(); });
     // Mientras se escribe con el teclado abierto, el renglón sigue a la vista.
     document.addEventListener('input', () => { if (kb) caretIntoView(); });
   }
@@ -149,5 +213,5 @@
   // Lo que ocupan arriba del teclado las barras flotantes y el pie: ahí arriba va el botón del dictado (dictate.js).
   const above = () => { const foot = document.querySelector('.lmd-foot'); return docked() + (kb || !foot ? 0 : foot.getBoundingClientRect().height + (foot.offsetParent ? 4 : 0)); };
 
-  LMD.touch = { small, coarse, touched, dock, longPress, init, caretIntoView, visible, backMark, above, standalone };
+  LMD.touch = { small, coarse, touched, dock, longPress, init, caretIntoView, visible, backMark, above, standalone, fitMenu, reveal, nudged };
 })();

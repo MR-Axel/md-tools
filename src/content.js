@@ -905,6 +905,7 @@
     LMD.team.init(core);
     LMD.install.init(core, homeCtx);
     LMD.tools.init(core);
+    forcedSay();
     document.documentElement.dataset.lmdFs = String(!!window.showOpenFilePicker && window.isSecureContext);
   }
 
@@ -1304,6 +1305,20 @@
     LMD.patch(p);
   }
   let flipSaid = '';
+  // El navegador oscurece por su cuenta las páginas claras y la app pasó a su tema oscuro (theme.js): se avisa una
+  // sola vez, con la forma de volver al claro.
+  function forcedSay() {
+    if (!LMD.theme.forcedNotice()) return;
+    const { el } = LMD.kit;
+    const t = el('div', { class: 'lmd-cl-toast lmd-forced-toast', role: 'status' });
+    t.appendChild(el('span', { text: T('Tu navegador oscurece las páginas claras. SharpMD pasó a su tema oscuro para que los colores se vean bien.') }));
+    const keep = el('button', { type: 'button', class: 'lmd-link', text: T('Seguir en claro') });
+    keep.addEventListener('click', () => { LMD.theme.keepLight(); location.reload(); });
+    const ok = el('button', { type: 'button', class: 'lmd-link', text: T('Entendido') });
+    ok.addEventListener('click', () => t.remove());
+    t.appendChild(keep); t.appendChild(ok);
+    document.body.appendChild(t);
+  }
 
   function applySettings() {
     const root = document.documentElement;
@@ -2021,7 +2036,15 @@
       ui.status.classList.remove('lmd-flash', 'lmd-error', 'lmd-warn');
       ui.status.textContent = idleStatus();
     }, kind ? 5000 : 1800);
+    // Con el teclado en pantalla abierto el pie no se ve: una advertencia o un error salen además arriba, a la vista.
+    if (kind && document.documentElement.classList.contains('lmd-kb')) {
+      if (flashTop) flashTop.remove();
+      const t = el('div', { class: 'lmd-flash-top' + (kind === 'error' ? ' lmd-error' : ''), role: 'status', text: msg }); flashTop = t;
+      document.body.appendChild(t);
+      setTimeout(() => { t.remove(); if (flashTop === t) flashTop = null; }, 5000);
+    }
   }
+  let flashTop = null;
 
   // ---------- Árbol de carpetas ----------
 
@@ -3013,7 +3036,12 @@
     const prefix = prefixOf(first, !!elm.closest('li.lmd-task-item'));
     const cont = prefix.replace(/[-*+]|\d{1,9}[.)]|\[[ xX]\]/g, (m) => ' '.repeat(m.length));
     const parts = md.split('\n');
-    return { s, e, lines: parts.map((part, i) => (i === 0 ? prefix : cont) + part.trim() + (i < parts.length - 1 ? '\\' : '')) };
+    const out = parts.map((part, i) => (i === 0 ? prefix : cont) + part.trim() + (i < parts.length - 1 ? '\\' : ''));
+    // El primer párrafo de un aviso ("> [!NOTE]") no muestra su marca: al guardar lo escrito, la marca se queda.
+    // Sin esto, editar el texto de un aviso lo dejaba como una cita común.
+    const mark = elm.closest('.lmd-alert') ? /^(?:\s{0,3}>\s?)+\s*(\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\])\s*(.*)$/i.exec(first) : null;
+    if (mark) { if (mark[2].trim()) out[0] = prefix + mark[1] + ' ' + parts[0].trim() + (parts.length > 1 ? '\\' : ''); else out.unshift(first); }
+    return { s, e, lines: out };
   }
 
   // Reemplaza líneas del fuente y corre los rangos de los bloques que vienen después, sin redibujar:
@@ -3622,6 +3650,7 @@
     pickTemplate: () => tools().then((ok) => (ok ? LMD.home.pickTemplate(homeCtx()) : null)),
     tools,
     showFiles,
+    listDir: (url) => listDir(url), // lo que hay en una carpeta, como lo muestra el explorador ("Mover a…", extras.js)
     reloadTree: () => { fileCache.clear(); folderIndex.clear(); clearCounts(); wikiIndex = null; linkIndex = null; if (ui.searchInput.value.trim()) runSearch(ui.searchInput.value); const done = loadTree(); resumeCloud(); return done; },
     dirHandle: async (dirUrl) => { let dir = rootOf(dirUrl).handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, ensure, isDark, openInApp,
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },

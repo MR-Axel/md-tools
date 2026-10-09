@@ -51,7 +51,47 @@
   const contrast = (a, b) => { const x = luminance(a); const y = luminance(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
   const paperOk = (hex, dark) => HEX.test(hex || '') && (dark ? luminance(hex) <= 0.08 : luminance(hex) >= 0.7);
 
+  // ---------- El oscurecido forzado del navegador ----------
+  // Algunos navegadores oscurecen por su cuenta las páginas claras cuando el teléfono está en modo oscuro ("Darken
+  // websites" de Chrome, el modo oscuro de Samsung Internet). Encima de un tema claro de la app sale una mezcla que no
+  // es ningún tema. La declaración ("only light", boot.js y content.css) lo evita donde el navegador la respeta. Donde
+  // no, se detecta y la app muestra su tema oscuro, que el navegador deja como está.
+  // La sonda: un color del sistema pedido en claro. Si vuelve oscuro, el navegador está oscureciendo.
+  function probe(scheme) {
+    try {
+      if (!window.CSS || !CSS.supports('background-color', 'Canvas') || !CSS.supports('color-scheme', scheme)) return false;
+      const d = document.createElement('div');
+      d.style.cssText = 'display:none;background-color:Canvas;color-scheme:' + scheme;
+      document.documentElement.appendChild(d);
+      const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/.exec(getComputedStyle(d).backgroundColor);
+      d.remove();
+      return !!m && (m[4] === undefined || Number(m[4]) === 1) && Number(m[1]) + Number(m[2]) + Number(m[3]) < 300;
+    } catch (e) { return false; }
+  }
+  const stored = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  // darkens: el navegador oscurece las páginas claras. deep: lo hace aunque la página declare "only light".
+  // Samsung Internet no respeta esa declaración y no deja saberlo desde la página: ahí se da por hecho.
+  function forcedDark() {
+    const darkens = probe('light');
+    const ua = (window.navigator && navigator.userAgent) || '';
+    return { darkens, deep: darkens && (probe('only light') || /SamsungBrowser/.test(ua)) };
+  }
+  let forced = null; // se mira una sola vez por carga
+  // Hay que mostrar el tema oscuro aunque el elegido sea claro. "Seguir en claro" lo apaga para siempre.
+  function forcing() {
+    if (forced === null) { try { forced = !!(window.document && document.documentElement && document.documentElement.appendChild) && forcedDark().deep; } catch (e) { forced = false; } }
+    return forced && stored('lmd:keeplight') !== '1';
+  }
+  function keepLight() { try { localStorage.setItem('lmd:keeplight', '1'); } catch (e) { forced = false; } }
+  // El aviso sale una sola vez: devuelve true la primera vez que hay que darlo.
+  function forcedNotice() {
+    if (!forcing() || stored('lmd:forced-said') === '1') return false;
+    try { localStorage.setItem('lmd:forced-said', '1'); } catch (e) { /* sin almacenamiento: sale en cada carga */ }
+    return true;
+  }
+
   function modeDark(settings) {
+    if (forcing()) return true;
     if (settings.theme === 'dark') return true;
     if (settings.theme === 'light') return false;
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -59,7 +99,9 @@
   // El tema incluido que hay puesto, o null si rige el de siempre. Uno claro con el modo oscuro elegido a mano
   // (o al revés) no se aplica.
   function chosen(settings) {
-    const p = byId(settings.preset);
+    let p = byId(settings.preset);
+    // Con el oscurecido forzado sobre un tema claro, el último tema oscuro que se usó.
+    if (forcing() && !(p && p.dark)) p = byId(settings.presetDark);
     if (!p || p.id === BASE.light || p.id === BASE.dark) return null;
     return p.dark === modeDark(settings) ? p : null;
   }
@@ -134,9 +176,21 @@
       if (settings.supporter && HEX.test(settings.accent || '')) accent(root, dark, settings.accent, Object.assign({}, base, over));
       // Lo lee boot.js en la próxima carga, para pintar el primer cuadro con el fondo que corresponde.
       // Con el modo anotado, boot.js sabe si lo guardado manda (claro u oscuro a mano) o si tiene que mirar el dispositivo.
-      try { localStorage.setItem('lmd:dark', dark ? '1' : '0'); localStorage.setItem('lmd:bg', bg); localStorage.setItem('lmd:mode', settings.theme === 'light' || settings.theme === 'dark' ? settings.theme : 'auto'); } catch (e) { /* sin almacenamiento */ }
+      try { localStorage.setItem('lmd:dark', dark ? '1' : '0'); localStorage.setItem('lmd:bg', bg); localStorage.setItem('lmd:mode', forcing() ? 'dark' : settings.theme === 'light' || settings.theme === 'dark' ? settings.theme : 'auto'); } catch (e) { /* sin almacenamiento */ }
     }
+    declare(root, dark, bg);
     return { dark, bg };
+  }
+
+  // Lo que se le dice al navegador sigue siempre al tema que se ve, no al dispositivo: el esquema de color (en la
+  // página y en su <meta>), el fondo de la raíz y el color de las barras del sistema. Con un tema claro va "only light".
+  function declare(root, dark, bg) {
+    if (!window.document || root !== document.documentElement || !root.style || !document.querySelector) return;
+    root.style.colorScheme = dark ? 'dark' : 'light';
+    if (!dark) root.style.colorScheme = 'only light';
+    root.style.background = bg;
+    const scheme = document.querySelector('meta[name=color-scheme]'); if (scheme) scheme.content = dark ? 'dark' : 'only light';
+    document.querySelectorAll('meta[name=theme-color]').forEach((bar) => { bar.removeAttribute('media'); bar.content = bg; });
   }
 
   // Qué miniatura va marcada: el tema puesto, y si la persona cambió algún color a mano.
@@ -149,6 +203,7 @@
   // Lo que se guarda al aplicar un tema incluido: el tema, su modo, y los colores a mano en blanco.
   function patchFor(id) {
     const p = byId(id); if (!p) return null;
+    if (!p.dark && forcing()) keepLight(); // un tema claro elegido a mano: se insiste en claro
     const out = { preset: p.id === BASE.light || p.id === BASE.dark ? '' : p.id, theme: p.dark ? 'dark' : 'light', accent: '', paperLight: '', paperDark: '', codeColor: '' };
     Object.values(CUSTOM).forEach((k) => { out[k] = ''; });
     out[FAMILY(p.dark)] = out.preset;
@@ -160,6 +215,8 @@
   // Lo que se guarda al elegir Automático, Claro u Oscuro a mano. flipPatch pasa al contrario de lo que se ve.
   function modePatch(settings, mode) {
     const out = { theme: mode === 'light' || mode === 'dark' ? mode : 'auto' };
+    // Claro pedido a mano con el oscurecido forzado: es insistir en el tema claro. De ahí en más vale lo elegido.
+    if (out.theme === 'light' && forcing()) keepLight();
     const seen = modeDark(settings); const now = chosen(settings); const kept = byId(settings.preset);
     // Lo que se ve es la elección de esta familia, salvo que sea el de siempre por tener puesto uno de la otra.
     if (!kept || kept.dark === seen) out[FAMILY(seen)] = now ? now.id : '';
@@ -198,7 +255,7 @@
     const a = active(settings);
     if ((a.id === BASE.light || a.id === BASE.dark) && !a.custom) return '';
     const c = palette(settings);
-    return 'body{background:' + c.bg + ';color:' + c.fg + ';color-scheme:' + (c.dark ? 'dark' : 'light') + '}a{color:' + c.link + '}pre,th,.lmd-box,.lmd-alert{background:' + c.soft + '}:not(pre)>code{background:' + c.code + '}' +
+    return 'body{background:' + c.bg + ';color:' + c.fg + ';color-scheme:' + (c.dark ? 'dark' : 'only light') + '}a{color:' + c.link + '}pre,th,.lmd-box,.lmd-alert{background:' + c.soft + '}:not(pre)>code{background:' + c.code + '}' +
       'pre,th,td,h2,hr,blockquote,.lmd-col,.lmd-card{border-color:' + c.line + '}blockquote{color:' + c.muted + '}.lmd-box,.lmd-alert{border-left-color:' + c.fill + '}::selection{background:' + c.sel + ';color:' + c.fg + '}' +
       '.hljs-keyword,.hljs-type,.hljs-doctag{color:' + c.k + '}.hljs-string,.hljs-regexp{color:' + c.s + '}.hljs-number,.hljs-literal,.hljs-attr,.hljs-attribute,.hljs-variable,.hljs-meta{color:' + c.n + '}' +
       '.hljs-title{color:' + c.f + '}.hljs-comment{color:' + c.c + '}.hljs-name,.hljs-selector-tag,.hljs-quote{color:' + c.t + '}.hljs-built_in,.hljs-symbol{color:' + c.b + '}';
@@ -210,5 +267,5 @@
     apply(root, settings);
   }
 
-  LMD.theme = { PRESETS, BASE, CUSTOM, byId, isDark, chosen, active, apply, palette, patchFor, modePatch, flipPatch, mermaid, thumb, exportCss, themeOnly, luminance, contrast, paperOk };
+  LMD.theme = { PRESETS, BASE, CUSTOM, byId, isDark, chosen, active, apply, palette, patchFor, modePatch, flipPatch, mermaid, thumb, exportCss, themeOnly, luminance, contrast, paperOk, forcedDark, forcing, keepLight, forcedNotice };
 })();

@@ -324,7 +324,10 @@ try {
     await sleep(350);
     check('queda guardado en las preferencias de siempre', J((await stored(page, 'settings')).tools) === J({ speak: true }), await stored(page, 'settings'));
     await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=speak] .lmd-tl-more'); await page.waitForSelector('.lmd-tl-card[data-tool=speak] .lmd-tl-opts select');
-    check('sus opciones: velocidad, idioma, voz y leer la nota', await page.evaluate(() => { const o = document.querySelector('.lmd-tl-card[data-tool=speak] .lmd-tl-opts'); return o.querySelectorAll('select').length === 3 && !!o.querySelector('[data-spk=go]') && o.querySelector('[data-spk=voice]').options.length === 3; }));
+    // Dibujar las opciones no le pide las voces al navegador: la lista llega recién con "Choose voice".
+    check('sus opciones: velocidad, idioma, elegir voz y leer la nota', await page.evaluate(() => { const o = document.querySelector('.lmd-tl-card[data-tool=speak] .lmd-tl-opts'); return o.querySelectorAll('select').length === 2 && !!o.querySelector('[data-spk=go]') && !o.querySelector('[data-spk=go]').disabled && o.querySelector('[data-spk=voices]').textContent === 'Choose voice'; }));
+    await page.click('.lmd-tl-card[data-tool=speak] [data-spk=voices]'); await page.waitForSelector('.lmd-tl-card[data-tool=speak] [data-spk=voice]');
+    check('"Choose voice" trae las voces del dispositivo y deja el foco en la lista', await page.evaluate(() => { const o = document.querySelector('.lmd-tl-card[data-tool=speak] .lmd-tl-opts'); return o.querySelectorAll('select').length === 3 && o.querySelector('[data-spk=voice]').options.length === 3 && document.activeElement === o.querySelector('[data-spk=voice]'); }));
     const boxes = () => page.evaluate(() => [...document.querySelectorAll('.lmd-tl-card[data-tool=speak] .lmd-tl-opts [data-spk-opt]')].map((i) => i.closest('label').textContent.trim() + ':' + i.checked));
     check('y tres interruptores: leer las secciones cerradas (prendido), saltear las tareas hechas y leer el código', J(await boxes()) === J(['Read collapsed sections:true', 'Skip completed tasks:false', 'Read code blocks:false']), await boxes());
     await page.click('.lmd-tl-opts [data-spk-opt=speakSkipDone]'); await sleep(350);
@@ -357,6 +360,58 @@ try {
     check('al recargar, lo prendido vuelve prendido y lo apagado no se pide', J(await loaded()) === J({ speak: false, dictate: true, voice: true, tags: ['voice.js', 'dictate.js'] }), await loaded());
     check('sin errores de página', R.errors.length === 0, R.errors);
     await ctx.close();
+  });
+
+  // Un navegador que anuncia la voz y no la trae entera (Samsung Internet): usarla cuelga la pestaña. Acá el motor
+  // de mentira anota cada llamada y lanza siempre: prender la herramienta, arrancar con ella prendida y abrir sus
+  // opciones no lo tienen que tocar. Solo lo toca un botón que la persona aprieta, y ese no rompe nada.
+  const hostile = () => {
+    const H = window.__hostile = { calls: [] };
+    function Bad() { H.calls.push('new'); throw new Error('engine down'); }
+    Bad.available = () => { H.calls.push('available'); throw new Error('engine down'); };
+    Bad.install = () => { H.calls.push('install'); throw new Error('engine down'); };
+    ['SpeechRecognition', 'webkitSpeechRecognition'].forEach((k) => Object.defineProperty(window, k, { value: Bad, configurable: true, writable: true }));
+    const syn = { getVoices() { H.calls.push('getVoices'); throw new Error('engine down'); }, addEventListener() { H.calls.push('listen'); }, removeEventListener() {}, speak() { H.calls.push('speak'); throw new Error('engine down'); }, cancel() { H.calls.push('cancel'); }, pause() {}, resume() {}, speaking: false, pending: false, paused: false };
+    Object.defineProperty(window, 'speechSynthesis', { value: syn, configurable: true });
+  };
+  const SAMSUNG = 'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/25.0 Chrome/121.0.0.0 Mobile Safari/537.36';
+  const calls = (page) => page.evaluate(() => window.__hostile.calls.slice());
+  const openOpts = async (page, id) => { await page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=' + id + '] .lmd-tl-more'); await sleep(500); };
+  await step('Ajustes: un motor de voz que falla no cuelga nada', async () => {
+    // Samsung Internet, con el dictado y la lectura guardados como prendidos (así quedó en el teléfono del dueño).
+    const a = await open({ tools: { dictate: true, speak: true }, ctx: { userAgent: SAMSUNG } }); await a.page.addInitScript(hostile);
+    await note(a.page, 'ss.md', '# Samsung\n\nText.\n', true);
+    await until(() => a.page.evaluate(() => !!LMD.speak));
+    check('Samsung Internet: con el dictado guardado como prendido, la app arranca sin pedir su código ni tocar el motor', J(await calls(a.page)) === '[]' && await a.page.evaluate(() => !LMD.dictate && !document.querySelector('.lmd-dct-mic') && !LMD.tools.isOn('dictate') && LMD.tools.isOn('speak')), await calls(a.page));
+    await a.page.click('[data-act=settings]'); await a.page.click('[data-ptab=tools]'); await a.page.waitForSelector('.lmd-tl-card');
+    const card = await a.page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=dictate]'); return { off: c.classList.contains('lmd-tl-off'), disabled: c.querySelector('input').disabled, checked: c.querySelector('input').checked, why: (c.querySelector('.lmd-tl-why') || {}).textContent || '', more: !!c.querySelector('.lmd-tl-more:not([hidden])') }; });
+    check('la tarjeta de Dictado lo dice, con el interruptor deshabilitado y sin "Configure"', J(card) === J({ off: true, disabled: true, checked: false, why: 'Dictation is not available in this browser. It works in Chrome.', more: false }), card);
+    await openOpts(a.page, 'speak');
+    const sp = await a.page.evaluate(() => { const o = document.querySelector('.lmd-tl-card[data-tool=speak] .lmd-tl-opts'); return { shown: !o.hidden, selects: o.querySelectorAll('select').length, ask: !!o.querySelector('[data-spk=voices]'), go: !!o.querySelector('[data-spk=go]') }; });
+    check('las opciones de Leer en voz alta se dibujan sin pedirle nada al motor', J(sp) === J({ shown: true, selects: 2, ask: true, go: true }) && J(await calls(a.page)) === '[]', [sp, await calls(a.page)]);
+    await a.page.click('.lmd-tl-card[data-tool=speak] [data-spk=voices]'); await sleep(500);
+    const after = await a.page.evaluate(() => { const o = document.querySelector('.lmd-tl-card[data-tool=speak] .lmd-tl-opts'); return { why: (o.querySelector('.lmd-tl-why') || {}).textContent || '', voice: !!o.querySelector('[data-spk=voice]') }; });
+    check('"Choose voice" con un motor que lanza: dice que no hay voces y nada se rompe', after.voice && after.why === 'This browser has no voices installed to read with.' && J(await calls(a.page)) === J(['getVoices']), [after, await calls(a.page)]);
+    check('sin errores de página', R.errors.length === 0, R.errors);
+    await a.ctx.close();
+
+    // Otro navegador con el mismo motor roto: prender el dictado y abrir sus opciones tampoco lo tocan.
+    const b = await open({ tools: {}, consent: true }); await b.page.addInitScript(hostile);
+    await note(b.page, 'bad.md', '# Broken engine\n\nText.\n', true);
+    await b.page.click('[data-act=settings]'); await b.page.click('[data-ptab=tools]'); await b.page.waitForSelector('.lmd-tl-card');
+    await b.page.click('.lmd-tl-card[data-tool=dictate] .lmd-switch'); await until(() => b.page.evaluate(() => !!LMD.dictate)); await b.page.waitForSelector('.lmd-tl-card[data-tool=dictate] .lmd-tl-opts [data-dct=lang]'); await sleep(300);
+    check('prender el dictado guarda la preferencia, muestra sus opciones y no llama al motor', J(await calls(b.page)) === '[]' && (await stored(b.page, 'settings')).tools.dictate === true && await b.page.evaluate(() => !!document.querySelector('.lmd-tl-opts [data-dct=check]')), await calls(b.page));
+    await b.page.click('.lmd-tl-card[data-tool=dictate] .lmd-tl-more'); await sleep(200); await openOpts(b.page, 'dictate');
+    check('cerrar y volver a abrir "Configure" tampoco', J(await calls(b.page)) === '[]', await calls(b.page));
+    await b.page.click('.lmd-tl-opts [data-dct=check]'); await sleep(400);
+    check('"Check on-device support" con el motor roto: lo consulta una vez, no ofrece descargar y nada se rompe', J(await calls(b.page)) === J(['available']) && await b.page.evaluate(() => !document.querySelector('.lmd-tl-opts [data-dct=install]') && !document.querySelector('.lmd-tl-opts [data-dct=check]') && !!document.querySelector('.lmd-tl-opts [data-dct=lang]')), await calls(b.page));
+    await b.page.click('[data-act=close-panel]'); await b.page.reload(); await b.page.waitForSelector('.lmd-editing .lmd-article'); await until(() => b.page.evaluate(() => !!LMD.dictate)); await sleep(300);
+    check('con el dictado ya prendido, la app arranca sin tocar el motor', J(await calls(b.page)) === '[]', await calls(b.page));
+    await caretLast(b.page); await micOn(b.page); await sleep(700);
+    const mic = await b.page.evaluate(() => ({ status: document.querySelector('.lmd-status').textContent, busy: document.querySelector('.lmd-dct-mic').classList.contains('lmd-busy'), on: document.querySelector('.lmd-dct-mic').classList.contains('lmd-on'), bar: !!document.querySelector('.lmd-dct-bar') }));
+    check('tocar el micrófono con el motor roto lo dice y el botón no queda trabado', mic.status === 'The microphone could not be turned on.' && !mic.busy && !mic.on && !mic.bar && (await calls(b.page)).includes('new'), [mic, await calls(b.page)]);
+    check('sin errores de página', R.errors.length === 0, R.errors);
+    await b.ctx.close();
   });
 
   await step('Ajustes: donde no hay reconocimiento de voz', async () => {
@@ -1006,7 +1061,12 @@ try {
     check('la vez siguiente no vuelve a ofrecer la descarga', !!(await listening(b.page)) && await b.page.evaluate(() => !document.querySelector('.lmd-dlg')));
     await b.page.click('.lmd-dct-bar [data-dct=stop]'); await stopped(b.page);
     await b.page.click('[data-act=settings]'); await b.page.click('[data-ptab=tools]'); await b.page.waitForSelector('.lmd-tl-card');
-    await b.page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=dictate] .lmd-tl-more'); await b.page.waitForSelector('.lmd-tl-opts [data-dct=install]');
+    await b.page.evaluate((q) => { const b = document.querySelector(q); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, '.lmd-tl-card[data-tool=dictate] .lmd-tl-more'); await b.page.waitForSelector('.lmd-tl-opts [data-dct=check]');
+    // Abrir las opciones no consulta al navegador: eso es el botón "Check on-device support".
+    const asked = (await srLog(b.page)).filter((x) => /^available/.test(x)).length;
+    check('abrir las opciones del dictado no consulta al reconocedor', !(await b.page.evaluate(() => !!document.querySelector('.lmd-tl-opts [data-dct=install]'))) && (await b.page.evaluate(() => document.querySelector('.lmd-tl-opts [data-dct=check]').textContent)) === 'Check on-device support', await srLog(b.page));
+    await b.page.click('.lmd-tl-opts [data-dct=check]'); await b.page.waitForSelector('.lmd-tl-opts [data-dct=install]');
+    check('el botón consulta una vez y ofrece descargar', (await srLog(b.page)).filter((x) => /^available/.test(x)).length === asked + 1, await srLog(b.page));
     await b.page.click('.lmd-tl-opts [data-dct=install]');
     check('desde las opciones se puede descargar después', !!(await until(() => b.page.evaluate(() => /transcribed on this device/.test(document.querySelector('.lmd-tl-opts [data-dct=where]').textContent) && !document.querySelector('.lmd-tl-opts [data-dct=install]')), 4000)) && !((await stored(b.page, 'dictation')).skip || {})['en-US'], await stored(b.page, 'dictation'));
     await b.ctx.close();

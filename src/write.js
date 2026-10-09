@@ -87,7 +87,9 @@
       if (front) front.after(d); else core.ui.article.prepend(d);
     }
     caretTo(d, true);
-    if (offer) { const box = d.getBoundingClientRect(); openMenu(box.left, box.bottom + 8, d._anchor, d); }
+    // Este menú se ofrece solo, nadie lo pidió: en teléfono no cuenta para el atrás del sistema (touch.js), así
+    // atrás sigue saliendo de una nota recién creada de una sola vez.
+    if (offer) { const box = d.getBoundingClientRect(); openMenu(box.left, box.bottom + 8, d._anchor, d); if (menu) menu.classList.add('lmd-menu-auto'); }
     return d;
   }
 
@@ -302,10 +304,16 @@
   }
 
   function onInput(d) {
-    if (menu && d.textContent !== '/') closeMenu();
-    if (d._li || d.dataset.kind !== 'p') return;
     const text = d.textContent;
-    if (text === '/') { d.textContent = ''; const box = d.getBoundingClientRect(); openMenu(box.left, box.bottom + 6, d._anchor, d); return; }
+    // La barra abre el menú y lo que se escribe después lo filtra: "/tab" deja la tabla. Lo escrito queda a la vista
+    // en el renglón; al elegir, se va con el borrador. Sin coincidencias el menú se cierra y el texto queda.
+    const slash = !d._li && d.dataset.kind === 'p' && /^\/[^\s/]{0,20}$/.test(text);
+    if (slash) {
+      if (!menu || menu._draft !== d) { const box = d.getBoundingClientRect(); openMenu(box.left, box.bottom + 6, d._anchor, d); }
+      if (menu && menu._draft === d && filterMenu(text.slice(1))) return;
+    }
+    if (menu) closeMenu(true);
+    if (d._li || d.dataset.kind !== 'p') return;
     const m = /^(.+?)[  ]$/.exec(text);
     if (!m) return;
     for (const [re, to] of SHORTCUTS) {
@@ -375,6 +383,9 @@
   };
 
   function insert(what, after, draft) {
+    // El bloque de referencia pudo irse de la página (era otro borrador, o la nota se redibujó): vale el que quedó
+    // justo arriba del renglón donde se pidió insertar. Sin esto lo insertado iba a parar al principio de la nota.
+    if (draft && after && !after.isConnected && draft.isConnected && !draft._li) after = draft.previousElementSibling;
     if (draft) discard(draft);
     if (KINDS[what] !== undefined) { openDraft(after, what); return; }
     if (what === 'image') {
@@ -445,7 +456,26 @@
   // [dónde ('insert' o 'block'), id, ícono, texto, qué hacer].
   const EDIT_MENU = [];
   let menu = null;
-  function closeMenu() { if (menu) { menu.remove(); menu = null; } }
+  // Al cerrarse sin elegir, la barra con la que se abrió (y lo que la filtraba) se va del renglón, salvo con keep.
+  function closeMenu(keep) {
+    if (!menu) return;
+    const d = menu._draft;
+    menu.remove(); menu = null;
+    if (keep !== true && d && d.isConnected && /^\/[^\s/]{0,20}$/.test(d.textContent)) d.textContent = '';
+  }
+  // Deja a la vista lo que coincide con lo escrito después de la barra, sin mirar mayúsculas ni tildes. Con algo
+  // escrito, lo que no es "insertar" (convertir, mover el bloque) se guarda. Devuelve si quedó algo para elegir.
+  const fold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  function filterMenu(q) {
+    if (!menu) return false;
+    const want = fold(q); let left = 0;
+    menu._query = want;
+    const grids = menu.querySelectorAll('.lmd-menu-grid');
+    Array.from(menu.children).forEach((n, i) => { if (i > 1) n.hidden = !!want; });
+    grids[0].querySelectorAll('button').forEach((b) => { const on = !want || fold(b.textContent).includes(want); b.hidden = !on; if (on) left++; });
+    if (left && LMD.touch && LMD.touch.fitMenu) LMD.touch.fitMenu(menu);
+    return left > 0;
+  }
 
   function openMenu(x, y, block, draft) {
     closeMenu();
@@ -455,7 +485,10 @@
     const picked = block && sel.rangeCount && !sel.isCollapsed && block.contains(sel.anchorNode) && block.contains(sel.focusNode) ? sel.toString().trim() : '';
     const extra = []; EDIT_MENU.forEach((fn) => { (fn({ block, draft, picked, x, y }) || []).forEach((it) => extra.push(it)); });
     const more = (where) => extra.filter((it) => it[0] === where).map((it) => '<button type="button" role="menuitem" class="lmd-menu-wide" data-extra="' + it[1] + '">' + it[2] + '<span>' + T(it[3]) + '</span></button>').join('');
-    menu = el('div', { class: 'lmd-menu', role: 'menu' });
+    // En teléfono es una hoja abajo (touch.js): antes de abrirla, el bloque sube hasta quedar a la vista arriba de ella.
+    if (LMD.touch && LMD.touch.reveal) LMD.touch.reveal(draft || block);
+    menu = el('div', { class: 'lmd-menu lmd-menu-ins', role: 'menu' });
+    menu._draft = draft || null;
     menu.innerHTML =
       '<p class="lmd-menu-label">' + T(block ? 'Insertar debajo' : 'Insertar') + '</p>' +
       '<div class="lmd-menu-grid">' + INSERTS.filter((i) => (i[0] !== 'math' || core.settings.plugins.katex) && (i[0] !== 'board' || LMD.tools.isOn('kanban')) && (i[0] !== 'details' || core.settings.plugins.containers)).map((i) => '<button type="button" role="menuitem" data-ins="' + i[0] + '">' + (ICON['b_' + i[0]] || '') + '<span>' + T(i[1]) + '</span></button>').join('') + more('insert') + '</div>' +
@@ -486,6 +519,34 @@
       else if (b.dataset.op === 'comment') LMD.comments.compose(block, picked);
       else move(block, b.dataset.op === 'up' ? -1 : 1);
     });
+  }
+
+  // ---------- El tipo de un aviso ----------
+  // Los cinco avisos de GitHub. Cambiar el tipo reescribe solo la marca de su primera línea ("> [!NOTE]").
+  const ALERT_KINDS = [['NOTE', 'Nota'], ['TIP', 'Consejo'], ['IMPORTANT', 'Importante'], ['WARNING', 'Advertencia'], ['CAUTION', 'Precaución']];
+  const ALERT_MARK = /\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i;
+  function setAlertKind(box, kind) {
+    const r = span(box); if (!r) return false;
+    const all = lines();
+    for (let i = r.s; i < r.e; i++) {
+      if (!ALERT_MARK.test(all[i])) continue;
+      const next = all[i].replace(ALERT_MARK, '[!' + kind + ']');
+      if (next !== all[i]) { core.spliceLines(i, 1, [next]); core.render(); }
+      return true;
+    }
+    return false;
+  }
+  function alertMenu(box, x, y) {
+    closeMenu();
+    if (!box || !span(box)) return;
+    const now = (ALERT_KINDS.find((k) => box.classList.contains('lmd-alert-' + k[0].toLowerCase())) || [''])[0];
+    menu = el('div', { class: 'lmd-menu lmd-menu-read lmd-menu-alert', role: 'menu', 'aria-label': T('Tipo de aviso') });
+    menu.innerHTML = '<div class="lmd-menu-list">' + ALERT_KINDS.map((k) => '<button type="button" role="menuitemradio" aria-checked="' + (k[0] === now) + '" data-alert="' + k[0] + '"><i class="lmd-alert-dot lmd-alert-' + k[0].toLowerCase() + '" aria-hidden="true"></i><span>' + T(k[1]) + '</span></button>').join('') + '</div>';
+    document.body.appendChild(menu);
+    menu.style.left = Math.max(8, Math.min(window.innerWidth - menu.offsetWidth - 8, x)) + 'px';
+    menu.style.top = Math.max(8, y + menu.offsetHeight + 8 > window.innerHeight ? y - menu.offsetHeight - 12 : y) + 'px';
+    menu.addEventListener('mousedown', (e) => e.preventDefault());
+    menu.addEventListener('click', (e) => { const b = e.target.closest('[data-alert]'); if (!b) return; closeMenu(); setAlertKind(box, b.dataset.alert); });
   }
 
   // ---------- Menú de lectura ----------
@@ -764,13 +825,21 @@
       if (e.inputType === 'insertText' && e.target.closest && e.target.closest('.lmd-editable') && !e.target.closest('.lmd-sum-title')) inlineShortcut();
       const d = e.target.closest && e.target.closest('.lmd-draft'); if (d) onInput(d);
     });
+    // Editando, tocar el título de un aviso (Nota, Consejo…) deja elegir de qué tipo es, sin escribir sintaxis.
+    article.addEventListener('click', (e) => {
+      const title = e.target.closest('.lmd-alert-title');
+      if (title && core.editMode && !core.readOnly && core.blocks) { e.preventDefault(); const box = title.getBoundingClientRect(); alertMenu(title.closest('.lmd-alert'), box.left, box.bottom + 4); }
+    });
     article.addEventListener('click', (e) => {
       if (e.target.closest('.lmd-add')) { const all = Array.from(article.children).filter((n) => !n.classList.contains('lmd-add')); openDraft(all[all.length - 1] || null, 'p', true); }
     });
-    document.addEventListener('mousedown', (e) => {
+    const outside = (e) => {
       if (menu && !menu.contains(e.target)) closeMenu();
       if (clMenu && !clMenu.box.contains(e.target) && !clMenu.btn.contains(e.target)) clMenuClose();
-    });
+    };
+    document.addEventListener('mousedown', outside);
+    // Con el dedo, el toque afuera cierra apenas apoya: hay navegadores que no mandan el mousedown de un toque en un lugar vacío.
+    document.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') outside(e); });
     // Un bloque en el que se escribió tiene su propio deshacer, el del navegador: ahí Ctrl+Z no es el de la app.
     const typed = new WeakSet();
     document.addEventListener('input', (e) => { const t = e.target; if (t && t.isContentEditable) typed.add(t); }, true);
@@ -792,7 +861,14 @@
       if (back) core.flash(core.undo() ? T('Cambio deshecho. Ctrl+Y lo rehace') : T('No hay más cambios para deshacer'));
       else core.flash(core.redo() ? T('Cambio rehecho') : T('No hay cambios para rehacer'));
     });
-    window.addEventListener('scroll', () => { closeMenu(); clMenuClose(); }, { passive: true });
+    // Deslizar la página cierra los menús; el empujón que deja a la vista el bloque al abrir una hoja no cuenta.
+    window.addEventListener('scroll', () => { if (LMD.touch && LMD.touch.nudged && LMD.touch.nudged()) return; closeMenu(); clMenuClose(); }, { passive: true });
+    // Con algo escrito después de la barra, Enter elige la primera opción que quedó.
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.isComposing || !menu || !menu._query) return;
+      const first = Array.from(menu.querySelectorAll('.lmd-menu-grid button')).find((b) => !b.hidden && b.offsetParent);
+      if (first) { e.preventDefault(); e.stopImmediatePropagation(); first.click(); }
+    }, true);
     // Manija: al pasar el mouse por un bloque aparece a su izquierda y abre el mismo menú que el clic derecho.
     const handle = el('button', { class: 'lmd-handle', type: 'button', title: T('Opciones del bloque: mover, duplicar, eliminar'), hidden: '' }, ICON.dots);
     document.body.appendChild(handle);
@@ -800,9 +876,18 @@
     const hideHandle = () => { handle.hidden = true; held = null; };
     const place = (block) => {
       const box = block.getBoundingClientRect();
+      handle.hidden = false;
+      if (LMD.touch.coarse()) {
+        // Con el dedo: centrada en el primer renglón del bloque (un título es más alto que un párrafo) y dentro del
+        // margen izquierdo, sin tocar el borde del campo en edición (que sobresale 5 px del bloque).
+        const cs = getComputedStyle(block); const size = parseFloat(cs.fontSize) || 16; const lh = parseFloat(cs.lineHeight) || size * 1.5;
+        const line = Math.min(box.height, lh + (parseFloat(cs.paddingTop) || 0) * 2);
+        handle.style.top = Math.max(58, Math.round(box.top + (line - handle.offsetHeight) / 2)) + 'px';
+        handle.style.left = Math.max(2, Math.round(box.left - 9 - handle.offsetWidth)) + 'px';
+        return;
+      }
       handle.style.top = Math.max(58, box.top + 1) + 'px';
       handle.style.left = Math.max(4, box.left - 34) + 'px';
-      handle.hidden = false;
     };
     const hold = (target) => {
       if (!core.editMode || !core.blocks || menu) return;

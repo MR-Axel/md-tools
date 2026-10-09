@@ -318,7 +318,8 @@
       }
       interim(soft.trim());
     };
-    rec.onerror = (e) => { if (rec !== ses.rec) return; ses.error = e.error; if (ERRORS[e.error]) core.flash(T(ERRORS[e.error]), 'warn'); };
+    // Un error que no es silencio ni un corte pedido se dice siempre: el botón nunca queda sin responder.
+    rec.onerror = (e) => { if (rec !== ses.rec) return; ses.error = e.error; if (ERRORS[e.error]) core.flash(T(ERRORS[e.error]), 'warn'); else if (e.error !== 'no-speech' && e.error !== 'aborted') core.flash(T('No se pudo prender el micrófono.'), 'warn'); };
     rec.onend = () => {
       if (rec !== ses.rec) return;
       const fatal = ses.error && ses.error !== 'no-speech' && ses.error !== 'aborted'; ses.error = '';
@@ -329,10 +330,17 @@
     };
     ses.rec = rec;
     rec.start();
+    // Si el navegador no avisa que empezó a escuchar (ni pide permiso ni da error), se dice: tocar de nuevo lo cancela.
+    if (ses.starting) {
+      clearTimeout(ses.wait);
+      ses.wait = setTimeout(() => { if (rec === ses.rec && ses.starting) core.flash(T('El micrófono todavía no arrancó. Si no aparece el pedido de permiso, este navegador no permite dictar.'), 'warn'); }, 8000);
+    }
   }
   // Se pide con un gesto: el botón del micrófono o el atajo.
   async function begin() {
-    if (!on || ses.starting) return false;
+    if (!on) return false;
+    // Un segundo toque mientras se espera al micrófono cancela el pedido.
+    if (ses.starting) { if (ses.rec) { const rec = ses.rec; ses.rec = null; try { rec.abort(); } catch (e) { /* ya no está */ } finish(); } return false; }
     if (ses.active) { stop(); return false; }
     if (!SR()) { core.flash(T('Este navegador no reconoce voz. Funciona en Chrome, Edge y Safari.'), 'warn'); return false; }
     if (core.noDoc || !core.blocks) return false;
@@ -351,7 +359,7 @@
     } catch (e) { ses.starting = false; ses.rec = null; paintMic(); core.flash(T('No se pudo prender el micrófono.'), 'warn'); return false; }
   }
   function finish() {
-    clearTimeout(ses.timer); clearTimeout(ses.force);
+    clearTimeout(ses.timer); clearTimeout(ses.force); clearTimeout(ses.wait);
     unghost(); closeFmt();
     const was = ses.active || ses.starting;
     ses.active = false; ses.starting = false; ses.closing = false; ses.audio = false; ses.rec = null; ses.mode = 'text'; ses.chunks = [];
@@ -394,6 +402,21 @@
     paintBar();
   }
 
+  // Con el dedo no hay rótulo al pasar por encima: la primera vez que aparece el micrófono, una etiqueta a su lado
+  // dice para qué es. Sale una sola vez por dispositivo y se va sola, o al tocar.
+  let hint = null; let hinted = false;
+  function hintMic() {
+    if (hint) { if (!hint.hidden) { hint.style.top = (mic.offsetTop + (mic.offsetHeight - hint.offsetHeight) / 2) + 'px'; hint.style.right = (window.innerWidth - mic.offsetLeft + 8) + 'px'; } return; }
+    if (hinted || ses.active || ses.starting) return;
+    hinted = true;
+    try { if (localStorage.getItem('lmd:dct-hint') === '1') return; localStorage.setItem('lmd:dct-hint', '1'); } catch (e) { /* sin almacenamiento sale una vez por carga */ }
+    hint = el('div', { class: 'lmd-dct-hint', role: 'status', text: T('Tocá para dictar') });
+    document.body.appendChild(hint);
+    hintMic();
+    const gone = () => { if (hint) hint.hidden = true; };
+    setTimeout(gone, 6000); mic.addEventListener('click', gone);
+  }
+
   // El botón del micrófono: al lado del bloque con el cursor; con el dedo, pegado arriba del teclado.
   function paintMic() {
     if (!mic) return;
@@ -402,13 +425,14 @@
     mic.hidden = !show || !on;
     mic.classList.toggle('lmd-on', ses.active); mic.classList.toggle('lmd-busy', ses.starting);
     mic.title = T(ses.active ? 'Cortar el dictado (Alt+Shift+D)' : 'Dictar (Alt+Shift+D)'); mic.setAttribute('aria-label', mic.title); mic.setAttribute('aria-pressed', String(ses.active));
-    if (mic.hidden) return;
+    if (mic.hidden) { if (hint) hint.hidden = true; return; }
     const w = mic.offsetWidth || 34; const h = mic.offsetHeight || 34;
     if (LMD.touch.coarse()) {
       const v = LMD.touch.visible();
       mic.classList.add('lmd-docked');
       mic.style.left = Math.max(8, v.left + v.width - w - 10) + 'px';
       mic.style.top = Math.max(v.top + 58, v.bottom - 10 - LMD.touch.above() - h) + 'px';
+      hintMic();
       return;
     }
     mic.classList.remove('lmd-docked');
@@ -437,24 +461,37 @@
 
   // ---------- Opciones en Ajustes > Herramientas ----------
   function keep(partial) { core.settings.tools = Object.assign({}, core.settings.tools, partial); return LMD.tools.setOpt(partial); }
-  async function settings(area, api) {
-    const pref = LMD.tools.opt('dictateLang', 'auto'); const tag = tagOf(shortLang()); const state = await localState(tag);
+  // Dibujar las opciones no toca el reconocimiento de voz ni el micrófono: consultar al navegador si transcribe en el
+  // dispositivo es un botón aparte (hay navegadores que anuncian esa consulta y se cuelgan al recibirla). checked es
+  // lo que respondió esa consulta, cuando ya se hizo.
+  async function settings(area, api, checked) {
+    const pref = LMD.tools.opt('dictateLang', 'auto'); const tag = tagOf(shortLang()); const state = checked || 'unknown';
+    const S = SR(); const canAsk = !checked && !!S && typeof S.available === 'function';
     const WHERE = { available: 'El audio se transcribe en este dispositivo.', downloadable: 'El navegador puede enviar el audio a su proveedor para transcribirlo. SharpMD no recibe ni guarda audio.', downloading: 'El navegador está descargando el reconocimiento de voz.' };
     area.innerHTML =
       '<label class="lmd-row"><span>' + esc(T('Idioma del dictado')) + '</span><select data-dct="lang">' + [['auto', 'El de la app'], ['es', 'Español'], ['en', 'English']].map((o) => '<option value="' + o[0] + '"' + (o[0] === pref ? ' selected' : '') + '>' + esc(o[0] === 'auto' ? T(o[1]) : o[1]) + '</option>').join('') + '</select></label>' +
       '<label class="lmd-check"><input type="checkbox" data-dct="commands"' + (commands() ? ' checked' : '') + '><span>' + esc(T('Órdenes habladas. Sin esto, todo lo dicho entra como texto.')) + '</span></label>' +
-      '<div class="lmd-row lmd-row-line"><span data-dct="where">' + esc(T(WHERE[state] || WHERE.downloadable)) + '</span>' + (state === 'downloadable' ? '<button type="button" class="lmd-btn" data-dct="install">' + esc(T('Descargar')) + '</button>' : '') + '</div>' +
-      '<div class="lmd-row lmd-row-line"><span>' + esc(T('Atajo: Alt+Shift+D, o el micrófono al lado del bloque que estás escribiendo.')) + '</span><button type="button" class="lmd-btn" data-dct="help">' + esc(T('Frases que entiende')) + '</button></div>';
+      '<div class="lmd-row lmd-row-line"><span data-dct="where">' + esc(T(WHERE[state] || WHERE.downloadable)) + '</span>' + (state === 'downloadable' ? '<button type="button" class="lmd-btn" data-dct="install">' + esc(T('Descargar')) + '</button>' : '') +
+        (canAsk ? '<button type="button" class="lmd-btn" data-dct="check">' + esc(T('Ver si se puede en este dispositivo')) + '</button>' : '') + '</div>' +
+      '<div class="lmd-row lmd-row-line"><span>' + esc(T(LMD.touch.coarse() ? 'El micrófono aparece arriba del teclado al editar un bloque. También está en el menú de los tres puntos.' : 'Atajo: Alt+Shift+D, o el micrófono al lado del bloque que estás escribiendo.')) + '</span><button type="button" class="lmd-btn" data-dct="help">' + esc(T('Frases que entiende')) + '</button></div>';
     area.querySelector('[data-dct=lang]').addEventListener('change', (e) => { Promise.resolve(keep({ dictateLang: e.target.value })).then(() => settings(area, api)); });
     area.querySelector('[data-dct=commands]').addEventListener('change', (e) => keep({ dictateCommands: e.target.checked }));
     area.querySelector('[data-dct=help]').addEventListener('click', () => help());
+    const ask = area.querySelector('[data-dct=check]');
+    if (ask) ask.addEventListener('click', async () => {
+      ask.disabled = true;
+      const got = await localState(tag);
+      if (!area.isConnected) return;
+      if (got === 'unavailable' || got === 'unknown') core.flash(T('Este navegador no transcribe en el dispositivo.'));
+      settings(area, api, got);
+    });
     const get = area.querySelector('[data-dct=install]');
     if (get) get.addEventListener('click', async () => {
       get.disabled = true;
       const ok = await install(tag);
       if (ok) { const saved = await stored(); if (saved.skip) { delete saved.skip[tag]; await store(saved); } }
       else core.flash(T('No se pudo descargar. Se puede probar de nuevo desde Ajustes.'), 'warn');
-      if (area.isConnected) settings(area, api);
+      if (area.isConnected) settings(area, api, await localState(tag));
     });
   }
 
@@ -475,6 +512,9 @@
       mic.addEventListener('mousedown', (e) => e.preventDefault());
       mic.addEventListener('click', () => begin());
       window.addEventListener('keydown', onKey);
+      // En pantalla chica también desde el menú "más": el micrófono flotante solo aparece con un bloque en edición.
+      core.actions.dictate = () => begin();
+      core.menus.more.push(() => (on && core.blocks && !core.readOnly && LMD.touch.small() ? ['dictate', ICON.mic, ses.active || ses.starting ? 'Cortar el dictado' : 'Dictar'] : null));
       const later = debounce(paintMic, 40);
       article().addEventListener('focusin', later); article().addEventListener('focusout', later); article().addEventListener('input', later);
       window.addEventListener('scroll', later, { passive: true }); window.addEventListener('resize', later);

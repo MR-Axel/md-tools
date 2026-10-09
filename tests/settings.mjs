@@ -719,7 +719,7 @@ try {
   const b1 = await boot();
   await tp.evaluate(() => { localStorage.setItem('lmd:mode', 'auto'); }); const b2 = await boot();
   await tp.evaluate(() => { localStorage.setItem('lmd:mode', 'light'); });
-  check('sin destello: el primer cuadro sale claro con claro elegido y el dispositivo en oscuro, y en automático sale con el dispositivo', b1 === 'light #fbfaf7' && b2 === 'dark #121418', [b1, b2]);
+  check('sin destello: el primer cuadro sale claro con claro elegido y el dispositivo en oscuro, y en automático sale con el dispositivo', /^(only light|light only) #fbfaf7$/.test(b1) && b2 === 'dark #121418', [b1, b2]); // claro va con "only": el navegador no lo oscurece por su cuenta
   // Cada familia recuerda su tema: Arena en claro, Marea en oscuro
   await tp.evaluate(() => LMD.patch(LMD.theme.patchFor('arena'))); await tp.waitForFunction(() => document.documentElement.style.getPropertyValue('--bg') === '#f6efe0');
   await tp.click('[data-act=theme-flip]'); await tp.waitForFunction(() => document.documentElement.classList.contains('lmd-dark')); await tp.waitForTimeout(300);

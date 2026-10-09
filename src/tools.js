@@ -201,6 +201,9 @@
     id: 'dictate', name: 'Dictado', about: 'Escribí hablando, con órdenes para puntuar, dar formato y armar fórmulas y diagramas.', icon: ICON.mic, defaultOn: false,
     lazy: 'dictate', module: () => LMD.dictate,
     available: () => {
+      // Samsung Internet anuncia el reconocimiento de voz pero no lo trae entero: consultarlo cuelga la pestaña.
+      // Ahí la herramienta queda apagada aunque esté guardada como prendida, y su código ni se pide.
+      if (/SamsungBrowser/.test(navigator.userAgent || '')) return T('El dictado no está disponible en este navegador. Funciona en Chrome.');
       if (window.SpeechRecognition || window.webkitSpeechRecognition) return '';
       if (APP_STORE()) return T('El micrófono no está disponible dentro de esta app. Usá el dictado del teclado.');
       return T('Este navegador no reconoce voz. Funciona en Chrome, Edge y Safari.');

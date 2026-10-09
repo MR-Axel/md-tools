@@ -77,6 +77,32 @@ o.redondo = await app.evaluate(() => document.documentElement.classList.contains
 await app.click('.lmd-seg[data-seg=diagramShape] button[data-val=square]'); await app.waitForTimeout(1500);
 o.recto = await app.evaluate(() => !document.documentElement.classList.contains('lmd-dgm-round') && !!document.querySelector('.lmd-diagram svg'));
 
+// Un aviso y una cita: dos bloques distintos a la vista, el aviso no se vuelve cita al editarlo, y su tipo se cambia tocando el título.
+await app.evaluate(() => { const b = document.querySelector('[data-act=close-panel]'); if (b && !document.querySelector('.lmd-panel').hidden) b.click(); }); await app.waitForTimeout(300);
+await app.locator('.lmd-article p', { hasText: 'Texto final' }).click({ button: 'right' }); await app.click('.lmd-menu [data-ins=alert]'); await app.waitForTimeout(400);
+await app.keyboard.type('Ojo con esto'); await blur();
+await app.locator('.lmd-article p', { hasText: 'Texto final' }).click({ button: 'right' }); await app.click('.lmd-menu [data-ins=quote]'); await app.waitForTimeout(300);
+await app.keyboard.type('Una cita'); await blur();
+o.avisoFuente = (await src()).split('\n').filter((l) => /^>/.test(l));
+o.avisoEstilos = await app.evaluate(() => {
+  const look = (b) => { const cs = getComputedStyle(b); const t = b.querySelector('.lmd-alert-title'); const ico = t ? getComputedStyle(t, '::before') : null;
+    return { alert: b.classList.contains('lmd-alert'), edge: cs.borderLeftColor, bg: cs.backgroundColor, color: cs.color, title: t ? t.textContent : '', icon: !!ico && ico.content !== 'none' && parseFloat(ico.width) >= 14 && /url\(/.test(ico.maskImage || ico.webkitMaskImage || '') }; };
+  const all = [...document.querySelectorAll('.lmd-article blockquote')];
+  return { aviso: look(all.find((b) => /Ojo con esto/.test(b.textContent))), cita: look(all.find((b) => /Una cita/.test(b.textContent))) };
+});
+await app.locator('.lmd-article .lmd-alert p.lmd-editable', { hasText: 'Ojo con esto' }).click(); await app.keyboard.press('Control+End'); await app.keyboard.type(' siempre'); await blur();
+o.avisoEditado = [(await src()).split('\n').filter((l) => /^>/.test(l)), await app.evaluate(() => { const b = document.querySelector('.lmd-article .lmd-alert'); return b ? b.className + '|' + b.querySelector('.lmd-alert-title').textContent : ''; })];
+const antes = (await src()).split('\n');
+await app.click('.lmd-article .lmd-alert .lmd-alert-title'); await app.waitForSelector('.lmd-menu-alert');
+o.avisoTipos = await app.evaluate(() => [...document.querySelectorAll('.lmd-menu-alert [data-alert]')].map((b) => b.dataset.alert + ':' + b.textContent + ':' + b.getAttribute('aria-checked')));
+await app.click('.lmd-menu-alert [data-alert=WARNING]'); await app.waitForTimeout(500);
+const despues = (await src()).split('\n');
+o.avisoTipo = [antes.length === despues.length, antes.map((l, i) => (l === despues[i] ? null : [l, despues[i]])).filter(Boolean), await app.evaluate(() => { const b = document.querySelector('.lmd-article .lmd-alert'); return b.className + '|' + b.querySelector('.lmd-alert-title').textContent + '|' + b.textContent.replace(/\s+/g, ' ').trim(); })];
+await app.click('[data-act=mode-read]'); await app.waitForTimeout(300);
+await app.click('.lmd-article .lmd-alert .lmd-alert-title'); await app.waitForTimeout(300);
+o.avisoLeyendo = await app.evaluate(() => !document.querySelector('.lmd-menu-alert'));
+await app.click('[data-act=mode-edit]'); await app.waitForTimeout(300);
+
 const J = (v) => JSON.stringify(v);
 const checks = [
   ['cada opción del menú tiene su ícono', o.iconos[0] === 18 && o.iconos[1] === 18, o.iconos],
@@ -95,6 +121,12 @@ const checks = [
   ['eliminar un bloque que estaba entre dos tablas tampoco', o.sinSeparador[0].n === 4 && o.sinSeparador[0].rules === 0 && o.sinSeparador[1] === false, o.sinSeparador],
   ['el color de los bloques de código se aplica', o.tinte === '#3b82f6', o.tinte],
   ['los diagramas pasan de redondeados a rectos', o.redondo === true && o.recto === true, [o.redondo, o.recto]],
+  ['insertar un aviso y una cita deja dos bloques distintos en el archivo', J(o.avisoFuente) === J(['> Una cita', '> [!NOTE]', '> Ojo con esto']), o.avisoFuente],
+  ['y distintos a la vista: el aviso lleva título, ícono, borde de color y fondo; la cita no', o.avisoEstilos.aviso.alert && o.avisoEstilos.aviso.title === 'Nota' && o.avisoEstilos.aviso.icon && !o.avisoEstilos.cita.alert && !o.avisoEstilos.cita.title && o.avisoEstilos.aviso.edge !== o.avisoEstilos.cita.edge && o.avisoEstilos.aviso.bg !== o.avisoEstilos.cita.bg && o.avisoEstilos.aviso.color !== o.avisoEstilos.cita.color, o.avisoEstilos],
+  ['editar el texto de un aviso no lo convierte en cita', J(o.avisoEditado[0]) === J(['> Una cita', '> [!NOTE]', '> Ojo con esto siempre']) && /lmd-alert-note\|Nota$/.test(o.avisoEditado[1]), o.avisoEditado],
+  ['tocar el título de un aviso ofrece los cinco tipos, con el actual marcado', J(o.avisoTipos) === J(['NOTE:Nota:true', 'TIP:Consejo:false', 'IMPORTANT:Importante:false', 'WARNING:Advertencia:false', 'CAUTION:Precaución:false']), o.avisoTipos],
+  ['cambiar el tipo reescribe solo la primera línea del aviso', o.avisoTipo[0] && J(o.avisoTipo[1]) === J([['> [!NOTE]', '> [!WARNING]']]) && /lmd-alert-warning\|Advertencia\|Advertencia Ojo con esto siempre$/.test(o.avisoTipo[2]), o.avisoTipo],
+  ['leyendo, el título de un aviso no abre nada', o.avisoLeyendo === true],
   ['sin errores de JavaScript', errors.length === 0, errors],
 ];
 console.log('Insertar, imágenes y estilos');
