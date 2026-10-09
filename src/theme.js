@@ -107,7 +107,8 @@
   }
   const isDark = (settings, previewId) => { const p = byId(previewId); return p ? p.dark : modeDark(settings); };
 
-  // Los colores a medida que valen sobre este fondo. Entran con el plan pago y solo si dejan leer.
+  // Los colores a medida que valen sobre este fondo (los trae un tema de la comunidad). Entran con el plan pago y solo
+  // si dejan leer. El color de acento va aparte y es de todos.
   function overrides(settings, dark, pal) {
     const out = {};
     if (!settings.supporter) return out;
@@ -130,7 +131,7 @@
     const pal = Object.assign({ dark }, p.c);
     if (!previewId) {
       Object.assign(pal, overrides(settings, dark, pal));
-      if (settings.supporter && HEX.test(settings.accent || '')) { pal.fill = settings.accent; pal.accent = settings.accent; }
+      if (HEX.test(settings.accent || '')) { pal.fill = settings.accent; pal.accent = settings.accent; }
     }
     return pal;
   }
@@ -173,7 +174,7 @@
       const over = overrides(settings, dark, base);
       Object.keys(over).forEach((k) => root.style.setProperty(VARS[k], over[k]));
       if (over.bg) bg = over.bg;
-      if (settings.supporter && HEX.test(settings.accent || '')) accent(root, dark, settings.accent, Object.assign({}, base, over));
+      if (HEX.test(settings.accent || '')) accent(root, dark, settings.accent, Object.assign({}, base, over));
       // Lo lee boot.js en la próxima carga, para pintar el primer cuadro con el fondo que corresponde.
       // Con el modo anotado, boot.js sabe si lo guardado manda (claro u oscuro a mano) o si tiene que mirar el dispositivo.
       try { localStorage.setItem('lmd:dark', dark ? '1' : '0'); localStorage.setItem('lmd:bg', bg); localStorage.setItem('lmd:mode', forcing() ? 'dark' : settings.theme === 'light' || settings.theme === 'dark' ? settings.theme : 'auto'); } catch (e) { /* sin almacenamiento */ }
@@ -197,8 +198,8 @@
   function active(settings) {
     const dark = modeDark(settings);
     const p = chosen(settings);
-    const paid = settings.supporter && ['accent', dark ? 'paperDark' : 'paperLight'].concat(Object.values(CUSTOM)).some((k) => HEX.test(settings[k] || ''));
-    return { id: p ? p.id : dark ? BASE.dark : BASE.light, custom: paid || HEX.test(settings.codeColor || '') };
+    const paid = settings.supporter && [dark ? 'paperDark' : 'paperLight'].concat(Object.values(CUSTOM)).some((k) => HEX.test(settings[k] || ''));
+    return { id: p ? p.id : dark ? BASE.dark : BASE.light, custom: paid || HEX.test(settings.accent || '') || HEX.test(settings.codeColor || '') };
   }
   // Lo que se guarda al aplicar un tema incluido: el tema, su modo, y los colores a mano en blanco.
   function patchFor(id) {

@@ -67,7 +67,7 @@
     // El pie de la barra lateral, donde vive la cuenta: dónde dibujarse, cómo quedar a la vista y cómo guardar antes de salir.
     acct: ui.acct, showSide: () => { if (LMD.touch.small()) setDrawer(true); else if (settings.sidebarHidden) LMD.patch({ sidebarHidden: false }); }, hideSide: () => setDrawer(false),
     leave: () => (dirty ? save(false) : Promise.resolve(true)), ready: unsplash, panel: (tab) => openPanel(tab),
-    // Las personalizaciones vienen con el plan pago: si Ajustes está abierto, se redibuja con ellas ya habilitadas.
+    // El CSS propio viene con el plan pago: si Ajustes está abierto, se redibuja con el campo ya habilitado.
     unlocked: (a) => { if (a.plan === 'pro' && !settings.supporter) { panelStale = true; LMD.patch({ supporter: true }); } },
     template: () => LMD.extras.fromTemplate(''), preview: (text) => DOMPurify.sanitize(buildParser().render(settings.plugins.frontmatter ? splitFrontmatter(text).body : text), { FORBID_TAGS: ['style', 'form'] }) });
   // La pantalla de carga de app.html se va cuando hay algo que mostrar: el inicio, la nota o un pedido de permiso.
@@ -1297,6 +1297,7 @@
     else if (act === 'update-later') { ui.update.hidden = true; if (ui.update.dataset.v) bg({ type: 'dismissUpdate', version: ui.update.dataset.v }); }
     else if (act === 'go-home') { if (APP) go(''); else bg({ type: 'openApp' }); }
     else if (act === 'see-plans') openPanel('plan');
+    else if (act === 'css-clear') { panelStale = true; LMD.patch({ customCSS: '' }); }
     else if (act === 'feedback') LMD.sync.feedback();
     else if (act === 'report') LMD.sync.report();
   }
@@ -1395,11 +1396,12 @@
     root.style.setProperty('--lmd-font-size', settings.fontSize + 'px');
     root.style.setProperty('--lmd-line-height', String(settings.lineHeight));
     root.style.setProperty('--lmd-side-w', settings.sidebarWidth + 'px');
-    if (settings.supporter && settings.fontFamily && settings.fontFamily.trim()) root.style.setProperty('--lmd-font', settings.fontFamily);
+    if (settings.fontFamily && settings.fontFamily.trim()) root.style.setProperty('--lmd-font', settings.fontFamily);
     else root.style.removeProperty('--lmd-font');
     root.classList.toggle('lmd-dgm-round', settings.diagramShape !== 'square');
     if (/^#[0-9a-f]{6}$/i.test(settings.codeColor || '')) root.style.setProperty('--code-tint', settings.codeColor); else root.style.removeProperty('--code-tint');
-    ui.customStyle.textContent = settings.supporter ? (settings.customCSS || '') : '';
+    // Editar el CSS propio es del plan pago. El que ya estaba guardado se sigue aplicando, con o sin plan.
+    ui.customStyle.textContent = settings.customCSS || '';
 
     ui.searchInput.placeholder = T('Buscar en la nota y en los archivos');
     applySide();
@@ -2900,12 +2902,12 @@
             '<div class="lmd-row"><span>' + T('Idioma') + '</span><div class="lmd-seg" data-seg="language" role="radiogroup">' +
               ['auto', 'es', 'en'].map((l) => '<button type="button" role="radio" data-val="' + l + '" aria-checked="' + (s.language === l) + '"' + (s.language === l ? ' class="lmd-on"' : '') + '>' + { auto: T('Automático'), es: 'Español', en: 'English' }[l] + '</button>').join('') +
             '</div></div>' +
-            '<div class="lmd-pcol"><div class="lmd-row"><span>' + T('Color de acento') + (s.supporter ? '' : EXTRA) + '</span><div class="lmd-swatches' + (s.supporter ? '' : ' lmd-locked') + '">' +
+            '<div class="lmd-pcol"><div class="lmd-row"><span>' + T('Color de acento') + '</span><div class="lmd-swatches">' +
               LMD.ACCENTS.map((a) => '<button type="button" class="lmd-swatch' + ((s.accent || '') === a.value ? ' lmd-on' : '') + (a.value ? '' : ' lmd-swatch-auto') + '" data-accent="' + a.value + '" title="' + esc(T(a.name)) + '" aria-label="' + esc(T(a.name)) + '"' + (a.value ? ' style="--sw:' + a.value + '"' : '') + '></button>').join('') +
               '<label class="lmd-swatch lmd-swatch-custom' + (s.accent && !LMD.ACCENTS.some((a) => a.value === s.accent) ? ' lmd-on' : '') + '" title="' + T('Otro color') + '"><input type="color" data-accent-custom value="' + (/^#[0-9a-f]{6}$/i.test(s.accent || '') ? s.accent : '#6c7ee1') + '"></label>' +
             '</div>' +
             '</div>' +
-            '<label class="lmd-row"><span>' + T('Tipografía') + (s.supporter ? '' : EXTRA) + '</span><select data-key="fontFamily"' + (s.supporter ? '' : ' disabled') + '>' + fontOptions + '</select></label>' +
+            '<label class="lmd-row"><span>' + T('Tipografía') + '</span><select data-key="fontFamily">' + fontOptions + '</select></label>' +
             '<label class="lmd-row"><span>' + T('Tamaño de letra') + ' <output>' + s.fontSize + ' px</output></span><input type="range" min="12" max="24" step="1" data-key="fontSize" data-unit=" px" value="' + s.fontSize + '"></label>' +
             '<label class="lmd-row"><span>' + T('Interlineado') + ' <output>' + s.lineHeight + '</output></span><input type="range" min="1.2" max="2.2" step="0.05" data-key="lineHeight" data-unit="" value="' + s.lineHeight + '"></label>' +
             '<div class="lmd-row"><span>' + T('Color de los bloques de código') + '</span><div class="lmd-swatches">' +
@@ -2922,8 +2924,6 @@
                 LMD.theme.PRESETS.map((p) => '<button type="button" role="radio" class="lmd-th" data-th="' + p.id + '" aria-checked="false" aria-label="' + esc(T(p.name)) + '" title="' + esc(T(p.name) + ' · ' + T(p.dark ? 'Oscuro' : 'Claro')) + '">' +
                   LMD.theme.thumb(Object.assign({}, p, { name: esc(T(p.name)) })) + '</button>').join('') +
               '</div></div>' + PREVIEW + '</div>' +
-            (s.supporter ? '' : '<div class="lmd-extra"><p>' + T('Los colores, la tipografía y el CSS propio vienen con el plan pago.') + '</p>' +
-                '<div class="lmd-extra-actions"><button type="button" class="lmd-btn lmd-btn-fill" data-act="see-plans">' + T('Ver planes') + '</button></div></div>') +
           '</section>' +
           '<section class="lmd-two" data-tab="read"><h3>' + T('Lectura') + '</h3>' +
             '<p class="lmd-hint lmd-scope">' + T('Estos ajustes son tuyos. Nadie más los ve ni los cambia.') + ' ' + T('El ancho y otras opciones de una nota se cambian desde el menú de la nota.') +
@@ -2960,8 +2960,12 @@
           '<section data-tab="plan"><h3>' + T('Plan') + '</h3><div class="lmd-acct" data-acct="plan"></div></section>' +
           '<section data-tab="inst"><h3>' + T('Instalar') + '</h3><div class="lmd-acct lmd-inst" data-inst-pane></div></section>' +
           '<section data-tab="adv"><h3>' + T('CSS propio') + (s.supporter ? '' : EXTRA) + '</h3>' +
-            '<textarea data-key="customCSS"' + (s.supporter ? '' : ' disabled') + ' spellcheck="false" placeholder=".markdown-body h1 { color: tomato; }">' + esc(s.customCSS) + '</textarea>' +
+            // Sin el plan pago el campo no se edita. Si ya había CSS guardado se deja leer, se sigue aplicando y se puede quitar.
+            '<textarea data-key="customCSS"' + (s.supporter ? '' : s.customCSS ? ' readonly' : ' disabled') + ' spellcheck="false" placeholder=".markdown-body h1 { color: tomato; }">' + esc(s.customCSS) + '</textarea>' +
             '<p class="lmd-hint">' + T('Se aplica encima del tema. El documento vive dentro de .markdown-body.') + '</p>' +
+            (s.supporter ? '' : '<div class="lmd-extra"><p>' + T(s.customCSS ? 'Editar el CSS propio viene con el plan pago. El que ya tenías se sigue aplicando.' : 'El CSS propio viene con el plan pago.') + '</p>' +
+                '<div class="lmd-extra-actions">' + (s.customCSS ? '<button type="button" class="lmd-btn" data-act="css-clear">' + T('Quitar el CSS') + '</button>' : '') +
+                '<button type="button" class="lmd-btn lmd-btn-fill" data-act="see-plans">' + T('Ver planes') + '</button></div></div>') +
           '</section>' +
           // Vacío usa el servidor de SharpMD; una dirección, el propio; "off" deja la app sin nube.
           '<section class="lmd-two" data-tab="adv"><h3>' + T('Servidor') + '</h3>' +
@@ -3073,10 +3077,9 @@
       });
     });
     ui.panel.querySelectorAll('[data-accent]').forEach((b) => {
-      b.addEventListener('click', () => { if (!settings.supporter) return; markSwatch(b); LMD.patch({ accent: b.dataset.accent }); });
+      b.addEventListener('click', () => { markSwatch(b); LMD.patch({ accent: b.dataset.accent }); });
     });
     const custom = ui.panel.querySelector('[data-accent-custom]');
-    if (!settings.supporter) custom.disabled = true;
     custom.addEventListener('input', () => {
       markSwatch(custom.parentNode);
       settings.accent = custom.value; applySettings();

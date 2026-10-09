@@ -140,7 +140,7 @@ try {
   const pal = await pg.evaluate(() => { const D = LMD.diagram; const code = D.withPalette('mermaid', 'graph LR\n  A --> B', D.PALETTES.length); return { code, back: D.paletteOf('mermaid', code) === D.PALETTES.length, house: D.PALETTES.length }; });
   check('la paleta agregada pinta un diagrama como las de la casa', pal.house === 8 && pal.back && /#ffedd5/.test(pal.code) && /#f97316/.test(pal.code), pal);
 
-  // Temas: el que usa colores y tipografía es del plan pago; el que no, se aplica y se puede volver
+  // Temas: el que trae su fondo o sus colores de texto es del plan pago; el que no, se aplica y se puede volver
   const before = await cfg(pg);
   await pg.click(card(PAID) + ' [data-gal=add]'); await pg.waitForSelector('.lmd-gal-view .lmd-extra');
   const locked = await pg.evaluate(() => ({ note: document.querySelector('.lmd-gal-view .lmd-extra p').textContent, add: !!document.querySelector('.lmd-gal-view [data-gv=add]'), sample: !!document.querySelector('.lmd-gal-view .lmd-gal-sample'), bg: document.querySelector('.lmd-gal-view .lmd-gal-sample').style.background, pay: !!document.querySelector('.lmd-gal-view [data-pay] [data-gv=plans]') }));
@@ -149,7 +149,7 @@ try {
   await pg.evaluate(() => document.documentElement.classList.remove('lmd-store-app'));
   await pg.click('.lmd-gal-view [data-gv=close]');
   const still = await cfg(pg);
-  check('sin el plan pago, un tema con colores y tipografía muestra su vista previa y el aviso del plan, y no se aplica', /paid plan/.test(locked.note) && !locked.add && locked.sample && /253, 246, 227|fdf6e3/i.test(locked.bg) && locked.pay && !still.accent && !still.paperLight && !still.fontFamily && JSON.stringify(before) === JSON.stringify(still), [locked, still]);
+  check('sin el plan pago, un tema con su propio fondo muestra su vista previa y el aviso del plan, y no se aplica', /paid plan/.test(locked.note) && !locked.add && locked.sample && /253, 246, 227|fdf6e3/i.test(locked.bg) && locked.pay && !still.accent && !still.paperLight && !still.fontFamily && JSON.stringify(before) === JSON.stringify(still), [locked, still]);
   check('dentro de la app de Android no se muestra el enlace a los planes', payHidden);
   await pg.click(card(FREE) + ' [data-gal=add]'); await pg.waitForFunction(() => document.documentElement.classList.contains('lmd-dark'));
   await pg.waitForSelector('.lmd-gal-theme:not([hidden])');

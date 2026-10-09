@@ -5,7 +5,7 @@
     language: 'auto', // auto (según el navegador) | es | en
     theme: 'auto', // auto | light | dark
     accent: '', // vacío = color del tema; si no, un hex (#rrggbb)
-    supporter: false, // personalizaciones desbloqueadas: vienen con el plan pago y se conservan
+    supporter: false, // lo que viene con el plan pago en este dispositivo (el CSS propio y los colores de un tema de la comunidad): se prende con el plan y se conserva
     paperLight: '', // fondo de la página en el tema claro (#rrggbb); lo pone un tema de la comunidad. Vacío = el del tema
     paperDark: '', // lo mismo para el tema oscuro
     preset: '', // tema incluido que hay puesto (theme.js); vacío = el de siempre
@@ -331,7 +331,7 @@
       "Comillas tipográficas y guiones más prolijos.": "Typographic quotes and tidier dashes.",
       "Un solo Enter corta el renglón, sin dejar una línea en blanco.": "A single Enter breaks the line, with no blank line needed.",
       "pronto": "soon", "Gratis": "Free", "Pago": "Paid", "mes": "month", "año": "year", "Plan": "Plan",
-      "Todo el editor": "The whole editor", "Hasta {n} notas en la nube": "Up to {n} notes in the cloud", "Los 12 temas": "All 12 themes", "API y automatizaciones": "API and automations", "Los colores, la tipografía y el CSS propio vienen con el plan pago.": "Colors, the font and custom CSS come with the paid plan.", "Ver planes": "See plans", "Volver a lo que tenía": "Back to what I had", "Agregar": "Add", "Paso": "Step", "Pregunta": "Question", "Flecha": "Arrow", "Flecha con texto": "Arrow with a label", "Las notas nuevas se guardan en este navegador": "New notes are saved in this browser", "Guardarlas en una carpeta": "Save them to a folder", "Administrar la suscripción": "Manage subscription", "Qué es SharpMD": "About SharpMD",
+      "Todo el editor": "The whole editor", "Hasta {n} notas en la nube": "Up to {n} notes in the cloud", "Los 12 temas": "All 12 themes", "API y automatizaciones": "API and automations", "El CSS propio viene con el plan pago.": "Custom CSS comes with the paid plan.", "Editar el CSS propio viene con el plan pago. El que ya tenías se sigue aplicando.": "Editing custom CSS comes with the paid plan. The one you already had still applies.", "Quitar el CSS": "Remove the CSS", "El fondo y los colores del texto de este tema vienen con el plan pago.": "The background and text colors of this theme come with the paid plan.", "Ver planes": "See plans", "Volver a lo que tenía": "Back to what I had", "Agregar": "Add", "Paso": "Step", "Pregunta": "Question", "Flecha": "Arrow", "Flecha con texto": "Arrow with a label", "Las notas nuevas se guardan en este navegador": "New notes are saved in this browser", "Guardarlas en una carpeta": "Save them to a folder", "Administrar la suscripción": "Manage subscription", "Qué es SharpMD": "About SharpMD",
       "Notas en el navegador y en tu disco, sin límite": "Notes in the browser and on your disk, no limit",
       "Notas en la nube sin límite": "Unlimited notes in the cloud", "Compartir y editar entre varios": "Share and edit together",
       "Conectar una IA por MCP": "Connect an AI over MCP", "Historial de versiones de 30 días": "30-day version history",

@@ -66,12 +66,17 @@ console.log('El interruptor prendido');
   const ACC = ['#e11d48', '#7c3aed', '#0ea5e9', '#f59e0b', '#f1efe9', '#ffffff', '#fde047', '#808080', '#8a8a2a', '#1a1d23', '#000000', '#3f6a0a', '#bef264'];
   const bad = []; let edged = 0; let plain = 0;
   for (const p of P) for (const accent of ACC) {
-    const v = paint({ preset: p.id, theme: p.dark ? 'dark' : 'light', supporter: true, accent });
+    const v = paint({ preset: p.id, theme: p.dark ? 'dark' : 'light', supporter: false, accent });
     const card = Math.min(TH.contrast(accent, p.c.soft), TH.contrast(accent, p.c.bg)); const edge = v['--accent-edge'];
     if (edge) edged++; else plain++;
     const ok = v['--accent-fill'] === accent && TH.contrast(v['--accent-knob'], accent) >= 3 && (card >= 3 ? !edge : !!edge && Math.min(TH.contrast(edge, p.c.soft), TH.contrast(edge, p.c.bg)) >= 3);
     if (!ok) bad.push(p.id + ' ' + accent + ' ' + card.toFixed(2) + ' ' + (edge || 'sin borde') + ' ' + v['--accent-knob']);
   }
+  // El color de acento es de todos los planes. El fondo y los colores del texto a medida siguen siendo del plan pago.
+  const freeAcc = paint({ preset: '', theme: 'light', supporter: false, accent: '#e11d48' });
+  const freeInk = paint({ preset: '', theme: 'light', supporter: false, paperLight: '#fdf6e3', colText: '#101010' }); const paidInk = paint({ preset: '', theme: 'light', supporter: true, paperLight: '#fdf6e3', colText: '#101010' });
+  check('sin el plan pago el acento elegido se aplica, entra en la paleta y deja el tema en "Personalizado"', freeAcc['--accent-fill'] === '#e11d48' && TH.palette({ preset: '', theme: 'light', accent: '#e11d48' }).fill === '#e11d48' && TH.active({ preset: '', theme: 'light', accent: '#e11d48' }).custom === true && TH.active({ preset: '', theme: 'light' }).custom === false, freeAcc);
+  check('el fondo y los colores del texto a medida siguen pidiendo el plan pago', !freeInk['--bg'] && !freeInk['--fg'] && paidInk['--bg'] === '#fdf6e3' && paidInk['--fg'] === '#101010' && TH.active({ preset: '', theme: 'light', paperLight: '#fdf6e3' }).custom === false, [freeInk, paidInk]);
   check('con un acento propio el interruptor lleva ese color, la perilla contrasta 3:1 y gana un borde solo si se pierde contra la tarjeta', bad.length === 0 && edged > 0 && plain > 0, bad.slice(0, 8));
   const none = paint({ preset: 'marea', theme: 'dark' });
   check('sin acento propio no queda ni perilla ni borde a medida: valen los del tema', !('--accent-knob' in none) && !('--accent-edge' in none), none);
