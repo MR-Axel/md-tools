@@ -10,13 +10,17 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // El sitio, servido como en sharpmd.app
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.woff2': 'font/woff2', '.md': 'text/markdown' };
 const hits = [];
-const published = { mark: '' }; // una publicación nueva de la app: la página y un script cambian a la vez
+const published = { mark: '', version: '', cut: '', gone: '' }; // una publicación nueva de la app: la página y un script cambian a la vez
+// version: la app publicada dice otro número. cut: ese archivo no llega (se corta la conexión). gone: ese archivo ya no está.
 const site = http.createServer((req, res) => {
   const rel = decodeURIComponent(req.url.split('?')[0]); const file = path.join(root, rel.endsWith('/') ? rel + 'index.html' : rel);
   hits.push(rel);
+  if (published.cut === rel) { req.socket.destroy(); return; }
+  if (published.gone === rel) { res.writeHead(404); res.end(); return; }
   if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end(); return; }
   res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' });
   if (published.mark && rel === '/src/app.html') { res.end(fs.readFileSync(file, 'utf8').replace('<body>', '<body data-published="' + published.mark + '">')); return; }
+  if (published.version && rel === '/src/defaults.js') { res.end(fs.readFileSync(file, 'utf8').replace(/const VERSION = '[^']+'/, "const VERSION = '" + published.version + "'")); return; }
   if (published.mark && rel === '/src/kit.js') { res.end(fs.readFileSync(file, 'utf8') + '\nwindow.__published = "' + published.mark + '";\n'); return; }
   fs.createReadStream(file).pipe(res);
 });
@@ -623,6 +627,71 @@ try {
     const fresh = await page.evaluate(() => ({ page: document.body.dataset.published || '', script: window.__published || '' }));
     check('y la visita siguiente ya abre la versión nueva, página y scripts', fresh.page === 'v2' && fresh.script === 'v2', fresh);
     published.mark = '';
+    // Una versión nueva de verdad (cambia el número): la página abierta sigue con la suya, y cuando la nueva terminó de
+    // bajar lo dice, con un botón para recargar. Recargar guarda primero lo que se estaba escribiendo.
+    const fresh0 = () => page.evaluate(() => { const b = document.querySelector('.lmd-fresh'); if (!b) return null; const r = b.getBoundingClientRect(); return { text: b.querySelector('span').textContent, go: b.querySelector('[data-fresh=go]').textContent, later: b.querySelector('[data-fresh=later]').getAttribute('aria-label'), role: b.getAttribute('role'), n: document.querySelectorAll('.lmd-fresh, .lmd-orphan').length, inside: r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight }; });
+    const keptVersion = () => page.evaluate(async () => { const out = []; for (const k of await caches.keys()) { const d = await (await caches.open(k)).match('/src/defaults.js'); if (d) out.push((/VERSION = '([^']+)'/.exec(await d.text()) || [])[1]); } return out.join(','); });
+    // La página recién recargada registra el service worker de su versión, que arma su caché: se espera a que termine.
+    const settled = async (v) => { for (let i = 0; i < 80; i++) { if (await page.evaluate(async (ver) => { const c = navigator.serviceWorker.controller; const keys = await caches.keys(); if (!c || !c.scriptURL.endsWith('?v=' + ver) || keys.join() !== 'sharpmd-' + ver) return false; return !!(await (await caches.open(keys[0])).match('/icons/icon512.png')); }, v).catch(() => false)) return; await page.waitForTimeout(250); } };
+    published.version = '9.8.7';
+    await page.goto(home + '?f=' + encodeURIComponent('local/offline.md')); await page.waitForSelector('.markdown-body h1');
+    const quiet = await page.evaluate(() => ({ v: LMD.VERSION, bar: !!document.querySelector('.lmd-fresh') }));
+    check('con una versión nueva publicada, la visita abre con la guardada y todavía sin aviso', quiet.v === reg.v && !quiet.bar, quiet);
+    await page.waitForSelector('.lmd-fresh', { timeout: 15000 }).catch(() => {});
+    const bar = await fresh0();
+    check('cuando la nueva terminó de bajar, la página lo dice: un aviso solo, con Recargar y una forma de dejarlo para después', !!bar && bar.text === 'There is a new version.' && bar.go === 'Reload' && bar.later === 'Not now' && bar.role === 'status' && bar.n === 1 && bar.inside, bar);
+    check('y la caché ya tiene la versión nueva', (await keptVersion()) === '9.8.7', await keptVersion());
+    await fits(page, 'el aviso de versión nueva');
+    await page.evaluate(() => { window.__MDT_FRESH.show({ version: '9.8.7', stored: true }); window.__MDT_FRESH.show({ version: '9.8.7', stored: true }); });
+    check('otro aviso de lo mismo no suma un cartel', (await fresh0()).n === 1);
+    await page.tap('[data-act=mode-edit]'); await page.waitForSelector('.lmd-editable');
+    await page.locator('.lmd-article > p.lmd-editable').first().tap(); await page.keyboard.press('End'); await page.keyboard.type(' Typed before reloading.');
+    await page.tap('.lmd-fresh [data-fresh=go]');
+    await page.waitForFunction(() => window.LMD && LMD.VERSION === '9.8.7' && !!document.querySelector('.markdown-body'), null, { timeout: 15000 }).catch(() => {});
+    const went = await page.evaluate(async () => ({ v: window.LMD && LMD.VERSION, bar: !!document.querySelector('.lmd-fresh'), text: (await LMD.store.noteGet('offline.md')).text }));
+    check('Recargar deja la página en la versión nueva, sin el aviso', went.v === '9.8.7' && !went.bar, [went.v, went.bar]);
+    check('y lo que se estaba escribiendo quedó guardado antes de recargar', /Typed before reloading\./.test(went.text), went.text);
+    await settled('9.8.7');
+    // Un archivo de la lista que no llega (la conexión se corta): la vuelta no guarda nada, pero ya vio que hay versión
+    // nueva y lo dice igual. Recargar pasa por alto la caché: nadie queda clavado en una versión vieja.
+    published.version = '9.8.8'; published.cut = '/vendor/highlight.min.js';
+    await page.goto(home); await page.waitForSelector('.lmd-home');
+    await page.waitForSelector('.lmd-fresh', { timeout: 15000 }).catch(() => {});
+    const stuck = { bar: await fresh0(), kept: await keptVersion(), v: await page.evaluate(() => LMD.VERSION), keys: await page.evaluate(async () => { const o = []; for (const k of await caches.keys()) o.push(k + ':' + (await (await caches.open(k)).keys()).length); return o; }) };
+    check('si un archivo no llega, la caché queda como estaba, entera, y la página avisa igual', !!stuck.bar && stuck.kept === '9.8.7' && stuck.v === '9.8.7', stuck);
+    await page.tap('.lmd-fresh [data-fresh=go]');
+    await page.waitForFunction(() => window.LMD && LMD.VERSION === '9.8.8' && !!document.querySelector('.lmd-home'), null, { timeout: 15000 }).catch(() => {});
+    check('y Recargar abre la versión nueva igual, derecho de la red', (await page.evaluate(() => window.LMD && LMD.VERSION)) === '9.8.8');
+    published.cut = '';
+    await settled('9.8.8');
+    // Una pestaña que queda abierta: sin navegar, la página pregunta cada tanto y al volver a ella. Mirar es un solo pedido.
+    await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(4500); // la vuelta de esta visita ya terminó
+    let from = hits.length;
+    await page.evaluate(() => navigator.serviceWorker.controller.postMessage({ type: 'lmd-check' })); await page.waitForTimeout(900);
+    check('sin versión nueva, mirar pide un solo archivo y no avisa nada', J(hits.slice(from)) === J(['/src/defaults.js']) && !(await fresh0()), hits.slice(from).slice(0, 4));
+    published.version = '9.8.9'; from = hits.length;
+    await page.evaluate(() => navigator.serviceWorker.controller.postMessage({ type: 'lmd-check' }));
+    await page.waitForSelector('.lmd-fresh', { timeout: 15000 }).catch(() => {});
+    check('con una versión nueva, la pestaña abierta se entera sin navegar: baja todo y avisa', !!(await fresh0()) && (await keptVersion()) === '9.8.9' && hits.slice(from).length > 40 && (await page.evaluate(() => LMD.VERSION)) === '9.8.8', [await keptVersion(), hits.slice(from).length]);
+    await page.tap('.lmd-fresh [data-fresh=later]'); await page.waitForTimeout(150);
+    await page.evaluate(() => window.__MDT_FRESH.show({ version: '9.8.9', stored: true }));
+    check('dejarlo para después lo saca, y esa versión no vuelve a avisar', !(await fresh0()));
+    // Un archivo de la lista que el servidor ya no tiene no frena la vuelta: se saca de la caché.
+    published.version = '9.9.0'; published.gone = '/vendor/highlight.min.js';
+    await page.goto(home); await page.waitForSelector('.lmd-home');
+    let moved = '';
+    for (let i = 0; i < 50 && moved !== '9.9.0'; i++) { await page.waitForTimeout(300); moved = await keptVersion(); }
+    check('un archivo que ya no existe no frena la actualización, y deja de estar guardado', moved === '9.9.0' && !(await page.evaluate(async () => { for (const k of await caches.keys()) if (await (await caches.open(k)).match('/vendor/highlight.min.js')) return true; return false; })), moved);
+    published.gone = '';
+    // Sin conexión no pasa nada: ni se pregunta ni se avisa.
+    published.version = '9.9.1';
+    await ctx.setOffline(true);
+    await page.goto(home, { timeout: 15000 }).catch(() => {}); await page.waitForSelector('.lmd-home', { timeout: 8000 }).catch(() => {});
+    from = hits.length; await page.waitForTimeout(4200);
+    check('sin conexión la app abre y no avisa nada', (await page.evaluate(() => !!window.LMD && !document.querySelector('.lmd-fresh')).catch(() => false)) && hits.slice(from).every((h) => h === '/sw.js'), hits.slice(from).slice(0, 3)); // el navegador mira por su cuenta si cambió sw.js
+    await ctx.setOffline(false);
+    published.version = '';
     // Una versión nueva arma su caché y borra la anterior. La app registra la suya en reposo tras cargar (hasta 3 s): se espera, o pisa la de la prueba.
     await page.waitForTimeout(3800);
     const next = await page.evaluate(async () => {

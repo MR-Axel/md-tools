@@ -92,6 +92,33 @@
     bar.appendChild(b);
     document.body.appendChild(bar);
   }
+  // Versión web: el service worker bajó (o llegó a ver) una versión distinta de la que corre esta página (sw.js lo
+  // manda, web.js lo recibe). Un aviso solo, con el aspecto del de arriba y una forma de cerrarlo. Recargar guarda
+  // primero; si algo queda sin guardar, no recarga. stored: false = la caché no se pudo renovar entera: se la borra
+  // antes de recargar, y la página nueva llega derecho de la red.
+  let freshNow = null; let freshSkip = '';
+  function freshNotice(d) {
+    if (!d || !d.version || d.version === LMD.VERSION || d.version === freshSkip || orphan) return;
+    freshNow = d;
+    if (document.querySelector('.lmd-fresh')) return;
+    const bar = el('div', { class: 'lmd-orphan lmd-fresh', role: 'status' });
+    bar.appendChild(el('span', { text: T('Hay una versión nueva.') }));
+    const go = el('button', { type: 'button', 'data-fresh': 'go', text: T('Recargar') });
+    const later = el('button', { type: 'button', class: 'lmd-update-x', 'data-fresh': 'later', title: T('Ahora no'), 'aria-label': T('Ahora no') }, ICON.close);
+    go.addEventListener('click', async () => {
+      go.disabled = true;
+      try { await save(false); } catch (e) { /* se mira abajo si quedó algo sin guardar */ }
+      // En la cola de la nube o en la sesión (una nota en memoria) lo escrito ya está a salvo. Si no, se espera.
+      if (dirty && stashed !== raw && !(appRoot && appRoot.id === 'mem')) { go.disabled = false; flash(T('Guardá los cambios antes de recargar'), 'warn'); return; }
+      if (!freshNow.stored && navigator.onLine !== false && window.caches) {
+        try { const keys = await caches.keys(); await Promise.all(keys.filter((k) => /^sharpmd-/.test(k)).map((k) => caches.delete(k))); } catch (e) { /* queda la caché: se renueva en la visita siguiente */ }
+      }
+      location.reload();
+    });
+    later.addEventListener('click', () => { freshSkip = freshNow.version; bar.remove(); });
+    bar.appendChild(go); bar.appendChild(later);
+    document.body.appendChild(bar);
+  }
   const bg = (msg) => new Promise((resolve) => {
     if (!alive()) { markOrphan(); resolve({ ok: false, error: 'orphan' }); return; }
     try {
@@ -3688,6 +3715,8 @@
       flushTyping();
       if (dirty && appRoot && (appRoot.kind === 'local' || appRoot.kind === 'cloud')) { clearTimeout(autosaveTimer); save(false); }
     });
+    // Versión nueva ya bajada: web.js guarda el aviso del service worker hasta que haya quien lo muestre.
+    if (window.__MDT_FRESH) { window.__MDT_FRESH.show = freshNotice; freshNotice(window.__MDT_FRESH.got); }
     // El depósito cambió desde el otro lado (la web o la extensión): la lista se vuelve a leer.
     window.addEventListener('lmd-store-changed', () => { if (APP && ui.paneFiles.dataset.loaded) loadTree(); });
     window.addEventListener('online', () => {

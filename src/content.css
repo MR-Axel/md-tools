@@ -445,6 +445,12 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-btn-fill { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--accent-fg); font-weight: 600; }
 .lmd-orphan { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 80; display: flex; align-items: center; gap: 14px; max-width: min(720px, calc(100vw - 32px)); padding: 12px 14px 12px 18px; border: 1px solid var(--accent-fill); border-radius: 12px; background: var(--bg); color: var(--fg); box-shadow: var(--shadow); font-size: 13.5px; line-height: 1.4; }
 .lmd-orphan button { flex: none; height: 34px; padding: 0 14px; border: 0; border-radius: 8px; background: var(--accent-fill); color: var(--accent-fg); font: inherit; font-weight: 600; cursor: pointer; }
+/* El aviso de versión nueva de la web: el mismo cartel, con una cruz para dejarlo para después. */
+.lmd-fresh { gap: 10px; padding-right: 10px; }
+.lmd-fresh button:disabled { opacity: .6; cursor: default; }
+.lmd-fresh .lmd-update-x { width: 30px; height: 30px; padding: 0; background: transparent; color: var(--fg-muted); }
+.lmd-fresh .lmd-update-x:hover { background: var(--accent-soft); color: var(--fg); }
+.lmd-fresh .lmd-update-x svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .lmd-ask { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 20px; background: rgba(0, 0, 0, 0.5); }
 .lmd-ask-card { width: min(480px, 100%); padding: 22px 24px; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); font-size: 14.5px; line-height: 1.5; }
 .lmd-ask-card h3 { margin: 0 0 8px; font-size: 17px; }
@@ -1630,6 +1636,104 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-tl-opts .lmd-row select { flex: 0 1 220px; min-width: 0; width: auto; }
 .lmd-tl-opts .lmd-row:last-child { margin-bottom: 0; }
 .lmd-tl-opts .lmd-btn { flex: none; }
+
+/* La vista flotante de una herramienta (tools.js): una escena de 232 x 146 dibujada con cajitas y líneas, con los
+   colores del tema y su acento. No recibe el cursor ni el foco. Cada escena deja a la vista su estado final: sin
+   animación (movimiento reducido) se entiende igual. */
+.lmd-peek { --pk-ink: color-mix(in srgb, var(--fg-faint) 42%, var(--bg)); position: fixed; left: 0; top: 0; z-index: 62; box-sizing: border-box; width: 232px; height: 146px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); box-shadow: var(--shadow); overflow: hidden; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .14s, visibility 0s .14s; font: 11px/1.4 var(--lmd-mono); color: var(--fg); }
+.lmd-peek.lmd-on { opacity: 1; visibility: visible; transition-delay: 0s; }
+.lmd-peek * { box-sizing: border-box; }
+.lmd-peek i, .lmd-peek b { display: block; font-style: normal; font-weight: 400; }
+.lmd-pk { position: relative; height: 100%; }
+.lmd-pk .l { height: 7px; margin-bottom: 9px; border-radius: 4px; background: var(--pk-ink); transform-origin: 0 50%; }
+.lmd-pk .l:nth-child(2n) { width: 82%; } .lmd-pk .l:nth-child(3n) { width: 58%; }
+.lmd-pk .bx { border: 1px solid var(--line); border-radius: 7px; background: var(--bg-soft); }
+.lmd-pk .a { animation: lmd-pk-a 4s steps(1) infinite; } .lmd-pk .b { animation: lmd-pk-b 4s steps(1) infinite; }
+.lmd-pk .hd { display: flex; align-items: center; gap: 9px; height: 20px; margin-bottom: 16px; }
+.lmd-pk .eq { display: flex; align-items: center; gap: 3px; height: 18px; }
+.lmd-pk .eq i { width: 3px; height: 100%; border-radius: 2px; background: var(--accent-fill); animation: lmd-pk-eq .8s ease-in-out infinite alternate; }
+.lmd-pk .eq i:nth-child(2n) { height: 55%; animation-delay: -.3s; } .lmd-pk .eq i:nth-child(3n) { height: 80%; animation-delay: -.55s; }
+@keyframes lmd-pk-a { 0% { opacity: 1; } 50%, 100% { opacity: 0; } }
+@keyframes lmd-pk-b { 0% { opacity: 0; } 50%, 100% { opacity: 1; } }
+@keyframes lmd-pk-eq { from { transform: scaleY(.25); } to { transform: none; } }
+@keyframes lmd-pk-in { 0%, 38% { opacity: 0; transform: translateY(4px); } 52%, 100% { opacity: 1; transform: none; } }
+@keyframes lmd-pk-w1 { 0% { transform: scaleX(0); } 28%, 100% { transform: none; } }
+@keyframes lmd-pk-w2 { 0%, 28% { transform: scaleX(0); } 54%, 100% { transform: none; } }
+@keyframes lmd-pk-w3 { 0%, 54% { transform: scaleX(0); } 78%, 100% { transform: none; } }
+@keyframes lmd-pk-w4 { 0%, 66% { transform: scaleX(0); } 88%, 100% { transform: none; } }
+@keyframes lmd-pk-pulse { 0%, 100% { transform: none; } 50% { transform: scale(1.3); } }
+/* leer en voz alta: la marca avanza por el texto */
+.lmd-pk-speak .pl { width: 0; height: 0; border: 7px solid transparent; border-left: 11px solid var(--accent-fill); border-right: 0; }
+.lmd-pk-speak .tx { position: relative; }
+.lmd-pk-speak .tx .l { width: 100%; margin-bottom: 11px; } .lmd-pk-speak .tx .l:last-child { width: 64%; }
+.lmd-pk-speak .hl { position: absolute; left: -3px; top: -4px; width: 48px; height: 15px; border-radius: 4px; background: color-mix(in srgb, var(--accent-fill) 34%, transparent); box-shadow: inset 0 -2px 0 var(--accent-fill); animation: lmd-pk-read 4.2s steps(1) infinite; }
+@keyframes lmd-pk-read { 0% { transform: none; } 16% { transform: translate(51px, 0); } 33% { transform: translate(102px, 0); } 50% { transform: translate(153px, 0); } 66% { transform: translate(0, 18px); } 83% { transform: translate(51px, 18px); } }
+/* dictado: se habla y los renglones se escriben */
+.lmd-pk-dictate .mc { width: 10px; height: 17px; border-radius: 5px; background: var(--accent-fill); }
+.lmd-pk-dictate > .l:nth-child(2) { animation: lmd-pk-w1 3.6s linear infinite; } .lmd-pk-dictate > .l:nth-child(3) { animation: lmd-pk-w2 3.6s linear infinite; } .lmd-pk-dictate > .l:nth-child(4) { animation: lmd-pk-w3 3.6s linear infinite; }
+/* tablero: una tarjeta pasa de columna */
+.lmd-pk-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.lmd-pk-board .bx { padding: 6px; }
+.lmd-pk-board .bx > i:first-child { height: 5px; width: 60%; margin: 2px 0 8px; border-radius: 3px; background: var(--pk-ink); }
+.lmd-pk-board .cd { height: 22px; margin-bottom: 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); }
+.lmd-pk-board .mv { position: relative; border-color: var(--accent-fill); animation: lmd-pk-move 3.2s ease-in-out infinite; }
+@keyframes lmd-pk-move { 0%, 20% { transform: none; } 35% { transform: translate(55%, 6px) rotate(4deg); } 50%, 100% { transform: translate(calc(100% + 22px), 28px); } }
+/* presentación: una diapositiva y la que sigue */
+.lmd-pk-present .bx { position: relative; width: 152px; height: 88px; margin: 0 auto 11px; }
+.lmd-pk-present .s { position: absolute; inset: 15px 16px 0; }
+.lmd-pk-present .s .l:first-child { height: 10px; width: 64%; margin-bottom: 14px; background: var(--accent-fill); }
+.lmd-pk-present .b .l:first-child { width: 42%; } .lmd-pk-present .b .l:last-child { width: 76%; }
+.lmd-pk-present .dt { position: relative; display: flex; gap: 6px; width: 30px; margin: 0 auto; }
+.lmd-pk-present .dt i { width: 6px; height: 6px; border-radius: 50%; background: var(--pk-ink); }
+.lmd-pk-present .dt .on { position: absolute; left: 0; top: 0; background: var(--accent-fill); animation: lmd-pk-next 4s steps(1) infinite; }
+@keyframes lmd-pk-next { 0% { transform: none; } 50%, 100% { transform: translateX(12px); } }
+/* nota diaria: el día de hoy en el mes, y su nota */
+.lmd-pk-daily { display: flex; gap: 14px; }
+.lmd-pk-daily .cal { flex: none; display: grid; grid-template-columns: repeat(7, 10px); grid-auto-rows: 10px; gap: 6px 5px; padding-top: 18px; }
+.lmd-pk-daily .cal i { border-radius: 3px; background: var(--pk-ink); opacity: .6; }
+.lmd-pk-daily .cal .t { background: var(--accent-fill); opacity: 1; animation: lmd-pk-pulse 1.8s ease-in-out infinite; }
+.lmd-pk-daily .bx { flex: 1; min-width: 0; padding: 12px 9px 0; animation: lmd-pk-in 3.6s infinite; }
+.lmd-pk-daily .bx .l:first-child { width: 60%; margin-bottom: 13px; background: var(--accent-fill); }
+/* exportar a Word e importar: de un formato a otro */
+.lmd-pk-conv { display: flex; align-items: center; }
+.lmd-pk-conv .bx { flex: none; width: 72px; height: 98px; padding: 9px 9px 0; }
+.lmd-pk-conv b { margin-bottom: 10px; color: var(--fg-muted); }
+.lmd-pk-conv .to { border-color: var(--accent-fill); animation: lmd-pk-in 3.6s infinite; }
+.lmd-pk-conv .to b { color: var(--accent); font-weight: 600; }
+.lmd-pk-conv .ar { position: relative; flex: 1; height: 2px; margin: 0 11px 0 9px; border-radius: 1px; background: var(--pk-ink); }
+.lmd-pk-conv .ar::after { content: ""; position: absolute; right: -2px; top: -3px; width: 8px; height: 8px; border: solid var(--pk-ink); border-width: 2px 2px 0 0; transform: rotate(45deg); }
+.lmd-pk-conv .st { flex: none; display: grid; gap: 8px; width: 72px; }
+.lmd-pk-conv .st b { margin: 0; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg-soft); animation: lmd-pk-pick 3.6s steps(1) infinite; }
+.lmd-pk-conv .st b:nth-child(2) { animation-delay: 1.2s; } .lmd-pk-conv .st b:nth-child(3) { animation-delay: 2.4s; }
+@keyframes lmd-pk-pick { 0% { border-color: var(--accent-fill); color: var(--fg); } 33%, 100% { border-color: var(--line); color: var(--fg-muted); } }
+/* mapa de enlaces: dos notas llegan a la que está abierta */
+.lmd-pk-map i { position: absolute; }
+.lmd-pk-map .n { width: 14px; height: 14px; border: 2px solid var(--pk-ink); border-radius: 50%; background: var(--bg); }
+.lmd-pk-map .n1 { left: 14px; top: 12px; } .lmd-pk-map .n2 { left: 160px; top: 6px; }
+.lmd-pk-map .n3 { left: 92px; top: 84px; border-color: var(--accent-fill); background: var(--accent-fill); animation: lmd-pk-pulse 1.8s ease-in-out infinite; }
+.lmd-pk-map .e { height: 2px; border-radius: 1px; background: var(--pk-ink); transform-origin: 0 50%; }
+.lmd-pk-map .e1 { left: 21px; top: 18px; width: 146px; transform: rotate(-2.4deg); }
+.lmd-pk-map .e2 { left: 21px; top: 18px; width: 106px; transform: rotate(42.7deg); }
+.lmd-pk-map .e3 { left: 167px; top: 12px; width: 103px; transform: rotate(131.1deg); }
+.lmd-pk-map .e2, .lmd-pk-map .e3 { background: var(--accent-fill); animation: lmd-pk-grow 3.6s ease-out infinite; }
+@keyframes lmd-pk-grow { 0%, 12% { width: 0; } 55% { width: 104px; } }
+/* JSON y YAML: un árbol que se pliega */
+.lmd-pk-json .r { display: flex; align-items: center; gap: 7px; height: 19px; overflow: hidden; }
+.lmd-pk-json .in { padding-left: 16px; } .lmd-pk-json .in2 { padding-left: 32px; }
+.lmd-pk-json .r > i:first-child:not(.ct) { margin-left: 15px; }
+.lmd-pk-json .v { color: var(--accent); }
+.lmd-pk-json .ct { width: 8px; height: 5px; border: 4px solid transparent; border-top: 5px solid var(--fg-muted); border-bottom: 0; }
+.lmd-pk-json .tg { animation: lmd-pk-turn 4.4s steps(1) infinite; } .lmd-pk-json .kid { animation: lmd-pk-fold 4.4s steps(1) infinite; }
+@keyframes lmd-pk-turn { 0%, 78%, 100% { transform: none; } 45% { transform: rotate(-90deg); } }
+@keyframes lmd-pk-fold { 0%, 78%, 100% { height: 19px; } 45% { height: 0; } }
+/* asistente: se le pide algo y contesta */
+.lmd-pk-ai .bx { display: flex; align-items: center; gap: 9px; height: 30px; margin-bottom: 16px; padding: 0 11px; }
+.lmd-pk-ai .sp { flex: none; width: 8px; height: 8px; border-radius: 2px; background: var(--accent-fill); transform: rotate(45deg); }
+.lmd-pk-ai .bx .l { width: 96px; margin: 0; animation: lmd-pk-w1 3.6s linear infinite; }
+.lmd-pk-ai > .l { background: color-mix(in srgb, var(--accent-fill) 55%, var(--bg)); }
+.lmd-pk-ai > .l:nth-child(2) { animation: lmd-pk-w2 3.6s linear infinite; } .lmd-pk-ai > .l:nth-child(3) { animation: lmd-pk-w3 3.6s linear infinite; } .lmd-pk-ai > .l:nth-child(4) { animation: lmd-pk-w4 3.6s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .lmd-peek { transition: none; } .lmd-peek *, .lmd-peek *::after { animation: none !important; } .lmd-pk .b { display: none; } }
+@media print { .lmd-peek { display: none; } }
 
 /* Leer en voz alta: el bloque que se está leyendo y los controles, abajo al centro. */
 .lmd-article .lmd-speaking { background: var(--accent-soft); box-shadow: 0 0 0 5px var(--accent-soft); border-radius: 3px; transition: background-color .15s, box-shadow .15s; }

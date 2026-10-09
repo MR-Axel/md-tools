@@ -692,10 +692,24 @@ try {
 
   // ---------- Ajustes > Instalar en la web sola ----------
   console.log('Ajustes > Instalar, en la web sin la extensión');
-  await sp.goto(R.home); await sp.waitForSelector('.lmd-home'); await openInst(sp);
+  // Qué navegador dice ser: Chrome y Edge se reconocen por la marca que declaran, no por el nombre en el agente de usuario.
+  const brand = (list) => sp.evaluate((b) => Object.defineProperty(navigator, 'userAgentData', { configurable: true, value: { brands: b.map((x) => ({ brand: x, version: '140' })) } }), list);
+  const reopenInst = async () => { await sp.click('[data-act=close-panel]'); await sp.waitForTimeout(200); await openInst(sp); return paneOf(sp); };
+  await sp.goto(R.home); await sp.waitForSelector('.lmd-home'); await brand(['Chromium', 'Not A Brand']); await openInst(sp);
   const np = await paneOf(sp);
   check('sin la extensión: no hay dónde elegir, y un botón lleva a conseguirla', J(np.heads) === J(['Chrome extension', 'Install as an app', 'Open .md files with a double click']) && np.radios.length === 0 && /Not in this browser\./.test(np.text) && np.links.some((l) => l === 'Get the extension https://github.com/SharpMD/sharpmd#install'), np);
-  check('sin aviso del navegador, dice cómo instalarla desde el menú', /From the browser menu: Install SharpMD\./.test(np.text) && !np.buttons.includes('Install') && /Its own window and "Open with" for \.md files on Windows\./.test(np.text));
+  const NO_OFFER = 'This browser does not offer to install apps. It works in Chrome and Edge.'; const MENU = 'From the browser menu: Install SharpMD.'; const WAY_OUT = 'If the menu has no such option, this browser does not install apps; use Chrome or Edge.';
+  check('recién abierta, mientras el aviso del navegador todavía puede llegar, solo dice lo que da', /Its own window and "Open with" for \.md files on Windows\./.test(np.text) && !np.text.includes(MENU) && !np.text.includes(NO_OFFER) && !np.buttons.includes('Install'), np.text);
+  await sp.waitForFunction((t) => document.querySelector('[data-inst-pane]').textContent.includes(t), NO_OFFER, { timeout: 9000 }).catch(() => {});
+  const late = await paneOf(sp);
+  check('pasados unos segundos sin aviso, en un navegador que no es Chrome ni Edge: dice que no instala apps, sin mandar a un menú que no está', late.text.includes(NO_OFFER) && !late.text.includes(MENU) && !late.text.includes('Its own window') && !late.buttons.includes('Install') && J(late.heads) === J(np.heads), late.text);
+  for (const b of [['Chromium', 'Google Chrome'], ['Microsoft Edge', 'Chromium']]) {
+    await brand(b); const known = await reopenInst();
+    check('en ' + b.join(' / ') + ' sin aviso (ya instalada o descartada): cómo instalarla desde el menú, y qué hacer si no está', known.text.includes(MENU) && known.text.includes(WAY_OUT) && !known.text.includes(NO_OFFER) && !known.buttons.includes('Install') && /Its own window and "Open with" for \.md files on Windows\./.test(known.text), known.text);
+  }
+  await sp.evaluate(() => Object.defineProperty(navigator, 'userAgentData', { configurable: true, value: undefined })); // Firefox no lo trae
+  check('un navegador que no declara marcas tampoco manda al menú', (await reopenInst()).text.includes(NO_OFFER));
+  await brand(['Chromium', 'Not A Brand']); await reopenInst();
   await sp.evaluate(() => { window.dispatchEvent(Object.assign(new Event('beforeinstallprompt', { cancelable: true }), { prompt: async () => { window.__prompted = true; }, userChoice: Promise.resolve({ outcome: 'accepted' }) })); });
   await sp.waitForSelector('[data-inst=app]', { timeout: 4000 }).catch(() => {});
   check('cuando el navegador lo permite, aparece el botón Instalar', (await paneOf(sp)).buttons.includes('Install'));

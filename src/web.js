@@ -60,5 +60,23 @@
       navigator.serviceWorker.register(base + 'sw.js?v=' + encodeURIComponent(version), { scope: base }).catch(() => { /* sin service worker la app anda igual, con conexión */ });
     };
     window.addEventListener('load', () => { if (window.requestIdleCallback) requestIdleCallback(register, { timeout: 3000 }); else setTimeout(register, 400); });
+    // El service worker avisa cuando lo que bajó por detrás es de otra versión que la de esta página (sw.js, refresh).
+    // El aviso lo dibuja content.js, que sabe guardar antes de recargar; si el mensaje llega antes que él, espera acá.
+    const fresh = window.__MDT_FRESH = { got: null, show: null };
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      const d = e.data;
+      if (!d || d.type !== 'lmd-fresh' || !d.version || !window.LMD || d.version === LMD.VERSION) return;
+      fresh.got = { version: String(d.version), stored: d.stored !== false };
+      if (fresh.show) fresh.show(fresh.got);
+    });
+    // Una pestaña que queda abierta días no vuelve a navegar, y sin navegar el service worker no mira nada: al volver
+    // a ella, y cada tanto, se le pide que mire la versión (un solo pedido chico; la vuelta entera solo si cambió).
+    let asked = Date.now();
+    const look = () => {
+      if (document.hidden || navigator.onLine === false || Date.now() - asked < 30 * 60000) return;
+      asked = Date.now();
+      const sw = navigator.serviceWorker.controller; if (sw) sw.postMessage({ type: 'lmd-check' });
+    };
+    document.addEventListener('visibilitychange', look); setInterval(look, 10 * 60000);
   }
 })();

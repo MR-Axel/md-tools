@@ -628,6 +628,7 @@
       "Cambio deshecho. Ctrl+Y lo rehace": "Change undone. Ctrl+Y redoes it", "Cambio rehecho": "Change redone", "No hay cambios para rehacer": "Nothing to redo",
       "Abrir": "Open", "Nuevo": "New", "Versión {v}": "Version {v}", "Al día": "Up to date", "Buscar actualizaciones": "Check for updates",
       "Hay una versión nueva: {v}": "New version available: {v}",
+      "Hay una versión nueva.": "There is a new version.", "Recargar": "Reload", "Guardá los cambios antes de recargar": "Save your changes before reloading",
       "Descargá el ZIP, reemplazá la carpeta de la extensión y tocá Aplicar.": "Download the ZIP, replace the extension folder and click Apply.",
       "No se pudo consultar": "Could not check",
       "Nombre del archivo nuevo": "Name for the new file", "nota": "note",
@@ -729,6 +730,8 @@
       "Ya está instalada.": "Already installed.",
       "Se instala desde la app web.": "It installs from the web app.", "Abrir la app web": "Open the web app",
       "Desde el menú del navegador: Instalar SharpMD. En iPhone: Compartir, Agregar a inicio.": "From the browser menu: Install SharpMD. On iPhone: Share, Add to Home Screen.",
+      "Este navegador no ofrece instalar apps. Funciona en Chrome y Edge.": "This browser does not offer to install apps. It works in Chrome and Edge.",
+      "Si el menú no trae esa opción, este navegador no instala apps: usá Chrome o Edge.": "If the menu has no such option, this browser does not install apps; use Chrome or Edge.",
       "Abrir los .md con doble clic": "Open .md files with a double click",
       "Clic derecho en un .md, Abrir con, Elegir otra aplicación, Chrome, Siempre.": "Right-click a .md file, Open with, Choose another app, Chrome, Always.",
       "El acceso a archivos ya está activado.": "File access is already on.",
@@ -1998,7 +2001,7 @@
   const fileLink = (url) => WEB_APP_URL + '#open=' + encodeURIComponent(url);
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.70.0';
+  const VERSION = '2.71.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, PLUGIN_GROUPS, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);
