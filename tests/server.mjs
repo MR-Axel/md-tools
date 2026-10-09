@@ -212,6 +212,19 @@ try {
   for (const [pa, tx] of [['alfa/plan.md', '# Plan\n\nPaso uno.\n'], ['alfa/notas/reunion.md', 'reunion'], ['beta/ideas.md', 'ideas'], ['suelta.md', 'suelta']]) await call('PUT', '/notes/' + pa, { text: tx }, is);
   const mk = async (body) => (await call('POST', '/tokens', body, is)).json;
   const full = (await mk({ name: 'todo' })).token; const lim = await mk({ name: 'alfa', folder: 'alfa/' });
+  // Regenerar: el mismo token con un secreto nuevo, en un solo pedido.
+  { const reMade = await mk({ name: 'Para regenerar', folder: 'alfa/', share: true }); const count0 = (await call('GET', '/tokens', undefined, is)).json.length;
+    const tl = (tk) => call('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/list' }, tk);
+    const rd = (tk, p) => call('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'read_note', arguments: { path: p } } }, tk);
+    const wasIn = (await tl(reMade.token)).status; const usedBefore = (await call('GET', '/tokens', undefined, is)).json.find((x) => x.id === reMade.id).used;
+    const denied = [await call('POST', '/tokens/' + reMade.id + '/regenerate', {}, s), await call('POST', '/tokens/' + reMade.id + '/regenerate', {}, reMade.token), await call('POST', '/tokens/' + reMade.id + '/regenerate', {}), await call('POST', '/tokens/999999/regenerate', {}, is)];
+    check('regenerar un token es cosa de su cuenta, con la sesión: ni otra cuenta, ni el propio token, ni nadie, ni un número que no existe', denied.map((x) => x.status).join() === '404,401,401,404' && (await tl(reMade.token)).status === 200, denied.map((x) => [x.status, x.json]));
+    const re = await call('POST', '/tokens/' + reMade.id + '/regenerate', {}, is);
+    const rows = (await call('GET', '/tokens', undefined, is)).json; const row = rows.find((x) => x.id === reMade.id) || {};
+    check('regenerar devuelve un token nuevo con el mismo número, nombre, carpeta y permiso, y la lista no suma ni pierde tokens', re.status === 200 && /^mdt_/.test(re.json.token) && re.json.token !== reMade.token && re.json.id === reMade.id && re.json.name === 'Para regenerar' && re.json.scope === 'alfa' && re.json.share === true && re.json.mcp_url.endsWith('/mcp') && rows.length === count0 && row.name === 'Para regenerar' && row.scope === 'alfa' && row.share === true && usedBefore > 0 && row.used == null && !JSON.stringify(rows).includes(re.json.token), [re.json, row, rows.length, count0]);
+    const newTools = await tl(re.json.token); const inside = await rd(re.json.token, 'alfa/plan.md'); const outside = await rd(re.json.token, 'beta/ideas.md');
+    check('el secreto viejo deja de entrar en el acto, y el nuevo entra con el mismo alcance y el mismo permiso', wasIn === 200 && (await tl(reMade.token)).status === 401 && newTools.status === 200 && newTools.json.result.tools.some((x) => x.name === 'share_note') && !inside.json.result.isError && /Paso uno/.test(inside.json.result.content[0].text) && outside.json.result.isError === true, [wasIn, newTools.status, inside.json, outside.json]);
+    await call('DELETE', '/tokens/' + reMade.id, undefined, is); }
   const ask = async (tok, name, args) => { const r = await call('POST', '/mcp', { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name, arguments: args || {} } }, tok); const c = r.json.result; let v = c.content[0].text; try { v = JSON.parse(v); } catch (e) { /* texto */ } return { v, err: !!c.isError }; };
   const carpetas = (await ask(full, 'list_folders')).v;
   check('MCP: lista las carpetas con su cantidad de notas', JSON.stringify(carpetas) === JSON.stringify([{ folder: 'alfa', notes: 2 }, { folder: 'alfa/notas', notes: 1 }, { folder: 'beta', notes: 1 }]), carpetas);

@@ -105,7 +105,7 @@
   let fresh = null;
   const day = (ms) => new Date(ms).toLocaleDateString(LMD.lang() === 'en' ? 'en-US' : 'es-AR', { day: 'numeric', month: 'short' });
   const tokenRow = (k) => '<li><span>' + esc(k.name) + ' · ' + (k.scope ? T('Carpeta {a}', { a: esc(k.scope) + '/' }) : T('Todas las notas del equipo')) + ' · ' + T(k.write ? (k.share ? 'lee, escribe y comparte' : 'lee y escribe') : 'solo lee') +
-    ' · ' + (k.used ? T('usado el {a}', { a: day(k.used) }) : T('sin usar')) + '</span><button type="button" data-t="tok-rm" data-id="' + k.id + '" data-name="' + esc(k.name) + '">' + T('Revocar') + '</button></li>';
+    ' · ' + (k.used ? T('usado el {a}', { a: day(k.used) }) : T('sin usar')) + '</span><span class="lmd-team-acts"><button type="button" data-t="tok-regen" data-id="' + k.id + '" data-name="' + esc(k.name) + '">' + T('Regenerar') + '</button><button type="button" data-t="tok-rm" data-id="' + k.id + '" data-name="' + esc(k.name) + '">' + T('Revocar') + '</button></span></li>';
   function tokenBlock(mine) {
     const made = fresh && fresh.team === mine.id && Date.now() - fresh.at < 600000 ? fresh : (fresh = null);
     const field = (label, value) => '<div class="lmd-field"><span>' + label + '</span><input type="text" readonly value="' + esc(value) + '"><button type="button" class="lmd-link" data-t="tok-copy">' + T('Copiar') + '</button></div>';
@@ -208,7 +208,7 @@
   const ACTION = { create: 'Creó', edit: 'Editó', move: 'Movió', delete: 'Eliminó', restore: 'Restauró', purge: 'Borró de la papelera', empty_trash: 'Vació la papelera', share: 'Compartió', unshare: 'Dejó de compartir',
     link: 'Creó un enlace', unlink: 'Quitó un enlace', attach: 'Subió una imagen', detach: 'Eliminó una imagen', invite: 'Invitó', uninvite: 'Quitó una invitación', join: 'Entró al equipo', leave: 'Salió del equipo', remove: 'Sacó a alguien', role: 'Cambió un papel',
     policy: 'Cambió un ajuste', team_name: 'Cambió el nombre del equipo', protect: 'Protegió el espacio', password: 'Cambió la contraseña', rotate: 'Empezó a rotar la llave', rotate_done: 'Rotó la llave', unprotect: 'Quitó la protección',
-    destroy: 'Eliminó el contenido', ai: 'Entró una IA', ai_unlock: 'Desbloqueó para su IA', token_create: 'Creó un token', token_revoke: 'Revocó un token', automation: 'Creó una automatización', automation_remove: 'Quitó una automatización',
+    destroy: 'Eliminó el contenido', ai: 'Entró una IA', ai_unlock: 'Desbloqueó para su IA', token_create: 'Creó un token', token_revoke: 'Revocó un token', token_regenerate: 'Regeneró un token', automation: 'Creó una automatización', automation_remove: 'Quitó una automatización',
     site: 'Preparó un sitio', publish: 'Publicó un sitio', unpublish: 'Despublicó un sitio', live_open: 'Abrió una sesión en vivo', live_end: 'Terminó una sesión en vivo', live_kick: 'Sacó a un invitado' };
   const POLICY_NAME = { share: 'Compartir', links: 'Enlaces públicos', live: 'Sesiones en vivo', tokens: 'IA de los miembros', automation: 'Automatizaciones', publish: 'Publicar sitios', history_days: 'Historial de versiones', folder: 'Carpeta de las notas nuevas', template: 'Plantilla de las notas nuevas', ai_unlock: 'Desbloqueo para la IA' };
   // El detalle de una fila, en palabras: a quién, hacia dónde, qué ajuste y a qué valor.
@@ -350,6 +350,9 @@
         b.disabled = true;
         const made = await C.newToken({ name: name.value.trim(), folder: box.querySelector('[data-t=tok-folder]').value.trim().replace(/^\/+|\/+$/g, ''), write, share: write && box.querySelector('[data-t=tok-share]').checked });
         fresh = Object.assign(made, { team: mine.id, at: Date.now() });
+      } else if (kind === 'tok-regen') {
+        if (!(await LMD.dialog.confirm({ title: T('¿Regenerar el token "{a}"?', { a: b.dataset.name }), text: T('Las conexiones que usan este token dejan de andar. Vas a tener que pegar el token nuevo donde lo uses.'), ok: T('Regenerar'), danger: true }))) return true;
+        fresh = Object.assign(await C.regenerate(+b.dataset.id), { team: mine.id, at: Date.now() });
       } else if (kind === 'tok-rm') {
         if (!(await LMD.dialog.confirm({ title: T('¿Revocar el token "{a}"?', { a: b.dataset.name }), text: T('Lo que lo usa deja de entrar.'), ok: T('Revocar'), danger: true }))) return true;
         await C.revoke(+b.dataset.id); if (fresh && fresh.id === +b.dataset.id) fresh = null;

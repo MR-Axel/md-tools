@@ -566,11 +566,14 @@
     let a = null; let tokens = [];
     // El token recién creado sigue a la vista hasta salir de este panel o revocarlo: el servidor no lo vuelve a dar.
     let shown = null;
-    // Qué hace la IA con el mensaje, y si lleva las instrucciones del espacio de proyecto. Va junto al botón que lo
-    // copia: con un token recién creado, debajo de ese botón; si no, debajo de la lista, que tiene uno por token.
+    // Qué hace la IA con el mensaje, y si lleva las instrucciones del espacio de proyecto. Va solo junto al botón que
+    // lo copia, que existe mientras el token está a la vista. Sin token a la vista no queda nada suelto: una línea dice
+    // que el token ya está y que no se vuelve a mostrar (KEPT).
     let ws = true;
     const wsRow = () => hint(T('Con ese mensaje, tu IA documenta el proyecto y lleva un tablero de tareas en SharpMD.')) +
       '<label class="lmd-check lmd-ai-ws"><input type="checkbox" data-c="ws"' + (ws ? ' checked' : '') + '><span>' + T('Incluir las instrucciones del espacio de proyecto') + '</span></label>';
+    const KEPT = 'El token ya está creado. Por seguridad no se vuelve a mostrar: si lo perdiste, regeneralo.';
+    const KEPT_BRIEF = '"Instrucciones" copia el mensaje para tu IA sin el token: pegale el tuyo.';
     const draw = async (fresh) => {
       if (fresh) shown = fresh;
       const made = shown; let list = []; let folders = [];
@@ -587,15 +590,19 @@
           longField('Claude Code', 'claude mcp add --transport http sharpmd ' + made.mcp_url + ' --header "Authorization: Bearer ' + made.token + '"') +
           actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="brief">' + T('Copiar instrucciones para tu IA') + '</button>') + wsRow() : '') +
         '<h4>' + T('Tokens') + '</h4>' +
-        (list.length ? '<ul class="lmd-tokens">' + list.map((t) => '<li><span>' + esc(tokenName(t.name)) + ' · ' + (t.scope ? T('Carpeta {a}', { a: esc(t.scope) + '/' }) : T('Todas las notas')) + ' · ' + T('creado el {a}', { a: day(t.created) }) + ' · ' + (t.used ? T('usado el {a}', { a: day(t.used) }) : T('sin usar')) + (t.share ? ' · ' + T('puede compartir') : '') + '</span><button type="button" class="lmd-tok-brief" data-brief="' + t.id + '" title="' + T('Copiar instrucciones para tu IA') + '">' + T('Instrucciones') + '</button><button type="button" data-rm="' + t.id + '">' + T('Revocar') + '</button></li>').join('') + '</ul>' + (made ? '' : wsRow()) : hint(T('Todavía no hay tokens.'))) +
+        (list.length ? '<ul class="lmd-tokens lmd-tok-rows">' + list.map((t) => '<li><span>' + esc(tokenName(t.name)) + ' · ' + (t.scope ? T('Carpeta {a}', { a: esc(t.scope) + '/' }) : T('Todas las notas')) + ' · ' + T('creado el {a}', { a: day(t.created) }) + ' · ' + (t.used ? T('usado el {a}', { a: day(t.used) }) : T('sin usar')) + (t.share ? ' · ' + T('puede compartir') : '') + '</span><button type="button" class="lmd-tok-brief" data-brief="' + t.id + '" title="' + T('Copiar instrucciones para tu IA') + '">' + T('Instrucciones') + '</button><button type="button" data-regen="' + t.id + '">' + T('Regenerar') + '</button><button type="button" data-rm="' + t.id + '">' + T('Revocar') + '</button></li>').join('') + '</ul>' +
+          (made ? '' : '<p class="lmd-hint lmd-tok-kept">' + T(KEPT) + ' ' + T(KEPT_BRIEF) + '</p>') : hint(T('Todavía no hay tokens.'))) +
         // Un token puede alcanzar toda la nube o una sola carpeta, que suele ser un proyecto.
         (folders.length ? '<label class="lmd-pick"><span>' + T('Carpeta') + '</span><select data-c="folder"><option value="">' + T('Todas las notas') + '</option>' +
           folders.map((d) => '<option value="' + esc(d) + '"' + (d === kept ? ' selected' : '') + '>' + esc(d) + '/</option>').join('') + '</select></label>' : '') +
         // Compartir hacia afuera es un permiso aparte, apagado si no se pide. Sin compartir en el plan, no se ofrece.
         (a.share === false ? '' : '<label class="lmd-check lmd-tok-share"><input type="checkbox" data-c="share"' + (keptShare ? ' checked' : '') + '><span>' + T('Puede compartir y crear enlaces') + '</span></label>') +
-        actions('<button type="button" class="lmd-btn lmd-btn-fill" data-c="token">' + T('Crear un token') + '</button>') + LMD.vault.tokenNote() + '<p class="lmd-hint lmd-acct-msg" role="status" hidden></p>' +
+        // Con un token ya creado, crear otro es lo secundario: sin relleno y con un rótulo que no parezca el primer paso.
+        actions('<button type="button" class="lmd-btn' + (list.length ? '' : ' lmd-btn-fill') + '" data-c="token">' + T(list.length ? 'Crear otro token' : 'Crear un token') + '</button>') + LMD.vault.tokenNote() + '<p class="lmd-hint lmd-acct-msg" role="status" hidden></p>' +
         // Carpetas con contraseña: cuáles puede leer la IA ahora, hasta cuándo, y cómo abrirlas o cerrarlas.
         LMD.vault.aiSection();
+      // El token nuevo aparece arriba y el botón que lo pidió está abajo: se lleva a la vista.
+      if (fresh) { const n = box.querySelector('.lmd-ai-new'); if (n && n.scrollIntoView) n.scrollIntoView({ block: 'nearest' }); }
     };
     // Cuando cambia el estado de una carpeta protegida, este panel se vuelve a dibujar si está a la vista.
     // No pisa un token recién creado (no se vuelve a mostrar) ni un campo que tiene el foco.
@@ -611,17 +618,19 @@
     }
     box.onclick = async (e) => {
       if (LMD.vault.aiClick(e) || goApp(host, e)) return;
-      const rm = e.target.closest('[data-rm]'); const b = e.target.closest('[data-c]'); const brief = e.target.closest('[data-brief]');
+      const rm = e.target.closest('[data-rm]'); const b = e.target.closest('[data-c]'); const brief = e.target.closest('[data-brief]'); const regen = e.target.closest('[data-regen]');
       // done: el aviso cuenta algo que salió bien, y no va en el color de los errores.
       const say = (t, done) => { const m = box.querySelector('.lmd-acct-msg'); if (m) { m.hidden = false; m.textContent = t; m.classList.toggle('lmd-acct-done', !!done); } };
       try {
         if (rm) { if (await LMD.dialog.confirm({ title: T('¿Revocar este token?'), text: T('La IA que lo usa deja de entrar.'), ok: T('Revocar'), danger: true })) { await LMD.cloud.revoke(rm.dataset.rm); if (shown && String(shown.id) === rm.dataset.rm) shown = null; await draw(); } }
+        // Regenerar: el servidor cambia el secreto en un solo paso y el token nuevo queda a la vista, como uno recién creado.
+        else if (regen) { if (await LMD.dialog.confirm({ title: T('¿Regenerar este token?'), text: T('Las conexiones que usan este token dejan de andar. Vas a tener que pegar el token nuevo en tu IA.'), ok: T('Regenerar'), danger: true })) await draw(await LMD.cloud.regenerate(regen.dataset.regen)); }
         else if (brief || (b && b.dataset.c === 'brief')) {
           // Con el token a la vista el mensaje sale listo; de uno viejo sale con el marcador, y se dice.
           const t = brief ? tokens.find((x) => String(x.id) === brief.dataset.brief) : shown; if (!t) return;
           const live = shown && String(shown.id) === String(t.id);
           await copyText(aiBrief({ url: a.mcp_url, token: live ? shown.token : '', scope: t.scope, share: t.share, workspace: ws }));
-          say(live ? T('Instrucciones copiadas. Pegalas en tu IA.') : T('Instrucciones copiadas. Reemplazá {a} por tu token, que ya no se muestra.', { a: AI_TOKEN_MARK }), true);
+          say(live ? T('Instrucciones copiadas. Pegalas en tu IA.') : T('Instrucciones copiadas sin el token. Reemplazá {a} por el tuyo.', { a: AI_TOKEN_MARK }), true);
         }
         else if (!b) return;
         else if (b.dataset.c === 'ws') ws = !!b.checked;

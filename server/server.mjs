@@ -2393,6 +2393,8 @@ const TEAM_LOG_HOUR = 240; // lecturas del registro por hora y por cuenta
 const TEAM_LOG_PAGE = 100; const TEAM_LOG_CSV = 5000; const TEAM_LOG_MAX = 200000; // filas por página, por exportación y por equipo
 const MAX_TEAM_TOKENS = 30; const TEAM_TEMPLATE_MAX = 20000;
 const TEAM_EDIT_GAP = 10 * 60000; // ediciones seguidas de la misma nota por la misma cuenta: una fila cada tanto
+// Cambia el secreto de un token en una sola escritura y devuelve el nuevo, que no se guarda: solo su hash.
+function tokenRegenerate(id) { const token = 'mdt_' + random(30); q('UPDATE tokens SET hash = ?, created = ?, used = NULL WHERE id = ?').run(sha(token), now(), id); return token; }
 for (const col of ['team INTEGER', 'can_write INTEGER NOT NULL DEFAULT 1', 'made_by INTEGER']) { try { db.exec('ALTER TABLE tokens ADD COLUMN ' + col); } catch (e) { /* ya estaba */ } }
 // via: '' desde la app, 'ai' con el token de una persona, 'team' con un token del equipo. token: el nombre del token.
 // about: la cuenta sobre la que se actuó (a quién se le cambió el papel, a quién se sacó).
@@ -2482,7 +2484,7 @@ function teamLogSweep() {
   for (const t of q('SELECT team, COUNT(*) AS n FROM team_log GROUP BY team HAVING n > ?').all(TEAM_LOG_MAX)) q('DELETE FROM team_log WHERE team = ? AND id NOT IN (SELECT id FROM team_log WHERE team = ? ORDER BY id DESC LIMIT ?)').run(t.team, t.team, TEAM_LOG_MAX);
   for (const [k, at] of logSeen) if (now() - at > HOUR) logSeen.delete(k);
 }
-const TEAM_ACTIONS = ['create', 'edit', 'move', 'delete', 'restore', 'purge', 'empty_trash', 'share', 'unshare', 'link', 'unlink', 'invite', 'uninvite', 'join', 'leave', 'remove', 'role', 'policy', 'team_name', 'protect', 'password', 'rotate', 'rotate_done', 'unprotect', 'destroy', 'ai', 'ai_unlock', 'token_create', 'token_revoke', 'automation', 'automation_remove', 'site', 'publish', 'unpublish', 'live_open', 'live_end', 'live_kick', 'attach', 'detach'];
+const TEAM_ACTIONS = ['create', 'edit', 'move', 'delete', 'restore', 'purge', 'empty_trash', 'share', 'unshare', 'link', 'unlink', 'invite', 'uninvite', 'join', 'leave', 'remove', 'role', 'policy', 'team_name', 'protect', 'password', 'rotate', 'rotate_done', 'unprotect', 'destroy', 'ai', 'ai_unlock', 'token_create', 'token_revoke', 'token_regenerate', 'automation', 'automation_remove', 'site', 'publish', 'unpublish', 'live_open', 'live_end', 'live_kick', 'attach', 'detach'];
 // Lo que se pide del registro: who (número de cuenta), token (nombre), action, from y to (milisegundos), before (id, para seguir).
 function teamLogRows(team, url, max) {
   const g = (k) => url.searchParams.get(k) || '';
@@ -2589,6 +2591,16 @@ async function teamAdminRoute(user, p, m, req, after) {
     const r = q('INSERT INTO tokens (hash, user, name, scope, share, created, team, can_write, made_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(sha(token), t.space, name, scope, share ? 1 : 0, now(), t.id, write ? 1 : 0, user.id);
     teamLog(t, user, 'token_create', scope, name + (write ? (share ? ' · write, share' : ' · write') : ' · read'));
     return { id: Number(r.lastInsertRowid), token, name, scope, write, share, mcp_url: PUBLIC_URL + '/mcp' };
+  }
+  // Regenerar un token del equipo: mismo nombre, carpeta y permisos, con un secreto nuevo (ver tokenRegenerate).
+  const regen = m === 'POST' && /^\/team\/tokens\/(\d+)\/regenerate$/.exec(p);
+  if (regen) {
+    if (t.status !== 'active') throw new Fail(402, 'team_ended');
+    const row = q('SELECT id, name, scope, share, can_write FROM tokens WHERE id = ? AND team = ?').get(+regen[1], t.id);
+    if (!row) throw new Fail(404, 'not_found');
+    const token = tokenRegenerate(row.id);
+    teamLog(t, user, 'token_regenerate', row.scope || '', row.name);
+    return { id: row.id, token, name: row.name, scope: row.scope || '', write: !!row.can_write, share: !!row.share, mcp_url: PUBLIC_URL + '/mcp' };
   }
   if (p.startsWith('/team/tokens/') && m === 'DELETE') {
     const row = q('SELECT id, name FROM tokens WHERE id = ? AND team = ?').get(+p.slice(13), t.id);
@@ -5531,6 +5543,15 @@ async function route(req, url) {
     const r = q('INSERT INTO tokens (hash, user, name, scope, share, created) VALUES (?, ?, ?, ?, ?, ?)').run(sha(token), user.id, String(b.name || 'AI').slice(0, 60), scope, share ? 1 : 0, now());
     statOnce(user.id, STAT_BIT.token, 'ai_token');
     return { id: Number(r.lastInsertRowid), token, scope, share, mcp_url: PUBLIC_URL + '/mcp' };
+  }
+  // Regenerar: el mismo token (su nombre, su carpeta y su permiso) con un secreto nuevo. Es una sola escritura: o
+  // cambia el secreto o no cambia nada, así que la cuenta nunca queda sin token. El secreto viejo deja de entrar en
+  // ese instante, y el número del token se conserva: lo que escribió sigue figurando a su nombre.
+  const regen = m === 'POST' && /^\/tokens\/(\d+)\/regenerate$/.exec(p);
+  if (regen) {
+    const row = q('SELECT id, name, scope, share FROM tokens WHERE id = ? AND user = ?').get(+regen[1], user.id);
+    if (!row) throw new Fail(404, 'not_found');
+    return { id: row.id, token: tokenRegenerate(row.id), name: row.name, scope: row.scope || '', share: !!row.share, mcp_url: PUBLIC_URL + '/mcp' };
   }
   if (p.startsWith('/tokens/') && m === 'DELETE') { q('DELETE FROM tokens WHERE id = ? AND user = ?').run(+p.slice(8), user.id); return { ok: true }; }
   if (p === '/notes' && m === 'GET') {
