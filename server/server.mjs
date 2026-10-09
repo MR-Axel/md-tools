@@ -1618,7 +1618,9 @@ function aiReadSet(user, ownerId, p, rev, text) {
 }
 const aiReadGet = (user, ownerId, p) => (user && user.tokenId != null ? aiReads.get(user.tokenId + '|' + ownerId + ':' + p) || null : null);
 // Una respuesta del MCP en varios bloques de texto: el primero es el contenido, los demás lo que hay que saber de él.
-class Parts { constructor(list) { this.list = list; } }
+// data es lo mismo en datos (structuredContent): la ruta, la dirección y la versión, para un cliente que no quiere
+// recortarlas del texto. Los bloques de texto siguen como siempre: un cliente que no conoce structuredContent no nota nada.
+class Parts { constructor(list, data) { this.list = list; this.data = data || null; } }
 // Las tareas de una nota (- [ ] y - [x]) fuera de los bloques de código: las tarjetas de un tablero no cuentan.
 function taskLines(lines) {
   const out = []; let fence = '';
@@ -1635,8 +1637,8 @@ function taskLines(lines) {
 const TOOLS = [
   { name: 'list_notes', description: 'List the Markdown notes in the SharpMD cloud folder, newest first. Pass a folder to list only what is inside it. On the free plan the answer ends with how many notes the plan holds and how many are left.', inputSchema: { type: 'object', properties: { folder: { type: 'string', description: 'Optional folder, for example projects/launch' } } } },
   { name: 'list_folders', description: 'List the folders that hold notes, with how many notes each one has. A top-level folder is usually a project.', inputSchema: { type: 'object', properties: {} } },
-  { name: 'read_note', description: 'Read one note by its path. The answer ends with the version of the note: pass it as base_rev when you replace the note with write_note.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path of the note, for example ideas/launch.md' } }, required: ['path'] } },
-  { name: 'write_note', description: 'Create a note or replace its whole content with Markdown text. To change part of an existing note, prefer edit_note, set_task or append_note. When you replace a note, pass base_rev with the version read_note gave you: if the person changed the note in the meantime, their changes are merged with yours instead of being overwritten, and if both changed the same lines nothing is saved and you get the current text back.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, text: { type: 'string', description: 'Full Markdown content' }, base_rev: { type: 'number', description: 'Optional: the version of the note your text is based on, from read_note' } }, required: ['path', 'text'] } },
+  { name: 'read_note', description: 'Read one note by its path. The first text block is the note and nothing else. A second text block says its version, and structuredContent carries it as data: { path, url, rev, updated, saved_by, text }. Pass rev as base_rev when you replace the note with write_note.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path of the note, for example ideas/launch.md' } }, required: ['path'] } },
+  { name: 'write_note', description: 'Create a note or replace its whole content with Markdown text. To change part of an existing note, prefer edit_note, set_task or append_note. When you replace a note, pass base_rev with the version read_note gave you: if the person changed the note in the meantime, their changes are merged with yours instead of being overwritten, and if both changed the same lines nothing is saved and you get the current text back. Answers with a sentence that ends in the link to the note, and structuredContent { result, path, url, rev, created }.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, text: { type: 'string', description: 'Full Markdown content' }, base_rev: { type: 'number', description: 'Optional: the version of the note your text is based on, from read_note' } }, required: ['path', 'text'] } },
   { name: 'append_note', description: 'Append Markdown text to the end of a note, creating it if it does not exist.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, text: { type: 'string' } }, required: ['path', 'text'] } },
   { name: 'edit_note', description: 'Replace one exact passage of a note with new text, without sending the whole note. old_text must appear exactly once in the note: copy it as it is written, with enough of the text around it to be unique. Everything else in the note stays as the person left it.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, old_text: { type: 'string', description: 'The exact passage to replace' }, new_text: { type: 'string', description: 'What goes in its place. Empty to delete the passage' } }, required: ['path', 'old_text', 'new_text'] } },
   { name: 'set_task', description: 'Check or uncheck one task of a note (a line like - [ ] Buy bread) without rewriting the note. The task is found by its text. Only uncheck a task when the person asks for it.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, task: { type: 'string', description: 'The text of the task, as written in the note' }, done: { type: 'boolean', description: 'true to check it (default), false to uncheck it' }, occurrence: { type: 'number', description: 'Optional: which one, from 1, when several tasks have that text' } }, required: ['path', 'task'] } },
@@ -1648,11 +1650,13 @@ const TOOLS = [
   // El modo de trabajo completo, a demanda: la estructura del proyecto y las reglas del tablero (ver guide).
   { name: 'get_guide', description: 'Read the SharpMD working guide: the folder structure to document a project (README, architecture, features, epics, decisions, log), the rules of its task board and the format of the list of what the person has to do. Call it once at the start of a session, before you create notes or cards.', inputSchema: { type: 'object', properties: {} } },
   // Tableros: las mismas operaciones que la API (apiTool), con nombres para un modelo.
-  { name: 'list_boards', description: 'List the kanban boards of a note: each board with its columns, which column holds finished cards, and every card with its id, title and fields. Call it before moving or updating cards, to get their ids and the exact column names.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path of the note that holds the board, for example project/board.md' } }, required: ['path'] } },
-  { name: 'create_board', description: 'Create a kanban board. If the note does not exist it is created with the board; if it exists, the board is added at its end. Without columns it gets To do, In progress, Paused and Done, and cards moved to Done are marked as done.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path of the note, for example project/board.md' }, title: { type: 'string', description: 'Optional heading written above the board' }, columns: { type: 'array', items: { type: 'string' }, description: 'Optional column names, in order' }, done: { type: 'string', description: 'Optional: the column that holds finished cards. By default the one called Done or similar' } }, required: ['path'] } },
-  { name: 'add_card', description: 'Add a card to a board. Returns the id of the card, which move_card, update_card and delete_card take. Use fields for anything beyond the title, for example {"agent": "claude", "due": "2026-01-31"}.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, title: { type: 'string', description: 'Short title of the task' }, column: { type: 'string', description: 'Column name. By default the first column' }, fields: { type: 'object', description: 'Optional fields of the card, as key and value', additionalProperties: { type: ['string', 'number', 'boolean'] } }, position: { type: 'string', enum: ['top', 'bottom'], description: 'Where in the column. By default bottom' }, board: { type: 'number', description: 'Optional: which board of the note, from 0, when it has more than one' } }, required: ['path', 'title'] } },
+  { name: 'list_boards', description: 'List the kanban boards of a note: each board with its columns, which column holds finished cards, the fields its cards display, and every card with its id, title and fields. Call it before moving or updating cards, to get their ids and the exact column names.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path of the note that holds the board, for example project/board.md' } }, required: ['path'] } },
+  { name: 'create_board', description: 'Create a kanban board. If the note does not exist it is created with the board; if it exists, the board is added at its end. Without columns it gets To do, In progress, Paused and Done, and cards moved to Done are marked as done. Without show, the cards display the fields agent, needs and link.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path of the note, for example project/board.md' }, title: { type: 'string', description: 'Optional heading written above the board' }, columns: { type: 'array', items: { type: 'string' }, description: 'Optional column names, in order' }, done: { type: 'string', description: 'Optional: the column that holds finished cards. By default the one called Done or similar' }, show: { type: 'array', items: { type: 'string' }, description: 'Optional: the fields displayed on the cards, in order. By default agent, needs and link. An empty list displays none' } }, required: ['path'] } },
+  { name: 'update_board', description: 'Change which fields the cards of a board display, without rewriting the board. The other fields stay on the cards and show when a card is opened.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, show: { type: 'array', items: { type: 'string' }, description: 'The fields displayed on the cards, in order, for example ["agent", "needs", "link", "due"]. An empty list displays none' }, board: { type: 'number', description: 'Optional: which board of the note, from 0, when it has more than one' } }, required: ['path', 'show'] } },
+  { name: 'add_card', description: 'Add a card to a board. Returns the id of the card, which move_card, update_card and delete_card take. The title holds up to 200 characters: use fields for anything beyond it, for example {"agent": "claude", "due": "2026-01-31"}. To add several cards, use add_cards.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, title: { type: 'string', description: 'Short title of the task, up to 200 characters' }, column: { type: 'string', description: 'Column name. By default the first column' }, fields: { type: 'object', description: 'Optional fields of the card, as key and value', additionalProperties: { type: ['string', 'number', 'boolean'] } }, position: { type: 'string', enum: ['top', 'bottom'], description: 'Where in the column. By default bottom' }, board: { type: 'number', description: 'Optional: which board of the note, from 0, when it has more than one' } }, required: ['path', 'title'] } },
+  { name: 'add_cards', description: 'Add several cards to a board in one write: one version in the history of the note instead of one per card. Up to 50 cards, added in the order given. Returns the id of each one, in the same order. If one card is not valid nothing is saved, and the error says which one.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, cards: { type: 'array', minItems: 1, maxItems: 50, description: 'The cards, in order', items: { type: 'object', properties: { title: { type: 'string', description: 'Short title of the task, up to 200 characters' }, column: { type: 'string', description: 'Column name. By default the column given for all, or the first column' }, fields: { type: 'object', description: 'Optional fields of the card, as key and value', additionalProperties: { type: ['string', 'number', 'boolean'] } }, position: { type: 'string', enum: ['top', 'bottom'], description: 'Where in the column. By default bottom' } }, required: ['title'] } }, column: { type: 'string', description: 'Optional: the column for the cards that do not name one. By default the first column' }, board: { type: 'number', description: 'Optional: which board of the note, from 0, when it has more than one' } }, required: ['path', 'cards'] } },
   { name: 'move_card', description: 'Move a card to another column. Moving it to the column of finished cards marks it as done, and moving it out unmarks it. A column that does not exist is created, so take the names from list_boards.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, id: { type: 'string', description: 'Id of the card, from add_card or list_boards' }, column: { type: 'string', description: 'Name of the column to move it to' }, position: { type: 'string', enum: ['top', 'bottom'], description: 'Where in the column. By default bottom' } }, required: ['path', 'id', 'column'] } },
-  { name: 'update_card', description: 'Change the title or the fields of a card. Only the fields you pass change: a field with an empty value is removed, the others stay. To change its column use move_card.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, id: { type: 'string', description: 'Id of the card, from add_card or list_boards' }, title: { type: 'string' }, fields: { type: 'object', description: 'Fields to set, as key and value. An empty value removes the field', additionalProperties: { type: ['string', 'number', 'boolean', 'null'] } }, done: { type: 'boolean', description: 'Optional: mark or unmark the card as done without moving it' } }, required: ['path', 'id'] } },
+  { name: 'update_card', description: 'Change the title or the fields of a card. Only the fields you pass change: a field with an empty value is removed, the others stay. To change its column use move_card.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, id: { type: 'string', description: 'Id of the card, from add_card or list_boards' }, title: { type: 'string', description: 'Up to 200 characters' }, fields: { type: 'object', description: 'Fields to set, as key and value. An empty value removes the field', additionalProperties: { type: ['string', 'number', 'boolean', 'null'] } }, done: { type: 'boolean', description: 'Optional: mark or unmark the card as done without moving it' } }, required: ['path', 'id'] } },
   { name: 'delete_card', description: 'Delete a card from a board. Finished cards are the record of the work: move them to Done instead, and delete only a card that was added by mistake.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, id: { type: 'string', description: 'Id of the card, from add_card or list_boards' } }, required: ['path', 'id'] } },
   // Las que sacan notas hacia afuera: existen solo para un token creado con el permiso de compartir.
   { share: true, name: 'list_shares', description: 'List who the notes are shared with and which public links exist. Pass a path to see only that note or folder.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Optional note or folder' } } } },
@@ -1662,8 +1666,8 @@ const TOOLS = [
   { share: true, name: 'revoke_public_link', description: 'Revoke public links: one by its id, or every link to a note by its path.', inputSchema: { type: 'object', properties: { id: { type: 'number' }, path: { type: 'string' } } } },
 ];
 // A un token del equipo que solo lee no se le ofrecen las que cambian algo.
-const BOARD_TOOLS = new Set(['list_boards', 'create_board', 'add_card', 'move_card', 'update_card', 'delete_card']);
-const WRITE_TOOLS = new Set(['write_note', 'append_note', 'edit_note', 'set_task', 'move_note', 'resolve_comment', 'create_board', 'add_card', 'move_card', 'update_card', 'delete_card', 'share_note', 'unshare_note', 'create_public_link', 'revoke_public_link']);
+const BOARD_TOOLS = new Set(['list_boards', 'create_board', 'update_board', 'add_card', 'add_cards', 'move_card', 'update_card', 'delete_card']);
+const WRITE_TOOLS = new Set(['write_note', 'append_note', 'edit_note', 'set_task', 'move_note', 'resolve_comment', 'create_board', 'update_board', 'add_card', 'add_cards', 'move_card', 'update_card', 'delete_card', 'share_note', 'unshare_note', 'create_public_link', 'revoke_public_link']);
 const toolsFor = (user) => TOOLS.filter((t) => (!t.share || user.canShare) && !(user.canWrite === false && WRITE_TOOLS.has(t.name))).map(({ share, ...t }) => t);
 const SHARE_TOOLS = new Set(TOOLS.filter((t) => t.share).map((t) => t.name));
 const NO_SHARE = 'This token cannot share notes or create public links. Ask the person to do it from the SharpMD app, or to create a token with that permission in Settings > AI.';
@@ -1696,7 +1700,8 @@ function callTool(user, name, args, opt) {
   if (!u) return out;
   const line = planAfter(u);
   if (typeof out === 'string') return out + '\n' + line;
-  if (out instanceof Parts) return new Parts(out.list.concat(line));
+  // Con varios bloques, la línea del plan va al final del último; los datos la llevan aparte, en plan.
+  if (out instanceof Parts) return new Parts(out.list.slice(0, -1).concat(out.list[out.list.length - 1] + '\n' + line), out.data ? Object.assign({}, out.data, { plan: line }) : null);
   return out && typeof out === 'object' && !Array.isArray(out) ? Object.assign({}, out, { plan: line }) : out;
 }
 function runTool(user, name, args, opt, did) {
@@ -1772,14 +1777,18 @@ function runTool(user, name, args, opt, did) {
   // La dirección para abrir esa nota en la app, con el mismo formato que usa la app al navegar.
   const appLink = (f) => APP_URL + '?f=' + encodeURIComponent(f);
   const openUrl = (a) => appLink('cloud/' + (a.who === user && !isSpace(a.who) ? '' : '~' + a.who.id + '/') + a.p.split('/').map(encodeURIComponent).join('/'));
+  // La frase de siempre y, aparte, lo mismo en datos: la ruta, la dirección para abrirla y la versión en la que quedó.
+  const told = (text, a, rev, more) => new Parts([text], Object.assign({ result: text, path: a.full, url: openUrl(a), rev }, more));
   const k = { user, at, gate, read, write, revOf, openUrl, seen, mayWrite, noted, mcp: (n, x) => runTool(user, n, x, null, did) };
   if (opt.raw) { const out = apiTool(name, args, k); if (out !== undefined) return out; }
   if (name === 'get_guide') return guide(user);
   if (BOARD_TOOLS.has(name)) return boardTool(name, args, k);
   if (name === 'read_note') {
     const a = at(args.path); seen(a); const text = read(a, gate(a)); const rev = revOf(a); const last = lastBy(a);
-    // El texto va solo en el primer bloque, como siempre. El segundo dice sobre qué versión se está parado.
-    return new Parts([text, 'Version ' + rev + ' of ' + a.full + ', last saved ' + iso(last.updated) + ' by ' + (last.self ? 'you' : last.who) + '. To change part of it use edit_note, set_task or append_note. If you replace it with write_note, pass base_rev: ' + rev + ' so that what the person changes in the meantime is merged instead of overwritten.']);
+    // El texto va solo en el primer bloque, como siempre. El segundo dice sobre qué versión se está parado, y los datos
+    // llevan esa versión sin frase alrededor. El texto va también ahí: un cliente que solo mira los datos tiene la nota.
+    return new Parts([text, 'Version ' + rev + ' of ' + a.full + ', last saved ' + iso(last.updated) + ' by ' + (last.self ? 'you' : last.who) + '. To change part of it use edit_note, set_task or append_note. If you replace it with write_note, pass base_rev: ' + rev + ' so that what the person changes in the meantime is merged instead of overwritten.'],
+      { path: a.full, url: openUrl(a), rev, updated: iso(last.updated), saved_by: last.self ? 'you' : last.who, text });
   }
   if (name === 'write_note') {
     const a = at(args.path); mayWrite(a); const key = gate(a); const cur = revOf(a); const had = cur != null;
@@ -1797,7 +1806,7 @@ function runTool(user, name, args, opt, did) {
       said = ' Warning: ' + last.who + (mem ? ' changed this note after you last read it' : ' saved this note last and you had not read it') + ', and this write replaced the whole note. Read it again and put back anything they wrote or checked that is now missing. Next time pass base_rev, or use edit_note or set_task.';
     }
     const saved = write(a, key, text, cur); noted(had ? 'edit' : 'create', a);
-    return 'Saved ' + a.full + ' (' + text.length + ' characters). Open it: ' + openUrl(a) + (baseRev == null ? '' : ' Now at version ' + saved.rev + '.') + said;
+    return told('Saved ' + a.full + ' (' + text.length + ' characters). Open it: ' + openUrl(a) + (baseRev == null ? '' : ' Now at version ' + saved.rev + '.') + said, a, saved.rev, { created: !had });
   }
   if (name === 'edit_note') {
     // Leer, cambiar el tramo y escribir pasan sobre la misma revisión: lo demás queda como lo dejó la persona.
@@ -1807,10 +1816,10 @@ function runTool(user, name, args, opt, did) {
     const crlf = text.includes('\r\n'); const body = lf(text); const n = body.split(from).length - 1;
     if (!n) throw new Fail(409, 'no_match', 'Nothing was saved. old_text was not found in ' + a.full + '. Read the note again: the person may have changed it, and the passage has to be copied exactly as it is written.');
     if (n > 1) throw new Fail(409, 'many_matches', 'Nothing was saved. old_text appears ' + n + ' times in ' + a.full + '. Add more of the text around it, so that it matches only once.');
-    if (from === to) return 'Nothing to change in ' + a.full + ': old_text and new_text are the same.';
+    if (from === to) return told('Nothing to change in ' + a.full + ': old_text and new_text are the same.', a, rev, { changed: false });
     const next = body.replace(from, () => to);
     const saved = write(a, key, crlf ? next.replace(/\n/g, '\r\n') : next, rev); noted('edit', a);
-    return 'Edited ' + a.full + ' (now at version ' + saved.rev + '). Open it: ' + openUrl(a);
+    return told('Edited ' + a.full + ' (now at version ' + saved.rev + '). Open it: ' + openUrl(a), a, saved.rev, { changed: true });
   }
   if (name === 'set_task') {
     const a = at(args.path); mayWrite(a); const key = gate(a); const rev = revOf(a); const text = read(a, key);
@@ -1825,18 +1834,18 @@ function runTool(user, name, args, opt, did) {
     if (nth != null && (!Number.isInteger(nth) || nth < 1 || nth > hits.length)) throw new Fail(400, 'bad_occurrence', 'occurrence goes from 1 to ' + hits.length + ' for that text:' + show(hits));
     if (hits.length > 1 && nth == null) throw new Fail(409, 'task_ambiguous', 'Nothing was saved. ' + hits.length + ' tasks match that text. Pass occurrence with the number of the one you mean, or more of its text:' + show(hits));
     const hit = hits[(nth || 1) - 1];
-    if (hit.t.done === done) return 'Nothing to change: "' + hit.label + '" in ' + a.full + ' is already ' + (done ? 'checked' : 'unchecked') + '.';
+    if (hit.t.done === done) return told('Nothing to change: "' + hit.label + '" in ' + a.full + ' is already ' + (done ? 'checked' : 'unchecked') + '.', a, rev, { changed: false, task: hit.label, done });
     lines[hit.i] = hit.t.pre + (done ? 'x' : ' ') + hit.t.post;
-    write(a, key, lines.join(text.includes('\r\n') ? '\r\n' : '\n'), rev); noted('edit', a, 'task');
-    return (done ? 'Checked' : 'Unchecked') + ' "' + hit.label + '" in ' + a.full + ' (line ' + (hit.i + 1) + '). Open it: ' + openUrl(a);
+    const saved = write(a, key, lines.join(text.includes('\r\n') ? '\r\n' : '\n'), rev); noted('edit', a, 'task');
+    return told((done ? 'Checked' : 'Unchecked') + ' "' + hit.label + '" in ' + a.full + ' (line ' + (hit.i + 1) + '). Open it: ' + openUrl(a), a, saved.rev, { changed: true, task: hit.label, done });
   }
   if (name === 'append_note') {
     // Lo que se lee y lo que se escribe son de la misma revisión: si no coincidiera, no se agrega sobre un texto viejo.
     const a = at(args.path); mayWrite(a); const key = gate(a); let prev = ''; const base = revOf(a);
     try { prev = read(a, key); } catch (e) { if (e.code !== 'not_found') throw e; }
-    write(a, key, prev + (prev && !prev.endsWith('\n') ? '\n' : '') + (prev ? '\n' : '') + String(args.text || ''), base);
+    const saved = write(a, key, prev + (prev && !prev.endsWith('\n') ? '\n' : '') + (prev ? '\n' : '') + String(args.text || ''), base);
     noted(base == null ? 'create' : 'edit', a);
-    return 'Appended to ' + a.full + '. Open it: ' + openUrl(a);
+    return told('Appended to ' + a.full + '. Open it: ' + openUrl(a), a, saved.rev, { created: base == null });
   }
   if (name === 'search_notes') {
     const results = searchNotes(user, args.query, (v) => aiReach(user, v)).filter((r) => !teamPath(r.path))
@@ -1869,7 +1878,7 @@ function runTool(user, name, args, opt, did) {
     if (a.who !== user && tv) throw new Fail(409, 'vault', 'Notes in a team space protected with a password can only be moved from the SharpMD app.');
     try { renameNote(a.who, a.p, b.p); } catch (e) { if (e.code === 'exists') throw new Fail(409, 'exists', 'There is already a note at ' + b.full + '.'); throw e; }
     noted('move', a, b.p);
-    return 'Moved ' + a.full + ' to ' + b.full + '. Open it: ' + openUrl(b);
+    return told('Moved ' + a.full + ' to ' + b.full + '. Open it: ' + openUrl(b), b, revOf(b), { from: a.full });
   }
   if (name === 'note_history') {
     const a = at(args.path); seen(a);
@@ -1939,14 +1948,17 @@ function mcp(user, msg) {
   if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } };
   const reply = (result) => ({ jsonrpc: '2.0', id: msg.id, result });
   if (msg.method === 'initialize') return reply({ protocolVersion: (msg.params && msg.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'sharpmd', version: '1.0.0' },
-    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with edit_note or write_note, then resolve_comment. The person edits the same notes while you work, and checks tasks in them: read a note right before you change it, prefer edit_note, set_task, append_note and the board tools over write_note, pass base_rev from read_note when you do use write_note, and never uncheck or delete what the person checked or wrote. A folder marked as protected and locked is encrypted with a password: you cannot read it until the person unlocks it for the AI from SharpMD. If the person belongs to a team, the notes the team shares are under @team/ and every member can read and edit them. write_note, edit_note, set_task, append_note and move_note return a link that opens the note in the SharpMD app: give it to the person. ' + (user.canWrite === false ? '' : 'Work this way without being asked. Keep the project documented in one folder: README.md as the index, architecture.md, features/ with one note per feature, epics.md, decisions.md and log.md. Keep its task board in board.md, one card per task: To do when you plan it, In progress when you start, Paused when you need something from the person (say what in a field called needs), Done when it is finished. Change the board with create_board, add_card, move_card and update_card instead of rewriting the note. Keep what only the person can do in pending.md: a task list where each item has numbered steps with the direct link to the page where each one is done. Call get_guide once per session for the full structure and rules. ') + (user.teamToken ? 'This token belongs to a team, not to a person: every note it reaches is in the shared space of the team' + (user.canWrite ? '. ' : ', and it can only read. ') : '') + (user.canShare ? 'This token can share notes with other accounts and create public links: only do that when the person asks.' : 'This token cannot share notes or create public links: the person does that from the SharpMD app.') + (user.scope ? ' This token only reaches the folder ' + user.scope + '/.' : '') + ' When you mention a Markdown file that lives on the person\'s disk instead of here, give it as a link that opens it in their browser with the SharpMD extension: ' + APP_URL + '#open= followed by the file:// address of the file, percent-encoded as a single value (what encodeURIComponent returns). For example [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///C:/Users/me/Desktop/notes.md') + ') on Windows, or [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///Users/me/Desktop/notes.md') + ') on Mac and Linux. Under the link, write the full path as plain text, in case the link cannot be clicked.' });
+    instructions: 'Notes are Markdown files in the user\'s SharpMD cloud folder. Paths look like folder/name.md, and a top-level folder is usually a project. The user can leave comments for you on a note: call list_comments, make each change with edit_note or write_note, then resolve_comment. The person edits the same notes while you work, and checks tasks in them: read a note right before you change it, prefer edit_note, set_task, append_note and the board tools over write_note, pass base_rev from read_note when you do use write_note, and never uncheck or delete what the person checked or wrote. A folder marked as protected and locked is encrypted with a password: you cannot read it until the person unlocks it for the AI from SharpMD. If the person belongs to a team, the notes the team shares are under @team/ and every member can read and edit them. write_note, edit_note, set_task, append_note and move_note return a link that opens the note in the SharpMD app: give it to the person. ' + (user.canWrite === false ? '' : 'Work this way without being asked. Keep the project documented in one folder: README.md as the index, architecture.md, features/ with one note per feature, epics.md, decisions.md and log.md. Keep its task board in board.md, one card per task: To do when you plan it, In progress when you start, Paused when you need something from the person (say what in a field called needs), Done when it is finished. Change the board with create_board, add_card (add_cards for several at once), move_card and update_card instead of rewriting the note. Keep what only the person can do in pending.md: a task list where each item has numbered steps with the direct link to the page where each one is done. Call get_guide once per session for the full structure and rules. ') + (user.teamToken ? 'This token belongs to a team, not to a person: every note it reaches is in the shared space of the team' + (user.canWrite ? '. ' : ', and it can only read. ') : '') + (user.canShare ? 'This token can share notes with other accounts and create public links: only do that when the person asks.' : 'This token cannot share notes or create public links: the person does that from the SharpMD app.') + (user.scope ? ' This token only reaches the folder ' + user.scope + '/.' : '') + ' When you mention a Markdown file that lives on the person\'s disk instead of here, give it as a link that opens it in their browser with the SharpMD extension: ' + APP_URL + '#open= followed by the file:// address of the file, percent-encoded as a single value (what encodeURIComponent returns). For example [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///C:/Users/me/Desktop/notes.md') + ') on Windows, or [notes.md](' + APP_URL + '#open=' + encodeURIComponent('file:///Users/me/Desktop/notes.md') + ') on Mac and Linux. Under the link, write the full path as plain text, in case the link cannot be clicked.' });
   if (msg.method === 'ping') return reply({});
   if (msg.method === 'tools/list') return reply({ tools: toolsFor(user) });
   if (msg.method === 'tools/call') {
     try {
       const out = callTool(user, msg.params && msg.params.name, msg.params && msg.params.arguments);
       const blocks = out instanceof Parts ? out.list : [typeof out === 'string' ? out : JSON.stringify(out, null, 2)];
-      return reply({ content: blocks.map((text) => ({ type: 'text', text })) });
+      // Los mismos datos, aparte del texto (structuredContent, del protocolo 2025-06-18): un objeto, nunca una lista. Lo
+      // que una herramienta devuelve como JSON en el texto va igual ahí. Un cliente de una versión anterior no lo mira.
+      const data = out instanceof Parts ? out.data : out && typeof out === 'object' && !Array.isArray(out) ? out : null;
+      return reply(Object.assign({ content: blocks.map((text) => ({ type: 'text', text })) }, data ? { structuredContent: data } : {}));
     } catch (e) { return reply({ content: [{ type: 'text', text: 'Error: ' + (e.message || e.code || 'failed') + (e.code === 'note_limit' ? FULL_FOR_AI : '') }], isError: true }); }
   }
   if (msg.id === undefined) return null; // notificación: no lleva respuesta
@@ -2425,6 +2437,8 @@ const TEAM_LOG_HOUR = 240; // lecturas del registro por hora y por cuenta
 const TEAM_LOG_PAGE = 100; const TEAM_LOG_CSV = 5000; const TEAM_LOG_MAX = 200000; // filas por página, por exportación y por equipo
 const MAX_TEAM_TOKENS = 30; const TEAM_TEMPLATE_MAX = 20000;
 const TEAM_EDIT_GAP = 10 * 60000; // ediciones seguidas de la misma nota por la misma cuenta: una fila cada tanto
+// Cambia el secreto de un token en una sola escritura y devuelve el nuevo, que no se guarda: solo su hash.
+function tokenRegenerate(id) { const token = 'mdt_' + random(30); q('UPDATE tokens SET hash = ?, created = ?, used = NULL WHERE id = ?').run(sha(token), now(), id); return token; }
 for (const col of ['team INTEGER', 'can_write INTEGER NOT NULL DEFAULT 1', 'made_by INTEGER']) { try { db.exec('ALTER TABLE tokens ADD COLUMN ' + col); } catch (e) { /* ya estaba */ } }
 // via: '' desde la app, 'ai' con el token de una persona, 'team' con un token del equipo. token: el nombre del token.
 // about: la cuenta sobre la que se actuó (a quién se le cambió el papel, a quién se sacó).
@@ -2514,7 +2528,7 @@ function teamLogSweep() {
   for (const t of q('SELECT team, COUNT(*) AS n FROM team_log GROUP BY team HAVING n > ?').all(TEAM_LOG_MAX)) q('DELETE FROM team_log WHERE team = ? AND id NOT IN (SELECT id FROM team_log WHERE team = ? ORDER BY id DESC LIMIT ?)').run(t.team, t.team, TEAM_LOG_MAX);
   for (const [k, at] of logSeen) if (now() - at > HOUR) logSeen.delete(k);
 }
-const TEAM_ACTIONS = ['create', 'edit', 'move', 'delete', 'restore', 'purge', 'empty_trash', 'share', 'unshare', 'link', 'unlink', 'invite', 'uninvite', 'join', 'leave', 'remove', 'role', 'policy', 'team_name', 'protect', 'password', 'rotate', 'rotate_done', 'unprotect', 'destroy', 'ai', 'ai_unlock', 'token_create', 'token_revoke', 'automation', 'automation_remove', 'site', 'publish', 'unpublish', 'live_open', 'live_end', 'live_kick', 'attach', 'detach'];
+const TEAM_ACTIONS = ['create', 'edit', 'move', 'delete', 'restore', 'purge', 'empty_trash', 'share', 'unshare', 'link', 'unlink', 'invite', 'uninvite', 'join', 'leave', 'remove', 'role', 'policy', 'team_name', 'protect', 'password', 'rotate', 'rotate_done', 'unprotect', 'destroy', 'ai', 'ai_unlock', 'token_create', 'token_revoke', 'token_regenerate', 'automation', 'automation_remove', 'site', 'publish', 'unpublish', 'live_open', 'live_end', 'live_kick', 'attach', 'detach'];
 // Lo que se pide del registro: who (número de cuenta), token (nombre), action, from y to (milisegundos), before (id, para seguir).
 function teamLogRows(team, url, max) {
   const g = (k) => url.searchParams.get(k) || '';
@@ -2621,6 +2635,16 @@ async function teamAdminRoute(user, p, m, req, after) {
     const r = q('INSERT INTO tokens (hash, user, name, scope, share, created, team, can_write, made_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(sha(token), t.space, name, scope, share ? 1 : 0, now(), t.id, write ? 1 : 0, user.id);
     teamLog(t, user, 'token_create', scope, name + (write ? (share ? ' · write, share' : ' · write') : ' · read'));
     return { id: Number(r.lastInsertRowid), token, name, scope, write, share, mcp_url: PUBLIC_URL + '/mcp' };
+  }
+  // Regenerar un token del equipo: mismo nombre, carpeta y permisos, con un secreto nuevo (ver tokenRegenerate).
+  const regen = m === 'POST' && /^\/team\/tokens\/(\d+)\/regenerate$/.exec(p);
+  if (regen) {
+    if (t.status !== 'active') throw new Fail(402, 'team_ended');
+    const row = q('SELECT id, name, scope, share, can_write FROM tokens WHERE id = ? AND team = ?').get(+regen[1], t.id);
+    if (!row) throw new Fail(404, 'not_found');
+    const token = tokenRegenerate(row.id);
+    teamLog(t, user, 'token_regenerate', row.scope || '', row.name);
+    return { id: row.id, token, name: row.name, scope: row.scope || '', write: !!row.can_write, share: !!row.share, mcp_url: PUBLIC_URL + '/mcp' };
   }
   if (p.startsWith('/team/tokens/') && m === 'DELETE') {
     const row = q('SELECT id, name FROM tokens WHERE id = ? AND team = ?').get(+p.slice(13), t.id);
@@ -3690,11 +3714,26 @@ function apiTool(name, args, k) {
 // nombre: las reglas de las tarjetas viven en kbApply y las de acceso en callTool. La respuesta lleva la tarjeta con
 // su id y su columna, y la dirección para abrir la nota.
 const KB_DEFAULT_COLUMNS = ['To do', 'In progress', 'Paused', 'Done'];
+// Los campos que muestra en sus tarjetas un tablero creado por una IA: los tres que la guía le pide que use.
+const KB_AGENT_SHOW = ['agent', 'needs', 'link'];
+const KB_SHOW_MAX = 12; const KB_BATCH = 50; const KB_TITLE_MCP = 200;
+function kbShow(v) {
+  if (!Array.isArray(v) || v.length > KB_SHOW_MAX) throw new Fail(400, 'bad_show', 'show is a list of up to ' + KB_SHOW_MAX + ' field names, for example ["agent", "needs", "link"]');
+  const out = [];
+  for (const x of v) { const key = String(x == null ? '' : x).trim(); if (!KB_KEY.test(key) || ['id', 'created', 'updated', 'show'].includes(key)) throw new Fail(400, 'bad_show', 'A field name in show starts with a letter, has no spaces or commas and is not id, created, updated or show: ' + key.slice(0, 40)); if (!out.includes(key)) out.push(key); }
+  return out;
+}
+// El título de una tarjeta que escribe una IA: corto. Lo largo va en un campo, y se dice.
+function kbShortTitle(v) {
+  const n = String(v == null ? '' : v).replace(/\s+/g, ' ').trim().length;
+  if (n > KB_TITLE_MCP) throw new Fail(400, 'bad_title', 'The title of a card holds up to ' + KB_TITLE_MCP + ' characters and this one has ' + n + '. Keep the title short and put the detail in a field, for example fields: {"detail": "..."} (a field holds up to 500 characters), or in a note linked from the field link.');
+  return v;
+}
 function boardTool(name, args, k) {
-  const a = k.at(args.path); const where = () => ({ path: a.full, url: k.openUrl(a) });
+  const a = k.at(args.path); const where = () => ({ path: a.full, url: k.openUrl(a), rev: k.revOf(a) });
   if (name === 'list_boards') {
     k.seen(a); const text = k.read(a, k.gate(a));
-    const boards = kbBlocks(text).blocks.map((b, bi) => { const done = kbDoneColumn(b.board); return { board: bi, done_column: done ? done.title : null,
+    const boards = kbBlocks(text).blocks.map((b, bi) => { const done = kbDoneColumn(b.board); return { board: bi, done_column: done ? done.title : null, show: b.board.show.slice(),
       columns: b.board.columns.map((col, ci) => ({ column: col.title, cards: col.cards.map((c, ki) => Object.assign({ id: c.id || bi + '.' + ci + '.' + ki, title: c.text, done: c.done }, Object.keys(c.attrs).length ? { fields: Object.assign({}, c.attrs) } : {})) })) }; });
     return Object.assign(where(), { boards }, boards.length ? {} : { note: 'This note has no kanban board. Create one with create_board.' });
   }
@@ -3703,7 +3742,7 @@ function boardTool(name, args, k) {
     k.mayWrite(a); const key = k.gate(a); const rev = k.revOf(a); const prev = rev == null ? '' : k.read(a, key);
     const names = args.columns == null ? KB_DEFAULT_COLUMNS : args.columns;
     if (!Array.isArray(names) || !names.length || names.length > 20) throw new Fail(400, 'bad_columns', 'columns is a list of 1 to 20 column names');
-    const board = { show: [], fields: {}, columns: [] };
+    const board = { show: args.show == null ? KB_AGENT_SHOW.slice() : kbShow(args.show), fields: {}, columns: [] };
     for (const n of names) { const title = kbText(n, 120, 'bad_column'); if (board.columns.some((c) => c.title.toLowerCase() === title.toLowerCase())) throw new Fail(400, 'bad_columns', 'Two columns have the same name: ' + title); board.columns.push({ title, cards: [] }); }
     const done = args.done == null || args.done === '' ? kbDoneColumn(board) : kbColumn(board, args.done);
     if (done) board.done = done.title;
@@ -3711,17 +3750,45 @@ function boardTool(name, args, k) {
     const top = rev == null ? '# ' + (head || a.p.split('/').pop().replace(/\.[^.]+$/, '')) + '\n\n' : (prev.trim() ? prev.replace(/\s+$/, '') + '\n\n' : '') + (head ? '## ' + head + '\n\n' : '');
     k.write(a, key, top + ['```kanban'].concat(kbWrite(board), '```').join('\n') + '\n', rev);
     k.noted(rev == null ? 'create' : 'edit', a);
-    return Object.assign({ result: (rev == null ? 'Created the note with a board' : 'Added a board to the note') + ': ' + board.columns.map((c) => c.title).join(', ') + '.' + (done ? ' Cards moved to ' + done.title + ' are marked as done.' : '') }, where(), { board: kbBlocks(prev).blocks.length, columns: board.columns.map((c) => c.title), done_column: done ? done.title : null });
+    return Object.assign({ result: (rev == null ? 'Created the note with a board' : 'Added a board to the note') + ': ' + board.columns.map((c) => c.title).join(', ') + '.' + (done ? ' Cards moved to ' + done.title + ' are marked as done.' : '') }, where(), { board: kbBlocks(prev).blocks.length, columns: board.columns.map((c) => c.title), done_column: done ? done.title : null, show: board.show });
+  }
+  if (name === 'update_board') {
+    // Cambia el renglón de configuración del tablero y nada más: las columnas y las tarjetas quedan como están.
+    if (args.show === undefined) throw new Fail(400, 'bad_show', 'show is the list of fields the cards display, for example ["agent", "needs", "link"]');
+    const show = kbShow(args.show);
+    k.mayWrite(a); const key = k.gate(a); const rev = k.revOf(a); const text = k.read(a, key); const parsed = kbBlocks(text);
+    if (!parsed.blocks.length) throw new Fail(404, 'no_board', 'This note has no kanban board');
+    const bi = args.board == null ? 0 : +args.board; const block = parsed.blocks[bi];
+    if (!block) throw new Fail(404, 'no_board', 'This note has no board number ' + args.board);
+    const same = block.board.show.join() === show.join();
+    if (!same) { block.board.show = show; k.write(a, key, kbSave(parsed, block), rev); k.noted('edit', a, 'board'); }
+    return Object.assign({ result: same ? 'Nothing to change: the cards already display ' + (show.join(', ') || 'no fields') + '.' : show.length ? 'The cards now display ' + show.join(', ') + '.' : 'The cards now display no fields.' }, where(), { board: bi, show });
+  }
+  const cardOut = (c) => ({ id: c.id, title: c.title, column: c.column, done: c.done, fields: c.attrs });
+  if (name === 'add_cards') {
+    // Varias tarjetas en una sola escritura: una versión en el historial. Si una no sirve, no se guarda ninguna.
+    const list = args.cards;
+    if (!Array.isArray(list) || !list.length || list.length > KB_BATCH) throw new Fail(400, 'bad_cards', 'cards is a list of 1 to ' + KB_BATCH + ' cards, each with a title. For more, call add_cards again.');
+    k.mayWrite(a); const key = k.gate(a); const rev = k.revOf(a); let text = k.read(a, key); const made = []; let bi = 0;
+    list.forEach((c, i) => {
+      try {
+        if (!c || typeof c !== 'object' || Array.isArray(c)) throw new Fail(400, 'bad_cards', 'it has to be an object with a title');
+        if (c.title == null || !String(c.title).trim()) throw new Fail(400, 'bad_title', 'the title is missing');
+        const out = kbApply(text, 'create', { board: args.board, column: c.column == null || c.column === '' ? args.column : c.column, title: kbShortTitle(c.title), attrs: c.fields === undefined ? c.attrs : c.fields, position: c.position });
+        text = out.text; bi = out.board; made.push(out.card);
+      } catch (e) { if (!(e instanceof Fail) || e.code === 'no_board') throw e; throw new Fail(e.status, e.code, 'Nothing was saved. Card ' + (i + 1) + ' of ' + list.length + ': ' + (e.message && e.message !== e.code ? e.message : API_WORDS[e.code] || e.code)); }
+    });
+    k.write(a, key, text, rev); k.noted('edit', a, 'card');
+    return Object.assign({ result: made.length + (made.length === 1 ? ' card' : ' cards') + ' added.', cards: made.map(cardOut) }, where(), { board: bi });
   }
   const fields = args.fields === undefined ? args.attrs : args.fields; const path = args.path; const id = args.id; let out; let did;
-  if (name === 'add_card') { out = apiTool('card_create', { path, board: args.board, column: args.column, title: args.title, attrs: fields, position: args.position }, k); did = 'Card added to ' + out.card.column; }
+  if (name === 'add_card') { out = apiTool('card_create', { path, board: args.board, column: args.column, title: kbShortTitle(args.title), attrs: fields, position: args.position }, k); did = 'Card added to ' + out.card.column; }
   else if (name === 'move_card') {
     if (args.column == null || args.column === '') throw new Fail(400, 'bad_column', 'column is the name of the column to move the card to');
     out = apiTool('card_update', { path, id, column: args.column, position: args.position }, k); did = 'Card moved to ' + out.card.column + (out.card.done ? ' and marked as done' : '');
-  } else if (name === 'update_card') { out = apiTool('card_update', { path, id, title: args.title, attrs: fields, done: args.done }, k); did = 'Card updated'; }
+  } else if (name === 'update_card') { out = apiTool('card_update', { path, id, title: args.title == null ? args.title : kbShortTitle(args.title), attrs: fields, done: args.done }, k); did = 'Card updated'; }
   else { out = apiTool('card_delete', { path, id }, k); did = 'Card deleted'; }
-  const c = out.card;
-  return Object.assign({ result: did + '.', card: { id: c.id, title: c.title, column: c.column, done: c.done, fields: c.attrs } }, where(), { board: out.board });
+  return Object.assign({ result: did + '.', card: cardOut(out.card) }, where(), { board: out.board });
 }
 // La guía que una IA lee a demanda (get_guide): cómo documentar un proyecto y cómo llevar su tablero. El mensaje que
 // se copia desde la app (aiBrief, en src/sync.js) trae el resumen; el detalle está solo acá.
@@ -3809,9 +3876,13 @@ function guide(user) {
     '',
     '## The task board',
     '',
-    'The board is ' + dir + '/board.md, with the columns To do, In progress, Paused and Done. If the note has no board, create it with create_board: those four columns are its default. If it has one, call list_boards and use its column names as they are, in whatever language: planned, being done, waiting for the person, finished.',
+    'The board is ' + dir + '/board.md, with the columns To do, In progress, Paused and Done. If the note has no board, create it with create_board: those four columns are its default, and its cards display the fields agent, needs and link. If it has one, call list_boards and use its column names as they are, in whatever language: planned, being done, waiting for the person, finished.',
     '',
-    'Change the board with add_card, move_card and update_card, not with write_note. They keep the card ids, and the person sees the change at once.',
+    'Change the board with add_card, add_cards, move_card and update_card, not with write_note. They keep the card ids, and the person sees the change at once.',
+    '',
+    '- To plan several tasks, add them with one add_cards call (up to 50 cards): it is one write and one version in the history of the note, instead of one per card.',
+    '- A card title holds up to 200 characters. Keep it to one short line and put the detail in a field or in a note linked from the field link.',
+    '- A field is displayed on the cards only if the board lists it. create_board takes show, the list of fields to display, and update_board changes that list on a board that exists, for example to add due. Do not edit the configuration line of the board by hand.',
     '',
     '1. Before you start a piece of work, add one card per task to To do: a short title, and a field agent with who will do it (your name, or the name of the subagent).',
     '2. When you start a task, move its card to In progress.',
@@ -3822,7 +3893,7 @@ function guide(user) {
     '- One card per task. A card In progress means someone is working on it now.',
     '- Do not delete finished cards: they are the record of the work.',
     '- With subagents, give each one the path of the board and the id of its card, and have it move its own card.',
-    '- The fields agent, needs and link have that meaning. Others are free, for example due=2026-01-31 or priority=high.',
+    '- The fields agent, needs and link have that meaning. Others are free, for example due=2026-01-31 or priority=high. To display one of them on the cards, add it with update_board.',
     '',
     '## The list of what the person has to do',
     '',
@@ -3857,13 +3928,35 @@ function guide(user) {
     '- [x] 2026-01-15 The domain is example.com',
     F,
     '',
+    '## What each tool returns',
+    '',
+    'Every answer has text. The tools below also return the same data in structuredContent, so you do not have to cut it out of the text. path is the note as you address it, url opens it in the SharpMD app and rev is its version after the call.',
+    '',
+    '| Tool | Text | structuredContent |',
+    '| --- | --- | --- |',
+    '| read_note | Two blocks: the note, then a line with its version | path, url, rev, updated, saved_by, text |',
+    '| write_note, append_note | A sentence that ends in the link | result, path, url, rev, created |',
+    '| edit_note, set_task | A sentence that ends in the link | result, path, url, rev, changed |',
+    '| move_note | A sentence that ends in the link | result, path, url, rev, from |',
+    '| list_boards | JSON | path, url, rev, boards |',
+    '| create_board, update_board | JSON | result, path, url, rev, board, show |',
+    '| add_card, move_card, update_card, delete_card | JSON | result, card, path, url, rev, board |',
+    '| add_cards | JSON | result, cards, path, url, rev, board |',
+    '| search_notes, create_public_link, list_shares | JSON | the same object, when the answer is an object |',
+    '| list_notes, list_folders, list_comments, note_history | JSON list, or the text of a version | none |',
+    '| get_guide, resolve_comment, share_note, unshare_note, revoke_public_link | Text | none |',
+    '',
+    '- rev from read_note is what write_note takes as base_rev.',
+    '- result is the same sentence as the text. In read_note, text is the note again, for a client that only reads structuredContent.',
+    '- An error has isError set and a text that starts with Error: and says what to do. It has no structuredContent.',
+    '',
     '## ' + (ro ? 'This token cannot write' : 'Without write access, or with local files'),
     '',
     (ro ? 'This token can only read, so keep' : 'If a token cannot write, or the person prefers local files, keep') + ' the same structure as .md files on disk, for example in a docs folder of the repository, and give the person a link to each file as the server instructions say. There the board is a code block in board.md that you edit as text:',
     '',
     F + 'markdown',
     F.replace(/`/g, '~') + 'kanban',
-    '{done=Done}',
+    '{show=agent,needs,link done=Done}',
     '## To do',
     '- [ ] Short title of the task {agent=claude}',
     '',
@@ -5564,6 +5657,15 @@ async function route(req, url) {
     const r = q('INSERT INTO tokens (hash, user, name, scope, share, created) VALUES (?, ?, ?, ?, ?, ?)').run(sha(token), user.id, String(b.name || 'AI').slice(0, 60), scope, share ? 1 : 0, now());
     statOnce(user.id, STAT_BIT.token, 'ai_token');
     return { id: Number(r.lastInsertRowid), token, scope, share, mcp_url: PUBLIC_URL + '/mcp' };
+  }
+  // Regenerar: el mismo token (su nombre, su carpeta y su permiso) con un secreto nuevo. Es una sola escritura: o
+  // cambia el secreto o no cambia nada, así que la cuenta nunca queda sin token. El secreto viejo deja de entrar en
+  // ese instante, y el número del token se conserva: lo que escribió sigue figurando a su nombre.
+  const regen = m === 'POST' && /^\/tokens\/(\d+)\/regenerate$/.exec(p);
+  if (regen) {
+    const row = q('SELECT id, name, scope, share FROM tokens WHERE id = ? AND user = ?').get(+regen[1], user.id);
+    if (!row) throw new Fail(404, 'not_found');
+    return { id: row.id, token: tokenRegenerate(row.id), name: row.name, scope: row.scope || '', share: !!row.share, mcp_url: PUBLIC_URL + '/mcp' };
   }
   if (p.startsWith('/tokens/') && m === 'DELETE') { q('DELETE FROM tokens WHERE id = ? AND user = ?').run(+p.slice(8), user.id); return { ok: true }; }
   if (p === '/notes' && m === 'GET') {

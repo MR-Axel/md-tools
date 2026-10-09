@@ -341,6 +341,16 @@ try {
   const tokUi = await olga.page.evaluate(() => { const t = document.querySelector('.lmd-team'); return { token: [...t.querySelectorAll('.lmd-field')].find((f) => f.querySelector('span').textContent === 'Token').querySelector('input').value, row: t.querySelector('[data-team=tokens]').innerText }; });
   check('un token del equipo se crea desde Plan, se muestra una vez y queda en la lista con lo que puede', /^mdt_/.test(tokUi.token) && /Bot del taller · All team notes · reads and writes · never used/.test(tokUi.row), tokUi);
   check('y entra al espacio del equipo', /"plan\.md"/.test(text(await tool(tokUi.token, 'list_notes', {}))));
+  // Regenerar: el mismo token del equipo con un secreto nuevo, que queda a la vista.
+  await olga.page.click('.lmd-team [data-t=tok-regen]'); await olga.page.waitForSelector('.lmd-dlg');
+  const reAsk = await olga.page.evaluate(() => ({ title: document.querySelector('.lmd-dlg h3').textContent, text: document.querySelector('.lmd-dlg p').textContent, ok: document.querySelector('.lmd-dlg [data-dlg=ok]').textContent }));
+  await olga.page.click('.lmd-dlg [data-dlg=ok]');
+  await olga.page.waitForFunction((old) => { const f = [...document.querySelectorAll('.lmd-team .lmd-field')].find((x) => x.querySelector('span').textContent === 'Token'); return f && f.querySelector('input').value !== old; }, tokUi.token);
+  await olga.page.waitForFunction(() => /Bot del taller/.test(document.querySelector('.lmd-team [data-team=tokens]').innerText));
+  const reUi = await olga.page.evaluate(() => { const t = document.querySelector('.lmd-team'); return { token: [...t.querySelectorAll('.lmd-field')].find((f) => f.querySelector('span').textContent === 'Token').querySelector('input').value, row: t.querySelector('[data-team=tokens]').innerText, rows: t.querySelectorAll('[data-team=tokens] li').length }; });
+  const reLog = (await api('GET', '/team/log?action=token_regenerate', undefined, U.s)).json;
+  check('regenerar un token del equipo pide confirmar, deja el mismo token con un secreto nuevo, y queda en el registro', reAsk.title === 'Regenerate the token "Bot del taller"?' && reAsk.text === 'Connections using this token stop working. You will have to paste the new token wherever you use it.' && reAsk.ok === 'Regenerate' && /^mdt_/.test(reUi.token) && reUi.token !== tokUi.token && reUi.rows === 1 && /Bot del taller · All team notes · reads and writes · never used/.test(reUi.row) && (await api('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/list' }, tokUi.token)).status === 401 && /"plan\.md"/.test(text(await tool(reUi.token, 'list_notes', {}))) && reLog.entries.length === 1 && reLog.entries[0].detail === 'Bot del taller', [reAsk, reUi, reLog]);
+  tokUi.token = reUi.token;
   await olga.page.click('.lmd-team [data-t=tok-rm]'); await olga.page.waitForSelector('.lmd-dlg'); await olga.page.click('.lmd-dlg [data-dlg=ok]');
   await olga.page.waitForFunction(() => /No tokens yet\./.test(document.querySelector('.lmd-team [data-team=tokens]').innerText));
   check('revocarlo pide confirmar con un diálogo propio, y deja de entrar', (await api('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/list' }, tokUi.token)).status === 401 && !(await olga.page.$('.lmd-team .lmd-ai-new')));
