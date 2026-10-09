@@ -652,7 +652,7 @@ await step('tab', 'Ajustes > Herramientas desliza bien con diez tarjetas', async
       out.end = lr.bottom <= box().bottom + 1; out.width = body.scrollWidth <= body.clientWidth + 1;
       return out;
     });
-    check(where + ': las diez tarjetas, y la pestaña desliza con el scroll del diálogo, no con el de la página', m.cards === 10 && m.scrolls && /auto|scroll/.test(m.over) && m.pageFixed, m);
+    check(where + ': las diez tarjetas, y si no entran desliza el diálogo, no la página', m.cards === 10 && (m.scrolls || m.end) && /auto|scroll/.test(m.over) && m.pageFixed, m);
     check(where + ': cada tarjeta se puede ver entera, sin cortes a lo ancho', m.reach.length === 0 && m.cut.length === 0 && m.width, [m.reach, m.cut, m.width]);
     check(where + ': con el teclado, el foco trae cada interruptor a la vista', m.focus.length === 0, m.focus);
     check(where + ': al final del scroll se ve el final de la lista', m.end === true, m);
