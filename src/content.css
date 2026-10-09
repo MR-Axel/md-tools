@@ -1526,6 +1526,9 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 .lmd-node-n { flex: none; align-self: center; min-width: 14px; margin-left: 4px; font-size: 11px; font-weight: 400; line-height: 1; text-align: right; color: var(--fg-faint); font-variant-numeric: tabular-nums; pointer-events: none; }
 .lmd-node-n::after { content: attr(data-n); }
 .lmd-node-n[hidden] { display: none; }
+/* Un archivo que apareció en la carpeta mientras estaba abierta: un punto y un fondo tenue, unos segundos. */
+.lmd-node.lmd-node-new { background: var(--accent-soft); }
+.lmd-node.lmd-node-new .lmd-node-name::after { content: ''; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--accent-fill); vertical-align: middle; }
 @media (max-width: 700px) { .lmd-node-n { font-size: 12.5px; margin-right: 2px; } }
 
 /* Entrar a la cuenta: el formulario en la tarjeta del inicio, debajo de los botones, o en su ventana si hay una nota abierta. */
