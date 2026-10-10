@@ -62,7 +62,21 @@ Gratis y de código abierto. Sin seguimiento: los archivos se leen en tu navegad
 - **Servidores locales, Worktrees y Sesiones locales** (Ajustes → Herramientas, apagadas por defecto): tres herramientas para la computadora donde programás. Leen de [SharpMD Local](local/README.es.md), un programa chico y abierto de este repositorio que corrés vos y que escucha solo en `127.0.0.1`: qué puertos están escuchando y de qué proyecto (y cerrar los servidores de desarrollo que quedaron de más), cómo están tus worktrees de git, y las sesiones de agentes de IA abiertas en la máquina con la memoria que usa cada una. Emparejado, el menú de un archivo de tu disco ofrece además Mostrar en el Explorador. Nada pasa por la nube. [Cómo instalarlo](https://sharpmd.app/es/local-tools.html).
 - **Archivos desde el árbol** (página de SharpMD): archivo nuevo, renombrar y eliminar con clic derecho. Los archivos y las carpetas enteras se mueven arrastrándolos, y un archivo soltado adentro de la nota que estás editando queda como enlace (o como imagen) en ese punto. Elegir un archivo nunca recarga la página, tampoco sobre un `.md` abierto directo del disco: las carpetas desplegadas, la búsqueda y la posición quedan como estaban, y las flechas recorren la lista. Un `.txt`, `.json` o `.yaml` de la carpeta se abre dentro de SharpMD y se guarda en su formato. El explorador se entera solo de lo que cambia en la carpeta: un archivo creado por otro programa aparece en segundos, marcado un momento, y los borrados o renombrados se van. Un botón Actualizar lo fuerza.
 - **Imágenes**: se pegan del portapapeles, se arrastran a la nota o se eligen de un archivo (en el teléfono, de la galería o de la cámara). Cada una se achica en el navegador y pierde sus metadatos, ubicación incluida (Ajustes → Lectura y edición → Calidad de las imágenes: Normal, Alta u Original). En una carpeta del disco se guarda en `assets/`, al lado del documento. En una nota de la nube se sube como adjunto y la nota guarda su dirección: subir es del plan pago (una cuenta gratis inserta imágenes por dirección), 10 MB por imagen y 1 GB, 2 GB por persona en una bolsa común del equipo, con la lista en Ajustes → Nube → Almacenamiento. En una carpeta protegida se cifra en el navegador, y proteger una carpeta cifra las imágenes que sus notas ya tenían.
-- **No solo Markdown** (página de SharpMD): los archivos de código y configuración se ven resaltados y se editan como texto, los CSV y TSV se ven como tabla, y las imágenes como imágenes.
+- **No solo Markdown** (página de SharpMD): los archivos de código y configuración se ven resaltados y se editan como texto, y los CSV y TSV se ven como tabla. Un **PDF** o un **EPUB** se abre en un lector propio, sin salir de la app (páginas o capítulos, índice en el panel lateral, búsqueda en todo el documento, y recuerda dónde quedaste); una **imagen**, en un visor (acercar, arrastrar, anterior y siguiente, copiar como Markdown); un audio o un video, en el reproductor del navegador. Un Word, un Excel o un PowerPoint ofrecen "Importar a Markdown". El interruptor **Solo Markdown** del panel Archivos deja a la vista solo las notas.
+
+  | Tipo | Cómo se ve | Tope |
+  | --- | --- | --- |
+  | Markdown, texto (`.md`, `.txt`) | La nota, que se edita | 10 MB |
+  | JSON, YAML | Resaltado, o como árbol con su herramienta | 10 MB |
+  | CSV, TSV | Tabla | 10 MB |
+  | Código y configuración (`.js`, `.ts`, `.py`, `.css`, `.html`, `.xml`, `.toml`, `.log` y otros) | Resaltado. El HTML se lee, no se ejecuta | 5 MB |
+  | Imágenes (PNG, JPG, GIF, WebP, SVG, AVIF, BMP, ICO) | Visor de imágenes. El SVG va en un `<img>`, con su código a un clic | 40 MB |
+  | PDF, EPUB | Lector propio | 200 MB |
+  | Audio y video (MP3, WAV, OGG, M4A, MP4, WebM) | Reproductor del navegador | sin tope |
+  | Word, Excel, PowerPoint | No se muestran: ofrecen Importar a Markdown | 50 MB |
+  | Lo demás | No aparece en el explorador ni se dibuja | |
+
+  La lista es una sola: `FILE_TYPES` en `src/kit.js`. PDF, EPUB, imágenes, audio y video se ven cuando la carpeta o el archivo se abren desde la app (con "Abrir carpeta", "Abrir archivo" o arrastrándolos); por un enlace de la extensión llega solo texto.
 - **Índice automático** del documento, con la sección actual resaltada mientras se hace scroll.
 - **Árbol de carpetas**: los archivos Markdown de la carpeta del documento, con subcarpetas que se abren y botón para subir de nivel.
 - **Recarga automática** cuando el archivo cambia en disco, sin perder la posición.
@@ -167,6 +181,7 @@ src/
   linkmap.js      herramienta: mapa de enlaces en un canvas y los enlaces a la nota abierta
   explore.js      herramienta: un diagrama de flujo de Mermaid que se recorre, con el detalle de cada nodo leído de comentarios del bloque
   jsonyaml.js     herramienta: bloques y archivos JSON y YAML como un árbol que se edita, con su lector y escritor de YAML
+  viewer.js       el visor de PDF, EPUB, imágenes, audio y video; se pide al abrir el primero (los tipos: FILE_TYPES en kit.js)
   import.js       herramienta: Word, Excel, PowerPoint, EPUB, PDF, HTML y CSV a Markdown, con su lector de zip y sus topes
   aikey.js        asistente de IA: los proveedores, la clave guardada y las llamadas en streaming (sin interfaz)
   assistant.js    herramienta: asistente de IA con tu clave (acciones, escribir con IA, el panel, sus opciones)

@@ -104,12 +104,14 @@
   async function firstMarkdown(root) {
     const queue = [{ h: root, path: '', depth: 0 }];
     const byName = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+    // Sin ningún Markdown, lo primero que se pueda ver: un PDF o un libro antes que una imagen.
+    let other = null; const rank = { pdf: 1, epub: 1, text: 2, image: 3, table: 4, data: 4, code: 5, audio: 6, video: 6 };
     while (queue.length) {
       const d = queue.shift();
       const files = []; const dirs = [];
       for await (const [name, h] of d.h.entries()) {
         if (name.startsWith('.')) continue;
-        if (h.kind === 'file') { if (MD_RE.test(name)) files.push(name); }
+        if (h.kind === 'file') { if (MD_RE.test(name)) files.push(name); else { const r = rank[LMD.kit.kindOf(name)]; if (r && (!other || r < other.r)) other = { r, path: d.path + encodeURIComponent(name) }; } }
         else if (d.depth < 3 && !SKIP_DIRS.test(name)) dirs.push({ name, h });
       }
       if (files.length) {
@@ -118,7 +120,7 @@
       }
       dirs.sort((a, b) => byName(a.name, b.name)).forEach((x) => queue.push({ h: x.h, path: d.path + encodeURIComponent(x.name) + '/', depth: d.depth + 1 }));
     }
-    return null;
+    return other ? other.path : null;
   }
 
   async function openPicked(handle, say, opt) {
@@ -143,19 +145,24 @@
   // Sin File System Access (Firefox, Safari) el archivo se lee una vez y se guarda en la sesión.
   const canPick = () => !!window.showOpenFilePicker;
   // Con la herramienta de importar prendida, un Word, un PDF y los demás que ella convierte van a ella (import.js).
-  const imports = (name) => !!LMD.import && LMD.tools.isOn('import') && LMD.import.takes(name);
+  // Un PDF o un EPUB no: esos se abren en el visor (viewer.js), y desde su menú se convierten.
+  const VIEW_RE = /\.(pdf|epub|png|jpe?g|gif|webp|svg|avif|bmp|ico|mp3|wav|ogg|m4a|mp4|webm)$/i;
+  const imports = (name) => !VIEW_RE.test(name || '') && !!LMD.import && LMD.tools.isOn('import') && LMD.import.takes(name);
   async function openInMemory(file, say) {
     if (!file) return;
     if (imports(file.name)) { LMD.import.run(file); return; }
+    // Un PDF o un EPUB no entra en la sesión como texto: queda en memoria mientras dure la pestaña.
+    if (VIEW_RE.test(file.name)) return ctx.view(file);
     try { sessionStorage.setItem('mdt-mem', JSON.stringify({ name: file.name, text: await file.text() })); }
     catch (e) { say(T('No se pudo abrir. Probá de nuevo.')); return; }
     return ctx.open('mem/' + encodeURIComponent(file.name));
   }
 
   // Lo que deja elegir "Abrir archivo".
-  const pickAccept = () => '.md,.markdown,.mdx,.mkd,.mdown,.txt,.json,.yaml,.yml' + (imports('x.pdf') ? ',' + LMD.import.accept : '');
+  const pickAccept = () => '.md,.markdown,.mdx,.mkd,.mdown,.txt,.json,.yaml,.yml,.pdf,.epub,.png,.jpg,.jpeg,.gif,.webp,.svg,.avif,.bmp,.ico,.mp3,.wav,.ogg,.m4a,.mp4,.webm' + (imports('x.docx') ? ',' + LMD.import.accept : '');
   const pickTypes = () => [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.mkd', '.mdown'] } }, { description: 'Text, JSON, YAML', accept: { 'text/plain': ['.txt'], 'application/json': ['.json'], 'application/yaml': ['.yaml', '.yml'] } }]
-    .concat(imports('x.pdf') ? [{ description: 'Word, Excel, PowerPoint, EPUB, PDF, HTML, CSV', accept: { 'application/octet-stream': LMD.import.accept.split(',') } }] : []);
+    .concat([{ description: 'PDF, EPUB', accept: { 'application/pdf': ['.pdf'], 'application/epub+zip': ['.epub'] } }, { description: 'Images, audio, video', accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.avif', '.bmp', '.ico'], 'audio/*': ['.mp3', '.wav', '.ogg', '.m4a'], 'video/*': ['.mp4', '.webm'] } }])
+    .concat(imports('x.docx') ? [{ description: 'Word, Excel, PowerPoint, HTML, CSV', accept: { 'application/octet-stream': LMD.import.accept.split(',').filter((x) => !VIEW_RE.test(x)) } }] : []);
   // El archivo de un enlace que abre uno del disco (install.js). El selector sale en el mismo turno del clic, sin
   // esperar nada antes. id: el selector recuerda por id dónde quedó, así que la segunda vez arranca en esa carpeta.
   // startIn: una carpeta ya abierta, para la primera. Devuelve lo elegido sin abrirlo: { handle } con File System
@@ -638,6 +645,8 @@
     cloudNote: () => cloudNote(),
     // Un archivo recién guardado pasa a ser la nota abierta: reemplaza en el historial a la que era.
     adopt: (c, handle) => { ctx = c; return openPicked(handle, () => {}, { replace: true }); },
+    // Un archivo soltado en la ventana con una nota abierta (un PDF o un EPUB): se abre como cualquier otro elegido.
+    take: (c, handle) => { ctx = c; return openPicked(handle, (text) => c.say(text)); },
     show: (c, note) => { ctx = c; return home(note); },
     // El pie de la cuenta: con c se monta y se pinta; sin nada, se repinta si ya está (cambió la sesión o el plan).
     account: (c) => { if (c) { ctx = c; bindAcct(); } return paintAcct(); },

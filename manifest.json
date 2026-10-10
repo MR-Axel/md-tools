@@ -110,6 +110,7 @@
         "src/explore.js",
         "src/jsonyaml.js",
         "src/import.js",
+        "src/viewer.js",
         "src/aikey.js",
         "src/assistant.js",
         "src/agents.js",

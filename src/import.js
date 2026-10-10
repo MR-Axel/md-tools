@@ -1117,7 +1117,9 @@
   let busy = false;
   // Convierte un archivo mostrando el avance. opt: { html } para HTML que no viene de un archivo.
   async function run(file, opt) {
-    if (!on || !core || !core.APP || busy || !file) return false;
+    // force: lo pidió el menú de un PDF o un EPUB abierto en el visor, que no depende del interruptor de la herramienta.
+    if (opt && opt.core && !core) core = opt.core;
+    if ((!on && !(opt && opt.force)) || !core || !core.APP || busy || !file) return false;
     busy = true;
     const dlg = dialog(file.name || '');
     const job = newJob(dlg.progress); dlg.onCancel = () => job.cancel();
@@ -1228,5 +1230,7 @@
     area.appendChild(row);
   }
 
-  LMD.import = { enable, disable, settings, convert, run, runHtml, pick, takes, accept: ACCEPT, limits: LIMITS, busy: () => busy, pdfLoaded: () => !!pdfLib };
+  LMD.import = { enable, disable, settings, convert, run, runHtml, pick, takes, accept: ACCEPT, limits: LIMITS, busy: () => busy, pdfLoaded: () => !!pdfLib,
+    // Lo que el visor de PDF y EPUB (viewer.js) toma de acá: el cargador de pdf.js, el lector de zip y el de XML.
+    kit: { newJob, unzip, pdfjs, xml, all, resolve, dirOf, why } };
 })();

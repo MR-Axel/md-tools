@@ -3737,6 +3737,16 @@ dialog.lmd-xp-full::backdrop { background: var(--bg); }
 .lmd-pk-sess b { flex: none; width: 46px; height: 8px; border-radius: 4px; background: var(--bg-soft); border: 1px solid var(--line); overflow: hidden; }
 .lmd-pk-sess b i { height: 100%; width: 70%; background: var(--fg-muted); opacity: .75; transform-origin: 0 50%; animation: lmd-pk-w1 3.6s linear infinite; }
 .lmd-pk-sess .r:nth-child(2) b i { width: 40%; animation-name: lmd-pk-w2; } .lmd-pk-sess .r:nth-child(3) b i { width: 22%; animation: none; }
+
+/* ---------- Lo que no es una nota: el visor (viewer.js, que trae sus propios estilos) y los carteles ---------- */
+/* Un PDF, un libro, una imagen, un audio o un video solo se leen: la barra no ofrece editar, ver el código ni copiar. */
+.lmd-bin .lmd-top-mid > *, .lmd-bin .lmd-view, .lmd-bin .lmd-view + .lmd-sep, .lmd-bin [data-act=copy], .lmd-bin [data-act=page], .lmd-bin .lmd-count, .lmd-bin .lmd-savestate { display: none !important; }
+.lmd-notice { margin: 56px auto; max-width: 520px; color: var(--fg-muted); text-align: center; }
+.lmd-notice p { margin: 0 0 16px; }
+.lmd-notice-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+/* "Solo Markdown", en la cabecera del panel Archivos: prendido se nota. */
+.lmd-zone-btn.lmd-tree-only { opacity: .55; }
+.lmd-zone-btn.lmd-tree-only.lmd-on { opacity: 1; background: var(--accent-soft); color: var(--accent); }
 /* ---------- Enviar a la nube (send.js): la ventana, la etiqueta del arrastre y el aviso del final ---------- */
 .lmd-send-card { display: flex; flex-direction: column; max-height: min(620px, 100%); }
 .lmd-send-card h3 { overflow-wrap: anywhere; }

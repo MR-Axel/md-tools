@@ -338,6 +338,69 @@ const checks = [
   ['no sale ningún pedido a otro servidor que no sea una imagen', odd.length === 0, odd],
   ['no navega fuera de la app', new URL(o.url1).protocol === 'chrome-extension:' && new URL(app.url()).protocol === 'chrome-extension:', [o.url1, app.url()]],
 ];
+// ---------- Un libro (EPUB) y un SVG hostiles, abiertos en el visor (viewer.js) ----------
+// El libro es un zip sin comprimir armado acá: un capítulo con guiones, manejadores, javascript:, estilos que tapan,
+// un marco y pedidos a otro servidor. El SVG trae lo mismo. Ninguno puede ejecutar nada ni salir de la app.
+{
+  const stored = (files) => {
+    const parts = []; const central = []; let offset = 0; const names = Object.keys(files);
+    for (const name of names) {
+      const data = Buffer.from(files[name], 'utf8'); const nm = Buffer.from(name, 'utf8');
+      const head = Buffer.alloc(30); head.writeUInt32LE(0x04034b50, 0); head.writeUInt16LE(20, 4); head.writeUInt32LE(data.length, 18); head.writeUInt32LE(data.length, 22); head.writeUInt16LE(nm.length, 26);
+      parts.push(head, nm, data);
+      const cd = Buffer.alloc(46); cd.writeUInt32LE(0x02014b50, 0); cd.writeUInt16LE(20, 4); cd.writeUInt16LE(20, 6); cd.writeUInt32LE(data.length, 20); cd.writeUInt32LE(data.length, 24); cd.writeUInt16LE(nm.length, 28); cd.writeUInt32LE(offset, 42);
+      central.push(cd, nm); offset += 30 + nm.length + data.length;
+    }
+    const size = central.reduce((n, p) => n + p.length, 0);
+    const end = Buffer.alloc(22); end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(names.length, 8); end.writeUInt16LE(names.length, 10); end.writeUInt32LE(size, 12); end.writeUInt32LE(offset, 16);
+    return Buffer.concat(parts.concat(central, [end]));
+  };
+  const cuerpo = '<h1>Libro</h1><script>' + P + '</script><img src="x.png" onerror="' + P + '"/><p><a href="javascript:' + P + '">js</a> <a href="#" data-act="settings">accion</a></p>' +
+    '<style>.lmd-topbar{display:none !important} body{display:none}</style><div style="position:fixed;inset:0;z-index:99999;background:red" class="lmd-ask lmd-panel">tapa</div>' +
+    '<iframe src="https://xss.invalid/marco"></iframe><link rel="stylesheet" href="https://xss.invalid/a.css"/><img src="https://xss.invalid/rastro.png" alt="afuera"/>' +
+    '<form action="https://xss.invalid/f"><input autofocus="autofocus" onfocus="' + P + '"/><button formaction="javascript:' + P + '">enviar</button></form>' +
+    '<svg xmlns="http://www.w3.org/2000/svg" onload="' + P + '"><script>' + P + '</script><foreignObject><div xmlns="http://www.w3.org/1999/xhtml" style="position:fixed">x</div></foreignObject></svg>' +
+    '<object data="https://xss.invalid/o"></object><p id="lmd-custom-css" onclick="' + P + '">Texto sano.</p>';
+  const libro = stored({
+    mimetype: 'application/epub+zip',
+    'META-INF/container.xml': '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="c.opf" media-type="application/oebps-package+xml"/></rootfiles></container>',
+    'c.opf': '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>&lt;img src=x onerror=' + P + '&gt;</dc:title></metadata><manifest><item id="a" href="a.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="a"/></spine></package>',
+    'a.xhtml': '<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>a</title></head><body>' + cuerpo + '</body></html>',
+  });
+  const svgMalo = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="50" height="50" onload="top.__pwn=1"><script>top.__pwn=1; fetch("https://xss.invalid/svg")</script><image xlink:href="https://xss.invalid/i.png" width="5" height="5"/><foreignObject width="50" height="50"><iframe xmlns="http://www.w3.org/1999/xhtml" src="https://xss.invalid/m"></iframe></foreignObject><rect width="50" height="50"/></svg>';
+  const visor = { libro: null, svg: null, pedidos: [] };
+  const oye = (r) => { if (/xss\.invalid/.test(r.url())) visor.pedidos.push(r.url()); };
+  app.on('request', oye);
+  try {
+    await app.goto('chrome-extension://' + id + '/src/app.html'); await app.waitForSelector('.lmd-home');
+    await app.evaluate(async ([epub, svg]) => {
+      delete window.__pwn;
+      const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('visor-xss', { create: true });
+      const put = async (n, t) => { const h = await dir.getFileHandle(n, { create: true }); const w = await h.createWritable(); await w.write(t); await w.close(); };
+      await put('inicio.md', '# Inicio\n'); await put('malo.epub', Uint8Array.from(atob(epub), (c) => c.charCodeAt(0))); await put('malo.svg', svg);
+      window.showDirectoryPicker = async () => dir;
+    }, [libro.toString('base64'), svgMalo]);
+    await app.click('[data-home=dir]'); await app.waitForSelector('.lmd-tree-box .lmd-node[title="malo.epub"]');
+    await app.click('.lmd-tree-box .lmd-node[title="malo.epub"]');
+    await app.waitForFunction(() => !!(window.LMD && LMD.viewer && LMD.viewer.ready() && document.querySelector('.lmd-article h1')), null, { timeout: 20000 }); await app.waitForTimeout(700);
+    await app.evaluate(() => document.querySelectorAll('.lmd-article a, .lmd-article p').forEach((n) => n.click())); await app.waitForTimeout(300);
+    visor.libro = await app.evaluate(() => { const a = document.querySelector('.lmd-article'); const bar = document.querySelector('.lmd-topbar').getBoundingClientRect(); const at = document.elementFromPoint(bar.left + 30, bar.top + 20);
+      return { pwn: window.__pwn, mal: a.querySelectorAll('script, style, iframe, link, form, input, object, embed, foreignObject, [style], [id], [onclick], [onerror], [onload], [data-act]').length, js: [...a.querySelectorAll('a')].filter((x) => /javascript:/i.test(x.getAttribute('href') || '')).length,
+        fijo: [...a.querySelectorAll('*')].filter((n) => /fixed|sticky/.test(getComputedStyle(n).position)).length, barra: !!at && !!at.closest('.lmd-topbar'), panel: document.querySelector('.lmd-panel').hidden, sano: /Texto sano\./.test(a.textContent), titulo: document.querySelector('.lmd-pane-outline .lmd-o-title').children.length, estilo: document.getElementById('lmd-custom-css').tagName }; });
+    await app.click('.lmd-tree-box .lmd-node[title="malo.svg"]');
+    await app.waitForFunction(() => !!document.querySelector('.lmd-vw-stage img'), null, { timeout: 20000 }); await app.waitForTimeout(600);
+    await app.click('[data-vw=src]'); await app.waitForSelector('.lmd-vw-src');
+    visor.svg = await app.evaluate(() => ({ pwn: window.__pwn, img: document.querySelector('.lmd-vw-stage img').src.slice(0, 5), dentro: document.querySelectorAll('.lmd-article svg, .lmd-article script, .lmd-article iframe').length, fuente: document.querySelector('.lmd-vw-src').children.length === 0 && /<script>/.test(document.querySelector('.lmd-vw-src').textContent) }));
+  } catch (e) { visor.error = String(e && e.message || e).split('\n')[0]; }
+  app.off('request', oye);
+  checks.push(
+    ['visor: un EPUB hostil no ejecuta nada, ni al abrirlo ni al tocar sus enlaces', !!visor.libro && visor.libro.pwn === undefined && visor.libro.panel === true, visor.libro || visor.error],
+    ['visor: del libro no entran guiones, estilos, marcos, formularios, manejadores, ids ni javascript:', !!visor.libro && visor.libro.mal === 0 && visor.libro.js === 0 && visor.libro.sano && visor.libro.estilo === 'STYLE' && visor.libro.titulo === 0, visor.libro],
+    ['visor: nada del libro queda fijo ni tapa la barra de la app', !!visor.libro && visor.libro.fijo === 0 && visor.libro.barra, visor.libro],
+    ['visor: un SVG hostil se ve como imagen blob:, su código como texto, y no corre nada', !!visor.svg && visor.svg.pwn === undefined && visor.svg.img === 'blob:' && visor.svg.dentro === 0 && visor.svg.fuente, visor.svg || visor.error],
+    ['visor: ni el libro ni el SVG piden nada a otro servidor', visor.pedidos.length === 0, visor.pedidos],
+  );
+}
 console.log('Markdown hostil');
 checks.forEach(([name, ok, detail]) => console.log((ok ? '  ok   ' : '  FALLA ') + name + (ok || detail === undefined ? '' : '  -> ' + JSON.stringify(detail).slice(0, 500))));
 const bad = checks.filter((c) => !c[1]).length;

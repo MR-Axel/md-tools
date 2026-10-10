@@ -45,7 +45,7 @@ Free and open source. No tracking: files are read in your browser and never uplo
 | **Focus** | Focus mode dims everything but the block you are writing; typewriter mode keeps the line at mid height. |
 | **Export** | One standalone HTML file, or PDF through print. |
 | **Export a folder** | A whole folder as one document, one note after another: PDF, HTML, Word or a single Markdown file. From the folder's menu in the explorer, or Export → The whole folder. Natural order (2 before 10), optional cover and contents, links between the notes become internal, and in the PDF no line or heading is left alone at a page edge; a document starts a new page only when the previous one left its page at least half full. |
-| **More than Markdown** | Code and config files open highlighted, CSV as a table, images as images. |
+| **More than Markdown** | Code and config files open highlighted, CSV as a table. PDF and EPUB open in a built-in reader (pages or chapters, outline, search, position remembered), images in a viewer (zoom, pan, previous and next, copy as Markdown), audio and video in the browser's player. Word, Excel and PowerPoint offer Import to Markdown. A "Markdown only" switch in the Files panel hides everything else. |
 | **Cloud notes** | Optional. Sign in with a code sent to your email, move a note to the cloud and open it on any device, also without a connection. A deleted cloud note stays in the trash for 30 days. The account can be deleted from Settings. |
 | **Protected folders** | A cloud folder can carry a password. Its notes are encrypted in the browser and the server cannot read them. You unlock it for your AI for as long as you choose. An account can protect its whole cloud with one password too, from Settings → Cloud: the app offers it the first time you save a note to the cloud. With the whole cloud protected there is no sharing, public links, published site or automations until you remove the protection. On a team plan the administrator can protect the whole team space the same way, with one password for the team. |
 | **Sharing** | A note or a folder with another account, to read or to edit, or a read-only public link with a password. |
@@ -226,6 +226,7 @@ src/
   linkmap.js      tool: link map on a canvas and the links to the open note
   explore.js      tool: a Mermaid flowchart to walk through, with node details read from comments in the block
   jsonyaml.js     tool: JSON and YAML blocks and files as an editable tree, with its own YAML reader and writer
+  viewer.js       the viewer for PDF, EPUB, images, audio and video, loaded when the first one is opened (file types: FILE_TYPES in kit.js)
   import.js       tool: Word, Excel, PowerPoint, EPUB, PDF, HTML and CSV to Markdown, with its own zip reader and limits
   aikey.js        AI assistant: the provider adapters, the stored key and the streaming calls (no UI)
   assistant.js    tool: AI assistant with your own key (actions, write with AI, the panel, its options)
@@ -292,6 +293,7 @@ Two more scripts run by hand, outside `npm test`:
 - `node merge.mjs` covers merging instead of overwriting: the three-way merge on its own, a file on disk that changes outside with and without unsaved edits, the conflict dialog, paused auto-save, a cloud note in two browsers, and the MCP tools that edit a note in place.
 - `node blocks.mjs` covers selecting several blocks (mouse, keyboard, touch) and every action on them.
 - `node items.mjs` covers selecting list items and acting on them, neighbouring lists that must stay apart, pasting across tabs, and the cost of dragging in a long note.
+- `node viewer.mjs` covers the viewer and the file types of the explorer: PDF, EPUB, images, hostile EPUB and SVG, the Markdown-only switch, size limits and phone (`ONLY=pdf` runs one part).
 - `node import.mjs` covers Import to Markdown: each format, progress, cancelling, limits, hostile files and the extension page (`ONLY=pdf` runs one part).
 - `node assistant.mjs` covers the AI assistant against a local server that imitates the Anthropic and OpenAI streaming formats and the quirks of the OpenAI-compatible providers: no real provider and no real key (`ONLY=key` runs one part: key, actions, gen, panel, comments, errors, many, vault, small, safe, ext).
 - `node perf.mjs` measures the web app load, cold and warm, on a throttled network and CPU. Run it before and after touching what `src/app.html` loads.

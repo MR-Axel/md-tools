@@ -13,6 +13,13 @@
     md: '<svg viewBox="0 0 24 24"><path d="M4 17V7l4 5 4-5v10M16 7v9m-3-3 3 3 3-3"/></svg>',
     txt: '<svg viewBox="0 0 24 24"><path d="M6.5 3.5h7l4 4v13h-11z"/><path d="M13.5 3.5v4h4M9.5 12h5M9.5 15.5h5"/></svg>',
     data: '<svg viewBox="0 0 24 24"><path d="M8.5 4.5c-2 0-2.5 1-2.5 2.5v2.5c0 1.300-.7 2.300-2 2.500 1.300.2 2 1.200 2 2.500V17c0 1.500.5 2.500 2.500 2.500M15.500 4.500c2 0 2.500 1 2.500 2.500v2.500c0 1.300.7 2.300 2 2.500-1.300.2-2 1.200-2 2.500V17c0 1.500-.5 2.500-2.500 2.500"/></svg>',
+    // Un PDF y un libro (EPUB): se ven en el visor (viewer.js).
+    pdf: '<svg viewBox="0 0 24 24"><path d="M6.5 3.5h7l4 4v13h-11z"/><path d="M13.5 3.5v4h4M9 17v-4.5h1.2a1.3 1.3 0 0 1 0 2.600H9M13.500 12.500V17M13.500 12.500h1.800M13.500 14.700h1.400"/></svg>',
+    table: '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1.5"/><path d="M4 10h16M4 14.500h16M10 5v14"/></svg>',
+    image: '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="m5 17 4.500-4 3.500 3 2.500-2 3.500 3"/></svg>',
+    audio: '<svg viewBox="0 0 24 24"><path d="M9 17.500V6l9-1.500v11"/><circle cx="7" cy="17.500" r="2"/><circle cx="16" cy="15.500" r="2"/></svg>',
+    video: '<svg viewBox="0 0 24 24"><rect x="4" y="5.500" width="16" height="13" rx="2"/><path d="M10.500 9.500v5l4-2.500z"/></svg>',
+    book: '<svg viewBox="0 0 24 24"><path d="M12 6.5C10.300 5.200 7.800 4.800 4.500 5v13c3.300-.2 5.800.2 7.500 1.500 1.700-1.300 4.200-1.700 7.500-1.500V5c-3.300-.2-5.800.2-7.500 1.500zM12 6.500v13"/></svg>',
     up: '<svg viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>',
     close: '<svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>',
     keyboard: '<svg viewBox="0 0 24 24"><rect x="3" y="6.5" width="18" height="11" rx="2"/><path d="M7 10h.01M10.3 10h.01M13.7 10h.01M17 10h.01M7 14h.01M17 14h.01M10 14h4"/></svg>',
@@ -87,6 +94,41 @@
   const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
   const MD_RE = /\.(md|mdx|mkd|mdown|markdown)$/i;
   const SKIP_DIRS = /^(node_modules|\.git|dist|build|__pycache__)$/i;
+  // Las carpetas que el explorador nunca muestra: no son de la persona, y adentro hay miles de archivos.
+  const TREE_SKIP = /^(node_modules|\.git|\.hg|\.svn|__pycache__)$/i;
+
+  // ---------- Qué archivos se ven sin salir de la app ----------
+  // La única lista: de acá salen qué muestra el explorador, con qué ícono, cómo se abre cada archivo y hasta qué
+  // tamaño. kind dice cómo se ve:
+  //   md, text       la nota de siempre (se edita)
+  //   data           JSON y YAML: resaltados, o como árbol con la herramienta prendida (se editan como texto)
+  //   table          CSV y TSV como tabla
+  //   code           código y configuración, resaltados. El HTML entra acá: se lee, no se ejecuta
+  //   image          el visor de imágenes (viewer.js). Un SVG se muestra como imagen, nunca dentro de la página
+  //   pdf, epub      el visor de PDF y de libros (viewer.js)
+  //   audio, video   el reproductor del navegador
+  //   office         no se muestra: se ofrece convertirlo con "Importar a Markdown"
+  // Lo que no está en la lista (kind 'other') no aparece en el explorador y no se dibuja: un binario no es texto.
+  // max: megas hasta los que se abre. Lo que se reproduce (audio, video) no se carga entero y no lleva tope.
+  const FILE_TYPES = [
+    { kind: 'md', icon: 'md', max: 10, ext: 'md markdown mdx mkd mdown' },
+    { kind: 'text', icon: 'txt', max: 10, ext: 'txt' },
+    { kind: 'data', icon: 'data', max: 10, ext: 'json yaml yml' },
+    { kind: 'table', icon: 'table', max: 10, ext: 'csv tsv' },
+    { kind: 'code', icon: 'code', max: 5, ext: 'js mjs cjs jsx ts tsx py rb rs go java kt c h cpp hpp cs php swift dart lua r pl sh bash zsh ps1 bat cmd sql css scss less html htm xml vue svelte toml ini cfg conf env properties gradle tex log diff patch lock gitignore gitattributes editorconfig npmrc dockerfile makefile' },
+    { kind: 'image', icon: 'image', max: 40, ext: 'png jpg jpeg gif webp svg avif bmp ico' },
+    { kind: 'pdf', icon: 'pdf', max: 200, ext: 'pdf' },
+    { kind: 'epub', icon: 'book', max: 200, ext: 'epub' },
+    { kind: 'audio', icon: 'audio', max: 0, ext: 'mp3 wav ogg m4a' },
+    { kind: 'video', icon: 'video', max: 0, ext: 'mp4 webm' },
+    { kind: 'office', icon: 'file', max: 50, ext: 'docx xlsx pptx' },
+  ];
+  const BY_EXT = {}; FILE_TYPES.forEach((t) => t.ext.split(' ').forEach((x) => { BY_EXT[x] = t; }));
+  const OTHER = { kind: 'other', icon: 'file', max: 0, ext: '' };
+  // Un nombre sin extensión (LICENSE, README) se lee como Markdown, como siempre.
+  const typeOf = (name) => { const n = String(name || ''); const m = /\.([A-Za-z0-9]+)$/.exec(n); return m ? BY_EXT[m[1].toLowerCase()] || OTHER : n ? BY_EXT.md : OTHER; };
+  const kindOf = (name) => typeOf(name).kind;
+  const bytes = (n) => (n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (Math.round(n / 104857.6) / 10) + ' MB');
 
   // Un correo bien formado: sin espacios, una sola arroba, el nombre sin puntos al borde ni dobles, y un
   // dominio de etiquetas válidas que termina en letras. Es la misma regla que aplica el servidor.
@@ -182,5 +224,5 @@
     if (first && !(LMD.touch && LMD.touch.coarse())) first.focus({ preventScroll: true });
     if (form.scrollIntoView) form.scrollIntoView({ block: 'nearest' });
   }
-  LMD.kit = { ICON, el, esc, debounce, MD_RE, SKIP_DIRS, validEmail, saveFile, card, kv, copyRow, tokenRow, tokenRows, tokenForm, tokenAsk };
+  LMD.kit = { ICON, el, esc, debounce, MD_RE, SKIP_DIRS, TREE_SKIP, FILE_TYPES, typeOf, kindOf, bytes, validEmail, saveFile, card, kv, copyRow, tokenRow, tokenRows, tokenForm, tokenAsk };
 })();

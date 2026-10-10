@@ -51,7 +51,7 @@
   const isFile = location.protocol === 'file:';
 
   const T = (text, vars) => LMD.t(text, vars);
-  const { ICON, el, esc, debounce, MD_RE, SKIP_DIRS } = LMD.kit;
+  const { ICON, el, esc, debounce, MD_RE, SKIP_DIRS, TREE_SKIP, typeOf, kindOf } = LMD.kit;
   const { slugify, ghSlug, splitFrontmatter, ALERTS } = LMD.md;
   const { inlineMd, roundTrips } = LMD.serialize;
   const { handlesAll, handlesPut, canWrite, walk } = LMD.store;
@@ -69,6 +69,7 @@
   const homeCtx = () => ({ settings, APP_URL, box: ui.home, open: (f, opt) => go(f, opt), refresh: () => core.reloadTree(), say: (text) => flash(text, 'error'), warn: (text) => flash(text, 'warn'), plan: (why) => openPanel('plan', why),
     // El pie de la barra lateral, donde vive la cuenta: dónde dibujarse, cómo quedar a la vista y cómo guardar antes de salir.
     // Un archivo del disco abierto por enlace: su dirección en la app, y si la web ya tiene su carpeta con permiso.
+    view: (file) => viewFile(file),
     disk: { doc: fsDoc, real: async (fileUrl) => { const k = await fsKnown(fileUrl); return !!(k && k.granted); } },
     acct: ui.acct, showSide: () => { if (LMD.touch.small()) setDrawer(true); else if (settings.sidebarHidden) LMD.patch({ sidebarHidden: false }); }, hideSide: () => setDrawer(false),
     leave: () => (dirty ? save(false) : Promise.resolve(true)), ready: unsplash, panel: (tab) => openPanel(tab),
@@ -386,13 +387,15 @@
     publish: { js: ['src/publish.js'] },
     // La hoja de atajos de teclado: se pide al abrirla.
     shortcuts: { js: ['src/shortcuts.js'] },
+    // El visor de PDF, EPUB, imágenes, audio y video: se pide al abrir el primero.
+    viewer: { js: ['src/viewer.js'] },
   };
   const LAZY_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, tools: () => !!(LMD.diagram && LMD.formula && LMD.templates && LMD.community) };
   LAZY_HAVE.gallery = () => !!LMD.gallery; LAZY_HAVE.automate = () => !!LMD.automate; LAZY_HAVE.publish = () => !!LMD.publish;
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
   ['present', 'daily', 'docx', 'linkmap', 'explore', 'jsonyaml', 'import', 'agents', 'localtools'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
   LAZY_HAVE.assistant = () => !!(LMD.ai && LMD.assistant);
-  LAZY_HAVE.shortcuts = () => !!LMD.shortcuts; LAZY_HAVE.folderexport = () => !!LMD.folderexport;
+  LAZY_HAVE.shortcuts = () => !!LMD.shortcuts; LAZY_HAVE.folderexport = () => !!LMD.folderexport; LAZY_HAVE.viewer = () => !!LMD.viewer;
   async function appLazy(what) {
     const spec = LAZY_APP[what];
     try {
@@ -710,7 +713,7 @@
   }
   function setFile(url, text, opt) {
     const wasEditing = editMode;
-    dropDoc();
+    dropDoc(); docNote = '';
     HERE = url; DOC_NAME = unesc(HERE.split('/').pop() || '');
     raw = text; diskText = text; dirty = false; rawMode = false; editMode = false;
     if (!opt.pop) {
@@ -731,7 +734,8 @@
     goFile(want, { pop: true, hash: '' }).then(() => { popWant = ''; }, () => { popWant = ''; });
   }
   // Un archivo del explorador que SharpMD no dibuja pero la herramienta de importar convierte: se ofrece convertirlo.
-  const IMPORT_RE = /\.(docx|xlsx|pptx|epub|pdf)$/i;
+  // Un PDF o un EPUB ya no: esos se abren en el visor, y desde su menú se convierten.
+  const IMPORT_RE = /\.(docx|xlsx|pptx)$/i;
   function offerImport(url) {
     if (!APP || !url || !IMPORT_RE.test(cleanUrl(url)) || !LMD.tools || !LMD.tools.isOn('import')) return false;
     const root = rootOf(url); if (!root || root.kind !== 'dir') return false;
@@ -1052,7 +1056,10 @@
     if (!settings.rememberPosition) return;
     chrome.storage.local.get('positions', (r) => {
       const all = (r && r.positions) || {};
-      all[posKey()] = { y: Math.round(window.scrollY), t: Date.now() };
+      // En el visor se recuerda la página y el zoom, o el capítulo y el avance (viewer.js). Mientras carga, nada.
+      const view = isBin() ? (LMD.viewer && LMD.viewer.state()) || null : null;
+      if (isBin() && !view) return;
+      all[posKey()] = Object.assign({ y: Math.round(window.scrollY), t: Date.now() }, view ? { v: view } : {});
       const keys = Object.keys(all);
       if (keys.length > 300) keys.sort((a, b) => all[a].t - all[b].t).slice(0, keys.length - 300).forEach((k) => delete all[k]);
       chrome.storage.local.set({ positions: all });
@@ -1117,6 +1124,7 @@
         '<div class="lmd-split" title="' + T('Arrastrar para cambiar el alto') + '"></div>' +
         '<section class="lmd-zone lmd-zone-files" data-zone="files">' +
           '<div class="lmd-zone-head"><button type="button" class="lmd-zone-tog" data-zone-tog="files"><span class="lmd-node-chev">' + ICON.chevron + '</span><span>' + T('Archivos') + '</span></button>' +
+            '<button type="button" class="lmd-zone-btn lmd-tree-only" data-act="tree-only" aria-pressed="false">' + ICON.md + '</button>' +
             '<button type="button" class="lmd-zone-btn lmd-tree-refresh" data-act="tree-refresh" title="' + T('Actualizar la lista de archivos') + '" aria-label="' + T('Actualizar la lista de archivos') + '">' + ICON.reload + '</button>' +
             (APP ? '<button type="button" class="lmd-zone-btn lmd-tree-add" title="' + T('Crear') + '">' + ICON.plus + '</button>' : '') +
             '<button type="button" class="lmd-zone-btn lmd-tree-open" title="' + T(APP ? 'Abrir otra carpeta o archivo' : 'Abrir otro archivo o carpeta') + '">' + ICON.open + '</button></div>' +
@@ -1263,6 +1271,8 @@
       if (actEl) { onAction(actEl.dataset.act, actEl, !e.detail); return; }
       if (e.target === ui.scrim) { setDrawer(false); return; }
       if (sideClick(e)) return;
+      // El índice de un PDF o de un libro, y los enlaces de adentro del documento, los atiende el visor.
+      if (!noDoc && isBin() && LMD.viewer && LMD.viewer.click(e)) return;
       const img = e.target.closest('img.lmd-zoomable');
       if (img && !img.closest('a') && !editMode) { openViewer(img); return; }
       const plain = !(e.ctrlKey || e.metaKey || e.shiftKey);
@@ -1311,6 +1321,23 @@
       }
     });
 
+    // Soltar en la ventana un archivo que se ve en el visor (un PDF, un libro, una imagen, un audio, un video): se
+    // abre ahí, haya o no una nota abierta. Va antes que la herramienta de importar, que si no se lo llevaría.
+    if (APP) {
+      const dropped = (e) => Array.from((e.dataTransfer && e.dataTransfer.items) || []).filter((i) => i.kind === 'file');
+      const hasFiles = (e) => Array.from((e.dataTransfer && e.dataTransfer.types) || []).indexOf('Files') >= 0;
+      window.addEventListener('dragover', (e) => { if (hasFiles(e) && !editMode) e.preventDefault(); }, true);
+      window.addEventListener('drop', (e) => {
+        if (!hasFiles(e) || editMode || document.querySelector('.lmd-ask, .lmd-dgm, .lmd-pres') || !ui.panel.hidden) return;
+        const item = dropped(e).find((i) => { const f = i.getAsFile(); return !!f && !!VIEW_KINDS[kindOf(f.name)]; });
+        if (!item) return;
+        e.preventDefault(); e.stopImmediatePropagation(); ui.home.classList.remove('lmd-drop');
+        const file = item.getAsFile();
+        // Con acceso a archivos queda entre los abiertos, como uno elegido; si no, en memoria.
+        let asked = null; try { asked = window.showOpenFilePicker && item.getAsFileSystemHandle ? item.getAsFileSystemHandle() : null; } catch (err) { asked = null; }
+        Promise.resolve(asked).catch(() => null).then((h) => (h && h.kind === 'file' ? LMD.home.take(homeCtx(), h) : viewFile(file))).catch(() => flash(T('No se pudo abrir. Probá de nuevo.'), 'error'));
+      }, true);
+    }
     ui.toTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     document.addEventListener('mousedown', (e) => { if (moreMenu && !moreMenu.contains(e.target) && !moreBtn.contains(e.target)) closeMore(); });
     window.addEventListener('scroll', closeMore, { passive: true });
@@ -1336,6 +1363,8 @@
       }
       if (LMD.mod(e) && !e.shiftKey && e.key.toLowerCase() === 's' && (editMode || dirty || (appRoot && appRoot.kind === 'local'))) { e.preventDefault(); save(true); }
       if (LMD.mod(e) && e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); toggleSearch(true); }
+      // Ctrl+F en el visor: su buscador, que recorre todo el documento. La segunda vez pasa el del navegador.
+      if (LMD.mod(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f' && !noDoc && isBin() && LMD.viewer && LMD.viewer.find()) e.preventDefault();
       if (window.__MDT_WEB && e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyT') { e.preventDefault(); flipTheme(); }
       if (LMD.mod(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k' && editMode && !rawMode && docKind() === 'md') { e.preventDefault(); LMD.links.open(); }
       // La hoja de atajos: "?" fuera de un campo de texto, o Ctrl+/ en cualquier lado. Por la letra y no por la tecla:
@@ -1540,6 +1569,18 @@
     ], keys);
   }
   function openExport(btn, keys) {
+    if (isBin()) {
+      // Lo que tiene sentido para un archivo que solo se lee: llevárselo, verlo aparte, convertirlo y saber dónde está.
+      const k = viewKind(); const real = kindOf(DOC_NAME);
+      barMenu(btn, 'lmd-menu-narrow lmd-menu-top lmd-menu-export', [
+        ['export-md', ICON.file, 'Descargar el archivo'],
+        k === 'pdf' && ['view-tab', ICON.open, 'Abrir en otra pestaña'],
+        k === 'epub' && ['print', ICON.print, 'Imprimir el capítulo', PRINT_KEY],
+        (real === 'pdf' || real === 'epub' || real === 'office') && k !== 'big' && ['import-here', ICON.md, 'Importar a Markdown'],
+        diskPath() && ['copy-path', ICON.folder, 'Copiar la ruta'],
+      ], keys);
+      return;
+    }
     const md = docKind() === 'md';
     barMenu(btn, 'lmd-menu-narrow lmd-menu-top lmd-menu-export', [
       ['export-pdf', ICON.doc, 'PDF'],
@@ -1550,7 +1591,7 @@
   }
   // En pantalla chica, lo que en escritorio está a la vista en la barra de arriba, acá en una lista.
   function openMore() {
-    const md = docKind() === 'md'; const cloud = !!appRoot && appRoot.kind === 'cloud';
+    const md = docKind() === 'md'; const cloud = !!appRoot && appRoot.kind === 'cloud'; const bin = isBin();
     // Lo que la barra todavía muestra no se repite acá: en una ventana angosta el selector de vista sigue en su lugar.
     const shown = (q) => !!ui.main.querySelector('.lmd-topbar ' + q).offsetParent;
     barMenu(ui.more, 'lmd-menu-more', [
@@ -1558,12 +1599,12 @@
       // Con una sesión en vivo, quiénes están y cómo salir o terminarla (en pantalla chica la barra de arriba no los muestra).
       cloud && LMD.live.active() && ['live', ICON.people, 'Colaborar en vivo'],
       editMode && md && !rawMode && !shown('.lmd-insert') && ['insert', ICON.plus, 'Insertar un bloque'],
-      !shown('.lmd-view') && (rawMode ? ['view-doc', ICON.doc, 'Ver documento'] : ['view-raw', ICON.code, 'Ver código fuente']),
+      !bin && !shown('.lmd-view') && (rawMode ? ['view-doc', ICON.doc, 'Ver documento'] : ['view-raw', ICON.code, 'Ver código fuente']),
       // Copiar y exportar abren acá mismo el menú que en escritorio cuelga de su botón.
-      ['copy', ICON.copy, 'Copiar'],
-      ['export', ICON.download, 'Exportar'],
+      !bin && ['copy', ICON.copy, 'Copiar'],
+      ['export', ICON.download, bin ? 'Archivo' : 'Exportar'],
       // En el teléfono, mandar la nota a otra app (install.js): como texto, como archivo, con un enlace o copiando.
-      LMD.install.canShareOut() && ['share-out', ICON.share, 'Compartir'],
+      !bin && LMD.install.canShareOut() && ['share-out', ICON.share, 'Compartir'],
       diskDoc() && ['reload', ICON.reload, 'Recargar ahora'],
       md && !shown('[data-act=page]') && ['page', ICON.doc, 'Ajustes de la página'],
       !shown('[data-act=theme-flip]') && ['theme-flip', LMD.theme.isDark(settings) ? SUN : MOON, LMD.theme.isDark(settings) ? 'Pasar a claro' : 'Pasar a oscuro'],
@@ -1576,6 +1617,7 @@
   // Una nota del disco puede cambiar por fuera; las del navegador y las de la nube no se recargan a mano.
   const diskDoc = () => !APP || !appRoot || appRoot.kind === 'dir' || appRoot.kind === 'file';
   function downloadDoc() {
+    if (isBin()) { binFile().then((f) => { if (f && LMD.kit.saveFile(f, DOC_NAME) === 'download') flash(T('Archivo descargado')); }); return; }
     flushTyping();
     if (LMD.kit.saveFile(new Blob([raw], { type: 'text/markdown' }), DOC_NAME || 'nota.md') === 'download') flash(T('Archivo descargado'));
   }
@@ -1610,6 +1652,9 @@
     // Con los títulos numerados, lo copiado lleva los números que se ven (page.js); el archivo no cambia.
     else if (act === 'copy-md') { if (needsRender && !typingNode() && !core.hold) render(); copyText(LMD.page && LMD.page.md && !needsRender && docKind() === 'md' ? LMD.page.md() : raw, source); }
     else if (act === 'copy-rich') copyRich(source);
+    else if (act === 'tree-only') LMD.patch({ filesOnlyMarkdown: !settings.filesOnlyMarkdown });
+    else if (act === 'import-here') importAt();
+    else if (act === 'view-tab') binFile().then((f) => { if (!f) return; const u = URL.createObjectURL(new Blob([f], { type: 'application/pdf' })); window.open(u, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(u), 120000); });
     else if (act === 'tree-refresh') { goneDoc = ''; core.reloadTree().then(() => { checkGone(); flash(T('Lista de archivos actualizada')); }); }
     else if (act === 'reload') { if (orphan || !alive()) location.reload(); else checkForChanges(true); }
     else if (act === 'print') window.print();
@@ -1732,6 +1777,9 @@
     ui.customStyle.textContent = settings.customCSS || '';
 
     ui.searchInput.placeholder = T('Buscar en la nota y en los archivos');
+    // "Solo Markdown": prendido, el explorador muestra las notas y nada más.
+    const only = ui.sidebar.querySelector('.lmd-tree-only');
+    if (only) { const on = !!settings.filesOnlyMarkdown; only.setAttribute('aria-pressed', String(on)); only.classList.toggle('lmd-on', on); const say = T(on ? 'Solo Markdown: prendido. Clic para ver todos los archivos que SharpMD abre' : 'Solo Markdown: apagado. Clic para ver solo las notas'); only.title = say; only.setAttribute('aria-label', T('Solo Markdown')); }
     applySide();
 
     ui.status.textContent = idleStatus();
@@ -1754,7 +1802,63 @@
     return [{ description: 'Markdown', accept: { 'text/markdown': ['.md'] } }];
   };
   const LANGS = { yml: 'yaml', mjs: 'javascript', cjs: 'javascript', js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript', py: 'python', rb: 'ruby', rs: 'rust', sh: 'bash', ps1: 'powershell', htm: 'html', kt: 'kotlin', cs: 'csharp', h: 'c' };
+  // Lo que no es texto no pasa por el camino de una nota: un PDF, un libro, una imagen, un audio o un video se ven en
+  // el visor (viewer.js, que se pide recién ahí); un Word, un archivo que pasa el tope de su tipo o un binario
+  // cualquiera llevan un cartel. Vale para lo que la app lee con su permiso de archivo (una carpeta o un archivo del
+  // disco, o uno soltado en la ventana). La lista de tipos es una sola: FILE_TYPES en kit.js.
+  const VIEW_KINDS = { pdf: 1, epub: 1, image: 1, audio: 1, video: 1 };
+  let docNote = ''; let docSize = 0; // 'big' (pasa el tope de su tipo) u 'other' (no es texto): se dice, no se dibuja
+  function viewKind() {
+    if (!APP || noDoc || !appRoot || appRoot.id === 'mem' || (appRoot.kind !== 'dir' && appRoot.kind !== 'file')) return '';
+    if (docNote) return docNote;
+    const k = kindOf(DOC_NAME);
+    return VIEW_KINDS[k] || k === 'office' ? k : '';
+  }
+  const isBin = () => !!viewKind();
+  // El archivo abierto, entero (para el visor, para descargarlo o para convertirlo).
+  const binFile = async (url) => { try { const h = await vFile(url || HERE); return h ? await h.getFile() : null; } catch (e) { return null; } };
+  // Un PDF, un EPUB o un Word de la carpeta, convertido en nota: lo hace la herramienta de importar, esté prendida o no.
+  const importAt = (url) => ensure('import').then(async (ok) => { const f = ok && LMD.import ? await binFile(url) : null; if (f) LMD.import.run(f, { force: true, core }); else flash(T('No se pudo abrir. Probá de nuevo.'), 'error'); });
+  // Archivos sin permiso de archivo (soltados en la ventana, o elegidos en un navegador sin acceso al disco): quedan en
+  // memoria mientras dure la pestaña.
+  const heldFiles = new Map();
+  const viewFile = (file) => { heldFiles.set(file.name, file); return go('bin/' + encodeURIComponent(file.name)); };
+  let viewSeq = -1; let viewHash = ''; let viewHits = 0;
+  function drawBinary() {
+    needsRender = false;
+    if (viewSeq === docSeq) return; // ya está a la vista: el tema y el tamaño de letra le llegan por la hoja de estilos
+    viewSeq = docSeq; const seq = docSeq; const kind = viewKind(); const hash = viewHash; viewHash = ''; viewHits = 0;
+    if (LMD.viewer) LMD.viewer.close();
+    ui.article.textContent = ''; spyHeadings = []; ui.paneOutline.textContent = ''; ui.progress = null; ui.count.textContent = '';
+    if (!VIEW_KINDS[kind]) {
+      // No se muestra: se dice por qué en una línea, con lo que sí se puede hacer.
+      const type = typeOf(DOC_NAME); const box = el('div', { class: 'lmd-notice', role: 'status' });
+      box.appendChild(el('p', { text: kind === 'big' ? T('"{a}" pesa {b}. SharpMD abre este tipo de archivo hasta {c} MB.', { a: DOC_NAME, b: LMD.kit.bytes(docSize), c: type.max })
+        : kind === 'office' ? T('SharpMD no muestra este archivo, pero lo puede convertir en una nota.') : T('SharpMD no muestra este tipo de archivo.') }));
+      const row = el('div', { class: 'lmd-notice-row' });
+      if (kind === 'office') row.appendChild(el('button', { type: 'button', class: 'lmd-btn lmd-btn-fill', 'data-act': 'import-here', text: T('Importar a Markdown') }));
+      if (diskPath()) row.appendChild(el('button', { type: 'button', class: 'lmd-btn', 'data-act': 'copy-path', text: T('Copiar la ruta') }));
+      if (row.firstChild) box.appendChild(row);
+      ui.article.appendChild(box);
+      return;
+    }
+    ui.article.appendChild(el('p', { class: 'lmd-notice', role: 'status', text: T('Abriendo…') }));
+    (async () => {
+      const pos = await new Promise((resolve) => { if (!settings.rememberPosition) { resolve(null); return; } chrome.storage.local.get('positions', (r) => resolve((r && r.positions && r.positions[posKey()]) || null)); });
+      // El lector de PDF y el de zip salen de la herramienta de importar: se pide su archivo, no se la prende.
+      const ok = (kind !== 'pdf' && kind !== 'epub' ? true : await ensure('import')) && await ensure('viewer');
+      const file = ok && seq === docSeq ? await binFile() : null;
+      if (seq !== docSeq) return;
+      if (!file) { ui.article.textContent = ''; ui.article.appendChild(el('p', { class: 'lmd-notice', role: 'alert', text: ok ? T('No se encontró "{a}".', { a: DOC_NAME }) : T('No se pudo cargar el visor. Probá de nuevo.') })); return; }
+      diskStamp = file.lastModified + ':' + file.size;
+      const dir = HERE.slice(0, HERE.lastIndexOf('/') + 1);
+      await LMD.viewer.open(core, { kind, file, name: DOC_NAME, host: ui.article, outline: ui.paneOutline, pos: pos && pos.v, hash, alive: () => seq === docSeq, query: ui.searchInput.value.trim(),
+        dir, here: HERE, rel: vParts(HERE).map(linkSeg).join('/'),
+        count: (text, n) => { viewHits = n; ui.searchCount.textContent = text; const c = ui.results.querySelector('.lmd-res-doc .lmd-res-count'); if (c) c.textContent = n; } });
+    })();
+  }
   function docKind() {
+    const view = viewKind(); if (view) return view;
     if (TXT_RE.test(DOC_NAME)) return 'text';
     if (MD_RE.test(DOC_NAME) || DOC_NAME.indexOf('.') === -1) return 'md';
     if (IMG_RE.test(DOC_NAME)) return 'image';
@@ -1793,6 +1897,7 @@
 
   function render() {
     if (noDoc) { ui.article.textContent = ''; spyHeadings = []; ui.paneOutline.textContent = ''; ui.progress = null; needsRender = false; if (ui.searchInput.value) runSearch(ui.searchInput.value, false, true); return; }
+    if (isBin()) { drawBinary(); return; }
     const md = buildParser();
     const kind = docKind();
     const fm = kind === 'text' ? { body: '', rows: null } : kind !== 'md' ? { body: asMarkdown(kind), rows: null } : (settings.plugins.frontmatter ? splitFrontmatter(raw) : { body: raw, rows: null });
@@ -1969,7 +2074,16 @@
     if (checking || noDoc || saving) return;
     // Una nota que todavía no tiene archivo (vive en la sesión) no tiene nada afuera que releer. Su "archivo" es
     // lo que hay en memoria: compararlo con lo guardado (nada, en una nota nueva) daba un cambio en el disco falso.
-    if (appRoot && (appRoot.id === 'mem' || appRoot.kind === 'fs')) { if (manual) flash(T('Sin cambios')); return; }
+    if (appRoot && (appRoot.id === 'mem' || appRoot.id === 'bin' || appRoot.kind === 'fs')) { if (manual) flash(T('Sin cambios')); return; }
+    // Lo que está en el visor no se lee como texto: alcanza con la fecha y el tamaño. Si cambió (se volvió a exportar
+    // el libro), se abre de nuevo en el mismo lugar.
+    if (isBin()) {
+      const seq0 = docSeq; const f = await binFile();
+      if (seq0 !== docSeq || !f) return;
+      const stamp = f.lastModified + ':' + f.size;
+      if (diskStamp && stamp !== diskStamp && VIEW_KINDS[viewKind()]) { viewSeq = -1; render(); flash(T('El archivo cambió en el disco: se volvió a abrir.')); } else if (manual) flash(T('Sin cambios'));
+      return;
+    }
     checking = true;
     const seq = docSeq;
     try {
@@ -2441,9 +2555,12 @@
 
   // ---------- Árbol de carpetas ----------
 
+  // Qué archivos muestra el explorador. Con "Solo Markdown" prendido, las notas (Markdown y texto); si no, todo lo
+  // que la app sabe abrir (FILE_TYPES, kit.js). Lo demás no aparece, y tampoco las carpetas que no son de la persona.
+  const listed = (name) => (settings.filesOnlyMarkdown ? MD_RE.test(name) || TXT_RE.test(name) : kindOf(name) !== 'other');
   const visibleRows = (rows) => rows
     .filter((x) => settings.filesShowHidden || !x.name.startsWith('.'))
-    .filter((x) => x.dir || !settings.filesOnlyMarkdown || MD_RE.test(x.name) || TXT_RE.test(x.name) || (JY_RE.test(x.name) && !!LMD.tools && LMD.tools.isOn('jsonyaml')))
+    .filter((x) => (x.dir ? !TREE_SKIP.test(x.name) : listed(x.name)))
     .sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
   async function listDir(dirUrl, all) {
@@ -2475,8 +2592,8 @@
   }
 
   // Qué es cada archivo del explorador, para su ícono: Markdown, texto plano, datos (JSON o YAML) o cualquier otra cosa.
-  const fileKind = (name) => (MD_RE.test(name) ? 'md' : TXT_RE.test(name) ? 'txt' : JY_RE.test(name) ? 'data' : 'file');
-  const FILE_ICON = { md: ICON.md, txt: ICON.txt, data: ICON.data, file: ICON.file };
+  const fileKind = (name) => { if (MD_RE.test(name)) return 'md'; if (TXT_RE.test(name)) return 'txt'; const k = kindOf(name); return k === 'md' || k === 'other' ? 'file' : k; };
+  const fileIcon = (name) => (MD_RE.test(name) ? ICON.md : ICON[typeOf(name).icon] || ICON.file);
 
   // ---------- Explorador ----------
   // Raíces desplegables, en este orden y solo las que apliquen: la carpeta del disco, las notas de este
@@ -2633,7 +2750,7 @@
         others.forEach((r) => {
           const row = el('div', { class: 'lmd-recent' });
           const go = el('a', { class: 'lmd-node', href: APP_URL + '?f=' + encodeURIComponent(r.last || r.id + '/'), title: r.name });
-          go.innerHTML = '<span class="lmd-node-ico">' + (r.kind === 'dir' ? ICON.folder : FILE_ICON[fileKind(r.name)]) + '</span><span class="lmd-node-name"></span><span class="lmd-node-sub"></span>';
+          go.innerHTML = '<span class="lmd-node-ico">' + (r.kind === 'dir' ? ICON.folder : fileIcon(r.name)) + '</span><span class="lmd-node-name"></span><span class="lmd-node-sub"></span>';
           go.querySelector('.lmd-node-name').textContent = r.name;
           go.querySelector('.lmd-node-sub').textContent = r.ghost ? T('Reconectar') : r.kind === 'dir' ? decodeURIComponent((r.last || '').split('/').slice(1).join('/')) : '';
           // Se abrió del otro lado (la web o la extensión): acá todavía falta elegirla una vez.
@@ -2769,7 +2886,7 @@
       const kind = row.dir ? 'dir' : fileKind(row.name);
       item.dataset.kind = kind;
       item.innerHTML = (row.dir ? '<span class="lmd-node-chev">' + ICON.chevron + '</span>' + (vault ? '<span class="lmd-node-lock" title="' + T(shut ? 'Carpeta protegida, bloqueada' : 'Carpeta protegida, desbloqueada en esta pestaña') + '">' + (shut ? ICON.lock : ICON.unlock) + '</span>' : '')
-        : '<span class="lmd-node-ico">' + FILE_ICON[kind] + '</span>') +
+        : '<span class="lmd-node-ico">' + fileIcon(row.name) + '</span>') +
         '<span class="lmd-node-name"></span>' + (!row.dir && where ? '<span class="lmd-node-where" title="' + T(where[1]) + '">' + ICON[where[0]] + '</span>' : '');
       item.querySelector('.lmd-node-name').textContent = row.label || row.name;
       out.push(item);
@@ -2906,8 +3023,8 @@
       let n = 0; let more = false;
       for (const r of rows) {
         if (!settings.filesShowHidden && r.name.startsWith('.')) continue;
-        if (!r.dir) { if (MD_RE.test(r.name) || TXT_RE.test(r.name)) n++; continue; }
-        if (SKIP_DIRS.test(r.name)) continue;
+        if (!r.dir) { if (listed(r.name)) n++; continue; }
+        if (SKIP_DIRS.test(r.name) || TREE_SKIP.test(r.name)) continue;
         const sub = await diskCount(r.url, depth + 1);
         n += sub.n; more = more || sub.more;
       }
@@ -2930,7 +3047,8 @@
       const more = c.more || c.n > 999;
       // El número lo dibuja la hoja de estilos: el texto del renglón sigue siendo el nombre de la carpeta.
       tag.dataset.n = c.n > 999 ? '999+' : c.n + (c.more ? '+' : '');
-      const full = T(more ? 'Más de {n} notas' : c.n === 1 ? '1 nota' : '{n} notas', { n: Math.min(c.n, 999) });
+      const notes = settings.filesOnlyMarkdown || (APP && (rootOf(url) || {}).kind === 'cloud');
+      const full = T(notes ? (more ? 'Más de {n} notas' : c.n === 1 ? '1 nota' : '{n} notas') : (more ? 'Más de {n} archivos' : c.n === 1 ? '1 archivo' : '{n} archivos'), { n: Math.min(c.n, 999) });
       tag.setAttribute('aria-label', full); tag.title = full; tag.hidden = false;
     };
     if ((rootOf(url) || {}).kind === 'cloud') cloudCount(url).then(paint, () => {});
@@ -2973,8 +3091,11 @@
     clearSearch();
     q = (q || '').trim();
     document.documentElement.classList.toggle('lmd-searching', !!q);
+    // En el visor busca el visor, en todo el PDF o en todo el libro.
+    const view = !noDoc && isBin() && LMD.viewer && LMD.viewer.active();
+    if (view) LMD.viewer.search(q, !!jump);
     if (!q) { showResults(false); folderToken++; return; }
-    if (!noDoc) highlightInDoc(q.toLowerCase(), jump);
+    if (!noDoc && !isBin()) highlightInDoc(q.toLowerCase(), jump);
     if (keep && resultsFor === q && !ui.results.hidden) docRow(); else searchFiles(q);
   }
 
@@ -2999,6 +3120,7 @@
   }
 
   function stepSearch(dir) {
+    if (!noDoc && isBin()) { if (LMD.viewer) LMD.viewer.step(dir); return; }
     if (!searchHits.length) return;
     searchIndex = (searchIndex + dir + searchHits.length) % searchHits.length;
     const r = searchHits[searchIndex];
@@ -3009,7 +3131,9 @@
     ui.searchCount.textContent = (searchIndex + 1) + ' / ' + searchHits.length;
   }
 
-  async function collectFiles(root) {
+  // wide: además de los Markdown, lo demás que es texto (lo usa el buscador con "Solo Markdown" apagado).
+  const TEXT_KINDS = { text: 1, data: 1, table: 1, code: 1 };
+  async function collectFiles(root, wide) {
     const out = [];
     const queue = [{ url: root, rel: '', depth: 0 }];
     while (queue.length && out.length < FOLDER_MAX_FILES) {
@@ -3020,8 +3144,8 @@
       for (const r of rows) {
         if (!settings.filesShowHidden && r.name.startsWith('.')) continue;
         if (r.dir) {
-          if (d.depth < FOLDER_MAX_DEPTH && !SKIP_DIRS.test(r.name)) queue.push({ url: r.url, rel: d.rel + r.name + '/', depth: d.depth + 1 });
-        } else if (MD_RE.test(r.name)) out.push({ rel: d.rel + r.name, url: r.url });
+          if (d.depth < FOLDER_MAX_DEPTH && !SKIP_DIRS.test(r.name) && !TREE_SKIP.test(r.name)) queue.push({ url: r.url, rel: d.rel + r.name + '/', depth: d.depth + 1 });
+        } else if (MD_RE.test(r.name) || (wide && TEXT_KINDS[kindOf(r.name)])) out.push({ rel: d.rel + r.name, url: r.url });
       }
     }
     return out;
@@ -3030,7 +3154,8 @@
   async function readFile(url) {
     if (fileCache.has(url)) return fileCache.get(url);
     let text = '';
-    if (APP) text = (await vText(url)) || '';
+    // Un archivo de texto enorme (un registro de cientos de megas) no se lee para buscar en él.
+    if (APP) { try { const h = await vFile(url); const f = h ? await h.getFile() : null; text = f && !(f.size > 4194304) ? await f.text() : ''; } catch (e) { text = ''; } }
     else { const r = await bg({ type: 'fetchText', url }); text = r && r.ok ? r.text : ''; }
     fileCache.set(url, text);
     return text;
@@ -3057,7 +3182,7 @@
       ui.results.insertBefore(row, ui.results.firstChild);
     }
     row.querySelector('.lmd-res-name').textContent = T('En esta nota');
-    row.querySelector('.lmd-res-count').textContent = searchHits.length;
+    row.querySelector('.lmd-res-count').textContent = isBin() ? viewHits : searchHits.length;
     row.title = DOC_NAME;
     ui.results.querySelectorAll('.lmd-res').forEach((g) => g.classList.toggle('lmd-res-here', g.dataset.url === HERE));
   }
@@ -3073,7 +3198,7 @@
     const where = searchRoots(); const files = [];
     for (const r of where) {
       if (!folderIndex.has(r.url)) {
-        const got = await collectFiles(r.url);
+        const got = await collectFiles(r.url, r.key === 'disk' && !settings.filesOnlyMarkdown);
         if (token !== folderToken) return;
         if (got == null) {
           // Sobre un archivo abierto directo, la carpeta puede no dejarse leer: se dice por qué.
@@ -3716,6 +3841,7 @@
   // auto: la app entra sola en edición (se venía editando, o la nota está vacía). Ahí, sin permiso para guardar en
   // la carpeta, no se pregunta nada: la nota queda leyendo. Con el clic de la persona, primero va el aviso.
   async function setEditMode(on, auto) {
+    if (on && isBin()) { flash(T('Este archivo solo se lee acá.'), 'warn'); return; }
     if (on && readOnly) { flash(T('Esta nota es de solo lectura'), 'warn'); return; }
     if (on && !editMode && !(await allowWrite('', !!auto))) return;
     // Salir de edición guarda lo pendiente. Si se cancela el guardado, los cambios quedan sin guardar.
@@ -4182,6 +4308,9 @@
     pickTemplate: () => tools().then((ok) => (ok ? LMD.home.pickTemplate(homeCtx()) : null)),
     tools,
     showFiles,
+    // Para el visor (viewer.js): guardar la posición, cerrar el panel lateral del teléfono, y todo lo que hay en una carpeta.
+    savePos: () => savePosition(), drawer: (on) => setDrawer(on), listAll: (url) => listDir(url, true), relLink, importAt: (url) => importAt(url),
+    get viewing() { return !noDoc && isBin(); }, viewKind: () => viewKind(),
     listDir: (url, all) => listDir(url, all), // lo que hay en una carpeta, como lo muestra el explorador ("Mover a…", extras.js); con all, sin filtrar
     // Lo que "Enviar a la nube" (send.js) necesita: si el explorador muestra la nube, el texto de un archivo tal como
     // está ahora (null si no se pudo leer), cómo entrar, y dejar una carpeta de la nube desplegada y a la vista.
@@ -4559,11 +4688,19 @@
     if (id === 'fs') {
       const file = LMD.fileUrl(fsFile(url)); const known = file ? await fsKnown(file) : null;
       if (known && known.granted) { try { await walk(known.rec.handle, known.rest); return { goto: known.rec.id + '/' + known.rest.map(encodeURIComponent).join('/') }; } catch (e) { /* ya no está en esa carpeta: queda lo que lea la extensión */ } }
+      // Por la extensión llega solo texto: una imagen, un PDF o un libro se ven abriendo su carpeta.
+      if (VIEW_KINDS[kindOf(name)]) return fail(T('Para ver "{a}", abrí su carpeta con "Abrir carpeta".', { a: name }));
       let text = null; let why = 'shape';
       if (file) { try { text = await fsRead(file); } catch (e) { why = e.why || 'failed'; } }
       // No falla en silencio: lo dice, y ofrece elegir el archivo (install.js sabe por qué no se pudo).
       if (text == null) { if (file) setTimeout(() => LMD.install.offer(file, homeCtx(), why), 0); return fail(T('No se pudo abrir "{a}".', { a: name })); }
       return { root: roots.fs, raw: text, disk: text };
+    }
+    if (id === 'bin') {
+      // Un archivo soltado en la ventana o elegido sin acceso al disco: está en memoria, y al recargar ya no.
+      const file = heldFiles.get(name); const type = typeOf(name);
+      if (!file) return fail('');
+      return { root: { id, kind: 'file', name, handle: { kind: 'file', name, getFile: async () => file } }, raw: '', disk: '', readOnly: true, size: file.size, note: type.max && file.size > type.max * 1048576 ? 'big' : VIEW_KINDS[type.kind] || type.kind === 'office' ? '' : 'other' };
     }
     if (id === 'mem') {
       // Navegador sin acceso a archivos: el documento viaja en la sesión y se guarda descargando una copia.
@@ -4585,9 +4722,16 @@
     if (!ok && noDoc) ok = await LMD.home.gate(homeCtx(), rec, mode);
     if (!ok) return fail(noDoc ? '' : T('Falta el permiso para abrir "{a}".', { a: rec.name }));
     roots[id] = rec;
-    const text = await vText(url);
-    if (text == null) return fail(T('No se encontró "{a}".', { a: name }));
-    return { root: rec, raw: text, disk: text };
+    // Antes de leer se mira qué es y cuánto pesa: lo que va al visor no se lee como texto, y lo que pasa el tope de
+    // su tipo o no es texto se dice en vez de dibujarlo.
+    const type = typeOf(name); const view = !!VIEW_KINDS[type.kind] || type.kind === 'office';
+    const file = await binFile(url);
+    if (!file) return fail(T('No se encontró "{a}".', { a: name }));
+    const size = file.size || 0; let text = ''; let note = '';
+    if (type.max && size > type.max * 1048576) note = 'big';
+    else if (type.kind === 'other' && size > 1048576) note = 'other';
+    else if (!view) { text = await file.text(); if (type.kind === 'other' && text.indexOf('\u0000') !== -1) { text = ''; note = 'other'; } }
+    return { root: rec, raw: text, disk: text, readOnly: view || !!note, note, size };
   }
 
   // Antes de salir de una nota se guarda lo pendiente. Devuelve false si la persona prefiere quedarse.
@@ -4624,6 +4768,7 @@
     // El aviso de una invitación a un equipo es de la cuenta, no de la nota: sigue al cambiar de nota.
     document.querySelectorAll('.lmd-menu, .lmd-ask:not(.lmd-team-ask)').forEach((n) => n.remove());
     ui.viewer.hidden = true; ui.viewer.textContent = ''; ui.format.hidden = true; ui.tableBar.hidden = true;
+    if (LMD.viewer) LMD.viewer.close();
     clearSearch();
   }
 
@@ -4661,9 +4806,9 @@
     // Se creó, se movió o se borró un archivo: el árbol y lo que se sabía de la carpeta se vuelven a leer.
     if (opt.tree) { fileCache.clear(); folderIndex.clear(); clearCounts(); wikiIndex = null; linkIndex = null; }
     HERE = VBASE + f; DOC_NAME = doc ? decodeURIComponent(HERE.split('/').pop() || '') : ''; noDoc = !doc;
-    appRoot = doc ? doc.root : null;
+    appRoot = doc ? doc.root : null; docNote = (doc && doc.note) || ''; docSize = (doc && doc.size) || 0;
     // Conteo anónimo (count.js, solo en la app web): la primera nota propia que se abre o se crea en este navegador. Va el nombre del evento y nada de la nota.
-    if (doc && LMD.count && appRoot.kind !== 'pub' && !LMD.cloud.guest()) LMD.count('note_created');
+    if (doc && LMD.count && appRoot.kind !== 'pub' && !LMD.cloud.guest() && !isBin()) LMD.count('note_created');
     if (doc) wantCloud = '';
     if (doc) roots[appRoot.id] = appRoot;
     raw = doc ? doc.raw : ''; diskText = doc ? doc.disk : ''; dirty = raw !== diskText;
@@ -4735,6 +4880,8 @@
     // Una nota abierta por su enlace público solo se lee: ahí no se ofrece editar, insertar ni guardar.
     document.documentElement.classList.toggle('lmd-public', !noDoc && !!appRoot && appRoot.kind === 'pub');
     document.documentElement.classList.toggle('lmd-nodoc', noDoc);
+    // Un archivo que se ve en el visor o lleva un cartel: la barra no ofrece editarlo, copiarlo ni ver su código.
+    document.documentElement.classList.toggle('lmd-bin', isBin());
     document.documentElement.classList.toggle('lmd-noreload', !diskDoc());
     ui.main.querySelector('.lmd-report').hidden = !(APP && LMD.sync.reportRef());
     if (settings && !ui.status.classList.contains('lmd-flash')) ui.status.textContent = idleStatus();
@@ -4744,6 +4891,8 @@
   // Dibuja la nota recién abierta y la deja donde corresponde: en edición si toca, y en la sección o búsqueda pedida.
   function afterOpen(opt) {
     updateSaveState();
+    // El visor se ubica solo: donde quedó la última vez, o en la página que pide la dirección (#page=12).
+    if (isBin()) { viewHash = opt.hash || ''; window.scrollTo(0, 0); render(); applyRawMode(); return; }
     render();
     applyRawMode();
     window.scrollTo(0, 0);

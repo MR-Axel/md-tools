@@ -88,6 +88,8 @@
   // de donde está (un archivo suelto, uno abierto directo en el navegador, un enlace público) se sube como copia.
   // El original se quita con la subida ya confirmada por el servidor, nunca antes.
   async function upload() {
+    // La nube guarda notas, que son texto: un PDF, un libro o una imagen se ven desde el disco.
+    if (core.viewing) { core.flash(T('Este archivo no se sube a la nube: las notas de la nube son texto. Se ve desde el disco.'), 'warn'); return; }
     const root = core.APP ? core.appRoot : null; const kind = root ? root.kind : ''; const here = core.HERE; const name = core.docName;
     let move = false;
     // La primera nota que va a la nube: una línea de cómo queda guardada, con el camino al detalle en Ajustes.

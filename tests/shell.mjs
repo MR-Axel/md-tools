@@ -101,7 +101,8 @@ try {
   console.log('Otros tipos de archivo');
   await app.goto(base + 'README.md'); await app.waitForSelector('.markdown-body h1');
   await app.evaluate(() => { window.__mark = 'misma página'; });
-  await app.click('[data-act=settings]'); await app.waitForSelector('.lmd-panel-card'); await app.click('[data-ptab=read]'); await app.click('input[data-key=filesOnlyMarkdown]'); await app.click('[data-act=close-panel]');
+  await app.click('[data-act=settings]'); await app.waitForSelector('.lmd-panel-card'); await app.click('[data-ptab=read]'); // De fábrica el explorador ya muestra todo lo que la app abre: el ajuste se prende y se vuelve a apagar.
+  await app.click('input[data-key=filesOnlyMarkdown]'); await app.waitForSelector('.lmd-node:has-text("datos.csv")', { state: 'detached' }); await app.click('input[data-key=filesOnlyMarkdown]'); await app.click('[data-act=close-panel]');
   await app.waitForSelector('.lmd-node:has-text("datos.csv")');
   await node('datos.csv').click(); await app.waitForSelector('.markdown-body table');
   const csv = await app.evaluate(() => ({ mark: window.__mark, cells: [...document.querySelectorAll('.markdown-body tr')].map((tr) => [...tr.cells].map((c) => c.textContent)), title: document.title }));

@@ -10,6 +10,8 @@ const sw = ctx.serviceWorkers()[0] || await ctx.waitForEvent('serviceworker'); c
 const app = await ctx.newPage(); const errors = []; app.on('pageerror', (e) => errors.push(e.message));
 await app.addInitScript(autoDialogs);
 await app.goto(`chrome-extension://${id}/src/app.html`); await app.waitForSelector('.lmd-home');
+// Estas pruebas son del explorador como lista de notas: van con "Solo Markdown" prendido (de fábrica viene apagado).
+await app.evaluate(() => LMD.patch({ filesOnlyMarkdown: true }));
 await app.evaluate(async () => {
   const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('x', { create: true });
   const write = async (d, name, data) => { const h = await d.getFileHandle(name, { create: true }); const s = await h.createWritable(); await s.write(data); await s.close(); };

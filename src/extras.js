@@ -454,6 +454,8 @@
       onPick(b.dataset.f);
     });
   }
+  // Lo que se ve en el visor o se convierte, pero no es una nota (kit.js: FILE_TYPES).
+  const notNote = (url) => /^(pdf|epub|image|audio|video|office)$/.test(LMD.kit.kindOf(nameOf(url)));
   function treeMenu(x, y, node) {
     const url = node.dataset.url; const isDir = node.classList.contains('lmd-node-dir'); const cloud = inCloud(url); const local = inLocal(url);
     const at = isDir ? url : parentOf(url);
@@ -468,8 +470,12 @@
       (!isDir || cloud) && ['ren', 'Renombrar'],
       // Lo mismo que arrastrarlo a una carpeta, sin arrastrar: sirve con el dedo y con el teclado.
       canTree(url) && ['mov', 'Mover a…'],
+      // Un PDF, un libro o un documento de Office de una carpeta del disco: convertirlo en una nota (import.js).
+      !isDir && !cloud && !local && core.APP && /^(pdf|epub|office)$/.test(LMD.kit.kindOf(nameOf(url))) && ['imp', 'Importar a Markdown', false, 'md'],
       // Una copia en la nube, de la nota o de la carpeta entera (send.js). Lo de acá no cambia.
       LMD.send.can(url) && ['send', isDir ? 'Enviar la carpeta a la nube' : 'Enviar a la nube'],
+      // Un PDF, un libro, una imagen: la nube guarda notas, que son texto. La entrada está y lo dice, en vez de faltar sin explicación.
+      !isDir && !cloud && !local && core.APP && notNote(url) && LMD.cloud.enabled() && LMD.cloud.reach() && !LMD.cloud.guest() && ['nosend', 'Enviar a la nube', false, 'cloud'],
     ].concat(whereItems(url), [
       !isDir && ['del', 'Eliminar', true],
       // Todas las notas de la carpeta en un solo documento: PDF, HTML, Word o Markdown (folderexport.js).
@@ -480,7 +486,10 @@
       folder && core.APP && LMD.sync.canPublish(folder) && ['site', 'Publicar como sitio…'],
     ]).concat(folder ? LMD.vault.menu(folder) : []).filter(Boolean), (f) => {
       if (wherePick(f, url)) return;
+      if (/^v-/.test(f)) LMD.vault.pick(f, folder);
+      else if (f === 'imp') core.importAt(url);
       if (f === 'send') LMD.send.start(url);
+      else if (f === 'nosend') core.flash(T('Este archivo no se sube a la nube: las notas de la nube son texto. Se ve desde el disco.'), 'warn');
       else if (/^v-/.test(f)) LMD.vault.pick(f, folder);
       else if (f === 'fexp') folderExport(url);
       else if (f === 'site') LMD.sync.publish(folder);
@@ -546,9 +555,9 @@
   // El menú del nombre de arriba (clic derecho, o mantener apretado): lo mismo que el del archivo en el explorador.
   function titleMenu(x, y) {
     if (core.noDoc) return false;
-    const items = [canRename() && ['ren', 'Renombrar']].concat(whereItems(core.HERE)).filter(Boolean);
+    const items = [canRename() && ['ren', 'Renombrar'], core.viewing && /^(pdf|epub|office)$/.test(LMD.kit.kindOf(core.docName)) && ['imp', 'Importar a Markdown', false, 'md']].concat(whereItems(core.HERE)).filter(Boolean);
     if (!items.length) return false;
-    showMenu(x, y, items, (f) => { if (!wherePick(f, core.HERE)) editTitle(); });
+    showMenu(x, y, items, (f) => { if (f === 'imp') core.importAt(core.HERE); else if (!wherePick(f, core.HERE)) editTitle(); });
     return true;
   }
 
