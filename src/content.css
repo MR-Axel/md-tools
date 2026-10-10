@@ -593,7 +593,9 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-home-more:empty { display: none; }
 .lmd-home-hint, .lmd-home-notes { margin: 0; }
 .lmd-home-notes b { color: var(--fg-muted); font-weight: 600; }
-.lmd-home-notes .lmd-link { color: var(--accent); font-size: 12.5px; padding: 0; }
+.lmd-home-notes .lmd-link, .lmd-home-hint .lmd-link { color: var(--accent); font-size: 12.5px; padding: 0; }
+.lmd-home-hint a.lmd-link { text-decoration: none; }
+.lmd-home-hint a.lmd-link:hover { text-decoration: underline; }
 .lmd-home-foot { grid-row: 3; align-self: end; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 22px; }
 @media (prefers-reduced-motion: reduce) { .lmd-home-actions .lmd-btn, .lmd-home-card { transition: none; } .lmd-home-actions .lmd-btn:active { transform: none; } }
 
@@ -998,6 +1000,7 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-dgm-tpl .lmd-dgm-back { margin-left: 8px; border-color: var(--accent-fill); color: var(--accent); }
 /* ---------- Ajustes: Nube, IA, Plan y Avanzado. Comentarios. Cuenta en el inicio ---------- */
 .lmd-ptabs .lmd-ptabs-foot { margin-top: auto; color: var(--fg-faint); font-weight: 500; }
+.lmd-ptabs .lmd-ptabs-foot + .lmd-ptabs-foot { margin-top: 0; }
 .lmd-row[hidden] { display: none; }
 .lmd-two > .lmd-server-url { grid-column: 1 / -1; }
 .lmd-acct-row span { flex: none; }
@@ -1526,6 +1529,9 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 
 /* Enlace público: solo lectura, sin las acciones de edición. */
 .lmd-public .lmd-modeseg, .lmd-public .lmd-insert, .lmd-public .lmd-save { display: none !important; }
+/* Una nota de la guía tampoco se edita ni se guarda encima: el pie ofrece llevarse una copia. */
+.lmd-guide .lmd-modeseg, .lmd-guide .lmd-insert, .lmd-guide .lmd-save { display: none !important; }
+.lmd-foot .lmd-report.lmd-guide-copy { color: var(--accent); }
 
 /* Papelera de la nube: la entrada al pie de la raíz y la ventana con lo eliminado. */
 .lmd-trash-link { display: flex; align-items: center; gap: 6px; width: 100%; margin: 2px 0 4px; padding: 4px 10px 4px 16px; font-size: 12.5px; text-align: left; }

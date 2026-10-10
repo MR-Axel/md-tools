@@ -387,6 +387,7 @@
   }
 
   let dropBound = false;
+  const GUIDE = 'guide/start.md'; // la primera nota de la guía (src/guide/, la lista está en content.js)
   async function home(note) {
     const box = ctx.box;
     box.innerHTML =
@@ -402,6 +403,8 @@
         '</div>' +
         // Con el dedo no hay nada que arrastrar a la ventana: ese renglón solo dice lo que hace falta saber.
         '<div class="lmd-home-more">' +
+        // La guía (notas de solo lectura que vienen con la app): siempre a mano desde acá, tenga o no notas la persona.
+        '<p class="lmd-home-hint"><a class="lmd-link" data-home="guide" href="' + ctx.APP_URL + '?f=' + encodeURIComponent(GUIDE) + '">' + T('Ver cómo funciona') + '</a></p>' +
         (LMD.touch.coarse()
           ? (canPick() ? '' : '<p class="lmd-home-hint">' + T('Este navegador no deja escribir sobre el archivo: al guardar se descarga una copia.') + '</p>')
           : '<p class="lmd-home-hint">' + (canPick()
@@ -442,6 +445,8 @@
       const b = e.target.closest('[data-home]'); if (!b) return;
       say('');
       if (b.dataset.home === 'feedback') { LMD.sync.feedback(); return; }
+      // Con Ctrl, Shift o el botón del medio el enlace abre la guía en otra pestaña, como cualquier enlace.
+      if (b.dataset.home === 'guide') { if (e.ctrlKey || e.metaKey || e.shiftKey || e.button) return; e.preventDefault(); ctx.open(GUIDE); return; }
       if (b.dataset.home === 'new') { create(); return; }
       if (b.dataset.home === 'tpl') { ctx.template(); return; }
       if (b.dataset.home === 'notes') {
