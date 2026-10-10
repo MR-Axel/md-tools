@@ -23,6 +23,7 @@
 /sitemap.xml export-ignore
 /CNAME export-ignore
 /support.html export-ignore
+/404.html export-ignore
 /terms.html export-ignore
 /refunds.html export-ignore
 /acceptable-use.html export-ignore
