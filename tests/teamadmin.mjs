@@ -318,7 +318,7 @@ try {
   check('quien administra ve a cada miembro con su papel y lo puede cambiar, menos el propio', /olga@ejemplo\.test · Administrator/.test(adminView.text) && /pedro@ejemplo\.test · Editor/.test(adminView.text) && /lucia@ejemplo\.test · Reader/.test(adminView.text) && adminView.roles.join() === 'editor,reader' && adminView.invRole, adminView);
   check('Plan tiene las secciones del equipo: ajustes, protección, tokens y registro', ['Team settings', 'Space protection', 'Team tokens', 'Activity log'].every((h) => adminView.heads.includes(h)) && adminView.enabled && !adminView.locked, adminView.heads);
   check('y dice que quien solo lee ocupa un lugar', /A reader takes a seat too\./.test(adminView.text));
-  check('sin PAGES_TEAM_DOMAIN en el servidor, Plan no ofrece el subdominio del equipo', !adminView.heads.includes('Team subdomain') && !(await olga.page.$('.lmd-team [data-t=sub-name], .lmd-team [data-t=sub-save], .lmd-team [data-team=subdomain]')), adminView.heads);
+  check('sin PAGES_TEAM_DOMAIN ni PAGES_TEAM_ASK en el servidor, Plan no ofrece el subdominio del equipo', !adminView.heads.includes('Team subdomain') && !(await olga.page.$('.lmd-team [data-t=sub-name], .lmd-team [data-t=sub-save], .lmd-team [data-team=subdomain], .lmd-team [data-blk=team-sub]')), adminView.heads);
   // Cada cambio vuelve a dibujar la gestión: se espera su aviso, borrando antes el del cambio anterior.
   const does = async (page, fn, text) => { await page.evaluate(() => { const m = document.querySelector('.lmd-team-msg'); if (m) { m.hidden = true; m.textContent = ''; } }); await fn(); await said(page, text); };
   await does(olga.page, () => olga.page.selectOption('.lmd-team select[data-t=role][data-id="' + P.id + '"]', 'reader'), 'Role changed.');
@@ -455,6 +455,74 @@ try {
   check('y el registro también', phLog.fits && phLog.wide === 0, phLog);
   await phone.page.click('.lmd-tlog [data-l=close]');
   await phone.ctx.close(); await olga.ctx.close();
+  // ---------- Subdominio a pedido, en la app ----------
+  // Otro servidor, con PAGES_TEAM_ASK: ofrece el subdominio y solo toma pedidos. La tarjeta en cada estado.
+  console.log('Subdominio a pedido');
+  {
+    const { spawn } = await import('child_process'); const { root } = await import('./rig.mjs');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdadm-sub-')); const port = 28100 + Math.floor(Math.random() * 800); const base = 'http://127.0.0.1:' + port; const DOM = 'equipos.localhost';
+    const proc = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(port), DATA_DIR: dir, DEV_CODES: '1', ADMIN_KEY: R.ADMIN, PUBLIC_URL: base, ALLOW_ORIGINS: R.origin, PAGES_URL: 'http://pages.localhost:' + port, PAGES_TEAM_ASK: DOM, PAGES_TEAM_DOMAIN: '', AUTH_PER_IP: '300', MAIL_WEBHOOK: 'http://127.0.0.1:' + fakeMail.address().port }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let slog = ''; proc.stdout.on('data', (d) => { slog += d; }); proc.stderr.on('data', (d) => { slog += d; });
+    for (let i = 0; i < 80 && !/puerto/.test(slog); i++) await sleep(100);
+    const call = (m, p, b, s, extra) => fetch(base + p, { method: m, headers: Object.assign({ 'content-type': 'application/json' }, s ? { authorization: 'Bearer ' + s } : {}, extra || {}), body: b === undefined ? undefined : JSON.stringify(b) }).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
+    const enter = async (email) => { const code = (await call('POST', '/auth/start', { email })).json.dev_code; const v = (await call('POST', '/auth/verify', { email, code })).json; return { s: v.session, email }; };
+    const KEY = { 'x-admin-key': R.ADMIN };
+    const boss = await enter('jefa-sub@ejemplo.test'); const mate = await enter('socio-sub@ejemplo.test');
+    const teamId = (await call('POST', '/admin/team', { email: boss.email, seats: 3 }, undefined, KEY)).json.team;
+    await call('POST', '/team/invite', { email: mate.email }, boss.s); await call('POST', '/team/accept', { id: (await call('GET', '/account', undefined, mate.s)).json.team.invites[0].id }, mate.s);
+    const sp = (await call('GET', '/account', undefined, boss.s)).json.team.mine.space;
+    await call('PUT', '/notes/' + enc('plan.md') + '?o=' + sp, { text: '# Plan\n' }, boss.s);
+    const view = async () => (await call('GET', '/account', undefined, boss.s)).json.team.mine.subdomain;
+    // Un navegador que apunta a ese servidor, con la sesión puesta.
+    const openAt = async (who) => {
+      const ctx = await R.browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: 'dark', locale: 'en-US', serviceWorkers: 'block' });
+      await ctx.route((url) => /(^|\.)sharpmd\.app$/.test(url.hostname), (r) => { R.outside.push(r.request().url()); return r.abort(); });
+      await ctx.addInitScript(([url, w]) => { try { if (localStorage.getItem('mdtools:settings')) return; localStorage.setItem('mdtools:settings', JSON.stringify({ cloudUrl: url })); localStorage.setItem('mdtools:cloud', JSON.stringify({ session: w.s, email: w.email, at: url })); } catch (e) { /* una página en blanco no tiene almacenamiento */ } }, [base, who]);
+      const page = await ctx.newPage(); page.on('pageerror', (e) => R.errors.push(e.message));
+      return { ctx, page };
+    };
+    const toPlan = async (page) => { await page.goto(R.noteUrl('~' + sp + '/plan.md')); await page.waitForSelector('[data-root=team] .lmd-node'); await openPlan(page); };
+    const card = (page) => page.evaluate(() => {
+      const c = document.querySelector('.lmd-panel .lmd-team [data-blk=team-sub]'); if (!c) return null;
+      const g = (s) => c.querySelector(s); const t = (s) => (g(s) ? g(s).textContent : ''); const w = g('[data-team=sub-why]');
+      return { title: t('h4'), lead: t('.lmd-blk-title p'), how: t('[data-team=sub-how]'), pending: t('[data-team=sub-pending]'), asked: t('.lmd-team-sub-ask b'), rejected: t('[data-team=sub-rejected]'), approved: t('[data-team=sub-approved]'),
+        value: g('[data-t=sub-name]').value, url: t('[data-team=sub-url]'), why: w && !w.hidden ? w.textContent : '', btn: t('[data-t=sub-save]'), can: !g('[data-t=sub-save]').disabled, cancel: t('[data-t=sub-cancel]'), off: t('[data-t=sub-off]') };
+    });
+    const whyIs = (page, text) => page.waitForFunction((x) => { const w = document.querySelector('.lmd-team [data-team=sub-why]'); return !!w && !w.hidden && w.textContent === x; }, text, { timeout: 10000 });
+    const type = (page, v) => page.fill('.lmd-team [data-t=sub-name]', v);
+    const addr = (n) => 'http://' + n + '.' + DOM + ':' + port + '/';
+
+    const jefa = await openAt(boss); await toPlan(jefa.page);
+    const c0 = await card(jefa.page);
+    check('con PAGES_TEAM_ASK quien administra ve la tarjeta del subdominio: el campo vacío, la dirección de ejemplo y que se activa a mano', !!c0 && c0.title === 'Team subdomain' && c0.lead === 'An address of its own for the sites the team publishes.' && c0.how === 'We review it and turn it on by hand. Until then, the sites stay at their usual address.' && c0.value === '' && c0.url === addr('name') && c0.btn === 'Request this subdomain' && c0.can === false && !c0.cancel && !c0.off, c0);
+    await type(jefa.page, 'a_b'); await whyIs(jefa.page, 'Use 3 to 32 lowercase letters, numbers or hyphens.'); const cBad = await card(jefa.page);
+    await type(jefa.page, 'support'); await whyIs(jefa.page, 'That name is reserved.'); const cRes = await card(jefa.page);
+    await type(jefa.page, 'estudio'); await whyIs(jefa.page, 'Available.'); const cOk = await card(jefa.page);
+    check('la validación en vivo: formato y reservados dichos en claro, la dirección como quedaría, y el botón solo con un nombre que sirve', cBad.url === addr('a_b') && !cBad.can && !cRes.can && cOk.can && cOk.url === addr('estudio'), [cBad, cRes, cOk]);
+    await jefa.page.click('.lmd-team [data-t=sub-save]'); await jefa.page.waitForSelector('.lmd-team [data-team=sub-pending]');
+    const c1 = await card(jefa.page); const v1 = await view();
+    check('al pedirlo la tarjeta dice que el pedido fue recibido y que se avisa por correo, con cambiar y cancelar a mano', c1.pending === 'Request received. We will email you when it is active.' && c1.asked === 'estudio.' + DOM && c1.value === 'estudio' && c1.btn === 'Change the request' && c1.can === false && c1.cancel === 'Cancel the request' && !c1.how && !c1.off && v1.pending === 'estudio' && v1.name === '', [c1, v1]);
+    await type(jefa.page, 'estudio-dos'); await whyIs(jefa.page, 'Available.'); await jefa.page.click('.lmd-team [data-t=sub-save]');
+    await jefa.page.waitForFunction((x) => { const b = document.querySelector('.lmd-team .lmd-team-sub-ask b'); return !!b && b.textContent === x; }, 'estudio-dos.' + DOM, { timeout: 10000 });
+    check('mientras está pendiente se puede cambiar por otro nombre', (await view()).pending === 'estudio-dos' && (await card(jefa.page)).pending === 'Request received. We will email you when it is active.', await view());
+    await call('POST', '/admin/subdomains', { id: teamId, action: 'reject', reason: 'Taken by a <b>brand</b>' }, undefined, KEY);
+    await toPlan(jefa.page); const c2 = await card(jefa.page);
+    const rawHtml = await jefa.page.evaluate(() => document.querySelector('.lmd-team [data-team=sub-rejected]').innerHTML);
+    check('rechazado: la tarjeta dice cuál no se aprobó y el motivo, como texto, y vuelve a ofrecer el pedido', c2.rejected === 'We could not approve estudio-dos.' + DOM + '. Reason: Taken by a <b>brand</b>' && !/<b>/.test(rawHtml) && c2.value === '' && c2.btn === 'Request this subdomain' && !c2.pending && !c2.cancel, [c2, rawHtml]);
+    await type(jefa.page, 'estudio'); await whyIs(jefa.page, 'Available.'); await jefa.page.click('.lmd-team [data-t=sub-save]'); await jefa.page.waitForSelector('.lmd-team [data-team=sub-pending]');
+    await jefa.page.click('.lmd-team [data-t=sub-cancel]'); await said(jefa.page, 'Request canceled.');
+    const c3 = await card(jefa.page); const v3 = await view();
+    check('cancelar el pedido lo saca de la tarjeta y del servidor', !c3.pending && !c3.cancel && c3.value === '' && c3.btn === 'Request this subdomain' && v3.pending === '' && v3.rejected === null, [c3, v3]);
+    await call('PUT', '/team/subdomain', { name: 'estudio' }, boss.s); await call('POST', '/admin/subdomains', { id: teamId, action: 'approve' }, undefined, KEY);
+    await toPlan(jefa.page); const c4 = await card(jefa.page);
+    check('aprobado sin la infraestructura activa: la tarjeta lo dice y no promete una dirección que todavía no anda', c4.approved === 'Approved: estudio.' + DOM + '. It is not active yet; the sites stay at their usual address.' && c4.off === 'Stop using it' && !c4.pending && c4.value === 'estudio', c4);
+    await jefa.ctx.close();
+    const socio = await openAt(mate); await toPlan(socio.page);
+    check('un miembro que no administra no ve la tarjeta mientras no haya una dirección activa', (await card(socio.page)) === null && !(await socio.page.$('.lmd-team [data-t=sub-name]')), await card(socio.page));
+    await socio.ctx.close();
+    check('subdominio a pedido: el servidor no anotó errores', !/error 500|error no capturado|promesa sin atender/.test(slog), (slog.match(/error[^\n]*/g) || []).slice(0, 3));
+    proc.kill(); await sleep(400); try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { /* Windows suelta el archivo después */ }
+  }
   check('nunca se usó alert, confirm ni prompt del navegador', !natives.length, natives);
   check('sin errores de página', !R.errors.length, R.errors);
   check('ningún pedido salió a producción', !R.outside.length, R.outside);

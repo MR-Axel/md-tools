@@ -107,15 +107,26 @@
   // servidor no lo ofrece (subdomain.enabled en falso, o un servidor anterior que no manda el dato), no se muestra nada.
   const SUB_OK = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
   const subAddr = (s, name) => String(s.template || '').replace('{name}', name);
+  // Una tarjeta, con lo que hay y el campo para elegir. Salvo que el servidor active solo (review en falso), elegir
+  // es pedir: el nombre queda apartado para el equipo y alguien lo activa a mano. Mientras espera se puede cambiar
+  // o cancelar, y los sitios siguen en su dirección de siempre.
   function subBlock(mine, admin) {
-    const s = mine.subdomain; if (!s || !s.enabled || (!admin && !s.name)) return '';
-    const head = '<h4>' + T('Subdominio del equipo') + '</h4>';
-    if (!admin) return head + '<div class="lmd-acct-row" data-team="subdomain"><span>' + T('Dirección de los sitios') + '</span><b>' + esc(s.url) + '</b></div>';
-    const label = T('Subdominio del equipo');
-    return head + '<p class="lmd-hint">' + T('Los sitios que publica el equipo salen por esta dirección. Los enlaces de antes siguen andando.') + '</p>' +
-      '<div class="lmd-share-row lmd-team-invite" data-team="subdomain"><input type="text" data-t="sub-name" maxlength="32" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="' + T('nombre') + '" aria-label="' + label + '" value="' + esc(s.name || '') + '"' + (mine.active ? '' : ' disabled') + '>' +
-      '<button type="button" class="lmd-btn lmd-btn-fill" data-t="sub-save" disabled>' + T('Guardar') + '</button>' + (s.name ? '<button type="button" class="lmd-btn" data-t="sub-off">' + T('Dejar de usarlo') + '</button>' : '') + '</div>' +
-      '<p class="lmd-hint" data-team="sub-url">' + esc(subAddr(s, s.name || T('nombre'))) + '</p><p class="lmd-hint" data-team="sub-why" role="status" aria-live="polite" hidden></p>';
+    const s = mine.subdomain; if (!s || !s.enabled) return '';
+    const live = s.mode !== 'ask'; const full = (n) => n + '.' + s.domain;
+    if (!admin) return s.url ? LMD.kit.card({ id: 'team-sub', title: T('Subdominio del equipo'), body: LMD.kit.kv(T('Dirección de los sitios'), esc(s.url), '', 'lmd-team-sub-at') }) : '';
+    const label = T('Subdominio del equipo'); const cur = s.pending || s.name || ''; const ask = s.review !== false;
+    const line = (key, text) => '<p class="lmd-hint" data-team="' + key + '" role="status">' + text + '</p>';
+    let state = '';
+    if (s.name && live) state += LMD.kit.kv(T('Dirección de los sitios'), esc(s.url), '', 'lmd-team-sub-at') + line('sub-live', T('Los sitios que publica el equipo salen por esta dirección. Los enlaces de antes siguen andando.'));
+    else if (s.name) state += line('sub-approved', esc(T('Aprobado: {a}. Todavía no está activo; los sitios siguen en su dirección de siempre.', { a: full(s.name) })));
+    if (s.pending) state += LMD.kit.kv(T('Subdominio pedido'), esc(full(s.pending)), '', 'lmd-team-sub-ask') + line('sub-pending', T('Pedido recibido. Te avisamos por correo cuando esté activo.'));
+    else if (s.rejected) state += line('sub-rejected', esc(T('No pudimos aprobar {a}.', { a: full(s.rejected.name) }) + (s.rejected.reason ? ' ' + T('Motivo: {a}', { a: s.rejected.reason }) : '')));
+    else if (!s.name && ask) state += line('sub-how', T('Lo revisamos y lo activamos a mano. Mientras tanto, los sitios siguen en su dirección de siempre.'));
+    return LMD.kit.card({ id: 'team-sub', title: label, text: T('Una dirección propia para los sitios que publica el equipo.'), body: '<div data-team="subdomain">' + state +
+      '<div class="lmd-share-row lmd-team-invite"><input type="text" data-t="sub-name" data-cur="' + esc(cur) + '" maxlength="32" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="' + T('nombre') + '" aria-label="' + label + '" value="' + esc(cur) + '"' + (mine.active ? '' : ' disabled') + '>' +
+      '<button type="button" class="lmd-btn lmd-btn-fill" data-t="sub-save" disabled>' + T(!ask ? 'Guardar' : s.pending ? 'Cambiar el pedido' : 'Pedir este subdominio') + '</button></div>' +
+      '<p class="lmd-hint" data-team="sub-url">' + esc(subAddr(s, cur || T('nombre'))) + '</p><p class="lmd-hint" data-team="sub-why" role="status" aria-live="polite" hidden></p>' +
+      (s.pending || s.name ? '<div class="lmd-acct-actions">' + (s.pending ? '<button type="button" class="lmd-btn" data-t="sub-cancel">' + T('Cancelar el pedido') + '</button>' : '') + (s.name ? '<button type="button" class="lmd-btn" data-t="sub-off">' + T('Dejar de usarlo') + '</button>' : '') + '</div>' : '') + '</div>' });
   }
   // Mientras se escribe: la dirección como quedaría, lo que no sirve dicho en el momento, y la consulta al servidor
   // (reservado, de otro equipo) un instante después de la última tecla. Guardar se prende solo con un nombre que sirve.
@@ -127,7 +138,7 @@
     input.addEventListener('input', () => {
       const name = input.value.trim().toLowerCase(); const mineTurn = ++turn; clearTimeout(timer);
       url.textContent = subAddr(s, name || T('nombre')); save.disabled = true;
-      if (!name || name === (s.name || '')) { tell(''); return; }
+      if (!name || name === input.dataset.cur) { tell(''); return; }
       if (!SUB_OK.test(name) || name.includes('--')) { tell(T(WHY.bad_subdomain)); return; }
       tell('');
       timer = setTimeout(async () => {
@@ -250,7 +261,7 @@
     link: 'Creó un enlace', unlink: 'Quitó un enlace', attach: 'Subió una imagen', detach: 'Eliminó una imagen', invite: 'Invitó', uninvite: 'Quitó una invitación', join: 'Entró al equipo', leave: 'Salió del equipo', remove: 'Sacó a alguien', role: 'Cambió un papel',
     policy: 'Cambió un ajuste', team_name: 'Cambió el nombre del equipo', protect: 'Protegió el espacio', password: 'Cambió la contraseña', rotate: 'Empezó a rotar la llave', rotate_done: 'Rotó la llave', unprotect: 'Quitó la protección',
     destroy: 'Eliminó el contenido', ai: 'Entró una IA', ai_unlock: 'Desbloqueó para su IA', token_create: 'Creó un token', token_revoke: 'Revocó un token', token_regenerate: 'Regeneró un token', automation: 'Creó una automatización', automation_remove: 'Quitó una automatización',
-    site: 'Preparó un sitio', publish: 'Publicó un sitio', unpublish: 'Despublicó un sitio', subdomain: 'Eligió el subdominio', subdomain_off: 'Dejó el subdominio', live_open: 'Abrió una sesión en vivo', live_end: 'Terminó una sesión en vivo', live_kick: 'Sacó a un invitado' };
+    site: 'Preparó un sitio', publish: 'Publicó un sitio', unpublish: 'Despublicó un sitio', subdomain: 'Eligió el subdominio', subdomain_off: 'Dejó el subdominio', subdomain_ask: 'Pidió un subdominio', subdomain_cancel: 'Canceló el pedido de subdominio', subdomain_no: 'Pedido de subdominio no aprobado', live_open: 'Abrió una sesión en vivo', live_end: 'Terminó una sesión en vivo', live_kick: 'Sacó a un invitado' };
   const POLICY_NAME = { share: 'Compartir', links: 'Enlaces públicos', live: 'Sesiones en vivo', tokens: 'IA de los miembros', automation: 'Automatizaciones', publish: 'Publicar sitios', history_days: 'Historial de versiones', folder: 'Carpeta de las notas nuevas', template: 'Plantilla de las notas nuevas', ai_unlock: 'Desbloqueo para la IA' };
   // El detalle de una fila, en palabras: a quién, hacia dónde, qué ajuste y a qué valor.
   function detail(e) {
@@ -397,7 +408,11 @@
         await C.rename(name);
       } else if (kind === 'sub-save') {
         b.disabled = true;
-        await C.subdomain(box.querySelector('[data-t=sub-name]').value.trim().toLowerCase()); said = T('Subdominio guardado.');
+        await C.subdomain(box.querySelector('[data-t=sub-name]').value.trim().toLowerCase());
+        // Un pedido se lee en la tarjeta, que pasa a decir que fue recibido. Lo que queda puesto en el acto, acá.
+        if (mine.subdomain.review === false) said = T('Subdominio guardado.');
+      } else if (kind === 'sub-cancel') {
+        await C.subdomainCancel(); said = T('Pedido cancelado.');
       } else if (kind === 'sub-off') {
         const s = mine.subdomain;
         if (!(await LMD.dialog.confirm({ title: T('¿Dejar de usar {a}?', { a: s.name + '.' + s.domain }), text: T('Los sitios del equipo vuelven a la dirección compartida. El nombre queda reservado para tu equipo {n} días.', { n: s.hold_days }), ok: T('Dejar de usarlo'), danger: true }))) return true;

@@ -1860,6 +1860,13 @@
       "Subdominio guardado.": "Subdomain saved.", "Subdominio liberado.": "Subdomain released.", "¿Dejar de usar {a}?": "Stop using {a}?",
       "Los sitios del equipo vuelven a la dirección compartida. El nombre queda reservado para tu equipo {n} días.": "The team sites go back to the shared address. The name stays reserved for your team for {n} days.",
       "Eligió el subdominio": "Chose the subdomain", "Dejó el subdominio": "Released the subdomain",
+      "Una dirección propia para los sitios que publica el equipo.": "An address of its own for the sites the team publishes.",
+      "Pedir este subdominio": "Request this subdomain", "Cambiar el pedido": "Change the request", "Cancelar el pedido": "Cancel the request", "Subdominio pedido": "Requested subdomain","Pedido cancelado.": "Request canceled.",
+      "Pedido recibido. Te avisamos por correo cuando esté activo.": "Request received. We will email you when it is active.",
+      "Lo revisamos y lo activamos a mano. Mientras tanto, los sitios siguen en su dirección de siempre.": "We review it and turn it on by hand. Until then, the sites stay at their usual address.",
+      "Aprobado: {a}. Todavía no está activo; los sitios siguen en su dirección de siempre.": "Approved: {a}. It is not active yet; the sites stay at their usual address.",
+      "No pudimos aprobar {a}.": "We could not approve {a}.", "Motivo: {a}": "Reason: {a}",
+      "Pidió un subdominio": "Requested a subdomain", "Canceló el pedido de subdominio": "Canceled the subdomain request", "Pedido de subdominio no aprobado": "Subdomain request not approved",
       // El asistente de IA con clave propia (assistant.js)
       "Asistente de IA (con tu clave)": "AI assistant (your key)",
       "Mejora, traduce, genera y responde sobre la nota con tu propia clave de Claude, OpenAI, Gemini u otro proveedor.": "Improves, translates, writes and answers about the note with your own key for Claude, OpenAI, Gemini or another provider.",

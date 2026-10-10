@@ -2099,7 +2099,7 @@ function teamView(user) {
   out.mine = { id: t.id, name: t.name, role, owner, active: t.status === 'active', space: t.space, members, solo: user.own === 'pro' };
   out.mine.vault = teamVaultView(user, t);
   // subdomain: si el servidor da subdominio por equipo, cuál tiene este y bajo qué dominio.
-  out.mine.subdomain = teamSubView(t);
+  out.mine.subdomain = teamSubView(t, admin);
   out.mine.policies = teamPolicies(t); out.mine.history_days = teamHistoryDays(t); out.mine.history_max = TEAM_HISTORY_DAYS; out.mine.history_choices = TEAM_HISTORY_CHOICES.filter((d) => d <= TEAM_HISTORY_DAYS);
   out.mine.can = Object.fromEntries(['write'].concat(POLICY_BOOLS).map((k) => [k, teamAllows(t, user, k)]));
   // Los lugares y las invitaciones pendientes, para quien administra personas. El cobro, solo para quien paga.
@@ -2548,7 +2548,7 @@ function teamLogSweep() {
   for (const t of q('SELECT team, COUNT(*) AS n FROM team_log GROUP BY team HAVING n > ?').all(TEAM_LOG_MAX)) q('DELETE FROM team_log WHERE team = ? AND id NOT IN (SELECT id FROM team_log WHERE team = ? ORDER BY id DESC LIMIT ?)').run(t.team, t.team, TEAM_LOG_MAX);
   for (const [k, at] of logSeen) if (now() - at > HOUR) logSeen.delete(k);
 }
-const TEAM_ACTIONS = ['create', 'edit', 'move', 'delete', 'restore', 'purge', 'empty_trash', 'share', 'unshare', 'link', 'unlink', 'invite', 'uninvite', 'join', 'leave', 'remove', 'role', 'policy', 'team_name', 'protect', 'password', 'rotate', 'rotate_done', 'unprotect', 'destroy', 'ai', 'ai_unlock', 'token_create', 'token_revoke', 'token_regenerate', 'automation', 'automation_remove', 'site', 'publish', 'unpublish', 'subdomain', 'subdomain_off', 'live_open', 'live_end', 'live_kick', 'attach', 'detach'];
+const TEAM_ACTIONS = ['create', 'edit', 'move', 'delete', 'restore', 'purge', 'empty_trash', 'share', 'unshare', 'link', 'unlink', 'invite', 'uninvite', 'join', 'leave', 'remove', 'role', 'policy', 'team_name', 'protect', 'password', 'rotate', 'rotate_done', 'unprotect', 'destroy', 'ai', 'ai_unlock', 'token_create', 'token_revoke', 'token_regenerate', 'automation', 'automation_remove', 'site', 'publish', 'unpublish', 'subdomain', 'subdomain_off', 'subdomain_ask', 'subdomain_cancel', 'subdomain_no', 'live_open', 'live_end', 'live_kick', 'attach', 'detach'];
 // Lo que se pide del registro: who (número de cuenta), token (nombre), action, from y to (milisegundos), before (id, para seguir).
 function teamLogRows(team, url, max) {
   const g = (k) => url.searchParams.get(k) || '';
@@ -2594,13 +2594,13 @@ async function teamAdminRoute(user, p, m, req, after) {
   const t = user.team; const url = new URL(req.url, 'http://x');
   // Las políticas las lee cualquier miembro (necesita saber con qué nace una nota y qué puede hacer); las cambia quien administra.
   if (p === '/team/policies' && m === 'GET') { if (!t) throw new Fail(404, 'no_team'); return { policies: teamPolicies(t), can: Object.fromEntries(['write'].concat(POLICY_BOOLS).map((k) => [k, teamAllows(t, user, k)])), history_days: teamHistoryDays(t), history_max: TEAM_HISTORY_DAYS }; }
-  // /team/subdomain existe solo con PAGES_TEAM_DOMAIN: sin la variable responde como cualquier ruta que no hay.
-  const known = p === '/team/policies' || p === '/team/role' || p === '/team/log' || p === '/team/tokens' || p.startsWith('/team/tokens/') || (p === '/team/subdomain' && !!TEAM_SITES);
+  // /team/subdomain existe solo con PAGES_TEAM_DOMAIN o PAGES_TEAM_ASK: sin ninguna responde como cualquier ruta que no hay.
+  const known = p === '/team/policies' || p === '/team/role' || p === '/team/log' || p === '/team/tokens' || p.startsWith('/team/tokens/') || ((p === '/team/subdomain' || p === '/team/subdomain/request') && !!TEAM_SUBS);
   if (!known) return null;
   adminTeam(user);
   // Sin name, el subdominio que hay. Con name, si ese nombre se puede usar: lo pregunta la app mientras se escribe.
   if (p === '/team/subdomain' && m === 'GET') {
-    const name = url.searchParams.get('name'); if (name == null) return teamSubView(t);
+    const name = url.searchParams.get('name'); if (name == null) return teamSubView(t, true);
     limit('tsub:' + user.id, 300, HOUR, 'too_many'); mark('tsub:' + user.id);
     try { const ok = teamSubName(name, t); return { ok: true, name: ok, url: teamOrigin(ok) + '/' }; } catch (e) { if (e instanceof Fail) return { ok: false, why: e.code }; throw e; }
   }
@@ -2652,8 +2652,11 @@ async function teamAdminRoute(user, p, m, req, after) {
     }
     return after({ ok: true, policies: teamPolicies(t) });
   }
-  if (p === '/team/subdomain' && m === 'PUT') { teamSubSet(t, user, (await readBody(req)).name); return after({ ok: true, subdomain: teamSubView(q('SELECT * FROM teams WHERE id = ?').get(t.id)) }); }
-  if (p === '/team/subdomain' && m === 'DELETE') { teamSubClear(t, user); return after({ ok: true, subdomain: teamSubView(q('SELECT * FROM teams WHERE id = ?').get(t.id)) }); }
+  // PUT elige un nombre (un pedido, salvo con PAGES_TEAM_AUTO). DELETE deja el que tiene. DELETE …/request retira el pedido.
+  const subNow = () => after({ ok: true, subdomain: teamSubView(q('SELECT * FROM teams WHERE id = ?').get(t.id), true) });
+  if (p === '/team/subdomain' && m === 'PUT') { const b = await readBody(req); teamSubSet(t, user, b.name, b.lang); return subNow(); }
+  if (p === '/team/subdomain' && m === 'DELETE') { teamSubClear(t, user); return subNow(); }
+  if (p === '/team/subdomain/request' && m === 'DELETE') { teamSubCancel(t, user); return subNow(); }
   if (p === '/team/tokens' && m === 'POST') {
     if (t.status !== 'active') throw new Fail(402, 'team_ended');
     if (q('SELECT COUNT(*) AS n FROM tokens WHERE team = ?').get(t.id).n >= MAX_TEAM_TOKENS) throw new Fail(429, 'too_many');
@@ -4672,19 +4675,27 @@ function siteSlug(v, mine) {
 //   - Un nombre que un equipo cambia o deja queda en reserva TEAM_SUB_HOLD_MS: en ese tiempo solo ese equipo lo puede
 //     volver a tomar, y mientras tenga otro, el viejo redirige al nuevo. Así nadie hereda de un día para el otro
 //     los enlaces de otro equipo.
-const TEAM_SITES = (() => {
-  const raw = String(env.PAGES_TEAM_DOMAIN || '').trim().toLowerCase(); if (!raw) return null;
-  if (!PAGES) fatal('PAGES_TEAM_DOMAIN necesita PAGES_URL: por los subdominios de equipo salen sitios publicados');
-  if (raw.length > 200 || !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(raw)) fatal('PAGES_TEAM_DOMAIN es solo un nombre de dominio, sin esquema, puerto ni ruta: por ejemplo pages.example.com');
+//   - A pedido. Elegir un nombre es pedirlo: queda apartado para el equipo y no sirve nada hasta que quien opera el
+//     servidor lo aprueba (GET y POST /admin/subdomains). Con PAGES_TEAM_ASK en vez de PAGES_TEAM_DOMAIN el servidor
+//     solo toma pedidos: la app ofrece la opción y muestra la dirección, pero ningún subdominio se atiende todavía.
+//     Lo aprobado en ese modo empieza a servirse el día que se pone PAGES_TEAM_DOMAIN. PAGES_TEAM_AUTO saltea la
+//     aprobación, y solo vale con PAGES_TEAM_DOMAIN.
+// TEAM_SUBS: lo que se ofrece (con cualquiera de las dos variables). TEAM_SITES: lo que se sirve (solo con PAGES_TEAM_DOMAIN).
+const TEAM_SUBS = (() => {
+  const live = String(env.PAGES_TEAM_DOMAIN || '').trim().toLowerCase(); const raw = live || String(env.PAGES_TEAM_ASK || '').trim().toLowerCase(); if (!raw) return null;
+  const VAR = live ? 'PAGES_TEAM_DOMAIN' : 'PAGES_TEAM_ASK';
+  if (!PAGES) fatal(VAR + ' necesita PAGES_URL: por los subdominios de equipo salen sitios publicados');
+  if (raw.length > 200 || !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(raw)) fatal(VAR + ' es solo un nombre de dominio, sin esquema, puerto ni ruta: por ejemplo pages.example.com');
   const hostOf = (v) => { try { return new URL(v).hostname.toLowerCase(); } catch (e) { return ''; } };
-  if (hostOf(PUBLIC_URL) === raw) fatal('PAGES_TEAM_DOMAIN tiene que ser otro nombre que el de PUBLIC_URL');
+  if (hostOf(PUBLIC_URL) === raw) fatal(VAR + ' tiene que ser otro nombre que el de PUBLIC_URL');
   // Los nombres propios que caen bajo ese dominio (el de la API, el de sitios, el de la app): se atienden como
   // siempre, y su etiqueta no la puede elegir ningún equipo.
   const own = new Set(); const labels = new Set();
   for (const h of [PUBLIC_URL, PAGES.url, APP_URL].concat(ORIGINS).map(hostOf)) if (h.endsWith('.' + raw)) { own.add(h); labels.add(h.slice(0, -(raw.length + 1)).split('.').pop()); }
   const u = new URL(PAGES.url);
-  return { domain: raw, scheme: u.protocol, port: u.port ? ':' + u.port : '', plain: u.protocol === 'https:' ? ':443' : ':80', own, labels };
+  return { domain: raw, scheme: u.protocol, port: u.port ? ':' + u.port : '', plain: u.protocol === 'https:' ? ':443' : ':80', own, labels, serve: !!live, auto: !!live && !!env.PAGES_TEAM_AUTO && env.PAGES_TEAM_AUTO !== '0' };
 })();
+const TEAM_SITES = TEAM_SUBS && TEAM_SUBS.serve ? TEAM_SUBS : null;
 // El nombre: 3 a 32, minúsculas, números y guiones sueltos. Sin "--": deja afuera los nombres codificados (xn--).
 const TEAM_SUB = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
 // Lo que no puede elegir un equipo: lo que tampoco puede un sitio, los nombres de infraestructura y los que
@@ -4695,11 +4706,15 @@ const TEAM_SUB_RESERVED = new Set(Array.from(SITE_RESERVED).concat(('sync pages 
   'extension claude anthropic ai bot assistant customer customers client clients user users member members owner owners staff helpdesk service services feedback').split(' ')));
 const TEAM_SUB_HOLD_MS = env.PAGES_TEAM_HOLD_MS ? Math.max(0, +env.PAGES_TEAM_HOLD_MS || 0) : Math.max(1, +(env.PAGES_TEAM_HOLD_DAYS || 90) || 90) * DAY; // PAGES_TEAM_HOLD_MS es para las pruebas
 const TEAM_SUB_HOLDS = 5; // nombres en reserva que puede acumular un equipo: con ese tope no se acaparan
-try { db.exec('ALTER TABLE teams ADD COLUMN subdomain TEXT'); } catch (e) { /* ya estaba */ }
+const TEAM_SUB_ASKS_DAY = 6; // pedidos de subdominio por día y por equipo: cada uno le llega a una persona
+// subdomain: el nombre del equipo, ya aprobado. sub_want: el que pidió y espera (apartado para él). sub_asked, sub_by y
+// sub_lang: cuándo, qué cuenta y en qué idioma lo pidió. sub_denied y sub_reason: el último que no se aprobó, y por qué.
+for (const col of ['subdomain TEXT', 'sub_want TEXT', 'sub_asked INTEGER NOT NULL DEFAULT 0', 'sub_by INTEGER', "sub_lang TEXT NOT NULL DEFAULT 'en'", 'sub_denied TEXT', 'sub_reason TEXT']) { try { db.exec('ALTER TABLE teams ADD COLUMN ' + col); } catch (e) { /* ya estaba */ } }
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS teams_subdomain ON teams (subdomain) WHERE subdomain IS NOT NULL');
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS teams_sub_want ON teams (sub_want) WHERE sub_want IS NOT NULL');
 // team: el equipo que lo dejó (0 si ya no existe: nadie lo recupera). until: hasta cuándo dura la reserva.
 db.exec('CREATE TABLE IF NOT EXISTS team_sub_holds (name TEXT PRIMARY KEY, team INTEGER NOT NULL, until INTEGER NOT NULL)');
-const teamOrigin = (name) => TEAM_SITES.scheme + '//' + name + '.' + TEAM_SITES.domain + TEAM_SITES.port;
+const teamOrigin = (name) => TEAM_SUBS.scheme + '//' + name + '.' + TEAM_SUBS.domain + TEAM_SUBS.port;
 const underTeamDomain = (host) => !!TEAM_SITES && host.endsWith('.' + TEAM_SITES.domain) && !TEAM_SITES.own.has(host);
 // Si un origen (la cabecera Origin de un pedido a la API) es el de un sitio de equipo.
 function teamSiteOrigin(origin) { if (!TEAM_SITES) return false; try { return underTeamDomain(new URL(origin).hostname.toLowerCase()); } catch (e) { return false; } }
@@ -4728,38 +4743,75 @@ function siteOrigin(site) {
   const t = q('SELECT subdomain FROM teams WHERE space = ?').get(site.owner);
   return t && t.subdomain ? teamOrigin(t.subdomain) : PAGES.url;
 }
-// Un nombre que ese equipo puede tomar: bien escrito, sin reservar, y que no sea de otro ni esté en reserva por otro.
+// Un nombre que ese equipo puede tomar: bien escrito, sin reservar, y que no sea de otro, ni lo haya pedido otro, ni
+// esté en reserva por otro.
 function teamSubName(v, t) {
   const name = typeof v === 'string' ? v.trim().toLowerCase() : '';
   if (!TEAM_SUB.test(name) || name.includes('--')) throw new Fail(400, 'bad_subdomain', 'The subdomain takes lowercase letters, numbers and single hyphens, 3 to 32');
-  if (TEAM_SUB_RESERVED.has(name) || TEAM_SITES.labels.has(name) || /sharp-?md/.test(name)) throw new Fail(409, 'subdomain_reserved', 'That name is reserved');
-  const row = q('SELECT id FROM teams WHERE subdomain = ?').get(name);
+  if (TEAM_SUB_RESERVED.has(name) || TEAM_SUBS.labels.has(name) || /sharp-?md/.test(name)) throw new Fail(409, 'subdomain_reserved', 'That name is reserved');
+  const row = q('SELECT id FROM teams WHERE (subdomain = ? OR sub_want = ?) AND id != ?').get(name, name, t.id);
   const held = q('SELECT team FROM team_sub_holds WHERE name = ? AND until > ?').get(name, now());
-  if ((row && row.id !== t.id) || (held && held.team !== t.id)) throw new Fail(409, 'subdomain_taken', 'That name is not available');
+  if (row || (held && held.team !== t.id)) throw new Fail(409, 'subdomain_taken', 'That name is not available');
   return name;
 }
-function teamSubView(t) {
-  if (!TEAM_SITES) return { enabled: false };
+// Lo que la app sabe del subdominio del equipo. mode: 'live' si el servidor ya sirve los subdominios, 'ask' si solo
+// toma pedidos. review: si elegir un nombre es un pedido que alguien aprueba. name: el nombre aprobado. url: su
+// dirección, solo cuando ya se sirve. Para quien administra, además: pending (el nombre pedido que espera), asked
+// (cuándo) y rejected (el último que no se aprobó, con su motivo).
+function teamSubView(t, admin) {
+  if (!TEAM_SUBS) return { enabled: false };
   const name = (t && t.subdomain) || '';
   // template: la dirección con {name} donde va el nombre, para mostrarla mientras se escribe.
-  return { enabled: true, domain: TEAM_SITES.domain, name, url: name ? teamOrigin(name) + '/' : '', template: teamOrigin('{name}') + '/', hold_days: Math.round(TEAM_SUB_HOLD_MS / DAY) };
+  const out = { enabled: true, mode: TEAM_SUBS.serve ? 'live' : 'ask', review: !TEAM_SUBS.auto, domain: TEAM_SUBS.domain, name, url: name && TEAM_SUBS.serve ? teamOrigin(name) + '/' : '', template: teamOrigin('{name}') + '/', hold_days: Math.round(TEAM_SUB_HOLD_MS / DAY) };
+  if (admin) { out.pending = (t && t.sub_want) || ''; out.asked = (t && t.sub_asked) || 0; out.rejected = t && t.sub_denied ? { name: t.sub_denied, reason: t.sub_reason || '' } : null; }
+  return out;
 }
 const teamSubHold = (name, teamId) => q('INSERT INTO team_sub_holds (name, team, until) VALUES (?, ?, ?) ON CONFLICT (name) DO UPDATE SET team = excluded.team, until = excluded.until').run(name, teamId, now() + TEAM_SUB_HOLD_MS);
-// Elegir o cambiar el subdominio. Es del plan de equipo: con el equipo vencido no se elige uno nuevo.
-function teamSubSet(t, user, v) {
-  if (t.status !== 'active') throw new Fail(402, 'team_ended');
-  const name = teamSubName(v, t); const was = t.subdomain || '';
-  if (name === was) return;
-  if (q('SELECT COUNT(*) AS n FROM team_sub_holds WHERE team = ? AND name != ? AND until > ?').get(t.id, name, now()).n >= TEAM_SUB_HOLDS) throw new Fail(429, 'subdomain_changes', 'Too many subdomain changes: go back to an earlier name or wait for one to be released');
+// Ese nombre pasa a ser el del equipo: el que tenía queda en reserva, y el pedido que hubiera se cierra.
+// who: quien lo eligió, o { auto: true } si fue una aprobación.
+function teamSubActivate(t, name, who) {
+  const was = t.subdomain || '';
   db.exec('BEGIN');
   try {
-    q('DELETE FROM team_sub_holds WHERE name = ?').run(name);
-    if (was) teamSubHold(was, t.id);
-    q('UPDATE teams SET subdomain = ? WHERE id = ?').run(name, t.id);
+    if (name !== was) { q('DELETE FROM team_sub_holds WHERE name = ?').run(name); if (was) teamSubHold(was, t.id); }
+    q('UPDATE teams SET subdomain = ?, sub_want = NULL, sub_denied = NULL, sub_reason = NULL WHERE id = ?').run(name, t.id);
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
-  t.subdomain = name;
-  teamLog(t, user, 'subdomain', '', name);
+  t.subdomain = name; t.sub_want = null; t.sub_denied = null;
+  if (name !== was) teamLog(t, who, 'subdomain', '', name);
+}
+// El pedido queda anotado donde entran los comentarios (la tabla feedback, kind 'subdomain'): quien opera el servidor
+// se entera por el mismo camino, y si hay FEEDBACK_TO le llega el correo. Nada de esto frena el pedido.
+function teamSubNotify(t, user, name) {
+  const one = (v) => String(v || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 120);
+  const text = 'Subdomain request: ' + name + '.' + TEAM_SUBS.domain + '\nTeam: ' + (one(t.name) || '-') + ' (id ' + t.id + ')\nAsked by: ' + user.email + (t.subdomain ? '\nCurrent subdomain: ' + t.subdomain : '') +
+    '\nReview: GET /admin/subdomains, then POST /admin/subdomains { "id": ' + t.id + ', "action": "approve" or "reject" }';
+  try { q("INSERT INTO feedback (created, kind, from_email, signed_in, plan, text, place) VALUES (?, 'subdomain', ?, 1, ?, ?, 'web')").run(now(), user.email, String(user.plan || ''), text); }
+  catch (e) { console.error('subdominios: no se pudo anotar el pedido del equipo ' + t.id); }
+  if (env.FEEDBACK_TO) sendMail({ to: env.FEEDBACK_TO, subject: 'SharpMD subdomain request', text, reply_to: user.email }).catch(() => console.error('subdominios: no salió el correo del pedido del equipo ' + t.id));
+}
+// Elegir o cambiar el subdominio. Es del plan de equipo: con el equipo vencido no se elige uno nuevo.
+// Salvo con PAGES_TEAM_AUTO, elegir es pedir: el nombre queda apartado para el equipo (sub_want) hasta que quien
+// opera el servidor lo aprueba o lo rechaza. Mientras tanto no sirve nada y el que el equipo tenía sigue andando.
+function teamSubSet(t, user, v, lang) {
+  if (t.status !== 'active') throw new Fail(402, 'team_ended');
+  const name = teamSubName(v, t); const was = t.subdomain || '';
+  // Pedir el que ya tiene es quedarse como está: el pedido que hubiera se retira.
+  if (name === was) { teamSubCancel(t, user); return; }
+  if (name === t.sub_want) return;
+  if (q('SELECT COUNT(*) AS n FROM team_sub_holds WHERE team = ? AND name != ? AND until > ?').get(t.id, name, now()).n >= TEAM_SUB_HOLDS) throw new Fail(429, 'subdomain_changes', 'Too many subdomain changes: go back to an earlier name or wait for one to be released');
+  if (TEAM_SUBS.auto) { teamSubActivate(t, name, user); return; }
+  limit('tsubreq:' + t.id, TEAM_SUB_ASKS_DAY, DAY, 'too_many'); mark('tsubreq:' + t.id);
+  q('UPDATE teams SET sub_want = ?, sub_asked = ?, sub_by = ?, sub_lang = ?, sub_denied = NULL, sub_reason = NULL WHERE id = ?').run(name, now(), user.id, lang === 'es' ? 'es' : 'en', t.id);
+  t.sub_want = name; t.sub_denied = null;
+  teamLog(t, user, 'subdomain_ask', '', name);
+  teamSubNotify(t, user, name);
+}
+// Retirar el pedido: el nombre queda libre en el acto (nunca sirvió nada, no hay enlaces que cuidar).
+function teamSubCancel(t, user) {
+  const want = t.sub_want || ''; if (!want) return;
+  q('UPDATE teams SET sub_want = NULL WHERE id = ?').run(t.id); t.sub_want = null;
+  teamLog(t, user, 'subdomain_cancel', '', want);
 }
 // Dejarlo: los sitios del equipo vuelven al host de sitios y el nombre queda en reserva.
 function teamSubClear(t, user) {
@@ -4774,6 +4826,54 @@ function teamSubOrphan(t) {
   q('UPDATE team_sub_holds SET team = 0 WHERE team = ?').run(t.id);
   const row = q('SELECT subdomain FROM teams WHERE id = ?').get(t.id);
   if (row && row.subdomain) teamSubHold(row.subdomain, 0);
+}
+// El correo a quien pidió el subdominio, en el idioma con que lo pidió: aprobado (y si ya se sirve, su dirección) o
+// no aprobado, con el motivo. Texto corto, sin plazos.
+const SUB_MAIL = {
+  en: { live_s: 'Your team subdomain is active', live: (url) => 'The sites your team publishes are now served at ' + url + '\n\nThe earlier addresses keep working: they redirect there.',
+    ok_s: 'Your team subdomain was approved', ok: (addr) => addr + ' is approved and reserved for your team.\n\nIt is not active yet. The sites of your team stay at their usual address until it is turned on.',
+    no_s: 'About your team subdomain request', no: (addr, why) => addr + ' could not be approved.' + (why ? '\n\nReason: ' + why : '') + '\n\nYou can ask for another name in SharpMD: Settings, Plan.' },
+  es: { live_s: 'El subdominio de tu equipo está activo', live: (url) => 'Los sitios que publica tu equipo ya salen por ' + url + '\n\nLas direcciones de antes siguen andando: llevan ahí.',
+    ok_s: 'Aprobamos el subdominio de tu equipo', ok: (addr) => addr + ' quedó aprobado y reservado para tu equipo.\n\nTodavía no está activo. Los sitios de tu equipo siguen en su dirección de siempre hasta que se active.',
+    no_s: 'Sobre el pedido de subdominio de tu equipo', no: (addr, why) => 'No pudimos aprobar ' + addr + '.' + (why ? '\n\nMotivo: ' + why : '') + '\n\nPodés pedir otro nombre en SharpMD: Ajustes, Plan.' },
+};
+async function teamSubMail(t, kind, name, why) {
+  const to = q('SELECT email FROM users WHERE id = ?').get(t.sub_by || t.owner) || q('SELECT email FROM users WHERE id = ?').get(t.owner);
+  if (!to || /^team:/.test(to.email)) return false;
+  const m = SUB_MAIL[t.sub_lang === 'es' ? 'es' : 'en']; const addr = name + '.' + TEAM_SUBS.domain;
+  const text = kind === 'no' ? m.no(addr, why) : TEAM_SUBS.serve ? m.live(teamOrigin(name) + '/') : m.ok(addr);
+  const subject = kind === 'no' ? m.no_s : TEAM_SUBS.serve ? m.live_s : m.ok_s;
+  const body = '<!doctype html><html><body style="margin:0;padding:32px 16px;background:#f4f3ee;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1d2026"><div style="max-width:420px;margin:0 auto;padding:24px 28px;background:#ffffff;border:1px solid #dedbd2;border-radius:14px;font-size:15px;line-height:1.5">' +
+    '<p style="margin:0 0 14px;font-size:17px;font-weight:700"><span style="color:#4d7c0f">#</span> SharpMD</p>' + text.split('\n\n').map((p) => '<p style="margin:0 0 12px">' + html(p) + '</p>').join('') + '</div></body></html>';
+  try { return !!(await sendMail({ to: to.email, subject, text, html: body })); } catch (e) { console.error('subdominios: no salió el correo al equipo ' + t.id); return false; }
+}
+// Administración, con ADMIN_KEY: los pedidos que esperan y los subdominios aprobados, y aprobar o rechazar uno.
+//   GET  /admin/subdomains
+//   POST /admin/subdomains { id, action: 'approve' | 'reject', reason?, name? }   id es el del equipo
+// name, si se manda, tiene que ser el nombre pedido: así no se aprueba uno que el equipo cambió mientras tanto.
+// Acá se ve el correo de quien administra el equipo: es para quien opera el servidor.
+async function subdomainsAdmin(m, b) {
+  if (!TEAM_SUBS) throw new Fail(404, 'no_route');
+  const mailOf = (id) => { const u = id ? q('SELECT email FROM users WHERE id = ?').get(id) : null; return u ? u.email : ''; };
+  const row = (t) => ({ id: t.id, team: t.name || '', status: t.status, owner: mailOf(t.owner), asked_by: mailOf(t.sub_by), name: t.subdomain || '', url: t.subdomain && TEAM_SUBS.serve ? teamOrigin(t.subdomain) + '/' : '', pending: t.sub_want || '', asked: t.sub_asked || 0, rejected: t.sub_denied || '', reason: t.sub_reason || '' });
+  if (m === 'GET') return { mode: TEAM_SUBS.serve ? 'live' : 'ask', review: !TEAM_SUBS.auto, domain: TEAM_SUBS.domain, pending: q('SELECT * FROM teams WHERE sub_want IS NOT NULL ORDER BY sub_asked, id').all().map(row), active: q('SELECT * FROM teams WHERE subdomain IS NOT NULL ORDER BY id').all().map(row) };
+  if (m !== 'POST') throw new Fail(405, 'method_not_allowed');
+  const t = q('SELECT * FROM teams WHERE id = ?').get(+b.id);
+  if (!t) throw new Fail(404, 'not_found');
+  if (b.action !== 'approve' && b.action !== 'reject') throw new Fail(400, 'bad_action');
+  const name = t.sub_want || '';
+  if (!name) throw new Fail(409, 'no_request', 'That team has no pending request');
+  if (b.name != null && String(b.name).trim().toLowerCase() !== name) throw new Fail(409, 'request_changed', 'The team asked for another name since', { pending: name });
+  let mailed = false;
+  if (b.action === 'approve') { teamSubActivate(t, name, { auto: true }); mailed = await teamSubMail(t, 'ok', name); }
+  else {
+    const reason = siteLine(b.reason, 200);
+    q('UPDATE teams SET sub_want = NULL, sub_denied = ?, sub_reason = ? WHERE id = ?').run(name, reason, t.id);
+    teamLog(t, { auto: true }, 'subdomain_no', '', name);
+    mailed = await teamSubMail(t, 'no', name, reason);
+  }
+  console.log('subdominios: ' + b.action + ' · equipo ' + t.id);
+  return { ok: true, mailed, team: row(q('SELECT * FROM teams WHERE id = ?').get(t.id)) };
 }
 // ---------- fin del subdominio por equipo ----------
 // La configuración: cada dato contra su lista o su largo. Nada de acá llega a la página como CSS ni como HTML.
@@ -5916,13 +6016,14 @@ async function route(req, url) {
   if (p === '/auth/verify' && m === 'POST') return authVerify(req, await readBody(req));
   if (p === '/paddle/webhook' && m === 'POST') return paddleWebhook(req);
   if (p === '/feedback' && m === 'POST') return feedback(req, await readBody(req));
-  if (((p === '/admin/plan' || p === '/admin/team') && m === 'POST') || p === '/admin/gallery' || p === '/admin/sites' || ((p === '/admin/landing' || p === '/admin/funnel' || p === '/admin/feedback') && m === 'GET')) {
+  if (((p === '/admin/plan' || p === '/admin/team') && m === 'POST') || p === '/admin/gallery' || p === '/admin/sites' || p === '/admin/subdomains' || ((p === '/admin/landing' || p === '/admin/funnel' || p === '/admin/feedback') && m === 'GET')) {
     // La misma respuesta sin clave configurada, sin clave en el pedido o con una equivocada. Diez fallos por hora por IP.
     const ip = 'admin:' + clientIp(req);
     limit(ip, 10, HOUR, 'too_many');
     if (!env.ADMIN_KEY || !same(req.headers['x-admin-key'] || '', env.ADMIN_KEY)) { mark(ip); throw new Fail(403, 'forbidden'); }
     if (p === '/admin/gallery') return galleryAdmin(m, url, m === 'POST' ? await readBody(req) : {});
     if (p === '/admin/sites') return sitesAdmin(m, url, m === 'POST' ? await readBody(req) : {});
+    if (p === '/admin/subdomains') return subdomainsAdmin(m, m === 'POST' ? await readBody(req) : {});
     if (p === '/admin/landing') return landingAdmin(url);
     if (p === '/admin/funnel') return funnelAdmin(url);
     if (p === '/admin/feedback') return feedbackAdmin(url);
