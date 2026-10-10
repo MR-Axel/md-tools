@@ -38,6 +38,17 @@
 //                   Sin PADDLE_PRICE_TEAM, esta clave y PADDLE_WEBHOOK_SECRET el plan de equipo queda apagado y la app no lo ofrece
 //   PADDLE_API_URL  dirección de la API de Paddle (https://api.paddle.com; la de pruebas es https://sandbox-api.paddle.com)
 //   CHECKOUT_TEAM   enlace de pago del plan de equipo que la app muestra en Ajustes → Plan
+//   PLAY_BILLING=1  prende la compra del plan pago por Google Play dentro de la app de Android. Hace falta además
+//                   PLAY_SERVICE_ACCOUNT. Sin las dos, POST /play/verify responde play_unavailable y /account dice play: false
+//   PLAY_SERVICE_ACCOUNT   la clave de la cuenta de servicio de Google (el JSON entero, o ese JSON en base64) con la que
+//                   el servidor consulta y confirma las compras en la Google Play Developer API
+//   PLAY_PACKAGE    paquete de la app en Google Play (app.sharpmd)
+//   PLAY_PRODUCT_MONTHLY, PLAY_PRODUCT_YEARLY   ids de las dos suscripciones en Play Console (pro_monthly, pro_yearly)
+//   PLAY_PUBSUB_AUDIENCE, PLAY_PUBSUB_EMAIL   el destinatario (audience) y el correo de la cuenta de servicio con que
+//                   Pub/Sub firma sus avisos: con las dos, POST /play/notifications recibe las renovaciones, cancelaciones,
+//                   reembolsos y vencimientos. Sin ellas esa ruta no existe y queda solo el chequeo al consultar la cuenta
+//   PLAY_API_URL, PLAY_TOKEN_URL, PLAY_CERTS_URL, PLAY_SLACK_MS   solo para pruebas: las direcciones de Google y cuánto
+//                   se espera una renovación que todavía no se pudo confirmar (un día)
 //   TEAM_MAX_SEATS  lugares que puede tener un equipo como máximo (50)
 //   TEAM_INVITES_DAY  invitaciones que un equipo puede mandar por día (20)
 //   TEAM_HISTORY_DAYS días de historial de versiones en el espacio de un equipo (365)
@@ -109,6 +120,12 @@ try { db.exec('ALTER TABLE tokens ADD COLUMN share INTEGER NOT NULL DEFAULT 0');
 db.exec("CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY, user INTEGER NOT NULL, path TEXT NOT NULL, quote TEXT NOT NULL, text TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open', reply TEXT, created INTEGER NOT NULL, done INTEGER)");
 // Cada suscripción de Paddle con su cuenta y su estado: una cuenta puede tener más de una (alguien pagó por ella).
 db.exec('CREATE TABLE IF NOT EXISTS paddle_subs (id TEXT PRIMARY KEY, user INTEGER NOT NULL, status TEXT NOT NULL, at INTEGER NOT NULL DEFAULT 0)');
+// Cada compra de Google Play con su cuenta: el token es de una sola cuenta. expires es hasta cuándo vale lo pagado,
+// renews si se renueva sola, checked la última vez que se le preguntó a Google. Y de dónde sale el plan pago de una
+// cuenta (plan_from): 'paddle', 'play', 'admin' o vacío (el plan gratis, o uno pago anterior a esta columna).
+db.exec("CREATE TABLE IF NOT EXISTS play_subs (token TEXT PRIMARY KEY, user INTEGER NOT NULL, product TEXT NOT NULL, status TEXT NOT NULL, expires INTEGER NOT NULL DEFAULT 0, renews INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL DEFAULT 0, checked INTEGER NOT NULL DEFAULT 0)");
+db.exec('CREATE INDEX IF NOT EXISTS play_subs_user ON play_subs (user, status)');
+try { db.exec("ALTER TABLE users ADD COLUMN plan_from TEXT NOT NULL DEFAULT ''"); } catch (e) { /* ya estaba */ }
 db.exec("INSERT OR IGNORE INTO paddle_subs (id, user, status, at) SELECT paddle_sub, id, CASE plan WHEN 'pro' THEN 'active' ELSE 'canceled' END, 0 FROM users WHERE paddle_sub IS NOT NULL AND paddle_sub != ''");
 // Tamaño del texto en claro (LENGTH(text) deja de servir con el texto cifrado) y marca de fila cifrada.
 try { db.exec('ALTER TABLE notes ADD COLUMN size INTEGER'); } catch (e) { /* ya estaba */ }
@@ -409,10 +426,13 @@ try { db.exec('ALTER TABLE users ADD COLUMN protect_seen INTEGER NOT NULL DEFAUL
 const protectSeen = (userId) => { const r = q('SELECT protect_seen FROM users WHERE id = ?').get(userId); return !!(r && r.protect_seen); };
 function protectSeenSet(user) { q('UPDATE users SET protect_seen = ? WHERE id = ? AND protect_seen = 0').run(now(), user.id); return { ok: true }; }
 const account = (user) => ({ id: user.id, protect_seen: protectSeen(user.id), share: shareAllowed(user), live: user.plan === 'pro' || !!env.LIVE_FREE, email: user.email, name: nameOf(user), name_default: !user.name, plan: user.plan, own_plan: user.own || user.plan, notes: countNotes(user), limit: user.plan === 'pro' ? null : FREE_NOTES, free_notes: FREE_NOTES, mcp: true, api: apiAllowed(user), mcp_url: PUBLIC_URL + '/mcp',
-  manage: ((user.own || user.plan) === 'pro' || (user.team && user.team.owner === user.id && user.team.sub)) && env.PORTAL_URL ? env.PORTAL_URL : '',
+  // plan_from: quién cobra el plan pago propio ('paddle', 'play', 'admin' o vacío). play: lo que la app de Android
+  // necesita para ofrecer la compra por Google Play, o false si está apagada.
+  plan_from: (user.own || user.plan) === 'pro' ? user.plan_from || '' : '', play: PLAY ? { package: PLAY_PACKAGE, products: PLAY_PRODUCTS } : false,
+  manage: playPaid(user) ? playManage(user.id) : ((user.own || user.plan) === 'pro' || (user.team && user.team.owner === user.id && user.team.sub)) && env.PORTAL_URL ? env.PORTAL_URL : '',
   // billing: si a esta cuenta se le muestra algo de cobro. A quien tiene el plan por un equipo que paga otra persona, no:
   // ni enlaces de pago ni precios. Lo que paga por su lado (su suscripción individual) lo sigue administrando.
-  billing: !teamGuest(user), checkout: teamGuest(user) ? { monthly: '', yearly: '' } : { monthly: payLink(env.CHECKOUT_MONTHLY, user), yearly: payLink(env.CHECKOUT_YEARLY, user) }, team: teamView(user), pages: pagesView(user) });
+  billing: !teamGuest(user), checkout: teamGuest(user) || playPaid(user) ? { monthly: '', yearly: '' } : { monthly: payLink(env.CHECKOUT_MONTHLY, user), yearly: payLink(env.CHECKOUT_YEARLY, user) }, team: teamView(user), pages: pagesView(user) });
 
 // ---------- Comentarios ----------
 // Lo que alguien escribe desde "Enviar comentarios" queda guardado en la tabla feedback y además sale por correo a
@@ -2070,6 +2090,9 @@ const teamOf = (userId) => q('SELECT t.*, m.role AS my_role FROM team_members m 
 // equipo al día), own el que paga por su lado y team su equipo. Toda cuenta que se lee para decidir algo sale de acá.
 function userById(id) {
   const u = q('SELECT * FROM users WHERE id = ?').get(id); if (!u) return u;
+  // Un plan que salió de Google Play vale mientras su compra siga en pie: vencida y sin renovar ya no cuenta,
+  // aunque el aviso de Google no haya llegado.
+  if (u.plan === 'pro' && u.plan_from === 'play' && !playHolds(u.id)) u.plan = 'free';
   u.own = u.plan; u.team = teamOf(u.id);
   if (u.team && u.team.status === 'active') u.plan = 'pro';
   return u;
@@ -2699,7 +2722,7 @@ async function teamAdminRoute(user, p, m, req, after) {
 const ACCOUNT_DELETES = 5; // pedidos por hora, por IP y por cuenta
 // Todo lo que cuelga de una cuenta, tabla por tabla. La cuenta misma va al final.
 const ACCOUNT_ROWS = ['DELETE FROM notes WHERE user = ?', 'DELETE FROM versions WHERE user = ?', 'DELETE FROM trash WHERE user = ?', 'DELETE FROM comments WHERE user = ?', 'DELETE FROM gallery WHERE user = ?', 'DELETE FROM tokens WHERE user = ?',
-  'DELETE FROM sessions WHERE user = ?', 'DELETE FROM vaults WHERE user = ?', 'DELETE FROM paddle_subs WHERE user = ?', 'DELETE FROM shares WHERE owner = ?', 'DELETE FROM links WHERE owner = ?', 'DELETE FROM lives WHERE owner = ?',
+  'DELETE FROM sessions WHERE user = ?', 'DELETE FROM vaults WHERE user = ?', 'DELETE FROM paddle_subs WHERE user = ?', 'DELETE FROM play_subs WHERE user = ?', 'DELETE FROM shares WHERE owner = ?', 'DELETE FROM links WHERE owner = ?', 'DELETE FROM lives WHERE owner = ?',
   'DELETE FROM site_pages WHERE site IN (SELECT id FROM sites WHERE owner = ?)', 'DELETE FROM sites WHERE owner = ?',
   'DELETE FROM users WHERE id = ?'];
 function accountDelete(req, user, body) {
@@ -2709,6 +2732,8 @@ function accountDelete(req, user, body) {
   if (typeof body.email !== 'string' || body.email.trim().toLowerCase() !== user.email) throw new Fail(400, 'bad_confirm');
   const manage = env.PORTAL_URL || '';
   if (q("SELECT 1 FROM paddle_subs WHERE user = ? AND status = 'active' AND kind != 'team' LIMIT 1").get(user.id)) throw new Fail(409, 'subscription_active', 'Cancel the subscription before deleting the account', { manage });
+  // Una suscripción de Google Play que se sigue renovando se cancela en Google Play: el servidor no puede hacerlo por la persona.
+  if (q("SELECT 1 FROM play_subs WHERE user = ? AND status = 'active' AND renews = 1 AND expires > ? LIMIT 1").get(user.id, now())) throw new Fail(409, 'subscription_active', 'Cancel the subscription in Google Play before deleting the account', { manage: playManage(user.id) });
   const own = q('SELECT * FROM teams WHERE owner = ?').get(user.id);
   if (own) {
     if (q("SELECT 1 FROM paddle_subs WHERE user = ? AND status = 'active' AND kind = 'team' LIMIT 1").get(user.id)) throw new Fail(409, 'team_billing_active', 'Cancel the team subscription before deleting the account', { manage });
@@ -2803,10 +2828,211 @@ async function paddleWebhook(req) {
   // El plan es pago mientras quede alguna suscripción activa de la cuenta. Así, quien paga una suscripción a nombre
   // de otra persona y después la cancela no le saca el plan que esa persona paga por su lado.
   const other = q("SELECT id FROM paddle_subs WHERE user = ? AND status = 'active' AND kind != 'team' ORDER BY at DESC LIMIT 1").get(user.id);
-  const plan = other ? 'pro' : 'free';
-  q('UPDATE users SET plan = ?, paddle_sub = ? WHERE id = ?').run(plan, other ? other.id : id, user.id);
+  // Si además hay una compra de Google Play en pie, el plan sigue: lo que se anota es de dónde sale.
+  const play = !other && playHolds(user.id);
+  const plan = other || play ? 'pro' : 'free';
+  q('UPDATE users SET plan = ?, plan_from = ?, paddle_sub = ? WHERE id = ?').run(plan, other ? 'paddle' : play ? 'play' : '', other ? other.id : id, user.id);
   if (status === 'active') statOnce(user.id, STAT_BIT.paid, 'paid');
   return { ok: true, plan };
+}
+
+// ---------- Google Play ----------
+// El plan pago comprado dentro de la app de Android. La app (una Trusted Web Activity) cobra con la facturación de
+// Google Play y manda acá el token de la compra: el servidor lo confirma contra la Google Play Developer API, lo
+// reconoce (acknowledge: sin eso Google devuelve la plata a los tres días) y prende el plan hasta el vencimiento.
+// Las renovaciones, cancelaciones, reembolsos y vencimientos llegan por Pub/Sub a /play/notifications, y por si un
+// aviso se pierde, la cuenta vuelve a preguntarle a Google cuando el vencimiento ya pasó.
+// Convive con Paddle sin mezclarse: una cuenta con el plan pago por otro lado no compra por acá, y un token de
+// compra es de una sola cuenta. Sin PLAY_BILLING=1 y la cuenta de servicio, todo esto queda apagado.
+const PLAY_PACKAGE = String(env.PLAY_PACKAGE || 'app.sharpmd').trim();
+const PLAY_PRODUCTS = { monthly: String(env.PLAY_PRODUCT_MONTHLY || 'pro_monthly').trim(), yearly: String(env.PLAY_PRODUCT_YEARLY || 'pro_yearly').trim() };
+const PLAY_API = String(env.PLAY_API_URL || 'https://androidpublisher.googleapis.com').replace(/\/+$/, '');
+const PLAY_TOKEN_URL = String(env.PLAY_TOKEN_URL || 'https://oauth2.googleapis.com/token');
+const PLAY_CERTS_URL = String(env.PLAY_CERTS_URL || 'https://www.googleapis.com/oauth2/v3/certs');
+const PLAY_PUSH_AUD = String(env.PLAY_PUBSUB_AUDIENCE || '').trim(); const PLAY_PUSH_EMAIL = String(env.PLAY_PUBSUB_EMAIL || '').trim().toLowerCase();
+const PLAY_RECHECK = 5 * 60000; // cada cuánto se le vuelve a preguntar a Google por una compra ya vencida
+// La clave de la cuenta de servicio: el JSON que entrega Google, tal cual o en base64. De ahí salen el correo y la clave privada.
+const PLAY_SA = (() => {
+  const raw = String(env.PLAY_SERVICE_ACCOUNT || '').trim(); if (!raw) return null;
+  for (const text of [raw, Buffer.from(raw, 'base64').toString('utf8')]) {
+    try { const j = JSON.parse(text); if (j && typeof j.client_email === 'string' && typeof j.private_key === 'string') { crypto.createPrivateKey(j.private_key); return { email: j.client_email, key: j.private_key }; } } catch (e) { /* no era esto */ }
+  }
+  return null;
+})();
+const PLAY = env.PLAY_BILLING === '1' && !!PLAY_SA;
+if (env.PLAY_BILLING === '1' && !PLAY_SA) console.error('play: PLAY_BILLING está prendido pero PLAY_SERVICE_ACCOUNT falta o no se puede leer: la compra por Google Play queda apagada');
+
+// La compra de Google Play que sostiene el plan de una cuenta, si hay. A una que se renueva sola se le da un margen
+// (PLAY_SLACK_MS, un día) pasado el vencimiento: es lo que puede tardar en confirmarse una renovación si Google no responde.
+function playHolds(userId) {
+  const slack = Math.max(0, +(env.PLAY_SLACK_MS || DAY) || 0);
+  return q("SELECT * FROM play_subs WHERE user = ? AND status = 'active' AND expires + (CASE renews WHEN 1 THEN ? ELSE 0 END) > ? ORDER BY expires DESC LIMIT 1").get(userId, slack, now()) || null;
+}
+function playPaid(user) { return (user.own || user.plan) === 'pro' && user.plan_from === 'play'; }
+// Dónde se administra (y se cancela) una suscripción de Google Play: en Google Play.
+function playManage(userId) {
+  const row = playHolds(userId);
+  return 'https://play.google.com/store/account/subscriptions?package=' + encodeURIComponent(PLAY_PACKAGE) + (row ? '&sku=' + encodeURIComponent(row.product) : '');
+}
+// El plan de la cuenta después de un cambio en sus compras de Google Play. Un plan que sale de otro lado (Paddle,
+// o puesto a mano) no se toca: acá solo se prende o se apaga lo que es de Play.
+function playSettle(userId) {
+  const u = q('SELECT plan, plan_from FROM users WHERE id = ?').get(userId); if (!u) return 'free';
+  const paddle = q("SELECT 1 FROM paddle_subs WHERE user = ? AND status = 'active' AND kind != 'team' LIMIT 1").get(userId);
+  if (playHolds(userId)) { if (u.plan !== 'pro' || u.plan_from === 'play') q("UPDATE users SET plan = 'pro', plan_from = 'play' WHERE id = ?").run(userId); }
+  else if (u.plan_from === 'play') q('UPDATE users SET plan = ?, plan_from = ? WHERE id = ?').run(paddle ? 'pro' : 'free', paddle ? 'paddle' : '', userId);
+  return q('SELECT plan FROM users WHERE id = ?').get(userId).plan;
+}
+
+// El permiso para hablar con la API de Google: un JWT firmado con la clave de la cuenta de servicio se cambia por
+// un token de una hora, que se guarda hasta un minuto antes de vencer.
+let playAccess = null;
+const b64u = (x) => Buffer.from(x).toString('base64url');
+async function playToken() {
+  if (playAccess && playAccess.until > now()) return playAccess.value;
+  const iat = Math.floor(now() / 1000);
+  const head = b64u(JSON.stringify({ alg: 'RS256', typ: 'JWT' })) + '.' + b64u(JSON.stringify({ iss: PLAY_SA.email, scope: 'https://www.googleapis.com/auth/androidpublisher', aud: PLAY_TOKEN_URL, iat, exp: iat + 3600 }));
+  const jwt = head + '.' + crypto.sign('RSA-SHA256', Buffer.from(head), PLAY_SA.key).toString('base64url');
+  let r = null; let j = null;
+  try {
+    r = await fetch(PLAY_TOKEN_URL, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'grant_type=' + encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') + '&assertion=' + jwt, signal: AbortSignal.timeout(15000) });
+    j = await r.json();
+  } catch (e) { r = null; }
+  if (!r || !r.ok || !j || typeof j.access_token !== 'string') { console.error('play: Google no dio el token de acceso · ' + (r ? r.status : 'sin respuesta')); throw new Fail(502, 'play_failed'); }
+  playAccess = { value: j.access_token, until: now() + Math.max(60, (+j.expires_in || 3600) - 60) * 1000 };
+  return playAccess.value;
+}
+async function playCall(method, rest) {
+  const token = await playToken(); let r = null;
+  try { r = await fetch(PLAY_API + '/androidpublisher/v3/applications/' + encodeURIComponent(PLAY_PACKAGE) + rest, { method, headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' }, body: method === 'POST' ? '{}' : undefined, signal: AbortSignal.timeout(15000) }); }
+  catch (e) { r = null; }
+  if (r && r.status === 401) playAccess = null; // el token dejó de servir: el próximo pedido saca otro
+  return r;
+}
+// La compra tal como la tiene Google. gone: Google no conoce ese token (o ya lo dio de baja). Si Google no responde
+// o responde otra cosa, no se decide nada: play_failed.
+async function playGet(token) {
+  const r = await playCall('GET', '/purchases/subscriptionsv2/tokens/' + encodeURIComponent(token));
+  if (r && (r.status === 400 || r.status === 404 || r.status === 410)) return { gone: true };
+  let j = null; try { j = r && r.ok ? await r.json() : null; } catch (e) { j = null; }
+  if (!j || typeof j !== 'object') { console.error('play: no se pudo consultar una compra · ' + (r ? r.status : 'sin respuesta')); throw new Fail(502, 'play_failed'); }
+  return { sub: j };
+}
+// Lo que importa de una compra: cuál de nuestros productos es, hasta cuándo vale y si da el plan ahora. Lo da mientras
+// esté al día o en el período de gracia, y también cancelada hasta que venza lo ya pagado. En espera de pago, en
+// pausa, retenida o vencida, no.
+const PLAY_LIVE = ['SUBSCRIPTION_STATE_ACTIVE', 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD', 'SUBSCRIPTION_STATE_CANCELED'];
+function playRead(sub, product) {
+  const ours = Object.values(PLAY_PRODUCTS);
+  const items = (Array.isArray(sub.lineItems) ? sub.lineItems : []).filter((i) => i && typeof i === 'object');
+  const item = items.find((i) => (product ? i.productId === product : ours.includes(i.productId))) || null;
+  const expires = item ? Date.parse(item.expiryTime) || 0 : 0; const state = String(sub.subscriptionState || '');
+  return { product: item ? String(item.productId) : '', expires, state, active: !!item && PLAY_LIVE.includes(state) && expires > now(), renews: !!(item && item.autoRenewingPlan && item.autoRenewingPlan.autoRenewEnabled) && state !== 'SUBSCRIPTION_STATE_CANCELED',
+    acked: sub.acknowledgementState === 'ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED', linked: typeof sub.linkedPurchaseToken === 'string' ? sub.linkedPurchaseToken : '' };
+}
+const playEnd = (token, status) => q('UPDATE play_subs SET status = ?, renews = 0, at = ? WHERE token = ?').run(status, now(), token);
+// Vuelve a preguntarle a Google por una compra guardada y deja la cuenta como corresponde.
+async function playSync(row) {
+  const g = await playGet(row.token);
+  const r = g.gone ? null : playRead(g.sub, ''); const mine = r && r.product ? r : null;
+  if (!mine || !mine.active) q('UPDATE play_subs SET status = ?, renews = 0, expires = ?, at = ?, checked = ? WHERE token = ?').run('ended', mine && mine.expires ? mine.expires : row.expires, now(), now(), row.token);
+  else q("UPDATE play_subs SET status = 'active', product = ?, expires = ?, renews = ?, at = ?, checked = ? WHERE token = ?").run(mine.product, mine.expires, mine.renews ? 1 : 0, now(), now(), row.token);
+  return playSettle(row.user);
+}
+// El respaldo de los avisos: al consultar la cuenta, si la compra que sostiene el plan ya venció se le pregunta a
+// Google (a lo sumo cada cinco minutos por compra). Si Google no responde, la cuenta queda como estaba.
+async function playFresh(user) {
+  if (!PLAY) return user;
+  const row = q("SELECT * FROM play_subs WHERE user = ? AND status = 'active' ORDER BY expires DESC LIMIT 1").get(user.id);
+  if (!row || row.expires > now() || now() - row.checked < PLAY_RECHECK) return user;
+  q('UPDATE play_subs SET checked = ? WHERE token = ?').run(now(), row.token);
+  try { await playSync(row); } catch (e) { if (!(e instanceof Fail)) throw e; }
+  return userById(user.id);
+}
+
+// POST /play/verify { productId, purchaseToken }: la app avisa de una compra recién hecha (o de una que encontró al abrir).
+async function playVerify(user, body) {
+  if (!PLAY) throw new Fail(404, 'play_unavailable', 'Buying through Google Play is not available on this server');
+  const key = 'play:user:' + user.id; limit(key, 30, HOUR, 'too_many'); mark(key);
+  const product = typeof body.productId === 'string' ? body.productId : ''; const token = typeof body.purchaseToken === 'string' ? body.purchaseToken : '';
+  if (!Object.values(PLAY_PRODUCTS).includes(product)) throw new Fail(400, 'bad_product');
+  if (token.length < 10 || token.length > 2000 || /\s/.test(token)) throw new Fail(400, 'bad_purchase');
+  // Un token es de una sola cuenta: el que ya está en otra no sirve acá.
+  const known = q('SELECT * FROM play_subs WHERE token = ?').get(token);
+  if (known && known.user !== user.id) throw new Fail(409, 'token_used', 'This Google Play purchase belongs to another account');
+  // Quien ya tiene el plan pago por otro lado (Paddle, un equipo, o puesto a mano) no lo compra además por Play.
+  // La compra que llega igual no se reconoce, y Google la devuelve sola.
+  if (user.plan === 'pro' && !playPaid(user)) throw new Fail(409, 'plan_active', 'This account already has the paid plan');
+  if (q("SELECT 1 FROM paddle_subs WHERE user = ? AND status = 'active' AND kind != 'team' LIMIT 1").get(user.id)) throw new Fail(409, 'plan_active', 'This account already has the paid plan');
+  const g = await playGet(token);
+  if (g.gone) throw new Fail(400, 'bad_purchase', 'Google Play does not know this purchase');
+  const r = playRead(g.sub, product);
+  if (!r.product) throw new Fail(400, 'bad_purchase', 'That purchase is for another product');
+  if (r.state === 'SUBSCRIPTION_STATE_PENDING') throw new Fail(409, 'purchase_pending', 'The payment is still pending in Google Play');
+  if (!r.active) { if (known) { playEnd(token, 'ended'); playSettle(user.id); } throw new Fail(400, 'purchase_ended', 'That subscription is no longer active'); }
+  // Un cambio de plan o una nueva alta trae el token anterior: si sigue en pie en otra cuenta, este no entra.
+  const before = r.linked ? q('SELECT * FROM play_subs WHERE token = ?').get(r.linked) : null;
+  if (before && before.user !== user.id && before.status === 'active' && before.expires > now()) throw new Fail(409, 'token_used', 'This Google Play purchase belongs to another account');
+  if (!r.acked) {
+    const ack = await playCall('POST', '/purchases/subscriptions/' + encodeURIComponent(product) + '/tokens/' + encodeURIComponent(token) + ':acknowledge');
+    if (!ack || !ack.ok) { console.error('play: no se pudo reconocer una compra · ' + (ack ? ack.status : 'sin respuesta')); throw new Fail(502, 'play_failed'); }
+  }
+  // Dos pedidos a la vez con el mismo token: el que llega segundo encuentra la fila del primero.
+  const taken = q('SELECT user FROM play_subs WHERE token = ?').get(token);
+  if (taken && taken.user !== user.id) throw new Fail(409, 'token_used', 'This Google Play purchase belongs to another account');
+  q("INSERT INTO play_subs (token, user, product, status, expires, renews, at, checked) VALUES (?, ?, ?, 'active', ?, ?, ?, ?) ON CONFLICT (token) DO UPDATE SET product = excluded.product, status = 'active', expires = excluded.expires, renews = excluded.renews, at = excluded.at, checked = excluded.checked")
+    .run(token, user.id, r.product, r.expires, r.renews ? 1 : 0, now(), 0);
+  if (before && before.token !== token) { playEnd(before.token, 'replaced'); if (before.user !== user.id) playSettle(before.user); }
+  const plan = playSettle(user.id);
+  statOnce(user.id, STAT_BIT.paid, 'paid');
+  return { ok: true, plan, product: r.product, expires: r.expires, renews: r.renews };
+}
+
+// Los avisos de Google Play llegan por Pub/Sub, que firma cada entrega con un JWT de Google. Vale el que está
+// firmado con una clave pública de Google, es para este servidor (audience) y viene de la cuenta de servicio
+// configurada. Las claves públicas se guardan una hora.
+let playCerts = { at: 0, keys: [] };
+async function playCert(kid) {
+  const find = () => playCerts.keys.find((k) => k && k.kid === kid) || null;
+  if (find() && now() - playCerts.at < HOUR) return find();
+  if (now() - playCerts.at < 60000) return find(); // recién se pidieron: una clave que no está no aparece por insistir
+  try { const r = await fetch(PLAY_CERTS_URL, { signal: AbortSignal.timeout(10000) }); const j = r.ok ? await r.json() : null; if (j && Array.isArray(j.keys)) playCerts = { at: now(), keys: j.keys }; }
+  catch (e) { /* se usa lo que había */ }
+  return find();
+}
+async function playPushSigned(header) {
+  const m = /^Bearer\s+([\w-]+)\.([\w-]+)\.([\w-]+)$/.exec(String(header || '')); if (!m) return false;
+  let h = null; let c = null;
+  try { h = JSON.parse(Buffer.from(m[1], 'base64url').toString('utf8')); c = JSON.parse(Buffer.from(m[2], 'base64url').toString('utf8')); } catch (e) { return false; }
+  if (!h || !c || h.alg !== 'RS256' || typeof h.kid !== 'string') return false;
+  const jwk = await playCert(h.kid); if (!jwk) return false;
+  let good = false;
+  try { good = crypto.verify('RSA-SHA256', Buffer.from(m[1] + '.' + m[2]), crypto.createPublicKey({ key: jwk, format: 'jwk' }), Buffer.from(m[3], 'base64url')); } catch (e) { good = false; }
+  const t = now() / 1000;
+  return good && (c.iss === 'https://accounts.google.com' || c.iss === 'accounts.google.com') && c.aud === PLAY_PUSH_AUD && String(c.email || '').toLowerCase() === PLAY_PUSH_EMAIL && c.email_verified === true &&
+    typeof c.exp === 'number' && c.exp > t - 60 && (typeof c.iat !== 'number' || c.iat < t + 300);
+}
+// POST /play/notifications: un aviso de Google Play. El aviso solo dice de qué compra se trata: el estado se le
+// pregunta a Google, así un aviso viejo, repetido o fuera de orden no cambia nada. Si Google no responde, el pedido
+// falla y Pub/Sub lo reintenta. Un reembolso (compra anulada) corta el plan en el momento.
+async function playNotify(req) {
+  if (!PLAY || !PLAY_PUSH_AUD || !PLAY_PUSH_EMAIL) throw new Fail(404, 'no_route');
+  const ip = 'play:push:' + clientIp(req); limit(ip, 30, HOUR, 'too_many');
+  const raw = await readRaw(req, 65536);
+  if (!(await playPushSigned(req.headers.authorization))) { mark(ip); if (req.headers.authorization) console.error('play: aviso con firma inválida, revisar PLAY_PUBSUB_AUDIENCE y PLAY_PUBSUB_EMAIL'); throw new Fail(401, 'bad_signature'); }
+  let ev = null;
+  try { const env0 = JSON.parse(raw); ev = JSON.parse(Buffer.from(String(env0.message.data), 'base64').toString('utf8')); } catch (e) { throw new Fail(400, 'bad_json'); }
+  if (!ev || typeof ev !== 'object') throw new Fail(400, 'bad_json');
+  if (ev.packageName !== PLAY_PACKAGE) return { ok: true, ignored: 'package' };
+  if (ev.testNotification) return { ok: true, test: true };
+  const voided = ev.voidedPurchaseNotification && typeof ev.voidedPurchaseNotification === 'object' ? ev.voidedPurchaseNotification : null;
+  const note = voided || (ev.subscriptionNotification && typeof ev.subscriptionNotification === 'object' ? ev.subscriptionNotification : null);
+  if (!note || typeof note.purchaseToken !== 'string') return { ok: true, ignored: 'event' };
+  // Una compra que la app todavía no mandó no tiene cuenta: se atiende cuando la app la mande.
+  const row = q('SELECT * FROM play_subs WHERE token = ?').get(note.purchaseToken);
+  if (!row) return { ok: true, ignored: 'token' };
+  if (voided) { playEnd(row.token, 'refunded'); return { ok: true, plan: playSettle(row.user) }; }
+  return { ok: true, plan: await playSync(row) };
 }
 
 // ---------- Galería de la comunidad ----------
@@ -6022,6 +6248,7 @@ async function route(req, url) {
   if (p === '/auth/start' && m === 'POST') return authStart(req, await readBody(req));
   if (p === '/auth/verify' && m === 'POST') return authVerify(req, await readBody(req));
   if (p === '/paddle/webhook' && m === 'POST') return paddleWebhook(req);
+  if (p === '/play/notifications' && m === 'POST') return playNotify(req);
   if (p === '/feedback' && m === 'POST') return feedback(req, await readBody(req));
   if (((p === '/admin/plan' || p === '/admin/team') && m === 'POST') || p === '/admin/gallery' || p === '/admin/sites' || p === '/admin/subdomains' || ((p === '/admin/landing' || p === '/admin/funnel' || p === '/admin/feedback') && m === 'GET')) {
     // La misma respuesta sin clave configurada, sin clave en el pedido o con una equivocada. Diez fallos por hora por IP.
@@ -6045,7 +6272,7 @@ async function route(req, url) {
       if (!t) throw new Fail(409, 'in_team');
       return { ok: true, team: t.id, seats: t.seats };
     }
-    const r = q('UPDATE users SET plan = ? WHERE email = ?').run(b.plan === 'pro' ? 'pro' : 'free', cleanEmail(b.email));
+    const r = q('UPDATE users SET plan = ?, plan_from = ? WHERE email = ?').run(b.plan === 'pro' ? 'pro' : 'free', b.plan === 'pro' ? 'admin' : '', cleanEmail(b.email));
     if (!r.changes) throw new Fail(404, 'not_found');
     return { ok: true };
   }
@@ -6111,7 +6338,8 @@ async function route(req, url) {
     if (row && owner !== user) teamLog(user.team, user, 'unlink', row.path);
     return { ok: true };
   }
-  if (p === '/account' && m === 'GET') return account(user);
+  if (p === '/account' && m === 'GET') return account(await playFresh(user));
+  if (p === '/play/verify' && m === 'POST') return playVerify(user, await readBody(req));
   if (p === '/account' && m === 'PUT') return accountName(user, await readBody(req));
   if (p === '/account/protect-seen' && m === 'POST') return protectSeenSet(user);
   if (p === '/account' && m === 'DELETE') return accountDelete(req, user, await readBody(req));
