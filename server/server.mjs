@@ -849,6 +849,7 @@ function renameNote(user, from, to, body) {
   q('UPDATE versions SET path = ? WHERE user = ? AND path = ?').run(to, user.id, from);
   q("UPDATE OR REPLACE shares SET path = ? WHERE owner = ? AND path = ? AND kind != 'folder'").run(to, user.id, from);
   q('UPDATE links SET path = ? WHERE owner = ? AND path = ?').run(to, user.id, from);
+  folderLinksFollow(user.id, from, to);
   q('UPDATE comments SET path = ? WHERE user = ? AND path = ?').run(to, user.id, from);
   autoNoteMoved(user, from, to);
   return { path: to };
@@ -914,7 +915,10 @@ function sharedWith(user) {
 // Con quién compartió la cuenta y qué enlaces públicos tiene; con of, solo lo de esa ruta.
 function sharesOf(user, of) {
   const people = q('SELECT id, path, kind, email, role FROM shares WHERE owner = ?').all(user.id).filter((s) => !of || s.path === of);
-  const links = q('SELECT id, path, pass IS NOT NULL AS protected, created FROM links WHERE owner = ?').all(user.id).filter((l) => !of || l.path === of);
+  // Un enlace de carpeta sale con su tipo, sus opciones de plantilla, las copias que se hicieron y su nombre corto.
+  const links = q('SELECT l.id, l.path, l.pass IS NOT NULL AS protected, l.created, l.kind, l.tpl, l.tpl_login, l.copies, (SELECT name FROM template_names WHERE link = l.id AND owner = l.owner) AS name FROM links l WHERE l.owner = ?').all(user.id)
+    .map((l) => (l.kind === 'folder' ? { id: l.id, path: l.path.replace(/\/$/, ''), protected: 0, created: l.created, kind: 'folder', template: !!l.tpl, login: !!l.tpl_login, copies: l.copies, name: l.name || '' } : { id: l.id, path: l.path, protected: l.protected, created: l.created }))
+    .filter((l) => !of || l.path === of);
   return { people, links };
 }
 function addShare(user, body) {
@@ -934,6 +938,7 @@ function addShare(user, body) {
 const passHash = (pass, salt) => crypto.scryptSync(String(pass), salt, 32).toString('hex');
 function addLink(user, body) {
   if (!shareAllowed(user)) throw new Fail(402, 'share_needs_plan', 'Sharing notes and creating public links are part of the paid plan');
+  if (body.kind === 'folder') return addFolderLink(user, body);
   const p = cleanPath(body.path);
   if (vaultOf(user.id, p)) throw new Fail(409, 'vault', 'A note in a folder protected with a password cannot have a public link');
   if (!q('SELECT 1 FROM notes WHERE user = ? AND path = ?').get(user.id, p)) throw new Fail(404, 'not_found');
@@ -945,9 +950,10 @@ function addLink(user, body) {
   statOnce(user.id, STAT_BIT.shared, 'shared');
   return { id: Number(r.lastInsertRowid), token, protected: !!pass };
 }
-function publicNote(token, password) {
+function publicNote(token, password, req, url) {
   const link = q('SELECT * FROM links WHERE hash = ?').get(sha(String(token)));
   if (!link) throw new Fail(404, 'not_found');
+  if (link.kind === 'folder') return folderPublic(link, req, url);
   if (link.pass) {
     if (link.locked > now()) throw new Fail(429, 'locked', '', { retry_after: Math.ceil((link.locked - now()) / 1000) });
     if (!password) throw new Fail(401, 'need_password');
@@ -966,6 +972,163 @@ function publicNote(token, password) {
   if (!n || n.v || vaultOf(link.owner, link.path)) throw new Fail(404, 'not_found');
   // Hacia afuera va el nombre de la nota, no en qué carpetas la guarda su dueño.
   return { path: n.path.split('/').pop(), text: unseal(n.text, n.e, 'notes.text'), updated: n.updated };
+}
+
+// ---------- Carpetas con enlace público, y plantillas ----------
+// Un enlace también puede ser de una carpeta entera: quien lo tiene ve sus notas (con las de sus subcarpetas) y no
+// puede cambiarlas. Su ruta se guarda con la barra al final ("planillas/"), así nunca se confunde con la de una nota.
+// Marcado como plantilla (tpl), quien lo abre puede llevarse todas las notas de un pedido (?all=1) para dejar una
+// copia propia: en su navegador, en su nube o en un ZIP. Lo que haga con la copia no vuelve acá. tpl_login pide una
+// cuenta para llevársela (leerla sigue abierto). copies cuenta las copias completas, sin anotar de quién.
+// Un enlace de carpeta no lleva contraseña, y una carpeta protegida con contraseña no se comparte así.
+for (const col of ["kind TEXT NOT NULL DEFAULT 'note'", 'tpl INTEGER NOT NULL DEFAULT 0', 'tpl_login INTEGER NOT NULL DEFAULT 0', 'copies INTEGER NOT NULL DEFAULT 0']) { try { db.exec('ALTER TABLE links ADD COLUMN ' + col); } catch (e) { /* ya estaba */ } }
+// El nombre corto de una plantilla (la dirección /t/<nombre>, que puede ir impresa). Es de la cuenta que lo eligió
+// para siempre: puede apuntarlo a otro enlace suyo, y nadie más lo puede tomar aunque quede sin enlace (link nulo,
+// o de un enlace que ya no existe) o la cuenta se elimine (owner 0).
+db.exec('CREATE TABLE IF NOT EXISTS template_names (name TEXT PRIMARY KEY, owner INTEGER NOT NULL, link INTEGER, created INTEGER NOT NULL)');
+db.exec('CREATE INDEX IF NOT EXISTS template_names_owner ON template_names (owner)');
+const TPL_NAME = /^[a-z0-9](?:[a-z0-9]|-(?!-)){1,38}[a-z0-9]$/; // de 3 a 40: minúsculas, números y guiones sueltos, sin guion en las puntas
+const TPL_NAMES_MAX = 50; // nombres por cuenta
+const TPL_NOTES_MAX = 500; const TPL_BYTES_MAX = 8 * 1024 * 1024; // lo que una carpeta muestra y lo que pesa llevársela entera
+const TPL_MISS_HOUR = 60; // nombres que no existen, por hora y por IP
+// Copias que suman al contador de un enlace, por día: por IP (una red compartida, como la de un operador de
+// celulares o una escuela, junta a varias personas) y por cuenta. Y entre todos los enlaces, por hora y por IP.
+const TPL_COPIES_IP = 30; const TPL_COPIES_USER = 3;
+const TPL_COPIES_IP_HOUR = 60;
+// Los nombres que no se dan: los del sitio (rutas, palabras que se prestan a engaño) y los que parecen de la casa.
+const tplReserved = (name) => SITE_RESERVED.has(name) || /sharp-?md/.test(name) || /^(t|tpl|template|templates|plantilla|plantillas|src|vendor|icons|es|en|local|guide|guia|community|comunidad|gallery|galeria|pub|cloud|nube|link|links|share|shared|free|pro|premium|www\d*)$/.test(name);
+const folderPre = (v) => cleanPath(String(v == null ? '' : v).replace(/\/+$/, '')) + '/';
+// Las notas de una carpeta compartida: las suyas y las de sus subcarpetas, nunca las de una carpeta con contraseña.
+function folderRows(link) {
+  const vaults = vaultsOf(link.owner);
+  return q('SELECT path, text, updated, size, e, v FROM notes WHERE user = ? AND substr(path, 1, length(?)) = ? ORDER BY path').all(link.owner, link.path, link.path)
+    .filter((n) => !n.v && !vaults.some((v) => inside(n.path, v.folder))).slice(0, TPL_NOTES_MAX);
+}
+const tplNameOf = (link) => { const r = q('SELECT name FROM template_names WHERE link = ? AND owner = ?').get(link.id, link.owner); return r ? r.name : ''; };
+// Pone, cambia o quita el nombre de un enlace. Un nombre que ya es de esta cuenta se muda a este enlace (así se
+// apunta una dirección impresa a otra carpeta); el de otra cuenta no se toca nunca.
+function tplNameSet(owner, link, raw) {
+  const name = String(raw == null ? '' : raw).trim().toLowerCase();
+  const cur = tplNameOf(link);
+  if (name === cur) return cur;
+  if (name) {
+    if (!TPL_NAME.test(name)) throw new Fail(400, 'bad_name', 'A template name has 3 to 40 lowercase letters, numbers and single hyphens, and does not start or end with a hyphen');
+    if (tplReserved(name)) throw new Fail(409, 'name_reserved', 'That name is reserved');
+    const row = q('SELECT owner FROM template_names WHERE name = ?').get(name);
+    if (row && row.owner !== owner.id) throw new Fail(409, 'name_taken', 'That name belongs to another account');
+    if (!row && q('SELECT COUNT(*) AS n FROM template_names WHERE owner = ?').get(owner.id).n >= TPL_NAMES_MAX) throw new Fail(429, 'too_many_names');
+  }
+  // Un enlace lleva un solo nombre: el que tenía sigue siendo de la cuenta, sin apuntar a nada.
+  if (cur) q('UPDATE template_names SET link = NULL WHERE name = ?').run(cur);
+  if (name) q('INSERT INTO template_names (name, owner, link, created) VALUES (?, ?, ?, ?) ON CONFLICT (name) DO UPDATE SET link = excluded.link').run(name, owner.id, link.id, now());
+  return name;
+}
+const folderLinkView = (link) => ({ id: link.id, path: link.path.replace(/\/$/, ''), kind: 'folder', template: !!link.tpl, login: !!link.tpl_login, copies: link.copies, name: tplNameOf(link) });
+function addFolderLink(user, body) {
+  const pre = folderPre(body.path);
+  if (body.password) throw new Fail(400, 'folder_password', 'A folder link does not take a password');
+  // Ni la carpeta, ni una de más arriba, ni una de adentro pueden estar protegidas con contraseña.
+  if (vaultsOf(user.id).some((v) => !v.folder || inside(pre + 'x', v.folder) || (v.folder + '/').startsWith(pre))) throw new Fail(409, 'vault', 'A folder protected with a password cannot have a public link or be a template');
+  if (!q('SELECT 1 FROM notes WHERE user = ? AND substr(path, 1, length(?)) = ? LIMIT 1').get(user.id, pre, pre)) throw new Fail(404, 'not_found');
+  if (q('SELECT COUNT(*) AS n FROM links WHERE owner = ?').get(user.id).n >= MAX_LINKS) throw new Fail(429, 'too_many');
+  const tpl = !!body.template; const name = tpl ? String(body.name == null ? '' : body.name).trim().toLowerCase() : '';
+  const token = random(24); let made = null;
+  db.exec('BEGIN');
+  try {
+    const r = q("INSERT INTO links (hash, owner, path, pass, created, kind, tpl, tpl_login) VALUES (?, ?, ?, NULL, ?, 'folder', ?, ?)").run(sha(token), user.id, pre, now(), tpl ? 1 : 0, tpl && body.login ? 1 : 0);
+    made = q('SELECT * FROM links WHERE id = ?').get(Number(r.lastInsertRowid));
+    if (name) tplNameSet(user, made, name);
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  statOnce(user.id, STAT_BIT.shared, 'shared');
+  return Object.assign(folderLinkView(made), { token, protected: false });
+}
+// Cambia las opciones de un enlace de carpeta: si es plantilla, si pide cuenta y su nombre. Dejar de ser plantilla
+// suelta el nombre (sigue siendo de la cuenta) y la dirección corta responde que fue retirada.
+function setFolderLink(owner, id, body) {
+  const link = q("SELECT * FROM links WHERE id = ? AND owner = ? AND kind = 'folder'").get(id, owner.id);
+  if (!link) throw new Fail(404, 'not_found');
+  const tpl = body.template == null ? !!link.tpl : !!body.template; const login = tpl && (body.login == null ? !!link.tpl_login : !!body.login);
+  db.exec('BEGIN');
+  try {
+    q('UPDATE links SET tpl = ?, tpl_login = ? WHERE id = ?').run(tpl ? 1 : 0, login ? 1 : 0, link.id);
+    if (!tpl) tplNameSet(owner, link, ''); else if (body.name != null) tplNameSet(owner, link, body.name);
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  return folderLinkView(q('SELECT * FROM links WHERE id = ?').get(link.id));
+}
+// La sesión de quien pide, si mandó una que sirve. Sin ella, o con una vencida, nadie.
+function maybeUser(req) { try { return userFrom(req, 'session'); } catch (e) { return null; } }
+// Lo que ve quien abre una carpeta compartida. Sin más, la lista de notas (rutas adentro de la carpeta, nunca dónde
+// la guarda su dueño). Con ?note=ruta, el texto de esa nota. Con ?all=1, todas con su texto: solo en una plantilla
+// y, si pide cuenta, con sesión.
+function folderPublic(link, req, url) {
+  const rows = folderRows(link);
+  if (!rows.length) throw new Fail(404, 'not_found');
+  const rel = (n) => n.path.slice(link.path.length);
+  const head = { kind: 'folder', name: link.path.slice(0, -1).split('/').pop(), template: link.tpl ? { login: !!link.tpl_login, name: tplNameOf(link) } : null };
+  const one = url.searchParams.get('note');
+  if (one != null) {
+    const want = link.path + cleanPath(one); const n = rows.find((r) => r.path === want);
+    if (!n) throw new Fail(404, 'not_found');
+    return { path: rel(n), text: unseal(n.text, n.e, 'notes.text'), updated: n.updated };
+  }
+  if (url.searchParams.get('all') === '1') {
+    if (!link.tpl) throw new Fail(403, 'not_template');
+    const user = maybeUser(req);
+    if (link.tpl_login && !user) throw new Fail(401, 'need_account', 'This template asks for an account');
+    const ip = clientIp(req);
+    rate('tplall:' + ip, 60, 60000, 'too_many');
+    let bytes = 0;
+    const notes = rows.map((n) => { const text = unseal(n.text, n.e, 'notes.text'); bytes += Buffer.byteLength(text); return { path: rel(n), text, updated: n.updated }; });
+    if (bytes > TPL_BYTES_MAX) throw new Fail(413, 'too_large');
+    mark('tplgot:' + link.id + ':' + ip); // quien después avisa que copió, primero se la llevó
+    return Object.assign(head, { notes });
+  }
+  return Object.assign(head, { notes: rows.map((n) => ({ path: rel(n), updated: n.updated, size: n.size })) });
+}
+// Una copia completa más. Lo avisa la app al terminar; acá se cuenta sin anotar de quién es. Para que el número
+// no se infle desde afuera: solo cuenta quien antes se llevó las notas desde esa red (una vez por cada vez que se
+// las llevó), con tope por red y, con sesión, por cuenta. Pasado el tope responde igual y no suma.
+function folderCopied(link, req) {
+  if (!link.tpl) throw new Fail(403, 'not_template');
+  const user = maybeUser(req);
+  if (link.tpl_login && !user) throw new Fail(401, 'need_account', 'This template asks for an account');
+  const ip = clientIp(req); const mine = 'tplc:' + link.id + ':' + ip; const all = 'tplc:ip:' + ip; const acct = user ? 'tplc:' + link.id + ':u' + user.id : '';
+  const counted = recent('tplgot:' + link.id + ':' + ip, HOUR).length > recent(mine, HOUR).length
+    && !over(mine, TPL_COPIES_IP, DAY) && !over(all, TPL_COPIES_IP_HOUR, HOUR) && !(acct && over(acct, TPL_COPIES_USER, DAY));
+  if (counted) { mark(mine); mark(all); if (acct) mark(acct); q('UPDATE links SET copies = copies + 1 WHERE id = ?').run(link.id); }
+  return { ok: true, counted };
+}
+// /template/<nombre>: lo mismo que el enlace de esa plantilla, por su nombre corto. Un nombre que nunca existió
+// responde 404; uno que existió y ya no lleva a una plantilla (se quitó el enlace, dejó de ser plantilla, la carpeta
+// quedó vacía o protegida), 410.
+function templateByName(raw, req) {
+  const ip = 'tplmiss:' + clientIp(req);
+  limit(ip, TPL_MISS_HOUR, HOUR, 'too_many');
+  const name = String(raw || '').toLowerCase();
+  const row = TPL_NAME.test(name) ? q('SELECT * FROM template_names WHERE name = ?').get(name) : null;
+  if (!row) { mark(ip); throw new Fail(404, 'not_found'); }
+  const link = row.link == null ? null : q("SELECT * FROM links WHERE id = ? AND owner = ? AND kind = 'folder' AND tpl = 1").get(row.link, row.owner);
+  if (!link || !folderRows(link).length) throw new Fail(410, 'template_gone', 'This template was withdrawn');
+  return link;
+}
+// Al renombrar o mover una carpeta, la app mueve sus notas de a una. El enlace de la carpeta la sigue cuando la
+// primera nota que sale va a una carpeta que no tenía nada (así nunca queda a la vista una carpeta que ya tenía
+// otras notas) y, con esa mudanza todavía fresca, la carpeta vieja queda vacía.
+const folderMoves = new Map(); // id del enlace -> { to, at }
+function folderLinksFollow(ownerId, from, to) {
+  for (const l of q("SELECT id, path FROM links WHERE owner = ? AND kind = 'folder'").all(ownerId)) {
+    if (!from.startsWith(l.path)) continue;
+    const rel = from.slice(l.path.length);
+    if (!to.endsWith('/' + rel)) continue;
+    const next = to.slice(0, to.length - rel.length);
+    if (next === l.path || vaultsOf(ownerId).some((v) => !v.folder || inside(next + 'x', v.folder))) continue;
+    const under = (pre) => q('SELECT COUNT(*) AS n FROM notes WHERE user = ? AND substr(path, 1, length(?)) = ?').get(ownerId, pre, pre).n;
+    if (under(next) === 1) folderMoves.set(l.id, { to: next, at: now() });
+    const m = folderMoves.get(l.id);
+    if (m && m.to === next && now() - m.at < 10 * 60000 && !under(l.path)) { q('UPDATE links SET path = ? WHERE id = ?').run(next, l.id); folderMoves.delete(l.id); }
+  }
 }
 
 // ---------- En vivo ----------
@@ -2722,7 +2885,7 @@ async function teamAdminRoute(user, p, m, req, after) {
 const ACCOUNT_DELETES = 5; // pedidos por hora, por IP y por cuenta
 // Todo lo que cuelga de una cuenta, tabla por tabla. La cuenta misma va al final.
 const ACCOUNT_ROWS = ['DELETE FROM notes WHERE user = ?', 'DELETE FROM versions WHERE user = ?', 'DELETE FROM trash WHERE user = ?', 'DELETE FROM comments WHERE user = ?', 'DELETE FROM gallery WHERE user = ?', 'DELETE FROM tokens WHERE user = ?',
-  'DELETE FROM sessions WHERE user = ?', 'DELETE FROM vaults WHERE user = ?', 'DELETE FROM paddle_subs WHERE user = ?', 'DELETE FROM play_subs WHERE user = ?', 'DELETE FROM shares WHERE owner = ?', 'DELETE FROM links WHERE owner = ?', 'DELETE FROM lives WHERE owner = ?',
+  'DELETE FROM sessions WHERE user = ?', 'DELETE FROM vaults WHERE user = ?', 'DELETE FROM paddle_subs WHERE user = ?', 'DELETE FROM play_subs WHERE user = ?', 'DELETE FROM shares WHERE owner = ?', 'DELETE FROM links WHERE owner = ?', 'UPDATE template_names SET owner = 0, link = NULL WHERE owner = ?', 'DELETE FROM lives WHERE owner = ?',
   'DELETE FROM site_pages WHERE site IN (SELECT id FROM sites WHERE owner = ?)', 'DELETE FROM sites WHERE owner = ?',
   'DELETE FROM users WHERE id = ?'];
 function accountDelete(req, user, body) {
@@ -6286,7 +6449,15 @@ async function route(req, url) {
     return out == null || (Array.isArray(out) && !out.length) ? { __status: 202 } : out;
   }
   if (p === '/gallery' || p.startsWith('/gallery/')) { const out = await galleryRoute(req, url, p, m); if (out) return out; }
-  if (p.startsWith('/public/') && m === 'GET') return publicNote(dec(p.slice(8)), req.headers['x-password']);
+  if (p.startsWith('/public/') && m === 'GET') return publicNote(dec(p.slice(8)), req.headers['x-password'], req, url);
+  // Una plantilla: avisar que se hizo una copia (por el enlace o por su nombre corto), y abrirla por su nombre.
+  const copied = m === 'POST' ? /^\/(public|template)\/([^/]+)\/copied$/.exec(p) : null;
+  if (copied) {
+    const link = copied[1] === 'template' ? templateByName(dec(copied[2]), req) : q("SELECT * FROM links WHERE hash = ? AND kind = 'folder'").get(sha(dec(copied[2])));
+    if (!link) throw new Fail(404, 'not_found');
+    return folderCopied(link, req);
+  }
+  if (p.startsWith('/template/') && m === 'GET') return folderPublic(templateByName(dec(p.slice(10)), req), req, url);
   // Sesión en vivo, del lado de quien entra por el enlace: mirar, entrar, y lo que alcanza un pase de invitado.
   if (p === '/live/look' && m === 'POST') return liveLook(req, await readBody(req));
   if (p === '/live/join' && m === 'POST') return liveJoin(req, await readBody(req));
@@ -6332,6 +6503,7 @@ async function route(req, url) {
     return { ok: true };
   }
   if (p === '/links' && m === 'POST') { const b = await readBody(req); const owner = shareOwner(user, b.o, 'links'); if (owner === user) return addLink(user, b); const r = teamLink(user.team, user, owner, b); statOnce(user.id, STAT_BIT.shared, 'shared'); return r; }
+  if (p.startsWith('/links/') && m === 'PUT') { const b = await readBody(req); return setFolderLink(shareOwner(user, b.o, 'links'), +p.slice(7), b); }
   if (p.startsWith('/links/') && m === 'DELETE') {
     const owner = shareOwner(user, url.searchParams.get('o'), 'links'); const row = q('SELECT path FROM links WHERE id = ? AND owner = ?').get(+p.slice(7), owner.id);
     q('DELETE FROM links WHERE id = ? AND owner = ?').run(+p.slice(7), owner.id);

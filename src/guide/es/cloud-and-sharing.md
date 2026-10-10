@@ -25,6 +25,8 @@ Con una nota de la nube abierta, el botón de la nube abre un menú. **Compartir
 
 También se comparte una carpeta entera con otra cuenta. Compartir es parte del plan pago.
 
+Una carpeta de la nube también se comparte con un enlace, y puede ser una plantilla. Está en el clic derecho sobre la carpeta: **Compartir la carpeta…**. Con **Es una plantilla**, quien abre el enlace lee la carpeta y se lleva una copia para editar: a su navegador, a su nube o en un ZIP. El original no cambia y nadie más ve lo que cada uno hace con su copia. **Pedir una cuenta para usarla** deja leerla a cualquiera y pide entrar para llevársela. La dirección corta le pone un nombre, como `sharpmd.app/t/mi-plantilla`, que sirve para imprimirla: el nombre queda de tu cuenta y lo podés apuntar a otra carpeta. Ahí mismo ves cuántas copias se hicieron.
+
 ## Escribir a la vez
 
 **Colaborar en vivo** abre una sesión sobre una nota de la nube y te da un enlace. Los invitados entran desde el navegador con un nombre, sin cuenta, y todos escriben a la vez. Entran hasta 12 personas. Es parte del plan pago.

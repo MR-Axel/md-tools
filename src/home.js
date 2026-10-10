@@ -392,6 +392,8 @@
     const box = ctx.box;
     box.innerHTML =
       '<div class="lmd-home-card">' +
+        // Un enlace que no abrió (una plantilla retirada, una dirección mal escrita): arriba, con título y una línea.
+        '<div class="lmd-home-lead" role="alert" hidden><h2></h2><p></p></div>' +
         '<img class="lmd-home-logo" src="' + chrome.runtime.getURL('icons/icon128.png') + '" alt="">' +
         // En pantalla chica no hay nada "a la izquierda": la lista de notas está detrás del botón de la barra.
         '<p class="lmd-home-sub">' + T(LMD.touch.small() ? 'Empezá una nota nueva o abrí una que ya tengas.' : 'Elegí una nota de la izquierda o empezá una nueva.') + '</p>' +
@@ -419,7 +421,8 @@
     const msg = box.querySelector('.lmd-home-msg');
     const say = (text) => { msg.hidden = !text; msg.textContent = text || ''; };
     sayNow = say;
-    if (note) say(note);
+    if (note && typeof note === 'object') { const lead = box.querySelector('.lmd-home-lead'); lead.hidden = false; lead.querySelector('h2').textContent = note.title || ''; lead.querySelector('p').textContent = note.text || ''; }
+    else if (note) say(note);
     const notesLine = box.querySelector('.lmd-home-notes');
     const paintNotes = async () => {
       if (!notesLine) return;

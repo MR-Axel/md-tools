@@ -23,6 +23,18 @@
     return (m[1] && ES.indexOf(m[2]) !== -1 ? '/es/' : '/') + m[2] + '.html';
   }
   window.__rescue = rescue;
+  // Una plantilla por su nombre corto: sharpmd.app/t/<nombre> (una dirección que puede estar impresa). El sitio es
+  // estático y esa ruta no existe como archivo: llega acá, y de acá va a la app, que le pregunta al servidor de
+  // sincronización qué plantilla es. Vale escrita a mano: con mayúsculas, con una barra al final o con .html.
+  function template(pathname) {
+    var m = /^\/t\/([^\/?#]+?)(?:\.html?)?\/?$/i.exec(String(pathname).replace(/\/{2,}/g, '/'));
+    if (!m) return '';
+    var name = m[1]; try { name = decodeURIComponent(name); } catch (e) { /* queda como vino */ }
+    return APP + '?t=' + encodeURIComponent(name.toLowerCase());
+  }
+  window.__template = template;
+  var tpl = template(location.pathname);
+  if (tpl) { location.replace(tpl); return; }
   var to = rescue(location.pathname);
   if (to && to !== location.pathname) location.replace(to + location.search + location.hash);
 })();

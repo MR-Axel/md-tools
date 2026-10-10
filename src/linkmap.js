@@ -28,7 +28,7 @@
     const out = []; const push = (n) => { if (out.length < MAX_NOTES) out.push(n); };
     const dirOf = (rel) => { const i = rel.lastIndexOf('/'); return i < 0 ? '' : rel.slice(0, i); };
     if (core.APP) {
-      try { (await LMD.store.notesAll()).forEach((n) => { if (MD_RE.test(n.name)) push({ url: vbase() + 'local/' + encodeURIComponent(n.name), name: n.name, folder: T('En este navegador'), src: 'local', text: n.text || '' }); }); } catch (e) { /* sin notas del navegador */ }
+      try { (await LMD.store.notesAll()).forEach((n) => { if (MD_RE.test(n.name)) push({ url: vbase() + 'local/' + n.name.split('/').map(encodeURIComponent).join('/'), name: n.name, folder: T('En este navegador'), src: 'local', text: n.text || '' }); }); } catch (e) { /* sin notas del navegador */ }
       // De la nube, solo las copias que ya están acá (las notas que se abrieron o se guardaron en este dispositivo).
       try {
         if (LMD.cloud.signedIn() && !LMD.cloud.guest()) {

@@ -25,6 +25,8 @@ With a cloud note open, the cloud button opens a menu. **Share** has two ways:
 
 A whole folder can be shared with another account too. Sharing is part of the paid plan.
 
+A cloud folder can also be shared with a link, and it can be a template. It is in the right-click on the folder: **Share the folder…**. With **It is a template**, whoever opens the link reads the folder and takes a copy to edit: to their browser, to their cloud or as a ZIP. The original does not change, and nobody else sees what each person does with their copy. **Ask for an account to use it** lets anyone read it and asks them to sign in to take it. The short address gives it a name, like `sharpmd.app/t/my-template`, good for printing: the name stays with your account and you can point it to another folder. The same window shows how many copies were made.
+
 ## Writing at the same time
 
 **Collaborate live** opens a session on a cloud note and gives you a link. Guests join from the browser with a name, without an account, and everyone writes at once. Up to 12 people join. It is part of the paid plan.

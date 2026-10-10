@@ -102,6 +102,7 @@
         "src/gallery.js",
         "src/automate.js",
         "src/publish.js",
+        "src/fork.js",
         "src/present.js",
         "src/daily.js",
         "src/docx.js",

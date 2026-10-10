@@ -730,6 +730,25 @@
       if (!res.ok) throw Object.assign(new Error((json && json.error) || 'failed'), { code: (json && json.error) || 'failed', retry: +((json && json.retry_after) || 0) || 0 });
       return json;
     },
+    // Una carpeta compartida por enlace, o una plantilla (content.js y fork.js). ref dice cómo se llegó: { by: 'pub',
+    // key: el secreto del enlace } o { by: 't', key: el nombre corto }. query: '' la lista de notas, '?note=ruta' el
+    // texto de una, '?all=1' todas (para llevarse una copia). what 'copied' avisa que se hizo una copia completa.
+    // Va con la sesión, si hay: una plantilla puede pedir una cuenta para llevársela.
+    pubFolder: async (ref, query, what) => {
+      await ready();
+      if (!base) throw Object.assign(new Error('no_server'), { code: 'no_server' });
+      let res;
+      try {
+        res = await fetch(base + (ref.by === 't' ? '/template/' : '/public/') + encodeURIComponent(ref.key) + (what ? '/' + what : '') + (query || ''),
+          { method: what ? 'POST' : 'GET', headers: session && !guest ? { authorization: 'Bearer ' + session } : {} });
+      } catch (e) { throw Object.assign(new Error('offline'), { code: 'offline' }); }
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw Object.assign(new Error((json && json.error) || 'failed'), { code: (json && json.error) || 'failed', status: res.status, retry: +((json && json.retry_after) || 0) || 0 });
+      return json;
+    },
+    // El enlace de una carpeta: crearlo y cambiar sus opciones (si es plantilla, si pide cuenta, su nombre corto).
+    linkFolder: (p, opt) => api('POST', '/links', Object.assign({ path: isTeam(p) ? split(p).path : p, kind: 'folder' }, opt || {}, isTeam(p) ? { o: +team.space } : {})),
+    linkSet: (id, p, opt) => api('PUT', '/links/' + id, Object.assign({}, opt || {}, isTeam(p) ? { o: +team.space } : {})),
     enabled: () => !!base,
     // Si desde acá se llega al servidor: en la app, y en el lector de un archivo del disco (por el service worker).
     reach: () => APP || VIA,
