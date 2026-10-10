@@ -339,6 +339,7 @@ await step('epub', 'EPUB: capítulos, índice, enlaces, nota al pie, búsqueda y
   check('los identificadores del libro no entran como id', s.ids === 0, s.ids);
   check('la tabla de contenidos va al panel Índice, con autor y capítulos', s.title === 'The Quiet Harbour' && /Ada Invented · 3 chapters/.test(s.meta) && J(s.toc) === J(['Chapter One', 'Chapter Two', 'Second section', 'Notes']) && s.active === 'Chapter One', s);
   await shot(page, 'epub-claro');
+  if (SHOTS) { await page.click(node('book.pdf')); await pdfReady(page); await sleep(300); await shot(page, 'pdf-claro'); await page.click(node('novel.epub')); await ready(page, 'epub'); await page.waitForSelector('.lmd-article h1 >> text=Chapter One'); }
   // Nota al pie: va al capítulo de notas, a su ancla; y vuelve.
   await page.click('.lmd-article a >> text=1'); await until(() => page.evaluate(() => (document.querySelector('.lmd-article h1') || {}).textContent === 'Notes'));
   check('la llamada de la nota al pie lleva a la nota', await page.evaluate(() => { const t = document.querySelector('.lmd-article [data-bk="fn1"]'); return !!t && t.classList.contains('lmd-vw-there') && /footnote text/.test(t.textContent); }));
