@@ -123,6 +123,12 @@ const PAGES = {
       desc: 'Edit Markdown on the formatted page: paragraphs, tables, tasks, formulas and diagrams. The file stays plain Markdown. Free, with no account, and offline.' },
     es: { title: 'Editor de Markdown WYSIWYG online, sin sintaxis: SharpMD',
       desc: 'Editá Markdown sobre la página ya formateada: párrafos, tablas, tareas, fórmulas y diagramas. El archivo sigue siendo Markdown plano. Gratis y sin cuenta.' } },
+  // El programa local (la carpeta local/): qué es, cómo se instala y cómo se empareja. La app enlaza acá.
+  'local-tools': {
+    en: { title: 'SharpMD Local: dev servers, worktrees and agent sessions',
+      desc: 'A small open source program that shows your dev servers, git worktrees and AI agent sessions in SharpMD. It runs on your computer and listens locally.' },
+    es: { title: 'SharpMD Local: servidores, worktrees y sesiones de agentes',
+      desc: 'Un programa chico y abierto que muestra tus servidores de desarrollo, worktrees de git y sesiones de agentes de IA en SharpMD. Corre en tu computadora.' } },
 };
 const pageUrl = (slug, lang) => SITE + (lang === 'es' ? '/es/' : '/') + slug + '.html';
 function buildPage(slug, lang) {

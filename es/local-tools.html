@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{localStorage.setItem("mdtools:site-lang","es")}catch(e){}</script>
+<title>SharpMD Local: servidores, worktrees y sesiones de agentes</title>
+<meta name="description" content="Un programa chico y abierto que muestra tus servidores de desarrollo, worktrees de git y sesiones de agentes de IA en SharpMD. Corre en tu computadora.">
+<link rel="canonical" href="https://sharpmd.app/es/local-tools.html">
+<link rel="alternate" hreflang="en" href="https://sharpmd.app/local-tools.html">
+<link rel="alternate" hreflang="es" href="https://sharpmd.app/es/local-tools.html">
+<link rel="alternate" hreflang="x-default" href="https://sharpmd.app/local-tools.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="SharpMD">
+<meta property="og:title" content="SharpMD Local: servidores, worktrees y sesiones de agentes">
+<meta property="og:description" content="Un programa chico y abierto que muestra tus servidores de desarrollo, worktrees de git y sesiones de agentes de IA en SharpMD. Corre en tu computadora.">
+<meta property="og:url" content="https://sharpmd.app/es/local-tools.html">
+<meta property="og:locale" content="es_AR">
+<meta property="og:image" content="https://sharpmd.app/docs/social-card-5.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="SharpMD: notas en Markdown que tu IA escribe y tu equipo lee">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="SharpMD Local: servidores, worktrees y sesiones de agentes">
+<meta name="twitter:description" content="Un programa chico y abierto que muestra tus servidores de desarrollo, worktrees de git y sesiones de agentes de IA en SharpMD. Corre en tu computadora.">
+<meta name="twitter:image" content="https://sharpmd.app/docs/social-card-5.png">
+<meta name="twitter:image:alt" content="SharpMD: notas en Markdown que tu IA escribe y tu equipo lee">
+<meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<link rel="preload" href="../site/fonts/figtree.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="icon" type="image/png" sizes="32x32" href="../icons/icon32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="../icons/icon16.png">
+<style>
+@font-face { font-family: "Figtree"; font-style: normal; font-weight: 300 900; font-display: swap; src: url("../site/fonts/figtree.woff2") format("woff2"); }
+  @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("../site/fonts/jetbrains-mono.woff2") format("woff2"); }
+  :root {
+  color-scheme: light dark;
+  --bg: #fbfaf7; --soft: #f1efe9; --fg: #1d2026; --muted: #5c6370; --faint: #666d79; --rule: #8a909c; --line: #dedbd2;
+  --accent: #3f6b0c; --fill: #4d7c0f; --on: #fff;
+  --shadow: 0 1px 2px rgba(30, 32, 38, .05), 0 18px 44px rgba(30, 32, 38, .11);
+  --sans: "Figtree", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+  :root { --bg: #121418; --soft: #1a1d23; --fg: #e8eaee; --muted: #a4abb7; --faint: #8f97a5; --rule: #737b89; --line: #2a2e37; --accent: #c5f467; --fill: #c5f467; --on: #14161a; --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 22px 54px rgba(0, 0, 0, .42); }
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 400 17px/1.55 var(--sans); -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: 100%; }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  code { padding: 1px 6px; border-radius: 6px; background: var(--soft); font: 0.86em var(--mono); color: var(--fg); }
+  kbd { padding: 1px 7px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; background: var(--soft); font: 0.84em var(--mono); color: var(--fg); }
+  .brand { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; color: var(--fg); font-size: 18px; font-weight: 400; letter-spacing: -0.01em; text-decoration: none; }
+  .brand img { width: 26px; height: 26px; border-radius: 6px; }
+  .brand b { font-weight: 700; }
+  .lang { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
+  .lang a, .lang button { position: relative; display: grid; place-items: center; height: 28px; min-width: 38px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font: 400 12px/1 var(--mono); letter-spacing: .02em; text-decoration: none; cursor: pointer; transition: color .15s, background-color .15s; }
+  .lang a:hover, .lang button:hover { color: var(--fg); }
+  .lang a.on { background: var(--fill); color: var(--on); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 48px; padding: 11px 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); color: var(--fg); font: inherit; font-weight: 650; line-height: 1.3; text-align: center; text-decoration: none; cursor: pointer; transition: border-color .15s, background-color .15s, filter .15s, transform .15s; }
+  .btn:hover { border-color: var(--rule); }
+  .btn:active { transform: translateY(1px); }
+  .btn.fill { background: var(--fill); border-color: var(--fill); color: var(--on); }
+  .btn.fill:hover { border-color: var(--fill); filter: brightness(1.06); }
+  .btn.small { min-height: 38px; padding: 6px 15px; border-radius: 10px; font-size: 14.5px; }
+  .eyebrow { display: flex; align-items: center; gap: 9px; margin: 0 0 20px; color: var(--muted); font: 400 13px/1.35 var(--mono); letter-spacing: .02em; }
+  .eyebrow::before { content: ""; flex: none; width: 8px; height: 15px; border-radius: 2px; background: var(--fill); }
+  @media (max-width: 640px) {
+  .lang a::after, .lang button::after { content: ""; position: absolute; inset: -9px 0; }
+  .lang a, .lang button { min-width: 44px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .btn, .lang a, .lang button { transition: none; } }
+  .doc main { width: min(780px, 100% - 40px); margin: 0 auto; padding: 0 0 96px; }
+  .doc.broad main { width: min(980px, 100% - 40px); }
+  .doc.broad main p, .doc.broad main li { max-width: 780px; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 64px; margin-bottom: 64px; border-bottom: 1px solid var(--line); }
+  .doc h1 { margin: 0 0 14px; font-size: clamp(31px, 5vw, 42px); line-height: 1.1; letter-spacing: -0.018em; font-weight: 700; text-wrap: balance; }
+  .doc h2 { margin: 46px 0 10px; font-size: 22px; line-height: 1.25; letter-spacing: -0.012em; font-weight: 700; scroll-margin-top: 16px; }
+  .doc h3 { margin: 30px 0 6px; font-size: 18px; line-height: 1.3; letter-spacing: -0.008em; font-weight: 650; scroll-margin-top: 16px; }
+  .doc p { margin: 0 0 16px; }
+  .doc p, .doc li, .doc td { color: var(--muted); overflow-wrap: break-word; }
+  .doc li { margin: 0 0 6px; }
+  .doc ul, .doc ol { margin: 0 0 16px; padding-left: 22px; }
+  .doc main a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .doc .top a, .doc a.btn { color: var(--fg); text-decoration: none; }
+  .doc a.btn.fill, .doc .lang a.on { color: var(--on); }
+  .doc .lang a:not(.on) { color: var(--muted); }
+  .doc .lang a:not(.on):hover { color: var(--fg); }
+  .doc .date { position: relative; margin: 0 0 36px; padding-left: 16px; color: var(--muted); font: 400 12.5px/1.5 var(--mono); letter-spacing: .02em; }
+  .doc .date::before { content: ""; position: absolute; left: 0; top: 2px; width: 7px; height: 14px; border-radius: 2px; background: var(--fill); }
+  .doc .lede { margin: 0 0 26px; font-size: 19px; }
+  .doc .under { margin: 12px 0 0; font-size: 14.5px; color: var(--faint); }
+  .doc .next { margin-top: 44px; }
+  .doc pre { margin: 12px 0 18px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); overflow-x: auto; font: 13px/1.6 var(--mono); color: var(--fg); }
+  .doc pre code { padding: 0; background: none; font: inherit; }
+  .doc table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 15px; }
+  .doc th, .doc td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  .doc th { color: var(--fg); font: 400 12px/1.4 var(--mono); letter-spacing: .02em; }
+  .doc .wide { overflow-x: auto; }
+  .legal { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 72px 0 0; padding-top: 22px; border-top: 1px solid var(--line); font-size: 14px; }
+  .doc main .legal a, .legal a { color: var(--muted); text-decoration: none; transition: color .15s; }
+  .doc main .legal a:hover, .doc main .legal a[aria-current], .legal a:hover, .legal a[aria-current] { color: var(--fg); }
+  @media (max-width: 640px) {
+  .top { margin-bottom: 40px; }
+  .doc h2 { margin-top: 38px; }
+  .legal { gap: 0 20px; }
+  .legal a { display: inline-flex; align-items: center; min-height: 44px; }
+  .doc .date a { display: inline-block; margin: -13px 0; padding: 13px 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { .legal a { transition: none; } }
+</style>
+</head>
+<body class="doc">
+<main>
+  <div class="top"><a class="brand" href="./"><img src="../icons/logo.svg" alt="" width="26" height="26"><span><b>Sharp</b>MD</span></a><div class="lang"><a href="../local-tools.html" hreflang="en">EN</a><a href="../local-tools.html" class="on" aria-current="true" hreflang="en">ES</a></div></div>
+
+  <h1>SharpMD Local: tus servidores, worktrees y sesiones de agentes</h1>
+  <p class="lede">Un programa chico que corre en tu computadora y le cuenta a SharpMD tres cosas que una página web no puede ver sola: qué está escuchando en cada puerto, cómo están tus worktrees de git y qué sesiones de agentes de IA hay abiertas. Es gratis y de código abierto.</p>
+  <p class="under">Escucha solo en <code>127.0.0.1</code>. Nada sale de tu computadora y nada pasa por nuestros servidores.</p>
+
+  <h2>Qué muestra</h2>
+  <ul>
+    <li><b>Servidores locales.</b> Cada puerto que está escuchando, con su proceso, su proyecto, la versión que corre y desde cuándo. Lo que se lanzó desde una carpeta de proyecto se puede cerrar desde ahí.</li>
+    <li><b>Worktrees.</b> De las carpetas que elijas: rama, último commit, cambios sin confirmar, última edición y qué está trabajando en cada uno. Solo mira: no borra ni cambia nada.</li>
+    <li><b>Sesiones locales.</b> Las sesiones de agentes de IA abiertas en la computadora, Claude Code y las que configures, con su título, su proyecto y la memoria que usa cada una.</li>
+    <li><b>Mostrar en el Explorador.</b> En la app, el menú de un archivo de tu disco abre el explorador de archivos del sistema con ese archivo seleccionado.</li>
+  </ul>
+
+  <h2>Qué no hace</h2>
+  <ul>
+    <li>No ejecuta ningún comando que le llegue de afuera, ni devuelve el contenido de ningún archivo.</li>
+    <li>No cierra nada del sistema ni programas instalados. Solo servidores de desarrollo y sesiones de agentes que reconoció por su cuenta, y recién cuando confirmás.</li>
+    <li>No mira ninguna carpeta que no hayas sumado.</li>
+    <li>No instala ningún servicio ni arranca solo. Si no lo abrís, no corre.</li>
+  </ul>
+
+  <h2>Instalarlo</h2>
+  <p>Necesita <a href="https://nodejs.org" rel="noopener">Node.js</a> 22 o más nuevo y nada más. Vive en la carpeta <code>local</code> del repositorio de SharpMD.</p>
+  <pre><code>git clone https://github.com/SharpMD/sharpmd.git
+cd sharpmd/local
+node bin/sharpmd-local.js</code></pre>
+  <p>Sin git: bajá el repositorio como ZIP desde <a href="https://github.com/SharpMD/sharpmd" rel="noopener">GitHub</a>, descomprimilo y, en Windows, hacé doble clic en <code>start.cmd</code> dentro de <code>local</code>.</p>
+  <p>Todavía no hay instalador. Para apagarlo, Ctrl+C en su consola o cerrar la ventana.</p>
+
+  <h2>Emparejarlo con SharpMD</h2>
+  <ol>
+    <li>Al arrancar, el programa muestra un código de emparejamiento.</li>
+    <li>En SharpMD, abrí Ajustes &gt; Herramientas y prendé Servidores locales, Worktrees o Sesiones locales.</li>
+    <li>Pegá el código y tocá Emparejar. El navegador pregunta una vez si el sitio puede conectarse con esta computadora: permitilo.</li>
+  </ol>
+  <p>El código queda en ese navegador. Las tres herramientas lo comparten.</p>
+  <p>Chrome, Edge y Firefox se conectan una vez que lo permitís. Safari no deja que una página llegue a <code>127.0.0.1</code>: ahí usá el panel que sirve el propio programa, en la dirección que muestra al arrancar.</p>
+
+  <h2>Elegir tus carpetas</h2>
+  <p>Arranca sin ninguna. Las carpetas que puede mirar se suman desde la consola:</p>
+  <pre><code>node bin/sharpmd-local.js folders add C:\code</code></pre>
+  <p>Una carpeta puede ser un repositorio o una carpeta con repositorios adentro. De ahí salen los worktrees, y Mostrar en el Explorador solo funciona con archivos de esas carpetas.</p>
+
+  <h2>Cómo está protegido</h2>
+  <ul>
+    <li>Escucha solo en esta computadora, nunca en la red.</li>
+    <li>Cada pedido necesita el código de emparejamiento, un token al azar de 256 bits guardado en un archivo que solo lee tu usuario.</li>
+    <li>Solo le contesta a SharpMD: cualquier otro sitio queda rechazado, aunque tenga el código.</li>
+    <li>Para cerrar algo, el pedido tiene que coincidir con lo que el programa ve en ese momento: el proceso, su puerto y cuándo arrancó.</li>
+    <li>Una ruta se muestra solo si es un archivo que existe dentro de una carpeta que sumaste, y el explorador de archivos es lo único que abre.</li>
+  </ul>
+  <p>La tabla completa, con lo que no cubre, está en el <a href="https://github.com/SharpMD/sharpmd/blob/main/local/README.es.md" rel="noopener">README del programa</a>.</p>
+
+  <p class="next"><a class="btn fill" href="../src/app.html">Abrir la app</a></p>
+  <p>Todo lo demás está en la <a href="./">portada de SharpMD</a>.</p>
+  <p class="legal"><a href="./">Portada</a><a href="./markdown-editor-mcp.html">Editor de Markdown para agentes de IA</a><a href="./wysiwyg-markdown-editor.html">Editor de Markdown WYSIWYG</a><a href="../privacy.html">Privacidad</a><a href="../terms.html">Términos</a><a href="../support.html">Ayuda</a></p>
+</main>
+</body>
+</html>

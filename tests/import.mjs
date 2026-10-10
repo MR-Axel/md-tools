@@ -228,7 +228,7 @@ await step('off', 'Apagada: nada cambia', async () => {
   await toolsTab(page);
   const card = await page.evaluate(() => { const c = document.querySelector('.lmd-tl-card[data-tool=import]'); return c ? { name: c.querySelector('b').textContent, about: c.querySelector('p').textContent, on: c.querySelector('input').checked, icon: !!c.querySelector('.lmd-tl-ico svg') } : null; });
   check('su tarjeta está en Herramientas, apagada', !!card && card.name === 'Import to Markdown' && card.on === false && card.icon && /without uploading/.test(card.about), card);
-  check('las doce filas, cada una con su interruptor', await page.evaluate(() => document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card').length === 12 && document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card input[data-tool-on]').length === 12));
+  check('las quince filas, cada una con su interruptor', await page.evaluate(() => document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card').length === 15 && document.querySelectorAll('.lmd-tl-list:not([hidden]) .lmd-tl-card input[data-tool-on]').length === 15));
   await page.click('.lmd-tl-card[data-tool=import] .lmd-switch'); await until(() => page.evaluate(() => !!LMD.import));
   check('prenderla pide su archivo, una vez, y queda guardado', await scripts(page, 'import.js') === 1 && (await page.evaluate(() => JSON.parse(localStorage.getItem('mdtools:settings')).tools.import)) === true);
   await page.evaluate((q) => document.querySelector(q).click(), '.lmd-tl-card[data-tool=import] .lmd-tl-main'); await page.waitForSelector('[data-imp-go=pick]');
@@ -652,7 +652,7 @@ await step('tab', 'Ajustes > Herramientas desliza bien con diez tarjetas', async
       out.end = lr.bottom <= box().bottom + 1; out.width = body.scrollWidth <= body.clientWidth + 1;
       return out;
     });
-    check(where + ': las doce filas, y si no entran desliza el diálogo, no la página', m.cards === 12 && (m.scrolls || m.end) && /auto|scroll/.test(m.over) && m.pageFixed, m);
+    check(where + ': las quince filas, y si no entran desliza el diálogo, no la página', m.cards === 15 && (m.scrolls || m.end) && /auto|scroll/.test(m.over) && m.pageFixed, m);
     check(where + ': cada tarjeta se puede ver entera, sin cortes a lo ancho', m.reach.length === 0 && m.cut.length === 0 && m.width, [m.reach, m.cut, m.width]);
     check(where + ': con el teclado, el foco trae cada interruptor a la vista', m.focus.length === 0, m.focus);
     check(where + ': al final del scroll se ve el final de la lista', m.end === true, m);

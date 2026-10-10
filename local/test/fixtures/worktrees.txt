@@ -1,0 +1,14 @@
+worktree C:/Users/sam/code/notes-app
+HEAD 1111111111111111111111111111111111111111
+branch refs/heads/main
+
+worktree C:/Users/sam/code/notes-app/.agents/wt-search
+HEAD 2222222222222222222222222222222222222222
+branch refs/heads/feat/search
+locked agent at work
+
+worktree C:/Users/sam/code/wt-old
+HEAD 3333333333333333333333333333333333333333
+detached
+prunable gitdir file points to non-existent location
+

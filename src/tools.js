@@ -16,6 +16,7 @@
     help: svg('<circle cx="12" cy="12" r="8.500"/><path d="M9.700 9.500a2.400 2.400 0 1 1 3.300 2.200c-.700.300-1 .800-1 1.600M12 16.300v.200"/>'),
   };
 
+  const APP_STORE = () => !!LMD.storeApp;
   const tools = [];
   // Lugar para una lista futura de herramientas hechas por la comunidad: hoy no hay ninguna y no se muestra nada.
   const community = [];
@@ -74,8 +75,28 @@
     return setOpt(partial);
   }
 
+  // ---------- El programa local ----------
+  // Tres herramientas (localtools.js) leen de un programa que corre en la misma computadora. Su nombre y su comando
+  // están acá y en ningún otro lugar de la app: los textos los reciben como {a} y {b}. El emparejamiento queda en este
+  // navegador. Mientras lo haya, se define LMD.reveal, que es lo que hace aparecer "Mostrar en el Explorador" en el
+  // menú del archivo (extras.js): el código de las herramientas se pide recién cuando alguien lo usa.
+  const LOCAL = { NAME: 'SharpMD Local', CMD: 'sharpmd-local', KEY: 'lmd:local-pair' };
+  LOCAL.paired = () => { try { const p = JSON.parse(localStorage.getItem(LOCAL.KEY) || 'null'); return !!(p && p.token && p.port); } catch (e) { return false; } };
+  // Solo en la app y en una computadora: sobre un .md suelto la página es de otro sitio y el programa no le contesta;
+  // en un teléfono o dentro de la app de la tienda no hay nada que mirar.
+  LOCAL.why = () => ((core && !core.APP) || LMD.touch.coarse() || APP_STORE() ? T('Se usa en la app, en la computadora donde programás.') : '');
+  function localHook() {
+    const mine = LMD.reveal && LMD.reveal.local;
+    if (core && core.APP && !LOCAL.why() && LOCAL.paired()) {
+      if (LMD.reveal) return; // ya está, o lo puso otro
+      LMD.reveal = (path) => { core.ensure('localtools').then((ok) => { if (ok && LMD.localtools) LMD.localtools.reveal(path, core); else core.flash(T('No se pudo abrir la carpeta.'), 'warn'); }); };
+      LMD.reveal.local = true;
+    } else if (mine) delete LMD.reveal;
+  }
+
   function init(c) {
     core = c;
+    localHook();
     chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes.settings) setTimeout(apply, 0); });
     apply();
     // Una herramienta que ya viene cargada y está apagada deshace lo que se haya dibujado antes de saberlo.
@@ -99,6 +120,9 @@
     jsonyaml: '<div class="lmd-pk lmd-pk-json"><div class="r"><i class="ct"></i><i>{ }</i></div><div class="r in"><i>id</i><i class="v">7</i></div><div class="r in"><i class="ct tg"></i><i>tags</i></div><div class="r in2 kid"><i>0</i><i class="v">"a"</i></div><div class="r in2 kid"><i>1</i><i class="v">"b"</i></div><div class="r in"><i>done</i><i class="v">true</i></div></div>',
     import: '<div class="lmd-pk lmd-pk-conv"><div class="st"><b>.docx</b><b>.pdf</b><b>.xlsx</b></div><i class="ar"></i><div class="bx to"><b>.md</b>' + L + L + L + L + '</div></div>',
     assistant: '<div class="lmd-pk lmd-pk-ai"><div class="bx"><i class="sp"></i>' + L + '</div>' + L + L + L + '</div>',
+    localservers: '<div class="lmd-pk lmd-pk-ports"><div class="r"><b>:3000</b>' + L + '<i class="d on"></i></div><div class="r"><b>:5173</b>' + L + '<i class="d on"></i></div><div class="r off"><b>:8080</b>' + L + '<i class="d"></i></div></div>',
+    localworktrees: '<div class="lmd-pk lmd-pk-wt"><div class="r"><i class="d"></i>' + L + '</div><div class="r k"><i class="d on"></i>' + L + '<b></b></div><div class="r k"><i class="d"></i>' + L + '</div><div class="r k"><i class="d"></i>' + L + '<b></b></div></div>',
+    localagents: '<div class="lmd-pk lmd-pk-sess"><div class="r"><i class="d on"></i>' + L + '<b><i></i></b></div><div class="r"><i class="d on"></i>' + L + '<b><i></i></b></div><div class="r"><i class="d"></i>' + L + '<b><i></i></b></div></div>',
     agents: '<div class="lmd-pk lmd-pk-agents"><div class="r"><i class="d on"></i><b></b>' + L + '</div><div class="r k"><i class="d on"></i><b></b>' + L + '</div><div class="r k"><i class="d wt"></i><b></b>' + L + '</div><div class="r"><i class="d"></i><b></b>' + L + '</div></div>',
   };
 
@@ -369,10 +393,9 @@
   // Los Ajustes pasaron a otra pestaña: el detalle no sigue a la vista.
   const leave = () => { if (cur) cur.drop(); };
 
-  LMD.tools = { register, init, pane, sub, isOn, set, opt, setOpt, need, show, detail, follow, shut: shutSide, leave, ICON, list: () => tools.slice(), community };
+  LMD.tools = { register, init, pane, sub, isOn, set, opt, setOpt, need, show, detail, follow, shut: shutSide, leave, ICON, list: () => tools.slice(), community, local: LOCAL, localHook };
 
   // ---------- Las que vienen con la app ----------
-  const APP_STORE = () => !!LMD.storeApp;
   register({
     id: 'speak', name: 'Leer en voz alta', about: 'Lee la nota con la voz del dispositivo y marca por dónde va.', icon: ICON.speak, defaultOn: false,
     lazy: 'speak', module: () => LMD.speak,
@@ -419,4 +442,13 @@
   register({ id: 'agents', name: 'Agentes', about: 'Muestra en vivo los agentes de tu IA que trabajan en tus notas de la nube: quién, en qué y qué necesita.', defaultOn: false, lazy: 'agents', module: () => LMD.agents,
     note: () => (!LMD.cloud.enabled() ? T('La nube está apagada: sin ella no hay agentes para mostrar.') : LMD.cloud.signedIn() && !LMD.cloud.guest() ? '' : T('Necesita una cuenta de SharpMD. Sin entrar no muestra nada.')),
     icon: svg('<circle cx="12" cy="6" r="2.500"/><circle cx="6.500" cy="17.500" r="2.500"/><circle cx="17.500" cy="17.500" r="2.500"/><path d="M12 8.500v3M6.500 15v-3.500h11V15"/>') });
+  // Las tres que leen del programa local (localtools.js): un solo archivo, que se pide al prender la primera. No son
+  // los agentes de arriba: aquellos son los que la IA anota en la nube; "Sesiones locales" son los procesos de agentes
+  // abiertos en esta computadora.
+  register({ id: 'localservers', name: 'Servidores locales', about: 'Qué está escuchando en esta computadora, de qué proyecto es y qué versión corre. Para cerrar lo que quedó de más.', defaultOn: false, lazy: 'localtools', module: () => LMD.localtools && LMD.localtools.servers, available: LOCAL.why,
+    icon: svg('<rect x="4" y="4.500" width="16" height="6" rx="1.500"/><rect x="4" y="13.500" width="16" height="6" rx="1.500"/><path d="M7.500 7.500h.010M7.500 16.500h.010M11 7.500h5.500M11 16.500h5.500"/>') });
+  register({ id: 'localworktrees', name: 'Worktrees', about: 'Los worktrees de tus repositorios: rama, cambios sin confirmar, última edición y qué está trabajando en cada uno.', defaultOn: false, lazy: 'localtools', module: () => LMD.localtools && LMD.localtools.worktrees, available: LOCAL.why,
+    icon: svg('<circle cx="7" cy="5.500" r="2"/><circle cx="7" cy="18.500" r="2"/><circle cx="17" cy="9" r="2"/><path d="M7 7.500v9M17 11c0 3.500-10 2-10 5.500"/>') });
+  register({ id: 'localagents', name: 'Sesiones locales', about: 'Las sesiones de agentes de IA abiertas en esta computadora (Claude Code y otros), con la memoria que usa cada una.', defaultOn: false, lazy: 'localtools', module: () => LMD.localtools && LMD.localtools.agents, available: LOCAL.why,
+    icon: svg('<rect x="3.500" y="5" width="17" height="12" rx="2"/><path d="M7 9.500l2.500 2-2.500 2M11.500 13.500h4M9 20h6"/>') });
 })();

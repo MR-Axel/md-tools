@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Fuente de la página: los dos idiomas van juntos, cada uno en su bloque. La genera tools/build-site.mjs, que escribe
+     /local-tools.html y /es/local-tools.html con un solo idioma cada una. Los generados no se editan a mano. -->
+<meta name="robots" content="noindex">
+<!--HEAD-->
+<style>
+/*SITE-CSS*/
+</style>
+</head>
+<body class="doc">
+<main>
+  <div class="top"><a class="brand" href="./"><img src="icons/logo.svg" alt="" width="26" height="26"><span><b>Sharp</b>MD</span></a><!--LANG--></div>
+
+  <div lang="en">
+    <h1>SharpMD Local: your dev servers, worktrees and agent sessions</h1>
+    <p class="lede">A small program that runs on your computer and tells SharpMD three things a web page cannot see by itself: what is listening on which port, the state of your git worktrees, and which AI agent sessions are open. It is free and open source.</p>
+    <p class="under">It listens on <code>127.0.0.1</code> only. Nothing leaves your computer and nothing goes through our servers.</p>
+
+    <h2>What it shows</h2>
+    <ul>
+      <li><b>Local servers.</b> Every port that is listening, with its process, its project, the version it runs and since when. What was started from a project folder can be closed from there.</li>
+      <li><b>Worktrees.</b> For the folders you choose: branch, last commit, uncommitted changes, last edit and what is working in each one. It only looks: it deletes and changes nothing.</li>
+      <li><b>Local sessions.</b> The AI agent sessions open on the computer, Claude Code and the ones you set up, with their title, project and the memory each one uses.</li>
+      <li><b>Show in Explorer.</b> In the app, the menu of a file from your disk opens the system file manager with that file selected.</li>
+    </ul>
+
+    <h2>What it does not do</h2>
+    <ul>
+      <li>It runs no command that comes from outside, and it returns no file contents.</li>
+      <li>It closes nothing from the system and no installed program. Only dev servers and agent sessions it recognised by itself, and only after you confirm.</li>
+      <li>It looks at no folder you did not add.</li>
+      <li>It installs no service and does not start by itself. If you do not open it, it is not running.</li>
+    </ul>
+
+    <h2>Install it</h2>
+    <p>It needs <a href="https://nodejs.org" rel="noopener">Node.js</a> 22 or newer and nothing else. It lives in the <code>local</code> folder of the SharpMD repository.</p>
+    <pre><code>git clone https://github.com/SharpMD/sharpmd.git
+cd sharpmd/local
+node bin/sharpmd-local.js</code></pre>
+    <p>Without git: download the repository as a ZIP from <a href="https://github.com/SharpMD/sharpmd" rel="noopener">GitHub</a>, unzip it and, on Windows, double-click <code>start.cmd</code> inside <code>local</code>.</p>
+    <p>There is no installer yet. To stop it, press Ctrl+C in its console or close the window.</p>
+
+    <h2>Pair it with SharpMD</h2>
+    <ol>
+      <li>When it starts, the program prints a pairing code.</li>
+      <li>In SharpMD, open Settings &gt; Tools and turn on Local servers, Worktrees or Local sessions.</li>
+      <li>Paste the code and press Pair. The browser asks once whether the site may connect to this computer: allow it.</li>
+    </ol>
+    <p>The code stays in that browser. The three tools share it.</p>
+    <p>Chrome, Edge and Firefox connect once you allow it. Safari blocks a page from reaching <code>127.0.0.1</code>: there, use the panel the program serves itself, at the address it prints when it starts.</p>
+
+    <h2>Choose your folders</h2>
+    <p>It starts with none. Add the folders it may look at from the console:</p>
+    <pre><code>node bin/sharpmd-local.js folders add C:\code</code></pre>
+    <p>A folder can be a repository or a folder with repositories inside. Worktrees come from there, and Show in Explorer only works for files inside those folders.</p>
+
+    <h2>How it is protected</h2>
+    <ul>
+      <li>It listens on this computer only, never on the network.</li>
+      <li>Every request needs the pairing code, a random 256-bit token kept in a file only your user reads.</li>
+      <li>It answers only to SharpMD: any other site is refused, even with the code.</li>
+      <li>To close something, the request has to match what the program sees at that moment: the process, its port and when it started.</li>
+      <li>A path is shown only if it is an existing file inside a folder you added, and the file manager is the only thing it opens.</li>
+    </ul>
+    <p>The full table, with what it does not cover, is in the <a href="https://github.com/SharpMD/sharpmd/tree/main/local#readme" rel="noopener">README of the program</a>.</p>
+
+    <p class="next"><a class="btn fill" href="src/app.html">Open the app</a></p>
+    <p>Everything else is on the <a href="./">SharpMD home page</a>.</p>
+  </div>
+
+  <div lang="es">
+    <h1>SharpMD Local: tus servidores, worktrees y sesiones de agentes</h1>
+    <p class="lede">Un programa chico que corre en tu computadora y le cuenta a SharpMD tres cosas que una página web no puede ver sola: qué está escuchando en cada puerto, cómo están tus worktrees de git y qué sesiones de agentes de IA hay abiertas. Es gratis y de código abierto.</p>
+    <p class="under">Escucha solo en <code>127.0.0.1</code>. Nada sale de tu computadora y nada pasa por nuestros servidores.</p>
+
+    <h2>Qué muestra</h2>
+    <ul>
+      <li><b>Servidores locales.</b> Cada puerto que está escuchando, con su proceso, su proyecto, la versión que corre y desde cuándo. Lo que se lanzó desde una carpeta de proyecto se puede cerrar desde ahí.</li>
+      <li><b>Worktrees.</b> De las carpetas que elijas: rama, último commit, cambios sin confirmar, última edición y qué está trabajando en cada uno. Solo mira: no borra ni cambia nada.</li>
+      <li><b>Sesiones locales.</b> Las sesiones de agentes de IA abiertas en la computadora, Claude Code y las que configures, con su título, su proyecto y la memoria que usa cada una.</li>
+      <li><b>Mostrar en el Explorador.</b> En la app, el menú de un archivo de tu disco abre el explorador de archivos del sistema con ese archivo seleccionado.</li>
+    </ul>
+
+    <h2>Qué no hace</h2>
+    <ul>
+      <li>No ejecuta ningún comando que le llegue de afuera, ni devuelve el contenido de ningún archivo.</li>
+      <li>No cierra nada del sistema ni programas instalados. Solo servidores de desarrollo y sesiones de agentes que reconoció por su cuenta, y recién cuando confirmás.</li>
+      <li>No mira ninguna carpeta que no hayas sumado.</li>
+      <li>No instala ningún servicio ni arranca solo. Si no lo abrís, no corre.</li>
+    </ul>
+
+    <h2>Instalarlo</h2>
+    <p>Necesita <a href="https://nodejs.org" rel="noopener">Node.js</a> 22 o más nuevo y nada más. Vive en la carpeta <code>local</code> del repositorio de SharpMD.</p>
+    <pre><code>git clone https://github.com/SharpMD/sharpmd.git
+cd sharpmd/local
+node bin/sharpmd-local.js</code></pre>
+    <p>Sin git: bajá el repositorio como ZIP desde <a href="https://github.com/SharpMD/sharpmd" rel="noopener">GitHub</a>, descomprimilo y, en Windows, hacé doble clic en <code>start.cmd</code> dentro de <code>local</code>.</p>
+    <p>Todavía no hay instalador. Para apagarlo, Ctrl+C en su consola o cerrar la ventana.</p>
+
+    <h2>Emparejarlo con SharpMD</h2>
+    <ol>
+      <li>Al arrancar, el programa muestra un código de emparejamiento.</li>
+      <li>En SharpMD, abrí Ajustes &gt; Herramientas y prendé Servidores locales, Worktrees o Sesiones locales.</li>
+      <li>Pegá el código y tocá Emparejar. El navegador pregunta una vez si el sitio puede conectarse con esta computadora: permitilo.</li>
+    </ol>
+    <p>El código queda en ese navegador. Las tres herramientas lo comparten.</p>
+    <p>Chrome, Edge y Firefox se conectan una vez que lo permitís. Safari no deja que una página llegue a <code>127.0.0.1</code>: ahí usá el panel que sirve el propio programa, en la dirección que muestra al arrancar.</p>
+
+    <h2>Elegir tus carpetas</h2>
+    <p>Arranca sin ninguna. Las carpetas que puede mirar se suman desde la consola:</p>
+    <pre><code>node bin/sharpmd-local.js folders add C:\code</code></pre>
+    <p>Una carpeta puede ser un repositorio o una carpeta con repositorios adentro. De ahí salen los worktrees, y Mostrar en el Explorador solo funciona con archivos de esas carpetas.</p>
+
+    <h2>Cómo está protegido</h2>
+    <ul>
+      <li>Escucha solo en esta computadora, nunca en la red.</li>
+      <li>Cada pedido necesita el código de emparejamiento, un token al azar de 256 bits guardado en un archivo que solo lee tu usuario.</li>
+      <li>Solo le contesta a SharpMD: cualquier otro sitio queda rechazado, aunque tenga el código.</li>
+      <li>Para cerrar algo, el pedido tiene que coincidir con lo que el programa ve en ese momento: el proceso, su puerto y cuándo arrancó.</li>
+      <li>Una ruta se muestra solo si es un archivo que existe dentro de una carpeta que sumaste, y el explorador de archivos es lo único que abre.</li>
+    </ul>
+    <p>La tabla completa, con lo que no cubre, está en el <a href="https://github.com/SharpMD/sharpmd/blob/main/local/README.es.md" rel="noopener">README del programa</a>.</p>
+
+    <p class="next"><a class="btn fill" href="src/app.html">Abrir la app</a></p>
+    <p>Todo lo demás está en la <a href="./">portada de SharpMD</a>.</p>
+  </div>
+  <p class="legal"><a href="./"><span lang="en">Home</span><span lang="es">Portada</span></a><a href="[[markdown-editor-mcp.html||./markdown-editor-mcp.html]]"><span lang="en">Markdown editor for AI agents</span><span lang="es">Editor de Markdown para agentes de IA</span></a><a href="[[wysiwyg-markdown-editor.html||./wysiwyg-markdown-editor.html]]"><span lang="en">WYSIWYG Markdown editor</span><span lang="es">Editor de Markdown WYSIWYG</span></a><a href="privacy.html"><span lang="en">Privacy</span><span lang="es">Privacidad</span></a><a href="terms.html"><span lang="en">Terms</span><span lang="es">Términos</span></a><a href="support.html"><span lang="en">Support</span><span lang="es">Ayuda</span></a></p>
+</main>
+</body>
+</html>

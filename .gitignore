@@ -3,3 +3,4 @@ tests/node_modules/
 tests/package-lock.json
 dist/
 store/
+local/test/.real/

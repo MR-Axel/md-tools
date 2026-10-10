@@ -374,6 +374,8 @@
     import: { js: ['src/import.js'] },
     assistant: { js: ['src/aikey.js', 'src/assistant.js'] },
     agents: { js: ['src/agents.js'] },
+    // Las tres que leen del programa local comparten archivo.
+    localtools: { js: ['src/localtools.js'] },
     // La galería de la comunidad, en Ajustes > Herramientas: se pide al abrir esa pestaña.
     gallery: { js: ['src/gallery.js'] },
     // Ajustes > API y automatizaciones y el alta guiada: se piden al abrir esa pestaña o al elegir "Automatizar…".
@@ -385,7 +387,7 @@
   const LAZY_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, tools: () => !!(LMD.diagram && LMD.formula && LMD.templates && LMD.community) };
   LAZY_HAVE.gallery = () => !!LMD.gallery; LAZY_HAVE.automate = () => !!LMD.automate; LAZY_HAVE.publish = () => !!LMD.publish;
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
-  ['present', 'daily', 'docx', 'linkmap', 'explore', 'jsonyaml', 'import', 'agents'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
+  ['present', 'daily', 'docx', 'linkmap', 'explore', 'jsonyaml', 'import', 'agents', 'localtools'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
   LAZY_HAVE.assistant = () => !!(LMD.ai && LMD.assistant);
   LAZY_HAVE.shortcuts = () => !!LMD.shortcuts; LAZY_HAVE.folderexport = () => !!LMD.folderexport;
   async function appLazy(what) {

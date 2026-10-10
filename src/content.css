@@ -3689,3 +3689,50 @@ dialog.lmd-xp-full::backdrop { background: var(--bg); }
   .lmd-sec .lmd-e2e-acts { flex: 1 1 100%; }
   .lmd-sec .lmd-e2e-acts .lmd-btn { flex: 1 1 auto; }
 }
+
+/* ---------- Herramientas locales (localtools.js) ---------- */
+/* La lista de cada una se abre en un diálogo: cabecera fija y cuerpo que desliza. */
+.lmd-lt .lmd-ask-card.lmd-lt-card { display: flex; flex-direction: column; width: min(760px, 100%); max-height: min(780px, 100%); padding: 0; overflow: hidden; }
+.lmd-lt-head { flex: none; display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 18px; border-bottom: 1px solid var(--line); }
+.lmd-lt-head h3 { margin: 0; font-size: 15.5px; white-space: nowrap; }
+.lmd-lt-head .lmd-lt-note { flex: 1; min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lmd-lt-body { flex: 1; min-height: 0; overflow: hidden auto; padding: 14px 18px 18px; overscroll-behavior: contain; scrollbar-width: thin; }
+.lmd-ask-card .lmd-lt-body p.lmd-hint { margin: 0 0 4px; }
+.lmd-lt-list h5 { margin: 14px 0 2px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-faint); }
+.lmd-lt-row { display: grid; grid-template-columns: 104px minmax(0, 1fr) auto; gap: 2px 14px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); }
+.lmd-lt-key { font: 600 13.5px/1.5 var(--lmd-mono); font-variant-numeric: tabular-nums; color: var(--fg); overflow-wrap: anywhere; }
+.lmd-lt-what { min-width: 0; }
+.lmd-lt-what b { font-weight: 600; font-size: 14px; color: var(--fg); overflow-wrap: anywhere; }
+.lmd-ask-card .lmd-lt-what p { margin: 2px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--fg-muted); overflow-wrap: anywhere; }
+.lmd-lt-what code, .lmd-lt-list > p code, .lmd-tl-opts p.lmd-tl-why code { padding: 0; background: none; font: 11.5px var(--lmd-mono); color: var(--fg-faint); overflow-wrap: anywhere; }
+.lmd-lt-tag { display: inline-block; margin: 0 6px 2px 0; padding: 0 7px; border: 1px solid var(--line); border-radius: 99px; font-size: 11.5px; line-height: 1.6; color: var(--fg-muted); white-space: nowrap; }
+.lmd-lt-tag.lmd-lt-warn { color: #a15c00; border-color: currentColor; }
+.lmd-dark .lmd-lt-tag.lmd-lt-warn { color: #f0b860; }
+.lmd-lt-tag.lmd-lt-on { color: var(--accent); border-color: currentColor; }
+.lmd-lt-close { align-self: center; }
+.lmd-ask-card .lmd-lt-list p.lmd-lt-empty, .lmd-ask-card .lmd-lt-list > p { margin: 8px 0; font-size: 13px; color: var(--fg-faint); }
+.lmd-lt-more { margin-top: 12px; }
+.lmd-lt-more > summary { padding: 4px 0; font-size: 12.5px; color: var(--fg-muted); cursor: pointer; }
+.lmd-lt-note { font-size: 12.5px; color: var(--fg-muted); }
+/* En el detalle de Ajustes > Herramientas: el campo del código ocupa el renglón y el botón va al lado. */
+.lmd-tl-opts .lmd-row .lmd-lt-code { flex: 1 1 120px; min-width: 0; width: auto; font-family: var(--lmd-mono); }
+.lmd-tl-opts p.lmd-lt-note:empty { display: none; }
+.lmd-tl-opts p.lmd-tl-why a { color: var(--link); }
+@media (max-width: 640px) { .lmd-lt-row { grid-template-columns: minmax(0, 1fr) auto; } .lmd-lt-key { grid-column: 1 / -1; } .lmd-lt { padding: 8px; } }
+@media print { .lmd-lt { display: none; } }
+/* sus vistas en Ajustes > Herramientas: tres puertos, un repositorio con sus worktrees, tres sesiones con su memoria */
+.lmd-pk-ports .r, .lmd-pk-wt .r, .lmd-pk-sess .r { display: flex; align-items: center; gap: 8px; height: 24px; margin-bottom: 9px; }
+.lmd-pk-ports .l, .lmd-pk-wt .l, .lmd-pk-sess .l { flex: 1; width: auto; margin: 0; }
+.lmd-pk-ports .d, .lmd-pk-wt .d, .lmd-pk-sess .d { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--pk-ink); }
+.lmd-pk-ports .on, .lmd-pk-wt .on, .lmd-pk-sess .on { background: var(--accent-fill); animation: lmd-pk-pulse 1.8s ease-in-out infinite; }
+.lmd-pk-ports b { flex: none; width: 44px; color: var(--fg-muted); font-weight: 600; }
+.lmd-pk-ports .off { opacity: .55; }
+.lmd-pk-ports .r:nth-child(2) .on { animation-delay: -.9s; }
+.lmd-pk-wt .r { height: 22px; margin-bottom: 6px; }
+.lmd-pk-wt .k { margin-left: 4px; padding-left: 12px; border-left: 1px solid var(--line); }
+.lmd-pk-wt .d { border-radius: 2px; }
+.lmd-pk-wt b { flex: none; width: 26px; height: 12px; border: 1px solid var(--line); border-radius: 6px; }
+.lmd-pk-wt .r:nth-child(2) .l { animation: lmd-pk-w1 3.6s linear infinite; }
+.lmd-pk-sess b { flex: none; width: 46px; height: 8px; border-radius: 4px; background: var(--bg-soft); border: 1px solid var(--line); overflow: hidden; }
+.lmd-pk-sess b i { height: 100%; width: 70%; background: var(--fg-muted); opacity: .75; transform-origin: 0 50%; animation: lmd-pk-w1 3.6s linear infinite; }
+.lmd-pk-sess .r:nth-child(2) b i { width: 40%; animation-name: lmd-pk-w2; } .lmd-pk-sess .r:nth-child(3) b i { width: 22%; animation: none; }
