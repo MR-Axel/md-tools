@@ -449,6 +449,11 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 /* El aviso de versión nueva de la web: el mismo cartel, con una cruz para dejarlo para después. */
 .lmd-fresh, .lmd-room { gap: 10px; padding-right: 10px; }
 .lmd-fresh ~ .lmd-room, .lmd-room ~ .lmd-fresh { bottom: 84px; }
+/* Es un aviso que puede esperar: borde neutro y un botón suave, no un cartel de alarma. Con las dos clases: .lmd-fresh sola es también la tarjeta de un token recién creado (Ajustes), y sus colores no van acá. */
+.lmd-orphan.lmd-fresh { margin: 0; padding: 8px 8px 8px 14px; border-color: var(--line); border-radius: 10px; background: var(--bg); font-size: 13px; }
+.lmd-fresh button[data-fresh=go] { height: 28px; padding: 0 11px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); font-size: 13px; }
+.lmd-fresh button[data-fresh=go]:hover { background: var(--accent-fill); color: var(--accent-fg); }
+.lmd-fresh .lmd-update-x { width: 28px; height: 28px; }
 .lmd-fresh button:disabled { opacity: .6; cursor: default; }
 .lmd-fresh .lmd-update-x, .lmd-room .lmd-update-x { width: 30px; height: 30px; padding: 0; background: transparent; color: var(--fg-muted); }
 .lmd-fresh .lmd-update-x:hover, .lmd-room .lmd-update-x:hover { background: var(--accent-soft); color: var(--fg); }
