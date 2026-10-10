@@ -1497,7 +1497,10 @@
     if (r && r.kind === 'dir' && r.fs) return r.fs + vParts(u).map(encodeURIComponent).join('/') + (/\/$/.test(u.split('#')[0]) && vParts(u).length ? '/' : '');
     return '';
   };
-  const diskPath = (url) => { const f = diskUrl(url); return f ? LMD.filePath(f) : ''; };
+  // Una carpeta sale sin la barra del final (salvo la raíz de una unidad): así se pega en el explorador del sistema.
+  const diskPath = (url) => { const f = diskUrl(url); const p = f ? LMD.filePath(f) : ''; return /^([A-Za-z]:\\|\/)$/.test(p) ? p : p.replace(/[\\/]+$/, ''); };
+  // La misma ruta como dirección file://, bien codificada: la que se pega en la barra del navegador o en un enlace.
+  const diskHref = (url) => { const f = diskUrl(url); try { return f ? new URL(f).href : ''; } catch (e) { return ''; } };
   // "Ver la carpeta en el navegador": el listado de esa carpeta, en una pestaña nueva. En la web lo abre la extensión,
   // y solo para carpetas habilitadas. No es el explorador del sistema: una página web no puede abrirlo.
   const canViewFolder = () => (APP ? window.__MDT_WEB === true && LMD.bridge.canOpen() : isFile);
@@ -1523,8 +1526,11 @@
       md && ['copy-rich', ICON.rich, 'Texto con formato'],
       md && ['copy-html', ICON.code, 'HTML'],
       hasLink() && ['copy-link', ICON.link, 'Enlace a la nota'],
-      fileHere() && ['copy-flink', ICON.link, 'Copiar enlace a este archivo'],
+      // Tres cosas distintas, cada una con su nombre: el enlace https que abre el archivo en SharpMD, su ruta como la
+      // escribe el sistema, y su dirección file://. Las tres son del archivo que se está viendo, no del de entrada.
+      fileHere() && ['copy-flink', ICON.link, 'Copiar enlace de SharpMD'],
       diskPath() && ['copy-path', ICON.folder, 'Copiar la ruta'],
+      diskPath() && ['copy-furl', ICON.link, 'Copiar como dirección file://'],
     ], keys);
   }
   function openExport(btn, keys) {
@@ -1581,6 +1587,7 @@
     else if (act === 'copy-link') { copyText(location.href.split('#')[0], source); flash(T('Enlace copiado')); }
     else if (act === 'copy-flink') { copyText(LMD.fileLink(fileHere()), source); flash(T('Enlace copiado')); }
     else if (act === 'copy-path') { copyText(diskPath(), source); flash(T('Ruta copiada')); }
+    else if (act === 'copy-furl') { copyText(diskHref(), source); flash(T('Dirección copiada')); }
     else if (act === 'export-pdf') window.print();
     else if (act === 'export-md') downloadDoc();
     else if (act === 'share-out') { flushTyping(); LMD.install.shareOut({ text: raw, name: DOC_NAME || 'nota.md', cloud: !!appRoot && appRoot.kind === 'cloud' }); }
@@ -4144,7 +4151,7 @@
     diskDir: () => (APP && diskRoot && diskRoot.kind === 'dir' ? treeRoot : ''),
     newNote: (opt) => LMD.home.create(homeCtx(), opt),
     pick: (what) => LMD.home.pick(homeCtx(), what),
-    diskPath, canViewFolder, viewFolder, fsGrant: () => fsGrant(), allowWrite: (url) => allowWrite(url),
+    diskPath, diskHref, canViewFolder, viewFolder, fsGrant: () => fsGrant(), allowWrite: (url) => allowWrite(url),
     pickTemplate: () => tools().then((ok) => (ok ? LMD.home.pickTemplate(homeCtx()) : null)),
     tools,
     showFiles,

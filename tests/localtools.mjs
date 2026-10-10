@@ -158,6 +158,11 @@ try {
     await page.evaluate((p) => LMD.reveal(p), note);
     await until(() => fake.shown.length === 1);
     check('LMD.reveal le pide al programa mostrar ese archivo, y el programa anota exactamente ese', J(fake.shown) === J([note]), fake.shown);
+    const subDir = path.join(notes, 'sub dir'); fs.mkdirSync(subDir);
+    await page.evaluate((p) => LMD.reveal(p), subDir); await until(() => fake.shown.length === 2);
+    await page.evaluate((p) => LMD.reveal(p), notes); await until(() => fake.shown.length === 3);
+    check('una carpeta de adentro, y la carpeta sumada misma, también se muestran', J(fake.shown) === J([note, subDir, notes]), fake.shown);
+    fake.shown.length = 1;
     await page.evaluate((p) => LMD.reveal(p), outsideNote); await page.waitForSelector('.lmd-ask [data-dlg=ok]');
     const out = await page.evaluate(() => { const b = [...document.querySelectorAll('.lmd-ask')].pop(); return { title: b.querySelector('h3').textContent, text: b.querySelector('p').textContent, cancel: !!b.querySelector('[data-dlg=no]') }; });
     check('un archivo fuera de las carpetas sumadas no se muestra, y la app dice cómo sumar la carpeta', fake.shown.length === 1 && out.title === 'That folder is not added' && out.text.includes(NAME) && out.text.includes(CMD + ' folders add') && !out.cancel, out);

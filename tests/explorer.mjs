@@ -390,6 +390,50 @@ try {
   check('y uno de 3.000 bloques, en lo que tarda en dibujarse', median(runs.big) < 3000, runs.big);
   check('en el lugar no tarda más que navegar', median(runs.small) <= median(nav.small) + 30 && median(runs.big) <= median(nav.big) + 150, [runs, nav]);
 
+  // ---------- Copiar: el enlace de SharpMD, la ruta del sistema y la dirección file://, del archivo que se ve ----------
+  console.log('Copiar la ruta, la dirección file:// y el enlace, del archivo a la vista');
+  const odd = path.join(disk, 'carpeta ñandú'); fs.mkdirSync(odd); fs.writeFileSync(path.join(odd, 'día uno.md'), '# Día uno\n\ntexto\n');
+  await ctx.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
+  const clipOf = async () => { await page.bringToFront(); return page.evaluate(() => navigator.clipboard.readText()).catch((e) => 'sin portapapeles: ' + e.message); };
+  await page.goto(pathToFileURL(path.join(disk, 'a.md')).href); await page.waitForSelector('.lmd-article h1'); await sleep(500);
+  await page.click('[data-act=tree-refresh]').catch(() => {});
+  await page.waitForSelector(node('carpeta%20%C3%B1and%C3%BA/'), { timeout: 8000 }).catch(() => {});
+  await page.click(node('carpeta%20%C3%B1and%C3%BA/')); await page.waitForSelector(node('carpeta%20%C3%B1and%C3%BA/d%C3%ADa%20uno.md'), { timeout: 8000 }).catch(() => {});
+  await page.click(node('carpeta%20%C3%B1and%C3%BA/d%C3%ADa%20uno.md')); await shows('día uno.md');
+  const seen = path.join(odd, 'día uno.md'); const entry = pathToFileURL(path.join(disk, 'a.md')).href;
+  const copyPick = async (act) => { await page.click('[data-act=copy]'); await page.waitForSelector('.lmd-menu-copy'); const items = await page.evaluate(() => [...document.querySelectorAll('.lmd-menu-copy button')].map((b) => b.textContent.trim())); await page.click('.lmd-menu-copy [data-more=' + act + ']'); await sleep(250); return items; };
+  const items = await copyPick('copy-path'); const gotPath = await clipOf();
+  await copyPick('copy-furl'); const gotUrl = await clipOf();
+  await copyPick('copy-flink'); const gotLink = await clipOf();
+  check('la pestaña sigue en el archivo de entrada, con el que se ve en el fragmento', page.url().startsWith(entry + '#lmd-file='), page.url());
+  check('el menú Copiar nombra las tres cosas sin confundirlas', ['Copy SharpMD link', 'Copy path', 'Copy as file:// address'].every((t) => items.includes(t)) && !items.includes('Copy link to this file'), items);
+  check('"Copiar la ruta" da la ruta del sistema del archivo que se ve, con sus espacios y tildes', gotPath === seen && !/^file:|%/.test(gotPath), gotPath);
+  check('"Copiar como dirección file://" da la dirección de ese archivo, codificada', gotUrl === pathToFileURL(seen).href && /%20/.test(gotUrl) && !/#/.test(gotUrl), gotUrl);
+  check('"Copiar enlace de SharpMD" sigue dando el https que lo abre en la app, también del archivo que se ve', /^https:\/\/sharpmd\.app\/src\/app\.html#open=/.test(gotLink) && decodeURIComponent(gotLink.split('#open=')[1]) === pathToFileURL(seen).href, gotLink);
+  // Una carpeta: su ruta, su dirección, verla en el navegador y, sin el programa local, la entrada que cuenta que existe.
+  const menuAt = async (sel) => { await page.click(sel, { button: 'right' }); await page.waitForSelector('.lmd-menu-narrow', { timeout: 3000 }).catch(() => {}); return page.evaluate(() => [...document.querySelectorAll('.lmd-menu-narrow button')].map((b) => b.textContent.trim())); };
+  const dirItems = await menuAt(node('carpeta%20%C3%B1and%C3%BA/'));
+  await page.click('.lmd-menu-narrow [data-f=path]').catch(() => {}); await sleep(250); const dirPath = await clipOf();
+  await menuAt(node('carpeta%20%C3%B1and%C3%BA/')); await page.click('.lmd-menu-narrow [data-f=furl]').catch(() => {}); await sleep(250); const dirUrl = await clipOf();
+  check('el menú de una carpeta ofrece su ruta, su dirección, verla en el navegador y mostrarla en el explorador', J(dirItems) === J(['Copy path', 'Copy as file:// address', 'View the folder in the browser', 'Show in Explorer…']), dirItems);
+  check('la ruta de la carpeta sale como la escribe el sistema, sin barra al final; la dirección, con ella', dirPath === odd && dirUrl === pathToFileURL(odd).href + '/', [dirPath, dirUrl]);
+  const fileItems = await menuAt(node('carpeta%20%C3%B1and%C3%BA/d%C3%ADa%20uno.md'));
+  check('el de un archivo, lo mismo más el enlace de SharpMD', J(fileItems) === J(['Copy SharpMD link', 'Copy path', 'Copy as file:// address', 'View the folder in the browser', 'Show in Explorer…']), fileItems);
+  await page.click('.lmd-menu-narrow [data-f=reveal-how]').catch(() => {}); await page.waitForSelector('.lmd-dlg-card', { timeout: 4000 }).catch(() => {});
+  const how = await page.evaluate(() => { const c = document.querySelector('.lmd-dlg-card'); return c ? { title: c.querySelector('h3').textContent, text: c.querySelector('p').textContent, ok: c.querySelector('[data-dlg=ok]').textContent, all: c.textContent } : null; });
+  check('sin el programa local, "Mostrar en el Explorador…" dice en una línea qué hace falta y lleva a su página', !!how && how.title === 'Show in Explorer' && how.text === 'Opening the file explorer needs the SharpMD local program, which runs on your computer.' && how.ok === 'See how to install it' && !/[!¡—–]/.test(how.all), how);
+  await page.keyboard.press('Escape'); await sleep(200);
+  const tabsNow = ctx.pages().length;
+  await menuAt(node('carpeta%20%C3%B1and%C3%BA/')); const [listing] = await Promise.all([ctx.waitForEvent('page', { timeout: 6000 }).catch(() => null), page.click('.lmd-menu-narrow [data-f=folder]').catch(() => {})]);
+  check('"Ver la carpeta en el navegador" abre el listado de esa carpeta en otra pestaña', !!listing && decodeURIComponent(listing.url()).toLowerCase() === decodeURIComponent(pathToFileURL(odd).href + '/').toLowerCase() && ctx.pages().length === tabsNow + 1, listing && listing.url());
+  if (listing) await listing.close();
+  // El nombre de arriba, leyendo: un clic abre su menú.
+  await page.bringToFront(); await page.click('.lmd-docname'); await page.waitForSelector('.lmd-menu-narrow', { timeout: 3000 }).catch(() => {});
+  const nameItems = await page.evaluate(() => [...document.querySelectorAll('.lmd-menu-narrow button')].map((b) => b.textContent.trim()));
+  check('leyendo, un clic sobre el nombre de arriba abre su menú con dónde está el archivo', nameItems.includes('Copy path') && nameItems.includes('Copy as file:// address') && nameItems.includes('Show in Explorer…'), nameItems);
+  await page.keyboard.press('Escape'); await sleep(150);
+  fs.rmSync(odd, { recursive: true, force: true });
+
   // ---------- Un .md servido por un sitio ----------
   console.log('Sobre un .md de un sitio');
   const web = await ctx.newPage(); web.on('pageerror', (e) => errors.push(e.message));
@@ -510,6 +554,17 @@ try {
   check('y los recientes apuntan al nombre nuevo', recent.some((l) => /\/beta renamed\.md$/.test(l)), recent);
   const m1 = await menuOfTitle();
   check('el menú del nombre: de una carpeta elegida con el selector no se conoce la ruta, así que solo ofrece renombrar', J(m1) === J(['Rename']), m1);
+  await app.click(node('sub/'), { button: 'right' }); await app.waitForSelector('.lmd-menu-narrow', { timeout: 3000 }).catch(() => {});
+  const subItems = await app.evaluate(() => [...document.querySelectorAll('.lmd-menu-narrow button')].map((b) => b.textContent.trim())); await app.keyboard.press('Escape'); await sleep(150);
+  check('y el menú de una carpeta de adentro tampoco ofrece ruta, dirección ni explorador: no se inventa una ruta', subItems.length > 0 && !subItems.some((t) => /path|file:\/\/|Explorer|View the folder/.test(t)), subItems);
+  await app.click('[data-act=mode-read]').catch(() => {}); await sleep(200); await app.click('.lmd-docname'); await app.waitForSelector('.lmd-menu-narrow', { timeout: 3000 }).catch(() => {});
+  const readItems = await app.evaluate(() => [...document.querySelectorAll('.lmd-menu-narrow button')].map((b) => b.textContent.trim())); await app.keyboard.press('Escape'); await sleep(150);
+  const barFits = await app.evaluate(() => { const bar = document.querySelector('.lmd-topbar'); return bar.scrollWidth <= bar.clientWidth + 1; });
+  await app.setViewportSize({ width: 1000, height: 800 }); await sleep(300);
+  const fits1000 = await app.evaluate(() => { const bar = document.querySelector('.lmd-topbar'); return bar.scrollWidth <= bar.clientWidth + 1 && document.documentElement.scrollWidth <= window.innerWidth; });
+  await app.setViewportSize({ width: 1280, height: 800 }); await sleep(200);
+  check('leyendo, un clic sobre el nombre abre el menú; la barra de arriba entra igual, también a 1000 px', J(readItems) === J(['Rename']) && barFits && fits1000, [readItems, barFits, fits1000]);
+  await app.click('[data-act=mode-edit]').catch(() => {}); await sleep(300);
   // Una nota del navegador.
   await app.evaluate(() => LMD.store.notePut('nota.md', '# Nota\n\ntexto\n'));
   await app.goto('chrome-extension://' + id + '/src/app.html?f=' + encodeURIComponent('local/nota.md') + '&edit=1'); await app.waitForSelector('.lmd-article .lmd-editable');

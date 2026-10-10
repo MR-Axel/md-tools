@@ -112,7 +112,7 @@ function create(opts) {
       if (!c.allowReveal) return [403, { error: 'off' }];
       const r = reveal.check(body.path, c.folders);
       if (!r.file) return [r.status, { error: r.error }];
-      (opts.reveal || reveal.open)(r.file);
+      (opts.reveal || reveal.open)(r.file, !!r.dir);
       log('reveal ' + r.file);
       return [200, { ok: true }];
     },
