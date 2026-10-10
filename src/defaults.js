@@ -35,7 +35,8 @@
     refreshInterval: 1000, // ms
     sidebarHidden: false,
     sidebarWidth: 300,
-    filesOnlyMarkdown: true,
+    filesOnlyMarkdown: false, // el explorador muestra todo lo que la app sabe abrir; prendido, solo Markdown y texto
+    filesChosen: false, // la persona tocó ese ajuste: antes venía prendido, y un "true" guardado sin esto es el de fábrica de entonces
     filesShowHidden: false,
     customCSS: '',
     tools: {}, // Ajustes > Herramientas: cuáles están prendidas (por id) y sus opciones. Lo que falta sale del registro (tools.js)
@@ -170,6 +171,8 @@
     // Plegar por títulos venía apagado y hoy viene prendido. Lo guardado trae todos los ajustes juntos, así que un
     // "apagado" solo vale como elección si la persona lo tocó (foldChosen); si no, es el valor de fábrica viejo.
     if (!out.foldChosen) out.foldHeadings = saved && saved.foldHeadings === true ? true : DEFAULTS.foldHeadings;
+    // Lo mismo con "Solo Markdown" del explorador, que venía prendido y escondía las imágenes y los PDF de la carpeta.
+    if (!out.filesChosen) out.filesOnlyMarkdown = DEFAULTS.filesOnlyMarkdown;
     return out;
   }
 
@@ -192,6 +195,7 @@
       if (partial.plugins) next.plugins = Object.assign({}, cur.plugins, partial.plugins);
       if (partial.tools) next.tools = Object.assign({}, cur.tools, partial.tools);
       if (Object.prototype.hasOwnProperty.call(partial, 'foldHeadings') && !Object.prototype.hasOwnProperty.call(partial, 'foldChosen')) next.foldChosen = true;
+      if (Object.prototype.hasOwnProperty.call(partial, 'filesOnlyMarkdown') && !Object.prototype.hasOwnProperty.call(partial, 'filesChosen')) next.filesChosen = true;
       await save(next);
       return next;
     });
@@ -1575,6 +1579,8 @@
       "Exportar a Word": "Export to Word", "Suma Word (.docx) al menú Exportar.": "Adds Word (.docx) to the Export menu.",
       "Documento de Word descargado": "Word document downloaded", "No se pudo armar el documento de Word.": "Could not build the Word document.", "Exportar esta nota": "Export this note", "documento": "document",
       "Está en el menú Exportar de la barra de arriba. Las fórmulas van como texto LaTeX y los diagramas como imagen.": "It is in the Export menu of the top bar. Formulas go as LaTeX text and diagrams as images.",
+      // El visor de PDF, EPUB, imágenes, audio y video (viewer.js), los tipos de archivo y "Solo Markdown"
+      "Este PDF tiene contraseña y no se abrió.": "This PDF has a password and was not opened.", "Este EPUB está protegido (DRM) y no se puede abrir.": "This EPUB is protected (DRM) and cannot be opened.", "Este PDF está dañado y no se puede mostrar.": "This PDF is damaged and cannot be shown.", "Esta imagen está dañada o el navegador no la puede mostrar.": "This image is damaged or the browser cannot show it.", "Este archivo está dañado y no se puede mostrar.": "This file is damaged and cannot be shown.", "Barra del PDF": "PDF toolbar", "Barra de la imagen": "Image toolbar", "Barra del libro": "Book toolbar", "Imagen anterior": "Previous image", "Imagen siguiente": "Next image", "Ajustar a la ventana": "Fit to window", "Ajustar al ancho": "Fit to width", "Tamaño real": "Actual size", "Ver el código del SVG": "View the SVG code", "Copiar la imagen": "Copy the image", "Copiar como Markdown": "Copy as Markdown", "Página anterior": "Previous page", "Página siguiente": "Next page", "Capítulo anterior": "Previous chapter", "Capítulo siguiente": "Next chapter", "Página": "Page", "Buscar en el PDF": "Search the PDF", "Buscar en el libro": "Search the book", "Resultado anterior": "Previous result", "Resultado siguiente": "Next result", "PDF con contraseña": "Password-protected PDF", "\"{a}\" pide una contraseña para abrirse.": "\"{a}\" needs a password to open.", "Cargando el lector de PDF…": "Loading the PDF reader…", "Abriendo…": "Opening…", "Página {a}": "Page {a}", "{n} página": "{n} page", "{n} páginas": "{n} pages", "Este PDF no trae índice.": "This PDF has no outline.", "No se pudo dibujar la página {a}.": "Could not draw page {a}.", "Enlace dentro del documento": "Link inside the document", "Ese enlace no lleva a ninguna página.": "That link does not lead to any page.", "Capítulo {a}": "Chapter {a}", "{n} capítulo": "{n} chapter", "{n} capítulos": "{n} chapters", "Capítulos": "Chapters", "Este libro es de diseño fijo: acá se lee como texto corrido.": "This book has a fixed layout: here it reads as flowing text.", "Este capítulo no se pudo mostrar.": "This chapter could not be shown.", "Imagen copiada": "Image copied", "Este navegador no deja copiar la imagen.": "This browser does not allow copying the image.", "Código del SVG": "SVG code", "Este navegador no puede reproducir ese archivo.": "This browser cannot play that file.", "\"{a}\" pesa {b}. SharpMD abre este tipo de archivo hasta {c} MB.": "\"{a}\" is {b}. SharpMD opens this type of file up to {c} MB.", "SharpMD no muestra este archivo, pero lo puede convertir en una nota.": "SharpMD does not show this file, but it can turn it into a note.", "SharpMD no muestra este tipo de archivo.": "SharpMD does not show this type of file.", "No se pudo cargar el visor. Probá de nuevo.": "Could not load the viewer. Try again.", "Solo Markdown": "Markdown only", "Solo Markdown: prendido. Clic para ver todos los archivos que SharpMD abre": "Markdown only: on. Click to see every file SharpMD opens", "Solo Markdown: apagado. Clic para ver solo las notas": "Markdown only: off. Click to see only notes", "Para ver \"{a}\", abrí su carpeta con \"Abrir carpeta\".": "To see \"{a}\", open its folder with \"Open folder\".", "El archivo cambió en el disco: se volvió a abrir.": "The file changed on disk: it was opened again.", "Este archivo solo se lee acá.": "This file is read-only here.", "Abrir en otra pestaña": "Open in another tab", "Imprimir el capítulo": "Print the chapter", "Archivo": "File", "Más de {n} archivos": "More than {n} files", "1 archivo": "1 file", "{n} archivos": "{n} files", "Este archivo no se sube a la nube: las notas de la nube son texto. Se ve desde el disco.": "This file is not uploaded to the cloud: cloud notes are text. It is viewed from disk.",
       // Importar a Markdown (import.js)
       "Importar a Markdown": "Import to Markdown", "Convierte Word, Excel, PowerPoint, PDF, EPUB, HTML y CSV en una nota, sin subir el archivo.": "Turns Word, Excel, PowerPoint, PDF, EPUB, HTML and CSV into a note, without uploading the file.",
       "Word, Excel, PowerPoint, EPUB, PDF, HTML, CSV y TSV. El archivo se convierte en este dispositivo y no se sube. También podés soltarlo en la ventana. Del PDF sale solo el texto.": "Word, Excel, PowerPoint, EPUB, PDF, HTML, CSV and TSV. The file is converted on this device and is not uploaded. You can also drop it on the window. From a PDF only the text comes out.",

@@ -465,6 +465,8 @@
       (!isDir || cloud) && ['ren', 'Renombrar'],
       // Lo mismo que arrastrarlo a una carpeta, sin arrastrar: sirve con el dedo y con el teclado.
       canTree(url) && ['mov', 'Mover a…'],
+      // Un PDF, un libro o un documento de Office de una carpeta del disco: convertirlo en una nota (import.js).
+      !isDir && !cloud && !local && core.APP && /^(pdf|epub|office)$/.test(LMD.kit.kindOf(nameOf(url))) && ['imp', 'Importar a Markdown', false, 'md'],
     ].concat(whereItems(url), [
       !isDir && ['del', 'Eliminar', true],
       // Todas las notas de la carpeta en un solo documento: PDF, HTML, Word o Markdown (folderexport.js).
@@ -476,6 +478,7 @@
     ]).concat(folder ? LMD.vault.menu(folder) : []).filter(Boolean), (f) => {
       if (wherePick(f, url)) return;
       if (/^v-/.test(f)) LMD.vault.pick(f, folder);
+      else if (f === 'imp') core.importAt(url);
       else if (f === 'fexp') folderExport(url);
       else if (f === 'site') LMD.sync.publish(folder);
       else if (f === 'auto') core.ensure('automate').then((ok) => { if (ok) LMD.automate.wizard(core, { kind: isDir ? 'folder' : 'note', path: core.pathOf(url) }); });
@@ -524,9 +527,9 @@
   // El menú del nombre de arriba (clic derecho, o mantener apretado): lo mismo que el del archivo en el explorador.
   function titleMenu(x, y) {
     if (core.noDoc) return false;
-    const items = [canRename() && ['ren', 'Renombrar']].concat(whereItems(core.HERE)).filter(Boolean);
+    const items = [canRename() && ['ren', 'Renombrar'], core.viewing && /^(pdf|epub|office)$/.test(LMD.kit.kindOf(core.docName)) && ['imp', 'Importar a Markdown', false, 'md']].concat(whereItems(core.HERE)).filter(Boolean);
     if (!items.length) return false;
-    showMenu(x, y, items, (f) => { if (!wherePick(f, core.HERE)) editTitle(); });
+    showMenu(x, y, items, (f) => { if (f === 'imp') core.importAt(core.HERE); else if (!wherePick(f, core.HERE)) editTitle(); });
     return true;
   }
 

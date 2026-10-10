@@ -105,7 +105,7 @@ try {
   await open('a.md');
   const kinds = await page.evaluate(() => { const o = {}; document.querySelectorAll('.lmd-xroot[data-root=disk] > .lmd-tree > .lmd-node').forEach((n) => { o[n.textContent.trim()] = [n.dataset.kind, (n.querySelector('.lmd-node-ico') || { innerHTML: '' }).innerHTML, n.getAttribute('href') || '']; }); return o; });
   check('el explorador lista Markdown, texto, datos y lo demás', ['a.md', 'b.md', 'notes.txt', 'data.json', 'conf.yaml', 'pic.png', 'sub'].every((n) => kinds[n]), Object.keys(kinds).slice(0, 12));
-  check('y cada uno dice qué es', kinds['a.md'][0] === 'md' && kinds['notes.txt'][0] === 'txt' && kinds['data.json'][0] === 'data' && kinds['conf.yaml'][0] === 'data' && kinds['pic.png'][0] === 'file' && kinds.sub[0] === 'dir', Object.entries(kinds).slice(0, 8).map(([k, v]) => [k, v[0]]));
+  check('y cada uno dice qué es', kinds['a.md'][0] === 'md' && kinds['notes.txt'][0] === 'txt' && kinds['data.json'][0] === 'data' && kinds['conf.yaml'][0] === 'data' && kinds['pic.png'][0] === 'image' && kinds.sub[0] === 'dir', Object.entries(kinds).slice(0, 8).map(([k, v]) => [k, v[0]]));
   check('con un ícono distinto para Markdown, texto, datos y el resto', new Set([kinds['a.md'][1], kinds['notes.txt'][1], kinds['data.json'][1], kinds['pic.png'][1]]).size === 4 && kinds['data.json'][1] === kinds['conf.yaml'][1] && kinds['a.md'][1] === kinds['b.md'][1] && /^<svg/.test(kinds['notes.txt'][1]));
   check('un .txt lleva la dirección que lo abre dentro de SharpMD; un .md y una imagen, la suya', kinds['notes.txt'][2] === U('a.md') + '#lmd-file=notes.txt' && kinds['b.md'][2] === U('b.md') && kinds['pic.png'][2] === U('pic.png'), [kinds['notes.txt'][2], kinds['b.md'][2]]);
   const push = await page.evaluate((to) => { try { history.pushState(null, '', to); return 'ok'; } catch (e) { return e.name; } }, U('b.md'));
@@ -312,7 +312,7 @@ try {
   check('también el de una subcarpeta desplegada, y una carpeta nueva', n2 === 'md*' && n3 === 'dir*', [n2, n3]);
   check('lo nuevo queda marcado, y lo que ya estaba no', Object.values(await tree()).filter((v) => v.endsWith('*')).length === 3, await tree());
   check('las carpetas desplegadas, la posición, el foco y el archivo marcado quedan como estaban', k1.open.join() === 'sub' && Math.abs(k1.y - k0.y) < 3 && k1.focus === 'n02.md' && J(k1.active) === J(['a.md']), [k0, k1]);
-  check('y el contador de la carpeta se pone al día', k0.count === '2' && !!(await until(async () => (await subCount()) === '3')), [k0.count, await subCount()]);
+  check('y el contador de la carpeta se pone al día (cuenta lo que se lista: las notas y la imagen)', k0.count === '3' && !!(await until(async () => (await subCount()) === '4')), [k0.count, await subCount()]);
   check('la marca de nuevo se va sola a los segundos', !!(await until(async () => !Object.values(await tree()).some((v) => v.endsWith('*')), 12000)));
   await page.click(node('zz-new.md')); await shows('zz-new.md');
   check('y el archivo nuevo se abre como cualquier otro', (await state()).h1 === 'Brand new' && (await state()).keep);
@@ -415,14 +415,15 @@ try {
   console.log('La app con una carpeta: ya cambiaba en el lugar');
   const app = await ctx.newPage(); app.on('pageerror', (e) => errors.push(e.message));
   await app.goto('chrome-extension://' + id + '/src/app.html'); await app.waitForSelector('.lmd-home');
-  await app.evaluate(async ([files, big]) => {
+  await app.evaluate(async ([files, big, png]) => {
     const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('exp', { create: true });
     const put = async (d, n, t) => { const h = await d.getFileHandle(n, { create: true }); const w = await h.createWritable(); await w.write(t); await w.close(); };
     for (const [n, t] of Object.entries(files)) { if (n.startsWith('sub/')) await put(await dir.getDirectoryHandle('sub', { create: true }), n.slice(4), t); else await put(dir, n, t); }
     await put(dir, 'big.md', big);
     await put(dir, 'report.docx', new Uint8Array([80, 75, 3, 4, 0, 0, 0, 0, 1, 2, 3]));
+    const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0)); await put(dir, 'pic.png', bytes); await put(await dir.getDirectoryHandle('sub', { create: true }), 'dot.png', bytes);
     window.showDirectoryPicker = async () => dir;
-  }, [Object.fromEntries(Object.entries(FILES).filter(([n]) => n !== 'big.md')), BIG]);
+  }, [Object.fromEntries(Object.entries(FILES).filter(([n]) => n !== 'big.md')), BIG, PNG.toString('base64')]);
   await app.click('[data-home=dir]'); await app.waitForSelector(node('a.md')); await sleep(600);
   const ashows = (title) => until(() => app.evaluate((t) => document.title === t, title));
   const astate = () => app.evaluate(() => ({ title: document.title, h1: (document.querySelector('.lmd-article h1') || { textContent: '' }).textContent.trim(), url: location.href, keep: window.__keep === 1, plain: (document.querySelector('.lmd-article .lmd-plain') || { textContent: null }).textContent, splash: !!document.querySelector('#lmd-splash'), text: document.querySelector('.lmd-article').textContent,
@@ -432,7 +433,7 @@ try {
   await app.evaluate(() => { window.__keep = 1; });
   const ay0 = await app.evaluate((sel) => { const p = document.querySelector(sel); p.scrollTop = 150; return p.scrollTop; }, pane); await sleep(150);
   // Uno que ya está a la vista: así el clic no corre el explorador por su cuenta.
-  const apick = await app.evaluate((sel) => { const box = document.querySelector(sel).getBoundingClientRect(); const vis = [...document.querySelectorAll('a.lmd-node[data-kind=md]')].filter((n) => { const r = n.getBoundingClientRect(); return r.top > box.top + 30 && r.bottom < box.bottom - 60; }); return [vis[1].textContent.trim(), vis[2].textContent.trim()]; }, pane);
+  const apick = await app.evaluate((sel) => { const box = document.querySelector(sel).getBoundingClientRect(); const vis = [...document.querySelectorAll('a.lmd-node[data-kind=md]')].filter((n) => { const r = n.getBoundingClientRect(); return /^n\d+\.md$/.test(n.textContent.trim()) &&r.top > box.top + 30 && r.bottom < box.bottom - 60; }); return [vis[1].textContent.trim(), vis[2].textContent.trim()]; }, pane);
   const anum = (n) => 'Note ' + Number(n.slice(1, 3));
   await app.click(node(apick[0])); await ashows(apick[0]);
   const a1 = await astate(); const ay1 = await app.evaluate((sel) => document.querySelector(sel).scrollTop, pane);
@@ -442,7 +443,16 @@ try {
   await app.focus(node(apick[0])); await app.keyboard.press('ArrowDown'); await app.keyboard.press('Enter'); await ashows(apick[1]);
   check('con el teclado, las flechas y Enter recorren los archivos y el foco se queda en el explorador', (await astate()).focus === apick[1] && (await astate()).keep && (await astate()).h1 === anum(apick[1]), await astate());
   const akinds = await app.evaluate(() => { const o = {}; document.querySelectorAll('.lmd-xroot[data-root=disk] .lmd-node').forEach((n) => { o[n.textContent.trim()] = n.dataset.kind; }); return o; });
-  check('en la app el explorador también distingue Markdown, texto, datos y el resto', akinds['a.md'] === 'md' && akinds['notes.txt'] === 'txt' && akinds['data.json'] === 'data' && akinds['conf.yaml'] === 'data' && akinds['report.docx'] === 'file' && akinds.sub === 'dir', akinds);
+  check('en la app el explorador también distingue Markdown, texto, datos y el resto', akinds['a.md'] === 'md' && akinds['notes.txt'] === 'txt' && akinds['data.json'] === 'data' && akinds['conf.yaml'] === 'data' && akinds['report.docx'] === 'office' && akinds['pic.png'] === 'image' && akinds.sub === 'dir', akinds);
+  // El interruptor "Solo Markdown" de la cabecera del panel: muestra y oculta lo que no es una nota, y el contador lo sigue.
+  const shownNow = () => app.evaluate(() => { const o = {}; document.querySelectorAll('.lmd-xroot[data-root=disk] .lmd-node').forEach((n) => { o[n.textContent.trim().replace(/\d+$/, '')] = (n.querySelector('.lmd-node-n') || { dataset: {} }).dataset.n || ''; }); return { names: Object.keys(o), sub: o.sub, pressed: document.querySelector('.lmd-tree-only').getAttribute('aria-pressed') }; });
+  await until(async () => (await shownNow()).sub === '3'); const sw0 = await shownNow();
+  await app.click('.lmd-tree-only'); await until(async () => !(await shownNow()).names.includes('pic.png') && (await shownNow()).sub === '2'); const sw1 = await shownNow();
+  check('el interruptor Solo Markdown oculta lo que no es una nota, y el contador de la carpeta lo sigue', sw0.pressed === "false" && sw0.names.includes("pic.png") && sw0.names.includes("data.json") && sw0.sub === "3" && sw1.pressed === "true" && !sw1.names.includes("pic.png") && !sw1.names.includes("data.json") && !sw1.names.includes("report.docx") && sw1.names.includes("notes.txt") && sw1.sub === "2", [sw0.pressed, sw0.sub, sw1.pressed, sw1.sub, sw1.names.filter((n) => !/^n\d/.test(n))]);
+  await app.click('.lmd-tree-only'); await until(async () => (await shownNow()).names.includes('pic.png'));
+  check('y apagado vuelve a mostrar todo lo que la app abre', (await shownNow()).pressed === 'false' && (await shownNow()).names.includes('report.docx'));
+  await app.click(node('pic.png')); await until(() => app.evaluate(() => !!document.querySelector('.lmd-vw-stage img') && document.querySelector('.lmd-vw-stage img').naturalWidth === 1));
+  check('una imagen de la carpeta se ve en el visor, sin salir de la app', await app.evaluate(() => /^blob:/.test(document.querySelector('.lmd-vw-stage img').src) && document.querySelector('.lmd-docname').textContent === 'pic.png' && /1 × 1 px/.test(document.querySelector('.lmd-vw-info').textContent)) && (await astate()).keep);
   await app.click(node('notes.txt')); await ashows('notes.txt');
   check('un .txt se abre en la app, sin recargar', (await astate()).plain === FILES['notes.txt'] && (await astate()).keep, await astate());
   const opfs = (name) => app.evaluate(async (n) => { const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('exp'); return (await (await dir.getFileHandle(n)).getFile()).text(); }, name);
@@ -455,7 +465,7 @@ try {
   // Un archivo que SharpMD no dibuja: se abre como siempre, o se ofrece convertirlo si la herramienta está prendida.
   await app.click(node('report.docx')); await ashows('report.docx');
   const d1 = await astate();
-  check('un binario se abre como antes: dice que no se puede mostrar', /cannot be shown/.test(d1.text) && !d1.dlg, d1.text.slice(0, 80));
+  check('un Word no se dibuja: dice que se puede convertir y ofrece Importar a Markdown', /can turn it into a note/.test(d1.text) && !d1.dlg && await app.evaluate(() => !!document.querySelector('.lmd-notice [data-act=import-here]')), d1.text.slice(0, 80));
   await app.click(node('a.md')); await ashows('a.md');
   await setting({ tools: { import: true } }); await sleep(900);
   await app.click(node('report.docx'));
