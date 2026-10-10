@@ -569,5 +569,5 @@
     return true;
   }
 
-  LMD.bridgeHost = { onMessage, onOwn, onCloud, onSeen, onSetup, onAction, openSharp, PREFS };
+  LMD.bridgeHost = { onMessage, onOwn, onCloud, onSeen, onSetup, onAction, mark, openSharp, PREFS };
 })();
