@@ -32,9 +32,43 @@ test('la regla: solo un archivo que existe, adentro de una carpeta sumada', () =
   assert.deepEqual(reveal.check(note, []), { status: 403, error: 'no-folders' });
   assert.deepEqual(reveal.check(note, undefined), { status: 403, error: 'no-folders' });
   assert.deepEqual(reveal.check(path.join(allowed, 'no-such.md'), [allowed]), { status: 404, error: 'missing' });
-  // Una carpeta no es un archivo, y la carpeta permitida tampoco se muestra a sí misma.
-  assert.deepEqual(reveal.check(path.join(allowed, 'sub dir'), [allowed]), { status: 400, error: 'not-a-file' });
-  assert.equal(reveal.check(allowed, [allowed]).error, 'not-a-file');
+});
+
+test('la regla, para una carpeta: una de adentro o la sumada misma, con las mismas condiciones', () => {
+  const sub = path.join(allowed, 'sub dir');
+  assert.deepEqual(reveal.check(sub, [allowed]), { file: sub, dir: true });
+  assert.deepEqual(reveal.check(allowed, [allowed]), { file: allowed, dir: true });
+  // Con la barra del final, con ".." en el medio y con otra capitalización de la unidad se resuelve igual.
+  assert.deepEqual(reveal.check(sub + path.sep, [allowed]), { file: sub, dir: true });
+  assert.deepEqual(reveal.check(path.join(sub, '..', 'sub dir'), [allowed]), { file: sub, dir: true });
+  // Afuera no: ni la de al lado, ni la de arriba, ni una que empieza igual.
+  assert.deepEqual(reveal.check(other, [allowed]), { status: 403, error: 'outside' });
+  assert.deepEqual(reveal.check(base, [allowed]), { status: 403, error: 'outside' });
+  assert.deepEqual(reveal.check(path.join(allowed, '..', 'private'), [allowed]), { status: 403, error: 'outside' });
+  fs.mkdirSync(allowed + '-twin', { recursive: true });
+  assert.deepEqual(reveal.check(allowed + '-twin', [allowed]), { status: 403, error: 'outside' });
+  assert.deepEqual(reveal.check(sub, []), { status: 403, error: 'no-folders' });
+  assert.deepEqual(reveal.check(path.join(allowed, 'no-such-dir'), [allowed]), { status: 404, error: 'missing' });
+  for (const bad of [sub + '"', sub + '\n', 'sub dir', sub + '" & calc.exe "']) assert.deepEqual(reveal.check(bad, [allowed]), { status: 400, error: 'bad-path' }, bad);
+});
+
+test('qué se lanza: el explorador y la ruta, como lista de argumentos, sin intérprete', () => {
+  // Una carpeta se abre por dentro; un archivo queda seleccionado en la suya.
+  assert.deepEqual(reveal.command('C:\\notes\\sub dir', true, 'win32'), { cmd: 'explorer.exe', args: ['"C:\\notes\\sub dir"'], verbatim: true });
+  assert.deepEqual(reveal.command('C:\\notes\\a.md', false, 'win32'), { cmd: 'explorer.exe', args: ['/select,"C:\\notes\\a.md"'], verbatim: true });
+  assert.deepEqual(reveal.command('/Users/me/notes', true, 'darwin'), { cmd: 'open', args: ['/Users/me/notes'] });
+  assert.deepEqual(reveal.command('/Users/me/notes/a.md', false, 'darwin'), { cmd: 'open', args: ['-R', '/Users/me/notes/a.md'] });
+  assert.deepEqual(reveal.command('/home/me/notes', true, 'linux'), { cmd: 'xdg-open', args: ['/home/me/notes'] });
+  assert.deepEqual(reveal.command('/home/me/notes/a.md', false, 'linux'), { cmd: 'xdg-open', args: ['/home/me/notes'] });
+  // Nunca una consola: el programa es siempre el explorador del sistema.
+  for (const os of ['win32', 'darwin', 'linux']) for (const dir of [true, false]) assert.match(reveal.command('/x/y', dir, os).cmd, /^(explorer\.exe|open|xdg-open)$/);
+});
+
+test('un enlace a una carpeta de afuera no pasa', (t) => {
+  const link = path.join(allowed, 'link-dir');
+  try { fs.symlinkSync(other, link, 'junction'); } catch (e) { t.skip('este sistema no deja crear enlaces sin permisos'); return; }
+  assert.deepEqual(reveal.check(link, [allowed]), { status: 403, error: 'outside' });
+  fs.rmSync(link, { recursive: false, force: true });
 });
 
 test('la regla: lo que no es una ruta de disco limpia se rechaza sin tocar el disco', () => {
@@ -59,7 +93,7 @@ async function start(extra) {
   const shown = [];
   const cfg = Object.assign(JSON.parse(JSON.stringify(config.DEFAULTS)), { port: 0, origins: ['https://sharpmd.app'], folders: [allowed] }, extra || {});
   const platform = { listeners: async () => [], processes: async () => [], killTree: async () => { throw new Error('nada se cierra acá'); }, stop: () => {}, capabilities: () => ({ cwd: true }) };
-  const app = create({ cfg, token: TOKEN, platform, fixed: true, reveal: (file) => shown.push(file) });
+  const app = create({ cfg, token: TOKEN, platform, fixed: true, reveal: (file, dir) => shown.push(dir ? [file, 'dir'] : file) });
   const port = await app.listen();
   const call = async (method, url, body, headers) => {
     const res = await fetch('http://127.0.0.1:' + port + url, { method, headers: Object.assign({ Authorization: 'Bearer ' + TOKEN }, body === undefined ? {} : { 'Content-Type': 'application/json' }, headers || {}), body: body === undefined ? undefined : JSON.stringify(body) });
@@ -77,13 +111,18 @@ test('la API: muestra lo permitido y anota exactamente ese archivo', async (t) =
   // Lo que venga de más en el pedido no cuenta: no hay forma de pedir otro programa ni otros argumentos.
   await s.call('POST', '/v1/reveal', { path: note, cmd: 'calc.exe', args: ['/c', 'calc'], open: true });
   assert.deepEqual(s.shown, [note, note]);
+  // Una carpeta: la de adentro y la sumada misma. El programa sabe que es una carpeta y la abre por dentro.
+  const sub = path.join(allowed, 'sub dir');
+  assert.equal((await s.call('POST', '/v1/reveal', { path: sub })).status, 200);
+  assert.equal((await s.call('POST', '/v1/reveal', { path: allowed })).status, 200);
+  assert.deepEqual(s.shown.slice(2), [[sub, 'dir'], [allowed, 'dir']]);
 });
 
 test('la API: lo demás se rechaza y no se muestra nada', async (t) => {
   const s = await start(); t.after(() => s.app.close());
   assert.deepEqual([(await s.call('POST', '/v1/reveal', { path: secret })).status, (await s.call('POST', '/v1/reveal', { path: secret })).json], [403, { error: 'outside' }]);
   assert.equal((await s.call('POST', '/v1/reveal', { path: path.join(allowed, 'nope.md') })).status, 404);
-  assert.equal((await s.call('POST', '/v1/reveal', { path: allowed })).status, 400);
+  assert.deepEqual([(await s.call('POST', '/v1/reveal', { path: other })).status, (await s.call('POST', '/v1/reveal', { path: base })).status], [403, 403]);
   assert.equal((await s.call('POST', '/v1/reveal', { path: 'plan.md' })).status, 400);
   assert.equal((await s.call('POST', '/v1/reveal', { path: [note] })).status, 400);
   assert.equal((await s.call('POST', '/v1/reveal', {})).status, 400);

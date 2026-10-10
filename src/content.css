@@ -179,6 +179,7 @@
 .lmd-docname { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lmd-dirty .lmd-docname::after { content: " •"; color: var(--accent); }
 .lmd-docname-edit { cursor: text; }
+html:not(.lmd-editing) .lmd-docname-edit { cursor: pointer; } /* leyendo, el clic abre su menú */
 .lmd-docname-input { width: min(100%, 340px); height: 28px; padding: 0 8px; border: 1px solid var(--accent-fill); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; outline: none; }
 .lmd-foot {
   position: fixed; left: var(--lmd-side-w); right: 0; bottom: 0; z-index: 12; display: flex; align-items: center; gap: 16px; height: 30px;

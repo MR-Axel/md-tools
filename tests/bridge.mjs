@@ -422,7 +422,7 @@ try {
   const titleItems = async (p) => { await p.click('.lmd-docname', { button: 'right' }); await p.waitForSelector('.lmd-menu-narrow', { timeout: 3000 }).catch(() => {}); return p.evaluate(() => [...document.querySelectorAll('.lmd-menu-narrow button')].map((b) => b.textContent.trim())); };
   const tm = await titleItems(lo);
   await lo.click('.lmd-menu-narrow [data-f=path]').catch(() => {}); await lo.waitForTimeout(300);
-  check('el menú del nombre ofrece renombrar, copiar la ruta y ver la carpeta; la ruta sale en el formato del sistema', J(tm) === J(['Rename', 'Copy path', 'View the folder in the browser']) && (await clipOf(lo)) === path.join(disk, 'links.md') && !/^file:/.test(await clipOf(lo)), [tm, await clipOf(lo)]);
+  check('el menú del nombre ofrece renombrar, copiar la ruta y ver la carpeta; la ruta sale en el formato del sistema', J(tm) === J(['Rename', 'Copy path', 'Copy as file:// address', 'View the folder in the browser', 'Show in Explorer…']) && (await clipOf(lo)) === path.join(disk, 'links.md') && !/^file:/.test(await clipOf(lo)), [tm, await clipOf(lo)]);
   await titleItems(lo);
   const [folderTab] = await Promise.all([ctx.waitForEvent('page', { timeout: 8000 }).catch(() => null), lo.click('.lmd-menu-narrow [data-f=folder]').catch(() => {})]);
   check('"Ver la carpeta en el navegador" abre el listado de esa carpeta en una pestaña nueva, por la extensión', !!folderTab && folderTab.url().toLowerCase() === (pathToFileURL(disk).href + '/').toLowerCase() && lo.url().startsWith(WEB), folderTab && folderTab.url());
@@ -545,7 +545,7 @@ try {
   await lk.bringToFront(); await lk.click('[data-act=copy]'); await lk.waitForSelector('.lmd-menu-copy');
   const copyItems = await lk.evaluate(() => [...document.querySelectorAll('.lmd-menu-copy button')].map((b) => b.textContent.trim()));
   await lk.click('.lmd-menu-copy [data-more=copy-flink]'); await lk.waitForTimeout(300);
-  check('el menú Copiar ofrece el enlace a este archivo y copia el https', copyItems.includes('Copy link to this file') && (await clip(lk)) === linkTo(WEB, fileAt), [copyItems, await clip(lk)]);
+  check('el menú Copiar ofrece el enlace a este archivo y copia el https', copyItems.includes('Copy SharpMD link') && (await clip(lk)) === linkTo(WEB, fileAt), [copyItems, await clip(lk)]);
   await lk.click('[data-act=copy]'); await lk.waitForSelector('.lmd-menu-copy'); await lk.click('.lmd-menu-copy [data-more=copy-path]').catch(() => {}); await lk.waitForTimeout(300);
   check('y la ruta local del archivo, como la escribe el sistema', copyItems.includes('Copy path') && (await clip(lk)) === diskFile, [copyItems, await clip(lk)]);
   const sibling = lk.locator('.lmd-tree-box .lmd-node:not(.lmd-node-dir)', { hasText: 'other.md' });
@@ -553,7 +553,7 @@ try {
   await sibling.click({ button: 'right' }).catch(() => {}); await lk.waitForSelector('.lmd-menu-narrow [data-f=flink]', { timeout: 4000 }).catch(() => {});
   const treeItems = await lk.evaluate(() => [...document.querySelectorAll('.lmd-menu [data-f]')].map((b) => b.textContent.trim()));
   await lk.click('.lmd-menu [data-f=flink]').catch(() => {}); await lk.waitForTimeout(300);
-  check('y el clic derecho sobre un archivo del explorador, el de ese archivo', J(treeItems) === J(['Copy link to this file', 'Copy path', 'View the folder in the browser']) && (await clip(lk)) === linkTo(WEB, pathToFileURL(path.join(disk, 'other.md')).href), [treeItems, await clip(lk)]);
+  check('y el clic derecho sobre un archivo del explorador, el de ese archivo', J(treeItems) === J(['Copy SharpMD link', 'Copy path', 'Copy as file:// address', 'View the folder in the browser', 'Show in Explorer…']) && (await clip(lk)) === linkTo(WEB, pathToFileURL(path.join(disk, 'other.md')).href), [treeItems, await clip(lk)]);
   await lk.close();
 
   // Un archivo que no está, y un nombre que quiere ser HTML: la ruta se muestra siempre como texto.

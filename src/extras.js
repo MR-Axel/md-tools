@@ -499,7 +499,8 @@
     const folderAt = dirUrl ? (canTree(dirUrl) ? dirUrl : '') : (core.diskDir() || (LMD.cloud.signedIn() ? core.urlOf('') : ''));
     showMenu(x, y, [['new', 'Nota en blanco'], ['tpl', 'Desde una plantilla…'], folderAt && ['dir', 'Carpeta'], whole && dirUrl && ['fexp', 'Exportar la carpeta…'],
       // La raíz entera a la nube: la carpeta abierta con sus subcarpetas, o todas las notas de este navegador.
-      whole && dirUrl && LMD.send.can(dirUrl) && ['send', inLocal(dirUrl) ? 'Enviar todas a la nube' : 'Enviar la carpeta a la nube']].filter(Boolean), (f) => {
+      whole && dirUrl && LMD.send.can(dirUrl) && ['send', inLocal(dirUrl) ? 'Enviar todas a la nube' : 'Enviar la carpeta a la nube']].concat(whole && dirUrl ? whereItems(dirUrl) : []).filter(Boolean), (f) => {
+      if (wherePick(f, dirUrl)) return;
       if (f === 'send') LMD.send.start(dirUrl);
       else if (f === 'fexp') folderExport(dirUrl);
       else if (f === 'dir') newFolder(folderAt);
@@ -522,12 +523,24 @@
   // (LMD.reveal(ruta)); una página web sola no puede abrir el explorador del sistema.
   const whereItems = (url) => {
     const path = !LMD.touch.small() && core.diskPath(url);
-    return path ? [['path', 'Copiar la ruta', false, 'copy'], core.canViewFolder() && ['folder', 'Ver la carpeta en el navegador', false, 'open'], typeof LMD.reveal === 'function' && ['reveal', 'Mostrar en el Explorador', false, 'folder']] : [];
+    if (!path) return [];
+    // Con el programa local emparejado, lo muestra el explorador del sistema. Sin él la entrada está igual, con puntos
+    // suspensivos: cuenta que existe y cómo conseguirlo.
+    return [['path', 'Copiar la ruta', false, 'copy'], ['furl', 'Copiar como dirección file://', false, 'link'], core.canViewFolder() && ['folder', 'Ver la carpeta en el navegador', false, 'open'],
+      typeof LMD.reveal === 'function' ? ['reveal', 'Mostrar en el Explorador', false, 'folder'] : ['reveal-how', 'Mostrar en el Explorador…', false, 'folder']];
   };
+  async function revealHow() {
+    const page = 'https://sharpmd.app/' + (LMD.lang() === 'es' ? 'es/' : '') + 'local-tools.html';
+    const go = await LMD.dialog.confirm({ title: T('Mostrar en el Explorador'), text: T('Para abrir el explorador de archivos hace falta el programa local de SharpMD, que corre en tu computadora.'), ok: T('Ver cómo instalarlo'),
+      more: LMD.tools && LMD.tools.show ? { text: T('Si ya lo tenés:'), link: T('emparejalo en Herramientas'), go: () => LMD.tools.show('localservers') } : null });
+    if (go) window.open(page, '_blank', 'noopener');
+  }
   function wherePick(f, url) {
     if (f === 'path') { core.copy(core.diskPath(url)); core.flash(T('Ruta copiada')); return true; }
+    if (f === 'furl') { core.copy(core.diskHref(url)); core.flash(T('Dirección copiada')); return true; }
     if (f === 'folder') { core.viewFolder(url); return true; }
     if (f === 'reveal') { try { LMD.reveal(core.diskPath(url)); } catch (e) { core.flash(T('No se pudo abrir la carpeta.'), 'warn'); } return true; }
+    if (f === 'reveal-how') { revealHow(); return true; }
     return false;
   }
   // El menú del nombre de arriba (clic derecho, o mantener apretado): lo mismo que el del archivo en el explorador.
@@ -545,6 +558,7 @@
   const canRename = () => !core.noDoc && !core.readOnly && (canTree() || inLocal() || isLoose() || isCopy());
   function editTitle() {
     const label = core.ui.main.querySelector('.lmd-docname');
+    closeMenu();
     if (!canRename() || label.querySelector('input')) return;
     // Lo que no se puede renombrar desde acá lo dice al intentar, con el botón que abre su carpeta.
     if (isCopy()) { needFolder(true); return; }
@@ -1150,11 +1164,15 @@
       const at = node ? node.dataset.url : rootUrl(e.target);
       // Un archivo del disco abierto por su dirección: el enlace https que lo abre desde un chat o un documento.
       const disk = node && !core.APP && !node.classList.contains('lmd-node-dir') ? LMD.fileUrl(at || '') : '';
-      if (disk) { e.preventDefault(); showMenu(e.clientX, e.clientY, [['flink', 'Copiar enlace a este archivo', false, 'link'], LMD.send.can(at) && ['send', 'Enviar a la nube']].concat(whereItems(disk)).filter(Boolean), (f) => { if (f === 'send') LMD.send.start(at); else if (!wherePick(f, disk)) core.copy(LMD.fileLink(disk)); }); return; }
-      // Lo que no se administra desde acá pero sí se puede enviar: sobre un archivo abierto directo, una carpeta (o el
-      // fondo de la raíz, que es la carpeta que se ve) y un texto; en la app, un archivo suelto o una copia abierta por enlace.
-      if (at && LMD.send.can(at) && !(canTree(at) || inLocal(at))) { e.preventDefault(); showMenu(e.clientX, e.clientY, [['send', at.endsWith('/') ? 'Enviar la carpeta a la nube' : 'Enviar a la nube']], () => LMD.send.start(at)); return; }
-      if (!at || !(canTree(at) || inLocal(at))) return;
+      if (disk) { e.preventDefault(); showMenu(e.clientX, e.clientY, [['flink', 'Copiar enlace de SharpMD', false, 'link'], LMD.send.can(at) && ['send', 'Enviar a la nube']].concat(whereItems(disk)).filter(Boolean), (f) => { if (f === 'send') LMD.send.start(at); else if (!wherePick(f, disk)) core.copy(LMD.fileLink(disk)); }); return; }
+      if (!at) return;
+      if (!(canTree(at) || inLocal(at))) {
+        // Lo que no se administra desde acá (la rama de un archivo abierto por enlace, una carpeta en el lector, un
+        // texto): se puede enviar a la nube y, si la ruta se conoce, saber dónde está.
+        const items = (LMD.send.can(at) ? [['send', at.endsWith('/') ? 'Enviar la carpeta a la nube' : 'Enviar a la nube']] : []).concat(whereItems(at)).filter(Boolean);
+        if (items.length) { e.preventDefault(); showMenu(e.clientX, e.clientY, items, (f) => { if (f === 'send') LMD.send.start(at); else wherePick(f, at); }); }
+        return;
+      }
       e.preventDefault();
       // Con el dedo apoyado, el renglón se levanta: el menú sale al soltar, si no se lo arrastró.
       if (node && held(node) && liftable(at) && !teamReader(at)) { liftRow(node, e.clientX, e.clientY); return; }
@@ -1176,7 +1194,8 @@
     paintLabel(); core.hooks.doc.push(paintLabel);
     label.addEventListener('dblclick', editTitle);
     // Editando la nota, un clic sobre el nombre ya lo edita.
-    label.addEventListener('click', (e) => { if (core.editMode && !e.target.closest('input')) editTitle(); });
+    // Leyendo, el clic abre su menú (renombrar y, si se conoce la ruta, dónde está el archivo): así se descubre.
+    label.addEventListener('click', (e) => { if (e.target.closest('input')) return; if (core.editMode) editTitle(); else if (!menu) { const r = label.getBoundingClientRect(); titleMenu(r.left, r.bottom + 6); } });
     label.addEventListener('contextmenu', (e) => { if (e.target.closest('input')) return; if (titleMenu(e.clientX, e.clientY)) e.preventDefault(); });
     document.addEventListener('mousedown', (e) => { if (menu && !menu.contains(e.target)) closeMenu(); });
     window.addEventListener('keydown', (e) => {

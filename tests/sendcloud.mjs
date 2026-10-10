@@ -323,7 +323,7 @@ try {
   if (opened) await opened.close();
   await rd.bringToFront();
   const boxMenu = await menuOf(rd, row(rd, 'disk', 'box'));
-  check('una carpeta del lector ofrece enviarse entera', J(boxMenu) === J([['send', 'Send the folder to the cloud']]), boxMenu);
+  check('una carpeta del lector ofrece enviarse entera', boxMenu[0] && boxMenu[0][0] === 'send' && boxMenu[0][1] === 'Send the folder to the cloud' && !boxMenu.some((m) => /ren|del|new|mov/i.test(m[0])), boxMenu);
   await pick(rd, 'send'); await rd.waitForSelector('.lmd-send');
   const r3 = await dlg(rd);
   check('el resumen de la carpeta, también en el lector', r3.title === 'Send the folder "box" to the cloud' && r3.sum === '2 notes · Paid plan: no limit' && r3.dest === 'Cloud / box', r3);
