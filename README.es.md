@@ -198,6 +198,7 @@ src/
   web.js          reemplaza las APIs de la extensión cuando la página se sirve desde un sitio
   storeapp.js     avisa si la página corre dentro de la app de Android
   app.html        la página de SharpMD: abrir un archivo o una carpeta y editar ahí
+  guide/          la guía dentro de la app: notas de solo lectura en inglés (en/) y español (es/), listadas en GUIDE (content.js)
 vendor/           librerías de terceros, sin modificar
 examples/         documentos de prueba con todas las funciones
 tests/            prueba de punta a punta
@@ -222,6 +223,8 @@ Otros dos scripts se corren a mano, fuera de `npm test`:
 - `node perf.mjs` mide la carga de la app web, en frío y en caliente, con la red y la CPU limitadas. Conviene correrlo antes y después de tocar lo que carga `src/app.html`.
 
 Un script que el primer pintado no necesita no se suma a `src/app.html`: va en `LAZY_APP` (`src/content.js`) y en la lista `LATE` de `sw.js`, y sigue en `manifest.json` para la extensión.
+
+La guía ("Ver cómo funciona" en la pantalla de inicio) es Markdown común en `src/guide/en` y `src/guide/es`, los mismos archivos en las dos, y se abre de solo lectura en `app.html?f=guide/<nota>.md`, en el idioma de la app. Sus notas se piden al abrir la guía y no están en las listas de `sw.js`: el service worker las guarda la primera vez que se usan. Una nota nueva es un archivo en cada carpeta, un renglón en `GUIDE` (`src/content.js`) y su título en el diccionario. La nota de la API tiene una parte generada: después de cambiar la API, corré `node tools/build-openapi.mjs` y después `node tools/build-guide.mjs`. `node guide.mjs` en `tests/` revisa los enlaces, los nombres de los botones contra la app y la guía dentro de la app.
 
 ## Librerías de terceros
 

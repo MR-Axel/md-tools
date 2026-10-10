@@ -35,7 +35,7 @@
     const i = url.indexOf('#');
     return APP_URL + '?f=' + encodeURIComponent((i < 0 ? url : url.slice(0, i)).slice(VBASE.length)) + (i < 0 ? '' : url.slice(i));
   };
-  let appRoot = null; // la raíz de la nota abierta en la app: { id, kind: 'dir' | 'file' | 'local' | 'cloud' | 'pub', name, handle }
+  let appRoot = null; // la raíz de la nota abierta en la app: { id, kind: 'dir' | 'file' | 'local' | 'cloud' | 'pub' | 'guide', name, handle }
   // Las raíces que se conocen, por id: el primer tramo de la ruta virtual dice de cuál es cada archivo.
   const roots = {};
   const rootOf = (url) => (String(url || '').startsWith(VBASE) ? roots[url.slice(VBASE.length).split('#')[0].split('/')[0]] || null : null);
@@ -135,6 +135,56 @@
       });
     } catch (e) { if (!alive()) markOrphan(); resolve({ ok: false, error: String(e) }); }
   });
+  // ---------- La guía ----------
+  // Cómo se usa SharpMD, en notas de solo lectura que viajan con la app (src/guide/<idioma>/): andan sin conexión y
+  // en la extensión, y cada versión trae las suyas. Acá está solo la lista, con el título de cada una; el texto se
+  // pide recién al abrir la guía. La dirección no lleva el idioma (?f=guide/start.md): abre en el de la app.
+  // tests/guide.mjs comprueba que esta lista y las dos carpetas tengan las mismas notas.
+  const GUIDE = [
+    ['start', 'Empezar'], ['reading-and-editing', 'Leer y editar'], ['files-and-folders', 'Archivos y carpetas'],
+    ['diagrams-and-formulas', 'Diagramas y fórmulas'], ['boards', 'Tablero kanban'], ['tools-and-plugins', 'Herramientas y plugins'],
+    ['voice', 'Dictado y lectura en voz alta'], ['ai-with-your-key', 'IA con tu propia clave'], ['cloud-and-sharing', 'La nube y compartir'],
+    ['connect-your-ai', 'Conectar tu IA por MCP'], ['automations', 'Automatizaciones y webhooks'], ['api', 'Referencia de la API'],
+    ['extension-and-android', 'Extensión de Chrome y app de Android'], ['shortcuts', 'Atajos de teclado'], ['export-and-import', 'Exportar e importar'],
+    ['privacy', 'Privacidad'],
+  ];
+  const GUIDE_HOME = 'guide/start.md';
+  const guideEntry = (file) => GUIDE.find((g) => g[0] + '.md' === file) || null;
+  const guideKept = new Map(); // idioma/archivo -> texto, mientras dure la pestaña
+  async function guideRead(file) {
+    if (!APP || !guideEntry(file)) return null;
+    const key = LMD.lang() + '/' + file;
+    if (guideKept.has(key)) return guideKept.get(key);
+    const res = await fetch(new URL('guide/' + key, APP_URL).href);
+    if (!res.ok) throw new Error('guide');
+    const text = (await res.text()).replace(/\r\n/g, '\n');
+    guideKept.set(key, text);
+    return text;
+  }
+  // Con la primera nota abierta se piden las demás, de a una y sin apuro: así la guía entera queda guardada para
+  // leerla sin conexión (el service worker guarda lo que pasa por él) y pasar de una nota a otra no espera a la red.
+  let guideAll = false;
+  function guideKeep() {
+    if (guideAll) return; guideAll = true;
+    setTimeout(async () => { for (const g of GUIDE) { try { await guideRead(g[0] + '.md'); } catch (e) { guideAll = false; return; } } }, 400);
+    // En la primera visita el service worker todavía no atiende a esta página: lo que se pidió hasta acá no pasó por
+    // él. Apenas la toma, se pide de nuevo para que quede guardado.
+    const sw = window.__MDT_WEB === true ? navigator.serviceWorker : null;
+    if (sw && !sw.controller) sw.addEventListener('controllerchange', () => { const lang = LMD.lang(); GUIDE.forEach((g) => fetch(new URL('guide/' + lang + '/' + g[0] + '.md', APP_URL).href).catch(() => {})); }, { once: true });
+  }
+  const inGuide = () => !noDoc && !!appRoot && appRoot.kind === 'guide';
+  // La dirección de una nota de la guía para pasarle a otra persona: siempre la de la app web.
+  const guideLink = () => (window.__MDT_WEB === true ? APP_URL : LMD.WEB_APP_URL) + '?f=' + encodeURIComponent(HERE.slice(VBASE.length));
+  // "Guardar una copia": la nota de la guía queda entre las del navegador, con su nombre (o nombre-2 si ya hay una), y se abre ahí.
+  async function guideCopy() {
+    if (!inGuide()) return;
+    const dot = DOC_NAME.lastIndexOf('.'); const stem = dot > 0 ? DOC_NAME.slice(0, dot) : DOC_NAME; const ext = dot > 0 ? DOC_NAME.slice(dot) : '.md';
+    let name = stem + ext;
+    for (let n = 2; await LMD.store.noteGet(name); n++) name = stem + '-' + n + ext;
+    if (!(await LMD.store.notePut(name, raw))) { flash(T('No se pudo guardar la copia.'), 'error'); return; }
+    if (await go('local/' + encodeURIComponent(name), { tree: true })) flash(T('Copia guardada en este navegador'));
+  }
+
   // ---------- Archivos de la app ----------
   const vParts = (url) => url.slice(VBASE.length).split('#')[0].split('/').filter(Boolean).map(decodeURIComponent).slice(1);
   async function vFile(url) {
@@ -143,6 +193,7 @@
     if (root.kind === 'local') return parts.length === 1 ? LMD.store.noteHandle(parts[0]) : null;
     if (root.kind === 'cloud') return LMD.cloud.handle(parts.join('/'));
     if (root.kind === 'pub') return { kind: 'file', name: root.title, getFile: async () => ({ text: async () => root.text, lastModified: 0, size: root.text.length }) };
+    if (root.kind === 'guide') return parts.length === 1 && guideEntry(parts[0]) ? { kind: 'file', name: parts[0], getFile: async () => { const text = await guideRead(parts[0]); return { text: async () => text, lastModified: 0, size: text.length }; } } : null;
     if (root.kind === 'file') return parts.length === 1 && parts[0] === root.handle.name ? root.handle : null;
     // Un archivo del disco abierto por enlace: lo lee la extensión. A la web le llega solo texto (una imagen de la nota
     // no llega por acá); en la página de la extensión, también lo que muestra el visor, entero (fsBlob).
@@ -159,6 +210,8 @@
     try {
       const root = rootOf(dirUrl);
       if (!root || root.kind === 'pub') return [];
+      // La guía: sus notas, en el orden de la lista y con su título en vez del nombre del archivo.
+      if (root.kind === 'guide') return vParts(dirUrl).length ? [] : GUIDE.map((g) => ({ name: g[0] + '.md', label: T(g[1]), url: dirUrl + g[0] + '.md', dir: false }));
       if (root.kind === 'cloud') {
         // La nube guarda rutas completas: las carpetas se deducen de ellas.
         const parts = vParts(dirUrl); const other = parts.length && parts[0][0] === '~' ? parts.shift().slice(1) : '';
@@ -1216,7 +1269,9 @@
       // Pie: avisos a la izquierda; estado del guardado y contador a la derecha.
       '<footer class="lmd-foot lmd-doc-only"><span class="lmd-status"></span><span class="lmd-savestate"></span><span class="lmd-count" title="' + T('Palabras y caracteres') + '"></span>' +
         // Solo sobre una nota de otra persona (enlace público, compartida, sesión en vivo como invitado).
-        '<button type="button" class="lmd-link lmd-report" data-act="report" hidden>' + T('Denunciar esta nota') + '</button></footer>';
+        '<button type="button" class="lmd-link lmd-report" data-act="report" hidden>' + T('Denunciar esta nota') + '</button>' +
+        // Solo sobre una nota de la guía: no se edita, pero se puede llevar una copia a las notas del navegador.
+        '<button type="button" class="lmd-link lmd-report lmd-guide-copy" data-act="guide-copy" hidden>' + T('Guardar una copia') + '</button></footer>';
 
     ui.toTop = el('button', { class: 'lmd-to-top', title: T('Volver arriba'), hidden: '' }, ICON.up);
     ui.panel = el('div', { class: 'lmd-panel', hidden: '' });
@@ -1555,7 +1610,7 @@
     if (keys) moreMenu.querySelector('button').focus();
   }
   const PRINT_KEY = LMD.keys('Ctrl+P');
-  const hasLink = () => !!appRoot && (appRoot.kind === 'cloud' || appRoot.kind === 'pub');
+  const hasLink = () => !!appRoot && (appRoot.kind === 'cloud' || appRoot.kind === 'pub' || appRoot.kind === 'guide');
   // Lo que suman las herramientas prendidas (tools.js) a un menú de la barra: cada una devuelve su renglón o nada.
   const toolItems = (menu) => core.menus[menu].map((fn) => fn()).filter(Boolean);
   // Un archivo del disco abierto por su dirección: el enlace https que lo abre desde un chat o un documento.
@@ -1650,6 +1705,8 @@
       !shown('[data-act=theme-flip]') && ['theme-flip', LMD.theme.isDark(settings) ? SUN : MOON, LMD.theme.isDark(settings) ? 'Pasar a claro' : 'Pasar a oscuro'],
       ['settings', ICON.sliders, 'Ajustes'],
       ['shortcuts', ICON.keyboard, 'Atajos de teclado'],
+      // Sobre una nota de la guía, llevársela: en pantalla chica el pie no tiene lugar para ese botón.
+      inGuide() && ['guide-copy', ICON.copy, 'Guardar una copia'],
       // En pantalla chica el pie no tiene lugar para el enlace: denunciar una nota ajena va acá, al final.
       LMD.touch.small() && APP && LMD.sync.reportRef() && ['report', ICON.flag, 'Denunciar esta nota'],
     ].concat(toolItems('more')));
@@ -1672,7 +1729,9 @@
     else if (act === 'copy') openCopy(source, keys);
     else if (act === 'export') openExport(source, keys);
     else if (act === 'copy-html') { copyText(LMD.extras.htmlOf(), source); flash(T('HTML copiado')); }
-    else if (act === 'copy-link') { copyText(location.href.split('#')[0], source); flash(T('Enlace copiado')); }
+    else if (act === 'copy-link') { copyText(inGuide() ? guideLink() : location.href.split('#')[0], source); flash(T('Enlace copiado')); }
+    else if (act === 'guide') { if (APP) { closePanel(); go(GUIDE_HOME); } else bg({ type: 'openApp', query: '?f=' + encodeURIComponent(GUIDE_HOME) }); }
+    else if (act === 'guide-copy') guideCopy();
     else if (act === 'copy-flink') { copyText(LMD.fileLink(fileHere()), source); flash(T('Enlace copiado')); }
     else if (act === 'copy-path') { copyText(diskPath(), source); flash(T('Ruta copiada')); }
     else if (act === 'copy-furl') { copyText(diskHref(), source); flash(T('Dirección copiada')); }
@@ -2611,7 +2670,7 @@
 
   async function listDir(dirUrl, all) {
     // Las direcciones virtuales (la nube, también en el lector de un archivo del disco) no se piden al navegador.
-    if (APP || dirUrl.startsWith(VBASE)) { const found = await vList(dirUrl); return found && (all ? found : visibleRows(found)); }
+    if (APP || dirUrl.startsWith(VBASE)) { const found = await vList(dirUrl); return found && (all || (rootOf(dirUrl) || {}).kind === 'guide' ? found : visibleRows(found)); }
     const r = await bg({ type: 'fetchText', url: dirUrl });
     if (!r || !r.ok) return null;
     const rows = [];
@@ -2666,7 +2725,7 @@
   // El lector de un archivo del disco también muestra la nube (CLOUDY): le habla al servidor por la extensión.
   const CLOUDY = APP || isFile;
   const teamUrl = () => { const t = CLOUDY ? LMD.cloud.teamNow() : null; return t ? VBASE + 'cloud/~' + t.space + '/' : ''; };
-  const sectionOf = (url) => { if (!APP && !url.startsWith(VBASE)) return isFile ? 'disk' : ''; const r = rootOf(url); if (!r) return ''; if (r.kind === 'cloud') return teamUrl() && url.startsWith(teamUrl()) ? 'team' : 'cloud'; return r.kind === 'local' ? 'local' : r.kind === 'fs' ? 'fs' : 'disk'; };
+  const sectionOf = (url) => { if (!APP && !url.startsWith(VBASE)) return isFile ? 'disk' : ''; const r = rootOf(url); if (!r) return ''; if (r.kind === 'cloud') return teamUrl() && url.startsWith(teamUrl()) ? 'team' : 'cloud'; return r.kind === 'local' ? 'local' : r.kind === 'fs' ? 'fs' : r.kind === 'guide' ? 'guide' : 'disk'; };
   // Las notas que nacen con la fecha por nombre se listan por su primer renglón.
   const STAMP_RE = /^(nota|note)-\d{8}-\d{4}(-\d+)?\.md$/i;
 
@@ -2792,6 +2851,11 @@
       }
       add('local', { name: T('En este navegador'), icon: ICON.browser, url: VBASE + 'local/', add: true });
       cloudRoots(add, fills);
+      // La guía, al final: a la vista mientras la persona todavía no tiene nada propio (ni notas en este navegador,
+      // ni carpeta o archivo abierto, ni sesión), y mientras está leyendo una de sus notas.
+      const bare = !diskRoot && !others.length && !LMD.cloud.signedIn() && !(await LMD.store.notesAll()).length;
+      if (turn !== treeTurn) return;
+      if (inGuide() || bare) add('guide', { name: T('Guía'), title: T('Cómo funciona SharpMD'), icon: ICON.book, url: VBASE + 'guide/' });
       // Las otras carpetas y archivos del disco que se abrieron antes: un clic los trae de vuelta.
       if (others.length) {
         const list = add('recent', { name: T('Recientes'), icon: ICON.clock });
@@ -2853,6 +2917,8 @@
     if (key && side.shut[key]) { delete side.shut[key]; saveSide(); fresh = true; }
     // La rama de un archivo abierto por enlace se arma con cada nota, y se va al pasar a otra cosa.
     if (key === 'fs' || ui.treeBox.querySelector('.lmd-xroot[data-root=fs]')) fresh = true;
+    // La raíz de la guía también: aparece al abrir una de sus notas y se va al pasar a otra cosa, si ya hay algo propio.
+    if ((key === 'guide') !== !!ui.treeBox.querySelector('.lmd-xroot[data-root=guide]')) fresh = true;
     if (fresh || !markActive()) loadTree();
   }
   // Sube el árbol del disco una carpeta, y lo recuerda para la carpeta de la nota abierta.
@@ -3339,6 +3405,7 @@
   function sectionLink(anchor) {
     if (!APP) return /^https?:$/.test(location.protocol) ? location.href.split('#')[0] + '#' + anchor : '#' + anchor;
     if (appRoot && appRoot.kind === 'pub') return LMD.WEB_APP_URL + '?f=' + encodeURIComponent(HERE.slice(VBASE.length)) + '#' + anchor;
+    if (inGuide()) return guideLink() + '#' + anchor;
     return '#' + anchor;
   }
 
@@ -3423,6 +3490,8 @@
         '<header><h2>' + T('Ajustes') + '</h2><button class="lmd-icon-btn" data-act="close-panel" title="' + T('Cerrar') + '" aria-label="' + T('Cerrar') + '">' + ICON.close + '</button></header>' +
         '<nav class="lmd-ptabs" role="tablist">' +
           PANEL_TABS.filter((t) => !guestTabs || guestTabs.includes(t[0])).map((t) => '<button type="button" role="tab" data-ptab="' + t[0] + '">' + t[2] + '<span>' + (t[3] && LMD.lang() === 'es' ? t[3] : T(t[1])) + '</span></button>').join('') +
+          // La guía de uso (src/guide/). El invitado de una sesión en vivo tiene una sola nota: no se le ofrece salir de ella.
+          (guestTabs ? '' : '<button type="button" class="lmd-ptabs-foot" data-act="guide">' + ICON.book + '<span>' + T('Ver cómo funciona') + '</span></button>') +
           '<button type="button" class="lmd-ptabs-foot" data-act="feedback">' + ICON.mail + '<span>' + T('Enviar comentarios') + '</span></button>' +
           '<a class="lmd-ptabs-link" href="' + LMD.SPONSOR_URL + '" target="_blank" rel="noopener noreferrer">' + ICON.coffee + '<span>' + T('Apoyar el proyecto') + '</span></a>' +
           '<small class="lmd-ptabs-ver">SharpMD ' + LMD.VERSION + '</small>' +
@@ -3861,7 +3930,7 @@
     const state = ui.main.querySelector('.lmd-savestate');
     const local = !!appRoot && appRoot.kind === 'local';
     const cloud = !!appRoot && appRoot.kind === 'cloud';
-    state.textContent = held ? T('Guardado en pausa: falta decidir un choque') : cloud ? T(cloudState === 'error' ? 'Sin conexión' : dirty ? 'Guardando…' : 'Guardado en la nube') : local ? T(dirty ? 'Guardando…' : 'Guardado en este navegador')
+    state.textContent = inGuide() ? T('Guía · solo lectura') : held ? T('Guardado en pausa: falta decidir un choque') : cloud ? T(cloudState === 'error' ? 'Sin conexión' : dirty ? 'Guardando…' : 'Guardado en la nube') : local ? T(dirty ? 'Guardando…' : 'Guardado en este navegador')
       : (dirty ? T('Cambios sin guardar') : (editMode ? T(settings.autosave ? 'Guardado · autoguardado activo' : 'Todo guardado') : ''));
     const save = ui.main.querySelector('[data-act=save]');
     save.hidden = !local && !editMode && !dirty;
@@ -4020,6 +4089,8 @@
   }
 
   function toggleTask(box) {
+    // Una nota que solo se lee no cambia: la casilla vuelve a como estaba.
+    if (readOnly) { box.checked = !box.checked; flash(T('Esta nota es de solo lectura'), 'warn'); return; }
     const li = box.closest('li'); if (!li) return;
     const r = rangeOf(li, li.hasAttribute('data-p') ? 'data-p' : 'data-l') || rangeOf(li);
     if (!r) return;
@@ -4538,6 +4609,7 @@
       if (!interactive) return false;
       if (!(await joinOutside(held.text, held.rev, held.who, true)) || seq !== docSeq) return false;
     }
+    if (appRoot && appRoot.kind === 'guide') return false; // la guía no se guarda encima: se lleva una copia
     if (interactive && appRoot && appRoot.kind === 'local') return saveNoteToDisk();
     // Una copia de un archivo del disco no tiene dónde guardarse: guardar es pasar al archivo real (pide la carpeta).
     if (appRoot && appRoot.kind === 'fs') { if (interactive) { if (await fsGrant()) return save(false); if (seq === docSeq && appRoot && appRoot.kind === 'fs' && !window.showDirectoryPicker) flash(T('Es una copia: acá no se puede guardar en el archivo del disco.'), 'warn'); } return false; }
@@ -4725,6 +4797,14 @@
       }
       return { root: { id, kind: 'pub', name: T('Compartido'), title: n.path.split('/').pop(), text: n.text }, raw: n.text, disk: n.text, readOnly: true };
     }
+    if (id === 'guide') {
+      // Una nota de la guía, en el idioma de la app. Solo se lee.
+      const file = vParts(url).join('/'); const entry = guideEntry(file); let text = null;
+      if (entry) { try { text = await guideRead(file); } catch (e) { /* sin red y sin copia guardada */ } }
+      if (text == null) return fail(T(entry ? 'No se pudo abrir la guía. Sin conexión se ve después de haberla abierto una vez.' : 'No se encontró "{a}".', { a: name }));
+      guideKeep();
+      return { root: { id, kind: 'guide', name: T('Guía'), title: T(entry[1]) }, raw: text, disk: text, readOnly: true };
+    }
     if (id === 'local') {
       // Nota guardada en el navegador.
       let note = await LMD.store.noteGet(name);
@@ -4866,7 +4946,7 @@
     HERE = VBASE + f; DOC_NAME = doc ? decodeURIComponent(HERE.split('/').pop() || '') : ''; noDoc = !doc;
     appRoot = doc ? doc.root : null; docNote = (doc && doc.note) || ''; docSize = (doc && doc.size) || 0;
     // Conteo anónimo (count.js, solo en la app web): la primera nota propia que se abre o se crea en este navegador. Va el nombre del evento y nada de la nota.
-    if (doc && LMD.count && appRoot.kind !== 'pub' && !LMD.cloud.guest() && !isBin()) LMD.count('note_created');
+    if (doc && LMD.count && appRoot.kind !== 'pub' && appRoot.kind !== 'guide' && !LMD.cloud.guest() && !isBin()) LMD.count('note_created');
     if (doc) wantCloud = '';
     if (doc) roots[appRoot.id] = appRoot;
     raw = doc ? doc.raw : ''; diskText = doc ? doc.disk : ''; dirty = raw !== diskText;
@@ -4937,6 +5017,9 @@
     document.documentElement.classList.toggle('lmd-readonly', readOnly);
     // Una nota abierta por su enlace público solo se lee: ahí no se ofrece editar, insertar ni guardar.
     document.documentElement.classList.toggle('lmd-public', !noDoc && !!appRoot && appRoot.kind === 'pub');
+    // Una nota de la guía tampoco: en su lugar, el pie ofrece guardar una copia.
+    document.documentElement.classList.toggle('lmd-guide', inGuide());
+    ui.main.querySelector('.lmd-guide-copy').hidden = !inGuide();
     document.documentElement.classList.toggle('lmd-nodoc', noDoc);
     // Un archivo que se ve en el visor o lleva un cartel: la barra no ofrece editarlo, copiarlo ni ver su código.
     document.documentElement.classList.toggle('lmd-bin', isBin());
@@ -5037,7 +5120,7 @@
     else if (other) missing = unesc(other.url.split('/').pop() || '');
     if (saved) side = Object.assign(side, saved, { shut: Object.assign({}, saved.shut) });
     LMD.setLang(settings.language);
-    if (APP) { roots.fs = { id: 'fs', kind: 'fs', name: T('Del disco') }; roots.local = { id: 'local', kind: 'local', name: T('En este navegador') }; roots.cloud = { id: 'cloud', kind: 'cloud', name: T('Nube') }; }
+    if (APP) { roots.fs = { id: 'fs', kind: 'fs', name: T('Del disco') }; roots.local = { id: 'local', kind: 'local', name: T('En este navegador') }; roots.cloud = { id: 'cloud', kind: 'cloud', name: T('Nube') }; roots.guide = { id: 'guide', kind: 'guide', name: T('Guía') }; }
     // Sobre un archivo del disco la nube es la única raíz virtual: se lista por la extensión.
     else if (isFile) roots.cloud = { id: 'cloud', kind: 'cloud', name: T('Nube') };
     buildUI();

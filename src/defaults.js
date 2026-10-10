@@ -2187,6 +2187,14 @@
       "Esta nota es del equipo. Quien tenga el enlace entra a editarla sin crear cuenta, junto a los miembros que la tengan abierta.": "This note belongs to the team. Anyone with the link joins to edit it without an account, next to the members who have it open.",
       "Nota del equipo. Los miembros editan desde su cuenta, sin el enlace.": "Team note. Members edit from their account, without the link.",
       "Nota del equipo, en vivo con invitados. La abrió {a}.": "Team note, live with guests. Opened by {a}.",
+      // La guía (src/guide/): la raíz del explorador, el enlace del inicio y los títulos de sus notas.
+      "Guía": "Guide", "Cómo funciona SharpMD": "How SharpMD works", "Ver cómo funciona": "See how it works", "Guardar una copia": "Save a copy", "Guía · solo lectura": "Guide · read only",
+      "No se pudo guardar la copia.": "The copy could not be saved.", "Copia guardada en este navegador": "Copy saved in this browser",
+      "No se pudo abrir la guía. Sin conexión se ve después de haberla abierto una vez.": "The guide could not be opened. Offline it shows after it was opened once.",
+      "Empezar": "Start here", "Leer y editar": "Reading and editing", "Archivos y carpetas": "Files and folders", "Diagramas y fórmulas": "Diagrams and formulas",
+      "Herramientas y plugins": "Tools and plugins", "Dictado y lectura en voz alta": "Dictation and read aloud", "IA con tu propia clave": "AI with your own key",
+      "La nube y compartir": "The cloud and sharing", "Conectar tu IA por MCP": "Connect your AI over MCP", "Automatizaciones y webhooks": "Automations and webhooks",
+      "Referencia de la API": "API reference", "Extensión de Chrome y app de Android": "Chrome extension and Android app", "Exportar e importar": "Export and import", "Privacidad": "Privacy",
   };
   let current = 'es';
   function setLang(pref) {
@@ -2271,7 +2279,7 @@
   }
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.83.0';
+  const VERSION = '2.84.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, PLUGIN_SAMPLES, PLUGIN_GROUPS, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, extSettings, openExtSettings, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);

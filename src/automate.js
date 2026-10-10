@@ -12,6 +12,9 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const api = (m, p, b) => LMD.cloud.api(m, p, b);
   const DOCS = 'https://sharpmd.app/api.html';
+  // En la app, "Ver la documentación" abre la nota de la guía (src/guide/<idioma>/api.md), que resume la API y lleva a
+  // esa página. Sobre un archivo abierto directo no hay guía a mano: va la página.
+  const docsHref = (host) => (host && host.appUrl ? host.appUrl + '?f=' + encodeURIComponent('guide/api.md') : DOCS);
 
   const GROUPS = [
     ['Tarjetas de un tablero', ['card.moved', 'card.done', 'card.created', 'card.updated', 'card.deleted']],
@@ -439,7 +442,7 @@
           body: (shownUrl ? '<div class="lmd-fresh"><p class="lmd-ai-new">' + T('Copiá la dirección ahora: no se vuelve a mostrar.') + '</p>' + copyRow('URL', shownUrl, 'data-c="copy"', { mark: 'data-in-url' }) + '</div>' : '') +
             (data.inboxes.length ? '<ul class="lmd-au-list" data-list="inboxes">' + data.inboxes.map(inRow).join('') + '</ul>' : shownUrl ? '' : empty('Todavía no hay direcciones de entrada.')) + MSG }) +
         card({ id: 'tokens', title: T('Tokens de la API'), text: T('Para leer y escribir notas y mover tarjetas desde un flujo. Son los mismos tokens que usa la IA.'),
-          action: '<a class="lmd-btn lmd-au-docs" href="' + DOCS + '" target="_blank" rel="noopener">' + T('Ver la documentación') + '</a>',
+          action: '<a class="lmd-btn lmd-au-docs" href="' + docsHref(host) + '" target="_blank" rel="noopener">' + T('Ver la documentación') + '</a>',
           body: copyRow('URL', data.api_url, 'data-c="copy"') +
             (shownTok ? '<div class="lmd-fresh"><p class="lmd-ai-new">' + T('Copiá el token ahora: no se vuelve a mostrar.') + '</p>' + copyRow('Token', shownTok.token, 'data-c="copy"', { mark: 'data-api-token' }) + '</div>' : '') +
             // Sin el token a la vista, una nota chica dice que no se vuelve a mostrar. Va una sola vez, debajo de la lista.

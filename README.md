@@ -263,6 +263,7 @@ src/
   storeapp.js     tells whether the page runs inside the Android app
   boot.js         paints the theme background before anything else loads
   app.html        the app: sidebar with the outline and the files, and the note in the center
+  guide/          the guide inside the app: read-only notes in English (en/) and Spanish (es/), listed in GUIDE (content.js)
 server/           optional sync server with MCP
 sw.js             offline cache of the web app
 tools/            generator of the landing page
@@ -301,6 +302,8 @@ Two more scripts run by hand, outside `npm test`:
 The kanban board is one of those tools: on by default, and when it is off a kanban block shows as a code block and the note is not changed. A tool for Settings → Tools is one file plus one `LMD.tools.register({ id, name, about, icon, defaultOn, lazy, module })` line in `src/tools.js`. Its file is requested only while the tool is on. The dictation phrases are tables in `src/voice.js`, one per language, and `LMD.voice.parse(text, mode, lang)` is a pure function that `tests/voice.mjs` exercises without a microphone. A tool adds its rows to the top bar menus with `core.menus.export` and `core.menus.more`, and what they run with `core.actions`.
 
 A script that the first paint does not need is not added to `src/app.html`: it goes in `LAZY_APP` (`src/content.js`) and in the `LATE` list of `sw.js`, and stays in `manifest.json` for the extension.
+
+The guide ("See how it works" on the start screen) is plain Markdown in `src/guide/en` and `src/guide/es`, the same files in both, opened read only at `app.html?f=guide/<note>.md` in the language of the app. Its notes are requested when the guide is opened and are not in the lists of `sw.js`: the service worker keeps them the first time they are used. A new note is a file in each folder plus a line in `GUIDE` (`src/content.js`) and its title in the dictionary. The API note has a generated part: after changing the API, run `node tools/build-openapi.mjs` and then `node tools/build-guide.mjs`. `node guide.mjs` in `tests/` checks the links, the names of buttons against the app, and the guide in the app.
 
 ## Third-party libraries
 
