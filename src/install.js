@@ -212,12 +212,40 @@
   const refused = {}; // extensiones que este navegador ya rechazó al compartir: no se vuelven a ofrecer en esta sesión
   let host = null; let sheet = null;
   const canShareOut = () => LMD.touch.coarse() || LMD.storeApp === true;
+  // Chrome en Android solo deja pasar a la hoja del sistema archivos con estas extensiones: dice que puede con un .md
+  // (canShare) y después lo rechaza. Ahí el .md no se ofrece para compartir: va como .txt, o se descarga.
+  const ANDROID_FILES = /^(bmp|css|csv|ehtml|flac|gif|htm|html|ico|jpeg|jpg|m4a|m4v|mp3|mp4|mpeg|mpg|oga|ogg|ogm|ogv|opus|pdf|png|shtm|shtml|svg|svgz|text|tif|tiff|txt|wav|weba|webm|webp|xbm)$/;
+  const android = () => /Android/i.test(navigator.userAgent || '');
+  // El texto de la nota sin los símbolos de Markdown, para un chat que no los entiende. No busca ser un conversor
+  // completo: saca las marcas y deja lo que se lee. El código queda tal cual.
+  function plainOf(md) {
+    const out = []; let code = false;
+    String(md || '').replace(/\r\n/g, '\n').replace(/^---\n[\s\S]*?\n---\n/, '').split('\n').forEach((raw) => {
+      if (/^\s*(```|~~~)/.test(raw)) { code = !code; return; }
+      if (code) { out.push(raw); return; }
+      let l = raw;
+      if (l.includes('|') && /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(l)) return; // la raya de una tabla
+      if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(l)) { out.push(''); return; } // una línea divisoria
+      l = l.replace(/^(\s*)#{1,6}\s+/, '$1').replace(/\s+#+\s*$/, '');
+      l = l.replace(/^(\s*)(>\s?)+/, '$1');
+      l = l.replace(/^(\s*)[-*+]\s+\[( |x|X)\]\s+/, (m, sp, x) => sp + (x === ' ' ? '☐ ' : '☑ '));
+      l = l.replace(/^(\s*)[-*+]\s+/, '$1• ');
+      if (/^\s*\|.*\|\s*$/.test(l)) l = l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()).join('  ·  ');
+      l = l.replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\[([^\]]+)\]\(([^)\s]+)[^)]*\)/g, (m, t, u) => (t === u || /^#/.test(u) ? t : t + ' (' + u + ')'));
+      l = l.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2').replace(/\[\[([^\]]+)\]\]/g, '$1');
+      l = l.replace(/(\*\*|__)(?=\S)(.+?)(?<=\S)\1/g, '$2').replace(/(^|[^\w*])([*_])(?=\S)([^*_]+?)(?<=\S)\2(?!\w)/g, '$1$3');
+      l = l.replace(/~~(.+?)~~/g, '$1').replace(/==(.+?)==/g, '$1').replace(/`([^`]+)`/g, '$1');
+      l = l.replace(/<\/?[a-zA-Z][^>]*>/g, '');
+      out.push(l);
+    });
+    return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
   const canFile = (file) => { try { return !!(navigator.share && navigator.canShare && navigator.canShare({ files: [file] })); } catch (e) { return false; } };
   // El archivo con su tipo; si el navegador no lo toma, el mismo nombre como texto plano; y aparte, como .txt.
   function filesFor(text, name) {
     const ext = ((/\.([a-z0-9]+)$/i.exec(name) || [])[1] || '').toLowerCase(); const type = MIME[ext] || 'text/markdown';
     const base = name.replace(/\.[a-z0-9]+$/i, '') || 'note';
-    const same = refused[ext] ? null : [new File([text], name, { type })].concat(type === 'text/plain' ? [] : [new File([text], name, { type: 'text/plain' })]).find(canFile) || null;
+    const same = refused[ext] || (android() && !ANDROID_FILES.test(ext)) ? null : [new File([text], name, { type })].concat(type === 'text/plain' ? [] : [new File([text], name, { type: 'text/plain' })]).find(canFile) || null;
     const txt = ext === 'txt' || refused.txt ? null : [new File([text], base + '.txt', { type: 'text/plain' })].find(canFile) || null;
     return { ext: ext || 'md', same, txt };
   }
@@ -243,9 +271,11 @@
     };
     const asFile = (ext) => T('Compartir como archivo {a}', { a: '.' + ext });
     option('text', ICON.b_p, T('Compartir como texto'), T('Lo que mejor anda en WhatsApp y en los chats.'));
+    const plain = plainOf(text);
+    if (plain && plain !== text.trim()) option('plain', ICON.txt, T('Compartir sin formato'), T('Solo el texto, sin los símbolos de Markdown.'));
     if (files.same) option('file', ICON.file, asFile(files.ext));
     if (files.txt) option('txt', ICON.txt, asFile('txt'), files.same ? T('Por si la otra app no toma el .{a}.', { a: files.ext }) : T('Este navegador no comparte archivos .{a}: va como .txt.', { a: files.ext }));
-    if (!files.same && !files.txt) option('save', ICON.download, T('Descargar el archivo'), T('Este navegador no comparte archivos.'));
+    if (!files.same) option('save', ICON.download, T('Descargar el archivo {a}', { a: '.' + files.ext }), files.txt ? T('El archivo completo, para mandarlo desde tus archivos.') : T('Este navegador no comparte archivos.'));
     if (o.cloud && LMD.sync.canLink()) option('link', ICON.link, T('Compartir un enlace'), T('Crea un enlace público de solo lectura.'));
     option('copy', ICON.copy, T('Copiar'), T('El Markdown, para pegarlo donde quieras.'));
     if (text.length > LONG_TEXT) { const long = q('.lmd-so-long'); long.hidden = false; long.textContent = T('Esta nota es larga y un chat puede cortarla. Va mejor como archivo o como enlace.'); }
@@ -269,6 +299,10 @@
     const shareText = () => {
       if (!navigator.share) { fail(T('Este navegador no comparte desde la app. Copiá el texto y pegalo en la otra app.'), [['copy', T('Copiar')]]); return; }
       send({ title: name, text }, textFail);
+    };
+    const sharePlain = () => {
+      if (!navigator.share) { fail(T('Este navegador no comparte desde la app. Copiá el texto y pegalo en la otra app.'), [['copy', T('Copiar')]]); return; }
+      send({ title: name, text: plain }, textFail);
     };
     const shareFile = (file, ext) => {
       if (!file) return;
@@ -303,6 +337,7 @@
       if (act === 'close') { closeSheet(); return; }
       clear();
       if (act === 'text') shareText();
+      else if (act === 'plain') sharePlain();
       else if (act === 'file') shareFile(files.same, files.ext);
       else if (act === 'txt') shareFile(files.txt, 'txt');
       else if (act === 'save') save();
@@ -552,5 +587,5 @@
     try { return await askOpen(url, ctx, why || 'failed'); } finally { asking = false; }
   }
 
-  LMD.install = { init, pane, openLaunched, takeShared, expect, shareOut, canShareOut, openLink, offer: offerFile, EXTENSION_URL, ANDROID_URL };
+  LMD.install = { plainOf, init, pane, openLaunched, takeShared, expect, shareOut, canShareOut, openLink, offer: offerFile, EXTENSION_URL, ANDROID_URL };
 })();

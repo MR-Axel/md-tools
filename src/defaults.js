@@ -888,6 +888,8 @@
       "Compartir como texto": "Share as text", "Lo que mejor anda en WhatsApp y en los chats.": "Works best in WhatsApp and chats.",
       "Compartir como archivo {a}": "Share as a file ({a})", "Por si la otra app no toma el .{a}.": "In case the other app does not take the .{a} file.",
       "Este navegador no comparte archivos .{a}: va como .txt.": "This browser does not share .{a} files: it goes as .txt.", "Este navegador no comparte archivos.": "This browser does not share files.",
+      "Compartir sin formato": "Share without formatting", "Solo el texto, sin los símbolos de Markdown.": "Just the text, without the Markdown symbols.",
+      "Descargar el archivo {a}": "Download the {a} file", "El archivo completo, para mandarlo desde tus archivos.": "The whole file, to send it from your files.",
       "Compartir un enlace": "Share a link", "Crea un enlace público de solo lectura.": "Creates a public read-only link.", "Compartir el enlace": "Share the link", "Copiar el enlace": "Copy the link",
       "El Markdown, para pegarlo donde quieras.": "The Markdown, to paste anywhere.",
       "Esta nota es larga y un chat puede cortarla. Va mejor como archivo o como enlace.": "This note is long and a chat may cut it. A file or a link works better.",
