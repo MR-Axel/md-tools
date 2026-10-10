@@ -109,20 +109,23 @@
     if (document.querySelector('.lmd-fresh')) return;
     const bar = el('div', { class: 'lmd-orphan lmd-fresh', role: 'status' });
     bar.appendChild(el('span', { text: T('Hay una versión nueva.') }));
-    const go = el('button', { type: 'button', 'data-fresh': 'go', text: T('Recargar') });
+    const reload = el('button', { type: 'button', 'data-fresh': 'go', text: T('Recargar') });
     const later = el('button', { type: 'button', class: 'lmd-update-x', 'data-fresh': 'later', title: T('Ahora no'), 'aria-label': T('Ahora no') }, ICON.close);
-    go.addEventListener('click', async () => {
-      go.disabled = true;
+    reload.addEventListener('click', async () => {
+      reload.disabled = true;
       try { await save(false); } catch (e) { /* se mira abajo si quedó algo sin guardar */ }
       // En la cola de la nube o en la sesión (una nota en memoria) lo escrito ya está a salvo. Si no, se espera.
-      if (dirty && stashed !== raw && !(appRoot && appRoot.id === 'mem')) { go.disabled = false; flash(T('Guardá los cambios antes de recargar'), 'warn'); return; }
+      if (dirty && stashed !== raw && !(appRoot && appRoot.id === 'mem')) { reload.disabled = false; flash(T('Guardá los cambios antes de recargar'), 'warn'); return; }
       if (!freshNow.stored && navigator.onLine !== false && window.caches) {
         try { const keys = await caches.keys(); await Promise.all(keys.filter((k) => /^sharpmd-/.test(k)).map((k) => caches.delete(k))); } catch (e) { /* queda la caché: se renueva en la visita siguiente */ }
       }
       location.reload();
     });
     later.addEventListener('click', () => { freshSkip = freshNow.version; bar.remove(); });
-    bar.appendChild(go); bar.appendChild(later);
+    // Qué trae la versión nueva: la nota de novedades de la guía, pedida a la red. El aviso queda donde está.
+    const what = el('button', { type: 'button', class: 'lmd-fresh-what', 'data-fresh': 'what', text: T('Ver qué cambió') });
+    what.addEventListener('click', async () => { what.disabled = true; try { await guideFresh(GUIDE_NEWS); await go('guide/' + GUIDE_NEWS); } finally { what.disabled = false; } });
+    bar.appendChild(what); bar.appendChild(reload); bar.appendChild(later);
     document.body.appendChild(bar);
   }
   const bg = (msg) => new Promise((resolve) => {
@@ -146,9 +149,10 @@
     ['voice', 'Dictado y lectura en voz alta'], ['ai-with-your-key', 'IA con tu propia clave'], ['cloud-and-sharing', 'La nube y compartir'],
     ['connect-your-ai', 'Conectar tu IA por MCP'], ['automations', 'Automatizaciones y webhooks'], ['api', 'Referencia de la API'],
     ['extension-and-android', 'Extensión de Chrome y app de Android'], ['shortcuts', 'Atajos de teclado'], ['export-and-import', 'Exportar e importar'],
-    ['privacy', 'Privacidad'],
+    ['privacy', 'Privacidad'], ['updates', 'Novedades'],
   ];
   const GUIDE_HOME = 'guide/start.md';
+  const GUIDE_NEWS = 'updates.md'; // la nota de novedades: la escribe tools/build-updates.mjs
   const guideEntry = (file) => GUIDE.find((g) => g[0] + '.md' === file) || null;
   const guideKept = new Map(); // idioma/archivo -> texto, mientras dure la pestaña
   async function guideRead(file) {
@@ -160,6 +164,19 @@
     const text = (await res.text()).replace(/\r\n/g, '\n');
     guideKept.set(key, text);
     return text;
+  }
+  // La nota tal como está publicada ahora, no la copia guardada: el aviso de versión nueva lleva a las novedades de esa
+  // versión, y la página que avisa todavía corre la anterior. Sin red queda la copia que haya.
+  async function guideFresh(file) {
+    if (!APP || !guideEntry(file) || navigator.onLine === false) return;
+    const key = LMD.lang() + '/' + file; const url = new URL('guide/' + key, APP_URL);
+    try {
+      // La copia del service worker es la de la versión que corre: se saca primero, y el pedido que sigue llega a la red
+      // y deja guardada la nueva.
+      if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.filter((k) => /^sharpmd-/.test(k)).map(async (k) => (await caches.open(k)).delete(url.origin + url.pathname))); }
+      const res = await fetch(url.href, { cache: 'no-store' });
+      if (res.ok) guideKept.set(key, (await res.text()).replace(/\r\n/g, '\n'));
+    } catch (e) { /* queda la copia guardada */ }
   }
   // Con la primera nota abierta se piden las demás, de a una y sin apuro: así la guía entera queda guardada para
   // leerla sin conexión (el service worker guarda lo que pasa por él) y pasar de una nota a otra no espera a la red.

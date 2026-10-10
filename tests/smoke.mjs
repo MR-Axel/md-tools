@@ -296,6 +296,41 @@ try {
     map: USES.every((p) => ['', 'es/'].every((d) => rawOf('sitemap.xml').includes('<loc>https://sharpmd.app/' + d + p + '.html</loc>') && rawOf('llms.txt').includes('https://sharpmd.app/' + d + p + '.html'))) };
   check('las páginas de uso (editor para agentes por MCP y editor WYSIWYG) existen en inglés y en castellano con sus metadatos, un h1, de 4 a 6 secciones, el botón a la app y enlaces que existen, sin signos de admiración ni rayas', useSeen.length === 4 && useSeen.every((x) => x.ok), useSeen.filter((x) => !x.ok));
   check('las páginas de uso están enlazadas desde el pie de la portada en los dos idiomas, y figuran en el sitemap y en llms.txt', useLinked.home && useLinked.es && useLinked.map, useLinked);
+  // Las novedades (updates.html y es/updates.html): las genera tools/build-updates.mjs desde tools/updates.<idioma>.md, con
+  // las capturas de site/updates/<idioma>/. Las mismas semanas en los dos idiomas, cada imagen en su lugar y liviana, y
+  // enlazada desde el pie de la portada, el sitemap y llms.txt. Que esté al día con su fuente lo mira tests/guide.mjs.
+  const NEWS = { max: 150 * 1024, wide: 1200 };
+  const newsSeen = [];
+  for (const l of ['en', 'es']) {
+    const rel = (l === 'es' ? 'es/' : '') + 'updates.html'; const url = 'https://sharpmd.app/' + rel; const raw = fs.existsSync(path.join(root, rel)) ? rawOf(rel) : '';
+    const meta = raw.includes('<link rel="canonical" href="' + url + '">') && ['en', 'es'].every((x) => raw.includes('hreflang="' + x + '" href="https://sharpmd.app/' + (x === 'es' ? 'es/' : '') + 'updates.html"')) && raw.includes('<meta property="og:url" content="' + url + '">') && /<meta name="description" content="[^"]{120,158}">/.test(raw) && /<meta property="og:image" content="https:\/\/sharpmd\.app\/docs\/social-card/.test(raw) && !/noindex/.test(raw);
+    const imgs = [...raw.matchAll(/<img src="([^"]+)" alt="([^"]*)" width="(\d+)" height="(\d+)"/g)].filter((m) => /site\/updates\//.test(m[1])).map((m) => ({ file: path.join(l === 'es' ? 'es' : '', m[1]).replace(/\\/g, '/'), name: m[1].split('/').pop(), alt: m[2], w: Number(m[3]), h: Number(m[4]) }));
+    const heavy = imgs.filter((i) => !fs.existsSync(path.join(root, i.file)) || fs.statSync(path.join(root, i.file)).size > NEWS.max || i.w > NEWS.wide || i.h < 200 || i.alt.length < 20 || !i.file.startsWith('site/updates/' + l + '/'));
+    if (raw) { await web.goto(origin + '/' + rel); await web.waitForSelector('h1'); }
+    const seen = !raw ? null : await web.evaluate(async () => {
+      const shots = [...document.querySelectorAll('.shot img')]; shots.forEach((i) => { i.loading = 'eager'; });
+      await Promise.all(shots.map((i) => i.decode().catch(() => {})));
+      return { lang: document.documentElement.lang, h1: document.querySelectorAll('h1').length, weeks: [...document.querySelectorAll('section.week')].map((s) => s.id), items: [...document.querySelectorAll('section.week')].map((s) => s.querySelectorAll('h3').length),
+        drawn: shots.filter((i) => i.naturalWidth > 0 && i.getBoundingClientRect().width <= document.querySelector('main').getBoundingClientRect().width + 1).length, shots: shots.length,
+        bad: (document.querySelector('main').textContent.match(/[!¡—–]/g) || []).join(''), wide: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        hrefs: [...document.querySelectorAll('main a[href]')].filter((a) => a.origin === location.origin).map((a) => new URL(a.href).pathname), here: [...document.querySelectorAll('.legal a[aria-current]')].map((a) => new URL(a.href).pathname).join(),
+        mails: [...document.querySelectorAll('a[href^="mailto:"]')].map((a) => a.getAttribute('href')).filter((h) => h !== 'mailto:hello@sharpmd.app'), version: (document.querySelector('.week .under') || { textContent: '' }).textContent };
+    });
+    const missing = []; for (const h of [...new Set(seen ? seen.hrefs : [])].filter((h) => !/^\/(es\/)?$/.test(h))) { if (!fs.existsSync(path.join(root, h))) missing.push(h); }
+    const home = l === 'es' ? '/es/' : '/';
+    newsSeen.push({ rel, imgs: imgs.map((i) => i.name), weeks: seen ? seen.weeks : [], items: seen ? seen.items : [],
+      ok: !!raw && meta && !!seen && seen.lang === l && seen.h1 === 1 && seen.weeks.length >= 2 && /^week-\d{4}-\d{2}-\d{2}$/.test(seen.weeks[0]) && seen.items[0] >= 3 && seen.items[0] <= 7 && imgs.length >= 4 && imgs.length <= 12 && !heavy.length && seen.shots === imgs.length && seen.drawn === imgs.length
+        && !seen.bad && seen.wide <= 0 && !seen.mails.length && !missing.length && seen.hrefs.includes('/src/app.html') && seen.hrefs.includes(home) && seen.here === home + 'updates.html' && /\d\.\d+/.test(seen.version) && !/Google Play/i.test(raw), meta, heavy, seen, missing });
+  }
+  check('las novedades existen en inglés y en castellano: metadatos, un h1, de 3 a 7 novedades en la semana más nueva, sus imágenes a la vista y con texto alternativo, enlaces que existen, sin signos de admiración ni rayas', newsSeen.length === 2 && newsSeen.every((x) => x.ok), newsSeen.filter((x) => !x.ok));
+  check('las dos versiones tienen las mismas semanas, la misma cantidad de novedades en cada una y las mismas imágenes', JSON.stringify(newsSeen[0].weeks) === JSON.stringify(newsSeen[1].weeks) && JSON.stringify(newsSeen[0].items) === JSON.stringify(newsSeen[1].items) && JSON.stringify(newsSeen[0].imgs) === JSON.stringify(newsSeen[1].imgs), newsSeen.map((x) => [x.weeks, x.items, x.imgs]));
+  const newsShots = ['en', 'es'].flatMap((l) => fs.readdirSync(path.join(root, 'site', 'updates', l)).map((f) => ({ f: l + '/' + f, kb: Math.round(fs.statSync(path.join(root, 'site', 'updates', l, f)).size / 1024), used: newsSeen[l === 'en' ? 0 : 1].imgs.includes(f) })));
+  check('cada imagen de site/updates pesa menos de 150 KB y está en uso', newsShots.length >= 8 && newsShots.every((s) => s.kb * 1024 <= NEWS.max && s.used && /\.(webp|png)$/.test(s.f)), newsShots.filter((s) => s.kb * 1024 > NEWS.max || !s.used));
+  const newsLinked = { home: footOf(rawOf('index.html')).includes('href="updates.html"'), es: footOf(rawOf('es/index.html')).includes('href="./updates.html"'),
+    pages: USES.concat('local-tools').every((p) => /<p class="legal">[^\n]*href="updates\.html"/.test(rawOf(p + '.html')) && /<p class="legal">[^\n]*href="\.\/updates\.html"/.test(rawOf('es/' + p + '.html'))),
+    map: ['', 'es/'].every((d) => rawOf('sitemap.xml').includes('<loc>https://sharpmd.app/' + d + 'updates.html</loc>') && rawOf('llms.txt').includes('https://sharpmd.app/' + d + 'updates.html')),
+    pack: /^\/updates\.html export-ignore\r?$/m.test(rawOf('.gitattributes')) && /^\/site\/ export-ignore\r?$/m.test(rawOf('.gitattributes')) && /^\/es\/ export-ignore\r?$/m.test(rawOf('.gitattributes')) };
+  check('las novedades están enlazadas desde el pie de la portada y de las páginas de uso en los dos idiomas, figuran en el sitemap y en llms.txt, y no viajan en el paquete de la extensión', Object.values(newsLinked).every(Boolean), newsLinked);
   const ld = JSON.parse((rawOf('index.html').match(/<script type="application\/ld\+json">(\{"@context":"https:\/\/schema\.org","@type":"SoftwareApplication"[\s\S]*?)<\/script>/) || [0, '{}'])[1]);
   check('portada: los datos estructurados de la app llevan "Sharp MD" como nombre alternativo, y el plan gratis en USD 0', ld.name === 'SharpMD' && JSON.stringify(ld.alternateName) === JSON.stringify(['Sharp MD', 'SharpMD Markdown editor']) && ld.url === 'https://sharpmd.app/' && !!ld.applicationCategory && !!ld.operatingSystem && ld.offers[0].price === '0' && !/Sharp MD/.test(rawOf('index.html').replace(/"alternateName":\[[^\]]*\]/, '')), [ld.alternateName, ld.operatingSystem, ld.offers]);
   // La pantalla de carga: viene en el HTML (se ve desde el primer pintado) y se va cuando la app está lista.
@@ -448,7 +483,7 @@ try {
     const tail = '?x=1&y=dos#seccion'; const bad = [];
     for (const [from, to] of [['/src/', '/src/app.html'], ['/src', '/src/app.html'], ['/app.html', '/src/app.html'], ['/APP', '/src/app.html'], ['/src/app', '/src/app.html'], ['/Src/App.HTML', '/src/app.html'],
       ['/privacy', '/privacy.html'], ['/terms', '/terms.html'], ['/refunds/', '/refunds.html'], ['/support', '/support.html'], ['/pay', '/pay.html'], ['/api', '/api.html'], ['/copyright', '/copyright.html'], ['/acceptable-use', '/acceptable-use.html'], ['/local-tools', '/local-tools.html'],
-      ['/markdown-editor-mcp', '/markdown-editor-mcp.html'], ['/wysiwyg-markdown-editor', '/wysiwyg-markdown-editor.html'], ['/Terms.HTML', '/terms.html'], ['/PRIVACY.html', '/privacy.html'], ['/support.htm', '/support.html'],
+      ['/markdown-editor-mcp', '/markdown-editor-mcp.html'], ['/updates', '/updates.html'], ['/es/updates', '/es/updates.html'], ['/Updates.HTML', '/updates.html'], ['/wysiwyg-markdown-editor', '/wysiwyg-markdown-editor.html'], ['/Terms.HTML', '/terms.html'], ['/PRIVACY.html', '/privacy.html'], ['/support.htm', '/support.html'],
       ['/es', '/es/'], ['/ES/', '/es/'], ['/es/index', '/es/'], ['/Es/Index.html', '/es/'], ['/es/local-tools', '/es/local-tools.html'], ['/es/Markdown-Editor-MCP.html', '/es/markdown-editor-mcp.html'], ['/es/privacy', '/privacy.html'], ['/INDEX.HTML', '/'], ['/index', '/']]) {
       const q = to === '/' || to === '/es/' ? '?site&x=1#seccion' : tail; // la portada sin ?site puede llevar a la app
       const r = await visit(from + q, to + q);

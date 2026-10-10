@@ -27,7 +27,7 @@ const LMD = self.LMD; const toEn = (s) => { LMD.setLang('en'); return LMD.t(s); 
 const prose = (md) => md.replace(/<!--[\s\S]*?-->/g, '').replace(/^(`{3,})[^\n]*\n[\s\S]*?\n\1[ \t]*$/gm, '').replace(/`[^`\n]*`/g, '');
 const h1 = (md) => (/^# (.+)$/m.exec(md) || [])[1] || '';
 
-check('entre 10 y 16 notas, las mismas en los dos idiomas, y solo Markdown', files.en.length >= 10 && files.en.length <= 16 && J(files.en) === J(files.es) && files.en.every((f) => /^[a-z0-9-]+\.md$/.test(f)), files);
+check('entre 10 y 17 notas, las mismas en los dos idiomas, y solo Markdown', files.en.length >= 10 && files.en.length <= 17 && J(files.en) === J(files.es) && files.en.every((f) => /^[a-z0-9-]+\.md$/.test(f)), files);
 check('la lista de la app (GUIDE en content.js) nombra esas notas, ni una más ni una menos', GUIDE.length === files.en.length && J(GUIDE.map((g) => g[0] + '.md').sort()) === J(files.en), GUIDE.map((g) => g[0]));
 const titles = GUIDE.map((g) => ({ id: g[0], es: h1(text('es', g[0] + '.md')), en: h1(text('en', g[0] + '.md')), list: g[1], listEn: toEn(g[1]) }));
 check('el título de cada nota es el que muestra el explorador, en español y en inglés', titles.every((t) => t.es === t.list && t.en === t.listEn && t.en !== t.es), titles.filter((t) => t.es !== t.list || t.en !== t.listEn || t.en === t.es));
@@ -58,8 +58,9 @@ check('hay una nota con tareas, una con un diagrama, una con una tabla, una con 
   uses(/^- \[ \] /m) && uses(/^```mermaid$/m) && uses(/^\|---/m) && uses(/^\$\$$/m) && uses(/^> \[!(NOTE|TIP|WARNING|IMPORTANT)\]$/m) && uses(/^::: warning$/m) && uses(/^```kanban$/m));
 
 // Las dos versiones de una nota tienen la misma forma: los mismos títulos, bloques, enlaces y rótulos, en el mismo orden.
+// Una página del sitio que tiene su versión en castellano (/es/) cuenta como el mismo enlace.
 const bold = (md) => [...prose(md).matchAll(/\*\*([^*\n]+)\*\*/g)].map((m) => m[1]);
-const shape = (md) => ({ heads: (md.match(/^#{1,4} /gm) || []).map((h) => h.length).join(''), fences: (md.match(/^`{3,}\w*$/gm) || []).join(' '), links: links(md).map((k) => k.to).join(' '),
+const shape = (md) => ({ heads: (md.match(/^#{1,4} /gm) || []).map((h) => h.length).join(''), fences: (md.match(/^`{3,}\w*$/gm) || []).join(' '), links: links(md).map((k) => k.to.replace('https://sharpmd.app/es/', 'https://sharpmd.app/')).join(' '),
   rows: (md.match(/^\|/gm) || []).length, items: (md.match(/^(- |\d+\. )/gm) || []).length, bold: bold(md).length, code: (prose(md.replace(/`[^`\n]*`/g, '`x`')).match(/`x`/g) || []).length });
 const uneven = files.en.filter((f) => J(shape(text('en', f))) !== J(shape(text('es', f))));
 check('cada nota tiene la misma forma en los dos idiomas', !uneven.length, uneven.map((f) => [f, shape(text('en', f)), shape(text('es', f))]));
@@ -101,6 +102,31 @@ check('el español vosea', /\bAbrís\b/.test(text('es', 'start.md')) && !files.e
 // Los números que cambian se dicen una sola vez: el tope del plan gratis, y ningún precio.
 const said = (re) => files.es.filter((f) => re.test(text('es', f))).length;
 check('el tope del plan gratis se dice en una sola nota y los precios en ninguna', said(/\b25 notas\b/) === 1 && files.en.filter((f) => /\b25 notes\b/.test(text('en', f))).length === 1 && !LANGS.some((l) => files[l].some((f) => /USD|\$\s?\d|\bdólares\b/.test(prose(text(l, f).replace(/\$[^$\n]+\$/g, ''))))));
+
+// La nota de novedades (updates.md) no se escribe a mano: sale de tools/updates.<idioma>.md, la misma fuente de la
+// página updates.html del sitio. La genera tools/build-updates.mjs, que también revisa que las dos fuentes coincidan.
+console.log('La guía: la nota de novedades');
+{
+  const up = await import('../tools/build-updates.mjs');
+  let made = null; let why = '';
+  try { made = up.render(); } catch (e) { why = String(e && e.message || e); }
+  check('las dos fuentes de las novedades se leen, con las mismas semanas, novedades e imágenes', !!made, why);
+  if (made) {
+    const onDisk = (rel) => (fs.existsSync(path.join(root, rel)) ? read(rel) : null);
+    const stale = up.staleOf(made.want, onDisk);
+    check('la nota de novedades y la página del sitio están al día con su fuente (node tools/build-updates.mjs)', !stale.length && J(up.build(true).stale) === '[]', stale);
+    const drift = up.staleOf(made.want, (rel) => (rel === 'src/guide/es/updates.md' ? onDisk(rel) + '\nUn renglón escrito a mano.\n' : onDisk(rel)));
+    const gone = up.staleOf(made.want, (rel) => (rel === 'updates.html' ? null : onDisk(rel)));
+    check('si lo generado se desfasa de la fuente, o falta, el chequeo lo nombra', J(drift) === J(['src/guide/es/updates.md']) && J(gone) === J(['updates.html']), [drift, gone]);
+    const weeks = (l) => made.docs[l].weeks.map((w) => w.id);
+    check('las semanas son las mismas en los dos idiomas, la más nueva arriba y lo anterior al final', J(weeks('en')) === J(weeks('es')) && weeks('en').length >= 2 && /^\d{4}-\d{2}-\d{2}$/.test(weeks('en')[0]) && weeks('en')[weeks('en').length - 1] === 'earlier', weeks('en'));
+    const note = (l) => text(l, 'updates.md');
+    check('la nota trae cada semana y cada novedad de la fuente, sin imágenes ni identificadores', LANGS.every((l) => made.docs[l].weeks.every((w) => note(l).includes('\n## ' + w.title + '\n') && w.parts.filter((p) => p.kind === 'item').every((p) => note(l).includes('\n### ' + p.title + '\n'))) && !/!\[|\{#/.test(note(l))));
+    check('la nota lleva a la página con imágenes de su idioma y vuelve al inicio de la guía', note('en').includes('](https://sharpmd.app/updates.html)') && note('es').includes('](https://sharpmd.app/es/updates.html)') && LANGS.every((l) => note(l).includes('[[start|')));
+    check('la nota no dice lo que está apagado ni nombra a nadie', LANGS.every((l) => !/Google Play|Play Billing|@(?!api\b)[a-z]/i.test(note(l).replace(/hello@sharpmd\.app/g, ''))));
+  }
+  check('el aviso de versión nueva lleva a esa nota con "Ver qué cambió", y la pide a la red', /'data-fresh': 'what', text: T\('Ver qué cambió'\)/.test(content) && /await guideFresh\(GUIDE_NEWS\); await go\('guide\/' \+ GUIDE_NEWS\)/.test(content) && /const GUIDE_NEWS = 'updates\.md'/.test(content) && toEn('Ver qué cambió') === 'See what changed' && toEn('Novedades') === "What's new");
+}
 
 console.log('La guía: la referencia de la API y cómo viaja');
 {
