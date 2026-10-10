@@ -394,7 +394,8 @@ try {
   check('dentro de la app de Android los botones de compra no se ven', await file.evaluate(() => getComputedStyle(document.querySelector('[data-acct=plan] .lmd-plan-buy')).display === 'none'));
   await file.evaluate(() => document.documentElement.classList.remove('lmd-store-app'));
   // Por defecto SharpMD se abre en la web: una pestaña nueva, ya en la pestaña de Ajustes que toca.
-  const goes = async (tab, sel) => { await file.bringToFront(); await file.click('[data-ptab=' + tab + ']'); const [p] = await Promise.all([ctx.waitForEvent('page'), file.click('[data-acct=' + tab + '] ' + sel)]); const first = p.url(); await p.waitForSelector('.lmd-home'); return { p, first }; };
+  // La pestaña la abre la extensión y su primera carga no pasa por la ruta de la prueba (sale del sitio publicado): se recarga.
+  const goes = async (tab, sel) => { await file.bringToFront(); await file.click('[data-ptab=' + tab + ']'); const [p] = await Promise.all([ctx.waitForEvent('page'), file.click('[data-acct=' + tab + '] ' + sel)]); const first = p.url(); await p.reload(); await p.waitForSelector('.lmd-home'); return { p, first }; };
   const onTab = async (p) => { await p.waitForTimeout(600); for (let i = 0; i < 3; i++) { try { return await p.evaluate(() => { const t = document.querySelector('[data-ptab].lmd-on'); return !document.querySelector('.lmd-panel').hidden && t ? t.dataset.ptab : ''; }); } catch (e) { await p.waitForTimeout(500); } } return 'sin página'; };
   const webPlan = await goes('plan', '.lmd-plans > .lmd-plan:nth-child(2) .lmd-plan-buy [data-c=app]'); await webPlan.p.waitForSelector('.lmd-panel .lmd-plans');
   check('suscribirse abre la app web en una pestaña nueva, directo en los planes', webPlan.first === SITE + '/src/app.html#lmd-plans' && (await onTab(webPlan.p)) === 'plan', webPlan.first);

@@ -543,7 +543,10 @@
   }
   chrome.action.onClicked.addListener(() => { onAction().catch(() => chrome.tabs.create({ url: OWN })); });
   // Solo al instalar, no en cada actualización.
-  chrome.runtime.onInstalled.addListener((d) => { if (d && d.reason === 'install') chrome.tabs.create({ url: WELCOME }).catch(() => {}); });
+  // Instalada desde la tienda, la bienvenida se abre adelante. Cargada sin empaquetar (quien desarrolla, y las pruebas)
+  // se abre por detrás: adelante le sacaba el foco a la pestaña en la que se estaba trabajando.
+  const unpacked = () => new Promise((done) => { try { chrome.management.getSelf((me) => done(!!me && me.installType === 'development')); } catch (e) { done(false); } });
+  chrome.runtime.onInstalled.addListener(async (d) => { if (d && d.reason === 'install') chrome.tabs.create({ url: WELCOME, active: !(await unpacked()) }).catch(() => {}); });
   // Cada vez que el service worker arranca: la marca al día y, si el permiso se acaba de prender, la bienvenida en "Listo".
   (async () => {
     const st = await setupGet();
