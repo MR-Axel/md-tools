@@ -920,7 +920,7 @@ try {
 
     await fresh('ok'); await sheet();
     let v = await look();
-    check('en el teléfono, "más" trae Compartir y abre una hoja propia: como texto, como archivo .md, como .txt y copiar', J(v.opts) === J(['text', 'file', 'txt', 'copy']) && J(v.labels) === J(['Share as text', 'Share as a file (.md)', 'Share as a file (.txt)', 'Copy']) && !v.long && !v.err, v);
+    check('en el teléfono, "más" trae Compartir y abre una hoja propia: como texto, sin formato, como archivo .md, como .txt y copiar', J(v.opts) === J(['text', 'plain', 'file', 'txt', 'copy']) && J(v.labels) === J(['Share as text', 'Share without formatting', 'Share as a file (.md)', 'Share as a file (.txt)', 'Copy']) && !v.long && !v.err, v);
     const box = await page.evaluate(() => { const r = document.querySelector('.lmd-so-card').getBoundingClientRect(); return { in: r.left >= 0 && r.right <= window.innerWidth && r.top >= 0 && r.bottom <= window.innerHeight, low: Math.min(...[...document.querySelectorAll('.lmd-so-opt')].map((b) => b.getBoundingClientRect().height)) }; });
     check('la hoja entra en la pantalla y sus opciones se tocan con el dedo', box.in && box.low >= 44, box);
     await fits(page, 'compartir hacia otra app');
@@ -931,16 +931,24 @@ try {
     await sheet(); v = await pick('txt');
     check('como .txt: el mismo contenido con otro nombre y como texto plano', !v.open && J(v.shared[2].files) === J(['share-me.txt text/plain']), v.shared);
 
+    await sheet(); v = await pick('plain');
+    check('sin formato: sale el texto sin los símbolos de Markdown', !v.open && v.shared[3].text === 'Share me\n\nA note for another app.' && !v.shared[3].files.length, v.shared);
+    const plainOf = await page.evaluate(() => LMD.install.plainOf('---\nt: 1\n---\n# T **b**\n\n- [x] a ~~b~~\n- [ ] c snake_case_x 2*3*4\n\n> q [l](https://e.x/a) [[n|m]]\n\n| A | B |\n| - | :-: |\n| 1 | 2 |\n\n```\n**k**\n```\n'));
+    check('el texto sin formato saca títulos, énfasis, tareas, citas, enlaces y la raya de las tablas, y deja el código como está', plainOf === 'T b\n\n☑ a b\n☐ c snake_case_x 2*3*4\n\nq l (https://e.x/a) m\n\nA  ·  B\n1  ·  2\n\n**k**', plainOf);
+    await fresh('ok'); await page.evaluate(() => Object.defineProperty(navigator, 'userAgent', { configurable: true, get: () => 'Mozilla/5.0 (Linux; Android 14; SM-S911B) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36' }));
+    await sheet(); v = await look();
+    check('en Android, que rechaza un .md en la hoja del sistema, no se ofrece: va como .txt o se descarga el .md', J(v.opts) === J(['text', 'plain', 'txt', 'save', 'copy']) && J(v.labels.slice(2, 4)) === J(['Share as a file (.txt)', 'Download the .md file']), v);
+    await page.tap('[data-so=close]'); await page.evaluate(() => { delete navigator.userAgent; });
     await fresh('no-md'); await sheet(); v = await pick('file');
     check('si el navegador no toma text/markdown, el .md sale como texto plano con su mismo nombre', !v.open && J(v.shared[0].files) === J(['share-me.md text/plain']), v);
 
     await fresh('text-only'); await sheet(); v = await look();
-    check('si el navegador comparte texto y no archivos, se ofrece descargar en vez de compartir el archivo', J(v.opts) === J(['text', 'save', 'copy']), v.opts);
+    check('si el navegador comparte texto y no archivos, se ofrece descargar en vez de compartir el archivo', J(v.opts) === J(['text', 'plain', 'save', 'copy']), v.opts);
     v = await pick('text');
     check('y el texto sale igual', !v.open && v.shared.length === 1 && v.shared[0].text === RAW, v);
 
     await fresh('none'); await sheet(); v = await look();
-    check('sin hoja de compartir en el navegador: texto, descargar y copiar', J(v.opts) === J(['text', 'save', 'copy']), v.opts);
+    check('sin hoja de compartir en el navegador: texto, descargar y copiar', J(v.opts) === J(['text', 'plain', 'save', 'copy']), v.opts);
     v = await pick('text');
     check('y compartir como texto lo dice, con copiar a un toque', v.open && /does not share from the app/.test(v.err) && J(v.alts) === J(['copy']), v);
     v = await pick('copy', '.lmd-so-card > .lmd-so-alt');
@@ -951,16 +959,16 @@ try {
     check('y descargar baja el archivo con su nombre', !!down && down.suggestedFilename() === 'share-me.md', down && down.suggestedFilename());
 
     await fresh('files-denied'); await sheet(); v = await pick('file');
-    check('si la hoja del sistema rechaza el archivo (NotAllowedError), se dice y se ofrece como texto, como .txt o descargar', v.open && /Could not share the file\. Share it as text instead\?/.test(v.err) && J(v.alts) === J(['text', 'txt', 'save']) && J(v.opts) === J(['text', 'txt', 'copy']), v);
+    check('si la hoja del sistema rechaza el archivo (NotAllowedError), se dice y se ofrece como texto, como .txt o descargar', v.open && /Could not share the file\. Share it as text instead\?/.test(v.err) && J(v.alts) === J(['text', 'txt', 'save']) && J(v.opts) === J(['text', 'plain', 'txt', 'copy']), v);
     v = await pick('text', '.lmd-so-card > .lmd-so-alt');
     check('la alternativa es un toque nuevo, con su gesto, y sale', !v.open && v.shared.length === 2 && v.shared[1].text === RAW && v.shared[1].active, v.shared);
     await sheet(); v = await look();
-    check('lo que el navegador ya rechazó no se vuelve a ofrecer', J(v.opts) === J(['text', 'txt', 'copy']), v.opts);
+    check('lo que el navegador ya rechazó no se vuelve a ofrecer, y el archivo completo queda para descargar', J(v.opts) === J(['text', 'plain', 'txt', 'save', 'copy']), v.opts);
     await page.tap('[data-so=close]');
 
     await fresh('cancel'); await sheet(); v = await pick('text');
     const afterText = v; v = await pick('file');
-    check('cancelar la hoja del sistema no es un error: sin aviso, y la hoja propia sigue abierta', afterText.open && !afterText.err && v.open && !v.err && !v.alts.length && v.shared.length === 2 && J(v.opts) === J(['text', 'file', 'txt', 'copy']), [afterText, v]);
+    check('cancelar la hoja del sistema no es un error: sin aviso, y la hoja propia sigue abierta', afterText.open && !afterText.err && v.open && !v.err && !v.alts.length && v.shared.length === 2 && J(v.opts) === J(['text', 'plain', 'file', 'txt', 'copy']), [afterText, v]);
 
     await fresh('denied'); await sheet(); v = await pick('text');
     check('si falla compartir el texto, se dice y queda copiar a un toque: nunca un fallo mudo', v.open && /Could not share\. Copy the text/.test(v.err) && J(v.alts) === J(['copy']), v);
