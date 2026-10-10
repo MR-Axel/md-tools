@@ -3587,7 +3587,7 @@ dialog.lmd-xp-full::backdrop { background: var(--bg); }
 .lmd-blk .lmd-acct-actions { margin-top: 12px; }
 .lmd-blk .lmd-acct-msg { margin: 10px 0 0; color: #dc2626; }
 .lmd-blk .lmd-acct-msg.lmd-acct-done { color: var(--fg-muted); }
-.lmd-empty { margin: 0; padding: 10px 0 2px; border-top: 1px solid var(--line); font-size: 13px; color: var(--fg-muted); }
+.lmd-blk .lmd-empty { margin: 0; padding: 10px 0 2px; border-top: 1px solid var(--line); font-size: 13px; color: var(--fg-muted); }
 .lmd-note { margin: 8px 0 0; font-size: 12px; line-height: 1.45; color: var(--fg-faint); }
 .lmd-acct .lmd-note.lmd-tok-kept { margin-top: 8px; }
 .lmd-blk .lmd-vault-tokens { margin: 6px 0 0; font-size: 12px; }
