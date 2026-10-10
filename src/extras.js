@@ -439,7 +439,7 @@
   let menu = null;
   const closeMenu = () => { if (menu) { menu.remove(); menu = null; } };
   // El ícono de cada acción de los menús del explorador, por id.
-  const MENU_ICON = { send: 'cloud', fexp: 'download', new: 'file', tpl: 'doc', dir: 'folder', ren: 'pencil', mov: 'open', del: 'trash', file: 'file', 'v-protect': 'lock', 'v-lock': 'lock', 'v-unlock': 'unlock', 'v-ai': 'spark', 'v-ailock': 'lock', 'v-drop': 'close', 'v-pass': 'pencil', 'v-off': 'unlock', 'v-destroy': 'trash', 'v-backup': 'copy', 'v-rotate': 'lock' };
+  const MENU_ICON = { send: 'cloud', upf: 'up', upd: 'up', fexp: 'download', new: 'file', tpl: 'doc', dir: 'folder', ren: 'pencil', mov: 'open', del: 'trash', file: 'file', 'v-protect': 'lock', 'v-lock': 'lock', 'v-unlock': 'unlock', 'v-ai': 'spark', 'v-ailock': 'lock', 'v-drop': 'close', 'v-pass': 'pencil', 'v-off': 'unlock', 'v-destroy': 'trash', 'v-backup': 'copy', 'v-rotate': 'lock' };
   // Un menú corto en un punto de la pantalla. items: [id, texto, peligroso, ícono]. onPick recibe el id elegido.
   function showMenu(x, y, items, onPick) {
     closeMenu();
@@ -454,6 +454,10 @@
       onPick(b.dataset.f);
     });
   }
+  // Subir a una carpeta de la nube archivos o una carpeta entera de la computadora o del teléfono (send.js), sin
+  // abrirlos antes en el explorador. Subir carpeta figura solo donde el navegador deja elegir una.
+  const upItems = (dirUrl) => (dirUrl && LMD.send.canUp(dirUrl) ? [['upf', 'Subir archivos'], LMD.send.canDir() && ['upd', 'Subir carpeta']] : []);
+  const upPick = (f, dirUrl) => { if (f !== 'upf' && f !== 'upd') return false; LMD.send.pick(f === 'upd' ? 'dir' : 'files', dirUrl); return true; };
   // Lo que se ve en el visor o se convierte, pero no es una nota (kit.js: FILE_TYPES).
   const notNote = (url) => /^(pdf|epub|image|audio|video|office)$/.test(LMD.kit.kindOf(nameOf(url)));
   function treeMenu(x, y, node) {
@@ -467,6 +471,7 @@
       !local && ['new', isDir ? 'Nuevo archivo acá' : 'Nuevo archivo'],
       !local && ['tpl', 'Desde una plantilla…'],
       !local && ['dir', 'Nueva carpeta'],
+    ].concat(isDir && cloud ? upItems(url) : [], [
       (!isDir || cloud) && ['ren', 'Renombrar'],
       // Lo mismo que arrastrarlo a una carpeta, sin arrastrar: sirve con el dedo y con el teclado.
       canTree(url) && ['mov', 'Mover a…'],
@@ -476,7 +481,7 @@
       LMD.send.can(url) && ['send', isDir ? 'Enviar la carpeta a la nube' : 'Enviar a la nube'],
       // Un PDF, un libro, una imagen: la nube guarda notas, que son texto. La entrada está y lo dice, en vez de faltar sin explicación.
       !isDir && !cloud && !local && core.APP && notNote(url) && LMD.cloud.enabled() && LMD.cloud.reach() && !LMD.cloud.guest() && ['nosend', 'Enviar a la nube', false, 'cloud'],
-    ].concat(whereItems(url), [
+    ], whereItems(url), [
       !isDir && ['del', 'Eliminar', true],
       // Todas las notas de la carpeta en un solo documento: PDF, HTML, Word o Markdown (folderexport.js).
       isDir && ['fexp', 'Exportar la carpeta…'],
@@ -485,7 +490,7 @@
       // Una carpeta de la nube sin contraseña, en un servidor que publica sitios: publicarla (publish.js).
       folder && core.APP && LMD.sync.canPublish(folder) && ['site', 'Publicar como sitio…'],
     ]).concat(folder ? LMD.vault.menu(folder) : []).filter(Boolean), (f) => {
-      if (wherePick(f, url)) return;
+      if (wherePick(f, url) || upPick(f, url)) return;
       if (f === 'imp') core.importAt(url);
       else if (f === 'send') LMD.send.start(url);
       else if (f === 'nosend') core.flash(T('Este archivo no se sube a la nube: las notas de la nube son texto. Se ve desde el disco.'), 'warn');
@@ -505,10 +510,10 @@
   // Con whole (clic derecho sobre una raíz del explorador), suma exportar todo lo que hay en ella.
   function createMenu(x, y, dirUrl, whole) {
     const folderAt = dirUrl ? (canTree(dirUrl) ? dirUrl : '') : (core.diskDir() || (LMD.cloud.signedIn() ? core.urlOf('') : ''));
-    showMenu(x, y, [['new', 'Nota en blanco'], ['tpl', 'Desde una plantilla…'], folderAt && ['dir', 'Carpeta'], whole && dirUrl && ['fexp', 'Exportar la carpeta…'],
+    showMenu(x, y, [['new', 'Nota en blanco'], ['tpl', 'Desde una plantilla…'], folderAt && ['dir', 'Carpeta']].concat(upItems(dirUrl), [whole && dirUrl && ['fexp', 'Exportar la carpeta…'],
       // La raíz entera a la nube: la carpeta abierta con sus subcarpetas, o todas las notas de este navegador.
-      whole && dirUrl && LMD.send.can(dirUrl) && ['send', inLocal(dirUrl) ? 'Enviar todas a la nube' : 'Enviar la carpeta a la nube']].concat(whole && dirUrl ? whereItems(dirUrl) : []).filter(Boolean), (f) => {
-      if (wherePick(f, dirUrl)) return;
+      whole && dirUrl && LMD.send.can(dirUrl) && ['send', inLocal(dirUrl) ? 'Enviar todas a la nube' : 'Enviar la carpeta a la nube']], whole && dirUrl ? whereItems(dirUrl) : []).filter(Boolean), (f) => {
+      if (wherePick(f, dirUrl) || upPick(f, dirUrl)) return;
       if (f === 'send') LMD.send.start(dirUrl);
       else if (f === 'fexp') folderExport(dirUrl);
       else if (f === 'dir') newFolder(folderAt);
@@ -1177,8 +1182,9 @@
       if (!(canTree(at) || inLocal(at))) {
         // Lo que no se administra desde acá (la rama de un archivo abierto por enlace, una carpeta en el lector, un
         // texto): se puede enviar a la nube y, si la ruta se conoce, saber dónde está.
-        const items = (LMD.send.can(at) ? [['send', at.endsWith('/') ? 'Enviar la carpeta a la nube' : 'Enviar a la nube']] : []).concat(whereItems(at)).filter(Boolean);
-        if (items.length) { e.preventDefault(); showMenu(e.clientX, e.clientY, items, (f) => { if (f === 'send') LMD.send.start(at); else wherePick(f, at); }); }
+        // La nube, en el lector de un archivo del disco, no se administra; sí recibe lo que se sube a una de sus carpetas.
+        const items = (LMD.send.can(at) ? [['send', at.endsWith('/') ? 'Enviar la carpeta a la nube' : 'Enviar a la nube']] : []).concat(upItems(at), whereItems(at)).filter(Boolean);
+        if (items.length) { e.preventDefault(); showMenu(e.clientX, e.clientY, items, (f) => { if (f === 'send') LMD.send.start(at); else if (!upPick(f, at)) wherePick(f, at); }); }
         return;
       }
       e.preventDefault();

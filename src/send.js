@@ -4,6 +4,9 @@
 // Antes de mandar se mira todo: qué ya existe en el destino, cuánto lugar queda en el plan (el número sale de la
 // cuenta, nunca de acá) y si el destino está protegido. Lo que no entra se dice antes de empezar, nunca a mitad.
 // Anda igual en la app y en el lector de un archivo del disco, que le habla al servidor por la extensión.
+// Subir a la nube es el mismo recorrido con otra fuente: archivos o una carpeta elegidos de la computadora o del
+// teléfono (menú de la sección Nube y de sus carpetas), o soltados ahí desde el sistema. No hace falta haberlos
+// abierto antes en el explorador.
 (function () {
   'use strict';
 
@@ -13,6 +16,8 @@
 
   const VB = 'https://lmd.local/';
   const MAX_FILES = 2000; const MAX_DEPTH = 12; const LIST_MAX = 60;
+  // Lo que se mira como mucho de una carpeta (notas o no), y el tamaño desde el que un archivo ni se lee.
+  const MAX_SEEN = 20000; const MAX_BYTES = 8 * 1024 * 1024;
   const isNote = (name) => MD_RE.test(name) || /\.txt$/i.test(name);
   const isDirUrl = (url) => url.endsWith('/');
   const fail = (code) => Object.assign(new Error(code), { code });
@@ -42,6 +47,7 @@
     // Un archivo suelto o una copia abierta por enlace no traen su carpeta: ahí se manda el archivo.
     return k === 'local' || !core.APP || (core.rootOf(url) || {}).kind === 'dir';
   }
+  const reach = () => !!core && LMD.cloud.enabled() && LMD.cloud.reach() && !LMD.cloud.guest();
 
   // ---------- Nombres y rutas de la nube ----------
   const BAD = /[:*?"<>|\\\u0000-\u001f]/;
@@ -66,32 +72,70 @@
   }
 
   // ---------- Qué hay para mandar ----------
-  // Los Markdown y los textos de una carpeta y sus subcarpetas, con su ruta adentro de ella. Lo oculto y las carpetas
-  // que no son de notas (node_modules, .git) quedan afuera, igual que en la búsqueda y en los contadores.
-  async function collect(dirUrl) {
-    const out = []; let more = false;
-    const walk = async (url, rel, depth) => {
-      let rows = null;
-      try { rows = await core.listDir(url, true); } catch (e) { rows = null; }
-      if (!rows) { if (!depth) throw fail('read'); return; }
-      rows = rows.slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
-      for (const r of rows) {
-        if (r.name.startsWith('.')) continue;
-        if (r.dir) {
-          if (SKIP_DIRS.test(r.name)) continue;
-          if (depth >= MAX_DEPTH) { more = true; continue; }
-          await walk(r.url, rel + r.name + '/', depth + 1);
-        } else if (isNote(r.name)) {
-          if (out.length >= MAX_FILES) { more = true; return; }
-          out.push({ url: r.url, rel: rel + r.name });
-        }
-      }
-    };
-    await walk(dirUrl, '', 0);
-    return { items: out, more };
-  }
   // El texto como está ahora. La nota abierta va con lo que se ve, esté guardado o no.
   const textOf = async (url) => (!core.noDoc && url === core.HERE ? core.raw : core.readNow(url));
+  // Venga de donde venga, lo que se manda se mira como un árbol de nodos: { name, dir, list() } una carpeta y
+  // { name, dir, read(), file() } un archivo. Así el explorador (una URL), un archivo elegido, una carpeta elegida
+  // (su handle, o la lista de un input webkitdirectory) y lo soltado desde el sistema siguen un solo recorrido.
+  const urlNode = (url, name, dir) => (dir
+    ? { name, dir, url, list: async () => { const rows = await core.listDir(url, true); return rows ? rows.map((r) => urlNode(r.url, r.name, !!r.dir)) : null; } }
+    : { name, dir, url, read: () => textOf(url) });
+  const leafNode = (name, file) => ({ name, dir: false, file, read: async () => { const f = await file(); if (f.size > MAX_BYTES) throw fail('too_large'); return f.text(); } });
+  const fileNode = (f, name) => leafNode(name || f.name, async () => f);
+  const handleNode = (h) => (h.kind === 'directory'
+    ? { name: h.name, dir: true, list: async () => { const out = []; for await (const k of h.values()) out.push(handleNode(k)); return out; } }
+    : leafNode(h.name, () => h.getFile()));
+  // Lo que da webkitGetAsEntry al soltar: una carpeta se lee de a tandas, hasta que una viene vacía.
+  const entryNode = (en) => (en.isDirectory
+    ? { name: en.name, dir: true, list: () => new Promise((ok, no) => { const rd = en.createReader(); const all = []; const next = () => rd.readEntries((got) => { if (!got.length) { ok(all.map(entryNode)); return; } all.push(...got); next(); }, no); next(); }) }
+    : leafNode(en.name, () => new Promise((ok, no) => en.file(ok, no))));
+  // Los archivos de un input webkitdirectory traen su ruta (carpeta/sub/nota.md): con eso se rearma el árbol.
+  function treeOf(files) {
+    const dirOf = (name) => { const kids = new Map(); return { name, dir: true, kids, list: async () => Array.from(kids.values()) }; };
+    const top = dirOf('');
+    for (const f of files) {
+      const parts = String(f.webkitRelativePath || f.name).split('/').filter(Boolean); const last = parts.pop(); let at = top;
+      for (const p of parts) { if (!at.kids.has(p + '/')) at.kids.set(p + '/', dirOf(p)); at = at.kids.get(p + '/'); }
+      at.kids.set(last, fileNode(f, last));
+    }
+    return Array.from(top.kids.values());
+  }
+  // Una fuente: qué se manda y de dónde es. rooted: una sola carpeta, que va con su nombre; si no, lo elegido va
+  // suelto al destino. up: viene de la computadora o del teléfono, no del explorador.
+  const fromUrl = (url) => { const dir = isDirUrl(url); const name = nameOf(url); return { url, up: false, local: kindOf(url) === 'local', dir, rooted: dir, name, tops: [urlNode(url, name, dir)], ok: () => can(url) }; };
+  const fromNodes = (tops) => { const one = tops.length === 1; return { url: '', up: true, local: false, dir: !one || tops[0].dir, rooted: one && tops[0].dir, name: one ? tops[0].name : '', tops, ok: reach }; };
+
+  // Los Markdown y los textos de una fuente, con su ruta adentro de ella. Lo oculto y las carpetas que no son de
+  // notas (node_modules, .git) quedan afuera, igual que en la búsqueda y en los contadores; lo que la persona eligió
+  // con su mano no se filtra por eso. other cuenta lo que no es una nota, y bins guarda las imágenes que vinieron
+  // con una subida, por si una nota las nombra.
+  async function gather(src) {
+    const out = []; const bins = new Map(); let more = false; let other = 0; let seen = 0;
+    const walk = async (rows, rel, depth, chosen) => {
+      rows = rows.slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+      for (const r of rows) {
+        if (++seen > MAX_SEEN) { more = true; return; }
+        if (!chosen && r.name.startsWith('.')) continue;
+        if (r.dir) {
+          if (!chosen && SKIP_DIRS.test(r.name)) continue;
+          if (depth >= MAX_DEPTH) { more = true; continue; }
+          let kids = null;
+          try { kids = await r.list(); } catch (e) { kids = null; }
+          if (kids) await walk(kids, rel + r.name + '/', depth + 1, false);
+        } else if (isNote(r.name)) {
+          if (out.length >= MAX_FILES) { more = true; return; }
+          out.push({ url: r.url || '', rel: rel + r.name, read: r.read });
+        } else { other++; if (r.file && IMG_RE.test(r.name)) bins.set(rel + r.name, r); }
+      }
+    };
+    if (src.rooted) {
+      let rows = null;
+      try { rows = await src.tops[0].list(); } catch (e) { rows = null; }
+      if (!rows) throw fail('read');
+      await walk(rows, '', 0, false);
+    } else await walk(src.tops, '', 0, true);
+    return { items: out, more, other, bins };
+  }
 
   // ---------- Imágenes ----------
   // Una nota del disco puede nombrar imágenes de su carpeta. Subir imágenes es del plan pago (lo dice el servidor
@@ -107,18 +151,29 @@
     try { const lim = await LMD.cloud.binary('GET', '/files' + (owner ? '?o=' + owner : '')); return lim && lim.max > 0 ? { ok: true, why: '' } : { ok: false, why: 'plan' }; }
     catch (e) { return { ok: false, why: 'here' }; }
   }
+  // Dónde está la imagen que nombra una nota: al lado de su archivo en el explorador o, en una subida, entre lo
+  // que vino con ella. Devuelve { key, get() } o nada.
+  function picOf(st, item, ref) {
+    if (item.url) {
+      let at = '';
+      try { at = new URL(ref, item.url).href.split(/[?#]/)[0]; } catch (e) { at = ''; }
+      return at ? { key: at, get: async () => { const h = await core.vFile(at); if (!h) throw fail('missing'); return h.getFile(); } } : null;
+    }
+    const parts = item.rel.split('/').slice(0, -1); let path = '';
+    try { for (const p of decodeURIComponent(ref.split(/[?#]/)[0]).split('/')) { if (p === '..') { if (!parts.length) return null; parts.pop(); } else if (p && p !== '.') parts.push(p); } path = parts.join('/'); } catch (e) { path = ''; }
+    const n = path && st.bins ? st.bins.get(path) : null;
+    return n ? { key: 'up ' + path, get: n.file } : null;
+  }
   async function liftImages(st, item, text, full, res) {
     const map = new Map();
     for (const ref of item.imgs) {
       if (!st.withImages) break;
-      let at = '';
-      try { at = new URL(ref, item.url).href.split(/[?#]/)[0]; } catch (e) { at = ''; }
-      const key = ownerOf(full) + ' ' + at;
+      const pic = picOf(st, item, ref);
+      const key = ownerOf(full) + ' ' + (pic ? pic.key : '');
       if (st.imgDone.has(key)) { map.set(ref, st.imgDone.get(key)); continue; }
       try {
-        const h = at ? await core.vFile(at) : null;
-        if (!h) throw fail('missing');
-        const r = await LMD.images.upload(await LMD.images.reduce(await h.getFile()), full);
+        if (!pic) throw fail('missing');
+        const r = await LMD.images.upload(await LMD.images.reduce(await pic.get()), full);
         map.set(ref, r.src); st.imgDone.set(key, r.src); res.imgUp++;
       } catch (e) {
         res.imgLeft++;
@@ -136,7 +191,7 @@
     const pre = (st.dest ? st.dest + '/' : '') + (st.folder ? st.folder + '/' : '');
     const sp = LMD.cloud.split(pre + 'x'); const owner = sp.owner; const set = st.lists[owner] || new Set();
     const inner = sp.path.slice(0, -1);
-    const rows = st.items.map((it) => { const exists = set.has(inner + it.rel); return { it, full: pre + it.rel, inner: inner + it.rel, exists, bad: it.text == null ? 'read' : !okRel(it.rel) ? 'name' : '', uses: !exists || st.mode === 'rename' }; });
+    const rows = st.items.map((it) => { const exists = set.has(inner + it.rel); return { it, full: pre + it.rel, inner: inner + it.rel, exists, bad: it.text == null ? it.why || 'read' : !okRel(it.rel) ? 'name' : '', uses: !exists || st.mode === 'rename' }; });
     const going = rows.filter((r) => !r.bad && !(r.exists && st.mode === 'skip'));
     const uses = going.filter((r) => r.uses);
     // El tope es de la nube propia del plan gratis. El espacio del equipo no lo tiene.
@@ -215,7 +270,8 @@
   const WHY = { too_large: 'demasiado grande', offline: 'sin conexión', note_limit: 'no entra en el plan gratis', bad_path: 'nombre que la nube no admite', name: 'nombre que la nube no admite', read: 'no se pudo leer',
     vault_locked: 'la carpeta está bloqueada', no_access: 'solo lectura', read_only: 'solo lectura', team_ended: 'el plan del equipo venció' };
   const whyText = (code) => T(WHY[code] || 'no se pudo enviar');
-  const copyLine = (st) => T(st.local ? (st.dir ? 'Queda una copia en la nube. Las notas de este navegador no cambian.' : 'Queda una copia en la nube. La nota de este navegador no cambia.')
+  const copyLine = (st) => T(st.up ? (st.dir ? 'Queda una copia en la nube. Los archivos de este dispositivo no cambian.' : 'Queda una copia en la nube. El archivo de este dispositivo no cambia.')
+    : st.local ? (st.dir ? 'Queda una copia en la nube. Las notas de este navegador no cambian.' : 'Queda una copia en la nube. La nota de este navegador no cambia.')
     : st.dir ? 'Queda una copia en la nube. Los archivos del disco no cambian.' : 'Queda una copia en la nube. El archivo del disco no cambia.');
   const imageLine = (st) => T(st.imgWhy === 'plan' ? 'Subir imágenes es del plan pago: las notas van con sus rutas de imagen como están.' : 'Las imágenes no se suben desde acá: las notas van con sus rutas de imagen como están.');
 
@@ -288,6 +344,8 @@
         else if (st.dir || !c.fits) { const left = Math.max(0, st.limit - st.used); sum.push(left === 1 ? T('Plan gratis: queda 1 lugar de {m}', { m: st.limit }) : T('Plan gratis: quedan {a} lugares de {m}', { a: left, m: st.limit })); }
         if (sum.length) line('lmd-send-sum', sum.join(' · '));
         if (st.more) line('lmd-hint lmd-send-more', T('La carpeta es muy grande: se toman las primeras {n} notas.', { n: total }));
+        // De una subida, lo que no es una nota se dice: no viaja.
+        if (st.up && st.other) line('lmd-hint lmd-send-other', st.other === 1 ? T('1 archivo no es una nota y no se sube.') : T('{n} archivos no son notas y no se suben.', { n: st.other }));
         if (c.exists) {
           const row = el('div', { class: 'lmd-send-row lmd-send-clash' });
           row.appendChild(el('span', { class: 'lmd-send-k', text: T(st.dir ? 'Las que ya existen' : 'Ya hay una nota con ese nombre') }));
@@ -405,40 +463,46 @@
   }
 
   // ---------- El recorrido ----------
-  // opt.dest: el destino ya está dicho (se soltó sobre una carpeta de la nube o sobre la sección).
-  async function flow(url, opt) {
-    const dir = isDirUrl(url); const k = kindOf(url);
+  // src: la fuente (fromUrl o fromNodes). opt.dest: el destino ya está dicho (se soltó sobre una carpeta de la nube
+  // o sobre la sección, o se subió desde su menú).
+  async function flow(src, opt) {
+    const dir = src.dir; const url = src.url; const name = src.name;
     if (opt.dest != null && !writable(opt.dest)) { notice(T(LMD.cloud.isTeam(opt.dest + '/') ? 'En este equipo solo podés leer.' : 'Esta carpeta es de solo lectura'), null, true); return; }
     // La cuenta, como está ahora: cuántas notas tiene y cuántas entran. Sin eso no se manda nada.
     const acct = await LMD.sync.reload();
-    const st = { url, dir, local: k === 'local', fixed: opt.dest != null, dest: opt.dest || '', folder: '', mode: dir ? 'skip' : 'rename', items: [], more: false,
+    const st = { url, dir, local: src.local, up: src.up, fixed: opt.dest != null, dest: opt.dest || '', folder: '', mode: dir ? 'skip' : 'rename', items: [], more: false, other: 0, bins: null,
       limit: acct && acct.limit ? acct.limit : null, used: (acct && acct.notes) || 0, lists: {}, picked: null, images: 0, imgOk: false, imgWhy: '', withImages: false, imgDone: new Map() };
     st.lists[''] = new Set((await LMD.cloud.list(true)).map((n) => n.path));
     const tm = LMD.cloud.teamNow();
     if (tm && LMD.cloud.teamCan('write')) { try { st.lists[tm.space] = new Set((await LMD.cloud.list(true, tm.space)).map((n) => n.path)); } catch (e) { /* sin el espacio del equipo, queda la nube propia */ } }
     try { await LMD.cloud.vaults(); } catch (e) { /* sin la lista de carpetas protegidas se sigue igual */ }
-    const name = nameOf(url);
-    if (dir) {
-      let got = null;
-      try { got = await collect(url); } catch (e) { notice(T('No se pudo leer esta carpeta.'), null, true); return; }
-      st.items = got.items; st.more = got.more; st.folder = cleanName(name);
-      if (!st.items.length) { notice(T('Ahí no hay notas para enviar.'), null, true); return; }
-    } else {
-      st.items = [{ url, rel: name }];
+    let got = null;
+    try { got = await gather(src); } catch (e) { notice(T(src.up ? 'No se pudieron leer esos archivos.' : 'No se pudo leer esta carpeta.'), null, true); return; }
+    st.items = got.items; st.more = got.more; st.other = got.other; st.bins = got.bins;
+    if (src.rooted) st.folder = cleanName(name);
+    if (!st.items.length) { notice(T(src.up ? 'Solo se suben notas: archivos Markdown y de texto.' : 'Ahí no hay notas para enviar.'), null, true); return; }
+    if (!dir && url) {
       // Por defecto va a la raíz, o a la carpeta de la nube que se llama como la carpeta de donde sale, si ya existe.
       const from = st.local ? '' : cleanName(nameOf(new URL('.', url).href));
       if (!st.fixed && from && Array.from(st.lists['']).some((p) => p.startsWith(from + '/'))) st.dest = from;
     }
-    for (const it of st.items) { try { it.text = await textOf(it.url); } catch (e) { it.text = null; } it.imgs = it.text == null || st.local ? [] : imagesIn(it.text); }
+    for (const it of st.items) {
+      try { it.text = await it.read(); } catch (e) { it.text = null; it.why = e && e.code === 'too_large' ? 'too_large' : ''; }
+      // De una subida solo cuentan las imágenes que vinieron con ella: las otras no hay de dónde sacarlas.
+      it.imgs = it.text == null || st.local ? [] : imagesIn(it.text).filter((ref) => it.url || picOf(st, it, ref));
+    }
     // Una sola nota que no se puede leer, o con un nombre que la nube no admite: se dice y no hay más que decidir.
-    if (!dir) { const no = st.items[0].text == null ? 'read' : !okRel(st.items[0].rel) ? 'name' : ''; if (no) { notice(T('No se pudo enviar "{a}": {b}.', { a: name, b: whyText(no) }), null, true); return; } }
+    if (!dir) { const no = st.items[0].text == null ? st.items[0].why || 'read' : !okRel(st.items[0].rel) ? 'name' : ''; if (no) { notice(T('No se pudo enviar "{a}": {b}.', { a: name, b: whyText(no) }), null, true); return; } }
     st.images = st.items.reduce((n, it) => n + it.imgs.length, 0);
+    // Las imágenes que una nota nombra tienen su propio renglón: no se cuentan entre lo que no se sube.
+    if (st.up && st.images) { const named = new Set(); st.items.forEach((it) => it.imgs.forEach((ref) => named.add(picOf(st, it, ref).key))); st.other = Math.max(0, st.other - named.size); }
     if (st.images) { const room = await imageRoom(ownerOf(st.dest)); st.imgOk = room.ok; st.imgWhy = room.why; st.withImages = room.ok; }
 
     const c = repick(st);
     const folders = destRows(st).length > 1;
     const ask = dir || (!st.fixed && folders) || c.exists > 0 || !c.fits || (st.images > 0 && st.imgOk) || c.rows.some((r) => r.bad);
-    const title = dir ? (name ? T('Enviar la carpeta "{a}" a la nube', { a: name }) : T('Enviar todas las notas a la nube')) : T('Enviar "{a}" a la nube', { a: name });
+    const title = src.up ? (src.rooted ? T('Subir la carpeta "{a}" a la nube', { a: name }) : dir ? T('Subir notas a la nube') : T('Subir "{a}" a la nube', { a: name }))
+      : dir ? (name ? T('Enviar la carpeta "{a}" a la nube', { a: name }) : T('Enviar todas las notas a la nube')) : T('Enviar "{a}" a la nube', { a: name });
     if (ask) {
       const out = await dialog(st, title);
       if (dir || !out || !out.quiet) return;
@@ -470,16 +534,49 @@
   }
 
   let busy = false;
-  async function start(url, opt) {
+  async function begin(src, opt) {
     if (!core) return;
     try { await LMD.cloud.ready(); } catch (e) { return; }
-    if (!can(url)) return;
-    if (!LMD.cloud.signedIn()) return needLogin(() => start(url, opt));
+    if (!src.ok()) return;
+    if (!LMD.cloud.signedIn()) return needLogin(() => begin(src, opt));
     if (busy) return;
     busy = true;
-    try { await flow(url, opt || {}); }
+    try { await flow(src, opt || {}); }
     catch (e) { notice(T(e && e.code === 'offline' ? 'No hay conexión con el servidor.' : 'No se pudo enviar a la nube.'), null, true); }
     finally { busy = false; }
+  }
+  const start = (url, opt) => begin(fromUrl(url), opt);
+
+  // ---------- Subir desde la computadora o el teléfono ----------
+  // Una carpeta de la nube (o su raíz, o la del equipo) donde esta cuenta puede dejar notas.
+  const canUp = (url) => reach() && LMD.cloud.signedIn() && !!url && url.startsWith(VB + 'cloud/') && isDirUrl(url) && writable(core.pathOf(url));
+  // Una carpeta entera se elige con el selector de carpetas del navegador o, donde no existe, con un input de
+  // carpeta. Donde no hay ninguno de los dos, la opción no se ofrece.
+  const canDir = () => !!window.showDirectoryPicker || 'webkitdirectory' in HTMLInputElement.prototype;
+  // Abre el selector: 'files' (varios archivos) o 'dir' (una carpeta). Se llama derecho desde el clic, que es lo que
+  // el navegador pide para abrirlo. dirUrl es la carpeta de la nube adonde va lo elegido.
+  let chooser = null;
+  function pick(what, dirUrl) {
+    if (!canUp(dirUrl)) return;
+    const dest = core.pathOf(dirUrl);
+    if (what === 'dir' && window.showDirectoryPicker) {
+      let asked = null;
+      try { asked = window.showDirectoryPicker({ mode: 'read' }); } catch (e) { asked = Promise.reject(e); }
+      Promise.resolve(asked).then((h) => { if (h) begin(fromNodes([handleNode(h)]), { dest }); }, (e) => { if (!e || e.name !== 'AbortError') notice(T('No se pudo abrir. Probá de nuevo.'), null, true); });
+      return;
+    }
+    if (chooser) chooser.remove();
+    const input = chooser = el('input', { type: 'file', class: 'lmd-send-input', hidden: '', tabindex: '-1', 'aria-hidden': 'true' });
+    if (what === 'dir') input.webkitdirectory = true; else input.multiple = true;
+    input.addEventListener('change', () => {
+      const files = Array.from(input.files || []); input.remove(); if (chooser === input) chooser = null;
+      if (!files.length) return;
+      begin(fromNodes(what === 'dir' ? treeOf(files) : files.map((f) => fileNode(f))), { dest });
+    });
+    input.addEventListener('cancel', () => { input.remove(); if (chooser === input) chooser = null; });
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    input.click();
   }
 
   // ---------- Soltar sobre la nube ----------
@@ -496,7 +593,58 @@
     return writable(dest) ? { dest, mark: node || sec } : null;
   }
 
-  function init(c) { core = c; }
+  // ---------- Soltar desde el sistema ----------
+  // Archivos o carpetas arrastrados desde afuera (el Explorador de Windows, el Finder) y soltados sobre la sección
+  // Nube o una de sus carpetas: suben ahí, con sus subcarpetas. En cualquier otro lugar de la ventana, soltar un
+  // archivo hace lo de siempre (abrirlo, importarlo, pegar una imagen en la nota): por eso esto escucha primero y
+  // solo se queda con lo que cae sobre la nube.
+  const fromOs = (e) => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+  const osTarget = (e) => (fromOs(e) && reach() ? target(e) : null);
+  let over = null; let tag = null;
+  function mark(s, e) {
+    const node = s ? s.mark : null;
+    if (over !== node) { if (over) over.classList.remove('lmd-drop'); over = node; if (node) node.classList.add('lmd-drop'); }
+    if (!node) { if (tag) { tag.remove(); tag = null; } return; }
+    if (!tag) { tag = el('div', { class: 'lmd-drop-tag', 'aria-hidden': 'true' }, ICON.cloud); tag.appendChild(el('span', { text: T('Subir notas a la nube') })); document.body.appendChild(tag); }
+    tag.style.transform = 'translate(' + Math.round(Math.min(window.innerWidth - tag.offsetWidth - 8, e.clientX + 16)) + 'px,' + Math.round(Math.min(window.innerHeight - tag.offsetHeight - 8, e.clientY + 18)) + 'px)';
+  }
+  // Lo soltado, como nodos. Hay que pedirlo mientras dura el evento: después el navegador ya no lo entrega.
+  // Una carpeta llega por webkitGetAsEntry (todos los navegadores) o por su handle (Chromium); un archivo suelto,
+  // además, como File.
+  function taken(dt) {
+    const out = [];
+    for (const it of Array.from(dt.items || [])) {
+      if (it.kind !== 'file') continue;
+      let en = null; let later = null; let f = null;
+      try { en = it.webkitGetAsEntry ? it.webkitGetAsEntry() : null; } catch (e) { en = null; }
+      if (en) { out.push(entryNode(en)); continue; }
+      try { later = it.getAsFileSystemHandle ? it.getAsFileSystemHandle() : null; } catch (e) { later = null; }
+      try { f = it.getAsFile(); } catch (e) { f = null; }
+      const plain = f ? fileNode(f) : null;
+      out.push(later ? Promise.resolve(later).then((h) => (h ? handleNode(h) : plain), () => plain) : plain);
+    }
+    if (!out.length) Array.from(dt.files || []).forEach((f) => out.push(fileNode(f)));
+    return Promise.all(out).then((all) => all.filter(Boolean));
+  }
+  function bindDrop() {
+    window.addEventListener('dragover', (e) => {
+      const s = osTarget(e);
+      if (!s) { mark(null); return; }
+      e.preventDefault(); e.stopImmediatePropagation(); e.dataTransfer.dropEffect = 'copy'; mark(s, e);
+    }, true);
+    window.addEventListener('dragleave', (e) => { if (!e.relatedTarget) mark(null); }, true);
+    window.addEventListener('dragend', () => mark(null), true);
+    window.addEventListener('drop', (e) => {
+      const s = osTarget(e); mark(null);
+      if (!s) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      if (core.ui.home) core.ui.home.classList.remove('lmd-drop');
+      taken(e.dataTransfer).then((tops) => { if (tops.length) begin(fromNodes(tops), { dest: s.dest }); });
+    }, true);
+  }
 
-  LMD.send = { init, can, start, target, drop: (url, dest) => start(url, { dest }) };
+  // Se engancha antes que los otros que miran lo que se suelta en la ventana (el visor, importar): va primero.
+  function init(c) { core = c; bindDrop(); }
+
+  LMD.send = { init, can, start, target, drop: (url, dest) => start(url, { dest }), canUp, canDir, pick };
 })();
