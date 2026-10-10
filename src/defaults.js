@@ -684,6 +684,13 @@
       "Enviar a la nube": "Send to the cloud", "Enviar la carpeta a la nube": "Send the folder to the cloud", "Enviar todas a la nube": "Send them all to the cloud", "Copiar a la nube": "Copy to the cloud",
       "Enviar \"{a}\" a la nube": "Send \"{a}\" to the cloud", "Enviar la carpeta \"{a}\" a la nube": "Send the folder \"{a}\" to the cloud", "Enviar todas las notas a la nube": "Send all the notes to the cloud",
       "Queda una copia en la nube. El archivo del disco no cambia.": "A copy stays in the cloud. The file on disk does not change.",
+      // Subir a la nube (send.js): lo mismo, con archivos o una carpeta de la computadora o del teléfono.
+      "Subir archivos": "Upload files", "Subir carpeta": "Upload folder", "Subir notas a la nube": "Upload notes to the cloud",
+      "Subir \"{a}\" a la nube": "Upload \"{a}\" to the cloud", "Subir la carpeta \"{a}\" a la nube": "Upload the folder \"{a}\" to the cloud",
+      "Queda una copia en la nube. El archivo de este dispositivo no cambia.": "A copy stays in the cloud. The file on this device does not change.",
+      "Queda una copia en la nube. Los archivos de este dispositivo no cambian.": "A copy stays in the cloud. The files on this device do not change.",
+      "1 archivo no es una nota y no se sube.": "1 file is not a note and is not uploaded.", "{n} archivos no son notas y no se suben.": "{n} files are not notes and are not uploaded.",
+      "Solo se suben notas: archivos Markdown y de texto.": "Only notes are uploaded: Markdown and text files.", "No se pudieron leer esos archivos.": "Could not read those files.",
       "Queda una copia en la nube. Los archivos del disco no cambian.": "A copy stays in the cloud. The files on disk do not change.",
       "Queda una copia en la nube. La nota de este navegador no cambia.": "A copy stays in the cloud. The note in this browser does not change.",
       "Queda una copia en la nube. Las notas de este navegador no cambian.": "A copy stays in the cloud. The notes in this browser do not change.",
