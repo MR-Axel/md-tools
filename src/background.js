@@ -83,6 +83,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'cloudApi') return LMD.bridgeHost.onCloud(msg, sender, sendResponse);
   // El lector abrió un archivo del disco: su carpeta queda entre las que la app web puede leer por enlace.
   if (msg.type === 'fileSeen') return LMD.bridgeHost.onSeen(msg, sender, sendResponse);
+  // La bienvenida, mientras falte el permiso para archivos del disco (bridge-sw.js).
+  if (msg.type === 'fileSetup') return LMD.bridgeHost.onSetup(msg, sender, sendResponse);
   if (msg.type === 'openApp') {
     const own = chrome.runtime.getURL('src/app.html');
     const go = (base) => chrome.tabs.create({ url: base + (msg.fresh ? '?new=1' : (msg.query || '')) });

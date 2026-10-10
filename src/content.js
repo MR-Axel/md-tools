@@ -1507,7 +1507,7 @@
     if (!APP) { window.open(dir, '_blank', 'noopener'); return true; }
     const r = await LMD.bridge.viewFolder(dir);
     if (r && r.ok && r.opened) return true;
-    flash(T(r && r.ok && r.why === 'refused' ? 'La extensión solo muestra carpetas que ya abriste con ella.' : 'No se pudo abrir la carpeta.'), 'warn');
+    flash(T(r && r.ok && r.why === 'refused' ? 'La extensión solo muestra carpetas que ya abriste con ella.' : r && r.ok && r.why === 'access' ? 'A la extensión le falta el permiso para archivos del disco' : 'No se pudo abrir la carpeta.'), 'warn');
     return false;
   }
   // Sobre un archivo del disco la cuenta anda acá mismo: el lector le habla al servidor por la extensión (cloud.js).

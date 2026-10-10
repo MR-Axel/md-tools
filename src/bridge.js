@@ -76,7 +76,7 @@
 
   // canOpen: si de este lado hay una extensión que pueda llevar la pestaña a un archivo del disco. openFile lo pide.
   const api = { present: () => false, info: () => null, reconnect, adopt, settle: () => Promise.resolve(), sync: () => Promise.resolve(), hash,
-    canOpen: () => false, openFile: () => Promise.resolve({ ok: false, error: 'none' }), setup: () => Promise.resolve({ ok: false, error: 'none' }),
+    canOpen: () => false, openFile: () => Promise.resolve({ ok: false, error: 'none' }), setup: () => Promise.resolve({ ok: false, error: 'none' }), setupNever: () => Promise.resolve({ ok: false, error: 'none' }),
     readFile: () => Promise.resolve({ ok: false, error: 'none' }), canRead: () => Promise.resolve(false), listDir: () => Promise.resolve({ ok: false, error: 'none' }), viewFolder: () => Promise.resolve({ ok: false, error: 'none' }),
     // Un texto ya leído por el puente, para que quien abre la nota enseguida no lo pida de nuevo. Sale una sola vez.
     keep: (url, text) => { kept = { url, text, at: Date.now() }; }, take: (url) => { const k = kept; if (!k || k.url !== url) return null; kept = null; return Date.now() - k.at < 15000 ? k.text : null; },
@@ -147,7 +147,10 @@
     api.present = () => true;
     api.canOpen = () => true;
     api.openFile = (url) => new Promise((resolve) => { try { chrome.runtime.sendMessage({ type: 'openFile', url }, (res) => resolve(chrome.runtime.lastError || !res ? { ok: false, error: 'gone' } : res)); } catch (e) { resolve({ ok: false, error: 'gone' }); } });
-    api.setup = async () => { try { await chrome.tabs.create({ url: 'chrome://extensions/?id=' + chrome.runtime.id }); return { ok: true, opened: true }; } catch (e) { return { ok: false, error: 'gone' }; } };
+    // Los ajustes de la extensión en el navegador: los abre el service worker, que anota que la persona fue para allá.
+    const setup = (act) => new Promise((resolve) => { try { chrome.runtime.sendMessage({ type: 'fileSetup', act }, (res) => resolve(chrome.runtime.lastError || !res ? { ok: false, error: 'gone' } : res)); } catch (e) { resolve({ ok: false, error: 'gone' }); } });
+    api.setup = () => setup('open');
+    api.setupNever = () => setup('never');
     return;
   }
   if (!WEB) return;

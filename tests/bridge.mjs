@@ -210,7 +210,7 @@ try {
   check('en la extensión: la opción elegida, "Esta extensión" y la app se instala desde la web', J(ep.radios) === J(['web', 'ext*']) && ep.opts[1] === 'This extension' && /It installs from the web app\./.test(ep.text) && ep.links.some((l) => l === 'Open the web app ' + WEB) && ep.tall <= 0, ep);
   // El segundo paso depende de si este navegador ya le dio a la extensión el acceso a archivos.
   const fileAccess = await bg(() => chrome.extension.isAllowedFileSchemeAccess());
-  const second = fileAccess ? /File access is already on\./.test(ep.text) && !ep.buttons.includes('Extension details') : /Allow access to file URLs/.test(ep.text) && ep.buttons.includes('Extension details');
+  const second = fileAccess ? /File access is already on\./.test(ep.text) && /Installed, version [\d.]+ · File access: yes/.test(ep.text) && !ep.buttons.includes('Open the extension settings') : /Allow access to file URLs/.test(ep.text) && /· File access: no/.test(ep.text) && ep.buttons.includes('Open the extension settings');
   check('el doble clic: los pasos, el acceso a archivos y la ayuda', /Right-click a \.md file, Open with, Choose another app, Chrome, Always\./.test(ep.text) && second && ep.links.some((l) => /^Help .*#faq$/.test(l)), [fileAccess, ep.buttons, ep.links]);
   await extPage.click('input[name=lmd-open-in][value=web]');
   check('y volver a "App web" desde la extensión llega a la web', !!(await until(async () => (await web.evaluate(() => LMD.load())).openIn === 'web')));
@@ -572,13 +572,29 @@ try {
   await lm.goto(linkTo(WEB, fileAt)); await lm.waitForSelector('.lmd-dlg-card'); await lm.click('.lmd-dlg-card [data-dlg=ok]');
   await lm.waitForFunction(() => /access/.test((document.querySelector('.lmd-dlg-card h3') || {}).textContent || ''), null, { timeout: 6000 }).catch(() => {});
   const d5 = await dlg(lm);
-  check('sin el acceso a archivos lo dice, con la ruta, el selector y el camino a los detalles de la extensión', stubbed === false && lm.url() === WEB && !!d5 && d5.title === 'File access is off' && d5.text.startsWith('The extension has no file access. Choose the file, or turn access on.') && /Extension details$/.test(d5.text) && d5.path === diskFile && J(d5.buttons) === J(['Close', 'Choose the file']) && !/[!¡—–]/.test(d5.all), d5);
+  check('sin el acceso a archivos lo dice, con la ruta, el selector y el camino a los detalles de la extensión', stubbed === false && lm.url() === WEB && !!d5 && d5.title === 'The extension is missing the permission for files on your disk' && d5.text.startsWith('Turn it on in the extension settings, or choose the file.') && /Open the extension settings$/.test(d5.text) && d5.path === diskFile && J(d5.buttons) === J(['Close', 'Choose the file']) && !/[!¡—–]/.test(d5.all), d5);
   const tabs = ctx.pages().length;
   await lm.click('.lmd-dlg-card [data-dlg-more]');
   const details = await until(() => ctx.pages().find((p) => p.url().startsWith('chrome://extensions')), 6000);
   check('y el enlace abre los detalles de esta extensión', !!details && details.url() === 'chrome://extensions/?id=' + id && ctx.pages().length === tabs + 1, ctx.pages().map((p) => p.url()));
   if (details) await details.close();
+  // El motivo propio llega a la web en cada pedido de archivos, y solo dentro de lo habilitado: fuera de eso sigue
+  // contestando lo mismo, sin decir nada del permiso.
+  const noAccess = { read: await ask(web, 'file.read', { url: fileAt }), list: await ask(web, 'file.list', { url: dirOf(disk) }), folder: await ask(web, 'file.folder', { url: dirOf(disk) }), out: await ask(web, 'file.list', { url: dirOf(disk2) }), outRead: await ask(web, 'file.read', { url: urlOf(disk2, 'out.md') }) };
+  check('sin el permiso, leer, listar y ver la carpeta contestan el motivo propio', J(noAccess.read) === J({ ok: true, opened: false, why: 'access' }) && J(noAccess.list) === J({ ok: true, listed: false, why: 'access' }) && J(noAccess.folder) === J({ ok: true, opened: false, why: 'access' }) && !ctx.pages().some((p) => p.url().startsWith('file:') && p.url().endsWith('/')), noAccess);
+  check('y fuera de las carpetas habilitadas sigue contestando lo de siempre', noAccess.out.why === 'refused' && noAccess.outRead.why === 'refused', [noAccess.out, noAccess.outRead]);
+  // Ajustes > Instalar, en la web: el estado y el botón, que abre los ajustes a través de la extensión.
+  await web.bringToFront(); await web.evaluate(() => LMD.bridge.sync()); await openInst(web);
+  const nop = await paneOf(web); const tabs2 = ctx.pages().length;
+  check('Ajustes > Instalar en la web dice que falta el acceso, con el botón y el camino en texto', nop.text.includes('Installed, version ' + real.version + ' · File access: no') && nop.buttons.includes('Open the extension settings') && !nop.buttons.includes('I do not use files from my disk') && /find SharpMD, Details\./.test(nop.text) && !/[!¡—–]/.test(nop.text) && nop.wide <= 0, nop);
+  await web.click('[data-inst=details]');
+  const details2 = await until(() => ctx.pages().find((p) => p.url().startsWith('chrome://extensions')), 6000);
+  check('y ese botón abre los ajustes de la extensión, que la web sola no puede abrir', !!details2 && details2.url() === 'chrome://extensions/?id=' + id && ctx.pages().length === tabs2 + 1, ctx.pages().map((p) => p.url()));
+  if (details2) await details2.close();
+  await web.click('[data-act=close-panel]');
   await bg(() => { if (self.__allowed) chrome.extension.isAllowedFileSchemeAccess = self.__allowed; });
+  await bg(() => chrome.storage.local.remove('fileSetup'));
+  await web.evaluate(() => LMD.bridge.sync());
 
   // Lo que el service worker rechaza, pida quien pida.
   const badUrls = ['javascript:alert(1)//a.md', 'data:text/html,<script>alert(1)</script>.md', 'chrome://extensions/a.md', 'chrome-extension://' + id + '/src/app.html?a.md', 'http://127.0.0.1:' + PORT + '/README.md', 'https://example.com/a.md', 'blob:' + W + '/a.md', 'view-source:' + fileAt, 'FILE:///C:/a.md', 'file://server/share/a.md', 'file:////server/share/a.md',
@@ -928,7 +944,7 @@ try {
   const reopenInst = async () => { await sp.click('[data-act=close-panel]'); await sp.waitForTimeout(200); await openInst(sp); return paneOf(sp); };
   await sp.goto(R.home); await sp.waitForSelector('.lmd-home'); await brand(['Chromium', 'Not A Brand']); await openInst(sp);
   const np = await paneOf(sp);
-  check('sin la extensión: no hay dónde elegir, y un botón lleva a conseguirla', J(np.heads) === J(['Chrome extension', 'Install as an app', 'Open .md files with a double click']) && np.radios.length === 0 && /Not in this browser\./.test(np.text) && np.links.some((l) => l === 'Get the extension https://github.com/SharpMD/sharpmd#install'), np);
+  check('sin la extensión: no hay dónde elegir, y un botón lleva a conseguirla', J(np.heads) === J(['Chrome extension', 'Install as an app', 'Open .md files with a double click']) && np.radios.length === 0 && /Not in this browser\./.test(np.text) && np.links.some((l) => l === 'Get the extension https://chromewebstore.google.com/detail/ejgkmgehiacbnfognldclppemehapcek'), np);
   const NO_OFFER = 'This browser does not offer to install apps. It works in Chrome and Edge.'; const MENU = 'From the browser menu: Install SharpMD.'; const WAY_OUT = 'If the menu has no such option, this browser does not install apps; use Chrome or Edge.';
   check('recién abierta, mientras el aviso del navegador todavía puede llegar, solo dice lo que da', /Its own window and "Open with" for \.md files on Windows\./.test(np.text) && !np.text.includes(MENU) && !np.text.includes(NO_OFFER) && !np.buttons.includes('Install'), np.text);
   await sp.waitForFunction((t) => document.querySelector('[data-inst-pane]').textContent.includes(t), NO_OFFER, { timeout: 9000 }).catch(() => {});
@@ -959,7 +975,7 @@ try {
   await sp.goto(R.home + '#open=' + encodeURIComponent('file:///C:/Users/me/Desktop/my%20notes.md')); await sp.waitForSelector('.lmd-dlg-card');
   const nd = await sp.evaluate(() => { const c = document.querySelector('.lmd-dlg-card'); const a = c.querySelector('.lmd-dlg-link a'); const n = c.querySelector('.lmd-dlg-note'); return { at: location.href, title: c.querySelector('h3').textContent, text: c.querySelector('p').textContent, path: c.querySelector('.lmd-dlg-path code').textContent, buttons: [...c.querySelectorAll('.lmd-ask-actions button')].map((b) => b.textContent), link: a.textContent + ' ' + a.href, copy: c.querySelector('[data-dlg-copy]').textContent, note: n.hidden ? '' : n.textContent, all: c.textContent }; });
   check('sin la extensión: una línea que lo explica, la ruta, y el fragmento fuera de la barra', nd.at === R.home && nd.title === 'Open this file from your disk?' && nd.text === 'Without the Chrome extension, choose the file.' && nd.path === winPath && nd.note === PASTE && !/[!¡—–]/.test(nd.all), nd);
-  check('con copiar la ruta, Abrir y el enlace a la extensión', nd.copy === 'Copy path' && J(nd.buttons) === J(['Cancel', 'Choose the file']) && nd.link === 'Get the extension https://github.com/SharpMD/sharpmd#install', nd);
+  check('con copiar la ruta, Abrir y el enlace a la extensión', nd.copy === 'Copy path' && J(nd.buttons) === J(['Cancel', 'Choose the file']) && nd.link === 'Get the extension https://chromewebstore.google.com/detail/ejgkmgehiacbnfognldclppemehapcek', nd);
   await sp.click('.lmd-dlg-card [data-dlg-copy]'); await sp.waitForFunction(() => document.querySelector('[data-dlg-copy]').textContent === 'Copied', null, { timeout: 3000 }).catch(() => {});
   check('"Copiar la ruta" copia la ruta y lo dice', J(await sp.evaluate(() => window.__copied)) === J([winPath]) && (await sp.textContent('[data-dlg-copy]')) === 'Copied' && (await sp.locator('.lmd-dlg-card').count()) === 1);
   await sp.evaluate(() => { window.__copied = []; window.__order = []; });

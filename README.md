@@ -100,7 +100,7 @@ Other apps can send things to it. Sharing a Markdown, text, JSON or YAML file op
 
 ## Install
 
-The extension is on the [Chrome Web Store](https://chromewebstore.google.com/detail/ejgkmgehiacbnfognldclppemehapcek). After installing it, open its details and turn on "Allow access to file URLs" so it can open files from your disk.
+The extension is on the [Chrome Web Store](https://chromewebstore.google.com/detail/ejgkmgehiacbnfognldclppemehapcek). The browser installs it with "Allow access to file URLs" turned off, and an extension cannot turn that on by itself. A welcome page opens on install with a button to the extension settings, where you turn it on once; until then the toolbar icon carries a mark and leads back to that page. Without it the extension still works with the web app, but it does not open files from your disk.
 
 To load it from source instead:
 
@@ -211,7 +211,8 @@ src/
   store.js        file and folder permissions and browser notes, kept in IndexedDB
   bridge.js       one store for the web app and the extension: keeps both sides equal, reconnects folders
   bridge-cs.js    content script on the web app that relays its requests to the extension
-  bridge-sw.js    the extension side of the bridge, and what the extension button opens
+  bridge-sw.js    the extension side of the bridge, what the extension button opens, and the reminder while file access is off
+  welcome.html    the page that opens on install: the one step to allow files from disk (welcome.js, welcome.css)
   install.js      Settings → Install, installing the app, files from "Open with", what other apps share, the offline mark
   tools.js        Settings → Tools: the registry of tools and their switches
   community.js    what was added from the community gallery, and the rule that validates a contribution

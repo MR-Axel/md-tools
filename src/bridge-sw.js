@@ -151,7 +151,7 @@
     'session.put': (a) => sessionPut(a),
     'session.clear': (a) => sessionClear(a),
     // La pantalla de la extensión donde se activa "Permitir acceso a URL de archivo".
-    'file.setup': async () => { if (tooMany()) return { opened: false, why: 'limit' }; await chrome.tabs.create({ url: 'chrome://extensions/?id=' + chrome.runtime.id }); return { opened: true }; },
+    'file.setup': async () => { if (tooMany()) return { opened: false, why: 'limit' }; return openSetup(); },
   };
 
   // ---------- Abrir un archivo del disco por enlace ----------
@@ -266,6 +266,7 @@
     const w = await webFiles();
     if (w.off || !w.roots.some((r) => r.dir && inside(key, r))) return { opened: false, why: 'refused' };
     if (tooMany()) return { opened: false, why: 'limit' };
+    if ((await fileAccess()) === false) return { opened: false, why: 'access' };
     try { await chrome.tabs.create({ url: new URL(raw).href, openerTabId: sender.tab.id }); } catch (e) { return { opened: false, why: 'access' }; }
     return { opened: true };
   }
@@ -279,6 +280,8 @@
     const w = await webFiles();
     if (w.off || !w.roots.some((r) => r.dir && inside(key, r))) return { listed: false, why: 'refused' };
     if (tooManyReads()) return { listed: false, why: 'limit' };
+    // Sin el permiso para archivos del disco no hay listado: se dice eso, y no que la carpeta no está.
+    if ((await fileAccess()) === false) return { listed: false, why: 'access' };
     let html = '';
     try { const res = await fetch(new URL(raw).href, { cache: 'no-store' }); if (!res.ok && res.status !== 0) throw new Error('HTTP ' + res.status); html = await res.text(); }
     catch (e) { return { listed: false, why: 'missing' }; }
@@ -443,9 +446,9 @@
   // Sin el permiso "tabs": las direcciones de las páginas propias y de los sitios con permiso ya vienen.
   async function findTab(base) {
     const tab = (await chrome.tabs.query({})).find((x) => isApp(x.url, base));
-    if (tab || base !== OWN) return tab || null;
+    if (tab || !base.startsWith(chrome.runtime.getURL(''))) return tab || null;
     // La dirección de una página propia no siempre viene en la lista de pestañas: se busca entre las que la extensión tiene abiertas.
-    try { const mine = (await chrome.runtime.getContexts({ contextTypes: ['TAB'] })).find((c) => isApp(c.documentUrl, OWN)); return mine ? { id: mine.tabId, windowId: mine.windowId } : null; }
+    try { const mine = (await chrome.runtime.getContexts({ contextTypes: ['TAB'] })).find((c) => isApp(c.documentUrl, base)); return mine ? { id: mine.tabId, windowId: mine.windowId } : null; }
     catch (e) { return null; }
   }
   // Una pestaña de SharpMD que ya está abierta se trae al frente en vez de abrir otra.
@@ -493,7 +496,78 @@
     try { await chrome.tabs.update(tab.id, { url: OWN }); } catch (e) { /* la cerraron */ }
     return tab;
   }
-  chrome.action.onClicked.addListener(() => { openSharp().catch(() => chrome.tabs.create({ url: OWN })); });
 
-  LMD.bridgeHost = { onMessage, onOwn, onCloud, onSeen, openSharp, PREFS };
+  // ---------- El permiso para archivos del disco ----------
+  // Una extensión instalada desde la tienda llega con "Permitir acceso a URL de archivo" apagado, y sin eso no actúa
+  // sobre file://. Chrome no deja prenderlo ni pedirlo desde acá: solo la persona, en los detalles de la extensión.
+  // Lo que sí se puede es saber cómo está (isAllowedFileSchemeAccess) y llevarla de la mano:
+  // - al instalar se abre src/welcome.html, que muestra el paso o, si el permiso ya estaba, qué hacer ahora;
+  // - mientras falte, el botón de la barra lleva una marca y abre esa página en vez de la app;
+  // - "Ahora no" deja el botón como siempre por unos días (la marca sigue); "No uso archivos del disco" lo apaga
+  //   para siempre. Con el permiso prendido se apaga solo.
+  // Al cambiar ese permiso el navegador recarga la extensión y cierra sus páginas: por eso, si la persona fue a los
+  // ajustes desde acá hace poco y al volver el permiso está, la bienvenida se abre de nuevo, ya en "Listo".
+  // Lo anotado vive en chrome.storage.local.fileSetup: { never, later, asked }.
+  const WELCOME = chrome.runtime.getURL('src/welcome.html');
+  const SETUP = 'fileSetup'; const LATER = 7 * 864e5; const ASKED = 30 * 60000;
+  // true o false, o null si no se pudo saber. Con null no se recuerda nada: no se insiste sobre una duda.
+  const fileAccess = async () => { try { return (await chrome.extension.isAllowedFileSchemeAccess()) === true; } catch (e) { return null; } };
+  const setupGet = async () => { const s = await stored(SETUP); return s && typeof s === 'object' ? s : {}; };
+  const setupSet = async (patch) => chrome.storage.local.set({ [SETUP]: Object.assign({}, await setupGet(), patch) });
+  const missing = async () => (await fileAccess()) === false && !(await setupGet()).never;
+  // La marca del botón, y su texto al pasar el mouse. Devuelve si el permiso falta y todavía se recuerda.
+  async function mark() {
+    const on = await missing();
+    try {
+      await chrome.action.setBadgeText({ text: on ? '1' : '' });
+      if (on) { await chrome.action.setBadgeBackgroundColor({ color: '#c5f467' }); if (chrome.action.setBadgeTextColor) await chrome.action.setBadgeTextColor({ color: '#14161a' }); }
+      LMD.setLang((await LMD.load()).language);
+      await chrome.action.setTitle({ title: on ? LMD.t('SharpMD: falta un permiso para abrir archivos del disco') : 'SharpMD' });
+    } catch (e) { /* sin botón en la barra */ }
+    return on;
+  }
+  // Los ajustes de la extensión en el navegador, en una pestaña nueva. Queda anotado cuándo, para la vuelta.
+  async function openSetup() {
+    await setupSet({ asked: Date.now() });
+    try { const s = await LMD.openExtSettings(); return { opened: true, sure: s.sure }; }
+    catch (e) { return { opened: false, why: 'failed' }; }
+  }
+  async function onAction() {
+    let welcome = false;
+    try { welcome = (await mark()) && !(Date.now() - ((await setupGet()).later || 0) < LATER); } catch (e) { welcome = false; }
+    if (welcome) return show(WELCOME);
+    return openSharp();
+  }
+  chrome.action.onClicked.addListener(() => { onAction().catch(() => chrome.tabs.create({ url: OWN })); });
+  // Solo al instalar, no en cada actualización.
+  chrome.runtime.onInstalled.addListener((d) => { if (d && d.reason === 'install') chrome.tabs.create({ url: WELCOME }).catch(() => {}); });
+  // Cada vez que el service worker arranca: la marca al día y, si el permiso se acaba de prender, la bienvenida en "Listo".
+  (async () => {
+    const st = await setupGet();
+    if (st.asked && (await fileAccess()) === true) {
+      await setupSet({ asked: 0 });
+      if (Date.now() - st.asked < ASKED) await show(WELCOME);
+    }
+    await mark();
+  })().catch(() => {});
+  // Lo que pide la bienvenida (y Ajustes > Instalar, en la página de la extensión). Nadie más.
+  function onSetup(msg, sender, sendResponse) {
+    const mine = !!sender && sender.id === chrome.runtime.id && !!sender.tab && sender.frameId === 0 && (isApp(sender.url, WELCOME) || isApp(sender.url, OWN));
+    if (!mine) { sendResponse({ ok: false, error: 'refused' }); return false; }
+    const leave = async () => { await openSharp().catch(() => chrome.tabs.create({ url: OWN })); if (isApp(sender.url, WELCOME)) await chrome.tabs.remove(sender.tab.id).catch(() => {}); };
+    (async () => {
+      const act = msg.act;
+      if (act === 'open') return openSetup();
+      if (act === 'seen') { await setupSet({ asked: 0 }); await mark(); return {}; } // la página vio sola que el permiso ya está
+      if (act === 'later') { await setupSet({ later: Date.now() }); await leave(); return {}; }
+      if (act === 'never') { await setupSet({ never: true }); await mark(); if (isApp(sender.url, WELCOME)) await leave(); return {}; }
+      if (act === 'app') { await leave(); return {}; }
+      if (act !== 'state') return null;
+      const st = await setupGet(); const s = LMD.extSettings();
+      return { access: await fileAccess(), never: st.never === true, sure: s.sure };
+    })().then((r) => sendResponse(r ? Object.assign({ ok: true }, r) : { ok: false, error: 'shape' }), () => sendResponse({ ok: false, error: 'failed' }));
+    return true;
+  }
+
+  LMD.bridgeHost = { onMessage, onOwn, onCloud, onSeen, onSetup, onAction, openSharp, PREFS };
 })();

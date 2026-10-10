@@ -801,6 +801,24 @@
       "Carpetas de las que la app web puede abrir archivos": "Folders the web app can open files from", "La app web puede abrir archivos del disco por la extensión": "The web app can open files from your disk through the extension",
       "Solo al abrir un enlace a un archivo, y solo dentro de las carpetas de los archivos que abriste con la extensión.": "Only when you open a link to a file, and only inside the folders of files you opened with the extension.",
       "Vaciar la lista": "Clear the list", "Todavía no hay ninguna.": "None yet.",
+      "A la extensión le falta el permiso para archivos del disco": "The extension is missing the permission for files on your disk",
+      "Prendelo en los ajustes de la extensión, o elegí el archivo.": "Turn it on in the extension settings, or choose the file.",
+      "Abrir los ajustes de la extensión": "Open the extension settings",
+      "Acceso a archivos: sí": "File access: yes", "Acceso a archivos: no": "File access: no",
+      "O entrá a las extensiones del navegador, buscá SharpMD, Detalles.": "Or go to the browser's extensions, find SharpMD, Details.",
+      "No uso archivos del disco": "I do not use files from my disk",
+      "SharpMD: falta un permiso para abrir archivos del disco": "SharpMD: one permission is missing to open files from your disk",
+      "Para abrir archivos de tu disco falta un permiso": "One permission is missing to open files from your disk",
+      "El navegador lo deja apagado al instalar. Se prende una sola vez.": "The browser leaves it off on install. You turn it on once.",
+      "Ahí, prendé este interruptor:": "There, turn on this switch:",
+      "En un navegador en inglés dice \"{a}\".": "In a browser in English it reads \"{a}\".",
+      "En un navegador en español dice \"{a}\".": "In a browser in Spanish it reads \"{a}\".",
+      "Esta página se da cuenta sola cuando lo prendés.": "This page notices on its own when you turn it on.",
+      "Sin el permiso, la app y tus notas andan igual.": "Without it, the app and your notes work the same.",
+      "SharpMD ya puede abrir archivos de tu disco.": "SharpMD can now open files from your disk.",
+      "Arrastrá un .md a una pestaña del navegador.": "Drag a .md file onto a browser tab.",
+      "O dejá el navegador como app para los .md y abrilos con doble clic.": "Or set the browser as the app for .md files and open them with a double click.",
+      "Los detalles de la extensión, con el interruptor prendido": "The extension details, with the switch turned on",
       "Falta el acceso a archivos": "File access is off", "La extensión no tiene acceso a archivos. Elegí el archivo, o activá el acceso.": "The extension has no file access. Choose the file, or turn access on.",
       "No se encontró el archivo": "File not found", "Puede que se haya movido o que tenga otro nombre.": "It may have been moved or renamed.",
       "Este enlace no se puede abrir": "This link cannot be opened", "Solo se abren archivos Markdown del disco.": "Only Markdown files from your disk can be opened.",
@@ -2171,9 +2189,28 @@
   }
   // El enlace https que abre ese archivo: la dirección va tras el #, así no llega al sitio que sirve la app.
   const fileLink = (url) => WEB_APP_URL + '#open=' + encodeURIComponent(url);
+  // La página del navegador donde se prende "Permitir acceso a URL de archivo" para esta extensión. Una extensión no
+  // puede prender ese permiso ni pedirlo con un cuadro: solo llevar a la persona hasta ahí. Cada Chromium usa su
+  // esquema (edge://, brave://); si no se sabe cuál es, va chrome://, que los demás suelen redirigir. sure dice si
+  // el navegador se reconoció: cuando no, quien la abre deja además el camino en texto.
+  function extSettings() {
+    let brands = [];
+    try { brands = (NAV.userAgentData.brands || []).map((b) => String(b.brand)); } catch (e) { /* sin esa API */ }
+    const has = (re) => brands.some((b) => re.test(b));
+    const scheme = has(/Edge/i) ? 'edge' : has(/Brave/i) ? 'brave' : 'chrome';
+    const tail = '://extensions/?id=' + chrome.runtime.id;
+    return { url: scheme + tail, fallback: 'chrome' + tail, sure: scheme !== 'chrome' || has(/Google Chrome/i) };
+  }
+  // La abre en una pestaña nueva. chrome.tabs.create no pide el permiso "tabs". Solo desde la extensión.
+  async function openExtSettings() {
+    const s = extSettings();
+    try { await chrome.tabs.create({ url: s.url }); }
+    catch (e) { if (s.url === s.fallback) throw e; await chrome.tabs.create({ url: s.fallback }); }
+    return s;
+  }
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
   const VERSION = '2.77.0';
 
-  root.LMD = { VERSION, PLUGIN_HELP, PLUGIN_SAMPLES, PLUGIN_GROUPS, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
+  root.LMD = { VERSION, PLUGIN_HELP, PLUGIN_SAMPLES, PLUGIN_GROUPS, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, extSettings, openExtSettings, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);
