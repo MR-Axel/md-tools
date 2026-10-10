@@ -8,7 +8,7 @@ En el explorador, la raíz **Nube** tiene el enlace **Entrar para ver tus notas*
 
 Con la sesión abierta, las mismas notas están en cada dispositivo donde entres, también sin conexión.
 
-El plan gratis guarda hasta 25 notas en la nube. Lo que suma el plan pago y lo que cuesta está en **Ajustes** > **Plan**.
+El plan gratis guarda hasta 10 notas en la nube. Lo que suma el plan pago y lo que cuesta está en **Ajustes** > **Plan**.
 
 ## Mandar una nota
 
@@ -24,6 +24,8 @@ Con una nota de la nube abierta, el botón de la nube abre un menú. **Compartir
 | **Con un enlace de solo lectura** | Cualquiera que tenga el enlace | Leer. Puede llevar contraseña |
 
 También se comparte una carpeta entera con otra cuenta. Compartir es parte del plan pago.
+
+Una carpeta de la nube también se comparte con un enlace, y puede ser una plantilla. Está en el clic derecho sobre la carpeta: **Compartir la carpeta…**. Con **Es una plantilla**, quien abre el enlace lee la carpeta y se lleva una copia para editar: a su navegador, a su nube o en un ZIP. El original no cambia y nadie más ve lo que cada uno hace con su copia. **Pedir una cuenta para usarla** deja leerla a cualquiera y pide entrar para llevársela. La dirección corta le pone un nombre, como `sharpmd.app/t/mi-plantilla`, que sirve para imprimirla: el nombre queda de tu cuenta y lo podés apuntar a otra carpeta. Ahí mismo ves cuántas copias se hicieron.
 
 ## Escribir a la vez
 

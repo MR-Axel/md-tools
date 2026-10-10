@@ -73,7 +73,7 @@
 
 ## Plans
 
-- Free: the whole editor, unlimited files and browser notes, 25 notes in the cloud, the MCP connection over those notes with the comments an AI resolves, and the twelve built-in themes with a free accent color and font.
+- Free: the whole editor, unlimited files and browser notes, 10 notes in the cloud, the MCP connection over those notes with the comments an AI resolves, and the twelve built-in themes with a free accent color and font.
 - Paid: USD 40 a year or USD 4 a month. Unlimited cloud notes, image uploads, sharing and public links, live sessions, automations (API, webhooks, inbound addresses), 30 days of version history, custom CSS, and one published site (a folder of notes as a public website at pages.sharpmd.app).
 - Team: USD 5 per person a month, from 2 people, free for 14 days. Everything in the paid plan for each member, and a shared space for the team notes with roles, team settings, team tokens, an activity log and a year of version history.
 

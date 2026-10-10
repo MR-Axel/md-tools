@@ -8,7 +8,7 @@ In the explorer, the **Cloud** root has the link **Sign in to see your notes**. 
 
 Once signed in, the same notes are on every device you sign in on, also without a connection.
 
-The free plan holds up to 25 notes in the cloud. What the paid plan adds and what it costs is in **Settings** > **Plan**.
+The free plan holds up to 10 notes in the cloud. What the paid plan adds and what it costs is in **Settings** > **Plan**.
 
 ## Sending a note
 
@@ -24,6 +24,8 @@ With a cloud note open, the cloud button opens a menu. **Share** has two ways:
 | **With a read-only link** | Anyone who has the link | Read. It can carry a password |
 
 A whole folder can be shared with another account too. Sharing is part of the paid plan.
+
+A cloud folder can also be shared with a link, and it can be a template. It is in the right-click on the folder: **Share the folder…**. With **It is a template**, whoever opens the link reads the folder and takes a copy to edit: to their browser, to their cloud or as a ZIP. The original does not change, and nobody else sees what each person does with their copy. **Ask for an account to use it** lets anyone read it and asks them to sign in to take it. The short address gives it a name, like `sharpmd.app/t/my-template`, good for printing: the name stays with your account and you can point it to another folder. The same window shows how many copies were made.
 
 ## Writing at the same time
 
