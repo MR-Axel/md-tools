@@ -2175,7 +2175,14 @@
   }
 
   let checking = false;
-  async function checkForChanges(manual) {
+  // La relectura en curso, para quien tenga que esperar a que termine antes de avisar algo (los comentarios).
+  let checkRun = Promise.resolve();
+  function checkForChanges(manual) {
+    const was = checking; const p = checkOnce(manual);
+    if (!was && checking) checkRun = p.then(() => {}, () => {});
+    return p;
+  }
+  async function checkOnce(manual) {
     if (checking || noDoc || saving) return;
     // Una nota que todavía no tiene archivo (vive en la sesión) no tiene nada afuera que releer. Su "archivo" es
     // lo que hay en memoria: compararlo con lo guardado (nada, en una nota nueva) daba un cambio en el disco falso.
@@ -4995,7 +5002,10 @@
           else if (ev.type === 'saved' && ev.by !== LMD.cloud.email()) { cloudPoll = 0; checkForChanges(false); }
           // Cambió el estado de una carpeta protegida (se abrió o se cerró para la IA, venció el plazo, otra pestaña).
           if (ev.type === 'vault') LMD.vault.changed();
-          if (ev.type === 'comments' && LMD.comments) { cloudPoll = 0; checkForChanges(false).then(() => { if (mine === docSeq) LMD.comments.onEvent(ev); }); }
+          // Primero entra el texto y después los comentarios, siempre en ese orden. Si ya había una relectura en curso
+          // (la del guardado de la IA, que llega justo antes) se la espera: pedir otra en ese momento no hace nada, y
+          // su "Documento actualizado" salía después y tapaba el aviso de que la IA resolvió un comentario.
+          if (ev.type === 'comments' && LMD.comments) { checkRun.then(() => { if (mine !== docSeq) return null; cloudPoll = 0; return checkForChanges(false); }).then(() => { if (mine === docSeq) LMD.comments.onEvent(ev); }, () => {}); }
           LMD.sync.paint();
         }, liveOn);
       }
