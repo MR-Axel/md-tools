@@ -1564,7 +1564,12 @@ html:not(.lmd-root) > body > pre:first-child { visibility: hidden; animation: lm
 
 /* Dentro de la app de la tienda (Android) no se ofrece comprar, cambiar el cobro ni donar: el plan se ve, no se vende. */
 .lmd-store-app [data-cloud=plan], .lmd-store-app .lmd-plan-buy, .lmd-store-app [data-pay], .lmd-store-app .lmd-ptabs-link, .lmd-store-app .lmd-plan h4 small, .lmd-store-app .lmd-price, .lmd-store-app .lmd-team-seats, .lmd-store-app .lmd-team-cost,
-.lmd-store-app .lmd-plan a[target="_blank"], .lmd-store-app .lmd-team a[target="_blank"], .lmd-store-app .lmd-team-solo a, .lmd-store-app .lmd-paywait { display: none !important; }
+.lmd-store-app .lmd-plan a[target="_blank"]:not(.lmd-play-link), .lmd-store-app .lmd-team a[target="_blank"], .lmd-store-app .lmd-team-solo a, .lmd-store-app .lmd-paywait { display: none !important; }
+/* Salvo la compra por Google Play, que es la de la tienda: sus botones con el precio que da Play, y el enlace para administrarla. */
+.lmd-play-buy { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; } .lmd-play-buy .lmd-btn { padding: 8px 12px; font-size: 13px; }
+.lmd-plan .lmd-play-terms, .lmd-plan .lmd-play-same { margin: 8px 0 0; font-size: 12.5px; }
+.lmd-acct .lmd-play-say { margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; color: var(--fg); font-size: 13.5px; }
+.lmd-acct .lmd-play-say.lmd-play-ok { border-color: var(--accent-fill); background: var(--accent-soft); }
 
 /* Ajustes > IA: cada token lleva dos acciones (copiar las instrucciones y revocar) y, al crearlo, el permiso de compartir. */
 .lmd-tokens li span { flex: 1; min-width: 0; }

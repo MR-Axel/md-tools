@@ -747,6 +747,8 @@
       session = ''; email = ''; listCache = null; vaultCache = null; setTeam(null); await remember();
     },
     account: async () => { const a = await api('GET', '/account'); if (a && a.free_notes > 0) freeNotes = a.free_notes; return a; },
+    // La app de Android avisa de una compra hecha con Google Play: el servidor la confirma y prende el plan.
+    playVerify: (productId, purchaseToken) => api('POST', '/play/verify', { productId, purchaseToken }),
     freeNotes: () => freeNotes,
     setName: (name) => api('PUT', '/account', { name }),
     create: (path) => unlocked(() => putNote(path, '')).then((r) => { listCache = null; delete otherLists[split(path).owner]; return r; }),

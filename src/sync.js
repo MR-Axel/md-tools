@@ -742,6 +742,67 @@
     LMD.cloud.ready().then(tick);
   }
 
+  // ---------- Google Play ----------
+  // Dentro de la app de Android el plan pago se compra con la facturación de Google Play, que es lo que la tienda
+  // permite. Hace falta todo esto junto: estar en la app, que el servidor lo tenga prendido (account.play) y que el
+  // navegador entregue los productos por la Digital Goods API. Si algo falta, la pestaña queda como siempre: sin compra.
+  const PLAY_METHOD = 'https://play.google.com/billing';
+  let playOffer = null; // { svc, yearly, monthly } con el precio que da Google Play; se pide una vez por pestaña
+  let playSay = null; // { text, good }: cómo terminó el último intento de compra
+  let playBusy = false; const playSent = new Set(); // compras ya mandadas al servidor en esta pestaña
+  const within = (p, ms) => Promise.race([p, new Promise((resolve, reject) => setTimeout(() => reject(new Error('timeout')), ms))]);
+  async function playItems(cfg) {
+    if (playOffer) return playOffer;
+    if (!LMD.storeApp || !cfg || !cfg.products || typeof window.getDigitalGoodsService !== 'function' || typeof window.PaymentRequest !== 'function') return null;
+    try {
+      const svc = await within(window.getDigitalGoodsService(PLAY_METHOD), 4000);
+      const list = await within(svc.getDetails([cfg.products.yearly, cfg.products.monthly]), 6000);
+      const by = (id) => (Array.isArray(list) ? list : []).find((i) => i && i.itemId === id && i.price && i.price.currency) || null;
+      const yearly = by(cfg.products.yearly); const monthly = by(cfg.products.monthly);
+      if (!yearly && !monthly) return null;
+      playOffer = { svc, yearly, monthly };
+    } catch (e) { return null; }
+    return playOffer;
+  }
+  // El precio como lo cobra Google Play: en la moneda de la persona.
+  const playPrice = (p) => { try { return new Intl.NumberFormat(LMD.lang() === 'en' ? 'en' : 'es', { style: 'currency', currency: p.currency }).format(+p.value); } catch (e) { return p.currency + ' ' + p.value; } };
+  const playWhy = (e) => T(e && e.code === 'token_used' ? 'Esa suscripción de Google Play ya está en otra cuenta de SharpMD.'
+    : e && e.code === 'plan_active' ? 'Esta cuenta ya tiene el plan pago.'
+    : e && e.code === 'purchase_pending' ? 'El pago está pendiente en Google Play. El plan se activa cuando se confirme.'
+    : 'No se pudo confirmar la compra. Volvé a abrir esta pestaña en unos minutos.');
+  const playRedraw = () => { if (planBox && planBox.isConnected) planPane(planBox, planHost); };
+  async function playDone() { const a = await LMD.cloud.account(); account = a; asked = true; adopt(a, true); paint(); LMD.home.account(); return a; }
+  // La compra: Google Play muestra su pantalla de pago y devuelve un token, que el servidor confirma antes de darla por hecha.
+  async function playBuy(item) {
+    if (playBusy || !item) return;
+    playBusy = true; playSay = null;
+    try {
+      const req = new window.PaymentRequest([{ supportedMethods: PLAY_METHOD, data: { sku: item.itemId } }], { total: { label: 'SharpMD', amount: { currency: item.price.currency, value: String(item.price.value) } } });
+      const res = await req.show();
+      const token = res && res.details ? res.details.purchaseToken || res.details.token || '' : '';
+      try {
+        playSent.add(token);
+        await LMD.cloud.playVerify(item.itemId, token);
+        await res.complete('success').catch(() => {});
+        await playDone();
+        playSay = { text: T('Listo. Ya tenés el plan pago.'), good: true };
+      } catch (e) { await res.complete('fail').catch(() => {}); playSay = { text: playWhy(e), good: false }; }
+    } catch (e) { if (!e || e.name !== 'AbortError') playSay = { text: T('La compra no se completó.'), good: false }; }
+    playBusy = false; playRedraw();
+  }
+  // Una compra que Google Play ya tiene y esta cuenta todavía no (se cortó la conexión justo después de pagar):
+  // se manda al servidor al abrir la pestaña. Si es de otra cuenta, el servidor la rechaza y acá no pasa nada.
+  async function playRestore(offer, cfg) {
+    if (playBusy || !offer || typeof offer.svc.listPurchases !== 'function') return;
+    let list = []; try { list = await within(offer.svc.listPurchases(), 6000); } catch (e) { return; }
+    const ids = [cfg.products.yearly, cfg.products.monthly];
+    for (const p of Array.isArray(list) ? list : []) {
+      if (!p || !ids.includes(p.itemId) || !p.purchaseToken || playSent.has(p.purchaseToken)) continue;
+      playSent.add(p.purchaseToken);
+      try { await LMD.cloud.playVerify(p.itemId, p.purchaseToken); await playDone(); playSay = { text: T('Listo. Ya tenés el plan pago.'), good: true }; playRedraw(); return; } catch (e) { /* no es de esta cuenta, o ya venció */ }
+    }
+  }
+
   async function planPane(box, host) {
     planBox = box; planHost = host;
     const turn = ++planTurn;
@@ -752,6 +813,9 @@
     else if (host.direct) note = ''; // acá lo principal es suscribirse: esos botones van en la tarjeta del plan pago
     else if (!LMD.cloud.signedIn()) note = hint(T('Entrá a tu cuenta para pasar al plan pago.')) + loginBtn(host);
     else { try { a = await fetchAccount(host); } catch (e) { note = offline(); } }
+    if (turn !== planTurn) return;
+    // play: los productos de Google Play, solo dentro de la app de Android y con la compra prendida en el servidor.
+    const play = a && a.play && a.billing !== false ? await playItems(a.play) : null;
     if (turn !== planTurn) return;
     const pro = !!a && a.plan === 'pro'; const pay = (a && a.checkout) || {};
     // own: el plan pago lo paga esta cuenta. Un miembro de un equipo lo tiene por el equipo, sin pagarlo.
@@ -766,6 +830,12 @@
     const appBtn = (label, plain) => '<button type="button" class="lmd-btn' + (plain ? '' : ' lmd-btn-fill') + '" data-c="app" data-at="' + DIRECT_AT.plan + '">' + label + '</button>';
     const buy = core.APP ? btn : (url, label, kind, plain) => appBtn(label, plain);
     const teamCol = LMD.team.column(a, buy);
+    const playBtn = (kind, unit, plain) => (play[kind] ? '<button type="button" class="lmd-btn' + (plain ? '' : ' lmd-btn-fill') + '" data-play="' + kind + '"' + (playBusy ? ' disabled' : '') + '>' + esc(playPrice(play[kind].price)) + ' / ' + T(unit) + '</button>' : '');
+    const playBox = !play ? '' : (pro ? '' : '<div class="lmd-play-buy">' + playBtn('yearly', 'año') + playBtn('monthly', 'mes', !!play.yearly) + '</div>' +
+      '<p class="lmd-hint lmd-play-terms">' + T('Se cobra por Google Play y se renueva sola. Se cancela desde Google Play.') + '</p>') +
+      '<p class="lmd-hint lmd-play-same">' + T('La misma cuenta sirve en la web y en la extensión de Chrome.') + '</p>';
+    const byPlay = !!a && a.plan_from === 'play';
+    if (playSay) note = '<p class="lmd-play-say' + (playSay.good ? ' lmd-play-ok' : '') + '" role="status">' + esc(playSay.text) + '</p>' + note;
     const state = wait && (wait.state !== 'done' || pro) ? wait.state : '';
     // Quien tiene el plan por un equipo que paga otra persona no ve planes, precios ni botones de compra: ve su
     // equipo y su papel. El cobro es de quien paga.
@@ -784,15 +854,19 @@
         '<div class="lmd-plan' + (a && !pro ? ' lmd-plan-on' : '') + '"><h4>' + T('Gratis') + '</h4><ul><li>' + T('Todo el editor') + '</li><li>' + T('Hasta {n} notas en la nube', { n: LMD.cloud.freeNotes() }) + '</li><li>' + T('Notas en el navegador y en tu disco, sin límite') + '</li><li>' + T('Carpetas protegidas') + '</li><li>' + T('Conectar una IA por MCP') + '</li><li>' + T('Los 12 temas') + '</li></ul>' +
           (a && !pro ? '<p class="lmd-hint">' + T('Es tu plan actual.') + '</p>' : '') + '</div>' +
         '<div class="lmd-plan' + (own ? ' lmd-plan-on' : '') + '"><h4>' + T('Pago') + ' <small>' + YEAR + '</small></h4><ul><li>' + T('Notas en la nube sin límite') + '</li><li>' + T('Carpetas protegidas') + '</li><li>' + T('Compartir y editar entre varios') + '</li><li>' + T('Sesiones en vivo: quien invitás entra sin cuenta') + '</li><li>' + T('API y automatizaciones') + '</li><li>' + T('Historial de versiones de 30 días') + '</li><li>' + T('Colores, tipografía y CSS propio') + '</li></ul>' +
-          (own ? '<p class="lmd-hint">' + T('Es tu plan actual.') + (a.manage ? ' <a href="' + esc(a.manage) + '" target="_blank" rel="noopener noreferrer">' + T('Administrar la suscripción') + '</a>' : '') + '</p>'
+          (own ? '<p class="lmd-hint">' + T('Es tu plan actual.') + (a.manage ? ' <a' + (byPlay ? ' class="lmd-play-link"' : '') + ' href="' + esc(a.manage) + '" target="_blank" rel="noopener noreferrer">' + T(byPlay ? 'Administrar en Google Play' : 'Administrar la suscripción') + '</a>' : '') + '</p>'
             : pro ? '<p class="lmd-hint">' + T('Lo tenés con el equipo.') + '</p>'
             : a ? '<div class="lmd-plan-buy">' + buy(pay.yearly, YEAR) + buy(pay.monthly, MONTH, '', true) + '</div>'
-            : host.direct && LMD.cloud.enabled() ? '<div class="lmd-plan-buy">' + appBtn(YEAR) + appBtn(MONTH, true) + '</div>' : '') + '</div>' + teamCol + '</div>' + LMD.team.section(a);
+            : host.direct && LMD.cloud.enabled() ? '<div class="lmd-plan-buy">' + appBtn(YEAR) + appBtn(MONTH, true) + '</div>' : '') + playBox + '</div>' + teamCol + '</div>' +
+      // Dentro de la app de Android, una línea que informa para qué está pensada. No ofrece nada: sin enlace ni precio.
+      (LMD.storeApp ? '<p class="lmd-hint lmd-store-solo">' + T('Esta app es para uso individual. Los equipos trabajan en la versión web.') + '</p>' : '') + LMD.team.section(a);
     LMD.team.mount(box, a);
+    if (play && !pro) playRestore(play, a.play);
     box.onclick = async (e) => {
       // Lo del equipo se atiende aparte. Se decide sin esperar nada: el enlace de pago, más abajo, frena su navegación en este mismo turno.
       if (LMD.team.owns(e, box)) { LMD.team.click(e, box, a, () => planPane(box, host)); return; }
-      const b = e.target.closest('[data-c]'); const link = e.target.closest('[data-pay]');
+      const b = e.target.closest('[data-c]'); const link = e.target.closest('[data-pay]'); const gp = e.target.closest('[data-play]');
+      if (gp && play) { playBuy(play[gp.dataset.play]); return; }
       if (b && b.dataset.c === 'login') goLogin(host);
       else if (goApp(host, e)) return;
       else if (b && b.dataset.c === 'recheck') awaitPaid();

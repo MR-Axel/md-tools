@@ -369,6 +369,13 @@
       "Notas en la nube sin límite": "Unlimited notes in the cloud", "Compartir y editar entre varios": "Share and edit together",
       "Conectar una IA por MCP": "Connect an AI over MCP", "Historial de versiones de 30 días": "30-day version history",
       "Colores, tipografía y CSS propio": "Colors, typeface and custom CSS", "Es tu plan actual.": "This is your current plan.",
+      "Se cobra por Google Play y se renueva sola. Se cancela desde Google Play.": "Billed through Google Play, renews automatically. Cancel it in Google Play.",
+      "La misma cuenta sirve en la web y en la extensión de Chrome.": "The same account works on the web and in the Chrome extension.",
+      "Esta app es para uso individual. Los equipos trabajan en la versión web.": "This app is for individual use. Teams work in the web version.",
+      "Administrar en Google Play": "Manage in Google Play", "Listo. Ya tenés el plan pago.": "Done. You have the paid plan.", "La compra no se completó.": "The purchase was not completed.",
+      "Esa suscripción de Google Play ya está en otra cuenta de SharpMD.": "That Google Play subscription is already on another SharpMD account.", "Esta cuenta ya tiene el plan pago.": "This account already has the paid plan.",
+      "El pago está pendiente en Google Play. El plan se activa cuando se confirme.": "The payment is pending in Google Play. The plan turns on once it is confirmed.",
+      "No se pudo confirmar la compra. Volvé a abrir esta pestaña en unos minutos.": "The purchase could not be confirmed. Open this tab again in a few minutes.",
       "Notas en la nube": "Notes in the cloud", "{n} de {m}": "{n} of {m}",
       "Compartido": "Shared",
       "Ese enlace ya no existe.": "That link no longer exists.",
@@ -2254,7 +2261,7 @@
   }
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.81.0';
+  const VERSION = '2.82.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, PLUGIN_SAMPLES, PLUGIN_GROUPS, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, extSettings, openExtSettings, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);
