@@ -239,10 +239,12 @@
       (line ? '<div class="lmd-row lmd-row-line"><span data-ag-set="miss">' + esc(line) + '</span>' + (miss === 'Falta entrar a tu cuenta' ? '<button type="button" class="lmd-btn" data-ag-set="cloud">' + esc(T('Entrar')) + '</button>' : '') + '</div>' : '') +
       (planLine ? '<p class="lmd-tl-why" data-ag-set="plan">' + esc(planLine) + '</p>' : '') +
       (line ? '' : '<div class="lmd-row lmd-row-line"><span>' + esc(T('La IA se conecta por MCP, con un token de tu cuenta.')) + '</span><button type="button" class="lmd-btn" data-ag-set="ai">' + esc(T('Conectar una IA')) + '</button></div>' +
-        '<div class="lmd-row lmd-row-line"><span data-ag-set="count">' + esc(live().length ? T(live().length === 1 ? '1 agente activo' : '{n} agentes activos', { n: live().length }) : T('Ahora no hay agentes trabajando.')) + '</span><button type="button" class="lmd-btn" data-ag-set="show">' + esc(T('Ver los agentes')) + '</button></div>');
+        '<div class="lmd-row lmd-row-line"><span data-ag-set="count">' + esc(live().length ? T(live().length === 1 ? '1 agente activo' : '{n} agentes activos', { n: live().length }) : T('Ahora no hay agentes trabajando.')) + '</span><button type="button" class="lmd-btn" data-ag-set="show">' + esc(T('Ver los agentes')) + '</button></div>') +
+      // Estos son los agentes que la IA anota en la nube. Los procesos de agentes abiertos en esta computadora son otra herramienta.
+      (LMD.tools.local.paired() && !LMD.tools.local.why() ? '<div class="lmd-row lmd-row-line"><span>' + esc(T('Las sesiones abiertas en esta computadora están en otra herramienta.')) + '</span><button type="button" class="lmd-btn" data-ag-set="local">' + esc(T('Sesiones locales')) + '</button></div>' : '');
     area.querySelectorAll('button[data-ag-set]').forEach((b) => b.addEventListener('click', () => {
       const k = b.dataset.agSet;
-      if (k === 'show') { api.close(); reveal(); } else core.openPanel(k);
+      if (k === 'show') { api.close(); reveal(); } else if (k === 'local') LMD.tools.show('localagents'); else core.openPanel(k);
     }));
   }
 

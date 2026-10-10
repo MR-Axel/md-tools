@@ -112,6 +112,7 @@
         "src/aikey.js",
         "src/assistant.js",
         "src/agents.js",
+        "src/localtools.js",
         "src/shortcuts.js",
         "vendor/markdown-it.min.js",
         "vendor/markdown-it-emoji.min.js",
