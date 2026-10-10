@@ -1,0 +1,19 @@
+{
+  "name": "sharpmd-local",
+  "version": "0.1.0",
+  "description": "Local companion for SharpMD: dev servers, git worktrees and AI agent sessions on this machine. Listens on 127.0.0.1 only.",
+  "license": "MIT",
+  "private": true,
+  "bin": {
+    "sharpmd-local": "bin/sharpmd-local.js"
+  },
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node bin/sharpmd-local.js",
+    "test": "node --test \"test/*.test.js\"",
+    "test:real": "node test/real.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

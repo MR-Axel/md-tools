@@ -1,0 +1,9 @@
+
+Conexiones activas
+
+  Proto  Dirección local        Dirección remota       Estado          PID
+  TCP    [::]:135               [::]:0                 ESCUCHANDO      1320
+  TCP    [::]:3000              [::]:0                 ESCUCHANDO      9120
+  TCP    [::1]:5173             [::]:0                 ESCUCHANDO      4242
+  TCP    [fe80::1c2b:3d4e:5f60:7182%12]:8080  [::]:0   ESCUCHANDO      6100
+  TCP    [::1]:51900            [::1]:5173             ESTABLECIDO     7001

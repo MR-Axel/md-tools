@@ -31,3 +31,5 @@
 /wysiwyg-markdown-editor.html export-ignore
 /manifest.webmanifest export-ignore
 /sw.js export-ignore
+/local/ export-ignore
+/local-tools.html export-ignore
