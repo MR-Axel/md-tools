@@ -1,6 +1,7 @@
 // Service worker: lee archivos y carpetas por la página (que no puede hacer fetch de file://),
 // inyecta las librerías pesadas solo cuando el documento las usa, y reparte los atajos.
-importScripts('defaults.js', 'store.js', 'bridge-sw.js', 'seal.js', 'aikey.js');
+// kit.js va por su lista de tipos de archivo (FILE_TYPES): qué muestra el visor y hasta qué tamaño.
+importScripts('defaults.js', 'kit.js', 'store.js', 'bridge-sw.js', 'seal.js', 'aikey.js');
 
 const LAZY = {
   katex: { js: ['vendor/katex/katex.min.js'], css: 'vendor/katex/katex.min.css' },
@@ -85,6 +86,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'fileSeen') return LMD.bridgeHost.onSeen(msg, sender, sendResponse);
   // La bienvenida, mientras falte el permiso para archivos del disco (bridge-sw.js).
   if (msg.type === 'fileSetup') return LMD.bridgeHost.onSetup(msg, sender, sendResponse);
+  // Un PDF, un libro o una imagen del disco en el visor de la app: llevar la pestaña ahí (lo pide el lector de un
+  // archivo del disco, o pdfopen.js con el ajuste prendido) y leer el archivo o su carpeta (lo pide la página de la app).
+  if (msg.type === 'diskView') return LMD.bridgeHost.onView(msg, sender, sendResponse);
+  if (msg.type === 'disk') return LMD.bridgeHost.onDisk(msg, sender, sendResponse);
   if (msg.type === 'openApp') {
     const own = chrome.runtime.getURL('src/app.html');
     const go = (base) => chrome.tabs.create({ url: base + (msg.fresh ? '?new=1' : (msg.query || '')) });

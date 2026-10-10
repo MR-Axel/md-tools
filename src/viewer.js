@@ -135,6 +135,8 @@
         '<span class="lmd-vw-count" aria-live="polite"></span>' +
         btn('find-prev', I.up, 'Resultado anterior', 'Shift+Enter') + btn('find-next', I.down, 'Resultado siguiente', 'Enter') +
       '</div>';
+    // Un archivo abierto desde el disco por su ruta: la salida al visor del navegador, a un toque.
+    if (v.native) (bar.querySelector('.lmd-vw-findtog') || bar).insertAdjacentHTML(bar.querySelector('.lmd-vw-findtog') ? 'beforebegin' : 'beforeend', '<div class="lmd-vw-grp">' + btn('native', ICON.browser, 'Abrir con el visor del navegador') + '</div>');
     bar.addEventListener('click', (e) => {
       const b = e.target.closest('[data-vw]'); if (!b || b.disabled || cur !== v) return;
       act(v, b.dataset.vw);
@@ -165,6 +167,7 @@
     if (what === 'find-prev') return step(-1);
     if (what === 'find-next') return step(1);
     if (what === 'speak') { if (core.actions.speak) core.actions.speak(); return; }
+    if (what === 'native') { if (v.native) v.native(); return; }
     if (v.kind === 'image') return imgAct(v, what);
     if (v.kind === 'pdf') {
       if (what === 'prev') pdfGo(v, v.page - 1, 0);
