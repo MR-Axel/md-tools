@@ -843,8 +843,9 @@
       rename: (name) => api('PUT', '/team', { name }),
       // El subdominio del equipo para sus sitios publicados: si un nombre se puede usar, elegirlo y dejarlo.
       subCheck: (name) => api('GET', '/team/subdomain?name=' + encodeURIComponent(name)),
-      subdomain: (name) => api('PUT', '/team/subdomain', { name }),
+      subdomain: (name) => api('PUT', '/team/subdomain', { name, lang: LMD.lang() }),
       subdomainOff: () => api('DELETE', '/team/subdomain'),
+      subdomainCancel: () => api('DELETE', '/team/subdomain/request'),
     },
     // Carpetas con contraseña.
     vaults, vaultFor, vaultHas, sealFolder, openFolder, rotateSpace,

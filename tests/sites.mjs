@@ -2,7 +2,8 @@
 // Se prueba de punta a punta: publicar desde la app (menú de la carpeta y Ajustes), el sitio como lo ve un
 // visitante (navegación, buscador, sin JavaScript, en teléfono), los cambios sin publicar y volver a publicar,
 // despublicar, el plan y la baja de plan, el equipo con su política, la suspensión por administración y la denuncia.
-// Y el subdominio por equipo: elegirlo, cambiarlo y dejarlo, el Host, el aislamiento entre equipos y la app.
+// Y el subdominio por equipo: elegirlo, cambiarlo y dejarlo, el Host, el aislamiento entre equipos y la app; y a
+// pedido: pedirlo, el aviso, y aprobar o rechazar con la clave de administración.
 // El host de sitios es el mismo servidor local pedido con otro nombre: pages.localhost, que resuelve a 127.0.0.1.
 // El correo es un servidor falso local: nada sale de esta máquina.
 import { rig, tally, sleep, root } from './rig.mjs';
@@ -16,7 +17,7 @@ await new Promise((r) => fakeMail.listen(0, '127.0.0.1', r));
 let PORT = 0;
 // El dominio de los subdominios de equipo, y cuánto dura la reserva de un nombre que se deja (corta, para verla vencer).
 const TD = 'equipos.localhost'; const HOLD = 5000;
-const R = await rig((port) => { PORT = port; return { PAGES_URL: 'http://pages.localhost:' + port, PAGES_TEAM_DOMAIN: TD, PAGES_TEAM_HOLD_MS: String(HOLD), PAGES_GRACE_MS: '2500', PAGES_MAX_PAGES: '8', AUTH_PER_IP: '300', FEEDBACK_TO: 'avisos@ejemplo.test', MAIL_WEBHOOK: 'http://127.0.0.1:' + fakeMail.address().port }; });
+const R = await rig((port) => { PORT = port; return { PAGES_URL: 'http://pages.localhost:' + port, PAGES_TEAM_DOMAIN: TD, PAGES_TEAM_AUTO: '1', PAGES_TEAM_HOLD_MS: String(HOLD), PAGES_GRACE_MS: '2500', PAGES_MAX_PAGES: '8', AUTH_PER_IP: '300', FEEDBACK_TO: 'avisos@ejemplo.test', MAIL_WEBHOOK: 'http://127.0.0.1:' + fakeMail.address().port }; });
 const { check, done } = tally();
 const enc = encodeURIComponent;
 const PH = 'pages.localhost:' + PORT; const PAGES = 'http://' + PH;
@@ -546,7 +547,7 @@ try {
   const mario = await R.open(M);
   await mario.page.goto(R.noteUrl('~' + space + '/wiki/index.md')); await mario.page.waitForSelector('[data-root=team] .lmd-node');
   await openPlan(mario.page);
-  const uiM = await mario.page.evaluate(() => { const t = document.querySelector('.lmd-panel .lmd-team'); const row = t.querySelector('[data-team=subdomain]'); return { field: !!t.querySelector('[data-t=sub-name], [data-t=sub-save], [data-t=sub-off]'), row: row ? row.innerText : '' }; });
+  const uiM = await mario.page.evaluate(() => { const t = document.querySelector('.lmd-panel .lmd-team'); const row = t.querySelector('[data-blk=team-sub]'); return { field: !!t.querySelector('[data-t=sub-name], [data-t=sub-save], [data-t=sub-off]'), row: row ? row.innerText : '' }; });
   check('un miembro ve la dirección del equipo y no la puede cambiar', uiM.field === false && uiM.row.includes(tUrl('estudio') + '/'), uiM);
   await mario.ctx.close();
 
@@ -566,7 +567,7 @@ try {
   console.log('Sin el dominio de equipos');
   {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdsites-')); const port = PORT + 2; const base = 'http://127.0.0.1:' + port; const ph = 'pages.localhost:' + port;
-    const boot = (env) => spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(port), DATA_DIR: dir, DEV_CODES: '1', ADMIN_KEY: R.ADMIN, PUBLIC_URL: base, PAGES_TEAM_DOMAIN: '', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const boot = (env) => spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(port), DATA_DIR: dir, DEV_CODES: '1', ADMIN_KEY: R.ADMIN, PUBLIC_URL: base, PAGES_TEAM_DOMAIN: '', PAGES_TEAM_ASK: '', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
     const proc = boot({ PAGES_URL: 'http://' + ph });
     let log = ''; proc.stdout.on('data', (d) => { log += d; }); proc.stderr.on('data', (d) => { log += d; });
     for (let i = 0; i < 80 && !/puerto/.test(log); i++) await sleep(100);
@@ -578,15 +579,109 @@ try {
     await call('PUT', '/notes/' + enc('wiki/index.md') + '?o=' + sp, { text: '# Wiki\n\nSIN-DOMINIO' }, v.session);
     const made = (await call('POST', '/sites', { o: sp, folder: 'wiki', slug: 'wiki-sola', title: 'Wiki' }, v.session)).json;
     await call('PUT', '/sites/' + made.id + '/pages', { pages: [page('wiki/index.md', 1, '<h1>Wiki</h1><p>SIN-DOMINIO</p>')] }, v.session); await call('POST', '/sites/' + made.id + '/publish', {}, v.session);
-    const routes = [await call('GET', '/team/subdomain', undefined, v.session), await call('GET', '/team/subdomain?name=taller', undefined, v.session), await call('PUT', '/team/subdomain', { name: 'taller' }, v.session), await call('DELETE', '/team/subdomain', undefined, v.session)];
+    const routes = [await call('GET', '/team/subdomain', undefined, v.session), await call('GET', '/team/subdomain?name=taller', undefined, v.session), await call('PUT', '/team/subdomain', { name: 'taller' }, v.session), await call('DELETE', '/team/subdomain', undefined, v.session), await call('DELETE', '/team/subdomain/request', undefined, v.session), await call('GET', '/admin/subdomains', undefined, undefined, { 'x-admin-key': R.ADMIN }), await call('POST', '/admin/subdomains', { id: 1, action: 'approve' }, undefined, { 'x-admin-key': R.ADMIN })];
     const same = await host(ph, '/wiki-sola/'); const other = await host('taller.' + TD + ':' + port, '/wiki-sola/'); const otherApi = await host('taller.' + TD + ':' + port, '/health');
-    check('sin PAGES_TEAM_DOMAIN el equipo dice que no hay subdominio y la ruta no existe', acct.team.mine.subdomain && acct.team.mine.subdomain.enabled === false && Object.keys(acct.team.mine.subdomain).length === 1 && routes.every((r) => r.status === 404 && r.json.error === 'no_route'), [acct.team.mine.subdomain, routes.map((r) => [r.status, r.json])]);
+    check('sin PAGES_TEAM_DOMAIN ni PAGES_TEAM_ASK el equipo dice que no hay subdominio y ninguna ruta existe, tampoco las de administración', acct.team.mine.subdomain && acct.team.mine.subdomain.enabled === false && Object.keys(acct.team.mine.subdomain).length === 1 && routes.every((r) => r.status === 404 && r.json.error === 'no_route'), [acct.team.mine.subdomain, routes.map((r) => [r.status, r.json])]);
     check('el sitio del equipo se sirve donde siempre, sin redirección, y ningún otro nombre de host sirve sitios: responde la API de siempre', made.url === 'http://' + ph + '/wiki-sola/' && same.status === 200 && /SIN-DOMINIO/.test(same.body) && same.headers['content-security-policy'].includes('http://' + ph + '/_/site.js') && other.status === 401 && otherApi.status === 200 && /"ok":true/.test(otherApi.body), [made.url, same.status, other.status, otherApi.status]);
     proc.kill(); await sleep(400);
     // Mal configurado no arranca: sin PAGES_URL, o con algo que no es un nombre de dominio.
     const dies = async (env) => { const p2 = boot(env); let out = ''; p2.stderr.on('data', (d) => { out += d; }); p2.stdout.on('data', (d) => { out += d; }); const exit = await new Promise((r) => { p2.once('exit', r); setTimeout(() => { p2.kill(); r(-1); }, 8000); }); return { exit, out }; };
     const noPages = await dies({ PAGES_URL: '', PAGES_TEAM_DOMAIN: TD }); const badDomain = await dies({ PAGES_URL: 'http://' + ph, PAGES_TEAM_DOMAIN: 'https://' + TD + '/' }); const sameAsApi = await dies({ PUBLIC_URL: 'http://api.ejemplo.test:' + port, PAGES_URL: 'http://' + ph, PAGES_TEAM_DOMAIN: 'api.ejemplo.test' });
     check('mal configurado el servidor no arranca: sin PAGES_URL, con algo que no es un dominio, o con el nombre de la API', [noPages, badDomain, sameAsApi].every((r) => r.exit === 1 && /PAGES_TEAM_DOMAIN/.test(r.out)), [noPages, badDomain, sameAsApi].map((r) => [r.exit, r.out.slice(0, 80)]));
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { /* Windows lo suelta después */ }
+  }
+
+  // ---------- Subdominio a pedido ----------
+  // Con PAGES_TEAM_ASK el servidor ofrece el subdominio y solo toma pedidos: el nombre queda apartado para el equipo,
+  // el aviso entra por donde entran los comentarios, y quien opera el servidor lo aprueba o lo rechaza con la clave
+  // de administración. Nada se sirve por un subdominio hasta que exista PAGES_TEAM_DOMAIN, y ahí solo lo aprobado.
+  console.log('Subdominio a pedido');
+  {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdsites-')); const port = PORT + 3; const base = 'http://127.0.0.1:' + port; const ph = 'pages.localhost:' + port;
+    const th = (n) => n + '.' + TD + ':' + port; const tUrl = (n) => 'http://' + th(n); const KEY = { 'x-admin-key': R.ADMIN };
+    const boot = async (env) => {
+      const proc = spawn(process.execPath, [path.join(root, 'server', 'server.mjs')], { env: { ...process.env, PORT: String(port), DATA_DIR: dir, DEV_CODES: '1', ADMIN_KEY: R.ADMIN, PUBLIC_URL: base, PAGES_URL: 'http://' + ph, PAGES_TEAM_DOMAIN: '', PAGES_TEAM_ASK: '', PAGES_TEAM_AUTO: '', AUTH_PER_IP: '300', FEEDBACK_TO: 'avisos@ejemplo.test', MAIL_WEBHOOK: 'http://127.0.0.1:' + fakeMail.address().port, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+      const st = { proc, log: '' }; proc.stdout.on('data', (d) => { st.log += d; }); proc.stderr.on('data', (d) => { st.log += d; });
+      for (let i = 0; i < 80 && !/puerto/.test(st.log); i++) await sleep(100);
+      return st;
+    };
+    const call = (m, p, b, s, extra) => fetch(base + p, { method: m, headers: Object.assign({ 'content-type': 'application/json' }, s ? { authorization: 'Bearer ' + s } : {}, extra || {}), body: b === undefined ? undefined : JSON.stringify(b) }).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
+    const host = (h, p) => new Promise((resolve) => { const r = http.request({ host: '127.0.0.1', port, path: p, headers: { host: h } }, (res) => { let b = ''; res.on('data', (c) => { b += c; }); res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: b })); }); r.end(); });
+    const enter = async (email) => { const code = (await call('POST', '/auth/start', { email })).json.dev_code; const v = (await call('POST', '/auth/verify', { email, code })).json; return { s: v.session, email }; };
+    const teamOf = async (email, slug, mark) => {
+      const who = await enter(email); const made = (await call('POST', '/admin/team', { email, seats: 2 }, undefined, KEY)).json;
+      const sp = (await call('GET', '/account', undefined, who.s)).json.team.mine.space;
+      await call('PUT', '/notes/' + enc('wiki/index.md') + '?o=' + sp, { text: '# Wiki\n\n' + mark }, who.s);
+      const st = (await call('POST', '/sites', { o: sp, folder: 'wiki', slug, title: 'Wiki' }, who.s)).json;
+      await call('PUT', '/sites/' + st.id + '/pages', { pages: [page('wiki/index.md', 1, '<h1>Wiki</h1><p>' + mark + '</p>')] }, who.s); await call('POST', '/sites/' + st.id + '/publish', {}, who.s);
+      return Object.assign(who, { team: made.team, site: st.id, slug });
+    };
+    const sub = (who, m, b, tail) => call(m, '/team/subdomain' + (tail || ''), b, who && who.s);
+    const view = async (who) => (await call('GET', '/account', undefined, who.s)).json.team.mine.subdomain;
+    const adm = (m, b, h) => call(m, '/admin/subdomains', b, undefined, h === undefined ? KEY : h);
+    const mailTo = (to, from) => mails.slice(from).filter((x) => x.to === to);
+
+    let S1 = await boot({ PAGES_TEAM_ASK: TD });
+    const J = await teamOf('jefa-pide@ejemplo.test', 'wiki-jefa', 'SOLO-JEFA'); const K = await teamOf('karen-pide@ejemplo.test', 'wiki-karen', 'SOLO-KAREN');
+    const v0 = await view(J);
+    check('con PAGES_TEAM_ASK el equipo ve que puede pedir un subdominio: a pedido, con la dirección de ejemplo y nada elegido', v0.enabled === true && v0.mode === 'ask' && v0.review === true && v0.domain === TD && v0.name === '' && v0.url === '' && v0.pending === '' && v0.rejected === null && v0.template === tUrl('{name}') + '/', v0);
+    const valid = [(await sub(J, 'GET', undefined, '?name=a_b')).json, (await sub(J, 'GET', undefined, '?name=support')).json, (await sub(J, 'GET', undefined, '?name=taller')).json, await sub(J, 'PUT', { name: 'sharpmd-docs' })];
+    check('la validación es la misma: formato, reservados y libres', valid[0].why === 'bad_subdomain' && valid[1].why === 'subdomain_reserved' && valid[2].ok === true && valid[3].status === 409 && valid[3].json.error === 'subdomain_reserved', valid.slice(0, 3));
+    const m0 = mails.length;
+    const ask = await sub(J, 'PUT', { name: 'taller', lang: 'es' });
+    const v1 = await view(J); const stay = [await host(ph, '/wiki-jefa/'), await host(th('taller'), '/wiki-jefa/')]; const siteNow = (await call('GET', '/sites/' + J.site, undefined, J.s)).json;
+    check('pedir deja el nombre pendiente para ese equipo, sin activar nada', ask.status === 200 && ask.json.subdomain.pending === 'taller' && ask.json.subdomain.name === '' && ask.json.team.mine.subdomain.pending === 'taller' && v1.pending === 'taller' && v1.asked > 0 && v1.url === '', [ask.json && ask.json.subdomain, v1]);
+    check('los sitios del equipo siguen en su dirección de siempre, y el subdominio pedido no sirve nada', stay[0].status === 200 && /SOLO-JEFA/.test(stay[0].body) && siteNow.url === 'http://' + ph + '/wiki-jefa/' && stay[1].status !== 200 && !/SOLO-JEFA/.test(stay[1].body), [stay.map((r) => r.status), siteNow.url]);
+    await sleep(300);
+    const fb = (await call('GET', '/admin/feedback', undefined, undefined, KEY)).json.items.filter((i) => i.kind === 'subdomain'); const toOwner = mailTo('avisos@ejemplo.test', m0);
+    check('el pedido queda anotado por donde entran los comentarios, con el equipo, el nombre y el correo de quien administra', fb.length === 1 && fb[0].from_email === J.email && fb[0].signed_in === true && fb[0].text.includes('taller.' + TD) && fb[0].text.includes('(id ' + J.team + ')') && fb[0].text.includes(J.email), fb);
+    check('y con FEEDBACK_TO sale el mismo aviso por correo', toOwner.length === 1 && toOwner[0].subject === 'SharpMD subdomain request' && toOwner[0].text.includes('taller.' + TD) && toOwner[0].reply_to === J.email, toOwner);
+    const clash = await sub(K, 'PUT', { name: 'taller' }); const clashChk = (await sub(K, 'GET', undefined, '?name=taller')).json; const vK = await view(K);
+    check('un nombre pedido por un equipo no lo puede pedir otro, y el otro equipo no ve de quién es', clash.status === 409 && clash.json.error === 'subdomain_taken' && clashChk.ok === false && clashChk.why === 'subdomain_taken' && vK.pending === '' && !JSON.stringify(vK).includes('taller"'), [clash.json, clashChk]);
+    const change = await sub(J, 'PUT', { name: 'taller-dos', lang: 'es' }); const kTakes = await sub(K, 'PUT', { name: 'taller' });
+    check('cambiar el pedido suelta el nombre anterior en el acto: otro equipo ya lo puede pedir', change.status === 200 && change.json.subdomain.pending === 'taller-dos' && kTakes.status === 200 && kTakes.json.subdomain.pending === 'taller', [change.json && change.json.subdomain, kTakes.json && kTakes.json.subdomain]);
+    const cancel = await sub(K, 'DELETE', undefined, '/request'); const again = (await sub(J, 'GET', undefined, '?name=taller')).json;
+    check('cancelar el pedido lo borra y deja el nombre libre', cancel.status === 200 && cancel.json.subdomain.pending === '' && again.ok === true && (await sub(null, 'DELETE', undefined, '/request')).status === 401, [cancel.json && cancel.json.subdomain, again]);
+
+    // Administración: listar, aprobar y rechazar, con la clave.
+    const noKey = [await adm('GET', undefined, {}), await adm('GET', undefined, { 'x-admin-key': 'otra-clave' }), await adm('POST', { id: J.team, action: 'approve' }, {}), await adm('POST', { id: J.team, action: 'reject' }, { 'x-admin-key': 'otra-clave' }), await call('POST', '/admin/subdomains', { id: J.team, action: 'approve' }, J.s), await call('GET', '/admin/subdomains', undefined, J.s)];
+    const stillPending = await view(J);
+    check('sin la clave de administración no se lista ni se aprueba nada: 403, también con la sesión de quien administra el equipo', noKey.every((r) => r.status === 403 && r.json.error === 'forbidden') && stillPending.pending === 'taller-dos' && stillPending.name === '', noKey.map((r) => r.status));
+    const list = (await adm('GET')).json;
+    check('con la clave se ven los pedidos pendientes: el equipo, el nombre y quién lo pidió', list.mode === 'ask' && list.domain === TD && list.pending.length === 1 && list.pending[0].id === J.team && list.pending[0].pending === 'taller-dos' && list.pending[0].asked_by === J.email && list.pending[0].owner === J.email && list.active.length === 0, list);
+    const wrong = [await adm('POST', { id: K.team, action: 'approve' }), await adm('POST', { id: J.team, action: 'approve', name: 'taller' }), await adm('POST', { id: J.team, action: 'borrar' }), await adm('POST', { id: 99999, action: 'approve' })];
+    check('no se aprueba lo que no se pidió: sin pedido, con un nombre que el equipo ya cambió, o una acción que no existe', wrong[0].status === 409 && wrong[0].json.error === 'no_request' && wrong[1].status === 409 && wrong[1].json.error === 'request_changed' && wrong[2].status === 400 && wrong[3].status === 404 && (await view(J)).pending === 'taller-dos', wrong.map((r) => [r.status, r.json && r.json.error]));
+    const m1 = mails.length;
+    const rej = await adm('POST', { id: J.team, action: 'reject', reason: 'Es la marca de otra empresa' });
+    const v2 = await view(J); const rejMail = mailTo(J.email, m1); const freed = await sub(K, 'PUT', { name: 'taller-dos' });
+    check('rechazar libera el nombre y deja el motivo a la vista de quien administra', rej.status === 200 && rej.json.team.pending === '' && v2.pending === '' && v2.name === '' && v2.rejected && v2.rejected.name === 'taller-dos' && v2.rejected.reason === 'Es la marca de otra empresa' && freed.status === 200, [rej.json, v2, freed.status]);
+    check('y le llega un correo corto, en el idioma con que lo pidió', rej.json.mailed === true && rejMail.length === 1 && rejMail[0].subject === 'Sobre el pedido de subdominio de tu equipo' && rejMail[0].text.includes('No pudimos aprobar taller-dos.' + TD) && rejMail[0].text.includes('Motivo: Es la marca de otra empresa') && !/!|¡/.test(rejMail[0].text), rejMail);
+    const m2 = mails.length;
+    const ask2 = await sub(J, 'PUT', { name: 'taller', lang: 'es' }); const v3 = await view(J);
+    const okd = await adm('POST', { id: J.team, action: 'approve', name: 'taller' }); const v4 = await view(J); const okMail = mailTo(J.email, m2);
+    const notYet = [await host(ph, '/wiki-jefa/'), await host(th('taller'), '/wiki-jefa/')];
+    check('un pedido nuevo borra el rechazo anterior; aprobarlo deja el nombre aprobado para el equipo', ask2.status === 200 && v3.rejected === null && v3.pending === 'taller' && okd.status === 200 && okd.json.team.name === 'taller' && v4.name === 'taller' && v4.pending === '' && v4.url === '', [v3, okd.json, v4]);
+    check('sin PAGES_TEAM_DOMAIN lo aprobado todavía no sirve nada, y el correo lo dice sin prometer fecha', notYet[0].status === 200 && notYet[1].status !== 200 && okMail.length === 1 && okMail[0].subject === 'Aprobamos el subdominio de tu equipo' && okMail[0].text.includes('taller.' + TD + ' quedó aprobado') && okMail[0].text.includes('Todavía no está activo'), [notYet.map((r) => r.status), okMail]);
+    const tl = (await call('GET', '/team/log', undefined, J.s)).json.entries.filter((e) => /^subdomain/.test(e.action)).map((e) => [e.action, e.via, e.detail]);
+    check('el registro del equipo dice qué se pidió, qué no se aprobó y qué quedó aprobado', tl.some((a) => a[0] === 'subdomain_ask' && a[2] === 'taller-dos') && tl.some((a) => a[0] === 'subdomain_no' && a[1] === 'auto' && a[2] === 'taller-dos') && tl.some((a) => a[0] === 'subdomain' && a[1] === 'auto' && a[2] === 'taller'), tl);
+    check('a pedido: el servidor no anotó errores', !/error 500|error no capturado|promesa sin atender|sitios: error/.test(S1.log), (S1.log.match(/error[^\n]*/g) || []).slice(0, 3));
+    S1.proc.kill(); await sleep(500);
+
+    // La infraestructura activa (PAGES_TEAM_DOMAIN), con la misma base: lo aprobado sirve, lo pendiente no.
+    const S2 = await boot({ PAGES_TEAM_DOMAIN: TD });
+    const v5 = await view(J); const vK2 = await view(K);
+    const served = [await host(th('taller'), '/wiki-jefa/'), await host(ph, '/wiki-jefa/'), await host(th('taller-dos'), '/wiki-karen/'), await host(th('taller-dos'), '/'), await host(ph, '/wiki-karen/')];
+    check('con PAGES_TEAM_DOMAIN el nombre aprobado empieza a servir y la dirección de antes redirige', v5.mode === 'live' && v5.review === true && v5.name === 'taller' && v5.url === tUrl('taller') + '/' && served[0].status === 200 && /SOLO-JEFA/.test(served[0].body) && served[1].status === 308 && served[1].headers.location === tUrl('taller') + '/wiki-jefa/', [v5, served.slice(0, 2).map((r) => r.status)]);
+    check('un nombre pendiente no sirve sitios: responde como uno de nadie, y el sitio de ese equipo sigue donde estaba', vK2.pending === 'taller-dos' && vK2.name === '' && served[2].status === 404 && served[3].status === 404 && served[2].body === 'Not found' && served[4].status === 200 && /SOLO-KAREN/.test(served[4].body), served.slice(2).map((r) => r.status));
+    const m3 = mails.length;
+    const okK = await adm('POST', { id: K.team, action: 'approve' }); const afterK = [await host(th('taller-dos'), '/wiki-karen/'), await host(th('taller-dos'), '/wiki-jefa/')]; const kMail = mailTo(K.email, m3);
+    check('al aprobarlo sirve en el acto, solo los sitios de ese equipo, y el correo trae la dirección', okK.status === 200 && okK.json.team.url === tUrl('taller-dos') + '/' && afterK[0].status === 200 && /SOLO-KAREN/.test(afterK[0].body) && afterK[1].status === 404 && kMail.length === 1 && kMail[0].subject === 'Your team subdomain is active' && kMail[0].text.includes(tUrl('taller-dos') + '/'), [okK.json, afterK.map((r) => r.status), kMail]);
+    const next = await sub(J, 'PUT', { name: 'taller-nuevo' }); const v6 = await view(J); const mean = [await host(th('taller'), '/wiki-jefa/'), await host(th('taller-nuevo'), '/wiki-jefa/')];
+    check('con la infraestructura activa un cambio de nombre también es un pedido: el que estaba sigue sirviendo hasta que se apruebe', next.status === 200 && v6.name === 'taller' && v6.pending === 'taller-nuevo' && mean[0].status === 200 && mean[1].status === 404, [v6, mean.map((r) => r.status)]);
+    const okJ = await adm('POST', { id: J.team, action: 'approve' }); const swapped = [await host(th('taller-nuevo'), '/wiki-jefa/'), await host(th('taller'), '/wiki-jefa/')]; const list2 = (await adm('GET')).json;
+    check('aprobado el cambio, el nombre nuevo sirve y el viejo redirige y queda en reserva', okJ.status === 200 && swapped[0].status === 200 && swapped[1].status === 308 && swapped[1].headers.location === tUrl('taller-nuevo') + '/wiki-jefa/' && list2.mode === 'live' && list2.pending.length === 0 && list2.active.map((t) => t.name).sort().join() === 'taller-dos,taller-nuevo' && (await sub(K, 'GET', undefined, '?name=taller')).json.ok === false, [swapped.map((r) => r.status), list2.active]);
+    check('con la infraestructura activa: el servidor no anotó errores', !/error 500|error no capturado|promesa sin atender|sitios: error/.test(S2.log), (S2.log.match(/error[^\n]*/g) || []).slice(0, 3));
+    S2.proc.kill(); await sleep(400);
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { /* Windows lo suelta después */ }
   }
   }

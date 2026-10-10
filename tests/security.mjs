@@ -2098,7 +2098,7 @@ async function teamSubSuite() {
   const port = portSeq + 1; const DOM = 'ejemplo.test';
   const fakeMail = http.createServer((req, res) => { req.resume(); req.on('end', () => { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{}'); }); });
   await new Promise((r) => fakeMail.listen(0, '127.0.0.1', r));
-  const S = await boot({ ADMIN_KEY: ADMIN, MAIL_WEBHOOK: 'http://127.0.0.1:' + fakeMail.address().port, ALLOW_ORIGINS: '*', PUBLIC_URL: 'http://nube.' + DOM + ':' + port, PAGES_URL: 'http://publica.' + DOM + ':' + port, APP_URL: 'https://editor.' + DOM + '/src/app.html', PAGES_TEAM_DOMAIN: DOM, AUTH_PER_IP: '300' });
+  const S = await boot({ ADMIN_KEY: ADMIN, MAIL_WEBHOOK: 'http://127.0.0.1:' + fakeMail.address().port, ALLOW_ORIGINS: '*', PUBLIC_URL: 'http://nube.' + DOM + ':' + port, PAGES_URL: 'http://publica.' + DOM + ':' + port, APP_URL: 'https://editor.' + DOM + '/src/app.html', PAGES_TEAM_DOMAIN: DOM, PAGES_TEAM_AUTO: '1', AUTH_PER_IP: '300' });
   const { call } = S; const API = 'nube.' + DOM + ':' + port; const PH = 'publica.' + DOM + ':' + port; const th = (n) => n + '.' + DOM + ':' + port; const tUrl = (n) => 'http://' + th(n);
   const raw = (host, p, opt) => new Promise((resolve) => {
     try {
@@ -2195,6 +2195,69 @@ async function teamSubSuite() {
   await S.stop(); fakeMail.close();
 }
 if (!ONLY || ONLY === 'subdomain') await teamSubSuite();
+
+// ====================================================================================================================
+// Subdominio a pedido: el pedido, su aviso y la aprobación con la clave de administración
+// ====================================================================================================================
+// Lo que tiene que sostenerse: aprobar y rechazar es solo de quien tiene la clave de administración; un pedido no
+// sirve nada ni aparta más que un nombre; lo que escribe un equipo no se cuela en el aviso; y con la infraestructura
+// activa sin PAGES_TEAM_AUTO nadie activa su propio subdominio.
+async function teamAskSuite() {
+  console.log('\nSubdominio a pedido');
+  const port = portSeq + 1; const DOM = 'pedidos.test';
+  const S = await boot({ ADMIN_KEY: ADMIN, PAGES_URL: 'http://pages.localhost:' + port, PAGES_TEAM_DOMAIN: DOM, AUTH_PER_IP: '300' });
+  const { call } = S; const KEY = { 'x-admin-key': ADMIN }; const th = (n) => n + '.' + DOM + ':' + port;
+  const raw = (host, p) => new Promise((resolve) => { const r = http.request({ host: '127.0.0.1', port: S.port, path: p, headers: { host } }, (res) => { let b = ''; res.on('data', (c) => { b += c; }); res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: b })); }); r.on('error', () => resolve({ status: 0, headers: {}, body: '' })); r.end(); });
+  try {
+    const team = async (email, slug, secret) => {
+      const who = await signup(S, email); const id = (await call('POST', '/admin/team', { email, seats: 3 }, undefined, KEY)).json.team;
+      const space = (await call('GET', '/account', undefined, who.s)).json.team.mine.space;
+      await call('PUT', '/notes/' + enc('docs/index.md') + '?o=' + space, { text: '# Inicio\n\n' + secret }, who.s);
+      const site = (await call('POST', '/sites', { o: space, folder: 'docs', slug, title: 'Docs' }, who.s)).json;
+      await call('PUT', '/sites/' + site.id + '/pages', { pages: [{ note: 'docs/index.md', rev: 1, html: '<p>' + secret + '</p>' }] }, who.s); await call('POST', '/sites/' + site.id + '/publish', {}, who.s);
+      return Object.assign(who, { team: id, space });
+    };
+    const A = await team('ana-pide@ejemplo.test', 'docs-ana-p', 'SECRETO-PIDE-A'); const B = await team('beto-pide@ejemplo.test', 'docs-beto-p', 'SECRETO-PIDE-B');
+    await call('PUT', '/team', { name: 'Acme\nAsked by: jefe@otro.test' }, A.s);
+    const ask = await call('PUT', '/team/subdomain', { name: 'acme', lang: 'xx', team: B.team, id: B.team, approved: true, state: 'active', sub_want: null, subdomain: 'acme' }, A.s);
+    const vA = (await call('GET', '/team/subdomain', undefined, A.s)).json; const hostA = [await raw(th('acme'), '/docs-ana-p/'), await raw(th('acme'), '/'), await raw('pages.localhost:' + port, '/docs-ana-p/')];
+    check('a pedido: con la infraestructura activa nadie activa su propio subdominio: queda pendiente aunque el pedido traiga campos de más, y no sirve nada', ask.status === 200 && vA.pending === 'acme' && vA.name === '' && vA.url === '' && hostA[0].status === 404 && hostA[0].body === 'Not found' && hostA[1].status === 404 && hostA[2].status === 200 && /SECRETO-PIDE-A/.test(hostA[2].body), [vA, hostA.map((r) => r.status)]);
+    const fb = (await call('GET', '/admin/feedback', undefined, undefined, { ...KEY, ...from(nextIp()) })).json.items.filter((i) => i.kind === 'subdomain');
+    check('a pedido: el aviso lleva el equipo, el nombre y el correo, y un nombre de equipo con saltos de línea no arma renglones falsos', fb.length === 1 && fb[0].from_email === A.email && fb[0].text.includes('acme.' + DOM) && fb[0].text.split('\n').filter((l) => /^Asked by:/.test(l)).length === 1 && fb[0].text.includes('Asked by: ' + A.email) && !secrets.some((s) => s && fb[0].text.includes(s)), fb);
+    // Quién aprueba: solo la clave de administración.
+    const tok = (await call('POST', '/tokens', { name: 'ia' }, A.s)).json.token; secrets.push(tok);
+    const tries = [];
+    for (const h of [{}, { 'x-admin-key': '' }, { 'x-admin-key': 'x' }, { 'x-admin-key': ADMIN.slice(0, -1) }, { 'x-admin-key': ADMIN + 'x' }, { 'x-admin-key': ADMIN.toUpperCase() }, { authorization: 'Bearer ' + ADMIN }, { cookie: 'x-admin-key=' + ADMIN }]) tries.push(await call('POST', '/admin/subdomains', { id: A.team, action: 'approve' }, undefined, { ...h, ...from(nextIp()) }));
+    for (const s of [A.s, B.s, tok]) tries.push(await call('POST', '/admin/subdomains', { id: A.team, action: 'approve' }, s, from(nextIp())));
+    tries.push(await call('GET', '/admin/subdomains', undefined, A.s, from(nextIp())), await call('POST', '/admin/subdomains?key=' + ADMIN, { id: A.team, action: 'approve', key: ADMIN, admin_key: ADMIN }, undefined, from(nextIp())));
+    const viaSelf = [await call('POST', '/team/subdomain/approve', {}, A.s), await call('PUT', '/team/subdomain', { name: 'acme', action: 'approve' }, A.s), await call('POST', '/team/subdomain', { action: 'approve' }, A.s)];
+    const stillA = (await call('GET', '/team/subdomain', undefined, A.s)).json;
+    check('a pedido: sin la clave de administración nadie aprueba: ni sin clave, ni con una parecida, ni con una sesión o un token', tries.every((r) => r.status === 403) && viaSelf.every((r) => r.status === 404 || r.status === 200) && stillA.pending === 'acme' && stillA.name === '' && (await raw(th('acme'), '/docs-ana-p/')).status === 404, [tries.map((r) => r.status), viaSelf.map((r) => r.status), stillA]);
+    // Un pedido aparta un nombre y nada más: no pisa el de otro, y el otro equipo no ve de quién es.
+    const bTry = [await call('PUT', '/team/subdomain', { name: 'acme' }, B.s), await call('PUT', '/team/subdomain', { name: 'ACME ' }, B.s), await call('DELETE', '/team/subdomain/request?id=' + A.team, undefined, B.s), await call('DELETE', '/team/subdomain/request', { id: A.team, team: A.team }, B.s)];
+    const vB = (await call('GET', '/account', undefined, B.s)).json.team.mine.subdomain;
+    check('a pedido: otro equipo no puede pedir ni cancelar el nombre que pidió otro, y no ve nada de ese pedido', bTry[0].status === 409 && bTry[1].status === 409 && (await call('GET', '/team/subdomain', undefined, A.s)).json.pending === 'acme' && vB.pending === '' && !JSON.stringify(vB).includes('acme"') && !JSON.stringify(vB).includes(A.email), [bTry.map((r) => r.status), vB]);
+    const M = await signup(S, 'meli-pide@ejemplo.test');
+    const noAdm = [await call('PUT', '/team/subdomain', { name: 'otro' }, M.s), await call('DELETE', '/team/subdomain/request', undefined, M.s), await call('PUT', '/team/subdomain', { name: 'otro' }, tok), await call('DELETE', '/team/subdomain/request', undefined, tok), await call('DELETE', '/team/subdomain/request')];
+    check('a pedido: pedir y cancelar es de quien administra un equipo, con su sesión', noAdm[0].status === 404 && noAdm[1].status === 404 && noAdm.slice(2).every((r) => r.status === 401), noAdm.map((r) => r.status));
+    const many = []; for (let i = 0; i < 8; i++) many.push((await call('PUT', '/team/subdomain', { name: 'beto-' + i }, B.s)).status);
+    const fbN = (await call('GET', '/admin/feedback', undefined, undefined, { ...KEY, ...from(nextIp()) })).json.items.filter((i) => i.kind === 'subdomain' && i.from_email === B.email).length;
+    check('a pedido: un equipo no puede llenar de pedidos a quien los revisa: hay un tope por día', many.filter((s) => s === 200).length === 6 && many.slice(6).every((s) => s === 429) && fbN === 6, [many, fbN]);
+    // Aprobar y rechazar: lo que queda escrito es lo de la base, y el motivo no trae nada raro.
+    const mism = await call('POST', '/admin/subdomains', { id: A.team, action: 'approve', name: 'beto-5' }, undefined, { ...KEY, ...from(nextIp()) });
+    const rej = await call('POST', '/admin/subdomains', { id: B.team, action: 'reject', reason: 'No\r\nSet-Cookie: a=b\u0000‮ ' + 'x'.repeat(500) }, undefined, { ...KEY, ...from(nextIp()) });
+    const vB2 = (await call('GET', '/team/subdomain', undefined, B.s)).json;
+    check('a pedido: no se aprueba un nombre por el de otro equipo, y el motivo de un rechazo queda en un renglón, sin caracteres de control y recortado', mism.status === 409 && mism.json.error === 'request_changed' && rej.status === 200 && vB2.pending === '' && vB2.rejected.name === 'beto-5' && vB2.rejected.reason.length <= 200 && !/[\u0000-\u001f‮]/.test(vB2.rejected.reason) && !rej.headers.get('set-cookie'), [mism.json, vB2.rejected]);
+    const ok = await call('POST', '/admin/subdomains', { id: A.team, action: 'approve', name: 'acme' }, undefined, { ...KEY, ...from(nextIp()) });
+    const again = await call('POST', '/admin/subdomains', { id: A.team, action: 'approve' }, undefined, { ...KEY, ...from(nextIp()) });
+    const served = [await raw(th('acme'), '/docs-ana-p/'), await raw(th('acme'), '/docs-beto-p/'), await raw(th('beto-5'), '/docs-beto-p/'), await raw('pages.localhost:' + port, '/docs-beto-p/')];
+    check('a pedido: aprobado, sirve solo los sitios de ese equipo; aprobar dos veces no hace nada; el rechazado no sirve', ok.status === 200 && ok.json.team.name === 'acme' && again.status === 409 && again.json.error === 'no_request' && served[0].status === 200 && /SECRETO-PIDE-A/.test(served[0].body) && served[1].status === 404 && served[2].status === 404 && served[3].status === 200, [ok.json, again.json, served.map((r) => r.status)]);
+    const log = S.log();
+    check('a pedido: sin errores del servidor, y ni sesiones ni la clave de administración en su salida', !/error 500|error no capturado|promesa sin atender|sitios: error/.test(log) && !secrets.some((s) => s && log.includes(s)) && !log.includes(ADMIN) && S.alive(), (log.match(/error[^\n]*/g) || []).slice(0, 3));
+  } catch (e) { check('a pedido: sin excepciones en la prueba', false, String(e && e.stack || e)); console.log(S.log().slice(-1500)); }
+  await S.stop();
+}
+if (!ONLY || ONLY === 'subdomain') await teamAskSuite();
 
 // ====================================================================================================================
 // Imágenes adjuntas: lo que se sube, cómo se guarda y cómo se sirve
