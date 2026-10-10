@@ -387,6 +387,10 @@
         '<li>' + esc(T(fileAccess === true ? 'El acceso a archivos ya está activado.' : 'En los detalles de la extensión, activá "Permitir acceso a URL de archivo".')) + '</li></ol>' +
         '<div class="lmd-inst-links">' + out(HELP_URL, 'Ayuda', 'lmd-link') + '</div>';
     }
+    // Un PDF abierto desde el disco, en el visor de SharpMD en vez del visor del navegador. Viene apagado, y solo
+    // existe donde corre la extensión: prenderlo registra pdfopen.js sobre file:///*.pdf (bridge-sw.js, syncPdf).
+    if (EXT && desktop) html += '<label class="lmd-check lmd-inst-pdf"><input type="checkbox" data-inst="pdf"' + (s.diskPdf === true ? ' checked' : '') + '><span>' + esc(T('Abrir los PDF del disco con SharpMD')) + '</span></label>' +
+      '<p class="lmd-hint">' + esc(T('Un PDF de tu computadora se ve acá y no en el visor del navegador. Los de sitios web no cambian.')) + '</p>';
     // Qué puede leer la app web por la extensión al abrir un enlace a un archivo del disco. Se maneja solo desde la
     // extensión: la web no puede prenderlo ni sumar carpetas.
     if (EXT && desktop) html += head('Carpetas de las que la app web puede abrir archivos') + '<div data-inst-files></div>';
@@ -394,6 +398,8 @@
     box.innerHTML = html;
 
     box.querySelectorAll('input[name=lmd-open-in]').forEach((input) => input.addEventListener('change', () => { if (input.checked) LMD.patch({ openIn: input.value }); }));
+    const pdf = box.querySelector('[data-inst=pdf]');
+    if (pdf) pdf.addEventListener('change', () => LMD.patch({ diskPdf: pdf.checked }));
     const install = box.querySelector('[data-inst=app]');
     if (install) install.addEventListener('click', async () => {
       const e = offer; if (!e) return;
@@ -467,6 +473,13 @@
     let given = String(frag || '');
     try { given = decodeURIComponent(given); } catch (e) { /* un % suelto: vale como está */ }
     const url = LMD.fileUrl(given);
+    // Un PDF, un libro o una imagen: en la página de la extensión se ven en el visor, que lee el archivo por su service
+    // worker. En la app web todavía no: por el puente llega solo texto, y el enlace se rechaza como hasta ahora.
+    if (!url && OWN && !failed) {
+      const any = LMD.fileUrl(given, true); let seen = '';
+      try { seen = any ? decodeURIComponent(new URL(any).pathname.split('/').pop()) : ''; } catch (e) { seen = ''; }
+      if (seen && ctx.disk.views(seen)) { if (!(await D.confirm({ title, path: LMD.filePath(any), ok: T('Abrir') }))) return false; return ctx.open(ctx.disk.doc(any)); }
+    }
     if (!url) { await D.confirm({ title: T('Este enlace no se puede abrir'), text: T('Solo se abren archivos Markdown del disco.'), ok: T('Cerrar'), cancel: false }); return false; }
     const path = LMD.filePath(url);
     const parts = decodeURIComponent(new URL(url).pathname).split('/').filter(Boolean); const name = parts.pop();

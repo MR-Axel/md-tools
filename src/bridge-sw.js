@@ -427,6 +427,119 @@
     return true;
   }
 
+  // ---------- Un PDF, un libro o una imagen del disco, en el visor de la app ----------
+  // La página de la app dentro de la extensión no puede leer file:// (fetch y XMLHttpRequest fallan ahí); el service
+  // worker sí. Lee él y le pasa el archivo como Blob por un BroadcastChannel, que entre el service worker y las
+  // páginas de una misma extensión lo entrega tal cual: sin base64, sin partirlo en trozos y sin el tope de tamaño
+  // de los mensajes. Solo lo que el visor muestra y tiene tope en FILE_TYPES (kit.js): PDF, EPUB e imágenes. Un audio
+  // o un video no pasan por acá: los reproduce el navegador desde su dirección.
+  // Quién pide: la página de la app de esta extensión (leer y listar, onDisk) y el lector de un archivo del disco
+  // (llevar su pestaña al visor, onView). La app web no: lo suyo sigue siendo el puente, con sus carpetas habilitadas.
+  const VIEWS = { pdf: 1, epub: 1, image: 1 }; const DISK_CH = 'lmd-disk';
+  function viewable(input) {
+    const url = typeof input === 'string' && input.startsWith('file:///') ? LMD.fileUrl(input, true) : '';
+    if (!url) return null;
+    let name = '';
+    try { name = decodeURIComponent(new URL(url).pathname.split('/').pop()); } catch (e) { return null; }
+    const type = LMD.kit.typeOf(name);
+    return VIEWS[type.kind] ? { url, name, type } : null;
+  }
+  // La dirección de ese archivo dentro de la app: ?f=fs/<la ruta, carpeta por carpeta> (fsDoc, en content.js).
+  // De la dirección original pasa solo la página pedida (#page=12).
+  const viewHref = (url, hash) => OWN + '?f=' + encodeURIComponent('fs/' + decodeURIComponent(new URL(url).pathname).split('/').filter(Boolean).map(encodeURIComponent).join('/')) + (/^#page=\d{1,6}$/.test(hash || '') ? hash : '');
+  // Con url, es el archivo en el que se hizo clic en el lector (el explorador o un enlace de la nota). Sin url, es el
+  // PDF que la pestaña está mostrando (pdfopen.js): ahí manda el ajuste, y la dirección es la que informa el navegador.
+  function onView(msg, sender, sendResponse) {
+    if (!fromReader(sender)) { sendResponse({ ok: false, error: 'refused' }); return false; }
+    (async () => {
+      const own = typeof msg.url !== 'string';
+      const v = viewable(own ? String(sender.url).split(/[?#]/)[0] : msg.url);
+      if (!v || (own && v.type.kind !== 'pdf')) return { ok: false, error: 'shape' };
+      if (own && (await LMD.load()).diskPdf !== true) return { ok: false, error: 'off' };
+      if (tooManyReads()) return { ok: false, error: 'limit' };
+      await chrome.tabs.update(sender.tab.id, { url: viewHref(v.url, msg.hash) });
+      return { ok: true };
+    })().then(sendResponse, () => sendResponse({ ok: false, error: 'failed' }));
+    return true;
+  }
+  // Una carpeta del disco, como dirección: file:///…/ sin "..", sin consulta y sin caracteres de control.
+  function cleanDir(raw) {
+    let plain = '';
+    if (typeof raw !== 'string' || !/^file:\/\/\/[^\/\\]/.test(raw) || raw.length > 2048 || !raw.endsWith('/') || /[\u0000-\u001f\u007f\\?#]/.test(raw)) return '';
+    try { plain = decodeURIComponent(raw); } catch (e) { return ''; }
+    if (/(^|[\\/])\.\.([\\/]|$)/.test(raw) || /(^|[\\/])\.\.([\\/]|$)/.test(plain) || /[\u0000-\u001f\u007f\\]/.test(plain)) return '';
+    return pathKey(raw).endsWith('/') ? new URL(raw).href : '';
+  }
+  // Las carpetas, las notas y lo que el visor muestra. Sale del listado que arma el navegador para esa carpeta.
+  async function diskList(a) {
+    const dir = cleanDir(a.url);
+    if (!dir) return null;
+    if ((await fileAccess()) === false) return { listed: false, why: 'access' };
+    let html = '';
+    try { const res = await fetch(dir, { cache: 'no-store' }); if (!res.ok && res.status !== 0) throw new Error('HTTP ' + res.status); html = await res.text(); }
+    catch (e) { return { listed: false, why: 'missing' }; }
+    const rows = []; const re = /addRow\((.*)\);/g; let m;
+    while ((m = re.exec(html)) && rows.length < LIST_MAX) {
+      try {
+        const row = JSON.parse('[' + m[1] + ']'); const name = row[0]; const isDir = !!row[2];
+        if (typeof name !== 'string' || !name || name === '.' || name === '..' || name.length > NAME_MAX || /[\/\\\u0000-\u001f]/.test(name)) continue;
+        if (isDir || LMD.kit.MD_RE.test(name) || VIEWS[LMD.kit.kindOf(name)]) rows.push({ name, dir: isDir });
+      } catch (e) { /* fila ilegible */ }
+    }
+    return { listed: true, rows };
+  }
+  // El archivo entero, hasta el tope de su tipo: se corta apenas lo pasa, sin terminar de leerlo. id lo elige la
+  // página, para reconocer su Blob entre los que pasen por el canal.
+  async function diskFile(a) {
+    const v = viewable(a.url);
+    if (!v || typeof a.id !== 'string' || !/^[a-z0-9]{8,32}$/.test(a.id)) return null;
+    if ((await fileAccess()) === false) return { opened: false, why: 'access' };
+    const max = v.type.max * 1048576; const parts = []; let size = 0; let at = 0; let type = '';
+    try {
+      const res = await fetch(v.url, { cache: 'no-store' });
+      if (!res.ok && res.status !== 0) throw new Error('HTTP ' + res.status);
+      at = Date.parse(res.headers.get('last-modified') || '') || 0; type = res.headers.get('content-type') || '';
+      const reader = res.body.getReader();
+      for (;;) {
+        const step = await reader.read();
+        if (step.done) break;
+        size += step.value.length;
+        if (size > max) { reader.cancel().catch(() => {}); return { opened: false, why: 'size', max: v.type.max }; }
+        parts.push(step.value);
+      }
+    } catch (e) { return { opened: false, why: 'missing' }; }
+    const ch = new BroadcastChannel(DISK_CH);
+    ch.postMessage({ id: a.id, blob: new Blob(parts, { type }) }); ch.close();
+    return { opened: true, size, at };
+  }
+  function onDisk(msg, sender, sendResponse) {
+    const mine = !!sender && sender.id === chrome.runtime.id && !!sender.tab && sender.frameId === 0 && isApp(sender.url, OWN);
+    if (!mine) { sendResponse({ ok: false, error: 'refused' }); return false; }
+    const job = msg.op === 'list' ? diskList(msg) : msg.op === 'file' ? diskFile(msg) : Promise.resolve(null);
+    job.then((r) => sendResponse(r ? Object.assign({ ok: true }, r) : { ok: false, error: 'shape' }), () => sendResponse({ ok: false, error: 'failed' }));
+    return true;
+  }
+
+  // ---------- "Abrir los PDF del disco con SharpMD" ----------
+  // El ajuste (diskPdf) viene apagado. Prendido, queda registrado un script de contenido sobre file:///*.pdf
+  // (pdfopen.js) que pide llevar la pestaña al visor; apagado, se quita y sobre un PDF no corre nada. Va con
+  // chrome.scripting, que la extensión ya tiene: el manifest no suma permisos ni scripts sobre PDF. Se iguala cada vez
+  // que arranca el service worker y cuando cambia el ajuste, de a una vuelta por vez.
+  const PDF_CS = 'lmd-pdf'; let pdfLine = Promise.resolve();
+  function syncPdf() {
+    pdfLine = pdfLine.then(async () => {
+      const on = (await LMD.load()).diskPdf === true;
+      const have = (await chrome.scripting.getRegisteredContentScripts({ ids: [PDF_CS] })).length > 0;
+      if (on && !have) await chrome.scripting.registerContentScripts([{ id: PDF_CS, js: ['src/pdfopen.js'], matches: ['file:///*.pdf', 'file:///*.PDF'], runAt: 'document_start', allFrames: false, persistAcrossSessions: true }]);
+      else if (!on && have) await chrome.scripting.unregisterContentScripts({ ids: [PDF_CS] });
+    }).catch(() => { /* la próxima vuelta lo iguala */ });
+    return pdfLine;
+  }
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.settings && ((changes.settings.newValue || {}).diskPdf === true) !== ((changes.settings.oldValue || {}).diskPdf === true)) syncPdf();
+  });
+  syncPdf();
+
   // Solo la pestaña de la app web, en su marco principal, y solo a través del script de contenido de esta extensión.
   function trusted(sender) {
     if (!sender || sender.id !== chrome.runtime.id || !sender.tab || sender.frameId !== 0) return false;
@@ -575,5 +688,5 @@
     return true;
   }
 
-  LMD.bridgeHost = { onMessage, onOwn, onCloud, onSeen, onSetup, onAction, mark, openSharp, PREFS };
+  LMD.bridgeHost = { onMessage, onOwn, onCloud, onSeen, onSetup, onView, onDisk, onAction, mark, openSharp, PREFS };
 })();

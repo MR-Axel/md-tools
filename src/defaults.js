@@ -38,6 +38,7 @@
     filesOnlyMarkdown: false, // el explorador muestra todo lo que la app sabe abrir; prendido, solo Markdown y texto
     filesChosen: false, // la persona tocó ese ajuste: antes venía prendido, y un "true" guardado sin esto es el de fábrica de entonces
     filesShowHidden: false,
+    diskPdf: false, // solo en la extensión: un PDF abierto desde el disco (file://) pasa al visor de SharpMD en vez del visor del navegador
     customCSS: '',
     tools: {}, // Ajustes > Herramientas: cuáles están prendidas (por id) y sus opciones. Lo que falta sale del registro (tools.js)
     plugins: {
@@ -331,6 +332,12 @@
       "Recordar por dónde iba en cada archivo": "Remember where I left off in each file",
       "Mostrar solo archivos Markdown": "Show Markdown files only",
       "Mostrar archivos y carpetas ocultos": "Show hidden files and folders",
+      // Un PDF, un libro o una imagen del disco en el visor (pdfopen.js, bridge-sw.js)
+      "Abrir los PDF del disco con SharpMD": "Open PDFs from disk with SharpMD",
+      "Un PDF de tu computadora se ve acá y no en el visor del navegador. Los de sitios web no cambian.": "A PDF from your computer shows here, not in the browser viewer. PDFs from websites do not change.",
+      "Abrir con el visor del navegador": "Open with the browser viewer",
+      "\"{a}\" pesa más de {b} MB, el tope para ese tipo de archivo.": "\"{a}\" is over {b} MB, the limit for that file type.",
+      "Para ver \"{a}\", activá \"Permitir acceso a URL de archivo\" en los detalles de la extensión.": "To view \"{a}\", turn on \"Allow access to file URLs\" in the extension details.",
       "Plugins de Markdown": "Markdown plugins",
       "CSS propio": "Custom CSS",
       "Se aplica encima del tema. El documento vive dentro de .markdown-body.": "Applied on top of the theme. The document lives inside .markdown-body.",
@@ -2213,7 +2220,8 @@
   // La usan los dos lados de "abrir por enlace": la app, para mostrar qué se va a abrir, y el service worker, para decidir.
   const MD_FILE = /\.(md|markdown|mdx|mkd|mdown)$/i;
   const upDir = (t) => /(^|[\\/])\.\.([\\/]|$)/.test(t);
-  function fileUrl(input) {
+  // any: vale cualquier archivo, no solo Markdown. Quien la llama así mira aparte de qué tipo es (un PDF para el visor).
+  function fileUrl(input, any) {
     if (typeof input !== 'string' || !input || input.length > 2048 || /[\u0000-\u001f\u007f]/.test(input)) return '';
     let s = input; let u = null; let path = ''; let plain = input;
     if (/^[a-z]:[\\/]/i.test(s)) s = 'file:///' + s.replace(/\\/g, '/').split('/').map((p, i) => (i ? encodeURIComponent(p) : p)).join('/');
@@ -2222,7 +2230,7 @@
     try { plain = decodeURIComponent(input); } catch (e) { /* un % suelto: vale como está */ }
     try { u = new URL(s); path = decodeURIComponent(u.pathname); } catch (e) { return ''; }
     if (u.protocol !== 'file:' || u.host || u.username || u.password || u.search || u.hash) return '';
-    if (upDir(input) || upDir(plain) || upDir(path) || /[\u0000-\u001f\u007f\\]/.test(path) || !MD_FILE.test(path)) return '';
+    if (upDir(input) || upDir(plain) || upDir(path) || /[\u0000-\u001f\u007f\\]/.test(path) || !(any === true || MD_FILE.test(path))) return '';
     return u.href.length > 2048 ? '' : u.href;
   }
   // La ruta como la escribe el sistema, para mostrarla y copiarla.

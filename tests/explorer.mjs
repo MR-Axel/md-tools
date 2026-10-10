@@ -191,10 +191,10 @@ try {
   check('y un .yaml también', !!y1 && y1.trim() === FILES['conf.yaml'].trim() && (await state()).keep, y1);
   await page.reload(); await page.waitForSelector('.lmd-article'); await shows('conf.yaml');
   check('recargar sobre un .yaml lo vuelve a mostrar dentro de SharpMD', (await state()).title === 'conf.yaml' && !!(await until(() => page.evaluate(() => !!document.querySelector('.lmd-article .lmd-code code')))));
-  // Lo que SharpMD no dibuja se abre como siempre: lo muestra el navegador.
+  // Una imagen, un PDF o un libro: el lector no los dibuja, pero el visor sí. Se ven en la app de la extensión, en esta pestaña (tests/pdfopen.mjs).
   await open('a.md');
-  await Promise.all([page.waitForURL(U('pic.png')), page.click(node('pic.png'))]);
-  check('una imagen del explorador la abre el navegador, como antes', page.url() === U('pic.png') && !(await page.$('.lmd-article')), page.url());
+  await Promise.all([page.waitForURL((u) => u.protocol === 'chrome-extension:' && u.host === id && (u.searchParams.get('f') || '').endsWith('/pic.png')), page.click(node('pic.png'))]);
+  check('una imagen del explorador se ve en el visor de SharpMD, en la misma pestaña', !!(await until(() => page.evaluate(() => { const i = document.querySelector('.lmd-vw-stage img'); return !!i && /^blob:/.test(i.src) && document.querySelector('.lmd-docname').textContent === 'pic.png'; }))), page.url());
 
   console.log('Los enlaces de una nota a otros archivos de la carpeta');
   await open('a.md'); await keep();

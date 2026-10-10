@@ -78,6 +78,8 @@
   const api = { present: () => false, info: () => null, reconnect, adopt, settle: () => Promise.resolve(), sync: () => Promise.resolve(), hash,
     canOpen: () => false, openFile: () => Promise.resolve({ ok: false, error: 'none' }), setup: () => Promise.resolve({ ok: false, error: 'none' }), setupNever: () => Promise.resolve({ ok: false, error: 'none' }),
     readFile: () => Promise.resolve({ ok: false, error: 'none' }), canRead: () => Promise.resolve(false), listDir: () => Promise.resolve({ ok: false, error: 'none' }), viewFolder: () => Promise.resolve({ ok: false, error: 'none' }),
+    // Un PDF, un libro o una imagen del disco, entero y como Blob. Solo en la página de la extensión (más abajo).
+    readBlob: () => Promise.resolve({ ok: false, error: 'none' }),
     // Un texto ya leído por el puente, para que quien abre la nota enseguida no lo pida de nuevo. Sale una sola vez.
     keep: (url, text) => { kept = { url, text, at: Date.now() }; }, take: (url) => { const k = kept; if (!k || k.url !== url) return null; kept = null; return Date.now() - k.at < 15000 ? k.text : null; },
     paintSession };
@@ -151,6 +153,23 @@
     const setup = (act) => new Promise((resolve) => { try { chrome.runtime.sendMessage({ type: 'fileSetup', act }, (res) => resolve(chrome.runtime.lastError || !res ? { ok: false, error: 'gone' } : res)); } catch (e) { resolve({ ok: false, error: 'gone' }); } });
     api.setup = () => setup('open');
     api.setupNever = () => setup('never');
+    // Lo del disco que muestra el visor lo lee el service worker (bridge-sw.js, onDisk): esta página no puede leer
+    // file://. La carpeta llega como una lista de nombres; el archivo, como Blob por un canal entre los dos, sin
+    // pasar por los mensajes (que no llevan binarios y tienen tope de tamaño). id reconoce el Blob de este pedido.
+    const disk = (msg) => new Promise((resolve) => { try { chrome.runtime.sendMessage(Object.assign({ type: 'disk' }, msg), (res) => resolve(chrome.runtime.lastError || !res ? { ok: false, error: 'gone' } : res)); } catch (e) { resolve({ ok: false, error: 'gone' }); } });
+    api.listDir = (url) => disk({ op: 'list', url });
+    api.readBlob = async (url) => {
+      let ch = null;
+      try { ch = new BroadcastChannel('lmd-disk'); } catch (e) { return { ok: false, error: 'none' }; }
+      const id = (Math.random().toString(36).slice(2) + Date.now().toString(36)).slice(0, 24);
+      const got = new Promise((resolve) => { ch.onmessage = (e) => { const d = e.data; if (d && d.id === id && d.blob instanceof Blob) resolve(d.blob); }; });
+      try {
+        const r = await disk({ op: 'file', url, id });
+        if (!r.ok || !r.opened) return r;
+        const blob = await Promise.race([got, new Promise((resolve) => setTimeout(() => resolve(null), 20000))]);
+        return blob ? { ok: true, opened: true, blob, at: r.at || 0 } : { ok: false, error: 'timeout' };
+      } finally { ch.close(); }
+    };
     return;
   }
   if (!WEB) return;

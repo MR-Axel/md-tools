@@ -70,7 +70,7 @@
     // El pie de la barra lateral, donde vive la cuenta: dónde dibujarse, cómo quedar a la vista y cómo guardar antes de salir.
     // Un archivo del disco abierto por enlace: su dirección en la app, y si la web ya tiene su carpeta con permiso.
     view: (file) => viewFile(file),
-    disk: { doc: fsDoc, real: async (fileUrl) => { const k = await fsKnown(fileUrl); return !!(k && k.granted); } },
+    disk: { doc: fsDoc, views: (name) => fsViews(name), real: async (fileUrl) => { const k = await fsKnown(fileUrl); return !!(k && k.granted); } },
     acct: ui.acct, showSide: () => { if (LMD.touch.small()) setDrawer(true); else if (settings.sidebarHidden) LMD.patch({ sidebarHidden: false }); }, hideSide: () => setDrawer(false),
     leave: () => (dirty ? save(false) : Promise.resolve(true)), ready: unsplash, panel: (tab) => openPanel(tab),
     // El CSS propio viene con el plan pago: si Ajustes está abierto, se redibuja con el campo ya habilitado.
@@ -144,7 +144,9 @@
     if (root.kind === 'cloud') return LMD.cloud.handle(parts.join('/'));
     if (root.kind === 'pub') return { kind: 'file', name: root.title, getFile: async () => ({ text: async () => root.text, lastModified: 0, size: root.text.length }) };
     if (root.kind === 'file') return parts.length === 1 && parts[0] === root.handle.name ? root.handle : null;
-    // Un archivo del disco abierto por enlace: lo lee la extensión, y solo texto (una imagen de la nota no llega por acá).
+    // Un archivo del disco abierto por enlace: lo lee la extensión. A la web le llega solo texto (una imagen de la nota
+    // no llega por acá); en la página de la extensión, también lo que muestra el visor, entero (fsBlob).
+    if (root.kind === 'fs' && fsViews(parts[parts.length - 1])) { const name = parts[parts.length - 1]; return { kind: 'file', name, getFile: () => fsBlob(fsFile(url), name) }; }
     if (root.kind === 'fs') { const name = parts[parts.length - 1]; return { kind: 'file', name, getFile: async () => { const text = await fsRead(fsFile(url)); return { text: async () => text, lastModified: 0, size: text.length }; } }; }
     let cur = root.handle;
     for (let k = 0; k < parts.length - 1; k++) cur = await cur.getDirectoryHandle(parts[k]);
@@ -231,9 +233,26 @@
     const file = fsFile(dirUrl); const hit = fsLists.get(file);
     if (hit && Date.now() - hit.at < 60000) return hit.rows;
     let rows = null;
-    if (file) { const r = await LMD.bridge.listDir(file); if (r && r.ok && r.listed && Array.isArray(r.rows)) rows = r.rows.filter((x) => x && typeof x.name === 'string' && x.name && !/[\/\\]/.test(x.name) && (x.dir || MD_RE.test(x.name))).map((x) => ({ name: x.name, url: dirUrl + encodeURIComponent(x.name) + (x.dir ? '/' : ''), dir: !!x.dir })); }
+    if (file) { const r = await LMD.bridge.listDir(file); if (r && r.ok && r.listed && Array.isArray(r.rows)) rows = r.rows.filter((x) => x && typeof x.name === 'string' && x.name && !/[\/\\]/.test(x.name) && (x.dir || MD_RE.test(x.name) || fsViews(x.name))).map((x) => ({ name: x.name, url: dirUrl + encodeURIComponent(x.name) + (x.dir ? '/' : ''), dir: !!x.dir })); }
     fsLists.set(file, { at: Date.now(), rows });
     return rows;
+  }
+  // Lo que el visor muestra de un archivo del disco abierto por su ruta: PDF, libros e imágenes, los tipos con tope de
+  // tamaño. Lo lee el service worker de la extensión y llega entero, como Blob (bridge.js, readBlob). Un audio o un
+  // video no: los reproduce el navegador desde su dirección.
+  const FS_VIEW = { pdf: 1, epub: 1, image: 1 };
+  const fsViews = (name) => !!FS_VIEW[kindOf(name)];
+  // La página de la app dentro de la extensión: ahí lo del disco se ve en el visor, y una nota se abre en su lector.
+  const OWN_PAGE = APP && location.protocol === 'chrome-extension:';
+  // El último archivo leído queda a mano: el visor, "Descargar" y "Importar a Markdown" piden el mismo.
+  let fsHeld = null;
+  async function fsBlob(fileUrl, name) {
+    if (fsHeld && fsHeld.url === fileUrl && Date.now() - fsHeld.at < 600000) return fsHeld.file;
+    const r = await LMD.bridge.readBlob(fileUrl);
+    if (!(r && r.ok && r.opened && r.blob)) throw Object.assign(new Error('fs'), { why: r && r.ok ? r.why || 'failed' : 'none' });
+    const file = new File([r.blob], name, { type: r.blob.type, lastModified: r.at || 0 });
+    fsHeld = { url: fileUrl, file, at: Date.now() };
+    return file;
   }
   // La carpeta ya abierta en la web que contiene ese archivo, con lo que queda de la ruta y si el permiso sigue dado.
   async function fsKnown(fileUrl) {
@@ -254,7 +273,7 @@
   let fsSaid = '';
   async function paintCopy() {
     const bar = ui.copyBar; if (!bar) return;
-    const on = APP && !noDoc && !!appRoot && appRoot.kind === 'fs';
+    const on = APP && !noDoc && !!appRoot && appRoot.kind === 'fs' && !isBin(); // lo que se ve en el visor no es una copia que se edite
     bar.hidden = !on; if (!on) { fsSaid = ''; return; }
     const seq = docSeq; const known = await fsKnown(fsFile(HERE));
     if (seq !== docSeq) return;
@@ -641,6 +660,7 @@
     }
     if (APP && (a.hasAttribute('data-lmd-href') || a.classList.contains('lmd-wiki')) && inApp(a)) { openDoc(a.href); return true; }
     if (!APP && a.target !== '_blank' && opensHere(a.href)) { goFile(a.href); return true; }
+    if (!APP && a.target !== '_blank' && viewsHere(a.href)) { goView(a.href); return true; }
     return false;
   }
 
@@ -658,6 +678,20 @@
   function opensHere(url) {
     if (APP) return false;
     try { const u = new URL(url); return OPENS_RE.test(u.pathname) && u.protocol === location.protocol && u.host === location.host; } catch (e) { return false; }
+  }
+  // Lo que el lector no dibuja pero el visor sí: un PDF, un libro o una imagen del mismo disco. Se ven en la app de la
+  // extensión, en esta misma pestaña (el service worker la lleva ahí; atrás vuelve a la nota). No depende del ajuste
+  // "Abrir los PDF del disco con SharpMD", que es para un PDF abierto directo.
+  function viewsHere(url) {
+    if (APP || !isFile) return false;
+    try { const u = new URL(url); return u.protocol === 'file:' && !u.host && fsViews(decodeURIComponent(u.pathname.split('/').pop())); } catch (e) { return false; }
+  }
+  async function goView(href) {
+    const cut = href.indexOf('#');
+    if (!(await leaveDoc())) return false;
+    const r = await bg({ type: 'diskView', url: cleanUrl(href), hash: cut < 0 ? '' : href.slice(cut) });
+    if (!(r && r.ok)) location.href = href; // la extensión no pudo: lo abre el navegador, como antes
+    return !!(r && r.ok);
   }
   function relTo(from, to) {
     const a = from.split('/'); const b = to.split('/'); a.pop();
@@ -1289,6 +1323,8 @@
         // Una nota de la nube: la abre la app, en otra pestaña, igual que al subir una nota desde acá.
         if (to && to.startsWith(VBASE)) { e.preventDefault(); if (e.detail) nav.blur(); bg({ type: 'openApp', query: appQuery(to) }); return; }
         if (plain && to && opensHere(to)) { e.preventDefault(); if (e.detail) nav.blur(); goFile(to); }
+        // Un PDF, un libro o una imagen de la carpeta: al visor de SharpMD, en esta pestaña.
+        else if (plain && to && viewsHere(to)) { e.preventDefault(); if (e.detail) nav.blur(); goView(to); }
         return;
       }
       const a = e.target.closest('.lmd-article a[href], .lmd-pane-outline a');
@@ -1315,6 +1351,10 @@
         // Sobre un archivo abierto directo, un enlace a otro Markdown, texto, JSON o YAML de la carpeta se abre acá.
         if (!editing && (e.ctrlKey || e.metaKey || e.shiftKey)) return;
         e.preventDefault(); goFile(a.href);
+      } else if (!APP && a.target !== '_blank' && viewsHere(a.href)) {
+        // Y un enlace a un PDF, un libro o una imagen de la carpeta, en el visor de SharpMD.
+        if (!editing && (e.ctrlKey || e.metaKey || e.shiftKey)) return;
+        e.preventDefault(); goView(a.href);
       } else if (editing) {
         e.preventDefault();
         if (/^https?:/i.test(href) && a.host !== location.host) window.open(a.href, '_blank', 'noopener'); else if (inApp(a)) openDoc(a.href); else location.href = a.href;
@@ -1809,7 +1849,10 @@
   const VIEW_KINDS = { pdf: 1, epub: 1, image: 1, audio: 1, video: 1 };
   let docNote = ''; let docSize = 0; // 'big' (pasa el tope de su tipo) u 'other' (no es texto): se dice, no se dibuja
   function viewKind() {
-    if (!APP || noDoc || !appRoot || appRoot.id === 'mem' || (appRoot.kind !== 'dir' && appRoot.kind !== 'file')) return '';
+    if (!APP || noDoc || !appRoot || appRoot.id === 'mem') return '';
+    // Un archivo del disco abierto por su ruta: va al visor si es de los que lee el service worker; si no, es una nota.
+    if (appRoot.kind === 'fs') return fsViews(DOC_NAME) ? kindOf(DOC_NAME) : '';
+    if (appRoot.kind !== 'dir' && appRoot.kind !== 'file') return '';
     if (docNote) return docNote;
     const k = kindOf(DOC_NAME);
     return VIEW_KINDS[k] || k === 'office' ? k : '';
@@ -1854,6 +1897,9 @@
       const dir = HERE.slice(0, HERE.lastIndexOf('/') + 1);
       await LMD.viewer.open(core, { kind, file, name: DOC_NAME, host: ui.article, outline: ui.paneOutline, pos: pos && pos.v, hash, alive: () => seq === docSeq, query: ui.searchInput.value.trim(),
         dir, here: HERE, rel: vParts(HERE).map(linkSeg).join('/'),
+        // Un archivo del disco abierto por su ruta: la salida al visor del navegador, en esta pestaña. La marca en la
+        // dirección le dice a pdfopen.js que esta vez no lo traiga de vuelta.
+        native: OWN_PAGE && appRoot.kind === 'fs' && (kind === 'pdf' || kind === 'image') ? () => { location.href = fsFile(HERE) + '#lmd-native'; } : null,
         count: (text, n) => { viewHits = n; ui.searchCount.textContent = text; const c = ui.results.querySelector('.lmd-res-doc .lmd-res-count'); if (c) c.textContent = n; } });
     })();
   }
@@ -2737,10 +2783,12 @@
       // Un archivo del disco abierto por enlace: su rama, desde un par de carpetas más arriba, con el camino completo
       // en el título. Debajo, cómo abrir la carpeta de verdad (para ver todo y poder guardar).
       if (!noDoc && appRoot && appRoot.kind === 'fs') {
-        const parts = vParts(HERE); const up = Math.max(1, parts.length - 1 - FS_UP);
+        // En el visor (un PDF, un libro o una imagen, en la página de la extensión) la rama es la carpeta del archivo,
+        // como en el lector de una nota del disco.
+        const parts = vParts(HERE); const up = Math.max(1, parts.length - 1 - (isBin() ? 0 : FS_UP));
         const top = FS + parts.slice(0, up).map(encodeURIComponent).join('/') + '/';
         const list = add('fs', { name: T('Del disco') + ' · ' + parts[up - 1], title: LMD.filePath(fsFile(top)), icon: ICON.folder, url: top });
-        if (window.showDirectoryPicker) list.after(el('button', { type: 'button', class: 'lmd-link lmd-root-hint', 'data-fs': 'grant', text: T('Abrir esta carpeta') }));
+        if (window.showDirectoryPicker && !isBin()) list.after(el('button', { type: 'button', class: 'lmd-link lmd-root-hint', 'data-fs': 'grant', text: T('Abrir esta carpeta') }));
       }
       add('local', { name: T('En este navegador'), icon: ICON.browser, url: VBASE + 'local/', add: true });
       cloudRoots(add, fills);
@@ -2919,7 +2967,8 @@
         // Sobre un archivo abierto directo, lo que no es Markdown lleva la dirección que lo abre dentro de SharpMD
         // (también en otra pestaña); el Markdown y lo que SharpMD no dibuja, la suya.
         // Una nota de la nube vista desde el lector de un archivo del disco se abre en la app (ver el clic, más arriba).
-        item.href = APP ? toHref(row.url) : row.url.startsWith(VBASE) ? appHref(row.url) : kind !== 'md' && opensHere(row.url) ? readerHref(row.url) : row.url;
+        // En la página de la extensión, una nota de una carpeta del disco lleva su dirección file://: la abre su lector.
+        item.href = OWN_PAGE && row.url.startsWith(FS) && !fsViews(row.name) ? fsFile(row.url) : APP ? toHref(row.url) : row.url.startsWith(VBASE) ? appHref(row.url) : kind !== 'md' && opensHere(row.url) ? readerHref(row.url) : row.url;
         if (row.url === here) { item.classList.add('lmd-active'); setTimeout(() => { if (item.offsetParent) item.scrollIntoView({ block: 'nearest' }); }, 0); }
       }
     }
@@ -3438,8 +3487,7 @@
           '</section>' +
           '<section class="lmd-two" data-tab="read"><h3>' + T('Carpeta') + '</h3>' +
             '<label class="lmd-check"><input type="checkbox" data-key="filesOnlyMarkdown"' + (s.filesOnlyMarkdown ? ' checked' : '') + '><span>' + T('Mostrar solo archivos Markdown') + '</span></label>' +
-            '<label class="lmd-check"><input type="checkbox" data-key="filesShowHidden"' + (s.filesShowHidden ? ' checked' : '') + '><span>' + T('Mostrar archivos y carpetas ocultos') + '</span></label>' +
-          '</section>' +
+            '<label class="lmd-check"><input type="checkbox" data-key="filesShowHidden"' + (s.filesShowHidden ? ' checked' : '') + '><span>' + T('Mostrar archivos y carpetas ocultos') + '</span></label>' +          '</section>' +
           '<section data-tab="plug"><h3>' + T('Plugins de Markdown') + '</h3><div class="lmd-plug">' + plugins + '</div></section>' +
           '<section data-tab="tools"><h3>' + T('Herramientas') + '</h3><div class="lmd-acct lmd-tl" data-tools-pane></div></section>' +
           // Nube, IA y Plan los dibuja sync.js al entrar a cada pestaña, con la cuenta recién consultada.
@@ -4323,7 +4371,7 @@
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
     drawOff, rangeOf, render, softRender, flash, insertLines, spliceLines, replaceLines, tidyList, commitBlock, undo, redo, editCode, vFile, toHref, openDoc,
     // Sobre un archivo abierto directo: abre otro de la carpeta en el lugar si SharpMD lo dibuja; si no, lo abre el navegador.
-    openFile: (url) => { if (opensHere(url)) return goFile(url); location.href = url; return Promise.resolve(false); },
+    openFile: (url) => { if (opensHere(url)) return goFile(url); if (viewsHere(url)) return goView(url); location.href = url; return Promise.resolve(false); },
     inline: (text) => DOMPurify.sanitize(buildParser().renderInline(text)),
     // Un Markdown cualquiera, dibujado con el mismo saneado que una nota (la vista previa de una plantilla).
     preview: (text) => homeCtx().preview(text),
@@ -4686,9 +4734,19 @@
       return { root: roots.local, raw: note.text, disk: note.text };
     }
     if (id === 'fs') {
-      const file = LMD.fileUrl(fsFile(url)); const known = file ? await fsKnown(file) : null;
+      const view = fsViews(name);
+      const file = LMD.fileUrl(fsFile(url), view); const known = file ? await fsKnown(file) : null;
       if (known && known.granted) { try { await walk(known.rec.handle, known.rest); return { goto: known.rec.id + '/' + known.rest.map(encodeURIComponent).join('/') }; } catch (e) { /* ya no está en esa carpeta: queda lo que lea la extensión */ } }
-      // Por la extensión llega solo texto: una imagen, un PDF o un libro se ven abriendo su carpeta.
+      // Un PDF, un libro o una imagen: en la página de la extensión lo lee su service worker, entero, y va al visor.
+      if (view && OWN_PAGE && file) {
+        let got = null; let why = '';
+        fsHeld = null; // se lee de nuevo cada vez que se abre: el archivo pudo cambiar
+        try { got = await fsBlob(file, name); } catch (e) { why = e.why || 'failed'; }
+        if (got) return { root: roots.fs, raw: '', disk: '', readOnly: true, size: got.size };
+        return fail(why === 'size' ? T('"{a}" pesa más de {b} MB, el tope para ese tipo de archivo.', { a: name, b: typeOf(name).max })
+          : why === 'access' ? T('Para ver "{a}", activá "Permitir acceso a URL de archivo" en los detalles de la extensión.', { a: name }) : T('No se encontró "{a}".', { a: name }));
+      }
+      // A la web, por la extensión, le llega solo texto: una imagen, un PDF o un libro se ven abriendo su carpeta.
       if (VIEW_KINDS[kindOf(name)]) return fail(T('Para ver "{a}", abrí su carpeta con "Abrir carpeta".', { a: name }));
       let text = null; let why = 'shape';
       if (file) { try { text = await fsRead(file); } catch (e) { why = e.why || 'failed'; } }
