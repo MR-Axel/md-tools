@@ -83,6 +83,7 @@
         "src/diagram.js",
         "src/formula.js",
         "src/extras.js",
+        "src/send.js",
         "src/images.js",
         "src/board.js",
         "src/page.js",

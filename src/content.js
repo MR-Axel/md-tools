@@ -27,6 +27,9 @@
   let HERE = APP ? VBASE : location.href.split('#')[0].split('?')[0];
   let DOC_NAME = APP ? '' : decodeURIComponent(HERE.split('/').pop() || '');
   let noDoc = APP;
+  // Una dirección virtual, como consulta de la app: lo que abre esa nota desde el lector de un archivo del disco.
+  const appQuery = (url) => '?f=' + encodeURIComponent(url.slice(VBASE.length).split('#')[0]);
+  const appHref = (url) => { try { return chrome.runtime.getURL('src/app.html') + appQuery(url); } catch (e) { return '#'; } };
   const toHref = (url) => {
     if (!APP || !url.startsWith(VBASE)) return url;
     const i = url.indexOf('#');
@@ -35,7 +38,7 @@
   let appRoot = null; // la raíz de la nota abierta en la app: { id, kind: 'dir' | 'file' | 'local' | 'cloud' | 'pub', name, handle }
   // Las raíces que se conocen, por id: el primer tramo de la ruta virtual dice de cuál es cada archivo.
   const roots = {};
-  const rootOf = (url) => roots[url.slice(VBASE.length).split('#')[0].split('/')[0]] || null;
+  const rootOf = (url) => (String(url || '').startsWith(VBASE) ? roots[url.slice(VBASE.length).split('#')[0].split('/')[0]] || null : null);
 
   let raw = APP ? '' : pre.textContent;
   let settings = null;
@@ -1234,6 +1237,7 @@
     LMD.links.init(core);
     if (LAZY_HAVE.tools()) { LMD.diagram.init(core); LMD.formula.init(core); toolsReady = Promise.resolve(true); }
     else { const later = () => (window.requestIdleCallback ? requestIdleCallback(tools, { timeout: 2500 }) : setTimeout(tools, 300)); if (document.readyState === 'complete') later(); else window.addEventListener('load', later); }
+    LMD.send.init(core);
     LMD.extras.init(core);
     if (LMD.images) LMD.images.init(core);
     LMD.board.init(core);
@@ -1272,6 +1276,8 @@
       // Sobre un archivo abierto directo también, si es algo que SharpMD dibuja; el resto lo abre el navegador.
       if (nav && !APP) {
         const to = nav.classList.contains('lmd-node') ? nav.dataset.url : nav.href;
+        // Una nota de la nube: la abre la app, en otra pestaña, igual que al subir una nota desde acá.
+        if (to && to.startsWith(VBASE)) { e.preventDefault(); if (e.detail) nav.blur(); bg({ type: 'openApp', query: appQuery(to) }); return; }
         if (plain && to && opensHere(to)) { e.preventDefault(); if (e.detail) nav.blur(); goFile(to); }
         return;
       }
@@ -2434,7 +2440,8 @@
     .sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
   async function listDir(dirUrl, all) {
-    if (APP) { const found = await vList(dirUrl); return found && (all ? found : visibleRows(found)); }
+    // Las direcciones virtuales (la nube, también en el lector de un archivo del disco) no se piden al navegador.
+    if (APP || dirUrl.startsWith(VBASE)) { const found = await vList(dirUrl); return found && (all ? found : visibleRows(found)); }
     const r = await bg({ type: 'fetchText', url: dirUrl });
     if (!r || !r.ok) return null;
     const rows = [];
@@ -2486,8 +2493,10 @@
   // Dónde está guardado cada archivo: el ícono chico al lado del nombre.
   const WHERE = { disk: ['disk', 'En el disco'], local: ['browser', 'En este navegador'], cloud: ['cloud', 'En la nube'], team: ['people', 'En el equipo'] };
   // Las notas del equipo viven en la nube, bajo el espacio del equipo: en el explorador son una raíz aparte.
-  const teamUrl = () => { const t = APP ? LMD.cloud.teamNow() : null; return t ? VBASE + 'cloud/~' + t.space + '/' : ''; };
-  const sectionOf = (url) => { if (!APP) return isFile ? 'disk' : ''; const r = rootOf(url); if (!r) return ''; if (r.kind === 'cloud') return teamUrl() && url.startsWith(teamUrl()) ? 'team' : 'cloud'; return r.kind === 'local' ? 'local' : r.kind === 'fs' ? 'fs' : 'disk'; };
+  // El lector de un archivo del disco también muestra la nube (CLOUDY): le habla al servidor por la extensión.
+  const CLOUDY = APP || isFile;
+  const teamUrl = () => { const t = CLOUDY ? LMD.cloud.teamNow() : null; return t ? VBASE + 'cloud/~' + t.space + '/' : ''; };
+  const sectionOf = (url) => { if (!APP && !url.startsWith(VBASE)) return isFile ? 'disk' : ''; const r = rootOf(url); if (!r) return ''; if (r.kind === 'cloud') return teamUrl() && url.startsWith(teamUrl()) ? 'team' : 'cloud'; return r.kind === 'local' ? 'local' : r.kind === 'fs' ? 'fs' : 'disk'; };
   // Las notas que nacen con la fecha por nombre se listan por su primer renglón.
   const STAMP_RE = /^(nota|note)-\d{8}-\d{4}(-\d+)?\.md$/i;
 
@@ -2546,6 +2555,25 @@
 
   // Al pie de la nube (y del equipo), la entrada a su papelera.
   const trashLink = (owner) => el('button', { type: 'button', class: 'lmd-link lmd-trash-link', 'data-trash': owner || '' }, ICON.trash + '<span>' + T('Papelera') + '</span>');
+  // Las raíces de la nube: la propia y la del equipo, cada una con su papelera al pie. En la app y, con la sesión que
+  // comparte la extensión, en el lector de un archivo del disco: ahí se mira y recibe copias, sin el botón de crear.
+  function cloudRoots(add, fills) {
+    if (!LMD.cloud.enabled()) return;
+    if (LMD.cloud.signedIn()) {
+      const mine = add('cloud', { name: T('Nube'), icon: ICON.cloud, url: VBASE + 'cloud/', add: APP }); mine.after(trashLink(''));
+      // Toda la nube protegida con contraseña: el candado, el estado y sus acciones van arriba de las notas.
+      fills.push(LMD.vault.load().then(() => { const line = LMD.vault.rootLine(); if (line) mine.before(line); }).catch(() => { /* sin la lista, se dibuja como siempre */ }));
+    }
+    // Sin sesión, un renglón que invita a entrar.
+    else add('cloud', { name: T('Nube'), icon: ICON.cloud }).appendChild(el('button', { type: 'button', class: 'lmd-link lmd-root-hint', text: T('Entrar para ver tus notas') }));
+    // El espacio del equipo: lo que hay ahí lo leen y lo editan todos sus miembros.
+    if (LMD.cloud.signedIn() && teamUrl()) {
+      const list = add('team', { name: LMD.cloud.teamNow().name || T('Equipo'), title: T('Notas del equipo'), icon: ICON.people, url: teamUrl(), add: APP && LMD.cloud.teamCan('write') });
+      list.after(trashLink(LMD.cloud.teamNow().space));
+      // Protegido con contraseña: el candado, el estado y sus acciones van arriba de las notas.
+      fills.push(LMD.vault.load().then(() => { const line = LMD.vault.teamLine(); if (line) list.before(line); }).catch(() => { /* sin la lista, se dibuja como siempre */ }));
+    }
+  }
   let treeTurn = 0;
   async function loadTree() {
     const turn = ++treeTurn;
@@ -2555,8 +2583,15 @@
     const secs = []; const fills = [];
     const add = (key, o) => { const sec = rootSection(key, o); secs.push(sec); const list = sec.querySelector('.lmd-tree'); if (o.url) fills.push(fillDir(list, o.url, 0)); return list; };
     const leaf = (u) => decodeURIComponent(u.replace(/\/$/, '').split('/').pop() || u);
-    if (!APP) add('disk', { name: leaf(treeRoot), title: decodeURIComponent(treeRoot), icon: ICON.folder, url: treeRoot, up: new URL('..', treeRoot).href !== treeRoot });
-    else {
+    if (!APP) {
+      add('disk', { name: leaf(treeRoot), title: decodeURIComponent(treeRoot), icon: ICON.folder, url: treeRoot, up: new URL('..', treeRoot).href !== treeRoot });
+      // Un archivo del disco: debajo de su carpeta, la nube de la cuenta, para ver a dónde va lo que se envía.
+      if (isFile) {
+        try { await LMD.cloud.ready(); } catch (e) { /* sin almacenamiento de la extensión: queda la carpeta sola */ }
+        if (turn !== treeTurn) return;
+        cloudRoots(add, fills);
+      }
+    } else {
       if (!diskRoot && !diskTried) {
         diskTried = true;
         const r = await recentDisk();
@@ -2584,22 +2619,7 @@
         if (window.showDirectoryPicker) list.after(el('button', { type: 'button', class: 'lmd-link lmd-root-hint', 'data-fs': 'grant', text: T('Abrir esta carpeta') }));
       }
       add('local', { name: T('En este navegador'), icon: ICON.browser, url: VBASE + 'local/', add: true });
-      if (LMD.cloud.enabled()) {
-        if (LMD.cloud.signedIn()) {
-          const mine = add('cloud', { name: T('Nube'), icon: ICON.cloud, url: VBASE + 'cloud/', add: true }); mine.after(trashLink(''));
-          // Toda la nube protegida con contraseña: el candado, el estado y sus acciones van arriba de las notas.
-          fills.push(LMD.vault.load().then(() => { const line = LMD.vault.rootLine(); if (line) mine.before(line); }).catch(() => { /* sin la lista, se dibuja como siempre */ }));
-        }
-        // Sin sesión, un renglón que invita a entrar.
-        else add('cloud', { name: T('Nube'), icon: ICON.cloud }).appendChild(el('button', { type: 'button', class: 'lmd-link lmd-root-hint', text: T('Entrar para ver tus notas') }));
-        // El espacio del equipo: lo que hay ahí lo leen y lo editan todos sus miembros.
-        if (LMD.cloud.signedIn() && teamUrl()) {
-          const list = add('team', { name: LMD.cloud.teamNow().name || T('Equipo'), title: T('Notas del equipo'), icon: ICON.people, url: teamUrl(), add: LMD.cloud.teamCan('write') });
-          list.after(trashLink(LMD.cloud.teamNow().space));
-          // Protegido con contraseña: el candado, el estado y sus acciones van arriba de las notas.
-          fills.push(LMD.vault.load().then(() => { const line = LMD.vault.teamLine(); if (line) list.before(line); }).catch(() => { /* sin la lista, se dibuja como siempre */ }));
-        }
-      }
+      cloudRoots(add, fills);
       // Las otras carpetas y archivos del disco que se abrieron antes: un clic los trae de vuelta.
       if (others.length) {
         const list = add('recent', { name: T('Recientes'), icon: ICON.clock });
@@ -2673,6 +2693,9 @@
     loadTree();
     if (ui.searchInput.value.trim()) runSearch(ui.searchInput.value);
   }
+  // Entrar a la cuenta: en la app, el formulario; sobre un archivo abierto directo se entra en la app, y la sesión
+  // (que la extensión comparte) llega sola a esta pestaña.
+  const signIn = () => { if (APP) LMD.sync.login(); else bg({ type: 'openApp', query: '?login=1' }); };
   // Clics en la barra que no abren nada: plegar una zona o una raíz, subir, quitar un reciente, entrar.
   function sideClick(e) {
     const zone = e.target.closest('[data-zone-tog]');
@@ -2689,7 +2712,7 @@
     if (ghost && !e.target.closest('.lmd-node-x')) { e.preventDefault(); LMD.bridge.reconnect(ghost.dataset.ghost, homeCtx()).then(() => loadTree()); return true; }
     const x = e.target.closest('.lmd-node-x');
     if (x) { LMD.store.handlesDelete(x.dataset.key).then(() => loadTree()); return true; }
-    if (e.target.closest('.lmd-root-hint:not([data-write]):not([data-fs])')) { LMD.sync.login(); return true; }
+    if (e.target.closest('.lmd-root-hint:not([data-write]):not([data-fs])')) { signIn(); return true; }
     const bin = e.target.closest('[data-trash]');
     if (bin) { setDrawer(false); LMD.extras.trash(bin.dataset.trash); return true; }
     // "Bloquear ahora" de una carpeta abierta para la IA.
@@ -2706,7 +2729,7 @@
     container._dir = dirUrl; container._depth = depth; container._sig = rows == null ? null : rowSig(rows);
     const where = WHERE[sectionOf(dirUrl)];
     if (rows == null) {
-      const msg = APP ? T('No se pudo leer esta carpeta.') : isFile
+      const msg = APP || dirUrl.startsWith(VBASE) ? T('No se pudo leer esta carpeta.') : isFile
         ? T('No se pudo leer la carpeta. Activá "Permitir acceso a URL de archivo" en los detalles de la extensión.')
         : T('Este servidor no expone el listado de la carpeta.');
       container.appendChild(el('p', { class: 'lmd-empty', text: msg }));
@@ -2716,7 +2739,9 @@
       // Una raíz sin nada dice cómo empezar; una carpeta del disco, que no tiene Markdown.
       const fresh = APP && depth === 0 && sectionOf(dirUrl) !== 'disk';
       const shut = APP && depth === 0 && dirUrl === teamUrl() && LMD.vault.teamShut();
-      const none = el('p', { class: 'lmd-empty', text: T(shut ? 'Desbloqueá el espacio para ver sus notas.' : fresh ? 'Creá una nota con el botón +.' : 'Carpeta sin archivos Markdown.') });
+      const shutTeam = shut || (!APP && depth === 0 && dirUrl === teamUrl() && LMD.vault.teamShut());
+      // En el lector de un archivo del disco la nube se mira y recibe copias: no hay botón + ahí.
+      const none = el('p', { class: 'lmd-empty', text: T(shutTeam ? 'Desbloqueá el espacio para ver sus notas.' : fresh ? 'Creá una nota con el botón +.' : !APP && dirUrl.startsWith(VBASE) ? 'Todavía no hay notas acá.' : 'Carpeta sin archivos Markdown.') });
       // Dentro de una carpeta, el aviso va con la sangría de lo que habría adentro: si no, parece hermano de la carpeta.
       if (depth > 0) none.style.paddingLeft = (32 + depth * 14) + 'px';
       container.appendChild(none);
@@ -2751,7 +2776,8 @@
       if (row.dir) {
         item.type = 'button';
         // Una carpeta se arrastra a otra, como un archivo. En pantalla táctil se mueve desde el menú.
-        if (APP && !LMD.touch.coarse()) item.draggable = true;
+        // Sobre un archivo del disco, una carpeta se arrastra a la nube para enviar una copia.
+        if ((APP || (isFile && !row.url.startsWith(VBASE))) && !LMD.touch.coarse()) item.draggable = true;
         const kids = el('div', { class: 'lmd-node-kids', hidden: '' });
         out.push(kids);
         const open = async () => {
@@ -2768,7 +2794,8 @@
       } else {
         // Sobre un archivo abierto directo, lo que no es Markdown lleva la dirección que lo abre dentro de SharpMD
         // (también en otra pestaña); el Markdown y lo que SharpMD no dibuja, la suya.
-        item.href = APP ? toHref(row.url) : kind !== 'md' && opensHere(row.url) ? readerHref(row.url) : row.url;
+        // Una nota de la nube vista desde el lector de un archivo del disco se abre en la app (ver el clic, más arriba).
+        item.href = APP ? toHref(row.url) : row.url.startsWith(VBASE) ? appHref(row.url) : kind !== 'md' && opensHere(row.url) ? readerHref(row.url) : row.url;
         if (row.url === here) { item.classList.add('lmd-active'); setTimeout(() => { if (item.offsetParent) item.scrollIntoView({ block: 'nearest' }); }, 0); }
       }
     }
@@ -2783,7 +2810,7 @@
   // de respaldo. Lo plegado no se lee: se pone al día al desplegarlo.
   const TREE_POLL = 4000; const TREE_POLL_DIRS = 40; const NEW_MARK = 8000;
   const rowSig = (rows) => rows.map((r) => (r.dir ? 'd' : 'f') + r.url).join('\n');
-  const watchable = (url) => (APP ? (rootOf(url) || {}).kind === 'dir' : isFile);
+  const watchable = (url) => (APP ? (rootOf(url) || {}).kind === 'dir' : isFile && !url.startsWith(VBASE));
   let treePolling = false; let goneDoc = ''; let fsObs = null; let fsObsRoot = null;
   function watchDisk() {
     if (!APP || !window.FileSystemObserver || !diskRoot || diskRoot.kind !== 'dir' || fsObsRoot === diskRoot.handle) return;
@@ -2899,7 +2926,7 @@
       const full = T(more ? 'Más de {n} notas' : c.n === 1 ? '1 nota' : '{n} notas', { n: Math.min(c.n, 999) });
       tag.setAttribute('aria-label', full); tag.title = full; tag.hidden = false;
     };
-    if (APP && (rootOf(url) || {}).kind === 'cloud') cloudCount(url).then(paint, () => {});
+    if ((rootOf(url) || {}).kind === 'cloud') cloudCount(url).then(paint, () => {});
     else countQueue = countQueue.then(() => new Promise((resolve) => setTimeout(resolve, 0))).then(() => diskCount(url, 0)).then(paint, () => {});
   }
 
@@ -4148,7 +4175,12 @@
     pickTemplate: () => tools().then((ok) => (ok ? LMD.home.pickTemplate(homeCtx()) : null)),
     tools,
     showFiles,
-    listDir: (url) => listDir(url), // lo que hay en una carpeta, como lo muestra el explorador ("Mover a…", extras.js)
+    listDir: (url, all) => listDir(url, all), // lo que hay en una carpeta, como lo muestra el explorador ("Mover a…", extras.js); con all, sin filtrar
+    // Lo que "Enviar a la nube" (send.js) necesita: si el explorador muestra la nube, el texto de un archivo tal como
+    // está ahora (null si no se pudo leer), cómo entrar, y dejar una carpeta de la nube desplegada y a la vista.
+    cloudTree: CLOUDY, signIn,
+    readNow: async (url) => { if (APP) return vText(url); const r = await bg({ type: 'fetchText', url }); return r && r.ok && typeof r.text === 'string' ? r.text : null; },
+    reveal: (url) => { let u = url; while (u.startsWith(VBASE + 'cloud/') && u !== VBASE + 'cloud/') { openDirs.add(u); u = new URL('..', u).href; } showFiles(sectionOf(url)); if (LMD.touch.small()) setDrawer(true); return loadTree(); },
     reloadTree: () => { fileCache.clear(); folderIndex.clear(); clearCounts(); wikiIndex = null; linkIndex = null; if (ui.searchInput.value.trim()) runSearch(ui.searchInput.value); const done = loadTree(); resumeCloud(); return done; },
     dirHandle: async (dirUrl) => { let dir = rootOf(dirUrl).handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, ensure, isDark, openInApp,
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
@@ -4792,6 +4824,8 @@
     if (saved) side = Object.assign(side, saved, { shut: Object.assign({}, saved.shut) });
     LMD.setLang(settings.language);
     if (APP) { roots.fs = { id: 'fs', kind: 'fs', name: T('Del disco') }; roots.local = { id: 'local', kind: 'local', name: T('En este navegador') }; roots.cloud = { id: 'cloud', kind: 'cloud', name: T('Nube') }; }
+    // Sobre un archivo del disco la nube es la única raíz virtual: se lista por la extensión.
+    else if (isFile) roots.cloud = { id: 'cloud', kind: 'cloud', name: T('Nube') };
     buildUI();
     applySettings();
     const withDoc = !APP || new URLSearchParams(location.search).has('f');

@@ -1220,18 +1220,44 @@ try {
     check('"New folder…" pide el nombre y mueve la nota a la carpeta nueva', now.includes('nuevas/n16.md') && !now.includes('n16.md') && now.length === start.length, now.filter((p) => /n16/.test(p)));
     await page.waitForSelector(CL + '.lmd-node >> text=zzz-lejos.md'); await page.waitForTimeout(300);
 
-    // Destinos que no valen: otro archivo de la misma carpeta, fuera del panel, y una nota del navegador sobre la nube
+    // Destinos que no valen: otro archivo de la misma carpeta y fuera del panel
     await show(row('queda.md'));
     g = await drag(row('queda.md'), await at(row('tirar.md')));
     const bad1 = [g.mid.drop, g.end.menu, g.end.ask, g.end.lifted, g.end.ghost];
     const out = await page.evaluate(() => { const r = document.querySelector('.lmd-zone-outline, .lmd-pane-outline, .lmd-search').getBoundingClientRect(); return [r.left + r.width / 2, r.top + Math.min(20, r.height / 2)]; });
     g = await drag(row('queda.md'), out);
     const bad2 = [g.mid.drop, g.end.menu, g.end.ask, g.end.lifted, g.end.ghost];
+    await page.waitForTimeout(400);
+    check('soltar en un destino que no vale no hace nada: ni mueve, ni pregunta, ni deja nada levantado', J(bad1) === J([[], 0, 0, 0, '']) && J(bad2) === J([[], 0, 0, 0, '']) && J(await paths()) === J(now) && (await page.title()) === title0, [bad1, bad2]);
+
+    // Una nota del navegador, sobre una carpeta de la nube: queda una copia ahí (send.js). La del navegador no se mueve.
     await toTop();
     g = await drag(row('del-navegador.md', '.lmd-xroot[data-root=local] '), await at(row('proyectos')));
-    const bad3 = [g.mid.drop, g.end.menu, g.end.ask, g.end.lifted, g.end.ghost, g.up.lifted];
-    await page.waitForTimeout(400);
-    check('soltar en un destino que no vale no hace nada: ni mueve, ni pregunta, ni deja nada levantado', J(bad1) === J([[], 0, 0, 0, '']) && J(bad2) === J([[], 0, 0, 0, '']) && J(bad3) === J([[], 0, 0, 0, '', 1]) && J(await paths()) === J(now) && (await page.evaluate(async () => (await LMD.store.notesAll()).some((n) => n.name === 'del-navegador.md'))) && (await page.title()) === title0, [bad1, bad2, bad3]);
+    await page.waitForFunction(() => LMD.cloud.list(true).then((l) => l.some((n) => n.path === 'proyectos/del-navegador.md')), null, { timeout: 8000 }).catch(() => {});
+    await page.waitForSelector('.lmd-sent', { timeout: 5000 }).catch(() => {});
+    const copied = { drop: g.mid.drop, ghost: g.mid.ghost, lifted: g.up.lifted, menu: g.end.menu, sent: await page.evaluate(() => { const b = document.querySelector('.lmd-sent'); return b ? [b.querySelector('span').textContent, (b.querySelector('[data-sent=open]') || { textContent: '' }).textContent] : null; }),
+      cloud: (await paths()).includes('proyectos/del-navegador.md'), local: await page.evaluate(async () => (await LMD.store.notesAll()).some((n) => n.name === 'del-navegador.md')) };
+    check('con el dedo, una nota del navegador soltada en una carpeta de la nube deja una copia ahí, y la etiqueta lo dice', J(copied.drop) === J(['proyectos']) && copied.ghost === 'del-navegador.mdCopy to the cloud' && copied.lifted === 1 && copied.menu === 0 && copied.cloud && copied.local && !!copied.sent && copied.sent[0] === 'A copy stays in the cloud. The note in this browser does not change.' && copied.sent[1] === 'Open the cloud note' && (await page.title()) === title0, copied);
+    await fits(page, 'aviso de la nota enviada');
+    await shot(page, 'enviar-01-aviso.png');
+    // El aviso de la primera nota en la nube (proteger con contraseña) sale como con cualquier nota nueva: se cierra.
+    await page.evaluate(() => { const b = document.querySelector('.lmd-sent'); if (b) b.remove(); });
+    await page.waitForSelector('[data-ph=no]', { timeout: 4000 }).catch(() => {}); await page.evaluate(() => { const no = document.querySelector('[data-ph=no]'); if (no) no.click(); }); await page.waitForTimeout(200);
+    now = await paths();
+    // Y desde el menú del archivo: "Enviar a la nube", con su ventana a la medida del teléfono.
+    await show(row('del-navegador.md', '.lmd-xroot[data-root=local] '));
+    await press(page, row('del-navegador.md', '.lmd-xroot[data-root=local] ')); await page.waitForSelector('.lmd-menu [data-f=send]', { timeout: 4000 }).catch(() => {});
+    const sendItem = await page.evaluate(() => { const b = document.querySelector('.lmd-menu [data-f=send]'); return b ? { text: b.textContent.trim(), h: Math.round(b.getBoundingClientRect().height) } : null; });
+    check('en el teléfono, el menú del archivo ofrece "Enviar a la nube"', !!sendItem && sendItem.text === 'Send to the cloud' && sendItem.h >= 44, sendItem);
+    await page.tap('.lmd-menu [data-f=send]'); await page.waitForSelector('.lmd-send-card', { timeout: 6000 }).catch(() => {});
+    const sendDlg = await page.evaluate(() => { const c = document.querySelector('.lmd-send-card'); if (!c) return null; const r = c.getBoundingClientRect(); const bs = [...c.querySelectorAll('.lmd-ask-actions button')];
+      return { title: c.querySelector('h3').textContent, dest: c.querySelector('.lmd-send-dest').textContent, change: !!c.querySelector('[data-sd=dest]'), in: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight, low: Math.min(...bs.map((b) => Math.round(b.getBoundingClientRect().height))), buttons: bs.map((b) => b.textContent) }; });
+    check('y la ventana entra en la pantalla, con el destino a la vista y botones cómodos', !!sendDlg && sendDlg.title === 'Send "del-navegador.md" to the cloud' && sendDlg.dest === 'Cloud' && sendDlg.change && sendDlg.in && sendDlg.low >= 40 && J(sendDlg.buttons) === J(['Cancel', 'Send']), sendDlg);
+    await fits(page, 'ventana de "Enviar a la nube"');
+    await shot(page, 'enviar-02-ventana.png');
+    await page.tap('.lmd-send [data-sd=no]'); await page.waitForTimeout(250);
+    check('cancelar no envía nada', J(await paths()) === J(now) && (await page.locator('.lmd-send').count()) === 0);
+    await toTop();
 
     // La papelera es un destino: pregunta lo mismo que "Eliminar"
     const bin =await page.evaluate(() => { const b = document.querySelector('.lmd-trash-link'); b.scrollIntoView({ block: 'center' }); const r = b.getBoundingClientRect(); return [r.left + 60, r.top + r.height / 2]; });
