@@ -857,7 +857,9 @@
           (own ? '<p class="lmd-hint">' + T('Es tu plan actual.') + (a.manage ? ' <a' + (byPlay ? ' class="lmd-play-link"' : '') + ' href="' + esc(a.manage) + '" target="_blank" rel="noopener noreferrer">' + T(byPlay ? 'Administrar en Google Play' : 'Administrar la suscripción') + '</a>' : '') + '</p>'
             : pro ? '<p class="lmd-hint">' + T('Lo tenés con el equipo.') + '</p>'
             : a ? '<div class="lmd-plan-buy">' + buy(pay.yearly, YEAR) + buy(pay.monthly, MONTH, '', true) + '</div>'
-            : host.direct && LMD.cloud.enabled() ? '<div class="lmd-plan-buy">' + appBtn(YEAR) + appBtn(MONTH, true) + '</div>' : '') + playBox + '</div>' + teamCol + '</div>' + LMD.team.section(a);
+            : host.direct && LMD.cloud.enabled() ? '<div class="lmd-plan-buy">' + appBtn(YEAR) + appBtn(MONTH, true) + '</div>' : '') + playBox + '</div>' + teamCol + '</div>' +
+      // Dentro de la app de Android, una línea que informa para qué está pensada. No ofrece nada: sin enlace ni precio.
+      (LMD.storeApp ? '<p class="lmd-hint lmd-store-solo">' + T('Esta app es para uso individual. Los equipos trabajan en la versión web.') + '</p>' : '') + LMD.team.section(a);
     LMD.team.mount(box, a);
     if (play && !pro) playRestore(play, a.play);
     box.onclick = async (e) => {

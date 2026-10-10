@@ -371,6 +371,7 @@
       "Colores, tipografía y CSS propio": "Colors, typeface and custom CSS", "Es tu plan actual.": "This is your current plan.",
       "Se cobra por Google Play y se renueva sola. Se cancela desde Google Play.": "Billed through Google Play, renews automatically. Cancel it in Google Play.",
       "La misma cuenta sirve en la web y en la extensión de Chrome.": "The same account works on the web and in the Chrome extension.",
+      "Esta app es para uso individual. Los equipos trabajan en la versión web.": "This app is for individual use. Teams work in the web version.",
       "Administrar en Google Play": "Manage in Google Play", "Listo. Ya tenés el plan pago.": "Done. You have the paid plan.", "La compra no se completó.": "The purchase was not completed.",
       "Esa suscripción de Google Play ya está en otra cuenta de SharpMD.": "That Google Play subscription is already on another SharpMD account.", "Esta cuenta ya tiene el plan pago.": "This account already has the paid plan.",
       "El pago está pendiente en Google Play. El plan se activa cuando se confirme.": "The payment is pending in Google Play. The plan turns on once it is confirmed.",

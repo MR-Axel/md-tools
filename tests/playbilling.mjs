@@ -197,7 +197,8 @@ try {
   const openPlan = async (page) => { await page.evaluate(() => document.querySelector('[data-act=settings]').click()); await page.waitForSelector('.lmd-panel-card'); await page.click('[data-ptab=plan]'); await page.waitForSelector('.lmd-panel .lmd-plans'); await page.waitForTimeout(400); };
   const look = (page) => page.evaluate(() => {
     const box = document.querySelector('.lmd-panel [data-acct=plan]'); const seen = (el) => !!el && el.offsetParent !== null; const paid = box.querySelector('.lmd-plans > .lmd-plan:nth-child(2)');
-    return { store: LMD.storeApp === true, play: [...box.querySelectorAll('[data-play]')].filter(seen).map((b) => b.dataset.play + ' ' + b.textContent + (b.classList.contains('lmd-btn-fill') ? ' fill' : '')), web: [...box.querySelectorAll('[data-pay], .lmd-plan-buy')].filter(seen).length,
+    const solo = box.querySelector('.lmd-store-solo');
+    return { solo: seen(solo) ? solo.textContent : '', soloPlain: !solo || (!solo.querySelector('a, button') && !/\d|USD|\$|subscri|suscri|contrat|plan/i.test(solo.textContent)), store: LMD.storeApp === true,play: [...box.querySelectorAll('[data-play]')].filter(seen).map((b) => b.dataset.play + ' ' + b.textContent + (b.classList.contains('lmd-btn-fill') ? ' fill' : '')), web: [...box.querySelectorAll('[data-pay], .lmd-plan-buy')].filter(seen).length,
       list: paid ? [...paid.querySelectorAll('li')].filter(seen).length : 0, same: seen(box.querySelector('.lmd-play-same')) ? box.querySelector('.lmd-play-same').textContent : '', terms: seen(box.querySelector('.lmd-play-terms')), say: (box.querySelector('.lmd-play-say') || {}).textContent || '',
       manage: [...box.querySelectorAll('.lmd-plan a[target=_blank]')].filter(seen).map((x) => x.textContent + ' ' + x.getAttribute('href')), on: paid ? paid.classList.contains('lmd-plan-on') : false, team: /team|equipo/i.test([...box.querySelectorAll('a, button')].filter(seen).map((x) => x.textContent + ' ' + (x.getAttribute('href') || '')).join(' ')), text: box.innerText, wide: document.documentElement.scrollWidth > window.innerWidth + 1 };
   });
@@ -210,6 +211,7 @@ try {
   check('dentro de la app, con todo prendido, la pestaña Plan ofrece suscribirse con el precio que da Google Play, en la moneda de la persona', v.store && v.play.length === 2 && /^yearly .*52[.,]000.* \/ year fill$/.test(v.play[0]) && /^monthly .*5[.,]200.* \/ month$/.test(v.play[1]) && /ARS|\$/.test(v.play[0]), v.play);
   check('los botones de pago de la web siguen escondidos, y no se nombra el plan de equipo ni otro lugar donde pagar', v.web === 0 && !v.team && !/paddle|sharpmd\.app|USD/i.test(v.text), [v.web, v.team, v.text.slice(0, 400)]);
   check('se ve qué incluye el plan pago, que la misma cuenta sirve en la web y en la extensión, y cómo se cobra', v.list === 7 && /web/.test(v.same) && /Chrome extension/.test(v.same) && v.terms, [v.list, v.same, v.terms]);
+  check('una línea dice que la app es para uso individual y que los equipos trabajan en la web: solo información, sin enlace, precio ni llamado a pagar', v.solo === 'This app is for individual use. Teams work in the web version.' && v.soloPlain && v.solo !== v.same, [v.solo, v.soloPlain]);
   check('en el teléfono nada desborda a lo ancho', !v.wide);
   check('la app pidió los productos por la Digital Goods API con el método de Play', (await app.page.evaluate(() => window.__play.asked)).join('|') === 'https://play.google.com/billing|pro_yearly,pro_monthly');
   await app.page.click('.lmd-panel [data-play=yearly]');
@@ -239,7 +241,7 @@ try {
 
   app = await inApp(await R.signup('juan@ejemplo.test'), { items: ITEMS, token: 'x' }, 'es');
   v = await look(app.page);
-  check('en castellano, los mismos textos', /año/.test(v.play[0]) && /mes/.test(v.play[1]) && v.same === 'La misma cuenta sirve en la web y en la extensión de Chrome.' && !/[!¡—]/.test(v.same + v.text.match(/Se cobra[^\n]*/)[0]), [v.play, v.same]);
+  check('en castellano, los mismos textos', /año/.test(v.play[0]) && /mes/.test(v.play[1]) && v.same === 'La misma cuenta sirve en la web y en la extensión de Chrome.' && v.solo === 'Esta app es para uso individual. Los equipos trabajan en la versión web.' && v.soloPlain &&!/[!¡—]/.test(v.same + v.text.match(/Se cobra[^\n]*/)[0]), [v.play, v.same]);
   await app.ctx.close();
 
   // Sin la Digital Goods API (otro navegador, una app vieja), o si no responde con los productos: como hoy.
@@ -252,7 +254,7 @@ try {
   // En la web común (mismo servidor, con Play prendido) nada de Play aparece, aunque el navegador tenga la API.
   let web = await R.open(kira); await web.ctx.addInitScript(fake, { items: ITEMS, token: 'x' }); await web.page.goto(R.home); await web.page.waitForSelector('.lmd-home [data-home=new], .lmd-draft'); await openPlan(web.page);
   v = await look(web.page);
-  check('en la web común no hay compra por Play: siguen los enlaces de pago de siempre', !v.store && v.play.length === 0 && v.web > 0 && v.same === '' && (await web.page.evaluate(() => window.__play.asked.length)) === 0, v);
+  check('en la web común no hay compra por Play: siguen los enlaces de pago de siempre', !v.store && v.play.length === 0 && v.web > 0 && v.same === '' && v.solo === '' &&(await web.page.evaluate(() => window.__play.asked.length)) === 0, v);
   await web.ctx.close();
   web = await R.open(hugo); await web.page.goto(R.home); await web.page.waitForSelector('.lmd-home [data-home=new], .lmd-draft'); await openPlan(web.page);
   v = await look(web.page);
@@ -272,7 +274,7 @@ try {
   check('y el servidor no le pide nada a Google', G.calls.length === callsBefore, G.calls.slice(callsBefore));
   const o = await off.open(luz, phone); await o.ctx.addInitScript(fake, { items: ITEMS, token: 'token-de-luz-0001' }); await o.page.goto(off.home + '?src=android'); await o.page.waitForSelector('.lmd-home [data-home=new], .lmd-draft'); await openPlan(o.page);
   v = await look(o.page);
-  check('dentro de la app todo queda como hoy: sin botones de compra, sin la línea nueva, y la Digital Goods API ni se consulta', v.store && v.play.length === 0 && v.web === 0 && v.list === 7 && v.same === '' && !v.terms && (await o.page.evaluate(() => window.__play.asked.length)) === 0, v);
+  check('dentro de la app todo queda como hoy, más la línea de uso individual: sin botones de compra, sin la línea de Play, y la Digital Goods API ni se consulta', v.store && v.solo === 'This app is for individual use. Teams work in the web version.' && v.soloPlain &&v.play.length === 0 && v.web === 0 && v.list === 7 && v.same === '' && !v.terms && (await o.page.evaluate(() => window.__play.asked.length)) === 0, v);
   await o.ctx.close();
   await off.api('POST', '/admin/plan', { email: 'luz@ejemplo.test', plan: 'pro' }, undefined, { 'x-admin-key': off.ADMIN });
   check('y el plan pago de siempre sigue andando igual', (await off.api('GET', '/account', undefined, luz.s)).json.plan === 'pro');
