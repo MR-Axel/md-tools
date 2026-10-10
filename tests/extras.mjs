@@ -237,7 +237,7 @@ const checks = [
   ['arrastrar a una carpeta mueve el archivo y marca el destino', o.arrastreMarca === 'carpeta' && J(o.arrastre) === J([['dentro.md', 'movible.md'], false, 'titulada.md']) && J(o.arrastreMismo) === J(['', true]), [o.arrastreMarca, o.arrastre, o.arrastreMismo]],
   ['arrastrar la nota abierta la deja abierta en su ruta nueva', J(o.arrastreAbierta) === J(['carpeta', true, 'titulada.md', ['dentro.md', 'movible.md', 'titulada.md']]), o.arrastreAbierta],
   ['soltar sobre la raíz del árbol la saca de la carpeta', J(o.arrastreRaiz) === J(['raíz', true, true, ['dentro.md', 'movible.md']]), o.arrastreRaiz],
-  ['las notas del navegador se renombran desde el árbol', J(o.localMenu) === J(['ren', 'del']) && J(o.localArbol) === J(['primera.md', 'tercera.md']), [o.localMenu, o.localArbol]],
+  ['las notas del navegador se renombran desde el árbol', J(o.localMenu) === J(['ren', 'send', 'del']) && J(o.localArbol) === J(['primera.md', 'tercera.md']), [o.localMenu, o.localArbol]],
   ['y desde el título, sin perder lo que no se había guardado', J(o.localTitulo) === J(['principal.md', 'Primera nota', ['principal.md', 'tercera.md'], true]), o.localTitulo],
   ['el menú del explorador es compacto, con ícono en cada opción y eliminar en rojo en los dos temas', J(o.menuCompacto) === J([true, true, true, true, true, true, 'Renombrar']) && J(o.menuOtroTema) === J([true, true, true]), [o.menuCompacto, o.menuOtroTema]],
   ['arrastrar una nota del navegador no hace nada', J(o.localArrastre) === J(['', '', ['principal.md', 'tercera.md'], true]), o.localArrastre],

@@ -56,7 +56,8 @@
   const badName = (v) => (/[\\/:*?"<>|]/.test(v) || /^\.\.?$/.test(v) ? T(BAD_NAME) : '');
   const badPath = (v) => (cloudName(v) ? '' : T(BAD_NAME));
   const askName = (title, value, validate, ok, label) => LMD.dialog.prompt({ title: T(title), value, validate, ok: T(ok), label: label ? T(label) : '', stem: true });
-  const askDelete = (name) => LMD.dialog.confirm({ title: T('¿Eliminar "{a}"?', { a: name }), text: T('No se puede deshacer.'), ok: T('Eliminar'), danger: true });
+  // Lo del disco no tiene papelera en SharpMD: se borra del disco y no pasa por la del sistema. Se dice ahí mismo.
+  const askDelete = (name, disk) => LMD.dialog.confirm({ title: T('¿Eliminar "{a}"?', { a: name }), text: T(disk ? 'Se borra del disco, sin pasar por la papelera. No se puede deshacer.' : 'No se puede deshacer.'), ok: T('Eliminar'), danger: true });
 
   const notMineTeam = (path) => LMD.cloud.isTeam(path + '/') && notMine(path);
   async function cloudNew(dirUrl, folder) {
@@ -139,15 +140,17 @@
     const title = T(owner ? 'Papelera del equipo' : 'Papelera');
     // Quien solo lee en su equipo ve la papelera, sin restaurar ni borrar.
     const ro = !!owner && !LMD.cloud.teamCan('write');
+    // En el lector de un archivo del disco se ve y se restaura. Borrar del todo y vaciarla se hace en la app.
+    const mild = !core.APP;
     const left = (r) => { const d = Math.max(1, Math.ceil((r.expires - Date.now()) / 86400000)); return d === 1 ? T('Se borra en 1 día') : T('Se borra en {n} días', { n: d }); };
     const box = el('div', { class: 'lmd-ask' });
     const draw = (msg) => {
       box.innerHTML = '<div class="lmd-ask-card lmd-trash" role="dialog" aria-label="' + esc(title) + '"><h3>' + esc(title) + '</h3>' +
         (rows.length ? '<ul class="lmd-trash-list">' + rows.map((r) => '<li data-id="' + r.id + '"><span class="lmd-trash-name">' + (r.protected ? ICON.lock : '') + '<b>' + esc(r.path) + '</b><small>' + esc(left(r)) + '</small></span>' +
-          (ro ? '' : '<span class="lmd-trash-acts"><button type="button" class="lmd-link" data-tr="back">' + T('Restaurar') + '</button><button type="button" class="lmd-link lmd-trash-del" data-tr="del">' + T('Eliminar') + '</button></span>') + '</li>').join('') + '</ul>'
+          (ro ? '' : '<span class="lmd-trash-acts"><button type="button" class="lmd-link" data-tr="back">' + T('Restaurar') + '</button>' + (mild ? '' : '<button type="button" class="lmd-link lmd-trash-del" data-tr="del">' + T('Eliminar') + '</button>') + '</span>') + '</li>').join('') + '</ul>' + (mild && !ro ? '<p class="lmd-hint lmd-trash-mild">' + T('Para borrar del todo, abrí la app.') + '</p>' : '')
           : '<p class="lmd-trash-none">' + T('La papelera está vacía.') + '</p>') +
         '<p class="lmd-dlg-err" role="alert"' + (msg ? '' : ' hidden') + '>' + esc(msg || '') + '</p>' +
-        '<div class="lmd-ask-actions">' + (rows.length && !ro ? '<button type="button" class="lmd-btn" data-tr="empty">' + T('Vaciar la papelera') + '</button>' : '') + '<button type="button" class="lmd-btn lmd-btn-fill" data-tr="no" data-esc>' + T('Cerrar') + '</button></div></div>';
+        '<div class="lmd-ask-actions">' + (rows.length && !ro && !mild ? '<button type="button" class="lmd-btn" data-tr="empty">' + T('Vaciar la papelera') + '</button>' : '') + '<button type="button" class="lmd-btn lmd-btn-fill" data-tr="no" data-esc>' + T('Cerrar') + '</button></div></div>';
     };
     draw(); document.body.appendChild(box);
     let busy = false;
@@ -396,7 +399,7 @@
     if (inCloud(url)) return cloudRemove(url);
     if (!(await core.allowWrite(url))) return;
     const name = nameOf(url);
-    if (!(await askDelete(name))) return;
+    if (!(await askDelete(name, !inLocal(url)))) return;
     try {
       if (inLocal(url)) await LMD.store.noteDelete(name);
       else await (await core.dirHandle(parentOf(url))).removeEntry(name);
@@ -412,7 +415,7 @@
     if (teamReader(url)) { core.flash(T('En este equipo solo podés leer.'), 'warn'); return; }
     if (!(await core.allowWrite(url))) return;
     if (!inCloud(url)) {
-      if (!(await askDelete(name))) return;
+      if (!(await askDelete(name, true))) return;
       try {
         await (await core.dirHandle(parentOf(url))).removeEntry(name, { recursive: true });
         if (!core.noDoc && core.HERE.startsWith(url)) closeGone(); else core.reloadTree();
@@ -436,7 +439,7 @@
   let menu = null;
   const closeMenu = () => { if (menu) { menu.remove(); menu = null; } };
   // El ícono de cada acción de los menús del explorador, por id.
-  const MENU_ICON = { fexp: 'download', new: 'file', tpl: 'doc', dir: 'folder', ren: 'pencil', mov: 'open', del: 'trash', file: 'file', 'v-protect': 'lock', 'v-lock': 'lock', 'v-unlock': 'unlock', 'v-ai': 'spark', 'v-ailock': 'lock', 'v-drop': 'close', 'v-pass': 'pencil', 'v-off': 'unlock', 'v-destroy': 'trash', 'v-backup': 'copy', 'v-rotate': 'lock' };
+  const MENU_ICON = { send: 'cloud', fexp: 'download', new: 'file', tpl: 'doc', dir: 'folder', ren: 'pencil', mov: 'open', del: 'trash', file: 'file', 'v-protect': 'lock', 'v-lock': 'lock', 'v-unlock': 'unlock', 'v-ai': 'spark', 'v-ailock': 'lock', 'v-drop': 'close', 'v-pass': 'pencil', 'v-off': 'unlock', 'v-destroy': 'trash', 'v-backup': 'copy', 'v-rotate': 'lock' };
   // Un menú corto en un punto de la pantalla. items: [id, texto, peligroso, ícono]. onPick recibe el id elegido.
   function showMenu(x, y, items, onPick) {
     closeMenu();
@@ -465,6 +468,8 @@
       (!isDir || cloud) && ['ren', 'Renombrar'],
       // Lo mismo que arrastrarlo a una carpeta, sin arrastrar: sirve con el dedo y con el teclado.
       canTree(url) && ['mov', 'Mover a…'],
+      // Una copia en la nube, de la nota o de la carpeta entera (send.js). Lo de acá no cambia.
+      LMD.send.can(url) && ['send', isDir ? 'Enviar la carpeta a la nube' : 'Enviar a la nube'],
     ].concat(whereItems(url), [
       !isDir && ['del', 'Eliminar', true],
       // Todas las notas de la carpeta en un solo documento: PDF, HTML, Word o Markdown (folderexport.js).
@@ -475,7 +480,8 @@
       folder && core.APP && LMD.sync.canPublish(folder) && ['site', 'Publicar como sitio…'],
     ]).concat(folder ? LMD.vault.menu(folder) : []).filter(Boolean), (f) => {
       if (wherePick(f, url)) return;
-      if (/^v-/.test(f)) LMD.vault.pick(f, folder);
+      if (f === 'send') LMD.send.start(url);
+      else if (/^v-/.test(f)) LMD.vault.pick(f, folder);
       else if (f === 'fexp') folderExport(url);
       else if (f === 'site') LMD.sync.publish(folder);
       else if (f === 'auto') core.ensure('automate').then((ok) => { if (ok) LMD.automate.wizard(core, { kind: isDir ? 'folder' : 'note', path: core.pathOf(url) }); });
@@ -491,8 +497,11 @@
   // Con whole (clic derecho sobre una raíz del explorador), suma exportar todo lo que hay en ella.
   function createMenu(x, y, dirUrl, whole) {
     const folderAt = dirUrl ? (canTree(dirUrl) ? dirUrl : '') : (core.diskDir() || (LMD.cloud.signedIn() ? core.urlOf('') : ''));
-    showMenu(x, y, [['new', 'Nota en blanco'], ['tpl', 'Desde una plantilla…'], folderAt && ['dir', 'Carpeta'], whole && dirUrl && ['fexp', 'Exportar la carpeta…']].filter(Boolean), (f) => {
-      if (f === 'fexp') folderExport(dirUrl);
+    showMenu(x, y, [['new', 'Nota en blanco'], ['tpl', 'Desde una plantilla…'], folderAt && ['dir', 'Carpeta'], whole && dirUrl && ['fexp', 'Exportar la carpeta…'],
+      // La raíz entera a la nube: la carpeta abierta con sus subcarpetas, o todas las notas de este navegador.
+      whole && dirUrl && LMD.send.can(dirUrl) && ['send', inLocal(dirUrl) ? 'Enviar todas a la nube' : 'Enviar la carpeta a la nube']].filter(Boolean), (f) => {
+      if (f === 'send') LMD.send.start(dirUrl);
+      else if (f === 'fexp') folderExport(dirUrl);
       else if (f === 'dir') newFolder(folderAt);
       else if (f === 'tpl') fromTemplate(dirUrl);
       else if (dirUrl) newFile(dirUrl);
@@ -571,7 +580,17 @@
     caret.classList.toggle('lmd-drop-line', !!box.width);
     caret.style.left = box.left + 'px'; caret.style.top = box.top + 'px'; caret.style.width = box.width ? box.width + 'px' : ''; caret.style.height = box.height ? box.height + 'px' : '';
   };
-  const endDrag = () => { markDrop(null); markCaret(null); dragged = ''; const n = core.ui.treeBox.querySelector('.lmd-dragging'); if (n) n.classList.remove('lmd-dragging'); };
+  // La etiqueta que acompaña al puntero cuando lo que se suelta ahí queda como copia en la nube.
+  let dropTag = null;
+  const markTag = (x, y) => {
+    if (x == null) { if (dropTag) { dropTag.remove(); dropTag = null; } return; }
+    if (!dropTag) { dropTag = el('div', { class: 'lmd-drop-tag', 'aria-hidden': 'true' }, ICON.cloud); dropTag.appendChild(el('span', { text: T('Copiar a la nube') })); document.body.appendChild(dropTag); }
+    dropTag.style.transform = 'translate(' + Math.round(Math.min(window.innerWidth - dropTag.offsetWidth - 8, x + 16)) + 'px,' + Math.round(Math.min(window.innerHeight - dropTag.offsetHeight - 8, y + 18)) + 'px)';
+  };
+  // Lo que se lleva, soltado sobre la sección Nube o una de sus carpetas: una copia ahí (send.js). Entre el disco o
+  // el navegador y la nube nunca se mueve.
+  const sendTo = (e) => (dragged && LMD.send.can(dragged) ? LMD.send.target(e) : null);
+  const endDrag = () => { markDrop(null); markCaret(null); markTag(null); dragged = ''; const n = core.ui.treeBox.querySelector('.lmd-dragging'); if (n) n.classList.remove('lmd-dragging'); };
   // El lugar de una carpeta que no sirve de destino: ella misma, lo que tiene adentro, o donde ya está.
   const badDrop = (url) => url === parentOf(dragged) || (isDirUrl(dragged) && url.startsWith(dragged));
 
@@ -658,8 +677,9 @@
   // Carpeta de destino según dónde está el puntero: la carpeta misma, la que contiene al archivo de abajo, o la
   // raíz. Solo dentro de la raíz de donde salió el archivo: entre el disco, el navegador y la nube no se arrastra.
   function dropTarget(e) {
-    // Una nota del navegador no tiene carpetas adonde ir: solo se suelta en la papelera.
-    if (inLocal(dragged)) return null;
+    // Una nota del navegador no tiene carpetas adonde ir: solo se suelta en la papelera. Lo que no se administra desde
+    // acá (un archivo suelto, o cualquier cosa en el lector de un archivo abierto directo) tampoco se mueve.
+    if (inLocal(dragged) || !canTree(dragged)) return null;
     const sec = e.target.closest && e.target.closest('.lmd-xroot'); const top = sec ? rootUrl(sec) : '';
     if (!top || core.rootOf(top) !== core.rootOf(dragged)) return null;
     const node = e.target.closest('.lmd-node-dir');
@@ -672,29 +692,34 @@
     return { url: top, mark: sec };
   }
   // La Papelera del explorador como destino: lo que se suelta ahí se elimina, igual que con "Eliminar".
-  const binOf = (e) => (e.target.closest && e.target.closest('.lmd-trash-link')) || null;
+  // En el lector de un archivo abierto directo nada se elimina arrastrando.
+  const binOf = (e) => (core.APP && e.target.closest && e.target.closest('.lmd-trash-link')) || null;
   function bindDrag(box) {
     box.addEventListener('dragstart', (e) => {
       // Con el dedo el renglón se levanta acá (más abajo): el arrastre del navegador no corre a la vez.
       if (finger || lift || LMD.touch.touched()) { e.preventDefault(); return; }
       const node = e.target.closest && e.target.closest('.lmd-node');
-      if (!node || !node.dataset.url || !(canTree(node.dataset.url) || inLocal(node.dataset.url))) return;
+      if (!node || !node.dataset.url || !(canTree(node.dataset.url) || inLocal(node.dataset.url) || LMD.send.can(node.dataset.url))) return;
       dragged = node.dataset.url; node.classList.add('lmd-dragging');
-      // Mover adentro del árbol, o dejar un enlace en la nota.
-      e.dataTransfer.effectAllowed = 'linkMove';
+      // Mover adentro del árbol, dejar un enlace en la nota o, hacia la nube, una copia.
+      e.dataTransfer.effectAllowed = LMD.send.can(dragged) ? 'all' : 'linkMove';
       // Una carpeta es un botón: sin datos propios el navegador no la arrastra.
       if (isDirUrl(dragged)) { try { e.dataTransfer.setData('text/plain', nameOf(dragged)); } catch (err) { /* arrastra igual */ } }
     });
     box.addEventListener('dragover', (e) => {
       if (!dragged) return;
       const bin = binOf(e);
-      if (bin) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; markDrop(bin); return; }
+      if (bin) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; markTag(null); markDrop(bin); return; }
+      // Sobre la nube queda una copia: lo dicen el cursor y la etiqueta.
+      const s = sendTo(e);
+      if (s) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; markDrop(s.mark); markTag(e.clientX, e.clientY); return; }
+      markTag(null);
       const t = dropTarget(e);
       // Soltarlo en la carpeta donde ya está no es un destino; una carpeta tampoco va adentro de sí misma.
       if (!t || badDrop(t.url)) { markDrop(null); return; }
       e.preventDefault(); e.dataTransfer.dropEffect = 'move'; markDrop(t.mark);
     });
-    box.addEventListener('dragleave', (e) => { if (!box.contains(e.relatedTarget)) markDrop(null); });
+    box.addEventListener('dragleave', (e) => { if (!box.contains(e.relatedTarget)) { markDrop(null); markTag(null); } });
     box.addEventListener('drop', (e) => {
       if (!dragged) return;
       e.preventDefault();
@@ -705,10 +730,11 @@
   // Soltar lo que se lleva donde está e.target: en la papelera se elimina, en una carpeta o en una raíz se mueve
   // ahí, y en cualquier otro lado no pasa nada. Es lo mismo para el mouse y para el dedo.
   function dropOn(e) {
-    const url = dragged; const bin = binOf(e); const t = bin ? null : dropTarget(e);
+    const url = dragged; const bin = binOf(e); const s = bin ? null : sendTo(e); const t = bin || s ? null : dropTarget(e);
     const ok = t && !badDrop(t.url);
     endDrag();
     if (bin) { if (isDirUrl(url)) removeDir(url); else remove(url); return; }
+    if (s) { LMD.send.drop(url, s.dest); return; }
     if (ok) { if (isDirUrl(url)) moveDir(url, t.url); else moveTo(url, t.url); }
   }
 
@@ -736,8 +762,10 @@
   const underFinger = () => { const n = document.elementFromPoint(lift.x, lift.y); return n && core.ui.paneFiles.contains(n) ? n : null; };
   function markFinger() {
     const n = underFinger(); const e = n && { target: n };
-    const bin = e && binOf(e); const t = e && !bin ? dropTarget(e) : null;
-    markDrop(bin || (t && !badDrop(t.url) ? t.mark : null));
+    const bin = e && binOf(e); const s = e && !bin ? sendTo(e) : null; const t = e && !bin && !s ? dropTarget(e) : null;
+    markDrop(bin || (s ? s.mark : t && !badDrop(t.url) ? t.mark : null));
+    // Sobre la nube, lo que viaja con el dedo dice que queda una copia.
+    if (lift && lift.ghost) { const tag = lift.ghost.querySelector('small'); if (s && !tag) lift.ghost.appendChild(el('small', { text: T('Copiar a la nube') })); else if (!s && tag) tag.remove(); }
   }
   function placeGhost() {
     const g = lift.ghost; if (!g) return;
@@ -1122,7 +1150,10 @@
       const at = node ? node.dataset.url : rootUrl(e.target);
       // Un archivo del disco abierto por su dirección: el enlace https que lo abre desde un chat o un documento.
       const disk = node && !core.APP && !node.classList.contains('lmd-node-dir') ? LMD.fileUrl(at || '') : '';
-      if (disk) { e.preventDefault(); showMenu(e.clientX, e.clientY, [['flink', 'Copiar enlace a este archivo', false, 'link']].concat(whereItems(disk)).filter(Boolean), (f) => { if (!wherePick(f, disk)) core.copy(LMD.fileLink(disk)); }); return; }
+      if (disk) { e.preventDefault(); showMenu(e.clientX, e.clientY, [['flink', 'Copiar enlace a este archivo', false, 'link'], LMD.send.can(at) && ['send', 'Enviar a la nube']].concat(whereItems(disk)).filter(Boolean), (f) => { if (f === 'send') LMD.send.start(at); else if (!wherePick(f, disk)) core.copy(LMD.fileLink(disk)); }); return; }
+      // Lo que no se administra desde acá pero sí se puede enviar: sobre un archivo abierto directo, una carpeta (o el
+      // fondo de la raíz, que es la carpeta que se ve) y un texto; en la app, un archivo suelto o una copia abierta por enlace.
+      if (at && LMD.send.can(at) && !(canTree(at) || inLocal(at))) { e.preventDefault(); showMenu(e.clientX, e.clientY, [['send', at.endsWith('/') ? 'Enviar la carpeta a la nube' : 'Enviar a la nube']], () => LMD.send.start(at)); return; }
       if (!at || !(canTree(at) || inLocal(at))) return;
       e.preventDefault();
       // Con el dedo apoyado, el renglón se levanta: el menú sale al soltar, si no se lo arrastró.
