@@ -380,6 +380,8 @@
   // El lector corre sobre file://, y desde ese origen el servidor no contesta. El pedido sale de acá, con la sesión
   // guardada, al servidor configurado y solo a estas rutas: las de la cuenta, los tokens, el plan y el equipo, la
   // galería, las automatizaciones y copiar una nota a la nube. No es un pase libre: ni otras rutas ni otro servidor.
+  // De la papelera, lo que el explorador del lector muestra: verla y restaurar una nota. Borrar del todo y vaciarla
+  // quedan en la app, igual que eliminar una nota.
   const SEG = '[^/?#]+'; const QS = '(\\?[^#]*)?';
   const ROUTES = [
     ['POST', '/auth/(start|verify|logout)'],
@@ -387,6 +389,7 @@
     ['GET', '/notes(\\?o=\\d+)?'], ['GET|PUT', '/notes/' + SEG + '(\\?o=\\d+)?'],
     ['GET|POST', '/tokens'], ['DELETE', '/tokens/\\d+'],
     ['GET', '/vaults'], ['GET', '/team/vault'],
+    ['GET', '/trash(\\?o=\\d+)?'], ['POST', '/trash/\\d+/restore(\\?o=\\d+)?'],
     ['GET|PUT', '/team'], ['GET', '/team/log' + QS], ['PUT', '/team/policies'],
     ['POST', '/team/(invite|role|accept|decline|remove|leave|seats)'],
     ['GET|POST', '/team/tokens'], ['DELETE', '/team/(tokens|invites)/\\d+'],
@@ -569,5 +572,5 @@
     return true;
   }
 
-  LMD.bridgeHost = { onMessage, onOwn, onCloud, onSeen, onSetup, onAction, openSharp, PREFS };
+  LMD.bridgeHost = { onMessage, onOwn, onCloud, onSeen, onSetup, onAction, mark, openSharp, PREFS };
 })();

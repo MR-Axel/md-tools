@@ -8,6 +8,8 @@
 //    Si lo que bajó es de otra versión, la página abierta lo dice y ofrece recargar.
 //  - Al instalarse guarda solo lo que hace falta para el primer pintado; lo demás se guarda después, ya activo.
 //  - Lo que va a otro origen (el servidor de sincronización, el pago) no se toca ni se guarda.
+//  - Una navegación que la red no contesta y que no está guardada recibe la página sin conexión (src/offline.html),
+//    en vez del error del navegador. Vale para todo el sitio; las páginas del sitio se siguen pidiendo a la red.
 'use strict';
 
 const VERSION = new URL(self.location.href).searchParams.get('v') || 'dev';
@@ -20,12 +22,13 @@ const SHELL = [
   'src/app.html', 'src/content.css', 'src/editors.css', 'vendor/hljs-themes.css', 'manifest.webmanifest',
   'src/boot.js', 'src/web.js', 'src/defaults.js', 'src/storeapp.js', 'src/count.js', 'src/kit.js', 'src/touch.js', 'src/dialog.js', 'src/markdown.js',
   'src/theme.js', 'src/serialize.js', 'src/store.js', 'src/bridge.js', 'src/seal.js', 'src/cloud.js', 'src/merge.js', 'src/home.js', 'src/write.js', 'src/lists.js', 'src/links.js',
-  'src/extras.js', 'src/images.js', 'src/board.js', 'src/page.js', 'src/fold.js', 'src/blocks.js', 'src/sync.js', 'src/comments.js', 'src/vault.js', 'src/live.js', 'src/team.js', 'src/install.js', 'src/tools.js', 'src/content.js',
+  'src/extras.js', 'src/send.js', 'src/images.js', 'src/board.js', 'src/page.js', 'src/fold.js', 'src/blocks.js', 'src/sync.js', 'src/comments.js', 'src/vault.js', 'src/live.js', 'src/team.js', 'src/install.js', 'src/tools.js', 'src/content.js',
   'vendor/markdown-it.min.js', 'vendor/markdown-it-sub.min.js', 'vendor/markdown-it-sup.min.js',
   'vendor/markdown-it-ins.min.js', 'vendor/markdown-it-mark.min.js', 'vendor/markdown-it-abbr.min.js', 'vendor/markdown-it-deflist.min.js',
   'vendor/markdown-it-footnote.min.js', 'vendor/markdown-it-multimd-table.min.js', 'vendor/markdown-it-container.min.js',
   'vendor/purify.min.js',
   'vendor/fonts/inter.woff2', 'icons/icon32.png', 'icons/icon128.png',
+  'src/offline.html',
 ];
 // Lo que la app pide después del primer pintado o cuando el documento lo necesita (ver LAZY_APP en src/content.js).
 // Se guarda con el service worker ya activo, de a uno, para no competir con la primera carga.
@@ -138,9 +141,22 @@ async function respond(req, url, path, e) {
     if (!LISTED.has(path)) e.waitUntil(fetch(req).then((res) => keep(cache, url, res)).catch(() => {}));
     return saved;
   }
-  const res = await fetch(req);
+  let res;
+  try { res = await fetch(req); } catch (err) { if (req.mode === 'navigate') return offline(); throw err; }
   e.waitUntil(keep(cache, url, res));
   return res;
+}
+
+// Sin conexión y sin copia guardada de lo que se pidió: la página propia, con 503 para que nadie la tome por la
+// página pedida. Si ni ella está guardada (la caché se borró), una línea escrita acá.
+const OFFLINE = 'src/offline.html';
+async function offline() {
+  const head = { status: 503, statusText: 'Offline', headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } };
+  try {
+    const saved = await (await caches.open(CACHE)).match(keyOf(new URL(OFFLINE, ROOT)));
+    if (saved) return new Response(await saved.blob(), head);
+  } catch (err) { /* sin caché: la línea de abajo */ }
+  return new Response('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SharpMD</title><body style="font: 17px/1.5 system-ui, sans-serif; padding: 24px"><h1>No connection</h1><p><a href="">Try again</a></p>', head);
 }
 
 // "Compartir" desde otra app (share_target del manifiesto): llega un POST a src/share. No va a la red: lo recibido
@@ -178,6 +194,10 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== self.location.origin || !url.pathname.startsWith(ROOT.pathname)) return;
   // Solo la app y lo que ella carga. La portada, la página de pago y el resto del sitio van siempre a la red.
   const path = url.pathname.slice(ROOT.pathname.length);
-  if (!/^(src|vendor|icons)\//.test(path) && path !== 'manifest.webmanifest') return;
+  if (!/^(src|vendor|icons)\//.test(path) && path !== 'manifest.webmanifest') {
+    // El resto del sitio: a la red como siempre. Solo si la red no contesta una navegación, la página sin conexión.
+    if (req.mode === 'navigate') e.respondWith(fetch(req).catch(offline));
+    return;
+  }
   e.respondWith(respond(req, url, path, e));
 });

@@ -680,6 +680,35 @@
       "No se pudo crear el archivo": "Could not create the file", "No se pudo renombrar": "Could not rename", "No se pudo eliminar": "Could not delete",
       "Nuevo archivo acá": "New file here", "Nuevo archivo": "New file", "Renombrar": "Rename",
       "Mover a…": "Move to…", "Mover \"{a}\" a…": "Move \"{a}\" to…", "Está acá": "It is here",
+      // Enviar a la nube (send.js): una copia de un archivo o de una carpeta del disco o del navegador.
+      "Enviar a la nube": "Send to the cloud", "Enviar la carpeta a la nube": "Send the folder to the cloud", "Enviar todas a la nube": "Send them all to the cloud", "Copiar a la nube": "Copy to the cloud",
+      "Enviar \"{a}\" a la nube": "Send \"{a}\" to the cloud", "Enviar la carpeta \"{a}\" a la nube": "Send the folder \"{a}\" to the cloud", "Enviar todas las notas a la nube": "Send all the notes to the cloud",
+      "Queda una copia en la nube. El archivo del disco no cambia.": "A copy stays in the cloud. The file on disk does not change.",
+      "Queda una copia en la nube. Los archivos del disco no cambian.": "A copy stays in the cloud. The files on disk do not change.",
+      "Queda una copia en la nube. La nota de este navegador no cambia.": "A copy stays in the cloud. The note in this browser does not change.",
+      "Queda una copia en la nube. Las notas de este navegador no cambian.": "A copy stays in the cloud. The notes in this browser do not change.",
+      "Enviar a…": "Send to…", "Elegida": "Selected", "Cambiar…": "Change…", "Las que ya existen": "Notes that already exist", "Ya hay una nota con ese nombre": "A note with that name already exists",
+      "Saltear": "Skip", "Guardar con otro nombre": "Save under another name", "1 ya existe": "1 already exists", "{n} ya existen": "{n} already exist",
+      "Espacio del equipo: sin tope": "Team space: no limit", "Plan pago: sin tope": "Paid plan: no limit", "Plan gratis: queda 1 lugar de {m}": "Free plan: 1 of {m} places left", "Plan gratis: quedan {a} lugares de {m}": "Free plan: {a} of {m} places left",
+      "Entran {a} de {b}. El plan pago no tiene tope.": "{a} of {b} fit. The paid plan has no limit.", "Elegí cuáles van": "Choose which ones go", "El plan gratis está lleno.": "The free plan is full.", "No hay nada nuevo para enviar.": "There is nothing new to send.",
+      "La carpeta es muy grande: se toman las primeras {n} notas.": "The folder is very large: only the first {n} notes are taken.",
+      "Subir también 1 imagen, y que la copia apunte a ella": "Also upload 1 image, and point the copy to it", "Subir también {n} imágenes, y que las copias apunten a ellas": "Also upload {n} images, and point the copies to them",
+      "Subir imágenes es del plan pago: las notas van con sus rutas de imagen como están.": "Uploading images is part of the paid plan: the notes go with their image paths as they are.",
+      "Las imágenes no se suben desde acá: las notas van con sus rutas de imagen como están.": "Images are not uploaded from here: the notes go with their image paths as they are.",
+      "Enviar 1 nota": "Send 1 note", "Enviar {n} notas": "Send {n} notes", "Enviando…": "Sending…", "Enviando {a} de {b}…": "Sending {a} of {b}…", "Cancelando…": "Cancelling…",
+      "Se envió 1 nota.": "1 note was sent.", "Se enviaron {n} notas.": "{n} notes were sent.", "1 ya existía y se salteó.": "1 already existed and was skipped.", "{n} ya existían y se saltearon.": "{n} already existed and were skipped.",
+      "Se canceló: quedó 1 sin enviar.": "Cancelled: 1 was not sent.", "Se canceló: quedaron {n} sin enviar.": "Cancelled: {n} were not sent.",
+      "1 quedó afuera porque no entra en el plan.": "1 was left out because it does not fit in the plan.", "{n} quedaron afuera porque no entran en el plan.": "{n} were left out because they do not fit in the plan.",
+      "1 no se pudo enviar": "1 could not be sent", "{n} no se pudieron enviar": "{n} could not be sent", "El envío": "The upload", "y {n} más": "and {n} more",
+      "demasiado grande": "too large", "no entra en el plan gratis": "does not fit in the free plan", "nombre que la nube no admite": "a name the cloud does not accept", "no se pudo leer": "could not be read",
+      "la carpeta está bloqueada": "the folder is locked", "solo lectura": "read-only", "el plan del equipo venció": "the team plan ended", "no se pudo enviar": "could not be sent",
+      "Se subió 1 imagen.": "1 image was uploaded.", "Se subieron {n} imágenes.": "{n} images were uploaded.",
+      "1 imagen no se pudo subir: quedó con su ruta.": "1 image could not be uploaded: it kept its path.", "{n} imágenes no se pudieron subir: quedaron con su ruta.": "{n} images could not be uploaded: they kept their paths.",
+      "Ver en la nube": "Show in the cloud", "Abrir la nota de la nube": "Open the cloud note", "Ahí no hay notas para enviar.": "There are no notes to send there.",
+      "Se guardó como \"{a}\".": "Saved as \"{a}\".", "No se envió: ya hay una nota con ese nombre.": "Not sent: a note with that name already exists.", "No se pudo enviar \"{a}\": {b}.": "Could not send \"{a}\": {b}.",
+      "Para enviar a la nube hay que entrar a la cuenta. Al entrar, el envío sigue.": "Sending to the cloud needs your account. Once you sign in, the upload continues.", "No se pudo enviar a la nube.": "Could not send to the cloud.",
+      "Se borra del disco, sin pasar por la papelera. No se puede deshacer.": "It is deleted from the disk, without going through the trash. This cannot be undone.",
+      "Para borrar del todo, abrí la app.": "To delete for good, open the app.", "Todavía no hay notas acá.": "There are no notes here yet.",
       "Nombre del archivo": "File name", "Doble clic o F2 para cambiar el nombre": "Double-click or press F2 to rename",
       "No se pudo mover": "Could not move",
       "imagen": "image", "Imagen guardada en {a}": "Image saved to {a}", "No se pudo guardar la imagen": "Could not save the image",
@@ -789,6 +818,8 @@
       "La extensión solo muestra carpetas que ya abriste con ella.": "The extension only shows folders you already opened with it.", "No se pudo abrir la carpeta.": "Could not open the folder.",
       "Para renombrarlo abrí su carpeta": "To rename it, open its folder", "El navegador no deja cambiar el nombre de un archivo suelto.": "The browser does not allow renaming a file opened on its own.",
       "Esto es una copia del archivo del disco. Con su carpeta abierta se renombra el archivo de verdad.": "This is a copy of the file on disk. With its folder open, the real file is renamed.",
+      "Mostrar en el Explorador…": "Show in Explorer…", "Para abrir el explorador de archivos hace falta el programa local de SharpMD, que corre en tu computadora.": "Opening the file explorer needs the SharpMD local program, which runs on your computer.",
+      "Ver cómo instalarlo": "See how to install it", "Si ya lo tenés:": "If you already have it:", "emparejalo en Herramientas": "pair it in Tools",
       "Del disco": "From disk", "Abrir esta carpeta": "Open this folder", "Editar el archivo del disco": "Edit the file on disk", "Permitir guardar": "Allow saving",
       "No se pudo abrir \"{a}\".": "Could not open \"{a}\".", "Buscá la carpeta \"{a}\" y elegila.": "Find the folder \"{a}\" and choose it.",
       "La carpeta \"{a}\" no contiene \"{b}\". Buscá \"{c}\".": "The folder \"{a}\" does not contain \"{b}\". Find \"{c}\".",
@@ -826,7 +857,7 @@
       "Falta el acceso a archivos": "File access is off", "La extensión no tiene acceso a archivos. Elegí el archivo, o activá el acceso.": "The extension has no file access. Choose the file, or turn access on.",
       "No se encontró el archivo": "File not found", "Puede que se haya movido o que tenga otro nombre.": "It may have been moved or renamed.",
       "Este enlace no se puede abrir": "This link cannot be opened", "Solo se abren archivos Markdown del disco.": "Only Markdown files from your disk can be opened.",
-      "Copiar enlace a este archivo": "Copy link to this file",
+      "Copiar enlace de SharpMD": "Copy SharpMD link", "Copiar como dirección file://": "Copy as file:// address", "Dirección copiada": "Address copied",
       "App de Android": "Android app", "La misma app en el teléfono, con tus notas de la nube.": "The same app on your phone, with your cloud notes.", "Conseguir la app": "Get the app",
       "En la computadora": "On a computer",
       "Abrí sharpmd.app en Chrome. Con tu cuenta, las notas de la nube son las mismas.": "Open sharpmd.app in Chrome. With your account, the cloud notes are the same.",
@@ -2216,7 +2247,7 @@
   }
   const SPONSOR_URL = 'https://ko-fi.com/surlabs';
   // El mismo número que manifest.json: en la web no hay manifiesto del que leerlo. Una prueba falla si no coinciden.
-  const VERSION = '2.79.0';
+  const VERSION = '2.80.0';
 
   root.LMD = { VERSION, PLUGIN_HELP, PLUGIN_SAMPLES, PLUGIN_GROUPS, SPONSOR_URL, CLOUD_URL, WEB_APP_URL, fileUrl, filePath, fileLink, extSettings, openExtSettings, CODE_COLORS, DEFAULTS, PLUGIN_LABELS, ACCENTS, FONTS, merge, load, save, patch, setLang, t, lang, keys, device, mod };
 })(typeof self !== 'undefined' ? self : this);

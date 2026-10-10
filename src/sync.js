@@ -13,7 +13,7 @@
   // ya figura, el aviso de una invitación que espera.
   function adopt(a, quiet) {
     if (!a) return;
-    if (LMD.cloud.setTeam(a.team && a.team.mine) && core && core.APP) core.reloadTree();
+    if (LMD.cloud.setTeam(a.team && a.team.mine) && core && core.cloudTree) core.reloadTree();
     if (!quiet) LMD.team.notice(a);
     roomNotice(a);
   }
@@ -397,7 +397,7 @@
     const askLogin = () => {
       const acts = box.querySelector('.lmd-acct-actions'); if (!acts || LMD.cloud.signedIn()) return;
       const form = el('div', { class: 'lmd-signin' }); acts.replaceWith(form);
-      LMD.home.signIn(form, async () => { account = null; asked = false; paint(); LMD.home.account(); if (core.APP) core.reloadTree(); await cloudPane(box, host); });
+      LMD.home.signIn(form, async () => { account = null; asked = false; paint(); LMD.home.account(); if (core.cloudTree) core.reloadTree(); await cloudPane(box, host); });
     };
     if (wantLogin) { wantLogin = false; if (LMD.cloud.enabled() && !host.direct) askLogin(); }
     box.onclick = async (e) => {
@@ -452,7 +452,7 @@
     // Ya no hay cuenta: una nota de la nube que estuviera abierta se cierra, y el explorador queda sin la nube.
     const open = core && core.APP && isCloud();
     account = null; asked = false; paint(); LMD.home.account();
-    if (open) await core.close({ discard: true, tree: true }); else if (core && core.APP) core.reloadTree();
+    if (open) await core.close({ discard: true, tree: true }); else if (core && core.cloudTree) core.reloadTree();
     if (core) core.flash(T('Cuenta eliminada'));
     return true;
   }
@@ -463,7 +463,7 @@
     const open = core && core.APP && isCloud();
     if (open && host && host.leave) { try { await host.leave(); } catch (e) { /* lo que no subió queda en la cola */ } }
     await LMD.cloud.logout(); account = null; asked = false; paint(); LMD.home.account();
-    if (open) await core.close({ discard: true, tree: true }); else if (core && core.APP) core.reloadTree();
+    if (open) await core.close({ discard: true, tree: true }); else if (core && core.cloudTree) core.reloadTree();
   }
 
   // Carpetas de la nube, con las de adentro: salen de las rutas de las notas.
@@ -1010,7 +1010,7 @@
     const open = core.APP && isCloud(); const d = (e && e.detail) || {};
     account = null; asked = false; paint(); LMD.home.account();
     // Con cambios sin guardar la nota no se cierra sola: lo escrito sigue a la vista, y al guardar se verá que no hay sesión.
-    if (open && !core.dirty && (!d.signedIn || d.was !== d.now)) await core.close({ discard: true, tree: true }); else if (core.APP) core.reloadTree();
+    if (open && !core.dirty && (!d.signedIn || d.was !== d.now)) await core.close({ discard: true, tree: true }); else if (core.cloudTree) core.reloadTree();
     if (shown && shown.box.isConnected && shown.box.offsetParent) panes[shown.kind](shown.box, shown.host);
   }
   // Se salió de la cuenta del otro lado del puente: acá se sale igual, como con el botón Salir.
@@ -1022,7 +1022,7 @@
     window.addEventListener('lmd-session-changed', sessionChanged);
     document.addEventListener('mousedown', (e) => { if (menu && !menu.contains(e.target)) closeMenu(); });
     // El servidor dejó de mostrar el espacio del equipo: la cuenta se vuelve a leer y el explorador se redibuja sin él.
-    LMD.cloud.onTeamLost(() => { account = null; asked = false; if (core.APP) core.reloadTree(); loadAccount(); });
+    LMD.cloud.onTeamLost(() => { account = null; asked = false; if (core.cloudTree) core.reloadTree(); loadAccount(); });
     // Una nota de un sitio con "publicar al guardar" se guardó: su página se vuelve a subir (publish.js).
     core.hooks.saved.push((path) => {
       const pg = pagesOf(account); if (!pg) return;

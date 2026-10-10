@@ -179,6 +179,7 @@
 .lmd-docname { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lmd-dirty .lmd-docname::after { content: " •"; color: var(--accent); }
 .lmd-docname-edit { cursor: text; }
+html:not(.lmd-editing) .lmd-docname-edit { cursor: pointer; } /* leyendo, el clic abre su menú */
 .lmd-docname-input { width: min(100%, 340px); height: 28px; padding: 0 8px; border: 1px solid var(--accent-fill); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; outline: none; }
 .lmd-foot {
   position: fixed; left: var(--lmd-side-w); right: 0; bottom: 0; z-index: 12; display: flex; align-items: center; gap: 16px; height: 30px;
@@ -471,7 +472,7 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
   .lmd-sidebar, .lmd-main, .lmd-node-chev svg { transition: none; }
 }
 @media print {
-  .lmd-sidebar, .lmd-topbar, .lmd-foot, .lmd-to-top, .lmd-panel, .lmd-viewer, .lmd-format, .lmd-tablebar, .lmd-ask, .lmd-orphan, .lmd-code-copy, .lmd-code-lang, .lmd-anchor { display: none !important; }
+  .lmd-sidebar, .lmd-topbar, .lmd-foot, .lmd-to-top, .lmd-panel, .lmd-viewer, .lmd-format, .lmd-tablebar, .lmd-ask, .lmd-orphan, .lmd-oops, .lmd-code-copy, .lmd-code-lang, .lmd-anchor { display: none !important; }
   .lmd-main { margin: 0 !important; }
   .lmd-article { padding: 0 !important; max-width: none !important; }
   .lmd-root, .lmd-body { background: #fff !important; }
@@ -3587,7 +3588,7 @@ dialog.lmd-xp-full::backdrop { background: var(--bg); }
 .lmd-blk .lmd-acct-actions { margin-top: 12px; }
 .lmd-blk .lmd-acct-msg { margin: 10px 0 0; color: #dc2626; }
 .lmd-blk .lmd-acct-msg.lmd-acct-done { color: var(--fg-muted); }
-.lmd-empty { margin: 0; padding: 10px 0 2px; border-top: 1px solid var(--line); font-size: 13px; color: var(--fg-muted); }
+.lmd-blk .lmd-empty { margin: 0; padding: 10px 0 2px; border-top: 1px solid var(--line); font-size: 13px; color: var(--fg-muted); }
 .lmd-note { margin: 8px 0 0; font-size: 12px; line-height: 1.45; color: var(--fg-faint); }
 .lmd-acct .lmd-note.lmd-tok-kept { margin-top: 8px; }
 .lmd-blk .lmd-vault-tokens { margin: 6px 0 0; font-size: 12px; }
@@ -3746,3 +3747,48 @@ dialog.lmd-xp-full::backdrop { background: var(--bg); }
 /* "Solo Markdown", en la cabecera del panel Archivos: prendido se nota. */
 .lmd-zone-btn.lmd-tree-only { opacity: .55; }
 .lmd-zone-btn.lmd-tree-only.lmd-on { opacity: 1; background: var(--accent-soft); color: var(--accent); }
+/* ---------- Enviar a la nube (send.js): la ventana, la etiqueta del arrastre y el aviso del final ---------- */
+.lmd-send-card { display: flex; flex-direction: column; max-height: min(620px, 100%); }
+.lmd-send-card h3 { overflow-wrap: anywhere; }
+.lmd-send-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; margin-bottom: 16px; }
+.lmd-ask-card .lmd-send-body p { margin: 0 0 12px; }
+.lmd-ask-card .lmd-send-body p.lmd-hint { margin: 0 0 10px; font-size: 13px; }
+.lmd-ask-card .lmd-send-body p.lmd-send-sum { color: var(--fg); }
+.lmd-ask-card .lmd-send-body p.lmd-send-warn { padding: 9px 12px; border: 1px solid var(--accent-fill); border-radius: 9px; background: var(--accent-soft); color: var(--fg); }
+.lmd-send-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 12px; }
+.lmd-send-k { color: var(--fg-muted); font-size: 13px; }
+.lmd-ask-card .lmd-send-body p.lmd-send-k { margin: 0 0 6px; }
+.lmd-send-dest { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.lmd-send-row .lmd-link { padding: 4px 6px; color: var(--accent); font-size: 13px; }
+.lmd-send-clash .lmd-seg { flex: 1 1 100%; flex-wrap: wrap; border-radius: 12px; }
+.lmd-send-clash .lmd-seg button { flex: 1 1 auto; padding: 0 12px; white-space: nowrap; border-radius: 9px; }
+.lmd-send-list { margin: 0 0 12px; padding: 0; list-style: none; max-height: min(220px, 34vh); overflow-y: auto; border: 1px solid var(--line); border-radius: 9px; scrollbar-width: thin; }
+.lmd-send-list li { padding: 0 10px; border-bottom: 1px solid var(--line); font-size: 13.5px; overflow-wrap: anywhere; }
+.lmd-send-list li:last-child { border-bottom: 0; }
+.lmd-send-list label, .lmd-send-img { display: flex; align-items: center; gap: 9px; min-height: 36px; cursor: pointer; }
+.lmd-send-list input, .lmd-send-img input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--accent-fill); }
+.lmd-send-img { margin: 0 0 12px; }
+.lmd-send-fails li { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; padding: 7px 10px; }
+.lmd-send-fails small { color: var(--fg-muted); font-size: 12.5px; }
+.lmd-send-bar { height: 6px; margin: 0 0 4px; border-radius: 999px; background: var(--bg-soft); overflow: hidden; }
+.lmd-send-bar i { display: block; width: 0; height: 100%; border-radius: 999px; background: var(--accent-fill); transition: width 0.18s ease-out; }
+.lmd-mv-list small { color: var(--fg-faint); }
+/* Lo que se arrastra hacia la nube queda como copia: una etiqueta sigue al puntero y lo dice. */
+.lmd-drop-tag { position: fixed; left: 0; top: 0; z-index: 90; display: flex; align-items: center; gap: 7px; padding: 6px 10px; border: 1px solid var(--accent-fill); border-radius: 8px; background: var(--bg); color: var(--fg); box-shadow: var(--shadow); font: 600 12.5px/1.3 var(--lmd-font); white-space: nowrap; pointer-events: none; }
+.lmd-drop-tag svg { flex: none; width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-drag-ghost small { flex: none; padding-left: 8px; border-left: 1px solid var(--line); color: var(--fg-muted); font-size: 12px; font-weight: 500; }
+/* El aviso del final, al pie: lo que pasó y el botón que abre lo enviado. */
+.lmd-sent { gap: 10px; padding-right: 10px; }
+.lmd-sent > span { min-width: 0; overflow-wrap: anywhere; }
+.lmd-sent.lmd-sent-bad { border-color: var(--danger, #dc2626); }
+.lmd-sent .lmd-update-x { width: 30px; height: 30px; padding: 0; background: transparent; color: var(--fg-muted); }
+.lmd-sent .lmd-update-x:hover { background: var(--accent-soft); color: var(--fg); }
+.lmd-sent .lmd-update-x svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.lmd-fresh ~ .lmd-sent, .lmd-room ~ .lmd-sent { bottom: 84px; }
+@media (max-width: 640px) {
+  .lmd-sent { flex-wrap: wrap; justify-content: flex-end; }
+  .lmd-sent > span { flex: 1 1 100%; }
+  .lmd-send-list label, .lmd-send-img { min-height: 44px; }
+  .lmd-send-row .lmd-link { min-height: 36px; }
+}
+@media print { .lmd-drop-tag, .lmd-sent { display: none !important; } }

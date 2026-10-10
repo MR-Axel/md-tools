@@ -270,6 +270,12 @@ await step('pdf', 'PDF: páginas, barra, zoom, búsqueda, índice, enlaces y pos
   const tmenu = await page.evaluate(() => [...document.querySelectorAll('.lmd-menu button')].map((b) => b.textContent.trim()));
   check('el menú del archivo en el explorador suma Importar a Markdown', tmenu.includes('Import to Markdown') && tmenu.includes('Rename'), tmenu);
   await page.keyboard.press('Escape'); await page.mouse.click(700, 500); await sleep(200);
+  // "Enviar a la nube" sobre un PDF: la entrada está, y dice que no se sube.
+  await page.evaluate(() => { window.__cloud = [LMD.cloud.enabled, LMD.cloud.reach]; LMD.cloud.enabled = () => true; LMD.cloud.reach = () => true; });
+  await page.click(node('book.pdf'), { button: 'right' }); await page.waitForSelector('.lmd-menu');
+  await page.click('.lmd-menu button >> text=Send to the cloud'); await sleep(250);
+  check('Enviar a la nube sobre un PDF dice claro que no se sube', /not uploaded to the cloud: cloud notes are text/.test(await flashText(page)) && await page.evaluate(() => !document.querySelector('.lmd-send-card')), await flashText(page));
+  await page.evaluate(() => { LMD.cloud.enabled = window.__cloud[0]; LMD.cloud.reach = window.__cloud[1]; }); await sleep(2600);
   // Subir a la nube: se dice que no.
   { await page.evaluate(() => { const was = LMD.cloud.signedIn; LMD.cloud.signedIn = () => true; LMD.sync.click(document.querySelector('.lmd-sync')); LMD.cloud.signedIn = was; }); await sleep(300); check('subirlo a la nube se rechaza con una línea', /not uploaded to the cloud/.test(await flashText(page)), await flashText(page)); }
   // Posición y zoom recordados.

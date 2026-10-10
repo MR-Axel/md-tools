@@ -422,7 +422,7 @@ try {
   const titleItems = async (p) => { await p.click('.lmd-docname', { button: 'right' }); await p.waitForSelector('.lmd-menu-narrow', { timeout: 3000 }).catch(() => {}); return p.evaluate(() => [...document.querySelectorAll('.lmd-menu-narrow button')].map((b) => b.textContent.trim())); };
   const tm = await titleItems(lo);
   await lo.click('.lmd-menu-narrow [data-f=path]').catch(() => {}); await lo.waitForTimeout(300);
-  check('el menú del nombre ofrece renombrar, copiar la ruta y ver la carpeta; la ruta sale en el formato del sistema', J(tm) === J(['Rename', 'Copy path', 'View the folder in the browser']) && (await clipOf(lo)) === path.join(disk, 'links.md') && !/^file:/.test(await clipOf(lo)), [tm, await clipOf(lo)]);
+  check('el menú del nombre ofrece renombrar, copiar la ruta y ver la carpeta; la ruta sale en el formato del sistema', J(tm) === J(['Rename', 'Copy path', 'Copy as file:// address', 'View the folder in the browser', 'Show in Explorer…']) && (await clipOf(lo)) === path.join(disk, 'links.md') && !/^file:/.test(await clipOf(lo)), [tm, await clipOf(lo)]);
   await titleItems(lo);
   const [folderTab] = await Promise.all([ctx.waitForEvent('page', { timeout: 8000 }).catch(() => null), lo.click('.lmd-menu-narrow [data-f=folder]').catch(() => {})]);
   check('"Ver la carpeta en el navegador" abre el listado de esa carpeta en una pestaña nueva, por la extensión', !!folderTab && folderTab.url().toLowerCase() === (pathToFileURL(disk).href + '/').toLowerCase() && lo.url().startsWith(WEB), folderTab && folderTab.url());
@@ -545,7 +545,7 @@ try {
   await lk.bringToFront(); await lk.click('[data-act=copy]'); await lk.waitForSelector('.lmd-menu-copy');
   const copyItems = await lk.evaluate(() => [...document.querySelectorAll('.lmd-menu-copy button')].map((b) => b.textContent.trim()));
   await lk.click('.lmd-menu-copy [data-more=copy-flink]'); await lk.waitForTimeout(300);
-  check('el menú Copiar ofrece el enlace a este archivo y copia el https', copyItems.includes('Copy link to this file') && (await clip(lk)) === linkTo(WEB, fileAt), [copyItems, await clip(lk)]);
+  check('el menú Copiar ofrece el enlace a este archivo y copia el https', copyItems.includes('Copy SharpMD link') && (await clip(lk)) === linkTo(WEB, fileAt), [copyItems, await clip(lk)]);
   await lk.click('[data-act=copy]'); await lk.waitForSelector('.lmd-menu-copy'); await lk.click('.lmd-menu-copy [data-more=copy-path]').catch(() => {}); await lk.waitForTimeout(300);
   check('y la ruta local del archivo, como la escribe el sistema', copyItems.includes('Copy path') && (await clip(lk)) === diskFile, [copyItems, await clip(lk)]);
   const sibling = lk.locator('.lmd-tree-box .lmd-node:not(.lmd-node-dir)', { hasText: 'other.md' });
@@ -553,7 +553,7 @@ try {
   await sibling.click({ button: 'right' }).catch(() => {}); await lk.waitForSelector('.lmd-menu-narrow [data-f=flink]', { timeout: 4000 }).catch(() => {});
   const treeItems = await lk.evaluate(() => [...document.querySelectorAll('.lmd-menu [data-f]')].map((b) => b.textContent.trim()));
   await lk.click('.lmd-menu [data-f=flink]').catch(() => {}); await lk.waitForTimeout(300);
-  check('y el clic derecho sobre un archivo del explorador, el de ese archivo', J(treeItems) === J(['Copy link to this file', 'Copy path', 'View the folder in the browser']) && (await clip(lk)) === linkTo(WEB, pathToFileURL(path.join(disk, 'other.md')).href), [treeItems, await clip(lk)]);
+  check('y el clic derecho sobre un archivo del explorador, el de ese archivo', J(treeItems) === J(['Copy SharpMD link', 'Copy path', 'Copy as file:// address', 'View the folder in the browser', 'Show in Explorer…']) && (await clip(lk)) === linkTo(WEB, pathToFileURL(path.join(disk, 'other.md')).href), [treeItems, await clip(lk)]);
   await lk.close();
 
   // Un archivo que no está, y un nombre que quiere ser HTML: la ruta se muestra siempre como texto.
@@ -789,9 +789,12 @@ try {
   // El paso al servidor para el lector: solo el lector de un archivo del disco, y solo las rutas de la lista.
   const viaSw = (msg, sender) => bg(([m, s]) => new Promise((resolve) => { const from = Object.assign({ id: chrome.runtime.id, tab: { id: 1 }, frameId: 0, url: 'file:///C:/notes/a.md' }, s); if (LMD.bridgeHost.onCloud(m, from, resolve) === false) { /* ya contestó */ } }), [msg, sender || {}]);
   const okCall = await viaSw({ method: 'GET', path: '/account', auth: true });
-  const badRoutes = [['GET', '/admin/plan'], ['POST', '/admin/plan'], ['GET', '/trash'], ['DELETE', '/notes/a.md'], ['GET', '/notes/../admin/plan'], ['GET', '/notes/%2e%2e/admin'], ['GET', '/notes/a.md/../../admin'], ['GET', '/public/abc'], ['GET', '/events?path=a.md'], ['GET', 'http://127.0.0.1:9/account'], ['GET', '//evil.example/account'], ['GET', '/account#x'], ['TRACE', '/account'], ['GET', '/account\n'], ['POST', '/vaults'], ['POST', '/links'], ['GET', 5]];
+  const badRoutes = [['GET', '/admin/plan'], ['POST', '/admin/plan'], ['DELETE', '/trash'], ['DELETE', '/trash/1'], ['GET', '/trash/1'], ['POST', '/trash/1/restore?x=1'], ['POST', '/rename'], ['DELETE', '/notes/a.md'], ['GET', '/notes/../admin/plan'], ['GET', '/notes/%2e%2e/admin'], ['GET', '/notes/a.md/../../admin'], ['GET', '/public/abc'], ['GET', '/events?path=a.md'], ['GET', 'http://127.0.0.1:9/account'], ['GET', '//evil.example/account'], ['GET', '/account#x'], ['TRACE', '/account'], ['GET', '/account\n'], ['POST', '/vaults'], ['POST', '/links'], ['GET', 5]];
   const badRes2 = []; for (const [method, p] of badRoutes) badRes2.push(await viaSw({ method, path: p }));
   check('el lector llega al servidor por la extensión', okCall && okCall.ok === true && okCall.status === 200 && okCall.json && okCall.json.email === ANA, okCall && { ok: okCall.ok, status: okCall.status });
+  // Para la sección Nube del lector: la lista de notas y la papelera, que se ve y de la que se restaura.
+  const seeTrash = await viaSw({ method: 'GET', path: '/trash', auth: true }); const seeNotes = await viaSw({ method: 'GET', path: '/notes', auth: true });
+  check('y a lo que muestra su sección Nube: las notas y la papelera', seeTrash && seeTrash.ok === true && seeTrash.status === 200 && Array.isArray(seeTrash.json) && seeNotes && seeNotes.status === 200 && Array.isArray(seeNotes.json), [seeTrash && seeTrash.status, seeNotes && seeNotes.status]);
   check('pero no a cualquier ruta: fuera de la lista se rechaza sin salir a la red', badRes2.every((r) => r && r.ok === false && r.error === 'refused'), badRoutes.filter((x, k) => !(badRes2[k] && badRes2[k].error === 'refused')));
   const badSenders = [{ url: 'https://evil.example/notes/a.md' }, { url: WEB }, { url: OWN }, { url: 'file://server/share/a.md' }, { frameId: 1 }, { id: 'otraextension' }, { tab: null }];
   const badRes3 = []; for (const s of badSenders) badRes3.push(await viaSw({ method: 'GET', path: '/account' }, s));

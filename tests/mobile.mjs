@@ -615,7 +615,20 @@ try {
     check('que se puede editar y queda guardada', /Edited offline\./.test(await page.evaluate(async () => (await LMD.store.noteGet('offline.md')).text)));
     await page.goto(home + '?new=1', { timeout: 15000 }).catch(() => {}); await page.waitForSelector('.lmd-editing .lmd-article', { timeout: 8000 }).catch(() => {});
     check('sin red también anda el atajo de nota nueva', await page.evaluate(() => /^local\//.test(new URLSearchParams(location.search).get('f') || '')).catch(() => false));
+    // Una página que no está guardada (el resto del sitio, o una dirección de la app que nunca se abrió): en vez del
+    // error del navegador, la página sin conexión propia, que quedó guardada al instalarse el service worker.
+    const offSeen = hits.length; const offShown = [];
+    for (const rel of ['/support.html', '/es/', '/src/nunca-abierta.html', '/no/existe/']) {
+      const res = await page.goto(origin + rel, { timeout: 15000 }).catch(() => null);
+      offShown.push(Object.assign({ rel, status: res ? res.status() : 0, at: page.url() }, await page.evaluate(() => ({ h1: [...document.querySelectorAll('h1')].filter((h) => h.offsetParent).map((h) => h.textContent).join('|'), logo: !!document.querySelector('main > svg rect'), retry: [...document.querySelectorAll('[data-retry]')].filter((a) => a.offsetParent).map((a) => a.textContent).join('|'),
+        app: [...document.querySelectorAll('[data-app]')].filter((a) => a.offsetParent).map((a) => a.getAttribute('href')).join('|'), asks: performance.getEntriesByType('resource').length, wide: document.documentElement.scrollWidth > innerWidth })).catch(() => ({}))));
+    }
+    check('sin red, una página que no está guardada muestra la página sin conexión propia: logo, "No connection" y "Try again"', offShown.every((o) => o.status === 503 && o.at === origin + o.rel && o.h1 === 'No connection' && o.logo && o.retry === 'Try again' && o.app === '/src/app.html' && o.asks === 0 && !o.wide) && hits.length === offSeen, offShown);
+    check('y esa respuesta no se guarda en lugar de la página pedida', !(await page.evaluate(async () => { for (const k of await caches.keys()) for (const r of await (await caches.open(k)).keys()) if (/support|nunca-abierta|\/es\/|\/no\//.test(r.url)) return true; return false; })));
+    await page.goto(origin + '/support.html', { timeout: 15000 }).catch(() => null);
     await ctx.setOffline(false);
+    await page.waitForFunction(() => /Support/.test((document.querySelector('h1') || {}).textContent || ''), null, { timeout: 8000 }).catch(() => {});
+    check('al volver la red se reintenta sola y abre la página pedida', await page.evaluate(() => document.querySelector('h1').textContent === 'Support' && !document.querySelector('[data-retry]')).catch(() => false), page.url());
     // Con red de nuevo y una publicación en el medio: esta visita abre al instante con lo guardado y por detrás se
     // trae la versión nueva entera; la visita siguiente ya es la nueva. Nadie queda con la vieja más de una visita.
     const mark = hits.length; published.mark = 'v2';
@@ -706,6 +719,52 @@ try {
       return caches.keys();
     });
     check('una versión nueva arma su caché y borra la anterior', J(next) === J(['sharpmd-9.9.9']), next);
+    await ctx.close();
+  }
+
+  // ---------- Un error que nadie atajó ----------
+  console.log('Error inesperado: el aviso');
+  {
+    // Acá los errores se provocan a propósito: esta página no los suma a la cuenta de errores de la prueba.
+    const ctx = await browser.newContext(Object.assign({ viewport: { width: 390, height: 844 }, permissions: ['clipboard-read', 'clipboard-write'] }, PHONE));
+    await ctx.route((url) => /(^|\.)sync\.sharpmd\.app$/.test(url.hostname), (r) => { outside.push(r.request().url()); return r.abort(); });
+    const page = await ctx.newPage();
+    await page.goto(home); await page.waitForSelector('.lmd-home');
+    await page.evaluate(() => new Promise((resolve) => chrome.storage.local.set({ settings: { cloudUrl: 'off' } }, resolve)));
+    const SECRET = 'TEXTO-SECRETO-DE-LA-NOTA-7781';
+    await page.evaluate((t) => LMD.store.notePut('nota-reservada.md', '# Reservada\n\n' + t + '\n'), SECRET);
+    await page.goto(home + '?f=' + encodeURIComponent('local/nota-reservada.md')); await page.waitForSelector('.markdown-body h1');
+    const bars = () => page.evaluate(() => [...document.querySelectorAll('.lmd-oops')].map((b) => { const r = b.getBoundingClientRect(); return { text: b.querySelector('span').textContent, btns: [...b.querySelectorAll('button')].map((x) => x.dataset.oops + ':' + (x.textContent === '×' ? x.getAttribute('aria-label') : x.textContent)), role: b.getAttribute('role'), inside: r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight && r.top >= 0 }; }));
+    // Lo que la app ya ataja, una red que no contesta y un pedido cancelado no avisan nada.
+    await page.evaluate(() => { try { throw new Error('atajado'); } catch (e) { /* manejado */ } fetch('http://127.0.0.1:9/nada'); Promise.reject(new DOMException('cancelado', 'AbortError')); Promise.reject('una cadena suelta'); new Image().src = '/no-existe.png'; });
+    await page.waitForTimeout(700);
+    check('un error atajado, una red que no contesta y un pedido cancelado no muestran el aviso', (await bars()).length === 0, await bars());
+    const asked = []; page.on('request', (r) => asked.push(r.url()));
+    await page.evaluate((t) => { window.__boom = () => { throw new Error('se rompió con "' + t + '" adentro'); }; for (let i = 0; i < 3; i++) setTimeout(window.__boom, 0); }, SECRET);
+    await page.waitForSelector('.lmd-oops', { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(200);
+    const one = await bars();
+    check('un error inesperado muestra un aviso solo, aunque se repita, con Recargar, Copiar el detalle y cerrar', one.length === 1 && one[0].text === 'Something unexpected failed. Reloading usually fixes it.' && J(one[0].btns) === J(['reload:Reload', 'copy:Copy details', 'close:Close']) && one[0].role === 'alert' && one[0].inside && !/[!¡]/.test(one[0].text), one);
+    check('la app sigue en pie debajo del aviso', await page.evaluate(() => !!document.querySelector('.markdown-body h1') && !document.querySelector('.lmd-splash:not(.lmd-splash-out)')));
+    await fits(page, 'el aviso de error inesperado');
+    // Otros errores mientras el aviso está: se suman al detalle, no a la pantalla. Uno cita el texto de la nota.
+    await page.evaluate(async () => { const text = (await LMD.store.noteGet('nota-reservada.md')).text; setTimeout(() => JSON.parse(text.split('\n')[2]), 0); Promise.reject(new TypeError("Cannot read properties of undefined (reading 'length')")); });
+    await page.waitForTimeout(400);
+    check('otros errores no suman carteles', (await bars()).length === 1);
+    await page.click('.lmd-oops [data-oops=copy]'); await page.waitForTimeout(300);
+    const detail = (await page.evaluate(() => navigator.clipboard.readText()).catch((e) => 'sin portapapeles: ' + e.message)).replace(/\r/g, ''); // el portapapeles de Windows devuelve CRLF
+    const version = await page.evaluate(() => LMD.VERSION);
+    check('"Copiar el detalle" lleva la versión, el nombre y el mensaje de cada error, y dice que se copió', detail.startsWith('SharpMD ' + version + ' (web)\n') && /^Error: se rompió con "…" adentro$/m.test(detail) && /^SyntaxError: /m.test(detail) && /^TypeError: Cannot read properties of undefined \(reading 'length'\)$/m.test(detail) && (detail.match(/^Error: /gm) || []).length === 1 && (await page.evaluate(() => document.querySelector('.lmd-oops [data-oops=copy]').textContent)) === 'Copied', detail);
+    check('y nada de la nota: ni su texto, ni su nombre, ni la dirección de la página', !detail.includes(SECRET) && !/SECRETO|7781|TEXTO/.test(detail) && !/reservada/i.test(detail) && !detail.includes('?f=') && !detail.includes(origin), detail);
+    check('nada se manda a ningún servidor', asked.length === 0, asked);
+    await page.click('.lmd-oops [data-oops=close]'); await page.waitForTimeout(100);
+    await page.evaluate(() => { setTimeout(window.__boom, 0); }); await page.waitForTimeout(400);
+    check('cerrado el aviso, el mismo error no vuelve a avisar', (await bars()).length === 0);
+    await page.evaluate(() => { setTimeout(() => { throw new RangeError('otro distinto'); }, 0); }); await page.waitForSelector('.lmd-oops', { timeout: 5000 }).catch(() => {});
+    check('y uno distinto sí', (await bars()).length === 1);
+    await Promise.all([page.waitForNavigation({ timeout: 10000 }).catch(() => {}), page.click('.lmd-oops [data-oops=reload]')]);
+    await page.waitForSelector('.markdown-body h1', { timeout: 10000 }).catch(() => {});
+    check('"Recargar" recarga la app, con la nota en su lugar y sin el aviso', (await bars()).length === 0 && (await page.textContent('.markdown-body h1').catch(() => '')).startsWith('Reservada'));
     await ctx.close();
   }
 
@@ -1220,18 +1279,44 @@ try {
     check('"New folder…" pide el nombre y mueve la nota a la carpeta nueva', now.includes('nuevas/n16.md') && !now.includes('n16.md') && now.length === start.length, now.filter((p) => /n16/.test(p)));
     await page.waitForSelector(CL + '.lmd-node >> text=zzz-lejos.md'); await page.waitForTimeout(300);
 
-    // Destinos que no valen: otro archivo de la misma carpeta, fuera del panel, y una nota del navegador sobre la nube
+    // Destinos que no valen: otro archivo de la misma carpeta y fuera del panel
     await show(row('queda.md'));
     g = await drag(row('queda.md'), await at(row('tirar.md')));
     const bad1 = [g.mid.drop, g.end.menu, g.end.ask, g.end.lifted, g.end.ghost];
     const out = await page.evaluate(() => { const r = document.querySelector('.lmd-zone-outline, .lmd-pane-outline, .lmd-search').getBoundingClientRect(); return [r.left + r.width / 2, r.top + Math.min(20, r.height / 2)]; });
     g = await drag(row('queda.md'), out);
     const bad2 = [g.mid.drop, g.end.menu, g.end.ask, g.end.lifted, g.end.ghost];
+    await page.waitForTimeout(400);
+    check('soltar en un destino que no vale no hace nada: ni mueve, ni pregunta, ni deja nada levantado', J(bad1) === J([[], 0, 0, 0, '']) && J(bad2) === J([[], 0, 0, 0, '']) && J(await paths()) === J(now) && (await page.title()) === title0, [bad1, bad2]);
+
+    // Una nota del navegador, sobre una carpeta de la nube: queda una copia ahí (send.js). La del navegador no se mueve.
     await toTop();
     g = await drag(row('del-navegador.md', '.lmd-xroot[data-root=local] '), await at(row('proyectos')));
-    const bad3 = [g.mid.drop, g.end.menu, g.end.ask, g.end.lifted, g.end.ghost, g.up.lifted];
-    await page.waitForTimeout(400);
-    check('soltar en un destino que no vale no hace nada: ni mueve, ni pregunta, ni deja nada levantado', J(bad1) === J([[], 0, 0, 0, '']) && J(bad2) === J([[], 0, 0, 0, '']) && J(bad3) === J([[], 0, 0, 0, '', 1]) && J(await paths()) === J(now) && (await page.evaluate(async () => (await LMD.store.notesAll()).some((n) => n.name === 'del-navegador.md'))) && (await page.title()) === title0, [bad1, bad2, bad3]);
+    await page.waitForFunction(() => LMD.cloud.list(true).then((l) => l.some((n) => n.path === 'proyectos/del-navegador.md')), null, { timeout: 8000 }).catch(() => {});
+    await page.waitForSelector('.lmd-sent', { timeout: 5000 }).catch(() => {});
+    const copied = { drop: g.mid.drop, ghost: g.mid.ghost, lifted: g.up.lifted, menu: g.end.menu, sent: await page.evaluate(() => { const b = document.querySelector('.lmd-sent'); return b ? [b.querySelector('span').textContent, (b.querySelector('[data-sent=open]') || { textContent: '' }).textContent] : null; }),
+      cloud: (await paths()).includes('proyectos/del-navegador.md'), local: await page.evaluate(async () => (await LMD.store.notesAll()).some((n) => n.name === 'del-navegador.md')) };
+    check('con el dedo, una nota del navegador soltada en una carpeta de la nube deja una copia ahí, y la etiqueta lo dice', J(copied.drop) === J(['proyectos']) && copied.ghost === 'del-navegador.mdCopy to the cloud' && copied.lifted === 1 && copied.menu === 0 && copied.cloud && copied.local && !!copied.sent && copied.sent[0] === 'A copy stays in the cloud. The note in this browser does not change.' && copied.sent[1] === 'Open the cloud note' && (await page.title()) === title0, copied);
+    await fits(page, 'aviso de la nota enviada');
+    await shot(page, 'enviar-01-aviso.png');
+    // El aviso de la primera nota en la nube (proteger con contraseña) sale como con cualquier nota nueva: se cierra.
+    await page.evaluate(() => { const b = document.querySelector('.lmd-sent'); if (b) b.remove(); });
+    await page.waitForSelector('[data-ph=no]', { timeout: 4000 }).catch(() => {}); await page.evaluate(() => { const no = document.querySelector('[data-ph=no]'); if (no) no.click(); }); await page.waitForTimeout(200);
+    now = await paths();
+    // Y desde el menú del archivo: "Enviar a la nube", con su ventana a la medida del teléfono.
+    await show(row('del-navegador.md', '.lmd-xroot[data-root=local] '));
+    await press(page, row('del-navegador.md', '.lmd-xroot[data-root=local] ')); await page.waitForSelector('.lmd-menu [data-f=send]', { timeout: 4000 }).catch(() => {});
+    const sendItem = await page.evaluate(() => { const b = document.querySelector('.lmd-menu [data-f=send]'); return b ? { text: b.textContent.trim(), h: Math.round(b.getBoundingClientRect().height) } : null; });
+    check('en el teléfono, el menú del archivo ofrece "Enviar a la nube"', !!sendItem && sendItem.text === 'Send to the cloud' && sendItem.h >= 44, sendItem);
+    await page.tap('.lmd-menu [data-f=send]'); await page.waitForSelector('.lmd-send-card', { timeout: 6000 }).catch(() => {});
+    const sendDlg = await page.evaluate(() => { const c = document.querySelector('.lmd-send-card'); if (!c) return null; const r = c.getBoundingClientRect(); const bs = [...c.querySelectorAll('.lmd-ask-actions button')];
+      return { title: c.querySelector('h3').textContent, dest: c.querySelector('.lmd-send-dest').textContent, change: !!c.querySelector('[data-sd=dest]'), in: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight, low: Math.min(...bs.map((b) => Math.round(b.getBoundingClientRect().height))), buttons: bs.map((b) => b.textContent) }; });
+    check('y la ventana entra en la pantalla, con el destino a la vista y botones cómodos', !!sendDlg && sendDlg.title === 'Send "del-navegador.md" to the cloud' && sendDlg.dest === 'Cloud' && sendDlg.change && sendDlg.in && sendDlg.low >= 40 && J(sendDlg.buttons) === J(['Cancel', 'Send']), sendDlg);
+    await fits(page, 'ventana de "Enviar a la nube"');
+    await shot(page, 'enviar-02-ventana.png');
+    await page.tap('.lmd-send [data-sd=no]'); await page.waitForTimeout(250);
+    check('cancelar no envía nada', J(await paths()) === J(now) && (await page.locator('.lmd-send').count()) === 0);
+    await toTop();
 
     // La papelera es un destino: pregunta lo mismo que "Eliminar"
     const bin =await page.evaluate(() => { const b = document.querySelector('.lmd-trash-link'); b.scrollIntoView({ block: 'center' }); const r = b.getBoundingClientRect(); return [r.left + 60, r.top + r.height / 2]; });

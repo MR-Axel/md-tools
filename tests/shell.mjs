@@ -320,7 +320,7 @@ try {
   check('Enter confirma: el archivo abierto queda con su nombre nuevo', J(await inWork()) === J(['.git', 'LEEME.md', 'docs']) && (await mark()) === 'misma página', await inWork());
   await app.locator('.lmd-xroot[data-root=disk] .lmd-node.lmd-active').click({ button: 'right' }); await app.click('.lmd-menu [data-f=del]'); await app.waitForSelector('.lmd-dlg');
   const ask = await app.evaluate(() => ({ title: document.querySelector('.lmd-dlg h3').textContent, text: document.querySelector('.lmd-dlg p').textContent, ok: document.querySelector('.lmd-dlg [data-dlg=ok]').textContent, danger: document.querySelector('.lmd-dlg [data-dlg=ok]').classList.contains('lmd-btn-danger'), input: document.querySelectorAll('.lmd-dlg input').length }));
-  check('eliminar pregunta en un diálogo propio, y el botón dice qué pasa', J(ask) === J({ title: '¿Eliminar "LEEME.md"?', text: 'No se puede deshacer.', ok: 'Eliminar', danger: true, input: 0 }), ask);
+  check('eliminar pregunta en un diálogo propio, y el botón dice qué pasa', J(ask) === J({ title: '¿Eliminar "LEEME.md"?', text: 'Se borra del disco, sin pasar por la papelera. No se puede deshacer.', ok: 'Eliminar', danger: true, input: 0 }), ask);
   await app.click('.lmd-dlg [data-dlg=no]'); await app.waitForSelector('.lmd-dlg', { state: 'detached' });
   check('Cancelar deja el archivo', (await inWork()).includes('LEEME.md') && (await app.title()) === 'LEEME.md');
   await app.locator('.lmd-xroot[data-root=disk] .lmd-node.lmd-active').click({ button: 'right' }); await app.click('.lmd-menu [data-f=del]'); await app.waitForSelector('.lmd-dlg');
@@ -362,6 +362,8 @@ try {
     return { shown: !b.hidden, foot: r.bottom <= f.top, top: r.top >= t.bottom, cell: r.bottom <= c.top || r.top >= c.bottom || r.right <= c.left || r.left >= c.right, inside: r.left >= 0 && r.right <= innerWidth, at: [Math.round(r.top), Math.round(r.bottom), Math.round(f.top), Math.round(c.top), Math.round(c.bottom)] }; });
   const low = await measure();
   check('con la celda cerca del borde de abajo, la barra de la tabla no pisa el pie ni la celda', low.shown && low.foot && low.top && low.cell && low.inside, low);
+  // La extensión abre su bienvenida al instalarse y esa pestaña queda adelante: una pestaña de fondo no atiende la rueda.
+  await app.bringToFront();
   await app.mouse.wheel(0, -160); await app.waitForTimeout(400);
   const moved = await measure();
   check('al mover la página la barra acompaña a la tabla', moved.shown && moved.foot && moved.top && moved.cell && moved.at[0] !== low.at[0], [low.at, moved.at]);
