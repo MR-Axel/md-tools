@@ -486,9 +486,8 @@
       folder && core.APP && LMD.sync.canPublish(folder) && ['site', 'Publicar como sitio…'],
     ]).concat(folder ? LMD.vault.menu(folder) : []).filter(Boolean), (f) => {
       if (wherePick(f, url)) return;
-      if (/^v-/.test(f)) LMD.vault.pick(f, folder);
-      else if (f === 'imp') core.importAt(url);
-      if (f === 'send') LMD.send.start(url);
+      if (f === 'imp') core.importAt(url);
+      else if (f === 'send') LMD.send.start(url);
       else if (f === 'nosend') core.flash(T('Este archivo no se sube a la nube: las notas de la nube son texto. Se ve desde el disco.'), 'warn');
       else if (/^v-/.test(f)) LMD.vault.pick(f, folder);
       else if (f === 'fexp') folderExport(url);

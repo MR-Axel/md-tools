@@ -269,7 +269,12 @@ await step('pdf', 'PDF: páginas, barra, zoom, búsqueda, índice, enlaces y pos
   await page.click(node('book.pdf'), { button: 'right' }); await page.waitForSelector('.lmd-menu');
   const tmenu = await page.evaluate(() => [...document.querySelectorAll('.lmd-menu button')].map((b) => b.textContent.trim()));
   check('el menú del archivo en el explorador suma Importar a Markdown', tmenu.includes('Import to Markdown') && tmenu.includes('Rename'), tmenu);
-  await page.keyboard.press('Escape'); await page.mouse.click(700, 500); await sleep(200);
+  // Elegirla convierte, y nada más: el archivo sigue en su carpeta (una vez el menú, mal unido, lo eliminaba después).
+  await page.click('.lmd-menu button >> text=Import to Markdown'); await page.waitForSelector('.lmd-imp', { timeout: 15000 });
+  await until(() => page.evaluate(() => /pages converted/.test(document.querySelector('.lmd-imp').textContent)), 20000);
+  await page.click('[data-imp=cancel]'); await sleep(500);
+  check('y elegirla desde ahí convierte sin tocar el archivo ni abrir ningún otro cuadro', await page.evaluate(async () => { const out = await window.__dir.getDirectoryHandle('out'); let there = true; try { await out.getFileHandle('book.pdf'); } catch (e) { there = false; } return there && document.querySelectorAll('.lmd-ask').length === 0 && !!document.querySelector('.lmd-tree-box .lmd-node[title="book.pdf"]') && document.querySelector('.lmd-docname').textContent === 'book.pdf'; }));
+  await page.mouse.click(700, 500); await sleep(200);
   // "Enviar a la nube" sobre un PDF: la entrada está, y dice que no se sube.
   await page.evaluate(() => { window.__cloud = [LMD.cloud.enabled, LMD.cloud.reach]; LMD.cloud.enabled = () => true; LMD.cloud.reach = () => true; });
   await page.click(node('book.pdf'), { button: 'right' }); await page.waitForSelector('.lmd-menu');

@@ -508,10 +508,14 @@ await step('txt', 'Un .txt: texto plano, se edita y se guarda como .txt', async 
     }, TXT);
     await Promise.all([p.waitForNavigation(), p.click('[data-home=dir]')]); await p.waitForSelector('.lmd-article > *'); await sleep(600);
     const names = () => p.evaluate(() => [...document.querySelectorAll('.lmd-xroot[data-root=disk] .lmd-node')].map((n) => n.querySelector('.lmd-node-name').textContent));
-    check('en la carpeta del disco el .txt aparece junto a los .md; lo demás sigue filtrado', J(await names()) === J(['sub', 'a.md', 'b.txt']), await names());
-    await p.waitForFunction(() => { const c = document.querySelector('.lmd-xroot[data-root=disk] .lmd-node-dir .lmd-node-n'); return c && !c.hidden; }, null, { timeout: 8000 }).catch(() => {});
-    const count = await p.evaluate(() => { const c = document.querySelector('.lmd-xroot[data-root=disk] .lmd-node-dir .lmd-node-n'); return c && !c.hidden ? c.dataset.n + '|' + c.getAttribute('aria-label') : ''; });
-    check('el contador de la carpeta cuenta los .txt como notas, no los .yaml', count === '2|2 notes', count);
+    // De fábrica el explorador muestra todo lo que la app abre, y el contador de una carpeta cuenta lo que se lista.
+    const counted = async (want) => { await p.waitForFunction((w) => { const c = document.querySelector('.lmd-xroot[data-root=disk] .lmd-node-dir .lmd-node-n'); return c && !c.hidden && c.dataset.n === w; }, want, { timeout: 8000 }).catch(() => {}); return p.evaluate(() => { const c = document.querySelector('.lmd-xroot[data-root=disk] .lmd-node-dir .lmd-node-n'); return c && !c.hidden ? c.dataset.n + '|' + c.getAttribute('aria-label') : ''; }); };
+    check('en la carpeta del disco se ve todo lo que la app abre: notas, datos y tablas', J(await names()) === J(['sub', 'a.md', 'b.txt', 'c.json', 'd.csv']) && (await counted('3')) === '3|3 files', [await names(), await counted('3')]);
+    // Con "Solo Markdown" prendido quedan las notas: Markdown y texto.
+    await p.click('.lmd-tree-only'); await p.waitForFunction(() => !document.querySelector('.lmd-xroot[data-root=disk] .lmd-node[title="c.json"]'));
+    check('con Solo Markdown el .txt aparece junto a los .md, y lo demás queda filtrado', J(await names()) === J(['sub', 'a.md', 'b.txt']), await names());
+    const count = await counted('2');
+    check('y el contador de la carpeta cuenta los .txt como notas, no los .yaml', count === '2|2 notes', count);
     await p.click('.lmd-xroot[data-root=disk] .lmd-node:has-text("b.txt")'); await p.waitForSelector('.lmd-article .lmd-plain');
     await p.click('[data-act=mode-edit]'); await p.waitForSelector('textarea.lmd-raw-edit:not([hidden])');
     await p.click('textarea.lmd-raw-edit'); await p.keyboard.press('Control+End'); await p.keyboard.type('saved to disk');
@@ -523,7 +527,9 @@ await step('txt', 'Un .txt: texto plano, se edita y se guarda como .txt', async 
     check('Ctrl+S lo guarda en el mismo .txt, con sus saltos de línea, sin crear un .md', got.text === TXT + 'saved to disk' && J(got.names) === J(['a.md', 'b.txt', 'c.json', 'd.csv', 'sub']), got);
     await toolsTab(p); await flip(p, 'jsonyaml'); await closePanel(p);
     await p.reload(); await p.waitForSelector('.lmd-xroot[data-root=disk] .lmd-node'); await sleep(600);
-    check('con la herramienta prendida el explorador también muestra los .json', (await names()).includes('c.json') && !(await names()).includes('d.csv'), await names());
+    check('Solo Markdown sigue prendido al recargar, con la herramienta prendida o no', J(await names()) === J(['sub', 'a.md', 'b.txt']), await names());
+    await p.click('.lmd-tree-only'); await p.waitForSelector('.lmd-xroot[data-root=disk] .lmd-node[title="c.json"]');
+    check('apagado, el explorador vuelve a mostrar los .json y los .csv', (await names()).includes('c.json') && (await names()).includes('d.csv'), await names());
     await p.click('.lmd-xroot[data-root=disk] .lmd-node:has-text("c.json")'); await tree(p);
     await p.click(li('r.0') + ' .lmd-jy-v'); await p.waitForSelector('.lmd-jy-in'); await p.fill('.lmd-jy-in', '9'); await p.keyboard.press('Enter'); await sleep(200);
     await p.keyboard.press('Control+s');
