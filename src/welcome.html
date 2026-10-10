@@ -1,0 +1,60 @@
+<!doctype html>
+<html class="lmd-root">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
+<title>SharpMD</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/png" sizes="32x32" href="../icons/icon32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="../icons/icon16.png">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<meta name="darkreader-lock">
+<script src="boot.js"></script>
+<link rel="stylesheet" href="content.css">
+<link rel="stylesheet" href="welcome.css">
+</head>
+<!-- La bienvenida de la extensión. Se abre al instalar y desde el botón de la barra mientras falte el permiso para
+     archivos del disco (ver "El permiso para archivos del disco" en bridge-sw.js). Los textos van en español y
+     welcome.js los pasa al idioma de la app; el rótulo del interruptor sigue al idioma del navegador. -->
+<body class="lmd-body lmd-wel">
+<main class="lmd-wel-card">
+  <header class="lmd-wel-brand"><img src="../icons/logo.svg" alt="" width="36" height="36"><span><b>Sharp</b>MD</span></header>
+
+  <section data-wel="need" hidden>
+    <h1 data-t>Para abrir archivos de tu disco falta un permiso</h1>
+    <p class="lmd-wel-lead" data-t>El navegador lo deja apagado al instalar. Se prende una sola vez.</p>
+    <p class="lmd-wel-go"><button type="button" class="lmd-btn lmd-btn-fill" data-wel-act="open" data-t>Abrir los ajustes de la extensión</button></p>
+    <p class="lmd-wel-how" data-wel-how hidden data-t>O entrá a las extensiones del navegador, buscá SharpMD, Detalles.</p>
+    <p class="lmd-wel-step" data-t>Ahí, prendé este interruptor:</p>
+    <figure class="lmd-wel-mock" role="img" data-wel-mock>
+      <div class="lmd-wel-mock-head"><img src="../icons/logo.svg" alt="" width="22" height="22"><b>SharpMD</b></div>
+      <div class="lmd-wel-mock-row lmd-wel-ghost"><span></span><i></i></div>
+      <div class="lmd-wel-mock-row lmd-wel-hot"><span data-wel-label>Permitir acceso a URL de archivo</span><i class="lmd-wel-sw"></i></div>
+      <div class="lmd-wel-mock-row lmd-wel-ghost"><span></span><i></i></div>
+    </figure>
+    <p class="lmd-wel-note" data-wel-other></p>
+    <p class="lmd-wel-note" role="status" data-t>Esta página se da cuenta sola cuando lo prendés.</p>
+    <p class="lmd-wel-skip">
+      <button type="button" class="lmd-link" data-wel-act="later" data-t>Ahora no</button>
+      <button type="button" class="lmd-link" data-wel-act="never" data-t>No uso archivos del disco</button>
+    </p>
+    <p class="lmd-wel-note" data-t>Sin el permiso, la app y tus notas andan igual.</p>
+  </section>
+
+  <section data-wel="done" hidden>
+    <h1 data-t>Listo</h1>
+    <p class="lmd-wel-lead" role="status" data-t>SharpMD ya puede abrir archivos de tu disco.</p>
+    <ul class="lmd-wel-next">
+      <li data-t>Arrastrá un .md a una pestaña del navegador.</li>
+      <li data-t>O dejá el navegador como app para los .md y abrilos con doble clic.</li>
+    </ul>
+    <p class="lmd-wel-go"><button type="button" class="lmd-btn lmd-btn-fill" data-wel-act="app" data-t>Abrir SharpMD</button></p>
+  </section>
+</main>
+<script src="defaults.js"></script>
+<script src="theme.js"></script>
+<script src="welcome.js"></script>
+</body>
+</html>

@@ -81,7 +81,7 @@ Gratis y de código abierto. Sin seguimiento: los archivos se leen en tu navegad
 
 ## Instalación
 
-La extensión está en la [Chrome Web Store](https://chromewebstore.google.com/detail/ejgkmgehiacbnfognldclppemehapcek). Después de instalarla, entrá a sus detalles y activá "Permitir acceso a URL de archivo" para que abra archivos del disco.
+La extensión está en la [Chrome Web Store](https://chromewebstore.google.com/detail/ejgkmgehiacbnfognldclppemehapcek). El navegador la instala con "Permitir acceso a URL de archivo" apagado, y una extensión no puede prenderlo sola. Al instalarla se abre una bienvenida con un botón a los ajustes de la extensión, donde se prende una sola vez; mientras falte, el ícono de la barra lleva una marca y vuelve a esa página. Sin eso la extensión igual sirve con la app web, pero no abre archivos del disco.
 
 Para cargarla desde el código:
 
@@ -152,7 +152,8 @@ src/
   store.js        permisos de archivos y carpetas, guardados en IndexedDB
   bridge.js       un solo depósito entre la app web y la extensión: iguala los dos lados y reconecta carpetas
   bridge-cs.js    script de contenido en la app web, que le pasa sus pedidos a la extensión
-  bridge-sw.js    el lado de la extensión del puente, y qué abre el botón de la extensión
+  bridge-sw.js    el lado de la extensión del puente, qué abre el botón de la extensión, y el recordatorio mientras falte el acceso a archivos
+  welcome.html    la página que se abre al instalar: el único paso para permitir archivos del disco (welcome.js, welcome.css)
   install.js      Ajustes → Instalar, instalar la app, los archivos de "Abrir con", la marca de sin conexión
   tools.js        Ajustes → Herramientas: el registro de herramientas y sus interruptores
   community.js    lo agregado de la galería de la comunidad y la regla que valida un aporte

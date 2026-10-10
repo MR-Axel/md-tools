@@ -354,9 +354,16 @@
         '<label class="lmd-inst-opt"><input type="radio" name="lmd-open-in" value="ext"' + (web ? '' : ' checked') + '><span>' + esc(T(EXT ? 'Esta extensión' : 'La extensión')) + '</span></label>' +
       '</div>';
     }
+    // Sin el permiso para archivos del disco la extensión no abre los .md del disco: se dice acá, con el botón que
+    // lleva a sus ajustes en el navegador (desde la web lo abre la extensión: una página no puede abrir chrome://).
+    const noAccess = fileAccess === false && (OWN || WEB);
+    let never = false;
+    if (OWN && noAccess) { try { never = ((await chrome.storage.local.get('fileSetup')).fileSetup || {}).never === true; } catch (e) { /* sin almacenamiento */ } }
     if (desktop) {
       html += head('Extensión de Chrome') + (ext
-        ? line(esc(T('Instalada, versión {v}', { v: version })))
+        ? line(esc(T('Instalada, versión {v}', { v: version })) + (fileAccess === true ? ' · ' + esc(T('Acceso a archivos: sí')) : fileAccess === false ? ' · ' + esc(T('Acceso a archivos: no')) : ''),
+          noAccess ? '<button type="button" class="lmd-btn" data-inst="details">' + esc(T('Abrir los ajustes de la extensión')) + '</button>' : '') +
+          (noAccess ? '<p class="lmd-hint" data-inst-how>' + esc(T('O entrá a las extensiones del navegador, buscá SharpMD, Detalles.')) + (OWN && !never ? ' <button type="button" class="lmd-link" data-inst="never">' + esc(T('No uso archivos del disco')) + '</button>' : '') + '</p>' : '')
         : line(esc(T('No está en este navegador.')) + ' ' + esc(T('Abre los .md del disco y de cualquier sitio, también sin conexión.')), out(EXTENSION_URL, 'Conseguir la extensión')));
     }
     html += head(IOS ? 'En iPhone y iPad' : MAC ? 'En Mac' : 'Instalar como app');
@@ -378,7 +385,7 @@
       html += head('Abrir los .md con doble clic') +
         '<ol class="lmd-inst-steps"><li>' + esc(T(MAC ? 'En Finder: clic derecho en un .md, Obtener información, Abrir con, Chrome, Cambiar todo.' : 'Clic derecho en un .md, Abrir con, Elegir otra aplicación, Chrome, Siempre.')) + '</li>' +
         '<li>' + esc(T(fileAccess === true ? 'El acceso a archivos ya está activado.' : 'En los detalles de la extensión, activá "Permitir acceso a URL de archivo".')) + '</li></ol>' +
-        '<div class="lmd-inst-links">' + (OWN && fileAccess !== true ? '<button type="button" class="lmd-btn" data-inst="details">' + esc(T('Detalles de la extensión')) + '</button>' : '') + out(HELP_URL, 'Ayuda', 'lmd-link') + '</div>';
+        '<div class="lmd-inst-links">' + out(HELP_URL, 'Ayuda', 'lmd-link') + '</div>';
     }
     // Qué puede leer la app web por la extensión al abrir un enlace a un archivo del disco. Se maneja solo desde la
     // extensión: la web no puede prenderlo ni sumar carpetas.
@@ -415,7 +422,9 @@
       } else files.appendChild(el('p', { class: 'lmd-hint', 'data-inst-none': '', text: T('Todavía no hay ninguna.') }));
     }
     const details = box.querySelector('[data-inst=details]');
-    if (details) details.addEventListener('click', () => { try { chrome.tabs.create({ url: 'chrome://extensions/?id=' + chrome.runtime.id }); } catch (e) { /* sin extensión */ } });
+    if (details) details.addEventListener('click', () => { LMD.bridge.setup(); });
+    const drop = box.querySelector('[data-inst=never]');
+    if (drop) drop.addEventListener('click', async () => { await LMD.bridge.setupNever(); if (box.isConnected) pane(box); });
   }
 
   // ---------- Un enlace https que abre un archivo del disco ----------
@@ -492,7 +501,7 @@
       if (why === 'none') return choose({ text: T('Sin la extensión de Chrome, elegí el archivo.'), link: { href: EXTENSION_URL, text: T('Conseguir la extensión') } });
       if (why === 'old') return choose({ text: T('Esta versión de la extensión no abre archivos por enlace. Elegí el archivo.') });
       if (why === 'refused') return choose({ text: T('Por enlace, la extensión solo abre lo que está en carpetas que ya abriste con ella. Elegí el archivo.'), more: { text: T('Para abrir con un clic los enlaces a esta carpeta:'), link: T('Abrirlo una vez con la extensión'), go: once } });
-      if (why === 'access') return choose({ title: T('Falta el acceso a archivos'), text: T('La extensión no tiene acceso a archivos. Elegí el archivo, o activá el acceso.'), cancel: T('Cerrar'), more: { text: '', link: T('Detalles de la extensión'), go: () => LMD.bridge.setup() } });
+      if (why === 'access') return choose({ title: T('A la extensión le falta el permiso para archivos del disco'), text: T('Prendelo en los ajustes de la extensión, o elegí el archivo.'), cancel: T('Cerrar'), more: { text: '', link: T('Abrir los ajustes de la extensión'), go: () => LMD.bridge.setup() } });
       if (why === 'missing') return choose({ title: T('No se encontró el archivo'), text: T('Puede que se haya movido o que tenga otro nombre.'), cancel: T('Cerrar') });
       return choose({ title: T('La extensión no lo pudo abrir'), text: T('Actualizala o elegí el archivo a mano.'), cancel: T('Cerrar') });
     };
@@ -520,7 +529,7 @@
         const why = r && r.ok ? r.why : ''; picking = true;
         d.turn({ ok: T('Elegir el archivo'), text: r && !r.ok && r.error === 'refused' ? T('Esta versión de la extensión no abre archivos por enlace. Elegí el archivo.')
           : why === 'refused' ? T('Por enlace, la extensión solo abre lo que está en carpetas que ya abriste con ella. Elegí el archivo.')
-          : why === 'access' ? T('La extensión no tiene acceso a archivos. Elegí el archivo, o activá el acceso.')
+          : why === 'access' ? T('A la extensión le falta el permiso para archivos del disco') + '. ' + T('Prendelo en los ajustes de la extensión, o elegí el archivo.')
           : why === 'missing' ? T('No se encontró el archivo') + '. ' + T('Puede que se haya movido o que tenga otro nombre.')
           : T('La extensión no lo pudo abrir.') + ' ' + T('Actualizala o elegí el archivo a mano.') });
         d.note(HOW);
