@@ -88,7 +88,7 @@
 
   // El tope de notas del plan gratis lo fija el servidor y llega con la cuenta (free_notes). Antes de entrar no hay
   // dato: vale este, que es el del servidor de SharpMD.
-  let freeNotes = 10;
+  let freeNotes = 25;
   async function api(method, path, body, again) {
     await ready();
     if (!base) throw Object.assign(new Error('no_server'), { code: 'no_server' });

@@ -11,7 +11,7 @@
   const EXT = window.__MDT_WEB !== true; // dentro de la extensión: su página propia o un .md abierto en el navegador
 
   // Dónde se consigue la extensión. La de Android queda vacía hasta que la app esté publicada: sin dirección, su renglón no aparece.
-  const EXTENSION_URL = 'https://github.com/SharpMD/sharpmd#install';
+  const EXTENSION_URL = 'https://chromewebstore.google.com/detail/ejgkmgehiacbnfognldclppemehapcek';
   const ANDROID_URL = '';
   const HELP_URL = new URL('../?site#faq', LMD.WEB_APP_URL).href;
 

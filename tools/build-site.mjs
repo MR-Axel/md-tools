@@ -115,9 +115,9 @@ function build(lang) {
 const PAGES = {
   'markdown-editor-mcp': {
     en: { title: 'Markdown editor for Claude and AI agents (MCP): SharpMD',
-      desc: 'A Markdown editor with the MCP endpoint already running. Claude, Codex or any MCP client reads and writes your notes. Free over 10 cloud notes.' },
+      desc: 'A Markdown editor with the MCP endpoint already running. Claude, Codex or any MCP client reads and writes your notes. Free over 25 cloud notes.' },
     es: { title: 'Editor de Markdown para Claude y agentes de IA (MCP): SharpMD',
-      desc: 'Un editor de Markdown con la conexión MCP ya andando. Claude, Codex o cualquier cliente MCP lee y escribe tus notas. Gratis sobre 10 notas en la nube.' } },
+      desc: 'Un editor de Markdown con la conexión MCP ya andando. Claude, Codex o cualquier cliente MCP lee y escribe tus notas. Gratis sobre 25 notas en la nube.' } },
   'wysiwyg-markdown-editor': {
     en: { title: 'WYSIWYG Markdown editor online, no syntax: SharpMD',
       desc: 'Edit Markdown on the formatted page: paragraphs, tables, tasks, formulas and diagrams. The file stays plain Markdown. Free, with no account, and offline.' },

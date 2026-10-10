@@ -81,6 +81,10 @@ Gratis y de código abierto. Sin seguimiento: los archivos se leen en tu navegad
 
 ## Instalación
 
+La extensión está en la [Chrome Web Store](https://chromewebstore.google.com/detail/ejgkmgehiacbnfognldclppemehapcek). Después de instalarla, entrá a sus detalles y activá "Permitir acceso a URL de archivo" para que abra archivos del disco.
+
+Para cargarla desde el código:
+
 1. Abrir `chrome://extensions`.
 2. Activar **Modo de desarrollador** (arriba a la derecha).
 3. **Cargar descomprimida** y elegir esta carpeta .
@@ -257,7 +261,7 @@ toc: false
 
 ## Notas en la nube y servidor de sincronización
 
-En `server/` está SharpMD Sync: cuentas, notas en la nube y un servidor MCP para que una IA las lea y las escriba. Entrás desde la pantalla de inicio con un código que llega a tu correo. El plan gratis guarda 10 notas en la nube e incluye la conexión MCP sobre esas notas; el pago (USD 40 por año o USD 4 por mes) no tiene límite y suma subir imágenes, compartir, las automatizaciones, 30 días de historial y las opciones de apariencia. El plan de equipo (USD 5 por persona por mes, desde 2 personas, gratis por 14 días) le da a cada miembro el plan pago y un espacio compartido para las notas del equipo: quien paga invita por correo y administra los lugares. Cada miembro es administrador, editor o lector. Quienes administran deciden los ajustes del equipo (si los miembros comparten notas del equipo hacia afuera, crean enlaces públicos, conectan su IA o usan automatizaciones en el espacio, cuánto dura su historial, y la carpeta y la plantilla de las notas nuevas), crean tokens del equipo, que son del equipo y no de una persona, y leen un registro de actividad con quién hizo qué, sin el contenido de las notas. El espacio del equipo guarda un año de historial de versiones. Los ajustes personales son de cada persona, y solo quien paga ve precios y cobro. Esa persona puede proteger el espacio del equipo con una sola contraseña: las notas del equipo se cifran en el navegador de cada miembro y el servidor no las puede leer. Los miembros reciben la contraseña de quien administra, por fuera de la app.
+En `server/` está SharpMD Sync: cuentas, notas en la nube y un servidor MCP para que una IA las lea y las escriba. Entrás desde la pantalla de inicio con un código que llega a tu correo. El plan gratis guarda 25 notas en la nube e incluye la conexión MCP sobre esas notas; el pago (USD 40 por año o USD 4 por mes) no tiene límite y suma subir imágenes, compartir, las automatizaciones, 30 días de historial y las opciones de apariencia. El plan de equipo (USD 5 por persona por mes, desde 2 personas, gratis por 14 días) le da a cada miembro el plan pago y un espacio compartido para las notas del equipo: quien paga invita por correo y administra los lugares. Cada miembro es administrador, editor o lector. Quienes administran deciden los ajustes del equipo (si los miembros comparten notas del equipo hacia afuera, crean enlaces públicos, conectan su IA o usan automatizaciones en el espacio, cuánto dura su historial, y la carpeta y la plantilla de las notas nuevas), crean tokens del equipo, que son del equipo y no de una persona, y leen un registro de actividad con quién hizo qué, sin el contenido de las notas. El espacio del equipo guarda un año de historial de versiones. Los ajustes personales son de cada persona, y solo quien paga ve precios y cobro. Esa persona puede proteger el espacio del equipo con una sola contraseña: las notas del equipo se cifran en el navegador de cada miembro y el servidor no las puede leer. Los miembros reciben la contraseña de quien administra, por fuera de la app.
 
 El servidor es un solo archivo, sin dependencias, y lo podés alojar vos: cargás su dirección en Ajustes → Cuenta, o escribís `off` ahí para usar SharpMD sin nada de nube. El detalle está en [server/README.md](server/README.md).
 
