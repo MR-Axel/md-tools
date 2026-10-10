@@ -1,7 +1,7 @@
 // Seguridad: un caso por cada control del servidor, de la página de pago y de la app.
 // Todo corre contra un servidor local con claves inventadas y contra la extensión cargada en un Chromium:
 // ningún pedido sale a sync.sharpmd.app ni a sharpmd.app (lo que apunte ahí se corta y se anota como falla).
-// SHARPMD_SERVER apunta a otro server.mjs, para comparar contra una versión anterior. SEC_ONLY=server|app|live|team|gallery|auto|sites|subdomain corre una parte.
+// SHARPMD_SERVER apunta a otro server.mjs, para comparar contra una versión anterior. SEC_ONLY=server|app|live|team|gallery|auto|sites|subdomain|people corre una parte.
 import { spawn } from 'child_process'; import { createHmac, createHash } from 'crypto'; import { DatabaseSync } from 'node:sqlite';
 import fs from 'fs'; import os from 'os'; import path from 'path'; import http from 'http'; import net from 'net'; import { fileURLToPath, pathToFileURL } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -2391,6 +2391,107 @@ async function filesSuite() {
   await S.stop();
 }
 if (!ONLY || ONLY === 'files') await filesSuite();
+
+// Lo que ve una persona que abre una dirección del servidor en el navegador: una página propia con el mismo código
+// de estado, que no repite nada del pedido. Los clientes de la API reciben exactamente lo de siempre.
+async function peopleSuite() {
+  console.log('\nPáginas para personas');
+  const port = portSeq + 1; const DOM = 'ejemplo.test';
+  const S = await boot({ ADMIN_KEY: ADMIN, ALLOW_ORIGINS: 'https://ejemplo.test', PUBLIC_URL: 'http://nube.' + DOM + ':' + port, PAGES_URL: 'http://publica.' + DOM + ':' + port, PAGES_TEAM_DOMAIN: DOM, PAGES_TEAM_AUTO: '1', AUTH_PER_IP: '300' });
+  const { call } = S; const API = 'nube.' + DOM + ':' + port; const PH = 'publica.' + DOM + ':' + port;
+  // Un pedido armado a mano: fetch de Node agrega sec-fetch-mode: cors, que un navegador no manda al navegar.
+  const raw = (host, p, opt) => new Promise((resolve) => {
+    try {
+      const r = http.request({ host: '127.0.0.1', port: S.port, path: p, method: (opt && opt.method) || 'GET', headers: Object.assign({ host }, (opt && opt.headers) || {}) }, (res) => { let b = ''; res.on('data', (c) => { b += c; }); res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: b })); });
+      r.on('error', () => resolve({ status: 0, headers: {}, body: '' })); if (opt && opt.body) r.write(opt.body); r.end();
+    } catch (e) { resolve({ status: 0, headers: {}, body: '' }); }
+  });
+  const NAV = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8';
+  let ip = '10.95.0.1';
+  const nav = (p, extra, host) => raw(host || API, p, { headers: Object.assign({ accept: NAV, 'x-forwarded-for': ip }, extra || {}) });
+  const api = (p, extra, host) => raw(host || API, p, { headers: Object.assign({ 'x-forwarded-for': ip }, extra || {}) });
+  const isPage = (r, status) => r.status === status && /^text\/html; charset=utf-8$/.test(r.headers['content-type'] || '') && /^<!doctype html>/.test(r.body) && r.body.includes('Error ' + status);
+  const h1 = (r) => (/<h1>(.*?)<\/h1>/.exec(r.body) || [])[1] || '';
+  try {
+    const A = await signup(S, 'ana-pagina@ejemplo.test');
+
+    // ---------- El código es el mismo; cambia solo el cuerpo ----------
+    const root = await nav('/');
+    check('personas: la portada del servidor dice qué es y lleva a la app y a la documentación de la API', root.status === 401 && /^text\/html/.test(root.headers['content-type']) && h1(root) === 'This is the SharpMD sync server' && root.body.includes('href="https://sharpmd.app/src/app.html"') && root.body.includes('href="https://sharpmd.app/api.html"') && root.body.includes('href="https://sharpmd.app/support.html"'), [root.status, h1(root)]);
+    const p401 = await nav('/notes'); const p404 = await nav('/public/no-existe'); const p405 = await nav('/mcp'); const p403 = await nav('/admin/landing');
+    check('personas: 401, 403, 404 y 405 llegan como página, con su código y una frase para cada uno', isPage(p401, 401) && isPage(p403, 403) && isPage(p404, 404) && isPage(p405, 405) && new Set([h1(p401), h1(p403), h1(p404), h1(p405)]).size === 4 && h1(p401) === 'You need to sign in' && h1(p404) === 'There is nothing at this address', [p401, p403, p404, p405].map((r) => [r.status, h1(r)]));
+    // 429: probar claves de administración tiene un tope por IP. Los fallos se cuentan con pedidos de cliente.
+    ip = '10.95.0.2';
+    for (let i = 0; i < 10; i++) await api('/admin/landing', { 'x-admin-key': 'mala-' + i });
+    const p429 = await nav('/admin/landing'); const j429 = await api('/admin/landing');
+    check('personas: 429 llega como página que dice de probar en un minuto, y el cliente recibe su JSON', isPage(p429, 429) && /Try again in a minute/.test(p429.body) && j429.status === 429 && JSON.parse(j429.body).error === 'too_many', [p429.status, h1(p429), j429.body]);
+    ip = '10.95.0.1';
+    // 413: solo lo da un pedido que manda un cuerpo, y ese nunca es una navegación. Sigue siendo JSON aunque pida HTML.
+    const big = await raw(API, '/notes/' + enc('grande.md'), { method: 'PUT', headers: { accept: NAV, 'content-type': 'application/json', authorization: 'Bearer ' + A.s, 'x-forwarded-for': ip }, body: JSON.stringify({ text: 'x'.repeat(3 * 1024 * 1024) }) });
+    const src = fs.readFileSync(SERVER, 'utf8');
+    check('personas: 413 sigue siendo JSON para quien manda un cuerpo, y la página tiene su frase para 413 y para 400', big.status === 413 && JSON.parse(big.body).error === 'too_large' && /413: \['Too large'/.test(src) && /400: \['Bad request'/.test(src), [big.status, big.body.slice(0, 80)]);
+
+    // ---------- Los clientes de la API no cambian ----------
+    const same = [];
+    for (const [pth, status, body] of [['/', 401, '{"error":"no_auth","message":"no_auth"}'], ['/notes', 401, '{"error":"no_auth","message":"no_auth"}'], ['/public/no-existe', 404, '{"error":"not_found","message":"not_found"}'], ['/mcp', 405, '{"error":"method_not_allowed","message":"method_not_allowed"}'], ['/health', 200, '{"ok":true}']]) {
+      const got = [await api(pth), await api(pth, { accept: 'application/json' }), await api(pth, { accept: '*/*' }), await api(pth, { accept: 'application/json, text/html' }), await api(pth, { accept: 'text/html;q=0.5, application/json' }), await api(pth, { accept: NAV, 'sec-fetch-mode': 'cors' })];
+      if (pth !== '/health') got.push(await raw(API, pth, { method: 'POST', headers: { accept: NAV, 'content-type': 'application/json', 'x-forwarded-for': ip }, body: '{}' }));
+      same.push(...got.slice(0, 6).map((r) => r.status === status && r.body === body && /^application\/json/.test(r.headers['content-type'] || '') && r.headers['cache-control'] === 'no-store' && r.headers.vary === 'origin'));
+      same.push(...got.slice(6).map((r) => /^application\/json/.test(r.headers['content-type'] || '')));
+    }
+    const withAuth = [await nav('/notes', { authorization: 'Bearer ' + A.s }), await nav('/notes', { authorization: 'Bearer mds_inventada' }), await nav('/notes/no-existe.md', { authorization: 'Bearer ' + A.s }), await nav('/admin/landing', { 'x-admin-key': ADMIN }), await nav('/api/v1/notes', { authorization: 'Bearer mdt_inventado' })];
+    check('clientes: sin Accept, con JSON, con */*, con JSON primero o con fetch reciben el mismo JSON de siempre, byte por byte', same.length === 34 && same.every(Boolean), same);
+    check('clientes: con Authorization o con la clave de administración la respuesta es JSON aunque el Accept pida HTML', withAuth.map((r) => r.status).join() === '200,401,404,200,401' && withAuth.every((r) => /^application\/json/.test(r.headers['content-type'] || '')) && JSON.parse(withAuth[4].body).ok === false, withAuth.map((r) => [r.status, r.headers['content-type']]));
+    check('personas: una ruta que responde bien sigue respondiendo lo suyo', (await nav('/health')).body === '{"ok":true}');
+
+    // ---------- La página no repite nada del pedido ----------
+    const MARK = 'zzmarca9431';
+    const odd = [await nav('/%3Cscript%3Ealert(' + MARK + ')%3C/script%3E'), await nav('/<script>alert(' + MARK + ')</script>'), await nav('/notes/' + MARK + '?q=%22%3E%3Cimg%20src=x%20onerror=' + MARK + '%3E#' + MARK), await nav('/' + MARK, { referer: 'https://' + MARK + '.test/', 'user-agent': MARK, cookie: 'a=' + MARK, origin: 'https://ejemplo.test' }), await nav('/public/' + MARK + '%00%0d%0aset-cookie:%20a=' + MARK)];
+    check('personas: la página no refleja la ruta, los parámetros ni las cabeceras del pedido', odd.every((r) => (r.status === 401 || r.status === 404 || r.status === 400) && /^text\/html/.test(r.headers['content-type'] || '') && !r.body.includes(MARK) && !/alert|onerror|<script|<img/i.test(r.body) && !JSON.stringify(r.headers).includes(MARK)), odd.map((r) => [r.status, r.body.includes(MARK)]));
+    check('personas: dos direcciones distintas con el mismo error reciben la misma página, byte por byte', odd[0].body === p401.body && odd[2].body === p401.body && (await nav('/public/otra-cosa')).body === p404.body);
+    const pages = [root, p401, p403, p404, p405, p429];
+    check('personas: la página lleva no-store, nosniff, no se puede enmarcar ni indexar, y su política no deja correr nada', pages.every((r) => r.headers['cache-control'] === 'no-store' && r.headers['x-content-type-options'] === 'nosniff' && r.headers['x-frame-options'] === 'DENY' && r.headers['x-robots-tag'] === 'noindex' && r.headers['referrer-policy'] === 'no-referrer' && /default-src 'none'/.test(r.headers['content-security-policy'] || '') && !/script-src|unsafe-eval/.test(r.headers['content-security-policy']) && /accept/.test(r.headers.vary || '')), pages.map((r) => [r.status, r.headers['cache-control'], r.headers['content-security-policy']]));
+    const links = [...p404.body.matchAll(/(?:href|src|action)="([^"]*)"/g)].map((m) => m[1]);
+    check('personas: es autosuficiente: sin scripts, sin recursos de otro lado, con tema claro y oscuro, y sus enlaces van solo a sharpmd.app', !/<script|<link|<img|<iframe|@import|url\(/i.test(p404.body) && /prefers-color-scheme:dark/.test(p404.body) && links.length === 3 && links.every((u) => /^https:\/\/sharpmd\.app\/(src\/app\.html|api\.html|support\.html)$/.test(u)) && !/[!¡]/.test(p404.body.replace(/<!doctype html>/, '')), links);
+    check('personas: CORS no se abre de más en la página', odd[3].headers['access-control-allow-origin'] === 'https://ejemplo.test' && !p404.headers['access-control-allow-origin'] && !p404.headers['access-control-allow-credentials']);
+
+    // ---------- Rutas que ya eran para personas ----------
+    const img = '/f/' + 'a'.repeat(40) + '.png';
+    const f404 = await nav(img); const f404c = await api(img); const fHead = await raw(API, img, { method: 'HEAD', headers: { accept: NAV, 'x-forwarded-for': ip } });
+    check('imágenes: quien abre el enlace de una imagen que no está ve una página que lo dice; un cliente recibe el 404 vacío de siempre', isPage(f404, 404) && h1(f404) === 'This image is not here' && !f404.body.includes('aaaa') && f404.headers['cache-control'] === 'no-store' && f404c.status === 404 && f404c.body === '' && /^text\/plain/.test(f404c.headers['content-type']) && fHead.status === 404 && fHead.body === '', [f404.status, h1(f404), f404c.status, f404c.headers['content-type']]);
+    ip = '10.95.0.3';
+    for (let i = 0; i < 61; i++) await api('/f/' + String(i).padStart(40, '0'));
+    const f429 = await nav(img); const f429c = await api(img);
+    check('imágenes: pasado el tope, la persona ve la página de demasiados pedidos y el cliente el 429 vacío, los dos con retry-after', isPage(f429, 429) && Number(f429.headers['retry-after']) >= 1 && f429c.status === 429 && f429c.body === '' && Number(f429c.headers['retry-after']) >= 1, [f429.status, f429.headers['retry-after'], f429c.status]);
+    ip = '10.95.0.1';
+    const rev = [await nav('/gallery/review'), await nav('/gallery/review?id=1&act=approve&exp=1&sig=' + MARK), await api('/gallery/review')];
+    check('galería: un enlace de revisión vencido o inventado sigue con su propia página, igual para todos', rev.every((r) => r.status === 403 && /^text\/html/.test(r.headers['content-type']) && /This link no longer works/.test(r.body) && !r.body.includes(MARK)) && rev[0].body === rev[2].body, rev.map((r) => r.status));
+
+    // ---------- El host de sitios ----------
+    const s404 = await nav('/no-hay-tal-sitio/', null, PH); const sNobody = await nav('/' + MARK, null, 'nadie-aqui.' + DOM + ':' + port); const sNobodyC = await api('/' + MARK, null, 'nadie-aqui.' + DOM + ':' + port);
+    const sitePageOk = (r, status) => r.status === status && /^text\/html/.test(r.headers['content-type'] || '') && /\/_\/site\.css/.test(r.body) && !/<style|\sstyle=/.test(r.body) && /style-src http/.test(r.headers['content-security-policy'] || '');
+    check('sitios: una dirección sin sitio sigue con la página 404 del host de sitios', sitePageOk(s404, 404) && /Page not found/.test(s404.body), [s404.status, s404.body.slice(0, 80)]);
+    check('sitios: el subdominio de nadie le muestra esa misma página a una persona, sin repetir el nombre, y texto plano a lo demás', sitePageOk(sNobody, 404) && /Page not found/.test(sNobody.body) && !sNobody.body.includes('nadie-aqui') && !sNobody.body.includes(MARK) && sNobody.headers['x-robots-tag'] === 'noindex' && sNobody.headers['cache-control'] === 'no-store' && sNobodyC.status === 404 && sNobodyC.body === 'Not found', [sNobody.status, sNobodyC.body]);
+    ip = '10.95.0.4';
+    await Promise.all(Array.from({ length: 30 }, async () => { for (let i = 0; i < 30; i++) await api('/robots.txt', null, PH); }));
+    const s429 = await nav('/no-hay-tal-sitio/', null, PH); const s429c = await api('/no-hay-tal-sitio/', null, PH);
+    check('sitios: pasado el tope, la persona ve una página del host de sitios y lo demás el texto de siempre', sitePageOk(s429, 429) && /Too many requests/.test(s429.body) && /Try again in a minute/.test(s429.body) && Number(s429.headers['retry-after']) >= 1 && s429.headers['cache-control'] === 'no-store' && s429c.status === 429 && s429c.body === 'Too many requests', [s429.status, s429.body.slice(0, 80), s429c.status, s429c.body]);
+    ip = '10.95.0.1';
+    check('personas: hasta acá nada se anotó como error 500', !/error 500|error no capturado|promesa sin atender/.test(S.log()), (S.log().match(/error[^\n]*/g) || []).slice(0, 4));
+
+    // ---------- Un error interno no cuenta nada ----------
+    // Se rompe la base a propósito: la tabla de los enlaces públicos deja de existir, y esa ruta falla por dentro.
+    const db = S.db(); db.exec('DROP TABLE links'); db.close();
+    const e500 = await nav('/public/' + MARK); const e500c = await api('/public/' + MARK); const e500s = await nav('/no-hay-tal-sitio/', null, PH);
+    const inner = /no such table|links|SQLITE|sqlite|Error:|at |node:|server\.mjs|stack|prepare/;
+    check('500: a una persona le llega la página genérica, sin la traza ni el mensaje interno', isPage(e500, 500) && h1(e500) === 'Something went wrong on our side' && !inner.test(e500.body.replace(/<style>[\s\S]*?<\/style>/, '').replace(/<svg[\s\S]*?<\/svg>/, '')) && !e500.body.includes(MARK), [e500.status, h1(e500)]);
+    check('500: a un cliente le llega el JSON genérico de siempre', e500c.status === 500 && e500c.body === '{"error":"server_error","message":""}', e500c.body);
+    check('500: el detalle queda en el registro del servidor, y el servicio sigue en pie', /error 500 en GET \/public\/[^\n]*no such table/.test(S.log()) && S.alive() && (await api('/health')).body === '{"ok":true}' && e500s.status === 404, S.log().slice(-300));
+    check('personas: ninguna sesión aparece en la salida del servidor', !S.log().includes(A.s));
+  } catch (e) { check('personas: sin excepciones en la prueba', false, String(e && e.stack || e)); console.log(S.log().slice(-1500)); }
+  await S.stop();
+}
+if (!ONLY || ONLY === 'people') await peopleSuite();
 
 const failed = results.filter((r) => !r.ok);
 console.log('\n' + (results.length - failed.length) + ' de ' + results.length + ' pruebas pasaron');

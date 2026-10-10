@@ -392,6 +392,89 @@ try {
   check('los ajustes se guardan en la web', await web.evaluate(() => document.documentElement.classList.contains('lmd-light') && /"theme":"light"/.test(localStorage.getItem('mdtools:settings') || '')));
   await web.close();
 
+  // Una dirección que no existe: la página 404 propia (404.html), servida como lo hace GitHub Pages: el mismo archivo
+  // para cualquier ruta que falte, a cualquier profundidad, con código 404; y una carpeta sin barra lleva a la barra.
+  console.log('Página 404 y rescates');
+  {
+    const J = (v) => JSON.stringify(v);
+    const nf = fs.readFileSync(path.join(root, '404.html'), 'utf8');
+    const pages = http.createServer((req, res) => {
+      let rel = ''; try { rel = decodeURIComponent(req.url.split('?')[0]); } catch (e) { rel = '/%'; }
+      // GitHub distingue mayúsculas de minúsculas, y este disco puede que no: cada tramo tiene que estar escrito igual.
+      const exact = (p) => { let dir = root; for (const part of p.split('/').filter(Boolean)) { if (part === '.' || part === '..' || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory() || !fs.readdirSync(dir).includes(part)) return false; dir = path.join(dir, part); } return true; };
+      const file = path.join(root, rel); const inside = file.startsWith(root) && !/\\|\/\/|\0/.test(rel) && exact(rel);
+      const q =req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+      if (inside && fs.existsSync(file) && fs.statSync(file).isDirectory() && !rel.endsWith('/')) { res.writeHead(301, { location: rel + '/' + q }); res.end(); return; }
+      const hit = inside && fs.existsSync(file) ? (fs.statSync(file).isDirectory() ? path.join(file, 'index.html') : file) : '';
+      if (!hit || !fs.existsSync(hit)) { res.writeHead(404, { 'content-type': 'text/html' }); res.end(nf); return; }
+      res.writeHead(200, { 'content-type': path.extname(hit) === '.svg' ? 'image/svg+xml' : TYPES[path.extname(hit)] || 'application/octet-stream' }); fs.createReadStream(hit).pipe(res);
+    });
+    await new Promise((resolve) => pages.listen(0, '127.0.0.1', resolve));
+    const site = 'http://127.0.0.1:' + pages.address().port;
+    const refs = [...nf.replace(/<!--[\s\S]*?-->/g, '').matchAll(/\s(?:href|src)="([^"]*)"/g)].map((m) => m[1]);
+    check('404.html está en la raíz, no se indexa y todas sus direcciones son absolutas', refs.length >= 12 && refs.every((u) => /^\/(?!\/)/.test(u) || /^mailto:hello@sharpmd\.app$/.test(u)) && /<meta name="robots" content="noindex">/.test(nf) && refs.filter((u) => u.startsWith('/')).every((u) => fs.existsSync(path.join(root, u.split('?')[0].replace(/\/$/, '/index.html')))), refs.filter((u) => !/^\/(?!\/)/.test(u)));
+    const words = nf.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<!--[\s\S]*?-->|<[^>]+>/g, ' ');
+    check('dice que la página no existe, en los dos idiomas, con los tres destinos y el correo, sin signos de admiración', /This page does not exist\./.test(words) && /Esta página no existe\./.test(words) && ['/src/app.html', '/?site', '/es/?site', '/support.html'].every((u) => refs.includes(u)) && /hello@sharpmd\.app/.test(words) && !/[!¡]/.test(words), words.replace(/\s+/g, ' ').slice(0, 200));
+    check('404.html no va en el paquete de la extensión', /^\/404\.html export-ignore\r?$/m.test(fs.readFileSync(path.join(root, '.gitattributes'), 'utf8')));
+    // La lista de rescates nombra páginas que existen, y no se olvida de ninguna de la raíz.
+    const listed = eval(/var PAGES = (\[[^\]]*\]);/.exec(nf)[1]); const listedEs = eval(/var ES = (\[[^\]]*\]);/.exec(nf)[1]);
+    const real = fs.readdirSync(root).filter((f) => /\.html$/.test(f) && f !== 'index.html' && f !== '404.html').map((f) => f.replace(/\.html$/, '')).sort();
+    const realEs = fs.readdirSync(path.join(root, 'es')).filter((f) => /\.html$/.test(f) && f !== 'index.html').map((f) => f.replace(/\.html$/, '')).sort();
+    check('la lista de rescates es la de las páginas que existen, en la raíz y en /es/', J(listed.slice().sort()) === J(real) && J(listedEs.slice().sort()) === J(realEs), [listed, real, listedEs, realEs]);
+
+    const visit = async (from, want, opt) => {
+      const p = await ctx.newPage(); watch(p); const seen = []; let status = 0;
+      p.on('framenavigated', (f) => { if (f === p.mainFrame()) seen.push(f.url()); });
+      p.on('response', (r) => { if (r.url() === (site + from).split('#')[0]) status = r.status(); });
+      if (opt && opt.before) await opt.before(p);
+      await p.goto(site + from, { waitUntil: 'load' }).catch(() => {});
+      for (let i = 0; i < 40 && want && !seen.includes(site + want); i++) await p.waitForTimeout(100);
+      await p.waitForTimeout(want ? 50 : 350);
+      const out = { seen, status, at: p.url(), ...(await p.evaluate(() => ({ host: location.host, lang: document.documentElement.getAttribute('data-lang'), title: document.title, h1: [...document.querySelectorAll('h1')].filter((h) => h.offsetParent).map((h) => h.textContent).join('|'),
+        top: document.querySelector('.top') ? getComputedStyle(document.querySelector('.top')).display : '', logo: (document.querySelector('.brand img') || {}).naturalWidth || 0, font: document.fonts.check('16px Figtree'),
+        ways: [...document.querySelectorAll('.ways a')].filter((a) => a.offsetParent).map((a) => a.getAttribute('href')) })).catch(() => ({}))) };
+      if (opt && opt.keep) return { p, out };
+      await p.close(); return out;
+    };
+    const deep = await visit('/una/carpeta/muy/honda/nada.html?x=1#y');
+    check('desde una ruta honda se ve entera: con su hoja, su logo, su letra y los tres destinos', deep.status === 404 && deep.h1 === 'This page does not exist.' && deep.top === 'flex' && deep.logo > 0 && deep.font && J(deep.ways) === J(['/src/app.html', '/?site', '/support.html']) && deep.seen.length === 1 && deep.title === 'SharpMD: page not found', deep);
+    const { p: esPage, out: es0 } = await visit('/es/no-existe', '', { keep: true });
+    check('bajo /es/ se lee en español', es0.lang === 'es' && es0.h1 === 'Esta página no existe.' && J(es0.ways) === J(['/src/app.html', '/es/?site', '/support.html']) && es0.title === 'SharpMD: esta página no existe', es0);
+    await esPage.click('.lang [data-set=en]');
+    check('y el interruptor de idioma anda como en las demás páginas', await esPage.evaluate(() => document.documentElement.getAttribute('data-lang') === 'en' && [...document.querySelectorAll('h1')].filter((h) => h.offsetParent).map((h) => h.textContent).join() === 'This page does not exist.' && localStorage.getItem('mdtools:site-lang') === 'en'));
+    await esPage.evaluate(() => localStorage.removeItem('mdtools:site-lang')); await esPage.close();
+
+    // Rescates: una ruta que casi es correcta lleva sola a la correcta, con su ?consulta y su #sección.
+    const tail = '?x=1&y=dos#seccion'; const bad = [];
+    for (const [from, to] of [['/src/', '/src/app.html'], ['/src', '/src/app.html'], ['/app.html', '/src/app.html'], ['/APP', '/src/app.html'], ['/src/app', '/src/app.html'], ['/Src/App.HTML', '/src/app.html'],
+      ['/privacy', '/privacy.html'], ['/terms', '/terms.html'], ['/refunds/', '/refunds.html'], ['/support', '/support.html'], ['/pay', '/pay.html'], ['/api', '/api.html'], ['/copyright', '/copyright.html'], ['/acceptable-use', '/acceptable-use.html'], ['/local-tools', '/local-tools.html'],
+      ['/markdown-editor-mcp', '/markdown-editor-mcp.html'], ['/wysiwyg-markdown-editor', '/wysiwyg-markdown-editor.html'], ['/Terms.HTML', '/terms.html'], ['/PRIVACY.html', '/privacy.html'], ['/support.htm', '/support.html'],
+      ['/es', '/es/'], ['/ES/', '/es/'], ['/es/index', '/es/'], ['/Es/Index.html', '/es/'], ['/es/local-tools', '/es/local-tools.html'], ['/es/Markdown-Editor-MCP.html', '/es/markdown-editor-mcp.html'], ['/es/privacy', '/privacy.html'], ['/INDEX.HTML', '/'], ['/index', '/']]) {
+      const q = to === '/' || to === '/es/' ? '?site&x=1#seccion' : tail; // la portada sin ?site puede llevar a la app
+      const r = await visit(from + q, to + q);
+      if (!r.seen.includes(site + to + q) || r.host !== new URL(site).host) bad.push([from, r.seen.slice(-2)]);
+    }
+    check('las rutas que casi son correctas llevan solas a la correcta, con su consulta y su sección', bad.length === 0, bad);
+    const idx = fs.readFileSync(path.join(root, 'src', 'index.html'), 'utf8');
+    check('src/index.html lleva a la app sin pasar por el 404, con un respaldo sin scripts y un enlace a la vista', /location\.replace\('app\.html' \+ location\.search \+ location\.hash\)/.test(idx) && /<meta http-equiv="refresh" content="0; url=app\.html">/.test(idx) && /<body><a href="app\.html">SharpMD<\/a><\/body>/.test(idx) && /noindex/.test(idx));
+    const direct = await visit('/src/#solo-seccion', '/src/app.html#solo-seccion');
+    check('y conserva la sección', direct.seen.includes(site + '/src/app.html#solo-seccion') && direct.status === 200, direct.seen);
+
+    // Nada de esto saca del sitio: el destino sale de la lista, nunca de lo que vino en la dirección.
+    const out = [];
+    for (const from of ['//evil.example', '//evil.example/privacy', '/\\evil.example', '/\\\\evil.example/terms', '/javascript:alert(1)', '/https://evil.example/', '/privacy@evil.example', '/es//evil.example', '/%2F%2Fevil.example', '/privacy.html.evil.example', '/support?next=//evil.example', '/nada#//evil.example']) {
+      const r = await visit(from);
+      if (r.host !== new URL(site).host || r.seen.some((u) => !u.startsWith(site + '/')) || (r.seen.length > 1 && !/\/(privacy|support)\.html/.test(r.seen[r.seen.length - 1]))) out.push([from, r.seen]);
+    }
+    check('ninguna dirección armada lleva fuera del sitio', out.length === 0, out);
+    const probe = await ctx.newPage(); await probe.goto(site + '/404.html');
+    const answers = await probe.evaluate(() => ['//evil.example', '/\\evil.example', '\\\\evil.example', 'javascript:alert(1)', '/javascript:alert(1)', 'https://evil.example/privacy', '/https://evil.example', '//evil.example/privacy', '/privacy/../../evil', '/es/../privacy', '/privacy%2F..', '', '/', '/nada', '/src/content.js', '/__proto__', '/constructor', '/toString', '/es/constructor'].map((x) => [x, window.__rescue(x)]));
+    await probe.close();
+    const allowed = new Set(['', '/', '/es/', '/src/app.html'].concat(listed.map((n) => '/' + n + '.html'), listedEs.map((n) => '/es/' + n + '.html')));
+    check('el rescate devuelve solo rutas de su lista, o nada', answers.every(([, to]) => typeof to === 'string' && allowed.has(to)) && answers.filter(([, to]) => to).every(([, to]) => /^\/(?!\/)/.test(to)), answers.filter(([, to]) => !allowed.has(to)));
+    pages.close();
+  }
+
   // Navegador sin acceso a archivos (Firefox, Safari): se abre por selector común y se guarda descargando.
   const plain = await ctx.newPage(); watch(plain);
   await plain.addInitScript(() => { delete window.showOpenFilePicker; delete window.showDirectoryPicker; Object.defineProperty(window, 'showOpenFilePicker', { value: undefined }); Object.defineProperty(window, 'showDirectoryPicker', { value: undefined }); Object.defineProperty(window, 'showSaveFilePicker', { value: undefined }); });

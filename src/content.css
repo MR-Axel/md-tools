@@ -472,7 +472,7 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
   .lmd-sidebar, .lmd-main, .lmd-node-chev svg { transition: none; }
 }
 @media print {
-  .lmd-sidebar, .lmd-topbar, .lmd-foot, .lmd-to-top, .lmd-panel, .lmd-viewer, .lmd-format, .lmd-tablebar, .lmd-ask, .lmd-orphan, .lmd-code-copy, .lmd-code-lang, .lmd-anchor { display: none !important; }
+  .lmd-sidebar, .lmd-topbar, .lmd-foot, .lmd-to-top, .lmd-panel, .lmd-viewer, .lmd-format, .lmd-tablebar, .lmd-ask, .lmd-orphan, .lmd-oops, .lmd-code-copy, .lmd-code-lang, .lmd-anchor { display: none !important; }
   .lmd-main { margin: 0 !important; }
   .lmd-article { padding: 0 !important; max-width: none !important; }
   .lmd-root, .lmd-body { background: #fff !important; }

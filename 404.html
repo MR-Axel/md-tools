@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-en="SharpMD: page not found" data-es="SharpMD: esta página no existe">SharpMD: page not found</title>
+<meta name="robots" content="noindex">
+<!-- GitHub Pages sirve este archivo para cualquier ruta que no existe, a cualquier profundidad: todas sus
+     direcciones son absolutas. Antes de mostrarse prueba si la ruta pedida casi es una que sí existe. -->
+<script>
+// Rescates: una ruta que casi es correcta lleva sola a la correcta, con su ?consulta y su #sección.
+// El destino sale siempre de las listas de acá, nunca de lo que vino en la dirección.
+(function () {
+  var PAGES = ['privacy', 'terms', 'refunds', 'support', 'pay', 'api', 'copyright', 'acceptable-use', 'local-tools', 'markdown-editor-mcp', 'wysiwyg-markdown-editor'];
+  var ES = ['local-tools', 'markdown-editor-mcp', 'wysiwyg-markdown-editor']; // las que tienen su versión en /es/
+  var APP = '/src/app.html';
+  var FIXED = { '/src': APP, '/src/index': APP, '/src/app': APP, '/app': APP, '/es': '/es/', '/es/index': '/es/', '/index': '/', '': '/' };
+  function rescue(pathname) {
+    var p = String(pathname).toLowerCase().replace(/\/{2,}/g, '/').replace(/\/+$/, '').replace(/\.html?$/, '');
+    if (Object.prototype.hasOwnProperty.call(FIXED, p)) return FIXED[p];
+    var m = /^\/(es\/)?([a-z-]+)$/.exec(p);
+    if (!m || PAGES.indexOf(m[2]) === -1) return '';
+    return (m[1] && ES.indexOf(m[2]) !== -1 ? '/es/' : '/') + m[2] + '.html';
+  }
+  window.__rescue = rescue;
+  var to = rescue(location.pathname);
+  if (to && to !== location.pathname) location.replace(to + location.search + location.hash);
+})();
+</script>
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/icon32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/icons/icon16.png">
+<link rel="preload" href="/site/fonts/figtree.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/site/site.css">
+<style>
+  .doc .ways { display: flex; flex-wrap: wrap; gap: 10px; margin: 28px 0 30px; }
+  @media (max-width: 480px) { .doc .ways .btn { flex: 1 1 100%; } }
+</style>
+</head>
+<body class="doc">
+<main>
+  <div class="top"><a class="brand" href="/?site"><img src="/icons/logo.svg" alt="" width="26" height="26"><span><b>Sharp</b>MD</span></a><div class="lang"><button type="button" data-set="en">EN</button><button type="button" data-set="es">ES</button></div></div>
+
+  <div lang="en">
+    <h1>This page does not exist.</h1>
+    <p class="date">Error 404</p>
+    <p>The address may be mistyped, or the page was moved.</p>
+    <p class="ways"><a class="btn fill" href="/src/app.html">Open the app</a><a class="btn" href="/?site">Home</a><a class="btn" href="/support.html">Help</a></p>
+    <p>If a link brought you here, tell us at <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a> and we fix it.</p>
+  </div>
+
+  <div lang="es">
+    <h1>Esta página no existe.</h1>
+    <p class="date">Error 404</p>
+    <p>Puede que la dirección esté mal escrita, o que la página se haya movido.</p>
+    <p class="ways"><a class="btn fill" href="/src/app.html">Abrir la app</a><a class="btn" href="/es/?site">Inicio</a><a class="btn" href="/support.html">Ayuda</a></p>
+    <p>Si llegaste por un enlace, avisanos a <a href="mailto:hello@sharpmd.app">hello@sharpmd.app</a> y lo arreglamos.</p>
+  </div>
+</main>
+<script src="/site.js"></script>
+<script>
+// Sin idioma elegido, una dirección bajo /es/ se lee en español.
+(function () {
+  try {
+    if (localStorage.getItem('mdtools:site-lang') || !/^\/es(\/|$)/i.test(location.pathname)) return;
+  } catch (e) { return; }
+  var h = document.documentElement; h.setAttribute('data-lang', 'es'); h.lang = 'es';
+  document.title = document.querySelector('title').getAttribute('data-es');
+})();
+</script>
+</body>
+</html>

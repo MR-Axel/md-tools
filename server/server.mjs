@@ -5032,11 +5032,13 @@ function sitesAdmin(m, url, b) {
 const SITE_STR = {
   en: { search: 'Search', menu: 'Menu', pages: 'Pages', toc: 'On this page', prev: 'Previous', next: 'Next', made: 'Published with SharpMD', report: 'Report', skip: 'Skip to content', theme: 'Light or dark', none: 'No results',
     by: 'By {a}', updated: 'Updated {a}', preview: 'Preview. Only people with this link see it.', gone_t: 'Not published', gone: 'This site is no longer published.', missing_t: 'Page not found', missing: 'This page does not exist.',
+    busy_t: 'Too many requests', busy: 'Try again in a minute.', failed_t: 'Something went wrong', failed: 'It is not you. Try again in a few minutes.', refused_t: 'Request not completed', refused: 'Check the link and try again.',
     back: 'Go to the start of the site', held_t: 'Not available', held: 'This site is not available.', r_title: 'Report this site', r_lead: 'Tell us if this site has something that should not be here. We get the address of the page and what you write.',
     r_why: 'Reason', r_mail: 'Your email (optional)', r_send: 'Send report', r_ok: 'Sent. Thank you.', r_fail: 'It could not be sent. Try again later.', r_many: 'Too many reports from here for now. Try again later.',
     r_short: 'Write a few words about the reason.', r_js: 'This form needs JavaScript. You can also write from sharpmd.app/support.html.', r_back: 'Back to the site', root_t: 'Sites published with SharpMD', root: 'This address hosts sites that people publish from their notes with SharpMD.', what: 'What is SharpMD' },
   es: { search: 'Buscar', menu: 'Menú', pages: 'Páginas', toc: 'En esta página', prev: 'Anterior', next: 'Siguiente', made: 'Publicado con SharpMD', report: 'Denunciar', skip: 'Ir al contenido', theme: 'Claro u oscuro', none: 'Sin resultados',
     by: 'Por {a}', updated: 'Actualizado {a}', preview: 'Vista previa. Solo la ve quien tiene este enlace.', gone_t: 'Sin publicar', gone: 'Este sitio ya no está publicado.', missing_t: 'No existe esa página', missing: 'Esta página no existe.',
+    busy_t: 'Demasiados pedidos', busy: 'Probá de nuevo en un minuto.', failed_t: 'Algo falló', failed: 'No es tu culpa. Probá de nuevo en unos minutos.', refused_t: 'No se pudo completar', refused: 'Revisá el enlace y probá de nuevo.',
     back: 'Ir al inicio del sitio', held_t: 'No disponible', held: 'Este sitio no está disponible.', r_title: 'Denunciar este sitio', r_lead: 'Avisanos si este sitio tiene algo que no debería estar acá. Nos llega la dirección de la página y lo que escribas.',
     r_why: 'Motivo', r_mail: 'Tu correo (opcional)', r_send: 'Enviar denuncia', r_ok: 'Enviado. Gracias.', r_fail: 'No se pudo enviar. Probá más tarde.', r_many: 'Llegaste al tope de denuncias por ahora. Probá más tarde.',
     r_short: 'Escribí en pocas palabras el motivo.', r_js: 'Este formulario necesita JavaScript. También podés escribir desde sharpmd.app/support.html.', r_back: 'Volver al sitio', root_t: 'Sitios publicados con SharpMD', root: 'En esta dirección están los sitios que la gente publica desde sus notas con SharpMD.', what: 'Qué es SharpMD' },
@@ -5287,6 +5289,7 @@ function siteDoc(o) {
     (o.author ? meta('author', o.author) : '') + '<meta name="generator" content="SharpMD">\n<link rel="icon" href="' + SITE_ICON + '">\n<link rel="stylesheet" href="/_/site.css?v=' + SITE_VER + '">\n<script src="/_/site.js?v=' + SITE_VER + '"></script>\n</head>\n<body>\n' + o.body + '\n</body>\n</html>\n';
 }
 // Una página que solo avisa: no existe, ya no está publicada, o no está disponible. No dice nada del sitio ni de quién es.
+const siteErrorKind = (status) => (status === 429 ? 'busy' : status >= 500 ? 'failed' : status === 404 ? 'missing' : 'refused');
 function siteNote(lang, kind, back) {
   const t = SITE_STR[lang === 'es' ? 'es' : 'en'];
   return siteDoc({ lang, title: t[kind + '_t'], noindex: true, body: '<main class="sp-note"><h1>' + html(t[kind + '_t']) + '</h1><p>' + html(t[kind]) + '</p>' + (back ? '<p><a href="' + html(back) + '">' + html(t.back) + '</a></p>' : '') +
@@ -5429,7 +5432,8 @@ async function pagesServe(req, res, scope) {
     if (scope && !scope.space) {
       const fine = (req.method === 'GET' || head) && p.length <= 600 && /^\/[A-Za-z0-9._~/-]*$/.test(p) && !/\/\/|(^|\/)\.\.?(\/|$)/.test(p);
       if (scope.moved && fine) { const qs = query.toString(); res.writeHead(308, Object.assign({}, H, { location: scope.moved + p + (qs ? '?' + qs : ''), 'cache-control': 'no-store' })); res.end(); return; }
-      send(404, 'text/plain; charset=utf-8', 'Not found'); return;
+      if (wantsPage(req)) page(404, siteNote('en', 'missing'), { 'x-robots-tag': 'noindex' }); else send(404, 'text/plain; charset=utf-8', 'Not found');
+      return;
     }
     if (p === '/_/report' && req.method === 'POST') { const out = await siteReport(req, scope); send(200, 'application/json; charset=utf-8', JSON.stringify(out), { 'cache-control': 'no-store' }); return; }
     if (req.method !== 'GET' && !head) { send(405, 'text/plain; charset=utf-8', 'Method not allowed', { allow: 'GET, HEAD' }); return; }
@@ -5491,6 +5495,8 @@ async function pagesServe(req, res, scope) {
     if (res.headersSent) { res.end(); return; }
     const extra = e instanceof Fail && e.extra && e.extra.retry_after ? { 'retry-after': String(e.extra.retry_after) } : {};
     if (String(req.url || '').startsWith('/_/report')) send(status, 'application/json; charset=utf-8', JSON.stringify({ error: e instanceof Fail ? e.code : 'server_error' }), extra);
+    // A una persona, la página del host de sitios (con su hoja: acá no hay estilos en línea); a lo demás, texto.
+    else if (wantsPage(req)) page(status, siteNote('en', siteErrorKind(status)), Object.assign({ 'x-robots-tag': 'noindex' }, extra));
     else send(status, 'text/plain; charset=utf-8', status === 429 ? 'Too many requests' : 'Error', extra);
   }
 }
@@ -5839,7 +5845,8 @@ const FILE_HEADERS = { 'x-content-type-options': 'nosniff', 'content-security-po
 function fileServe(req, res) {
   const raw = String(req.url || ''); const qi = raw.indexOf('?'); const p = qi === -1 ? raw : raw.slice(0, qi);
   if (!p.startsWith('/f/')) return false;
-  const deny = (status, extra) => { res.writeHead(status, Object.assign({}, FILE_HEADERS, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', 'content-length': 0 }, extra || {})); res.end(); return true; };
+  // Quien abre en el navegador el enlace de una imagen que ya no está ve una página, no una pestaña en blanco.
+  const deny = (status, extra) => { if (status >= 400 && wantsPage(req)) { personSend(req, res, status, status === 404 ? 'file' : '', extra); return true; } res.writeHead(status, Object.assign({}, FILE_HEADERS, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', 'content-length': 0 }, extra || {})); res.end(); return true; };
   if (req.method === 'OPTIONS') return deny(204, { 'access-control-allow-methods': 'GET, HEAD', 'access-control-max-age': '86400' });
   if (req.method !== 'GET' && req.method !== 'HEAD') return deny(405, { allow: 'GET, HEAD' });
   const ip = clientIp(req);
@@ -6188,6 +6195,79 @@ async function route(req, url) {
 
 // En todas las respuestas: nada se guarda en caché, el navegador no adivina el tipo y no viaja la dirección de origen.
 const BASE_HEADERS = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' };
+
+// ====================================================================================================================
+// PÁGINAS PARA PERSONAS
+// Esto es una API y responde JSON. Pero cuando alguien abre una dirección de acá en un navegador (una navegación:
+// GET, sin Authorization, con un Accept que prefiere text/html) recibe una página propia en vez de un JSON crudo,
+// con el mismo código de estado. Los clientes de la API no cambian: mismo JSON, mismos códigos, mismos cuerpos.
+//  - La página no repite nada del pedido: ni la ruta, ni parámetros, ni el mensaje del error. Solo textos de acá.
+//  - Es autosuficiente: estilos adentro, sin scripts, sin nada de otro origen; claro u oscuro según el dispositivo.
+// ====================================================================================================================
+// La calidad (q) que un Accept le da a un tipo: el más específico que lo nombre manda.
+function acceptQ(accept, type) {
+  let best = -1; let q = 0; const group = type.split('/')[0] + '/*';
+  for (const part of String(accept || '').toLowerCase().split(',')) {
+    const bits = part.split(';').map((b) => b.trim()); const name = bits[0];
+    const rank = name === type ? 3 : name === group ? 2 : name === '*/*' ? 1 : 0;
+    if (!rank || rank <= best) continue;
+    const qv = bits.slice(1).find((b) => b.startsWith('q=')); const n = qv ? Number(qv.slice(2)) : 1;
+    best = rank; q = Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0;
+  }
+  return q;
+}
+// ¿Es una persona navegando? Un navegador manda "text/html,…,*/*;q=0.8"; fetch, curl y los clientes de la API
+// mandan "*/*" o "application/json". Con Authorization (o la clave de administración) siempre es un cliente.
+const wantsPage = (req) => {
+  if (req.method !== 'GET' || req.headers.authorization || req.headers['x-admin-key']) return false;
+  const mode = req.headers['sec-fetch-mode']; if (mode && mode !== 'navigate') return false;
+  const a = req.headers.accept; if (!a || !/text\/html/i.test(a)) return false;
+  return acceptQ(a, 'text/html') > acceptQ(a, 'application/json');
+};
+const PERSON_TEXT = {
+  root: ['SharpMD sync server', 'This is the SharpMD sync server', 'The app talks to this address to keep your notes in sync. There is nothing to open here in a browser.'],
+  400: ['Bad request', 'This request is not valid', 'Something in this address is missing or malformed. Check the link and try again.'],
+  401: ['Sign in needed', 'You need to sign in', 'This address is for the SharpMD app, with your account. Open the app to get to your notes.'],
+  403: ['No access', 'You do not have access to this', 'Sign in with the account that has access, or ask the owner to share it with you.'],
+  404: ['Not found', 'There is nothing at this address', 'The link may be mistyped, or what it pointed to was removed.'],
+  405: ['Not available', 'This address does not open in a browser', 'It is part of the SharpMD API and expects a different kind of request.'],
+  410: ['Gone', 'This is no longer here', 'What this link pointed to was removed.'],
+  413: ['Too large', 'This is too large', 'What was sent is over the size limit.'],
+  429: ['Too many requests', 'Too many requests', 'Try again in a minute.'],
+  4: ['Request not completed', 'This request could not be completed', 'Check the link and try again.'],
+  5: ['Something went wrong', 'Something went wrong on our side', 'It is not you. Try again in a few minutes.'],
+};
+// Frases propias de una ruta para personas: una imagen adjunta que ya no está.
+const PERSON_KIND = {
+  file: ['Image not found', 'This image is not here', 'The link may be mistyped, or the image was deleted from its note.'],
+};
+const PERSON_LOGO = '<svg viewBox="0 0 64 64" width="44" height="44" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#14161a"/><g fill="#f3f5f8"><rect x="14.5" y="17" width="6" height="30" rx="1.3"/><rect x="26.5" y="17" width="6" height="30" rx="1.3"/><rect x="8.5" y="23.25" width="30" height="6" rx="1.3"/><rect x="8.5" y="34.75" width="30" height="6" rx="1.3"/></g><rect x="43.5" y="15" width="11" height="34" rx="2.4" fill="#c5f467"/></svg>';
+const PERSON_CSS = ':root{color-scheme:light dark;--bg:#fbfaf7;--soft:#f1efe9;--fg:#1d2026;--muted:#5c6370;--line:#dedbd2;--fill:#4d7c0f;--on:#fff}' +
+  '@media (prefers-color-scheme:dark){:root{--bg:#121418;--soft:#1a1d23;--fg:#e8eaee;--muted:#a4abb7;--line:#2a2e37;--fill:#c5f467;--on:#14161a}}' +
+  '*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:var(--bg);color:var(--fg);font:400 17px/1.55 "Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;-webkit-text-size-adjust:100%}' +
+  'main{width:min(520px,100%)}svg{display:block;border-radius:10px}.code{margin:26px 0 8px;color:var(--muted);font:400 12.5px/1.5 ui-monospace,"Cascadia Mono",Menlo,Consolas,monospace;letter-spacing:.02em}' +
+  'h1{margin:0 0 10px;font-size:30px;line-height:1.15;letter-spacing:-.015em}p{margin:0 0 26px;color:var(--muted)}.ways{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 22px}' +
+  '.ways a{display:inline-flex;align-items:center;min-height:46px;padding:10px 20px;border:1px solid var(--line);border-radius:12px;background:var(--soft);color:var(--fg);font-weight:650;line-height:1.2;text-decoration:none}' +
+  '.ways a.fill{background:var(--fill);border-color:var(--fill);color:var(--on)}.more{margin:0;font-size:14.5px}.more a{color:inherit}a:focus-visible{outline:2px solid var(--fill);outline-offset:3px}';
+const personDoc = (label, title, heading, text) => '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><meta name="color-scheme" content="light dark">' +
+  '<title>' + hEsc(title) + ' · SharpMD</title><style>' + PERSON_CSS + '</style></head><body><main>' + PERSON_LOGO + '<p class="code">' + hEsc(label) + '</p><h1>' + hEsc(heading) + '</h1><p>' + hEsc(text) + '</p>' +
+  '<p class="ways"><a class="fill" href="https://sharpmd.app/src/app.html">Open SharpMD</a><a href="https://sharpmd.app/api.html">API documentation</a></p>' +
+  '<p class="more"><a href="https://sharpmd.app/support.html">Help and contact</a></p></main></body></html>';
+// kind: 'root' (la portada del servidor) o una frase propia de PERSON_KIND. Sin kind, la del código de estado.
+function personPage(status, kind) {
+  const t = (kind && (PERSON_TEXT[kind] || PERSON_KIND[kind])) || PERSON_TEXT[status] || PERSON_TEXT[status >= 500 ? 5 : 4];
+  return personDoc(kind === 'root' ? 'SharpMD Sync' : 'Error ' + status, t[0], t[1], t[2]);
+}
+const PERSON_HEADERS = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'x-frame-options': 'DENY', 'x-robots-tag': 'noindex', vary: 'origin, accept',
+  'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" };
+function personSend(req, res, status, kind, extra) {
+  const body = personPage(status, kind);
+  res.writeHead(status, Object.assign({}, PERSON_HEADERS, { 'content-length': Buffer.byteLength(body) }, extra || {}));
+  res.end(body);
+}
+// ====================================================================================================================
+// Fin de PÁGINAS PARA PERSONAS
+// ====================================================================================================================
 const server = http.createServer(async (req, res) => {
   // El host de los sitios publicados es otro mundo: por ahí no hay API, ni CORS, ni credenciales.
   if (pagesHost(req)) { pagesServe(req, res); return; }
@@ -6217,6 +6297,8 @@ const server = http.createServer(async (req, res) => {
     // De un error inesperado se anota qué fue y dónde, sin el cuerpo del pedido. Hacia afuera va solo "server_error".
     if (status >= 500) console.error(status === 500 ? 'error 500 en ' + req.method + ' ' + String(req.url).split('?')[0].slice(0, 80) + ' · ' + String(e && e.stack || e).slice(0, 1500) : 'error ' + status + ' ' + (e.code || '') + ' en ' + req.method + ' ' + String(req.url).split('?')[0].slice(0, 80));
     if (res.headersSent) { res.end(); return; }
+    // Una persona navegando: la página, con el mismo código. La portada del servidor dice qué es esto.
+    if (wantsPage(req)) { personSend(req, res, status, String(req.url).split('?')[0] === '/' ? 'root' : '', e instanceof Fail && e.extra && e.extra.retry_after ? { 'retry-after': String(e.extra.retry_after) } : null); return; }
     const body = JSON.stringify(String(req.url).startsWith('/api/v1/') ? apiError(e) : e instanceof Fail ? Object.assign({ error: e.code, message: e.message || '' }, e.extra) : { error: 'server_error', message: '' });
     if (e instanceof Fail && e.extra && e.extra.retry_after) res.setHeader('retry-after', String(e.extra.retry_after));
     // Un cuerpo pasado de tamaño: se avisa y recién ahí se corta, para no seguir recibiendo.

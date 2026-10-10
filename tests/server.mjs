@@ -940,7 +940,29 @@ try {
     check('portada: hay un tope por IP, y otra IP sigue entrando', last.status === 429 && after === 2 + 60 && (await beat({ v: 'b', e: 'view' }, '203.0.113.10')).status === 204, [last.status, after]);
   }
 
-  check('cerrar sesión la invalida', (await call('POST', '/auth/logout', {}, s)).status === 200 && (await call('GET', '/notes', undefined, s)).status === 401);
+  // Una persona que abre una dirección del servidor en el navegador ve una página propia, con el mismo código.
+  // Un cliente de la API recibe el JSON de siempre. (tests/security.mjs, "Páginas para personas", lo recorre entero.)
+  console.log('Páginas para personas');
+  {
+    const NAV = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
+    // Armado a mano: fetch de Node agrega sec-fetch-mode: cors, que un navegador no manda al navegar.
+    const raw = (p, headers, method, body) => new Promise((resolve) => { const r = http.request(base + p, { method: method || 'GET', headers: Object.assign({ 'x-forwarded-for': '203.0.113.77' }, headers || {}) }, (res) => { let b = ''; res.on('data', (c) => { b += c; }); res.on('end', () => resolve({ status: res.statusCode, type: res.headers['content-type'] || '', cache: res.headers['cache-control'], body: b })); }); r.on('error', () => resolve({ status: 0, type: '', body: '' })); if (body) r.write(body); r.end(); });
+    const h1 = (r) => (/<h1>(.*?)<\/h1>/.exec(r.body) || [])[1] || '';
+    const home = await raw('/', { accept: NAV }); const p401 = await raw('/notes', { accept: NAV }); const p404 = await raw('/public/no-existe', { accept: NAV });
+    check('la portada del servidor, abierta en un navegador, dice qué es y lleva a la app y a la documentación', home.status === 401 && /^text\/html/.test(home.type) && h1(home) === 'This is the SharpMD sync server' && home.body.includes('https://sharpmd.app/src/app.html') && home.body.includes('https://sharpmd.app/api.html'), [home.status, home.type, h1(home)]);
+    check('401 y 404 llegan a una persona como página, con el mismo código y sin guardarse', p401.status === 401 && p404.status === 404 && [p401, p404].every((r) => /^text\/html/.test(r.type) && r.cache === 'no-store' && /^<!doctype html>/.test(r.body)) && h1(p401) !== h1(p404), [p401.status, h1(p401), p404.status, h1(p404)]);
+    for (let i = 0; i < 10; i++) await raw('/admin/landing', { 'x-admin-key': 'mala', 'x-forwarded-for': '203.0.113.78' });
+    const p429 = await raw('/admin/landing', { accept: NAV, 'x-forwarded-for': '203.0.113.78' });
+    check('429 también, con su frase', p429.status === 429 && /^text\/html/.test(p429.type) && /Try again in a minute/.test(p429.body), [p429.status, p429.type]);
+    const odd = await raw('/%3Cscript%3Ealert(7341)%3C/script%3E?x=%3Cb%3E7341', { accept: NAV });
+    check('la página no refleja la ruta ni los parámetros', /^text\/html/.test(odd.type) && !/7341|alert|<script/.test(odd.body) && odd.body === p401.body, odd.body.slice(0, 80));
+    const json = [await raw('/notes'), await raw('/notes', { accept: 'application/json' }), await raw('/notes', { accept: NAV, authorization: 'Bearer mds_inventada' }), await raw('/public/no-existe', { accept: 'application/json' }), await raw('/', { accept: '*/*' })];
+    check('un cliente de la API recibe lo de antes: mismo código, mismo JSON', json.map((r) => r.status + ' ' + r.body).join('\n') === ['401 {"error":"no_auth","message":"no_auth"}', '401 {"error":"no_auth","message":"no_auth"}', '401 {"error":"bad_auth","message":"bad_auth"}', '404 {"error":"not_found","message":"not_found"}', '401 {"error":"no_auth","message":"no_auth"}'].join('\n') && json.every((r) => /^application\/json/.test(r.type)), json.map((r) => [r.status, r.type, r.body]));
+    const big = await raw('/notes/' + encodeURIComponent('enorme.md'), { accept: NAV, 'content-type': 'application/json', authorization: 'Bearer ' + s }, 'PUT', JSON.stringify({ text: 'x'.repeat(3 * 1024 * 1024) }));
+    check('413 es de quien manda un cuerpo: sigue siendo JSON', big.status === 413 && /^application\/json/.test(big.type) && JSON.parse(big.body).error === 'too_large', [big.status, big.type, big.body.slice(0, 60)]);
+  }
+
+  check('cerrar sesión la invalida',(await call('POST', '/auth/logout', {}, s)).status === 200 && (await call('GET', '/notes', undefined, s)).status === 401);
 } catch (e) { check('sin excepciones', false, String(e && e.stack || e)); console.log(log); }
 child.kill();
 await new Promise((r) => setTimeout(r, 300));
