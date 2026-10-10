@@ -70,7 +70,7 @@
     // El pie de la barra lateral, donde vive la cuenta: dónde dibujarse, cómo quedar a la vista y cómo guardar antes de salir.
     // Un archivo del disco abierto por enlace: su dirección en la app, y si la web ya tiene su carpeta con permiso.
     view: (file) => viewFile(file),
-    disk: { doc: fsDoc, views: (name) => fsViews(name), real: async (fileUrl) => { const k = await fsKnown(fileUrl); return !!(k && k.granted); } },
+    disk: { doc: fsDoc, views: (name) => fsViews(name), real: async (fileUrl) => { const k = await fsKnown(fileUrl); return !!(k && k.granted); }, near: fsNear, claim: fsClaim },
     acct: ui.acct, showSide: () => { if (LMD.touch.small()) setDrawer(true); else if (settings.sidebarHidden) LMD.patch({ sidebarHidden: false }); }, hideSide: () => setDrawer(false),
     leave: () => (dirty ? save(false) : Promise.resolve(true)), ready: unsplash, panel: (tab) => openPanel(tab),
     // El CSS propio viene con el plan pago: si Ajustes está abierto, se redibuja con el campo ya habilitado.
@@ -307,20 +307,85 @@
     fsHeld = { url: fileUrl, file, at: Date.now() };
     return file;
   }
+  const sameText = (a, b) => String(a).replace(/\r\n?/g, '\n') === String(b).replace(/\r\n?/g, '\n');
   // La carpeta ya abierta en la web que contiene ese archivo, con lo que queda de la ruta y si el permiso sigue dado.
   async function fsKnown(fileUrl) {
-    const key = fsKey(fileUrl); let best = null;
+    const key = fsKey(fileUrl); const all = [];
     if (!key) return null;
     for (const r of await LMD.store.rootsAll()) {
       if (r.kind !== 'dir' || !r.handle || r.ghost || !r.fs) continue;
       const k = fsKey(r.fs);
-      if (k && k.endsWith('/') && key.startsWith(k) && (!best || k.length > best.k.length)) best = { rec: r, k };
+      if (k && k.endsWith('/') && key.startsWith(k)) all.push({ rec: r, k });
     }
-    if (!best) return null;
+    if (!all.length) return null;
+    // Con más de una (una carpeta y otra de más arriba), la que ya deja guardar; si ninguna, la más cercana al archivo.
+    all.sort((a, b) => b.k.length - a.k.length);
+    let best = null;
+    for (const c of all) { if (await canWrite(c.rec.handle, false)) { best = c; break; } }
+    const granted = !!best; if (!best) best = all[0];
     const rest = decodeURIComponent(new URL(fileUrl).pathname).slice(best.k.length).split('/').filter(Boolean);
-    let granted = false;
-    try { granted = (await best.rec.handle.queryPermission({ mode: 'readwrite' })) === 'granted'; } catch (e) { /* permiso vencido */ }
     return { rec: best.rec, rest, granted };
+  }
+  // Las carpetas abiertas con "Abrir carpeta" que podrían contener ese archivo: el navegador no dice su ruta, así que
+  // lo único que se sabe es que su nombre figura en la ruta del enlace. El nombre solo no alcanza para tratarlas como
+  // la carpeta del enlace: eso lo comprueba fsLearn. at: los lugares de la ruta donde calza el nombre, de abajo arriba.
+  const fsParts = (fileUrl) => { try { return decodeURIComponent(new URL(fileUrl).pathname).split('/').filter(Boolean); } catch (e) { return []; } };
+  async function fsMaybe(fileUrl) {
+    const parts = fsParts(fileUrl); const low = (t) => String(t).toLowerCase(); const out = [];
+    if (parts.length < 2) return out;
+    for (const r of await LMD.store.rootsAll()) {
+      if (r.kind !== 'dir' || !r.handle || r.ghost || r.fs || !r.name) continue;
+      const at = [];
+      for (let i = parts.length - 2; i >= 0; i--) if (low(parts[i]) === low(r.name)) at.push(i);
+      if (at.length) out.push({ rec: r, at });
+    }
+    return out.sort((a, b) => b.at[0] - a.at[0]);
+  }
+  // Se comprueba y recién ahí se anota la ruta (rec.fs): en la carpeta, por el mismo camino, está ese archivo, con el
+  // mismo texto que leyó la extensión. Solo en carpetas que ya se pueden leer: acá no se pide ningún permiso. Un
+  // archivo vacío no prueba nada. Devuelve true si alguna carpeta quedó reconocida.
+  async function fsLearn(fileUrl, text) {
+    if (!String(text || '').trim()) return false;
+    const parts = fsParts(fileUrl); let learned = false;
+    for (const c of await fsMaybe(fileUrl)) {
+      try { if ((await c.rec.handle.queryPermission({ mode: 'read' })) !== 'granted') continue; } catch (e) { continue; }
+      for (const i of c.at) {
+        let same = false;
+        try { same = sameText(await (await (await walk(c.rec.handle, parts.slice(i + 1))).getFile()).text(), text); } catch (e) { /* ahí no está */ }
+        if (!same) continue;
+        c.rec.fs = fsFile(FS + parts.slice(0, i + 1).map(encodeURIComponent).join('/') + '/');
+        await handlesPut(c.rec);
+        if (roots[c.rec.id] && roots[c.rec.id].root) roots[c.rec.id].fs = c.rec.fs;
+        learned = true; break;
+      }
+    }
+    return learned;
+  }
+  // Lo que un enlace puede usar para abrir el archivo real en vez de una copia (install.js): la carpeta que lo
+  // contiene (sure, su ruta ya está anotada) o la que podría contenerlo, y si ya deja guardar.
+  async function fsNear(fileUrl) {
+    const k = await fsKnown(fileUrl);
+    if (k) return { rec: k.rec, name: k.rec.name, granted: k.granted, sure: true };
+    const maybe = await fsMaybe(fileUrl); let pick = null;
+    for (const c of maybe) { if (await canWrite(c.rec.handle, false)) { pick = c; break; } }
+    const c = pick || maybe[0];
+    return c ? { rec: c.rec, name: c.rec.name, granted: !!pick, sure: false } : null;
+  }
+  // El clic de "Abrir carpeta para editar": el permiso se pide en ese mismo turno (el navegador exige el gesto). Una
+  // carpeta sin ruta anotada se comprueba con el texto que lee la extensión, que queda a mano para no leerlo dos
+  // veces. Devuelve true si el enlace ya se puede abrir como archivo real; si no, sigue la copia de siempre.
+  async function fsClaim(fileUrl, near) {
+    let asked = null;
+    if (!near.granted) { try { asked = near.rec.handle.requestPermission({ mode: 'readwrite' }); } catch (e) { /* sin gesto, o permiso vencido */ } }
+    try { await asked; } catch (e) { /* dijo que no */ }
+    if (!near.sure) {
+      const r = await LMD.bridge.readFile(fileUrl);
+      if (!(r && r.ok && r.opened && typeof r.text === 'string')) return false;
+      LMD.bridge.keep(fileUrl, r.text);
+      await fsLearn(fileUrl, r.text);
+    }
+    const k = await fsKnown(fileUrl);
+    return !!(k && k.granted);
   }
   // El cartel de la copia, arriba de la nota: dice que es una copia y ofrece pasar al archivo real.
   let fsSaid = '';
@@ -337,7 +402,6 @@
     else if (window.showDirectoryPicker) bar.appendChild(el('button', { type: 'button', class: 'lmd-btn', 'data-fs': 'grant', text: T('Editar el archivo del disco') }));
   }
   const fsSay = (text) => { fsSaid = text; return paintCopy(); };
-  const sameText = (a, b) => String(a).replace(/\r\n?/g, '\n') === String(b).replace(/\r\n?/g, '\n');
   // ---------- Permiso para guardar en una carpeta o un archivo del disco ----------
   // Abrir (con el selector, arrastrando o desde los recientes) pide solo lectura: no aparece ningún cuadro del
   // navegador. El permiso de escritura se pide recién cuando hace falta (editar, guardar, crear, renombrar, mover,
@@ -4839,6 +4903,9 @@
       if (file) { try { text = await fsRead(file); } catch (e) { why = e.why || 'failed'; } }
       // No falla en silencio: lo dice, y ofrece elegir el archivo (install.js sabe por qué no se pudo).
       if (text == null) { if (file) setTimeout(() => LMD.install.offer(file, homeCtx(), why), 0); return fail(T('No se pudo abrir "{a}".', { a: name })); }
+      // Una carpeta ya abierta acá, sin ruta anotada, resulta ser la de este archivo (mismo camino, mismo texto): desde
+      // ahora se la conoce. Si además deja guardar, se abre el archivo real y no hay copia.
+      if (await fsLearn(file, text)) { const k = await fsKnown(file); if (k && k.granted) { try { await walk(k.rec.handle, k.rest); return { goto: k.rec.id + '/' + k.rest.map(encodeURIComponent).join('/') }; } catch (e) { /* queda la copia */ } } }
       return { root: roots.fs, raw: text, disk: text };
     }
     if (id === 'bin') {

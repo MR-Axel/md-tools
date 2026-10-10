@@ -841,7 +841,7 @@
       "Esto es una copia del archivo del disco. Con su carpeta abierta se renombra el archivo de verdad.": "This is a copy of the file on disk. With its folder open, the real file is renamed.",
       "Mostrar en el Explorador…": "Show in Explorer…", "Para abrir el explorador de archivos hace falta el programa local de SharpMD, que corre en tu computadora.": "Opening the file explorer needs the SharpMD local program, which runs on your computer.",
       "Ver cómo instalarlo": "See how to install it", "Si ya lo tenés:": "If you already have it:", "emparejalo en Herramientas": "pair it in Tools",
-      "Del disco": "From disk", "Abrir esta carpeta": "Open this folder", "Editar el archivo del disco": "Edit the file on disk", "Permitir guardar": "Allow saving",
+      "Del disco": "From disk", "Abrir esta carpeta": "Open this folder", "Editar el archivo del disco": "Edit the file on disk", "Abrir carpeta \"{a}\" para editar": "Open folder \"{a}\" to edit", "Permitir guardar": "Allow saving",
       "No se pudo abrir \"{a}\".": "Could not open \"{a}\".", "Buscá la carpeta \"{a}\" y elegila.": "Find the folder \"{a}\" and choose it.",
       "La carpeta \"{a}\" no contiene \"{b}\". Buscá \"{c}\".": "The folder \"{a}\" does not contain \"{b}\". Find \"{c}\".",
       "En \"{a}\" hay otro \"{b}\", distinto del que está abierto. Buscá la carpeta del enlace.": "\"{a}\" has another \"{b}\", different from the one that is open. Find the folder from the link.",
