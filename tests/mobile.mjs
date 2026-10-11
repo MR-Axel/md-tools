@@ -692,6 +692,15 @@ try {
     await page.evaluate(() => navigator.serviceWorker.controller.postMessage({ type: 'lmd-check' }));
     await page.waitForSelector('.lmd-fresh', { timeout: 15000 }).catch(() => {});
     check('con una versión nueva, la pestaña abierta se entera sin navegar: baja todo y avisa', !!(await fresh0()) && (await keptVersion()) === '9.8.9' && hits.slice(from).length > 40 && (await page.evaluate(() => LMD.VERSION)) === '9.8.8', [await keptVersion(), hits.slice(from).length]);
+    // "Ver qué cambió": un enlace en el mismo aviso, que abre la nota de novedades de la guía pedida a la red (la página
+    // todavía corre la versión anterior). El aviso no crece y sigue a la vista.
+    from = hits.length;
+    const what = await page.evaluate(() => { const b = document.querySelector('.lmd-fresh [data-fresh=what]'); if (!b) return null; const bar = b.parentNode.getBoundingClientRect(); return { text: b.textContent, h: Math.round(bar.height), order: [...b.parentNode.children].map((n) => n.dataset.fresh || n.tagName.toLowerCase()).join() }; });
+    if (what) await page.tap('.lmd-fresh [data-fresh=what]');
+    await page.waitForFunction(() => { const h = document.querySelector('.markdown-body h1'); return !!h && /^What.s new$/.test(h.textContent); }, null, { timeout: 15000 }).catch(() => {});
+    const news = await page.evaluate(() => ({ h1: (document.querySelector('.markdown-body h1') || {}).textContent || '', weeks: document.querySelectorAll('.markdown-body h2').length, v: LMD.VERSION }));
+    check('el aviso ofrece "Ver qué cambió" sin crecer, y abre la nota de novedades pedida a la red, con el aviso todavía a la vista', !!what && what.text === 'See what changed' && what.order === 'span,what,go,later' && what.h <= 48 && /^What.s new$/.test(news.h1) && news.weeks >= 2 && news.v === '9.8.8' && hits.slice(from).includes('/src/guide/en/updates.md') && !!(await fresh0()), [what, news, hits.slice(from).slice(0, 4)]);
+    await fits(page, 'el aviso de versión nueva sobre la nota de novedades');
     await page.tap('.lmd-fresh [data-fresh=later]'); await page.waitForTimeout(150);
     await page.evaluate(() => window.__MDT_FRESH.show({ version: '9.8.9', stored: true }));
     check('dejarlo para después lo saca, y esa versión no vuelve a avisar', !(await fresh0()));

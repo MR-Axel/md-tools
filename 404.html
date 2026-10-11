@@ -11,8 +11,8 @@
 // Rescates: una ruta que casi es correcta lleva sola a la correcta, con su ?consulta y su #sección.
 // El destino sale siempre de las listas de acá, nunca de lo que vino en la dirección.
 (function () {
-  var PAGES = ['privacy', 'terms', 'refunds', 'support', 'pay', 'api', 'copyright', 'acceptable-use', 'local-tools', 'markdown-editor-mcp', 'wysiwyg-markdown-editor'];
-  var ES = ['local-tools', 'markdown-editor-mcp', 'wysiwyg-markdown-editor']; // las que tienen su versión en /es/
+  var PAGES = ['privacy', 'terms', 'refunds', 'support', 'pay', 'api', 'copyright', 'acceptable-use', 'local-tools', 'markdown-editor-mcp', 'wysiwyg-markdown-editor', 'updates'];
+  var ES = ['local-tools', 'markdown-editor-mcp', 'wysiwyg-markdown-editor', 'updates']; // las que tienen su versión en /es/
   var APP = '/src/app.html';
   var FIXED = { '/src': APP, '/src/index': APP, '/src/app': APP, '/app': APP, '/es': '/es/', '/es/index': '/es/', '/index': '/', '': '/' };
   function rescue(pathname) {
