@@ -40,5 +40,6 @@ Desde la pantalla de inicio:
 - [[shortcuts|Atajos de teclado]]
 - [[export-and-import|Exportar e importar]]
 - [[privacy|Privacidad]]
+- [[updates|Novedades]]: lo que se fue sumando, semana por semana.
 
 Si algo no anda o falta, escribinos a hello@sharpmd.app.

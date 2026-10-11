@@ -333,9 +333,11 @@
     if (isLoose(url)) return renameLoose(url, name);
     try {
       if (inLocal(url)) {
-        if (await LMD.store.noteGet(name)) { core.flash(T('Ya hay un archivo con ese nombre'), 'error'); return; }
+        // Una nota del navegador que está en una carpeta (la copia de una plantilla) se queda en su carpeta.
+        const was = core.localName(url); const to = was.slice(0, was.length - old.length) + name;
+        if (await LMD.store.noteGet(to)) { core.flash(T('Ya hay un archivo con ese nombre'), 'error'); return; }
         if (!(await saved(url))) return;
-        await LMD.store.notePut(name, (await LMD.store.noteGet(old)).text); await LMD.store.noteDelete(old);
+        await LMD.store.notePut(to, (await LMD.store.noteGet(was)).text); await LMD.store.noteDelete(was);
       } else {
         const dir = await core.dirHandle(dirUrl);
         if (await exists(dir, name)) { core.flash(T('Ya hay un archivo con ese nombre'), 'error'); return; }
@@ -401,11 +403,21 @@
     const name = nameOf(url);
     if (!(await askDelete(name, !inLocal(url)))) return;
     try {
-      if (inLocal(url)) await LMD.store.noteDelete(name);
+      if (inLocal(url)) await LMD.store.noteDelete(core.localName(url));
       else await (await core.dirHandle(parentOf(url))).removeEntry(name);
       if (url === core.HERE) closeGone();
       else core.reloadTree();
     } catch (e) { core.flash(T('No se pudo eliminar'), 'error'); }
+  }
+
+  // Una carpeta de "En este navegador" (la copia de una plantilla, fork.js): se van sus notas, que no tienen papelera.
+  async function removeLocalDir(url) {
+    const pre = core.localName(url) + '/';
+    if (!(await LMD.dialog.confirm({ title: T('¿Eliminar la carpeta "{a}" y sus notas?', { a: nameOf(url) }), text: T('Se borran de este navegador. No se puede deshacer.'), ok: T('Eliminar'), danger: true }))) return;
+    try {
+      for (const n of await LMD.store.notesAll()) if (n.name.startsWith(pre)) await LMD.store.noteDelete(n.name);
+      if (!core.noDoc && core.HERE.startsWith(url)) closeGone(); else core.reloadTree();
+    } catch (e) { core.flash(T('No se pudo eliminar'), 'error'); core.reloadTree(); }
   }
 
   // Una carpeta soltada en la papelera. En la nube cada nota va a la papelera de 30 días; una protegida se elimina
@@ -482,7 +494,9 @@
       // Un PDF, un libro, una imagen: la nube guarda notas, que son texto. La entrada está y lo dice, en vez de faltar sin explicación.
       !isDir && !cloud && !local && core.APP && notNote(url) && LMD.cloud.enabled() && LMD.cloud.reach() && !LMD.cloud.guest() && ['nosend', 'Enviar a la nube', false, 'cloud'],
     ], whereItems(url), [
-      !isDir && ['del', 'Eliminar', true],
+      (!isDir || local) && ['del', 'Eliminar', true],
+      // Una carpeta de la nube que la cuenta puede compartir: su enlace de solo lectura, y si es una plantilla (sync.js).
+      folder && core.APP && LMD.sync.canLinkFolder(folder) && ['flink', 'Compartir la carpeta…', false, 'share'],
       // Todas las notas de la carpeta en un solo documento: PDF, HTML, Word o Markdown (folderexport.js).
       isDir && ['fexp', 'Exportar la carpeta…'],
       // Una carpeta o una nota de la nube: avisar afuera cuando algo cambie ahí (automate.js).
@@ -503,6 +517,8 @@
       else if (f === 'dir') newFolder(at);
       else if (f === 'ren') rename(url, isDir);
       else if (f === 'mov') moveAsk(url);
+      else if (f === 'flink') LMD.sync.shareFolder(folder);
+      else if (isDir && local) removeLocalDir(url);
       else remove(url);
     });
   }

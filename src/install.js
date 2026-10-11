@@ -560,6 +560,19 @@
     const inReader = ext && (OWN || (await LMD.load()).openIn === 'ext');
     // La web ya tiene abierta, con permiso, una carpeta que lo contiene: es el archivo real, con o sin extensión.
     if (!inReader && await ctx.disk.real(url)) { if (!(await D.confirm({ title, path, ok: T('Abrir') }))) return false; return show(); }
+    // La web guarda una carpeta que lo contiene, pero el navegador pide el permiso de nuevo en cada sesión: un toque
+    // acá adentro lo pide, y se abre el archivo real. Con near.sure la ruta de esa carpeta ya se conoce y no hace
+    // falta la extensión. Sin eso es una carpeta abierta cuyo nombre figura en la ruta: content.js comprueba, con el
+    // texto que lee la extensión, que sea la misma antes de tratarla así. Si la persona dice que no, o no era esa
+    // carpeta, sigue la copia de siempre, sin preguntar otra vez.
+    const near = inReader ? null : await ctx.disk.near(url);
+    const viaFolder = () => {
+      let busy = false;
+      return D.confirm({ title, path, ok: near.granted ? T('Abrir') : T('Abrir carpeta "{a}" para editar', { a: near.name }),
+        act: (d) => { if (busy) return; busy = true; ctx.disk.claim(url, near).then((real) => d.close(real ? 'real' : 'copy'), () => d.close('copy')); } });
+    };
+    let agreed = false;
+    if (near && near.sure) { const r = await viaFolder(); if (!r) return false; if (r === 'real') return show(); agreed = true; }
     if (!ext) return because('none');
     // can: true si la extensión lo entrega, false si no (no dice si el archivo existe), null si es una extensión anterior.
     const can = inReader ? true : await LMD.bridge.canRead(url);
@@ -584,7 +597,8 @@
       } });
     }
     if (!can) return because('refused');
-    if (!(await D.confirm({ title, path, ok: T('Abrir') }))) return false;
+    if (near && !near.sure) { if (!(await viaFolder())) return false; return show(); }
+    if (!agreed && !(await D.confirm({ title, path, ok: T('Abrir') }))) return false;
     if (inReader) {
       const r = await LMD.bridge.openFile(url);
       if (r && r.ok && r.opened) return true;

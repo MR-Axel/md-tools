@@ -40,5 +40,6 @@ From the start screen:
 - [[shortcuts|Keyboard shortcuts]]
 - [[export-and-import|Export and import]]
 - [[privacy|Privacy]]
+- [[updates|What's new]]: what was added, week by week.
 
 If something does not work or is missing, write to hello@sharpmd.app.

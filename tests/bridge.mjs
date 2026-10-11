@@ -506,6 +506,50 @@ try {
   await lo.click('.lmd-dlg-card [data-dlg=ok]'); await lo.waitForSelector('.markdown-body h1'); await lo.waitForTimeout(500);
   const again = await lo.evaluate(() => ({ f: new URLSearchParams(location.search).get('f'), bar: !document.querySelector('.lmd-copybar').hidden, body: document.querySelector('.markdown-body').textContent, dlgs: window.__dlgs }));
   check('con la carpeta recordada y el permiso vigente, el enlace abre el archivo real, sin cartel', !!dReal && J(dReal.buttons) === J(['Cancel', 'Open']) && !again.bar && !/^fs\//.test(again.f) && /\/other\.md$/.test(again.f) && /real folder/.test(again.body) && again.dlgs.length === 1, [again.f, again.bar, again.dlgs]);
+  // ---------- Una carpeta que la web ya tiene abierta: el enlace abre el archivo real, sin copia ----------
+  // El navegador no dice la ruta de una carpeta elegida, y vuelve a pedir el permiso en cada sesión. Dos carpetas con
+  // el mismo nombre: la del enlace y una melliza con otros archivos. La melliza es la más reciente, la primera que
+  // calza por nombre: no alcanza con eso para tratarla como la del enlace.
+  fs.writeFileSync(path.join(disk, 'same.md'), '# Same\n\nSAME-ON-DISK\n'); fs.writeFileSync(path.join(disk, 'only.md'), '# Only\n\nONLY-ON-DISK\n');
+  const forget = () => lo.evaluate(async (name) => {
+    const root = await navigator.storage.getDirectory();
+    const put = async (d, n, t) => { const h = await d.getFileHandle(n, { create: true }); const w = await h.createWritable(); await w.write(t); await w.close(); };
+    const real = await root.getDirectoryHandle(name); const twin = await (await root.getDirectoryHandle('elsewhere')).getDirectoryHandle(name);
+    await put(real, 'same.md', '# Same\r\n\r\nSAME-ON-DISK\r\n'); await put(twin, 'same.md', '# Same\n\nfrom the twin\n'); await put(twin, 'only.md', '# Only\n\nfrom the twin\n');
+    for (const r of await LMD.store.rootsAll()) { if (r.handle && await r.handle.isSameEntry(real)) { delete r.fs; await LMD.store.handlesPut(r); } }
+    await LMD.store.handlesPut({ key: 'root:twin0001', root: true, id: 'twin0001', kind: 'dir', name, handle: twin, at: Date.now() + 1000 });
+  }, folderName);
+  await forget();
+  const viaLink = async (file, write, answer) => {
+    await lo.goto(WEB); await lo.waitForSelector('.lmd-home'); await spy(lo);
+    await lo.evaluate(([w, a]) => {
+      window.__perm = { write: w, answer: a, asks: [] };
+      FileSystemHandle.prototype.queryPermission = async function (o) { return o && o.mode === 'readwrite' ? window.__perm.write : 'granted'; };
+      FileSystemHandle.prototype.requestPermission = async function (o) { const m = (o && o.mode) || 'read'; window.__perm.asks.push(m + ':' + this.name); if (m !== 'readwrite') return 'granted'; window.__perm.write = window.__perm.answer; return window.__perm.answer; };
+    }, [write, answer]);
+    await lo.goto(linkTo(WEB, urlOf(disk, file))); await lo.waitForSelector('.lmd-dlg-card');
+    const d = await dlg(lo);
+    await lo.click('.lmd-dlg-card [data-dlg=ok]'); await lo.waitForSelector('.markdown-body h1', { timeout: 8000 }).catch(() => {}); await lo.waitForTimeout(700);
+    return lo.evaluate(async (d) => {
+      const bar = document.querySelector('.lmd-copybar'); const roots = {};
+      for (const r of await LMD.store.rootsAll()) roots[r.id === 'twin0001' ? 'twin' : 'real'] = (r.fs || '').toLowerCase();
+      return { buttons: d ? d.buttons : null, clean: !!d && !/[!¡—–]/.test(d.all), f: new URLSearchParams(location.search).get('f') || '', bar: bar && !bar.hidden ? (bar.querySelector('button') || {}).textContent || 'sin botón' : '', body: (document.querySelector('.markdown-body') || {}).textContent || '', dlgs: window.__dlgs.length, asks: window.__perm.asks, roots };
+    }, d);
+  };
+  const diskAt = (pathToFileURL(disk).href + '/').toLowerCase(); const TO_EDIT = ['Cancel', 'Open folder "' + folderName + '" to edit'];
+  const isReal = (r, file) => !/^fs\//.test(r.f) && !/^twin0001\//.test(r.f) && r.f.endsWith('/' + file) && r.bar === '';
+  const k1 = await viaLink('only.md', 'prompt', 'granted');
+  check('una carpeta abierta con el mismo nombre que no tiene ese archivo con ese texto no se toma por la del enlace: queda la copia', J(k1.buttons) === J(TO_EDIT) && k1.f === fAt(disk, 'only.md') && /ONLY-ON-DISK/.test(k1.body) && !/from the twin/.test(k1.body) && k1.bar === 'Edit the file on disk' && k1.roots.real === '' && k1.roots.twin === '' && k1.dlgs === 1, k1);
+  const k2 = await viaLink('same.md', 'prompt', 'granted');
+  check('un enlace a un archivo de una carpeta ya abierta en la web pide el permiso con un toque y abre el archivo real, sin copia ni cartel', J(k2.buttons) === J(TO_EDIT) && k2.clean && isReal(k2, 'same.md') && /SAME-ON-DISK/.test(k2.body) && k2.dlgs === 1 && k2.asks.length === 1 && k2.asks[0] === 'readwrite:' + folderName, k2);
+  check('la ruta se anota en la carpeta que tiene ese archivo con ese texto, no en la melliza', k2.roots.real === diskAt && k2.roots.twin === '', k2.roots);
+  const k3 = await viaLink('other.md', 'prompt', 'denied');
+  check('si la persona no da el permiso, se abre la copia de siempre, sin otra pregunta', J(k3.buttons) === J(TO_EDIT) && k3.f === fAt(disk, 'other.md') && k3.bar === 'Allow saving' && k3.dlgs === 1 && J(k3.asks) === J(['readwrite:' + folderName]), k3);
+  const k4 = await viaLink('other.md', 'prompt', 'granted');
+  check('con la ruta ya anotada, el mismo toque abre el archivo real', J(k4.buttons) === J(TO_EDIT) && isReal(k4, 'other.md') && /real folder/.test(k4.body) && k4.dlgs === 1, k4);
+  await forget();
+  const k5 = await viaLink('same.md', 'granted', 'granted');
+  check('y si la carpeta ya deja guardar, alcanza con "Abrir": se la reconoce y no se pide nada', J(k5.buttons) === J(['Cancel', 'Open']) && isReal(k5, 'same.md') && k5.asks.length === 0 && k5.roots.real === diskAt && k5.roots.twin === '' && k5.dlgs === 1, k5);
   await lo.evaluate(async () => { for (const r of await LMD.store.rootsAll()) await LMD.store.handlesDelete(r.key); await LMD.bridge.sync(); }); // lo que sigue arranca sin carpetas abiertas en la web
   await lo.close();
   const lk = watch(await ctx.newPage());

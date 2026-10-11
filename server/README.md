@@ -275,6 +275,25 @@ Sharing from an AI is a way out for the notes if the AI is fed instructions by s
 
 Without the permission these tools are not in `tools/list` and calling them fails. With it, they go through the same code as `POST /shares` and `POST /links`, so the same rules and limits apply. They stay inside the folder of the token, and they do not reach folders protected with a password. On team notes they work only when the policies of the team allow it (see "Teams").
 
+### Folder links and templates
+
+A public link can point to a whole folder instead of one note. Whoever has it reads the notes of the folder and of its subfolders, and nothing outside it. Marked as a template, the folder can also be taken whole, so each person keeps a copy of their own: nothing they do with the copy comes back.
+
+| Route | What it does |
+|---|---|
+| `POST /links` `{ path, kind: "folder", template?, login?, name? }` | With a session, on the paid plan. Answers `{ id, token, kind, template, login, copies, name }`, the token once. No password (`400 folder_password`). `409 vault` if the folder, a parent or a subfolder is protected with a password |
+| `PUT /links/{id}` `{ template?, login?, name? }` | Changes the options of a folder link. Turning `template` off releases the name |
+| `GET /shares` | Each folder link comes with `kind`, `template`, `login`, `copies` and `name` |
+| `GET /public/{token}` | Public. For a folder link: `{ kind: "folder", name, notes: [{ path, updated, size }], template }`, with paths relative to the folder. `?note=path` answers one note. `?all=1` answers every note with its text: templates only (`403 not_template`), and with a session if the template asks for an account (`401 need_account`) |
+| `GET /template/{name}` | Public. The same, by the short name of a template. `404` for a name that never existed, `410 template_gone` for one that no longer leads to a template |
+| `POST /public/{token}/copied`, `POST /template/{name}/copied` | The app calls it after a complete copy. Answers `{ ok, counted }` |
+
+The short name (3 to 40 lowercase letters, numbers and single hyphens, with a list of reserved words) is what the address `sharpmd.app/t/{name}` carries, and it may be printed. It belongs to the account that chose it for good: that account can give it to another of its folder links, and no other account can take it, not even after the link is removed or the account is deleted. Looking up names that do not exist is limited to 60 an hour per IP.
+
+`copies` is a number per link, with nothing about who copied. A copy counts only after the notes were taken from that same IP, up to 30 a day per IP for a link, 60 an hour per IP in all and 3 a day per account for a link. Past a limit the call still answers `200`, with `counted: false`.
+
+When the notes of a shared folder are moved one by one to a folder that had no notes (a rename), the link follows them. Moving them into a folder that already had notes does not make that folder public: the link is left pointing to nothing.
+
 ### Trash
 
 `DELETE /notes/{path}` moves the note to the trash, where it stays for `TRASH_DAYS` days (30) and is then purged. Its public links, its shares, its comments and its live session end when it is deleted, and do not come back when it is restored.

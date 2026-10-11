@@ -270,7 +270,7 @@
   const WHY = { too_large: 'demasiado grande', offline: 'sin conexión', note_limit: 'no entra en el plan gratis', bad_path: 'nombre que la nube no admite', name: 'nombre que la nube no admite', read: 'no se pudo leer',
     vault_locked: 'la carpeta está bloqueada', no_access: 'solo lectura', read_only: 'solo lectura', team_ended: 'el plan del equipo venció' };
   const whyText = (code) => T(WHY[code] || 'no se pudo enviar');
-  const copyLine = (st) => T(st.up ? (st.dir ? 'Queda una copia en la nube. Los archivos de este dispositivo no cambian.' : 'Queda una copia en la nube. El archivo de este dispositivo no cambia.')
+  const copyLine = (st) => T(st.tpl ? 'Queda una copia en tu nube. El original no cambia.' : st.up ? (st.dir ? 'Queda una copia en la nube. Los archivos de este dispositivo no cambian.' : 'Queda una copia en la nube. El archivo de este dispositivo no cambia.')
     : st.local ? (st.dir ? 'Queda una copia en la nube. Las notas de este navegador no cambian.' : 'Queda una copia en la nube. La nota de este navegador no cambia.')
     : st.dir ? 'Queda una copia en la nube. Los archivos del disco no cambian.' : 'Queda una copia en la nube. El archivo del disco no cambia.');
   const imageLine = (st) => T(st.imgWhy === 'plan' ? 'Subir imágenes es del plan pago: las notas van con sus rutas de imagen como están.' : 'Las imágenes no se suben desde acá: las notas van con sus rutas de imagen como están.');
@@ -353,7 +353,12 @@
           [['skip', 'Saltear'], ['replace', 'Reemplazar'], ['rename', 'Guardar con otro nombre']].forEach((m) => seg.appendChild(el('button', { type: 'button', class: st.mode === m[0] ? 'lmd-on' : '', 'data-mode': m[0], 'aria-pressed': String(st.mode === m[0]), text: T(m[1]) })));
           row.appendChild(seg); body.appendChild(row);
         }
-        if (!c.fits) {
+        // Una plantilla va entera o no va: si no entra, se dice cuánto falta y quedan las otras dos salidas.
+        if (!c.fits && st.tpl) {
+          const miss = c.uses.length - c.room;
+          line('lmd-send-warn', (miss === 1 ? T('No entra en el plan gratis: falta 1 lugar.') : T('No entra en el plan gratis: faltan {n} lugares.', { n: miss })) + ' ' + T('El plan pago no tiene tope.')).setAttribute('role', 'alert');
+          line('lmd-hint lmd-send-alt', T(st.tpl.browser ? 'También podés copiarla a este navegador o descargarla.' : 'También podés descargarla.'));
+        } else if (!c.fits) {
           line('lmd-send-warn', T('Entran {a} de {b}. El plan pago no tiene tope.', { a: c.room, b: c.uses.length })).setAttribute('role', 'alert');
           if (c.room > 0 && c.uses.length > 1) {
             body.appendChild(el('p', { class: 'lmd-send-k lmd-send-which', text: T('Elegí cuáles van') }));
@@ -374,10 +379,15 @@
             body.appendChild(lab);
           } else line('lmd-hint lmd-send-imgs', imageLine(st));
         }
-        if (!n) line('lmd-hint lmd-send-none', T(c.fits ? 'No hay nada nuevo para enviar.' : 'El plan gratis está lleno.'));
+        if (!n && !(st.tpl && !c.fits)) line('lmd-hint lmd-send-none', T(c.fits ? 'No hay nada nuevo para enviar.' : 'El plan gratis está lleno.'));
         btn('no', T('Cancelar'), '', true);
         if (!c.fits && !LMD.storeApp) btn('plans', T('Ver planes'));
-        const go = btn('go', !st.dir ? T('Enviar') : n === 1 ? T('Enviar 1 nota') : T('Enviar {n} notas', { n }), 'lmd-btn-fill');
+        if (st.tpl && !c.fits) {
+          if (st.tpl.download) btn('tpl-zip', T('Descargar'));
+          if (st.tpl.browser) btn('tpl-browser', T('Copiar a este navegador'), 'lmd-btn-fill');
+          return;
+        }
+        const go = btn('go', st.tpl ? (n === 1 ? T('Copiar 1 nota') : T('Copiar {n} notas', { n })) : !st.dir ? T('Enviar') : n === 1 ? T('Enviar 1 nota') : T('Enviar {n} notas', { n }), 'lmd-btn-fill');
         go.disabled = !n;
         if (n) setTimeout(() => { if (go.isConnected && !box.contains(document.activeElement)) go.focus(); }, 0);
       }
@@ -385,24 +395,30 @@
       function progress(done, total) {
         if (state !== 'run') return;
         const p = body.querySelector('.lmd-send-now'); const bar = body.querySelector('.lmd-send-bar i');
-        if (p) p.textContent = stopped ? T('Cancelando…') : T('Enviando {a} de {b}…', { a: Math.min(done + 1, total), b: total });
+        if (p) p.textContent = stopped ? T('Cancelando…') : T(st.tpl ? 'Copiando {a} de {b}…' : 'Enviando {a} de {b}…', { a: Math.min(done + 1, total), b: total });
         if (bar) bar.style.width = (total ? Math.round(done * 100 / total) : 100) + '%';
       }
       async function send() {
         state = 'run'; body.textContent = ''; acts.textContent = '';
         line('lmd-send-copy', copyLine(st));
-        body.appendChild(el('p', { class: 'lmd-send-now', role: 'status', text: T('Enviando…') }));
+        body.appendChild(el('p', { class: 'lmd-send-now', role: 'status', text: T(st.tpl ? 'Copiando…' : 'Enviando…') }));
         body.appendChild(el('div', { class: 'lmd-send-bar', 'aria-hidden': 'true' }, '<i></i>'));
         btn('stop', T('Cancelar'), '', true);
         let res;
         try { res = await run(st, progress, () => stopped); }
         catch (e) { res = { sent: [], skipped: [], failed: [{ rel: '', why: (e && e.code) || 'failed' }], left: 0, cancelled: false, imgUp: 0, imgLeft: 0, total: 0 }; }
-        result = res; done(res);
+        result = res;
+        // Una plantilla que se copió entera no deja un resumen para leer: la ventana se cierra y se abre la copia (fork.js).
+        if (st.tpl && res.sent.length && res.sent.length === st.items.length && !res.failed.length && !res.left && !res.cancelled) {
+          result = { copied: true, n: res.sent.length, folder: calc(st).pre.replace(/\/$/, ''), first: (res.sent.find((s) => s.rel === st.tpl.first) || res.sent[0]).full };
+          close(); return;
+        }
+        done(res);
       }
       function done(res) {
         state = 'done'; body.textContent = ''; acts.textContent = '';
         const sent = res.sent.length; const parts = [];
-        parts.push(sent === 1 ? T('Se envió 1 nota.') : T('Se enviaron {n} notas.', { n: sent }));
+        parts.push(st.tpl ? (sent === 1 ? T('Se copió 1 nota.') : T('Se copiaron {n} notas.', { n: sent })) : sent === 1 ? T('Se envió 1 nota.') : T('Se enviaron {n} notas.', { n: sent }));
         if (res.skipped.length) parts.push(res.skipped.length === 1 ? T('1 ya existía y se salteó.') : T('{n} ya existían y se saltearon.', { n: res.skipped.length }));
         if (res.cancelled) parts.push(res.left === 1 ? T('Se canceló: quedó 1 sin enviar.') : T('Se canceló: quedaron {n} sin enviar.', { n: res.left }));
         else if (res.left) parts.push(res.left === 1 ? T('1 quedó afuera porque no entra en el plan.') : T('{n} quedaron afuera porque no entran en el plan.', { n: res.left }));
@@ -437,6 +453,7 @@
         if (k === 'stop') { stopped = true; b.disabled = true; progress(0, 0); return; }
         if (k === 'no') return close();
         if (k === 'plans') { close(); plans(); return; }
+        if (k === 'tpl-browser' || k === 'tpl-zip') { close(); st.tpl[k === 'tpl-zip' ? 'download' : 'browser'](); return; }
         if (k === 'open') { const res = result; close(); if (st.dir) core.reveal(core.urlOf(calc(st).pre.replace(/\/$/, '')) + (calc(st).pre ? '/' : '')); else if (res && res.sent[0]) openNote(res.sent[0].full); return; }
         if (k === 'dest') {
           const to = await pickDest(st);
@@ -458,8 +475,68 @@
         }
       });
       document.body.appendChild(box);
-      repick(st); draw();
+      const c0 = repick(st);
+      // Una plantilla que entra y no choca con nada no tiene qué preguntar: la copia arranca sola.
+      if (st.tpl && c0.fits && !c0.exists && jobsOf(st, c0).length && !c0.rows.some((r) => r.bad)) {
+        state = 'wait'; line('lmd-send-now', T('Copiando…')).setAttribute('role', 'status');
+        LMD.vault.unlockFor(c0.pre + 'x').then((ok) => { if (!box.isConnected) return; if (ok) send(); else { state = 'ask'; draw(); } }, () => { state = 'ask'; draw(); });
+      } else draw();
     });
+  }
+
+  // ---------- Una plantilla a la nube ----------
+  // "Usar esta plantilla" > "Copiar a mi nube" (fork.js). Es el mismo recorrido con otra fuente: las notas de la
+  // plantilla, ya leídas. La revisión es la de siempre (cuánto lugar queda en el plan, qué ya existe), con dos
+  // diferencias: una plantilla va entera o no va, y si la carpeta ya está en la nube (la copia de otra vez) se
+  // pregunta si abrir esa o hacer otra con otro nombre.
+  // t: { name, notes: [{ path, text }], first: la nota que abre, browser() y download() si esas salidas se ofrecen }.
+  // Devuelve { copied, n, folder, first } si quedó entera, { open: ruta } si se eligió la copia que ya estaba, o nada.
+  // local: la carpeta que ya está es de "En este navegador" (lo pregunta fork.js con la misma ventana).
+  function again(folder, local) {
+    return new Promise((resolve) => {
+      const title = T(local ? 'Ya tenés una carpeta "{a}" en este navegador' : 'Ya tenés una carpeta "{a}" en tu nube', { a: folder });
+      const box = el('div', { class: 'lmd-ask lmd-send lmd-send-again' });
+      box.innerHTML = '<div class="lmd-ask-card lmd-send-card" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><h3>' + esc(title) + '</h3>' +
+        '<p class="lmd-send-copy">' + T('Puede ser la copia que hiciste antes. Abrila, o hacé otra copia con otro nombre.') + '</p>' +
+        '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-sa="no" data-esc>' + T('Cancelar') + '</button>' +
+        '<button type="button" class="lmd-btn" data-sa="new">' + T('Hacer otra copia') + '</button><button type="button" class="lmd-btn lmd-btn-fill" data-sa="open">' + T('Abrir la que ya tengo') + '</button></div></div>';
+      const close = (v) => { if (!box.isConnected) return; box.remove(); resolve(v); };
+      box.addEventListener('mousedown', (e) => { if (e.target === box) close(null); });
+      box.addEventListener('click', (e) => { const b = e.target.closest('[data-sa]'); if (b) close(b.dataset.sa === 'no' ? null : b.dataset.sa); });
+      document.body.appendChild(box);
+      setTimeout(() => { const b = box.querySelector('[data-sa=open]'); if (b && b.isConnected) b.focus(); }, 0);
+    });
+  }
+  async function template(t) {
+    if (!core) return null;
+    try { await LMD.cloud.ready(); } catch (e) { return null; }
+    if (!reach() || !LMD.cloud.signedIn() || busy) return null;
+    busy = true;
+    try {
+      const acct = await LMD.sync.reload();
+      const st = { url: '', dir: true, local: false, up: false, tpl: t, fixed: false, dest: '', folder: cleanName(t.name) || T('plantilla'), mode: 'skip', items: [], more: false, other: 0, bins: null,
+        limit: acct && acct.limit ? acct.limit : null, used: (acct && acct.notes) || 0, lists: {}, picked: null, images: 0, imgOk: false, imgWhy: '', withImages: false, imgDone: new Map() };
+      st.lists[''] = new Set((await LMD.cloud.list(true)).map((n) => n.path));
+      const tm = LMD.cloud.teamNow();
+      if (tm && LMD.cloud.teamCan('write')) { try { st.lists[tm.space] = new Set((await LMD.cloud.list(true, tm.space)).map((n) => n.path)); } catch (e) { /* sin el espacio del equipo, queda la nube propia */ } }
+      try { await LMD.cloud.vaults(); } catch (e) { /* sin la lista de carpetas protegidas se sigue igual */ }
+      const got = await gather({ rooted: false, tops: treeOf(t.notes.map((n) => ({ webkitRelativePath: n.path, name: n.path.split("/").pop(), size: n.text.length, text: async () => n.text }))) });
+      st.items = got.items; st.more = got.more;
+      for (const it of st.items) { try { it.text = await it.read(); } catch (e) { it.text = null; it.why = e && e.code === 'too_large' ? 'too_large' : ''; } it.imgs = []; }
+      if (!st.items.length) { notice(T('Ahí no hay notas para enviar.'), null, true); return null; }
+      const has = (folder) => { const pre = folder + '/'; return Array.from(st.lists['']).filter((p) => p.startsWith(pre)); };
+      const there = has(st.folder);
+      if (there.length) {
+        const pick = await again(st.folder);
+        if (!pick) return null;
+        if (pick === 'open') return { open: there.includes(st.folder + '/' + t.first) ? st.folder + '/' + t.first : there.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))[0] };
+        const base = st.folder; let n = 2; while (has(base + '-' + n).length) n++;
+        st.folder = base + '-' + n;
+      }
+      const out = await dialog(st, T('Copiar "{a}" a tu nube', { a: t.name }));
+      return out && out.copied ? out : null;
+    } catch (e) { notice(T(e && e.code === 'offline' ? 'No hay conexión con el servidor.' : 'No se pudo copiar a la nube.'), null, true); return null; }
+    finally { busy = false; }
   }
 
   // ---------- El recorrido ----------
@@ -646,5 +723,5 @@
   // Se engancha antes que los otros que miran lo que se suelta en la ventana (el visor, importar): va primero.
   function init(c) { core = c; bindDrop(); }
 
-  LMD.send = { init, can, start, target, drop: (url, dest) => start(url, { dest }), canUp, canDir, pick };
+  LMD.send = { init, can, start, target, drop: (url, dest) => start(url, { dest }), canUp, canDir, pick, template, notice, cleanName, again };
 })();

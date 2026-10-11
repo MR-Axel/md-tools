@@ -25,7 +25,7 @@ for (const f of files) {
   check(f + ': ninguna regla queda a más de tres niveles', b.max <= 3, b.max);
 }
 // Los estilos que van dentro de una página (portada, pago, ayuda, privacidad, API).
-for (const f of ['tools/landing.src.html', 'pay.html', 'support.html', 'privacy.html', 'api.html', 'terms.html', 'refunds.html', 'acceptable-use.html', 'copyright.html', 'tools/markdown-editor-mcp.src.html', 'tools/wysiwyg-markdown-editor.src.html', 'src/app.html', '404.html', 'src/offline.html']) {
+for (const f of ['tools/landing.src.html', 'pay.html', 'support.html', 'privacy.html', 'api.html', 'terms.html', 'refunds.html', 'acceptable-use.html', 'copyright.html', 'tools/markdown-editor-mcp.src.html', 'tools/wysiwyg-markdown-editor.src.html', 'updates.html', 'src/app.html', '404.html', 'src/offline.html']) {
   if (!fs.existsSync(path.join(root, f))) continue;
   const html = fs.readFileSync(path.join(root, f), 'utf8');
   const css = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]).join('\n');
@@ -40,7 +40,7 @@ check('ningún archivo publicado tiene marcas de un merge sin resolver', !marked
 
 // El sitio no pide nada a otros: las tipografías salen de site/fonts, con su licencia al lado, y ninguna página nombra un
 // servicio de fuentes. Las páginas generadas llevan la hoja adentro; las escritas a mano la enlazan.
-const sitePages = ['index.html', 'es/index.html', 'markdown-editor-mcp.html', 'es/markdown-editor-mcp.html', 'wysiwyg-markdown-editor.html', 'es/wysiwyg-markdown-editor.html', 'pay.html', 'support.html', 'privacy.html', 'api.html', 'terms.html', 'refunds.html', 'acceptable-use.html', 'copyright.html'];
+const sitePages = ['index.html', 'es/index.html', 'markdown-editor-mcp.html', 'es/markdown-editor-mcp.html', 'wysiwyg-markdown-editor.html', 'es/wysiwyg-markdown-editor.html', 'updates.html', 'es/updates.html', 'pay.html', 'support.html', 'privacy.html', 'api.html', 'terms.html', 'refunds.html', 'acceptable-use.html', 'copyright.html'];
 const sheet = fs.readFileSync(path.join(root, 'site', 'site.css'), 'utf8');
 const fontFiles = [...sheet.matchAll(/url\("(fonts\/[^"]+)"\)/g)].map((m) => m[1]);
 check('site/site.css: sus tipografías están en site/fonts, en woff2, con font-display: swap y su licencia', fontFiles.length === 2 && fontFiles.every((f) => /\.woff2$/.test(f) && fs.existsSync(path.join(root, 'site', f))) && (sheet.match(/font-display: swap/g) || []).length === 2 && ['OFL-Figtree.txt', 'OFL-JetBrainsMono.txt'].every((f) => /SIL Open Font License/.test(fs.readFileSync(path.join(root, 'site', 'fonts', f), 'utf8'))), fontFiles);

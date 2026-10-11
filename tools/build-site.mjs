@@ -2,6 +2,7 @@
 // que tiene los dos idiomas juntos. Cada página sale con un solo idioma en el HTML: es lo que leen los
 // buscadores, que no ejecutan el cambio de idioma. También escribe sitemap.xml.
 // Las páginas de PAGES salen igual, de tools/<nombre>.src.html a /<nombre>.html y /es/<nombre>.html.
+// La página de novedades (updates.html) tiene su propio generador, tools/build-updates.mjs: acá entra solo en el sitemap.
 // Uso: node tools/build-site.mjs      (y se commitea lo generado junto con el fuente)
 import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -115,9 +116,9 @@ function build(lang) {
 const PAGES = {
   'markdown-editor-mcp': {
     en: { title: 'Markdown editor for Claude and AI agents (MCP): SharpMD',
-      desc: 'A Markdown editor with the MCP endpoint already running. Claude, Codex or any MCP client reads and writes your notes. Free over 25 cloud notes.' },
+      desc: 'A Markdown editor with the MCP endpoint already running. Claude, Codex or any MCP client reads and writes your notes. Free over 10 cloud notes.' },
     es: { title: 'Editor de Markdown para Claude y agentes de IA (MCP): SharpMD',
-      desc: 'Un editor de Markdown con la conexión MCP ya andando. Claude, Codex o cualquier cliente MCP lee y escribe tus notas. Gratis sobre 25 notas en la nube.' } },
+      desc: 'Un editor de Markdown con la conexión MCP ya andando. Claude, Codex o cualquier cliente MCP lee y escribe tus notas. Gratis sobre 10 notas en la nube.' } },
   'wysiwyg-markdown-editor': {
     en: { title: 'WYSIWYG Markdown editor online, no syntax: SharpMD',
       desc: 'Edit Markdown on the formatted page: paragraphs, tables, tasks, formulas and diagrams. The file stays plain Markdown. Free, with no account, and offline.' },
@@ -180,7 +181,8 @@ const alt = '<xhtml:link rel="alternate" hreflang="en" href="' + META.en.url + '
 fs.writeFileSync(path.join(root, 'sitemap.xml'), '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n' +
   '  <url><loc>' + META.en.url + '</loc><lastmod>' + today + '</lastmod>' + alt + '</url>\n' +
   '  <url><loc>' + META.es.url + '</loc><lastmod>' + today + '</lastmod>' + alt + '</url>\n' +
-  Object.keys(PAGES).map((slug) => { const a = '<xhtml:link rel="alternate" hreflang="en" href="' + pageUrl(slug, 'en') + '"/><xhtml:link rel="alternate" hreflang="es" href="' + pageUrl(slug, 'es') + '"/>'; return ['en', 'es'].map((l) => '  <url><loc>' + pageUrl(slug, l) + '</loc><lastmod>' + today + '</lastmod>' + a + '</url>\n').join(''); }).join('') +
+  // Las novedades (updates.html) las escribe tools/build-updates.mjs; acá solo entran en el mapa.
+  Object.keys(PAGES).concat('updates').map((slug) => { const a = '<xhtml:link rel="alternate" hreflang="en" href="' + pageUrl(slug, 'en') + '"/><xhtml:link rel="alternate" hreflang="es" href="' + pageUrl(slug, 'es') + '"/>'; return ['en', 'es'].map((l) => '  <url><loc>' + pageUrl(slug, l) + '</loc><lastmod>' + today + '</lastmod>' + a + '</url>\n').join(''); }).join('') +
   '  <url><loc>' + SITE + '/privacy.html</loc><lastmod>' + today + '</lastmod></url>\n' +
   '  <url><loc>' + SITE + '/api.html</loc><lastmod>' + today + '</lastmod></url>\n' +
   '  <url><loc>' + SITE + '/support.html</loc><lastmod>' + today + '</lastmod></url>\n' +

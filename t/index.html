@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-en="SharpMD: templates" data-es="SharpMD: plantillas">SharpMD: templates</title>
+<meta name="robots" content="noindex">
+<!-- Una plantilla se abre con sharpmd.app/t/<nombre>. Esa ruta no existe como archivo: el alojamiento sirve 404.html,
+     que la manda a la app. Esta página es la otra forma, que no depende de eso: sharpmd.app/t/?<nombre> (o
+     /t/#<nombre>) existe de verdad y hace lo mismo. Sin nombre, dice qué es esto. -->
+<script>
+(function () {
+  var raw = location.search.replace(/^\?/, '') || location.hash.replace(/^#/, '');
+  var m = /^(?:n=|t=)?([^&=]+)/.exec(raw);
+  if (!m) return;
+  var name = m[1]; try { name = decodeURIComponent(name); } catch (e) { /* queda como vino */ }
+  location.replace('/src/app.html?t=' + encodeURIComponent(name.toLowerCase()));
+})();
+</script>
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/icon32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/icons/icon16.png">
+<link rel="preload" href="/site/fonts/figtree.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/site/site.css">
+</head>
+<body class="doc">
+<main>
+  <div class="top"><a class="brand" href="/?site"><img src="/icons/logo.svg" alt="" width="26" height="26"><span><b>Sharp</b>MD</span></a><div class="lang"><button type="button" data-set="en">EN</button><button type="button" data-set="es">ES</button></div></div>
+
+  <div lang="en">
+    <h1>Templates</h1>
+    <p>A template is a folder of notes that someone shared. You read it and take your own copy to edit. The original does not change.</p>
+    <p>To open one, use its full address: this one followed by the name of the template.</p>
+    <p><a class="btn fill" href="/src/app.html">Open the app</a></p>
+  </div>
+
+  <div lang="es">
+    <h1>Plantillas</h1>
+    <p>Una plantilla es una carpeta de notas que alguien compartió. La leés y te llevás una copia propia para editar. El original no cambia.</p>
+    <p>Para abrir una, usá su dirección completa: esta, seguida del nombre de la plantilla.</p>
+    <p><a class="btn fill" href="/src/app.html">Abrir la app</a></p>
+  </div>
+</main>
+<script src="/site.js"></script>
+</body>
+</html>

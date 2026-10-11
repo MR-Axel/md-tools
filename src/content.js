@@ -70,7 +70,7 @@
     // El pie de la barra lateral, donde vive la cuenta: dónde dibujarse, cómo quedar a la vista y cómo guardar antes de salir.
     // Un archivo del disco abierto por enlace: su dirección en la app, y si la web ya tiene su carpeta con permiso.
     view: (file) => viewFile(file),
-    disk: { doc: fsDoc, views: (name) => fsViews(name), real: async (fileUrl) => { const k = await fsKnown(fileUrl); return !!(k && k.granted); } },
+    disk: { doc: fsDoc, views: (name) => fsViews(name), real: async (fileUrl) => { const k = await fsKnown(fileUrl); return !!(k && k.granted); }, near: fsNear, claim: fsClaim },
     acct: ui.acct, showSide: () => { if (LMD.touch.small()) setDrawer(true); else if (settings.sidebarHidden) LMD.patch({ sidebarHidden: false }); }, hideSide: () => setDrawer(false),
     leave: () => (dirty ? save(false) : Promise.resolve(true)), ready: unsplash, panel: (tab) => openPanel(tab),
     // El CSS propio viene con el plan pago: si Ajustes está abierto, se redibuja con el campo ya habilitado.
@@ -109,20 +109,23 @@
     if (document.querySelector('.lmd-fresh')) return;
     const bar = el('div', { class: 'lmd-orphan lmd-fresh', role: 'status' });
     bar.appendChild(el('span', { text: T('Hay una versión nueva.') }));
-    const go = el('button', { type: 'button', 'data-fresh': 'go', text: T('Recargar') });
+    const reload = el('button', { type: 'button', 'data-fresh': 'go', text: T('Recargar') });
     const later = el('button', { type: 'button', class: 'lmd-update-x', 'data-fresh': 'later', title: T('Ahora no'), 'aria-label': T('Ahora no') }, ICON.close);
-    go.addEventListener('click', async () => {
-      go.disabled = true;
+    reload.addEventListener('click', async () => {
+      reload.disabled = true;
       try { await save(false); } catch (e) { /* se mira abajo si quedó algo sin guardar */ }
       // En la cola de la nube o en la sesión (una nota en memoria) lo escrito ya está a salvo. Si no, se espera.
-      if (dirty && stashed !== raw && !(appRoot && appRoot.id === 'mem')) { go.disabled = false; flash(T('Guardá los cambios antes de recargar'), 'warn'); return; }
+      if (dirty && stashed !== raw && !(appRoot && appRoot.id === 'mem')) { reload.disabled = false; flash(T('Guardá los cambios antes de recargar'), 'warn'); return; }
       if (!freshNow.stored && navigator.onLine !== false && window.caches) {
         try { const keys = await caches.keys(); await Promise.all(keys.filter((k) => /^sharpmd-/.test(k)).map((k) => caches.delete(k))); } catch (e) { /* queda la caché: se renueva en la visita siguiente */ }
       }
       location.reload();
     });
     later.addEventListener('click', () => { freshSkip = freshNow.version; bar.remove(); });
-    bar.appendChild(go); bar.appendChild(later);
+    // Qué trae la versión nueva: la nota de novedades de la guía, pedida a la red. El aviso queda donde está.
+    const what = el('button', { type: 'button', class: 'lmd-fresh-what', 'data-fresh': 'what', text: T('Ver qué cambió') });
+    what.addEventListener('click', async () => { what.disabled = true; try { await guideFresh(GUIDE_NEWS); await go('guide/' + GUIDE_NEWS); } finally { what.disabled = false; } });
+    bar.appendChild(what); bar.appendChild(reload); bar.appendChild(later);
     document.body.appendChild(bar);
   }
   const bg = (msg) => new Promise((resolve) => {
@@ -146,9 +149,10 @@
     ['voice', 'Dictado y lectura en voz alta'], ['ai-with-your-key', 'IA con tu propia clave'], ['cloud-and-sharing', 'La nube y compartir'],
     ['connect-your-ai', 'Conectar tu IA por MCP'], ['automations', 'Automatizaciones y webhooks'], ['api', 'Referencia de la API'],
     ['extension-and-android', 'Extensión de Chrome y app de Android'], ['shortcuts', 'Atajos de teclado'], ['export-and-import', 'Exportar e importar'],
-    ['privacy', 'Privacidad'],
+    ['privacy', 'Privacidad'], ['updates', 'Novedades'],
   ];
   const GUIDE_HOME = 'guide/start.md';
+  const GUIDE_NEWS = 'updates.md'; // la nota de novedades: la escribe tools/build-updates.mjs
   const guideEntry = (file) => GUIDE.find((g) => g[0] + '.md' === file) || null;
   const guideKept = new Map(); // idioma/archivo -> texto, mientras dure la pestaña
   async function guideRead(file) {
@@ -160,6 +164,19 @@
     const text = (await res.text()).replace(/\r\n/g, '\n');
     guideKept.set(key, text);
     return text;
+  }
+  // La nota tal como está publicada ahora, no la copia guardada: el aviso de versión nueva lleva a las novedades de esa
+  // versión, y la página que avisa todavía corre la anterior. Sin red queda la copia que haya.
+  async function guideFresh(file) {
+    if (!APP || !guideEntry(file) || navigator.onLine === false) return;
+    const key = LMD.lang() + '/' + file; const url = new URL('guide/' + key, APP_URL);
+    try {
+      // La copia del service worker es la de la versión que corre: se saca primero, y el pedido que sigue llega a la red
+      // y deja guardada la nueva.
+      if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.filter((k) => /^sharpmd-/.test(k)).map(async (k) => (await caches.open(k)).delete(url.origin + url.pathname))); }
+      const res = await fetch(url.href, { cache: 'no-store' });
+      if (res.ok) guideKept.set(key, (await res.text()).replace(/\r\n/g, '\n'));
+    } catch (e) { /* queda la copia guardada */ }
   }
   // Con la primera nota abierta se piden las demás, de a una y sin apuro: así la guía entera queda guardada para
   // leerla sin conexión (el service worker guarda lo que pasa por él) y pasar de una nota a otra no espera a la red.
@@ -185,14 +202,69 @@
     if (await go('local/' + encodeURIComponent(name), { tree: true })) flash(T('Copia guardada en este navegador'));
   }
 
+  // ---------- Carpeta compartida por enlace, y plantillas ----------
+  // Un enlace público también puede ser de una carpeta entera (?f=pub/<secreto>/<nota>), y una plantilla se abre además
+  // por su nombre corto (?t=<nombre>, que acá es t/<nombre>/<nota>). Las dos se leen y no se editan: de una plantilla
+  // la persona se lleva una copia (fork.js). Lo que se pidió queda en memoria mientras dure la pestaña.
+  const pubKept = new Map(); // 'pub/<secreto>' o 't/<nombre>' -> { ref, info, texts: ruta -> texto }
+  const pubRef = (url) => { const p = String(url || '').slice(VBASE.length).split('#')[0].split('/'); return (p[0] === 'pub' || p[0] === 't') && p.length > 1 && p[1] ? { by: p[0], key: decodeURIComponent(p[1]) } : null; };
+  const pubOf = (url) => { const r = pubRef(url); const k = r ? pubKept.get(r.by + '/' + r.key) : null; return k && k.info ? k : null; };
+  const pubKeep = (ref, info) => { const id = ref.by + '/' + ref.key; let k = pubKept.get(id); if (!k) { k = { ref, info: null, texts: new Map() }; pubKept.set(id, k); } k.info = info && info.kind === 'folder' ? info : null; k.texts.clear(); return k; };
+  const pubInfo = async (ref, fresh) => { const k = pubKept.get(ref.by + '/' + ref.key); return k && k.info && !fresh ? k : pubKeep(ref, await LMD.cloud.pubFolder(ref, '')); };
+  async function pubText(k, rel) {
+    if (!k.texts.has(rel)) k.texts.set(rel, String((await LMD.cloud.pubFolder(k.ref, '?note=' + encodeURIComponent(rel))).text || '').replace(/\r\n/g, '\n'));
+    return k.texts.get(rel);
+  }
+  const pubPath = (ref, rel) => ref.by + '/' + encodeURIComponent(ref.key) + (rel ? '/' + rel.split('/').map(encodeURIComponent).join('/') : '');
+  // La nota con la que abre la carpeta: el README o el índice si lo hay; si no, la primera de arriba, por nombre.
+  function pubFirst(info) {
+    const by = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+    const notes = info.notes.map((n) => n.path).filter((p) => MD_RE.test(p) || /\.txt$/i.test(p)).sort(by); const top = notes.filter((p) => !p.includes('/'));
+    return top.find((p) => /^(readme|index|inicio|leeme|start)\.(md|markdown)$/i.test(p)) || top[0] || notes[0] || (info.notes[0] || {}).path || '';
+  }
+  const inPub = () => (!noDoc && !!appRoot && appRoot.kind === 'pub' ? pubOf(HERE) : null);
+  const inTemplate = () => { const k = inPub(); return k && k.info.template ? k : null; };
+  // Por qué no abrió, para el inicio: un título y una línea (home.js los pone arriba, a la vista).
+  function pubFail(e, ref) {
+    const code = e && e.code; const where = 'sharpmd.app/t/' + ref.key;
+    const lead = code === 'template_gone' ? [T('Esta plantilla ya no está disponible'), T('Quien la compartió la retiró.')]
+      : code === 'offline' ? [T('No hay conexión con el servidor.'), T('Revisá la conexión y abrí el enlace de nuevo.')]
+        : code === 'too_many' ? [T('Demasiados intentos desde esta red'), T('Probá de nuevo en un rato.')]
+          : ref.by === 't' ? [T('No encontramos esa plantilla'), T('No hay ninguna plantilla en {a}. Revisá que la dirección esté bien escrita.', { a: where })]
+            : [T('Ese enlace ya no existe.'), T('Quien lo compartió lo quitó.')];
+    return { fail: lead[0], lead: { title: lead[0], text: lead[1] } };
+  }
+  // "Usar esta plantilla" (fork.js, que se pide recién acá). why 'edit': la persona quiso editar el original.
+  function useTemplate(why) {
+    if (!inTemplate()) return false;
+    ensure('fork').then((ok) => { if (ok) LMD.fork.open(core, why || ''); });
+    return true;
+  }
+  // La tira de arriba de una plantilla: qué es, qué pasa al usarla y el botón.
+  function paintPub() {
+    const k = inTemplate(); const old = ui.main.querySelector('.lmd-tplbar');
+    document.documentElement.classList.toggle('lmd-tpl', !!k);
+    if (old) old.remove();
+    if (!k) return;
+    const bar = el('div', { class: 'lmd-tplbar lmd-doc-only', role: 'region', 'aria-label': T('Plantilla') },
+      '<div class="lmd-tplbar-box"><p><strong>' + T('Plantilla · solo lectura') + '</strong><span>' + T('Te queda una copia para editar. El original no cambia.') + '</span></p>' +
+      '<button type="button" class="lmd-btn lmd-btn-fill" data-act="tpl-use">' + T('Usar esta plantilla') + '</button></div>');
+    ui.article.before(bar);
+  }
+
   // ---------- Archivos de la app ----------
   const vParts = (url) => url.slice(VBASE.length).split('#')[0].split('/').filter(Boolean).map(decodeURIComponent).slice(1);
   async function vFile(url) {
     const parts = vParts(url); const root = rootOf(url);
     if (!root || !parts.length) return null;
-    if (root.kind === 'local') return parts.length === 1 ? LMD.store.noteHandle(parts[0]) : null;
+    // Una nota del navegador puede estar en una carpeta (la copia de una plantilla): su nombre lleva la ruta.
+    if (root.kind === 'local') return LMD.store.noteHandle(parts.join('/'));
     if (root.kind === 'cloud') return LMD.cloud.handle(parts.join('/'));
-    if (root.kind === 'pub') return { kind: 'file', name: root.title, getFile: async () => ({ text: async () => root.text, lastModified: 0, size: root.text.length }) };
+    if (root.kind === 'pub') {
+      const k = pubOf(url); const rel = parts.slice(1).join('/');
+      if (!k) return { kind: 'file', name: root.title, getFile: async () => ({ text: async () => root.text, lastModified: 0, size: root.text.length }) };
+      return k.info.notes.some((n) => n.path === rel) ? { kind: 'file', name: parts[parts.length - 1], getFile: async () => { const text = await pubText(k, rel); return { text: async () => text, lastModified: 0, size: text.length }; } } : null;
+    }
     if (root.kind === 'guide') return parts.length === 1 && guideEntry(parts[0]) ? { kind: 'file', name: parts[0], getFile: async () => { const text = await guideRead(parts[0]); return { text: async () => text, lastModified: 0, size: text.length }; } } : null;
     if (root.kind === 'file') return parts.length === 1 && parts[0] === root.handle.name ? root.handle : null;
     // Un archivo del disco abierto por enlace: lo lee la extensión. A la web le llega solo texto (una imagen de la nota
@@ -217,7 +289,19 @@
   async function vList(dirUrl) {
     try {
       const root = rootOf(dirUrl);
-      if (!root || root.kind === 'pub') return [];
+      if (!root) return [];
+      if (root.kind === 'pub') {
+        // Una carpeta compartida: sus notas vienen con la ruta entera, y las subcarpetas se deducen de ellas.
+        const k = pubOf(dirUrl); if (!k) return [];
+        const prefix = vParts(dirUrl).slice(1).map((p) => p + '/').join(''); const rows = []; const seen = new Set();
+        k.info.notes.forEach((n) => {
+          if (!n.path.startsWith(prefix)) return;
+          const rest = n.path.slice(prefix.length); const cut = rest.indexOf('/'); const name = cut < 0 ? rest : rest.slice(0, cut);
+          if (seen.has(name)) return; seen.add(name);
+          rows.push({ name, url: dirUrl + encodeURIComponent(name) + (cut < 0 ? '' : '/'), dir: cut >= 0 });
+        });
+        return rows;
+      }
       // La guía: sus notas, en el orden de la lista y con su título en vez del nombre del archivo.
       if (root.kind === 'guide') return vParts(dirUrl).length ? [] : GUIDE.map((g) => ({ name: g[0] + '.md', label: T(g[1]), url: dirUrl + g[0] + '.md', dir: false }));
       if (root.kind === 'cloud') {
@@ -252,10 +336,18 @@
         }
         return rows;
       }
-      if (root.kind === 'local') return (await LMD.store.notesAll()).map((n) => {
-        const first = STAMP_RE.test(n.name) ? (n.text.split('\n').find((l) => l.trim()) || '').replace(/^#+\s*/, '').slice(0, 60) : '';
-        return { name: n.name, label: first, url: dirUrl + encodeURIComponent(n.name), dir: false };
-      });
+      if (root.kind === 'local') {
+        // Las notas del navegador van sueltas; las que llevan una ruta en el nombre (la copia de una plantilla) se ven en su carpeta.
+        const prefix = vParts(dirUrl).map((p) => p + '/').join(''); const rows = []; const seen = new Set();
+        (await LMD.store.notesAll()).forEach((n) => {
+          if (!n.name.startsWith(prefix)) return;
+          const rest = n.name.slice(prefix.length); const cut = rest.indexOf('/'); const name = cut < 0 ? rest : rest.slice(0, cut);
+          if (cut >= 0) { if (!seen.has(name + '/')) { seen.add(name + '/'); rows.push({ name, url: dirUrl + encodeURIComponent(name) + '/', dir: true }); } return; }
+          const first = STAMP_RE.test(name) ? (n.text.split('\n').find((l) => l.trim()) || '').replace(/^#+\s*/, '').slice(0, 60) : '';
+          rows.push({ name, label: first, url: dirUrl + encodeURIComponent(name), dir: false });
+        });
+        return rows;
+      }
       if (root.kind === 'file') return [{ name: root.handle.name, url: dirUrl + encodeURIComponent(root.handle.name), dir: false }];
       if (root.kind === 'fs') {
         // Lo que la extensión deja listar (carpetas habilitadas). Si no, queda solo el camino hasta la nota abierta.
@@ -315,20 +407,85 @@
     fsHeld = { url: fileUrl, file, at: Date.now() };
     return file;
   }
+  const sameText = (a, b) => String(a).replace(/\r\n?/g, '\n') === String(b).replace(/\r\n?/g, '\n');
   // La carpeta ya abierta en la web que contiene ese archivo, con lo que queda de la ruta y si el permiso sigue dado.
   async function fsKnown(fileUrl) {
-    const key = fsKey(fileUrl); let best = null;
+    const key = fsKey(fileUrl); const all = [];
     if (!key) return null;
     for (const r of await LMD.store.rootsAll()) {
       if (r.kind !== 'dir' || !r.handle || r.ghost || !r.fs) continue;
       const k = fsKey(r.fs);
-      if (k && k.endsWith('/') && key.startsWith(k) && (!best || k.length > best.k.length)) best = { rec: r, k };
+      if (k && k.endsWith('/') && key.startsWith(k)) all.push({ rec: r, k });
     }
-    if (!best) return null;
+    if (!all.length) return null;
+    // Con más de una (una carpeta y otra de más arriba), la que ya deja guardar; si ninguna, la más cercana al archivo.
+    all.sort((a, b) => b.k.length - a.k.length);
+    let best = null;
+    for (const c of all) { if (await canWrite(c.rec.handle, false)) { best = c; break; } }
+    const granted = !!best; if (!best) best = all[0];
     const rest = decodeURIComponent(new URL(fileUrl).pathname).slice(best.k.length).split('/').filter(Boolean);
-    let granted = false;
-    try { granted = (await best.rec.handle.queryPermission({ mode: 'readwrite' })) === 'granted'; } catch (e) { /* permiso vencido */ }
     return { rec: best.rec, rest, granted };
+  }
+  // Las carpetas abiertas con "Abrir carpeta" que podrían contener ese archivo: el navegador no dice su ruta, así que
+  // lo único que se sabe es que su nombre figura en la ruta del enlace. El nombre solo no alcanza para tratarlas como
+  // la carpeta del enlace: eso lo comprueba fsLearn. at: los lugares de la ruta donde calza el nombre, de abajo arriba.
+  const fsParts = (fileUrl) => { try { return decodeURIComponent(new URL(fileUrl).pathname).split('/').filter(Boolean); } catch (e) { return []; } };
+  async function fsMaybe(fileUrl) {
+    const parts = fsParts(fileUrl); const low = (t) => String(t).toLowerCase(); const out = [];
+    if (parts.length < 2) return out;
+    for (const r of await LMD.store.rootsAll()) {
+      if (r.kind !== 'dir' || !r.handle || r.ghost || r.fs || !r.name) continue;
+      const at = [];
+      for (let i = parts.length - 2; i >= 0; i--) if (low(parts[i]) === low(r.name)) at.push(i);
+      if (at.length) out.push({ rec: r, at });
+    }
+    return out.sort((a, b) => b.at[0] - a.at[0]);
+  }
+  // Se comprueba y recién ahí se anota la ruta (rec.fs): en la carpeta, por el mismo camino, está ese archivo, con el
+  // mismo texto que leyó la extensión. Solo en carpetas que ya se pueden leer: acá no se pide ningún permiso. Un
+  // archivo vacío no prueba nada. Devuelve true si alguna carpeta quedó reconocida.
+  async function fsLearn(fileUrl, text) {
+    if (!String(text || '').trim()) return false;
+    const parts = fsParts(fileUrl); let learned = false;
+    for (const c of await fsMaybe(fileUrl)) {
+      try { if ((await c.rec.handle.queryPermission({ mode: 'read' })) !== 'granted') continue; } catch (e) { continue; }
+      for (const i of c.at) {
+        let same = false;
+        try { same = sameText(await (await (await walk(c.rec.handle, parts.slice(i + 1))).getFile()).text(), text); } catch (e) { /* ahí no está */ }
+        if (!same) continue;
+        c.rec.fs = fsFile(FS + parts.slice(0, i + 1).map(encodeURIComponent).join('/') + '/');
+        await handlesPut(c.rec);
+        if (roots[c.rec.id] && roots[c.rec.id].root) roots[c.rec.id].fs = c.rec.fs;
+        learned = true; break;
+      }
+    }
+    return learned;
+  }
+  // Lo que un enlace puede usar para abrir el archivo real en vez de una copia (install.js): la carpeta que lo
+  // contiene (sure, su ruta ya está anotada) o la que podría contenerlo, y si ya deja guardar.
+  async function fsNear(fileUrl) {
+    const k = await fsKnown(fileUrl);
+    if (k) return { rec: k.rec, name: k.rec.name, granted: k.granted, sure: true };
+    const maybe = await fsMaybe(fileUrl); let pick = null;
+    for (const c of maybe) { if (await canWrite(c.rec.handle, false)) { pick = c; break; } }
+    const c = pick || maybe[0];
+    return c ? { rec: c.rec, name: c.rec.name, granted: !!pick, sure: false } : null;
+  }
+  // El clic de "Abrir carpeta para editar": el permiso se pide en ese mismo turno (el navegador exige el gesto). Una
+  // carpeta sin ruta anotada se comprueba con el texto que lee la extensión, que queda a mano para no leerlo dos
+  // veces. Devuelve true si el enlace ya se puede abrir como archivo real; si no, sigue la copia de siempre.
+  async function fsClaim(fileUrl, near) {
+    let asked = null;
+    if (!near.granted) { try { asked = near.rec.handle.requestPermission({ mode: 'readwrite' }); } catch (e) { /* sin gesto, o permiso vencido */ } }
+    try { await asked; } catch (e) { /* dijo que no */ }
+    if (!near.sure) {
+      const r = await LMD.bridge.readFile(fileUrl);
+      if (!(r && r.ok && r.opened && typeof r.text === 'string')) return false;
+      LMD.bridge.keep(fileUrl, r.text);
+      await fsLearn(fileUrl, r.text);
+    }
+    const k = await fsKnown(fileUrl);
+    return !!(k && k.granted);
   }
   // El cartel de la copia, arriba de la nota: dice que es una copia y ofrece pasar al archivo real.
   let fsSaid = '';
@@ -345,7 +502,6 @@
     else if (window.showDirectoryPicker) bar.appendChild(el('button', { type: 'button', class: 'lmd-btn', 'data-fs': 'grant', text: T('Editar el archivo del disco') }));
   }
   const fsSay = (text) => { fsSaid = text; return paintCopy(); };
-  const sameText = (a, b) => String(a).replace(/\r\n?/g, '\n') === String(b).replace(/\r\n?/g, '\n');
   // ---------- Permiso para guardar en una carpeta o un archivo del disco ----------
   // Abrir (con el selector, arrastrando o desde los recientes) pide solo lectura: no aparece ningún cuadro del
   // navegador. El permiso de escritura se pide recién cuando hace falta (editar, guardar, crear, renombrar, mover,
@@ -465,6 +621,8 @@
     // Ajustes > API y automatizaciones y el alta guiada: se piden al abrir esa pestaña o al elegir "Automatizar…".
     automate: { js: ['src/automate.js'] },
     publish: { js: ['src/publish.js'] },
+    // "Usar esta plantilla": se pide al abrirla desde una carpeta compartida como plantilla.
+    fork: { js: ['src/fork.js'] },
     // La hoja de atajos de teclado: se pide al abrirla.
     shortcuts: { js: ['src/shortcuts.js'] },
     // El visor de PDF, EPUB, imágenes, audio y video: se pide al abrir el primero.
@@ -477,7 +635,7 @@
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
   ['present', 'daily', 'docx', 'linkmap', 'explore', 'jsonyaml', 'import', 'agents', 'localtools'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
   LAZY_HAVE.assistant = () => !!(LMD.ai && LMD.assistant);
-  LAZY_HAVE.shortcuts = () => !!LMD.shortcuts; LAZY_HAVE.folderexport = () => !!LMD.folderexport; LAZY_HAVE.viewer = () => !!LMD.viewer; LAZY_HAVE.codeview = () => !!LMD.codeview;
+  LAZY_HAVE.fork = () => !!LMD.fork; LAZY_HAVE.shortcuts = () => !!LMD.shortcuts; LAZY_HAVE.folderexport = () => !!LMD.folderexport; LAZY_HAVE.viewer = () => !!LMD.viewer; LAZY_HAVE.codeview = () => !!LMD.codeview;
   async function appLazy(what) {
     const spec = LAZY_APP[what];
     try {
@@ -888,6 +1046,8 @@
     });
   }
 
+  // El ancho útil de un bloque, sin su relleno: a ese ancho se dibuja un gráfico.
+  const inner = (box) => { const cs = getComputedStyle(box); return box.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0); };
   let mermaidSeq = 0;
   async function renderMermaid(article, light, quiet) {
     const nodes = Array.from(article.querySelectorAll('pre.lmd-mermaid'));
@@ -895,11 +1055,11 @@
     if (!(await ensure('mermaid')) || !window.mermaid) return;
     await tools();
     // Para un sitio publicado el diagrama sale siempre en claro; en la app, con los colores del tema.
-    mermaid.initialize(Object.assign({ startOnLoad: false, securityLevel: 'strict', flowchart: { curve: settings.diagramShape === 'square' ? 'linear' : 'basis' } }, light ? { theme: 'default' } : LMD.theme.mermaid(settings)));
+    mermaid.initialize(Object.assign({ startOnLoad: false, securityLevel: 'strict', flowchart: { curve: settings.diagramShape === 'square' ? 'linear' : 'basis' } }, LMD.theme.mermaid(settings, inner(article), light)));
     for (const n of nodes) {
       const code = n.textContent;
       try {
-        const out = await mermaid.render('lmd-mermaid-' + (++mermaidSeq), code);
+        const out = await LMD.diagram.render('lmd-mermaid-' + (++mermaidSeq), code);
         const box = el('div', { class: 'lmd-diagram' });
         box.innerHTML = out.svg;
         box.dataset.code = code; box.dataset.kind = 'mermaid';
@@ -1299,7 +1459,8 @@
       '<button type="button" data-top="col+">+ ' + T('Columna') + '</button>' +
       '<button type="button" data-top="row-">− ' + T('Fila') + '</button>' +
       '<button type="button" data-top="col-">− ' + T('Columna') + '</button>' +
-      '<button type="button" data-top="total" title="' + T('Agregar una fila que suma cada columna') + '">Σ ' + T('Totales') + '</button>');
+      '<button type="button" data-top="total" title="' + T('Agregar una fila que suma cada columna') + '">Σ ' + T('Totales') + '</button>' +
+      '<button type="button" data-top="chart" title="' + T('Dibujar un gráfico con los números de esta tabla') + '"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 14h12M4 14V8M8 14V3M12 14v-4"/></svg>' + T('Graficar') + '</button>');
 
     // En pantalla chica la barra lateral se abre encima del contenido; esto oscurece lo que queda detrás.
     ui.scrim = el('div', { class: 'lmd-scrim' });
@@ -1475,6 +1636,9 @@
       // La hoja de atajos: "?" fuera de un campo de texto, o Ctrl+/ en cualquier lado. Por la letra y no por la tecla:
       // en un teclado en español la barra va con Shift, y su tecla sola con Ctrl es el zoom del navegador.
       const t = e.target; const typing = !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+      // Sobre una plantilla, ponerse a escribir no edita el original: se ofrece ahí mismo llevarse una copia.
+      const inNote = !t || t === document.body || t === document.documentElement || (t.nodeType === 1 && ui.article.contains(t));
+      if (!typing && inNote && e.key.length === 1 && e.key !== ' ' && e.key !== '?' && !e.ctrlKey && !e.metaKey && !e.altKey && ui.panel.hidden && !document.querySelector('.lmd-ask, .lmd-menu, .lmd-dgm, .lmd-pres') && useTemplate('edit')) { e.preventDefault(); return; }
       if (!e.altKey && ((e.key === '?' && !e.ctrlKey && !e.metaKey && !typing) || (e.key === '/' && LMD.mod(e))) && !document.querySelector('.lmd-ask, .lmd-dgm, .lmd-pres')) { e.preventDefault(); openKeys(); }
     });
 
@@ -1742,6 +1906,7 @@
     else if (act === 'copy-link') { copyText(inGuide() ? guideLink() : location.href.split('#')[0], source); flash(T('Enlace copiado')); }
     else if (act === 'guide') { if (APP) { closePanel(); go(GUIDE_HOME); } else bg({ type: 'openApp', query: '?f=' + encodeURIComponent(GUIDE_HOME) }); }
     else if (act === 'guide-copy') guideCopy();
+    else if (act === 'tpl-use') useTemplate('');
     else if (act === 'copy-flink') { copyText(LMD.fileLink(fileHere()), source); flash(T('Enlace copiado')); }
     else if (act === 'copy-path') { copyText(diskPath(), source); flash(T('Ruta copiada')); }
     else if (act === 'copy-furl') { copyText(diskHref(), source); flash(T('Dirección copiada')); }
@@ -2202,7 +2367,14 @@
   }
 
   let checking = false;
-  async function checkForChanges(manual) {
+  // La relectura en curso, para quien tenga que esperar a que termine antes de avisar algo (los comentarios).
+  let checkRun = Promise.resolve();
+  function checkForChanges(manual) {
+    const was = checking; const p = checkOnce(manual);
+    if (!was && checking) checkRun = p.then(() => {}, () => {});
+    return p;
+  }
+  async function checkOnce(manual) {
     if (checking || noDoc || saving) return;
     // Una nota que todavía no tiene archivo (vive en la sesión) no tiene nada afuera que releer. Su "archivo" es
     // lo que hay en memoria: compararlo con lo guardado (nada, en una nota nueva) daba un cambio en el disco falso.
@@ -2752,7 +2924,7 @@
   // El lector de un archivo del disco también muestra la nube (CLOUDY): le habla al servidor por la extensión.
   const CLOUDY = APP || isFile;
   const teamUrl = () => { const t = CLOUDY ? LMD.cloud.teamNow() : null; return t ? VBASE + 'cloud/~' + t.space + '/' : ''; };
-  const sectionOf = (url) => { if (!APP && !url.startsWith(VBASE)) return isFile ? 'disk' : ''; const r = rootOf(url); if (!r) return ''; if (r.kind === 'cloud') return teamUrl() && url.startsWith(teamUrl()) ? 'team' : 'cloud'; return r.kind === 'local' ? 'local' : r.kind === 'fs' ? 'fs' : r.kind === 'guide' ? 'guide' : 'disk'; };
+  const sectionOf = (url) => { if (!APP && !url.startsWith(VBASE)) return isFile ? 'disk' : ''; const r = rootOf(url); if (!r) return ''; if (r.kind === 'cloud') return teamUrl() && url.startsWith(teamUrl()) ? 'team' : 'cloud'; return r.kind === 'local' ? 'local' : r.kind === 'fs' ? 'fs' : r.kind === 'guide' ? 'guide' : r.kind === 'pub' ? 'pub' : 'disk'; };
   // Las notas que nacen con la fecha por nombre se listan por su primer renglón.
   const STAMP_RE = /^(nota|note)-\d{8}-\d{4}(-\d+)?\.md$/i;
 
@@ -2857,6 +3029,9 @@
       await LMD.cloud.ready();
       const others = (await LMD.store.rootsAll()).filter((r) => !diskRoot || r.id !== diskRoot.id).slice(0, 8);
       if (turn !== treeTurn) return;
+      // Una carpeta compartida por enlace (o una plantilla) que se está leyendo: sus notas, arriba de todo.
+      const pk = inPub();
+      if (pk) add('pub', { name: pk.info.name, title: T(pk.info.template ? 'Plantilla · solo lectura' : 'Carpeta compartida · solo lectura'), icon: ICON.folder, url: VBASE + pubPath(pk.ref, '') + '/' });
       if (diskRoot) {
         const top = VBASE + diskRoot.id + '/';
         if (!treeRoot || !treeRoot.startsWith(top)) treeRoot = top;
@@ -2946,6 +3121,9 @@
     if (key === 'fs' || ui.treeBox.querySelector('.lmd-xroot[data-root=fs]')) fresh = true;
     // La raíz de la guía también: aparece al abrir una de sus notas y se va al pasar a otra cosa, si ya hay algo propio.
     if ((key === 'guide') !== !!ui.treeBox.querySelector('.lmd-xroot[data-root=guide]')) fresh = true;
+    // Y la de una carpeta compartida por enlace: es la de la nota abierta, y se va con ella.
+    const pubSec = ui.treeBox.querySelector('.lmd-xroot[data-root=pub] .lmd-tree');
+    if ((key === 'pub') !== !!pubSec || (pubSec && !HERE.startsWith(pubSec.dataset.url))) fresh = true;
     if (fresh || !markActive()) loadTree();
   }
   // Sube el árbol del disco una carpeta, y lo recuerda para la carpeta de la nota abierta.
@@ -3986,7 +4164,7 @@
   // la carpeta, no se pregunta nada: la nota queda leyendo. Con el clic de la persona, primero va el aviso.
   async function setEditMode(on, auto) {
     if (on && isBin()) { flash(T('Este archivo solo se lee acá.'), 'warn'); return; }
-    if (on && readOnly) { flash(T('Esta nota es de solo lectura'), 'warn'); return; }
+    if (on && readOnly) { if (!useTemplate('edit')) flash(T('Esta nota es de solo lectura'), 'warn'); return; }
     if (on && !editMode && !(await allowWrite('', !!auto))) return;
     // Salir de edición guarda lo pendiente. Si se cancela el guardado, los cambios quedan sin guardar.
     if (!on && editMode) {
@@ -4094,6 +4272,7 @@
     const cell = document.activeElement && document.activeElement.closest && document.activeElement.closest('td.lmd-cell, th.lmd-cell');
     if (!cell) return;
     const table = cell.closest('table'); const ctx = tableContext(table);
+    if (op === 'chart') { chartTable(cell, table); return; }
     const ri = +cell.dataset.r; const ci = +cell.dataset.c;
     const grid = Array.from(table.rows).map((tr) => Array.from(tr.cells).map(cellMd));
     const sep = splitRow(srcLines[ctx.s + 1]);
@@ -4117,9 +4296,33 @@
     render();
   }
 
+  // "Graficar": lo que se estaba escribiendo en la celda pasa primero a la nota, y el cuadro (diagram.js) lee la tabla
+  // ya redibujada. El gráfico va en un bloque mermaid debajo de la tabla, que queda como está.
+  function chartTable(cell, table) {
+    const line = rangeOf(table)[0];
+    const find = () => Array.from(ui.article.querySelectorAll('table[data-l]')).find((t) => rangeOf(t)[0] === line);
+    cell.blur();
+    tools().then((ok) => {
+      if (!ok) return;
+      if (needsRender) render();
+      const now = find(); if (!now) return;
+      LMD.diagram.chart(now, (block) => {
+        const t = find(); if (!t) return;
+        const ctx = tableContext(t); let at = ctx.e;
+        while (at > ctx.s && !(srcLines[at - 1] || '').replace(/^\s*(?:>\s?)*/, '').trim()) at--;
+        const out = [''].concat(block); if ((srcLines[at] || '').trim()) out.push('');
+        replaceLines(at, at, out.map((l) => (ctx.indent + l).replace(/\s+$/, '')), null);
+        render();
+        const made = ui.article.querySelector('[data-l^="' + (at + 1 - fmOffset) + '-"]');
+        if (made) made.scrollIntoView({ block: 'nearest' });
+        flash(T('Gráfico agregado debajo de la tabla'));
+      });
+    });
+  }
+
   function toggleTask(box) {
     // Una nota que solo se lee no cambia: la casilla vuelve a como estaba.
-    if (readOnly) { box.checked = !box.checked; flash(T('Esta nota es de solo lectura'), 'warn'); return; }
+    if (readOnly) { box.checked = !box.checked; if (!useTemplate('edit')) flash(T('Esta nota es de solo lectura'), 'warn'); return; }
     const li = box.closest('li'); if (!li) return;
     const r = rangeOf(li, li.hasAttribute('data-p') ? 'data-p' : 'data-l') || rangeOf(li);
     if (!r) return;
@@ -4253,7 +4456,8 @@
   // Doble clic leyendo: pasa a edición con el cursor donde se hizo. Lo que ya responde al clic queda como está.
   const NO_DBL = 'a, img, button, input, .lmd-code, .lmd-diagram, pre.lmd-mermaid, pre.lmd-graphviz, .lmd-board, .lmd-math, .lmd-toc, .lmd-front';
   async function editAt(e) {
-    if (readOnly || docKind() !== 'md') return;
+    if (readOnly) { useTemplate('edit'); return; } // el original de una plantilla no se edita: se ofrece llevarse una copia
+    if (docKind() !== 'md') return;
     const cell = e.target.closest('td, th'); const table = cell && cell.closest('table[data-l]');
     const block = e.target.closest('[data-l]');
     const host = table ? cell : block;
@@ -4410,6 +4614,11 @@
     save: (interactive) => save(interactive),
     setEditMode: (on) => setEditMode(on),
     pathOf: (url) => vParts(url).join('/'),
+    // El nombre entero de una nota del navegador (con su carpeta, si está en una) y la dirección que la abre.
+    localName: (url) => vParts(url).join('/'),
+    localUrl: (name) => VBASE + 'local/' + String(name).split('/').map(encodeURIComponent).join('/'),
+    // La carpeta compartida por enlace que se está leyendo: cómo se llegó (ref), qué trae (info) y con qué nota abre (fork.js).
+    pub: () => { const k = inPub(); return k ? { ref: k.ref, info: k.info, first: pubFirst(k.info) } : null; },
     urlOf: (path) => VBASE + 'cloud/' + path.split('/').map(encodeURIComponent).join('/'),
     rootOf,
     // Abrir otra nota (por su dirección virtual) o quedarse sin ninguna, sin recargar la página.
@@ -4595,7 +4804,7 @@
     try {
       const target = await window.showSaveFilePicker({ id: 'lmd-nuevo', suggestedName: DOC_NAME, types: pickTypes(DOC_NAME) });
       const w = await target.createWritable(); await w.write(raw); await w.close();
-      await LMD.store.noteDelete(DOC_NAME);
+      await LMD.store.noteDelete(vParts(HERE).join('/'));
       diskText = raw; dirty = false; updateSaveState();
       await LMD.home.adopt(homeCtx(), target);
       return true;
@@ -4812,6 +5021,18 @@
       if (!got) return fail(T(!LMD.cloud.signedIn() ? 'Entrá a tu cuenta para abrir las notas de la nube.' : why === 'offline' ? 'Sin conexión, y "{a}" no tiene copia en este navegador.' : 'No se encontró "{a}".', { a: name }));
       return { root: roots.cloud, raw: got.text, disk: got.base, rev: got.rev, opened: got, readOnly: LMD.cloud.roleOf(path) === 'view' };
     }
+    if (id === 't' || (id === 'pub' && vParts(url).length > 1)) {
+      // Una nota de una carpeta compartida por enlace, o de una plantilla abierta por su nombre. Sin la nota en la
+      // dirección, abre la primera.
+      await LMD.cloud.ready();
+      const parts = vParts(url); const ref = { by: id, key: parts[0] || '' }; const rel = parts.slice(1).join('/');
+      let k = null; let text = null;
+      try { k = await pubInfo(ref, !rel); } catch (e) { return pubFail(e, ref); }
+      if (!k.info) return fail(T('Ese enlace ya no existe.'));
+      if (!rel) { const first = pubFirst(k.info); return first ? { goto: pubPath(ref, first) } : pubFail({ code: 'template_gone' }, ref); }
+      try { text = await pubText(k, rel); } catch (e) { return e.code === 'not_found' ? fail(T('No se encontró "{a}".', { a: name })) : pubFail(e, ref); }
+      return { root: { id, kind: 'pub', name: k.info.name, title: name, text }, raw: text, disk: text, readOnly: true };
+    }
     if (id === 'pub') {
       // Enlace público de solo lectura; si tiene contraseña, se pide.
       await LMD.cloud.ready();
@@ -4826,6 +5047,8 @@
           validate: async (v) => { try { n = await LMD.cloud.publicNote(token, v); return ''; } catch (err) { if (err.code === 'bad_password') return T('Esa contraseña no coincide.'); stop = why(err); return ''; } } });
         if (typed == null || !n) return fail(stop);
       }
+      // El enlace es de una carpeta entera: se abre su primera nota.
+      if (n.kind === 'folder') { const ref = { by: 'pub', key: token }; const first = pubFirst(pubKeep(ref, n).info); return first ? { goto: pubPath(ref, first) } : fail(T('Ese enlace ya no existe.')); }
       return { root: { id, kind: 'pub', name: T('Compartido'), title: n.path.split('/').pop(), text: n.text }, raw: n.text, disk: n.text, readOnly: true };
     }
     if (id === 'guide') {
@@ -4838,10 +5061,15 @@
     }
     if (id === 'local') {
       // Nota guardada en el navegador.
-      let note = await LMD.store.noteGet(name);
+      // Su nombre es toda la ruta: una nota en una carpeta (la copia de una plantilla) lleva la carpeta adelante.
+      const full = vParts(url).join('/');
+      let note = await LMD.store.noteGet(full);
       // Con la extensión instalada, la nota puede estar llegando de su depósito.
-      if (!note) { await LMD.bridge.settle(); note = await LMD.store.noteGet(name); }
+      if (!note) { await LMD.bridge.settle(); note = await LMD.store.noteGet(full); }
       if (!note) return fail(T('No se encontró "{a}".', { a: name }));
+      // La dirección de siempre lleva una barra por carpeta: así los enlaces entre sus notas se resuelven solos.
+      const plain = 'local/' + full.split('/').map(encodeURIComponent).join('/');
+      if (full.includes('/') && f.split('#')[0] !== plain) return { goto: plain };
       return { root: roots.local, raw: note.text, disk: note.text };
     }
     if (id === 'fs') {
@@ -4863,6 +5091,9 @@
       if (file) { try { text = await fsRead(file); } catch (e) { why = e.why || 'failed'; } }
       // No falla en silencio: lo dice, y ofrece elegir el archivo (install.js sabe por qué no se pudo).
       if (text == null) { if (file) setTimeout(() => LMD.install.offer(file, homeCtx(), why), 0); return fail(T('No se pudo abrir "{a}".', { a: name })); }
+      // Una carpeta ya abierta acá, sin ruta anotada, resulta ser la de este archivo (mismo camino, mismo texto): desde
+      // ahora se la conoce. Si además deja guardar, se abre el archivo real y no hay copia.
+      if (await fsLearn(file, text)) { const k = await fsKnown(file); if (k && k.granted) { try { await walk(k.rec.handle, k.rest); return { goto: k.rec.id + '/' + k.rest.map(encodeURIComponent).join('/') }; } catch (e) { /* queda la copia */ } } }
       return { root: roots.fs, raw: text, disk: text };
     }
     if (id === 'bin') {
@@ -4957,7 +5188,7 @@
       if (doc && doc.fail != null) {
         // No se pudo abrir: con una nota a la vista se avisa y queda esa; si no, lo dice el estado vacío.
         if (!noDoc && !opt.pop) { if (doc.fail) flash(doc.fail, 'error'); return false; }
-        setDoc('', null, Object.assign({}, opt, { note: doc.fail, replace: !opt.pop }));
+        setDoc('', null, Object.assign({}, opt, { note: doc.lead || doc.fail, replace: !opt.pop }));
         return false;
       }
       setDoc(f, doc, opt);
@@ -4978,6 +5209,7 @@
     appRoot = doc ? doc.root : null; docNote = (doc && doc.note) || ''; docSize = (doc && doc.size) || 0;
     // Conteo anónimo (count.js, solo en la app web): la primera nota propia que se abre o se crea en este navegador. Va el nombre del evento y nada de la nota.
     if (doc && LMD.count && appRoot.kind !== 'pub' && appRoot.kind !== 'guide' && !LMD.cloud.guest() && !isBin()) LMD.count('note_created');
+    if (doc && appRoot.kind === 'pub' && pubOf(HERE) && pubOf(HERE).info.template) ensure('fork'); // el botón de la plantilla responde al primer toque
     if (doc) wantCloud = '';
     if (doc) roots[appRoot.id] = appRoot;
     raw = doc ? doc.raw : ''; diskText = doc ? doc.disk : ''; dirty = raw !== diskText;
@@ -5026,7 +5258,10 @@
           else if (ev.type === 'saved' && ev.by !== LMD.cloud.email()) { cloudPoll = 0; checkForChanges(false); }
           // Cambió el estado de una carpeta protegida (se abrió o se cerró para la IA, venció el plazo, otra pestaña).
           if (ev.type === 'vault') LMD.vault.changed();
-          if (ev.type === 'comments' && LMD.comments) { cloudPoll = 0; checkForChanges(false).then(() => { if (mine === docSeq) LMD.comments.onEvent(ev); }); }
+          // Primero entra el texto y después los comentarios, siempre en ese orden. Si ya había una relectura en curso
+          // (la del guardado de la IA, que llega justo antes) se la espera: pedir otra en ese momento no hace nada, y
+          // su "Documento actualizado" salía después y tapaba el aviso de que la IA resolvió un comentario.
+          if (ev.type === 'comments' && LMD.comments) { checkRun.then(() => { if (mine !== docSeq) return null; cloudPoll = 0; return checkForChanges(false); }).then(() => { if (mine === docSeq) LMD.comments.onEvent(ev); }, () => {}); }
           LMD.sync.paint();
         }, liveOn);
       }
@@ -5051,6 +5286,7 @@
     // Una nota de la guía tampoco: en su lugar, el pie ofrece guardar una copia.
     document.documentElement.classList.toggle('lmd-guide', inGuide());
     ui.main.querySelector('.lmd-guide-copy').hidden = !inGuide();
+    paintPub();
     document.documentElement.classList.toggle('lmd-nodoc', noDoc);
     // Un archivo que se ve en el visor o lleva un cartel: la barra no ofrece editarlo, copiarlo ni ver su código.
     document.documentElement.classList.toggle('lmd-bin', isBin());
@@ -5127,7 +5363,9 @@
     }
     // La app de Android la lanzaron para abrir un archivo: si no llega, el inicio lo dice (install.js).
     if (params.has('open')) LMD.install.expect(homeCtx);
-    const f = params.get('f');
+    // ?t=<nombre>: una plantilla por su nombre corto (la dirección sharpmd.app/t/<nombre>, que llega acá desde 404.html).
+    const tpl = params.has('t') ? 't/' + encodeURIComponent(String(params.get('t')).trim().toLowerCase().replace(/^\/+|\/+$/g, '') || '-') : '';
+    const f = params.get('f') || tpl;
     if (!f) { showEmpty(); loadTree(); return; }
     LMD.home.account(homeCtx()); // con una nota abierta el inicio no se dibuja: la cuenta del pie se pinta acá
     await go(f, { boot: true, edit: params.has('edit'), hash: location.hash });

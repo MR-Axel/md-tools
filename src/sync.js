@@ -114,7 +114,7 @@
       if (move) {
         try {
           const file = decodeURIComponent(here.split('/').pop());
-          if (kind === 'local') await LMD.store.noteDelete(file);
+          if (kind === 'local') await LMD.store.noteDelete(core.localName(here));
           else await (await core.dirHandle(new URL('.', here).href)).removeEntry(file);
         } catch (e) { left = true; }
       }
@@ -999,6 +999,8 @@
       (links ? '<h4>' + T('Con un enlace de solo lectura') + '</h4>' +
       '<div class="lmd-share-row"><input type="text" data-sh="pass" placeholder="' + T('contraseña (opcional)') + '"><button type="button" class="lmd-btn" data-sh="link">' + T('Crear enlace') + '</button></div>' : '') +
       '<ul data-sh="links"' + (links ? '' : ' hidden') + '></ul>' +
+      // La carpeta entera con un enlace, o como plantilla: tiene su propia ventana (shareFolder).
+      (links && folder ? '<button type="button" class="lmd-link lmd-share-more" data-sh="folderlink">' + T('Compartir toda la carpeta "{a}" con un enlace o como plantilla…', { a: esc(folder) }) + '</button>' : '') +
       (tm && !(people && links) ? '<p class="lmd-hint lmd-managed">' + T('Lo administra quien administra el equipo') + '</p>' : '') +
       '<p class="lmd-hint" data-sh="linknote" hidden>' + T('Copiá el enlace ahora: no se vuelve a mostrar.') + '</p>' +
       '<p class="lmd-img-err" role="alert" hidden></p>' +
@@ -1014,12 +1016,13 @@
         q('people').innerHTML = people.map((s) => '<li><span>' + esc(s.email) + ' · ' + T(s.role === 'edit' ? 'Puede editar' : 'Solo ver') + (s.kind === 'folder' ? ' · ' + esc(s.path) + '/' : '') + '</span><button type="button" data-rm="s' + s.id + '">' + T('Quitar') + '</button></li>').join('');
         const fresh = all.links.some((l) => l.path === path && made[l.id]);
         q('linknote').hidden = !fresh;
-        q('links').innerHTML = all.links.filter((l) => l.path === path).map((l) => '<li' + (made[l.id] ? ' class="lmd-share-new"' : '') + '>' + (made[l.id] ? '<input type="text" readonly aria-label="' + T('Enlace') + '" value="' + esc(made[l.id]) + '"><button type="button" class="lmd-link" data-sh="copy">' + T('Copiar') + '</button>' : '<span>' + T(l.protected ? 'Enlace con contraseña' : 'Enlace abierto') + '</span>') + '<button type="button" data-rm="l' + l.id + '">' + T('Quitar') + '</button></li>').join('');
+        q('links').innerHTML = all.links.filter((l) => l.path === path && l.kind !== 'folder').map((l) => '<li' + (made[l.id] ? ' class="lmd-share-new"' : '') + '>' + (made[l.id] ? '<input type="text" readonly aria-label="' + T('Enlace') + '" value="' + esc(made[l.id]) + '"><button type="button" class="lmd-link" data-sh="copy">' + T('Copiar') + '</button>' : '<span>' + T(l.protected ? 'Enlace con contraseña' : 'Enlace abierto') + '</span>') + '<button type="button" data-rm="l' + l.id + '">' + T('Quitar') + '</button></li>').join('');
       } catch (e) { fail(e); }
     };
     draw();
     box.addEventListener('click', async (e) => {
       if (e.target === box || e.target.closest('[data-sh=close]')) { box.remove(); return; }
+      if (e.target.closest('[data-sh=folderlink]')) { box.remove(); shareFolder(pre + folder); return; }
       err.hidden = true;
       try {
         const copy = e.target.closest('[data-sh=copy]');
@@ -1042,6 +1045,104 @@
           const newest = all.links.sort((a, b) => b.id - a.id)[0];
           if (newest) made[newest.id] = LMD.WEB_APP_URL + '?f=' + encodeURIComponent('pub/' + r.token);
           q('pass').value = ''; return draw();
+        }
+      } catch (ex) { fail(ex); }
+    });
+    box.addEventListener('focusin', (e) => { if (e.target.matches('input[readonly]')) e.target.select(); });
+  }
+
+  // ---------- Compartir una carpeta: un enlace de solo lectura, y plantilla ----------
+  // Quien tiene el enlace ve la carpeta entera, con sus subcarpetas, y no puede cambiarla. Marcada como plantilla,
+  // además se lleva una copia propia para editar (fork.js): lo que haga con ella no vuelve acá. "Pedir una cuenta"
+  // deja leerla a cualquiera y pide entrar para llevársela. La dirección corta (sharpmd.app/t/<nombre>) es para
+  // imprimirla: el nombre queda de la cuenta para siempre y se lo puede apuntar a otra carpeta. Acá se ve también
+  // cuántas copias se hicieron. Sale del menú de una carpeta de la nube y de la ventana de compartir una nota.
+  const foldersMade = {}; // id del enlace -> su dirección con el secreto, que el servidor muestra una sola vez
+  const tplHost = () => { try { return new URL(LMD.WEB_APP_URL).host + '/t/'; } catch (e) { return 'sharpmd.app/t/'; } };
+  const canLinkFolder = (full) => !!core && !!account && !!account.share && !!full && LMD.cloud.signedIn() && !LMD.cloud.guest()
+    && (LMD.cloud.isTeam(full + '/') ? LMD.cloud.teamCan('links') : !LMD.cloud.split(full + '/x').owner);
+  const NAME_OK = /^[a-z0-9](?:[a-z0-9]|-(?!-)){1,38}[a-z0-9]$/;
+  async function shareFolder(full) {
+    const tm = LMD.cloud.isTeam(full + '/'); const pre = tm ? full.slice(0, full.indexOf('/') + 1) : '';
+    const path = full.slice(pre.length); const title = T('Compartir la carpeta "{a}"', { a: path.split('/').pop() });
+    // Ni la carpeta, ni una de más arriba, ni una de adentro pueden estar protegidas con contraseña.
+    const vaulted = !!(LMD.vault.of(full + '/x') || LMD.vault.pinned(full));
+    // La dirección corta es del sitio de SharpMD: con un servidor propio no hay quién la resuelva.
+    const named = !LMD.cloud.own();
+    const NO_VAULT = 'Una carpeta protegida con contraseña no se puede compartir con un enlace ni usar como plantilla.';
+    const box = el('div', { class: 'lmd-ask' });
+    box.innerHTML = '<div class="lmd-ask-card lmd-share lmd-share-folder" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><h3>' + esc(title) + '</h3>' +
+      (vaulted ? '<p class="lmd-hint lmd-share-vault">' + T(NO_VAULT) + '</p>'
+        : '<p class="lmd-hint">' + T('Quien tenga el enlace ve la carpeta con sus subcarpetas y no puede cambiarla.') + '</p>' +
+          '<label class="lmd-check"><input type="checkbox" data-sf="tpl" disabled><span>' + T('Es una plantilla') + '<small>' + T('Quien la abre se lleva una copia para editar. El original no cambia.') + '</small></span></label>' +
+          '<label class="lmd-check lmd-share-sub"><input type="checkbox" data-sf="login" disabled><span>' + T('Pedir una cuenta para usarla') + '</span></label>' +
+          (named ? '<div class="lmd-share-name lmd-share-sub"><label for="lmd-sf-name">' + T('Dirección corta (opcional)') + '</label>' +
+            '<div class="lmd-share-row"><b>' + esc(tplHost()) + '</b><input type="text" id="lmd-sf-name" data-sf="name" disabled maxlength="40" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="' + T('mi-plantilla') + '"></div>' +
+            '<small>' + T('Minúsculas, números y guiones. Si la vas a imprimir, elegila con cuidado: después no conviene cambiarla.') + '</small></div>' : '') +
+          '<div class="lmd-share-row"><button type="button" class="lmd-btn lmd-btn-fill" data-sf="save" disabled>' + T('Crear enlace') + '</button></div>' +
+          '<ul data-sf="links"></ul>' +
+          '<p class="lmd-hint" data-sf="once" hidden>' + T('Copiá el enlace ahora: no se vuelve a mostrar.') + '</p>') +
+      '<p class="lmd-img-err" role="alert" hidden></p>' +
+      '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-sf="close" data-esc>' + T('Cerrar') + '</button></div></div>';
+    document.body.appendChild(box);
+    const q = (n) => box.querySelector('[data-sf=' + n + ']'); const err = box.querySelector('.lmd-img-err');
+    const fail = (e) => { err.hidden = false; err.textContent = T({ offline: 'No hay conexión con el servidor.', share_needs_plan: 'Compartir es parte del plan pago.', team_policy: 'Lo administra quien administra el equipo', read_only: 'En este equipo solo podés leer.',
+      too_many: 'Llegaste al tope de lo que se puede compartir. Quitá algo para sumar más.', not_found: 'Esta carpeta ya no tiene notas en la nube.', vault: NO_VAULT,
+      bad_name: 'Ese nombre no sirve. Van de 3 a 40 minúsculas, números y guiones, sin guion al principio ni al final.', name_reserved: 'Ese nombre está reservado. Elegí otro.', name_taken: 'Ese nombre ya lo usa otra cuenta. Elegí otro.',
+      too_many_names: 'Llegaste al tope de direcciones cortas de la cuenta.' }[e && e.code] || 'No se pudo completar. Probá de nuevo.'); };
+    box.addEventListener('click', (e) => { if (e.target === box || e.target.closest('[data-sf=close]')) box.remove(); });
+    if (vaulted) return;
+    let cur = null; // el enlace que ya tiene la carpeta: el formulario cambia sus opciones
+    const sync = () => { const on = q('tpl').checked; q('login').disabled = !on; if (!on) q('login').checked = false; if (q('name')) q('name').disabled = !on; box.querySelectorAll('.lmd-share-sub').forEach((n) => n.classList.toggle('lmd-off', !on)); };
+    const urlOf = (l) => (l.template && l.name && named ? 'https://' + tplHost() + l.name : foldersMade[l.id] || '');
+    const copies = (n) => (n === 1 ? T('1 copia hecha') : T('{n} copias hechas', { n }));
+    const draw = async (keep) => {
+      try {
+        const mine = (await LMD.cloud.shares(full)).links.filter((l) => l.kind === 'folder' && l.path === path).sort((a, b) => b.id - a.id);
+        cur = mine[0] || null;
+        if (!keep) { q('tpl').checked = !!(cur && cur.template); q('login').checked = !!(cur && cur.login); if (q('name')) q('name').value = (cur && cur.name) || ''; }
+        // Hasta saber qué enlace tiene la carpeta, el formulario espera: lo que se elija no se pisa al llegar la respuesta.
+        q('save').textContent = T(cur ? 'Guardar' : 'Crear enlace'); q('save').disabled = false; q('tpl').disabled = false;
+        q('once').hidden = !mine.some((l) => foldersMade[l.id] && !(l.template && l.name && named));
+        q('links').innerHTML = mine.map((l) => { const u = urlOf(l); return '<li class="lmd-share-new" data-link="' + l.id + '">' + (u ? '<input type="text" readonly aria-label="' + T('Enlace') + '" value="' + esc(u) + '"><button type="button" class="lmd-link" data-sf="copy">' + T('Copiar') + '</button>' : '<span>' + T('Enlace de la carpeta') + '</span>') +
+          '<small class="lmd-share-meta">' + T(l.template ? 'Plantilla' : 'Solo lectura') + (l.template ? ' · ' + copies(l.copies || 0) : '') + '</small><button type="button" data-rm="' + l.id + '">' + T('Quitar') + '</button></li>'; }).join('');
+        sync();
+      } catch (e) { fail(e); }
+    };
+    await draw();
+    box.addEventListener('change', (e) => { if (e.target.closest('[data-sf=tpl]')) sync(); });
+    // El nombre se acomoda mientras se escribe: sin mayúsculas ni acentos, y con guiones en lugar de espacios.
+    if (q('name')) q('name').addEventListener('input', () => { const i = q('name'); const v = i.value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/-{2,}/g, '-'); if (v !== i.value) i.value = v; err.hidden = true; });
+    box.addEventListener('click', async (e) => {
+      if (!box.isConnected) return;
+      err.hidden = true;
+      try {
+        const copy = e.target.closest('[data-sf=copy]');
+        if (copy) {
+          const input = copy.parentNode.querySelector('input'); input.select();
+          try { await navigator.clipboard.writeText(input.value); } catch (ex) { document.execCommand('copy'); }
+          copy.textContent = T('Copiado'); setTimeout(() => { if (copy.isConnected) copy.textContent = T('Copiar'); }, 1500);
+          return;
+        }
+        const rm = e.target.closest('[data-rm]');
+        if (rm) {
+          const l = (await LMD.cloud.shares(full)).links.find((x) => String(x.id) === rm.dataset.rm);
+          // Una dirección corta puede estar impresa: antes de quitarla se dice qué pasa con ella.
+          if (l && l.name && !(await LMD.dialog.confirm({ title: T('Quitar el enlace'), text: T('La dirección {a} va a decir que la plantilla fue retirada. El nombre sigue siendo tuyo y se lo podés poner a otra carpeta.', { a: tplHost() + l.name }), ok: T('Quitar'), danger: true }))) return;
+          await LMD.cloud.unlink(rm.dataset.rm, full + '/'); return draw();
+        }
+        if (e.target.closest('[data-sf=save]')) {
+          const tpl = q('tpl').checked; const name = tpl && q('name') ? q('name').value.trim() : '';
+          if (name && !NAME_OK.test(name)) return fail({ code: 'bad_name' });
+          if (cur && cur.name && cur.name !== name && !(await LMD.dialog.confirm({ title: T('Cambiar la dirección corta'), text: T('La dirección {a} deja de abrir esta plantilla. Si está impresa, conviene no cambiarla.', { a: tplHost() + cur.name }), ok: T('Cambiar'), danger: true }))) return;
+          const opt = Object.assign({ template: tpl, login: tpl && q('login').checked }, q('name') ? { name } : {});
+          q('save').disabled = true;
+          try {
+            if (cur) await LMD.cloud.linkSet(cur.id, full + '/', opt);
+            else { const r = await LMD.cloud.linkFolder(full, opt); foldersMade[r.id] = LMD.WEB_APP_URL + '?f=' + encodeURIComponent('pub/' + r.token); }
+          } finally { q('save').disabled = false; }
+          await draw();
+          core.flash(T('Guardado'));
         }
       } catch (ex) { fail(ex); }
     });
@@ -1132,5 +1233,5 @@
   const reload = async () => { account = await LMD.cloud.account(); asked = true; adopt(account, true); paint(); return account; };
 
   LMD.sync = { init, paint, click, panes, reload, dialog, feedback, report, reportRef, awaitPaid, openCloud, quota, room: roomNotice, full: fullWhy, PAY, login, me, foldersOf, signOut, dropSession, aiBrief, askName: () => { wantName = true; }, account: () => account, why: (text) => { planWhy = text || ''; },
-    repaintAi: () => { if (aiRedraw) aiRedraw(); if (secRedraw) secRedraw(); }, security, canPublish, publish, siteState, canLink, publicLink, linkWhy };
+    repaintAi: () => { if (aiRedraw) aiRedraw(); if (secRedraw) secRedraw(); }, security, canPublish, publish, siteState, canLink, publicLink, linkWhy, canLinkFolder, shareFolder };
 })();

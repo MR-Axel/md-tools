@@ -383,7 +383,9 @@
     const safeCss = (t) => t.replace(/<\/style/gi, '<\\/style');
     all('base').forEach((n) => n.remove());
     all('meta[http-equiv]').forEach((n) => { if (/^\s*refresh\s*$/i.test(n.getAttribute('http-equiv'))) n.remove(); });
-    // Una hoja de estilos de la carpeta pasa a ser un <style>. Cualquier otro <link> (precargas, íconos, otro servidor) se va.
+    // Una hoja de estilos de la carpeta pasa a ser un <style>. Cualquier otro <link> se va, con o sin scripts: los
+    // preconnect, dns-prefetch, prefetch, preload y modulepreload abren conexiones sin pedir nada, y un ícono o una
+    // hoja de otro servidor no cargarían igual.
     all('link').forEach((n) => {
       const u = /(^|\s)stylesheet(\s|$)/i.test(n.getAttribute('rel') || '') ? rel(n.getAttribute('href')) : '';
       if (!u) { n.remove(); return; }
@@ -463,7 +465,7 @@
       say(T(has ? 'Vista estática: los scripts no corren y nada se pide a internet.' : 'Vista estática: nada se pide a internet.'));
       if (has && !OWN) {
         ui.note.appendChild(el('button', { type: 'button', class: 'lmd-cv-btn', 'data-cv': 'run', text: T('Ejecutar los scripts de esta página') }));
-        say(T('Corren aislados: no leen tus notas ni tu cuenta y no cargan nada de internet. Una página ajena igual podría avisar afuera que la abriste. Vale para este archivo, hasta cerrar la pestaña.'), 'lmd-cv-fine');
+        say(T('Corren aislados de tus notas y tu cuenta, pero una página ajena podría avisar afuera que la abriste.'), 'lmd-cv-fine');
       } else if (has) say(T('En la extensión no se pueden correr. Para probarlos, abrí el archivo en sharpmd.app.'), 'lmd-cv-fine');
     }
     if (!folder) say(T('Para ver sus imágenes y estilos, abrí la carpeta del archivo.'), 'lmd-cv-fine');

@@ -14,8 +14,14 @@
 // Si esta página no está aislada (abierta suelta en una pestaña, o en un marco sin sandbox, donde tendría el origen de
 // la app) no hace nada: solo escribe cuando su origen es opaco, y solo lo que manda la página que la contiene, que
 // tiene que ser de este mismo sitio.
+// WebRTC no lo frena ninguna política de este navegador y manda paquetes a donde el script diga: antes de escribir la
+// página se saca de esta ventana. No es un cierre completo: un marco que el script cree con su propio script adentro
+// tiene otra ventana, con la suya (tests/htmlview.mjs lo mide).
 (function () {
   if (self.origin !== 'null' || window.parent === window) return;
+  ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCSessionDescription', 'RTCIceCandidate', 'RTCDataChannel'].forEach(function (k) {
+    try { Object.defineProperty(window, k, { value: undefined, writable: false, configurable: false }); } catch (e) { /* queda como estaba */ }
+  });
   function onMessage(e) {
     if (e.source !== window.parent || e.origin !== location.origin || !e.data || typeof e.data.lmdRun !== 'string') return;
     removeEventListener('message', onMessage);

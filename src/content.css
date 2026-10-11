@@ -455,6 +455,14 @@ pre.lmd-mermaid-error { border-color: #dc2626; }
 .lmd-fresh button[data-fresh=go]:hover { background: var(--accent-fill); color: var(--accent-fg); }
 .lmd-fresh .lmd-update-x { width: 28px; height: 28px; }
 .lmd-fresh button:disabled { opacity: .6; cursor: default; }
+/* "Ver qué cambió": un enlace al lado del texto, no un segundo botón. El aviso no crece: en una pantalla angosta el texto parte en dos renglones y lo demás queda en su lugar. */
+.lmd-orphan.lmd-fresh { flex-wrap: nowrap; width: max-content; max-width: min(720px, calc(100vw - 32px)); }
+.lmd-orphan.lmd-fresh > span { min-width: 0; }
+.lmd-fresh button.lmd-fresh-what { flex: none; height: auto; margin: -10px 0; padding: 10px 2px; border-radius: 4px; background: transparent; color: var(--fg-muted); font-size: 13px; font-weight: 400; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.lmd-fresh button.lmd-fresh-what:hover { background: transparent; color: var(--fg); }
+@media (max-width: 480px) { .lmd-orphan.lmd-fresh { gap: 8px; padding-top: 5px; padding-bottom: 5px; } .lmd-orphan.lmd-fresh > span { line-height: 1.3; } }
+/* Más angosto que eso, el texto va arriba y lo que se toca abajo. */
+@media (max-width: 380px) { .lmd-orphan.lmd-fresh { flex-wrap: wrap; row-gap: 2px; } .lmd-orphan.lmd-fresh > span { flex: 1 0 100%; } .lmd-fresh button.lmd-fresh-what { margin-right: auto; } }
 .lmd-fresh .lmd-update-x, .lmd-room .lmd-update-x { width: 30px; height: 30px; padding: 0; background: transparent; color: var(--fg-muted); }
 .lmd-fresh .lmd-update-x:hover, .lmd-room .lmd-update-x:hover { background: var(--accent-soft); color: var(--fg); }
 .lmd-fresh .lmd-update-x svg, .lmd-room .lmd-update-x svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
@@ -2219,7 +2227,7 @@ textarea.lmd-jy-in { resize: vertical; }
 
 /* ---------- Herramienta: nota diaria (daily.js) ---------- */
 .lmd-daily-nav { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 48px 0; font: 13px/1.3 var(--lmd-font); color: var(--fg-muted); }
-.lmd-centered .lmd-daily-nav { max-width: calc(var(--lmd-content-w) + 96px); margin: 0 auto; }
+.lmd-centered .lmd-daily-nav, .lmd-centered .lmd-tplbar { max-width: calc(var(--lmd-content-w) + 96px); margin: 0 auto; }
 .lmd-daily-nav + .lmd-article { padding-top: 16px; }
 .lmd-daily-nav .lmd-link { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px; border-radius: 7px; color: var(--fg-muted); text-decoration: none; }
 .lmd-daily-nav .lmd-link:hover { background: var(--bg-soft); color: var(--fg); }
@@ -2398,9 +2406,9 @@ textarea.lmd-jy-in { resize: vertical; }
 /* Los tres anchos se distinguen siempre. Donde el ancho normal ya llenaría la zona de lectura (una ventana angosta,
    o la barra lateral abierta), la normal y la ancha dejan margen a los lados y la completa va de borde a borde. */
 @media (min-width: 821px) {
-  .lmd-centered .lmd-article, .lmd-centered .lmd-raw, .lmd-centered .lmd-daily-nav, .lmd-centered .lmd-back { max-width: min(calc(var(--lmd-content-w) + 96px), 84%); }
-  .lmd-centered.lmd-pw-wide .lmd-article, .lmd-centered.lmd-pw-wide .lmd-raw, .lmd-centered.lmd-pw-wide .lmd-daily-nav, .lmd-centered.lmd-pw-wide .lmd-back { max-width: min(calc(var(--lmd-content-w) + 96px), 92%); }
-  .lmd-centered.lmd-pw-full .lmd-article, .lmd-centered.lmd-pw-full .lmd-raw, .lmd-centered.lmd-pw-full .lmd-daily-nav, .lmd-centered.lmd-pw-full .lmd-back { max-width: none; }
+  .lmd-centered .lmd-article, .lmd-centered .lmd-raw, .lmd-centered .lmd-daily-nav, .lmd-centered .lmd-tplbar, .lmd-centered .lmd-back { max-width: min(calc(var(--lmd-content-w) + 96px), 84%); }
+  .lmd-centered.lmd-pw-wide .lmd-article, .lmd-centered.lmd-pw-wide .lmd-raw, .lmd-centered.lmd-pw-wide .lmd-daily-nav, .lmd-centered.lmd-pw-wide .lmd-tplbar, .lmd-centered.lmd-pw-wide .lmd-back { max-width: min(calc(var(--lmd-content-w) + 96px), 92%); }
+  .lmd-centered.lmd-pw-full .lmd-article, .lmd-centered.lmd-pw-full .lmd-raw, .lmd-centered.lmd-pw-full .lmd-daily-nav, .lmd-centered.lmd-pw-full .lmd-tplbar, .lmd-centered.lmd-pw-full .lmd-back { max-width: none; }
 }
 /* El número de un título numerado: texto de verdad (se elige y se copia), que no se edita ni se guarda. */
 .lmd-hnum { color: var(--fg-faint); font-weight: 500; }
@@ -3874,3 +3882,54 @@ dialog.lmd-xp-full::backdrop { background: var(--bg); }
 @media print {
   .lmd-cv-bar, .lmd-cv-prev { display: none !important; }
 }
+
+/* ---------- Plantillas: una carpeta compartida para llevarse una copia (fork.js) ---------- */
+/* La tira de arriba de la nota: qué es, qué pasa al usarla y el botón. Va con el ancho del texto (sus anchos están con los de la nota). */
+.lmd-tplbar { padding: 14px 48px 0; font: 13.5px/1.4 var(--lmd-font); color: var(--fg); }
+.lmd-tplbar-box { display: flex; align-items: center; gap: 14px; padding: 10px 12px 10px 16px; border: 1px solid var(--accent-fill); border-radius: 12px; background: var(--accent-soft); }
+.lmd-tplbar p { flex: 1; min-width: 0; margin: 0; }
+.lmd-tplbar strong { display: block; font-weight: 650; }
+.lmd-tplbar span { color: var(--fg-muted); }
+.lmd-tplbar .lmd-btn { flex: none; }
+.lmd-tplbar + .lmd-article { padding-top: 18px; }
+/* La ventana con las tres salidas. */
+.lmd-ask-card.lmd-fork-card { width: min(440px, 100%); }
+.lmd-ask-card p.lmd-fork-lead { margin: 0 0 14px; }
+.lmd-fork-ways { display: grid; gap: 8px; margin: 0 0 14px; }
+.lmd-fork-way { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 9px 14px; border: 1px solid var(--line); border-radius: 11px; background: var(--bg); color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+.lmd-fork-way:hover:not(:disabled), .lmd-fork-way:focus-visible { border-color: var(--accent-fill); background: var(--accent-soft); }
+.lmd-fork-way:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lmd-fork-way:disabled { color: var(--fg-faint); cursor: default; }
+.lmd-fork-way svg { flex: none; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-fork-way span { display: grid; min-width: 0; }
+.lmd-fork-way b { font-weight: 600; }
+.lmd-fork-way small { color: var(--fg-muted); font-size: 12.5px; overflow-wrap: anywhere; }
+.lmd-fork-way:disabled small { color: var(--fg-faint); }
+.lmd-ask-card p.lmd-fork-need { margin: 0 0 12px; font-size: 13px; }
+.lmd-fork-need .lmd-link { padding: 0 2px; color: var(--accent); font-size: inherit; }
+.lmd-ask-card.lmd-login p.lmd-fork-next { margin: 10px 0 0; font-size: 12.5px; }
+/* Un enlace que no abrió (una plantilla retirada, una dirección mal escrita): arriba del inicio, a la vista. */
+.lmd-home-lead { margin: 0 0 22px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-soft); text-align: left; }
+.lmd-home-lead[hidden] { display: none; }
+.lmd-home-lead h2 { margin: 0 0 4px; font-size: 17px; font-weight: 650; letter-spacing: -0.01em; color: var(--fg); }
+.lmd-home-lead p { margin: 0; color: var(--fg-muted); font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+/* Compartir una carpeta: las opciones de plantilla y la dirección corta. */
+.lmd-share-folder .lmd-check small, .lmd-share-name small { display: block; color: var(--fg-faint); font-size: 12.5px; line-height: 1.4; }
+.lmd-share-folder .lmd-share-sub { margin-left: 24px; }
+.lmd-share-folder .lmd-share-sub.lmd-off { opacity: 0.5; }
+.lmd-share-name { margin-bottom: 12px; }
+.lmd-share-name label { display: block; margin-bottom: 4px; font-size: 13px; color: var(--fg-muted); }
+.lmd-share-name .lmd-share-row { align-items: center; gap: 4px; margin-bottom: 4px; }
+.lmd-share-name b { flex: none; font-weight: 500; color: var(--fg-muted); font-size: 13.5px; }
+.lmd-share li .lmd-share-meta { flex: none; color: var(--fg-faint); font-size: 12.5px; white-space: nowrap; }
+.lmd-share .lmd-share-more { display: block; margin: 2px 0 10px; padding: 4px 0; color: var(--accent); text-align: left; }
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  .lmd-tplbar { padding: 10px 16px 0; }
+  .lmd-tplbar-box { flex-wrap: wrap; padding: 12px 14px; }
+  .lmd-tplbar p { flex: 1 1 100%; }
+  .lmd-tplbar .lmd-btn { flex: 1 1 auto; min-height: 44px; }
+  .lmd-fork-way { min-height: 60px; }
+  .lmd-share-folder li { flex-wrap: wrap; }
+  .lmd-share-name input { height: 40px; font-size: 16px; }
+}
+@media print { .lmd-tplbar { display: none !important; } }

@@ -6,7 +6,10 @@
   let session = ''; let email = ''; let base = ''; let loaded = null;
   // El canal por el que llegó la persona ("reddit"), para el conteo anónimo del ingreso (count.js). No viaja en la
   // extensión, con otro servidor, ni con los conteos apagados.
-  const channel = () => (LMD.count && LMD.count.source()) || undefined;
+  // De dónde llega quien crea la cuenta: el canal de la visita (count.js), que solo existe en el sitio publicado y
+  // si nadie pidió no ser contado. La extensión y la app de Android lo dicen con una etiqueta fija, que no es de nadie.
+  const dnt = () => navigator.doNotTrack === '1' || window.doNotTrack === '1' || navigator.globalPrivacyControl === true;
+  const channel = () => (LMD.count && LMD.count.source()) || (dnt() ? undefined : !window.__MDT_WEB ? 'extension' : LMD.storeApp === true && LMD.count && LMD.count.on() ? 'android' : undefined);
   let listCache = null; let listAt = 0;
   // Dónde corre esto. En la app (la web o la página de la extensión) los pedidos salen de acá. En el lector de un
   // archivo del disco (file://) el servidor no contesta a ese origen: salen por el service worker de la extensión,
@@ -88,7 +91,7 @@
 
   // El tope de notas del plan gratis lo fija el servidor y llega con la cuenta (free_notes). Antes de entrar no hay
   // dato: vale este, que es el del servidor de SharpMD.
-  let freeNotes = 25;
+  let freeNotes = 10;
   async function api(method, path, body, again) {
     await ready();
     if (!base) throw Object.assign(new Error('no_server'), { code: 'no_server' });
@@ -730,6 +733,25 @@
       if (!res.ok) throw Object.assign(new Error((json && json.error) || 'failed'), { code: (json && json.error) || 'failed', retry: +((json && json.retry_after) || 0) || 0 });
       return json;
     },
+    // Una carpeta compartida por enlace, o una plantilla (content.js y fork.js). ref dice cómo se llegó: { by: 'pub',
+    // key: el secreto del enlace } o { by: 't', key: el nombre corto }. query: '' la lista de notas, '?note=ruta' el
+    // texto de una, '?all=1' todas (para llevarse una copia). what 'copied' avisa que se hizo una copia completa.
+    // Va con la sesión, si hay: una plantilla puede pedir una cuenta para llevársela.
+    pubFolder: async (ref, query, what) => {
+      await ready();
+      if (!base) throw Object.assign(new Error('no_server'), { code: 'no_server' });
+      let res;
+      try {
+        res = await fetch(base + (ref.by === 't' ? '/template/' : '/public/') + encodeURIComponent(ref.key) + (what ? '/' + what : '') + (query || ''),
+          { method: what ? 'POST' : 'GET', headers: session && !guest ? { authorization: 'Bearer ' + session } : {} });
+      } catch (e) { throw Object.assign(new Error('offline'), { code: 'offline' }); }
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw Object.assign(new Error((json && json.error) || 'failed'), { code: (json && json.error) || 'failed', status: res.status, retry: +((json && json.retry_after) || 0) || 0 });
+      return json;
+    },
+    // El enlace de una carpeta: crearlo y cambiar sus opciones (si es plantilla, si pide cuenta, su nombre corto).
+    linkFolder: (p, opt) => api('POST', '/links', Object.assign({ path: isTeam(p) ? split(p).path : p, kind: 'folder' }, opt || {}, isTeam(p) ? { o: +team.space } : {})),
+    linkSet: (id, p, opt) => api('PUT', '/links/' + id, Object.assign({}, opt || {}, isTeam(p) ? { o: +team.space } : {})),
     enabled: () => !!base,
     // Si desde acá se llega al servidor: en la app, y en el lector de un archivo del disco (por el service worker).
     reach: () => APP || VIA,
