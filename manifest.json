@@ -113,6 +113,7 @@
         "src/jsonyaml.js",
         "src/import.js",
         "src/viewer.js",
+        "src/codeview.js",
         "src/aikey.js",
         "src/assistant.js",
         "src/agents.js",

@@ -44,7 +44,8 @@ Next: [The cloud and sharing](cloud-and-sharing.md).
 - PDF and EPUB open in a built-in reader, by pages or chapters, with an outline and search. It remembers where you were.
 - Images open in a viewer with zoom.
 - Audio and video open in the browser's player.
-- Code and config files show highlighted, and a CSV shows as a table.
+- Code and config files show highlighted and with line numbers, and a CSV shows as a table.
+- An `.html` adds an outline with its headings and sections, and a **Preview** next to the code. The preview is isolated from your notes and starts static, requesting nothing from the internet. The page's scripts run only if you ask, for that file and until you close the tab: they still cannot read your notes, but it is best to run only those of pages you trust. Its images and styles show if you opened the folder.
 - A `.txt`, a `.json` or a `.yaml` is edited and saved in its own format.
 - Word, Excel and PowerPoint offer **Import to Markdown**. See [Export and import](export-and-import.md).
 

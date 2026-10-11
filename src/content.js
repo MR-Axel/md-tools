@@ -428,6 +428,14 @@
     for (let k = 0; k < parts.length - 1; k++) cur = await cur.getDirectoryHandle(parts[k]);
     return cur.getFileHandle(parts[parts.length - 1]);
   }
+  // Un archivo de la misma carpeta que la nota abierta, entero: lo pide la vista previa de un HTML (codeview.js) para
+  // sus imágenes y sus estilos. Solo de una carpeta del disco abierta con su permiso, y de esa misma raíz: un archivo
+  // suelto, la nube o este navegador no tienen carpeta de dónde traer nada.
+  async function resFile(url) {
+    const root = APP && !noDoc ? rootOf(HERE) : null;
+    if (!root || root.kind !== 'dir' || rootOf(url) !== root) return null;
+    try { const h = await vFile(url); return h && h.kind === 'file' ? await h.getFile() : null; } catch (e) { return null; }
+  }
   async function vText(url) {
     try { const h = await vFile(url); return h ? await (await h.getFile()).text() : null; } catch (e) { return null; }
   }
@@ -774,13 +782,15 @@
     shortcuts: { js: ['src/shortcuts.js'] },
     // El visor de PDF, EPUB, imágenes, audio y video: se pide al abrir el primero.
     viewer: { js: ['src/viewer.js'] },
+    // Los archivos de código: números de línea, el índice de un HTML y su vista previa. Se pide al abrir el primero.
+    codeview: { js: ['src/codeview.js'] },
   };
   const LAZY_HAVE = { hljs: () => !!window.hljs, emoji: () => !!window.markdownitEmoji, tools: () => !!(LMD.diagram && LMD.formula && LMD.templates && LMD.community) };
   LAZY_HAVE.gallery = () => !!LMD.gallery; LAZY_HAVE.automate = () => !!LMD.automate; LAZY_HAVE.publish = () => !!LMD.publish;
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
   ['present', 'daily', 'docx', 'linkmap', 'explore', 'jsonyaml', 'import', 'agents', 'localtools'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
   LAZY_HAVE.assistant = () => !!(LMD.ai && LMD.assistant);
-  LAZY_HAVE.fork = () => !!LMD.fork; LAZY_HAVE.shortcuts = () => !!LMD.shortcuts; LAZY_HAVE.folderexport = () => !!LMD.folderexport; LAZY_HAVE.viewer = () => !!LMD.viewer; LAZY_HAVE.folderpage = () => !!LMD.folderpage;
+  LAZY_HAVE.fork = () => !!LMD.fork; LAZY_HAVE.shortcuts = () => !!LMD.shortcuts; LAZY_HAVE.folderexport = () => !!LMD.folderexport; LAZY_HAVE.viewer = () => !!LMD.viewer; LAZY_HAVE.codeview = () => !!LMD.codeview; LAZY_HAVE.folderpage = () => !!LMD.folderpage;
   async function appLazy(what) {
     const spec = LAZY_APP[what];
     try {
@@ -1159,7 +1169,7 @@
     ensure('hljs').then((ok) => {
       if (!ok || !window.hljs) return;
       pending.forEach(([code, lang]) => {
-        if (!code.isConnected || code.children.length || !hljs.getLanguage(lang)) return;
+        if (!code.isConnected || code.children.length || code.hasAttribute('data-cv') || !hljs.getLanguage(lang)) return;
         try { code.innerHTML = hljs.highlight(code.textContent, { language: lang, ignoreIllegals: true }).value; } catch (e) { /* queda como texto */ }
       });
     });
@@ -2146,6 +2156,7 @@
     });
     if (ui.searchInput.value) runSearch(ui.searchInput.value, false, true);
     updateCount();
+    core.hooks.view.forEach((fn) => fn());
   }
 
   // El tema solo: los colores, el modo y la barra del sistema. Con una vista previa abierta en Ajustes, ese tema.
@@ -2333,17 +2344,26 @@
     if (isBin()) { drawBinary(); return; }
     const md = buildParser();
     const kind = docKind();
-    const fm = kind === 'text' ? { body: '', rows: null } : kind !== 'md' ? { body: asMarkdown(kind), rows: null } : (settings.plugins.frontmatter ? splitFrontmatter(raw) : { body: raw, rows: null });
+    // Un archivo de código no pasa por Markdown: va entero, como texto, a un único bloque. Así uno de medio mega no
+    // se resalta ni se sanea de un tirón en cada dibujo; los números de línea y el color los pone codeview.js.
+    const codeDoc = kind === 'code' && raw.indexOf('\u0000') === -1;
+    const fm = kind === 'text' || codeDoc ? { body: '', rows: null } : kind !== 'md' ? { body: asMarkdown(kind), rows: null } : (settings.plugins.frontmatter ? splitFrontmatter(raw) : { body: raw, rows: null });
     syncSource();
     fmOffset = kind !== 'md' ? 0 : raw.slice(0, raw.length - fm.body.length).split('\n').length - 1;
     needsRender = false;
-    let html = kind === 'text' ? '' : md.render(fm.body);
+    let html = kind === 'text' || codeDoc ? '' : md.render(fm.body);
     wantEmoji(fm.body);
     html = DOMPurify.sanitize(html, { ADD_ATTR: ['target', 'data-tex'], FORBID_TAGS: ['style', 'form'] });
     const y = window.scrollY;
     ui.article.innerHTML = html;
     // Un .txt es texto plano: se muestra tal cual, sin interpretar Markdown ni HTML.
     if (kind === 'text') ui.article.appendChild(el('div', { class: 'lmd-plain', text: raw.replace(/\r\n?/g, '\n') }));
+    if (codeDoc) {
+      const ext = (/\.([A-Za-z0-9]+)$/.exec(DOC_NAME) || [0, ''])[1].toLowerCase(); const pre = el('pre');
+      // data-cv: el color de este bloque lo pone codeview.js, por líneas y de a poco; paintCode no lo toca.
+      pre.appendChild(el('code', { class: ext ? 'language-' + (LANGS[ext] || ext) : '', 'data-cv': '', text: raw.replace(/\r\n?/g, '\n').replace(/\s+$/, '') + '\n' }));
+      ui.article.appendChild(pre);
+    }
     spyHeadings = postProcess(ui.article);
     if (editMode && kind === 'md') enableEditing(ui.article);
     // Los ajustes de la página (page.js) viven en el encabezado, pero no son datos de la nota: no se listan.
@@ -2356,6 +2376,13 @@
     updateCount();
     if (ui.searchInput.value) runSearch(ui.searchInput.value, false, true);
     core.hooks.render.forEach((fn) => fn());
+    if (kind === 'code') wantCodeView();
+  }
+  // La vista de un archivo de código (codeview.js) llega con el primero que se abre, ya dibujado como texto.
+  let codeViewAsked = false;
+  function wantCodeView() {
+    if (codeViewAsked) return; codeViewAsked = true;
+    ensure('codeview').then((ok) => { if (ok && LMD.codeview) LMD.codeview.init(core); else codeViewAsked = false; });
   }
 
   // Índice: el título del documento va arriba como cabecera, con datos de lectura y avance;
@@ -4332,6 +4359,8 @@
     // Lo que no es Markdown se edita como texto, desde la vista de código.
     if (on && docKind() === 'image') { flash(T('Las imágenes no se editan acá'), 'warn'); return; }
     if (on && docKind() !== 'md') rawMode = true;
+    // Al salir, un archivo de código vuelve a su vista de lectura, con los números de línea, y no al texto pelado.
+    if (!on && editMode && docKind() === 'code') rawMode = false;
     editMode = on;
     if (!on) { ui.format.hidden = true; ui.tableBar.hidden = true; } // sin edición no hay nada que formatear
     rememberEdit(on);
@@ -4784,7 +4813,7 @@
     openApp: (query) => bg({ type: 'openApp', query }),
     openPanel: (tab, why) => openPanel(tab, why),
     // patch: se dibujó en el lugar un cambio de otra persona (sesión en vivo), sin pasar por render.
-    ui, hooks: { render: [], tree: [], doc: [], patch: [], home: [], saved: [], diagram: [], event: [] }, menus: { export: [], more: [] }, actions: {},
+    ui, hooks: { render: [], tree: [], doc: [], patch: [], home: [], saved: [], diagram: [], event: [], view: [] }, menus: { export: [], more: [] }, actions: {},
     get treeRoot() { return treeRoot; }, collect: (root) => collectFiles(root), readFile: (url) => readFile(url), wikiKey, lastBlock: null, appUrl: APP_URL, hold: false,
     // Lo que la sesión en vivo (live.js) necesita del lector.
     live: {
@@ -4811,6 +4840,8 @@
     editAt: (e) => editAt(e), copy: (text) => { copyText(text); flash(T('Copiado')); }, searchFor, sectionLink,
     links: { headings: () => anchorsOf(spyHeadings), headingsIn, files: linkFiles, read: readDoc, rel: relLink, find: findAnchor, same: sameUrl, prep: prepLinks, follow: followLink },
     get blocks() { return docKind() === 'md'; },
+    // Qué es lo abierto ('md', 'code', 'text', 'table'...) y, para la vista previa de un HTML, un archivo de su carpeta.
+    get docKind() { return noDoc || inDir() ? '' : docKind(); }, res: (url) => resFile(url),
     // Dónde se crea desde la cabecera del explorador cuando hace falta una carpeta: la del disco, si hay una abierta.
     diskDir: () => (APP && diskRoot && diskRoot.kind === 'dir' ? treeRoot : ''),
     newNote: (opt) => LMD.home.create(homeCtx(), opt),

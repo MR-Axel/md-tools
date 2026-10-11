@@ -44,7 +44,8 @@ Sigue en [La nube y compartir](cloud-and-sharing.md).
 - PDF y EPUB se abren en un lector propio, por páginas o capítulos, con índice y búsqueda. Recuerda dónde quedaste.
 - Las imágenes se abren en un visor con zoom.
 - Audio y video se abren en el reproductor del navegador.
-- El código y los archivos de configuración se ven resaltados, y un CSV se ve como tabla.
+- El código y los archivos de configuración se ven resaltados y con números de línea, y un CSV se ve como tabla.
+- Un `.html` suma un índice con sus títulos y secciones, y una **Vista previa** junto al código. La vista previa va aislada de tus notas y arranca estática, sin pedir nada a internet. Los scripts de la página corren solo si lo pedís, para ese archivo y hasta cerrar la pestaña: siguen sin leer tus notas, pero conviene correr solo los de páginas en las que confiás. Sus imágenes y estilos se ven si abriste la carpeta.
 - Un `.txt`, un `.json` o un `.yaml` se edita y se guarda en su formato.
 - Word, Excel y PowerPoint ofrecen **Importar a Markdown**. Está en [Exportar e importar](export-and-import.md).
 

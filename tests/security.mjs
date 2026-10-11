@@ -530,7 +530,7 @@ async function appSuite() {
   check('manifest: pide solo storage y scripting, y el script de contenido corre solo en el marco principal', manifest.permissions.slice().sort().join() === 'scripting,storage' && !manifest.content_scripts.some((c) => c.all_frames || c.match_about_blank), manifest.permissions);
   check('la versión del manifest y la de la app coinciden', new RegExp("VERSION = '" + manifest.version.replace(/\./g, '\\.') + "'").test(fs.readFileSync(path.join(root, 'src', 'defaults.js'), 'utf8')));
   const meta = (/<meta http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(appHtml) || [])[1] || '';
-  check('app.html trae una política de contenido sin scripts en línea ni de otros sitios, y no tiene ninguno propio', /script-src 'self' 'wasm-unsafe-eval';/.test(meta) && /object-src 'none'/.test(meta) && /base-uri 'none'/.test(meta) && /frame-src 'none'/.test(meta) && !/<script(?![^>]*\ssrc=)[^>]*>/.test(appHtml) && !/\son[a-z]+=/i.test(appHtml) && !/src="https?:/.test(appHtml), meta);
+  check('app.html trae una política de contenido sin scripts en línea ni de otros sitios, y no tiene ninguno propio', /script-src 'self' 'wasm-unsafe-eval';/.test(meta) && /object-src 'none'/.test(meta) && /base-uri 'none'/.test(meta) && /frame-src 'self'$/.test(meta) && !/<script(?![^>]*\ssrc=)[^>]*>/.test(appHtml) && !/\son[a-z]+=/i.test(appHtml) && !/src="https?:/.test(appHtml), meta);
 
   const S = await boot({ ADMIN_KEY: ADMIN, MCP_FREE: '1', SHARE_FREE: '1' });
   // Otro servidor, que no es el de la cuenta: anota con qué credenciales le llegan los pedidos.

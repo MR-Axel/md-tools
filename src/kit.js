@@ -103,7 +103,8 @@
   //   md, text       la nota de siempre (se edita)
   //   data           JSON y YAML: resaltados, o como árbol con la herramienta prendida (se editan como texto)
   //   table          CSV y TSV como tabla
-  //   code           código y configuración, resaltados. El HTML entra acá: se lee, no se ejecuta
+  //   code           código y configuración, resaltados y con números de línea (codeview.js). El HTML entra acá: se lee
+  //                  como código; su vista previa va aparte, en un marco aislado, y sin scripts salvo que la persona los pida
   //   image          el visor de imágenes (viewer.js). Un SVG se muestra como imagen, nunca dentro de la página
   //   pdf, epub      el visor de PDF y de libros (viewer.js)
   //   audio, video   el reproductor del navegador
