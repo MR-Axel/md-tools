@@ -156,7 +156,7 @@ if (part('ui') || part('html') || part('formats')) {
     const menu = await page.evaluate(() => [...document.querySelectorAll('.lmd-menu [data-f]')].map((b) => b.dataset.f + ':' + b.textContent.trim()));
     check('el menú de una carpeta del explorador ofrece "Exportar la carpeta…"', menu.includes('fexp:Exportar la carpeta…'), menu);
     await page.keyboard.press('Escape');
-    await page.click('.lmd-node-dir[data-url="' + dir + '"]'); await page.waitForSelector('.lmd-node[data-url="' + dir + '1-intro.md"]');
+    await page.click('.lmd-node-dir[data-url="' + dir + '"] .lmd-node-chev'); await page.waitForSelector('.lmd-node[data-url="' + dir + '1-intro.md"]');
     await page.click('.lmd-node[data-url="' + dir + '1-intro.md"]'); await page.waitForFunction(() => /Intro/.test((document.querySelector('.markdown-body h1') || {}).textContent || ''));
     await page.click('[data-act=export]'); await page.waitForSelector('.lmd-menu-export');
     const em = await page.evaluate(() => [...document.querySelectorAll('.lmd-menu-export [role=menuitem]')].map((b) => b.dataset.more + ':' + b.querySelector('span').textContent));
@@ -379,7 +379,7 @@ if (part('pdf')) {
   check('hoja Carta y sin números: el PDF sale de ese tamaño y sin pie', Math.abs(letter.pages[0].w - 612) < 1 && Math.abs(letter.pages[0].h - 792) < 1 && letter.pages.every((p) => p.number === null) && !/bottom-center/.test(letter.dom.rule), [letter.pages[0].w, letter.pages[0].h]);
 
   // ---- La impresión de una nota sola usa la misma hoja ----
-  await page.click('.lmd-node-dir[data-url="' + dir + '"]'); await page.waitForSelector('.lmd-node[data-url="' + dir + '01-largo.md"]');
+  await page.click('.lmd-node-dir[data-url="' + dir + '"] .lmd-node-chev'); await page.waitForSelector('.lmd-node[data-url="' + dir + '01-largo.md"]');
   await page.click('.lmd-node[data-url="' + dir + '01-largo.md"]'); await page.waitForFunction(() => /DOCTITLE1/.test((document.querySelector('.lmd-article h1') || {}).textContent || '')); await sleep(400);
   const solo = await readPdf(await page.pdf({ format: 'A4', margin: { top: '18mm', bottom: '20mm', left: '17mm', right: '17mm' } }));
   const sv = audit(solo);

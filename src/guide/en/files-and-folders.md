@@ -25,6 +25,10 @@ What you already opened stays under **Recent**.
 > [!WARNING]
 > Safari can delete the notes kept in the browser after weeks without use unless the app is installed. Install the app or use the cloud.
 
+## A folder's page
+
+A click on the name of a folder opens its page: the index of its subfolders and notes, with the description on top. The description is the folder's `README.md`, and **Add a description** creates it and opens it for writing. The triangle unfolds the folder without opening it. On a phone the page opens with **Open**, in the folder's menu. The page has its own address: it can be bookmarked, and **Copy the link** copies it.
+
 ## Sending to the cloud
 
 - The cloud button, in the top bar, uploads the open note. A browser note moves to the cloud. With a file on disk you choose between **Move to the cloud** and **Keep a copy**.

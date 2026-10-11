@@ -415,7 +415,14 @@ try {
   const dirItems = await menuAt(node('carpeta%20%C3%B1and%C3%BA/'));
   await page.click('.lmd-menu-narrow [data-f=path]').catch(() => {}); await sleep(250); const dirPath = await clipOf();
   await menuAt(node('carpeta%20%C3%B1and%C3%BA/')); await page.click('.lmd-menu-narrow [data-f=furl]').catch(() => {}); await sleep(250); const dirUrl = await clipOf();
-  check('el menú de una carpeta ofrece su ruta, su dirección, verla en el navegador y mostrarla en el explorador', J(dirItems.filter((x) => !/cloud/i.test(x))) === J(['Copy path', 'Copy as file:// address', 'View the folder in the browser', 'Show in Explorer…']), dirItems);
+  check('el menú de una carpeta ofrece abrir su página, su ruta, su dirección, verla en el navegador y mostrarla en el explorador', J(dirItems.filter((x) => !/cloud/i.test(x))) === J(['Open', 'Copy path', 'Copy as file:// address', 'View the folder in the browser', 'Show in Explorer…']), dirItems);
+  // "Abrir" lleva a la página de la carpeta, que en el lector de un archivo la dibuja la app, en otra pestaña.
+  await menuAt(node('carpeta%20%C3%B1and%C3%BA/'));
+  const [folderTab] = await Promise.all([ctx.waitForEvent('page', { timeout: 8000 }).catch(() => null), page.click('.lmd-menu-narrow [data-f=page]').catch(() => {})]);
+  const folderSeen = folderTab ? await until(() => folderTab.evaluate(() => { const fp = document.querySelector('.lmd-article .lmd-fp'); return fp && fp.dataset.done === '1' ? { f: new URLSearchParams(location.search).get('f'), h1: fp.querySelector('.lmd-fp-title').textContent.trim(), rows: [...fp.querySelectorAll('.lmd-fp-rname')].map((n) => n.textContent), acts: [...fp.querySelectorAll('[data-fp]')].map((b) => b.dataset.fp), crumbs: [...fp.querySelectorAll('.lmd-fp-crumbs a')].length } : null; }), 10000) : null;
+  check('"Abrir" en el lector de un archivo muestra la página de esa carpeta en la app, por su ruta, de solo lectura', !!folderSeen && /^fs\/.*\/$/.test(folderSeen.f) && folderSeen.h1 === 'carpeta ñandú' && folderSeen.rows.includes('día uno') && !folderSeen.acts.includes('describe') && !folderSeen.acts.includes('new') && folderSeen.crumbs > 0, folderSeen || (folderTab && await folderTab.evaluate(() => [location.href, document.body.innerText.slice(0, 200)])));
+  if (folderTab) await folderTab.close();
+  await page.bringToFront();
   check('la ruta de la carpeta sale como la escribe el sistema, sin barra al final; la dirección, con ella', dirPath === odd && dirUrl === pathToFileURL(odd).href + '/', [dirPath, dirUrl]);
   const fileItems = await menuAt(node('carpeta%20%C3%B1and%C3%BA/d%C3%ADa%20uno.md'));
   check('el de un archivo, lo mismo más el enlace de SharpMD', J(fileItems.filter((x) => !/cloud/i.test(x))) === J(['Copy SharpMD link', 'Copy path', 'Copy as file:// address', 'View the folder in the browser', 'Show in Explorer…']), fileItems);
@@ -473,7 +480,7 @@ try {
   const astate = () => app.evaluate(() => ({ title: document.title, h1: (document.querySelector('.lmd-article h1') || { textContent: '' }).textContent.trim(), url: location.href, keep: window.__keep === 1, plain: (document.querySelector('.lmd-article .lmd-plain') || { textContent: null }).textContent, splash: !!document.querySelector('#lmd-splash'), text: document.querySelector('.lmd-article').textContent,
     focus: document.activeElement && document.activeElement.classList.contains('lmd-node') ? document.activeElement.textContent.trim() : '', open: [...document.querySelectorAll('.lmd-node-dir.lmd-open')].map((n) => n.textContent.trim()), dlg: !!document.querySelector('.lmd-imp') }));
   await app.click(node('a.md')); await ashows('a.md');
-  await app.click(node('sub/')); await app.waitForSelector(node('sub/c.md'));
+  await app.click(node('sub/') + ' .lmd-node-chev'); await app.waitForSelector(node('sub/c.md'));
   await app.evaluate(() => { window.__keep = 1; });
   const ay0 = await app.evaluate((sel) => { const p = document.querySelector(sel); p.scrollTop = 150; return p.scrollTop; }, pane); await sleep(150);
   // Uno que ya está a la vista: así el clic no corre el explorador por su cuenta.

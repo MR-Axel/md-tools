@@ -146,9 +146,9 @@ try {
   await app.click('[data-zone-tog=outline]');
   const z4 = await zones();
   check('y al desplegarlo vuelve con el reparto que se había dejado', Math.abs(z4.outline - z2.outline) < 12, [z2, z4]);
-  await app.click('.lmd-xroot[data-root=local] .lmd-root-tog');
-  check('una raíz se pliega desde su encabezado', await app.evaluate(() => document.querySelector('.lmd-xroot[data-root=local] .lmd-tree').getBoundingClientRect().height === 0));
-  await app.click('.lmd-xroot[data-root=local] .lmd-root-tog');
+  await app.click('.lmd-xroot[data-root=local] .lmd-root-tog .lmd-node-chev');
+  check('una raíz se pliega desde el triángulo de su encabezado', await app.evaluate(() => document.querySelector('.lmd-xroot[data-root=local] .lmd-tree').getBoundingClientRect().height === 0));
+  await app.click('.lmd-xroot[data-root=local] .lmd-root-tog .lmd-node-chev');
   await app.goto(home); await app.waitForSelector('.lmd-home [data-home=new]'); await app.waitForSelector('.lmd-xroot[data-root=local] .lmd-node');
   const noDoc = await app.evaluate(() => ({ outline: document.querySelector('.lmd-zone-outline').getBoundingClientRect().height, files: document.querySelector('.lmd-pane-files').getBoundingClientRect().height, local: [...document.querySelectorAll('.lmd-xroot[data-root=local] .lmd-node')].map((n) => n.textContent.trim()), disk: document.querySelector('.lmd-xroot[data-root=disk] .lmd-tree-path').textContent }));
   check('sin nota abierta el índice no ocupa lugar y el explorador ya lista las notas del navegador', noDoc.outline === 0 && noDoc.files > 300 && noDoc.local.includes('uno.md') && noDoc.local.includes('dos.md') && noDoc.disk === 'pantalla', noDoc);
@@ -196,12 +196,12 @@ try {
   await app.locator('.lmd-res-file', { hasText: 'huerta.md' }).click(); await app.waitForFunction(() => document.title === 'huerta.md'); await app.waitForTimeout(300);
   const hop = await app.evaluate(() => ({ mark: window.__mark, kept: [...document.querySelectorAll('.lmd-res-file .lmd-res-name')].map((n) => n.textContent), here: [...document.querySelectorAll('.lmd-res-here .lmd-res-name')].map((n) => n.textContent), doc: document.querySelector('.lmd-res-doc .lmd-res-count').textContent }));
   check('abrir un resultado de otra raíz deja la lista de resultados y marca la nota abierta', hop.mark === 'misma página' && J(hop.kept) === J(['LEEME.md', 'huerta.md']) && J(hop.here) === J(['huerta.md']) && hop.doc === '1', hop);
-  await app.fill('.lmd-search input', ''); await app.waitForSelector('.lmd-xroot[data-root=local] .lmd-root-tog'); await app.click('.lmd-xroot[data-root=local] .lmd-root-tog');
+  await app.fill('.lmd-search input', ''); await app.waitForSelector('.lmd-xroot[data-root=local] .lmd-root-tog'); await app.click('.lmd-xroot[data-root=local] .lmd-root-tog .lmd-node-chev');
   await app.fill('.lmd-search input', 'zanahoria');
   await app.waitForFunction(() => /\d/.test((document.querySelector('.lmd-results-sum') || {}).textContent || ''), null, { timeout: 15000 });
   const folded = await app.evaluate(() => [...document.querySelectorAll('.lmd-res-root')].map((r) => r.dataset.root));
   check('una raíz plegada no entra en la búsqueda', J(folded) === J(['disk']), folded);
-  await app.fill('.lmd-search input', ''); await app.click('.lmd-xroot[data-root=local] .lmd-root-tog');
+  await app.fill('.lmd-search input', ''); await app.click('.lmd-xroot[data-root=local] .lmd-root-tog .lmd-node-chev');
 
   console.log('Recientes');
   await app.locator('.lmd-xroot[data-root=recent] .lmd-node', { hasText: 'pantalla' }).click(); await app.waitForSelector('.lmd-xroot[data-root=disk] .lmd-root-tog[title^="pantalla"]'); await app.waitForFunction(() => document.title === 'adentro.md');
@@ -240,7 +240,7 @@ try {
   t = await treeNow();
   check('hasta dónde se subió se recuerda para esa carpeta', t.head === 'trabajo' && J(t.active) === J(['una.md']), t);
   await app.evaluate(() => { window.__mark = 'misma página'; });
-  await app.locator('.lmd-xroot[data-root=disk] .lmd-node-dir', { hasText: 'repo' }).click(); await app.locator('.lmd-xroot[data-root=disk] .lmd-node', { hasText: 'README.md' }).click(); await app.waitForFunction(() => document.title === 'README.md');
+  await app.locator('.lmd-xroot[data-root=disk] .lmd-node-dir', { hasText: 'repo' }).locator('.lmd-node-chev').click(); await app.locator('.lmd-xroot[data-root=disk] .lmd-node', { hasText: 'README.md' }).click(); await app.waitForFunction(() => document.title === 'README.md');
   t = await treeNow();
   check('pasar a otra nota del mismo árbol no lo mueve de lugar', t.head === 'trabajo' && J(t.active) === J(['README.md']) && (await mark()) === 'misma página', t);
 

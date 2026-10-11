@@ -4,7 +4,7 @@
 // mueve la pestaña, no abre otra, no envía formularios y no le pide nada a ningún servidor, ni estático ni con sus
 // scripts andando. Los servidores "de afuera" son de acá mismo: anotan cada pedido, cada conexión y cada paquete.
 //   node htmlview.mjs
-//   ONLY=attack node htmlview.mjs    (una parte: pure, source, read, edit, preview, attack, scripts, runner, phone, big, ext)
+//   ONLY=attack node htmlview.mjs    (una parte: pure, source, read, edit, preview, folder, attack, scripts, runner, phone, big, ext)
 //   SHOTS=C:\tmp\aghtml node htmlview.mjs   (deja ahí las capturas)
 import { tally, sleep, root } from './rig.mjs';
 import { chromium } from 'playwright-core';
@@ -383,6 +383,22 @@ await step('preview', 'Vista previa: el marco, la política y los archivos de la
   // El modo oscuro de la app no cambia la página.
   await mode(page, 'code');
   check('volver a Código saca el marco', await page.evaluate(() => !document.querySelector('iframe') && document.querySelector('.lmd-cv-prev').hidden && getComputedStyle(document.querySelector('.lmd-article')).display !== 'none'));
+  await ctx.close();
+});
+
+// ---------- Desde la página de una carpeta ----------
+await step('folder', 'Un HTML abierto desde la página de su carpeta', async () => {
+  const { ctx, page } = await web();
+  await openFile(page, 'index.html');
+  await page.click(node('sub') + ' .lmd-node-name'); await page.waitForSelector('.lmd-article .lmd-fp .lmd-fp-row', { timeout: 10000 }); await sleep(300);
+  const fp = await page.evaluate(() => ({ bar: document.querySelector('.lmd-cv-bar').hidden, on: document.querySelector('.lmd-main').classList.contains('lmd-cv-on'), rows: [...document.querySelectorAll('.lmd-fp-row')].map((r) => r.title), frames: document.querySelectorAll('iframe').length }));
+  check('en la página de una carpeta no queda la barra de código, y su lista nombra al HTML', fp.bar && !fp.on && fp.rows.includes('pagina.html') && fp.frames === 0, fp);
+  await page.click('.lmd-fp-row[title="pagina.html"]'); await page.waitForSelector('.lmd-article pre code.lmd-cv', { state: 'attached', timeout: 15000 }); await sleep(300);
+  const s = await page.evaluate(() => ({ rows: document.querySelectorAll('.lmd-article .lmd-cv-l').length, bar: !document.querySelector('.lmd-cv-bar').hidden, title: document.querySelector('.lmd-pane-outline .lmd-o-title').textContent, fp: !!document.querySelector('.lmd-article .lmd-fp') }));
+  check('desde esa lista el HTML se abre con sus números de línea y su índice', s.rows === 1 && s.bar && s.title === 'Sub' && !s.fp, s);
+  await mode(page, 'prev'); const f = await preview(page, '#logo');
+  const d = f ? await f.evaluate(() => ({ body: getComputedStyle(document.body).color, logo: document.getElementById('logo').naturalWidth, afuera: document.getElementById('afuera').naturalWidth, sec: getComputedStyle(document.getElementById('sec')).color })) : {};
+  check('y su vista previa resuelve los archivos de la carpeta abierta, sin salir de ella', !!f && d.body === 'rgb(1, 2, 3)' && d.logo === 8 && d.afuera === 0 && d.sec !== 'rgb(9, 9, 9)' && (await frameAttrs(page)).sandbox === '', d);
   await ctx.close();
 });
 

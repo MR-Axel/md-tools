@@ -194,7 +194,7 @@
   const guideLink = () => (window.__MDT_WEB === true ? APP_URL : LMD.WEB_APP_URL) + '?f=' + encodeURIComponent(HERE.slice(VBASE.length));
   // "Guardar una copia": la nota de la guía queda entre las del navegador, con su nombre (o nombre-2 si ya hay una), y se abre ahí.
   async function guideCopy() {
-    if (!inGuide()) return;
+    if (!inGuide() || inDir()) return;
     const dot = DOC_NAME.lastIndexOf('.'); const stem = dot > 0 ? DOC_NAME.slice(0, dot) : DOC_NAME; const ext = dot > 0 ? DOC_NAME.slice(dot) : '.md';
     let name = stem + ext;
     for (let n = 2; await LMD.store.noteGet(name); n++) name = stem + '-' + n + ext;
@@ -250,6 +250,159 @@
       '<div class="lmd-tplbar-box"><p><strong>' + T('Plantilla · solo lectura') + '</strong><span>' + T('Te queda una copia para editar. El original no cambia.') + '</span></p>' +
       '<button type="button" class="lmd-btn lmd-btn-fill" data-act="tpl-use">' + T('Usar esta plantilla') + '</button></div>');
     ui.article.before(bar);
+  }
+
+  // ---------- La página de una carpeta ----------
+  // Una carpeta también tiene dirección (?f=<raíz>/<ruta>/, con la barra al final) y se abre como una página: su
+  // nombre, el camino hasta ella, su descripción (el README.md de adentro, si lo hay) y el índice de lo que tiene.
+  // Para el lector es un documento más, de solo lectura, como lo que va al visor: HERE es la dirección de la carpeta,
+  // así los enlaces de la descripción se resuelven contra ella y el explorador la marca como abierta. La dibuja
+  // folderpage.js, que se pide recién acá; lo que sigue es lo que hay que saber de cada raíz.
+  const isDirAddr = (f) => /\/$/.test(String(f || '').split('#')[0]);
+  const inDir = () => !noDoc && docNote === 'dir';
+  // El camino hasta una carpeta, desde su raíz: [{ name, url }]. El último es la carpeta misma.
+  function dirCrumbs(url) {
+    const r = rootOf(url); const segs = url.slice(VBASE.length).split('#')[0].split('/').filter(Boolean);
+    let at = VBASE + segs.shift() + '/'; const out = [];
+    if (!r) return out;
+    const tm = r.kind === 'cloud' ? LMD.cloud.teamNow() : null;
+    if (r.kind === 'pub') { const k = pubOf(url); at += (segs.shift() || '') + '/'; out.push({ name: k ? k.info.name : r.name, url: at }); }
+    else if (tm && segs[0] === '~' + tm.space) { at += segs.shift() + '/'; out.push({ name: tm.name || T('Equipo'), url: at }); }
+    else if (r.kind !== 'fs') out.push({ name: r.name, url: at });
+    // Lo que otra persona compartió con esta cuenta cuelga de la nube, bajo su espacio (~número).
+    segs.forEach((s) => { at += s + '/'; out.push({ name: r.kind === 'cloud' && s[0] === '~' ? T('Compartido') : unesc(s), url: at }); });
+    return out;
+  }
+  const dirName = (url) => { const c = dirCrumbs(url); return c.length ? c[c.length - 1].name : ''; };
+  // El título de una nota mirando solo su comienzo: el primer título que tenga. Sin título, nada (queda su nombre).
+  function headTitle(text) {
+    let t = String(text || '').replace(/^\uFEFF/, '');
+    if (/^---\r?\n/.test(t)) { const end = t.indexOf('\n---', 3); if (end < 0) return ''; t = t.slice(end + 4); }
+    const m = /^[ \t]{0,3}#{1,6}[ \t]+(.+?)[ \t#]*$/m.exec(t);
+    return m ? m[1].replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`~]/g, '').trim().slice(0, 120) : '';
+  }
+  // Lo que hay en la carpeta, como lo lista el explorador, con lo que ya se sabe de cada nota sin leerla: la fecha de
+  // cambio (la nube y el navegador la traen en su lista) y el título (las del navegador ya están en memoria).
+  async function dirRows(dirUrl) {
+    const r = rootOf(dirUrl); const rows = await listDir(dirUrl);
+    if (!r || !rows) return null;
+    const at = new Map(); const titles = new Map(); const parts = vParts(dirUrl);
+    const take = (path, pre, when, text) => { if (!path.startsWith(pre)) return; const name = path.slice(pre.length); if (name.includes('/')) return; at.set(name, when || 0); if (text != null && MD_RE.test(name)) titles.set(name, headTitle(text.slice(0, 1200))); };
+    try {
+      if (r.kind === 'local') { const pre = parts.map((p) => p + '/').join(''); (await LMD.store.notesAll()).forEach((n) => take(n.name, pre, n.at, n.text)); }
+      else if (r.kind === 'cloud') { const other = parts.length && parts[0][0] === '~' ? parts.shift().slice(1) : ''; const pre = parts.map((p) => p + '/').join(''); (await LMD.cloud.list(false, other)).forEach((n) => take(n.path, pre, n.updated)); }
+      else if (r.kind === 'pub') { const k = pubOf(dirUrl); const pre = parts.slice(1).map((p) => p + '/').join(''); if (k) k.info.notes.forEach((n) => take(n.path, pre, n.updated)); }
+    } catch (e) { /* sin esos datos, queda el nombre */ }
+    return rows.map((row) => Object.assign({}, row, { at: row.dir ? 0 : at.get(row.name) || 0, title: row.dir ? '' : row.label || titles.get(row.name) || '' }));
+  }
+  // De un archivo del disco, la fecha y el título: se lee solo su comienzo, y recién cuando su renglón está a la vista.
+  async function dirPeek(row) {
+    const r = rootOf(row.url);
+    if (!r || r.kind !== 'dir' || row.dir) return null;
+    try {
+      const file = await (await vFile(row.url)).getFile(); let title = '';
+      if (MD_RE.test(row.name) && file.slice) title = headTitle(await file.slice(0, 1200).text());
+      return { at: file.lastModified || 0, title };
+    } catch (e) { return null; }
+  }
+  // Cuántas notas hay en una subcarpeta, contando las de más adentro: { n, more, files }. En el disco se cuenta en
+  // segundo plano y una sola vez, con los mismos topes que el número del explorador (diskCount).
+  function dirTotal(url) {
+    const r = rootOf(url);
+    const under = (paths, pre) => ({ n: paths.filter((p) => p.startsWith(pre) && (MD_RE.test(p) || TXT_RE.test(p))).length, more: false });
+    if (!r) return Promise.resolve(null);
+    if (r.kind === 'cloud') return cloudCount(url);
+    if (r.kind === 'local') return LMD.store.notesAll().then((all) => under(all.map((n) => n.name), vParts(url).map((p) => p + '/').join('')));
+    if (r.kind === 'pub') { const k = pubOf(url); return Promise.resolve(k ? under(k.info.notes.map((n) => n.path), vParts(url).slice(1).map((p) => p + '/').join('')) : null); }
+    if (r.kind !== 'dir') return Promise.resolve(null);
+    const job = countQueue.then(() => new Promise((resolve) => setTimeout(resolve, 0))).then(() => diskCount(url, 0)).then((c) => (c && !c.fail ? { n: c.n, more: c.more, files: !settings.filesOnlyMarkdown } : null));
+    countQueue = job.catch(() => null);
+    return job;
+  }
+  // Si ahí se puede crear una nota sin preguntar nada: las del navegador, una carpeta de la nube donde la cuenta
+  // escribe, y una carpeta del disco que ya tiene el permiso para guardar. La guía y lo compartido por enlace, nunca.
+  async function dirWritable(url) {
+    const r = rootOf(url);
+    if (!APP || !r || LMD.cloud.guest()) return false;
+    if (r.kind === 'local') return true;
+    if (r.kind === 'cloud') return LMD.send.canUp(url);
+    return r.kind === 'dir' && !!r.handle && !r.ghost && canWrite(r.handle, false);
+  }
+  // Lo que loadDoc devuelve para una carpeta de las raíces que no son una carpeta del disco elegida (esas siguen el
+  // camino de siempre, con su permiso, y terminan en dirDoc).
+  const dirDoc = (root, extra) => Object.assign({ root, raw: '', disk: '', readOnly: true, note: 'dir' }, extra);
+  async function loadDir(f) {
+    const url = VBASE + f.split('#')[0]; const id = f.split('/')[0]; const parts = vParts(url);
+    const fail = (text) => ({ fail: text });
+    const none = () => fail(T('No se encontró la carpeta "{a}".', { a: parts[parts.length - 1] || '' }));
+    if (id === 'cloud') {
+      await LMD.cloud.ready();
+      if (!LMD.cloud.signedIn()) { wantCloud = f; return fail(T('Entrá a tu cuenta para abrir las notas de la nube.')); }
+      const rows = await vList(url);
+      if (rows == null) return fail(T('No se pudo leer esta carpeta.'));
+      // En la nube una carpeta existe mientras tenga notas. Una protegida y bloqueada no las muestra: la página lo dice.
+      const inner = parts.filter((p, i) => i || p[0] !== '~').join('/');
+      let vaults = []; try { vaults = await LMD.vault.load(); } catch (e) { /* sin la lista */ }
+      if (!rows.length && inner && !vaults.some((v) => v.folder && (inner === v.folder || inner.startsWith(v.folder + '/')))) return none();
+      return dirDoc(roots.cloud);
+    }
+    if (id === 't' || id === 'pub') {
+      await LMD.cloud.ready();
+      const ref = { by: id, key: parts[0] || '' }; const rel = parts.slice(1); let k = null;
+      try { k = await pubInfo(ref, !rel.length); }
+      catch (e) { return id === 'pub' && (e.code === 'need_password' || e.code === 'bad_password') ? { goto: 'pub/' + encodeURIComponent(ref.key) } : pubFail(e, ref); }
+      // El enlace es de una nota suelta: se abre como siempre.
+      if (!k.info) return id === 'pub' && ref.key ? { goto: 'pub/' + encodeURIComponent(ref.key) } : fail(T('Ese enlace ya no existe.'));
+      const pre = rel.map((p) => p + '/').join('');
+      if (pre && !k.info.notes.some((n) => n.path.startsWith(pre))) return none();
+      return dirDoc({ id, kind: 'pub', name: k.info.name, title: rel.length ? rel[rel.length - 1] : k.info.name, text: '' });
+    }
+    if (id === 'guide') { if (parts.length) return none(); guideKeep(); return dirDoc({ id, kind: 'guide', name: T('Guía'), title: T('Guía') }); }
+    if (id === 'local') {
+      const pre = parts.map((p) => p + '/').join('');
+      if (pre && !(await LMD.store.notesAll()).some((n) => n.name.startsWith(pre))) { await LMD.bridge.settle(); if (!(await LMD.store.notesAll()).some((n) => n.name.startsWith(pre))) return none(); }
+      return dirDoc(roots.local);
+    }
+    if (id === 'fs' && parts.length) {
+      // Una carpeta del disco por su ruta: si la web ya tiene abierta una que la contiene, es esa; si no, lo que la
+      // extensión deja listar (carpetas habilitadas).
+      const file = fsFile(url); const known = file ? await fsKnown(file) : null;
+      if (known && known.granted) { try { let d = known.rec.handle; for (const p of known.rest) d = await d.getDirectoryHandle(p); return { goto: known.rec.id + '/' + known.rest.map((p) => encodeURIComponent(p) + '/').join('') }; } catch (e) { /* ya no está ahí */ } }
+      if (file && await fsList(url)) return dirDoc(roots.fs);
+      return fail(T('Para ver la carpeta "{a}", abrila con "Abrir carpeta".', { a: parts[parts.length - 1] }));
+    }
+    return fail('');
+  }
+  let viewSeq = -1;
+  function drawFolder() {
+    needsRender = false;
+    if (viewSeq === docSeq) return; // ya está a la vista: el tema y el tamaño de letra le llegan por la hoja de estilos
+    viewSeq = docSeq; const seq = docSeq; const at = HERE;
+    if (LMD.viewer) LMD.viewer.close();
+    spyHeadings = []; ui.paneOutline.textContent = ''; ui.progress = null; ui.count.textContent = '';
+    // De una carpeta a otra, o al volver a listar la misma, lo que hay a la vista queda hasta que llega lo nuevo.
+    if (!ui.article.querySelector('.lmd-fp')) { ui.article.textContent = ''; ui.article.appendChild(el('p', { class: 'lmd-notice', role: 'status', text: T('Leyendo carpeta…') })); }
+    ensure('folderpage').then((ok) => {
+      if (seq !== docSeq) return null;
+      if (ok && LMD.folderpage) return LMD.folderpage.draw(core, { url: at, host: ui.article, alive: () => seq === docSeq && !noDoc && HERE === at });
+      ui.article.textContent = ''; ui.article.appendChild(el('p', { class: 'lmd-notice', role: 'alert', text: T('No se pudo abrir. Probá de nuevo.') }));
+      return null;
+    }).catch((e) => { console.error(e); });
+  }
+  // A dónde lleva un renglón del índice. Como en el explorador: en la página de la extensión, una nota de una carpeta
+  // del disco abierta por su ruta va a su dirección file://, que la abre su lector.
+  const dirHref = (row) => (!row.dir && OWN_PAGE && row.url.startsWith(FS) && !fsViews(row.name) ? fsFile(row.url) : toHref(row.url));
+  // La dirección de la carpeta para guardar en marcadores o pasarle a alguien. La de la nube es privada: abre solo
+  // para quien tiene acceso (el enlace público es el de "Compartir la carpeta"). La de la guía es siempre la de la app web.
+  const dirLink = (url) => ((rootOf(url) || {}).kind === 'guide' && window.__MDT_WEB !== true ? LMD.WEB_APP_URL + '?f=' + encodeURIComponent(url.slice(VBASE.length)) : toHref(url));
+  // Algo cambió en la carpeta que se está mirando: se vuelve a listar, en el lugar.
+  const redrawDir = () => { if (inDir()) { viewSeq = -1; drawFolder(); } };
+  // Abre la página de una carpeta. Sobre un archivo abierto directo la abre la app: la de la nube por su ruta, y la
+  // del disco por la suya (la lista la extensión).
+  const canOpenDir = (url) => (APP ? !!rootOf(url) && rootOf(url).kind !== 'file' : !!url && (url.startsWith(VBASE) || isFile));
+  function openDir(url) {
+    if (APP) return go(url.slice(VBASE.length).split('#')[0]);
+    return bg({ type: 'openApp', query: '?f=' + encodeURIComponent(url.startsWith(VBASE) ? url.slice(VBASE.length) : fsDoc(url) + '/') });
   }
 
   // ---------- Archivos de la app ----------
@@ -623,6 +776,8 @@
     publish: { js: ['src/publish.js'] },
     // "Usar esta plantilla": se pide al abrirla desde una carpeta compartida como plantilla.
     fork: { js: ['src/fork.js'] },
+    // La página de una carpeta: se pide al abrir la primera.
+    folderpage: { js: ['src/folderpage.js'] },
     // La hoja de atajos de teclado: se pide al abrirla.
     shortcuts: { js: ['src/shortcuts.js'] },
     // El visor de PDF, EPUB, imágenes, audio y video: se pide al abrir el primero.
@@ -635,7 +790,7 @@
   LAZY_HAVE.speak = () => !!LMD.speak; LAZY_HAVE.dictate = () => !!(LMD.voice && LMD.dictate);
   ['present', 'daily', 'docx', 'linkmap', 'explore', 'jsonyaml', 'import', 'agents', 'localtools'].forEach((k) => { LAZY_HAVE[k] = () => !!LMD[k]; });
   LAZY_HAVE.assistant = () => !!(LMD.ai && LMD.assistant);
-  LAZY_HAVE.fork = () => !!LMD.fork; LAZY_HAVE.shortcuts = () => !!LMD.shortcuts; LAZY_HAVE.folderexport = () => !!LMD.folderexport; LAZY_HAVE.viewer = () => !!LMD.viewer; LAZY_HAVE.codeview = () => !!LMD.codeview;
+  LAZY_HAVE.fork = () => !!LMD.fork; LAZY_HAVE.shortcuts = () => !!LMD.shortcuts; LAZY_HAVE.folderexport = () => !!LMD.folderexport; LAZY_HAVE.viewer = () => !!LMD.viewer; LAZY_HAVE.codeview = () => !!LMD.codeview; LAZY_HAVE.folderpage = () => !!LMD.folderpage;
   async function appLazy(what) {
     const spec = LAZY_APP[what];
     try {
@@ -1699,12 +1854,14 @@
       const all = Array.from(ui.treeBox.querySelectorAll('.lmd-node')).filter((n) => n.offsetParent);
       const at = all.indexOf(cur); const dir = cur.classList.contains('lmd-node-dir'); const open = cur.classList.contains('lmd-open');
       let to = null;
+      // Plegar y desplegar es cosa del triángulo: el clic sobre el nombre abre la página de la carpeta.
+      const fold = () => (cur.querySelector('.lmd-node-chev') || cur).click();
       if (e.key === 'ArrowDown') to = all[at + 1];
       else if (e.key === 'ArrowUp') to = all[at - 1];
       else if (e.key === 'Home') to = all[0];
       else if (e.key === 'End') to = all[all.length - 1];
-      else if (e.key === 'ArrowRight') { if (dir && !open) cur.click(); else if (dir) to = all[at + 1]; }
-      else if (dir && open) cur.click();
+      else if (e.key === 'ArrowRight') { if (dir && !open) fold(); else if (dir) to = all[at + 1]; }
+      else if (dir && open) fold();
       else { const kids = cur.closest('.lmd-node-kids'); let up = kids && kids.previousElementSibling; while (up && !up.classList.contains('lmd-node-dir')) up = up.previousElementSibling; to = up; }
       e.preventDefault();
       if (to) { to.focus(); to.scrollIntoView({ block: 'nearest' }); }
@@ -1860,18 +2017,21 @@
   }
   // En pantalla chica, lo que en escritorio está a la vista en la barra de arriba, acá en una lista.
   function openMore() {
-    const md = docKind() === 'md'; const cloud = !!appRoot && appRoot.kind === 'cloud'; const bin = isBin();
+    const md = docKind() === 'md'; const cloud = !!appRoot && appRoot.kind === 'cloud'; const bin = isBin(); const dir = inDir();
     // Lo que la barra todavía muestra no se repite acá: en una ventana angosta el selector de vista sigue en su lugar.
     const shown = (q) => !!ui.main.querySelector('.lmd-topbar ' + q).offsetParent;
     barMenu(ui.more, 'lmd-menu-more', [
-      !ui.sync.hidden && !shown('.lmd-sync') && ['sync', (ui.sync.querySelector('svg') || { outerHTML: ICON.cloud }).outerHTML, cloud ? 'Nube: compartir, historial y más' : LMD.cloud.signedIn() ? 'Subir esta nota a la nube' : 'Entrar a la cuenta'],
+      !dir && !ui.sync.hidden && !shown('.lmd-sync') && ['sync', (ui.sync.querySelector('svg') || { outerHTML: ICON.cloud }).outerHTML, cloud ? 'Nube: compartir, historial y más' : LMD.cloud.signedIn() ? 'Subir esta nota a la nube' : 'Entrar a la cuenta'],
       // Con una sesión en vivo, quiénes están y cómo salir o terminarla (en pantalla chica la barra de arriba no los muestra).
       cloud && LMD.live.active() && ['live', ICON.people, 'Colaborar en vivo'],
       editMode && md && !rawMode && !shown('.lmd-insert') && ['insert', ICON.plus, 'Insertar un bloque'],
       !bin && !shown('.lmd-view') && (rawMode ? ['view-doc', ICON.doc, 'Ver documento'] : ['view-raw', ICON.code, 'Ver código fuente']),
       // Copiar y exportar abren acá mismo el menú que en escritorio cuelga de su botón.
       !bin && ['copy', ICON.copy, 'Copiar'],
-      ['export', ICON.download, bin ? 'Archivo' : 'Exportar'],
+      !dir && ['export', ICON.download, bin ? 'Archivo' : 'Exportar'],
+      // Sobre la página de una carpeta, lo de la carpeta: su enlace y el menú de siempre.
+      dir && ['copy-link', ICON.link, 'Copiar el enlace'],
+      dir && LMD.extras.dirHasMenu(HERE) && ['dir-menu', ICON.folder, 'Acciones de la carpeta'],
       // En el teléfono, mandar la nota a otra app (install.js): como texto, como archivo, con un enlace o copiando.
       !bin && LMD.install.canShareOut() && ['share-out', ICON.share, 'Compartir'],
       diskDoc() && ['reload', ICON.reload, 'Recargar ahora'],
@@ -1880,7 +2040,7 @@
       ['settings', ICON.sliders, 'Ajustes'],
       ['shortcuts', ICON.keyboard, 'Atajos de teclado'],
       // Sobre una nota de la guía, llevársela: en pantalla chica el pie no tiene lugar para ese botón.
-      inGuide() && ['guide-copy', ICON.copy, 'Guardar una copia'],
+      inGuide() && !dir && ['guide-copy', ICON.copy, 'Guardar una copia'],
       // En pantalla chica el pie no tiene lugar para el enlace: denunciar una nota ajena va acá, al final.
       LMD.touch.small() && APP && LMD.sync.reportRef() && ['report', ICON.flag, 'Denunciar esta nota'],
     ].concat(toolItems('more')));
@@ -1907,6 +2067,7 @@
     else if (act === 'guide') { if (APP) { closePanel(); go(GUIDE_HOME); } else bg({ type: 'openApp', query: '?f=' + encodeURIComponent(GUIDE_HOME) }); }
     else if (act === 'guide-copy') guideCopy();
     else if (act === 'tpl-use') useTemplate('');
+    else if (act === 'dir-menu') { const b = source.getBoundingClientRect(); if (inDir()) LMD.extras.dirMenu(b.left, b.bottom + 6, HERE); }
     else if (act === 'copy-flink') { copyText(LMD.fileLink(fileHere()), source); flash(T('Enlace copiado')); }
     else if (act === 'copy-path') { copyText(diskPath(), source); flash(T('Ruta copiada')); }
     else if (act === 'copy-furl') { copyText(diskHref(), source); flash(T('Dirección copiada')); }
@@ -2085,6 +2246,7 @@
   let docNote = ''; let docSize = 0; // 'big' (pasa el tope de su tipo) u 'other' (no es texto): se dice, no se dibuja
   function viewKind() {
     if (!APP || noDoc || !appRoot || appRoot.id === 'mem') return '';
+    if (docNote === 'dir') return 'dir'; // la página de una carpeta: se dibuja aparte (drawFolder)
     // Un archivo del disco abierto por su ruta: va al visor si es de los que lee el service worker; si no, es una nota.
     if (appRoot.kind === 'fs') return fsViews(DOC_NAME) ? kindOf(DOC_NAME) : '';
     if (appRoot.kind !== 'dir' && appRoot.kind !== 'file') return '';
@@ -2101,7 +2263,7 @@
   // memoria mientras dure la pestaña.
   const heldFiles = new Map();
   const viewFile = (file) => { heldFiles.set(file.name, file); return go('bin/' + encodeURIComponent(file.name)); };
-  let viewSeq = -1; let viewHash = ''; let viewHits = 0;
+  let viewHash = ''; let viewHits = 0;
   function drawBinary() {
     needsRender = false;
     if (viewSeq === docSeq) return; // ya está a la vista: el tema y el tamaño de letra le llegan por la hoja de estilos
@@ -2178,6 +2340,7 @@
 
   function render() {
     if (noDoc) { ui.article.textContent = ''; spyHeadings = []; ui.paneOutline.textContent = ''; ui.progress = null; needsRender = false; if (ui.searchInput.value) runSearch(ui.searchInput.value, false, true); return; }
+    if (inDir()) { drawFolder(); return; }
     if (isBin()) { drawBinary(); return; }
     const md = buildParser();
     const kind = docKind();
@@ -2376,6 +2539,8 @@
   }
   async function checkOnce(manual) {
     if (checking || noDoc || saving) return;
+    // La página de una carpeta no es un archivo: recargarla es volver a listar.
+    if (inDir()) { if (manual) { redrawDir(); flash(T('Lista de archivos actualizada')); } return; }
     // Una nota que todavía no tiene archivo (vive en la sesión) no tiene nada afuera que releer. Su "archivo" es
     // lo que hay en memoria: compararlo con lo guardado (nada, en una nota nueva) daba un cambio en el disco falso.
     if (appRoot && (appRoot.id === 'mem' || appRoot.id === 'bin' || appRoot.kind === 'fs')) { if (manual) flash(T('Sin cambios')); return; }
@@ -3046,7 +3211,7 @@
       if (!noDoc && appRoot && appRoot.kind === 'fs') {
         // En el visor (un PDF, un libro o una imagen, en la página de la extensión) la rama es la carpeta del archivo,
         // como en el lector de una nota del disco.
-        const parts = vParts(HERE); const up = Math.max(1, parts.length - 1 - (isBin() ? 0 : FS_UP));
+        const parts = vParts(HERE); const up = inDir() ? parts.length : Math.max(1, parts.length - 1 - (isBin() ? 0 : FS_UP)); // la página de una carpeta: su rama es ella misma
         const top = FS + parts.slice(0, up).map(encodeURIComponent).join('/') + '/';
         const list = add('fs', { name: T('Del disco') + ' · ' + parts[up - 1], title: LMD.filePath(fsFile(top)), icon: ICON.folder, url: top });
         if (window.showDirectoryPicker && !isBin()) list.after(el('button', { type: 'button', class: 'lmd-link lmd-root-hint', 'data-fs': 'grant', text: T('Abrir esta carpeta') }));
@@ -3086,6 +3251,10 @@
   function markActive() {
     let hit = null;
     ui.treeBox.querySelectorAll('.lmd-node').forEach((n) => { const on = !noDoc && n.dataset.url === HERE; n.classList.toggle('lmd-active', on); if (on) hit = n; });
+    // La página de una raíz (la nube, las notas del navegador, la carpeta abierta): queda marcada su cabecera.
+    ui.treeBox.querySelectorAll('.lmd-root-tog').forEach((t) => { const list = t.closest('.lmd-xroot').querySelector('.lmd-tree'); const on = inDir() && !!list && list.dataset.url === HERE; t.classList.toggle('lmd-active', on); if (on && !hit) hit = t; });
+    // La carpeta cuya página está a la vista queda desplegada, se haya llegado por el explorador, por el índice o por una miga.
+    if (hit && inDir() && hit.classList.contains('lmd-node-dir') && !hit.classList.contains('lmd-open') && !hit.classList.contains('lmd-vault-shut')) { const chev = hit.querySelector('.lmd-node-chev'); if (chev) chev.click(); }
     if (hit && hit.offsetParent) hit.scrollIntoView({ block: 'nearest' });
     return !!hit;
   }
@@ -3145,7 +3314,13 @@
     if (zone) { const k = zone.dataset.zoneTog + 'Shut'; side[k] = !side[k]; applySide(); saveSide(); return true; }
     const tog = e.target.closest('.lmd-root-tog');
     if (tog) {
-      const sec = tog.closest('.lmd-xroot'); const shut = sec.classList.toggle('lmd-shut');
+      const sec = tog.closest('.lmd-xroot'); const list = sec.querySelector('.lmd-tree'); const url = (list && list.dataset.url) || '';
+      // El triángulo pliega y despliega. El nombre abre la página de la raíz y la deja desplegada; en pantalla chica
+      // solo despliega (la página se abre desde su menú).
+      const page = pagesByName(e) && !!url && canOpenDir(url);
+      if (page) openDir(url);
+      if (page && !sec.classList.contains('lmd-shut')) return true;
+      const shut = sec.classList.toggle('lmd-shut');
       if (shut) side.shut[sec.dataset.root] = true; else delete side.shut[sec.dataset.root];
       tog.setAttribute('aria-expanded', String(!shut)); saveSide();
       return true;
@@ -3193,6 +3368,9 @@
     const here = noDoc ? '' : HERE;
     rows.forEach((row) => rowNodes(row, depth, where, here).forEach((n) => container.appendChild(n)));
   }
+  // Si ese clic sobre una carpeta (o la cabecera de una raíz) abre su página: en la app, fuera del triángulo, y no en
+  // pantalla chica, donde el explorador es un cajón que se cerraría con cada toque (ahí se abre desde el menú).
+  const pagesByName = (e) => APP && !(e.target && e.target.closest && e.target.closest('.lmd-node-chev')) && !LMD.touch.small() && !LMD.cloud.guest();
   // Los nodos de un renglón del árbol: el archivo o la carpeta, y lo que cuelga de una carpeta.
   function rowNodes(row, depth, where, here) {
     const out = [];
@@ -3223,9 +3401,11 @@
         if ((APP || (isFile && !row.url.startsWith(VBASE))) && !LMD.touch.coarse()) item.draggable = true;
         const kids = el('div', { class: 'lmd-node-kids', hidden: '' });
         out.push(kids);
-        const open = async () => {
+        const open = async (e) => {
           // Bloqueada: al abrirla pide la contraseña una vez. Al desbloquearse el explorador se redibuja con ella desplegada.
           if (shut) { openDirs.add(row.url); if (!(await LMD.vault.unlock(vault))) openDirs.delete(row.url); return; }
+          // El triángulo pliega y despliega, sin abrir nada. El nombre abre la página de la carpeta y la deja desplegada.
+          if (e && pagesByName(e)) { openDir(row.url); if (!kids.hidden) return; }
           kids.hidden = !kids.hidden;
           item.classList.toggle('lmd-open', !kids.hidden);
           if (kids.hidden) openDirs.delete(row.url); else openDirs.add(row.url);
@@ -3233,6 +3413,7 @@
         };
         item.addEventListener('click', open);
         showCount(item, row.url);
+        if (row.url === here) item.classList.add('lmd-active');
         if (!shut && ((here && here.startsWith(row.url)) || openDirs.has(row.url))) open();
       } else {
         // Sobre un archivo abierto directo, lo que no es Markdown lleva la dirección que lo abre dentro de SharpMD
@@ -3305,6 +3486,7 @@
       if (changed) {
         // Lo que se sabía de la carpeta ya no vale: la búsqueda y los enlaces la vuelven a leer, y los contadores se rehacen.
         clearCounts(); folderIndex.clear(); wikiIndex = null; linkIndex = null;
+        redrawDir(); // la página de una carpeta a la vista se pone al día con ella
         ui.treeBox.querySelectorAll('.lmd-node-dir').forEach((item) => { if (!watchable(item.dataset.url || '')) return; const n = item.querySelector(':scope > .lmd-node-n'); if (n) n.remove(); showCount(item, item.dataset.url); });
       }
       await checkGone();
@@ -3312,7 +3494,7 @@
   }
   // El archivo abierto se borró o se renombró afuera: se avisa una vez. Lo que hay a la vista, guardado o no, sigue acá.
   async function checkGone() {
-    if (noDoc || !watchable(HERE)) return;
+    if (noDoc || inDir() || !watchable(HERE)) return;
     const at = HERE; const rows = await listDir(new URL('.', HERE).href, true);
     if (at !== HERE || rows == null) return;
     const there = rows.some((r) => !r.dir && sameUrl(r.url, HERE));
@@ -3496,7 +3678,7 @@
   // El renglón de arriba de los resultados: cuántas veces aparece en la nota abierta. Un clic va a la siguiente.
   function docRow() {
     let row = ui.results.querySelector('.lmd-res-doc');
-    if (noDoc) { if (row) row.remove(); return; }
+    if (noDoc || inDir()) { if (row) row.remove(); return; }
     if (!row) {
       row = el('button', { type: 'button', class: 'lmd-res-doc' }, '<span class="lmd-node-ico">' + ICON.doc + '</span><span class="lmd-res-name"></span><span class="lmd-res-count"></span>');
       ui.results.insertBefore(row, ui.results.firstChild);
@@ -4163,6 +4345,7 @@
   // auto: la app entra sola en edición (se venía editando, o la nota está vacía). Ahí, sin permiso para guardar en
   // la carpeta, no se pregunta nada: la nota queda leyendo. Con el clic de la persona, primero va el aviso.
   async function setEditMode(on, auto) {
+    if (on && inDir()) { useTemplate('edit'); return; } // la página de una carpeta no se edita: se edita su descripción, que es una nota
     if (on && isBin()) { flash(T('Este archivo solo se lee acá.'), 'warn'); return; }
     if (on && readOnly) { if (!useTemplate('edit')) flash(T('Esta nota es de solo lectura'), 'warn'); return; }
     if (on && !editMode && !(await allowWrite('', !!auto))) return;
@@ -4322,7 +4505,7 @@
 
   function toggleTask(box) {
     // Una nota que solo se lee no cambia: la casilla vuelve a como estaba.
-    if (readOnly) { box.checked = !box.checked; if (!useTemplate('edit')) flash(T('Esta nota es de solo lectura'), 'warn'); return; }
+    if (readOnly) { box.checked = !box.checked; if (!useTemplate('edit')) flash(T(inDir() ? 'La descripción se cambia editando su nota.' : 'Esta nota es de solo lectura'), 'warn'); return; }
     const li = box.closest('li'); if (!li) return;
     const r = rangeOf(li, li.hasAttribute('data-p') ? 'data-p' : 'data-l') || rangeOf(li);
     if (!r) return;
@@ -4569,7 +4752,7 @@
       document.execCommand('insertText', false, (e.clipboardData.getData('text/plain') || '').replace(/\r?\n/g, ' '));
     });
     // Las tareas se tildan también leyendo; el cambio queda sin guardar hasta Ctrl+S (o se guarda solo, si está activado).
-    ui.article.addEventListener('change', (e) => { if (docKind() === 'md' && e.target.matches && e.target.matches('input.lmd-task')) toggleTask(e.target); });
+    ui.article.addEventListener('change', (e) => { if ((docKind() === 'md' || inDir()) && e.target.matches && e.target.matches('input.lmd-task')) toggleTask(e.target); });
     ui.article.addEventListener('dblclick', (e) => {
       if (!editMode) { if (!e.target.closest(NO_DBL)) editAt(e); return; }
       const box = e.target.closest('.lmd-code');
@@ -4658,7 +4841,7 @@
     links: { headings: () => anchorsOf(spyHeadings), headingsIn, files: linkFiles, read: readDoc, rel: relLink, find: findAnchor, same: sameUrl, prep: prepLinks, follow: followLink },
     get blocks() { return docKind() === 'md'; },
     // Qué es lo abierto ('md', 'code', 'text', 'table'...) y, para la vista previa de un HTML, un archivo de su carpeta.
-    get docKind() { return noDoc ? '' : docKind(); }, res: (url) => resFile(url),
+    get docKind() { return noDoc || inDir() ? '' : docKind(); }, res: (url) => resFile(url),
     // Dónde se crea desde la cabecera del explorador cuando hace falta una carpeta: la del disco, si hay una abierta.
     diskDir: () => (APP && diskRoot && diskRoot.kind === 'dir' ? treeRoot : ''),
     newNote: (opt) => LMD.home.create(homeCtx(), opt),
@@ -4676,7 +4859,12 @@
     cloudTree: CLOUDY, signIn,
     readNow: async (url) => { if (APP) return vText(url); const r = await bg({ type: 'fetchText', url }); return r && r.ok && typeof r.text === 'string' ? r.text : null; },
     reveal: (url) => { let u = url; while (u.startsWith(VBASE + 'cloud/') && u !== VBASE + 'cloud/') { openDirs.add(u); u = new URL('..', u).href; } showFiles(sectionOf(url)); if (LMD.touch.small()) setDrawer(true); return loadTree(); },
-    reloadTree: () => { fileCache.clear(); folderIndex.clear(); clearCounts(); wikiIndex = null; linkIndex = null; if (ui.searchInput.value.trim()) runSearch(ui.searchInput.value); const done = loadTree(); resumeCloud(); return done; },
+    reloadTree: () => { fileCache.clear(); folderIndex.clear(); clearCounts(); wikiIndex = null; linkIndex = null; if (ui.searchInput.value.trim()) runSearch(ui.searchInput.value); const done = loadTree(); resumeCloud(); redrawDir(); return done; },
+    // La página de una carpeta (folderpage.js): si hay una a la vista, cómo abrir otra, y lo que se sabe de cada raíz.
+    get dirPage() { return inDir(); }, openDir, canOpenDir,
+    folder: { crumbs: dirCrumbs, rows: dirRows, peek: dirPeek, total: dirTotal, writable: dirWritable, redraw: redrawDir, href: dirHref, link: dirLink, askWrite: () => { const rec = diskRec(); return rec ? askWrite(rec) : Promise.resolve(false); },
+      // La descripción: el Markdown de su README, dibujado como una nota (enlaces, imágenes, diagramas, fórmulas).
+      fill: (box, text) => { const body = settings.plugins.frontmatter ? splitFrontmatter(text).body : text; wantEmoji(body); box.innerHTML = DOMPurify.sanitize(buildParser().render(body), { ADD_ATTR: ['target', 'data-tex'], FORBID_TAGS: ['style', 'form'] }); postProcess(box); } },
     dirHandle: async (dirUrl) => { let dir = rootOf(dirUrl).handle; for (const p of vParts(dirUrl)) dir = await dir.getDirectoryHandle(p); return dir; }, APP, ensure, isDark, openInApp,
     get srcLines() { return srcLines; }, get fmOffset() { return fmOffset; }, get editMode() { return editMode; },
     get raw() { return raw; }, get settings() { return settings; }, get appRoot() { return appRoot; },
@@ -4838,7 +5026,7 @@
 
   // turn: cuántas veces seguidas ya se rechazó este guardado porque otro guardó antes.
   async function save(interactive, turn) {
-    if (noDoc) return true;
+    if (noDoc || inDir()) return true;
     const seq = docSeq;
     const later = () => { clearTimeout(autosaveTimer); autosaveTimer = setTimeout(() => save(false), 2500); return false; };
     // Guardar no saca el foco: lo escrito en el bloque abierto pasa al Markdown y la persona sigue escribiendo.
@@ -5007,6 +5195,9 @@
   async function loadDoc(f) {
     const url = VBASE + f; const id = f.split('/')[0]; const name = decodeURIComponent(url.split('/').pop() || '');
     const fail = (text) => ({ fail: text });
+    // Una dirección que termina en barra es la de una carpeta: su página.
+    const dir = isDirAddr(f);
+    if (dir && /^(cloud|t|pub|guide|local|fs|mem|bin)$/.test(id)) return loadDir(f);
     if (id === 'cloud') {
       await LMD.cloud.ready();
       const path = vParts(url).join('/'); let got = null; let why = '';
@@ -5023,13 +5214,13 @@
     }
     if (id === 't' || (id === 'pub' && vParts(url).length > 1)) {
       // Una nota de una carpeta compartida por enlace, o de una plantilla abierta por su nombre. Sin la nota en la
-      // dirección, abre la primera.
+      // dirección, abre la página de la carpeta: su descripción y el índice de lo que trae.
       await LMD.cloud.ready();
       const parts = vParts(url); const ref = { by: id, key: parts[0] || '' }; const rel = parts.slice(1).join('/');
       let k = null; let text = null;
       try { k = await pubInfo(ref, !rel); } catch (e) { return pubFail(e, ref); }
       if (!k.info) return fail(T('Ese enlace ya no existe.'));
-      if (!rel) { const first = pubFirst(k.info); return first ? { goto: pubPath(ref, first) } : pubFail({ code: 'template_gone' }, ref); }
+      if (!rel) return pubFirst(k.info) ? { goto: pubPath(ref, '') + '/' } : pubFail({ code: 'template_gone' }, ref);
       try { text = await pubText(k, rel); } catch (e) { return e.code === 'not_found' ? fail(T('No se encontró "{a}".', { a: name })) : pubFail(e, ref); }
       return { root: { id, kind: 'pub', name: k.info.name, title: name, text }, raw: text, disk: text, readOnly: true };
     }
@@ -5047,8 +5238,8 @@
           validate: async (v) => { try { n = await LMD.cloud.publicNote(token, v); return ''; } catch (err) { if (err.code === 'bad_password') return T('Esa contraseña no coincide.'); stop = why(err); return ''; } } });
         if (typed == null || !n) return fail(stop);
       }
-      // El enlace es de una carpeta entera: se abre su primera nota.
-      if (n.kind === 'folder') { const ref = { by: 'pub', key: token }; const first = pubFirst(pubKeep(ref, n).info); return first ? { goto: pubPath(ref, first) } : fail(T('Ese enlace ya no existe.')); }
+      // El enlace es de una carpeta entera: se abre su página.
+      if (n.kind === 'folder') { const ref = { by: 'pub', key: token }; return pubFirst(pubKeep(ref, n).info) ? { goto: pubPath(ref, '') + '/' } : fail(T('Ese enlace ya no existe.')); }
       return { root: { id, kind: 'pub', name: T('Compartido'), title: n.path.split('/').pop(), text: n.text }, raw: n.text, disk: n.text, readOnly: true };
     }
     if (id === 'guide') {
@@ -5122,6 +5313,13 @@
     if (!ok && noDoc) ok = await LMD.home.gate(homeCtx(), rec, mode);
     if (!ok) return fail(noDoc ? '' : T('Falta el permiso para abrir "{a}".', { a: rec.name }));
     roots[id] = rec;
+    if (dir) {
+      // La página de una carpeta del disco, o de la carpeta abierta entera.
+      if (rec.kind !== 'dir') return fail(T('No se encontró la carpeta "{a}".', { a: name || rec.name }));
+      const parts = vParts(url);
+      try { let d = rec.handle; for (const p of parts) d = await d.getDirectoryHandle(p); } catch (e) { return fail(T('No se encontró la carpeta "{a}".', { a: parts[parts.length - 1] || rec.name })); }
+      return dirDoc(rec);
+    }
     // Antes de leer se mira qué es y cuánto pesa: lo que va al visor no se lee como texto, y lo que pasa el tope de
     // su tipo o no es texto se dice en vez de dibujarlo.
     const type = typeOf(name); const view = !!VIEW_KINDS[type.kind] || type.kind === 'office';
@@ -5205,13 +5403,15 @@
     dropDoc();
     // Se creó, se movió o se borró un archivo: el árbol y lo que se sabía de la carpeta se vuelven a leer.
     if (opt.tree) { fileCache.clear(); folderIndex.clear(); clearCounts(); wikiIndex = null; linkIndex = null; }
-    HERE = VBASE + f; DOC_NAME = doc ? decodeURIComponent(HERE.split('/').pop() || '') : ''; noDoc = !doc;
-    appRoot = doc ? doc.root : null; docNote = (doc && doc.note) || ''; docSize = (doc && doc.size) || 0;
+    HERE = VBASE + f; noDoc = !doc;
+    appRoot = doc ? doc.root : null; if (doc) roots[appRoot.id] = appRoot;
+    // Una carpeta lleva su nombre; su raíz, el de la raíz.
+    DOC_NAME = !doc ? '' : doc.note === 'dir' ? dirName(HERE) : decodeURIComponent(HERE.split('/').pop() || '');
+    docNote = (doc && doc.note) || ''; docSize = (doc && doc.size) || 0;
     // Conteo anónimo (count.js, solo en la app web): la primera nota propia que se abre o se crea en este navegador. Va el nombre del evento y nada de la nota.
     if (doc && LMD.count && appRoot.kind !== 'pub' && appRoot.kind !== 'guide' && !LMD.cloud.guest() && !isBin()) LMD.count('note_created');
     if (doc && appRoot.kind === 'pub' && pubOf(HERE) && pubOf(HERE).info.template) ensure('fork'); // el botón de la plantilla responde al primer toque
     if (doc) wantCloud = '';
-    if (doc) roots[appRoot.id] = appRoot;
     raw = doc ? doc.raw : ''; diskText = doc ? doc.disk : ''; dirty = raw !== diskText;
     diskRev = doc && doc.rev != null ? doc.rev : null;
     readOnly = !!(doc && doc.readOnly); opened = (doc && doc.opened) || null;
@@ -5230,7 +5430,8 @@
     if (noDoc) { render(); applyRawMode(); updateSaveState(); window.scrollTo(0, 0); showEmpty(opt.note); }
     else {
       ui.home.hidden = true;
-      if (appRoot.kind === 'cloud') {
+      const note = !inDir(); // la página de una carpeta no es una nota: no hay a quién escuchar, ni comentarios, ni sesión en vivo
+      if (appRoot.kind === 'cloud' && note) {
         // Nota de la nube: se escucha en vivo quién más está y cuándo alguien guarda.
         const path = vParts(HERE).join('/'); const mine = docSeq;
         if (opened.offline) { cloudState = 'error'; flash(T('Sin conexión. Esta es la copia guardada en este navegador'), 'warn'); } else offlineNote(opened);
@@ -5268,8 +5469,8 @@
       afterOpen({ edit: opt.edit, editing: wasEditing, hash: opt.hash });
       // Los comentarios para la IA son de cada nota: con la nueva ya dibujada se traen los suyos.
       // Quien entró por el enlace de una sesión en vivo no tiene cuenta: no hay comentarios que traerle.
-      if (appRoot.kind === 'cloud' && LMD.comments && !LMD.cloud.guest()) LMD.comments.attach(vParts(HERE).join('/'));
-      if (appRoot.kind === 'cloud') LMD.live.attach(vParts(HERE).join('/'));
+      if (appRoot.kind === 'cloud' && note && LMD.comments && !LMD.cloud.guest()) LMD.comments.attach(vParts(HERE).join('/'));
+      if (appRoot.kind === 'cloud' && note) LMD.live.attach(vParts(HERE).join('/'));
       LMD.live.strip();
     }
     core.hooks.doc.forEach((fn) => fn());
@@ -5285,7 +5486,9 @@
     document.documentElement.classList.toggle('lmd-public', !noDoc && !!appRoot && appRoot.kind === 'pub');
     // Una nota de la guía tampoco: en su lugar, el pie ofrece guardar una copia.
     document.documentElement.classList.toggle('lmd-guide', inGuide());
-    ui.main.querySelector('.lmd-guide-copy').hidden = !inGuide();
+    ui.main.querySelector('.lmd-guide-copy').hidden = !inGuide() || inDir();
+    // La página de una carpeta: sin lo que es de una nota (editar, copiar, exportar el archivo, el índice de títulos).
+    document.documentElement.classList.toggle('lmd-dir', inDir());
     paintPub();
     document.documentElement.classList.toggle('lmd-nodoc', noDoc);
     // Un archivo que se ve en el visor o lleva un cartel: la barra no ofrece editarlo, copiarlo ni ver su código.
