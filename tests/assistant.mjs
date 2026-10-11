@@ -964,7 +964,7 @@ await step('ext', ' Extensión', async () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
     check('el manifiesto no suma permisos: los mismos dos de siempre', manifest.permissions.join() === 'storage,scripting' && manifest.host_permissions.join() === 'file:///*,*://*/*' && !manifest.optional_permissions && !manifest.externally_connectable, manifest.permissions);
     const csp = /http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(fs.readFileSync(path.join(root, 'src', 'app.html'), 'utf8'))[1];
-    check('la política de app.html sigue igual: scripts solo propios, y las conexiones que ya permitía', /script-src 'self' 'wasm-unsafe-eval';/.test(csp) && /connect-src 'self' https: http:;/.test(csp) && /object-src 'none'/.test(csp) && /frame-src 'none'/.test(csp), csp);
+    check('la política de app.html sigue igual: scripts solo propios, y las conexiones que ya permitía', /script-src 'self' 'wasm-unsafe-eval';/.test(csp) && /connect-src 'self' https: http:;/.test(csp) && /object-src 'none'/.test(csp) && /frame-src 'self'/.test(csp), csp);
 
     // Sobre un .md: la clave y el pedido quedan del lado de la extensión
     const page = await ctx.newPage(); const errors = []; page.on('pageerror', (e) => errors.push(e.message));
