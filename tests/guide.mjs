@@ -227,9 +227,9 @@ try {
     await page.waitForSelector('.lmd-article pre.lmd-mermaid svg, .lmd-article .lmd-diagram svg', { timeout: 30000 }).catch(() => {});
     await page.waitForSelector('.lmd-article .katex', { timeout: 30000 }).catch(() => {});
     d = await doc(page);
-    const drawn = await page.evaluate(() => ({ svg: document.querySelectorAll('.lmd-article svg[id^="lmd-mermaid-"]').length, nodes: document.querySelectorAll('.lmd-article svg[id^="lmd-mermaid-"] g.node').length, katex: document.querySelectorAll('.lmd-article .katex').length, block: document.querySelectorAll('.lmd-article .katex-display').length, err: document.querySelectorAll('.lmd-article .lmd-diagram-error, .lmd-article .katex-error').length }));
+    const drawn = await page.evaluate(() => ({ svg: document.querySelectorAll('.lmd-article svg[id^="lmd-mermaid-"]').length, nodes: document.querySelectorAll('.lmd-article svg[id^="lmd-mermaid-"] g.node').length, katex: document.querySelectorAll('.lmd-article .katex').length, block: document.querySelectorAll('.lmd-article .katex-display').length, bars: document.querySelectorAll('.lmd-article svg[aria-roledescription=xychart] [class*=bar-plot] rect').length, err: document.querySelectorAll('.lmd-article .lmd-diagram-error, .lmd-article .katex-error').length }));
     check('un [[enlace]] lleva a otra nota de la guía, que sigue de solo lectura', d.f === 'guide/diagrams-and-formulas.md' && d.guide && d.ro && d.active === 'Diagrams and formulas' && !d.mode, d);
-    check('ahí el diagrama y las fórmulas se dibujan', drawn.svg === 1 && drawn.nodes === 4 && drawn.katex >= 2 && drawn.block === 1 && drawn.err === 0, drawn);
+    check('ahí el diagrama, el gráfico y las fórmulas se dibujan', drawn.svg === 2 && drawn.nodes === 4 && drawn.bars === 4 && drawn.katex >= 2 && drawn.block === 1 && drawn.err === 0, drawn);
     await page.click('.lmd-article a:text-is("Tools and plugins")'); await opened(page, 'Tools and plugins');
     d = await doc(page);
     const table = await page.evaluate(() => document.querySelectorAll('.lmd-article table tbody tr').length);

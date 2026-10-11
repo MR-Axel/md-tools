@@ -51,7 +51,7 @@ try {
   await app.click('.lmd-diagram >> nth=0'); await app.waitForSelector('.lmd-dgm-svg svg');
   let s = await state();
   add('el editor dice el tipo y muestra las piezas de flujo', s.label === 'Mermaid · Flowchart' && J(s.pieces) === J(['Step', 'Question', 'Arrow', 'Arrow with a label', 'Color one node']) && !s.addHidden, [s.label, s.pieces]);
-  add('las plantillas están en un desplegable aparte, cerrado', await app.evaluate(() => document.querySelector('.lmd-dgm-tpls').hidden && !document.querySelector('.lmd-dgm-add [data-tpl]') && document.querySelectorAll('.lmd-dgm-tpls [data-tpl]').length === 9));
+  add('las plantillas están en un desplegable aparte, cerrado', await app.evaluate(() => document.querySelector('.lmd-dgm-tpls').hidden && !document.querySelector('.lmd-dgm-add [data-tpl]') && document.querySelectorAll('.lmd-dgm-tpls [data-tpl]').length === 11));
 
   // ---------- Errores ----------
   const cases = [
@@ -68,6 +68,10 @@ try {
     ['erDiagram\n  A ||--o{ B', '2', /relation has no name/, /A \|\|--o\{ B : has/],
     ['gantt\n  title X\n  section A\n  Task :a1, 2026-13-45, 3d', '4', /date 2026-13-45 is not valid/, /YYYY-MM-DD/],
     ['pie title X\n  A : 10', '2', /slice could not be read/, /"Name" : 10/],
+    ['xychart-beta\n  x-axis [Jan, Feb\n  bar [1, 2]', '2', /bracket is not closed/, /bar \[10, 20\]/],
+    ['xychart-beta\n  x-axis [Jan, Feb]\n  bar [1, two]', '3', /series could not be read/, /bar \[10, 12\.5\]/],
+    ['xychart-beta\n  x-axis Jan, Feb]\n  bar [1, 2]', '2', /axis labels could not be read/, /x-axis \["Jan", "Feb"\]/],
+    ['xychart-beta\n  x-axis [Jan, Feb]\n  y-axis "Sales" 0 -> 10\n  line [1, 2]', '3', /axis could not be read/, /y-axis "Sales" 0 --> 100/],
     ['mindmap\n  root((X))\n    A\n  B', '4', /B sits at the level of the central topic/, /Indent/],
   ];
   const bad = [];
@@ -111,7 +115,7 @@ try {
   add('sin nodos, "Paso" queda suelto', s.code === 'graph LR\n  A[New step]\n', s.code);
 
   // Cada tipo tiene sus piezas; aplicadas una tras otra sobre su plantilla, el diagrama se sigue dibujando.
-  const WANT = { flow: 5, seq: 5, state: 2, class: 4, er: 3, gantt: 3, pie: 1, mind: 2, time: 2 };
+  const WANT = { flow: 5, seq: 5, state: 2, class: 4, er: 3, gantt: 3, pie: 1, bar: 2, line: 2, mind: 2, time: 2 };
   const run = () => app.evaluate(async () => {
     const D = LMD.diagram; const out = {}; let n = 0;
     const draw = async (kind, code) => { try { if (kind === 'dot') { (await Viz.instance()).renderSVGElement(code); } else { await mermaid.render('t' + (++n), code); } return ''; } catch (e) { return String(e.message || e).slice(0, 160); } finally { document.querySelectorAll('body > [id^=dt]').forEach((x) => x.remove()); } };
@@ -144,7 +148,7 @@ try {
   const en = await run();
   const types = Object.keys(WANT);
   add('cada tipo ofrece sus piezas', types.every((t) => en[t].pieces === WANT[t]) && en.dot.pieces === 2, Object.keys(en).map((t) => [t, en[t].pieces]));
-  add('las nueve plantillas se dibujan', types.every((t) => !en[t].tplErr), types.map((t) => [t, en[t].tplErr]));
+  add('las once plantillas se dibujan', types.every((t) => !en[t].tplErr), types.map((t) => [t, en[t].tplErr]));
   add('las piezas de cada tipo dejan un diagrama que se dibuja', Object.keys(en).every((t) => !en[t].errs.length), Object.keys(en).map((t) => en[t].errs).filter((x) => x.length));
   add('aplicadas dos veces, no repiten identificadores ni líneas', Object.keys(en).every((t) => !en[t].dup.length), Object.keys(en).map((t) => [t, en[t].dup]).filter((x) => x[1].length));
   add('cada pieza deja algo seleccionado para completar', Object.keys(en).every((t) => en[t].sels.filter((x) => !x).length <= 2), Object.keys(en).map((t) => [t, en[t].sels]));
@@ -156,7 +160,7 @@ try {
   // ---------- Piezas en la pantalla para otros tipos ----------
   await app.click('[data-drop=tpl]'); await app.waitForTimeout(150);
   const menu = await app.evaluate(() => ({ open: !document.querySelector('.lmd-dgm-tpls').hidden, note: document.querySelector('.lmd-dgm-tpls > p').textContent, items: [...document.querySelectorAll('.lmd-dgm-tpls [data-tpl]')].map((b) => [b.querySelector('b').textContent, b.querySelector('small').textContent.length > 8, !!b.querySelector('svg')]) }));
-  add('"Insertar plantilla" despliega los nueve tipos con nombre, descripción y miniatura, y avisa que reemplaza', menu.open && /replaces the whole diagram/.test(menu.note) && menu.items.length === 9 && menu.items.every((i) => i[0] && i[1] && i[2]) && menu.items[4][0] === 'Data', menu);
+  add('"Insertar plantilla" despliega los once tipos con nombre, descripción y miniatura, y avisa que reemplaza', menu.open && /replaces the whole diagram/.test(menu.note) && menu.items.length === 11 && menu.items[7][0] === 'Bars' && menu.items[8][0] === 'Lines' && menu.items.every((i) => i[0] && i[1] && i[2]) && menu.items[4][0] === 'Data', menu);
   await app.click('[data-tpl="1"]'); await app.waitForTimeout(1100); s = await state();
   add('elegir una plantilla reemplaza todo, cierra el desplegable y cambia las piezas', /^sequenceDiagram/.test(s.code) && s.label === 'Mermaid · Sequence' && J(s.pieces) === J(['Participant', 'Message', 'Response', 'Note', 'Loop']) && await app.evaluate(() => document.querySelector('.lmd-dgm-tpls').hidden) && !s.err, [s.label, s.pieces]);
   add('queda "Volver a lo que tenía"', await app.evaluate(() => !document.querySelector('[data-dgm-back]').hidden));
@@ -164,6 +168,18 @@ try {
   add('secuencia: el participante nuevo no repite identificador y deja el nombre seleccionado', /\n {2}participant B as Name\n$/.test(s.code) && s.sel === 'Name', [s.code, s.sel]);
   await app.click('[data-drop=tpl]'); await app.click('[data-tpl="3"]'); await app.waitForTimeout(600); await app.click('[data-piece="1"]'); await app.waitForTimeout(1100); s = await state();
   add('clases: el atributo entra en el bloque de la última clase', /class Customer \{\n {4}\+name\n {4}\+attribute\n {2}\}/.test(s.code) && s.sel === 'attribute' && !s.err, [s.code, s.sel]);
+  // Barras y líneas: plantillas de inicio con datos cortos, su nombre y sus piezas.
+  await app.click('[data-drop=tpl]'); await app.click('[data-tpl="7"]'); await app.waitForTimeout(1100); s = await state();
+  const kindOf = () => app.evaluate(() => { const v = document.querySelector('.lmd-dgm-svg svg'); return [v.getAttribute('aria-roledescription'), v.querySelectorAll('[class*=bar-plot] rect').length, v.querySelectorAll('[class*=line-plot] path').length]; });
+  add('barras: la plantilla es un xychart corto, con su nombre y sus piezas', /^xychart-beta\n {2}title "Sales by month"\n {2}x-axis \["Jan", "Feb", "Mar", "Apr"\]\n {2}y-axis "Units" 0 --> 30\n {2}bar \[12, 18, 15, 24\]$/.test(s.code) && s.label === 'Mermaid · Bars' && J(s.pieces) === J(['Bar series', 'Line series']) && !s.err && J(await kindOf()) === J(['xychart', 4, 0]), [s.code, s.label, s.pieces, await kindOf()]);
+  await app.click('[data-piece="1"]'); await app.waitForTimeout(1100); s = await state();
+  add('barras: una serie nueva trae un valor por rótulo, seleccionados, y se dibuja', /\n {2}line \[10, 10, 10, 10\]\n$/.test(s.code) && s.sel === '10, 10, 10, 10' && !s.err && J(await kindOf()) === J(['xychart', 4, 1]), [s.code, s.sel, await kindOf()]);
+  await app.click('[data-drop=colors]'); await app.click('[data-pal="0"]'); await app.waitForTimeout(1300); s = await state();
+  const xyFill = await app.evaluate(() => document.querySelector('.lmd-dgm-svg [class*=bar-plot] rect').getAttribute('fill'));
+  add('barras: una paleta pinta las series y queda escrita en el bloque', /^%%\{init: \{'theme':'base','themeVariables':\{[^\n]*'xyChart':\{'backgroundColor':'transparent'[^\n]*'plotColorPalette':'#3b82f6,#437ad3,#1e3a8a'\}\}\}\}%%\nxychart-beta\n/.test(s.code) && xyFill === '#3b82f6' && !s.err, [s.code.slice(0, 700), xyFill]);
+  await app.click('[data-pal="-1"]'); await app.waitForTimeout(900); await app.keyboard.press('Escape'); await app.waitForTimeout(150);
+  await app.click('[data-drop=tpl]'); await app.click('[data-tpl="8"]'); await app.waitForTimeout(1100); s = await state();
+  add('líneas: la plantilla, su nombre y el dibujo', /^xychart-beta\n {2}title "Visits by month"\n[^]*\n {2}line \[120, 180, 260, 410\]$/.test(s.code) && s.label === 'Mermaid · Lines' && !s.err && J(await kindOf()) === J(['xychart', 0, 1]), [s.code, s.label, await kindOf()]);
   await fill('journey\n  title X', 300); s = await state();
   add('un tipo sin piezas no muestra la fila "Agregar"', s.addHidden, s.pieces);
 
@@ -220,9 +236,11 @@ try {
   await app.click('[data-act=mode-edit]'); await app.waitForTimeout(400);
   await app.click('.lmd-diagram >> nth=0'); await app.waitForSelector('.lmd-dgm-svg svg');
   const es = await run();
-  add('español: las plantillas y las piezas salen en español y se dibujan', /CLIENTE \|\|--o\{ PEDIDO : hace/.test(es.er.tpl) && /Paso nuevo/.test(es.flow.final) && /Mensaje/.test(es.seq.final) && Object.keys(es).every((t) => !es[t].tplErr && !es[t].errs.length), Object.keys(es).map((t) => [t, es[t].tplErr, es[t].errs]).filter((x) => x[1] || x[2].length));
+  add('español: las plantillas y las piezas salen en español y se dibujan', /CLIENTE \|\|--o\{ PEDIDO : hace/.test(es.er.tpl) && /Paso nuevo/.test(es.flow.final) && /Mensaje/.test(es.seq.final) && /title "Ventas por mes"/.test(es.bar.tpl) && /x-axis \["Ene", "Feb", "Mar", "Abr"\]/.test(es.bar.tpl) && /y-axis "Visitas"/.test(es.line.tpl) && Object.keys(es).every((t) => !es[t].tplErr && !es[t].errs.length), Object.keys(es).map((t) => [t, es[t].tplErr, es[t].errs]).filter((x) => x[1] || x[2].length));
   await fill('graph LR\n  A[Inicio] --> B[Fin] sobra'); s = await state();
   add('español: el error se explica en español', s.line === '2' && /Sobra texto después de B\[Fin\]/.test(s.err) && /Borrá sobra/.test(s.hint) && await app.evaluate(() => document.querySelector('.lmd-dgm .lmd-err-more summary').textContent === 'Ver detalle'), [s.err, s.hint]);
+  await fill('xychart-beta\n  x-axis [Ene, Feb]\n  bar [1, dos]'); s = await state();
+  add('español: el error de un gráfico se explica en español', s.line === '3' && /Esta serie no se pudo leer/.test(s.err) && /con punto para los decimales/.test(s.hint), [s.line, s.err, s.hint]);
   add('sin errores de JavaScript', errors.length === 0, errors);
 } catch (e) { add('la prueba llegó hasta el final', false, String(e && e.stack || e).slice(0, 700)); }
 

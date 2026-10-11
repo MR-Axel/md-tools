@@ -914,5 +914,5 @@
     });
   }
 
-  LMD.board = { init, calcTables, totalsRow, formulaOf, fit: fitAll, model: { parse, serialize, stamp, doneIndex } };
+  LMD.board = { init, calcTables, totalsRow, formulaOf, parseNumber, fit: fitAll, model: { parse, serialize, stamp, doneIndex } };
 })();

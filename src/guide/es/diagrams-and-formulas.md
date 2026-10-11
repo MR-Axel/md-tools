@@ -28,6 +28,20 @@ Para sumar uno, elegí **Diagrama** en el menú de bloques. Editando, un clic so
 
 Un bloque `dot` se dibuja con Graphviz.
 
+## Gráficos
+
+Un gráfico de barras, de líneas o de torta también es un bloque `mermaid`:
+
+```mermaid
+xychart-beta
+  title "Visitas por mes"
+  x-axis ["Ene", "Feb", "Mar", "Abr"]
+  y-axis "Visitas" 0 --> 410
+  bar [120, 180, 260, 410]
+```
+
+Para armarlo desde una tabla, entrá a una celda mientras editás y elegí **Graficar** en la barra de la tabla. Elegís el tipo, la columna de los rótulos y la de los valores, y el gráfico queda debajo de la tabla. Lee números como `1.234,5`, `$ 900` y `12 %`, y deja afuera la fila de totales. La tabla no cambia. Si después cambiás un número, graficala de nuevo.
+
 ## Fórmulas
 
 Las fórmulas se escriben en LaTeX y las dibuja KaTeX. Dentro de un renglón van entre signos de pesos: la energía es $E = mc^2$.
