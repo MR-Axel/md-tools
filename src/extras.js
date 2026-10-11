@@ -116,6 +116,8 @@
       if (here && core.dirty && !(await core.save(false))) return;
       for (const m of moves) await LMD.cloud.rename(m[0], m[1]);
       if (here) openMoved(core.urlOf(here[1]));
+      // Con la página de esa carpeta (o de una de adentro) a la vista, la página la sigue a su ruta nueva.
+      else if (isDir && core.dirPage && inCloud(core.HERE) && (core.cloudPath + '/').startsWith(old + '/')) openMoved(core.urlOf(to + core.cloudPath.slice(old.length)) + '/');
       else core.reloadTree();
     } catch (e) { core.flash(cloudWhy(e, fallback), 'error'); if (isDir) core.reloadTree(); }
   }
@@ -442,7 +444,7 @@
     try {
       const owner = LMD.cloud.split(path).owner;
       const inside = (await LMD.cloud.list(true, owner)).map((n) => (owner ? '~' + owner + '/' : '') + n.path).filter((p) => p.startsWith(path + '/'));
-      const here = !core.noDoc && inside.includes(core.cloudPath);
+      const here = !core.noDoc && inCloud(core.HERE) && (inside.includes(core.cloudPath) || (core.dirPage && (core.cloudPath + '/').startsWith(path + '/')));
       for (const p of inside) await LMD.cloud.remove(p);
       if (here) await closeGone(); else core.reloadTree();
     } catch (e) { core.flash(cloudWhy(e, 'No se pudo eliminar'), 'error'); core.reloadTree(); }
@@ -468,18 +470,23 @@
   }
   // Subir a una carpeta de la nube archivos o una carpeta entera de la computadora o del teléfono (send.js), sin
   // abrirlos antes en el explorador. Subir carpeta figura solo donde el navegador deja elegir una.
+  const OPEN_ITEM = ['page', 'Abrir', false, 'open'];
   const upItems = (dirUrl) => (dirUrl && LMD.send.canUp(dirUrl) ? [['upf', 'Subir archivos'], LMD.send.canDir() && ['upd', 'Subir carpeta']] : []);
   const upPick = (f, dirUrl) => { if (f !== 'upf' && f !== 'upd') return false; LMD.send.pick(f === 'upd' ? 'dir' : 'files', dirUrl); return true; };
   // Lo que se ve en el visor o se convierte, pero no es una nota (kit.js: FILE_TYPES).
   const notNote = (url) => /^(pdf|epub|image|audio|video|office)$/.test(LMD.kit.kindOf(nameOf(url)));
-  function treeMenu(x, y, node) {
-    const url = node.dataset.url; const isDir = node.classList.contains('lmd-node-dir'); const cloud = inCloud(url); const local = inLocal(url);
+  // onPage: lo abrió la página de esa carpeta (folderpage.js), que ya está a la vista: no se ofrece abrirla.
+  function treeMenu(x, y, url, isDir, onPage) {
+    const cloud = inCloud(url); const local = inLocal(url);
     const at = isDir ? url : parentOf(url);
-    // Quien solo lee en su equipo no crea, renombra ni elimina ahí: de una carpeta le queda exportarla.
-    if (teamReader(url)) { if (isDir) showMenu(x, y, [['fexp', 'Exportar la carpeta…']], () => folderExport(url)); return; }
+    const page = isDir && !onPage && core.canOpenDir(url);
+    // Quien solo lee en su equipo no crea, renombra ni elimina ahí: de una carpeta le queda abrirla y exportarla.
+    if (teamReader(url)) { if (isDir) showMenu(x, y, [page && OPEN_ITEM, ['fexp', 'Exportar la carpeta…']].filter(Boolean), (f) => { if (f === 'page') core.openDir(url); else folderExport(url); }); return; }
     // Una carpeta propia de la nube suma lo de las carpetas con contraseña: proteger, desbloquear, abrir para la IA.
     const folder = isDir && cloud ? core.pathOf(url) : '';
     showMenu(x, y, [
+      // La página de la carpeta: su descripción y el índice de lo que tiene. En pantalla chica se llega por acá.
+      page && OPEN_ITEM,
       !local && ['new', isDir ? 'Nuevo archivo acá' : 'Nuevo archivo'],
       !local && ['tpl', 'Desde una plantilla…'],
       !local && ['dir', 'Nueva carpeta'],
@@ -505,7 +512,8 @@
       folder && core.APP && LMD.sync.canPublish(folder) && ['site', 'Publicar como sitio…'],
     ]).concat(folder ? LMD.vault.menu(folder) : []).filter(Boolean), (f) => {
       if (wherePick(f, url) || upPick(f, url)) return;
-      if (f === 'imp') core.importAt(url);
+      if (f === 'page') core.openDir(url);
+      else if (f === 'imp') core.importAt(url);
       else if (f === 'send') LMD.send.start(url);
       else if (f === 'nosend') core.flash(T('Este archivo no se sube a la nube: las notas de la nube son texto. Se ve desde el disco.'), 'warn');
       else if (/^v-/.test(f)) LMD.vault.pick(f, folder);
@@ -524,13 +532,15 @@
   }
   // Crear: desde la cabecera del explorador (sin dirUrl: donde van las notas nuevas) o dentro de una raíz.
   // Con whole (clic derecho sobre una raíz del explorador), suma exportar todo lo que hay en ella.
-  function createMenu(x, y, dirUrl, whole) {
+  // onPage: lo abrió la página de esa raíz, que ya está a la vista.
+  function createMenu(x, y, dirUrl, whole, onPage) {
     const folderAt = dirUrl ? (canTree(dirUrl) ? dirUrl : '') : (core.diskDir() || (LMD.cloud.signedIn() ? core.urlOf('') : ''));
-    showMenu(x, y, [['new', 'Nota en blanco'], ['tpl', 'Desde una plantilla…'], folderAt && ['dir', 'Carpeta']].concat(upItems(dirUrl), [whole && dirUrl && ['fexp', 'Exportar la carpeta…'],
+    showMenu(x, y, [whole && dirUrl && !onPage && core.canOpenDir(dirUrl) && OPEN_ITEM, ['new', 'Nota en blanco'], ['tpl', 'Desde una plantilla…'], folderAt && ['dir', 'Carpeta']].concat(upItems(dirUrl), [whole && dirUrl && ['fexp', 'Exportar la carpeta…'],
       // La raíz entera a la nube: la carpeta abierta con sus subcarpetas, o todas las notas de este navegador.
       whole && dirUrl && LMD.send.can(dirUrl) && ['send', inLocal(dirUrl) ? 'Enviar todas a la nube' : 'Enviar la carpeta a la nube']], whole && dirUrl ? whereItems(dirUrl) : []).filter(Boolean), (f) => {
       if (wherePick(f, dirUrl) || upPick(f, dirUrl)) return;
-      if (f === 'send') LMD.send.start(dirUrl);
+      if (f === 'page') core.openDir(dirUrl);
+      else if (f === 'send') LMD.send.start(dirUrl);
       else if (f === 'fexp') folderExport(dirUrl);
       else if (f === 'dir') newFolder(folderAt);
       else if (f === 'tpl') fromTemplate(dirUrl);
@@ -544,6 +554,56 @@
     if (!window.showDirectoryPicker) { core.pick('file'); return; }
     showMenu(x, y, [['dir', 'Abrir carpeta', false, 'open'], ['file', 'Abrir archivo']], (f) => core.pick(f));
   }
+  // Lo que no se administra desde acá (la rama de un archivo abierto por enlace, una carpeta en el lector, la guía,
+  // una carpeta compartida por enlace): se puede abrir su página, enviar a la nube y, si la ruta se conoce, saber
+  // dónde está. La nube, en el lector de un archivo del disco, no se administra; sí recibe lo que se sube a una de
+  // sus carpetas. Devuelve false si no hay nada que ofrecer.
+  function looseMenu(x, y, at, onPage) {
+    const isDir = at.endsWith('/');
+    const items = [isDir && !onPage && core.canOpenDir(at) && OPEN_ITEM, LMD.send.can(at) && ['send', isDir ? 'Enviar la carpeta a la nube' : 'Enviar a la nube']].concat(upItems(at), whereItems(at)).filter(Boolean);
+    if (!items.length) return false;
+    showMenu(x, y, items, (f) => { if (f === 'page') core.openDir(at); else if (f === 'send') LMD.send.start(at); else if (!upPick(f, at)) wherePick(f, at); });
+    return true;
+  }
+  // El menú de una carpeta por su dirección, sin la entrada que abre su página: el de la página de esa carpeta. Es
+  // el mismo que sale con clic derecho en el explorador (el de la raíz, si es una raíz). Devuelve false si no hay nada.
+  const isRoot = (url) => !core.pathOf(url) || (inCloud(url) && /^~[^/]+$/.test(core.pathOf(url)));
+  function dirMenu(x, y, url) {
+    if (!(canTree(url) || inLocal(url))) return looseMenu(x, y, url, true);
+    if (isRoot(url)) createMenu(x, y, url, true, true); else treeMenu(x, y, url, true, true);
+    return true;
+  }
+  const dirHasMenu = (url) => canTree(url) || inLocal(url) || LMD.send.can(url) || !!upItems(url).length || !!whereItems(url).length;
+  // Si esa carpeta se puede exportar entera: la del disco, la de este navegador o la de la nube.
+  const canExportDir = (url) => (core.APP ? /^(dir|local|cloud)$/.test(kindOf(url)) : location.protocol === 'file:' && !url.startsWith('https://lmd.local/'));
+
+  // ---------- La descripción de una carpeta ----------
+  // No hay formato nuevo: es el README.md de adentro. "Agregar una descripción" lo crea con el nombre de la carpeta
+  // como título y lo abre para escribir. En la nube cuenta como una nota más del plan: si no hay lugar, se dice con
+  // el aviso de siempre.
+  async function describe(dirUrl, title) {
+    const name = 'README.md'; const text = '# ' + String(title || '').replace(/\s+/g, ' ').trim() + '\n\n';
+    const how = { tree: true, edit: 'doc' };
+    try {
+      if (inLocal(dirUrl)) {
+        const pre = core.localName(dirUrl); const full = (pre ? pre + '/' : '') + name;
+        if (!(await LMD.store.noteGet(full)) && !(await LMD.store.notePut(full, text))) throw new Error('store');
+        return core.open(core.localUrl(full), how);
+      }
+      if (inCloud(dirUrl)) {
+        const dir = core.pathOf(dirUrl); const path = (dir ? dir + '/' : '') + name; const s = LMD.cloud.split(path);
+        if (notMineTeam(dir) || (s.owner && !LMD.cloud.isTeam(path))) return false;
+        if (!(await LMD.vault.unlockFor(path))) return false;
+        if (!(await LMD.cloud.list(true, s.owner)).some((n) => n.path === s.path)) await LMD.cloud.write(path, text);
+        return core.open(core.urlOf(path), how);
+      }
+      if (!(await core.allowWrite(dirUrl))) return false;
+      const dir = await core.dirHandle(dirUrl);
+      if (!(await exists(dir, name))) { const h = await dir.getFileHandle(name, { create: true }); const w = await h.createWritable(); await w.write(text); await w.close(); }
+      return core.open(dirUrl + encodeURIComponent(name), how);
+    } catch (e) { cloudFail(e, 'No se pudo crear el archivo'); return false; }
+  }
+
   const rootUrl = (node) => { const sec = node.closest('.lmd-xroot'); const list = sec && sec.querySelector('.lmd-tree'); return (list && list.dataset.url) || ''; };
 
   // ---------- Dónde está el archivo ----------
@@ -865,7 +925,7 @@
     if (e.cancelable) e.preventDefault(); // sin el clic que seguiría: abriría la nota, o lo que quedó debajo
     const under = l.moving ? underFinger() : null;
     dropLift();
-    if (!l.moving) { treeMenu(l.x0, l.y0, l.node); return; }
+    if (!l.moving) { treeMenu(l.x0, l.y0, l.node.dataset.url, l.node.classList.contains('lmd-node-dir'), false); return; }
     if (under) dropOn({ target: under }); else endDrag();
   }
   function liftCancel() { dropLift(); endDrag(); }
@@ -1196,17 +1256,13 @@
       if (disk) { e.preventDefault(); showMenu(e.clientX, e.clientY, [['flink', 'Copiar enlace de SharpMD', false, 'link'], LMD.send.can(at) && ['send', 'Enviar a la nube']].concat(whereItems(disk)).filter(Boolean), (f) => { if (f === 'send') LMD.send.start(at); else if (!wherePick(f, disk)) core.copy(LMD.fileLink(disk)); }); return; }
       if (!at) return;
       if (!(canTree(at) || inLocal(at))) {
-        // Lo que no se administra desde acá (la rama de un archivo abierto por enlace, una carpeta en el lector, un
-        // texto): se puede enviar a la nube y, si la ruta se conoce, saber dónde está.
-        // La nube, en el lector de un archivo del disco, no se administra; sí recibe lo que se sube a una de sus carpetas.
-        const items = (LMD.send.can(at) ? [['send', at.endsWith('/') ? 'Enviar la carpeta a la nube' : 'Enviar a la nube']] : []).concat(upItems(at), whereItems(at)).filter(Boolean);
-        if (items.length) { e.preventDefault(); showMenu(e.clientX, e.clientY, items, (f) => { if (f === 'send') LMD.send.start(at); else if (!upPick(f, at)) wherePick(f, at); }); }
+        if (looseMenu(e.clientX, e.clientY, at, false)) e.preventDefault();
         return;
       }
       e.preventDefault();
       // Con el dedo apoyado, el renglón se levanta: el menú sale al soltar, si no se lo arrastró.
       if (node && held(node) && liftable(at) && !teamReader(at)) { liftRow(node, e.clientX, e.clientY); return; }
-      if (node) treeMenu(e.clientX, e.clientY, node); else createMenu(e.clientX, e.clientY, at, true);
+      if (node) treeMenu(e.clientX, e.clientY, at, node.classList.contains('lmd-node-dir'), false); else createMenu(e.clientX, e.clientY, at, true);
     });
     // Los botones de la cabecera del explorador y el "+" de cada raíz.
     core.ui.sidebar.addEventListener('click', (e) => {
@@ -1260,5 +1316,5 @@
     article.addEventListener('keyup', (e) => { if (/^Arrow|^Page|^Home$|^End$/.test(e.key)) centerCaret(); });
   }
 
-  LMD.extras = { init, pasteImage, saveImage, exportHtml, htmlOf, htmlPage, folderExport, keepShort, imageDialog, imageMd, fromTemplate, trash, menu: showMenu, newIn: (dirUrl, given) => newFrom(dirUrl, given, true) };
+  LMD.extras = { init, pasteImage, saveImage, exportHtml, htmlOf, htmlPage, folderExport, dirMenu, dirHasMenu, canExportDir, describe, newFile: (dirUrl) => newFile(dirUrl), keepShort, imageDialog, imageMd, fromTemplate, trash, menu: showMenu, newIn: (dirUrl, given) => newFrom(dirUrl, given, true) };
 })();

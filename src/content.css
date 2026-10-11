@@ -3859,3 +3859,65 @@ dialog.lmd-xp-full::backdrop { background: var(--bg); }
   .lmd-share-name input { height: 40px; font-size: 16px; }
 }
 @media print { .lmd-tplbar { display: none !important; } }
+
+/* ---------- La página de una carpeta (folderpage.js) ---------- */
+/* En el lugar de la nota: el camino, el nombre, la descripción (el README de la carpeta) y el índice de lo que tiene.
+   De la barra de arriba queda lo que vale para una carpeta; lo de una nota (subirla, exportar el archivo) no. */
+.lmd-dir .lmd-split, .lmd-dir .lmd-zone-outline { display: none; }
+.lmd-dir .lmd-sync, .lmd-dir .lmd-top-right > [data-act=export], .lmd-dir .lmd-modeseg, .lmd-dir .lmd-insert, .lmd-dir .lmd-save { display: none !important; }
+.lmd-root-tog.lmd-active { color: var(--accent); background: var(--accent-soft); }
+/* El triángulo pliega y despliega; el nombre abre la página. El triángulo se toca cómodo: su zona es más grande que el dibujo. */
+.lmd-node-dir > .lmd-node-chev, .lmd-root-tog > .lmd-node-chev { position: relative; }
+.lmd-node-dir > .lmd-node-chev::after, .lmd-root-tog > .lmd-node-chev::after { content: ""; position: absolute; inset: -6px -5px -6px -10px; }
+.lmd-node-dir > .lmd-node-chev:hover, .lmd-root-tog > .lmd-node-chev:hover { color: var(--accent); }
+.lmd-root-tog.lmd-active .lmd-tree-path { font-weight: 600; }
+.lmd-fp { font-family: var(--lmd-font); color: var(--fg); }
+.lmd-fp-head { margin: 0 0 22px; }
+.lmd-fp-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin: 0 0 10px; font-size: 13px; color: var(--fg-faint); }
+.markdown-body .lmd-fp-crumbs a { color: var(--fg-muted); text-decoration: none; border-radius: 5px; padding: 2px 4px; margin: 0 -4px; }
+.markdown-body .lmd-fp-crumbs a:hover { color: var(--fg); background: var(--bg-soft); }
+.lmd-fp-top { display: flex; align-items: flex-start; gap: 12px 16px; }
+.markdown-body h1.lmd-fp-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; margin: 0; padding: 0; border: 0; font-size: 1.9em; line-height: 1.2; }
+.lmd-fp-ico { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); }
+.lmd-fp-ico svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-fp-name { min-width: 0; overflow-wrap: anywhere; }
+.lmd-fp-acts { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; padding-top: 3px; }
+.lmd-fp-acts .lmd-btn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; font-size: 13px; white-space: nowrap; background: transparent; color: var(--fg-muted); }
+.lmd-fp-acts .lmd-btn:hover { background: var(--bg-soft); color: var(--fg); }
+.lmd-fp-acts .lmd-btn svg, .lmd-fp-add svg, .lmd-fp-edit svg { flex: none; width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-fp-acts .lmd-fp-icon { width: 34px; padding: 0; justify-content: center; }
+.markdown-body p.lmd-fp-sum { margin: 10px 0 0; font-size: 13px; color: var(--fg-faint); }
+.lmd-fp .lmd-fp-ro { display: block; margin: 6px 0 0; padding: 4px 0; color: var(--fg-muted); text-decoration: underline; }
+.lmd-fp-desc { position: relative; margin: 0 0 26px; padding: 0 0 18px; border-bottom: 1px solid var(--line); }
+.lmd-fp-md > :first-child { margin-top: 0; }
+.lmd-fp-md > :last-child { margin-bottom: 0; }
+.lmd-fp .lmd-fp-edit, .lmd-fp .lmd-fp-add { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; margin: 10px 0 0 -8px; border-radius: 7px; font-size: 13px; color: var(--fg-muted); }
+.lmd-fp .lmd-fp-add { margin: -8px 0 18px -8px; }
+.lmd-fp .lmd-fp-edit:hover, .lmd-fp .lmd-fp-add:hover { background: var(--bg-soft); color: var(--fg); }
+.lmd-fp-list { display: flex; flex-direction: column; gap: 1px; margin: 0 -10px; }
+.markdown-body a.lmd-fp-row { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 6px 10px; border-radius: 8px; color: var(--fg); text-decoration: none; font-size: 14.5px; line-height: 1.35; }
+.markdown-body a.lmd-fp-row:hover { background: var(--bg-soft); text-decoration: none; }
+.markdown-body a.lmd-fp-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.lmd-fp-rico { flex: none; display: grid; place-items: center; width: 20px; height: 20px; color: var(--fg-faint); }
+.lmd-fp-rico svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.lmd-fp-dir .lmd-fp-rico { color: var(--accent); }
+.lmd-fp-dir .lmd-fp-rname { font-weight: 600; }
+.lmd-fp-rname { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lmd-fp-rtag { flex: none; padding: 1px 7px; border: 1px solid var(--line); border-radius: 999px; font-size: 11.5px; color: var(--fg-muted); }
+.lmd-fp-rmeta { flex: none; margin-left: auto; padding-left: 12px; font-size: 12.5px; color: var(--fg-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lmd-fp-empty { margin: 34px 0; padding: 30px 20px; border: 1px dashed var(--line); border-radius: 12px; text-align: center; color: var(--fg-muted); }
+.markdown-body .lmd-fp-empty p { margin: 0; }
+.lmd-fp-empty .lmd-btn { margin-top: 14px; }
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  .lmd-fp-top { flex-wrap: wrap; }
+  .markdown-body h1.lmd-fp-title { flex: 1 1 100%; font-size: 1.55em; gap: 10px; }
+  .lmd-fp-ico { width: 36px; height: 36px; }
+  .lmd-fp-acts { flex: 1 1 100%; justify-content: flex-start; padding-top: 0; }
+  .lmd-fp-acts .lmd-btn { height: 40px; }
+  .lmd-fp-acts .lmd-fp-icon { width: 40px; }
+  .lmd-fp-list { margin: 0 -6px; }
+  .markdown-body a.lmd-fp-row { min-height: 46px; padding: 8px 6px; font-size: 15px; }
+  .lmd-fp .lmd-fp-edit, .lmd-fp .lmd-fp-add, .lmd-fp .lmd-fp-ro { min-height: 40px; }
+  .lmd-fp-rmeta { font-size: 12px; }
+}
+@media print { .lmd-fp-acts, .lmd-fp-edit, .lmd-fp-add, .lmd-fp-ro { display: none !important; } }

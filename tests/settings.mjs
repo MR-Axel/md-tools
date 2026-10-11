@@ -565,7 +565,7 @@ try {
   check('con plan pago el inicio dice cuántas notas y "sin límite"', recent.sub === 'Plan pago · 14 notas, sin límite' && recent.plans === 0, recent.sub);
   check('las notas de la nube están en el explorador, con sus carpetas primero', recent.top.slice(0, 3).join() === 'archivo/,proyectos/,relleno/' && recent.top.length > 3, recent.top);
   check('el centro ya no repite la lista de recientes', recent.old === 0, recent.old);
-  await app.locator('.lmd-xroot[data-root=cloud] .lmd-node-dir', { hasText: 'relleno' }).click(); await app.waitForSelector('.lmd-xroot[data-root=cloud] .lmd-node-kids .lmd-node');
+  await app.locator('.lmd-xroot[data-root=cloud] .lmd-node-dir', { hasText: 'relleno' }).locator('.lmd-node-chev').click(); await app.waitForSelector('.lmd-xroot[data-root=cloud] .lmd-node-kids .lmd-node');
   check('una carpeta de la nube se despliega con todas sus notas', (await app.locator('.lmd-xroot[data-root=cloud] .lmd-node-kids a.lmd-node').count()) === 10);
   await app.click('[data-cloud=menu]'); const proMenu = await app.evaluate(() => [...document.querySelectorAll('.lmd-side-acct .lmd-menu [data-cloud]')].map((x) => x.dataset.cloud));
   const proPlan = await app.evaluate(() => document.querySelector('.lmd-side-acct .lmd-menu [data-cloud=plan]').textContent.trim());
@@ -579,7 +579,7 @@ try {
   const folders = await app.evaluate(() => [...document.querySelectorAll('.lmd-xroot[data-root=cloud] > .lmd-tree > .lmd-node-dir')].map((n) => n.textContent.trim()));
   check('desde ahí se ven todas las carpetas', folders.join() === 'archivo,proyectos,relleno', folders);
   // Con la raíz Nube plegada, "Abrir la carpeta Nube" la vuelve a desplegar.
-  await app.click('.lmd-xroot[data-root=cloud] .lmd-root-tog'); await app.waitForSelector('.lmd-xroot[data-root=cloud].lmd-shut');
+  await app.click('.lmd-xroot[data-root=cloud] .lmd-root-tog .lmd-node-chev'); await app.waitForSelector('.lmd-xroot[data-root=cloud].lmd-shut');
   await openSettings('cloud'); await app.waitForSelector('[data-acct=cloud] [data-c=open]'); await app.click('[data-acct=cloud] [data-c=open]'); await app.waitForFunction(() => document.querySelector('.lmd-panel').hidden);
   await app.waitForSelector('.lmd-xroot[data-root=cloud]:not(.lmd-shut) .lmd-node.lmd-active');
   check('en una nota de la nube, "Abrir la carpeta Nube" cierra Ajustes y deja el árbol', !((await stored('side')).shut || {}).cloud);

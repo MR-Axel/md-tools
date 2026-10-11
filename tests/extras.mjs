@@ -155,7 +155,7 @@ o.carpetaDisco.push((await walk()).filter((p) => /carpeta|destino/.test(p)));
 await app.waitForFunction(() => { const n = [...document.querySelectorAll('.lmd-xroot[data-root=disk] > .lmd-tree > .lmd-node-dir')].find((x) => x.querySelector('.lmd-node-name').textContent === 'destino'); const c = n && n.querySelector('.lmd-node-n'); return !!c && Number(c.dataset.n) > 1; }, null, { timeout: 8000 }).catch(() => {});
 o.cuentaMovida = [await counts(), await mdIn('destino')];
 // con la nota abierta adentro de la carpeta que se mueve, queda abierta en su ruta nueva
-for (const d of ['destino', 'carpeta', 'sub']) { if (!(await dirNode(d).evaluate((n) => n.classList.contains('lmd-open')))) await dirNode(d).click(); await app.waitForSelector('.lmd-node-dir.lmd-open:has-text("' + d + '")'); }
+for (const d of ['destino', 'carpeta', 'sub']) { if (!(await dirNode(d).evaluate((n) => n.classList.contains('lmd-open')))) await dirNode(d).locator('.lmd-node-chev').click(); await app.waitForSelector('.lmd-node-dir.lmd-open:has-text("' + d + '")'); }
 o.carpetaEnHija = [await drag(dirNode('destino'), dirNode('sub')), await drag(dirNode('carpeta'), dirNode('destino'))]; // ni adentro de una de las suyas, ni donde ya está
 await Promise.all([app.waitForNavigation(), node('hoja.md').click()]); await app.waitForSelector('.markdown-body h1:has-text("Hoja")'); await app.waitForSelector('.lmd-node-kids .lmd-node-dir:has-text("carpeta")');
 const [, markDir] = await Promise.all([app.waitForNavigation(), drag(dirNode('carpeta'), app.locator('.lmd-xroot[data-root=disk] .lmd-tree-head'))]); await app.waitForSelector('.markdown-body h1');
@@ -174,7 +174,8 @@ o.soltarImagen = [await dropOn(node('punto.svg'), app.locator('.markdown-body p.
 await app.waitForFunction(() => !!document.querySelector('.markdown-body p img[data-lmd-src="punto.svg"]'));
 o.soltarImagen.push(await app.evaluate(() => document.querySelector('.markdown-body p img[data-lmd-src="punto.svg"]').getAttribute('data-lmd-src')));
 // y un archivo de otra carpeta, soltado fuera del texto, queda en un renglón propio debajo del último bloque
-for (const d of ['carpeta', 'sub']) { await dirNode(d).click(); await app.waitForSelector('.lmd-node-dir.lmd-open:has-text("' + d + '")'); }
+// (las carpetas se despliegan con su triángulo: el nombre abriría la página de la carpeta)
+for (const d of ['carpeta', 'sub']) { await dirNode(d).locator('.lmd-node-chev').click(); await app.waitForSelector('.lmd-node-dir.lmd-open:has-text("' + d + '")'); }
 await app.waitForSelector('.lmd-node-kids .lmd-node:has-text("hoja.md")');
 o.soltarBloque = [await dropOn(app.locator('.lmd-xroot[data-root=disk] .lmd-node-kids .lmd-node', { hasText: 'hoja.md' }).first(), app.locator('.lmd-article .lmd-add'))];
 await app.click('.lmd-foot .lmd-status', { force: true }); await app.keyboard.press('Control+s'); await app.waitForTimeout(500);

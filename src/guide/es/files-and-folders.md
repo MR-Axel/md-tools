@@ -25,6 +25,10 @@ Lo que ya abriste queda en **Recientes**.
 > [!WARNING]
 > Safari puede borrar las notas del navegador después de semanas sin uso si la app no está instalada. Instalá la app o usá la nube.
 
+## La página de una carpeta
+
+Un clic sobre el nombre de una carpeta abre su página: el índice de sus subcarpetas y sus notas, con la descripción arriba. La descripción es el `README.md` de la carpeta, y **Agregar una descripción** lo crea y lo abre para escribir. El triángulo despliega la carpeta sin abrirla. En el teléfono la página se abre con **Abrir**, en el menú de la carpeta. La página tiene su dirección: se guarda en marcadores y **Copiar el enlace** la copia.
+
 ## Subir a la nube
 
 - El botón de la nube, en la barra de arriba, sube la nota abierta. Una nota del navegador se muda a la nube. Con un archivo del disco elegís entre **Mover a la nube** y **Dejar una copia**.

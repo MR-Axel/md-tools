@@ -182,9 +182,9 @@ try {
 
   console.log('Abrir la plantilla sin sesión');
   const a = await visitor();
-  await a.page.goto(T_URL); await a.page.waitForSelector('.lmd-tplbar');
+  await a.page.goto(T_URL); await a.page.waitForSelector('.lmd-tplbar'); await a.page.waitForSelector('.lmd-fp[data-done]');
   const s0 = await state(a.page); const b0 = await bar(a.page);
-  check('sharpmd.app/t/<nombre> abre la plantilla en su primera nota, de solo lectura', s0.f === 't/planillas-libro/README.md' && s0.h1 === 'Planillas' && s0.pub && s0.tpl && !s0.editing && (await a.page.evaluate(() => getComputedStyle(document.querySelector('.lmd-modeseg')).display === 'none')), s0);
+  check('sharpmd.app/t/<nombre> abre la plantilla en la página de su carpeta (su README arriba y el índice de sus notas), de solo lectura', s0.f === 't/planillas-libro/' && s0.h1 === 'Planillas' && (await a.page.evaluate(() => /Empezá por la primera semana/.test(document.querySelector('.lmd-fp-md').textContent) && document.querySelectorAll('.lmd-fp-row').length === 4)) && s0.pub && s0.tpl && !s0.editing && (await a.page.evaluate(() => getComputedStyle(document.querySelector('.lmd-modeseg')).display === 'none')), s0);
   check('arriba dice qué es y qué pasa, con el botón principal', J(b0) === J({ what: 'Template · read only', line: 'You get a copy to edit. The original does not change.', button: 'Use this template' }), b0);
   const t0 = await until(async () => { const t = await tree(a.page, 'pub'); return t.length >= 4 ? t : null; });
   check('el explorador muestra la carpeta con sus notas y su subcarpeta', !!t0 && J(t0.slice().sort()) === J(['README.md', 'extra', 'semana-1.md', 'semana-2.md']) && (await a.page.evaluate(() => document.querySelector('.lmd-xroot[data-root=pub] .lmd-tree-path').textContent)) === 'Planillas', t0);
@@ -193,7 +193,7 @@ try {
   check('los enlaces entre sus notas andan', !!(await until(async () => { const s = await state(a.page); return s.f === 't/planillas-libro/semana-1.md' && s.h1 === 'Semana 1' && s.tpl; })), await state(a.page));
   await a.page.click('.lmd-xroot[data-root=pub] .lmd-node-dir'); await a.page.click('.lmd-xroot[data-root=pub] .lmd-node:has(.lmd-node-name:text-is("metas.md"))');
   check('y las de una subcarpeta también', !!(await until(async () => { const s = await state(a.page); return s.f === 't/planillas-libro/extra/metas.md' && s.h1 === 'Metas'; })), await state(a.page));
-  await a.page.goto(T_URL); await a.page.waitForSelector('.lmd-tplbar');
+  await a.page.goto(T_URL); await a.page.waitForSelector('.lmd-tplbar'); await a.page.waitForSelector('.lmd-fp[data-done]');
 
   console.log('Querer editar el original');
   await a.page.dblclick('.lmd-article p'); await a.page.waitForSelector('.lmd-fork .lmd-fork-way');
@@ -234,13 +234,13 @@ try {
   check('y sus enlaces a otras notas de la copia andan', !!(await until(async () => { const s = await state(a.page); return s.f === 'local/Planillas/README.md' && s.h1 === 'Planillas'; })), await state(a.page));
 
   console.log('Segunda copia al navegador');
-  await a.page.goto(T_URL); await a.page.waitForSelector('.lmd-tplbar');
+  await a.page.goto(T_URL); await a.page.waitForSelector('.lmd-tplbar'); await a.page.waitForSelector('.lmd-fp[data-done]');
   await use(a.page); await a.page.click('.lmd-fork [data-fk=browser]'); await a.page.waitForSelector('.lmd-send-again');
   const ag = await a.page.evaluate(() => { const c = document.querySelector('.lmd-send-again'); return { title: c.querySelector('h3').textContent, text: c.querySelector('p').textContent, buttons: [...c.querySelectorAll('button')].map((b) => b.textContent) }; });
   check('ya hay una carpeta con ese nombre: se ofrece abrir esa o hacer otra', ag.title === 'You already have a folder "Planillas" in this browser' && J(ag.buttons) === J(['Cancel', 'Make another copy', 'Open the one I have']) && noShout(ag.text), ag);
   await a.page.click('.lmd-send-again [data-sa=open]');
   check('"Abrir la que ya tengo" abre la copia de antes, con lo escrito', !!(await until(async () => { const s = await state(a.page); return s.f === 'local/Planillas/README.md' && s.editing; })) && /MIA/.test(await a.page.evaluate(() => document.querySelector('.lmd-article').textContent)) && (await local(a.page)).length === 4);
-  await a.page.goto(T_URL); await a.page.waitForSelector('.lmd-tplbar');
+  await a.page.goto(T_URL); await a.page.waitForSelector('.lmd-tplbar'); await a.page.waitForSelector('.lmd-fp[data-done]');
   await use(a.page); await a.page.click('.lmd-fork [data-fk=browser]'); await a.page.waitForSelector('.lmd-send-again'); await a.page.click('.lmd-send-again [data-sa=new]');
   check('"Hacer otra copia" la deja con otro nombre, sin tocar la primera', !!(await until(async () => (await state(a.page)).f === 'local/Planillas-2/README.md')) && (await local(a.page)).length === 8 && /MIA/.test(await localText(a.page, 'Planillas/README.md')) && (await localText(a.page, 'Planillas-2/README.md')) === TPL['Planillas/README.md'], await local(a.page));
   await closeSent(a.page);
@@ -250,7 +250,7 @@ try {
   check('la carpeta de una copia se elimina desde el explorador, con sus notas', !!(await until(async () => (await local(a.page)).length === 4)) && (await local(a.page)).every((n) => n.startsWith('Planillas/')), await local(a.page));
 
   console.log('Descargar');
-  await a.page.goto(T_URL); await a.page.waitForSelector('.lmd-tplbar');
+  await a.page.goto(T_URL); await a.page.waitForSelector('.lmd-tplbar'); await a.page.waitForSelector('.lmd-fp[data-done]');
   await use(a.page);
   const [dl] = await Promise.all([a.page.waitForEvent('download'), a.page.click('.lmd-fork [data-fk=zip]')]);
   const zipPath = path.join(SHOTS, 'descarga.zip'); await dl.saveAs(zipPath);
@@ -262,7 +262,7 @@ try {
 
   console.log('Copiar a mi nube, sin sesión: el correo, el código y la copia sigue sola');
   const b = await visitor();
-  await b.page.goto(T_URL); await b.page.waitForSelector('.lmd-tplbar');
+  await b.page.goto(T_URL); await b.page.waitForSelector('.lmd-tplbar'); await b.page.waitForSelector('.lmd-fp[data-done]');
   await use(b.page); await b.page.click('.lmd-fork [data-fk=cloud]'); await b.page.waitForSelector('.lmd-fork-login [data-field=email]');
   const lg = await b.page.evaluate(() => { const c = document.querySelector('.lmd-fork-login'); return { title: c.querySelector('h3').textContent, sub: c.querySelector('.lmd-login-sub').textContent, next: c.querySelector('.lmd-fork-next').textContent }; });
   check('pide el correo ahí mismo y dice que manda un código', lg.title === 'Sign in to use the template' && /we send you a code/.test(lg.sub) && lg.next === 'Once you sign in, the copy continues on its own.' && noShout(J(lg)), lg);
@@ -287,14 +287,14 @@ try {
   check('el original no cambia, y quien la compartió no ve la copia', (await textOf(autora, 'Planillas/README.md')) === TPL['Planillas/README.md'] && (await cloudOf(autora)).length === Object.keys(before).length);
 
   console.log('Segunda copia a la nube, y el plan gratis sin lugar');
-  await b.page.goto(T_URL); await b.page.waitForSelector('.lmd-tplbar');
+  await b.page.goto(T_URL); await b.page.waitForSelector('.lmd-tplbar'); await b.page.waitForSelector('.lmd-fp[data-done]');
   await use(b.page);
   check('con sesión, la salida de la nube nombra la cuenta', (await fork(b.page)).ways[1] === 'cloud:Copy to my cloud|In your account, lectora@example.test.', (await fork(b.page)).ways);
   await b.page.click('.lmd-fork [data-fk=cloud]'); await b.page.waitForSelector('.lmd-send-again');
   check('si ya copió esta plantilla, se ofrece abrir la copia o hacer otra', (await b.page.textContent('.lmd-send-again h3')) === 'You already have a folder "Planillas" in your cloud');
   await b.page.click('.lmd-send-again [data-sa=open]');
   check('"Abrir la que ya tengo" abre su copia, con lo que escribió', !!(await until(async () => { const s = await state(b.page); return s.f === 'cloud/Planillas/README.md'; })) && !!(await until(() => b.page.evaluate(() => /NUBE/.test(document.querySelector('.lmd-article').textContent)))) && (await cloudOf(lectora)).length === 4);
-  await b.page.goto(T_URL); await b.page.waitForSelector('.lmd-tplbar');
+  await b.page.goto(T_URL); await b.page.waitForSelector('.lmd-tplbar'); await b.page.waitForSelector('.lmd-fp[data-done]');
   await use(b.page); await b.page.click('.lmd-fork [data-fk=cloud]'); await b.page.waitForSelector('.lmd-send-again'); await b.page.click('.lmd-send-again [data-sa=new]');
   await b.page.waitForSelector('.lmd-send-card .lmd-send-warn');
   const full = await b.page.evaluate(() => { const c = document.querySelector('.lmd-send:not(.lmd-send-again) .lmd-send-card'); const t = (s) => (c.querySelector(s) || { textContent: '' }).textContent; return { title: t('h3'), dest: t('.lmd-send-dest'), sum: t('.lmd-send-sum'), warn: t('.lmd-send-warn'), alt: t('.lmd-send-alt'), buttons: [...c.querySelectorAll('.lmd-ask-actions button')].map((x) => x.textContent), picks: c.querySelectorAll('[data-pick]').length }; });
@@ -308,8 +308,8 @@ try {
   console.log('Con sesión: copia directo');
   const tercero = await R.signup('tercero@example.test');
   const c = await visitor(tercero);
-  await c.page.goto(R.home + '?f=' + encodeURIComponent('pub/' + tok2)); await c.page.waitForSelector('.lmd-tplbar');
-  check('el enlace con el secreto abre la misma plantilla', (await state(c.page)).f === 'pub/' + tok2 + '/README.md' && (await state(c.page)).tpl, await state(c.page));
+  await c.page.goto(R.home + '?f=' + encodeURIComponent('pub/' + tok2)); await c.page.waitForSelector('.lmd-tplbar'); await c.page.waitForSelector('.lmd-fp[data-done]');
+  check('el enlace con el secreto abre la misma plantilla', (await state(c.page)).f === 'pub/' + tok2 + '/' && (await state(c.page)).tpl, await state(c.page));
   await use(c.page); await c.page.click('.lmd-fork [data-fk=cloud]');
   const s3 = await until(async () => { const s = await state(c.page); return s.f === 'cloud/Planillas/README.md' && s.editing ? s : null; }, 15000);
   check('con sesión y lugar, copia sin preguntar nada', !!s3 && J(await cloudOf(tercero)) === J(Object.keys(TPL).sort()) && !(await c.page.$('.lmd-send')), [await state(c.page), await cloudOf(tercero)]);
@@ -318,8 +318,8 @@ try {
 
   console.log('Plantilla que pide una cuenta');
   const d = await visitor();
-  await d.page.goto(R.origin + '/t/curso-con-cuenta'); await d.page.waitForSelector('.lmd-tplbar');
-  check('se lee sin sesión', (await state(d.page)).h1 === 'Clase 1' && (await state(d.page)).tpl);
+  await d.page.goto(R.origin + '/t/curso-con-cuenta'); await d.page.waitForSelector('.lmd-tplbar'); await d.page.waitForSelector('.lmd-fp[data-done]');
+  check('se lee sin sesión', (await state(d.page)).h1 === 'Curso' && (await d.page.evaluate(() => [...document.querySelectorAll('.lmd-fp-rname')].map((n) => n.textContent).join())) === 'clase-1,clase-2' && (await state(d.page)).tpl, await state(d.page));
   await use(d.page);
   const f2 = await fork(d.page);
   check('sin sesión no se copia al navegador ni se descarga, y se dice por qué', J(f2.ways.map((w) => w.split('|')[0])) === J(['browser-:Copy to this browser', 'cloud:Copy to my cloud', 'zip-:Download']) && f2.need.startsWith('This template asks for an account to copy or download it.') && noShout(f2.all), f2);
@@ -340,8 +340,8 @@ try {
   console.log('La dirección corta: escrita a mano, que no existe y retirada');
   const e = await visitor();
   for (const [name, addr] of [['con mayúsculas y barra al final', '/t/Planillas-Libro/'], ['con .html', '/t/planillas-libro.html'], ['por la página que existe de verdad, sin depender del 404', '/t/?planillas-libro']]) {
-    await e.page.goto(R.origin + addr); await e.page.waitForSelector('.lmd-tplbar');
-    check('la dirección ' + name + ' abre la plantilla', (await state(e.page)).f === 't/planillas-libro/README.md', await state(e.page));
+    await e.page.goto(R.origin + addr); await e.page.waitForSelector('.lmd-tplbar'); await e.page.waitForSelector('.lmd-fp[data-done]');
+    check('la dirección ' + name + ' abre la plantilla', (await state(e.page)).f === 't/planillas-libro/', await state(e.page));
   }
   const lead = (page) => page.evaluate(() => { const l = document.querySelector('.lmd-home-lead:not([hidden])'); return l && l.offsetParent ? { title: l.querySelector('h2').textContent, text: l.querySelector('p').textContent } : null; });
   await e.page.goto(R.origin + '/t/no-existe'); await e.page.waitForSelector('.lmd-home-lead:not([hidden])');
@@ -359,7 +359,7 @@ try {
 
   console.log('En español');
   const g = await visitor(null, null, 'es');
-  await g.page.goto(T_URL); await g.page.waitForSelector('.lmd-tplbar');
+  await g.page.goto(T_URL); await g.page.waitForSelector('.lmd-tplbar'); await g.page.waitForSelector('.lmd-fp[data-done]');
   const bEs = await bar(g.page);
   check('la tira, en español', J(bEs) === J({ what: 'Plantilla · solo lectura', line: 'Te queda una copia para editar. El original no cambia.', button: 'Usar esta plantilla' }), bEs);
   await g.page.dblclick('.lmd-article p'); await g.page.waitForSelector('.lmd-fork .lmd-fork-way');
@@ -376,7 +376,7 @@ try {
 
   console.log('En el teléfono (390 px)');
   const m = await visitor(null, { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
-  await m.page.goto(T_URL); await m.page.waitForSelector('.lmd-tplbar');
+  await m.page.goto(T_URL); await m.page.waitForSelector('.lmd-tplbar'); await m.page.waitForSelector('.lmd-fp[data-done]');
   const geo = await m.page.evaluate(() => { const b = document.querySelector('.lmd-tplbar'); const r = b.getBoundingClientRect(); const k = b.querySelector('button').getBoundingClientRect(); return { wide: document.documentElement.scrollWidth, left: r.left, right: r.right, btn: k.height, btnRight: k.right, top: r.top }; });
   check('la tira entra en la pantalla, con el botón cómodo para el dedo', geo.wide <= 390 && geo.left >= 0 && geo.right <= 390 && geo.btnRight <= 390 && geo.btn >= 44, geo);
   await shot(m.page, '10-telefono-plantilla');
