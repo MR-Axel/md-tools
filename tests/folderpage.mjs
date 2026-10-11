@@ -391,7 +391,7 @@ try {
   console.log('La guía, de solo lectura');
   await p.goto(R.home + '?f=' + encodeURIComponent('guide/'));
   const gd = await at(p, 'guide/');
-  check('la guía también tiene su página, con sus notas por título', !!gd && gd.h1 === 'Guide' && gd.rows.length === 16 && gd.rows[0] === 'f:Start here' && gd.sum === '16 notes', gd || await st(p));
+  check('la guía también tiene su página, con sus notas por título', !!gd && gd.h1 === 'Guide' && gd.rows.length === 17 && gd.rows[0] === 'f:Start here' && gd.sum === '17 notes', gd || await st(p));
   check('solo se lee: copiar el enlace y nada más', !!gd && J(gd.acts) === J(['link']), gd && gd.acts);
   await p.click(rowSel('Start here'));
   check('y sus notas se abren desde ahí', !!(await until(async () => (await st(p)).f === 'guide/start.md')), await st(p));
