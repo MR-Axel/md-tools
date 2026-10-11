@@ -228,7 +228,7 @@ try {
     await page.waitForSelector('[data-field=code]'); await page.fill('[data-field=code]', (await started.json()).dev_code); await page.click('[data-cloud=verify]');
     await page.waitForSelector('[data-cloud=menu]');
     await page.waitForSelector('.lmd-xroot[data-root=cloud] .lmd-node');
-    await page.locator('.lmd-xroot[data-root=cloud] .lmd-node-dir', { hasText: 'team' }).click().catch(() => {});
+    await page.locator('.lmd-xroot[data-root=cloud] .lmd-node-dir', { hasText: 'team' }).locator('.lmd-node-chev').click().catch(() => {});
     await page.locator('.lmd-xroot[data-root=cloud] a.lmd-node', { hasText: 'plan.md' }).click(); await page.waitForSelector('.markdown-body h1');
     check('adentro: la nota de la nube se abre desde el explorador', (await page.textContent('.markdown-body h1')).trim().startsWith('Launch plan'));
     await page.click('[data-act=mode-edit]'); await page.waitForSelector('.lmd-article p.lmd-editable');

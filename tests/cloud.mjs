@@ -190,7 +190,7 @@ try {
   now = await until((p) => p.includes('archivo/suelta.md'));
   o.arrastreNube.push(now.includes('archivo/suelta.md') && !now.includes('suelta.md'));
   for (let i = 0; i < 40 && (await top()).includes('suelta.md'); i++) await app.waitForTimeout(150);
-  await node('archivo').click(); await app.waitForSelector('.lmd-node-kids .lmd-node:has-text("suelta.md")');
+  await node('archivo').locator('.lmd-node-chev').click(); await app.waitForSelector('.lmd-node-kids .lmd-node:has-text("suelta.md")'); // el triángulo despliega; el nombre abriría la página de la carpeta
   o.arrastreNube.push(await drag(node('suelta.md'), app.locator(CLOUD + ' .lmd-tree-head')));
   now = await until((p) => p.includes('suelta.md'));
   o.arrastreNube.push(now.includes('suelta.md') && !now.includes('archivo/suelta.md'));
@@ -352,8 +352,8 @@ try {
   o.carpetaMovida = [now.includes('destino/mover/adentro/uno.md'), now.includes('mover/adentro/uno.md'), now.includes('destino/dos.md')];
   // Una carpeta no se suelta adentro de sí misma ni de una de las suyas.
   await app.waitForSelector(CLOUD + ' .lmd-node-dir:has-text("destino")');
-  await dirNode('destino').click(); await app.waitForSelector(CLOUD + ' .lmd-node-kids .lmd-node-dir:has-text("mover")');
-  await dirNode('mover').click(); await app.waitForSelector(CLOUD + ' .lmd-node-kids .lmd-node-dir:has-text("adentro")');
+  await dirNode('destino').locator('.lmd-node-chev').click(); await app.waitForSelector(CLOUD + ' .lmd-node-kids .lmd-node-dir:has-text("mover")');
+  await dirNode('mover').locator('.lmd-node-chev').click(); await app.waitForSelector(CLOUD + ' .lmd-node-kids .lmd-node-dir:has-text("adentro")');
   o.carpetaEnSi = [await drag(dirNode('destino'), dirNode('adentro')), await drag(dirNode('mover'), dirNode('mover')), await drag(dirNode('mover'), dirNode('destino'))];
   await app.waitForTimeout(400);
   o.carpetaEnSi.push((await paths()).includes('destino/mover/adentro/uno.md'));
