@@ -21,6 +21,8 @@
     er: '<rect x="3" y="10" width="13" height="12" rx="2"/><rect x="28" y="10" width="13" height="12" rx="2"/><path d="M16 16h12M24 12l4 4-4 4"/>',
     gantt: '<path d="M4 4v24h37"/><rect x="8" y="7" width="13" height="4" rx="1"/><rect x="16" y="14" width="15" height="4" rx="1"/><rect x="27" y="21" width="11" height="4" rx="1"/>',
     pie: '<circle cx="22" cy="16" r="12"/><path d="M22 16V4M22 16l10 7"/>',
+    bar: '<path d="M4 4v24h37"/><rect x="9" y="16" width="6" height="12" rx="1"/><rect x="19" y="8" width="6" height="20" rx="1"/><rect x="29" y="12" width="6" height="16" rx="1"/>',
+    line: '<path d="M4 4v24h37"/><path d="M8 23l9-7 8 4 13-13"/><circle cx="17" cy="16" r="1.600"/><circle cx="25" cy="20" r="1.600"/>',
     mind: '<circle cx="22" cy="16" r="5"/><path d="M27 14l8-6M27 18l8 6M17 14 9 8M17 18l-8 6"/><circle cx="37" cy="7" r="2"/><circle cx="37" cy="25" r="2"/><circle cx="7" cy="7" r="2"/><circle cx="7" cy="25" r="2"/>',
     time: '<path d="M3 16h38"/><circle cx="10" cy="16" r="3"/><circle cx="22" cy="16" r="3"/><circle cx="34" cy="16" r="3"/><path d="M10 13V7M22 19v6M34 13V7"/>',
     dot: '<ellipse cx="12" cy="8" rx="8" ry="4.500"/><ellipse cx="32" cy="24" rx="8" ry="4.500"/><path d="M17 11.500 27 20.500"/>',
@@ -33,10 +35,12 @@
     ['er', T('Datos'), T('Entidades de una base y cómo se relacionan'), 'erDiagram\n  ' + T('CLIENTE') + ' ||--o{ ' + T('PEDIDO') + ' : ' + T('hace') + '\n  ' + T('PEDIDO') + ' ||--|{ ITEM : ' + T('contiene') + '\n  ' + T('CLIENTE') + ' {\n    string ' + T('nombre') + '\n    string email\n  }'],
     ['gantt', 'Gantt', T('Tareas en el tiempo, por sección'), 'gantt\n  title ' + T('Plan') + '\n  dateFormat YYYY-MM-DD\n  section ' + T('Diseño') + '\n  ' + T('Prototipo') + ' :a1, 2026-01-05, 7d\n  section ' + T('Desarrollo') + '\n  ' + T('Primera versión') + ' :after a1, 14d'],
     ['pie', T('Torta'), T('Partes de un total'), 'pie title ' + T('Reparto') + '\n  "A" : 45\n  "B" : 30\n  "C" : 25'],
+    ['bar', T('Barras'), T('Cantidades para comparar'), 'xychart-beta\n  title "' + T('Ventas por mes') + '"\n  x-axis ["' + T('Ene') + '", "Feb", "Mar", "' + T('Abr') + '"]\n  y-axis "' + T('Unidades') + '" 0 --> 30\n  bar [12, 18, 15, 24]'],
+    ['line', T('Líneas'), T('Cómo cambia algo con el tiempo'), 'xychart-beta\n  title "' + T('Visitas por mes') + '"\n  x-axis ["' + T('Ene') + '", "Feb", "Mar", "' + T('Abr') + '"]\n  y-axis "' + T('Visitas') + '"\n  line [120, 180, 260, 410]'],
     ['mind', T('Mapa mental'), T('Ideas que salen de un tema central'), 'mindmap\n  root((' + T('Tema central') + '))\n    ' + T('Idea') + ' 1\n      ' + T('Detalle') + '\n    ' + T('Idea') + ' 2\n    ' + T('Idea') + ' 3'],
     ['time', T('Línea de tiempo'), T('Hechos ordenados por fecha'), 'timeline\n  title ' + T('Historia') + '\n  2024 : ' + T('Idea') + '\n  2025 : ' + T('Primera versión') + '\n  2026 : ' + T('Lanzamiento')],
   ];
-  const TYPE_NAME = { flow: 'Flujo', seq: 'Secuencia', state: 'Estados', class: 'Clases', er: 'Datos', gantt: 'Gantt', pie: 'Torta', mind: 'Mapa mental', time: 'Línea de tiempo', dot: 'Graphviz' };
+  const TYPE_NAME = { flow: 'Flujo', seq: 'Secuencia', state: 'Estados', class: 'Clases', er: 'Datos', gantt: 'Gantt', pie: 'Torta', bar: 'Barras', line: 'Líneas', mind: 'Mapa mental', time: 'Línea de tiempo', dot: 'Graphviz' };
 
   const kindOf = (box) => box.dataset.kind || (box.classList.contains('lmd-graphviz') ? 'dot' : 'mermaid');
   const codeOf = (box) => (box.dataset.code != null ? box.dataset.code : box.textContent);
@@ -60,6 +64,8 @@
     if (/^erDiagram\b/.test(l)) return 'er';
     if (/^gantt\b/.test(l)) return 'gantt';
     if (/^pie\b/.test(l)) return 'pie';
+    // Un gráfico de ejes es de líneas si solo tiene series `line`; con alguna `bar`, de barras.
+    if (/^xychart(-beta)?\b/.test(l)) return /^\s*line\b/m.test(code) && !/^\s*bar\b/m.test(code) ? 'line' : 'bar';
     if (/^mindmap\b/.test(l)) return 'mind';
     if (/^timeline\b/.test(l)) return 'time';
     return '';
@@ -204,6 +210,10 @@
     pie: [
       ['Porción', (c) => { let n = (c.match(/^\s*"[^"]*"\s*:/gm) || []).length + 1; while (c.includes('"' + T('Porción') + ' ' + n + '"')) n++; return { text: '"' + pick(T('Porción') + ' ' + n) + '" : 10' }; }],
     ],
+    bar: [
+      ['Serie de barras', (c) => ({ text: 'bar [' + pick(xyBlank(c)) + ']' })],
+      ['Serie de línea', (c) => ({ text: 'line [' + pick(xyBlank(c)) + ']' })],
+    ],
     mind: [
       ['Rama', (c) => { const l = body(c).find((x) => x.trim()); return { indent: (l ? indentOf(l) : '  ') + '  ', text: pick(T('Idea nueva')) }; }],
       ['Subrama', (c) => { const l = body(c).filter((x) => x.trim()).pop(); return { indent: (l ? indentOf(l) : '  ') + '  ', text: pick(T('Detalle')) }; }],
@@ -217,6 +227,13 @@
       ['Arista', (c) => { const g = dotGraph(c); return Object.assign(link(g, '', (a, b) => a + g.op + (b ? pick(b) + ';' : pick(''))), dotEnd(c)); }],
     ],
   };
+  PIECES.line = PIECES.bar;
+  // Una serie nueva trae tantos valores como rótulos tiene el eje, para que el gráfico se siga dibujando.
+  function xyBlank(code) {
+    const m = /^\s*x-axis\b[^[\n]*\[([^\]\n]*)\]/m.exec(code);
+    const n = m ? (m[1].replace(/"[^"]*"/g, 'x').split(',').filter((x) => x.trim()).length || 1) : ((/^\s*(?:bar|line)\b[^[\n]*\[([^\]\n]*)\]/m.exec(code) || ['', '0'])[1].split(',').length);
+    return Array.from({ length: n }, () => '10').join(', ');
+  }
   // En Graphviz todo va antes de la llave que cierra.
   function dotEnd(code) { const lines = code.split('\n'); for (let i = lines.length - 1; i >= 0; i--) if (/^\s*\}\s*$/.test(lines[i])) return { at: i }; const p = code.lastIndexOf('}'); return p === -1 ? {} : { pos: p }; }
 
@@ -262,6 +279,11 @@
     textColor: p[4], titleColor: p[4], classText: p[2], edgeLabelBackground: p[1], noteBkgColor: p[5], noteTextColor: p[2], noteBorderColor: p[3],
     pieSectionTextColor: p[2], pieStrokeColor: p[3], pieOuterStrokeColor: p[3], pieOpacity: '1',
   });
+  // Un gráfico de ejes se pinta con otras variables: las series en el tono del borde y el de la línea, sin fondo propio.
+  const chartVars = (p) => ({ backgroundColor: 'transparent', titleColor: p[4], dataLabelColor: p[4], legendTextColor: p[4],
+    xAxisTitleColor: p[4], xAxisLabelColor: p[4], xAxisTickColor: p[4], xAxisLineColor: p[4], yAxisTitleColor: p[4], yAxisLabelColor: p[4], yAxisTickColor: p[4], yAxisLineColor: p[4],
+    plotColorPalette: [p[3], p[4], p[2]].join(',') });
+  const isChart = (code) => { const t = typeOf('mermaid', code); return t === 'bar' || t === 'line'; };
   const INIT = /^\s*%%\{\s*init\s*:\s*([\s\S]*?)\}%%[ \t]*\n?/;
   function readInit(code) {
     const m = INIT.exec(code); if (!m) return { len: 0, cfg: {} };
@@ -287,7 +309,7 @@
       return head + '\n  node [style=filled, fillcolor="' + p[1] + '", color="' + p[3] + '", fontcolor="' + p[2] + '"];\n  edge [color="' + p[4] + '", fontcolor="' + p[4] + '"];\n' + rest;
     }
     const init = readInit(code); const cfg = init.cfg; const rest = code.slice(init.len);
-    if (p) { cfg.theme = 'base'; cfg.themeVariables = themeVars(p); } else { delete cfg.theme; delete cfg.themeVariables; }
+    if (p) { cfg.theme = 'base'; cfg.themeVariables = isChart(rest) ? Object.assign(themeVars(p), { xyChart: chartVars(p) }) : themeVars(p); } else { delete cfg.theme; delete cfg.themeVariables; }
     return (Object.keys(cfg).length ? '%%{init: ' + JSON.stringify(cfg).replace(/"/g, "'") + '}%%\n' : '') + rest;
   }
   // Graphviz: el color de texto que pide el diagrama gana sobre el del tema de la página.
@@ -342,17 +364,19 @@
     if (eof || line > lastText) line = Math.min(line, lastText);
     // Jison marca dónde se dio cuenta, no dónde está el problema: en un final inesperado se busca qué quedó abierto.
     const blocks = type === 'class' || type === 'er' || type === 'state';
+    const xy = type === 'bar' || type === 'line';
+    const tip = (u) => (xy && u[0] === '[' ? 'Cada `[` lleva su `]`, por ejemplo `bar [10, 20]`.' : u[2]);
     if (eof) {
       if (type === 'seq' || type === 'flow') {
         const o = openBlock(lines, type === 'seq' ? /^(loop|alt|opt|par|critical|break|rect|box)\b/ : /^subgraph\b/, /^end\b/);
         if (o >= 0) return out(o, 'A este bloque le falta su cierre.', 'Agregá una línea que diga `end` donde termina.');
       }
       if (blocks) { const o = openBlock(lines, /\{\s*$/, /^\}/); if (o >= 0) return out(o, 'A este bloque le falta la llave que lo cierra.', 'Agregá una línea con `}` donde termina.'); }
-      for (let i = lastText; i > h; i--) { const u = unclosed(lines[i], blocks); if (u) return out(i, u[1], u[2]); }
+      for (let i = lastText; i > h; i--) { const u = unclosed(lines[i], blocks); if (u) return out(i, u[1], tip(u)); }
     }
     const src = (lines[line] || '').trim();
     const u = unclosed(lines[line] || '', blocks);
-    if (u) return out(line, u[1], u[2]);
+    if (u) return out(line, u[1], tip(u));
     const found = String(hash.text || '').trim() || (/unexpected character: ->(.+?)<-/.exec(detail) || [])[1] || '';
     const head = eof || /^(NEWLINE|NL)$/.test(got) || !found ? 'La línea quedó incompleta.' : 'No se esperaba {a} acá.';
     const vars = { a: tick(found) };
@@ -376,6 +400,13 @@
     }
     if (type === 'gantt' && /taskData/.test(expected)) return out(line, 'A la tarea le faltan los datos.', 'Van después de dos puntos, por ejemplo {b}.', { b: tick(src + ' :t1, ' + today() + ', 3d') });
     if (type === 'pie') return out(line, 'Esta porción no se pudo leer.', 'Cada una va con el nombre entre comillas y un número: `"Nombre" : 10`.');
+    if (type === 'bar' || type === 'line') {
+      if (/^x-axis\b/.test(src)) return out(line, 'Los rótulos del eje no se pudieron leer.', 'Van entre corchetes, separados por comas: `x-axis ["Ene", "Feb"]`.');
+      if (/^y-axis\b/.test(src)) return out(line, 'Este eje no se pudo leer.', 'Lleva un nombre entre comillas y, si querés, de dónde a dónde va: `y-axis "Ventas" 0 --> 100`.');
+      if (/^(bar|line)\b/.test(src)) return out(line, 'Esta serie no se pudo leer.', 'Los valores van entre corchetes, con punto para los decimales: `bar [10, 12.5]`.');
+      if (/^title\b/.test(src)) return out(line, 'El título no se pudo leer.', 'Va entre comillas: `title "Ventas"`.');
+      return out(line, 'Esta línea del gráfico no se pudo leer.', 'Un gráfico lleva `x-axis` con los rótulos y después `bar` o `line` con los valores.');
+    }
     if (type === 'time') return out(line, head, 'Cada período va así: `2024 : Evento`.', vars);
     return out(line, m || found ? head : 'No se pudo dibujar el diagrama.', '', vars);
   }
@@ -453,7 +484,20 @@
     return { ta, sync, write, patch, mark: (line) => { marked = line; sync(); } };
   }
 
-  async function draw(kind, code, target) {
+  // Un gráfico de ejes mide sus textos en la pantalla mientras se arma. Mermaid lo arma en un nodo suelto al final de
+  // la página, y ahí el SVG toma el tamaño de un ícono (18 px, la regla de la app para sus SVG): los textos se miden
+  // casi en cero y después salen cortados, encima del eje. Por eso se arma en un nodo propio, fuera de la vista, donde
+  // el SVG mide lo mismo que el gráfico (editors.css). Los demás diagramas van como siempre.
+  async function render(id, code) {
+    if (!isChart(code)) return window.mermaid.render(id, code);
+    const stage = el('div', { class: 'lmd-chart-stage', 'aria-hidden': 'true' });
+    const box = (window.mermaid.mermaidAPI.getConfig() || {}).xyChart || {};
+    stage.style.setProperty('--lmd-chart-w', (box.width || 700) + 'px');
+    document.body.appendChild(stage);
+    try { return await window.mermaid.render(id, code, stage); } finally { stage.remove(); }
+  }
+
+  async function draw(kind, code, target, width) {
     if (kind === 'dot') {
       await core.ensure('graphviz');
       viz = viz || await window.Viz.instance();
@@ -463,10 +507,10 @@
       return;
     }
     await core.ensure('mermaid');
-    window.mermaid.initialize(Object.assign({ startOnLoad: false, securityLevel: 'strict', flowchart: { curve: core.shape === 'square' ? 'linear' : 'basis' } }, LMD.theme.mermaid(core.settings)));
+    window.mermaid.initialize(Object.assign({ startOnLoad: false, securityLevel: 'strict', flowchart: { curve: core.shape === 'square' ? 'linear' : 'basis' } }, LMD.theme.mermaid(core.settings, width)));
     const id = 'lmd-dgm-' + (++seq);
     try {
-      const out = await window.mermaid.render(id, code);
+      const out = await render(id, code);
       target.innerHTML = out.svg;
     } finally {
       document.querySelectorAll('body > [id^="dlmd-dgm-"], body > #' + id).forEach((n) => n.remove());
@@ -516,7 +560,7 @@
       const mine = ++turn; const text = ta.value;
       const holder = el('div');
       try {
-        await draw(kind, text, holder);
+        await draw(kind, text, holder, view.clientWidth - 36);
         if (mine !== turn) return;
         view.textContent = ''; while (holder.firstChild) view.appendChild(holder.firstChild);
         err.hidden = true; view.classList.remove('lmd-dgm-stale'); code.mark(null);
@@ -589,6 +633,227 @@
     });
   }
 
+  // ---------- Graficar una tabla ----------
+  // De una tabla de la nota sale un bloque mermaid: xychart-beta para barras y líneas, pie para la torta. La tabla
+  // no se toca. Barras y torta llevan una sola serie (en xychart dos series de barras se dibujan una encima de la
+  // otra); las líneas pueden ser varias, cada una con su nombre en la leyenda.
+  const CHART_TYPES = [['bar', 'Barras'], ['line', 'Líneas'], ['pie', 'Torta']];
+  const plain = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+  // Un texto dentro de un bloque de Mermaid: sin lo que Mermaid toma por un comentario (%%) o por una entidad (#35;).
+  const safeText = (s) => plain(s).replace(/%%/g, '% %').replace(/#(?=\w+;)/g, '# ');
+  // Entre comillas: las comillas dobles y los acentos graves de adentro pasan a comilla simple. Corchetes, comas y
+  // dos puntos quedan como están: entre comillas no cortan nada.
+  const quote = (s) => '"' + safeText(s).replace(/["`]/g, "'") + '"';
+  // "1.234,5", "$ 1.200", "12 %", "−3": el mismo criterio que la fila de totales (board.js).
+  const numberOf = (text) => { const t = plain(text).replace(/[−–]/g, '-'); return t ? LMD.board.parseNumber(t) : null; };
+  const numText = (v) => String(Number(v.toFixed(6)));
+  // Rótulos sin repetir: en Mermaid dos iguales caen en el mismo lugar y uno tapa al otro.
+  function unique(list) {
+    const seen = {};
+    return list.map((x) => { seen[x] = (seen[x] || 0) + 1; return seen[x] > 1 ? x + ' (' + seen[x] + ')' : x; });
+  }
+  const TOTAL_WORD = /^(total|totales|totals|suma|sum|subtotal)\W*$/i;
+
+  // Lo que hay para graficar en una tabla ya dibujada: columnas, filas con datos y cuántas filas de totales se dejaron
+  // afuera (las que tienen una cuenta de la app, y una última fila que se llama Total).
+  function tableData(table) {
+    const head = table.tHead && table.tHead.rows[0] ? Array.from(table.tHead.rows[0].cells).map((c) => plain(c.textContent)) : [];
+    let rows = Array.from(table.tBodies[0] ? table.tBodies[0].rows : []).map((tr, i) => ({ n: i + 1, calc: false, cells: Array.from(tr.cells).map((c) => {
+      const calc = !!(c.dataset.formula || LMD.board.formulaOf(c.textContent));
+      return { text: plain(c.textContent), calc };
+    }) }));
+    rows.forEach((r) => { r.calc = r.cells.some((c) => c.calc); });
+    rows = rows.filter((r) => r.calc || r.cells.some((c) => c.text));
+    const last = rows[rows.length - 1];
+    if (last && !last.calc && rows.length > 1 && TOTAL_WORD.test((last.cells.find((c) => c.text) || { text: '' }).text)) last.calc = true;
+    const totals = rows.filter((r) => r.calc).length;
+    rows = rows.filter((r) => !r.calc);
+    const width = Math.max(head.length, rows.reduce((m, r) => Math.max(m, r.cells.length), 0));
+    const cols = Array.from({ length: width }, (_, ci) => {
+      const vals = rows.map((r) => (r.cells[ci] ? r.cells[ci].text : '')).filter(Boolean);
+      return { name: head[ci] || T('Columna {n}', { n: ci + 1 }), numeric: vals.length > 0 && vals.filter((v) => numberOf(v)).length >= vals.length / 2 };
+    });
+    return { cols, rows, totals };
+  }
+
+  // El título más cercano arriba de la tabla.
+  function headingAbove(table) {
+    const all = core.ui.article.querySelectorAll('h1, h2, h3, h4, h5, h6'); let found = null;
+    for (const h of all) { if (h.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING) found = h; else break; }
+    if (!found) return '';
+    const copy = found.cloneNode(true); copy.querySelectorAll('.lmd-anchor, .lmd-hnum, button').forEach((n) => n.remove());
+    return plain(copy.textContent);
+  }
+
+  // El código del gráfico: { code } o { error }. o = { type, label (columna, o -1 para numerar las filas), values
+  // (columnas), title, flat (acostado) }. Si un valor no es un número no sale nada: el aviso dice cuál.
+  function chartCode(data, o) {
+    const rows = data.rows;
+    if (!rows.length) return { error: T('La tabla no tiene filas con datos.') };
+    const values = o.type === 'line' ? o.values : o.values.slice(0, 1);
+    if (!values.length) return { error: T('Elegí una columna con los valores.') };
+    const names = unique(rows.map((r, i) => (o.label < 0 ? String(i + 1) : (r.cells[o.label] && r.cells[o.label].text) || T('Fila {n}', { n: r.n }))));
+    const series = [];
+    for (const ci of values) {
+      const nums = [];
+      for (let i = 0; i < rows.length; i++) {
+        const text = rows[i].cells[ci] ? rows[i].cells[ci].text : ''; const n = numberOf(text);
+        const where = { c: data.cols[ci].name, r: names[i], v: text };
+        if (!n) return { error: text ? T('En la columna {c}, la fila de {r} no es un número: {v}', where) : T('En la columna {c}, la fila de {r} está vacía.', where) };
+        nums.push(n);
+      }
+      series.push({ name: data.cols[ci].name, nums });
+    }
+    const title = safeText(o.title);
+    if (o.type === 'pie') {
+      const s = series[0]; const neg = s.nums.findIndex((n) => n.value < 0);
+      if (neg !== -1) return { error: T('La torta no admite valores negativos: {r} tiene {v}. Probá con barras.', { r: names[neg], v: rows[neg].cells[values[0]].text }) };
+      if (!s.nums.some((n) => n.value > 0)) return { error: T('La torta necesita al menos un valor mayor que cero.') };
+      // Una porción en cero no se dibuja, y Mermaid no la acepta.
+      const parts = names.map((name, i) => [name, s.nums[i].value]).filter((p) => p[1] > 0);
+      return { code: ['pie' + (title ? ' title ' + title : '')].concat(parts.map((p) => '  ' + quote(p[0]) + ' : ' + numText(p[1]))).join('\n') };
+    }
+    const all = series.reduce((list, s) => list.concat(s.nums.map((n) => n.value)), []);
+    const min = Math.min.apply(null, all); const max = Math.max.apply(null, all);
+    // La unidad que comparten todos los valores ($, %) acompaña al nombre del eje.
+    const first = series[0].nums; const same = (key) => (first.every((n) => plain(n[key]) === plain(first[0][key])) ? plain(first[0][key]) : '');
+    const unit = same('prefix') || same('suffix');
+    const axis = series.length === 1 ? series[0].name + (unit && unit.length <= 4 && series[0].name.indexOf(unit) === -1 ? ' (' + unit + ')' : '') : '';
+    // Las barras salen del piso del gráfico: sin un rango que empiece en cero, la más baja no se vería. A una línea le
+    // alcanza el rango que Mermaid calcula solo, salvo que todos los valores sean iguales.
+    let range = '';
+    if (o.type === 'bar' || min === max) { const lo = Math.min(0, min); const hi = Math.max(0, max); range = numText(lo) + ' --> ' + numText(hi === lo ? 1 : hi); }
+    const lines = ['xychart-beta' + (o.flat ? ' horizontal' : '')];
+    if (title) lines.push('  title ' + quote(title));
+    lines.push('  x-axis [' + names.map(quote).join(', ') + ']');
+    if (axis || range) lines.push('  y-axis' + (axis ? ' ' + quote(axis) : '') + (range ? ' ' + range : ''));
+    series.forEach((s) => lines.push('  ' + o.type + (series.length > 1 ? ' ' + quote(s.name) : '') + ' [' + s.nums.map((n) => numText(n.value)).join(', ') + ']'));
+    return { code: lines.join('\n'), negative: o.type === 'bar' && min < 0 };
+  }
+
+  // El cuadro de "Graficar": tipo, rótulos, valores y título, con el gráfico a la vista. insert recibe las líneas
+  // del bloque, con sus cercas.
+  function chart(table, insert) {
+    if (!table || document.querySelector('.lmd-chart')) return;
+    const data = tableData(table);
+    const numeric = data.cols.map((c, i) => (c.numeric ? i : -1)).filter((i) => i >= 0);
+    if (!data.rows.length || !numeric.length) { core.flash(T('No hay columnas con números para graficar'), 'warn'); return; }
+    // Los rótulos: la primera columna de texto. Si todas son números, la primera (los años, por ejemplo), y con una
+    // sola columna, el número de fila.
+    const texty = data.cols.findIndex((c) => !c.numeric);
+    const state = { type: 'bar', label: texty !== -1 ? texty : numeric.length > 1 ? 0 : -1, values: [], title: '', flat: false };
+    state.values = [numeric.find((i) => i !== state.label)];
+    state.title = headingAbove(table) || data.cols[state.values[0]].name;
+    const labels = state.label < 0 ? [] : data.rows.map((r) => (r.cells[state.label] ? r.cells[state.label].text : ''));
+    state.flat = labels.some((l) => l.length > 14) || labels.join('').length > 70;
+
+    const modal = el('div', { class: 'lmd-ask lmd-chart' });
+    modal.innerHTML =
+      '<div class="lmd-ask-card lmd-chart-card" role="dialog" aria-modal="true" aria-label="' + T('Graficar la tabla') + '">' +
+        '<h3>' + T('Graficar la tabla') + '</h3>' +
+        '<div class="lmd-seg lmd-chart-type" role="radiogroup" aria-label="' + T('Tipo de gráfico') + '">' +
+          CHART_TYPES.map((t) => '<button type="button" role="radio" data-ct="' + t[0] + '"><svg viewBox="0 0 44 32" aria-hidden="true">' + THUMB[t[0]] + '</svg>' + T(t[1]) + '</button>').join('') + '</div>' +
+        '<div class="lmd-chart-form">' +
+          '<label class="lmd-dlg-field"><span>' + T('Rótulos') + '</span><select data-cf="label">' +
+            data.cols.map((c, i) => '<option value="' + i + '">' + esc(c.name) + '</option>').join('') + '<option value="-1">' + T('Número de fila') + '</option></select></label>' +
+          '<fieldset class="lmd-chart-vals"><legend>' + T('Valores') + '</legend><div>' +
+            numeric.map((i) => '<label><input type="checkbox" data-cv="' + i + '"><span>' + esc(data.cols[i].name) + '</span></label>').join('') + '</div>' +
+            '<p class="lmd-chart-hint" data-ch="many">' + T('Con líneas podés marcar más de una.') + '</p></fieldset>' +
+          '<label class="lmd-dlg-field"><span>' + T('Título') + '</span><input type="text" data-cf="title" autocomplete="off"></label>' +
+          '<label class="lmd-chart-flat"><input type="checkbox" data-cf="flat"><span>' + T('Acostado, para rótulos largos') + '</span></label>' +
+        '</div>' +
+        '<div class="lmd-chart-view lmd-diagram" aria-label="' + T('Vista previa') + '"></div>' +
+        '<p class="lmd-dlg-err" role="alert" hidden></p>' +
+        '<p class="lmd-chart-note" hidden></p>' +
+        '<div class="lmd-ask-actions"><button type="button" class="lmd-btn" data-chart="no" data-esc>' + T('Cancelar') + '</button>' +
+          '<button type="button" class="lmd-btn lmd-btn-fill" data-chart="ok">' + T('Insertar gráfico') + '</button></div>' +
+      '</div>';
+    document.body.appendChild(modal);
+    const q = (s) => modal.querySelector(s);
+    const view = q('.lmd-chart-view'); const err = q('.lmd-dlg-err'); const note = q('.lmd-chart-note'); const ok = q('[data-chart=ok]');
+    const select = q('[data-cf=label]'); const titleIn = q('[data-cf=title]'); const flat = q('[data-cf=flat]');
+    select.value = String(state.label); titleIn.value = state.title; flat.checked = state.flat;
+
+    let made = null; let turn = 0;
+    const paint = async () => {
+      const mine = ++turn;
+      made = chartCode(data, state);
+      const notes = [];
+      if (data.totals) notes.push(T('La fila de totales no se grafica.'));
+      if (made.negative) notes.push(T('Hay valores negativos: las barras salen del piso del gráfico, no del cero. Con líneas se leen mejor.'));
+      note.hidden = !notes.length; note.textContent = notes.join(' ');
+      err.hidden = !made.error; err.textContent = made.error || ''; ok.disabled = !!made.error;
+      view.classList.toggle('lmd-dgm-stale', !!made.error);
+      if (made.error) return;
+      const holder = el('div');
+      try {
+        await draw('mermaid', made.code, holder, view.clientWidth - 16);
+        if (mine !== turn) return;
+        view.textContent = ''; while (holder.firstChild) view.appendChild(holder.firstChild);
+      } catch (ex) {
+        if (mine !== turn) return;
+        // No debería pasar: el código lo arma la app. Si pasa, no se inserta algo que no se dibuja.
+        made = { error: explainMermaid(made.code, ex).head };
+        err.hidden = false; err.textContent = made.error; ok.disabled = true; view.classList.add('lmd-dgm-stale');
+      }
+    };
+    // Lo que se ve en el cuadro sigue a lo elegido: el tipo marcado, los valores que se pueden tildar y lo que no aplica.
+    const show = () => {
+      modal.querySelectorAll('[data-ct]').forEach((b) => { const on = b.dataset.ct === state.type; b.classList.toggle('lmd-on', on); b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1; });
+      if (state.type !== 'line') state.values = state.values.slice(0, 1);
+      state.values = state.values.filter((i) => i !== state.label);
+      modal.querySelectorAll('[data-cv]').forEach((b) => { const i = +b.dataset.cv; b.checked = state.values.indexOf(i) !== -1; b.disabled = i === state.label; b.parentNode.classList.toggle('lmd-off', b.disabled); });
+      q('[data-ch=many]').hidden = numeric.filter((i) => i !== state.label).length < 2 || state.type === 'line';
+      flat.parentNode.hidden = state.type === 'pie';
+    };
+    const later = debounce(paint, 250);
+    show(); paint();
+
+    const close = (apply) => {
+      if (apply && (!made || made.error)) return;
+      modal.remove();
+      if (apply) insert(['```mermaid'].concat(made.code.split('\n'), ['```']));
+    };
+    modal.addEventListener('mousedown', (ev) => { if (ev.target === modal) close(false); });
+    modal.addEventListener('click', (ev) => {
+      const t = ev.target.closest('[data-ct]');
+      if (t) { state.type = t.dataset.ct; show(); paint(); return; }
+      const b = ev.target.closest('[data-chart]');
+      if (b) close(b.dataset.chart === 'ok');
+    });
+    modal.addEventListener('change', (ev) => {
+      const v = ev.target.closest('[data-cv]');
+      if (v) {
+        const i = +v.dataset.cv;
+        // Con barras y torta va una sola: marcar otra la reemplaza.
+        if (!v.checked) state.values = state.values.filter((x) => x !== i);
+        else if (state.type === 'line') state.values = numeric.filter((x) => x === i || state.values.indexOf(x) !== -1);
+        else state.values = [i];
+      }
+      if (ev.target === select) {
+        state.label = +select.value;
+        if (!state.values.filter((i) => i !== state.label).length) { const next = numeric.find((i) => i !== state.label); state.values = next == null ? [] : [next]; }
+      }
+      if (ev.target === flat) state.flat = flat.checked;
+      show(); paint();
+    });
+    titleIn.addEventListener('input', () => { state.title = titleIn.value; later(); });
+    modal.addEventListener('keydown', (ev) => {
+      ev.stopPropagation(); // los atajos del documento no corren mientras el cuadro está abierto
+      if (ev.key === 'Escape') { ev.preventDefault(); close(false); return; }
+      if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey || ev.target === titleIn)) { ev.preventDefault(); state.title = titleIn.value; made = chartCode(data, state); close(true); return; }
+      // El tipo se elige como un grupo de opciones: con las flechas.
+      const type = ev.target.closest && ev.target.closest('[data-ct]');
+      if (type && /^Arrow(Left|Right|Up|Down)$/.test(ev.key)) {
+        ev.preventDefault();
+        const at = CHART_TYPES.findIndex((x) => x[0] === state.type); const step = /Left|Up/.test(ev.key) ? -1 : 1;
+        state.type = CHART_TYPES[(at + step + CHART_TYPES.length) % CHART_TYPES.length][0]; show(); paint();
+        q('[data-ct="' + state.type + '"]').focus();
+      }
+    });
+    q('[data-ct="' + state.type + '"]').focus();
+  }
+
   function tools(box) {
     if (box.querySelector('.lmd-dgm-tools') || !box.querySelector('svg')) return;
     const bar = el('div', { class: 'lmd-dgm-tools' },
@@ -630,5 +895,5 @@
     });
   }
 
-  LMD.diagram = { init, edit, fail, keepColors, pane, PANE, errorHtml, rich, tick, typeOf, pieceEdit, withPalette, paletteOf, explain, templates, PALETTES };
+  LMD.diagram = { init, edit, render, chart, chartCode, tableData, fail, keepColors, pane, PANE, errorHtml, rich, tick, typeOf, pieceEdit, withPalette, paletteOf, explain, templates, PALETTES };
 })();

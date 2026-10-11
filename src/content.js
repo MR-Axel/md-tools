@@ -878,6 +878,8 @@
     });
   }
 
+  // El ancho útil de un bloque, sin su relleno: a ese ancho se dibuja un gráfico.
+  const inner = (box) => { const cs = getComputedStyle(box); return box.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0); };
   let mermaidSeq = 0;
   async function renderMermaid(article, light, quiet) {
     const nodes = Array.from(article.querySelectorAll('pre.lmd-mermaid'));
@@ -885,11 +887,11 @@
     if (!(await ensure('mermaid')) || !window.mermaid) return;
     await tools();
     // Para un sitio publicado el diagrama sale siempre en claro; en la app, con los colores del tema.
-    mermaid.initialize(Object.assign({ startOnLoad: false, securityLevel: 'strict', flowchart: { curve: settings.diagramShape === 'square' ? 'linear' : 'basis' } }, light ? { theme: 'default' } : LMD.theme.mermaid(settings)));
+    mermaid.initialize(Object.assign({ startOnLoad: false, securityLevel: 'strict', flowchart: { curve: settings.diagramShape === 'square' ? 'linear' : 'basis' } }, LMD.theme.mermaid(settings, inner(article), light)));
     for (const n of nodes) {
       const code = n.textContent;
       try {
-        const out = await mermaid.render('lmd-mermaid-' + (++mermaidSeq), code);
+        const out = await LMD.diagram.render('lmd-mermaid-' + (++mermaidSeq), code);
         const box = el('div', { class: 'lmd-diagram' });
         box.innerHTML = out.svg;
         box.dataset.code = code; box.dataset.kind = 'mermaid';
@@ -1289,7 +1291,8 @@
       '<button type="button" data-top="col+">+ ' + T('Columna') + '</button>' +
       '<button type="button" data-top="row-">− ' + T('Fila') + '</button>' +
       '<button type="button" data-top="col-">− ' + T('Columna') + '</button>' +
-      '<button type="button" data-top="total" title="' + T('Agregar una fila que suma cada columna') + '">Σ ' + T('Totales') + '</button>');
+      '<button type="button" data-top="total" title="' + T('Agregar una fila que suma cada columna') + '">Σ ' + T('Totales') + '</button>' +
+      '<button type="button" data-top="chart" title="' + T('Dibujar un gráfico con los números de esta tabla') + '"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 14h12M4 14V8M8 14V3M12 14v-4"/></svg>' + T('Graficar') + '</button>');
 
     // En pantalla chica la barra lateral se abre encima del contenido; esto oscurece lo que queda detrás.
     ui.scrim = el('div', { class: 'lmd-scrim' });
@@ -4065,6 +4068,7 @@
     const cell = document.activeElement && document.activeElement.closest && document.activeElement.closest('td.lmd-cell, th.lmd-cell');
     if (!cell) return;
     const table = cell.closest('table'); const ctx = tableContext(table);
+    if (op === 'chart') { chartTable(cell, table); return; }
     const ri = +cell.dataset.r; const ci = +cell.dataset.c;
     const grid = Array.from(table.rows).map((tr) => Array.from(tr.cells).map(cellMd));
     const sep = splitRow(srcLines[ctx.s + 1]);
@@ -4086,6 +4090,30 @@
     pendingCell = { line: rangeOf(table)[0], r: nr, c: nc };
     replaceLines(ctx.s, ctx.e, out, null);
     render();
+  }
+
+  // "Graficar": lo que se estaba escribiendo en la celda pasa primero a la nota, y el cuadro (diagram.js) lee la tabla
+  // ya redibujada. El gráfico va en un bloque mermaid debajo de la tabla, que queda como está.
+  function chartTable(cell, table) {
+    const line = rangeOf(table)[0];
+    const find = () => Array.from(ui.article.querySelectorAll('table[data-l]')).find((t) => rangeOf(t)[0] === line);
+    cell.blur();
+    tools().then((ok) => {
+      if (!ok) return;
+      if (needsRender) render();
+      const now = find(); if (!now) return;
+      LMD.diagram.chart(now, (block) => {
+        const t = find(); if (!t) return;
+        const ctx = tableContext(t); let at = ctx.e;
+        while (at > ctx.s && !(srcLines[at - 1] || '').replace(/^\s*(?:>\s?)*/, '').trim()) at--;
+        const out = [''].concat(block); if ((srcLines[at] || '').trim()) out.push('');
+        replaceLines(at, at, out.map((l) => (ctx.indent + l).replace(/\s+$/, '')), null);
+        render();
+        const made = ui.article.querySelector('[data-l^="' + (at + 1 - fmOffset) + '-"]');
+        if (made) made.scrollIntoView({ block: 'nearest' });
+        flash(T('Gráfico agregado debajo de la tabla'));
+      });
+    });
   }
 
   function toggleTask(box) {

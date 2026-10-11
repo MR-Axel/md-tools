@@ -230,12 +230,31 @@
   }
   const flipPatch = (settings) => modePatch(settings, modeDark(settings) ? 'light' : 'dark');
 
+  // Los gráficos (xychart) de Mermaid no traen colores que sirvan: sus series por defecto son casi blancas. Acá van sin
+  // fondo propio, con los ejes y los textos del tema, y las series con el color de acento primero.
+  const chartVars = (c) => ({ backgroundColor: 'transparent', titleColor: c.fg, dataLabelColor: c.fg, legendTextColor: c.fg,
+    xAxisTitleColor: c.muted, xAxisLabelColor: c.muted, xAxisTickColor: c.muted, xAxisLineColor: c.muted, yAxisTitleColor: c.muted, yAxisLabelColor: c.muted, yAxisTickColor: c.muted, yAxisLineColor: c.muted,
+    plotColorPalette: [c.fill, c.n, c.k, c.s, c.f, c.b, c.t].join(',') });
+  // El tamaño de un gráfico sigue al ancho donde va: en un teléfono se dibuja a su ancho real, así la letra no se achica.
+  function chartBox(width) {
+    const w = Math.max(300, Math.min(700, Math.round(width || 700))); const small = w < 520;
+    // Mermaid no completa lo que falta de cada eje: van todos sus valores, los suyos de siempre salvo la letra.
+    const axis = () => ({ showLabel: true, labelFontSize: small ? 12 : 14, labelPadding: 5, showTitle: true, titleFontSize: small ? 13 : 16, titlePadding: 5, showTick: true, tickLength: 5, tickWidth: 2, showAxisLine: true, axisLineWidth: 2 });
+    return { useMaxWidth: true, width: w, height: Math.max(280, Math.round(w * 5 / 7)), titleFontSize: small ? 16 : 20, titlePadding: 10, showTitle: true, showLegend: true, legendFontSize: small ? 12 : 14, legendPadding: 10,
+      showDataLabel: false, plotReservedSpacePercent: 50, xAxis: axis(), yAxis: axis() };
+  }
+
   // Los diagramas de Mermaid con los colores del tema. Con los temas de siempre, sus dos temas propios.
-  function mermaid(settings) {
+  // width es el ancho donde se dibuja. Con light, siempre en claro (un sitio publicado).
+  function mermaid(settings, width, light) {
+    const xyChart = chartBox(width);
+    if (light) return { theme: 'default', themeVariables: { xyChart: chartVars(byId(BASE.light).c) }, xyChart };
     const p = chosen(settings);
-    if (!p) return { theme: modeDark(settings) ? 'dark' : 'default' };
+    // Con los temas de siempre, la torta también va con el acento primero y los colores del tema: los suyos son casi blancos.
+    if (!p) { const b = palette(settings); return { theme: b.dark ? 'dark' : 'default', xyChart, themeVariables: { xyChart: chartVars(b), pie1: b.fill, pie2: b.n, pie3: b.k, pie4: b.s, pie5: b.f, pie6: b.b, pie7: b.t,
+      pieTitleTextColor: b.fg, pieSectionTextColor: b.bg, pieLegendTextColor: b.fg, pieStrokeColor: b.bg, pieOuterStrokeColor: b.line } }; }
     const c = p.c;
-    return { theme: 'base', themeVariables: { darkMode: p.dark, background: c.bg, primaryColor: c.soft, primaryTextColor: c.fg, primaryBorderColor: c.muted, lineColor: c.muted, secondaryColor: c.code, tertiaryColor: c.side,
+    return { theme: 'base', xyChart, themeVariables: { xyChart: chartVars(palette(settings)), darkMode: p.dark, background: c.bg, primaryColor: c.soft, primaryTextColor: c.fg, primaryBorderColor: c.muted, lineColor: c.muted, secondaryColor: c.code, tertiaryColor: c.side,
       textColor: c.fg, mainBkg: c.soft, nodeBorder: c.muted, clusterBkg: c.side, clusterBorder: c.line, titleColor: c.fg, edgeLabelBackground: c.bg, noteBkgColor: c.code, noteTextColor: c.fg, noteBorderColor: c.line,
       actorBkg: c.soft, actorBorder: c.muted, actorTextColor: c.fg, signalColor: c.fg, signalTextColor: c.fg, labelBoxBkgColor: c.soft, labelBoxBorderColor: c.muted, labelTextColor: c.fg, loopTextColor: c.fg,
       activationBkgColor: c.code, activationBorderColor: c.muted, sequenceNumberColor: c.bg, pie1: c.fill, pie2: c.n, pie3: c.k, pie4: c.s, pie5: c.f, pie6: c.b, pie7: c.t, pieTitleTextColor: c.fg, pieSectionTextColor: c.bg, pieLegendTextColor: c.fg, pieStrokeColor: c.bg, pieOuterStrokeColor: c.line } };
