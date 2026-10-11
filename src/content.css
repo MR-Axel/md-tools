@@ -3808,3 +3808,69 @@ dialog.lmd-xp-full::backdrop { background: var(--bg); }
   .lmd-send-row .lmd-link { min-height: 36px; }
 }
 @media print { .lmd-drop-tag, .lmd-sent { display: none !important; } }
+/* ---------- Archivos de código y vista previa de un HTML (codeview.js) ---------- */
+/* La barra: qué se ve (código, vista previa o los dos) y si las líneas largas bajan de renglón. */
+.lmd-cv-bar { position: sticky; top: calc(49px + env(safe-area-inset-top, 0px)); z-index: 9; display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 6px 16px; border-bottom: 1px solid var(--line); background: var(--bg); }
+.lmd-cv-bar[hidden], .lmd-cv-prev[hidden], .lmd-cv-seg[hidden], .lmd-cv-reload[hidden] { display: none; }
+.lmd-cv-seg { display: flex; flex: none; padding: 3px; gap: 2px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 999px; }
+.lmd-cv-seg button { height: 26px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: var(--fg-muted); font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.lmd-cv-seg button:hover { color: var(--fg); }
+.lmd-cv-seg button.lmd-on { background: var(--accent-fill); color: var(--accent-fg); cursor: default; }
+.lmd-cv-info { flex: 1; min-width: 0; color: var(--fg-faint); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lmd-cv-btn { flex: none; height: 28px; padding: 0 11px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--fg-muted); font: inherit; font-size: 12.5px; white-space: nowrap; cursor: pointer; }
+.lmd-cv-btn:hover { color: var(--fg); background: var(--bg-soft); }
+.lmd-cv-btn.lmd-on { color: var(--accent); border-color: var(--accent-fill); }
+.lmd-cv-on > .lmd-article { padding-top: 16px; }
+/* "Insertar un bloque" es de Markdown: en un archivo de código no va. */
+.lmd-main.lmd-cv-on .lmd-topbar .lmd-insert { display: none; }
+/* Leer: una línea por renglón, con su número a la izquierda. Los tramos fuera de la pantalla no se miden ni se pintan. */
+.lmd-code pre code.lmd-cv { display: block; }
+.lmd-cv-c { display: block; content-visibility: auto; }
+.lmd-cv-l { display: block; position: relative; padding-left: calc(var(--cv-g, 3ch) + 20px); }
+.lmd-cv-l::before { content: attr(data-n); position: absolute; left: 0; top: 0; width: var(--cv-g, 3ch); text-align: right; color: var(--fg-faint); -webkit-user-select: none; user-select: none; }
+.lmd-cv-l.lmd-cv-hit { background: var(--accent-soft); }
+.lmd-main.lmd-cv-on .lmd-code pre code.lmd-cv { white-space: pre-wrap; overflow-wrap: anywhere; }
+.lmd-main.lmd-cv-nowrap .lmd-code pre code.lmd-cv { min-width: max-content; white-space: pre; overflow-wrap: normal; }
+/* Editar: el cuadro de código fuente de siempre, con los números al costado y el color por detrás. Apagado, el marco no existe para la página. */
+.lmd-cv-ed, .lmd-cv-pane { display: contents; }
+.lmd-cv-ed > .lmd-ed-gutter, .lmd-cv-back { display: none; }
+.lmd-cv-ed.lmd-cv-ed-on { display: flex; position: relative; height: calc(100dvh - 158px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - var(--lmd-kb, 0px)); min-height: 180px; margin: 12px 24px 0; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-code); overflow: hidden; }
+.lmd-cv-ed.lmd-cv-ed-on:focus-within { border-color: var(--accent-fill); }
+.lmd-cv-ed-on > .lmd-ed-gutter { display: block; }
+.lmd-cv-ed-on > .lmd-cv-pane { display: block; position: relative; flex: 1; min-width: 0; overflow: hidden; }
+.lmd-cv-ed-on .lmd-cv-back { display: block; position: absolute; inset: 0; margin: 0; padding: 14px 16px 14px 8px; border: 0; background: transparent; overflow: hidden; pointer-events: none; visibility: hidden; font: 13.5px/21px var(--lmd-mono); font-feature-settings: normal; letter-spacing: 0; white-space: pre; tab-size: 2; }
+.lmd-cv-ed-on .lmd-cv-back code.hljs { display: block; padding: 0; background: transparent; font: inherit; white-space: pre; overflow: visible; }
+.lmd-cv-ed-on .lmd-cv-back code.hljs * { font-weight: inherit !important; font-style: normal !important; }
+.lmd-cv-ed-on.lmd-cv-hl .lmd-cv-back { visibility: visible; }
+.lmd-cv-ed-on textarea.lmd-raw-edit { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; max-width: none; margin: 0; padding: 14px 16px 14px 8px; border: 0; border-radius: 0; background: transparent; color: var(--fg); caret-color: var(--fg); font: 13.5px/21px var(--lmd-mono); white-space: pre; overflow: auto; resize: none; tab-size: 2; }
+.lmd-cv-ed-on textarea.lmd-raw-edit:focus { outline: none; }
+.lmd-cv-ed-on.lmd-cv-hl textarea.lmd-raw-edit { color: transparent; }
+.lmd-cv-ed-on.lmd-cv-hl textarea.lmd-raw-edit::selection { color: transparent; background: color-mix(in srgb, var(--accent-fill) 32%, transparent); }
+/* Vista previa: el marco es de la app; adentro, el fondo y los colores son los de la página. */
+.lmd-cv-prev { display: flex; flex-direction: column; height: calc(100dvh - 122px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); min-height: 240px; }
+.lmd-cv-note { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--bg-soft); color: var(--fg-muted); font-size: 12.5px; line-height: 1.4; }
+.lmd-cv-fine { flex-basis: 100%; color: var(--fg-faint); font-size: 12px; }
+.lmd-cv-stage { flex: 1; min-height: 0; background: #fff; }
+.lmd-cv-frame { display: block; width: 100%; height: 100%; border: 0; background: #fff; color-scheme: light; }
+.lmd-main.lmd-cv-m-prev > .lmd-article, .lmd-main.lmd-cv-m-prev > .lmd-raw, .lmd-main.lmd-cv-m-prev > .lmd-cv-ed { display: none; }
+/* El índice de un HTML: sus entradas son botones que llevan a una línea. */
+.lmd-cv-o { border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.lmd-o-title.lmd-cv-o { width: 100%; padding: 0; }
+.lmd-cv-o-sec { font-family: var(--lmd-mono); font-size: 12.5px; }
+@media (max-width: 1099px) {
+  .lmd-cv-seg [data-cv=split] { display: none; }
+}
+@media (min-width: 1100px) {
+  .lmd-main.lmd-cv-m-split > .lmd-cv-prev { float: right; position: sticky; top: calc(92px + env(safe-area-inset-top, 0px)); width: 50%; border-left: 1px solid var(--line); }
+  .lmd-main.lmd-cv-m-split > .lmd-article, .lmd-main.lmd-cv-m-split > pre.lmd-raw { box-sizing: border-box; width: 50%; max-width: none; margin: 0; padding-left: 20px; padding-right: 20px; }
+  .lmd-main.lmd-cv-m-split > .lmd-cv-ed.lmd-cv-ed-on { width: calc(50% - 24px); margin: 12px 12px 0; }
+}
+@media (max-width: 720px) {
+  .lmd-cv-bar { gap: 8px; padding: 6px 12px; }
+  .lmd-cv-info { visibility: hidden; }
+  .lmd-cv-ed.lmd-cv-ed-on { margin: 8px 8px 0; }
+  .lmd-cv-note { padding: 8px 12px; }
+}
+@media print {
+  .lmd-cv-bar, .lmd-cv-prev { display: none !important; }
+}

@@ -529,6 +529,7 @@
   function onAreaKey(e) {
     const ta = e.target; if (ta.readOnly || ta.disabled || e.isComposing || e.ctrlKey || e.metaKey) return;
     if (core && (!core.editMode || core.readOnly)) return;
+    if (core && !core.blocks) return; // un archivo de código o de datos no es Markdown: sus renglones no son listas
     const lines = ta.value.split('\n'); const from = headLines(ta.value); const w = where(ta);
     const lists = () => parse(lines, from);
     if (e.key === 'Tab' && !e.altKey) {
@@ -573,7 +574,7 @@
   function onAreaInput(e) {
     const ta = e.target; const n = ta.value.split('\n').length; const was = count; count = n;
     if (busy || was < 0 || n === was || !/^(delete|insertFromPaste|insertFromDrop)/.test(e.inputType || '')) return;
-    if (core && (!core.editMode || core.readOnly)) return;
+    if (core && (!core.editMode || core.readOnly || !core.blocks)) return;
     const lines = ta.value.split('\n'); const w = where(ta); const from = headLines(ta.value);
     const next = renumber(lines, from, w.line) || (w.line > 0 ? renumber(lines, from, w.line - 1) : null);
     if (next) setArea(ta, next, w.line, w.col);

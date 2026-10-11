@@ -1651,6 +1651,16 @@
       "El archivo pesa más de {a} MB.": "The file is larger than {a} MB.", "Ese tipo de archivo no se puede convertir.": "That kind of file cannot be converted.", "El archivo es demasiado grande al descomprimirlo.": "The file is too large once unpacked.",
       "Este PDF no tiene texto. Parece escaneado.": "This PDF has no text. It looks scanned.", "El PDF pide contraseña.": "The PDF asks for a password.", "No se pudo cargar el lector de PDF. Probá de nuevo.": "Could not load the PDF reader. Try again.",
       "El archivo no tiene texto para convertir.": "The file has no text to convert.", "Este navegador no puede abrir ese archivo.": "This browser cannot open that file.", "El archivo está dañado o no es lo que dice su nombre.": "The file is damaged or is not what its name says.",
+      // Archivos de código y vista previa de un HTML (codeview.js)
+      "Lado a lado": "Side by side", "Ajustar líneas": "Wrap lines", "Actualizar la vista previa": "Refresh the preview", "1 línea": "1 line", "{n} líneas": "{n} lines", "{n} sección": "{n} section", "{n} secciones": "{n} sections",
+      "Este HTML no tiene títulos ni secciones con id.": "This HTML has no headings or sections with an id.", "Se muestran las primeras {n} entradas.": "Showing the first {n} entries.",
+      "Vista estática: los scripts no corren y nada se pide a internet.": "Static view: scripts do not run and nothing is requested from the internet.", "Vista estática: nada se pide a internet.": "Static view: nothing is requested from the internet.",
+      "Ejecutar los scripts de esta página": "Run this page's scripts", "Detener los scripts": "Stop the scripts",
+      "Corren aislados: no leen tus notas ni tu cuenta y no cargan nada de internet. Una página ajena igual podría avisar afuera que la abriste. Vale para este archivo, hasta cerrar la pestaña.": "They run isolated: they cannot read your notes or your account, and they load nothing from the internet. A page from someone else could still signal out that you opened it. It applies to this file, until you close the tab.",
+      "Los scripts de esta página están corriendo, aislados de tus notas y de tu cuenta.": "This page's scripts are running, isolated from your notes and your account.",
+      "En la extensión no se pueden correr. Para probarlos, abrí el archivo en sharpmd.app.": "They cannot run in the extension. To try them, open the file on sharpmd.app.",
+      "Para ver sus imágenes y estilos, abrí la carpeta del archivo.": "To see its images and styles, open the file's folder.",
+      "No se pudieron correr los scripts. Queda la vista estática.": "Could not run the scripts. The static view stays.",
       // JSON y YAML (jsonyaml.js)
       "JSON y YAML": "JSON and YAML", "Un bloque o un archivo JSON o YAML se ve como un árbol plegable que se edita.": "A JSON or YAML block or file shows as a collapsible tree you can edit.",
       "Los bloques json, jsonc, yaml y yml, y los archivos .json, .yaml y .yml, se ven como un árbol que se edita. Teclas: flechas para moverse y plegar, Enter para editar, F2 para la clave, Supr para borrar, + para agregar.": "json, jsonc, yaml and yml blocks, and .json, .yaml and .yml files, show as a tree you can edit. Keys: arrows to move and collapse, Enter to edit, F2 for the key, Delete to remove, + to add.",

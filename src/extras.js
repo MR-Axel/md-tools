@@ -639,6 +639,8 @@
   function noteTarget(e) {
     if (!dragged || isDirUrl(dragged) || inLocal(dragged) || !core.APP || core.noDoc || !core.editMode || core.readOnly || dragged === core.HERE || core.rootOf(dragged) !== core.rootOf(core.HERE)) return null;
     const t = e.target; const article = core.ui.article; const rawEdit = core.ui.rawEdit;
+    // En el código fuente de algo que no es Markdown (un HTML, un JSON) un enlace de Markdown no pinta nada.
+    if (t === rawEdit && !core.blocks) return null;
     if (t === rawEdit) { const b = rawEdit.getBoundingClientRect(); return { raw: true, box: { left: b.left + 8, top: Math.max(b.top, e.clientY - 9), height: 18 } }; }
     if (!core.blocks || !t.closest || !article.contains(t)) return null;
     const r = caretAt(e.clientX, e.clientY);

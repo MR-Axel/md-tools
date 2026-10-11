@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; form-action 'none'; base-uri 'none'">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>SharpMD</title>
+<script>
+// La vista previa de un HTML con sus scripts andando (src/codeview.js). La app abre esta página en un marco aislado
+// (sandbox="allow-scripts", sin allow-same-origin) y le pasa el HTML por mensaje; acá se escribe en el documento.
+// Hace falta una página aparte porque un srcdoc o un blob: heredan la política de la app, que no corre scripts en línea.
+// La política de arriba queda puesta sobre lo que se escriba: la página no puede pedir ni recibir nada de la red.
+// Si esta página no está aislada (abierta suelta en una pestaña, o en un marco sin sandbox, donde tendría el origen de
+// la app) no hace nada: solo escribe cuando su origen es opaco, y solo lo que manda la página que la contiene, que
+// tiene que ser de este mismo sitio.
+(function () {
+  if (self.origin !== 'null' || window.parent === window) return;
+  function onMessage(e) {
+    if (e.source !== window.parent || e.origin !== location.origin || !e.data || typeof e.data.lmdRun !== 'string') return;
+    removeEventListener('message', onMessage);
+    document.open(); document.write(e.data.lmdRun); document.close();
+  }
+  addEventListener('message', onMessage);
+  window.parent.postMessage('lmd-run-ready', location.origin);
+})();
+</script>
+</head>
+<body></body>
+</html>
