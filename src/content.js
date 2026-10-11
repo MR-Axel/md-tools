@@ -1543,7 +1543,7 @@
       // en un teclado en español la barra va con Shift, y su tecla sola con Ctrl es el zoom del navegador.
       const t = e.target; const typing = !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
       // Sobre una plantilla, ponerse a escribir no edita el original: se ofrece ahí mismo llevarse una copia.
-      const inNote = !t || t === document.body || t === document.documentElement || ui.article.contains(t);
+      const inNote = !t || t === document.body || t === document.documentElement || (t.nodeType === 1 && ui.article.contains(t));
       if (!typing && inNote && e.key.length === 1 && e.key !== ' ' && e.key !== '?' && !e.ctrlKey && !e.metaKey && !e.altKey && ui.panel.hidden && !document.querySelector('.lmd-ask, .lmd-menu, .lmd-dgm, .lmd-pres') && useTemplate('edit')) { e.preventDefault(); return; }
       if (!e.altKey && ((e.key === '?' && !e.ctrlKey && !e.metaKey && !typing) || (e.key === '/' && LMD.mod(e))) && !document.querySelector('.lmd-ask, .lmd-dgm, .lmd-pres')) { e.preventDefault(); openKeys(); }
     });

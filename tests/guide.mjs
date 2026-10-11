@@ -100,7 +100,7 @@ const TUTEO = /\b(puedes|tienes|quieres|prefieres|haz clic|escribe tu|abre tu)\b
 check('el español vosea', /\bAbrís\b/.test(text('es', 'start.md')) && !files.es.some((f) => TUTEO.test(prose(text('es', f)))), files.es.filter((f) => TUTEO.test(prose(text('es', f)))));
 // Los números que cambian se dicen una sola vez: el tope del plan gratis, y ningún precio.
 const said = (re) => files.es.filter((f) => re.test(text('es', f))).length;
-check('el tope del plan gratis se dice en una sola nota y los precios en ninguna', said(/\b25 notas\b/) === 1 && files.en.filter((f) => /\b25 notes\b/.test(text('en', f))).length === 1 && !LANGS.some((l) => files[l].some((f) => /USD|\$\s?\d|\bdólares\b/.test(prose(text(l, f).replace(/\$[^$\n]+\$/g, ''))))));
+check('el tope del plan gratis se dice en una sola nota y los precios en ninguna', said(/\b10 notas\b/) === 1 && files.en.filter((f) => /\b10 notes\b/.test(text('en', f))).length === 1 && !LANGS.some((l) => files[l].some((f) => /USD|\$\s?\d|\bdólares\b/.test(prose(text(l, f).replace(/\$[^$\n]+\$/g, ''))))));
 
 console.log('La guía: la referencia de la API y cómo viaja');
 {
